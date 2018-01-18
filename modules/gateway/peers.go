@@ -150,7 +150,7 @@ func (g *Gateway) threadedAcceptConn(conn net.Conn) {
 	g.log.Debugf("INFO: %v wants to connect", addr)
 
 	if _, exists := g.blacklist[addr.Host()]; exists {
-		g.log.Debugf("INFO: %v was rejected. (blacklisted)")
+		g.log.Debugf("INFO: %v was rejected. (blacklisted)", addr)
 		conn.Close()
 		return
 	}

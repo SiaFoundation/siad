@@ -312,6 +312,9 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	if loadErr := g.loadNodes(); loadErr != nil && !os.IsNotExist(loadErr) {
 		return nil, loadErr
 	}
+	if loadErr := g.loadBlacklist(); loadErr != nil && !os.IsNotExist(loadErr) {
+		return nil, loadErr
+	}
 	// Create the ratelimiter and set it to the persisted limits.
 	g.rl = ratelimit.NewRateLimit(0, 0, 0)
 	if err := g.setRateLimits(g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed); err != nil {
