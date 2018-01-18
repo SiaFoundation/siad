@@ -149,7 +149,10 @@ func (g *Gateway) threadedAcceptConn(conn net.Conn) {
 	addr := modules.NetAddress(conn.RemoteAddr().String())
 	g.log.Debugf("INFO: %v wants to connect", addr)
 
-	if _, exists := g.blacklist[addr.Host()]; exists {
+	g.mu.RLock()
+	_, exists := g.blacklist[addr.Host()]
+	g.mu.RUnlock()
+	if exists {
 		g.log.Debugf("INFO: %v was rejected. (blacklisted)", addr)
 		conn.Close()
 		return
@@ -531,9 +534,13 @@ func (g *Gateway) Disconnect(addr modules.NetAddress) error {
 // from the blacklist.
 func (g *Gateway) ConnectManual(addr modules.NetAddress) error {
 	g.mu.Lock()
-	delete(g.blacklist, addr.Host())
+	var err error
+	if _, exists := g.blacklist[addr.Host()]; exists {
+		delete(g.blacklist, addr.Host())
+		err = g.saveBlacklist()
+	}
 	g.mu.Unlock()
-	return g.Connect(addr)
+	return build.ComposeErrors(err, g.Connect(addr))
 }
 
 // DisconnectManual is a wrapper for the Disconnect function. It is
@@ -544,6 +551,7 @@ func (g *Gateway) DisconnectManual(addr modules.NetAddress) error {
 	if err == nil {
 		g.mu.Lock()
 		g.blacklist[addr.Host()] = struct{}{}
+		err = g.saveBlacklist()
 		g.mu.Unlock()
 	}
 	return err
