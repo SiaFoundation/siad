@@ -30,6 +30,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -178,9 +179,7 @@ type trackedFile struct {
 type Renter struct {
 	// File management.
 	//
-	// tracking contains a list of files that the user intends to maintain. By
-	// default, files loaded through sharing are not maintained by the user.
-	files map[string]*file
+	files map[string]*siafile.SiaFile
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
