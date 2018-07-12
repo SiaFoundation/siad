@@ -312,6 +312,8 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 
 	// Get current block height for reference
 	blockHeight := api.cs.Height()
+
+	// Get active contracts
 	contracts := []RenterContract{}
 	activeContracts := []RenterContract{}
 	inactiveContracts := []RenterContract{}
