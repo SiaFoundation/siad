@@ -3,6 +3,7 @@ package modules
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -418,7 +419,7 @@ func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevis
 // given a host, the available renter funding, the expected txnFee for the
 // transaction and an optional basePrice in case this helper is used for a
 // renewal. It also returns the hostCollateral.
-func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice types.Currency, period types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency, err error) {
+func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseCollateral types.Currency, period types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency, err error) {
 	// Divide by zero check.
 	if host.StoragePrice.IsZero() {
 		host.StoragePrice = types.NewCurrency64(1)
@@ -432,7 +433,7 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice types.Curr
 	renterPayout = funding.Sub(host.ContractPrice).Sub(txnFee).Sub(basePrice)
 	// Calculate hostCollateral.
 	maxStorageSizeTime := renterPayout.Div(host.StoragePrice)
-	hostCollateral = maxStorageSizeTime.Mul(host.Collateral)
+	hostCollateral = maxStorageSizeTime.Mul(host.Collateral).Add(baseCollateral)
 	// Compare hostCollateral to maxCollateral of host.
 	if hostCollateral.Cmp(host.MaxCollateral) > 0 {
 		hostCollateral = host.MaxCollateral
@@ -441,6 +442,11 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice types.Curr
 	maxRenterCollateral := host.Collateral.Mul64(uint64(period)).Mul64(expectedStorage).Mul64(10)
 	if hostCollateral.Cmp(maxRenterCollateral) > 0 {
 		hostCollateral = maxRenterCollateral
+	}
+	// Make sure the hostCollateral isn't smaller than the baseCollateral.
+	if hostCollateral.Cmp(baseCollateral) < 0 {
+		err = fmt.Errorf("baseCollateral can't be smaller than hostCollateral %v < %v", hostCollateral.HumanString(), baseCollateral.HumanString())
+		return
 	}
 	// Calculate hostPayout.
 	hostPayout = hostCollateral.Add(host.ContractPrice).Add(basePrice)

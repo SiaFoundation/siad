@@ -36,7 +36,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	// Calculate the payouts for the renter, host, and whole contract.
 	period := endHeight - startHeight
 	expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
-	renterPayout, hostPayout, _, err := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, period, expectedStorage)
+	renterPayout, hostPayout, _, err := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, types.ZeroCurrency, period, expectedStorage)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
