@@ -139,15 +139,19 @@ func TestSignTransaction(t *testing.T) {
 	// get an output to spend
 	unspentResp, err := testNode.WalletUnspentGet()
 	if err != nil {
-		t.Fatal("failed to get spendable outputs")
+		t.Fatal("failed to get spendable outputs:", err)
 	}
 	outputs := unspentResp.Outputs
+	uc, err := testNode.WalletUnlockConditionsGet(outputs[0].UnlockHash)
+	if err != nil {
+		t.Fatal("failed to get unlock conditions:", err)
+	}
 
 	// create a transaction that sends an output to the void
 	txn := types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
 			ParentID:         types.SiacoinOutputID(outputs[0].ID),
-			UnlockConditions: outputs[0].UnlockConditions,
+			UnlockConditions: uc,
 		}},
 		SiacoinOutputs: []types.SiacoinOutput{{
 			Value:      outputs[0].Value,
@@ -165,10 +169,7 @@ func TestSignTransaction(t *testing.T) {
 	}
 	txn = signResp.Transaction
 
-	// txn should now have unlock condictions and a signature
-	if txn.SiacoinInputs[0].UnlockConditions.SignaturesRequired == 0 {
-		t.Fatal("unlock conditions are still unset")
-	}
+	// txn should now have a signature
 	if len(txn.TransactionSignatures) == 0 {
 		t.Fatal("transaction was not signed")
 	}

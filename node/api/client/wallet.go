@@ -175,6 +175,12 @@ func (c *Client) WalletUnlockPost(password string) (err error) {
 	return
 }
 
+// WalletUnlockConditionsGet requests the /wallet/unlockconditions endpoint and returns the UnlockConditions of addr.
+func (c *Client) WalletUnlockConditionsGet(addr types.UnlockHash) (uc types.UnlockConditions, err error) {
+	err = c.get("/wallet/unlockconditions/"+addr.String(), &uc)
+	return
+}
+
 // WalletUnspentGet requests the /wallet/unspent endpoint and returns all of
 // the unspent outputs related to the wallet.
 func (c *Client) WalletUnspentGet() (wug api.WalletUnspentGET, err error) {

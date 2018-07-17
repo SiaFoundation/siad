@@ -1278,6 +1278,7 @@ Wallet
 | [/wallet/transactions](#wallettransactions-get)                 | GET       |
 | [/wallet/transactions/:___addr___](#wallettransactionsaddr-get) | GET       |
 | [/wallet/unlock](#walletunlock-post)                            | POST      |
+| [/wallet/unlockconditions](#walletunlockconditions-get)         | GET       |
 | [/wallet/unspent](#walletunspent-get)                           | GET       |
 | [/wallet/verify/address/:___addr___](#walletverifyaddress-get)  | GET       |
 
@@ -1689,6 +1690,21 @@ encryptionpassword
 standard success or error response. See
 [#standard-responses](#standard-responses).
 
+#### /wallet/unlockconditions/___:addr___ [GET]
+
+returns the unlock conditions of :addr, if they are known to the wallet.
+
+###### JSON Response [(with comments)](/doc/api/Wallet.md#json-response-11)
+```javascript
+{
+  "timelock": 0,
+  "publickeys": [{
+    "algorithm": "ed25519",
+    "key": "/XUGj8PxMDkqdae6Js6ubcERxfxnXN7XPjZyANBZH1I="
+  }],
+  "signaturesrequired": 1
+}
+```
 
 #### /wallet/unspent [GET]
 

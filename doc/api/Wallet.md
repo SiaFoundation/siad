@@ -49,6 +49,7 @@ Index
 | [/wallet/transactions](#wallettransactions-get)                 | GET       |
 | [/wallet/transactions/___:addr___](#wallettransactionsaddr-get) | GET       |
 | [/wallet/unlock](#walletunlock-post)                            | POST      |
+| [/wallet/unlockconditions](#walletunlockconditions-get)         | GET       |
 | [/wallet/unspent](#walletunspent-get)                           | GET       |
 | [/wallet/verify/address/:___addr___](#walletverifyaddress-get)  | GET       |
 
@@ -738,9 +739,28 @@ encryptionpassword string
 standard success or error response. See
 [API.md#standard-responses](/doc/API.md#standard-responses).
 
+#### /wallet/unlockconditions/___:addr___ [GET]
+
+returns the unlock conditions of :addr, if they are known to the wallet.
+
+###### Response
+```javascript
+{
+  // the minimum blockheight required
+  "timelock": 0,
+  // the number of signatures required
+  "signaturesrequired": 1,
+  // the set of keys whose signatures count towards signaturesrequired
+  "publickeys": [{
+    "algorithm": "ed25519",
+    "key": "/XUGj8PxMDkqdae6Js6ubcERxfxnXN7XPjZyANBZH1I="
+  }]
+}
+```
+
 #### /wallet/unspent [GET]
 
-returns a list of outputs that the wallet can spend.
+returns a list of unspent outputs that the wallet is tracking.
 
 ###### Response
 ```javascript
@@ -759,18 +779,7 @@ returns a list of outputs that the wallet can spend.
       // block height.
       "confirmationheight": 50000,
 
-      // Unlock conditions of the output. These conditions must be met in
-      // order to spend the output.
-      "unlockconditions": {
-        "timelock": 0,
-        "publickeys": [{
-          "algorithm": "ed25519",
-          "key": "/XUGj8PxMDkqdae6Js6ubcERxfxnXN7XPjZyANBZH1I="
-        }],
-        "signaturesrequired": 1
-      },
-
-      // Hash of the unlock conditions, commonly known as the "address".
+      // Hash of the output's unlock conditions, commonly known as the "address".
       "unlockhash": "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
 
       // Amount of funds in the output; hastings for siacoin outputs, and
@@ -781,7 +790,7 @@ returns a list of outputs that the wallet can spend.
 }
 ```
 
-#### /wallet/verify/address/:addr [GET]
+#### /wallet/verify/address/___:addr___ [GET]
 
 takes the address specified by :addr and returns a JSON response indicating if the address is valid.
 

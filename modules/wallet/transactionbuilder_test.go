@@ -510,7 +510,7 @@ func TestParallelBuilders(t *testing.T) {
 }
 
 // TestSignTransaction constructs a valid, signed transaction using the
-// wallet's SpendableOutputs and SignTransaction methods.
+// wallet's UnspentOutputs and SignTransaction methods.
 func TestSignTransaction(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -521,14 +521,18 @@ func TestSignTransaction(t *testing.T) {
 	}
 	defer wt.closeWt()
 
-	// get an output to spend
-	outputs := wt.wallet.SpendableOutputs()
+	// get an output to spend and its unlock conditions
+	outputs := wt.wallet.UnspentOutputs()
+	uc, err := wt.wallet.UnlockConditions(outputs[0].UnlockHash)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// create a transaction that sends an output to the void
 	txn := types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
 			ParentID:         types.SiacoinOutputID(outputs[0].ID),
-			UnlockConditions: outputs[0].UnlockConditions,
+			UnlockConditions: uc,
 		}},
 		SiacoinOutputs: []types.SiacoinOutput{{
 			Value:      outputs[0].Value,
@@ -544,10 +548,7 @@ func TestSignTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// txn should now have unlock condictions and a signature
-	if txn.SiacoinInputs[0].UnlockConditions.SignaturesRequired == 0 {
-		t.Fatal("unlock conditions are still unset")
-	}
+	// txn should now have a signature
 	if len(txn.TransactionSignatures) == 0 {
 		t.Fatal("transaction was not signed")
 	}
@@ -566,7 +567,7 @@ func TestSignTransaction(t *testing.T) {
 	wt.addBlockNoPayout()
 
 	// the wallet should no longer list the resulting output as spendable
-	outputs = wt.wallet.SpendableOutputs()
+	outputs = wt.wallet.UnspentOutputs()
 	if len(outputs) != 1 {
 		t.Fatal("expected one output")
 	}

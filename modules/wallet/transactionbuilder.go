@@ -684,17 +684,17 @@ func (w *Wallet) StartTransaction() (modules.TransactionBuilder, error) {
 	return w.RegisterTransaction(types.Transaction{}, nil)
 }
 
-// SpendableOutputs returns the outputs spendable by the wallet.
-func (w *Wallet) SpendableOutputs() []modules.SpendableOutput {
+// UnspentOutputs returns the unspent outputs tracked by the wallet.
+func (w *Wallet) UnspentOutputs() []modules.UnspentOutput {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	// ensure durability of reported outputs
 	w.syncDB()
 
 	// build initial list of confirmed outputs
-	var outputs []modules.SpendableOutput
+	var outputs []modules.UnspentOutput
 	dbForEachSiacoinOutput(w.dbTx, func(scoid types.SiacoinOutputID, sco types.SiacoinOutput) {
-		outputs = append(outputs, modules.SpendableOutput{
+		outputs = append(outputs, modules.UnspentOutput{
 			FundType:   types.SpecifierSiacoinOutput,
 			ID:         types.OutputID(scoid),
 			UnlockHash: sco.UnlockHash,
@@ -702,7 +702,7 @@ func (w *Wallet) SpendableOutputs() []modules.SpendableOutput {
 		})
 	})
 	dbForEachSiafundOutput(w.dbTx, func(sfoid types.SiafundOutputID, sfo types.SiafundOutput) {
-		outputs = append(outputs, modules.SpendableOutput{
+		outputs = append(outputs, modules.UnspentOutput{
 			FundType:   types.SpecifierSiafundOutput,
 			ID:         types.OutputID(sfoid),
 			UnlockHash: sfo.UnlockHash,
@@ -750,7 +750,7 @@ outer:
 	for _, pt := range w.unconfirmedProcessedTransactions {
 		for _, o := range pt.Outputs {
 			if _, ok := pending[o.ID]; !ok && o.WalletAddress {
-				outputs = append(outputs, modules.SpendableOutput{
+				outputs = append(outputs, modules.UnspentOutput{
 					FundType:           types.SpecifierSiacoinOutput,
 					ID:                 o.ID,
 					UnlockHash:         o.RelatedAddress,
@@ -761,18 +761,26 @@ outer:
 		}
 	}
 
-	// add UnlockConditions for each output. If we don't know the
-	// UnlockConditions, they aren't actually spendable.
-	filtered = outputs[:0]
-	for _, o := range outputs {
-		if sk, ok := w.keys[o.UnlockHash]; ok {
-			o.UnlockConditions = sk.UnlockConditions
-			filtered = append(filtered, o)
-		}
-	}
-	outputs = filtered
-
 	return outputs
+}
+
+// UnlockConditions returns the UnlockConditions for the specified address, if
+// they are known to the wallet.
+func (w *Wallet) UnlockConditions(addr types.UnlockHash) (types.UnlockConditions, error) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if !w.unlocked {
+		return types.UnlockConditions{}, modules.ErrLockedWallet
+	}
+	// TODO: extend this to also check a db bucket (bucketUnlockConditions?)
+	sk, ok := w.keys[addr]
+	if !ok {
+		return types.UnlockConditions{}, errors.New("no record of UnlockConditions for that UnlockHash")
+	}
+	// make a copy of the public key slice; otherwise the caller can modify it
+	uc := sk.UnlockConditions
+	uc.PublicKeys = append([]types.SiaPublicKey(nil), uc.PublicKeys...)
+	return uc, nil
 }
 
 // SignTransaction signs txn using secret keys known to the wallet. The
@@ -780,8 +788,8 @@ outer:
 // of each TransactionSignature referenced by toSign. For convenience, if
 // toSign is empty, SignTransaction signs everything that it can.
 func (w *Wallet) SignTransaction(txn *types.Transaction, toSign []crypto.Hash) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.mu.RLock()
+	defer w.mu.RUnlock()
 	if !w.unlocked {
 		return modules.ErrLockedWallet
 	}

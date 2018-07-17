@@ -104,15 +104,14 @@ type (
 		Outputs []ProcessedOutput `json:"outputs"`
 	}
 
-	// A SpendableOutput is a SiacoinOutput or SiafundOutput that the wallet
-	// can spend.
-	SpendableOutput struct {
-		ID                 types.OutputID         `json:"id"`
-		FundType           types.Specifier        `json:"fundtype"`
-		UnlockConditions   types.UnlockConditions `json:"unlockconditions"`
-		UnlockHash         types.UnlockHash       `json:"unlockhash"`
-		Value              types.Currency         `json:"value"`
-		ConfirmationHeight types.BlockHeight      `json:"confirmationheight"`
+	// A UnspentOutput is a SiacoinOutput or SiafundOutput that the wallet
+	// is tracking.
+	UnspentOutput struct {
+		ID                 types.OutputID    `json:"id"`
+		FundType           types.Specifier   `json:"fundtype"`
+		UnlockHash         types.UnlockHash  `json:"unlockhash"`
+		Value              types.Currency    `json:"value"`
+		ConfirmationHeight types.BlockHeight `json:"confirmationheight"`
 	}
 
 	// TransactionBuilder is used to construct custom transactions. A transaction
@@ -428,8 +427,12 @@ type (
 		// considered to be Dust.
 		DustThreshold() (types.Currency, error)
 
-		// SpendableOutputs returns the outputs spendable by the wallet.
-		SpendableOutputs() []SpendableOutput
+		// UnspentOutputs returns the unspent outputs tracked by the wallet.
+		UnspentOutputs() []UnspentOutput
+
+		// UnlockConditions returns the UnlockConditions for the specified
+		// address, if they are known to the wallet.
+		UnlockConditions(addr types.UnlockHash) (types.UnlockConditions, error)
 
 		// SignTransaction signs txn using secret keys known to the wallet.
 		// The transaction should be complete with the exception of the

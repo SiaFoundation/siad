@@ -112,11 +112,11 @@ type (
 		UnconfirmedTransactions []modules.ProcessedTransaction `json:"unconfirmedtransactions"`
 	}
 
-	// WalletUnspentGET contains the unspent outputs of the wallet. The
-	// MaturityHeight field of each output indicates the height of the block
-	// that the output appeared in.
+	// WalletUnspentGET contains the unspent outputs tracked by the wallet.
+	// The MaturityHeight field of each output indicates the height of the
+	// block that the output appeared in.
 	WalletUnspentGET struct {
-		Outputs []modules.SpendableOutput `json:"outputs"`
+		Outputs []modules.UnspentOutput `json:"outputs"`
 	}
 
 	// WalletVerifyAddressGET contains a bool indicating if the address passed to
@@ -678,10 +678,26 @@ func (api *API) walletVerifyAddressHandler(w http.ResponseWriter, req *http.Requ
 	WriteJSON(w, WalletVerifyAddressGET{Valid: err == nil})
 }
 
+// walletUnlockConditionsHandler handles API calls to /wallet/unlockconditions.
+func (api *API) walletUnlockConditionsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	var addr types.UnlockHash
+	err := addr.LoadString(ps.ByName("addr"))
+	if err != nil {
+		WriteError(w, Error{"error when calling /wallet/unlockconditions: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	uc, err := api.wallet.UnlockConditions(addr)
+	if err != nil {
+		WriteError(w, Error{"error when calling /wallet/unlockconditions: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, uc)
+}
+
 // walletUnspentHandler handles API calls to /wallet/unspent.
 func (api *API) walletUnspentHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	WriteJSON(w, WalletUnspentGET{
-		Outputs: api.wallet.SpendableOutputs(),
+		Outputs: api.wallet.UnspentOutputs(),
 	})
 }
 
