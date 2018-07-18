@@ -1711,12 +1711,14 @@ returns the unlock conditions of :addr, if they are known to the wallet.
 ###### JSON Response [(with comments)](/doc/api/Wallet.md#json-response-11)
 ```javascript
 {
-  "timelock": 0,
-  "publickeys": [{
-    "algorithm": "ed25519",
-    "key": "/XUGj8PxMDkqdae6Js6ubcERxfxnXN7XPjZyANBZH1I="
-  }],
-  "signaturesrequired": 1
+  "unlockconditions": {
+    "timelock": 0,
+    "publickeys": [{
+      "algorithm": "ed25519",
+      "key": "/XUGj8PxMDkqdae6Js6ubcERxfxnXN7XPjZyANBZH1I="
+    }],
+    "signaturesrequired": 1
+  }
 }
 ```
 

@@ -112,6 +112,11 @@ type (
 		UnconfirmedTransactions []modules.ProcessedTransaction `json:"unconfirmedtransactions"`
 	}
 
+	// WalletUnlockConditionsGET contains a set of unlock conditions.
+	WalletUnlockConditionsGET struct {
+		UnlockConditions types.UnlockConditions `json:"unlockconditions"`
+	}
+
 	// WalletUnspentGET contains the unspent outputs tracked by the wallet.
 	// The MaturityHeight field of each output indicates the height of the
 	// block that the output appeared in.
@@ -691,7 +696,9 @@ func (api *API) walletUnlockConditionsHandler(w http.ResponseWriter, req *http.R
 		WriteError(w, Error{"error when calling /wallet/unlockconditions: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	WriteJSON(w, uc)
+	WriteJSON(w, WalletUnlockConditionsGET{
+		UnlockConditions: uc,
+	})
 }
 
 // walletUnspentHandler handles API calls to /wallet/unspent.

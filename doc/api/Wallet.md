@@ -746,15 +746,17 @@ returns the unlock conditions of :addr, if they are known to the wallet.
 ###### Response
 ```javascript
 {
-  // the minimum blockheight required
-  "timelock": 0,
-  // the number of signatures required
-  "signaturesrequired": 1,
-  // the set of keys whose signatures count towards signaturesrequired
-  "publickeys": [{
-    "algorithm": "ed25519",
-    "key": "/XUGj8PxMDkqdae6Js6ubcERxfxnXN7XPjZyANBZH1I="
-  }]
+  "unlockconditions": {
+    // the minimum blockheight required
+    "timelock": 0,
+    // the number of signatures required
+    "signaturesrequired": 1,
+    // the set of keys whose signatures count towards signaturesrequired
+    "publickeys": [{
+      "algorithm": "ed25519",
+      "key": "/XUGj8PxMDkqdae6Js6ubcERxfxnXN7XPjZyANBZH1I="
+    }]
+  }
 }
 ```
 
