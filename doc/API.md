@@ -867,6 +867,7 @@ Renter
 | --------------------------------------------------------------------------| --------- |
 | [/renter](#renter-get)                                                    | GET       |
 | [/renter](#renter-post)                                                   | POST      |
+| [/renter/contract/cancel](#rentercontractcancel-post)                     | POST      |
 | [/renter/contracts](#rentercontracts-get)                                 | GET       |
 | [/renter/downloads](#renterdownloads-get)                                 | GET       |
 | [/renter/downloads/clear](#renterdownloadsclear-post)                     | POST      |
@@ -932,6 +933,20 @@ streamcachesize   // number of data chunks cached when streaming
 ###### Response
 standard success or error response. See
 [#standard-responses](#standard-responses).
+
+#### /renter/contract/cancel [POST]
+
+cancels a specific contract of the Renter.
+
+###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameter)
+```
+// ID of the file contract
+id
+```
+
+###### Response
+standard success or error response. See
+[API.md#standard-responses](/doc/API.md#standard-responses).
 
 #### /renter/contracts [GET]
 
