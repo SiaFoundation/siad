@@ -23,6 +23,7 @@ Index
 | ------------------------------------------------------------------------------- | --------- |
 | [/renter](#renter-get)                                                          | GET       |
 | [/renter](#renter-post)                                                         | POST      |
+| [/renter/contract/cancel](#rentercontractcancel-post)                           | POST      |
 | [/renter/contracts](#rentercontracts-get)                                       | GET       |
 | [/renter/downloads](#renterdownloads-get)                                       | GET       |
 | [/renter/downloads/clear](#renterdownloadsclear-post)                           | POST      |
@@ -140,6 +141,20 @@ maxuploadspeed
 // Stream cache size specifies how many data chunks will be cached while 
 // streaming.  
 streamcachesize
+```
+
+###### Response
+standard success or error response. See
+[API.md#standard-responses](/doc/API.md#standard-responses).
+
+#### /renter/contract/cancel [POST]
+
+cancels a specific contract of the Renter.
+
+###### Query String Parameter
+```
+// ID of the file contract
+id
 ```
 
 ###### Response
