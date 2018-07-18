@@ -1222,7 +1222,8 @@ func TestRenterCancelContract(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(groupParams)
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
 	}
@@ -1250,11 +1251,7 @@ func TestRenterCancelContract(t *testing.T) {
 	}
 
 	// Add a new host so new contract can be formed
-	hostDir, err := siatest.TestDir(filepath.Join(t.Name(), "host"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	hostParams := node.Host(hostDir)
+	hostParams := node.Host(testDir + "/host")
 	_, err = tg.AddNodes(hostParams)
 	if err != nil {
 		t.Fatal(err)
