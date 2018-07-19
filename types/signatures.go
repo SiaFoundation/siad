@@ -270,14 +270,26 @@ func (t Transaction) validCoveredFields() error {
 			{cf.TransactionSignatures, len(t.TransactionSignatures)},
 		}
 
-		// Check that all fields are empty if 'WholeTransaction' is set, except
-		// for the Signatures field which isn't affected.
 		if cf.WholeTransaction {
-			// 'WholeTransaction' does not check signatures.
+			// If WholeTransaction is set, all fields must be
+			// empty, except TransactionSignatures.
 			for _, fieldMax := range fieldMaxs[:len(fieldMaxs)-1] {
 				if len(fieldMax.field) != 0 {
 					return ErrWholeTransactionViolation
 				}
+			}
+		} else {
+			// If WholeTransaction is not set, at least one field
+			// must be non-empty.
+			allEmpty := true
+			for _, fieldMax := range fieldMaxs {
+				if len(fieldMax.field) != 0 {
+					allEmpty = false
+					break
+				}
+			}
+			if allEmpty {
+				return ErrWholeTransactionViolation
 			}
 		}
 
