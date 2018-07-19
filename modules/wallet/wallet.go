@@ -71,9 +71,10 @@ type Wallet struct {
 	// from the seeds, when checking new outputs or spending outputs, the seeds
 	// are not referenced at all. The seeds are only stored so that the user
 	// may access them.
-	seeds     []modules.Seed
-	keys      map[types.UnlockHash]spendableKey
-	lookahead map[types.UnlockHash]uint64
+	seeds        []modules.Seed
+	keys         map[types.UnlockHash]spendableKey
+	lookahead    map[types.UnlockHash]uint64
+	watchedAddrs map[types.UnlockHash]struct{}
 
 	// unconfirmedProcessedTransactions tracks unconfirmed transactions.
 	//
@@ -157,8 +158,9 @@ func NewCustomWallet(cs modules.ConsensusSet, tpool modules.TransactionPool, per
 		cs:    cs,
 		tpool: tpool,
 
-		keys:      make(map[types.UnlockHash]spendableKey),
-		lookahead: make(map[types.UnlockHash]uint64),
+		keys:         make(map[types.UnlockHash]spendableKey),
+		lookahead:    make(map[types.UnlockHash]uint64),
+		watchedAddrs: make(map[types.UnlockHash]struct{}),
 
 		unconfirmedSets: make(map[modules.TransactionSetID][]types.TransactionID),
 
@@ -275,5 +277,46 @@ func (w *Wallet) SetSettings(s modules.WalletSettings) error {
 	w.mu.Lock()
 	w.defragDisabled = s.NoDefrag
 	w.mu.Unlock()
+	return nil
+}
+
+// WatchAddresses instructs the wallet to begin tracking a set of addresses,
+// replacing any addresses it was previously tracking. This requires
+// rescanning the entire blockchain, so typically WatchAddresses should be
+// called before the wallet is first unlocked.
+func (w *Wallet) WatchAddresses(addrs []types.UnlockHash) error {
+	if err := w.tg.Add(); err != nil {
+		return modules.ErrWalletShutdown
+	}
+	defer w.tg.Done()
+
+	err := func() error {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		w.watchedAddrs = make(map[types.UnlockHash]struct{}, len(addrs))
+		for _, addr := range addrs {
+			w.watchedAddrs[addr] = struct{}{}
+		}
+		if err := w.dbTx.Bucket(bucketWallet).Put(keyWatchedAddrs, encoding.Marshal(addrs)); err != nil {
+			return err
+		}
+		return w.syncDB()
+	}()
+	if err != nil {
+		return err
+	}
+
+	// rescan the blockchain
+	w.cs.Unsubscribe(w)
+	w.tpool.Unsubscribe(w)
+
+	done := make(chan struct{})
+	go w.rescanMessage(done)
+	defer close(done)
+	if err := w.cs.ConsensusSetSubscribe(w, modules.ConsensusChangeBeginning, w.tg.StopChan()); err != nil {
+		return err
+	}
+	w.tpool.TransactionPoolSubscribe(w)
+
 	return nil
 }

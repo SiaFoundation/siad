@@ -129,6 +129,11 @@ type (
 	WalletVerifyAddressGET struct {
 		Valid bool `json:"valid"`
 	}
+
+	// WalletWatchPOST contains the set of addresses that the wallet should begin tracking.
+	WalletWatchPOST struct {
+		Addresses []types.UnlockHash `json:"addresses"`
+	}
 )
 
 // encryptionKeys enumerates the possible encryption keys that can be derived
@@ -724,4 +729,20 @@ func (api *API) walletSignHandler(w http.ResponseWriter, req *http.Request, _ ht
 	WriteJSON(w, WalletSignPOSTResp{
 		Transaction: params.Transaction,
 	})
+}
+
+// walletWatchHandler handles API calls to /wallet/watch.
+func (api *API) walletWatchHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var addrs []types.UnlockHash
+	err := json.NewDecoder(req.Body).Decode(&addrs)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	err = api.wallet.WatchAddresses(addrs)
+	if err != nil {
+		WriteError(w, Error{"failed to watch addresses: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
 }

@@ -133,6 +133,7 @@ func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword strin
 		router.GET("/wallet/unlockconditions/:addr", RequirePassword(api.walletUnlockConditionsHandler, requiredPassword))
 		router.GET("/wallet/unspent", RequirePassword(api.walletUnspentHandler, requiredPassword))
 		router.POST("/wallet/sign", RequirePassword(api.walletSignHandler, requiredPassword))
+		router.POST("/wallet/watch", RequirePassword(api.walletWatchHandler, requiredPassword))
 	}
 
 	// Apply UserAgent middleware and return the Router

@@ -175,7 +175,8 @@ func (c *Client) WalletUnlockPost(password string) (err error) {
 	return
 }
 
-// WalletUnlockConditionsGet requests the /wallet/unlockconditions endpoint and returns the UnlockConditions of addr.
+// WalletUnlockConditionsGet requests the /wallet/unlockconditions endpoint
+// and returns the UnlockConditions of addr.
 func (c *Client) WalletUnlockConditionsGet(addr types.UnlockHash) (uc types.UnlockConditions, err error) {
 	var wucg api.WalletUnlockConditionsGET
 	err = c.get("/wallet/unlockconditions/"+addr.String(), &wucg)
@@ -188,6 +189,16 @@ func (c *Client) WalletUnlockConditionsGet(addr types.UnlockHash) (uc types.Unlo
 func (c *Client) WalletUnspentGet() (wug api.WalletUnspentGET, err error) {
 	err = c.get("/wallet/unspent", &wug)
 	return
+}
+
+// WalletWatchPost uses the /wallet/watch endpoint to track a set of
+// addresses.
+func (c *Client) WalletWatchPost(addrs []types.UnlockHash) error {
+	json, err := json.Marshal(addrs)
+	if err != nil {
+		return err
+	}
+	return c.post("/wallet/watch", string(json), nil)
 }
 
 // Wallet033xPost uses the /wallet/033x endpoint to load a v0.3.3.x wallet into

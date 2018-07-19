@@ -1295,6 +1295,7 @@ Wallet
 | [/wallet/unlockconditions](#walletunlockconditions-get)         | GET       |
 | [/wallet/unspent](#walletunspent-get)                           | GET       |
 | [/wallet/verify/address/:___addr___](#walletverifyaddress-get)  | GET       |
+| [/wallet/watch](#walletwatch-post)                              | POST      |
 
 For examples and detailed descriptions of request and response parameters,
 refer to [Wallet.md](/doc/api/Wallet.md).
@@ -1756,3 +1757,19 @@ takes the address specified by :addr and returns a JSON response indicating if t
 }
 ```
 
+#### /wallet/watch [POST]
+
+Function: Start tracking a set of addresses. Outputs owned by the addresses
+will be reported in /wallet/unspent.
+
+###### Request Body
+```
+[
+  "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "abcdef0123456789abcdef0123456789abcd1234567890ef0123456789abcdef"
+]
+```
+
+###### Response
+standard success or error response. See
+[#standard-responses](#standard-responses).

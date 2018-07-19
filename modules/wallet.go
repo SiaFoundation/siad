@@ -341,6 +341,10 @@ type (
 		// outputs, minus the fee. If only siafunds were found, the fee is
 		// deducted from the wallet.
 		SweepSeed(seed Seed) (coins, funds types.Currency, err error)
+
+		// WatchAddresses instructs the wallet to begin tracking a set of addresses,
+		// replacing any addresses it was previously tracking.
+		WatchAddresses(addrs []types.UnlockHash) error
 	}
 
 	// Wallet stores and manages siacoins and siafunds. The wallet file is
