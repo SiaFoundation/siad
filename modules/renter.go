@@ -112,6 +112,8 @@ type FileInfo struct {
 	UploadedBytes  uint64            `json:"uploadedbytes"`
 	UploadProgress float64           `json:"uploadprogress"`
 	Expiration     types.BlockHeight `json:"expiration"`
+	OnDisk         bool              `json:"ondisk"`
+	Recoverable    bool              `json:"recoverable"`
 }
 
 // A HostDBEntry represents one host entry in the Renter's host DB. It
