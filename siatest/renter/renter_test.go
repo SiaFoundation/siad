@@ -1218,7 +1218,7 @@ func TestRenterCancelContract(t *testing.T) {
 
 	// Create a group for testing.
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   5,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -1244,7 +1244,6 @@ func TestRenterCancelContract(t *testing.T) {
 
 	// Grab contract to cancel
 	contract := rc.ActiveContracts[0]
-
 	// Cancel Contract
 	if err := r.RenterContractCancelPost(contract.ID); err != nil {
 		t.Fatal(err)
@@ -1254,15 +1253,6 @@ func TestRenterCancelContract(t *testing.T) {
 	hostParams := node.Host(testDir + "/host")
 	_, err = tg.AddNodes(hostParams)
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Mine block to trigger threadedContractMaintenance
-	m := tg.Miners()[0]
-	if err := m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-	if err := tg.Sync(); err != nil {
 		t.Fatal(err)
 	}
 
