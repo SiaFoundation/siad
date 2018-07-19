@@ -395,10 +395,10 @@ func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 	file.mu.Lock()
 	defer file.mu.Unlock()
 	f, err := os.Open(newPath)
-	defer f.Close()
 	if err != nil {
 		return errors.AddContext(err, "failed to open file at new location")
 	}
+	defer f.Close()
 	fi, err := f.Stat()
 	if err != nil {
 		return errors.AddContext(err, "failed to get fileinfo of the file")
