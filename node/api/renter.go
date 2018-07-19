@@ -171,6 +171,17 @@ type (
 	}
 )
 
+// renterFileTrackingHandler handles the API call to /renter/tracking/*siapath
+func (api *API) renterFileTrackingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	newPath := req.FormValue("path")
+	siapath := strings.TrimPrefix(ps.ByName("siapath"), "/")
+	if err := api.renter.SetFileTrackingPath(siapath, newPath); err != nil {
+		WriteError(w, Error{"unable to parse funds"}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
 // renterHandlerGET handles the API call to /renter.
 func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	settings := api.renter.Settings()
