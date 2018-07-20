@@ -445,7 +445,6 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to get renter files: ", err)
 	}
-	t.Logf("Starting with %v files\n", len(files))
 
 	var file modules.FileInfo
 	for i, f := range files {
