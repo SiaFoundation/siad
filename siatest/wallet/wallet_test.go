@@ -136,7 +136,7 @@ func TestSignTransaction(t *testing.T) {
 		t.Fatal("failed to get spendable outputs:", err)
 	}
 	outputs := unspentResp.Outputs
-	uc, err := testNode.WalletUnlockConditionsGet(outputs[0].UnlockHash)
+	wucg, err := testNode.WalletUnlockConditionsGet(outputs[0].UnlockHash)
 	if err != nil {
 		t.Fatal("failed to get unlock conditions:", err)
 	}
@@ -145,7 +145,7 @@ func TestSignTransaction(t *testing.T) {
 	txn := types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
 			ParentID:         types.SiacoinOutputID(outputs[0].ID),
-			UnlockConditions: uc,
+			UnlockConditions: wucg.UnlockConditions,
 		}},
 		SiacoinOutputs: []types.SiacoinOutput{{
 			Value:      outputs[0].Value,
@@ -157,7 +157,7 @@ func TestSignTransaction(t *testing.T) {
 	}
 
 	// sign the transaction
-	signResp, err := testNode.WalletSignPost(txn, nil)
+	signResp, err := testNode.WalletSignPost(txn, []crypto.Hash{txn.TransactionSignatures[0].ParentID})
 	if err != nil {
 		t.Fatal("failed to sign the transaction", err)
 	}
@@ -170,7 +170,7 @@ func TestSignTransaction(t *testing.T) {
 
 	// the resulting transaction should be valid; submit it to the tpool and
 	// mine a block to confirm it
-	if err := testNode.TransactionpoolRawPost(nil, txn); err != nil {
+	if err := testNode.TransactionPoolRawPost(txn, nil); err != nil {
 		t.Fatal("failed to add transaction to pool", err)
 	}
 	if err := testNode.MineBlock(); err != nil {

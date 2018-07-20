@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -110,15 +109,14 @@ func (c *Client) WalletSiacoinsPost(amount types.Currency, destination types.Unl
 
 // WalletSignPost uses the /wallet/sign api endpoint to sign a transaction.
 func (c *Client) WalletSignPost(txn types.Transaction, toSign []crypto.Hash) (wspr api.WalletSignPOSTResp, err error) {
-	buf := new(bytes.Buffer)
-	err = json.NewEncoder(buf).Encode(api.WalletSignPOSTParams{
+	json, err := json.Marshal(api.WalletSignPOSTParams{
 		Transaction: txn,
 		ToSign:      toSign,
 	})
 	if err != nil {
 		return
 	}
-	err = c.post("/wallet/sign", string(buf.Bytes()), &wspr)
+	err = c.post("/wallet/sign", string(json), &wspr)
 	return
 }
 
@@ -177,10 +175,8 @@ func (c *Client) WalletUnlockPost(password string) (err error) {
 
 // WalletUnlockConditionsGet requests the /wallet/unlockconditions endpoint
 // and returns the UnlockConditions of addr.
-func (c *Client) WalletUnlockConditionsGet(addr types.UnlockHash) (uc types.UnlockConditions, err error) {
-	var wucg api.WalletUnlockConditionsGET
+func (c *Client) WalletUnlockConditionsGet(addr types.UnlockHash) (wucg api.WalletUnlockConditionsGET, err error) {
 	err = c.get("/wallet/unlockconditions/"+addr.String(), &wucg)
-	uc = wucg.UnlockConditions
 	return
 }
 

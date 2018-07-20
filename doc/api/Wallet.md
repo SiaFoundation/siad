@@ -505,16 +505,19 @@ standard success or error response. See
 
 #### /wallet/sign [POST]
 
-Function: Sign a transaction. The wallet will attempt to sign each input
-specified.
+Function: Sign a transaction. The transaction's TransactionSignatures should
+be complete except for the Signature field. If `tosign` is provided, the
+wallet will attempt to fill in signatures for each TransactionSignature
+specified. If `tosign` is not provided, the wallet will add signatures for
+every TransactionSignature that it has keys for.
 
 ###### Request Body
-```
+```javascript
 {
-  // unsigned transaction
+  // Unsigned transaction
   "transaction": { }, // types.Transaction
 
-  // inputs to sign; a mapping from OutputID to UnlockHash
+  // Optional IDs to sign; each should correspond to a ParentID in the TransactionSignatures.
   "tosign": {
     "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "abcdef0123456789abcdef0123456789abcd1234567890ef0123456789abcdef"
@@ -811,7 +814,7 @@ Function: Start tracking a set of addresses. Outputs owned by the addresses
 will be reported in /wallet/unspent.
 
 ###### Request Body
-```
+```javascript
 [
   // unlock hashes to track
   "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",

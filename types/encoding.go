@@ -481,22 +481,12 @@ func (fcid *FileContractID) UnmarshalJSON(b []byte) error {
 
 // MarshalJSON marshals an id as a hex string.
 func (oid OutputID) MarshalJSON() ([]byte, error) {
-	return (*crypto.Hash)(&oid).MarshalJSON()
+	return json.Marshal(oid.String())
 }
 
 // String prints the id in hex.
 func (oid OutputID) String() string {
 	return fmt.Sprintf("%x", oid[:])
-}
-
-// MarshalText marshals an OutputID to text.
-func (oid OutputID) MarshalText() (text []byte, err error) {
-	return []byte(oid.String()), nil
-}
-
-// UnmarshalText unmarshals an OutputID from text.
-func (oid *OutputID) UnmarshalText(text []byte) error {
-	return (*crypto.Hash)(oid).LoadString(string(text))
 }
 
 // UnmarshalJSON decodes the json hex string of the id.

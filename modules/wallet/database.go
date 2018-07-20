@@ -39,10 +39,6 @@ var (
 	// these outputs so that it can reuse them if they are not confirmed on
 	// the blockchain.
 	bucketSpentOutputs = []byte("bucketSpentOutputs")
-	// bucketUnlockConditions maps an UnlockHash to its UnlockConditions. It
-	// stores UnlockConditions that the user explicitly requested to be
-	// tracked.
-	bucketUnlockConditions = []byte("bucketUnlockConditions")
 	// bucketWallet contains various fields needed by the wallet, such as its
 	// UID, EncryptionVerification, and PrimarySeedFile.
 	bucketWallet = []byte("bucketWallet")
