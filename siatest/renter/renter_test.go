@@ -28,6 +28,12 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// Baseline
+// Package - 270s
+// Test Renter - 158s
+// Test Interrupt - 88s
+// Individual Tests -91s
+
 // TestRenter executes a number of subtests using the same TestGroup to
 // save time on initialization
 func TestRenter(t *testing.T) {
@@ -35,6 +41,7 @@ func TestRenter(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
+	// t.SkipNow()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -599,6 +606,7 @@ func TestRenterInterrupt(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
+	// t.SkipNow()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -788,23 +796,23 @@ func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.De
 // The following are tests that need to use their own test groups due to
 // specific requirements of the tests
 
-// TestRedundancyReporting verifies that redundancy reporting is accurate if
-// contracts become offline.
-func TestRedundancyReporting(t *testing.T) {
+// TestRenterAddNodes
+func TestRenterAddNodes(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	// Create a group for testing.
+	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   5,
 		Renters: 1,
 		Miners:  1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
+	testDir := siatest.TestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
-		t.Fatal("Failed to create group: ", err)
+		t.Fatal("Failed to create group:", err)
 	}
 	defer func() {
 		if err := tg.Close(); err != nil {
@@ -812,6 +820,25 @@ func TestRedundancyReporting(t *testing.T) {
 		}
 	}()
 
+	// Specify subtests to run
+	subTests := []struct {
+		name string
+		test func(*testing.T, *siatest.TestGroup)
+	}{
+		{"TestRedundancyReporting", testRedundancyReporting},
+		{"TestRenewFailing", testRenewFailing},
+	}
+	// Run subtests
+	for _, subtest := range subTests {
+		t.Run(subtest.name, func(t *testing.T) {
+			subtest.test(t, tg)
+		})
+	}
+}
+
+// testRedundancyReporting verifies that redundancy reporting is accurate if
+// contracts become offline.
+func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 	// Upload a file.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts()) - 1)
@@ -892,35 +919,12 @@ func TestRedundancyReporting(t *testing.T) {
 	}
 }
 
-// TestRenewFailing checks if a contract gets marked as !goodForRenew after
+// testRenewFailing checks if a contract gets marked as !goodForRenew after
 // failing multiple times in a row.
-func TestRenewFailing(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create testing directory.
-	testDir := renterTestDir(t.Name())
-
-	// Create a group for the subtests
-	groupParams := siatest.GroupParams{
-		Hosts:  3,
-		Miners: 1,
-	}
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
+func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	// Add a renter with a custom allowance to give it plenty of time to renew
 	// the contract later.
-	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 1)
 	renterParams.Allowance.Period = 100
@@ -1010,41 +1014,34 @@ func TestRenewFailing(t *testing.T) {
 	// We should be within the second half of the renew window now. We keep
 	// mining blocks until the host with the locked wallet has been replaced.
 	// This should happen before we reach the endHeight of the contracts. This
-	// means we should have 2 active contracts and 2 inactive contracts.  One of
-	// the inactive contracts will be !goodForRenew due to the host
-	replaced := false
+	// means we should have number of hosts - 1 active contracts and number of
+	// hosts - 1 inactive contracts.  One of the inactive contracts will be
+	// !goodForRenew due to the host
 	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 5*time.Second, func() error {
 		// contract should be !goodForRenew now.
 		rc, err := renter.RenterInactiveContractsGet()
 		if err != nil {
 			return err
 		}
-		if len(rc.ActiveContracts) != 2 {
-			return fmt.Errorf("Expected 2 active contracts, got %v", len(rc.ActiveContracts))
+		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
+			return fmt.Errorf("Expected %v active contracts, got %v", len(tg.Hosts())-1, len(rc.ActiveContracts))
 		}
-		if len(rc.InactiveContracts) != 2 {
-			return fmt.Errorf("Expected 2 inactive contracts, got %v", len(rc.InactiveContracts))
+		if len(rc.InactiveContracts) != len(tg.Hosts())-1 {
+			return fmt.Errorf("Expected %v inactive contracts, got %v", len(tg.Hosts())-1, len(rc.InactiveContracts))
 		}
 
 		notGoodForRenew := 0
-		goodForRenew := 0
 		for _, c := range rc.InactiveContracts {
 			if !c.GoodForRenew {
 				notGoodForRenew++
-			} else {
-				goodForRenew++
 			}
 		}
 		if err := miner.MineBlock(); err != nil {
 			return err
 		}
-		if !replaced && notGoodForRenew != 1 && goodForRenew != 1 {
+		if notGoodForRenew != 1 {
 			return fmt.Errorf("there should be exactly 1 inactive contract that is !goodForRenew but was %v",
 				notGoodForRenew)
-		}
-		replaced = true
-		if replaced && notGoodForRenew != 1 && goodForRenew != 2 {
-			return fmt.Errorf("contract was set to !goodForRenew but hasn't been replaced yet")
 		}
 		return nil
 	})
