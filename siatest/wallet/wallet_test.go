@@ -21,10 +21,8 @@ func TestTransactionReorg(t *testing.T) {
 		t.SkipNow()
 	}
 
-	testdir, err := siatest.TestDir(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Create testing directory.
+	testdir := walletTestDir(t.Name())
 
 	// Create two miners
 	miner1, err := siatest.NewNode(siatest.Miner(filepath.Join(testdir, "miner1")))
@@ -121,13 +119,8 @@ func TestSignTransaction(t *testing.T) {
 		t.SkipNow()
 	}
 
-	testdir, err := siatest.TestDir(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Create a new server
-	testNode, err := siatest.NewNode(node.AllModules(testdir))
+	testNode, err := siatest.NewNode(node.AllModules(siatest.TestDir(t.Name())))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,13 +196,8 @@ func TestWatchOnly(t *testing.T) {
 		t.SkipNow()
 	}
 
-	testdir, err := siatest.TestDir(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Create a new server
-	testNode, err := siatest.NewNode(node.AllModules(testdir))
+	testNode, err := siatest.NewNode(node.AllModules(siatest.TestDir(t.Name())))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -527,7 +527,7 @@ func walletsigncmd(cmd *cobra.Command, args []string) {
 	if len(args) == 2 {
 		err = json.Unmarshal([]byte(args[1]), &toSign)
 		if err != nil {
-			die("Invalid transaction:", err)
+			die("Invalid signature request:", err)
 		}
 	}
 
