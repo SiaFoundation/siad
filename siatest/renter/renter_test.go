@@ -445,16 +445,18 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to get renter files: ", err)
 	}
+	t.Logf("Starting with %v files\n", len(files))
 
 	var file modules.FileInfo
-	for _, f := range files {
+	for i, f := range files {
 		file, err = renter.File(f.SiaPath)
 		if err != nil {
 			t.Fatal("Failed to request single file", err)
 		}
 		if !reflect.DeepEqual(f, file) {
-			t.Log(f)
-			t.Log(file)
+			t.Logf("Error with file %v or %v\n", i, len(files))
+			t.Log("File from Files():", f)
+			t.Log("File from File():", file)
 			t.Fatal("Single file queries does not match file previously requested.")
 		}
 	}
