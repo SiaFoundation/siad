@@ -44,6 +44,19 @@ import (
 // Test Renter Add Nodes - 96s
 // Individual Tests -91s
 
+// New Baseline
+// Package - 206s
+// Tests times when run in series
+// TestRenter - 74s
+// TestRenterTwo - 78s
+// TestRenterInterrupt - 88s
+// TestRenterAddNodes - 100s
+// Individual Tests
+// - Contracts - 69s
+// - Persistence - 3s
+// - Spending - 99s
+// - Zero byte - 11s
+
 // TODO
 // 1) Add additional comments to TestRenterContracts
 //
@@ -82,10 +95,6 @@ func TestRenter(t *testing.T) {
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
-		// {"TestRemoteRepair", testRemoteRepair},
-		// {"TestSingleFileGet", testSingleFileGet},
-		// {"TestStreamingCache", testStreamingCache},
-		// {"TestUploadDownload", testUploadDownload},
 	}
 	// Run subtests
 	for _, subtest := range subTests {
@@ -125,10 +134,6 @@ func TestRenterTwo(t *testing.T) {
 		name string
 		test func(*testing.T, *siatest.TestGroup)
 	}{
-		// {"TestClearDownloadHistory", testClearDownloadHistory},
-		// {"TestDownloadAfterRenew", testDownloadAfterRenew},
-		// {"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
-		// {"TestLocalRepair", testLocalRepair},
 		{"TestRemoteRepair", testRemoteRepair},
 		{"TestSingleFileGet", testSingleFileGet},
 		{"TestStreamingCache", testStreamingCache},
