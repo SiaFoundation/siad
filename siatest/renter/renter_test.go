@@ -28,6 +28,15 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// Test Limitations
+//
+// Timeouts - when possible test should be run in parallel to improve runtime
+//
+// panic: too many open files - There is a limit to how many tests can be run in
+// parallel (~10).  When too many test groups are trying to be created at the
+// same time the test package panics because to many files have been created and
+// it can't support any more tests
+
 // Baseline
 // Package - 270s
 // Test Renter - 158s
@@ -1067,7 +1076,9 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 }
 
 // testRenterCancelAllowance tests that setting an empty allowance causes
-// uploads, downloads, and renewals to cease.
+// uploads, downloads, and renewals to cease as well as tests that resetting the
+// allowance after the allowance was cancelled will trigger the correct contract
+// formation.
 func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
 	nodes, err := tg.AddNodes(renterParams)
@@ -1076,6 +1087,76 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	}
 	renter := nodes[0]
 
+	// Test Resetting allowance
+	// Cancel the allowance
+	if err := renter.RenterCancelAllowance(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give it some time to mark the contracts as !goodForUpload and
+	// !goodForRenew.
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err := renter.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		// Should now have 2 inactive contracts.
+		if len(rc.ActiveContracts) != 0 {
+			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
+		}
+		if len(rc.InactiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v inactive contracts, got %v", len(tg.Hosts()), len(rc.InactiveContracts))
+		}
+		for _, c := range rc.InactiveContracts {
+			if c.GoodForUpload {
+				return errors.New("contract shouldn't be goodForUpload")
+			}
+			if c.GoodForRenew {
+				return errors.New("contract shouldn't be goodForRenew")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the allowance again.
+	if err := renter.RenterPostAllowance(siatest.DefaultAllowance); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine a block to start the threadedContractMaintenance.
+	if err := tg.Miners()[0].MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give it some time to mark the contracts as goodForUpload and
+	// goodForRenew again.
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		// Should now have 2 active contracts.
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v active contracts, got %v", len(tg.Hosts()), len(rc.ActiveContracts))
+		}
+		for _, c := range rc.ActiveContracts {
+			if !c.GoodForUpload {
+				return errors.New("contract should be goodForUpload")
+			}
+			if !c.GoodForRenew {
+				return errors.New("contract should be goodForRenew")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test Canceling allowance
 	// Upload a file.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts()) - 1)
@@ -1126,7 +1207,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	// The rebuilt interval is 3 seconds. Sleep for 5 to be safe.
 	time.Sleep(5 * time.Second)
 
-	// Try to upload a file after the allowance was cancelled. Should fail.
+	// Try to upload a file after the allowance was cancelled. Should succeed.
 	_, rf2, err := renter.UploadNewFile(100, dataPieces, parityPieces)
 	if err != nil {
 		t.Fatal(err)
@@ -1675,100 +1756,6 @@ func TestRenterPersistData(t *testing.T) {
 	}
 	if rg.Settings.MaxUploadSpeed != us {
 		t.Fatalf("MaxUploadSpeed not persisted as %v, set to %v", us, rg.Settings.MaxUploadSpeed)
-	}
-}
-
-// TestRenterResetAllowance tests that resetting the allowance after the
-// allowance was cancelled will trigger the correct contract formation.
-func TestRenterResetAllowance(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a group for testing.
-	groupParams := siatest.GroupParams{
-		Hosts:   2,
-		Renters: 1,
-		Miners:  1,
-	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-	renter := tg.Renters()[0]
-
-	// Cancel the allowance
-	if err := renter.RenterCancelAllowance(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Give it some time to mark the contracts as !goodForUpload and
-	// !goodForRenew.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now have 2 inactive contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.InactiveContracts) != groupParams.Hosts {
-			return fmt.Errorf("expected %v inactive contracts, got %v", groupParams.Hosts, len(rc.InactiveContracts))
-		}
-		for _, c := range rc.InactiveContracts {
-			if c.GoodForUpload {
-				return errors.New("contract shouldn't be goodForUpload")
-			}
-			if c.GoodForRenew {
-				return errors.New("contract shouldn't be goodForRenew")
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Set the allowance again.
-	if err := renter.RenterPostAllowance(siatest.DefaultAllowance); err != nil {
-		t.Fatal(err)
-	}
-
-	// Mine a block to start the threadedContractMaintenance.
-	if err := tg.Miners()[0].MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Give it some time to mark the contracts as goodForUpload and
-	// goodForRenew again.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now have 2 active contracts.
-		if len(rc.ActiveContracts) != groupParams.Hosts {
-			return fmt.Errorf("expected %v active contracts, got %v", groupParams.Hosts, len(rc.ActiveContracts))
-		}
-		for _, c := range rc.ActiveContracts {
-			if !c.GoodForUpload {
-				return errors.New("contract should be goodForUpload")
-			}
-			if !c.GoodForRenew {
-				return errors.New("contract should be goodForRenew")
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 
