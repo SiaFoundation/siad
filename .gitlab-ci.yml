@@ -65,7 +65,6 @@ deploy:
     name: "Binaries"
     paths:
       - $CI_PROJECT_DIR/artifacts
-    when: always
   script: 
     - make deploy
     - cp -R ./artifacts $CI_PROJECT_DIR/artifacts
