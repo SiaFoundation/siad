@@ -449,10 +449,15 @@ func validateSiapath(siapath string) error {
 	if strings.HasPrefix(siapath, "./") {
 		return errors.New("siapath connot begin with ./")
 	}
+	var prevElem string
 	for _, pathElem := range strings.Split(siapath, "/") {
 		if pathElem == "." || pathElem == ".." {
 			return errors.New("siapath cannot contain . or .. elements")
 		}
+		if prevElem != "" && pathElem == "" {
+			return ErrEmptyFilename
+		}
+		prevElem = pathElem
 	}
 	return nil
 }
