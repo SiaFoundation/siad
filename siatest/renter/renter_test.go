@@ -37,30 +37,6 @@ import (
 // same time the test package panics because to many files have been created and
 // it can't support any more tests
 
-// Baseline
-// Package - 270s
-// Test Renter - 158s
-// Test Interrupt - 88s
-// Test Renter Add Nodes - 96s
-// Individual Tests -91s
-
-// New Baseline
-// Package - 206s
-// Tests times when run in series
-// TestRenter - 74s
-// TestRenterTwo - 78s
-// TestRenterInterrupt - 88s
-// TestRenterAddNodes - 100s
-// Individual Tests
-// - Contracts - 69s
-// - Persistence - 3s
-// - Spending - 99s
-// - Zero byte - 11s
-
-// TODO
-// 1) Add additional comments to TestRenterContracts
-//
-
 // TestRenter executes a number of subtests using the same TestGroup to
 // save time on initialization
 func TestRenter(t *testing.T) {
@@ -68,7 +44,6 @@ func TestRenter(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	// t.SkipNow()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -111,7 +86,6 @@ func TestRenterTwo(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	// t.SkipNow()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -682,7 +656,6 @@ func TestRenterInterrupt(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	// t.SkipNow()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -869,10 +842,7 @@ func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.De
 	}
 }
 
-// The following are tests that need to use their own test groups due to
-// specific requirements of the tests
-
-// TestRenterAddNodes
+// TestRenterAddNodes runs a subset of tests that require adding their own renter
 func TestRenterAddNodes(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -1152,7 +1122,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			return err
 		}
-		// Should now have 2 inactive contracts.
+		// Should now only have inactive contracts.
 		if len(rc.ActiveContracts) != 0 {
 			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
 		}
@@ -1186,13 +1156,16 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	// Give it some time to mark the contracts as goodForUpload and
 	// goodForRenew again.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterContractsGet()
+		rc, err := renter.RenterInactiveContractsGet()
 		if err != nil {
 			return err
 		}
-		// Should now have 2 active contracts.
+		// Should now only have active contracts.
 		if len(rc.ActiveContracts) != len(tg.Hosts()) {
 			return fmt.Errorf("expected %v active contracts, got %v", len(tg.Hosts()), len(rc.ActiveContracts))
+		}
+		if len(rc.InactiveContracts) != 0 {
+			return fmt.Errorf("expected 0 inactive contracts, got %v", len(rc.InactiveContracts))
 		}
 		for _, c := range rc.ActiveContracts {
 			if !c.GoodForUpload {
@@ -1390,7 +1363,7 @@ func TestRenterContracts(t *testing.T) {
 		`, currentPeriodStart, cg.Height, renewWindow)
 	}
 
-	// Confirm Contracts were created as expected.  There should be 2 active
+	// Confirm Contracts were created as expected.  There should only be active
 	// contracts and no inactive or expired contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		rc, err := r.RenterInactiveContractsGet()
@@ -1446,10 +1419,11 @@ func TestRenterContracts(t *testing.T) {
 	numRenewals++
 
 	// Confirm Contracts were renewed as expected, all original contracts should
-	// have been renewed if GoodForRenew = true.  There should be 2 active and
-	// inactive contracts, and 0 expired contracts since we are still within the
-	// endheight of the original contracts, and the inactive contracts should be
-	// the same contracts as the original active contracts.
+	// have been renewed if GoodForRenew = true.  There should be the same
+	// number of active and inactive contracts, and 0 expired contracts since we
+	// are still within the endheight of the original contracts, and the
+	// inactive contracts should be the same contracts as the original active
+	// contracts.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		rc, err := r.RenterInactiveContractsGet()
 		if err != nil {
@@ -1870,7 +1844,9 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 	numRenewals := 0
 
-	// Confirm Contracts were created as expected
+	// Confirm Contracts were created as expected, check that the funds
+	// allocated when setting the allowance are reflected correctly in the
+	// wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		rc, err := r.RenterInactiveContractsGet()
 		if err != nil {
@@ -1883,15 +1859,6 @@ func TestRenterSpendingReporting(t *testing.T) {
 		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 			return err
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check that the funds allocated when setting the allowance
-	// are reflected correctly in the wallet balance
-	err = build.Retry(200, 100*time.Millisecond, func() error {
 		err = checkBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
@@ -2104,16 +2071,6 @@ func TestRenterSpendingReporting(t *testing.T) {
 		t.Fatal(err)
 	}
 	numRenewals++
-
-	// Mine Block to confirm contracts and spending on blockchain
-	if err = m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Waiting for nodes to sync
-	if err = tg.Sync(); err != nil {
-		t.Fatal(err)
-	}
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
