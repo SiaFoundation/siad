@@ -131,12 +131,6 @@ func (g *Gateway) threadedLearnHostname() {
 
 // managedForwardPort adds a port mapping to the router.
 func (g *Gateway) managedForwardPort(port string) error {
-	// Don't forward while shutting down.
-	if err := g.threads.Add(); err != nil {
-		return err
-	}
-	defer g.threads.Done()
-
 	if build.Release == "testing" {
 		// Port forwarding functions are frequently unavailable during testing,
 		// and the long blocking can be highly disruptive. Under normal
@@ -216,6 +210,11 @@ func (g *Gateway) managedClearPort(port string) {
 
 // threadedForwardPort forwards a port and logs potential errors.
 func (g *Gateway) threadedForwardPort(port string) {
+	if err := g.threads.Add(); err != nil {
+		return
+	}
+	defer g.threads.Done()
+
 	if err := g.managedForwardPort(port); err != nil {
 		g.log.Debugf("WARN:", err)
 	}

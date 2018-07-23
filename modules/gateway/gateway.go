@@ -197,6 +197,10 @@ func (g *Gateway) DiscoverAddress(cancel <-chan struct{}) (modules.NetAddress, e
 
 // ForwardPort adds a port mapping to the router.
 func (g *Gateway) ForwardPort(port string) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
 	return g.managedForwardPort(port)
 }
 
