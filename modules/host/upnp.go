@@ -1,15 +1,10 @@
 package host
 
 import (
-	"context"
-	"errors"
 	"net"
-	"strconv"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-
-	"gitlab.com/NebulousLabs/go-upnp"
 )
 
 // managedLearnHostname discovers the external IP of the Host. If the host's
@@ -80,94 +75,4 @@ func (h *Host) managedLearnHostname() {
 			h.log.Println("unable to announce address after upnp-detected address change:", err)
 		}
 	}
-}
-
-// managedForwardPort adds a port mapping to the router.
-func (h *Host) managedForwardPort(port string) error {
-	if build.Release == "testing" {
-		// Add a blocking placeholder where testing is able to mock behaviors
-		// such as a port forward action that blocks for 10 seconds before
-		// completing.
-		if h.dependencies.Disrupt("managedForwardPort") {
-			return nil
-		}
-
-		// Port forwarding functions are frequently unavailable during testing,
-		// and the long blocking can be highly disruptive. Under normal
-		// scenarios, return without complaint, and without running the
-		// port-forward logic.
-		return nil
-	}
-
-	// If the port is invalid, there is no need to perform any of the other
-	// tasks.
-	portInt, err := strconv.Atoi(port)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		select {
-		case <-h.tg.StopChan():
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
-	d, err := upnp.DiscoverCtx(ctx)
-	if err != nil {
-		h.log.Printf("WARN: could not automatically forward port %s: %v", port, err)
-		return err
-	}
-	err = d.Forward(uint16(portInt), "Sia Host")
-	if err != nil {
-		h.log.Printf("WARN: could not automatically forward port %s: %v", port, err)
-		return err
-	}
-
-	h.log.Println("INFO: successfully forwarded port", port)
-	return nil
-}
-
-// managedClearPort removes a port mapping from the router.
-func (h *Host) managedClearPort() error {
-	if build.Release == "testing" {
-		// Allow testing to force an error to be returned here.
-		if h.dependencies.Disrupt("managedClearPort return error") {
-			return errors.New("Mocked managedClearPortErr")
-		}
-		return nil
-	}
-
-	// If the port is invalid, there is no need to perform any of the other
-	// tasks.
-	h.mu.RLock()
-	port := h.port
-	h.mu.RUnlock()
-	portInt, err := strconv.Atoi(port)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		select {
-		case <-h.tg.StopChan():
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
-	d, err := upnp.DiscoverCtx(ctx)
-	if err != nil {
-		return err
-	}
-	err = d.Clear(uint16(portInt))
-	if err != nil {
-		return err
-	}
-
-	h.log.Println("INFO: successfully unforwarded port", port)
-	return nil
 }
