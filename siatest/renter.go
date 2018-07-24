@@ -184,14 +184,14 @@ func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*Rem
 }
 
 // UploadNewDirectory uses the node to create and upload a directory
-func (tn *TestNode) UploadNewDirectory(levels uint, dataPieces, parityPieces uint64) (*LocalDir, error) {
+func (tn *TestNode) UploadNewDirectory(levels uint) (*LocalDir, error) {
 	// Create Directory
-	ld, err := tn.CreateDirForTesting(levels)
+	ld, err := tn.NewLocalDir(levels)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to create directory")
 	}
 	// Upload Directory
-	err = tn.RenterUploadPost(ld.path, ld.dirName(), dataPieces, parityPieces, true)
+	err = tn.RenterUploadDefaultPost(ld.path, ld.dirName(), true)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to upload directory")
 	}

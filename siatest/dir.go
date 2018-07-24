@@ -64,13 +64,17 @@ func (tn *TestNode) downloadsDir() string {
 	return path
 }
 
-// CreateDirForTesting creates a LocalDir.  The `levels` parameter indicates how
-// my levels the directory has as well as how many subdirectories and files are
-// in each level of the directory
-func (tn *TestNode) CreateDirForTesting(levels uint) (*LocalDir, error) {
+// NewLocalDir creates a LocalDir.  The `levels` parameter indicates how my
+// levels the directory has as well as how many subdirectories and files are in
+// each level of the directory
+func (tn *TestNode) NewLocalDir(levels uint) (*LocalDir, error) {
 	// Create Dir for uploading
 	ld := &LocalDir{
 		path: filepath.Join(tn.filesDir(), fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4)))),
+	}
+	// Create all directory
+	if err := os.MkdirAll(ld.path, 0777); err != nil {
+		return nil, err
 	}
 	for i := 0; i < int(levels); i++ {
 		ld.SubDir = append(ld.SubDir, &LocalDir{
