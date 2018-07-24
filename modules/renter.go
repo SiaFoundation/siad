@@ -421,7 +421,7 @@ type Renter interface {
 	Streamer(siaPath string) (string, io.ReadSeeker, error)
 
 	// Upload uploads a file using the input parameters.
-	Upload(FileUploadParams) error
+	Upload(*FileUploadParams) error
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's

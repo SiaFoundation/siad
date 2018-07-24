@@ -29,7 +29,7 @@ func TestCreateDir(t *testing.T) {
 
 	// Create DIr
 	levels := uint(3)
-	ld, err := tn.CreateDirForTesting(levels)
+	ld, err := tn.NewLocalDir(levels)
 	if err != nil {
 		t.Fatal(err)
 	}
