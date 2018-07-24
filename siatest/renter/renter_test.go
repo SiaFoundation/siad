@@ -34,7 +34,7 @@ func TestRenter(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -556,7 +556,7 @@ func testStreamingCache(t *testing.T, tg *siatest.TestGroup) {
 }
 
 // testUploadDownload is a subtest that uses an existing TestGroup to test if
-// uploading and downloading a file works
+// uploading and downloading a file and a directory works
 func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
@@ -599,6 +599,14 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	// Test Uploading a directory
+	// Create and Upload Dir
+	levels := uint(3)
+	_, err = renter.UploadNewDirectory(levels, dataPieces, parityPieces)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
