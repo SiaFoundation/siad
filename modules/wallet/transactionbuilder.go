@@ -685,11 +685,18 @@ func (w *Wallet) StartTransaction() (modules.TransactionBuilder, error) {
 }
 
 // UnspentOutputs returns the unspent outputs tracked by the wallet.
-func (w *Wallet) UnspentOutputs() []modules.UnspentOutput {
+func (w *Wallet) UnspentOutputs() ([]modules.UnspentOutput, error) {
+	if err := w.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer w.tg.Done()
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
 	// ensure durability of reported outputs
-	w.syncDB()
+	if err := w.syncDB(); err != nil {
+		return nil, err
+	}
 
 	// build initial list of confirmed outputs
 	var outputs []modules.UnspentOutput
@@ -730,11 +737,14 @@ func (w *Wallet) UnspentOutputs() []modules.UnspentOutput {
 	// set the confirmation height for each output
 outer:
 	for i, o := range outputs {
-		txnIndices, _ := dbGetAddrTransactions(w.dbTx, o.UnlockHash)
+		txnIndices, err := dbGetAddrTransactions(w.dbTx, o.UnlockHash)
+		if err != nil {
+			return nil, err
+		}
 		for _, j := range txnIndices {
 			pt, err := dbGetProcessedTransaction(w.dbTx, j)
 			if err != nil {
-				continue
+				return nil, err
 			}
 			for _, sco := range pt.Outputs {
 				if sco.ID == o.ID {
@@ -761,7 +771,7 @@ outer:
 		}
 	}
 
-	return outputs
+	return outputs, nil
 }
 
 // UnlockConditions returns the UnlockConditions for the specified address, if

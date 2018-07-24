@@ -708,8 +708,13 @@ func (api *API) walletUnlockConditionsHandler(w http.ResponseWriter, req *http.R
 
 // walletUnspentHandler handles API calls to /wallet/unspent.
 func (api *API) walletUnspentHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	outputs, err := api.wallet.UnspentOutputs()
+	if err != nil {
+		WriteError(w, Error{"error when calling /wallet/unspent: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
 	WriteJSON(w, WalletUnspentGET{
-		Outputs: api.wallet.UnspentOutputs(),
+		Outputs: outputs,
 	})
 }
 

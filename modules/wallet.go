@@ -432,7 +432,7 @@ type (
 		DustThreshold() (types.Currency, error)
 
 		// UnspentOutputs returns the unspent outputs tracked by the wallet.
-		UnspentOutputs() []UnspentOutput
+		UnspentOutputs() ([]UnspentOutput, error)
 
 		// UnlockConditions returns the UnlockConditions for the specified
 		// address, if they are known to the wallet.

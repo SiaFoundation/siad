@@ -522,7 +522,10 @@ func TestSignTransaction(t *testing.T) {
 	defer wt.closeWt()
 
 	// get an output to spend and its unlock conditions
-	outputs := wt.wallet.UnspentOutputs()
+	outputs, err := wt.wallet.UnspentOutputs()
+	if err != nil {
+		t.Fatal(err)
+	}
 	uc, err := wt.wallet.UnlockConditions(outputs[0].UnlockHash)
 	if err != nil {
 		t.Fatal(err)
@@ -571,7 +574,10 @@ func TestSignTransaction(t *testing.T) {
 	}
 
 	// the wallet should no longer list the resulting output as spendable
-	outputs = wt.wallet.UnspentOutputs()
+	outputs, err = wt.wallet.UnspentOutputs()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(outputs) != 1 {
 		t.Fatal("expected one output")
 	}
@@ -604,7 +610,11 @@ func TestWatchOnly(t *testing.T) {
 
 	// the output should not show up in UnspentOutputs, because the address is
 	// not being tracked yet
-	for _, o := range wt.wallet.UnspentOutputs() {
+	outputs, err := wt.wallet.UnspentOutputs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range outputs {
 		if o.UnlockHash == addr {
 			t.Fatal("shouldn't see addr in UnspentOutputs yet")
 		}
@@ -618,7 +628,11 @@ func TestWatchOnly(t *testing.T) {
 
 	// output should now show up
 	var output modules.UnspentOutput
-	for _, o := range wt.wallet.UnspentOutputs() {
+	outputs, err = wt.wallet.UnspentOutputs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range outputs {
 		if o.UnlockHash == addr {
 			output = o
 			break
@@ -665,7 +679,11 @@ func TestWatchOnly(t *testing.T) {
 	}
 
 	// the wallet should no longer list the resulting output as spendable
-	for _, o := range wt.wallet.UnspentOutputs() {
+	outputs, err = wt.wallet.UnspentOutputs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range outputs {
 		if o.UnlockHash == addr {
 			t.Fatal("spent output still listed as spendable")
 		}
