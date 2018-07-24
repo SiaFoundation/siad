@@ -130,41 +130,67 @@ func TestSignTransaction(t *testing.T) {
 		}
 	}()
 
-	// get an output to spend
+	// get two outputs to spend
 	unspentResp, err := testNode.WalletUnspentGet()
 	if err != nil {
 		t.Fatal("failed to get spendable outputs:", err)
 	}
 	outputs := unspentResp.Outputs
-	wucg, err := testNode.WalletUnlockConditionsGet(outputs[0].UnlockHash)
+	wucg1, err := testNode.WalletUnlockConditionsGet(outputs[0].UnlockHash)
+	if err != nil {
+		t.Fatal("failed to get unlock conditions:", err)
+	}
+	wucg2, err := testNode.WalletUnlockConditionsGet(outputs[1].UnlockHash)
 	if err != nil {
 		t.Fatal("failed to get unlock conditions:", err)
 	}
 
-	// create a transaction that sends an output to the void
+	// create a transaction that sends the outputs to the void, with no
+	// signatures
 	txn := types.Transaction{
-		SiacoinInputs: []types.SiacoinInput{{
-			ParentID:         types.SiacoinOutputID(outputs[0].ID),
-			UnlockConditions: wucg.UnlockConditions,
-		}},
+		SiacoinInputs: []types.SiacoinInput{
+			{
+				ParentID:         types.SiacoinOutputID(outputs[0].ID),
+				UnlockConditions: wucg1.UnlockConditions,
+			},
+			{
+				ParentID:         types.SiacoinOutputID(outputs[1].ID),
+				UnlockConditions: wucg2.UnlockConditions,
+			},
+		},
 		SiacoinOutputs: []types.SiacoinOutput{{
-			Value:      outputs[0].Value,
+			Value:      outputs[0].Value.Add(outputs[1].Value),
 			UnlockHash: types.UnlockHash{},
 		}},
-		TransactionSignatures: []types.TransactionSignature{{
-			ParentID: crypto.Hash(outputs[0].ID),
-		}},
+		TransactionSignatures: []types.TransactionSignature{
+			{ParentID: crypto.Hash(outputs[0].ID)},
+			{ParentID: crypto.Hash(outputs[1].ID)},
+		},
 	}
 
-	// sign the transaction
+	// sign the first input
 	signResp, err := testNode.WalletSignPost(txn, []crypto.Hash{txn.TransactionSignatures[0].ParentID})
 	if err != nil {
 		t.Fatal("failed to sign the transaction", err)
 	}
 	txn = signResp.Transaction
 
-	// txn should now have a signature
+	// txn should now have one signature
 	if len(txn.TransactionSignatures[0].Signature) == 0 {
+		t.Fatal("transaction was not signed")
+	} else if len(txn.TransactionSignatures[1].Signature) != 0 {
+		t.Fatal("second input was also signed")
+	}
+
+	// sign the second input
+	signResp, err = testNode.WalletSignPost(txn, []crypto.Hash{txn.TransactionSignatures[1].ParentID})
+	if err != nil {
+		t.Fatal("failed to sign the transaction", err)
+	}
+	txn = signResp.Transaction
+
+	// txn should now have both signatures
+	if len(txn.TransactionSignatures[0].Signature) == 0 || len(txn.TransactionSignatures[1].Signature) == 0 {
 		t.Fatal("transaction was not signed")
 	}
 
