@@ -164,7 +164,7 @@ func TestSignTransaction(t *testing.T) {
 	txn = signResp.Transaction
 
 	// txn should now have a signature
-	if len(txn.TransactionSignatures) == 0 {
+	if len(txn.TransactionSignatures[0].Signature) == 0 {
 		t.Fatal("transaction was not signed")
 	}
 

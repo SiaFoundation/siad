@@ -550,7 +550,7 @@ func TestSignTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	// txn should now have a signature
-	if len(txn.TransactionSignatures) == 0 {
+	if len(txn.TransactionSignatures[0].Signature) == 0 {
 		t.Fatal("transaction was not signed")
 	}
 
@@ -565,7 +565,10 @@ func TestSignTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wt.addBlockNoPayout()
+	err = wt.addBlockNoPayout()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// the wallet should no longer list the resulting output as spendable
 	outputs = wt.wallet.UnspentOutputs()
@@ -656,7 +659,10 @@ func TestWatchOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wt.addBlockNoPayout()
+	err = wt.addBlockNoPayout()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// the wallet should no longer list the resulting output as spendable
 	for _, o := range wt.wallet.UnspentOutputs() {
