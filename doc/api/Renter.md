@@ -561,7 +561,9 @@ standard success with the requested data in the body or error response. See
 
 #### /renter/upload/___*siapath___ [POST]
 
-starts a file upload to the Sia network from the local filesystem.
+uploads a file or directory to the network from the local filesystem. For
+uploading directories, all files and subdirectories will be named relative to
+the provided `siapath` of the directory being uploaded.
 
 ###### Path Parameters
 
