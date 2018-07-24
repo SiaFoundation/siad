@@ -1,8 +1,12 @@
 package siatest
 
 import (
+	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
+
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -10,6 +14,14 @@ var (
 	// folders created during testing.
 	SiaTestingDir = filepath.Join(os.TempDir(), "SiaTesting")
 )
+
+// LocalDir is a helper struct that represents a directory on disk that is to be
+// uploaded to the sia network
+type LocalDir struct {
+	path   string
+	SubDir []*LocalDir
+	Files  []*LocalFile
+}
 
 // TestDir joins the provided directories and prefixes them with the Sia
 // testing directory, removing any files or directories that previously existed
@@ -50,4 +62,63 @@ func (tn *TestNode) downloadsDir() string {
 		panic(err)
 	}
 	return path
+}
+
+// CreateDirForTesting creates a LocalDir.  The `levels` parameter indicates how
+// my levels the directory has as well as how many subdirectories and files are
+// in each level of the directory
+func (tn *TestNode) CreateDirForTesting(levels uint) (*LocalDir, error) {
+	// Create Dir for uploading
+	ld := &LocalDir{
+		path: filepath.Join(tn.filesDir(), fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4)))),
+	}
+	for i := 0; i < int(levels); i++ {
+		ld.SubDir = append(ld.SubDir, &LocalDir{
+			path: filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4)))),
+		})
+		if err := tn.createSubDir(ld.SubDir[i], levels-1, levels); err != nil {
+			return nil, err
+		}
+		lf, err := tn.NewFile(100+Fuzz(), ld.path)
+		if err != nil {
+			return nil, err
+		}
+		ld.Files = append(ld.Files, lf)
+	}
+	return ld, nil
+}
+
+// createSubDir creates the remaining sub directories needed for testing
+func (tn *TestNode) createSubDir(ld *LocalDir, remaining, levels uint) error {
+	// Create reminging sub directories
+	if remaining > 0 {
+		for i := 0; i < int(levels); i++ {
+			ld.SubDir = append(ld.SubDir, &LocalDir{
+				path: filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4)))),
+			})
+			if err := tn.createSubDir(ld.SubDir[i], remaining-1, levels); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Create all directories to this level
+	if err := os.MkdirAll(ld.path, 0777); err != nil {
+		return err
+	}
+
+	// Create Files in directory
+	for i := 0; i < int(levels); i++ {
+		lf, err := tn.NewFile(100+Fuzz(), ld.path)
+		if err != nil {
+			return err
+		}
+		ld.Files = append(ld.Files, lf)
+	}
+	return nil
+}
+
+// dirName returns the directory name of the directory on disk
+func (ld *LocalDir) dirName() string {
+	return filepath.Base(ld.path)
 }
