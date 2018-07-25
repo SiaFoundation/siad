@@ -37,6 +37,30 @@ import (
 // same time the test package panics because to many files have been created and
 // it can't support any more tests
 
+type test struct {
+	name string
+	test func(*testing.T, *siatest.TestGroup)
+}
+
+func runRenterTests(t *testing.T, gp siatest.GroupParams, tests []test) error {
+	tg, err := siatest.NewGroupFromTemplate(siatest.TestDir(t.Name()), gp)
+	if err != nil {
+		return errors.AddContext(err, "failed to create group")
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Run subtests
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.test(t, tg)
+		})
+	}
+	return nil
+}
+
 // TestRenter executes a number of subtests using the same TestGroup to
 // save time on initialization
 func TestRenter(t *testing.T) {
@@ -51,31 +75,18 @@ func TestRenter(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
 	// Specify subtests to run
-	subTests := []struct {
-		name string
-		test func(*testing.T, *siatest.TestGroup)
-	}{
+	subTests := []test{
 		{"TestClearDownloadHistory", testClearDownloadHistory},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
 	}
-	// Run subtests
-	for _, subtest := range subTests {
-		t.Run(subtest.name, func(t *testing.T) {
-			subtest.test(t, tg)
-		})
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -93,31 +104,18 @@ func TestRenterTwo(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
 	// Specify subtests to run
-	subTests := []struct {
-		name string
-		test func(*testing.T, *siatest.TestGroup)
-	}{
+	subTests := []test{
 		{"TestRemoteRepair", testRemoteRepair},
 		{"TestSingleFileGet", testSingleFileGet},
 		{"TestStreamingCache", testStreamingCache},
 		{"TestUploadDownload", testUploadDownload},
 	}
-	// Run subtests
-	for _, subtest := range subTests {
-		t.Run(subtest.name, func(t *testing.T) {
-			subtest.test(t, tg)
-		})
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -662,31 +660,18 @@ func TestRenterInterrupt(t *testing.T) {
 		Hosts:  5,
 		Miners: 1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
-	// Download sub tests
-	subTests := []struct {
-		name string
-		test func(*testing.T, *siatest.TestGroup)
-	}{
+	// Specify sub tests
+	subTests := []test{
 		{"TestDownloadInterruptedAfterSendingRevision", testDownloadInterruptedAfterSendingRevision},
 		{"TestDownloadInterruptedBeforeSendingRevision", testDownloadInterruptedBeforeSendingRevision},
 		{"TestUploadInterruptedAfterSendingRevision", testUploadInterruptedAfterSendingRevision},
 		{"TestUploadInterruptedBeforeSendingRevision", testUploadInterruptedBeforeSendingRevision},
 	}
-	// Run subtests
-	for _, subtest := range subTests {
-		t.Run(subtest.name, func(t *testing.T) {
-			subtest.test(t, tg)
-		})
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -855,31 +840,17 @@ func TestRenterAddNodes(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
-	testDir := siatest.TestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group:", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
 	// Specify subtests to run
-	subTests := []struct {
-		name string
-		test func(*testing.T, *siatest.TestGroup)
-	}{
+	subTests := []test{
 		{"TestRedundancyReporting", testRedundancyReporting},
 		{"TestRenterCancelAllowance", testRenterCancelAllowance},
 		{"TestRenewFailing", testRenewFailing}, // Put last because it impacts a host
 	}
-	// Run subtests
-	for _, subtest := range subTests {
-		t.Run(subtest.name, func(t *testing.T) {
-			subtest.test(t, tg)
-		})
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -2534,7 +2505,7 @@ func renewContractsByRenewWindow(renter *siatest.TestNode, tg *siatest.TestGroup
 func renewContractsBySpending(renter *siatest.TestNode, tg *siatest.TestGroup) (startingUploadSpend types.Currency, err error) {
 	// Renew contracts by running out of funds
 	// Set upload price to max price
-	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte) // 30k SC / TB / Month
+	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte)
 	maxUploadPrice := maxStoragePrice.Mul64(30 * 4320)
 	hosts := tg.Hosts()
 	for _, h := range hosts {
