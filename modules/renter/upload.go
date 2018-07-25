@@ -21,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -57,6 +58,16 @@ func validateSource(sourcePath string) error {
 	}
 
 	return nil
+	// Check for read access
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		if os.IsPermission(err) {
+			return false, errors.AddContext(err, "unable to read file")
+		}
+		return false, errors.AddContext(err, "unable to open file")
+	}
+	file.Close()
+	return finfo.IsDir(), nil
 }
 
 // Upload instructs the renter to start tracking a file. The renter will
