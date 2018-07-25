@@ -174,6 +174,11 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 	return nil
 }
 
+// createDir creates directory in the renter directory
+func (r *Renter) createDir(path string) error {
+	return os.MkdirAll(filepath.Dir(path), 0700)
+}
+
 // saveFile saves a file to the renter directory.
 func (r *Renter) saveFile(f *siafile.SiaFile) error {
 	if f.Deleted() { // TODO: violation of locking convention
@@ -181,13 +186,13 @@ func (r *Renter) saveFile(f *siafile.SiaFile) error {
 	}
 	// Create directory structure specified in nickname.
 	fullPath := filepath.Join(r.persistDir, f.SiaPath()+ShareExtension)
-	err := os.MkdirAll(filepath.Dir(fullPath), 0700)
+	err := r.createDir(fullPath)
 	if err != nil {
 		return err
 	}
 
 	// Open SafeFile handle.
-	handle, err := persist.NewSafeFile(filepath.Join(r.persistDir, f.SiaPath()+ShareExtension))
+	handle, err := persist.NewSafeFile(fullPath)
 	if err != nil {
 		return err
 	}
