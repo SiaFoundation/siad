@@ -176,7 +176,7 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 
 // createDir creates directory in the renter directory
 func (r *Renter) createDir(path string) error {
-	return os.MkdirAll(filepath.Dir(path), 0700)
+	return os.MkdirAll(path, 0700)
 }
 
 // saveFile saves a file to the renter directory.
@@ -186,7 +186,7 @@ func (r *Renter) saveFile(f *siafile.SiaFile) error {
 	}
 	// Create directory structure specified in nickname.
 	fullPath := filepath.Join(r.persistDir, f.SiaPath()+ShareExtension)
-	err := r.createDir(fullPath)
+	err := r.createDir(filepath.Dir(fullPath))
 	if err != nil {
 		return err
 	}
