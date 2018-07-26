@@ -563,7 +563,8 @@ standard success with the requested data in the body or error response. See
 
 uploads a file or directory to the network from the local filesystem. For
 uploading directories, all files and subdirectories will be named relative to
-the provided `siapath` of the directory being uploaded.
+the provided `siapath` of the directory being uploaded and will be uploaded with
+the same `datapieces` and `paritypeices`
 
 ###### Path Parameters
 
