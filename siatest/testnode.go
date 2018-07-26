@@ -16,6 +16,9 @@ type TestNode struct {
 	client.Client
 	params      node.NodeParams
 	primarySeed string
+
+	downloadDir *LocalDir
+	uploadDir   *LocalDir
 }
 
 // RestartNode restarts a TestNode
@@ -86,7 +89,20 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 	c.Password = password
 
 	// Create TestNode
-	tn := &TestNode{s, *c, nodeParams, ""}
+	tn := &TestNode{
+		Server:      s,
+		Client:      *c,
+		params:      nodeParams,
+		primarySeed: "",
+	}
+	tn.downloadDir, err = tn.NewLocalDir()
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to create download directory")
+	}
+	tn.uploadDir, err = tn.NewLocalDir()
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to create upload directory")
+	}
 
 	// Init wallet
 	wip, err := tn.WalletInitPost("", false)
