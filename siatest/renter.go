@@ -10,9 +10,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // DownloadToDisk downloads a previously uploaded file. The file will be downloaded
@@ -24,7 +24,7 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 	}
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes-%s", fi.Filesize, hex.EncodeToString(fastrand.Bytes(4)))
-	dest := filepath.Join(tn.downloadsDir(), fileName)
+	dest := filepath.Join(tn.downloadDir.path, fileName)
 	if err := tn.RenterDownloadGet(rf.siaPath, dest, 0, fi.Filesize, async); err != nil {
 		return nil, errors.AddContext(err, "failed to download file")
 	}
@@ -184,12 +184,16 @@ func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*Rem
 }
 
 // UploadNewDirectory uses the node to create and upload a directory
-func (tn *TestNode) UploadNewDirectory(levels uint) (*LocalDir, error) {
+func (tn *TestNode) UploadNewDirectory(files, dirs, levels uint) (*LocalDir, error) {
 	// Create Directory
-	ld, err := tn.NewLocalDir(levels)
+	ld, err := tn.NewLocalDir()
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to create directory")
+		return nil, errors.AddContext(err, "failed to create local directory")
 	}
+	if err = ld.PopulateDir(files, dirs, levels); err != nil {
+		return nil, errors.AddContext(err, "failed to populate directory")
+	}
+
 	// Upload Directory
 	err = tn.RenterUploadDefaultPost(ld.path, ld.dirName(), true)
 	if err != nil {
@@ -201,7 +205,7 @@ func (tn *TestNode) UploadNewDirectory(levels uint) (*LocalDir, error) {
 // UploadNewFile initiates the upload of a filesize bytes large file.
 func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces uint64) (*LocalFile, *RemoteFile, error) {
 	// Create file for upload
-	localFile, err := tn.NewFile(filesize, "")
+	localFile, err := tn.uploadDir.newFile(filesize)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to create file")
 	}
