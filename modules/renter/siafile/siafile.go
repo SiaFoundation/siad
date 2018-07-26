@@ -9,11 +9,12 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 type (
@@ -40,6 +41,10 @@ type (
 		deleted   bool
 		mu        sync.RWMutex
 		staticUID string
+
+		// persistence related fields.
+		siaFilePath string             // path to the .sia file
+		wal         *writeaheadlog.WAL // the wal that is used for SiaFiles
 	}
 
 	// Chunk represents a single chunk of a file on disk
