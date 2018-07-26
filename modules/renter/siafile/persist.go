@@ -79,6 +79,7 @@ func (sf *SiaFile) createAndApplyTransaction(updates []writeaheadlog.Update) err
 	return errors.AddContext(err, "failed to signal that updates are applied")
 }
 
+// marshalMetadata marshals the metadata of the SiaFile using json encoding.
 func (sf *SiaFile) marshalMetadata() ([]byte, error) {
 	// Encode the metadata.
 	jsonMD, err := json.Marshal(sf.staticMetadata)
@@ -89,6 +90,8 @@ func (sf *SiaFile) marshalMetadata() ([]byte, error) {
 	return jsonMD, nil
 }
 
+// marshalPubKeyTable marshals the public key table of the SiaFile using Sia
+// encoding.
 func (sf *SiaFile) marshalPubKeyTable() ([]byte, error) {
 	// Create a buffer.
 	buf := bytes.NewBuffer(nil)
