@@ -216,3 +216,11 @@ func (c *Client) RenterUploadDefaultPost(path, siaPath string) (err error) {
 	err = c.post(fmt.Sprintf("/renter/upload/%v", siaPath), values.Encode(), nil)
 	return
 }
+
+// RenterCreateDirPost uses the /renter/dir/create endpoint to create a
+// directory for the renter
+func (c *Client) RenterCreateDirPost(siaPath string) (err error) {
+	siaPath = strings.TrimPrefix(siaPath, "/")
+	err = c.post(fmt.Sprintf("/renter/dir/create/%v", siaPath), "", nil)
+	return
+}

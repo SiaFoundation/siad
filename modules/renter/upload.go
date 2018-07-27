@@ -48,6 +48,13 @@ func newFile(name string, rsc modules.ErasureCoder, pieceSize, fileSize uint64, 
 // validateSource verifies that a sourcePath meets the
 // requirements for upload.
 func validateSource(sourcePath string) error {
+	// Check for read access
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		return errors.AddContext(err, "unable to open file")
+	}
+	file.Close()
+
 	finfo, err := os.Stat(sourcePath)
 	if err != nil {
 		return err
@@ -55,12 +62,6 @@ func validateSource(sourcePath string) error {
 	if finfo.IsDir() {
 		return errUploadDirectory
 	}
-	// Check for read access
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		return errors.AddContext(err, "unable to open file")
-	}
-	file.Close()
 
 	return nil
 }

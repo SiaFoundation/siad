@@ -175,8 +175,8 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 }
 
 // createDir creates directory in the renter directory
-func (r *Renter) createDir(path string) error {
-	return os.MkdirAll(path, 0700)
+func (r *Renter) createDir(siaPath string) error {
+	return os.MkdirAll(siaPath, 0700)
 }
 
 // saveFile saves a file to the renter directory.
