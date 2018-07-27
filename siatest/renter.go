@@ -195,7 +195,7 @@ func (tn *TestNode) UploadNewDirectory(files, dirs, levels uint) (*LocalDir, err
 	}
 
 	// Upload Directory
-	err = tn.RenterUploadDefaultPost(ld.path, ld.dirName(), true)
+	err = tn.RenterUploadDefaultPost(ld.path, ld.dirName())
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to upload directory")
 	}
