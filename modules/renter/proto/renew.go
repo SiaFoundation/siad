@@ -134,11 +134,26 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		return modules.RenterContract{}, errors.New("couldn't initiate RPC: " + err.Error())
 	}
 	// verify that both parties are renewing the same contract
-	if err = verifyRecentRevision(conn, contract, host.Version); err != nil {
+	err = verifyRecentRevision(conn, contract, host.Version)
+	if IsRevisionMismatch(err) && len(oldContract.unappliedTxns) > 0 {
+		// we have desynced from the host. If we have unapplied updates from the
+		// WAL, try them instead.
+		err = verifyRecentRevision(conn, oldContract.unappliedHeader(), host.Version)
+		if err != nil {
+			return modules.RenterContract{}, err
+		}
+		// the updates from the WAL worked. commit them to disk.
+		if err := oldContract.commitTxns(); err != nil {
+			return modules.RenterContract{}, err
+		}
+		// update the contract.
+		contract = oldContract.header
+	} else if err != nil {
 		// don't add context; want to preserve the original error type so that
 		// callers can check using IsRevisionMismatch
 		return modules.RenterContract{}, err
 	}
+
 	// verify the host's settings and confirm its identity
 	host, err = verifySettings(conn, host)
 	if err != nil {
