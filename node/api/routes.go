@@ -91,6 +91,9 @@ func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword strin
 		router.GET("/renter/stream/*siapath", api.renterStreamHandler)
 		router.POST("/renter/upload/*siapath", RequirePassword(api.renterUploadHandler, requiredPassword))
 
+		// Directory endpoints
+		router.POST("/renter/dir/create/*siapath", RequirePassword(api.renterCreateDirHandler, requiredPassword))
+
 		// HostDB endpoints.
 		router.GET("/hostdb", api.hostdbHandler)
 		router.GET("/hostdb/active", api.hostdbActiveHandler)

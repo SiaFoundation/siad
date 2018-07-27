@@ -759,3 +759,14 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 	}
 	WriteSuccess(w)
 }
+
+// renterCreateDirHandler handles the API call to create a directory
+func (api *API) renterCreateDirHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+	// Call the renter to create directory
+	err := api.renter.CreateDir(strings.TrimPrefix(ps.ByName("siapath"), "/"))
+	if err != nil {
+		WriteError(w, Error{"failed to create directory: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteSuccess(w)
+}
