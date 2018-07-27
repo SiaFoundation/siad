@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -24,6 +25,8 @@ const (
 	PersistFilename = "renter.json"
 	// ShareExtension is the extension to be used
 	ShareExtension = ".sia"
+	// SiaDirMetadata is the name of the metadata file for the sia directory
+	SiaDirMetadata = ".siadir"
 )
 
 var (
@@ -174,9 +177,47 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 	return nil
 }
 
-// createDir creates directory in the renter directory
-func (r *Renter) createDir(siaPath string) error {
-	return os.MkdirAll(siaPath, 0700)
+// createDir creates directory in the renter directory, path should be the
+// siapath joined with the renter persistDir
+func (r *Renter) createDir(path string) error {
+	if err := os.MkdirAll(path, 0700); err != nil {
+		return err
+	}
+
+	// Make sure all parent folders have metadata files
+	//
+	// TODO: this should be change when files are moved out of the top level
+	// directory of the renter.
+	for path != filepath.Dir(r.persistDir) {
+		if err := createDirMetadata(path); err != nil {
+			return err
+		}
+		path = filepath.Dir(path)
+	}
+	return nil
+}
+
+func createDirMetadata(path string) error {
+	dirMetadataFile := filepath.Join(path, SiaDirMetadata)
+	// Check if metadata file exists
+	if _, err := os.Stat(dirMetadataFile); err == nil {
+		// TODO: update metadata file
+		return nil
+	}
+
+	// TODO: update to get actual min redundancy
+	minRedundancy := float64(0)
+	data := struct {
+		LastUpdate    int64
+		MinRedundancy float64
+	}{time.Now().UnixNano(), minRedundancy}
+
+	dirMetadata := persist.Metadata{
+		Header:  "Sia Directory Metadata",
+		Version: persistVersion,
+	}
+
+	return persist.SaveJSON(dirMetadata, data, dirMetadataFile)
 }
 
 // saveFile saves a file to the renter directory.

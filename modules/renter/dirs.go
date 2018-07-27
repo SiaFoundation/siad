@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"path/filepath"
 	"sync"
 )
 
@@ -19,7 +20,7 @@ func (r *Renter) CreateDir(siaPath string) error {
 	if err := validateSiapath(siaPath); err != nil {
 		return err
 	}
-	return r.createDir(siaPath)
+	return r.createDir(filepath.Join(r.persistDir, siaPath))
 }
 
 // DeleteDir removes a directory from the renter and deletes all its sub
