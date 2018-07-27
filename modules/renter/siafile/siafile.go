@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -91,7 +92,8 @@ func New(siaPath string, erasureCode []modules.ErasureCoder, pieceSize, fileSize
 			staticPieceSize: pieceSize,
 			siaPath:         siaPath,
 		},
-		staticUID: string(fastrand.Bytes(20)),
+		siaFilePath: filepath.Join(fileRoot, siaPath),
+		staticUID:   string(fastrand.Bytes(20)),
 	}
 	file.staticChunks = make([]Chunk, len(erasureCode))
 	for i := range file.staticChunks {

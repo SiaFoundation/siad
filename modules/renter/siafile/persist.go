@@ -107,7 +107,7 @@ func readUpdate(update writeaheadlog.Update) (path string, index int64, data []b
 	if update.Name != siaFileUpdateName {
 		panic("readUpdate can't read non-SiaFile update")
 	}
-	err = encoding.UnmarshalAll(nil, path, index, data)
+	err = encoding.UnmarshalAll(update.Instructions, &path, &index, &data)
 	return
 }
 
@@ -161,7 +161,6 @@ func (sf *SiaFile) marshalPubKeyTable() ([]byte, error) {
 			return nil, err
 		}
 	}
-	// The table is written right before the first chunk.
 	return buf.Bytes(), nil
 }
 
