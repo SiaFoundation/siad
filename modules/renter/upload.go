@@ -14,7 +14,6 @@ package renter
 // all need to be fixed when we do enable it, but we should enable it.
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -56,23 +55,19 @@ func validateSource(sourcePath string) error {
 	if finfo.IsDir() {
 		return errUploadDirectory
 	}
-
-	return nil
 	// Check for read access
 	file, err := os.Open(sourcePath)
 	if err != nil {
-		if os.IsPermission(err) {
-			return false, errors.AddContext(err, "unable to read file")
-		}
-		return false, errors.AddContext(err, "unable to open file")
+		return errors.AddContext(err, "unable to open file")
 	}
 	file.Close()
-	return finfo.IsDir(), nil
+
+	return nil
 }
 
 // Upload instructs the renter to start tracking a file. The renter will
 // automatically upload and repair tracked files using a background loop.
-func (r *Renter) Upload(up *modules.FileUploadParams) error {
+func (r *Renter) Upload(up modules.FileUploadParams) error {
 	// Enforce nickname rules.
 	if err := validateSiapath(up.SiaPath); err != nil {
 		return err

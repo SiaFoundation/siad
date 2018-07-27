@@ -26,6 +26,11 @@ func (tn *TestNode) NewLocalDir() (*LocalDir, error) {
 	}, err
 }
 
+// dirName returns the directory name of the directory on disk
+func (ld *LocalDir) dirName() string {
+	return filepath.Base(ld.path)
+}
+
 // newDir creates a new LocalDir in the current LocalDir
 func (ld *LocalDir) newDir() (*LocalDir, error) {
 	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4))))

@@ -30,7 +30,7 @@ func TestRenterUploadInode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params := &modules.FileUploadParams{
+	params := modules.FileUploadParams{
 		Source:      testUploadPath,
 		SiaPath:     "test",
 		ErasureCode: ec,

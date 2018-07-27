@@ -601,16 +601,9 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 
-	// Test Uploading a directory
-	// Create and Upload Dir
-	levels := uint(3)
-	_, err = renter.UploadNewDirectory(levels)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Test uploading empty directory
-	_, err = renter.UploadNewDirectory(0)
+	// TODO: this needs to be move to new test for create, deleting, and renaming directories
+	_, err = renter.UploadNewDirectory(0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
