@@ -37,11 +37,15 @@ import (
 // same time the test package panics because to many files have been created and
 // it can't support any more tests
 
+// test is a helper struct for running subtests when tests can use the same test
+// group
 type test struct {
 	name string
 	test func(*testing.T, *siatest.TestGroup)
 }
 
+// runRenterTests is a helper function to run the subtests when tests can use
+// the same test group
 func runRenterTests(t *testing.T, gp siatest.GroupParams, tests []test) error {
 	tg, err := siatest.NewGroupFromTemplate(siatest.TestDir(t.Name()), gp)
 	if err != nil {
