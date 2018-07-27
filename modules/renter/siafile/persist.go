@@ -2,33 +2,113 @@ package siafile
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"os"
 
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
+
+// ApplyUpdates applies a number of writeaheadlog updates to the corresponding
+// SiaFile. This method can apply updates from different SiaFiles and should
+// only be run before the SiaFiles are loaded from disk right after the startup
+// of siad. Otherwise we might run into concurrency issues.
+func ApplyUpdates(updates []writeaheadlog.Update) error {
+	for _, u := range updates {
+		err := func() error {
+			// Decode update.
+			path, index, data, err := readUpdate(u)
+			if err != nil {
+				return err
+			}
+
+			// Open the file.
+			f, err := os.OpenFile(path, os.O_RDWR, 0)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+
+			// Write data.
+			if n, err := f.WriteAt(data, index); err != nil {
+				return err
+			} else if n < len(data) {
+				return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
+			}
+			return nil
+		}()
+		if err != nil {
+			return errors.AddContext(err, "failed to apply update")
+		}
+	}
+	return nil
+}
+
+// applyUpdates applies updates to the SiaFile. Only updates that belong to the
+// SiaFile on which applyUpdates is called can be applied. Everything else will
+// be considered a developer error and cause a panic to avoid corruption.
+func (sf *SiaFile) applyUpdates(updates []writeaheadlog.Update) error {
+	// Open the file.
+	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// Apply updates.
+	for _, u := range updates {
+		err := func() error {
+			// Decode update.
+			path, index, data, err := readUpdate(u)
+			if err != nil {
+				return err
+			}
+
+			// Sanity check path. Update should belong to SiaFile.
+			if sf.siaFilePath != path {
+				panic(fmt.Sprintf("can't apply update for file %s to SiaFile %s", path, sf.siaFilePath))
+			}
+
+			// Write data.
+			if n, err := f.WriteAt(data, index); err != nil {
+				return err
+			} else if n < len(data) {
+				return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
+			}
+			return nil
+		}()
+		if err != nil {
+			return errors.AddContext(err, "failed to apply update")
+		}
+	}
+	return nil
+}
 
 // createUpdate is a helper method which creates a writeaheadlog update for
 // writing the specified data to the provided index. It is usually not called
 // directly but wrapped into another helper that creates an update for a
 // specific part of the SiaFile. e.g. the metadata
-func createUpdate(index int64, data []byte) writeaheadlog.Update {
+func (sf *SiaFile) createUpdate(index int64, data []byte) writeaheadlog.Update {
 	if index < 0 {
-		panic("this can never happen")
+		panic("index passed to createUpdate should never be negative")
 	}
-	// Create instructions
-	instructions := make([]byte, 8+len(data))
-	binary.LittleEndian.PutUint64(instructions[:8], uint64(index))
-	copy(instructions[8:], data)
-
 	// Create update
 	return writeaheadlog.Update{
-		Name:         "SiaFile",
-		Instructions: instructions,
+		Name:         siaFileUpdateName,
+		Instructions: encoding.MarshalAll(sf.siaFilePath, index, data),
 	}
+}
+
+// readUpdate unmarshals the update's instructions and returns the path, index
+// and data encoded in the instructions.
+func readUpdate(update writeaheadlog.Update) (path string, index int64, data []byte, err error) {
+	if update.Name != siaFileUpdateName {
+		panic("readUpdate can't read non-SiaFile update")
+	}
+	err = encoding.UnmarshalAll(nil, path, index, data)
+	return
 }
 
 // allocateHeaderPage allocates a new page for the metadata and
@@ -37,26 +117,6 @@ func createUpdate(index int64, data []byte) writeaheadlog.Update {
 // publicKeyTable to the end of the newly allocated page.
 func (sf *SiaFile) allocateHeaderPage() []writeaheadlog.Update {
 	panic("not yet implemented")
-}
-
-// applyUpdates applies a number of writeaheadlog updates to the SiaFile.
-func (sf *SiaFile) applyUpdates(updates []writeaheadlog.Update) error {
-	// Open the SiaFile.
-	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 0)
-	if err != nil {
-		return err
-	}
-	// Write updates to file.
-	for _, u := range updates {
-		index := int64(binary.LittleEndian.Uint64(u.Instructions[:8]))
-		data := u.Instructions[8:]
-		if n, err := f.WriteAt(data, index); err != nil {
-			return err
-		} else if n < len(data) {
-			return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
-		}
-	}
-	return nil
 }
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
@@ -133,8 +193,8 @@ func (sf *SiaFile) saveHeader() error {
 	}
 
 	// Create updates for the metadata and pubKeyTable.
-	updates = append(updates, createUpdate(0, metadata))
-	updates = append(updates, createUpdate(sf.staticMetadata.pubKeyTableOffset, pubKeyTable))
+	updates = append(updates, sf.createUpdate(0, metadata))
+	updates = append(updates, sf.createUpdate(sf.staticMetadata.pubKeyTableOffset, pubKeyTable))
 
 	// Apply the updates.
 	return sf.createAndApplyTransaction(updates)

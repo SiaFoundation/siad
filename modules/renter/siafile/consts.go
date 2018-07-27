@@ -8,4 +8,7 @@ const (
 	// metadata when we create a new siaFile. Should the metadata ever grow
 	// larger than that, new pages are added on demand.
 	defaultReservedMDPages = 1
+
+	// siaFileUpdateName is the name of a siaFile update.
+	siaFileUpdateName = "SiaFile"
 )
