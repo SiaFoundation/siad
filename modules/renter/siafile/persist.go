@@ -185,16 +185,22 @@ func (sf *SiaFile) saveHeader() error {
 
 	// If the metadata and the pubKeyTable overlap, we need to allocate a new
 	// page for them.
-	pubKeyTableOffset := sf.staticMetadata.chunkOffset - int64(len(pubKeyTable))
+	pubKeyTableOffset := sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
 	for int64(len(metadata)) > pubKeyTableOffset {
 		updates = append(updates, sf.allocateHeaderPage()...)
-		pubKeyTableOffset = sf.staticMetadata.chunkOffset - int64(len(pubKeyTable))
+		pubKeyTableOffset = sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
 	}
 
 	// Create updates for the metadata and pubKeyTable.
 	updates = append(updates, sf.createUpdate(0, metadata))
-	updates = append(updates, sf.createUpdate(sf.staticMetadata.pubKeyTableOffset, pubKeyTable))
+	updates = append(updates, sf.createUpdate(sf.staticMetadata.PubKeyTableOffset, pubKeyTable))
 
 	// Apply the updates.
 	return sf.createAndApplyTransaction(updates...)
+}
+
+// unmarshalMetadata unmarshals the json encoded metadata of the SiaFile.
+func (sf *SiaFile) unmarshalMetadata(raw []byte) (md Metadata, err error) {
+	err = json.Unmarshal(raw, &md)
+	return
 }

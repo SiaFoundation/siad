@@ -13,31 +13,31 @@ import (
 type (
 	// Metadata is the metadata of a SiaFile and is JSON encoded.
 	Metadata struct {
-		staticVersion   [16]byte // version of the sia file format used
-		staticFileSize  int64    // total size of the file
-		staticPieceSize uint64   // size of a single piece of the file
-		localPath       string   // file to the local copy of the file used for repairing
-		siaPath         string   // the path of the file on the Sia network
+		StaticVersion   [16]byte `json:"version"`   // version of the sia file format used
+		StaticFileSize  int64    `json:"filesize"`  // total size of the file
+		StaticPieceSize uint64   `json:"piecesize"` // size of a single piece of the file
+		LocalPath       string   `json:"localpath"` // file to the local copy of the file used for repairing
+		SiaPath         string   `json:"siapath"`   // the path of the file on the Sia network
 
 		// fields for encryption
-		staticMasterKey  crypto.TwofishKey // masterkey used to encrypt pieces
-		staticSharingKey crypto.TwofishKey // key used to encrypt shared pieces
+		StaticMasterKey  crypto.TwofishKey // masterkey used to encrypt pieces
+		StaticSharingKey crypto.TwofishKey // key used to encrypt shared pieces
 
 		// The following fields are the usual unix timestamps of files.
-		modTime    time.Time // time of last content modification
-		changeTime time.Time // time of last metadata modification
-		accessTime time.Time // time of last access
-		createTime time.Time // time of file creation
+		ModTime    time.Time `json:"modtime"`    // time of last content modification
+		ChangeTime time.Time `json:"changetime"` // time of last metadata modification
+		AccessTime time.Time `json:"accesstime"` // time of last access
+		CreateTime time.Time `json:"createtime"` // time of file creation
 
 		// File ownership/permission fields.
-		mode os.FileMode // unix filemode of the sia file - uint32
-		uid  int         // id of the user who owns the file
-		gid  int         // id of the group that owns the file
+		Mode os.FileMode `json:"mode"` // unix filemode of the sia file - uint32
+		UID  int         `json:"uid"`  // id of the user who owns the file
+		Gid  int         `json:"gid"`  // id of the group that owns the file
 
 		// staticChunkMetadataSize is the amount of space allocated within the
 		// siafile for the metadata of a single chunk. It allows us to do
 		// random access operations on the file in constant time.
-		staticChunkMetadataSize uint64
+		StaticChunkMetadataSize uint64 `json:"chunkmetadatasize"`
 
 		// The following fields are the offsets for data that is written to disk
 		// after the pubKeyTable. We reserve a generous amount of space for the
@@ -50,8 +50,8 @@ type (
 		// pubKeyTableOffset is the offset of the publicKeyTable within the
 		// file.
 		//
-		chunkOffset       int64
-		pubKeyTableOffset int64
+		ChunkOffset       int64 `json:"chunkoffset"`
+		PubKeyTableOffset int64 `json:"pubkeytableoffset"`
 	}
 )
 
@@ -109,24 +109,24 @@ func (sf *SiaFile) HostPublicKeys() []types.SiaPublicKey {
 func (sf *SiaFile) LocalPath() string {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.localPath
+	return sf.staticMetadata.LocalPath
 }
 
 // MasterKey returns the masterkey used to encrypt the file.
 func (sf *SiaFile) MasterKey() crypto.TwofishKey {
-	return sf.staticMetadata.staticMasterKey
+	return sf.staticMetadata.StaticMasterKey
 }
 
 // Mode returns the FileMode of the SiaFile.
 func (sf *SiaFile) Mode() os.FileMode {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.mode
+	return sf.staticMetadata.Mode
 }
 
 // PieceSize returns the size of a single piece of the file.
 func (sf *SiaFile) PieceSize() uint64 {
-	return sf.staticMetadata.staticPieceSize
+	return sf.staticMetadata.StaticPieceSize
 }
 
 // Rename changes the name of the file to a new one.
@@ -135,7 +135,7 @@ func (sf *SiaFile) PieceSize() uint64 {
 func (sf *SiaFile) Rename(newName string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.siaPath = newName
+	sf.staticMetadata.SiaPath = newName
 	return nil
 }
 
@@ -143,7 +143,7 @@ func (sf *SiaFile) Rename(newName string) error {
 func (sf *SiaFile) SetMode(mode os.FileMode) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.mode = mode
+	sf.staticMetadata.Mode = mode
 }
 
 // SetLocalPath changes the local path of the file which is used to repair
@@ -151,19 +151,19 @@ func (sf *SiaFile) SetMode(mode os.FileMode) {
 func (sf *SiaFile) SetLocalPath(path string) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.localPath = path
+	sf.staticMetadata.LocalPath = path
 }
 
 // SiaPath returns the file's sia path.
 func (sf *SiaFile) SiaPath() string {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.siaPath
+	return sf.staticMetadata.SiaPath
 }
 
 // Size returns the file's size.
 func (sf *SiaFile) Size() uint64 {
-	return uint64(sf.staticMetadata.staticFileSize)
+	return uint64(sf.staticMetadata.StaticFileSize)
 }
 
 // UploadedBytes indicates how many bytes of the file have been uploaded via
@@ -202,5 +202,5 @@ func (sf *SiaFile) UploadProgress() float64 {
 
 // ChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) staticChunkSize(chunkIndex uint64) uint64 {
-	return sf.staticMetadata.staticPieceSize * uint64(sf.staticChunks[chunkIndex].staticErasureCode.MinPieces())
+	return sf.staticMetadata.StaticPieceSize * uint64(sf.staticChunks[chunkIndex].staticErasureCode.MinPieces())
 }

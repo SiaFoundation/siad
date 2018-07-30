@@ -85,12 +85,12 @@ type (
 func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode []modules.ErasureCoder, pieceSize, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	file := &SiaFile{
 		staticMetadata: Metadata{
-			staticFileSize:  int64(fileSize),
-			localPath:       source,
-			staticMasterKey: crypto.GenerateTwofishKey(),
-			mode:            fileMode,
-			staticPieceSize: pieceSize,
-			siaPath:         siaPath,
+			StaticFileSize:  int64(fileSize),
+			LocalPath:       source,
+			StaticMasterKey: crypto.GenerateTwofishKey(),
+			Mode:            fileMode,
+			StaticPieceSize: pieceSize,
+			SiaPath:         siaPath,
 		},
 		siaFilePath: siaFilePath,
 		staticUID:   string(fastrand.Bytes(20)),
@@ -233,7 +233,7 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	if sf.staticMetadata.staticFileSize == 0 {
+	if sf.staticMetadata.StaticFileSize == 0 {
 		// TODO change this once tiny files are supported.
 		if len(sf.staticChunks) != 1 {
 			// should never happen
