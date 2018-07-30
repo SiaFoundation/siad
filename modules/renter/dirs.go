@@ -2,17 +2,7 @@ package renter
 
 import (
 	"path/filepath"
-	"sync"
 )
-
-// siaFolderMetadata is a helper struct for creating directories for the renter.
-type siaFolderMetadata struct {
-	path          string
-	lastUpdate    uint64  // Unixnano timestamp of last update to metadata
-	minRedundancy float64 // Lowest redundancy of any files recursively in directory
-
-	mu sync.RWMutex
-}
 
 // CreateDir creates a directory for the renter
 func (r *Renter) CreateDir(siaPath string) error {

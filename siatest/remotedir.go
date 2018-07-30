@@ -19,5 +19,5 @@ func (rd *RemoteDir) Path() string {
 
 // RemoteDirSiaPath returns the siaPath of a remote directory.
 func (tn *TestNode) RemoteDirSiaPath(rd *RemoteDir) string {
-	return strings.TrimPrefix(rd.path, tn.RenterDir())
+	return strings.TrimPrefix(rd.path, tn.RenterDir()+"/")
 }

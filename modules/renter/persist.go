@@ -197,27 +197,28 @@ func (r *Renter) createDir(path string) error {
 	return nil
 }
 
+// createDirMetadata makes sure there is a metadata file in each directory of
+// the renter and updates or creates one as needed
 func createDirMetadata(path string) error {
-	dirMetadataFile := filepath.Join(path, SiaDirMetadata)
+	fullPath := filepath.Join(path, SiaDirMetadata)
 	// Check if metadata file exists
-	if _, err := os.Stat(dirMetadataFile); err == nil {
+	if _, err := os.Stat(fullPath); err == nil {
 		// TODO: update metadata file
 		return nil
 	}
 
 	// TODO: update to get actual min redundancy
-	minRedundancy := float64(0)
 	data := struct {
 		LastUpdate    int64
 		MinRedundancy float64
-	}{time.Now().UnixNano(), minRedundancy}
+	}{time.Now().UnixNano(), float64(0)}
 
-	dirMetadata := persist.Metadata{
+	metadataHeader := persist.Metadata{
 		Header:  "Sia Directory Metadata",
 		Version: persistVersion,
 	}
 
-	return persist.SaveJSON(dirMetadata, data, dirMetadataFile)
+	return persist.SaveJSON(metadataHeader, data, fullPath)
 }
 
 // saveFile saves a file to the renter directory.

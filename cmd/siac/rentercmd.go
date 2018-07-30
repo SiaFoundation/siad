@@ -794,9 +794,9 @@ func renterfilesrenamecmd(path, newpath string) {
 }
 
 // renterfilesuploadcmd is the handler for the command `siac renter upload
-// [source] [path]`. Uploads the [source] file to [path] on the Sia network. If
-// uploading a directory, all files and sub directories inside it will be
-// uploaded and named relative to [path].
+// [source] [path]`. Uploads the [source] file to [path] on the Sia network.
+// If [source] is a directory, all files inside it will be uploaded and named
+// relative to [path].
 func renterfilesuploadcmd(source, path string) {
 	stat, err := os.Stat(source)
 	if err != nil {
