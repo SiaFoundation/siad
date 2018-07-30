@@ -3,6 +3,7 @@ package renter
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
@@ -58,6 +59,7 @@ func TestRenter(t *testing.T) {
 		test func(*testing.T, *siatest.TestGroup)
 	}{
 		{"TestClearDownloadHistory", testClearDownloadHistory},
+		{"TestDirectories", testDirectories},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
@@ -222,6 +224,90 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if len(rdg.Downloads) != 0 {
 		t.Fatalf("Download history not cleared: history has %v downloads, expected 0", len(rdg.Downloads))
+	}
+}
+
+// testDirectories checks the functionality of directories in the Renter
+func testDirectories(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
+	r := tg.Renters()[0]
+
+	// Test Directory endpoint for creating empty directory
+	rd, err := r.UploadNewDirectory(0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for metadata files, Directory should have been uploaded in the top
+	// level of the renter so there should be a metadata file for /renter and
+	// for the newly uploaded directory
+	//
+	// Check /renter level
+	check := 0
+	fileInfos, err := ioutil.ReadDir(r.RenterDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fileInfos {
+		if !f.IsDir() && f.Name() == ".siadir" {
+			check++
+		}
+	}
+	if check != 1 {
+		t.Fatalf("Did not find expected number of .siadir metadata files, found %v expected 1", check)
+	}
+
+	// Check new directory
+	check = 0
+	fileInfos, err = ioutil.ReadDir(rd.Path())
+	if err != nil {
+		t.Fatal("Unable to read uploaded directory:", err)
+	}
+	for _, f := range fileInfos {
+		if !f.IsDir() && f.Name() == ".siadir" {
+			check++
+		}
+	}
+	if check != 1 {
+		t.Fatalf("Did not find expected number of .siadir metadata files, found %v expected 1", check)
+	}
+
+	// Check uploading file to new subdirectory
+	size := 100 + siatest.Fuzz()
+	path := filepath.Join(r.UploadDir().Path(), "subDir1/subDir2/subDir3")
+	if err := os.MkdirAll(path, 0777); err != nil {
+		t.Fatal(err)
+	}
+	lf, err := siatest.NewLocalFile(size, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	rf, err := r.Upload(lf, dataPieces, parityPieces)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for metadata files, uploading file into subdirectory should have
+	// created directories and directory metadata files up through renter
+	path = filepath.Dir(filepath.Join(r.RenterDir(), rf.SiaPath()))
+	for path != r.RenterDir() {
+		check = 0
+		fileInfos, err = ioutil.ReadDir(path)
+		if err != nil {
+			t.Fatal("Unable to read uploaded directory:", err)
+		}
+		for _, f := range fileInfos {
+			if !f.IsDir() && f.Name() == ".siadir" {
+				check++
+			}
+		}
+		if check != 1 {
+			t.Fatalf("Did not find expected number of .siadir metadata files, found %v expected 1", check)
+		}
+		path = filepath.Dir(path)
 	}
 }
 
@@ -599,13 +685,6 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	}
-
-	// Test uploading empty directory
-	// TODO: this needs to be move to new test for create, deleting, and renaming directories
-	_, err = renter.UploadNewDirectory(0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 

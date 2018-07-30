@@ -3,13 +3,13 @@ package siatest
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
 )
-
-// TODO: Add ability to get sub directories and files in a LocalDir
 
 // LocalDir is a helper struct that represents a directory on disk that is to be
 // uploaded to the sia network
@@ -31,8 +31,29 @@ func (ld *LocalDir) dirName() string {
 	return filepath.Base(ld.path)
 }
 
-// newDir creates a new LocalDir in the current LocalDir
-func (ld *LocalDir) newDir() (*LocalDir, error) {
+// Files returns a slice of the files in the LocalDir
+func (ld *LocalDir) Files() ([]*LocalFile, error) {
+	var files []*LocalFile
+	fileInfos, err := ioutil.ReadDir(ld.path)
+	if err != nil {
+		return files, err
+	}
+	for _, f := range fileInfos {
+		if !f.IsDir() {
+			size := int(f.Size())
+			bytes := fastrand.Bytes(size)
+			files = append(files, &LocalFile{
+				path:     filepath.Join(ld.path, f.Name()),
+				size:     size,
+				checksum: crypto.HashBytes(bytes),
+			})
+		}
+	}
+	return files, nil
+}
+
+// newSubDir creates a new LocalDir in the current LocalDir
+func (ld *LocalDir) newSubDir() (*LocalDir, error) {
 	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4))))
 	if err := os.MkdirAll(path, 0777); err != nil {
 		return nil, err
@@ -42,7 +63,12 @@ func (ld *LocalDir) newDir() (*LocalDir, error) {
 
 // newFile creates a new LocalFile in the current LocalDir
 func (ld *LocalDir) newFile(size int) (*LocalFile, error) {
-	return newLocalFile(size, ld.path)
+	return NewLocalFile(size, ld.path)
+}
+
+// Path creates a new LocalFile in the current LocalDir
+func (ld *LocalDir) Path() string {
+	return ld.path
 }
 
 // PopulateDir populates a LocalDir levels deep with the number of files and
@@ -63,7 +89,7 @@ func (ld *LocalDir) PopulateDir(files, dirs, levels uint) error {
 
 	// Create directories at current level
 	for i := 0; i < int(dirs); i++ {
-		subld, err := ld.newDir()
+		subld, err := ld.newSubDir()
 		if err != nil {
 			return err
 		}
@@ -72,4 +98,21 @@ func (ld *LocalDir) PopulateDir(files, dirs, levels uint) error {
 		}
 	}
 	return nil
+}
+
+// subDirs returns a slice of the sub directories in the LocalDir
+func (ld *LocalDir) subDirs() ([]*LocalDir, error) {
+	var dirs []*LocalDir
+	fileInfos, err := ioutil.ReadDir(ld.path)
+	if err != nil {
+		return dirs, err
+	}
+	for _, f := range fileInfos {
+		if f.IsDir() {
+			dirs = append(dirs, &LocalDir{
+				path: filepath.Join(ld.path, f.Name()),
+			})
+		}
+	}
+	return dirs, nil
 }
