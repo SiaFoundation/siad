@@ -82,7 +82,7 @@ type (
 
 // New create a new SiaFile.
 // TODO needs changes once we move persistence over.
-func New(siaPath string, erasureCode []modules.ErasureCoder, pieceSize, fileSize uint64, fileMode os.FileMode, source string) *SiaFile {
+func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode []modules.ErasureCoder, pieceSize, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	file := &SiaFile{
 		staticMetadata: Metadata{
 			staticFileSize:  int64(fileSize),
@@ -92,9 +92,23 @@ func New(siaPath string, erasureCode []modules.ErasureCoder, pieceSize, fileSize
 			staticPieceSize: pieceSize,
 			siaPath:         siaPath,
 		},
-		siaFilePath: filepath.Join(fileRoot, siaPath),
+		siaFilePath: siaFilePath,
 		staticUID:   string(fastrand.Bytes(20)),
+		wal:         wal,
 	}
+	// Create file.
+	dir, _ := filepath.Split(file.siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(file.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
+	// Init chunks.
 	file.staticChunks = make([]Chunk, len(erasureCode))
 	for i := range file.staticChunks {
 		file.staticChunks[i].staticErasureCode = erasureCode[i]
@@ -103,7 +117,7 @@ func New(siaPath string, erasureCode []modules.ErasureCoder, pieceSize, fileSize
 		binary.LittleEndian.PutUint32(file.staticChunks[i].staticErasureCodeParams[4:8], uint32(erasureCode[i].NumPieces()-erasureCode[i].MinPieces()))
 		file.staticChunks[i].pieces = make([][]Piece, erasureCode[i].NumPieces())
 	}
-	return file
+	return file, nil
 }
 
 // AddPiece adds an uploaded piece to the file. It also updates the host table

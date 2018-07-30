@@ -15,7 +15,7 @@ import (
 // SiaFile. This method can apply updates from different SiaFiles and should
 // only be run before the SiaFiles are loaded from disk right after the startup
 // of siad. Otherwise we might run into concurrency issues.
-func ApplyUpdates(updates []writeaheadlog.Update) error {
+func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := func() error {
 			// Decode update.
@@ -49,7 +49,7 @@ func ApplyUpdates(updates []writeaheadlog.Update) error {
 // applyUpdates applies updates to the SiaFile. Only updates that belong to the
 // SiaFile on which applyUpdates is called can be applied. Everything else will
 // be considered a developer error and cause a panic to avoid corruption.
-func (sf *SiaFile) applyUpdates(updates []writeaheadlog.Update) error {
+func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) error {
 	// Open the file.
 	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 0)
 	if err != nil {
@@ -96,7 +96,7 @@ func (sf *SiaFile) createUpdate(index int64, data []byte) writeaheadlog.Update {
 	}
 	// Create update
 	return writeaheadlog.Update{
-		Name:         siaFileUpdateName,
+		Name:         updateInsertName,
 		Instructions: encoding.MarshalAll(sf.siaFilePath, index, data),
 	}
 }
@@ -104,7 +104,7 @@ func (sf *SiaFile) createUpdate(index int64, data []byte) writeaheadlog.Update {
 // readUpdate unmarshals the update's instructions and returns the path, index
 // and data encoded in the instructions.
 func readUpdate(update writeaheadlog.Update) (path string, index int64, data []byte, err error) {
-	if update.Name != siaFileUpdateName {
+	if !IsSiaFileUpdate(update) {
 		panic("readUpdate can't read non-SiaFile update")
 	}
 	err = encoding.UnmarshalAll(update.Instructions, &path, &index, &data)
@@ -132,7 +132,7 @@ func (sf *SiaFile) createAndApplyTransaction(updates []writeaheadlog.Update) err
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
 	// Apply the updates.
-	if err := sf.applyUpdates(updates); err != nil {
+	if err := sf.applyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.

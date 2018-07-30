@@ -1,9 +1,7 @@
 package siafile
 
 import (
-	"path/filepath"
-
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 const (
@@ -15,13 +13,17 @@ const (
 	// larger than that, new pages are added on demand.
 	defaultReservedMDPages = 1
 
-	// siaFileUpdateName is the name of a siaFile update.
-	siaFileUpdateName = "SiaFile"
+	// updateInsertName is the name of a siaFile update that inserts data at a specific index.
+	updateInsertName = "Insert"
 )
 
-var (
-	// fileRoot is the subfolder of the renter dir in which the SiaFiles are
-	// stored. They are stored within the same directory structure they are
-	// uploaded with to Sia.
-	fileRoot = filepath.Join(modules.RenterDir, "files")
-)
+// IsSiaFileUpdate is a helper method that makes sure that a wal update belongs
+// to the SiaFile package.
+func IsSiaFileUpdate(update writeaheadlog.Update) bool {
+	switch update.Name {
+	case updateInsertName:
+		return true
+	default:
+		return false
+	}
+}

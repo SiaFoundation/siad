@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,6 +15,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 const (
@@ -24,6 +26,8 @@ const (
 	PersistFilename = "renter.json"
 	// ShareExtension is the extension to be used
 	ShareExtension = ".sia"
+	// walFile is the filename of the renter's writeaheadlog's file.
+	walFile = modules.RenterDir + ".wal"
 )
 
 var (
@@ -451,6 +455,24 @@ func (r *Renter) initPersist() error {
 	err = r.loadSettings()
 	if err != nil {
 		return err
+	}
+
+	// Initialize the writeaheadlog.
+	txns, wal, err := writeaheadlog.New(filepath.Join(r.persistDir, walFile))
+	if err != nil {
+		return err
+	}
+	r.wal = wal
+
+	// Apply unapplied wal txns.
+	for _, txn := range txns {
+		for _, update := range txn.Updates {
+			if siafile.IsSiaFileUpdate(update) {
+				if err := siafile.ApplyUpdates(update); err != nil {
+					return errors.AddContext(err, "failed to apply SiaFile update")
+				}
+			}
+		}
 	}
 
 	// Load the siafiles into memory.

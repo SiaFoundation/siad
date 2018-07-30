@@ -17,10 +17,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 var (
@@ -29,7 +31,7 @@ var (
 )
 
 // newFile is a helper to more easily create a new Siafile.
-func newFile(name string, rsc modules.ErasureCoder, pieceSize, fileSize uint64, mode os.FileMode, source string) *siafile.SiaFile {
+func newFile(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, pieceSize, fileSize uint64, mode os.FileMode, source string) (*siafile.SiaFile, error) {
 	numChunks := 1
 	chunkSize := pieceSize * uint64(rsc.MinPieces())
 	if fileSize > 0 {
@@ -42,7 +44,7 @@ func newFile(name string, rsc modules.ErasureCoder, pieceSize, fileSize uint64, 
 	for i := 0; i < numChunks; i++ {
 		ecs[i] = rsc
 	}
-	return siafile.New(name, ecs, pieceSize, fileSize, mode, source)
+	return siafile.New(filepath.Join(modules.RenterDir, "files", name), source, name, wal, ecs, pieceSize, fileSize, mode)
 }
 
 // validateSource verifies that a sourcePath meets the
@@ -99,7 +101,10 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 
 	// Create file object.
-	f := newFile(up.SiaPath, up.ErasureCode, pieceSize, uint64(fileInfo.Size()), fileInfo.Mode(), up.Source)
+	f, err := newFile(up.SiaPath, r.wal, up.ErasureCode, pieceSize, uint64(fileInfo.Size()), fileInfo.Mode(), up.Source)
+	if err != nil {
+		return err
+	}
 
 	// Add file to renter.
 	lockID = r.mu.Lock()
