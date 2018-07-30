@@ -416,7 +416,12 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	newContract, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+	newContract, retry, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+	// If there was a revision mismatch and if Renew set the retry flag, we try
+	// again.
+	if retry {
+		newContract, _, err = c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+	}
 	if err != nil {
 		txnBuilder.Drop() // return unused outputs to wallet
 		return modules.RenterContract{}, err
