@@ -166,13 +166,14 @@ func (tn *TestNode) FileInfo(rf *RemoteFile) (modules.FileInfo, error) {
 // Upload uses the node to upload the file.
 func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*RemoteFile, error) {
 	// Upload file
-	err := tn.RenterUploadPost(lf.path, tn.LocalFileSiaPath(lf), dataPieces, parityPieces)
+	siapath := tn.LocalFileSiaPath(lf)
+	err := tn.RenterUploadPost(lf.path, siapath, dataPieces, parityPieces)
 	if err != nil {
 		return nil, err
 	}
 	// Create remote file object
 	rf := &RemoteFile{
-		siaPath:  tn.LocalFileSiaPath(lf),
+		siaPath:  siapath,
 		checksum: lf.checksum,
 	}
 	// Make sure renter tracks file
@@ -195,14 +196,15 @@ func (tn *TestNode) UploadNewDirectory(files, dirs, levels uint) (*RemoteDir, er
 	}
 
 	// Upload Directory
-	err = tn.RenterCreateDirPost(ld.dirName())
+	siapath := tn.LocalDirSiaPath(ld)
+	err = tn.RenterCreateDirPost(siapath)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to upload directory")
 	}
 
 	// Create remote directory object
 	rd := &RemoteDir{
-		path: filepath.Join(tn.RenterDir(), ld.dirName()),
+		path: filepath.Join(tn.RenterDir(), siapath),
 	}
 	return rd, nil
 }

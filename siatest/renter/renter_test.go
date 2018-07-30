@@ -642,7 +642,7 @@ func testStreamingCache(t *testing.T, tg *siatest.TestGroup) {
 }
 
 // testUploadDownload is a subtest that uses an existing TestGroup to test if
-// uploading and downloading a file and a directory works
+// uploading and downloading a file works
 func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]

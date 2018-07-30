@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -24,6 +25,11 @@ func (tn *TestNode) NewLocalDir() (*LocalDir, error) {
 	return &LocalDir{
 		path: dirPath,
 	}, err
+}
+
+// LocalDirSiaPath returns the siapath to be used for uploading a LocalDir
+func (tn *TestNode) LocalDirSiaPath(ld *LocalDir) string {
+	return strings.TrimPrefix(ld.path, tn.uploadDir.path+"/")
 }
 
 // dirName returns the directory name of the directory on disk
