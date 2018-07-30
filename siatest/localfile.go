@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
@@ -22,9 +23,9 @@ type (
 	}
 )
 
-// newLocalFile creates and returns a new LocalFile. It
+// NewLocalFile creates and returns a new LocalFile. It
 // will write size random bytes to the file and give the file a random name.
-func newLocalFile(size int, dir string) (*LocalFile, error) {
+func NewLocalFile(size int, dir string) (*LocalFile, error) {
 	fileName := fmt.Sprintf("%dbytes-%s", size, hex.EncodeToString(fastrand.Bytes(4)))
 	path := filepath.Join(dir, fileName)
 	bytes := fastrand.Bytes(size)
@@ -37,9 +38,14 @@ func newLocalFile(size int, dir string) (*LocalFile, error) {
 }
 
 // NewFile creates and returns a new LocalFile. The file will be created in the
-// TestNode's file directory unless a directory is provided
+// TestNode's upload directory
 func (tn *TestNode) NewFile(size int) (*LocalFile, error) {
-	return newLocalFile(size, tn.filesDir())
+	return NewLocalFile(size, tn.uploadDir.path)
+}
+
+// LocalFileSiaPath returns the siapath of the file on disk
+func (tn *TestNode) LocalFileSiaPath(lf *LocalFile) string {
+	return strings.TrimPrefix(lf.path, tn.uploadDir.path+"/")
 }
 
 // Delete removes the LocalFile from disk.
@@ -63,8 +69,8 @@ func (lf *LocalFile) checkIntegrity() error {
 	return nil
 }
 
-// fileName returns the file name of the file on disk
-func (lf *LocalFile) fileName() string {
+// FileName returns the file name of the file on disk
+func (lf *LocalFile) FileName() string {
 	return filepath.Base(lf.path)
 }
 
