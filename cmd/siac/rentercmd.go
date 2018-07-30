@@ -822,16 +822,18 @@ func renterfilesuploadcmd(source, path string) {
 		} else if len(files) == 0 {
 			die("Nothing to upload.")
 		}
+		failed := 0
 		for _, file := range files {
 			fpath, _ := filepath.Rel(source, file)
 			fpath = filepath.Join(path, fpath)
 			fpath = filepath.ToSlash(fpath)
 			err = httpClient.RenterUploadDefaultPost(abs(file), fpath)
 			if err != nil {
-				die("Could not upload file:", err)
+				failed++
+				fmt.Printf("Could not upload file %s :%v\n", file, err)
 			}
 		}
-		fmt.Printf("Uploaded %d files into '%s'.\n", len(files), path)
+		fmt.Printf("\nUploaded %d of %d files into '%s'.\n", len(files)-failed, len(files), path)
 	} else {
 		// single file
 		err = httpClient.RenterUploadDefaultPost(abs(source), path)
