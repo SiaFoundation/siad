@@ -121,7 +121,7 @@ func (sf *SiaFile) allocateHeaderPage() []writeaheadlog.Update {
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
-func (sf *SiaFile) createAndApplyTransaction(updates []writeaheadlog.Update) error {
+func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
 	// Create the writeaheadlog transaction.
 	txn, err := sf.wal.NewTransaction(updates)
 	if err != nil {
@@ -196,5 +196,5 @@ func (sf *SiaFile) saveHeader() error {
 	updates = append(updates, sf.createUpdate(sf.staticMetadata.pubKeyTableOffset, pubKeyTable))
 
 	// Apply the updates.
-	return sf.createAndApplyTransaction(updates)
+	return sf.createAndApplyTransaction(updates...)
 }

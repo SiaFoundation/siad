@@ -41,9 +41,6 @@ func newTestFile() *SiaFile {
 	fileMode := os.FileMode(777)
 	source := string(fastrand.Bytes(8))
 
-	if err := os.MkdirAll("renter", 0600); err != nil {
-		panic(err)
-	}
 	siaFilePath := filepath.Join(os.TempDir(), "siafiles", siaPath)
 	sf, err := New(siaFilePath, siaPath, source, newTestWAL(), []modules.ErasureCoder{rc}, pieceSize, fileSize, fileMode)
 	if err != nil {
@@ -55,7 +52,12 @@ func newTestFile() *SiaFile {
 // newTestWal is a helper method to create a WAL for testing.
 func newTestWAL() *writeaheadlog.WAL {
 	// Create the wal.
-	_, wal, err := writeaheadlog.New(hex.EncodeToString(fastrand.Bytes(8)))
+	walsDir := filepath.Join(os.TempDir(), "wals")
+	if err := os.MkdirAll(walsDir, 0700); err != nil {
+		panic(err)
+	}
+	walFilePath := filepath.Join(walsDir, hex.EncodeToString(fastrand.Bytes(8)))
+	_, wal, err := writeaheadlog.New(walFilePath)
 	if err != nil {
 		panic(err)
 	}
@@ -90,69 +92,35 @@ func TestCreateReadUpdate(t *testing.T) {
 	}
 }
 
-// TestApplyUpdates tests the exported ApplyUpdates method.
+// TestApplyUpdates tests a variety of functions that are used to apply
+// updates.
 func TestApplyUpdates(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	siaFile := newTestFile()
-
-	// Create an update that writes random data to a random index i.
-	index := fastrand.Intn(100) + 1
-	data := fastrand.Bytes(100)
-	update := siaFile.createUpdate(int64(index), data)
-
-	// Apply update.
-	if err := ApplyUpdates(update); err != nil {
-		t.Fatal("Failed to apply update", err)
-	}
-
-	// Check if file has correct size after update.
-	file, err := os.Open(siaFile.siaFilePath)
-	if err != nil {
-		t.Fatal("Failed to open file", err)
-	}
-	fi, err := file.Stat()
-	if err != nil {
-		t.Fatal("Failed to get fileinfo", err)
-	}
-	if fi.Size() != int64(index+len(data)) {
-		t.Errorf("File's size should be %v but was %v", index+len(data), fi.Size())
-	}
-
-	// Check if correct data was written.
-	readData := make([]byte, len(data))
-	if _, err := file.ReadAt(readData, int64(index)); err != nil {
-		t.Fatal("Failed to read written data back from disk", err)
-	}
-	if !bytes.Equal(data, readData) {
-		t.Fatal("Read data doesn't equal written data")
-	}
-	// Make sure that we didn't write anything before the specified index.
-	readData = make([]byte, index)
-	expectedData := make([]byte, index)
-	if _, err := file.ReadAt(readData, 0); err != nil {
-		t.Fatal("Failed to read data back from disk", err)
-	}
-	if !bytes.Equal(expectedData, readData) {
-		t.Fatal("ApplyUpdates corrupted the data before the specified index")
-	}
+	t.Run("TestApplyUpdates", func(t *testing.T) {
+		siaFile := newTestFile()
+		testApply(t, siaFile, ApplyUpdates)
+	})
+	t.Run("TestSiaFileApplyUpdates", func(t *testing.T) {
+		siaFile := newTestFile()
+		testApply(t, siaFile, siaFile.applyUpdates)
+	})
+	t.Run("TestCreateAndApplyTransaction", func(t *testing.T) {
+		siaFile := newTestFile()
+		testApply(t, siaFile, siaFile.createAndApplyTransaction)
+	})
 }
 
-// TestSiaFileApplyUpdates tests the siafile.applyUpdates method.
-func TestSiaFileApplyUpdates(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	siaFile := newTestFile()
-
+// testApply tests if a given method applies a set of updates correctly.
+func testApply(t *testing.T, siaFile *SiaFile, apply func(...writeaheadlog.Update) error) {
 	// Create an update that writes random data to a random index i.
 	index := fastrand.Intn(100) + 1
 	data := fastrand.Bytes(100)
 	update := siaFile.createUpdate(int64(index), data)
 
 	// Apply update.
-	if err := siaFile.applyUpdates(update); err != nil {
+	if err := apply(update); err != nil {
 		t.Fatal("Failed to apply update", err)
 	}
 
