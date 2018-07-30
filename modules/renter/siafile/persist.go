@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -44,6 +46,74 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 		}
 	}
 	return nil
+}
+
+// marshalMetadata marshals the metadata of the SiaFile using json encoding.
+func marshalMetadata(md Metadata) ([]byte, error) {
+	// Encode the metadata.
+	jsonMD, err := json.Marshal(md)
+	if err != nil {
+		return nil, err
+	}
+	// Create the update.
+	return jsonMD, nil
+}
+
+// marshalPubKeyTable marshals the public key table of the SiaFile using Sia
+// encoding.
+func marshalPubKeyTable(pubKeyTable []types.SiaPublicKey) ([]byte, error) {
+	// Create a buffer.
+	buf := bytes.NewBuffer(nil)
+	// Marshal all the data into the buffer
+	for _, pk := range pubKeyTable {
+		if err := pk.MarshalSia(buf); err != nil {
+			return nil, err
+		}
+	}
+	return buf.Bytes(), nil
+}
+
+// unmarshalMetadata unmarshals the json encoded metadata of the SiaFile.
+func unmarshalMetadata(raw []byte) (md Metadata, err error) {
+	err = json.Unmarshal(raw, &md)
+	return
+}
+
+// unmarshalPubKeyTable unmarshals a sia encoded public key table.
+func unmarshalPubKeyTable(raw []byte) ([]types.SiaPublicKey, error) {
+	// Create the buffer.
+	r := bytes.NewBuffer(raw)
+	var err error
+	var spks []types.SiaPublicKey
+	// Unmarshal the keys one by one until EOF or a different error occur.
+	for {
+		var spk types.SiaPublicKey
+		if err = spk.UnmarshalSia(r); err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		spks = append(spks, spk)
+	}
+	return spks, nil
+}
+
+// readUpdate unmarshals the update's instructions and returns the path, index
+// and data encoded in the instructions.
+func readUpdate(update writeaheadlog.Update) (path string, index int64, data []byte, err error) {
+	if !IsSiaFileUpdate(update) {
+		panic("readUpdate can't read non-SiaFile update")
+	}
+	err = encoding.UnmarshalAll(update.Instructions, &path, &index, &data)
+	return
+}
+
+// allocateHeaderPage allocates a new page for the metadata and
+// publicKeyTable. It returns the necessary writeaheadlog updates to allocate a
+// new page by moving the chunk data back by one page and moving the
+// publicKeyTable to the end of the newly allocated page.
+func (sf *SiaFile) allocateHeaderPage() []writeaheadlog.Update {
+	panic("not yet implemented")
 }
 
 // applyUpdates applies updates to the SiaFile. Only updates that belong to the
@@ -101,24 +171,6 @@ func (sf *SiaFile) createUpdate(index int64, data []byte) writeaheadlog.Update {
 	}
 }
 
-// readUpdate unmarshals the update's instructions and returns the path, index
-// and data encoded in the instructions.
-func readUpdate(update writeaheadlog.Update) (path string, index int64, data []byte, err error) {
-	if !IsSiaFileUpdate(update) {
-		panic("readUpdate can't read non-SiaFile update")
-	}
-	err = encoding.UnmarshalAll(update.Instructions, &path, &index, &data)
-	return
-}
-
-// allocateHeaderPage allocates a new page for the metadata and
-// publicKeyTable. It returns the necessary writeaheadlog updates to allocate a
-// new page by moving the chunk data back by one page and moving the
-// publicKeyTable to the end of the newly allocated page.
-func (sf *SiaFile) allocateHeaderPage() []writeaheadlog.Update {
-	panic("not yet implemented")
-}
-
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
 func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
@@ -139,31 +191,6 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	return errors.AddContext(err, "failed to signal that updates are applied")
 }
 
-// marshalMetadata marshals the metadata of the SiaFile using json encoding.
-func (sf *SiaFile) marshalMetadata() ([]byte, error) {
-	// Encode the metadata.
-	jsonMD, err := json.Marshal(sf.staticMetadata)
-	if err != nil {
-		return nil, err
-	}
-	// Create the update.
-	return jsonMD, nil
-}
-
-// marshalPubKeyTable marshals the public key table of the SiaFile using Sia
-// encoding.
-func (sf *SiaFile) marshalPubKeyTable() ([]byte, error) {
-	// Create a buffer.
-	buf := bytes.NewBuffer(nil)
-	// Marshal all the data into the buffer
-	for _, pk := range sf.pubKeyTable {
-		if err := pk.MarshalSia(buf); err != nil {
-			return nil, err
-		}
-	}
-	return buf.Bytes(), nil
-}
-
 // saveHeader saves the metadata and pubKeyTable of the SiaFile to disk using
 // the writeaheadlog. If the metadata and overlap due to growing too large and
 // would therefore corrupt if they were written to disk, a new page is
@@ -173,12 +200,12 @@ func (sf *SiaFile) saveHeader() error {
 	updates := make([]writeaheadlog.Update, 0)
 
 	// Marshal the metadata.
-	metadata, err := sf.marshalMetadata()
+	metadata, err := marshalMetadata(sf.staticMetadata)
 	if err != nil {
 		return err
 	}
 	// Marshal the pubKeyTable.
-	pubKeyTable, err := sf.marshalPubKeyTable()
+	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
 	if err != nil {
 		return err
 	}
@@ -197,10 +224,4 @@ func (sf *SiaFile) saveHeader() error {
 
 	// Apply the updates.
 	return sf.createAndApplyTransaction(updates...)
-}
-
-// unmarshalMetadata unmarshals the json encoded metadata of the SiaFile.
-func (sf *SiaFile) unmarshalMetadata(raw []byte) (md Metadata, err error) {
-	err = json.Unmarshal(raw, &md)
-	return
 }

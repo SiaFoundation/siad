@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -176,18 +177,65 @@ func TestMarshalUnmarshalMetadata(t *testing.T) {
 	sf := newTestFile()
 
 	// Marshal metadata
-	raw, err := sf.marshalMetadata()
+	raw, err := marshalMetadata(sf.staticMetadata)
 	if err != nil {
 		t.Fatal("Failed to marshal metadata", err)
 	}
 	// Unmarshal metadata
-	md, err := sf.unmarshalMetadata(raw)
+	md, err := unmarshalMetadata(raw)
 	if err != nil {
 		t.Fatal("Failed to unmarshal metadata", err)
 	}
 	// Compare result to original
 	if err := md.AssertEqual(sf.staticMetadata); err != nil {
 		t.Fatal("Unmarshaled metadata not equal to marshaled metadata:", err)
+	}
+}
+
+// TestMarshalUnmarshalMetadata tests marshaling and unmarshaling the
+// publicKeyTable of a SiaFile.
+func TestMarshalUnmarshalPubKeyTAble(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	sf := newTestFile()
+	for i := 0; i < 10; i++ {
+		// Create random specifier and key.
+		algorithm := types.Specifier{}
+		fastrand.Read(algorithm[:])
+
+		// Create random key.
+		key := fastrand.Bytes(32)
+
+		// Append new key to slice.
+		sf.pubKeyTable = append(sf.pubKeyTable, types.SiaPublicKey{
+			Algorithm: algorithm,
+			Key:       key,
+		})
+	}
+
+	// Marshal pubKeyTable.
+	raw, err := marshalPubKeyTable(sf.pubKeyTable)
+	if err != nil {
+		t.Fatal("Failed to marshal pubKeyTable", err)
+	}
+	// Unmarshal pubKeyTable.
+	pubKeyTable, err := unmarshalPubKeyTable(raw)
+	if err != nil {
+		t.Fatal("Failed to unmarshal pubKeyTable", err)
+	}
+	// Compare them.
+	if len(sf.pubKeyTable) != len(pubKeyTable) {
+		t.Fatalf("Lengths of tables don't match %v vs %v",
+			len(sf.pubKeyTable), len(pubKeyTable))
+	}
+	for i, spk := range pubKeyTable {
+		if spk.Algorithm != sf.pubKeyTable[i].Algorithm {
+			t.Fatal("Algorithms don't match")
+		}
+		if !bytes.Equal(spk.Key, sf.pubKeyTable[i].Key) {
+			t.Fatal("Keys don't match")
+		}
 	}
 }
 
