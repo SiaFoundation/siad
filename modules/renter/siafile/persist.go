@@ -216,18 +216,18 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	return errors.AddContext(err, "failed to signal that updates are applied")
 }
 
-// saveHeader saves the metadata and pubKeyTable of the SiaFile to disk using
-// the writeaheadlog. If the metadata and overlap due to growing too large and
-// would therefore corrupt if they were written to disk, a new page is
-// allocated.
-func (sf *SiaFile) saveHeader() error {
+// saveHeader creates writeaheadlog updates to saves the metadata and
+// pubKeyTable of the SiaFile to disk using the writeaheadlog. If the metadata
+// and overlap due to growing too large and would therefore corrupt if they
+// were written to disk, a new page is allocated.
+func (sf *SiaFile) saveHeader() ([]writeaheadlog.Update, error) {
 	// Create a list of updates which need to be applied to save the metadata.
 	updates := make([]writeaheadlog.Update, 0)
 
 	// Marshal the pubKeyTable.
 	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Update the pubKeyTableOffset. This is not necessarily the final offset
@@ -238,7 +238,7 @@ func (sf *SiaFile) saveHeader() error {
 	// Marshal the metadata.
 	metadata, err := marshalMetadata(sf.staticMetadata)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// If the metadata and the pubKeyTable overlap, we need to allocate a new
@@ -248,7 +248,7 @@ func (sf *SiaFile) saveHeader() error {
 		// Create update to move chunkData back by a page.
 		chunkUpdate, err := sf.allocateHeaderPage()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		updates = append(updates, chunkUpdate)
 		// Update the PubKeyTableOffset.
@@ -256,14 +256,46 @@ func (sf *SiaFile) saveHeader() error {
 		// Marshal the metadata again.
 		metadata, err = marshalMetadata(sf.staticMetadata)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	// Create updates for the metadata and pubKeyTable.
 	updates = append(updates, sf.createUpdate(0, metadata))
 	updates = append(updates, sf.createUpdate(sf.staticMetadata.PubKeyTableOffset, pubKeyTable))
+	return updates, nil
+}
 
-	// Apply the updates.
-	return sf.createAndApplyTransaction(updates...)
+// saveMetadata saves the metadata of the SiaFile but not the publicKeyTable.
+// Most of the time updates are only made to the metadata and not to the
+// publicKeyTable and the metadata fits within a single disk sector on the
+// harddrive. This means that using saveMetadata instead of saveHeader is
+// potentially faster for SiaFiles with a header that can not be marshaled
+// within a single page.
+func (sf *SiaFile) saveMetadata() ([]writeaheadlog.Update, error) {
+	// Marshal the pubKeyTable.
+	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
+	if err != nil {
+		return nil, err
+	}
+	// Sanity check the length of the pubKeyTable to find out if the length of
+	// the table changed. We should never just save the metadata if the table
+	// changed as well as it might lead to corruptions.
+	if sf.staticMetadata.PubKeyTableOffset+int64(len(pubKeyTable)) != sf.staticMetadata.ChunkOffset {
+		panic("never call saveMetadata if the pubKeyTable changed, call saveHeader instead")
+	}
+	// Marshal the metadata.
+	metadata, err := marshalMetadata(sf.staticMetadata)
+	if err != nil {
+		return nil, err
+	}
+	// If the header doesn't fit in the space between the beginning of the file
+	// and the pubKeyTable, we need to call saveHeader since the pubKeyTable
+	// needs to be moved as well and saveHeader is already handling that
+	// edgecase.
+	if int64(len(metadata)) > sf.staticMetadata.PubKeyTableOffset {
+		return sf.saveHeader()
+	}
+	// Otherwise we can create and return the updates.
+	return []writeaheadlog.Update{sf.createUpdate(0, metadata)}, nil
 }

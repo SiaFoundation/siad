@@ -217,7 +217,11 @@ func TestSaveSmallHeader(t *testing.T) {
 	sf.staticMetadata.ChunkOffset = pageSize
 
 	// Save the header.
-	if err := sf.saveHeader(); err != nil {
+	updates, err := sf.saveHeader()
+	if err != nil {
+		t.Fatal("Failed to create updates to save header", err)
+	}
+	if err := sf.createAndApplyTransaction(updates...); err != nil {
 		t.Fatal("Failed to save header", err)
 	}
 
@@ -296,7 +300,11 @@ func TestSaveLargeHeader(t *testing.T) {
 	}
 
 	// Save the header.
-	if err := sf.saveHeader(); err != nil {
+	updates, err := sf.saveHeader()
+	if err != nil {
+		t.Fatal("Failed to create updates to save header", err)
+	}
+	if err := sf.createAndApplyTransaction(updates...); err != nil {
 		t.Fatal("Failed to save header", err)
 	}
 
