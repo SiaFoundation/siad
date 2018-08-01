@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -108,12 +110,35 @@ func readUpdate(update writeaheadlog.Update) (path string, index int64, data []b
 	return
 }
 
-// allocateHeaderPage allocates a new page for the metadata and
-// publicKeyTable. It returns the necessary writeaheadlog updates to allocate a
-// new page by moving the chunk data back by one page and moving the
-// publicKeyTable to the end of the newly allocated page.
-func (sf *SiaFile) allocateHeaderPage() []writeaheadlog.Update {
-	panic("not yet implemented")
+// allocateHeaderPage allocates a new page for the metadata and publicKeyTable.
+// It returns an update that moves the chunkData back by one pageSize if
+// applied and also updates the ChunkOffset of the metadata.
+func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
+	// Sanity check the chunk offset.
+	if sf.staticMetadata.ChunkOffset%pageSize != 0 {
+		build.Critical("the chunk offset is not page aligned")
+	}
+	// Open the file.
+	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 0)
+	if err != nil {
+		return writeaheadlog.Update{}, err
+	}
+	defer f.Close()
+	// Seek the chunk offset.
+	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
+	if err != nil {
+		return writeaheadlog.Update{}, err
+	}
+	// Read all the chunk data.
+	chunkData, err := ioutil.ReadAll(f)
+	if err != nil {
+		return writeaheadlog.Update{}, err
+	}
+	// Move the offset back by a pageSize.
+	sf.staticMetadata.ChunkOffset += pageSize
+
+	// Create and return update.
+	return sf.createUpdate(sf.staticMetadata.ChunkOffset, chunkData), nil
 }
 
 // applyUpdates applies updates to the SiaFile. Only updates that belong to the
@@ -220,8 +245,15 @@ func (sf *SiaFile) saveHeader() error {
 	// page for them. Afterwards we need to marshal the metadata again since
 	// ChunkOffset and PubKeyTableOffset change when allocating a new page.
 	for int64(len(metadata))+int64(len(pubKeyTable)) > sf.staticMetadata.ChunkOffset {
-		updates = append(updates, sf.allocateHeaderPage()...)
+		// Create update to move chunkData back by a page.
+		chunkUpdate, err := sf.allocateHeaderPage()
+		if err != nil {
+			return err
+		}
+		updates = append(updates, chunkUpdate)
+		// Update the PubKeyTableOffset.
 		sf.staticMetadata.PubKeyTableOffset = sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
+		// Marshal the metadata again.
 		metadata, err = marshalMetadata(sf.staticMetadata)
 		if err != nil {
 			return err

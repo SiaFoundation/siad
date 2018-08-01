@@ -92,6 +92,8 @@ func TestCreateReadUpdate(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	sf := newTestFile()
 	// Create update randomly
 	index := int64(fastrand.Intn(100))
@@ -120,6 +122,8 @@ func TestApplyUpdates(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	t.Run("TestApplyUpdates", func(t *testing.T) {
 		siaFile := newTestFile()
 		testApply(t, siaFile, ApplyUpdates)
@@ -140,6 +144,8 @@ func TestMarshalUnmarshalMetadata(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	sf := newTestFile()
 
 	// Marshal metadata
@@ -164,6 +170,8 @@ func TestMarshalUnmarshalPubKeyTAble(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	sf := newTestFile()
 	sf.addRandomHostKeys(10)
 
@@ -198,6 +206,8 @@ func TestSaveSmallHeader(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	sf := newTestFile()
 
 	// Add some host keys.
@@ -225,6 +235,89 @@ func TestSaveSmallHeader(t *testing.T) {
 	}
 	if fi.Size() != pageSize {
 		t.Fatalf("Filesize should be %v but was %v", pageSize, fi.Size())
+	}
+
+	// Make sure the metadata was written to disk correctly.
+	rawMetadata, err := marshalMetadata(sf.staticMetadata)
+	if err != nil {
+		t.Fatal("Failed to marshal metadata", err)
+	}
+	readMetadata := make([]byte, len(rawMetadata))
+	if _, err := f.ReadAt(readMetadata, 0); err != nil {
+		t.Fatal("Failed to read metadata", err)
+	}
+	if !bytes.Equal(rawMetadata, readMetadata) {
+		fmt.Println(string(rawMetadata))
+		fmt.Println(string(readMetadata))
+		t.Fatal("Metadata on disk doesn't match marshaled metadata")
+	}
+
+	// Make sure that the pubKeyTable was written to disk correctly.
+	rawPubKeyTAble, err := marshalPubKeyTable(sf.pubKeyTable)
+	if err != nil {
+		t.Fatal("Failed to marshal pubKeyTable", err)
+	}
+	readPubKeyTable := make([]byte, len(rawPubKeyTAble))
+	if _, err := f.ReadAt(readPubKeyTable, sf.staticMetadata.PubKeyTableOffset); err != nil {
+		t.Fatal("Failed to read pubKeyTable", err)
+	}
+	if !bytes.Equal(rawPubKeyTAble, readPubKeyTable) {
+		t.Fatal("pubKeyTable on disk doesn't match marshaled pubKeyTable")
+	}
+}
+
+// TestSaveLargeHeader tests the saveHeader method for a header that uses more than a single page on disk and forces a call to allocateHeaderPage
+func TestSaveLargeHeader(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	sf := newTestFile()
+
+	// Add some host keys.
+	sf.addRandomHostKeys(100)
+
+	// Set the chunkOffset manually since we don't store any actual chunks.
+	sf.staticMetadata.ChunkOffset = pageSize
+
+	// Open the file.
+	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 777)
+	if err != nil {
+		t.Fatal("Failed to open file", err)
+	}
+	defer f.Close()
+
+	// Write some data right after the ChunkOffset as a checksum.
+	chunkData := fastrand.Bytes(100)
+	_, err = f.WriteAt(chunkData, sf.staticMetadata.ChunkOffset)
+	if err != nil {
+		t.Fatal("Failed to write random chunk data", err)
+	}
+
+	// Save the header.
+	if err := sf.saveHeader(); err != nil {
+		t.Fatal("Failed to save header", err)
+	}
+
+	// Make sure the chunkOffset was updated correctly.
+	if sf.staticMetadata.ChunkOffset != 2*pageSize {
+		t.Fatal("ChunkOffset wasn't updated correctly")
+	}
+
+	// The file should be exactly 2 pages + chunkData large.
+	fi, err := f.Stat()
+	if err != nil {
+		t.Fatal("Failed to get fileinfo", err)
+	}
+	if fi.Size() != int64(2*pageSize+len(chunkData)) {
+		t.Fatalf("Filesize should be %v but was %v", 2*pageSize+len(chunkData), fi.Size())
+	}
+
+	// Make sure that the checksum was moved correctly.
+	readChunkData := make([]byte, len(chunkData))
+	if _, err := f.ReadAt(readChunkData, sf.staticMetadata.ChunkOffset); err != nil {
+		t.Fatal("Checksum wasn't moved correctly")
 	}
 
 	// Make sure the metadata was written to disk correctly.
