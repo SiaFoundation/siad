@@ -199,23 +199,33 @@ func (sf *SiaFile) saveHeader() error {
 	// Create a list of updates which need to be applied to save the metadata.
 	updates := make([]writeaheadlog.Update, 0)
 
-	// Marshal the metadata.
-	metadata, err := marshalMetadata(sf.staticMetadata)
-	if err != nil {
-		return err
-	}
 	// Marshal the pubKeyTable.
 	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
 	if err != nil {
 		return err
 	}
 
+	// Update the pubKeyTableOffset. This is not necessarily the final offset
+	// but we need to marshal the metadata with this new offset to see if the
+	// metadata and the pubKeyTable overlap.
+	sf.staticMetadata.PubKeyTableOffset = sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
+
+	// Marshal the metadata.
+	metadata, err := marshalMetadata(sf.staticMetadata)
+	if err != nil {
+		return err
+	}
+
 	// If the metadata and the pubKeyTable overlap, we need to allocate a new
-	// page for them.
-	pubKeyTableOffset := sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
-	for int64(len(metadata)) > pubKeyTableOffset {
+	// page for them. Afterwards we need to marshal the metadata again since
+	// ChunkOffset and PubKeyTableOffset change when allocating a new page.
+	for int64(len(metadata))+int64(len(pubKeyTable)) > sf.staticMetadata.ChunkOffset {
 		updates = append(updates, sf.allocateHeaderPage()...)
-		pubKeyTableOffset = sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
+		sf.staticMetadata.PubKeyTableOffset = sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
+		metadata, err = marshalMetadata(sf.staticMetadata)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Create updates for the metadata and pubKeyTable.

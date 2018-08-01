@@ -3,6 +3,7 @@ package siafile
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -34,9 +35,28 @@ func NewRSCode(nData, nParity int) modules.ErasureCoder {
 	}
 }
 
+// addRandomHostKeys adds n random host keys to the SiaFile's pubKeyTable. It
+// doesn't write them to disk.
+func (sf *SiaFile) addRandomHostKeys(n int) {
+	for i := 0; i < n; i++ {
+		// Create random specifier and key.
+		algorithm := types.Specifier{}
+		fastrand.Read(algorithm[:])
+
+		// Create random key.
+		key := fastrand.Bytes(32)
+
+		// Append new key to slice.
+		sf.pubKeyTable = append(sf.pubKeyTable, types.SiaPublicKey{
+			Algorithm: algorithm,
+			Key:       key,
+		})
+	}
+}
+
 // AssertEqual asserts that md and md2 are equal and returns an error if they
 // are not.
-func (md Metadata) AssertEqual(md2 Metadata) error {
+func (md Metadata) assertEqual(md2 Metadata) error {
 	if md.StaticVersion != md2.StaticVersion {
 		return errors.New("'staticVersion' of md1 doesn't equal md2's")
 	}
@@ -187,7 +207,7 @@ func TestMarshalUnmarshalMetadata(t *testing.T) {
 		t.Fatal("Failed to unmarshal metadata", err)
 	}
 	// Compare result to original
-	if err := md.AssertEqual(sf.staticMetadata); err != nil {
+	if err := md.assertEqual(sf.staticMetadata); err != nil {
 		t.Fatal("Unmarshaled metadata not equal to marshaled metadata:", err)
 	}
 }
@@ -199,20 +219,7 @@ func TestMarshalUnmarshalPubKeyTAble(t *testing.T) {
 		t.SkipNow()
 	}
 	sf := newTestFile()
-	for i := 0; i < 10; i++ {
-		// Create random specifier and key.
-		algorithm := types.Specifier{}
-		fastrand.Read(algorithm[:])
-
-		// Create random key.
-		key := fastrand.Bytes(32)
-
-		// Append new key to slice.
-		sf.pubKeyTable = append(sf.pubKeyTable, types.SiaPublicKey{
-			Algorithm: algorithm,
-			Key:       key,
-		})
-	}
+	sf.addRandomHostKeys(10)
 
 	// Marshal pubKeyTable.
 	raw, err := marshalPubKeyTable(sf.pubKeyTable)
@@ -236,6 +243,70 @@ func TestMarshalUnmarshalPubKeyTAble(t *testing.T) {
 		if !bytes.Equal(spk.Key, sf.pubKeyTable[i].Key) {
 			t.Fatal("Keys don't match")
 		}
+	}
+}
+
+// TestSaveSmallHeader tests the saveHeader method for a header that is not big
+// enough to need more than a single page on disk.
+func TestSaveSmallHeader(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	sf := newTestFile()
+
+	// Add some host keys.
+	sf.addRandomHostKeys(10)
+
+	// Set the chunkOffset manually since we don't store any actual chunks.
+	sf.staticMetadata.ChunkOffset = pageSize
+
+	// Save the header.
+	if err := sf.saveHeader(); err != nil {
+		t.Fatal("Failed to save header", err)
+	}
+
+	// Manually open the file to check its contents.
+	f, err := os.Open(sf.siaFilePath)
+	if err != nil {
+		t.Fatal("Failed to open file", err)
+	}
+	defer f.Close()
+
+	// The file should be exactly 1 page large.
+	fi, err := f.Stat()
+	if err != nil {
+		t.Fatal("Failed to get fileinfo", err)
+	}
+	if fi.Size() != pageSize {
+		t.Fatalf("Filesize should be %v but was %v", pageSize, fi.Size())
+	}
+
+	// Make sure the metadata was written to disk correctly.
+	rawMetadata, err := marshalMetadata(sf.staticMetadata)
+	if err != nil {
+		t.Fatal("Failed to marshal metadata", err)
+	}
+	readMetadata := make([]byte, len(rawMetadata))
+	if _, err := f.ReadAt(readMetadata, 0); err != nil {
+		t.Fatal("Failed to read metadata", err)
+	}
+	if !bytes.Equal(rawMetadata, readMetadata) {
+		fmt.Println(string(rawMetadata))
+		fmt.Println(string(readMetadata))
+		t.Fatal("Metadata on disk doesn't match marshaled metadata")
+	}
+
+	// Make sure that the pubKeyTable was written to disk correctly.
+	rawPubKeyTAble, err := marshalPubKeyTable(sf.pubKeyTable)
+	if err != nil {
+		t.Fatal("Failed to marshal pubKeyTable", err)
+	}
+	readPubKeyTable := make([]byte, len(rawPubKeyTAble))
+	if _, err := f.ReadAt(readPubKeyTable, sf.staticMetadata.PubKeyTableOffset); err != nil {
+		t.Fatal("Failed to read pubKeyTable", err)
+	}
+	if !bytes.Equal(rawPubKeyTAble, readPubKeyTable) {
+		t.Fatal("pubKeyTable on disk doesn't match marshaled pubKeyTable")
 	}
 }
 
