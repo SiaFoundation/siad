@@ -17,7 +17,12 @@ func (c *Contractor) managedArchiveContracts() {
 	// the set of old contracts.
 	var expired []types.FileContractID
 	for _, contract := range c.staticContracts.ViewAll() {
-		if currentHeight > contract.EndHeight {
+		// Check map of renewedTo in case renew code was interrupted before
+		// archiving old contract
+		c.mu.RLock()
+		_, renewed := c.renewedTo[contract.ID]
+		c.mu.RUnlock()
+		if currentHeight > contract.EndHeight || renewed {
 			id := contract.ID
 			c.mu.Lock()
 			c.oldContracts[id] = contract
