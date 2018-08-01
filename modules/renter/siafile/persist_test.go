@@ -7,12 +7,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -52,60 +52,6 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 			Key:       key,
 		})
 	}
-}
-
-// AssertEqual asserts that md and md2 are equal and returns an error if they
-// are not.
-func (md Metadata) assertEqual(md2 Metadata) error {
-	if md.StaticVersion != md2.StaticVersion {
-		return errors.New("'staticVersion' of md1 doesn't equal md2's")
-	}
-	if md.StaticFileSize != md2.StaticFileSize {
-		return errors.New("'staticFileSize' of md1 doesn't equal md2's")
-	}
-	if md.LocalPath != md2.LocalPath {
-		return errors.New("'localPath' of md1 doesn't equal md2's")
-	}
-	if md.SiaPath != md2.SiaPath {
-		return errors.New("'siaPath' of md1 doesn't equal md2's")
-	}
-	if md.StaticMasterKey != md2.StaticMasterKey {
-		return errors.New("'staticMasterKey' of md1 doesn't equal md2's")
-	}
-	if md.StaticSharingKey != md2.StaticSharingKey {
-		return errors.New("'staticSharingKey' of md1 doesn't equal md2's")
-	}
-	if md.ModTime != md2.ModTime {
-		return errors.New("'modTime' of md1 doesn't equal md2's")
-	}
-	if md.ChangeTime != md2.ChangeTime {
-		return errors.New("'changeTime' of md1 doesn't equal md2's")
-	}
-	if md.AccessTime != md2.AccessTime {
-		return errors.New("'accessTime' of md1 doesn't equal md2's")
-	}
-	if md.CreateTime != md2.CreateTime {
-		return errors.New("'createTime' of md1 doesn't equal md2's")
-	}
-	if md.Mode != md2.Mode {
-		return errors.New("'mode' of md1 doesn't equal md2's")
-	}
-	if md.UID != md2.UID {
-		return errors.New("'uid' of md1 doesn't equal md2's")
-	}
-	if md.Gid != md2.Gid {
-		return errors.New("'gid' of md1 doesn't equal md2's")
-	}
-	if md.StaticChunkMetadataSize != md2.StaticChunkMetadataSize {
-		return errors.New("'staticChunkMetadataSize' of md1 doesn't equal md2's")
-	}
-	if md.ChunkOffset != md2.ChunkOffset {
-		return errors.New("'chunkOffset' of md1 doesn't equal md2's")
-	}
-	if md.PubKeyTableOffset != md2.PubKeyTableOffset {
-		return errors.New("'pubKeyTableOffset' of md1 doesn't equal md2's")
-	}
-	return nil
 }
 
 // newTestFile is a helper method to create a SiaFile for testing.
@@ -207,7 +153,7 @@ func TestMarshalUnmarshalMetadata(t *testing.T) {
 		t.Fatal("Failed to unmarshal metadata", err)
 	}
 	// Compare result to original
-	if err := md.assertEqual(sf.staticMetadata); err != nil {
+	if !reflect.DeepEqual(md, sf.staticMetadata) {
 		t.Fatal("Unmarshaled metadata not equal to marshaled metadata:", err)
 	}
 }
