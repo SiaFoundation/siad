@@ -1,14 +1,15 @@
 package contractor
 
-// contracts.go handles forming and renewing contracts for the contractor. This
-// includes deciding when new contracts need to be formed, when contracts need
-// to be renewed, and if contracts need to be blacklisted.
+// contractmaintenance.go handles forming and renewing contracts for the
+// contractor. This includes deciding when new contracts need to be formed, when
+// contracts need to be renewed, and if contracts need to be blacklisted.
 
 import (
 	"fmt"
 	"math/big"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -30,6 +31,46 @@ type (
 		amount types.Currency
 	}
 )
+
+//managedCheckForDuplicates checks for static contracts that have the same host
+//key and moves the older one to old contracts
+func (c *Contractor) managedCheckForDuplicates() {
+	// Build map for comparison
+	pubkeys := make(map[crypto.Hash]types.FileContractID)
+	var newContract, oldContract modules.RenterContract
+	for _, contract := range c.staticContracts.ViewAll() {
+		id, exists := pubkeys[crypto.HashBytes(contract.HostPublicKey.Key)]
+		if exists {
+			// Duplicate contract found, determine older contract to delete
+			if rc, ok := c.staticContracts.View(id); ok {
+				if rc.StartHeight >= contract.StartHeight {
+					newContract = rc
+					oldContract = contract
+				} else {
+					newContract = contract
+					oldContract = rc
+				}
+				// Get SafeContract
+				oldSC, ok := c.staticContracts.Acquire(oldContract.ID)
+				if ok {
+					c.mu.Lock()
+					// Link Contracts
+					c.renewedFrom[newContract.ID] = oldContract.ID
+					c.renewedTo[oldContract.ID] = newContract.ID
+					// Store the contract in the record of historic contracts.
+					c.oldContracts[oldContract.ID] = oldSC.Metadata()
+					// Delete the old contract.
+					c.staticContracts.Delete(oldSC)
+					c.mu.Unlock()
+				}
+				// Update map
+				pubkeys[crypto.HashBytes(newContract.HostPublicKey.Key)] = newContract.ID
+			}
+		} else {
+			pubkeys[crypto.HashBytes(contract.HostPublicKey.Key)] = contract.ID
+		}
+	}
+}
 
 // managedEstimateRenewFundingRequirements estimates the amount of money that a
 // contract is going to need in the next billing cycle by looking at how much
@@ -189,6 +230,11 @@ func (c *Contractor) managedMarkContractsUtility() error {
 	// Update utility fields for each contract.
 	for _, contract := range c.staticContracts.ViewAll() {
 		utility := func() (u modules.ContractUtility) {
+			// Record current utility of the contract
+			u.GoodForRenew = contract.Utility.GoodForRenew
+			u.GoodForUpload = contract.Utility.GoodForUpload
+			u.Locked = contract.Utility.Locked
+
 			// Start the contract in good standing if the utility wasn't
 			// locked.
 			if !u.Locked {
@@ -480,22 +526,27 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	}
 	oldUtility.GoodForRenew = false
 	oldUtility.GoodForUpload = false
+	oldUtility.Locked = true
 	if err := oldContract.UpdateUtility(oldUtility); err != nil {
 		c.log.Println("Failed to update the contract utilities", err)
 		return amount, nil // Error is not returned because the renew succeeded.
 	}
 
+	if c.staticDeps.Disrupt("InterruptContractSaveToDiskAfterDeletion") {
+		c.staticContracts.Return(oldContract)
+		return amount, errors.New("InterruptContractSaveToDiskAfterDeletion disrupt")
+	}
 	// Lock the contractor as we update it to use the new contract
 	// instead of the old contract.
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	// Delete the old contract.
-	c.staticContracts.Delete(oldContract)
-	// Store the contract in the record of historic contracts.
-	c.oldContracts[id] = oldContract.Metadata()
 	// Link Contracts
 	c.renewedFrom[newContract.ID] = id
 	c.renewedTo[id] = newContract.ID
+	// Store the contract in the record of historic contracts.
+	c.oldContracts[id] = oldContract.Metadata()
+	// Delete the old contract.
+	c.staticContracts.Delete(oldContract)
 	// Save the contractor.
 	err = c.saveSync()
 	if err != nil {
@@ -521,8 +572,10 @@ func (c *Contractor) threadedContractMaintenance() {
 	defer c.tg.Done()
 
 	// Archive contracts that need to be archived before doing additional
-	// maintenance, and then prune the pubkey map.
+	// maintenance, check for any duplicates caused by interruption, and then
+	// prune the pubkey map.
 	c.managedArchiveContracts()
+	c.managedCheckForDuplicates()
 	c.managedPrunePubkeyMap()
 
 	// Nothing to do if there are no hosts.
@@ -618,7 +671,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			// Renew the contract with double the amount of funds that the
 			// contract had previously. The reason that we double the funding
 			// instead of doing anything more clever is that we don't know what
-			// the usage pattern has been. The spending could have all occured
+			// the usage pattern has been. The spending could have all occurred
 			// in one burst recently, and the user might need a contract that
 			// has substantially more money in it.
 			//
