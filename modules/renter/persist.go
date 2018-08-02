@@ -445,6 +445,12 @@ func (r *Renter) initPersist() error {
 		return err
 	}
 
+	// Create the files directory if it does not yet exist.
+	err = os.MkdirAll(filepath.Join(r.persistDir, FilesDir), 0700)
+	if err != nil {
+		return err
+	}
+
 	// Initialize the logger.
 	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
 	if err != nil {
