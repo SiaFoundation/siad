@@ -37,6 +37,7 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 
 // newTestFile is a helper method to create a SiaFile for testing.
 func newTestFile() *SiaFile {
+	// Create arguments for new file.
 	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
 	rc, err := NewRSCode(10, 20)
 	if err != nil {
@@ -47,7 +48,13 @@ func newTestFile() *SiaFile {
 	fileMode := os.FileMode(777)
 	source := string(hex.EncodeToString(fastrand.Bytes(8)))
 
+	// Create the path to the file.
 	siaFilePath := filepath.Join(os.TempDir(), "siafiles", siaPath)
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		panic(err)
+	}
+	// Create the file.
 	sf, err := New(siaFilePath, siaPath, source, newTestWAL(), []modules.ErasureCoder{rc}, pieceSize, fileSize, fileMode)
 	if err != nil {
 		panic(err)
@@ -68,6 +75,72 @@ func newTestWAL() *writeaheadlog.WAL {
 		panic(err)
 	}
 	return wal
+}
+
+// TestNewFile tests that a new file has the correct contents and size.
+func TestNewFile(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	sf := newTestFile()
+
+	// Marshal the metadata.
+	md, err := marshalMetadata(sf.staticMetadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Marshal the pubKeyTable.
+	pkt, err := marshalPubKeyTable(sf.pubKeyTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Marshal the chunks.
+	chunks, err := marshalChunks(sf.staticChunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Open the file.
+	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 777)
+	if err != nil {
+		t.Fatal("Failed to open file", err)
+	}
+	defer f.Close()
+	// Check the filesize.
+	fi, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() != sf.staticMetadata.ChunkOffset+int64(len(chunks)) {
+		t.Fatal("file doesn't have right size")
+	}
+	// Compare the metadata to the on-disk metadata.
+	readMD := make([]byte, len(md))
+	_, err = f.ReadAt(readMD, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readMD, md) {
+		t.Fatal("metadata doesn't equal on-disk metadata")
+	}
+	// Compare the pubKeyTable to the on-disk pubKeyTable.
+	readPKT := make([]byte, len(pkt))
+	_, err = f.ReadAt(readPKT, sf.staticMetadata.PubKeyTableOffset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readPKT, pkt) {
+		t.Fatal("pubKeyTable doesn't equal on-disk pubKeyTable")
+	}
+	// Compare the chunks to the on-disk chunks.
+	readChunks := make([]byte, len(chunks))
+	_, err = f.ReadAt(readChunks, sf.staticMetadata.ChunkOffset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readChunks, chunks) {
+		t.Fatal("readChunks don't equal on-disk readChunks")
+	}
 }
 
 // TestCreateReadUpdate tests if an update can be created using createUpdate
@@ -255,9 +328,6 @@ func TestSaveSmallHeader(t *testing.T) {
 	// Add some host keys.
 	sf.addRandomHostKeys(10)
 
-	// Set the chunkOffset manually since we don't store any actual chunks.
-	sf.staticMetadata.ChunkOffset = pageSize
-
 	// Save the header.
 	updates, err := sf.saveHeader()
 	if err != nil {
@@ -273,15 +343,6 @@ func TestSaveSmallHeader(t *testing.T) {
 		t.Fatal("Failed to open file", err)
 	}
 	defer f.Close()
-
-	// The file should be exactly 1 page large.
-	fi, err := f.Stat()
-	if err != nil {
-		t.Fatal("Failed to get fileinfo", err)
-	}
-	if fi.Size() != pageSize {
-		t.Fatalf("Filesize should be %v but was %v", pageSize, fi.Size())
-	}
 
 	// Make sure the metadata was written to disk correctly.
 	rawMetadata, err := marshalMetadata(sf.staticMetadata)
@@ -324,9 +385,6 @@ func TestSaveLargeHeader(t *testing.T) {
 	// Add some host keys.
 	sf.addRandomHostKeys(100)
 
-	// Set the chunkOffset manually since we don't store any actual chunks.
-	sf.staticMetadata.ChunkOffset = pageSize
-
 	// Open the file.
 	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 777)
 	if err != nil {
@@ -353,15 +411,6 @@ func TestSaveLargeHeader(t *testing.T) {
 	// Make sure the chunkOffset was updated correctly.
 	if sf.staticMetadata.ChunkOffset != 2*pageSize {
 		t.Fatal("ChunkOffset wasn't updated correctly")
-	}
-
-	// The file should be exactly 2 pages + chunkData large.
-	fi, err := f.Stat()
-	if err != nil {
-		t.Fatal("Failed to get fileinfo", err)
-	}
-	if fi.Size() != int64(2*pageSize+len(chunkData)) {
-		t.Fatalf("Filesize should be %v but was %v", 2*pageSize+len(chunkData), fi.Size())
 	}
 
 	// Make sure that the checksum was moved correctly.
@@ -410,20 +459,11 @@ func testApply(t *testing.T, siaFile *SiaFile, apply func(...writeaheadlog.Updat
 	if err := apply(update); err != nil {
 		t.Fatal("Failed to apply update", err)
 	}
-
-	// Check if file has correct size after update.
+	// Open file.
 	file, err := os.Open(siaFile.siaFilePath)
 	if err != nil {
 		t.Fatal("Failed to open file", err)
 	}
-	fi, err := file.Stat()
-	if err != nil {
-		t.Fatal("Failed to get fileinfo", err)
-	}
-	if fi.Size() != int64(index+len(data)) {
-		t.Errorf("File's size should be %v but was %v", index+len(data), fi.Size())
-	}
-
 	// Check if correct data was written.
 	readData := make([]byte, len(data))
 	if _, err := file.ReadAt(readData, int64(index)); err != nil {
@@ -431,14 +471,5 @@ func testApply(t *testing.T, siaFile *SiaFile, apply func(...writeaheadlog.Updat
 	}
 	if !bytes.Equal(data, readData) {
 		t.Fatal("Read data doesn't equal written data")
-	}
-	// Make sure that we didn't write anything before the specified index.
-	readData = make([]byte, index)
-	expectedData := make([]byte, index)
-	if _, err := file.ReadAt(readData, 0); err != nil {
-		t.Fatal("Failed to read data back from disk", err)
-	}
-	if !bytes.Equal(expectedData, readData) {
-		t.Fatal("ApplyUpdates corrupted the data before the specified index")
 	}
 }

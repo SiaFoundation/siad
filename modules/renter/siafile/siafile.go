@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -80,10 +79,10 @@ type (
 )
 
 // New create a new SiaFile.
-// TODO needs changes once we move persistence over.
 func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode []modules.ErasureCoder, pieceSize, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	file := &SiaFile{
 		staticMetadata: Metadata{
+			ChunkOffset:     pageSize,
 			StaticFileSize:  int64(fileSize),
 			LocalPath:       source,
 			StaticMasterKey: crypto.GenerateTwofishKey(),
@@ -95,18 +94,6 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 		staticUID:   string(fastrand.Bytes(20)),
 		wal:         wal,
 	}
-	// Create file.
-	dir, _ := filepath.Split(file.siaFilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return nil, err
-	}
-	f, err := os.OpenFile(file.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return nil, err
-	}
-	if err := f.Close(); err != nil {
-		return nil, err
-	}
 	// Init chunks.
 	file.staticChunks = make([]chunk, len(erasureCode))
 	for i := range file.staticChunks {
@@ -116,12 +103,12 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 		file.staticChunks[i].StaticErasureCodeParams = ecParams
 		file.staticChunks[i].Pieces = make([][]Piece, erasureCode[i].NumPieces())
 	}
-	return file, nil
+	// Save file.
+	return file, file.saveFile()
 }
 
 // AddPiece adds an uploaded piece to the file. It also updates the host table
 // if the public key of the host is not aleady known.
-// TODO needs changes once we move persistence over.
 func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -135,9 +122,11 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		}
 	}
 	// If we don't know the host yet, we add it to the table.
+	tableChanged := false
 	if tableIndex == -1 {
 		sf.pubKeyTable = append(sf.pubKeyTable, pk)
 		tableIndex = len(sf.pubKeyTable) - 1
+		tableChanged = true
 	}
 	// Check if the chunkIndex is valid.
 	if chunkIndex >= uint64(len(sf.staticChunks)) {
@@ -152,7 +141,28 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		HostPubKey: pk,
 		MerkleRoot: merkleRoot,
 	})
-	return nil
+
+	// Update the file atomically.
+	var updates []writeaheadlog.Update
+	var err error
+	// Get the updates for the header.
+	if tableChanged {
+		// If the table changed we update the whole header.
+		updates, err = sf.saveHeader()
+	} else {
+		// Otherwise just the metadata.
+		updates, err = sf.saveMetadata()
+	}
+	if err != nil {
+		return err
+	}
+	// Get the updates for the chunks.
+	// TODO Change this to update only a single chunk instead of all of them.
+	chunksUpdate, err := sf.saveChunks()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(append(updates, chunksUpdate)...)
 }
 
 // Available indicates whether the file is ready to be downloaded.

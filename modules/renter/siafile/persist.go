@@ -31,7 +31,7 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 			}
 
 			// Open the file.
-			f, err := os.OpenFile(path, os.O_RDWR, 0)
+			f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
 			if err != nil {
 				return err
 			}
@@ -195,7 +195,7 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 // be considered a developer error and cause a panic to avoid corruption.
 func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) error {
 	// Open the file.
-	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 0)
+	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return err
 	}
@@ -263,6 +263,29 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	}
 	// Updates are applied. Let the writeaheadlog know.
 	return errors.AddContext(err, "failed to signal that updates are applied")
+}
+
+// saveFile saves the whole SiaFile atomically.
+func (sf *SiaFile) saveFile() error {
+	headerUpdates, err := sf.saveHeader()
+	if err != nil {
+		return err
+	}
+	chunksUpdate, err := sf.saveChunks()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(append(headerUpdates, chunksUpdate)...)
+}
+
+// saveChunks creates a writeaheadlog update that saves the marshaled chunks of
+// the SiaFile to disk when applied.
+func (sf *SiaFile) saveChunks() (writeaheadlog.Update, error) {
+	chunks, err := marshalChunks(sf.staticChunks)
+	if err != nil {
+		return writeaheadlog.Update{}, errors.AddContext(err, "failed to marshal chunks")
+	}
+	return sf.createUpdate(sf.staticMetadata.ChunkOffset, chunks), nil
 }
 
 // saveHeader creates writeaheadlog updates to saves the metadata and
