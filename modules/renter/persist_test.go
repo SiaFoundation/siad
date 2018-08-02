@@ -19,7 +19,7 @@ func newTestingFile() *siafile.SiaFile {
 	data := fastrand.Bytes(8)
 	nData := fastrand.Intn(10)
 	nParity := fastrand.Intn(10)
-	rsc, _ := NewRSCode(nData+1, nParity+1)
+	rsc, _ := siafile.NewRSCode(nData+1, nParity+1)
 
 	name := "testfile-" + strconv.Itoa(int(data[0]))
 

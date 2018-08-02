@@ -51,7 +51,7 @@ func TestFileNumChunks(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		rsc, _ := NewRSCode(test.piecesPerChunk, 1) // can't use 0
+		rsc, _ := siafile.NewRSCode(test.piecesPerChunk, 1) // can't use 0
 		f := newFileTesting(t.Name(), newTestingWal(), rsc, test.pieceSize, test.size, 0777, "")
 		if f.NumChunks() != test.expNumChunks {
 			t.Errorf("Test %v: expected %v, got %v", test, test.expNumChunks, f.NumChunks())
@@ -61,7 +61,7 @@ func TestFileNumChunks(t *testing.T) {
 
 // TestFileAvailable probes the available method of the file type.
 func TestFileAvailable(t *testing.T) {
-	rsc, _ := NewRSCode(1, 1) // can't use 0
+	rsc, _ := siafile.NewRSCode(1, 1) // can't use 0
 	f := newFileTesting(t.Name(), newTestingWal(), rsc, pieceSize, 100, 0777, "")
 	neverOffline := make(map[string]bool)
 
@@ -88,7 +88,7 @@ func TestFileAvailable(t *testing.T) {
 // the number of sectors stored via contract times the size of each sector.
 func TestFileUploadedBytes(t *testing.T) {
 	// ensure that a piece fits within a sector
-	rsc, _ := NewRSCode(1, 3)
+	rsc, _ := siafile.NewRSCode(1, 3)
 	f := newFileTesting(t.Name(), newTestingWal(), rsc, modules.SectorSize/2, 1000, 0777, "")
 	for i := uint64(0); i < 4; i++ {
 		err := f.AddPiece(types.SiaPublicKey{}, uint64(0), i, crypto.Hash{})
@@ -104,7 +104,7 @@ func TestFileUploadedBytes(t *testing.T) {
 // TestFileUploadProgressPinning verifies that uploadProgress() returns at most
 // 100%, even if more pieces have been uploaded,
 func TestFileUploadProgressPinning(t *testing.T) {
-	rsc, _ := NewRSCode(1, 1)
+	rsc, _ := siafile.NewRSCode(1, 1)
 	f := newFileTesting(t.Name(), newTestingWal(), rsc, 2, 4, 0777, "")
 	for i := uint64(0); i < 2; i++ {
 		err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, uint64(0), i, crypto.Hash{})
@@ -130,7 +130,7 @@ func TestFileRedundancy(t *testing.T) {
 	}
 
 	for _, nData := range nDatas {
-		rsc, _ := NewRSCode(nData, 10)
+		rsc, _ := siafile.NewRSCode(nData, 10)
 		f := newFileTesting(t.Name(), newTestingWal(), rsc, 100, 1000, 0777, "")
 		// Test that an empty file has 0 redundancy.
 		if r := f.Redundancy(neverOffline, goodForRenew); r != 0 {
@@ -214,7 +214,7 @@ func TestFileExpiration(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	rsc, _ := NewRSCode(1, 2)
+	rsc, _ := siafile.NewRSCode(1, 2)
 	f := newFileTesting(t.Name(), newTestingWal(), rsc, pieceSize, 1000, 0777, "")
 	contracts := make(map[string]modules.RenterContract)
 	if f.Expiration(contracts) != 0 {

@@ -1,4 +1,4 @@
-package renter
+package siafile
 
 import (
 	"bytes"

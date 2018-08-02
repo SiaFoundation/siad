@@ -2,6 +2,7 @@ package siafile
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -50,6 +52,17 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	return nil
 }
 
+// marshalErasureCoder marshals an erasure coder into its type and params.
+func marshalErasureCoder(ec modules.ErasureCoder) ([4]byte, [8]byte) {
+	// Since we only support one type we assume it is ReedSolomon for now.
+	ecType := ecReedSolomon
+	// Read params from ec.
+	ecParams := [8]byte{}
+	binary.LittleEndian.PutUint32(ecParams[:4], uint32(ec.MinPieces()))
+	binary.LittleEndian.PutUint32(ecParams[4:], uint32(ec.NumPieces()-ec.MinPieces()))
+	return ecType, ecParams
+}
+
 // marshalMetadata marshals the metadata of the SiaFile using json encoding.
 func marshalMetadata(md Metadata) ([]byte, error) {
 	// Encode the metadata.
@@ -73,6 +86,16 @@ func marshalPubKeyTable(pubKeyTable []types.SiaPublicKey) ([]byte, error) {
 		}
 	}
 	return buf.Bytes(), nil
+}
+
+// unmarshalErasureCoder unmarshals an ErasureCoder from the given params.
+func unmarshalErasureCoder(ecType [4]byte, ecParams [8]byte) (modules.ErasureCoder, error) {
+	if ecType != ecReedSolomon {
+		return nil, errors.New("unknown erasure code type")
+	}
+	dataPieces := int(binary.LittleEndian.Uint32(ecParams[:4]))
+	parityPieces := int(binary.LittleEndian.Uint32(ecParams[4:]))
+	return NewRSCode(dataPieces, parityPieces)
 }
 
 // unmarshalMetadata unmarshals the json encoded metadata of the SiaFile.

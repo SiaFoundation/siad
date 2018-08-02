@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -16,24 +15,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
-
-// rcCode is a dummy implementation of modules.ErasureCoder
-type rsCode struct {
-	numPieces  int
-	dataPieces int
-}
-
-func (rs *rsCode) NumPieces() int                                       { return rs.numPieces }
-func (rs *rsCode) MinPieces() int                                       { return rs.dataPieces }
-func (rs *rsCode) Encode(data []byte) ([][]byte, error)                 { return nil, nil }
-func (rs *rsCode) EncodeShards(pieces [][]byte) ([][]byte, error)       { return nil, nil }
-func (rs *rsCode) Recover(pieces [][]byte, n uint64, w io.Writer) error { return nil }
-func NewRSCode(nData, nParity int) modules.ErasureCoder {
-	return &rsCode{
-		numPieces:  nData + nParity,
-		dataPieces: nData,
-	}
-}
 
 // addRandomHostKeys adds n random host keys to the SiaFile's pubKeyTable. It
 // doesn't write them to disk.
@@ -57,7 +38,10 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 // newTestFile is a helper method to create a SiaFile for testing.
 func newTestFile() *SiaFile {
 	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
-	rc := NewRSCode(10, 20)
+	rc, err := NewRSCode(10, 20)
+	if err != nil {
+		panic(err)
+	}
 	pieceSize := modules.SectorSize - crypto.TwofishOverhead
 	fileSize := pieceSize * 10
 	fileMode := os.FileMode(777)
@@ -136,6 +120,31 @@ func TestApplyUpdates(t *testing.T) {
 		siaFile := newTestFile()
 		testApply(t, siaFile, siaFile.createAndApplyTransaction)
 	})
+}
+
+// TestMarshalUnmarshalErasureCoder tests marshaling and unmarshaling an
+// ErasureCoder.
+func TestMarshalUnmarshalErasureCoder(t *testing.T) {
+	rc, err := NewRSCode(10, 20)
+	if err != nil {
+		t.Fatal("failed to create reed solomon coder", err)
+	}
+	// Get the minimum pieces and the total number of pieces.
+	numPieces, minPieces := rc.NumPieces(), rc.MinPieces()
+	// Marshal the erasure coder.
+	ecType, ecParams := marshalErasureCoder(rc)
+	// Unmarshal it.
+	rc2, err := unmarshalErasureCoder(ecType, ecParams)
+	if err != nil {
+		t.Fatal("failed to unmarshal reed solomon coder", err)
+	}
+	// Check if the settings are still the same.
+	if numPieces != rc2.NumPieces() {
+		t.Errorf("expected %v numPieces but was %v", numPieces, rc2.NumPieces())
+	}
+	if minPieces != rc2.MinPieces() {
+		t.Errorf("expected %v minPieces but was %v", minPieces, rc2.MinPieces())
+	}
 }
 
 // TestMarshalUnmarshalMetadata tests marshaling and unmarshaling the metadata

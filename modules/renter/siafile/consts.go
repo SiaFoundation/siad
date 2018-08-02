@@ -1,6 +1,8 @@
 package siafile
 
 import (
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -15,6 +17,14 @@ const (
 
 	// updateInsertName is the name of a siaFile update that inserts data at a specific index.
 	updateInsertName = "Insert"
+)
+
+var (
+	// ecReedSolomon is the marshaled type of the reed solomon coder.
+	ecReedSolomon = [4]byte{0, 0, 0, 1}
+
+	// Erasure-coded piece size
+	pieceSize = modules.SectorSize - crypto.TwofishOverhead
 )
 
 // IsSiaFileUpdate is a helper method that makes sure that a wal update belongs
