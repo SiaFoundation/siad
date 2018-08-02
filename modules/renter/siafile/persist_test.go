@@ -122,6 +122,39 @@ func TestApplyUpdates(t *testing.T) {
 	})
 }
 
+// TestMarshalUnmarshalChunks tests marshaling and unmarshaling the chunks of a
+// SiaFile.
+func TestMarshalUnmarshalChunks(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	sf := newTestFile()
+	// The testing file has a chunk. Duplicate that to get more chunks for
+	// testing.
+	for i := 0; i < 3; i++ {
+		sf.staticChunks = append(sf.staticChunks, sf.staticChunks...)
+	}
+	if len(sf.staticChunks) < 8 {
+		t.Fatal("Not enough chunks for testing")
+	}
+	// Marshal the chunks.
+	raw, err := marshalChunks(sf.staticChunks)
+	if err != nil {
+		t.Fatal("Failed to marshal chunks", err)
+	}
+	// Unmarshal the chunks again.
+	chunks, err := unmarshalChunks(raw)
+	if err != nil {
+		t.Fatal("Failed to unmarshal chunks", err)
+	}
+	// Compare them to the original ones.
+	if !reflect.DeepEqual(sf.staticChunks, chunks) {
+		t.Fatal("Unmarshaled chunks don't equal origin chunks")
+	}
+}
+
 // TestMarshalUnmarshalErasureCoder tests marshaling and unmarshaling an
 // ErasureCoder.
 func TestMarshalUnmarshalErasureCoder(t *testing.T) {

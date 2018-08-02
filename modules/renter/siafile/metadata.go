@@ -174,7 +174,7 @@ func (sf *SiaFile) UploadedBytes() uint64 {
 	defer sf.mu.RUnlock()
 	var uploaded uint64
 	for _, chunk := range sf.staticChunks {
-		for _, pieceSet := range chunk.pieces {
+		for _, pieceSet := range chunk.Pieces {
 			// Note: we need to multiply by SectorSize here instead of
 			// f.pieceSize because the actual bytes uploaded include overhead
 			// from TwoFish encryption

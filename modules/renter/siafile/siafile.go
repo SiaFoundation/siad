@@ -2,7 +2,6 @@ package siafile
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"math"
 	"os"
@@ -36,7 +35,7 @@ type (
 		pubKeyTable []types.SiaPublicKey
 
 		// staticChunks are the staticChunks the file was split into.
-		staticChunks []Chunk
+		staticChunks []chunk
 
 		// utility fields. These are not persisted.
 		deleted   bool
@@ -48,29 +47,29 @@ type (
 		wal         *writeaheadlog.WAL // the wal that is used for SiaFiles
 	}
 
-	// Chunk represents a single chunk of a file on disk
-	Chunk struct {
+	// chunk represents a single chunk of a file on disk
+	chunk struct {
 		// erasure code settings.
 		//
-		// staticErasureCodeType specifies the algorithm used for erasure coding
+		// StaticErasureCodeType specifies the algorithm used for erasure coding
 		// chunks. Available types are:
 		//   0 - Invalid / Missing Code
 		//   1 - Reed Solomon Code
 		//
 		// erasureCodeParams specifies possible parameters for a certain
-		// staticErasureCodeType. Currently params will be parsed as follows:
+		// StaticErasureCodeType. Currently params will be parsed as follows:
 		//   Reed Solomon Code - 4 bytes dataPieces / 4 bytes parityPieces
 		//
-		staticErasureCodeType   [4]byte
-		staticErasureCodeParams [8]byte
-		staticErasureCode       modules.ErasureCoder
+		StaticErasureCodeType   [4]byte              `json:"erasurecodetype"`
+		StaticErasureCodeParams [8]byte              `json:"erasurecodeparams"`
+		staticErasureCode       modules.ErasureCoder // not persisted, exists for convenience
 
-		// extensionInfo is some reserved space for each chunk that allows us
+		// ExtensionInfo is some reserved space for each chunk that allows us
 		// to indicate if a chunk is special.
-		extensionInfo [16]byte
+		ExtensionInfo [16]byte `json:"extensioninfo"`
 
-		// pieces are the pieces of the file the chunk consists of.
-		pieces [][]Piece
+		// Pieces are the Pieces of the file the chunk consists of.
+		Pieces [][]Piece `json:"pieces"`
 	}
 
 	// Piece represents a single piece of a chunk on disk
@@ -109,13 +108,13 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 		return nil, err
 	}
 	// Init chunks.
-	file.staticChunks = make([]Chunk, len(erasureCode))
+	file.staticChunks = make([]chunk, len(erasureCode))
 	for i := range file.staticChunks {
+		ecType, ecParams := marshalErasureCoder(erasureCode[i])
 		file.staticChunks[i].staticErasureCode = erasureCode[i]
-		file.staticChunks[i].staticErasureCodeType = [4]byte{0, 0, 0, 1}
-		binary.LittleEndian.PutUint32(file.staticChunks[i].staticErasureCodeParams[0:4], uint32(erasureCode[i].MinPieces()))
-		binary.LittleEndian.PutUint32(file.staticChunks[i].staticErasureCodeParams[4:8], uint32(erasureCode[i].NumPieces()-erasureCode[i].MinPieces()))
-		file.staticChunks[i].pieces = make([][]Piece, erasureCode[i].NumPieces())
+		file.staticChunks[i].StaticErasureCodeType = ecType
+		file.staticChunks[i].StaticErasureCodeParams = ecParams
+		file.staticChunks[i].Pieces = make([][]Piece, erasureCode[i].NumPieces())
 	}
 	return file, nil
 }
@@ -145,11 +144,11 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		return fmt.Errorf("chunkIndex %v out of bounds (%v)", chunkIndex, len(sf.staticChunks))
 	}
 	// Check if the pieceIndex is valid.
-	if pieceIndex >= uint64(len(sf.staticChunks[chunkIndex].pieces)) {
-		return fmt.Errorf("pieceIndex %v out of bounds (%v)", pieceIndex, len(sf.staticChunks[chunkIndex].pieces))
+	if pieceIndex >= uint64(len(sf.staticChunks[chunkIndex].Pieces)) {
+		return fmt.Errorf("pieceIndex %v out of bounds (%v)", pieceIndex, len(sf.staticChunks[chunkIndex].Pieces))
 	}
 	// Add the piece to the chunk.
-	sf.staticChunks[chunkIndex].pieces[pieceIndex] = append(sf.staticChunks[chunkIndex].pieces[pieceIndex], Piece{
+	sf.staticChunks[chunkIndex].Pieces[pieceIndex] = append(sf.staticChunks[chunkIndex].Pieces[pieceIndex], Piece{
 		HostPubKey: pk,
 		MerkleRoot: merkleRoot,
 	})
@@ -164,7 +163,7 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 	// chunk for the file to be available.
 	for chunkIndex, chunk := range sf.staticChunks {
 		piecesForChunk := 0
-		for _, pieceSet := range chunk.pieces {
+		for _, pieceSet := range chunk.Pieces {
 			for _, piece := range pieceSet {
 				if !offline[string(piece.HostPubKey.Key)] {
 					piecesForChunk++
@@ -218,10 +217,10 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 		panic(fmt.Sprintf("index %v out of bounds (%v)", chunkIndex, len(sf.staticChunks)))
 	}
 	// Return a deep-copy to avoid race conditions.
-	pieces := make([][]Piece, len(sf.staticChunks[chunkIndex].pieces))
+	pieces := make([][]Piece, len(sf.staticChunks[chunkIndex].Pieces))
 	for pieceIndex := range pieces {
-		pieces[pieceIndex] = make([]Piece, len(sf.staticChunks[chunkIndex].pieces[pieceIndex]))
-		copy(pieces[pieceIndex], sf.staticChunks[chunkIndex].pieces[pieceIndex])
+		pieces[pieceIndex] = make([]Piece, len(sf.staticChunks[chunkIndex].Pieces[pieceIndex]))
+		copy(pieces[pieceIndex], sf.staticChunks[chunkIndex].Pieces[pieceIndex])
 	}
 	return pieces, nil
 }
@@ -250,7 +249,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 		// were goodForRenew and how many were not.
 		numPiecesRenew := uint64(0)
 		numPiecesNoRenew := uint64(0)
-		for _, pieceSet := range chunk.pieces {
+		for _, pieceSet := range chunk.Pieces {
 			// Remember if we encountered a goodForRenew piece or a
 			// !goodForRenew piece that was at least online.
 			foundGoodForRenew := false

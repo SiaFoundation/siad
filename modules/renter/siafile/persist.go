@@ -52,6 +52,16 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	return nil
 }
 
+// marshalChunks marshals the chunks of the SiaFile using json encoding.
+func marshalChunks(chunks []chunk) ([]byte, error) {
+	// Encode the chunks.
+	jsonChunks, err := json.Marshal(chunks)
+	if err != nil {
+		return nil, err
+	}
+	return jsonChunks, nil
+}
+
 // marshalErasureCoder marshals an erasure coder into its type and params.
 func marshalErasureCoder(ec modules.ErasureCoder) ([4]byte, [8]byte) {
 	// Since we only support one type we assume it is ReedSolomon for now.
@@ -70,7 +80,6 @@ func marshalMetadata(md Metadata) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Create the update.
 	return jsonMD, nil
 }
 
@@ -86,6 +95,23 @@ func marshalPubKeyTable(pubKeyTable []types.SiaPublicKey) ([]byte, error) {
 		}
 	}
 	return buf.Bytes(), nil
+}
+
+// unmarshalChunks unmarshals the json encoded chunks of the SiaFile.
+func unmarshalChunks(raw []byte) (chunks []chunk, err error) {
+	err = json.Unmarshal(raw, &chunks)
+	if err != nil {
+		return
+	}
+	// We also need to create the modules.ErasureCoder object for each chunk.
+	for i, chunk := range chunks {
+		ec, err := unmarshalErasureCoder(chunk.StaticErasureCodeType, chunk.StaticErasureCodeParams)
+		if err != nil {
+			return nil, err
+		}
+		chunks[i].staticErasureCode = ec
+	}
+	return
 }
 
 // unmarshalErasureCoder unmarshals an ErasureCoder from the given params.
