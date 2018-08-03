@@ -31,7 +31,7 @@ var (
 )
 
 // newFile is a helper to more easily create a new Siafile.
-func newFile(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, pieceSize, fileSize uint64, mode os.FileMode, source string) (*siafile.SiaFile, error) {
+func newFile(siaFilePath string, name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, pieceSize, fileSize uint64, mode os.FileMode, source string) (*siafile.SiaFile, error) {
 	numChunks := 1
 	chunkSize := pieceSize * uint64(rsc.MinPieces())
 	if fileSize > 0 {
@@ -44,7 +44,7 @@ func newFile(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, piec
 	for i := 0; i < numChunks; i++ {
 		ecs[i] = rsc
 	}
-	return siafile.New(filepath.Join(modules.RenterDir, "files", name), source, name, wal, ecs, pieceSize, fileSize, mode)
+	return siafile.New(siaFilePath, name, source, wal, ecs, pieceSize, fileSize, mode)
 }
 
 // validateSource verifies that a sourcePath meets the
@@ -101,7 +101,15 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 
 	// Create file object.
-	f, err := newFile(up.SiaPath, r.wal, up.ErasureCode, pieceSize, uint64(fileInfo.Size()), fileInfo.Mode(), up.Source)
+	// TODO we might have to sanitize this path.
+	siaFilePath := filepath.Join(r.persistDir, FilesDir, up.SiaPath)
+	// Create the path on disk.
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	// Create the Siafile.
+	f, err := newFile(siaFilePath, up.SiaPath, r.wal, up.ErasureCode, pieceSize, uint64(fileInfo.Size()), fileInfo.Mode(), up.Source)
 	if err != nil {
 		return err
 	}

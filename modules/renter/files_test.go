@@ -16,7 +16,8 @@ import (
 
 // newTestingWal is a helper method to create a wal during testing.
 func newTestingWal() *writeaheadlog.WAL {
-	_, wal, err := writeaheadlog.New(string(fastrand.Bytes(8)))
+	walPath := filepath.Join(os.TempDir(), "wals", string(fastrand.Bytes(8)))
+	_, wal, err := writeaheadlog.New(walPath)
 	if err != nil {
 		panic(err)
 	}
@@ -25,7 +26,14 @@ func newTestingWal() *writeaheadlog.WAL {
 
 // newFileTesting is a helper that calls newFile but returns no error.
 func newFileTesting(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, pieceSize, fileSize uint64, mode os.FileMode, source string) *siafile.SiaFile {
-	f, err := newFile(name, wal, rsc, pieceSize, fileSize, mode, source)
+	// create the renter/files dir if it doesn't exist
+	siaFilePath := filepath.Join(os.TempDir(), "siafiles", name)
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		panic(err)
+	}
+	// create the file
+	f, err := newFile(siaFilePath, name, wal, rsc, pieceSize, fileSize, mode, source)
 	if err != nil {
 		panic(err)
 	}
