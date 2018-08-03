@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -50,6 +51,53 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 		}
 	}
 	return nil
+}
+
+// LoadSiaFile loads a SiaFile from disk.
+func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
+	// Create the SiaFile
+	sf := &SiaFile{
+		staticUID:   string(fastrand.Bytes(8)),
+		siaFilePath: path,
+		wal:         wal,
+	}
+	// Open the file.
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	// Load the metadata.
+	decoder := json.NewDecoder(f)
+	if err := decoder.Decode(&sf.staticMetadata); err != nil {
+		return nil, errors.AddContext(err, "failed to decode metadata")
+	}
+	// Load the pubKeyTable.
+	pubKeyTableLen := sf.staticMetadata.ChunkOffset - sf.staticMetadata.PubKeyTableOffset
+	if pubKeyTableLen < 0 {
+		return nil, fmt.Errorf("pubKeyTableLen is %v, can't load file", pubKeyTableLen)
+	}
+	rawPubKeyTable := make([]byte, pubKeyTableLen)
+	if _, err := f.ReadAt(rawPubKeyTable, sf.staticMetadata.PubKeyTableOffset); err != nil {
+		return nil, errors.AddContext(err, "failed to read pubKeyTable from disk")
+	}
+	sf.pubKeyTable, err = unmarshalPubKeyTable(rawPubKeyTable)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to unmarshal pubKeyTable")
+	}
+	// Load the chunks.
+	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to seek to chunkOffset")
+	}
+	rawChunks, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to read chunks from disk")
+	}
+	sf.staticChunks, err = unmarshalChunks(rawChunks)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to unmarshal chunks")
+	}
+	return sf, nil
 }
 
 // marshalChunks marshals the chunks of the SiaFile using json encoding.

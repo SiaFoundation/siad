@@ -77,7 +77,8 @@ func newTestWAL() *writeaheadlog.WAL {
 	return wal
 }
 
-// TestNewFile tests that a new file has the correct contents and size.
+// TestNewFile tests that a new file has the correct contents and size and that
+// loading it from disk also works.
 func TestNewFile(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -140,6 +141,25 @@ func TestNewFile(t *testing.T) {
 	}
 	if !bytes.Equal(readChunks, chunks) {
 		t.Fatal("readChunks don't equal on-disk readChunks")
+	}
+	// Load the file from disk and check that they are the same.
+	sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
+	if err != nil {
+		t.Fatal("failed to load SiaFile from disk", err)
+	}
+	// Compare the sf and sf2.
+	if !reflect.DeepEqual(sf.staticMetadata, sf2.staticMetadata) {
+		t.Error("sf metadata doesn't equal sf2 metadata")
+	}
+	if !reflect.DeepEqual(sf.pubKeyTable, sf2.pubKeyTable) {
+		t.Error("sf pubKeyTable doesn't equal sf2 pubKeyTable")
+	}
+	if !reflect.DeepEqual(sf.staticChunks, sf2.staticChunks) {
+		t.Error("sf chunks don't equal sf2 chunks")
+	}
+	if sf.siaFilePath != sf2.siaFilePath {
+		t.Errorf("sf2 filepath was %v but should be %v",
+			sf2.siaFilePath, sf.siaFilePath)
 	}
 }
 

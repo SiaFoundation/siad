@@ -102,7 +102,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Create file object.
 	// TODO we might have to sanitize this path.
-	siaFilePath := filepath.Join(r.persistDir, FilesDir, up.SiaPath)
+	siaFilePath := filepath.Join(r.persistDir, FilesDir, up.SiaPath, ShareExtension)
 	// Create the path on disk.
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
