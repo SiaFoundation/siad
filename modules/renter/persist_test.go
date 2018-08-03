@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 
@@ -46,115 +45,6 @@ func equalFiles(f1, f2 *siafile.SiaFile) error {
 	return nil
 }
 
-// TestFileShareLoad tests the sharing/loading functions of the renter.
-func TestFileShareLoad(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Close()
-
-	// Create a file and add it to the renter.
-	savedFile := newTestingFile()
-	id := rt.renter.mu.Lock()
-	rt.renter.files[savedFile.SiaPath()] = savedFile
-	rt.renter.mu.Unlock(id)
-
-	// Share .sia file to disk.
-	path := filepath.Join(build.SiaTestingDir, "renter", t.Name(), "test.sia")
-	err = rt.renter.ShareFiles([]string{savedFile.SiaPath()}, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Remove the file from the renter.
-	delete(rt.renter.files, savedFile.SiaPath())
-
-	// Load the .sia file back into the renter.
-	names, err := rt.renter.LoadSharedFiles(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(names) != 1 || names[0] != savedFile.SiaPath() {
-		t.Fatal("nickname not loaded properly:", names)
-	}
-	err = equalFiles(rt.renter.files[savedFile.SiaPath()], savedFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Share and load multiple files.
-	savedFile2 := newTestingFile()
-	rt.renter.files[savedFile2.SiaPath()] = savedFile2
-	path = filepath.Join(build.SiaTestingDir, "renter", t.Name(), "test2.sia")
-	err = rt.renter.ShareFiles([]string{savedFile.SiaPath(), savedFile2.SiaPath()}, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Remove the files from the renter.
-	delete(rt.renter.files, savedFile.SiaPath())
-	delete(rt.renter.files, savedFile2.SiaPath())
-
-	names, err = rt.renter.LoadSharedFiles(path)
-	if err != nil {
-		t.Fatal(nil)
-	}
-	if len(names) != 2 || (names[0] != savedFile2.SiaPath() && names[1] != savedFile2.SiaPath()) {
-		t.Fatal("nicknames not loaded properly:", names)
-	}
-	err = equalFiles(rt.renter.files[savedFile.SiaPath()], savedFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = equalFiles(rt.renter.files[savedFile2.SiaPath()], savedFile2)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-// TestFileShareLoadASCII tests the ASCII sharing/loading functions.
-func TestFileShareLoadASCII(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Close()
-
-	// Create a file and add it to the renter.
-	savedFile := newTestingFile()
-	id := rt.renter.mu.Lock()
-	rt.renter.files[savedFile.SiaPath()] = savedFile
-	rt.renter.mu.Unlock(id)
-
-	ascii, err := rt.renter.ShareFilesASCII([]string{savedFile.SiaPath()})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Remove the file from the renter.
-	delete(rt.renter.files, savedFile.SiaPath())
-
-	names, err := rt.renter.LoadSharedFilesASCII(ascii)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(names) != 1 || names[0] != savedFile.SiaPath() {
-		t.Fatal("nickname not loaded properly")
-	}
-
-	err = equalFiles(rt.renter.files[savedFile.SiaPath()], savedFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 // TestRenterSaveLoad probes the save and load methods of the renter type.
 func TestRenterSaveLoad(t *testing.T) {
 	if testing.Short() {
@@ -178,22 +68,6 @@ func TestRenterSaveLoad(t *testing.T) {
 		t.Error("default stream cache size not set at init")
 	}
 
-	// Create and save some files
-	var f1, f2, f3 *siafile.SiaFile
-	f1 = newTestingFile()
-	f2 = newTestingFile()
-	f3 = newTestingFile()
-	// names must not conflict
-	for f2.SiaPath() == f1.SiaPath() || f2.SiaPath() == f3.SiaPath() {
-		f2 = newTestingFile()
-	}
-	for f3.SiaPath() == f1.SiaPath() || f3.SiaPath() == f2.SiaPath() {
-		f3 = newTestingFile()
-	}
-	rt.renter.saveFile(f1)
-	rt.renter.saveFile(f2)
-	rt.renter.saveFile(f3)
-
 	// Update the settings of the renter to have a new stream cache size and
 	// download speed.
 	newDownSpeed := int64(300e3)
@@ -216,16 +90,6 @@ func TestRenterSaveLoad(t *testing.T) {
 	// load should now load the files into memory.
 	rt.renter, err = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(rt.dir, modules.RenterDir))
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := equalFiles(f1, rt.renter.files[f1.SiaPath()]); err != nil {
-		t.Fatal(err)
-	}
-	if err := equalFiles(f2, rt.renter.files[f2.SiaPath()]); err != nil {
-		t.Fatal(err)
-	}
-	if err := equalFiles(f3, rt.renter.files[f3.SiaPath()]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -264,9 +128,6 @@ func TestRenterPaths(t *testing.T) {
 	f2.Rename("foo/bar")
 	f3 := newTestingFile()
 	f3.Rename("foo/bar/baz")
-	rt.renter.saveFile(f1)
-	rt.renter.saveFile(f2)
-	rt.renter.saveFile(f3)
 
 	// Restart the renter to re-do the init cycle.
 	err = rt.renter.Close()

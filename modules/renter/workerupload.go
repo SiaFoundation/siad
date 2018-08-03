@@ -127,7 +127,6 @@ func (w *worker) managedUpload(uc *unfinishedUploadChunk, pieceIndex uint64) {
 	}
 
 	id := w.renter.mu.Lock()
-	w.renter.saveFile(uc.renterFile)
 	w.renter.mu.Unlock(id)
 
 	// Upload is complete. Update the state of the chunk and the renter's memory

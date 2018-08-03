@@ -101,8 +101,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 
 	// Create file object.
-	// TODO we might have to sanitize this path.
-	siaFilePath := filepath.Join(r.persistDir, FilesDir, up.SiaPath, ShareExtension)
+	siaFilePath := filepath.Join(r.persistDir, up.SiaPath+ShareExtension)
 	// Create the path on disk.
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -121,11 +120,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		RepairPath: f.LocalPath(),
 	}
 	r.saveSync()
-	err = r.saveFile(f)
 	r.mu.Unlock(lockID)
-	if err != nil {
-		return err
-	}
 
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()

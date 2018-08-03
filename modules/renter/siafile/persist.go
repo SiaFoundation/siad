@@ -44,7 +44,8 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 			} else if n < len(data) {
 				return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
 			}
-			return nil
+			// Sync file.
+			return f.Sync()
 		}()
 		if err != nil {
 			return errors.AddContext(err, "failed to apply update")
@@ -241,13 +242,23 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 // applyUpdates applies updates to the SiaFile. Only updates that belong to the
 // SiaFile on which applyUpdates is called can be applied. Everything else will
 // be considered a developer error and cause a panic to avoid corruption.
-func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) error {
+// applyUpdates also syncs the SiaFile for convenience since it already has an
+// open file handle.
+func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// Open the file.
 	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if err == nil {
+			// If no error occured we sync and close the file.
+			err = errors.Compose(f.Sync(), f.Close())
+		} else {
+			// Otherwise we still need to close the file.
+			err = errors.Compose(err, f.Close())
+		}
+	}()
 
 	// Apply updates.
 	for _, u := range updates {
@@ -309,6 +320,7 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	if err := sf.applyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
 	}
+
 	// Updates are applied. Let the writeaheadlog know.
 	return errors.AddContext(err, "failed to signal that updates are applied")
 }

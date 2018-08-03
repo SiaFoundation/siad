@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -235,8 +234,7 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 	}
 
 	// Modify the file and save it to disk.
-	file.Rename(newName) // TODO: violation of locking convention
-	err = r.saveFile(file)
+	err = file.Rename(newName) // TODO: violation of locking convention
 	if err != nil {
 		return err
 	}
@@ -287,54 +285,6 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string) *siafile.SiaFile {
 	}
 	fileData.Chunks = chunks
 	return siafile.NewFromFileData(fileData)
-}
-
-// siaFileToFile converts a SiaFile to a legacy file. Fields that don't exist
-// in the legacy file will get lost and therefore not persisted.
-func (r *Renter) siaFileToFile(sf *siafile.SiaFile) *file {
-	fileData := sf.ExportFileData()
-	f := &file{
-		contracts:   make(map[types.FileContractID]fileContract),
-		name:        fileData.Name,
-		size:        fileData.FileSize,
-		masterKey:   fileData.MasterKey,
-		erasureCode: fileData.ErasureCode,
-		pieceSize:   fileData.PieceSize,
-		mode:        uint32(fileData.Mode),
-		deleted:     fileData.Deleted,
-		staticUID:   fileData.UID,
-	}
-	for chunkIndex, chunk := range fileData.Chunks {
-		for pieceIndex, pieceSet := range chunk.Pieces {
-			for _, piece := range pieceSet {
-				c, ok := r.hostContractor.ContractByPublicKey(piece.HostPubKey)
-				if !ok {
-					build.Critical("missing contract when converting SiaFile to file")
-					continue
-				}
-				h, ok := r.hostDB.Host(piece.HostPubKey)
-				if !ok {
-					build.Critical("missing host when converting SiaFile to file")
-					continue
-				}
-				if _, exists := f.contracts[c.ID]; !exists {
-					f.contracts[c.ID] = fileContract{
-						ID:          c.ID,
-						IP:          h.NetAddress,
-						WindowStart: c.EndHeight,
-					}
-				}
-				fc := f.contracts[c.ID]
-				fc.Pieces = append(fc.Pieces, pieceData{
-					Chunk:      uint64(chunkIndex),
-					Piece:      uint64(pieceIndex),
-					MerkleRoot: piece.MerkleRoot,
-				})
-				f.contracts[c.ID] = fc
-			}
-		}
-	}
-	return f
 }
 
 // numChunks returns the number of chunks that f was split into.

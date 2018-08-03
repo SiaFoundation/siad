@@ -86,9 +86,6 @@ const (
 	// DefaultMaxUploadSpeed is set to zero to indicate no limit, the user
 	// can set a custom MaxUploadSpeed through the API
 	DefaultMaxUploadSpeed = 0
-
-	// FilesDir is the root directory of the .sia files.
-	FilesDir = "files"
 )
 
 var (

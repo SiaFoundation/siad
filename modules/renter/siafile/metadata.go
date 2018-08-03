@@ -130,12 +130,12 @@ func (sf *SiaFile) PieceSize() uint64 {
 }
 
 // Rename changes the name of the file to a new one.
-// TODO: This will actually rename the file on disk once we persist the new
-// file format.
-func (sf *SiaFile) Rename(newName string) error {
+// TODO: Once we store siafiles in a subfolder relative to their siapath we
+// should change this to move the file on disk.
+func (sf *SiaFile) Rename(newSiaPath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.SiaPath = newName
+	sf.staticMetadata.SiaPath = newSiaPath
 	return nil
 }
 

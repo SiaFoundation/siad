@@ -72,31 +72,3 @@ func NewFromFileData(fd FileData) *SiaFile {
 	}
 	return file
 }
-
-// ExportFileData creates a FileData object from a SiaFile that can be used to
-// convert the file into a legacy file.
-func (sf *SiaFile) ExportFileData() FileData {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	fd := FileData{
-		Name:        sf.staticMetadata.SiaPath,
-		FileSize:    uint64(sf.staticMetadata.StaticFileSize),
-		MasterKey:   sf.staticMetadata.StaticMasterKey,
-		ErasureCode: sf.staticChunks[0].staticErasureCode,
-		RepairPath:  sf.staticMetadata.LocalPath,
-		PieceSize:   sf.staticMetadata.StaticPieceSize,
-		Mode:        sf.staticMetadata.Mode,
-		Deleted:     sf.deleted,
-		UID:         sf.staticUID,
-	}
-	// Return a deep-copy to avoid race conditions.
-	fd.Chunks = make([]FileChunk, len(sf.staticChunks))
-	for chunkIndex := range fd.Chunks {
-		fd.Chunks[chunkIndex].Pieces = make([][]Piece, len(sf.staticChunks[chunkIndex].Pieces))
-		for pieceIndex := range fd.Chunks[chunkIndex].Pieces {
-			fd.Chunks[chunkIndex].Pieces[pieceIndex] = make([]Piece, len(sf.staticChunks[chunkIndex].Pieces[pieceIndex]))
-			copy(fd.Chunks[chunkIndex].Pieces[pieceIndex], sf.staticChunks[chunkIndex].Pieces[pieceIndex])
-		}
-	}
-	return fd
-}
