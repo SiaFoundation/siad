@@ -333,7 +333,7 @@ func TestRenterDeleteFile(t *testing.T) {
 
 	// Put a file in the renter, then rename it.
 	f := newTestingFile()
-	f.Rename("1") // set name to "1"
+	f.Rename("1", filepath.Join(rt.renter.persistDir, "1")) // set name to "1"
 	rt.renter.files[f.SiaPath()] = f
 	rt.renter.RenameFile(f.SiaPath(), "one")
 	// Call delete on the previous name.
@@ -422,7 +422,7 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file that does exist.
 	f := newTestingFile()
-	f.Rename("1")
+	f.Rename("1", filepath.Join(rt.renter.persistDir, "1"))
 	rt.renter.files["1"] = f
 	err = rt.renter.RenameFile("1", "1a")
 	if err != nil {
@@ -438,7 +438,7 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file to an existing name.
 	f2 := newTestingFile()
-	f2.Rename("1")
+	f2.Rename("1", filepath.Join(rt.renter.persistDir, "1"))
 	rt.renter.files["1"] = f2
 	err = rt.renter.RenameFile("1", "1a")
 	if err != ErrPathOverload {

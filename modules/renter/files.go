@@ -234,7 +234,7 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 	}
 
 	// Modify the file and save it to disk.
-	err = file.Rename(newName) // TODO: violation of locking convention
+	err = file.Rename(newName, filepath.Join(r.persistDir, newName)) // TODO: violation of locking convention
 	if err != nil {
 		return err
 	}
