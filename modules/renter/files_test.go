@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,7 +17,11 @@ import (
 
 // newTestingWal is a helper method to create a wal during testing.
 func newTestingWal() *writeaheadlog.WAL {
-	walPath := filepath.Join(os.TempDir(), "wals", string(fastrand.Bytes(8)))
+	walDir := filepath.Join(os.TempDir(), "wals")
+	if err := os.MkdirAll(walDir, 0700); err != nil {
+		panic(err)
+	}
+	walPath := filepath.Join(walDir, hex.EncodeToString(fastrand.Bytes(8)))
 	_, wal, err := writeaheadlog.New(walPath)
 	if err != nil {
 		panic(err)
