@@ -307,6 +307,10 @@ func (sf *SiaFile) createUpdate(index int64, data []byte) writeaheadlog.Update {
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
 func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
+	// This should never be called on a deleted file.
+	if sf.deleted {
+		return errors.New("shouldn't apply udates on deleted file")
+	}
 	// Create the writeaheadlog transaction.
 	txn, err := sf.wal.NewTransaction(updates)
 	if err != nil {

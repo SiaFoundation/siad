@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -112,6 +113,11 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// If the file was deleted we can't add a new piece since it would write
+	// the file to disk again.
+	if sf.deleted {
+		return errors.New("can't add piece to deleted file")
+	}
 
 	// Get the index of the host in the public key table.
 	tableIndex := -1
