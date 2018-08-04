@@ -3,6 +3,7 @@ package siafile
 import (
 	"math"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -135,12 +136,24 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	defer sf.mu.Unlock()
 	// Change SiaPath.
 	sf.staticMetadata.SiaPath = newSiaPath
-	// Rename file on disk.
+	// Create path to renamed location.
+	dir, _ := filepath.Split(newSiaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	// Rename file on disk and in memory.
+	// TODO: this is possibly not atomic and should be moved to a writeaheadlog
+	// update.
 	if err := os.Rename(sf.siaFilePath, newSiaFilePath); err != nil {
 		return err
 	}
 	sf.siaFilePath = newSiaFilePath
-	return nil
+	// Save changed metadata.
+	updates, err := sf.saveMetadata()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // SetMode sets the filemode of the sia file.

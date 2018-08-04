@@ -123,11 +123,11 @@ func TestRenterPaths(t *testing.T) {
 	//   foo/bar.sia
 	//   foo/bar/baz.sia
 	f1 := newTestingFile()
-	f1.Rename("foo", filepath.Join(rt.renter.persistDir, "foo"))
+	f1.Rename("foo", filepath.Join(rt.renter.persistDir, "foo"+ShareExtension))
 	f2 := newTestingFile()
-	f2.Rename("foo/bar", filepath.Join(rt.renter.persistDir, "foo/bar"))
+	f2.Rename("foo/bar", filepath.Join(rt.renter.persistDir, "foo/bar"+ShareExtension))
 	f3 := newTestingFile()
-	f3.Rename("foo/bar/baz", filepath.Join(rt.renter.persistDir, "foo/bar/baz"))
+	f3.Rename("foo/bar/baz", filepath.Join(rt.renter.persistDir, "foo/bar/baz"+ShareExtension))
 
 	// Restart the renter to re-do the init cycle.
 	err = rt.renter.Close()
