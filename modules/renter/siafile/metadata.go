@@ -63,10 +63,17 @@ func (sf *SiaFile) ChunkSize(chunkIndex uint64) uint64 {
 
 // Delete removes the file from disk and marks it as deleted. Once the file is
 // deleted, certain methods should return an error.
-func (sf *SiaFile) Delete() {
+func (sf *SiaFile) Delete() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	sf.deleted = true
+	// TODO this is possibly not atomic and might need to be moved to a
+	// writeaheadlog update.
+	err := os.Remove(sf.siaFilePath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 // Deleted indicates if this file has been deleted by the user.

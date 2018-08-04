@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -84,20 +83,13 @@ func (r *Renter) DeleteFile(nickname string) error {
 	delete(r.files, nickname)
 	delete(r.persist.Tracking, nickname)
 
-	err := persist.RemoveFile(filepath.Join(r.persistDir, f.SiaPath()+ShareExtension))
-	if err != nil {
-		r.log.Println("WARN: couldn't remove file :", err)
-	}
-
 	r.saveSync()
 	r.mu.Unlock(lockID)
 
-	// mark the file as deleted
-	f.Delete()
-
 	// TODO: delete the sectors of the file as well.
 
-	return nil
+	// mark the file as deleted
+	return f.Delete()
 }
 
 // FileList returns all of the files that the renter has.
