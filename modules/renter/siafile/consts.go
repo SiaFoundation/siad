@@ -16,7 +16,11 @@ const (
 	defaultReservedMDPages = 1
 
 	// updateInsertName is the name of a siaFile update that inserts data at a specific index.
-	updateInsertName = "Insert"
+	updateInsertName = "SiaFile-Insert"
+
+	// updateDeleteName is the name of a siaFile update that deletes the
+	// specified file.
+	updateDeleteName = "SiaFile-Delete"
 )
 
 var (
@@ -32,6 +36,8 @@ var (
 func IsSiaFileUpdate(update writeaheadlog.Update) bool {
 	switch update.Name {
 	case updateInsertName:
+		return true
+	case updateDeleteName:
 		return true
 	default:
 		return false

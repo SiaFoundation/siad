@@ -25,8 +25,17 @@ import (
 func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := func() error {
+			// Check if it is a delete update.
+			if u.Name == updateDeleteName {
+				if err := os.Remove(readDeleteUpdate(u)); os.IsNotExist(err) {
+					return nil
+				} else if err != nil {
+					return err
+				}
+			}
+
 			// Decode update.
-			path, index, data, err := readUpdate(u)
+			path, index, data, err := readInsertUpdate(u)
 			if err != nil {
 				return err
 			}
@@ -198,9 +207,15 @@ func unmarshalPubKeyTable(raw []byte) ([]types.SiaPublicKey, error) {
 	return spks, nil
 }
 
-// readUpdate unmarshals the update's instructions and returns the path, index
+// readDeleteUpdate unmarshals the update's instructions and returns the
+// encoded path.
+func readDeleteUpdate(update writeaheadlog.Update) string {
+	return string(update.Instructions)
+}
+
+// readInsertUpdate unmarshals the update's instructions and returns the path, index
 // and data encoded in the instructions.
-func readUpdate(update writeaheadlog.Update) (path string, index int64, data []byte, err error) {
+func readInsertUpdate(update writeaheadlog.Update) (path string, index int64, data []byte, err error) {
 	if !IsSiaFileUpdate(update) {
 		panic("readUpdate can't read non-SiaFile update")
 	}
@@ -236,7 +251,7 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 	sf.staticMetadata.ChunkOffset += pageSize
 
 	// Create and return update.
-	return sf.createUpdate(sf.staticMetadata.ChunkOffset, chunkData), nil
+	return sf.createInsertUpdate(sf.staticMetadata.ChunkOffset, chunkData), nil
 }
 
 // applyUpdates applies updates to the SiaFile. Only updates that belong to the
@@ -263,8 +278,16 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// Apply updates.
 	for _, u := range updates {
 		err := func() error {
+			// Check if it is a delete update.
+			if u.Name == updateDeleteName {
+				err := os.Remove(readDeleteUpdate(u))
+				if os.IsNotExist(err) {
+					return nil
+				}
+				return err
+			}
 			// Decode update.
-			path, index, data, err := readUpdate(u)
+			path, index, data, err := readInsertUpdate(u)
 			if err != nil {
 				return err
 			}
@@ -287,21 +310,6 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 		}
 	}
 	return nil
-}
-
-// createUpdate is a helper method which creates a writeaheadlog update for
-// writing the specified data to the provided index. It is usually not called
-// directly but wrapped into another helper that creates an update for a
-// specific part of the SiaFile. e.g. the metadata
-func (sf *SiaFile) createUpdate(index int64, data []byte) writeaheadlog.Update {
-	if index < 0 {
-		panic("index passed to createUpdate should never be negative")
-	}
-	// Create update
-	return writeaheadlog.Update{
-		Name:         updateInsertName,
-		Instructions: encoding.MarshalAll(sf.siaFilePath, index, data),
-	}
 }
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
@@ -329,6 +337,30 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	return errors.AddContext(err, "failed to signal that updates are applied")
 }
 
+// createDeleteUpdate is a helper method that creates a writeaheadlog for
+// deleting a file.
+func (sf *SiaFile) createDeleteUpdate() writeaheadlog.Update {
+	return writeaheadlog.Update{
+		Name:         updateDeleteName,
+		Instructions: []byte(sf.siaFilePath),
+	}
+}
+
+// createInsertUpdate is a helper method which creates a writeaheadlog update for
+// writing the specified data to the provided index. It is usually not called
+// directly but wrapped into another helper that creates an update for a
+// specific part of the SiaFile. e.g. the metadata
+func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Update {
+	if index < 0 {
+		panic("index passed to createUpdate should never be negative")
+	}
+	// Create update
+	return writeaheadlog.Update{
+		Name:         updateInsertName,
+		Instructions: encoding.MarshalAll(sf.siaFilePath, index, data),
+	}
+}
+
 // saveFile saves the whole SiaFile atomically.
 func (sf *SiaFile) saveFile() error {
 	headerUpdates, err := sf.saveHeader()
@@ -349,7 +381,7 @@ func (sf *SiaFile) saveChunks() (writeaheadlog.Update, error) {
 	if err != nil {
 		return writeaheadlog.Update{}, errors.AddContext(err, "failed to marshal chunks")
 	}
-	return sf.createUpdate(sf.staticMetadata.ChunkOffset, chunks), nil
+	return sf.createInsertUpdate(sf.staticMetadata.ChunkOffset, chunks), nil
 }
 
 // saveHeader creates writeaheadlog updates to saves the metadata and
@@ -397,8 +429,8 @@ func (sf *SiaFile) saveHeader() ([]writeaheadlog.Update, error) {
 	}
 
 	// Create updates for the metadata and pubKeyTable.
-	updates = append(updates, sf.createUpdate(0, metadata))
-	updates = append(updates, sf.createUpdate(sf.staticMetadata.PubKeyTableOffset, pubKeyTable))
+	updates = append(updates, sf.createInsertUpdate(0, metadata))
+	updates = append(updates, sf.createInsertUpdate(sf.staticMetadata.PubKeyTableOffset, pubKeyTable))
 	return updates, nil
 }
 
@@ -433,5 +465,5 @@ func (sf *SiaFile) saveMetadata() ([]writeaheadlog.Update, error) {
 		return sf.saveHeader()
 	}
 	// Otherwise we can create and return the updates.
-	return []writeaheadlog.Update{sf.createUpdate(0, metadata)}, nil
+	return []writeaheadlog.Update{sf.createInsertUpdate(0, metadata)}, nil
 }

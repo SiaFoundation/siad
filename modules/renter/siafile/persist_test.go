@@ -163,9 +163,9 @@ func TestNewFile(t *testing.T) {
 	}
 }
 
-// TestCreateReadUpdate tests if an update can be created using createUpdate
-// and if the created update can be read using readUpdate.
-func TestCreateReadUpdate(t *testing.T) {
+// TestCreateReadInsertUpdate tests if an update can be created using createInsertUpdate
+// and if the created update can be read using readInsertUpdate.
+func TestCreateReadInsertUpdate(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -175,9 +175,9 @@ func TestCreateReadUpdate(t *testing.T) {
 	// Create update randomly
 	index := int64(fastrand.Intn(100))
 	data := fastrand.Bytes(10)
-	update := sf.createUpdate(index, data)
+	update := sf.createInsertUpdate(index, data)
 	// Read update
-	readPath, readIndex, readData, err := readUpdate(update)
+	readPath, readIndex, readData, err := readInsertUpdate(update)
 	if err != nil {
 		t.Fatal("Failed to read update", err)
 	}
@@ -190,6 +190,87 @@ func TestCreateReadUpdate(t *testing.T) {
 	}
 	if !bytes.Equal(readData, data) {
 		t.Error("data doesn't match")
+	}
+}
+
+// TestCreateReadDeleteUpdate tests if an update can be created using
+// createDeleteUpdate and if the created update can be read using
+// readDeleteUpdate.
+func TestCreateReadDeleteUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	sf := newTestFile()
+	update := sf.createDeleteUpdate()
+	// Read update
+	path := readDeleteUpdate(update)
+	// Compare values
+	if path != sf.siaFilePath {
+		t.Error("paths doesn't match")
+	}
+}
+
+// TestDelete tests if deleting a siafile removes the file from disk and sets
+// the deleted flag correctly.
+func TestDelete(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	sf := newTestFile()
+	// Delete file.
+	if err := sf.Delete(); err != nil {
+		t.Fatal("Failed to delete file", err)
+	}
+	// Check if file was deleted and if deleted flag was set.
+	if !sf.Deleted() {
+		t.Fatal("Deleted flag was not set correctly")
+	}
+	if _, err := os.Open(sf.siaFilePath); !os.IsNotExist(err) {
+		t.Fatal("Expected a file doesn't exist error but got", err)
+	}
+}
+
+// TestRename tests if renaming a siafile moves the file correctly and also
+// updates the metadata.
+func TestRename(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	sf := newTestFile()
+
+	// Create new paths for the file.
+	newSiaPath := sf.staticMetadata.SiaPath + "1"
+	newSiaFilePath := sf.siaFilePath + "1"
+	oldSiaFilePath := sf.siaFilePath
+
+	// Rename file
+	if err := sf.Rename(newSiaPath, newSiaFilePath); err != nil {
+		t.Fatal("Failed to rename file", err)
+	}
+
+	// Check if the file was moved.
+	if _, err := os.Open(oldSiaFilePath); !os.IsNotExist(err) {
+		t.Fatal("Expected a file doesn't exist error but got", err)
+	}
+	f, err := os.Open(newSiaFilePath)
+	if err != nil {
+		t.Fatal("Failed to open file at new location", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Check the metadata.
+	if sf.siaFilePath != newSiaFilePath {
+		t.Fatal("SiaFilePath wasn't updated correctly")
+	}
+	if sf.staticMetadata.SiaPath != newSiaPath {
+		t.Fatal("SiaPath wasn't updated correctly")
 	}
 }
 
@@ -473,7 +554,7 @@ func testApply(t *testing.T, siaFile *SiaFile, apply func(...writeaheadlog.Updat
 	// Create an update that writes random data to a random index i.
 	index := fastrand.Intn(100) + 1
 	data := fastrand.Bytes(100)
-	update := siaFile.createUpdate(int64(index), data)
+	update := siaFile.createInsertUpdate(int64(index), data)
 
 	// Apply update.
 	if err := apply(update); err != nil {

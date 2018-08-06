@@ -83,7 +83,7 @@ type (
 func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode []modules.ErasureCoder, pieceSize, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	file := &SiaFile{
 		staticMetadata: Metadata{
-			ChunkOffset:     pageSize,
+			ChunkOffset:     defaultReservedMDPages * pageSize,
 			StaticFileSize:  int64(fileSize),
 			LocalPath:       source,
 			StaticMasterKey: crypto.GenerateTwofishKey(),

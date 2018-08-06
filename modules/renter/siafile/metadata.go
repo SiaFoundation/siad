@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 type (
@@ -66,13 +67,9 @@ func (sf *SiaFile) ChunkSize(chunkIndex uint64) uint64 {
 func (sf *SiaFile) Delete() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	update := sf.createDeleteUpdate()
+	err := sf.createAndApplyTransaction(update)
 	sf.deleted = true
-	// TODO this is possibly not atomic and might need to be moved to a
-	// writeaheadlog update.
-	err := os.Remove(sf.siaFilePath)
-	if os.IsNotExist(err) {
-		return nil
-	}
 	return err
 }
 
@@ -141,25 +138,29 @@ func (sf *SiaFile) PieceSize() uint64 {
 func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	// Change SiaPath.
-	sf.staticMetadata.SiaPath = newSiaPath
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	// Rename file on disk and in memory.
-	// TODO: this is possibly not atomic and should be moved to a writeaheadlog
-	// update.
-	if err := os.Rename(sf.siaFilePath, newSiaFilePath); err != nil {
-		return err
-	}
+	// Create the delete update before changing the path to the new one.
+	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
+	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
-	// Save changed metadata.
-	updates, err := sf.saveMetadata()
+	sf.staticMetadata.SiaPath = newSiaPath
+	// Write the header to the new location.
+	headerUpdate, err := sf.saveHeader()
 	if err != nil {
 		return err
 	}
+	updates = append(updates, headerUpdate...)
+	// Write the chunks to the new location.
+	chunksUpdate, err := sf.saveChunks()
+	if err != nil {
+		return err
+	}
+	updates = append(updates, chunksUpdate)
+	// Apply updates.
 	return sf.createAndApplyTransaction(updates...)
 }
 
