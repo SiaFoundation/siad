@@ -27,28 +27,28 @@ require the miner to be unlocked.
 Index
 -----
 
-| Route                                                           | HTTP verb |
-| --------------------------------------------------------------- | --------- |
-| [/wallet](#wallet-get)                                          | GET       |
-| [/wallet/033x](#wallet033x-post)                                | POST      |
-| [/wallet/address](#walletaddress-get)                           | GET       |
-| [/wallet/addresses](#walletaddresses-get)                       | GET       |
-| [/wallet/backup](#walletbackup-get)                             | GET       |
-| [/wallet/init](#walletinit-post)                                | POST      |
-| [/wallet/init/seed](#walletinitseed-post)                       | POST      |
-| [/wallet/lock](#walletlock-post)                                | POST      |
-| [/wallet/seed](#walletseed-post)                                | POST      |
-| [/wallet/seeds](#walletseeds-get)                               | GET       |
-| [/wallet/siacoins](#walletsiacoins-post)                        | POST      |
-| [/wallet/siafunds](#walletsiafunds-post)                        | POST      |
-| [/wallet/siagkey](#walletsiagkey-post)                          | POST      |
-| [/wallet/sweep/seed](#walletsweepseed-post)                     | POST      |
-| [/wallet/transaction/___:id___](#wallettransactionid-get)       | GET       |
-| [/wallet/transactions](#wallettransactions-get)                 | GET       |
-| [/wallet/transactions/___:addr___](#wallettransactionsaddr-get) | GET       |
-| [/wallet/unlock](#walletunlock-post)                            | POST      |
-| [/wallet/verify/address/:___addr___](#walletverifyaddress-get)  | GET       |
-| [/wallet/changepassword](#walletchangepassword-post)            | POST      |
+| Route                                                               | HTTP verb |
+| ------------------------------------------------------------------- | --------- |
+| [/wallet](#wallet-get)                                              | GET       |
+| [/wallet/033x](#wallet033x-post)                                    | POST      |
+| [/wallet/address](#walletaddress-get)                               | GET       |
+| [/wallet/addresses](#walletaddresses-get)                           | GET       |
+| [/wallet/backup](#walletbackup-get)                                 | GET       |
+| [/wallet/init](#walletinit-post)                                    | POST      |
+| [/wallet/init/seed](#walletinitseed-post)                           | POST      |
+| [/wallet/lock](#walletlock-post)                                    | POST      |
+| [/wallet/seed](#walletseed-post)                                    | POST      |
+| [/wallet/seeds](#walletseeds-get)                                   | GET       |
+| [/wallet/siacoins](#walletsiacoins-post)                            | POST      |
+| [/wallet/siafunds](#walletsiafunds-post)                            | POST      |
+| [/wallet/siagkey](#walletsiagkey-post)                              | POST      |
+| [/wallet/sweep/seed](#walletsweepseed-post)                         | POST      |
+| [/wallet/transaction/___:id___](#wallettransactionid-get)           | GET       |
+| [/wallet/transactions](#wallettransactions-get)                     | GET       |
+| [/wallet/transactions/___:addr___](#wallettransactionsaddr-get)     | GET       |
+| [/wallet/unlock](#walletunlock-post)                                | POST      |
+| [/wallet/verify/address/:___addr___](#walletverifyaddressaddr-get)  | GET       |
+| [/wallet/changepassword](#walletchangepassword-post)                | POST      |
 
 #### /wallet [GET]
 
