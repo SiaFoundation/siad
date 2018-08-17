@@ -18,12 +18,12 @@ identifies hosts by their public key and keeps track of metrics such as price.
 Index
 -----
 
-| Request                                                 | HTTP Verb | Examples                      |
-| ------------------------------------------------------- | --------- | ----------------------------- |
-| [/hostdb](#hostdb-get-example)                          | GET       | [HostDB Get](#hostdb-get)     |
-| [/hostdb/active](#hostdbactive-get-example)             | GET       | [Active hosts](#active-hosts) |
-| [/hostdb/all](#hostdball-get-example)                   | GET       | [All hosts](#all-hosts)       |
-| [/hostdb/hosts/___:pubkey___](#hostdbhosts-get-example) | GET       | [Hosts](#hosts)               |
+| Request                                                       | HTTP Verb | Examples                      |
+| ------------------------------------------------------------- | --------- | ----------------------------- |
+| [/hostdb](#hostdb-get-example)                                | GET       | [HostDB Get](#hostdb-get)     |
+| [/hostdb/active](#hostdbactive-get-example)                   | GET       | [Active hosts](#active-hosts) |
+| [/hostdb/all](#hostdball-get-example)                         | GET       | [All hosts](#all-hosts)       |
+| [/hostdb/hosts/___:pubkey___](#hostdbhostspubkey-get-example) | GET       | [Hosts](#hosts)               |
 
 #### /hostdb [GET] [(example)](#hostdb-get)
 
