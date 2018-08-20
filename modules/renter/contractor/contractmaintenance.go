@@ -40,34 +40,42 @@ func (c *Contractor) managedCheckForDuplicates() {
 	var newContract, oldContract modules.RenterContract
 	for _, contract := range c.staticContracts.ViewAll() {
 		id, exists := pubkeys[crypto.HashBytes(contract.HostPublicKey.Key)]
-		if exists {
-			// Duplicate contract found, determine older contract to delete
-			if rc, ok := c.staticContracts.View(id); ok {
-				if rc.StartHeight >= contract.StartHeight {
-					newContract = rc
-					oldContract = contract
-				} else {
-					newContract = contract
-					oldContract = rc
-				}
-				// Get SafeContract
-				oldSC, ok := c.staticContracts.Acquire(oldContract.ID)
-				if ok {
-					c.mu.Lock()
-					// Link Contracts
-					c.renewedFrom[newContract.ID] = oldContract.ID
-					c.renewedTo[oldContract.ID] = newContract.ID
-					// Store the contract in the record of historic contracts.
-					c.oldContracts[oldContract.ID] = oldSC.Metadata()
-					// Delete the old contract.
-					c.staticContracts.Delete(oldSC)
-					c.mu.Unlock()
-				}
+		if !exists {
+			pubkeys[crypto.HashBytes(contract.HostPublicKey.Key)] = contract.ID
+			continue
+		}
+		// Duplicate contract found, determine older contract to delete
+		if rc, ok := c.staticContracts.View(id); ok {
+			if rc.StartHeight >= contract.StartHeight {
+				newContract = rc
+				oldContract = contract
+			} else {
+				newContract = contract
+				oldContract = rc
+			}
+			// Get SafeContract
+			oldSC, ok := c.staticContracts.Acquire(oldContract.ID)
+			if !ok {
 				// Update map
 				pubkeys[crypto.HashBytes(newContract.HostPublicKey.Key)] = newContract.ID
+				continue
 			}
-		} else {
-			pubkeys[crypto.HashBytes(contract.HostPublicKey.Key)] = contract.ID
+			c.mu.Lock()
+			// Link Contracts
+			c.renewedFrom[newContract.ID] = oldContract.ID
+			c.renewedTo[oldContract.ID] = newContract.ID
+			// Store the contract in the record of historic contracts.
+			c.oldContracts[oldContract.ID] = oldSC.Metadata()
+			// Save the contractor.
+			err := c.saveSync()
+			if err != nil {
+				c.log.Println("Failed to save the contractor after updating renewed maps.")
+			}
+			// Delete the old contract.
+			c.staticContracts.Delete(oldSC)
+			c.mu.Unlock()
+			// Update map
+			pubkeys[crypto.HashBytes(newContract.HostPublicKey.Key)] = newContract.ID
 		}
 	}
 }
@@ -545,13 +553,13 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	c.renewedTo[id] = newContract.ID
 	// Store the contract in the record of historic contracts.
 	c.oldContracts[id] = oldContract.Metadata()
-	// Delete the old contract.
-	c.staticContracts.Delete(oldContract)
 	// Save the contractor.
 	err = c.saveSync()
 	if err != nil {
 		c.log.Println("Failed to save the contractor after creating a new contract.")
 	}
+	// Delete the old contract.
+	c.staticContracts.Delete(oldContract)
 	return amount, nil
 }
 
