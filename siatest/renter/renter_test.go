@@ -35,7 +35,7 @@ func TestRenter(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -259,7 +259,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check new directory
 	check = 0
-	fileInfos, err = ioutil.ReadDir(rd.Path())
+	fileInfos, err = ioutil.ReadDir(filepath.Join(rd.SiaPath(), r.RenterDir()))
 	if err != nil {
 		t.Fatal("Unable to read uploaded directory:", err)
 	}

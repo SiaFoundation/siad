@@ -35,7 +35,7 @@ func TestCreateDir(t *testing.T) {
 	files := uint(3)
 	dirs := uint(3)
 	levels := uint(3)
-	ld, err := tn.NewLocalDir()
+	ld, err := tn.uploadDir.newDir()
 	if err != nil {
 		t.Fatal(err)
 	}

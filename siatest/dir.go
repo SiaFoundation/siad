@@ -38,16 +38,6 @@ func (tn *TestNode) DownloadDir() *LocalDir {
 	return tn.downloadDir
 }
 
-// filesDir returns the path to the files directory of the TestNode. The files
-// directory is where new files are stored before being uploaded.
-func (tn *TestNode) filesDir() string {
-	path := filepath.Join(tn.RenterDir(), "files")
-	if err := os.MkdirAll(path, 0777); err != nil {
-		panic(err)
-	}
-	return path
-}
-
 // RenterDir returns the renter directory for the renter
 func (tn *TestNode) RenterDir() string {
 	return filepath.Join(tn.Dir, "renter")

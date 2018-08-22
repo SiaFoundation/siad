@@ -45,7 +45,7 @@ func (tn *TestNode) NewFile(size int) (*LocalFile, error) {
 
 // LocalFileSiaPath returns the siapath of the file on disk
 func (tn *TestNode) LocalFileSiaPath(lf *LocalFile) string {
-	return strings.TrimPrefix(lf.path, tn.uploadDir.path+"/")
+	return strings.TrimPrefix(lf.path, tn.RenterDir()+"/")
 }
 
 // Delete removes the LocalFile from disk.
