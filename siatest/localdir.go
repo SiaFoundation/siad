@@ -29,7 +29,9 @@ func (tn *TestNode) NewLocalDir() (*LocalDir, error) {
 
 // LocalDirSiaPath returns the siapath to be used for uploading a LocalDir
 func (tn *TestNode) LocalDirSiaPath(ld *LocalDir) string {
-	return strings.TrimPrefix(ld.path, tn.uploadDir.path+"/")
+	dir := strings.TrimPrefix(ld.path, tn.filesDir()+"/")
+	fullPath := filepath.Join(tn.uploadDir.path, dir)
+	return strings.TrimPrefix(fullPath, tn.RenterDir())
 }
 
 // dirName returns the directory name of the directory on disk
