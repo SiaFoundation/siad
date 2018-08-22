@@ -41,7 +41,7 @@ func (tn *TestNode) DownloadDir() *LocalDir {
 // filesDir returns the path to the files directory of the TestNode. The files
 // directory is where new files are stored before being uploaded.
 func (tn *TestNode) filesDir() string {
-	path := filepath.Join(tn.Dir, "files")
+	path := filepath.Join(tn.RenterDir(), "files")
 	if err := os.MkdirAll(path, 0777); err != nil {
 		panic(err)
 	}
