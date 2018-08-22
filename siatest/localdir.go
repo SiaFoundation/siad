@@ -18,24 +18,13 @@ type LocalDir struct {
 	path string
 }
 
-// NewLocalDir creates and returns a new LocalDir.
-func (tn *TestNode) NewLocalDir() (*LocalDir, error) {
-	dirPath := filepath.Join(tn.filesDir(), fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4))))
-	err := os.MkdirAll(dirPath, 0777)
-	return &LocalDir{
-		path: dirPath,
-	}, err
-}
-
 // LocalDirSiaPath returns the siapath to be used for uploading a LocalDir
 func (tn *TestNode) LocalDirSiaPath(ld *LocalDir) string {
-	dir := strings.TrimPrefix(ld.path, tn.filesDir()+"/")
-	fullPath := filepath.Join(tn.uploadDir.path, dir)
-	return strings.TrimPrefix(fullPath, tn.RenterDir())
+	return strings.TrimPrefix(ld.path, tn.RenterDir()+"/")
 }
 
-// dirName returns the directory name of the directory on disk
-func (ld *LocalDir) dirName() string {
+// Name returns the directory name of the directory on disk
+func (ld *LocalDir) Name() string {
 	return filepath.Base(ld.path)
 }
 
@@ -47,21 +36,22 @@ func (ld *LocalDir) Files() ([]*LocalFile, error) {
 		return files, err
 	}
 	for _, f := range fileInfos {
-		if !f.IsDir() {
-			size := int(f.Size())
-			bytes := fastrand.Bytes(size)
-			files = append(files, &LocalFile{
-				path:     filepath.Join(ld.path, f.Name()),
-				size:     size,
-				checksum: crypto.HashBytes(bytes),
-			})
+		if f.IsDir() {
+			continue
 		}
+		size := int(f.Size())
+		bytes := fastrand.Bytes(size)
+		files = append(files, &LocalFile{
+			path:     filepath.Join(ld.path, f.Name()),
+			size:     size,
+			checksum: crypto.HashBytes(bytes),
+		})
 	}
 	return files, nil
 }
 
-// newSubDir creates a new LocalDir in the current LocalDir
-func (ld *LocalDir) newSubDir() (*LocalDir, error) {
+// newDir creates a new LocalDir in the current LocalDir
+func (ld *LocalDir) newDir() (*LocalDir, error) {
 	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4))))
 	if err := os.MkdirAll(path, 0777); err != nil {
 		return nil, err
@@ -97,7 +87,7 @@ func (ld *LocalDir) PopulateDir(files, dirs, levels uint) error {
 
 	// Create directories at current level
 	for i := 0; i < int(dirs); i++ {
-		subld, err := ld.newSubDir()
+		subld, err := ld.newDir()
 		if err != nil {
 			return err
 		}

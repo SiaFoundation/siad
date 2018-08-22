@@ -1,6 +1,9 @@
 package siatest
 
 import (
+	"os"
+	"path/filepath"
+
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
@@ -95,13 +98,8 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 		params:      nodeParams,
 		primarySeed: "",
 	}
-	tn.downloadDir, err = tn.NewLocalDir()
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to create download directory")
-	}
-	tn.uploadDir, err = tn.NewLocalDir()
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to create upload directory")
+	if err = tn.NewRootDirs(); err != nil {
+		return nil, errors.AddContext(err, "failed to create root directories")
 	}
 
 	// Init wallet
@@ -118,4 +116,21 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 
 	// Return TestNode
 	return tn, nil
+}
+
+// NewRootDirs creates the download and upload directories for the TestNode
+func (tn *TestNode) NewRootDirs() error {
+	tn.downloadDir = &LocalDir{
+		path: filepath.Join(tn.RenterDir(), "downloads"),
+	}
+	if err := os.MkdirAll(tn.downloadDir.path, 0777); err != nil {
+		return err
+	}
+	tn.uploadDir = &LocalDir{
+		path: filepath.Join(tn.RenterDir(), "uploads"),
+	}
+	if err := os.MkdirAll(tn.uploadDir.path, 0777); err != nil {
+		return err
+	}
+	return nil
 }
