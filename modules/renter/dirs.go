@@ -1,16 +1,15 @@
 package renter
 
-import (
-	"path/filepath"
-)
-
 // CreateDir creates a directory for the renter
 func (r *Renter) CreateDir(siaPath string) error {
-	// Enforce nickname rules.
-	if err := validateSiapath(siaPath); err != nil {
+	err := r.tg.Add()
+	if err != nil {
 		return err
 	}
-	return r.createDir(filepath.Join(r.persistDir, siaPath))
+	defer r.tg.Done()
+	lockID := r.mu.Lock()
+	defer r.mu.Unlock(lockID)
+	return r.createDir(siaPath)
 }
 
 // DeleteDir removes a directory from the renter and deletes all its sub

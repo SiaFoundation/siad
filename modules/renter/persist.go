@@ -177,14 +177,20 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 	return nil
 }
 
-// createDir creates directory in the renter directory, path should be the
-// siapath joined with the renter persistDir
-func (r *Renter) createDir(path string) error {
+// createDir creates directory in the renter directory
+func (r *Renter) createDir(siapath string) error {
+	// Enforce nickname rules.
+	if err := validateSiapath(siapath); err != nil {
+		return err
+	}
+
+	// Create direcotry
+	path := filepath.Join(r.persistDir, siapath)
 	if err := os.MkdirAll(path, 0700); err != nil {
 		return err
 	}
 
-	// Make sure all parent folders have metadata files
+	// Make sure all parent directories have metadata files
 	//
 	// TODO: this should be change when files are moved out of the top level
 	// directory of the renter.
@@ -227,13 +233,13 @@ func (r *Renter) saveFile(f *siafile.SiaFile) error {
 		return errors.New("can't save deleted file")
 	}
 	// Create directory structure specified in nickname.
-	fullPath := filepath.Join(r.persistDir, f.SiaPath()+ShareExtension)
-	err := r.createDir(filepath.Dir(fullPath))
+	err := r.createDir(f.SiaPath())
 	if err != nil {
 		return err
 	}
 
 	// Open SafeFile handle.
+	fullPath := filepath.Join(r.persistDir, f.SiaPath()+ShareExtension)
 	handle, err := persist.NewSafeFile(fullPath)
 	if err != nil {
 		return err
