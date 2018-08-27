@@ -630,6 +630,28 @@ func (spk *SiaPublicKey) String() string {
 	return spk.Algorithm.String() + ":" + fmt.Sprintf("%x", spk.Key)
 }
 
+// MarshalJSON marshals a SiaPublicKey as JSON.
+func (spk SiaPublicKey) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + spk.String() + `"`), nil
+}
+
+// UnmarshalJSON unmarshals a SiaPublicKey as JSON.
+func (spk *SiaPublicKey) UnmarshalJSON(b []byte) error {
+	spk.LoadString(string(bytes.Trim(b, `"`)))
+	if spk.Key == nil {
+		// fallback to old (base64) encoding
+		var oldSPK struct {
+			Algorithm Specifier
+			Key       []byte
+		}
+		if err := json.Unmarshal(b, &oldSPK); err != nil {
+			return err
+		}
+		spk.Algorithm, spk.Key = oldSPK.Algorithm, oldSPK.Key
+	}
+	return nil
+}
+
 // MarshalJSON marshals a specifier as a string.
 func (s Specifier) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
