@@ -335,16 +335,17 @@ type (
 		// generated from the seed.
 		PrimarySeed() (Seed, uint64, error)
 
+		// SignTransaction signs txn using secret keys known to the wallet.
+		// The transaction should be complete with the exception of the
+		// Signature fields of each TransactionSignature referenced by toSign.
+		SignTransaction(txn *types.Transaction, toSign []crypto.Hash) error
+
 		// SweepSeed scans the blockchain for outputs generated from seed and
 		// creates a transaction that transfers them to the wallet. Note that
 		// this incurs a transaction fee. It returns the total value of the
 		// outputs, minus the fee. If only siafunds were found, the fee is
 		// deducted from the wallet.
 		SweepSeed(seed Seed) (coins, funds types.Currency, err error)
-
-		// WatchAddresses instructs the wallet to begin tracking a set of addresses,
-		// replacing any addresses it was previously tracking.
-		WatchAddresses(addrs []types.UnlockHash) error
 	}
 
 	// Wallet stores and manages siacoins and siafunds. The wallet file is
@@ -353,6 +354,9 @@ type (
 	Wallet interface {
 		EncryptionManager
 		KeyManager
+
+		// AddUnlockConditions adds a set of UnlockConditions to the wallet database.
+		AddUnlockConditions(uc types.UnlockConditions) error
 
 		// Close permits clean shutdown during testing and serving.
 		Close() error
@@ -438,10 +442,9 @@ type (
 		// address, if they are known to the wallet.
 		UnlockConditions(addr types.UnlockHash) (types.UnlockConditions, error)
 
-		// SignTransaction signs txn using secret keys known to the wallet.
-		// The transaction should be complete with the exception of the
-		// Signature fields of each TransactionSignature referenced by toSign.
-		SignTransaction(txn *types.Transaction, toSign []crypto.Hash) error
+		// WatchAddresses instructs the wallet to begin tracking a set of addresses,
+		// replacing any addresses it was previously tracking.
+		WatchAddresses(addrs []types.UnlockHash) error
 	}
 
 	// WalletSettings control the behavior of the Wallet.

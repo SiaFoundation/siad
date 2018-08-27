@@ -27,32 +27,33 @@ require the miner to be unlocked.
 Index
 -----
 
-| Route                                                               | HTTP verb |
-| ------------------------------------------------------------------- | --------- |
-| [/wallet](#wallet-get)                                              | GET       |
-| [/wallet/033x](#wallet033x-post)                                    | POST      |
-| [/wallet/address](#walletaddress-get)                               | GET       |
-| [/wallet/addresses](#walletaddresses-get)                           | GET       |
-| [/wallet/backup](#walletbackup-get)                                 | GET       |
-| [/wallet/changepassword](#walletchangepassword-post)                | POST      |
-| [/wallet/init](#walletinit-post)                                    | POST      |
-| [/wallet/init/seed](#walletinitseed-post)                           | POST      |
-| [/wallet/lock](#walletlock-post)                                    | POST      |
-| [/wallet/seed](#walletseed-post)                                    | POST      |
-| [/wallet/seeds](#walletseeds-get)                                   | GET       |
-| [/wallet/siacoins](#walletsiacoins-post)                            | POST      |
-| [/wallet/siafunds](#walletsiafunds-post)                            | POST      |
-| [/wallet/siagkey](#walletsiagkey-post)                              | POST      |
-| [/wallet/sign](#walletsign-post)                                    | POST      |
-| [/wallet/sweep/seed](#walletsweepseed-post)                         | POST      |
-| [/wallet/transaction/___:id___](#wallettransactionid-get)           | GET       |
-| [/wallet/transactions](#wallettransactions-get)                     | GET       |
-| [/wallet/transactions/___:addr___](#wallettransactionsaddr-get)     | GET       |
-| [/wallet/unlock](#walletunlock-post)                                | POST      |
-| [/wallet/unlockconditions](#walletunlockconditions-get)             | GET       |
-| [/wallet/unspent](#walletunspent-get)                               | GET       |
-| [/wallet/verify/address/:___addr___](#walletverifyaddressaddr-get)  | GET       |
-| [/wallet/watch](#walletwatch-post)                                  | POST      |
+| Route                                                                   | HTTP verb |
+| ----------------------------------------------------------------------- | --------- |
+| [/wallet](#wallet-get)                                                  | GET       |
+| [/wallet/033x](#wallet033x-post)                                        | POST      |
+| [/wallet/address](#walletaddress-get)                                   | GET       |
+| [/wallet/addresses](#walletaddresses-get)                               | GET       |
+| [/wallet/backup](#walletbackup-get)                                     | GET       |
+| [/wallet/changepassword](#walletchangepassword-post)                    | POST      |
+| [/wallet/init](#walletinit-post)                                        | POST      |
+| [/wallet/init/seed](#walletinitseed-post)                               | POST      |
+| [/wallet/lock](#walletlock-post)                                        | POST      |
+| [/wallet/seed](#walletseed-post)                                        | POST      |
+| [/wallet/seeds](#walletseeds-get)                                       | GET       |
+| [/wallet/siacoins](#walletsiacoins-post)                                | POST      |
+| [/wallet/siafunds](#walletsiafunds-post)                                | POST      |
+| [/wallet/siagkey](#walletsiagkey-post)                                  | POST      |
+| [/wallet/sign](#walletsign-post)                                        | POST      |
+| [/wallet/sweep/seed](#walletsweepseed-post)                             | POST      |
+| [/wallet/transaction/___:id___](#wallettransactionid-get)               | GET       |
+| [/wallet/transactions](#wallettransactions-get)                         | GET       |
+| [/wallet/transactions/___:addr___](#wallettransactionsaddr-get)         | GET       |
+| [/wallet/unlock](#walletunlock-post)                                    | POST      |
+| [/wallet/unlockconditions](#walletunlockconditions-post)                | POST      |
+| [/wallet/unlockconditions/___:addr___](#walletunlockconditionsaddr-get) | GET       |
+| [/wallet/unspent](#walletunspent-get)                                   | GET       |
+| [/wallet/verify/address/:___addr___](#walletverifyaddressaddr-get)      | GET       |
+| [/wallet/watch](#walletwatch-post)                                      | POST      |
 
 
 #### /wallet [GET]
@@ -744,6 +745,31 @@ encryptionpassword string
 standard success or error response. See
 [API.md#standard-responses](/doc/API.md#standard-responses).
 
+#### /wallet/unlockconditions [POST]
+
+stores a set of unlock conditions in the wallet database.
+
+###### Request Body
+```javascript
+{
+  "unlockconditions": {
+    // the minimum blockheight required
+    "timelock": 0,
+    // the number of signatures required
+    "signaturesrequired": 1,
+    // the set of keys whose signatures count towards signaturesrequired
+    "publickeys": [{
+      "algorithm": "ed25519",
+      "key": "/XUGj8PxMDkqdae6Js6ubcERxfxnXN7XPjZyANBZH1I="
+    }]
+  }
+}
+```
+
+###### Response
+standard success or error response. See
+[API.md#standard-responses](/doc/API.md#standard-responses).
+
 #### /wallet/unlockconditions/___:addr___ [GET]
 
 returns the unlock conditions of :addr, if they are known to the wallet.
@@ -811,8 +837,8 @@ takes the address specified by :addr and returns a JSON response indicating if t
 
 #### /wallet/watch [POST]
 
-Function: Start tracking a set of addresses. Outputs owned by the addresses
-will be reported in /wallet/unspent.
+start tracking a set of addresses. Outputs owned by the addresses will be
+reported in /wallet/unspent.
 
 ###### Request Body
 ```javascript

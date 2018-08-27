@@ -776,21 +776,34 @@ outer:
 
 // UnlockConditions returns the UnlockConditions for the specified address, if
 // they are known to the wallet.
-func (w *Wallet) UnlockConditions(addr types.UnlockHash) (types.UnlockConditions, error) {
+func (w *Wallet) UnlockConditions(addr types.UnlockHash) (uc types.UnlockConditions, err error) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	if !w.unlocked {
 		return types.UnlockConditions{}, modules.ErrLockedWallet
 	}
-	// TODO: extend this to also check a db bucket (bucketUnlockConditions?)
-	sk, ok := w.keys[addr]
-	if !ok {
-		return types.UnlockConditions{}, errors.New("no record of UnlockConditions for that UnlockHash")
+	if sk, ok := w.keys[addr]; ok {
+		uc = sk.UnlockConditions
+	} else {
+		// not in memory; try database
+		uc, err = dbGetUnlockConditions(w.dbTx, addr)
+		if err != nil {
+			return types.UnlockConditions{}, errors.New("no record of UnlockConditions for that UnlockHash")
+		}
 	}
 	// make a copy of the public key slice; otherwise the caller can modify it
-	uc := sk.UnlockConditions
 	uc.PublicKeys = append([]types.SiaPublicKey(nil), uc.PublicKeys...)
 	return uc, nil
+}
+
+// AddUnlockConditions adds a set of UnlockConditions to the wallet database.
+func (w *Wallet) AddUnlockConditions(uc types.UnlockConditions) error {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if !w.unlocked {
+		return modules.ErrLockedWallet
+	}
+	return dbPutUnlockConditions(w.dbTx, uc)
 }
 
 // SignTransaction signs txn using secret keys known to the wallet. The

@@ -117,6 +117,11 @@ type (
 		UnlockConditions types.UnlockConditions `json:"unlockconditions"`
 	}
 
+	// WalletUnlockConditionsPOSTParams contains a set of unlock conditions.
+	WalletUnlockConditionsPOSTParams struct {
+		UnlockConditions types.UnlockConditions `json:"unlockconditions"`
+	}
+
 	// WalletUnspentGET contains the unspent outputs tracked by the wallet.
 	// The MaturityHeight field of each output indicates the height of the
 	// block that the output appeared in.
@@ -688,8 +693,8 @@ func (api *API) walletVerifyAddressHandler(w http.ResponseWriter, req *http.Requ
 	WriteJSON(w, WalletVerifyAddressGET{Valid: err == nil})
 }
 
-// walletUnlockConditionsHandler handles API calls to /wallet/unlockconditions.
-func (api *API) walletUnlockConditionsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+// walletUnlockConditionsHandlerGET handles GET calls to /wallet/unlockconditions.
+func (api *API) walletUnlockConditionsHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	var addr types.UnlockHash
 	err := addr.LoadString(ps.ByName("addr"))
 	if err != nil {
@@ -704,6 +709,22 @@ func (api *API) walletUnlockConditionsHandler(w http.ResponseWriter, req *http.R
 	WriteJSON(w, WalletUnlockConditionsGET{
 		UnlockConditions: uc,
 	})
+}
+
+// walletUnlockConditionsHandlerPOST handles POST calls to /wallet/unlockconditions.
+func (api *API) walletUnlockConditionsHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	var params WalletUnlockConditionsPOSTParams
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	err = api.wallet.AddUnlockConditions(params.UnlockConditions)
+	if err != nil {
+		WriteError(w, Error{"error when calling /wallet/unlockconditions: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
 }
 
 // walletUnspentHandler handles API calls to /wallet/unspent.
