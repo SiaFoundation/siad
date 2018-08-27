@@ -233,7 +233,7 @@ func (r *Renter) saveFile(f *siafile.SiaFile) error {
 		return errors.New("can't save deleted file")
 	}
 	// Create directory structure specified in nickname.
-	err := r.createDir(f.SiaPath())
+	err := r.createDir(filepath.Dir(f.SiaPath()))
 	if err != nil {
 		return err
 	}

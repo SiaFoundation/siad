@@ -259,7 +259,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check new directory
 	check = 0
-	fileInfos, err = ioutil.ReadDir(filepath.Join(rd.SiaPath(), r.RenterDir()))
+	fileInfos, err = ioutil.ReadDir(filepath.Join(r.RenterDir(), rd.SiaPath()))
 	if err != nil {
 		t.Fatal("Unable to read uploaded directory:", err)
 	}
