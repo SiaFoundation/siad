@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -16,11 +15,6 @@ import (
 // uploaded to the sia network
 type LocalDir struct {
 	path string
-}
-
-// LocalDirSiaPath returns the siapath to be used for uploading a LocalDir
-func (tn *TestNode) LocalDirSiaPath(ld *LocalDir) string {
-	return strings.TrimPrefix(ld.path, tn.RenterDir()+"/")
 }
 
 // Name returns the directory name of the directory on disk
@@ -50,13 +44,17 @@ func (ld *LocalDir) Files() ([]*LocalFile, error) {
 	return files, nil
 }
 
+// CreateDir creates a new LocalDir in the current LocalDir with the provide
+// name
+func (ld *LocalDir) CreateDir(name string) (*LocalDir, error) {
+	path := filepath.Join(ld.path, name)
+	return &LocalDir{path: path}, os.MkdirAll(path, 0777)
+}
+
 // newDir creates a new LocalDir in the current LocalDir
 func (ld *LocalDir) newDir() (*LocalDir, error) {
 	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4))))
-	if err := os.MkdirAll(path, 0777); err != nil {
-		return nil, err
-	}
-	return &LocalDir{path: path}, nil
+	return &LocalDir{path: path}, os.MkdirAll(path, 0777)
 }
 
 // newFile creates a new LocalFile in the current LocalDir

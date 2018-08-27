@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
@@ -41,11 +40,6 @@ func NewLocalFile(size int, dir string) (*LocalFile, error) {
 // TestNode's upload directory
 func (tn *TestNode) NewFile(size int) (*LocalFile, error) {
 	return NewLocalFile(size, tn.uploadDir.path)
-}
-
-// LocalFileSiaPath returns the siapath of the file on disk
-func (tn *TestNode) LocalFileSiaPath(lf *LocalFile) string {
-	return strings.TrimPrefix(lf.path, tn.RenterDir()+"/")
 }
 
 // Delete removes the LocalFile from disk.
