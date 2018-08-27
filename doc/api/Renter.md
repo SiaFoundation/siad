@@ -27,14 +27,14 @@ Index
 | [/renter/downloads](#renterdownloads-get)                                       | GET       |
 | [/renter/downloads/clear](#renterdownloadsclear-post)                           | POST      |
 | [/renter/files](#renterfiles-get)                                               | GET       |
-| [/renter/file/*___siapath___](#renterfile___siapath___-get)                     | GET       |
+| [/renter/file/*___siapath___](#renterfilesiapath-get)                           | GET       |
 | [/renter/prices](#renter-prices-get)                                            | GET       |
-| [/renter/delete/___*siapath___](#renterdelete___siapath___-post)                | POST      |
-| [/renter/download/___*siapath___](#renterdownload__siapath___-get)              | GET       |
-| [/renter/downloadasync/___*siapath___](#renterdownloadasync__siapath___-get)    | GET       |
-| [/renter/rename/___*siapath___](#renterrename___siapath___-post)                | POST      |
+| [/renter/delete/___*siapath___](#renterdeletesiapath-post)                      | POST      |
+| [/renter/download/___*siapath___](#renterdownloadsiapath-get)                   | GET       |
+| [/renter/downloadasync/___*siapath___](#renterdownloadasyncsiapath-get)         | GET       |
+| [/renter/rename/___*siapath___](#renterrenamesiapath-post)                      | POST      |
 | [/renter/stream/___*siapath___](#renterstreamsiapath-get)                       | GET       |
-| [/renter/upload/___*siapath___](#renterupload___siapath___-post)                | POST      |
+| [/renter/upload/___*siapath___](#renteruploadsiapath-post)                      | POST      |
 
 #### /renter [GET]
 

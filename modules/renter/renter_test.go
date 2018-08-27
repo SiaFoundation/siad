@@ -216,6 +216,7 @@ func TestRenterSiapathValidate(t *testing.T) {
 		{"/leading/slash", false},
 		{"foo/./bar", false},
 		{"", false},
+		{"blank/end/", false},
 	}
 	for _, pathtest := range pathtests {
 		err := validateSiapath(pathtest.in)

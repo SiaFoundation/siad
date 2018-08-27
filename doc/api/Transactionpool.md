@@ -19,12 +19,12 @@ the transaction pool and submitting transactions to the transaction pool.
 Index
 -----
 
-| Route                                       | HTTP verb |
-| ------------------------------------------- | --------- |
-| [/tpool/confirmed/:id](#tpoolconfirmed-get) | GET       |
-| [/tpool/fee](#tpoolfee-get)                 | GET       |
-| [/tpool/raw/:id](#tpoolraw-get)             | GET       |
-| [/tpool/raw](#tpoolraw-post)                | POST      |
+| Route                                         | HTTP verb |
+| --------------------------------------------- | --------- |
+| [/tpool/confirmed/:id](#tpoolconfirmedid-get) | GET       |
+| [/tpool/fee](#tpoolfee-get)                   | GET       |
+| [/tpool/raw/:id](#tpoolrawid-get)             | GET       |
+| [/tpool/raw](#tpoolraw-post)                  | POST      |
 
 #### /tpool/confirmed/:id [GET]
 
