@@ -3,6 +3,7 @@ package siatest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -133,4 +134,10 @@ func (tn *TestNode) NewRootDirs() error {
 		return err
 	}
 	return nil
+}
+
+// SiaPath returns the siapath of a local file or directory to be used for
+// uploading
+func (tn *TestNode) SiaPath(path string) string {
+	return strings.TrimPrefix(path, tn.RenterDir()+"/")
 }

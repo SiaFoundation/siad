@@ -166,7 +166,7 @@ func (tn *TestNode) FileInfo(rf *RemoteFile) (modules.FileInfo, error) {
 // Upload uses the node to upload the file.
 func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*RemoteFile, error) {
 	// Upload file
-	siapath := tn.LocalFileSiaPath(lf)
+	siapath := tn.SiaPath(lf.path)
 	err := tn.RenterUploadPost(lf.path, siapath, dataPieces, parityPieces)
 	if err != nil {
 		return nil, err
@@ -184,7 +184,24 @@ func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*Rem
 	return rf, nil
 }
 
-// UploadNewDirectory uses the node to create and upload a directory
+// UploadDirectory uses the node to upload a directory
+func (tn *TestNode) UploadDirectory(ld *LocalDir) (*RemoteDir, error) {
+	// Upload Directory
+	siapath := tn.SiaPath(ld.path)
+	err := tn.RenterCreateDirPost(siapath)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to upload directory")
+	}
+
+	// Create remote directory object
+	rd := &RemoteDir{
+		siapath: siapath,
+	}
+	return rd, nil
+}
+
+// UploadNewDirectory uses the node to create and upload a directory with a
+// random name
 func (tn *TestNode) UploadNewDirectory(files, dirs, levels uint) (*RemoteDir, error) {
 	// Create Directory
 	ld, err := tn.uploadDir.newDir()
@@ -196,17 +213,7 @@ func (tn *TestNode) UploadNewDirectory(files, dirs, levels uint) (*RemoteDir, er
 	}
 
 	// Upload Directory
-	siapath := tn.LocalDirSiaPath(ld)
-	err = tn.RenterCreateDirPost(siapath)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to upload directory")
-	}
-
-	// Create remote directory object
-	rd := &RemoteDir{
-		siapath: siapath,
-	}
-	return rd, nil
+	return tn.UploadDirectory(ld)
 }
 
 // UploadNewFile initiates the upload of a filesize bytes large file.

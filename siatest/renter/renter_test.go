@@ -35,7 +35,7 @@ func TestRenter(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// t.Parallel()
+	t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -274,11 +274,12 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check uploading file to new subdirectory
 	size := 100 + siatest.Fuzz()
-	path := filepath.Join(r.UploadDir().Path(), "subDir1/subDir2/subDir3")
-	if err := os.MkdirAll(path, 0777); err != nil {
+	ud := r.UploadDir()
+	ld, err := ud.CreateDir("subDir1/subDir2/subDir3")
+	if err != nil {
 		t.Fatal(err)
 	}
-	lf, err := siatest.NewLocalFile(size, path)
+	lf, err := siatest.NewLocalFile(size, ld.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +293,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check for metadata files, uploading file into subdirectory should have
 	// created directories and directory metadata files up through renter
-	path = filepath.Dir(filepath.Join(r.RenterDir(), rf.SiaPath()))
+	path := filepath.Dir(filepath.Join(r.RenterDir(), rf.SiaPath()))
 	for path != r.RenterDir() {
 		check = 0
 		fileInfos, err = ioutil.ReadDir(path)
