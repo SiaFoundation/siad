@@ -143,62 +143,6 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 	return spending
 }
 
-<<<<<<< 4f3bca73fd2809a7cd4b422177958175882c80b4
-=======
-// ContractByPublicKey returns the contract with the key specified, if it
-// exists. The contract will be resolved if possible to the most recent child
-// contract.
-func (c *Contractor) ContractByPublicKey(pk types.SiaPublicKey) (modules.RenterContract, bool) {
-	c.mu.RLock()
-	id, ok := c.pubKeysToContractID[string(pk.Key)]
-	c.mu.RUnlock()
-	if !ok {
-		return modules.RenterContract{}, false
-	}
-	return c.staticContracts.View(id)
-}
-
-// CancelContract cancels the Contractor's contract by marking it !GoodForRenew
-// and !GoodForUpload
-func (c *Contractor) CancelContract(id types.FileContractID) error {
-	return c.managedUpdateContractUtility(id, modules.ContractUtility{
-		GoodForRenew:  false,
-		GoodForUpload: false,
-		Locked:        true,
-	})
-}
-
-// Contracts returns the contracts formed by the contractor in the current
-// allowance period. Only contracts formed with currently online hosts are
-// returned.
-func (c *Contractor) Contracts() []modules.RenterContract {
-	return c.staticContracts.ViewAll()
-}
-
-// OldContracts returns the contracts formed by the contractor that have
-// expired
-func (c *Contractor) OldContracts() []modules.RenterContract {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	contracts := make([]modules.RenterContract, 0, len(c.oldContracts))
-	for _, c := range c.oldContracts {
-		contracts = append(contracts, c)
-	}
-	return contracts
-}
-
-// ContractUtility returns the utility fields for the given contract.
-func (c *Contractor) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility, bool) {
-	c.mu.RLock()
-	id, ok := c.pubKeysToContractID[string(pk.Key)]
-	c.mu.RUnlock()
-	if !ok {
-		return modules.ContractUtility{}, false
-	}
-	return c.managedContractUtility(id)
-}
-
->>>>>>> Add API endpoint to cancel contract by ID
 // CurrentPeriod returns the height at which the current allowance period
 // began.
 func (c *Contractor) CurrentPeriod() types.BlockHeight {
