@@ -447,16 +447,26 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	var file modules.FileInfo
-	for _, f := range files {
+	checks := 0
+	for i, f := range files {
+		// Only request files if file was fully uploaded for first API request
+		if f.UploadProgress < 100 {
+			continue
+		}
+		checks++
 		file, err = renter.File(f.SiaPath)
 		if err != nil {
 			t.Fatal("Failed to request single file", err)
 		}
 		if !reflect.DeepEqual(f, file) {
-			t.Log(f)
-			t.Log(file)
+			t.Logf("Error with file %v or %v\n", i, len(files))
+			t.Log("File from Files():", f)
+			t.Log("File from File():", file)
 			t.Fatal("Single file queries does not match file previously requested.")
 		}
+	}
+	if checks == 0 {
+		t.Fatal("No files checks through single file endpoint.")
 	}
 }
 
