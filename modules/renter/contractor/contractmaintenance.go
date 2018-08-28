@@ -87,7 +87,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	// based on the amount of new storage added in the previous period. Account
 	// for both the storage price as well as the upload price.
 	prevUploadDataEstimate := prevUploadSpending
-	if host.UploadBandwidthPrice.Cmp(types.ZeroCurrency) > 0 {
+	if !host.UploadBandwidthPrice.IsZero() {
 		prevUploadDataEstimate = prevUploadDataEstimate.Div(host.UploadBandwidthPrice)
 	}
 	// Sanity check - the host may have changed prices, make sure we aren't
