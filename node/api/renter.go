@@ -275,6 +275,21 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 	WriteSuccess(w)
 }
 
+// renterContractCancelHandler handles the API call to cancel a specific Renter contract.
+func (api *API) renterContractCancelHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var fcid types.FileContractID
+	if err := fcid.LoadString(req.FormValue("id")); err != nil {
+		WriteError(w, Error{"unable to parse id:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	err := api.renter.CancelContract(fcid)
+	if err != nil {
+		WriteError(w, Error{"unable to cancel contract:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
 // renterContractsHandler handles the API call to request the Renter's
 // contracts.
 //
@@ -290,10 +305,12 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 	// Parse flags
 	inactive, err := scanBool(req.FormValue("inactive"))
 	if err != nil {
+		WriteError(w, Error{"unable to parse inactive:" + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	expired, err := scanBool(req.FormValue("expired"))
 	if err != nil {
+		WriteError(w, Error{"unable to parse expired:" + err.Error()}, http.StatusBadRequest)
 		return
 	}
 

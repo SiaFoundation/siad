@@ -9,7 +9,17 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// RenterContractCancelPost uses the /renter/contract/cancel endpoint to cancel
+// a contract
+func (c *Client) RenterContractCancelPost(id types.FileContractID) error {
+	values := url.Values{}
+	values.Set("id", id.String())
+	err := c.post("/renter/contract/cancel", values.Encode(), nil)
+	return err
+}
 
 // RenterContractsGet requests the /renter/contracts resource and returns
 // Contracts and ActiveContracts

@@ -1220,7 +1220,7 @@ func TestRenterCancelAllowance(t *testing.T) {
 }
 
 // TestRenterContractEndHeight makes sure that the endheight of renewed
-// contracts is set properly
+// contracts is set properly, this test also tests canceling a contract
 func TestRenterContractEndHeight(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -1233,7 +1233,8 @@ func TestRenterContractEndHeight(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
 	}
@@ -1390,6 +1391,52 @@ func TestRenterContractEndHeight(t *testing.T) {
 			t.Log("Current Period:", currentPeriodStart)
 			t.Fatalf("Contract endheight Changed, EH was %v, expected %v\n", c.EndHeight, endHeight)
 		}
+	}
+
+	// Test canceling contract
+	// Grab contract to cancel
+	contract := rc.ActiveContracts[0]
+	// Cancel Contract
+	if err := r.RenterContractCancelPost(contract.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a new host so new contract can be formed
+	hostParams := node.Host(testDir + "/host")
+	_, err = tg.AddNodes(hostParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		// Check that Contract is now in inactive contracts and no longer in Active contracts
+		rc, err = r.RenterInactiveContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Confirm Renter has the expected number of contracts, meaning canceled contract should have been replaced.
+		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
+			return fmt.Errorf("Canceled contract was not replaced, only %v active contracts, expected %v", len(rc.ActiveContracts), len(tg.Hosts())-1)
+		}
+		for _, c := range rc.ActiveContracts {
+			if c.ID == contract.ID {
+				return errors.New("Contract not cancelled, contract found in Active Contracts")
+			}
+		}
+		i := 1
+		for _, c := range rc.InactiveContracts {
+			if c.ID == contract.ID {
+				break
+			}
+			if i == len(rc.InactiveContracts) {
+				return errors.New("Contract not found in Inactive Contracts")
+			}
+			i++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
