@@ -9,7 +9,6 @@ import (
 	"math/big"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -32,32 +31,30 @@ type (
 	}
 )
 
-//managedCheckForDuplicates checks for static contracts that have the same host
-//key and moves the older one to old contracts
+// managedCheckForDuplicates checks for static contracts that have the same host
+// key and moves the older one to old contracts
 func (c *Contractor) managedCheckForDuplicates() {
 	// Build map for comparison
-	pubkeys := make(map[crypto.Hash]types.FileContractID)
+	pubkeys := make(map[string]types.FileContractID)
 	var newContract, oldContract modules.RenterContract
 	for _, contract := range c.staticContracts.ViewAll() {
-		id, exists := pubkeys[crypto.HashBytes(contract.HostPublicKey.Key)]
+		id, exists := pubkeys[contract.HostPublicKey.String()]
 		if !exists {
-			pubkeys[crypto.HashBytes(contract.HostPublicKey.Key)] = contract.ID
+			pubkeys[contract.HostPublicKey.String()] = contract.ID
 			continue
 		}
 		// Duplicate contract found, determine older contract to delete
 		if rc, ok := c.staticContracts.View(id); ok {
 			if rc.StartHeight >= contract.StartHeight {
-				newContract = rc
-				oldContract = contract
+				newContract, oldContract = rc, contract
 			} else {
-				newContract = contract
-				oldContract = rc
+				newContract, oldContract = contract, rc
 			}
 			// Get SafeContract
 			oldSC, ok := c.staticContracts.Acquire(oldContract.ID)
 			if !ok {
 				// Update map
-				pubkeys[crypto.HashBytes(newContract.HostPublicKey.Key)] = newContract.ID
+				pubkeys[contract.HostPublicKey.String()] = newContract.ID
 				continue
 			}
 			c.mu.Lock()
@@ -75,7 +72,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 			c.staticContracts.Delete(oldSC)
 			c.mu.Unlock()
 			// Update map
-			pubkeys[crypto.HashBytes(newContract.HostPublicKey.Key)] = newContract.ID
+			pubkeys[contract.HostPublicKey.String()] = newContract.ID
 		}
 	}
 }
