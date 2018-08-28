@@ -73,6 +73,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 			c.mu.Unlock()
 			// Update map
 			pubkeys[contract.HostPublicKey.String()] = newContract.ID
+			c.log.Println("Duplicate contract found and older contract deleted")
 		}
 	}
 }
