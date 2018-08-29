@@ -86,7 +86,10 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	// Estimate the amount of money that's going to be needed for new storage
 	// based on the amount of new storage added in the previous period. Account
 	// for both the storage price as well as the upload price.
-	prevUploadDataEstimate := prevUploadSpending.Div(host.UploadBandwidthPrice)
+	prevUploadDataEstimate := prevUploadSpending
+	if !host.UploadBandwidthPrice.IsZero() {
+		prevUploadDataEstimate = prevUploadDataEstimate.Div(host.UploadBandwidthPrice)
+	}
 	// Sanity check - the host may have changed prices, make sure we aren't
 	// assuming an unreasonable amount of data.
 	if types.NewCurrency64(dataStored).Cmp(prevUploadDataEstimate) < 0 {

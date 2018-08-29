@@ -414,7 +414,7 @@ func TestLinkedContracts(t *testing.T) {
 	t.Parallel()
 
 	// create testing trio
-	_, c, m, err := newTestingTrio(t.Name())
+	h, c, m, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,6 +448,14 @@ func TestLinkedContracts(t *testing.T) {
 	}
 	if len(c.renewedTo) != 0 {
 		t.Fatal("renewedTo map should be empty")
+	}
+
+	// Set host's uploadbandwidthprice to zero to test divide by zero check when
+	// contracts are renewed
+	settings := h.InternalSettings()
+	settings.MinUploadBandwidthPrice = types.ZeroCurrency
+	if err := h.SetInternalSettings(settings); err != nil {
+		t.Fatal(err)
 	}
 
 	// Mine blocks to renew contract
