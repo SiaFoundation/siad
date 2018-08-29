@@ -232,10 +232,14 @@ func (r *Renter) saveFile(f *siafile.SiaFile) error {
 	if f.Deleted() { // TODO: violation of locking convention
 		return errors.New("can't save deleted file")
 	}
-	// Create directory structure specified in nickname.
-	err := r.createDir(filepath.Dir(f.SiaPath()))
-	if err != nil {
-		return err
+	// Create directory structure specified in nickname, only for files not in
+	// top level renter directory
+	dir := filepath.Dir(f.SiaPath())
+	if dir != "." {
+		err := r.createDir(dir)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Open SafeFile handle.
