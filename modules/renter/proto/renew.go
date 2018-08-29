@@ -14,7 +14,7 @@ import (
 // Renew negotiates a new contract for data already stored with a host, and
 // submits the new contract transaction to tpool. The new contract is added to
 // the ContractSet and its metadata is returned.
-func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, appliedTxns bool, err error) {
+func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
 	// for convenience
 	contract := oldContract.header
 
@@ -38,7 +38,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 
 	// Underflow check.
 	if funding.Cmp(host.ContractPrice.Add(txnFee).Add(basePrice)) <= 0 {
-		return modules.RenterContract{}, false, errors.New("insufficient funds to cover contract fee and transaction fee during contract renewal")
+		return modules.RenterContract{}, errors.New("insufficient funds to cover contract fee and transaction fee during contract renewal")
 	}
 	// Divide by zero check.
 	if host.StoragePrice.IsZero() {
@@ -59,9 +59,9 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 
 	// check for negative currency
 	if types.PostTax(startHeight, totalPayout).Cmp(hostPayout) < 0 {
-		return modules.RenterContract{}, false, errors.New("insufficient funds to pay both siafund fee and also host payout")
+		return modules.RenterContract{}, errors.New("insufficient funds to pay both siafund fee and also host payout")
 	} else if hostCollateral.Cmp(baseCollateral) < 0 {
-		return modules.RenterContract{}, false, errors.New("new collateral smaller than base collateral")
+		return modules.RenterContract{}, errors.New("new collateral smaller than base collateral")
 	}
 
 	// create file contract
@@ -92,7 +92,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	// build transaction containing fc
 	err = txnBuilder.FundSiacoins(funding)
 	if err != nil {
-		return modules.RenterContract{}, false, err
+		return modules.RenterContract{}, err
 	}
 	txnBuilder.AddFileContract(fc)
 	// add miner fee
@@ -102,7 +102,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	txn, parentTxns := txnBuilder.View()
 	unconfirmedParents, err := txnBuilder.UnconfirmedParents()
 	if err != nil {
-		return modules.RenterContract{}, false, err
+		return modules.RenterContract{}, err
 	}
 	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
 
@@ -124,28 +124,28 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	}
 	conn, err := dialer.Dial("tcp", string(host.NetAddress))
 	if err != nil {
-		return modules.RenterContract{}, false, err
+		return modules.RenterContract{}, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// allot time for sending RPC ID, verifyRecentRevision, and verifySettings
 	extendDeadline(conn, modules.NegotiateRecentRevisionTime+modules.NegotiateSettingsTime)
 	if err = encoding.WriteObject(conn, modules.RPCRenewContract); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't initiate RPC: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't initiate RPC: " + err.Error())
 	}
 	// verify that both parties are renewing the same contract
 	err = verifyRecentRevision(conn, oldContract, host.Version)
 	if err != nil {
-		return modules.RenterContract{}, false, err
+		return modules.RenterContract{}, err
 	}
 
 	// verify the host's settings and confirm its identity
 	host, err = verifySettings(conn, host)
 	if err != nil {
-		return modules.RenterContract{}, false, errors.New("settings exchange failed: " + err.Error())
+		return modules.RenterContract{}, errors.New("settings exchange failed: " + err.Error())
 	}
 	if !host.AcceptingContracts {
-		return modules.RenterContract{}, false, errors.New("host is not accepting contracts")
+		return modules.RenterContract{}, errors.New("host is not accepting contracts")
 	}
 
 	// allot time for negotiation
@@ -153,18 +153,18 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 
 	// send acceptance, txn signed by us, and pubkey
 	if err = modules.WriteNegotiationAcceptance(conn); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't send initial acceptance: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't send initial acceptance: " + err.Error())
 	}
 	if err = encoding.WriteObject(conn, txnSet); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't send the contract signed by us: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't send the contract signed by us: " + err.Error())
 	}
 	if err = encoding.WriteObject(conn, ourSK.PublicKey()); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't send our public key: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't send our public key: " + err.Error())
 	}
 
 	// read acceptance and txn signed by host
 	if err = modules.ReadNegotiationAcceptance(conn); err != nil {
-		return modules.RenterContract{}, false, errors.New("host did not accept our proposed contract: " + err.Error())
+		return modules.RenterContract{}, errors.New("host did not accept our proposed contract: " + err.Error())
 	}
 	// host now sends any new parent transactions, inputs and outputs that
 	// were added to the transaction
@@ -172,13 +172,13 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	var newInputs []types.SiacoinInput
 	var newOutputs []types.SiacoinOutput
 	if err = encoding.ReadObject(conn, &newParents, types.BlockSizeLimit); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't read the host's added parents: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't read the host's added parents: " + err.Error())
 	}
 	if err = encoding.ReadObject(conn, &newInputs, types.BlockSizeLimit); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't read the host's added inputs: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't read the host's added inputs: " + err.Error())
 	}
 	if err = encoding.ReadObject(conn, &newOutputs, types.BlockSizeLimit); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't read the host's added outputs: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't read the host's added outputs: " + err.Error())
 	}
 
 	// merge txnAdditions with txnSet
@@ -193,7 +193,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	// sign the txn
 	signedTxnSet, err := txnBuilder.Sign(true)
 	if err != nil {
-		return modules.RenterContract{}, false, modules.WriteNegotiationRejection(conn, errors.New("failed to sign transaction: "+err.Error()))
+		return modules.RenterContract{}, modules.WriteNegotiationRejection(conn, errors.New("failed to sign transaction: "+err.Error()))
 	}
 
 	// calculate signatures added by the transaction builder
@@ -233,30 +233,30 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 
 	// Send acceptance and signatures
 	if err = modules.WriteNegotiationAcceptance(conn); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't send transaction acceptance: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't send transaction acceptance: " + err.Error())
 	}
 	if err = encoding.WriteObject(conn, addedSignatures); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't send added signatures: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't send added signatures: " + err.Error())
 	}
 	if err = encoding.WriteObject(conn, revisionTxn.TransactionSignatures[0]); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't send revision signature: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't send revision signature: " + err.Error())
 	}
 
 	// Read the host acceptance and signatures.
 	err = modules.ReadNegotiationAcceptance(conn)
 	if err != nil {
-		return modules.RenterContract{}, false, errors.New("host did not accept our signatures: " + err.Error())
+		return modules.RenterContract{}, errors.New("host did not accept our signatures: " + err.Error())
 	}
 	var hostSigs []types.TransactionSignature
 	if err = encoding.ReadObject(conn, &hostSigs, 2e3); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't read the host's signatures: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't read the host's signatures: " + err.Error())
 	}
 	for _, sig := range hostSigs {
 		txnBuilder.AddTransactionSignature(sig)
 	}
 	var hostRevisionSig types.TransactionSignature
 	if err = encoding.ReadObject(conn, &hostRevisionSig, 2e3); err != nil {
-		return modules.RenterContract{}, false, errors.New("couldn't read the host's revision signature: " + err.Error())
+		return modules.RenterContract{}, errors.New("couldn't read the host's revision signature: " + err.Error())
 	}
 	revisionTxn.TransactionSignatures = append(revisionTxn.TransactionSignatures, hostRevisionSig)
 
@@ -271,7 +271,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		err = nil
 	}
 	if err != nil {
-		return modules.RenterContract{}, false, err
+		return modules.RenterContract{}, err
 	}
 
 	// Construct contract header.
@@ -293,13 +293,13 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	// Get old roots
 	oldRoots, err := oldContract.merkleRoots.merkleRoots()
 	if err != nil {
-		return modules.RenterContract{}, false, err
+		return modules.RenterContract{}, err
 	}
 
 	// Add contract to set.
 	meta, err := cs.managedInsertContract(header, oldRoots)
 	if err != nil {
-		return modules.RenterContract{}, false, err
+		return modules.RenterContract{}, err
 	}
-	return meta, false, nil
+	return meta, nil
 }
