@@ -99,7 +99,7 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 		params:      nodeParams,
 		primarySeed: "",
 	}
-	if err = tn.NewRootDirs(); err != nil {
+	if err = tn.initRootDirs(); err != nil {
 		return nil, errors.AddContext(err, "failed to create root directories")
 	}
 
@@ -119,8 +119,8 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 	return tn, nil
 }
 
-// NewRootDirs creates the download and upload directories for the TestNode
-func (tn *TestNode) NewRootDirs() error {
+// initRootDirs creates the download and upload directories for the TestNode
+func (tn *TestNode) initRootDirs() error {
 	tn.downloadDir = &LocalDir{
 		path: filepath.Join(tn.RenterDir(), "downloads"),
 	}
