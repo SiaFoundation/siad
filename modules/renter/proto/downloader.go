@@ -181,20 +181,9 @@ func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileCont
 		}
 	}()
 
-	conn, closeChan, err := initiateRevisionLoop(host, contract, modules.RPCDownload, cancel, cs.rl)
-	if IsRevisionMismatch(err) && len(sc.unappliedTxns) > 0 {
-		// we have desynced from the host. If we have unapplied updates from the
-		// WAL, try applying them.
-		conn, closeChan, err = initiateRevisionLoop(host, sc.unappliedHeader(), modules.RPCDownload, cancel, cs.rl)
-		if err != nil {
-			return nil, err
-		}
-		// applying the updates was successful; commit them to disk
-		if err := sc.commitTxns(); err != nil {
-			return nil, err
-		}
-	} else if err != nil {
-		return nil, err
+	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCDownload, cancel, cs.rl)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to initiate revision loop")
 	}
 	// if we succeeded, we can safely discard the unappliedTxns
 	for _, txn := range sc.unappliedTxns {

@@ -134,17 +134,8 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		return modules.RenterContract{}, false, errors.New("couldn't initiate RPC: " + err.Error())
 	}
 	// verify that both parties are renewing the same contract
-	err = verifyRecentRevision(conn, contract, host.Version)
-	if IsRevisionMismatch(err) && len(oldContract.unappliedTxns) > 0 {
-		// apply the unapplied txns. We are already out of sync with the host.
-		// Applying the updates can't make it any worse.
-		if errCommit := oldContract.commitTxns(); errCommit != nil {
-			return modules.RenterContract{}, false, errCommit
-		}
-		return modules.RenterContract{}, true, err
-	} else if err != nil {
-		// don't add context; want to preserve the original error type so that
-		// callers can check using IsRevisionMismatch
+	err = verifyRecentRevision(conn, oldContract, host.Version)
+	if err != nil {
 		return modules.RenterContract{}, false, err
 	}
 
