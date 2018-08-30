@@ -2,6 +2,7 @@ package hosttree
 
 import (
 	"errors"
+	"net"
 	"sort"
 	"sync"
 
@@ -285,15 +286,24 @@ func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.H
 
 	var hosts []modules.HostDBEntry
 	var removedEntries []*hostEntry
+	addressFilter := newAddressFilter(net.LookupIP)
 
+	// Remove hosts we want to ignore from the tree but remember them to make
+	// sure we can insert them later.
 	for _, pubkey := range ignore {
 		node, exists := ht.hosts[string(pubkey.Key)]
 		if !exists {
 			continue
 		}
+		// Remove the host from the tree.
 		node.remove()
 		delete(ht.hosts, string(pubkey.Key))
+
+		// Remember the host to insert it again later.
 		removedEntries = append(removedEntries, node.entry)
+
+		// Add the node to the addressFilter.
+		addressFilter.Add(node.entry)
 	}
 
 	for len(hosts) < n && len(ht.hosts) > 0 {
@@ -302,10 +312,15 @@ func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.H
 
 		if node.entry.AcceptingContracts &&
 			len(node.entry.ScanHistory) > 0 &&
-			node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success {
+			node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success &&
+			!addressFilter.Filtered(node.entry) {
 			// The host must be online and accepting contracts to be returned
-			// by the random function.
+			// by the random function. It also has to pass the addressFilter
+			// check.
 			hosts = append(hosts, node.entry.HostDBEntry)
+
+			// If the host passed the filter, we add it to the filter.
+			addressFilter.Add(node.entry)
 		}
 
 		removedEntries = append(removedEntries, node.entry)
