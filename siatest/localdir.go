@@ -57,9 +57,17 @@ func (ld *LocalDir) newDir() (*LocalDir, error) {
 	return &LocalDir{path: path}, os.MkdirAll(path, 0777)
 }
 
-// newFile creates a new LocalFile in the current LocalDir
-func (ld *LocalDir) newFile(size int) (*LocalFile, error) {
-	return NewLocalFile(size, ld.path)
+// NewFile creates a new LocalFile in the current LocalDir
+func (ld *LocalDir) NewFile(size int) (*LocalFile, error) {
+	fileName := fmt.Sprintf("%dbytes-%s", size, hex.EncodeToString(fastrand.Bytes(4)))
+	path := filepath.Join(ld.path, fileName)
+	bytes := fastrand.Bytes(size)
+	err := ioutil.WriteFile(path, bytes, 0600)
+	return &LocalFile{
+		path:     path,
+		size:     size,
+		checksum: crypto.HashBytes(bytes),
+	}, err
 }
 
 // Path creates a new LocalFile in the current LocalDir
@@ -77,7 +85,7 @@ func (ld *LocalDir) PopulateDir(files, dirs, levels uint) error {
 
 	// Create files at current level
 	for i := 0; i < int(files); i++ {
-		_, err := ld.newFile(100 + Fuzz())
+		_, err := ld.NewFile(100 + Fuzz())
 		if err != nil {
 			return err
 		}

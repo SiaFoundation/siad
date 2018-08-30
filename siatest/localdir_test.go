@@ -49,6 +49,8 @@ func TestCreateDir(t *testing.T) {
 	}
 }
 
+// checkSubDir is a helper function that confirms sub directories are created as
+// expected
 func checkSubDir(path string, files, dirs, levels int) error {
 	// Check for last level
 	if levels == 0 {

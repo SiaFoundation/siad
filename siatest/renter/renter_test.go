@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -241,49 +242,27 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	// Check for metadata files, Directory should have been uploaded in the top
 	// level of the renter so there should be a metadata file for /renter and
 	// for the newly uploaded directory
-	//
+	metadata := ".siadir"
 	// Check /renter level
-	check := 0
-	fileInfos, err := ioutil.ReadDir(r.RenterDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range fileInfos {
-		if !f.IsDir() && f.Name() == ".siadir" {
-			check++
-		}
-	}
-	if check != 1 {
-		t.Fatalf("Did not find expected number of .siadir metadata files, found %v expected 1", check)
-	}
+	assertFileExists(r.RenterDir(), metadata, t)
 
 	// Check new directory
-	check = 0
-	fileInfos, err = ioutil.ReadDir(filepath.Join(r.RenterDir(), rd.SiaPath()))
-	if err != nil {
-		t.Fatal("Unable to read uploaded directory:", err)
-	}
-	for _, f := range fileInfos {
-		if !f.IsDir() && f.Name() == ".siadir" {
-			check++
-		}
-	}
-	if check != 1 {
-		t.Fatalf("Did not find expected number of .siadir metadata files, found %v expected 1", check)
-	}
+	assertFileExists(filepath.Join(r.RenterDir(), rd.SiaPath()), metadata, t)
 
 	// Check uploading file to new subdirectory
+	// Create local file
 	size := 100 + siatest.Fuzz()
 	ud := r.UploadDir()
 	ld, err := ud.CreateDir("subDir1/subDir2/subDir3")
 	if err != nil {
 		t.Fatal(err)
 	}
-	lf, err := siatest.NewLocalFile(size, ld.Path())
+	lf, err := ld.NewFile(size)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Upload file
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
 	rf, err := r.Upload(lf, dataPieces, parityPieces)
@@ -291,23 +270,17 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	// Check file exists
+	fullpath := filepath.Join(r.RenterDir(), rf.SiaPath())
+	path := filepath.Dir(filepath.Join(r.RenterDir(), rf.SiaPath()))
+	filename := strings.TrimPrefix(fullpath, path+"/")
+	assertFileExists(path, filename, t)
+
 	// Check for metadata files, uploading file into subdirectory should have
 	// created directories and directory metadata files up through renter
-	path := filepath.Dir(filepath.Join(r.RenterDir(), rf.SiaPath()))
-	for path != r.RenterDir() {
-		check = 0
-		fileInfos, err = ioutil.ReadDir(path)
-		if err != nil {
-			t.Fatal("Unable to read uploaded directory:", err)
-		}
-		for _, f := range fileInfos {
-			if !f.IsDir() && f.Name() == ".siadir" {
-				check++
-			}
-		}
-		if check != 1 {
-			t.Fatalf("Did not find expected number of .siadir metadata files, found %v expected 1", check)
-		}
+	path = filepath.Join(ud.Path(), "subDir1/subDir2/subDir3")
+	for path != filepath.Dir(r.RenterDir()) {
+		assertFileExists(path, metadata, t)
 		path = filepath.Dir(path)
 	}
 }
@@ -2480,6 +2453,24 @@ func TestZeroByteFile(t *testing.T) {
 }
 
 // The following are helper functions for the renter tests
+
+// assertFileExists is a helper function to confirm that a file exists in a
+// directory
+func assertFileExists(dir, filename string, t *testing.T) {
+	check := 0
+	fileInfos, err := ioutil.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fileInfos {
+		if !f.IsDir() && f.Name() == filename {
+			check++
+		}
+	}
+	if check != 1 {
+		t.Fatalf("Did not find %v file, found %v expected 1", filename, check)
+	}
+}
 
 // checkBalanceVsSpending checks the renters confirmed siacoin balance in their
 // wallet against their reported spending
