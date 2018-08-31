@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"errors"
 	"net"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // extendDeadline is a helper function for extending the connection timeout.
@@ -68,9 +68,9 @@ func verifySettings(conn net.Conn, host modules.HostDBEntry) (modules.HostDBEntr
 
 // verifyRecentRevision confirms that the host and contractor agree upon the current
 // state of the contract being revised.
-func verifyRecentRevision(conn net.Conn, contract contractHeader, hostVersion string) error {
+func verifyRecentRevision(conn net.Conn, contract *SafeContract, hostVersion string) error {
 	// send contract ID
-	if err := encoding.WriteObject(conn, contract.ID()); err != nil {
+	if err := encoding.WriteObject(conn, contract.header.ID()); err != nil {
 		return errors.New("couldn't send contract ID: " + err.Error())
 	}
 	// read challenge
@@ -82,7 +82,7 @@ func verifyRecentRevision(conn net.Conn, contract contractHeader, hostVersion st
 		crypto.SecureWipe(challenge[:16])
 	}
 	// sign and return
-	sig := crypto.SignHash(challenge, contract.SecretKey)
+	sig := crypto.SignHash(challenge, contract.header.SecretKey)
 	if err := encoding.WriteObject(conn, sig); err != nil {
 		return errors.New("couldn't send challenge response: " + err.Error())
 	}
@@ -101,16 +101,24 @@ func verifyRecentRevision(conn net.Conn, contract contractHeader, hostVersion st
 	}
 	// Check that the unlock hashes match; if they do not, something is
 	// seriously wrong. Otherwise, check that the revision numbers match.
-	ourRev := contract.LastRevision()
+	ourRev := contract.header.LastRevision()
 	if lastRevision.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
 		return errors.New("unlock conditions do not match")
 	} else if lastRevision.NewRevisionNumber != ourRev.NewRevisionNumber {
-		return &recentRevisionError{ourRev.NewRevisionNumber, lastRevision.NewRevisionNumber}
+		// If the revision number doesn't match try to commit potential
+		// unapplied transactions and check again.
+		if err := contract.commitTxns(); err != nil {
+			return errors.AddContext(err, "failed to commit transactions")
+		}
+		ourRev = contract.header.LastRevision()
+		if lastRevision.NewRevisionNumber != ourRev.NewRevisionNumber {
+			return &recentRevisionError{ourRev.NewRevisionNumber, lastRevision.NewRevisionNumber}
+		}
 	}
 	// NOTE: we can fake the blockheight here because it doesn't affect
 	// verification; it just needs to be above the fork height and below the
 	// contract expiration (which was checked earlier).
-	return modules.VerifyFileContractRevisionTransactionSignatures(lastRevision, hostSignatures, contract.EndHeight()-1)
+	return modules.VerifyFileContractRevisionTransactionSignatures(lastRevision, hostSignatures, contract.header.EndHeight()-1)
 }
 
 // negotiateRevision sends a revision and actions to the host for approval,
