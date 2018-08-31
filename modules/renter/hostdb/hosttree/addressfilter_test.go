@@ -20,7 +20,7 @@ func newTestingFilter(customLookup func(string) ([]net.IP, error)) *addressFilte
 	return &addressFilter{
 		filter:   make(map[string]struct{}),
 		lookupIP: customLookup,
-		testing:  false, // set to false to enable filter while testing.
+		disabled: false, // set to false to enable filter while testing.
 	}
 }
 

@@ -17,7 +17,7 @@ const (
 type addressFilter struct {
 	filter   map[string]struct{}
 	lookupIP func(string) ([]net.IP, error)
-	testing  bool // true in a testing build, false otherwise
+	disabled bool // true in a testing build, false otherwise
 }
 
 // newAddressFilter creates a new addressFilter object.
@@ -25,7 +25,7 @@ func newAddressFilter(lookupIP func(string) ([]net.IP, error)) *addressFilter {
 	return &addressFilter{
 		filter:   make(map[string]struct{}),
 		lookupIP: lookupIP,
-		testing:  build.Release == "testing",
+		disabled: build.Release == "testing",
 	}
 }
 
@@ -61,7 +61,7 @@ func (af *addressFilter) Add(host *hostEntry) {
 // not selected by the hosttree.
 func (af *addressFilter) Filtered(host *hostEntry) bool {
 	// During testing we don't filter addresses.
-	if af.testing {
+	if af.disabled {
 		return false
 	}
 	// Translate the hostname to one or multiple IPs. If the argument is an IP
