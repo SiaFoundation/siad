@@ -288,6 +288,12 @@ func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.H
 	var removedEntries []*hostEntry
 	addressFilter := newAddressFilter(net.LookupIP)
 
+	// Disable the filter in testing builds to allow running multiple hosts on
+	// localhost.
+	if build.Release == "testing" {
+		addressFilter.Disable()
+	}
+
 	// Remove hosts we want to ignore from the tree but remember them to make
 	// sure we can insert them later.
 	for _, pubkey := range ignore {

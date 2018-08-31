@@ -15,20 +15,11 @@ func newHostFromAddress(address string) *hostEntry {
 	return host
 }
 
-// newTestingFilter is a convenience method to create a filter that can be used for testing.
-func newTestingFilter(customLookup func(string) ([]net.IP, error)) *addressFilter {
-	return &addressFilter{
-		filter:   make(map[string]struct{}),
-		lookupIP: customLookup,
-		disabled: false, // set to false to enable filter while testing.
-	}
-}
-
 // TestTooManyAddresses checks that hosts with more than 2 associated IP
 // addresses are always filtered.
 func TestTooManyAddresses(t *testing.T) {
 	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := newTestingFilter(func(string) ([]net.IP, error) {
+	filter := newAddressFilter(func(string) ([]net.IP, error) {
 		return []net.IP{{}, {}, {}}, nil
 	})
 	host := newHostFromAddress("any.address")
@@ -49,7 +40,7 @@ func TestTwoAddresses(t *testing.T) {
 	ipv6Localhost := net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
 	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := newTestingFilter(func(host string) ([]net.IP, error) {
+	filter := newAddressFilter(func(host string) ([]net.IP, error) {
 		switch host {
 		case "ipv4.ipv6":
 			return []net.IP{ipv4Localhost, ipv6Localhost}, nil
@@ -82,7 +73,7 @@ func TestTwoAddresses(t *testing.T) {
 // TestFilterIPv4 tests filtering IPv4 addresses.
 func TestFilterIPv4(t *testing.T) {
 	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := newTestingFilter(func(host string) ([]net.IP, error) {
+	filter := newAddressFilter(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1":
 			return []net.IP{{127, 0, 0, 1}}, nil
@@ -145,7 +136,7 @@ func TestFilterIPv4(t *testing.T) {
 // TestFilterIPv6 tests filtering IPv4 addresses.
 func TestFilterIPv6(t *testing.T) {
 	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := newTestingFilter(func(host string) ([]net.IP, error) {
+	filter := newAddressFilter(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1":
 			return []net.IP{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil

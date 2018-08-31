@@ -3,8 +3,6 @@ package hosttree
 import (
 	"fmt"
 	"net"
-
-	"gitlab.com/NebulousLabs/Sia/build"
 )
 
 const (
@@ -25,7 +23,6 @@ func newAddressFilter(lookupIP func(string) ([]net.IP, error)) *addressFilter {
 	return &addressFilter{
 		filter:   make(map[string]struct{}),
 		lookupIP: lookupIP,
-		disabled: build.Release == "testing",
 	}
 }
 
@@ -55,6 +52,12 @@ func (af *addressFilter) Add(host *hostEntry) {
 		// Add the subnet to the map.
 		af.filter[ipnet.String()] = struct{}{}
 	}
+}
+
+// Disable disables the filter which means that Filtered will return false for
+// all hosts.
+func (af *addressFilter) Disable() {
+	af.disabled = true
 }
 
 // Filtered returns true if an address is supposed to be filtered and therefore
