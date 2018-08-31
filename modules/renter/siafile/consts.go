@@ -35,9 +35,7 @@ var (
 // to the SiaFile package.
 func IsSiaFileUpdate(update writeaheadlog.Update) bool {
 	switch update.Name {
-	case updateInsertName:
-		return true
-	case updateDeleteName:
+	case updateInsertName, updateDeleteName:
 		return true
 	default:
 		return false

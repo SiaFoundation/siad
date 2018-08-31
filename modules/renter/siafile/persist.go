@@ -3,6 +3,7 @@ package siafile
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -67,7 +68,7 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	// Create the SiaFile
 	sf := &SiaFile{
-		staticUID:   string(fastrand.Bytes(8)),
+		staticUID:   hex.EncodeToString(fastrand.Bytes(8)),
 		siaFilePath: path,
 		wal:         wal,
 	}
@@ -76,6 +77,7 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 	// Load the metadata.
 	decoder := json.NewDecoder(f)
 	if err := decoder.Decode(&sf.staticMetadata); err != nil {
@@ -232,7 +234,7 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 		build.Critical("the chunk offset is not page aligned")
 	}
 	// Open the file.
-	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 0)
+	f, err := os.Open(sf.siaFilePath)
 	if err != nil {
 		return writeaheadlog.Update{}, err
 	}
@@ -390,7 +392,7 @@ func (sf *SiaFile) saveChunks() (writeaheadlog.Update, error) {
 // were written to disk, a new page is allocated.
 func (sf *SiaFile) saveHeader() ([]writeaheadlog.Update, error) {
 	// Create a list of updates which need to be applied to save the metadata.
-	updates := make([]writeaheadlog.Update, 0)
+	var updates []writeaheadlog.Update
 
 	// Marshal the pubKeyTable.
 	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)

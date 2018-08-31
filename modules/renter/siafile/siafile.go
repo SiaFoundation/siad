@@ -2,6 +2,7 @@ package siafile
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"os"
@@ -92,7 +93,7 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 			SiaPath:         siaPath,
 		},
 		siaFilePath: siaFilePath,
-		staticUID:   string(fastrand.Bytes(20)),
+		staticUID:   hex.EncodeToString(fastrand.Bytes(20)),
 		wal:         wal,
 	}
 	// Init chunks.
@@ -244,7 +245,8 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 // Redundancy returns the redundancy of the least redundant chunk. A file
 // becomes available when this redundancy is >= 1. Assumes that every piece is
 // unique within a file contract. -1 is returned if the file has size 0. It
-// takes one argument, a map of offline contracts for this file.
+// takes two arguments, a map of offline contracts for this file and a map that
+// indicates if a contract is goodForRenew.
 func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
