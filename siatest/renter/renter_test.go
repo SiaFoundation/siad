@@ -11,7 +11,6 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -265,20 +264,14 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
-	rf, err := r.Upload(lf, dataPieces, parityPieces)
+	_, err = r.Upload(lf, dataPieces, parityPieces)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Check file exists
-	fullpath := filepath.Join(r.RenterDir(), rf.SiaPath())
-	path := filepath.Dir(filepath.Join(r.RenterDir(), rf.SiaPath()))
-	filename := strings.TrimPrefix(fullpath, path+"/")
-	assertFileExists(path, filename, t)
-
 	// Check for metadata files, uploading file into subdirectory should have
 	// created directories and directory metadata files up through renter
-	path = filepath.Join(ud.Path(), "subDir1/subDir2/subDir3")
+	path := filepath.Join(ud.Path(), "subDir1/subDir2/subDir3")
 	for path != filepath.Dir(r.RenterDir()) {
 		assertFileExists(path, metadata, t)
 		path = filepath.Dir(path)
