@@ -34,6 +34,13 @@ func (d *dependencyBlockScan) Scan() {
 	d.closed = true
 }
 
+// newDependencyInterruptContractSaveToDiskAfterDeletion creates a new
+// dependency that interrupts the contract being saved to disk after being
+// removed from static contracts
+func newDependencyInterruptContractSaveToDiskAfterDeletion() *siatest.DependencyInterruptOnceOnKeyword {
+	return siatest.NewDependencyInterruptOnceOnKeyword("InterruptContractSaveToDiskAfterDeletion")
+}
+
 // newDependencyInterruptDownloadBeforeSendingRevision creates a new dependency
 // that interrupts the download on the renter side before sending the signed
 // revision to the host.
