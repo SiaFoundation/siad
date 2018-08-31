@@ -2,7 +2,6 @@ package hosttree
 
 import (
 	"errors"
-	"net"
 	"sort"
 	"sync"
 
@@ -49,6 +48,10 @@ type (
 		// hosts is a map of public keys to nodes.
 		hosts map[string]*node
 
+		// resolver is the resolver used for resolving hostnames to IP
+		// addresses.
+		resolver hostResolver
+
 		// weightFn calculates the weight of a hostEntry
 		weightFn WeightFunc
 
@@ -87,16 +90,23 @@ func createNode(parent *node, entry *hostEntry) *node {
 	}
 }
 
-// New creates a new, empty, HostTree. It takes one argument, a `WeightFunc`,
-// which is used to determine the weight of a node on Insert.
-func New(wf WeightFunc) *HostTree {
+// newHostTree creates a new HostTree given a weight function and a resolver
+// for hostnames.
+func newHostTree(wf WeightFunc, resolver hostResolver) *HostTree {
 	return &HostTree{
+		resolver: resolver,
 		root: &node{
 			count: 1,
 		},
 		weightFn: wf,
 		hosts:    make(map[string]*node),
 	}
+}
+
+// New creates a new, empty, HostTree. It takes one argument, a `WeightFunc`,
+// which is used to determine the weight of a node on Insert.
+func New(wf WeightFunc) *HostTree {
+	return newHostTree(wf, productionResolver{})
 }
 
 // recursiveInsert inserts an entry into the appropriate place in the tree. The
@@ -286,12 +296,13 @@ func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.H
 
 	var hosts []modules.HostDBEntry
 	var removedEntries []*hostEntry
-	addressFilter := newAddressFilter(net.LookupIP)
 
-	// Disable the filter in testing builds to allow running multiple hosts on
-	// localhost.
+	// Create the addressFilter.
+	var addressFilter addressFilter
 	if build.Release == "testing" {
-		addressFilter.Disable()
+		addressFilter = &testingFilter{}
+	} else {
+		addressFilter = newProductionFilter(ht.resolver)
 	}
 
 	// Remove hosts we want to ignore from the tree but remember them to make

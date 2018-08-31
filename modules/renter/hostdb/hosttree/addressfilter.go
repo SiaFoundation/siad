@@ -10,28 +10,53 @@ const (
 	ipv6FilterRange = 54
 )
 
-// addressFilter filters host addresses which belong to the same subnet to
-// avoid selecting hosts from the same region.
-type addressFilter struct {
-	filter   map[string]struct{}
-	lookupIP func(string) ([]net.IP, error)
-	disabled bool // true in a testing build, false otherwise
+// hostResolver is an interface that allows resolving a hostname into IP
+// addresses.
+type hostResolver interface {
+	lookupIP(string) ([]net.IP, error)
 }
 
-// newAddressFilter creates a new addressFilter object.
-func newAddressFilter(lookupIP func(string) ([]net.IP, error)) *addressFilter {
-	return &addressFilter{
+// productionResolver is the hostname resolver used in production builds.
+type productionResolver struct{}
+
+func (productionResolver) lookupIP(host string) ([]net.IP, error) {
+	return net.LookupIP(host)
+}
+
+// addressFilter is the interface for a filter that can filter hostnames which
+// share a certain IP mask.
+type addressFilter interface {
+	Add(*hostEntry)
+	Filtered(*hostEntry) bool
+}
+
+// testingResolver is the hostname resolver used in testing builds.
+type testingFilter struct{}
+
+func (testingFilter) Add(*hostEntry)           {}
+func (testingFilter) Filtered(*hostEntry) bool { return false }
+
+// productionFilter filters host addresses which belong to the same subnet to
+// avoid selecting hosts from the same region.
+type productionFilter struct {
+	filter   map[string]struct{}
+	resolver hostResolver
+}
+
+// newProductionFilter creates a new addressFilter object.
+func newProductionFilter(resolver hostResolver) *productionFilter {
+	return &productionFilter{
 		filter:   make(map[string]struct{}),
-		lookupIP: lookupIP,
+		resolver: resolver,
 	}
 }
 
 // Add adds the addresses from a host to the filter preventing addresses from
 // the same subnets from being selected.
-func (af *addressFilter) Add(host *hostEntry) {
+func (af *productionFilter) Add(host *hostEntry) {
 	// Translate the hostname to one or multiple IPs. If the argument is an IP
 	// address LookupIP will just return that IP.
-	addresses, err := af.lookupIP(host.NetAddress.Host())
+	addresses, err := af.resolver.lookupIP(host.NetAddress.Host())
 	if err != nil {
 		return
 	}
@@ -54,22 +79,12 @@ func (af *addressFilter) Add(host *hostEntry) {
 	}
 }
 
-// Disable disables the filter which means that Filtered will return false for
-// all hosts.
-func (af *addressFilter) Disable() {
-	af.disabled = true
-}
-
 // Filtered returns true if an address is supposed to be filtered and therefore
 // not selected by the hosttree.
-func (af *addressFilter) Filtered(host *hostEntry) bool {
-	// During testing we don't filter addresses.
-	if af.disabled {
-		return false
-	}
+func (af *productionFilter) Filtered(host *hostEntry) bool {
 	// Translate the hostname to one or multiple IPs. If the argument is an IP
 	// address LookupIP will just return that IP.
-	addresses, err := af.lookupIP(host.NetAddress.Host())
+	addresses, err := af.resolver.lookupIP(host.NetAddress.Host())
 	if err != nil {
 		return true
 	}

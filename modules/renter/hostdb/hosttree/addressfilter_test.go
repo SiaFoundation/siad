@@ -7,6 +7,86 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
+var (
+	ipv4Localhost = net.IP{127, 0, 0, 1}
+	ipv6Localhost = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+)
+
+// testTooManyAddressesResolver is a resolver for the TestTwoAddresses test.
+type testTooManyAddressesResolver struct{}
+
+func (testTooManyAddressesResolver) lookupIP(host string) ([]net.IP, error) {
+	return []net.IP{{}, {}, {}}, nil
+}
+
+// testTwoAddressesResolver is a resolver for the TestTwoAddresses test.
+type testTwoAddressesResolver struct{}
+
+func (testTwoAddressesResolver) lookupIP(host string) ([]net.IP, error) {
+	switch host {
+	case "ipv4.ipv6":
+		return []net.IP{ipv4Localhost, ipv6Localhost}, nil
+	case "ipv6.ipv4":
+		return []net.IP{ipv6Localhost, ipv4Localhost}, nil
+	case "ipv4.ipv4":
+		return []net.IP{ipv4Localhost, ipv4Localhost}, nil
+	case "ipv6.ipv6":
+		return []net.IP{ipv6Localhost, ipv6Localhost}, nil
+	default:
+		panic("shouldn't happen")
+	}
+}
+
+// testFilterIPv4Resolver is a resolver for the TestFilterIPv4 test.
+type testFilterIPv4Resolver struct{}
+
+func (testFilterIPv4Resolver) lookupIP(host string) ([]net.IP, error) {
+	switch host {
+	case "host1":
+		return []net.IP{{127, 0, 0, 1}}, nil
+	case "host2":
+		return []net.IP{{127, 0, 0, 2}}, nil
+	case "host3":
+		return []net.IP{{127, 0, 1, 1}}, nil
+	case "host4":
+		return []net.IP{{127, 1, 1, 1}}, nil
+	case "host5":
+		return []net.IP{{128, 1, 1, 1}}, nil
+	case "host6":
+		return []net.IP{{128, 1, 1, 9}}, nil
+	default:
+		panic("shouldn't happen")
+	}
+}
+
+// testFilterIPv6Resolver is a resolver for the TestFilterIPv6 test.
+type testFilterIPv6Resolver struct{}
+
+func (testFilterIPv6Resolver) lookupIP(host string) ([]net.IP, error) {
+	switch host {
+	case "host1":
+		return []net.IP{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
+	case "host2":
+		return []net.IP{{0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
+	case "host3":
+		return []net.IP{{0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
+	case "host4":
+		return []net.IP{{0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
+	case "host5":
+		return []net.IP{{0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
+	case "host6":
+		return []net.IP{{0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
+	case "host7":
+		return []net.IP{{0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
+	case "host8":
+		return []net.IP{{1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
+	case "host9":
+		return []net.IP{{1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1}}, nil
+	default:
+		panic("shouldn't happen")
+	}
+}
+
 // newHostFromAddress is a convenience method to create a new hostEntry from an
 // ip address.
 func newHostFromAddress(address string) *hostEntry {
@@ -19,9 +99,7 @@ func newHostFromAddress(address string) *hostEntry {
 // addresses are always filtered.
 func TestTooManyAddresses(t *testing.T) {
 	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := newAddressFilter(func(string) ([]net.IP, error) {
-		return []net.IP{{}, {}, {}}, nil
-	})
+	filter := newProductionFilter(testTooManyAddressesResolver{})
 	host := newHostFromAddress("any.address")
 
 	// Add host to filter.
@@ -36,24 +114,8 @@ func TestTooManyAddresses(t *testing.T) {
 // TestTwoAddresses checks that hosts with two addresses will be filtered if
 // they have the same address type.
 func TestTwoAddresses(t *testing.T) {
-	ipv4Localhost := net.IP{127, 0, 0, 1}
-	ipv6Localhost := net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
-
 	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := newAddressFilter(func(host string) ([]net.IP, error) {
-		switch host {
-		case "ipv4.ipv6":
-			return []net.IP{ipv4Localhost, ipv6Localhost}, nil
-		case "ipv6.ipv4":
-			return []net.IP{ipv6Localhost, ipv4Localhost}, nil
-		case "ipv4.ipv4":
-			return []net.IP{ipv4Localhost, ipv4Localhost}, nil
-		case "ipv6.ipv6":
-			return []net.IP{ipv6Localhost, ipv6Localhost}, nil
-		default:
-			panic("shouldn't happen")
-		}
-	})
+	filter := newProductionFilter(testTwoAddressesResolver{})
 
 	// Create a few hosts for testing.
 	hostValid1 := newHostFromAddress("ipv4.ipv6")
@@ -72,25 +134,8 @@ func TestTwoAddresses(t *testing.T) {
 
 // TestFilterIPv4 tests filtering IPv4 addresses.
 func TestFilterIPv4(t *testing.T) {
-	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := newAddressFilter(func(host string) ([]net.IP, error) {
-		switch host {
-		case "host1":
-			return []net.IP{{127, 0, 0, 1}}, nil
-		case "host2":
-			return []net.IP{{127, 0, 0, 2}}, nil
-		case "host3":
-			return []net.IP{{127, 0, 1, 1}}, nil
-		case "host4":
-			return []net.IP{{127, 1, 1, 1}}, nil
-		case "host5":
-			return []net.IP{{128, 1, 1, 1}}, nil
-		case "host6":
-			return []net.IP{{128, 1, 1, 9}}, nil
-		default:
-			panic("shouldn't happen")
-		}
-	})
+	filter := newProductionFilter(testFilterIPv4Resolver{})
+
 	host1 := newHostFromAddress("host1")
 	host2 := newHostFromAddress("host2")
 	host3 := newHostFromAddress("host3")
@@ -135,31 +180,8 @@ func TestFilterIPv4(t *testing.T) {
 
 // TestFilterIPv6 tests filtering IPv4 addresses.
 func TestFilterIPv6(t *testing.T) {
-	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := newAddressFilter(func(host string) ([]net.IP, error) {
-		switch host {
-		case "host1":
-			return []net.IP{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
-		case "host2":
-			return []net.IP{{0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
-		case "host3":
-			return []net.IP{{0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
-		case "host4":
-			return []net.IP{{0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
-		case "host5":
-			return []net.IP{{0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
-		case "host6":
-			return []net.IP{{0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
-		case "host7":
-			return []net.IP{{0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
-		case "host8":
-			return []net.IP{{1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
-		case "host9":
-			return []net.IP{{1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1}}, nil
-		default:
-			panic("shouldn't happen")
-		}
-	})
+	filter := newProductionFilter(testFilterIPv6Resolver{})
+
 	host1 := newHostFromAddress("host1")
 	host2 := newHostFromAddress("host2")
 	host3 := newHostFromAddress("host3")
