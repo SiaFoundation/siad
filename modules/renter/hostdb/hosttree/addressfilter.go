@@ -28,6 +28,7 @@ func (productionResolver) lookupIP(host string) ([]net.IP, error) {
 type addressFilter interface {
 	Add(*hostEntry)
 	Filtered(*hostEntry) bool
+	Reset()
 }
 
 // testingResolver is the hostname resolver used in testing builds.
@@ -35,6 +36,7 @@ type testingFilter struct{}
 
 func (testingFilter) Add(*hostEntry)           {}
 func (testingFilter) Filtered(*hostEntry) bool { return false }
+func (testingFilter) Reset()                   {}
 
 // productionFilter filters host addresses which belong to the same subnet to
 // avoid selecting hosts from the same region.
@@ -117,4 +119,9 @@ func (af *productionFilter) Filtered(host *hostEntry) bool {
 		}
 	}
 	return false
+}
+
+// Reset clears the filter's contents.
+func (af *productionFilter) Reset() {
+	af.filter = make(map[string]struct{})
 }

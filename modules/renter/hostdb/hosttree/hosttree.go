@@ -48,9 +48,9 @@ type (
 		// hosts is a map of public keys to nodes.
 		hosts map[string]*node
 
-		// resolver is the resolver used for resolving hostnames to IP
-		// addresses.
-		resolver hostResolver
+		// addressFilter is the filter that filters hosts which share a certain
+		// IP subrange.
+		addressFilter addressFilter
 
 		// weightFn calculates the weight of a hostEntry
 		weightFn WeightFunc
@@ -92,9 +92,9 @@ func createNode(parent *node, entry *hostEntry) *node {
 
 // newHostTree creates a new HostTree given a weight function and a resolver
 // for hostnames.
-func newHostTree(wf WeightFunc, resolver hostResolver) *HostTree {
+func newHostTree(wf WeightFunc, filter addressFilter) *HostTree {
 	return &HostTree{
-		resolver: resolver,
+		addressFilter: filter,
 		root: &node{
 			count: 1,
 		},
@@ -106,7 +106,10 @@ func newHostTree(wf WeightFunc, resolver hostResolver) *HostTree {
 // New creates a new, empty, HostTree. It takes one argument, a `WeightFunc`,
 // which is used to determine the weight of a node on Insert.
 func New(wf WeightFunc) *HostTree {
-	return newHostTree(wf, productionResolver{})
+	if build.Release == "testing" {
+		return newHostTree(wf, testingFilter{})
+	}
+	return newHostTree(wf, newProductionFilter(productionResolver{}))
 }
 
 // recursiveInsert inserts an entry into the appropriate place in the tree. The
@@ -297,13 +300,8 @@ func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.H
 	var hosts []modules.HostDBEntry
 	var removedEntries []*hostEntry
 
-	// Create the addressFilter.
-	var addressFilter addressFilter
-	if build.Release == "testing" {
-		addressFilter = &testingFilter{}
-	} else {
-		addressFilter = newProductionFilter(ht.resolver)
-	}
+	// Clear the addressFilter before using it.
+	ht.addressFilter.Reset()
 
 	// Remove hosts we want to ignore from the tree but remember them to make
 	// sure we can insert them later.
@@ -320,7 +318,7 @@ func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.H
 		removedEntries = append(removedEntries, node.entry)
 
 		// Add the node to the addressFilter.
-		addressFilter.Add(node.entry)
+		ht.addressFilter.Add(node.entry)
 	}
 
 	for len(hosts) < n && len(ht.hosts) > 0 {
@@ -330,14 +328,14 @@ func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.H
 		if node.entry.AcceptingContracts &&
 			len(node.entry.ScanHistory) > 0 &&
 			node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success &&
-			!addressFilter.Filtered(node.entry) {
+			!ht.addressFilter.Filtered(node.entry) {
 			// The host must be online and accepting contracts to be returned
 			// by the random function. It also has to pass the addressFilter
 			// check.
 			hosts = append(hosts, node.entry.HostDBEntry)
 
 			// If the host passed the filter, we add it to the filter.
-			addressFilter.Add(node.entry)
+			ht.addressFilter.Add(node.entry)
 		}
 
 		removedEntries = append(removedEntries, node.entry)
