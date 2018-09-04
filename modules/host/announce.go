@@ -38,6 +38,7 @@ func verifyAnnouncementAddress(addr modules.NetAddress) error {
 		return fmt.Errorf("host %s doesn't resolve to any IP addresses", addr.Host())
 	}
 	if len(ips) == 2 && len(ips[0]) == len(ips[1]) {
+		fmt.Println(ips)
 		return fmt.Errorf("host %s resolves to 2 IPs of the same type", addr.Host())
 	}
 	if len(ips) > 2 {
