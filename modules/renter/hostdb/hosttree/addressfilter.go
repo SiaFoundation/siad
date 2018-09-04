@@ -26,8 +26,19 @@ func (productionResolver) lookupIP(host string) ([]net.IP, error) {
 // addressFilter is the interface for a filter that can filter hostnames which
 // share a certain IP mask.
 type addressFilter interface {
+	// Add adds a host to the filter. This will resolve the hostname into one
+	// or more IP addresses, extract the subnets used by those addresses and
+	// add the subnets to the filter. Add doesn't return an error, but if the
+	// addresses of a host can't be resolved it will be handled as if the host
+	// had no addresses associated with it.
 	Add(*hostEntry)
+	// Filter checks if a host uses a subnet that is already in use by a host
+	// that was previously added to the filter. If it is in use, or if the host
+	// is associated with 2 addresses of the same type (e.g. IPv4 and IPv4) or
+	// if it is associated with more than 2 addresses, Filtered will return
+	// 'true'.
 	Filtered(*hostEntry) bool
+	// Reset empties the filter.
 	Reset()
 }
 
