@@ -32,17 +32,19 @@ type addressFilter interface {
 	// addresses of a host can't be resolved it will be handled as if the host
 	// had no addresses associated with it.
 	Add(*hostEntry)
+
 	// Filter checks if a host uses a subnet that is already in use by a host
 	// that was previously added to the filter. If it is in use, or if the host
 	// is associated with 2 addresses of the same type (e.g. IPv4 and IPv4) or
 	// if it is associated with more than 2 addresses, Filtered will return
 	// 'true'.
 	Filtered(*hostEntry) bool
+
 	// Reset empties the filter.
 	Reset()
 }
 
-// testingResolver is the hostname resolver used in testing builds.
+// testingFilter is the filter used during testing builds.
 type testingFilter struct{}
 
 func (testingFilter) Add(*hostEntry)           {}

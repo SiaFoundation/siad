@@ -289,11 +289,16 @@ func (ht *HostTree) Select(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 	return node.entry.HostDBEntry, true
 }
 
-// SelectRandom grabs a random n hosts from the tree. There will be no repeats, but
-// the length of the slice returned may be less than n, and may even be zero.
-// The hosts that are returned first have the higher priority. Hosts passed to
-// 'ignore' will not be considered; pass `nil` if no blacklist is desired.
-func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.HostDBEntry {
+// SelectRandom grabs a random n hosts from the tree. There will be no repeats,
+// but the length of the slice returned may be less than n, and may even be
+// zero.  The hosts that are returned first have the higher priority. Hosts
+// passed to 'blacklist' will not be considered; pass `nil` if no blacklist is
+// desired. 'addressBlacklist' is similar to 'blacklist' but instead of not
+// considering the hosts in the list, hosts that use the same IP subnet as
+// those hosts will be ignored. In most cases those blacklists contain the same
+// elements but sometimes it is useful to block a host without blocking its IP
+// range.
+func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaPublicKey) []modules.HostDBEntry {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
@@ -303,9 +308,18 @@ func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.H
 	// Clear the addressFilter before using it.
 	ht.addressFilter.Reset()
 
-	// Remove hosts we want to ignore from the tree but remember them to make
+	// Add the hosts from the addressBlacklist to the filter.
+	for _, pubkey := range addressBlacklist {
+		node, exists := ht.hosts[string(pubkey.Key)]
+		if !exists {
+			continue
+		}
+		// Add the node to the addressFilter.
+		ht.addressFilter.Add(node.entry)
+	}
+	// Remove hosts we want to blacklist from the tree but remember them to make
 	// sure we can insert them later.
-	for _, pubkey := range ignore {
+	for _, pubkey := range blacklist {
 		node, exists := ht.hosts[string(pubkey.Key)]
 		if !exists {
 			continue
@@ -316,9 +330,6 @@ func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.H
 
 		// Remember the host to insert it again later.
 		removedEntries = append(removedEntries, node.entry)
-
-		// Add the node to the addressFilter.
-		ht.addressFilter.Add(node.entry)
 	}
 
 	for len(hosts) < n && len(ht.hosts) > 0 {
