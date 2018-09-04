@@ -1,10 +1,12 @@
 package host
 
 import (
-	"errors"
+	"fmt"
+	"net"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -16,6 +18,33 @@ var (
 	// public address for itself to use in the announcement.
 	errUnknownAddress = errors.New("host cannot announce, does not seem to have a valid address")
 )
+
+// verifyAnnouncementAddress checks that the address is sane and not local.
+func verifyAnnouncementAddress(addr modules.NetAddress) error {
+	// Check that the address is sane, and that the address is also not local.
+	if err := addr.IsStdValid(); err != nil {
+		return build.ExtendErr("announcement requested with bad net address", err)
+	}
+	if addr.IsLocal() && build.Release != "testing" {
+		return errors.New("announcement requested with local net address")
+	}
+	// Make sure that the host resolves to 1 or 2 IPs and if it resolves to 2
+	// the type should be different.
+	ips, err := net.LookupIP(addr.Host())
+	if err != nil {
+		return errors.AddContext(err, "failed to lookup hostname "+addr.Host())
+	}
+	if len(ips) < 1 {
+		return fmt.Errorf("host %s doesn't resolve to any IP addresses", addr.Host())
+	}
+	if len(ips) == 2 && len(ips[0]) == len(ips[1]) {
+		return fmt.Errorf("host %s resolves to 2 IPs of the same type", addr.Host())
+	}
+	if len(ips) > 2 {
+		return fmt.Errorf("host %s resolves to more than 2 IP addresses", addr.Host())
+	}
+	return nil
+}
 
 // managedAnnounce creates an announcement transaction and submits it to the network.
 func (h *Host) managedAnnounce(addr modules.NetAddress) (err error) {
@@ -110,13 +139,9 @@ func (h *Host) Announce() error {
 		annAddr = autoSet
 	}
 
-	// Check that the address is sane, and that the address is also not local.
-	err = annAddr.IsStdValid()
-	if err != nil {
-		return build.ExtendErr("announcement requested with bad net address", err)
-	}
-	if annAddr.IsLocal() && build.Release != "testing" {
-		return errors.New("announcement requested with local net address")
+	// Verify address.
+	if err := verifyAnnouncementAddress(annAddr); err != nil {
+		return err
 	}
 
 	// Address has cleared inspection, perform the announcement.
@@ -133,13 +158,9 @@ func (h *Host) AnnounceAddress(addr modules.NetAddress) error {
 	}
 	defer h.tg.Done()
 
-	// Check that the address is sane, and that the address is also not local.
-	err = addr.IsStdValid()
-	if err != nil {
-		return build.ExtendErr("announcement requested with bad net address", err)
-	}
-	if addr.IsLocal() {
-		return errors.New("announcement requested with local net address")
+	// Verify address.
+	if err := verifyAnnouncementAddress(addr); err != nil {
+		return err
 	}
 
 	// Attempt the actual announcement.
