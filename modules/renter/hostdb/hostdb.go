@@ -216,7 +216,7 @@ func (hdb *HostDB) AllHosts() (allHosts []modules.HostDBEntry) {
 // AverageContractPrice returns the average price of a host.
 func (hdb *HostDB) AverageContractPrice() (totalPrice types.Currency) {
 	sampleSize := 32
-	hosts := hdb.hostTree.SelectRandom(sampleSize, nil)
+	hosts := hdb.hostTree.SelectRandom(sampleSize, nil, nil)
 	if len(hosts) == 0 {
 		return totalPrice
 	}
@@ -260,12 +260,12 @@ func (hdb *HostDB) InitialScanComplete() (complete bool, err error) {
 // RandomHosts implements the HostDB interface's RandomHosts() method. It takes
 // a number of hosts to return, and a slice of netaddresses to ignore, and
 // returns a slice of entries.
-func (hdb *HostDB) RandomHosts(n int, excludeKeys []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
+func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	hdb.mu.RLock()
 	initialScanComplete := hdb.initialScanComplete
 	hdb.mu.RUnlock()
 	if !initialScanComplete {
 		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
-	return hdb.hostTree.SelectRandom(n, excludeKeys), nil
+	return hdb.hostTree.SelectRandom(n, blacklist, addressBlacklist), nil
 }
