@@ -448,7 +448,7 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 
 	var file modules.FileInfo
 	checks := 0
-	for i, f := range files {
+	for _, f := range files {
 		// Only request files if file was fully uploaded for first API request
 		if f.UploadProgress < 100 {
 			continue
@@ -458,10 +458,29 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal("Failed to request single file", err)
 		}
-		if !reflect.DeepEqual(f, file) {
-			t.Logf("Error with file %v or %v\n", i, len(files))
-			t.Log("File from Files():", f)
-			t.Log("File from File():", file)
+
+		// Can't use reflect.DeepEqual because certain fields are too dynamic,
+		// however those fields are also not indicative of whether or not the
+		// files are the same.  Not checking Redundancy, Available, Renewing
+		// ,UploadProgress, UploadedBytes, or Renewing
+		if f.Expiration != file.Expiration {
+			t.Log("File from Files() Expiration:", f.Expiration)
+			t.Log("File from File() Expiration:", file.Expiration)
+			t.Fatal("Single file queries does not match file previously requested.")
+		}
+		if f.Filesize != file.Filesize {
+			t.Log("File from Files() Filesize:", f.Filesize)
+			t.Log("File from File() Filesize:", file.Filesize)
+			t.Fatal("Single file queries does not match file previously requested.")
+		}
+		if f.LocalPath != file.LocalPath {
+			t.Log("File from Files() LocalPath:", f.LocalPath)
+			t.Log("File from File() LocalPath:", file.LocalPath)
+			t.Fatal("Single file queries does not match file previously requested.")
+		}
+		if f.SiaPath != file.SiaPath {
+			t.Log("File from Files() SiaPath:", f.SiaPath)
+			t.Log("File from File() SiaPath:", file.SiaPath)
 			t.Fatal("Single file queries does not match file previously requested.")
 		}
 	}
