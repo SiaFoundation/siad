@@ -1544,8 +1544,8 @@ func TestRenterContractEndHeight(t *testing.T) {
 			return err
 		}
 		// Confirm Renter has the expected number of contracts, meaning canceled contract should have been replaced.
-		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
-			return fmt.Errorf("Canceled contract was not replaced, only %v active contracts, expected %v", len(rc.ActiveContracts), len(tg.Hosts())-1)
+		if len(rc.ActiveContracts) < len(tg.Hosts())-1 {
+			return fmt.Errorf("Canceled contract was not replaced, only %v active contracts, expected at least %v", len(rc.ActiveContracts), len(tg.Hosts())-1)
 		}
 		for _, c := range rc.ActiveContracts {
 			if c.ID == contract.ID {
