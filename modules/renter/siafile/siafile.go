@@ -110,7 +110,7 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 }
 
 // AddPiece adds an uploaded piece to the file. It also updates the host table
-// if the public key of the host is not aleady known.
+// if the public key of the host is not already known.
 func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
