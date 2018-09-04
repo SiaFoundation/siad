@@ -1492,8 +1492,38 @@ func TestRenterContractEndHeight(t *testing.T) {
 		}
 	}
 
+	// Mine blocks to force contract renewal to start with fresh set of contracts
+	if err = renewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+	numRenewals++
+
+	// Confirm Contracts were renewed as expected
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err := r.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		rcExpired, err := r.RenterExpiredContractsGet()
+		if err != nil {
+			return err
+		}
+		// checkContracts will confirm correct number of inactive and active contracts
+		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Test canceling contract
 	// Grab contract to cancel
+	rc, err = r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
 	contract := rc.ActiveContracts[0]
 	// Cancel Contract
 	if err := r.RenterContractCancelPost(contract.ID); err != nil {
@@ -1511,7 +1541,7 @@ func TestRenterContractEndHeight(t *testing.T) {
 		// Check that Contract is now in inactive contracts and no longer in Active contracts
 		rc, err = r.RenterInactiveContractsGet()
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		// Confirm Renter has the expected number of contracts, meaning canceled contract should have been replaced.
 		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
