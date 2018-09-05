@@ -3,7 +3,6 @@ package host
 import (
 	"bytes"
 	"fmt"
-	"net"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -20,8 +19,8 @@ var (
 	errUnknownAddress = errors.New("host cannot announce, does not seem to have a valid address")
 )
 
-// verifyAnnouncementAddress checks that the address is sane and not local.
-func verifyAnnouncementAddress(addr modules.NetAddress) error {
+// staticVerifyAnnouncementAddress checks that the address is sane and not local.
+func (h *Host) staticVerifyAnnouncementAddress(addr modules.NetAddress) error {
 	// Check that the address is sane, and that the address is also not local.
 	if err := addr.IsStdValid(); err != nil {
 		return build.ExtendErr("announcement requested with bad net address", err)
@@ -31,7 +30,7 @@ func verifyAnnouncementAddress(addr modules.NetAddress) error {
 	}
 	// Make sure that the host resolves to 1 or 2 IPs and if it resolves to 2
 	// the type should be different.
-	ips, err := net.LookupIP(addr.Host())
+	ips, err := h.dependencies.LookupIP(addr.Host())
 	if err != nil {
 		return errors.AddContext(err, "failed to lookup hostname "+addr.Host())
 	}
@@ -51,6 +50,11 @@ func verifyAnnouncementAddress(addr modules.NetAddress) error {
 
 // managedAnnounce creates an announcement transaction and submits it to the network.
 func (h *Host) managedAnnounce(addr modules.NetAddress) (err error) {
+	// Verify address first.
+	if err := h.staticVerifyAnnouncementAddress(addr); err != nil {
+		return err
+	}
+
 	// The wallet needs to be unlocked to add fees to the transaction, and the
 	// host needs to have an active unlock hash that renters can make payment
 	// to.
@@ -142,11 +146,6 @@ func (h *Host) Announce() error {
 		annAddr = autoSet
 	}
 
-	// Verify address.
-	if err := verifyAnnouncementAddress(annAddr); err != nil {
-		return err
-	}
-
 	// Address has cleared inspection, perform the announcement.
 	return h.managedAnnounce(annAddr)
 }
@@ -160,11 +159,6 @@ func (h *Host) AnnounceAddress(addr modules.NetAddress) error {
 		return err
 	}
 	defer h.tg.Done()
-
-	// Verify address.
-	if err := verifyAnnouncementAddress(addr); err != nil {
-		return err
-	}
 
 	// Attempt the actual announcement.
 	err = h.managedAnnounce(addr)
