@@ -22,13 +22,7 @@ var (
 // differentTypeIPs is a helper that returns true if two IPs are of a different
 // type.
 func differentTypeIPs(ip1, ip2 net.IP) bool {
-	if ip1.To4() != nil && ip2.To4() == nil {
-		return true
-	}
-	if ip2.To4() != nil && ip1.To4() == nil {
-		return true
-	}
-	return false
+	return (ip1.To4() == nil) != (ip2.To4() == nil)
 }
 
 // staticVerifyAnnouncementAddress checks that the address is sane and not local.
@@ -49,9 +43,7 @@ func (h *Host) staticVerifyAnnouncementAddress(addr modules.NetAddress) error {
 	if len(ips) < 1 {
 		return fmt.Errorf("host %s doesn't resolve to any IP addresses", addr.Host())
 	}
-	// During testing we allow loopback IPs if they are of different types.
-	isLoopback := ips[0].IsLoopback() && ips[1].IsLoopback() && differentTypeIPs(ips[0], ips[1])
-	if len(ips) == 2 && len(ips[0]) == len(ips[1]) && !isLoopback {
+	if len(ips) == 2 && !differentTypeIPs(ips[0], ips[1]) {
 		return fmt.Errorf("host %s resolves to 2 IPs of the same type", addr.Host())
 	}
 	if len(ips) > 2 {

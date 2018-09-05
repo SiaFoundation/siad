@@ -202,7 +202,7 @@ func TestHostAnnounceCheckUnlockHash(t *testing.T) {
 // TestHostVerifyAnnouncementAddress tests various edge cases of the
 // staticVerifyAnnouncementAddress function.
 func TestHostVerifyAnnouncementAddress(t *testing.T) {
-	ipv4loopback := net.IP{127, 0, 0, 1}
+	ipv4loopback := net.IPv4(127, 0, 0, 1)
 	if testing.Short() {
 		t.SkipNow()
 	}
