@@ -56,6 +56,10 @@ type (
 		// LoadFile allows the host to load a persistence structure form disk.
 		LoadFile(persist.Metadata, interface{}, string) error
 
+		// LookupIP resolves a hostname to a number of IP addresses. If an IP
+		// address is provided as an argument it will just return that IP.
+		LookupIP(string) ([]net.IP, error)
+
 		// MkdirAll gives the host the ability to create chains of folders
 		// within the filesystem.
 		MkdirAll(string, os.FileMode) error
@@ -227,6 +231,12 @@ func (*ProductionDependencies) Listen(s1, s2 string) (net.Listener, error) {
 // LoadFile loads JSON encoded data from a file.
 func (*ProductionDependencies) LoadFile(meta persist.Metadata, data interface{}, filename string) error {
 	return persist.LoadJSON(meta, data, filename)
+}
+
+// LookupIP resolves a hostname to a number of IP addresses. If an IP address
+// is provided as an argument it will just return that IP.
+func (*ProductionDependencies) LookupIP(host string) ([]net.IP, error) {
+	return net.LookupIP(host)
 }
 
 // SaveFileSync writes JSON encoded data to a file and syncs the file to disk

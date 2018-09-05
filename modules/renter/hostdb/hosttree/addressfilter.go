@@ -79,7 +79,7 @@ func (af *productionFilter) Add(host *hostEntry) {
 	for _, ip := range addresses {
 		// Set the filterRange according to the type of IP address.
 		var filterRange int
-		if len(ip) == net.IPv4len {
+		if ip.To4() != nil {
 			filterRange = ipv4FilterRange
 		} else {
 			filterRange = ipv6FilterRange
@@ -116,7 +116,7 @@ func (af *productionFilter) Filtered(host *hostEntry) bool {
 	for _, ip := range addresses {
 		// Set the filterRange according to the type of IP address.
 		var filterRange int
-		if len(ip) == net.IPv4len {
+		if ip.To4() != nil {
 			filterRange = ipv4FilterRange
 		} else {
 			filterRange = ipv6FilterRange
