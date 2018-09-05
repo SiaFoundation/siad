@@ -1,6 +1,13 @@
 Version History
 ---------------
 
+Sep 2018:
+
+v1.3.4 (patch release)
+- Fix contract spending metrics
+- Add /renter/contract/cancel endpoint
+- Move project to GitLab
+
 May 2018:
 
 v1.3.3 (patch release)
