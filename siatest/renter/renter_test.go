@@ -1495,6 +1495,7 @@ func TestRenterContractEndHeight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	numRenewals++
 
 	// Confirm contract end heights were set properly
 	// End height should not have changed since the renewal
