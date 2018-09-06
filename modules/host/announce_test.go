@@ -2,6 +2,7 @@ package host
 
 import (
 	"bytes"
+	"net"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -195,5 +196,78 @@ func TestHostAnnounceCheckUnlockHash(t *testing.T) {
 	}
 	if !hasAddr {
 		t.Fatal("host unlock has did not exist in wallet")
+	}
+}
+
+// TestHostVerifyAnnouncementAddress tests various edge cases of the
+// staticVerifyAnnouncementAddress function.
+func TestHostVerifyAnnouncementAddress(t *testing.T) {
+	ipv4loopback := net.IPv4(127, 0, 0, 1)
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create custom dependency to test edge cases for various hostnames.
+	deps := NewDependencyCustomLookupIP(func(host string) ([]net.IP, error) {
+		switch host {
+		case "TwoIPv4Loopback.com":
+			return []net.IP{ipv4loopback, ipv4loopback}, nil
+		case "TwoIPv6Loopback.com":
+			return []net.IP{net.IPv6loopback, net.IPv6loopback}, nil
+		case "DifferentLoopback.com":
+			return []net.IP{ipv4loopback, net.IPv6loopback}, nil
+		case "MoreThanTwo.com":
+			return []net.IP{{}, {}, {}}, nil
+		case "LessThanOne.com":
+			return []net.IP{}, nil
+		case "OneValidIP.com":
+			return []net.IP{{1, 2, 3, 4}}, nil
+		case "TwoValidIP.com":
+			return []net.IP{{1, 2, 3, 4}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}}, nil
+		case "TwoIPSameType.com":
+			return []net.IP{{1, 2, 3, 4}, {4, 3, 2, 1}}, nil
+		default:
+			t.Fatal("shouldn't happen")
+		}
+		return nil, nil
+	})
+	// Create host from dependency.
+	ht, err := newMockHostTester(deps, t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create host addresses.
+	host1 := modules.NetAddress("TwoIPv4Loopback.com:1234")
+	host2 := modules.NetAddress("TwoIPv6Loopback.com:1234")
+	host3 := modules.NetAddress("DifferentLoopback.com:1234")
+	host4 := modules.NetAddress("MoreThanTwo.com:1234")
+	host5 := modules.NetAddress("LessThanOne.com:1234")
+	host6 := modules.NetAddress("OneValidIP.com:1234")
+	host7 := modules.NetAddress("TwoValidIP.com:1234")
+	host8 := modules.NetAddress("TwoIPSameType.com:1234")
+
+	// Test individual hosts.
+	if err := ht.host.staticVerifyAnnouncementAddress(host1); err == nil {
+		t.Error("Announcing host1 should have failed but didn't")
+	}
+	if err := ht.host.staticVerifyAnnouncementAddress(host2); err == nil {
+		t.Error("Announcing host2 should have failed but didn't")
+	}
+	if err := ht.host.staticVerifyAnnouncementAddress(host3); err != nil {
+		t.Error("Announcing host3 shouldn't have failed but did", err)
+	}
+	if err := ht.host.staticVerifyAnnouncementAddress(host4); err == nil {
+		t.Error("Announcing host4 should have failed but didn't")
+	}
+	if err := ht.host.staticVerifyAnnouncementAddress(host5); err == nil {
+		t.Error("Announcing host5 should have failed but didn't")
+	}
+	if err := ht.host.staticVerifyAnnouncementAddress(host6); err != nil {
+		t.Error("Announcing host6 shouldn't have failed but did", err)
+	}
+	if err := ht.host.staticVerifyAnnouncementAddress(host7); err != nil {
+		t.Error("Announcing host7 shouldn't have failed but did", err)
+	}
+	if err := ht.host.staticVerifyAnnouncementAddress(host8); err == nil {
+		t.Error("Announcing host8 should have failed but didn't")
 	}
 }

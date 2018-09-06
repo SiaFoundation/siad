@@ -280,7 +280,7 @@ returns a list of seeds in use by the wallet. The primary seed is the only seed
 that gets used to generate new addresses. This call is unavailable when the
 wallet is locked.
 
-A seed is an encoded version of a 128 bit random seed. The output is 15 words
+A seed is an encoded version of a 256 bit random seed. The output is 29 words
 chosen from a small dictionary as indicated by the input. The most common
 choice for the dictionary is going to be 'english'. The underlying seed is the
 same no matter what dictionary is used for the encoding. The encoding also

@@ -48,6 +48,10 @@ type (
 		// hosts is a map of public keys to nodes.
 		hosts map[string]*node
 
+		// addressFilter is the filter that filters hosts which share a certain
+		// IP subrange.
+		addressFilter addressFilter
+
 		// weightFn calculates the weight of a hostEntry
 		weightFn WeightFunc
 
@@ -86,16 +90,26 @@ func createNode(parent *node, entry *hostEntry) *node {
 	}
 }
 
-// New creates a new, empty, HostTree. It takes one argument, a `WeightFunc`,
-// which is used to determine the weight of a node on Insert.
-func New(wf WeightFunc) *HostTree {
+// newHostTree creates a new HostTree given a weight function and a resolver
+// for hostnames.
+func newHostTree(wf WeightFunc, filter addressFilter) *HostTree {
 	return &HostTree{
+		addressFilter: filter,
 		root: &node{
 			count: 1,
 		},
 		weightFn: wf,
 		hosts:    make(map[string]*node),
 	}
+}
+
+// New creates a new, empty, HostTree. It takes one argument, a `WeightFunc`,
+// which is used to determine the weight of a node on Insert.
+func New(wf WeightFunc) *HostTree {
+	if build.Release == "testing" {
+		return newHostTree(wf, testingFilter{})
+	}
+	return newHostTree(wf, newProductionFilter(productionResolver{}))
 }
 
 // recursiveInsert inserts an entry into the appropriate place in the tree. The
@@ -275,24 +289,46 @@ func (ht *HostTree) Select(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 	return node.entry.HostDBEntry, true
 }
 
-// SelectRandom grabs a random n hosts from the tree. There will be no repeats, but
-// the length of the slice returned may be less than n, and may even be zero.
-// The hosts that are returned first have the higher priority. Hosts passed to
-// 'ignore' will not be considered; pass `nil` if no blacklist is desired.
-func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.HostDBEntry {
+// SelectRandom grabs a random n hosts from the tree. There will be no repeats,
+// but the length of the slice returned may be less than n, and may even be
+// zero.  The hosts that are returned first have the higher priority. Hosts
+// passed to 'blacklist' will not be considered; pass `nil` if no blacklist is
+// desired. 'addressBlacklist' is similar to 'blacklist' but instead of not
+// considering the hosts in the list, hosts that use the same IP subnet as
+// those hosts will be ignored. In most cases those blacklists contain the same
+// elements but sometimes it is useful to block a host without blocking its IP
+// range.
+func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaPublicKey) []modules.HostDBEntry {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
 	var hosts []modules.HostDBEntry
 	var removedEntries []*hostEntry
 
-	for _, pubkey := range ignore {
+	// Clear the addressFilter before using it.
+	ht.addressFilter.Reset()
+
+	// Add the hosts from the addressBlacklist to the filter.
+	for _, pubkey := range addressBlacklist {
 		node, exists := ht.hosts[string(pubkey.Key)]
 		if !exists {
 			continue
 		}
+		// Add the node to the addressFilter.
+		ht.addressFilter.Add(node.entry)
+	}
+	// Remove hosts we want to blacklist from the tree but remember them to make
+	// sure we can insert them later.
+	for _, pubkey := range blacklist {
+		node, exists := ht.hosts[string(pubkey.Key)]
+		if !exists {
+			continue
+		}
+		// Remove the host from the tree.
 		node.remove()
 		delete(ht.hosts, string(pubkey.Key))
+
+		// Remember the host to insert it again later.
 		removedEntries = append(removedEntries, node.entry)
 	}
 
@@ -302,10 +338,15 @@ func (ht *HostTree) SelectRandom(n int, ignore []types.SiaPublicKey) []modules.H
 
 		if node.entry.AcceptingContracts &&
 			len(node.entry.ScanHistory) > 0 &&
-			node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success {
+			node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success &&
+			!ht.addressFilter.Filtered(node.entry) {
 			// The host must be online and accepting contracts to be returned
-			// by the random function.
+			// by the random function. It also has to pass the addressFilter
+			// check.
 			hosts = append(hosts, node.entry.HostDBEntry)
+
+			// If the host passed the filter, we add it to the filter.
+			ht.addressFilter.Add(node.entry)
 		}
 
 		removedEntries = append(removedEntries, node.entry)

@@ -501,7 +501,7 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 
 	var file modules.FileInfo
 	checks := 0
-	for i, f := range files {
+	for _, f := range files {
 		// Only request files if file was fully uploaded for first API request
 		if f.UploadProgress < 100 {
 			continue
@@ -511,10 +511,29 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal("Failed to request single file", err)
 		}
-		if !reflect.DeepEqual(f, file) {
-			t.Logf("Error with file %v or %v\n", i, len(files))
-			t.Log("File from Files():", f)
-			t.Log("File from File():", file)
+
+		// Can't use reflect.DeepEqual because certain fields are too dynamic,
+		// however those fields are also not indicative of whether or not the
+		// files are the same.  Not checking Redundancy, Available, Renewing
+		// ,UploadProgress, UploadedBytes, or Renewing
+		if f.Expiration != file.Expiration {
+			t.Log("File from Files() Expiration:", f.Expiration)
+			t.Log("File from File() Expiration:", file.Expiration)
+			t.Fatal("Single file queries does not match file previously requested.")
+		}
+		if f.Filesize != file.Filesize {
+			t.Log("File from Files() Filesize:", f.Filesize)
+			t.Log("File from File() Filesize:", file.Filesize)
+			t.Fatal("Single file queries does not match file previously requested.")
+		}
+		if f.LocalPath != file.LocalPath {
+			t.Log("File from Files() LocalPath:", f.LocalPath)
+			t.Log("File from File() LocalPath:", file.LocalPath)
+			t.Fatal("Single file queries does not match file previously requested.")
+		}
+		if f.SiaPath != file.SiaPath {
+			t.Log("File from Files() SiaPath:", f.SiaPath)
+			t.Log("File from File() SiaPath:", file.SiaPath)
 			t.Fatal("Single file queries does not match file previously requested.")
 		}
 	}
@@ -1529,6 +1548,7 @@ func TestRenterContractEndHeight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	numRenewals++
 
 	// Confirm contract end heights were set properly
 	// End height should not have changed since the renewal
@@ -1545,8 +1565,38 @@ func TestRenterContractEndHeight(t *testing.T) {
 		}
 	}
 
+	// Mine blocks to force contract renewal to start with fresh set of contracts
+	if err = renewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+	numRenewals++
+
+	// Confirm Contracts were renewed as expected
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err := r.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		rcExpired, err := r.RenterExpiredContractsGet()
+		if err != nil {
+			return err
+		}
+		// checkContracts will confirm correct number of inactive and active contracts
+		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Test canceling contract
 	// Grab contract to cancel
+	rc, err = r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
 	contract := rc.ActiveContracts[0]
 	// Cancel Contract
 	if err := r.RenterContractCancelPost(contract.ID); err != nil {
@@ -1564,11 +1614,11 @@ func TestRenterContractEndHeight(t *testing.T) {
 		// Check that Contract is now in inactive contracts and no longer in Active contracts
 		rc, err = r.RenterInactiveContractsGet()
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		// Confirm Renter has the expected number of contracts, meaning canceled contract should have been replaced.
-		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
-			return fmt.Errorf("Canceled contract was not replaced, only %v active contracts, expected %v", len(rc.ActiveContracts), len(tg.Hosts())-1)
+		if len(rc.ActiveContracts) < len(tg.Hosts())-1 {
+			return fmt.Errorf("Canceled contract was not replaced, only %v active contracts, expected at least %v", len(rc.ActiveContracts), len(tg.Hosts())-1)
 		}
 		for _, c := range rc.ActiveContracts {
 			if c.ID == contract.ID {

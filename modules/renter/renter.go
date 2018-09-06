@@ -34,6 +34,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/threadgroup"
 )
@@ -85,7 +86,7 @@ type hostDB interface {
 	// RandomHosts returns a set of random hosts, weighted by their estimated
 	// usefulness / attractiveness to the renter. RandomHosts will not return
 	// any offline or inactive hosts.
-	RandomHosts(int, []types.SiaPublicKey) ([]modules.HostDBEntry, error)
+	RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error)
 
 	// ScoreBreakdown returns a detailed explanation of the various properties
 	// of the host.
@@ -218,6 +219,7 @@ type Renter struct {
 	mu                *siasync.RWMutex
 	tg                threadgroup.ThreadGroup
 	tpool             modules.TransactionPool
+	wal               *writeaheadlog.WAL
 }
 
 // Close closes the Renter and its dependencies
@@ -241,7 +243,7 @@ func (r *Renter) PriceEstimation() modules.RenterPriceEstimation {
 	}
 
 	// Grab hosts to perform the estimation.
-	hosts, err := r.hostDB.RandomHosts(priceEstimationScope, nil)
+	hosts, err := r.hostDB.RandomHosts(priceEstimationScope, nil, nil)
 	if err != nil {
 		return modules.RenterPriceEstimation{}
 	}

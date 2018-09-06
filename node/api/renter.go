@@ -10,7 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"github.com/julienschmidt/httprouter"
@@ -740,7 +740,7 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		}
 
 		// Create the erasure coder.
-		ec, err = renter.NewRSCode(dataPieces, parityPieces)
+		ec, err = siafile.NewRSCode(dataPieces, parityPieces)
 		if err != nil {
 			WriteError(w, Error{"unable to encode file using the provided parameters: " + err.Error()}, http.StatusBadRequest)
 			return
