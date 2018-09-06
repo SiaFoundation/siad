@@ -103,15 +103,16 @@ type FileUploadParams struct {
 
 // FileInfo provides information about a file.
 type FileInfo struct {
-	SiaPath        string            `json:"siapath"`
-	LocalPath      string            `json:"localpath"`
-	Filesize       uint64            `json:"filesize"`
 	Available      bool              `json:"available"`
-	Renewing       bool              `json:"renewing"`
+	CipherType     crypto.CipherType `json:"ciphertype"`
+	Expiration     types.BlockHeight `json:"expiration"`
+	Filesize       uint64            `json:"filesize"`
+	LocalPath      string            `json:"localpath"`
 	Redundancy     float64           `json:"redundancy"`
+	Renewing       bool              `json:"renewing"`
+	SiaPath        string            `json:"siapath"`
 	UploadedBytes  uint64            `json:"uploadedbytes"`
 	UploadProgress float64           `json:"uploadprogress"`
-	Expiration     types.BlockHeight `json:"expiration"`
 }
 
 // A HostDBEntry represents one host entry in the Renter's host DB. It

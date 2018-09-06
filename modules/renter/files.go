@@ -31,7 +31,7 @@ type file struct {
 	name        string
 	size        uint64 // Static - can be accessed without lock.
 	contracts   map[types.FileContractID]fileContract
-	masterKey   crypto.TwofishKey    // Static - can be accessed without lock.
+	masterKey   crypto.SiaKey        // Static - can be accessed without lock.
 	erasureCode modules.ErasureCoder // Static - can be accessed without lock.
 	pieceSize   uint64               // Static - can be accessed without lock.
 	mode        uint32               // actually an os.FileMode
@@ -64,8 +64,9 @@ type pieceData struct {
 }
 
 // deriveKey derives the key used to encrypt and decrypt a specific file piece.
-func deriveKey(masterKey crypto.TwofishKey, chunkIndex, pieceIndex uint64) crypto.TwofishKey {
-	return crypto.TwofishKey(crypto.HashAll(masterKey, chunkIndex, pieceIndex))
+func deriveKey(masterKey crypto.SiaKey, chunkIndex, pieceIndex uint64) (crypto.SiaKey, error) {
+	entropy := crypto.HashAll(masterKey.CipherKey(), chunkIndex, pieceIndex)
+	return crypto.NewSiaKey(masterKey.CipherType(), entropy[:])
 }
 
 // DeleteFile removes a file entry from the renter and deletes its data from
@@ -129,6 +130,12 @@ func (r *Renter) FileList() []modules.FileInfo {
 	// Build the list of FileInfos.
 	fileList := []modules.FileInfo{}
 	for _, f := range files {
+		// Get the master key of the file.
+		mk, err := f.MasterKey()
+		if err != nil {
+			continue
+		}
+
 		var localPath string
 		siaPath := f.SiaPath()
 		lockID := r.mu.RLock()
@@ -138,6 +145,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 			localPath = tf.RepairPath
 		}
 		fileList = append(fileList, modules.FileInfo{
+			CipherType:     mk.CipherType(),
 			SiaPath:        f.SiaPath(),
 			LocalPath:      localPath,
 			Filesize:       f.Size(),
@@ -166,6 +174,12 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	}
 	pks := file.HostPublicKeys()
 
+	// Get the master key of the file.
+	mk, err := file.MasterKey()
+	if err != nil {
+		return fileInfo, errors.AddContext(err, "failed to get file's master key")
+	}
+
 	// Build 2 maps that map every contract id to its offline and goodForRenew
 	// status.
 	goodForRenew := make(map[string]bool)
@@ -189,6 +203,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		localPath = tf.RepairPath
 	}
 	fileInfo = modules.FileInfo{
+		CipherType:     mk.CipherType(),
 		SiaPath:        file.SiaPath(),
 		LocalPath:      localPath,
 		Filesize:       file.Size(),

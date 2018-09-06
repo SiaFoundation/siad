@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -22,7 +24,7 @@ func newTestingFile() *siafile.SiaFile {
 
 	name := "testfile-" + strconv.Itoa(int(data[0]))
 
-	return newFileTesting(name, newTestingWal(), rsc, pieceSize, 1000, 0777, "")
+	return newFileTesting(name, newTestingWal(), rsc, 1000, 0777, "")
 }
 
 // equalFiles is a helper function that compares two files for equality.
@@ -36,8 +38,13 @@ func equalFiles(f1, f2 *siafile.SiaFile) error {
 	if f1.Size() != f2.Size() {
 		return fmt.Errorf("sizes do not match: %v %v", f1.Size(), f2.Size())
 	}
-	if f1.MasterKey() != f2.MasterKey() {
-		return fmt.Errorf("keys do not match: %v %v", f1.MasterKey(), f2.MasterKey())
+	mk1, err1 := f1.MasterKey()
+	mk2, err2 := f2.MasterKey()
+	if err1 != nil || err2 != nil {
+		panic(errors.Compose(err1, err2))
+	}
+	if !bytes.Equal(mk1.CipherKey(), mk2.CipherKey()) {
+		return fmt.Errorf("keys do not match: %v %v", mk1.CipherKey(), mk2.CipherKey())
 	}
 	if f1.PieceSize() != f2.PieceSize() {
 		return fmt.Errorf("pieceSizes do not match: %v %v", f1.PieceSize(), f2.PieceSize())

@@ -15,6 +15,7 @@ type RSCode struct {
 
 	numPieces  int
 	dataPieces int
+	pieceSize  int
 }
 
 // NumPieces returns the number of pieces returned by Encode.
@@ -48,7 +49,7 @@ func (rs *RSCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	}
 	// Add the parity shards to pieces.
 	for len(pieces) < rs.NumPieces() {
-		pieces = append(pieces, make([]byte, pieceSize))
+		pieces = append(pieces, make([]byte, rs.pieceSize))
 	}
 	err := rs.enc.Encode(pieces)
 	if err != nil {

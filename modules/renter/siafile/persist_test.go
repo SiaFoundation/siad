@@ -43,7 +43,8 @@ func newTestFile() *SiaFile {
 	if err != nil {
 		panic(err)
 	}
-	pieceSize := modules.SectorSize - crypto.TwofishOverhead
+	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
+	pieceSize := modules.SectorSize - sk.Overhead()
 	fileSize := pieceSize * 10
 	fileMode := os.FileMode(777)
 	source := string(hex.EncodeToString(fastrand.Bytes(8)))
@@ -55,7 +56,7 @@ func newTestFile() *SiaFile {
 		panic(err)
 	}
 	// Create the file.
-	sf, err := New(siaFilePath, siaPath, source, newTestWAL(), []modules.ErasureCoder{rc}, pieceSize, fileSize, fileMode)
+	sf, err := New(siaFilePath, siaPath, source, newTestWAL(), []modules.ErasureCoder{rc}, sk, fileSize, fileMode)
 	if err != nil {
 		panic(err)
 	}

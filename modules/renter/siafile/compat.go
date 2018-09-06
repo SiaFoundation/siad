@@ -14,7 +14,7 @@ type (
 	FileData struct {
 		Name        string
 		FileSize    uint64
-		MasterKey   crypto.TwofishKey
+		MasterKey   crypto.SiaKey
 		ErasureCode modules.ErasureCoder
 		RepairPath  string
 		PieceSize   uint64
@@ -34,11 +34,12 @@ type (
 func NewFromFileData(fd FileData) *SiaFile {
 	file := &SiaFile{
 		staticMetadata: Metadata{
-			StaticFileSize:  int64(fd.FileSize),
-			StaticMasterKey: fd.MasterKey,
-			Mode:            fd.Mode,
-			StaticPieceSize: fd.PieceSize,
-			SiaPath:         fd.Name,
+			StaticFileSize:      int64(fd.FileSize),
+			StaticMasterKey:     fd.MasterKey.CipherKey(),
+			StaticMasterKeyType: fd.MasterKey.CipherType(),
+			Mode:                fd.Mode,
+			StaticPieceSize:     fd.PieceSize,
+			SiaPath:             fd.Name,
 		},
 		deleted:   fd.Deleted,
 		staticUID: fd.UID,

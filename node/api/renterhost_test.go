@@ -1637,13 +1637,16 @@ func TestUploadedBytesReporting(t *testing.T) {
 	}
 
 	// Calculate the encrypted size of our fully redundant encoded file
-	pieceSize := modules.SectorSize - crypto.TwofishOverhead
-	chunkSize := pieceSize * uint64(dataPieces)
-	numChunks := uint64(filesize) / chunkSize
-	if uint64(filesize)%chunkSize != 0 {
-		numChunks++
+	fullyRedundantSize := func(ct crypto.CipherType) uint64 {
+		overhead := crypto.GenerateSiaKey(ct).Overhead()
+		pieceSize := modules.SectorSize - overhead
+		chunkSize := pieceSize * uint64(dataPieces)
+		numChunks := uint64(filesize) / chunkSize
+		if uint64(filesize)%chunkSize != 0 {
+			numChunks++
+		}
+		return modules.SectorSize * uint64(dataPieces+parityPieces) * uint64(numChunks)
 	}
-	fullyRedundantSize := modules.SectorSize * uint64(dataPieces+parityPieces) * uint64(numChunks)
 
 	// Monitor the file as it uploads. Ensure that the UploadProgress times
 	// the fully redundant file size always equals UploadedBytes reported
@@ -1651,7 +1654,7 @@ func TestUploadedBytesReporting(t *testing.T) {
 	for i := 0; i < 60 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 100); i++ {
 		st.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 {
-			uploadProgressBytes := uint64(float64(fullyRedundantSize) * rf.Files[0].UploadProgress / 100.0)
+			uploadProgressBytes := uint64(float64(fullyRedundantSize(rf.Files[0].CipherType)) * rf.Files[0].UploadProgress / 100.0)
 			// Note: in Go 1.10 we will be able to write Math.Round(uploadProgressBytes) != rf.Files[0].UploadedBytes
 			if uploadProgressBytes != rf.Files[0].UploadedBytes && (uploadProgressBytes+1) != rf.Files[0].UploadedBytes {
 				t.Fatalf("api reports having uploaded %v bytes when upload progress is %v%%, but the actual uploaded bytes count should be %v\n",
@@ -1671,9 +1674,9 @@ func TestUploadedBytesReporting(t *testing.T) {
 
 	// When the file is fully redundantly uploaded, UploadedBytes should
 	// equal the file's fully redundant size
-	if rf.Files[0].UploadedBytes != fullyRedundantSize {
+	if rf.Files[0].UploadedBytes != fullyRedundantSize(rf.Files[0].CipherType) {
 		t.Fatalf("api reports having uploaded %v bytes when upload progress is 100%%, but the actual fully redundant file size is %v\n",
-			rf.Files[0].UploadedBytes, fullyRedundantSize)
+			rf.Files[0].UploadedBytes, fullyRedundantSize(rf.Files[0].CipherType))
 	}
 
 }

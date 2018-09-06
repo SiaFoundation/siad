@@ -22,8 +22,10 @@ type (
 		SiaPath         string   `json:"siapath"`   // the path of the file on the Sia network
 
 		// fields for encryption
-		StaticMasterKey  crypto.TwofishKey // masterkey used to encrypt pieces
-		StaticSharingKey crypto.TwofishKey // key used to encrypt shared pieces
+		StaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
+		StaticMasterKeyType  crypto.CipherType `json:"masterkeytype"`
+		StaticSharingKey     []byte            `json:"sharingkey"` // key used to encrypt shared pieces
+		StaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
 
 		// The following fields are the usual unix timestamps of files.
 		ModTime    time.Time `json:"modtime"`    // time of last content modification
@@ -118,8 +120,12 @@ func (sf *SiaFile) LocalPath() string {
 }
 
 // MasterKey returns the masterkey used to encrypt the file.
-func (sf *SiaFile) MasterKey() crypto.TwofishKey {
-	return sf.staticMetadata.StaticMasterKey
+func (sf *SiaFile) MasterKey() (crypto.SiaKey, error) {
+	sk, err := crypto.NewSiaKey(sf.staticMetadata.StaticMasterKeyType, sf.staticMetadata.StaticMasterKey)
+	if err != nil {
+		return nil, err
+	}
+	return sk, nil
 }
 
 // Mode returns the FileMode of the SiaFile.

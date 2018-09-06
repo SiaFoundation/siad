@@ -1,8 +1,6 @@
 package siafile
 
 import (
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -26,9 +24,6 @@ const (
 var (
 	// ecReedSolomon is the marshaled type of the reed solomon coder.
 	ecReedSolomon = [4]byte{0, 0, 0, 1}
-
-	// Erasure-coded piece size
-	pieceSize = modules.SectorSize - crypto.TwofishOverhead
 )
 
 // IsSiaFileUpdate is a helper method that makes sure that a wal update belongs

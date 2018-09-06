@@ -5,7 +5,7 @@ import (
 	"os"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -135,7 +135,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	}
 
 	// Create the download.
-	buf := NewDownloadDestinationBuffer(chunk.length)
+	buf := NewDownloadDestinationBuffer(chunk.length, chunk.renterFile.PieceSize())
 	d, err := r.managedNewDownload(downloadParams{
 		destination:     buf,
 		destinationType: "buffer",
@@ -165,10 +165,10 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		return errors.New("repair download interrupted by stop call")
 	}
 	if d.Err() != nil {
-		buf = nil
+		buf.buf = nil
 		return d.Err()
 	}
-	chunk.logicalChunkData = [][]byte(buf)
+	chunk.logicalChunkData = [][]byte(buf.buf)
 	return nil
 }
 
@@ -185,7 +185,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	var pieceCompletedMemory uint64
 	for i := 0; i < len(chunk.pieceUsage); i++ {
 		if chunk.pieceUsage[i] {
-			pieceCompletedMemory += chunk.renterFile.PieceSize() + crypto.TwofishOverhead
+			pieceCompletedMemory += modules.SectorSize
 		}
 	}
 
@@ -245,6 +245,12 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		r.log.Critical("not enough physical pieces to match the upload settings of the file")
 		return
 	}
+	// Get the file's master key.
+	mk, err := chunk.renterFile.MasterKey()
+	if err != nil {
+		r.log.Print("failed to get file's master key, that shouldn't happen")
+		return
+	}
 	// Loop through the pieces and encrypt any that are needed, while dropping
 	// any pieces that are not needed.
 	for i := 0; i < len(chunk.pieceUsage); i++ {
@@ -252,7 +258,12 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			chunk.physicalChunkData[i] = nil
 		} else {
 			// Encrypt the piece.
-			key := deriveKey(chunk.renterFile.MasterKey(), chunk.index, uint64(i))
+			key, err := deriveKey(mk, chunk.index, uint64(i))
+			if err != nil {
+				// NOTE this should never fail since we are deriving from a
+				// valid key.
+				panic(err)
+			}
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
 		}
 	}
@@ -301,7 +312,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// TODO: Once we have enabled support for small chunks, we should stop
 	// needing to ignore the EOF errors, because the chunk size should always
 	// match the tail end of the file. Until then, we ignore io.EOF.
-	buf := NewDownloadDestinationBuffer(chunk.length)
+	buf := NewDownloadDestinationBuffer(chunk.length, chunk.renterFile.PieceSize())
 	sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
 	_, err = buf.ReadFrom(sr)
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF && download {
@@ -311,7 +322,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		r.log.Debugln("failed to read file locally:", err)
 		return errors.Extend(err, errors.New("failed to read file locally"))
 	}
-	chunk.logicalChunkData = buf
+	chunk.logicalChunkData = buf.buf
 
 	// Data successfully read from disk.
 	return nil
@@ -321,7 +332,6 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 // cleanup required. This can include returning rememory and releasing the chunk
 // from the map of active chunks in the chunk heap.
 func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
-	pieceSize := uc.renterFile.PieceSize()
 	uc.mu.Lock()
 	piecesAvailable := 0
 	var memoryReleased uint64
@@ -338,7 +348,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		// will prefer releasing later pieces, which improves computational
 		// complexity for erasure coding.
 		if piecesAvailable >= uc.workersRemaining {
-			memoryReleased += pieceSize + crypto.TwofishOverhead
+			memoryReleased += modules.SectorSize
 			uc.physicalChunkData[i] = nil
 			// Mark this piece as taken so that we don't double release memory.
 			uc.pieceUsage[i] = true

@@ -425,6 +425,12 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		}
 	}
 
+	// Get the masterkey from the file.
+	mk, err := params.file.MasterKey()
+	if err != nil {
+		return nil, err
+	}
+
 	// Queue the downloads for each chunk.
 	writeOffset := int64(0) // where to write a chunk within the download destination.
 	d.chunksRemaining += maxChunk - minChunk + 1
@@ -432,7 +438,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		udc := &unfinishedDownloadChunk{
 			destination: params.destination,
 			erasureCode: params.file.ErasureCode(i),
-			masterKey:   params.file.MasterKey(),
+			masterKey:   mk,
 
 			staticChunkIndex: i,
 			staticCacheID:    fmt.Sprintf("%v:%v", d.staticSiaPath, i),

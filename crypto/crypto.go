@@ -1,0 +1,125 @@
+package crypto
+
+import (
+	"errors"
+
+	"gitlab.com/NebulousLabs/fastrand"
+)
+
+var (
+	// TypeDefaultRenter is the default CipherType that is used for
+	// encrypting pieces of uploaded data.
+	// TODO Change this to TypeThreefish once Threefish support is implemented.
+	TypeDefaultRenter = TypeTwofish
+	// TypeDefaultWallet is the default CipherType that is used for
+	// wallet operations like encrypting the wallet files.
+	TypeDefaultWallet = TypeTwofish
+
+	// TypePlain means no encryption is used.
+	TypePlain = CipherType([8]byte{0, 0, 0, 0, 0, 0, 0, 1})
+	// TypeTwofish is the type for the Twofish-GCM encryption.
+	TypeTwofish = CipherType([8]byte{0, 0, 0, 0, 0, 0, 0, 2})
+	// TypeThreefish is the type for the Threefish encryption.
+	TypeThreefish = CipherType([8]byte{0, 0, 0, 0, 0, 0, 0, 3})
+)
+
+var (
+	// ErrInvalidCipherType is returned upon encountering an unknown cipher
+	// type.
+	ErrInvalidCipherType = errors.New("provided cipher type is invalid")
+)
+
+type (
+	// CipherType is an identifier for the individual ciphers provided by this
+	// package.
+	CipherType [8]byte
+
+	// Ciphertext is an encrypted []byte.
+	Ciphertext []byte
+
+	// SiaKey is a key with Sia specific encryption/decryption methods.
+	SiaKey interface {
+		// CipherKey returns the underlying key.
+		CipherKey() []byte
+
+		// CipherType returns the type of the key.
+		CipherType() CipherType
+
+		// EncryptBytes encrypts the given plaintext and returns the
+		// ciphertext.
+		EncryptBytes([]byte) Ciphertext
+
+		// DecryptBytes decrypts the given ciphertext and returns the
+		// plaintext.
+		DecryptBytes(Ciphertext) ([]byte, error)
+
+		// DecryptBytesInPlace decrypts the given ciphertext and returns the
+		// plaintext. It will reuse the memory of the ciphertext which means
+		// that it's not save to use it after calling DecryptBytesInPlace.
+		DecryptBytesInPlace(Ciphertext) ([]byte, error)
+
+		// Overhead reports the overhead of the underlying encryption schema in
+		// bytes.
+		Overhead() uint64
+	}
+)
+
+// NewWalletKey is a helper method which is meant to be used only if the type
+// and entropy are guaranteed to be valid. In the wallet this is always the
+// case since we always use hashes as the entropy and we don't read the key
+// from file.
+func NewWalletKey(ct CipherType, entropy Hash) SiaKey {
+	sk, err := NewSiaKey(ct, entropy[:])
+	if err != nil {
+		panic(err)
+	}
+	return sk
+}
+
+// NewSiaKey creates a new SiaKey from the provided type and entropy.
+func NewSiaKey(ct CipherType, entropy []byte) (SiaKey, error) {
+	switch ct {
+	case TypePlain:
+		return plainTextCipherKey{}, nil
+	case TypeTwofish:
+		return newTwofishKey(entropy)
+	case TypeThreefish:
+		panic("not implemented yet")
+	default:
+		return nil, ErrInvalidCipherType
+	}
+}
+
+// GenerateSiaKey creates a new SiaKey from the provided type and
+// entropy.
+func GenerateSiaKey(ct CipherType) SiaKey {
+	switch ct {
+	case TypePlain:
+		return plainTextCipherKey{}
+	case TypeTwofish:
+		return generateTwofishKey()
+	case TypeThreefish:
+		panic("not implemented yet")
+	default:
+		panic(ErrInvalidCipherType)
+	}
+}
+
+// IsValidCipherType returns true if ct is a known CipherType and false
+// otherwise.
+func IsValidCipherType(ct CipherType) bool {
+	switch ct {
+	case TypePlain, TypeTwofish, TypeThreefish:
+		return true
+	default:
+		return false
+	}
+}
+
+// RandomCipherType is a helper function for testing. It's located in the
+// crypto package to centralize all the types within one file to make future
+// changes to them easy.
+func RandomCipherType() CipherType {
+	types := []CipherType{TypePlain, TypeTwofish}
+	return types[fastrand.Intn(len(types))]
+}
