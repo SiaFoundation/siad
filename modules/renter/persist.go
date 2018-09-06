@@ -231,39 +231,6 @@ func createDirMetadata(path string) error {
 	return persist.SaveJSON(metadataHeader, data, fullPath)
 }
 
-// saveFile saves a file to the renter directory.
-func (r *Renter) saveFile(f *siafile.SiaFile) error {
-	if f.Deleted() { // TODO: violation of locking convention
-		return errors.New("can't save deleted file")
-	}
-	// Create directory structure specified in nickname, only for files not in
-	// top level renter directory
-	dir := filepath.Dir(f.SiaPath())
-	if dir != "." {
-		err := r.createDir(dir)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Open SafeFile handle.
-	fullPath := filepath.Join(r.persistDir, f.SiaPath()+ShareExtension)
-	handle, err := persist.NewSafeFile(fullPath)
-	if err != nil {
-		return err
-	}
-	defer handle.Close()
-
-	// Write file data.
-	err = r.shareFiles([]*siafile.SiaFile{f}, handle)
-	if err != nil {
-		return err
-	}
-
-	// Commit the SafeFile.
-	return handle.CommitSync()
-}
-
 // saveSync stores the current renter data to disk and then syncs to disk.
 func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
