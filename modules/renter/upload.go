@@ -107,13 +107,14 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (up.ErasureCode.NumPieces()+up.ErasureCode.MinPieces())/2)
 	}
 
-	// Create file object.
-	siaFilePath := filepath.Join(r.persistDir, up.SiaPath+ShareExtension)
-	// Create the path on disk.
-	dir, _ := filepath.Split(siaFilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	// Create the directory path on disk.
+	dir, _ := filepath.Split(up.SiaPath)
+	if err := r.createDir(dir); err != nil {
 		return err
 	}
+
+	// Create file object.
+	siaFilePath := filepath.Join(r.persistDir, up.SiaPath+ShareExtension)
 	// Create the Siafile.
 	f, err := newFile(siaFilePath, up.SiaPath, r.wal, up.ErasureCode, pieceSize, uint64(fileInfo.Size()), fileInfo.Mode(), up.Source)
 	if err != nil {
