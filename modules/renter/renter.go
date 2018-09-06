@@ -34,6 +34,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/threadgroup"
 )
@@ -218,6 +219,7 @@ type Renter struct {
 	mu                *siasync.RWMutex
 	tg                threadgroup.ThreadGroup
 	tpool             modules.TransactionPool
+	wal               *writeaheadlog.WAL
 }
 
 // Close closes the Renter and its dependencies

@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"encoding/binary"
 	"os"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -35,22 +34,22 @@ type (
 func NewFromFileData(fd FileData) *SiaFile {
 	file := &SiaFile{
 		staticMetadata: Metadata{
-			staticFileSize:  int64(fd.FileSize),
-			staticMasterKey: fd.MasterKey,
-			mode:            fd.Mode,
-			staticPieceSize: fd.PieceSize,
-			siaPath:         fd.Name,
+			StaticFileSize:  int64(fd.FileSize),
+			StaticMasterKey: fd.MasterKey,
+			Mode:            fd.Mode,
+			StaticPieceSize: fd.PieceSize,
+			SiaPath:         fd.Name,
 		},
 		deleted:   fd.Deleted,
 		staticUID: fd.UID,
 	}
-	file.staticChunks = make([]Chunk, len(fd.Chunks))
+	file.staticChunks = make([]chunk, len(fd.Chunks))
 	for i := range file.staticChunks {
+		ecType, ecParams := marshalErasureCoder(fd.ErasureCode)
 		file.staticChunks[i].staticErasureCode = fd.ErasureCode
-		file.staticChunks[i].staticErasureCodeType = [4]byte{0, 0, 0, 1}
-		binary.LittleEndian.PutUint32(file.staticChunks[i].staticErasureCodeParams[0:4], uint32(file.staticChunks[i].staticErasureCode.MinPieces()))
-		binary.LittleEndian.PutUint32(file.staticChunks[i].staticErasureCodeParams[4:8], uint32(file.staticChunks[i].staticErasureCode.NumPieces()-file.staticChunks[i].staticErasureCode.MinPieces()))
-		file.staticChunks[i].pieces = make([][]Piece, file.staticChunks[i].staticErasureCode.NumPieces())
+		file.staticChunks[i].StaticErasureCodeType = ecType
+		file.staticChunks[i].StaticErasureCodeParams = ecParams
+		file.staticChunks[i].Pieces = make([][]Piece, file.staticChunks[i].staticErasureCode.NumPieces())
 	}
 
 	// Populate the pubKeyTable of the file and add the pieces.
@@ -64,7 +63,7 @@ func NewFromFileData(fd FileData) *SiaFile {
 					file.pubKeyTable = append(file.pubKeyTable, piece.HostPubKey)
 				}
 				// Add the piece to the SiaFile.
-				file.staticChunks[chunkIndex].pieces[pieceIndex] = append(file.staticChunks[chunkIndex].pieces[pieceIndex], Piece{
+				file.staticChunks[chunkIndex].Pieces[pieceIndex] = append(file.staticChunks[chunkIndex].Pieces[pieceIndex], Piece{
 					HostPubKey: piece.HostPubKey,
 					MerkleRoot: piece.MerkleRoot,
 				})
@@ -72,32 +71,4 @@ func NewFromFileData(fd FileData) *SiaFile {
 		}
 	}
 	return file
-}
-
-// ExportFileData creates a FileData object from a SiaFile that can be used to
-// convert the file into a legacy file.
-func (sf *SiaFile) ExportFileData() FileData {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	fd := FileData{
-		Name:        sf.staticMetadata.siaPath,
-		FileSize:    uint64(sf.staticMetadata.staticFileSize),
-		MasterKey:   sf.staticMetadata.staticMasterKey,
-		ErasureCode: sf.staticChunks[0].staticErasureCode,
-		RepairPath:  sf.staticMetadata.localPath,
-		PieceSize:   sf.staticMetadata.staticPieceSize,
-		Mode:        sf.staticMetadata.mode,
-		Deleted:     sf.deleted,
-		UID:         sf.staticUID,
-	}
-	// Return a deep-copy to avoid race conditions.
-	fd.Chunks = make([]FileChunk, len(sf.staticChunks))
-	for chunkIndex := range fd.Chunks {
-		fd.Chunks[chunkIndex].Pieces = make([][]Piece, len(sf.staticChunks[chunkIndex].pieces))
-		for pieceIndex := range fd.Chunks[chunkIndex].Pieces {
-			fd.Chunks[chunkIndex].Pieces[pieceIndex] = make([]Piece, len(sf.staticChunks[chunkIndex].pieces[pieceIndex]))
-			copy(fd.Chunks[chunkIndex].Pieces[pieceIndex], sf.staticChunks[chunkIndex].pieces[pieceIndex])
-		}
-	}
-	return fd
 }

@@ -1,17 +1,16 @@
-package renter
+package siafile
 
 import (
 	"fmt"
 	"io"
 
 	"github.com/klauspost/reedsolomon"
-
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// rsCode is a Reed-Solomon encoder/decoder. It implements the
+// RSCode is a Reed-Solomon encoder/decoder. It implements the
 // modules.ErasureCoder interface.
-type rsCode struct {
+type RSCode struct {
 	enc reedsolomon.Encoder
 
 	numPieces  int
@@ -19,15 +18,15 @@ type rsCode struct {
 }
 
 // NumPieces returns the number of pieces returned by Encode.
-func (rs *rsCode) NumPieces() int { return rs.numPieces }
+func (rs *RSCode) NumPieces() int { return rs.numPieces }
 
 // MinPieces return the minimum number of pieces that must be present to
 // recover the original data.
-func (rs *rsCode) MinPieces() int { return rs.dataPieces }
+func (rs *RSCode) MinPieces() int { return rs.dataPieces }
 
 // Encode splits data into equal-length pieces, some containing the original
 // data and some containing parity data.
-func (rs *rsCode) Encode(data []byte) ([][]byte, error) {
+func (rs *RSCode) Encode(data []byte) ([][]byte, error) {
 	pieces, err := rs.enc.Split(data)
 	if err != nil {
 		return nil, err
@@ -42,7 +41,7 @@ func (rs *rsCode) Encode(data []byte) ([][]byte, error) {
 }
 
 // EncodeShards creates the parity shards for an already sharded input.
-func (rs *rsCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
+func (rs *RSCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	// Check that the caller provided the minimum amount of pieces.
 	if len(pieces) != rs.MinPieces() {
 		return nil, fmt.Errorf("invalid number of pieces given %v %v", len(pieces), rs.MinPieces())
@@ -61,7 +60,7 @@ func (rs *rsCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 // Recover recovers the original data from pieces and writes it to w.
 // pieces should be identical to the slice returned by Encode (length and
 // order must be preserved), but with missing elements set to nil.
-func (rs *rsCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
+func (rs *RSCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 	err := rs.enc.ReconstructData(pieces)
 	if err != nil {
 		return err
@@ -76,7 +75,7 @@ func NewRSCode(nData, nParity int) (modules.ErasureCoder, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &rsCode{
+	return &RSCode{
 		enc:        enc,
 		numPieces:  nData + nParity,
 		dataPieces: nData,

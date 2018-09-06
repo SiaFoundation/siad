@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
 // TestRenterUploadDirectory verifies that the renter returns an error if a
@@ -26,7 +27,7 @@ func TestRenterUploadInode(t *testing.T) {
 	}
 	defer os.RemoveAll(testUploadPath)
 
-	ec, err := NewRSCode(defaultDataPieces, defaultParityPieces)
+	ec, err := siafile.NewRSCode(defaultDataPieces, defaultParityPieces)
 	if err != nil {
 		t.Fatal(err)
 	}
