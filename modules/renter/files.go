@@ -31,11 +31,11 @@ type file struct {
 	name        string
 	size        uint64 // Static - can be accessed without lock.
 	contracts   map[types.FileContractID]fileContract
-	masterKey   crypto.SiaKey        // Static - can be accessed without lock.
-	erasureCode modules.ErasureCoder // Static - can be accessed without lock.
-	pieceSize   uint64               // Static - can be accessed without lock.
-	mode        uint32               // actually an os.FileMode
-	deleted     bool                 // indicates if the file has been deleted.
+	masterKey   [crypto.EntropySize]byte // Static - can be accessed without lock.
+	erasureCode modules.ErasureCoder     // Static - can be accessed without lock.
+	pieceSize   uint64                   // Static - can be accessed without lock.
+	mode        uint32                   // actually an os.FileMode
+	deleted     bool                     // indicates if the file has been deleted.
 
 	staticUID string // A UID assigned to the file when it gets created.
 
@@ -265,7 +265,7 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
-func (r *Renter) fileToSiaFile(f *file, repairPath string) *siafile.SiaFile {
+func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFile, error) {
 	fileData := siafile.FileData{
 		Name:        f.name,
 		FileSize:    f.size,

@@ -50,6 +50,9 @@ func verifyEncryption(key crypto.SiaKey, encrypted crypto.Ciphertext) error {
 
 // checkMasterKey verifies that the masterKey is the key used to encrypt the wallet.
 func checkMasterKey(tx *bolt.Tx, masterKey crypto.SiaKey) error {
+	if masterKey == nil {
+		return modules.ErrBadEncryptionKey
+	}
 	uk := uidEncryptionKey(masterKey, dbGetWalletUID(tx))
 	encryptedVerification := tx.Bucket(bucketWallet).Get(keyEncryptionVerification)
 	return verifyEncryption(uk, encryptedVerification)

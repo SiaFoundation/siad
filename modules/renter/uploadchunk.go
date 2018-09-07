@@ -222,7 +222,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// fact to reduce the total memory required to create the physical data.
 	// That will also change the amount of memory we need to allocate, and the
 	// number of times we need to return memory.
-	chunk.physicalChunkData, err = chunk.renterFile.ErasureCode(chunk.index).EncodeShards(chunk.logicalChunkData)
+	chunk.physicalChunkData, err = chunk.renterFile.ErasureCode(chunk.index).EncodeShards(chunk.logicalChunkData, chunk.renterFile.PieceSize())
 	chunk.logicalChunkData = nil
 	r.memoryManager.Return(erasureCodingMemory)
 	chunk.memoryReleased += erasureCodingMemory
@@ -349,6 +349,9 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		// complexity for erasure coding.
 		if piecesAvailable >= uc.workersRemaining {
 			memoryReleased += modules.SectorSize
+			if len(uc.physicalChunkData) < len(uc.pieceUsage) {
+				// TODO handle this. Might happen if erasure coding the chunk failed.
+			}
 			uc.physicalChunkData[i] = nil
 			// Mark this piece as taken so that we don't double release memory.
 			uc.pieceUsage[i] = true

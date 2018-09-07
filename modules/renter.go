@@ -48,7 +48,7 @@ type ErasureCoder interface {
 
 	// EncodeShards encodes the input data like Encode but accepts an already
 	// sharded input.
-	EncodeShards(data [][]byte) ([][]byte, error)
+	EncodeShards(data [][]byte, pieceSize uint64) ([][]byte, error)
 
 	// Recover recovers the original data from pieces and writes it to w.
 	// pieces should be identical to the slice returned by Encode (length and

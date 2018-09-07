@@ -38,13 +38,13 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 // newTestFile is a helper method to create a SiaFile for testing.
 func newTestFile() *SiaFile {
 	// Create arguments for new file.
+	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
+	pieceSize := modules.SectorSize - sk.Overhead()
 	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
 	rc, err := NewRSCode(10, 20)
 	if err != nil {
 		panic(err)
 	}
-	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
-	pieceSize := modules.SectorSize - sk.Overhead()
 	fileSize := pieceSize * 10
 	fileMode := os.FileMode(777)
 	source := string(hex.EncodeToString(fastrand.Bytes(8)))

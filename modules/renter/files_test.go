@@ -47,26 +47,58 @@ func newFileTesting(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCode
 
 // TestFileNumChunks checks the numChunks method of the file type.
 func TestFileNumChunks(t *testing.T) {
+	fileSize := func(numSectors uint64) uint64 {
+		return numSectors*modules.SectorSize + uint64(fastrand.Intn(int(modules.SectorSize)))
+	}
+	// Since the pieceSize is 'random' now we test a variety of random inputs.
 	tests := []struct {
-		size           uint64
-		piecesPerChunk int
-		expNumChunks   uint64
+		fileSize   uint64
+		dataPieces int
 	}{
-		{100, 10, 10}, // evenly divides
-		{100, 10, 5},  // evenly divides
+		{fileSize(10), 10},
+		{fileSize(50), 10},
+		{fileSize(100), 10},
 
-		{101, 10, 11}, // padded
-		{101, 10, 6},  // padded
+		{fileSize(11), 10},
+		{fileSize(51), 10},
+		{fileSize(101), 10},
 
-		{10, 100, 1}, // larger piece than file
-		{0, 10, 1},   // 0-length
+		{fileSize(10), 100},
+		{fileSize(50), 100},
+		{fileSize(100), 100},
+
+		{fileSize(11), 100},
+		{fileSize(51), 100},
+		{fileSize(101), 100},
+
+		{0, 10}, // 0-length
 	}
 
 	for _, test := range tests {
-		rsc, _ := siafile.NewRSCode(test.piecesPerChunk, 1) // can't use 0
-		f := newFileTesting(t.Name(), newTestingWal(), rsc, test.size, 0777, "")
-		if f.NumChunks() != test.expNumChunks {
-			t.Errorf("Test %v: expected %v, got %v", test, test.expNumChunks, f.NumChunks())
+		// Create erasure-coder
+		rsc, _ := siafile.NewRSCode(test.dataPieces, 1) // can't use 0
+		// Create the file
+		f := newFileTesting(t.Name(), newTestingWal(), rsc, test.fileSize, 0777, "")
+		// Get file's encryption mode.
+		mk, err := f.MasterKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Make sure the file reports the correct pieceSize.
+		if f.PieceSize() != modules.SectorSize-mk.Overhead() {
+			t.Fatal("file has wrong pieceSize for its encryption type")
+		}
+		// Check that the number of chunks matches the expected number.
+		expectedNumChunks := test.fileSize / (f.PieceSize() * uint64(test.dataPieces))
+		if expectedNumChunks == 0 {
+			// There is at least 1 chunk.
+			expectedNumChunks = 1
+		} else if expectedNumChunks%(f.PieceSize()*uint64(test.dataPieces)) != 0 {
+			// If it doesn't divide evenly there will be 1 chunk padding.
+			expectedNumChunks++
+		}
+		if f.NumChunks() != expectedNumChunks {
+			t.Errorf("Test %v: expected %v, got %v", test, expectedNumChunks, f.NumChunks())
 		}
 	}
 }
