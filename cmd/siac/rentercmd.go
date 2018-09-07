@@ -163,16 +163,6 @@ func rentercmd() {
 	fm := rg.FinancialMetrics
 	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
 		Add(fm.DownloadSpending).Add(fm.StorageSpending)
-	// Calculate unspent allocated
-	unspentAllocated := types.ZeroCurrency
-	if fm.TotalAllocated.Cmp(totalSpent) >= 0 {
-		unspentAllocated = fm.TotalAllocated.Sub(totalSpent)
-	}
-	// Calculate unspent unallocated
-	unspentUnallocated := types.ZeroCurrency
-	if fm.Unspent.Cmp(unspentAllocated) >= 0 {
-		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
-	}
 
 	fmt.Printf(`Renter Info:
   Allowance:`)
@@ -180,20 +170,11 @@ func rentercmd() {
 	if rg.Settings.Allowance.Funds.IsZero() {
 		fmt.Printf("\n    No current allowance.\n")
 	} else {
-		fmt.Printf(`         %v
-    Spent Funds:     %v
-      Storage:       %v
-      Upload:        %v
-      Download:      %v
-      Fees:          %v
-    Unspent Funds:   %v
-      Allocated:     %v
-      Unallocated:   %v
+		fmt.Printf(`       %v
+  Spent Funds:     %v
+  Unspent Funds:   %v
 `, currencyUnits(rg.Settings.Allowance.Funds),
-			currencyUnits(totalSpent), currencyUnits(fm.StorageSpending),
-			currencyUnits(fm.UploadSpending), currencyUnits(fm.DownloadSpending),
-			currencyUnits(fm.ContractFees), currencyUnits(fm.Unspent),
-			currencyUnits(unspentAllocated), currencyUnits(unspentUnallocated))
+			currencyUnits(totalSpent), currencyUnits(fm.Unspent))
 	}
 
 	fmt.Printf("\n  Previous Spending:")
@@ -293,11 +274,61 @@ func renterallowancecmd() {
 	}
 	allowance := rg.Settings.Allowance
 
-	// convert to SC
+	// Show allowance info
 	fmt.Printf(`Allowance:
-	Amount: %v
-	Period: %v blocks
-`, currencyUnits(allowance.Funds), allowance.Period)
+	Amount:       %v
+	Period:       %v blocks
+	Renew Window: %v blocks
+	Hosts:        %v
+`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts)
+
+	// Show spending detail
+	fm := rg.FinancialMetrics
+	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
+		Add(fm.DownloadSpending).Add(fm.StorageSpending)
+	// Calculate unspent allocated
+	unspentAllocated := types.ZeroCurrency
+	if fm.TotalAllocated.Cmp(totalSpent) >= 0 {
+		unspentAllocated = fm.TotalAllocated.Sub(totalSpent)
+	}
+	// Calculate unspent unallocated
+	unspentUnallocated := types.ZeroCurrency
+	if fm.Unspent.Cmp(unspentAllocated) >= 0 {
+		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
+	}
+
+	fmt.Printf(`Renter Info:
+  Allowance:`)
+
+	if rg.Settings.Allowance.Funds.IsZero() {
+		fmt.Printf("\n    No current allowance.\n")
+	} else {
+		fmt.Printf(`         %v
+    Spent Funds:     %v
+      Storage:       %v
+      Upload:        %v
+      Download:      %v
+      Fees:          %v
+    Unspent Funds:   %v
+      Allocated:     %v
+      Unallocated:   %v
+`, currencyUnits(rg.Settings.Allowance.Funds),
+			currencyUnits(totalSpent), currencyUnits(fm.StorageSpending),
+			currencyUnits(fm.UploadSpending), currencyUnits(fm.DownloadSpending),
+			currencyUnits(fm.ContractFees), currencyUnits(fm.Unspent),
+			currencyUnits(unspentAllocated), currencyUnits(unspentUnallocated))
+	}
+
+	fmt.Printf("\n  Previous Spending:")
+	if fm.PreviousSpending.IsZero() && fm.WithheldFunds.IsZero() {
+		fmt.Printf("\n    No previous spending.\n\n")
+	} else {
+		fmt.Printf(` %v
+    Withheld Funds:  %v
+    Release Block:   %v
+
+`, currencyUnits(fm.PreviousSpending), currencyUnits(fm.WithheldFunds), fm.ReleaseBlock)
+	}
 }
 
 // renterallowancecancelcmd cancels the current allowance.
