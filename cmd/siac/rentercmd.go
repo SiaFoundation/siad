@@ -177,17 +177,6 @@ func rentercmd() {
 			currencyUnits(totalSpent), currencyUnits(fm.Unspent))
 	}
 
-	fmt.Printf("\n  Previous Spending:")
-	if fm.PreviousSpending.IsZero() && fm.WithheldFunds.IsZero() {
-		fmt.Printf("\n    No previous spending.\n\n")
-	} else {
-		fmt.Printf(` %v
-    Withheld Funds:  %v
-    Release Block:   %v
-
-`, currencyUnits(fm.PreviousSpending), currencyUnits(fm.WithheldFunds), fm.ReleaseBlock)
-	}
-
 	// also list files
 	renterfileslistcmd()
 }
@@ -297,13 +286,14 @@ func renterallowancecmd() {
 		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
 	}
 
-	fmt.Printf(`Renter Info:
-  Allowance:`)
+	fmt.Printf(`
+Spending:
+  Current Period Spending:`)
 
 	if rg.Settings.Allowance.Funds.IsZero() {
-		fmt.Printf("\n    No current allowance.\n")
+		fmt.Printf("\n    No current period spending.\n")
 	} else {
-		fmt.Printf(`         %v
+		fmt.Printf(`
     Spent Funds:     %v
       Storage:       %v
       Upload:        %v
@@ -312,8 +302,7 @@ func renterallowancecmd() {
     Unspent Funds:   %v
       Allocated:     %v
       Unallocated:   %v
-`, currencyUnits(rg.Settings.Allowance.Funds),
-			currencyUnits(totalSpent), currencyUnits(fm.StorageSpending),
+`, currencyUnits(totalSpent), currencyUnits(fm.StorageSpending),
 			currencyUnits(fm.UploadSpending), currencyUnits(fm.DownloadSpending),
 			currencyUnits(fm.ContractFees), currencyUnits(fm.Unspent),
 			currencyUnits(unspentAllocated), currencyUnits(unspentUnallocated))
