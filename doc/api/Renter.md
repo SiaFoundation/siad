@@ -550,9 +550,9 @@ corrupts the file.
 
 ###### Path Parameters [(with comments)](/doc/api/Renter.md#path-parameters-3)
 ```
-// Location where the file will reside in the renter on the network. The path
-// must be non-empty, may not include any path traversal strings ("./", "../"),
-// and may not begin with a forward-slash character.
+// SiaPath of the file on the network. The path must be non-empty, may not
+// include any path traversal strings ("./", "../"), and may not begin with a
+// forward-slash character.
 *siapath
 ```
 
