@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -107,10 +108,14 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (up.ErasureCode.NumPieces()+up.ErasureCode.MinPieces())/2)
 	}
 
-	// Create the directory path on disk.
+	// Create the directory path on disk. Renter directory is already present so
+	// only files not in top level directory need to have directories created
 	dir, _ := filepath.Split(up.SiaPath)
-	if err := r.createDir(dir); err != nil {
-		return err
+	dirSiaPath := strings.TrimSuffix(dir, "/")
+	if dirSiaPath != "" {
+		if err := r.createDir(dirSiaPath); err != nil {
+			return err
+		}
 	}
 
 	// Create file object.
