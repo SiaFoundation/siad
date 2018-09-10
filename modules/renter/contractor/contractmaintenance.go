@@ -369,6 +369,29 @@ func (c *Contractor) managedPrunePubkeyMap() {
 	c.mu.Unlock()
 }
 
+// managedPrunedRedundantAddressRange uses the hostdb to find hosts that
+// violate the rules about address ranges and cancels them.
+func (c *Contractor) managedPrunedRedundantAddressRange() {
+	allContracts := c.staticContracts.ViewAll()
+
+	// Get all the public keys and map them to contract ids.
+	pks := make([]types.SiaPublicKey, 0, len(allContracts))
+	cids := make(map[string]types.FileContractID)
+	for _, contract := range allContracts {
+		pks = append(pks, contract.HostPublicKey)
+		cids[contract.HostPublicKey.String()] = contract.ID
+	}
+
+	// Let the hostdb filter out bad hosts and cancel contracts with those
+	// hosts.
+	badHosts := c.hdb.CheckForIPViolations(pks)
+	for _, host := range badHosts {
+		if err := c.managedCancelContract(cids[host.String()]); err != nil {
+			c.log.Print("WARNING: Wasn't able to cancel contract in managedPrunedRedundantAddressRange", err)
+		}
+	}
+}
+
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
@@ -586,6 +609,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.managedArchiveContracts()
 	c.managedCheckForDuplicates()
 	c.managedPrunePubkeyMap()
+
+	// Deduplicate contracts which share the same subnet.
+	//	c.managedPrunedRedundantAddressRange()
 
 	// Nothing to do if there are no hosts.
 	c.mu.RLock()

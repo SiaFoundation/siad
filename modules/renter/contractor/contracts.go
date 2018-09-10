@@ -11,6 +11,17 @@ func (c *Contractor) contractEndHeight() types.BlockHeight {
 	return c.currentPeriod + c.allowance.Period + c.allowance.RenewWindow
 }
 
+// managedCancelContract cancels a contract by setting its utility fields to
+// false and locking the utilities. The contract can still be used for
+// downloads after this but it won't be used for uploads or renewals.
+func (c *Contractor) managedCancelContract(cid types.FileContractID) error {
+	return c.managedUpdateContractUtility(cid, modules.ContractUtility{
+		GoodForRenew:  false,
+		GoodForUpload: false,
+		Locked:        true,
+	})
+}
+
 // managedContractUtility returns the ContractUtility for a contract with a given id.
 func (c *Contractor) managedContractUtility(id types.FileContractID) (modules.ContractUtility, bool) {
 	rc, exists := c.staticContracts.View(id)
@@ -37,11 +48,7 @@ func (c *Contractor) ContractByPublicKey(pk types.SiaPublicKey) (modules.RenterC
 // and !GoodForUpload
 func (c *Contractor) CancelContract(id types.FileContractID) error {
 	defer c.threadedContractMaintenance()
-	return c.managedUpdateContractUtility(id, modules.ContractUtility{
-		GoodForRenew:  false,
-		GoodForUpload: false,
-		Locked:        true,
-	})
+	return c.managedCancelContract(id)
 }
 
 // Contracts returns the contracts formed by the contractor in the current

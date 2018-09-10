@@ -1,11 +1,11 @@
 package hosttree
 
 import (
-	"encoding/binary"
 	"fmt"
 	"net"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -30,14 +30,15 @@ func (ProductionResolver) LookupIP(host string) ([]net.IP, error) {
 // TestingResolver is the default hostname resolver used in testing builds. It
 // returns a different valid IP address every time it is called.
 type TestingResolver struct {
-	counter uint64
+	counter uint32
 }
 
-// LookupIP is a passthrough function to net.LookupIP.
+// LookupIP on the TestingResolver returns a random IPv6 address every time it
+// is called. That way we are pretty much guaranteed to never have an address
+// from the same subnet during testing.
 func (tr TestingResolver) LookupIP(host string) ([]net.IP, error) {
-	rawIP := make([]byte, 4)
-	binary.LittleEndian.PutUint64(rawIP, tr.counter)
-	tr.counter++
+	rawIP := make([]byte, 16)
+	fastrand.Read(rawIP)
 	return []net.IP{net.IP(rawIP)}, nil
 }
 
