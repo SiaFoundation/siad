@@ -108,8 +108,6 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	// TODO in the future we might want to allow the user to specify the
-	// encryption type.
 	cipherType := crypto.TypeDefaultRenter
 
 	// Create the Siafile.

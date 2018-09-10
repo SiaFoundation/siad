@@ -53,7 +53,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	pieceIndex := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].index
 	key, err := deriveKey(udc.masterKey, udc.staticChunkIndex, pieceIndex)
 	if err != nil {
-		w.renter.log.Debugln("worker failed to derive key:", err)
+		w.renter.log.Println("worker failed to derive key:", err)
 		udc.managedUnregisterWorker(w)
 		return
 	}

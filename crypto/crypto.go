@@ -9,7 +9,6 @@ import (
 var (
 	// TypeDefaultRenter is the default CipherType that is used for
 	// encrypting pieces of uploaded data.
-	// TODO Change this to TypeThreefish once Threefish support is implemented.
 	TypeDefaultRenter = TypeTwofish
 	// TypeDefaultWallet is the default CipherType that is used for
 	// wallet operations like encrypting the wallet files.

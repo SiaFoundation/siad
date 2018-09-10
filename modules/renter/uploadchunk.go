@@ -262,7 +262,8 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			if err != nil {
 				// NOTE this should never fail since we are deriving from a
 				// valid key.
-				panic(err)
+				r.log.Critical(err)
+				return
 			}
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
 		}
