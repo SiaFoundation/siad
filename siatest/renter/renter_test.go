@@ -497,7 +497,7 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 
 	var file modules.FileInfo
 	checks := 0
-	for i, f := range files {
+	for _, f := range files {
 		// Only request files if file was fully uploaded for first API request
 		if f.UploadProgress < 100 {
 			continue
@@ -507,10 +507,29 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal("Failed to request single file", err)
 		}
-		if !reflect.DeepEqual(f, file) {
-			t.Logf("Error with file %v or %v\n", i, len(files))
-			t.Log("File from Files():", f)
-			t.Log("File from File():", file)
+
+		// Can't use reflect.DeepEqual because certain fields are too dynamic,
+		// however those fields are also not indicative of whether or not the
+		// files are the same.  Not checking Redundancy, Available, Renewing
+		// ,UploadProgress, UploadedBytes, or Renewing
+		if f.Expiration != file.Expiration {
+			t.Log("File from Files() Expiration:", f.Expiration)
+			t.Log("File from File() Expiration:", file.Expiration)
+			t.Fatal("Single file queries does not match file previously requested.")
+		}
+		if f.Filesize != file.Filesize {
+			t.Log("File from Files() Filesize:", f.Filesize)
+			t.Log("File from File() Filesize:", file.Filesize)
+			t.Fatal("Single file queries does not match file previously requested.")
+		}
+		if f.LocalPath != file.LocalPath {
+			t.Log("File from Files() LocalPath:", f.LocalPath)
+			t.Log("File from File() LocalPath:", file.LocalPath)
+			t.Fatal("Single file queries does not match file previously requested.")
+		}
+		if f.SiaPath != file.SiaPath {
+			t.Log("File from Files() SiaPath:", f.SiaPath)
+			t.Log("File from File() SiaPath:", file.SiaPath)
 			t.Fatal("Single file queries does not match file previously requested.")
 		}
 	}
@@ -1554,10 +1573,219 @@ func TestRenterContracts(t *testing.T) {
 	for _, c := range inactiveContracts {
 		inactiveContractIDMap[c.ID] = struct{}{}
 	}
+	numRenewals++
 
 	// Mine to force inactive contracts to be expired contracts
 	m := tg.Miners()[0]
 	cg, err = r.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < int(inactiveContracts[0].EndHeight-cg.Height+types.MaturityDelay); i++ {
+		if err = m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+<<<<<<< HEAD
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+=======
+	// Mine blocks to force contract renewal to start with fresh set of contracts
+	if err = renewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+	numRenewals++
+
+	// Confirm Contracts were renewed as expected
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err := r.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		rcExpired, err := r.RenterExpiredContractsGet()
+		if err != nil {
+			return err
+		}
+		// checkContracts will confirm correct number of inactive and active contracts
+		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test canceling contract
+	// Grab contract to cancel
+	rc, err = r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := rc.ActiveContracts[0]
+	// Cancel Contract
+	if err := r.RenterContractCancelPost(contract.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a new host so new contract can be formed
+	hostParams := node.Host(testDir + "/host")
+	_, err = tg.AddNodes(hostParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		// Check that Contract is now in inactive contracts and no longer in Active contracts
+		rc, err = r.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		// Confirm Renter has the expected number of contracts, meaning canceled contract should have been replaced.
+		if len(rc.ActiveContracts) < len(tg.Hosts())-1 {
+			return fmt.Errorf("Canceled contract was not replaced, only %v active contracts, expected at least %v", len(rc.ActiveContracts), len(tg.Hosts())-1)
+		}
+		for _, c := range rc.ActiveContracts {
+			if c.ID == contract.ID {
+				return errors.New("Contract not cancelled, contract found in Active Contracts")
+			}
+		}
+		i := 1
+		for _, c := range rc.InactiveContracts {
+			if c.ID == contract.ID {
+				break
+			}
+			if i == len(rc.InactiveContracts) {
+				return errors.New("Contract not found in Inactive Contracts")
+			}
+			i++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenterContractsEndpoint tests the API endpoint for old contracts
+func TestRenterContractsEndpoint(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get Renter
+	r := tg.Renters()[0]
+
+	// Renter should only have active contracts
+	rc, err := r.RenterInactiveContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tg.Hosts()) != len(rc.ActiveContracts) {
+		t.Fatalf("Expected the same number for active contracts as hosts: %v active and %v expected", len(rc.ActiveContracts), len(tg.Hosts()))
+	}
+	if len(rc.InactiveContracts) != 0 {
+		t.Fatal("Expected zero inactive contracts, got", len(rc.InactiveContracts))
+	}
+	rcExpired, err := r.RenterExpiredContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rcExpired.ExpiredContracts) != 0 {
+		t.Fatal("Expected zero expired contracts, got", len(rcExpired.ExpiredContracts))
+	}
+
+	// Record original Contracts and create Maps for comparison
+	originalContracts := rc.ActiveContracts
+	originalContractIDMap := make(map[types.FileContractID]struct{})
+	for _, c := range originalContracts {
+		originalContractIDMap[c.ID] = struct{}{}
+	}
+
+	// Renew contracts
+	// Mine blocks to force contract renewal
+	if err = renewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+	numRenewals := 1
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm contracts were renewed as expected, there should be no expired
+	// contracts since we are still within the endheight of the original
+	// contracts, there should be the same number of active and inactive
+	// contracts, and the inactive contracts should be the same contracts as the
+	// original active contracts.
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		// Check active and expired contracts
+		rc, err = r.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(rc.InactiveContracts) {
+			return fmt.Errorf("Expected the same number of active and inactive contracts; got %v active and %v inactive", len(rc.ActiveContracts), len(rc.InactiveContracts))
+		}
+		if len(originalContracts) != len(rc.InactiveContracts) {
+			return fmt.Errorf("Didn't get expected number of inactive contracts, expected %v got %v", len(originalContracts), len(rc.InactiveContracts))
+		}
+		for _, c := range rc.InactiveContracts {
+			if _, ok := originalContractIDMap[c.ID]; !ok {
+				return errors.New("ID from rc not found in originalContracts")
+			}
+		}
+
+		// Check expired contracts
+		rcExpired, err = r.RenterExpiredContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rcExpired.ExpiredContracts) != 0 {
+			return fmt.Errorf("Expected zero expired contracts, got %v", len(rcExpired.ExpiredContracts))
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Record inactive contracts
+	rc, err = r.RenterInactiveContractsGet()
+	inactiveContracts := rc.InactiveContracts
+	if err != nil {
+		t.Fatal(err)
+	}
+	inactiveContractIDMap := make(map[types.FileContractID]struct{})
+	for _, c := range inactiveContracts {
+		inactiveContractIDMap[c.ID] = struct{}{}
+	}
+
+	// Mine to force inactive contracts to be expired contracts
+	m := tg.Miners()[0]
+	cg, err := r.ConsensusGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1572,6 +1800,7 @@ func TestRenterContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 
+>>>>>>> master
 	// Confirm contracts, the expired contracts should now be the same contracts
 	// as the previous inactive contracts.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
