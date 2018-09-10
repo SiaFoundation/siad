@@ -38,6 +38,7 @@ type HostDB struct {
 	log        *persist.Logger
 	mu         sync.RWMutex
 	persistDir string
+	resolver   hosttree.Resolver
 	tg         threadgroup.ThreadGroup
 
 	// The hostTree is the root node of the tree that organizes hosts by
@@ -224,6 +225,37 @@ func (hdb *HostDB) AverageContractPrice() (totalPrice types.Currency) {
 		totalPrice = totalPrice.Add(host.ContractPrice)
 	}
 	return totalPrice.Div64(uint64(len(hosts)))
+}
+
+// CheckForIPViolations accepts a number of host public keys and returns the
+// ones that violate the rules of the addressFilter. They are passed to the
+// addressFilter sorted by "address age" which means that hosts which have had
+// their IP addresses for a longer time will be prefered.
+func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaPublicKey {
+	// TODO sort by age
+
+	// Create a filter.
+	// TODO mock this
+	filter := hosttree.NewFilter(hosttree.ProductionResolver{})
+
+	var badHosts []types.SiaPublicKey
+	for _, host := range hosts {
+		// Get the host from the db.
+		node, exists := hdb.hostTree.Select(host)
+		if !exists {
+			// A host that's not in the hostdb is bad.
+			badHosts = append(badHosts, host)
+			continue
+		}
+		// Check if the host violates the rules.
+		if filter.Filtered(node.NetAddress) {
+			badHosts = append(badHosts, host)
+			continue
+		}
+		// If it didn't then we add it to the filter.
+		filter.Add(node.NetAddress)
+	}
+	return badHosts
 }
 
 // Close closes the hostdb, terminating its scanning threads

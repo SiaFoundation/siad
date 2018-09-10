@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/Sia/utils/addressfilter"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -506,7 +505,7 @@ func TestHostTreeFilter(t *testing.T) {
 	tree := newHostTree(func(dbe modules.HostDBEntry) types.Currency {
 		// All entries have the same weight.
 		return types.NewCurrency64(uint64(10))
-	}, addressfilter.NewProductionFilter(testHostTreeFilterResolver{}))
+	}, testHostTreeFilterResolver{})
 
 	// Insert host1 and host2. Both should be returned by SelectRandom.
 	tree.Insert(entry1)
@@ -519,7 +518,7 @@ func TestHostTreeFilter(t *testing.T) {
 	tree = newHostTree(func(dbe modules.HostDBEntry) types.Currency {
 		// All entries have the same weight.
 		return types.NewCurrency64(uint64(10))
-	}, addressfilter.NewProductionFilter(testHostTreeFilterResolver{}))
+	}, testHostTreeFilterResolver{})
 
 	// Insert host1 and host3. Only a single host should be returned.
 	tree.Insert(entry1)

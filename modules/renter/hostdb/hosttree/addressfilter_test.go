@@ -1,8 +1,10 @@
-package addressfilter
+package hosttree
 
 import (
 	"net"
 	"testing"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 var (
@@ -95,18 +97,12 @@ func (testFilterIPv6Resolver) LookupIP(host string) ([]net.IP, error) {
 	}
 }
 
-// newHostFromAddress is a convenience method to create a new hostfrom an
-// ip address.
-func newHostFromAddress(address string) address {
-	return &host{address}
-}
-
 // TestTooManyAddresses checks that hosts with more than 2 associated IP
 // addresses are always filtered.
 func TestTooManyAddresses(t *testing.T) {
 	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := NewProductionFilter(testTooManyAddressesResolver{})
-	host := newHostFromAddress("any.address")
+	filter := NewFilter(testTooManyAddressesResolver{})
+	host := modules.NetAddress("any.address:1234")
 
 	// Add host to filter.
 	filter.Add(host)
@@ -121,13 +117,13 @@ func TestTooManyAddresses(t *testing.T) {
 // they have the same address type.
 func TestTwoAddresses(t *testing.T) {
 	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := NewProductionFilter(testTwoAddressesResolver{})
+	filter := NewFilter(testTwoAddressesResolver{})
 
 	// Create a few hosts for testing.
-	hostValid1 := newHostFromAddress("ipv4.ipv6")
-	hostValid2 := newHostFromAddress("ipv6.ipv4")
-	hostInvalid1 := newHostFromAddress("ipv4.ipv4")
-	hostInvalid2 := newHostFromAddress("ipv6.ipv6")
+	hostValid1 := modules.NetAddress("ipv4.ipv6:1234")
+	hostValid2 := modules.NetAddress("ipv6.ipv4:1234")
+	hostInvalid1 := modules.NetAddress("ipv4.ipv4:1234")
+	hostInvalid2 := modules.NetAddress("ipv6.ipv6:1234")
 
 	// Check hosts.
 	if filter.Filtered(hostValid1) || filter.Filtered(hostValid2) {
@@ -140,14 +136,14 @@ func TestTwoAddresses(t *testing.T) {
 
 // TestFilterIPv4 tests filtering IPv4 addresses.
 func TestFilterIPv4(t *testing.T) {
-	filter := NewProductionFilter(testFilterIPv4Resolver{})
+	filter := NewFilter(testFilterIPv4Resolver{})
 
-	host1 := newHostFromAddress("host1")
-	host2 := newHostFromAddress("host2")
-	host3 := newHostFromAddress("host3")
-	host4 := newHostFromAddress("host4")
-	host5 := newHostFromAddress("host5")
-	host6 := newHostFromAddress("host6")
+	host1 := modules.NetAddress("host1:1234")
+	host2 := modules.NetAddress("host2:1234")
+	host3 := modules.NetAddress("host3:1234")
+	host4 := modules.NetAddress("host4:1234")
+	host5 := modules.NetAddress("host5:1234")
+	host6 := modules.NetAddress("host6:1234")
 
 	// Host1 shouldn't be filtered.
 	if filter.Filtered(host1) {
@@ -186,17 +182,17 @@ func TestFilterIPv4(t *testing.T) {
 
 // TestFilterIPv6 tests filtering IPv4 addresses.
 func TestFilterIPv6(t *testing.T) {
-	filter := NewProductionFilter(testFilterIPv6Resolver{})
+	filter := NewFilter(testFilterIPv6Resolver{})
 
-	host1 := newHostFromAddress("host1")
-	host2 := newHostFromAddress("host2")
-	host3 := newHostFromAddress("host3")
-	host4 := newHostFromAddress("host4")
-	host5 := newHostFromAddress("host5")
-	host6 := newHostFromAddress("host6")
-	host7 := newHostFromAddress("host7")
-	host8 := newHostFromAddress("host8")
-	host9 := newHostFromAddress("host9")
+	host1 := modules.NetAddress("host1:1234")
+	host2 := modules.NetAddress("host2:1234")
+	host3 := modules.NetAddress("host3:1234")
+	host4 := modules.NetAddress("host4:1234")
+	host5 := modules.NetAddress("host5:1234")
+	host6 := modules.NetAddress("host6:1234")
+	host7 := modules.NetAddress("host7:1234")
+	host8 := modules.NetAddress("host8:1234")
+	host9 := modules.NetAddress("host9:1234")
 
 	// Host1 shouldn't be filtered.
 	if filter.Filtered(host1) {

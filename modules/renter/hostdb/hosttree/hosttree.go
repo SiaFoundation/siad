@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/Sia/utils/addressfilter"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -49,9 +48,9 @@ type (
 		// hosts is a map of public keys to nodes.
 		hosts map[string]*node
 
-		// addressFilter is the filter that filters hosts which share a certain
-		// IP subrange.
-		addressFilter addressfilter.Filter
+		// resolver is the Resolver that is used by the hosttree to resolve
+		// hostnames to IP addresses.
+		resolver Resolver
 
 		// weightFn calculates the weight of a hostEntry
 		weightFn WeightFunc
@@ -93,14 +92,14 @@ func createNode(parent *node, entry *hostEntry) *node {
 
 // newHostTree creates a new HostTree given a weight function and a resolver
 // for hostnames.
-func newHostTree(wf WeightFunc, filter addressfilter.Filter) *HostTree {
+func newHostTree(wf WeightFunc, resolver Resolver) *HostTree {
 	return &HostTree{
-		addressFilter: filter,
+		hosts: make(map[string]*node),
 		root: &node{
 			count: 1,
 		},
+		resolver: resolver,
 		weightFn: wf,
-		hosts:    make(map[string]*node),
 	}
 }
 
@@ -108,9 +107,9 @@ func newHostTree(wf WeightFunc, filter addressfilter.Filter) *HostTree {
 // which is used to determine the weight of a node on Insert.
 func New(wf WeightFunc) *HostTree {
 	if build.Release == "testing" {
-		return newHostTree(wf, addressfilter.TestingFilter{})
+		return newHostTree(wf, TestingResolver{})
 	}
-	return newHostTree(wf, addressfilter.NewProductionFilter(addressfilter.ProductionResolver{}))
+	return newHostTree(wf, ProductionResolver{})
 }
 
 // recursiveInsert inserts an entry into the appropriate place in the tree. The
@@ -311,8 +310,8 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 	var hosts []modules.HostDBEntry
 	var removedEntries []*hostEntry
 
-	// Clear the addressFilter before using it.
-	ht.addressFilter.Reset()
+	// Create a filter.
+	filter := NewFilter(ht.resolver)
 
 	// Add the hosts from the addressBlacklist to the filter.
 	for _, pubkey := range addressBlacklist {
@@ -321,7 +320,7 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 			continue
 		}
 		// Add the node to the addressFilter.
-		ht.addressFilter.Add(node.entry)
+		filter.Add(node.entry.NetAddress)
 	}
 	// Remove hosts we want to blacklist from the tree but remember them to make
 	// sure we can insert them later.
@@ -345,14 +344,14 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 		if node.entry.AcceptingContracts &&
 			len(node.entry.ScanHistory) > 0 &&
 			node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success &&
-			!ht.addressFilter.Filtered(node.entry) {
+			!filter.Filtered(node.entry.NetAddress) {
 			// The host must be online and accepting contracts to be returned
 			// by the random function. It also has to pass the addressFilter
 			// check.
 			hosts = append(hosts, node.entry.HostDBEntry)
 
 			// If the host passed the filter, we add it to the filter.
-			ht.addressFilter.Add(node.entry)
+			filter.Add(node.entry.NetAddress)
 		}
 
 		removedEntries = append(removedEntries, node.entry)
