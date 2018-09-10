@@ -761,12 +761,38 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 }
 
 // renterCreateDirHandler handles the API call to create a directory
-func (api *API) renterCreateDirHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
-	// Call the renter to create directory
-	err := api.renter.CreateDir(strings.TrimPrefix(ps.ByName("siapath"), "/"))
-	if err != nil {
-		WriteError(w, Error{"failed to create directory: " + err.Error()}, http.StatusInternalServerError)
+func (api *API) renterCreateDirHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse action
+	action := req.FormValue("action")
+	if action == "" {
+		WriteError(w, Error{"you must set the action you wish to execute"}, http.StatusInternalServerError)
 		return
 	}
-	WriteSuccess(w)
+	if action == "create" {
+		// Call the renter to create directory
+		err := api.renter.CreateDir(strings.TrimPrefix(ps.ByName("siapath"), "/"))
+		if err != nil {
+			WriteError(w, Error{"failed to create directory: " + err.Error()}, http.StatusInternalServerError)
+			return
+		}
+		WriteSuccess(w)
+		return
+	}
+	if action == "delete" {
+		fmt.Println("detele")
+		// TODO - implement
+		WriteSuccess(w)
+		return
+	}
+	if action == "rename" {
+		fmt.Println("rename")
+		// newsiapath := ps.ByName("newsiapath")
+		// TODO - implement
+		WriteSuccess(w)
+		return
+	}
+
+	// Report that no calls were made
+	WriteError(w, Error{"no calls were made, please check your submission and try again"}, http.StatusInternalServerError)
+	return
 }

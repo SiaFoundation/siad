@@ -229,6 +229,9 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 
 // testDirectories checks the functionality of directories in the Renter
 func testDirectories(t *testing.T, tg *siatest.TestGroup) {
+	// TODO - update code once GET directory endpoint is available, directory
+	// should be create with directory API endpoint
+
 	// Grab Renter
 	r := tg.Renters()[0]
 

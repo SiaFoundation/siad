@@ -231,6 +231,6 @@ func (c *Client) RenterUploadDefaultPost(path, siaPath string) (err error) {
 // directory for the renter
 func (c *Client) RenterCreateDirPost(siaPath string) (err error) {
 	siaPath = strings.TrimPrefix(siaPath, "/")
-	err = c.post(fmt.Sprintf("/renter/dir/create/%v", siaPath), "", nil)
+	err = c.post(fmt.Sprintf("/renter/dir/%s", siaPath), "action=create", nil)
 	return
 }

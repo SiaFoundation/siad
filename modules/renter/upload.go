@@ -54,7 +54,7 @@ func validateSource(sourcePath string) error {
 	// Check for read access
 	file, err := os.Open(sourcePath)
 	if err != nil {
-		return errors.AddContext(err, "unable to open file")
+		return errors.AddContext(err, "unable to open the source file")
 	}
 	file.Close()
 
