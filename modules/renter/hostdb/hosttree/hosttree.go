@@ -50,7 +50,7 @@ type (
 
 		// resolver is the Resolver that is used by the hosttree to resolve
 		// hostnames to IP addresses.
-		resolver Resolver
+		resolver modules.Resolver
 
 		// weightFn calculates the weight of a hostEntry
 		weightFn WeightFunc
@@ -90,9 +90,9 @@ func createNode(parent *node, entry *hostEntry) *node {
 	}
 }
 
-// newHostTree creates a new HostTree given a weight function and a resolver
+// New creates a new HostTree given a weight function and a resolver
 // for hostnames.
-func newHostTree(wf WeightFunc, resolver Resolver) *HostTree {
+func New(wf WeightFunc, resolver modules.Resolver) *HostTree {
 	return &HostTree{
 		hosts: make(map[string]*node),
 		root: &node{
@@ -101,12 +101,6 @@ func newHostTree(wf WeightFunc, resolver Resolver) *HostTree {
 		resolver: resolver,
 		weightFn: wf,
 	}
-}
-
-// New creates a new, empty, HostTree. It takes one argument, a `WeightFunc`,
-// which is used to determine the weight of a node on Insert.
-func New(wf WeightFunc) *HostTree {
-	return newHostTree(wf, ProductionResolver{})
 }
 
 // recursiveInsert inserts an entry into the appropriate place in the tree. The

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 )
 
 // quitAfterLoadDeps will quit startup in newHostDB
@@ -72,7 +71,7 @@ func TestSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hdbt.hdb, err = NewCustomHostDB(hdbt.gateway, hdbt.cs, filepath.Join(hdbt.persistDir, modules.RenterDir), &quitAfterLoadDeps{}, hosttree.ProductionResolver{})
+	hdbt.hdb, err = NewCustomHostDB(hdbt.gateway, hdbt.cs, filepath.Join(hdbt.persistDir, modules.RenterDir), &quitAfterLoadDeps{})
 	if err != nil {
 		t.Fatal(err)
 	}

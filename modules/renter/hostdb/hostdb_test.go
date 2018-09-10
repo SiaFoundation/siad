@@ -43,7 +43,7 @@ func bareHostDB() *HostDB {
 	hdb := &HostDB{
 		log: persist.NewLogger(ioutil.Discard),
 	}
-	hdb.hostTree = hosttree.New(hdb.calculateHostWeight)
+	hdb.hostTree = hosttree.New(hdb.calculateHostWeight, &modules.ProductionResolver{})
 	return hdb
 }
 
@@ -64,12 +64,12 @@ func makeHostDBEntry() modules.HostDBEntry {
 // newHDBTester returns a tester object wrapping a HostDB and some extra
 // information for testing.
 func newHDBTester(name string) (*hdbTester, error) {
-	return newHDBTesterDeps(name, modules.ProdDependencies, hosttree.ProductionResolver{})
+	return newHDBTesterDeps(name, modules.ProdDependencies)
 }
 
 // newHDBTesterDeps returns a tester object wrapping a HostDB and some extra
 // information for testing, using the provided dependencies for the hostdb.
-func newHDBTesterDeps(name string, deps modules.Dependencies, resolver hosttree.Resolver) (*hdbTester, error) {
+func newHDBTesterDeps(name string, deps modules.Dependencies) (*hdbTester, error) {
 	if testing.Short() {
 		panic("should not be calling newHDBTester during short tests")
 	}
@@ -95,7 +95,7 @@ func newHDBTesterDeps(name string, deps modules.Dependencies, resolver hosttree.
 	if err != nil {
 		return nil, err
 	}
-	hdb, err := NewCustomHostDB(g, cs, filepath.Join(testDir, modules.RenterDir), deps, resolver)
+	hdb, err := NewCustomHostDB(g, cs, filepath.Join(testDir, modules.RenterDir), deps)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +218,7 @@ func TestRandomHosts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	hdbt, err := newHDBTesterDeps(t.Name(), &disableScanLoopDeps{}, hosttree.ProductionResolver{})
+	hdbt, err := newHDBTesterDeps(t.Name(), &disableScanLoopDeps{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +449,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 
 	// create a HostDB tester without scanloop to be able to manually increment
 	// the interactions without interference.
-	hdbt, err := newHDBTesterDeps(t.Name(), &disableScanLoopDeps{}, hosttree.ProductionResolver{})
+	hdbt, err := newHDBTesterDeps(t.Name(), &disableScanLoopDeps{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,6 +602,17 @@ func (testCheckForIPViolationsResolver) LookupIP(host string) ([]net.IP, error) 
 	}
 }
 
+// testCheckForIPViolationsDeps is a custom dependency that overrides the
+// Resolver method to return a testCheckForIPViolationsResolver.
+type testCheckForIPViolationsDeps struct {
+	disableScanLoopDeps
+}
+
+// Resolver returns a testCheckForIPViolationsResolver.
+func (*testCheckForIPViolationsDeps) Resolver() modules.Resolver {
+	return &testCheckForIPViolationsResolver{}
+}
+
 // TestCheckForIPViolations tests the hostdb's CheckForIPViolations method.
 func TestCheckForIPViolations(t *testing.T) {
 	if testing.Short() {
@@ -618,7 +629,7 @@ func TestCheckForIPViolations(t *testing.T) {
 
 	// create a HostDB tester without scanloop to be able to manually increment
 	// the interactions without interference.
-	hdbt, err := newHDBTesterDeps(t.Name(), &disableScanLoopDeps{}, testCheckForIPViolationsResolver{})
+	hdbt, err := newHDBTesterDeps(t.Name(), &testCheckForIPViolationsDeps{})
 	if err != nil {
 		t.Fatal(err)
 	}

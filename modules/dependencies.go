@@ -75,6 +75,9 @@ type (
 		// OpenFile opens a file for the host.
 		OpenFile(string, int, os.FileMode) (File, error)
 
+		// Resolver returns a Resolver which can resolve hostnames to IPs.
+		Resolver() Resolver
+
 		// RandRead fills the input bytes with random data.
 		RandRead([]byte) (int, error)
 
@@ -350,4 +353,29 @@ func (*ProductionDependencies) Symlink(s1, s2 string) error {
 // WriteFile writes a file to the filesystem.
 func (*ProductionDependencies) WriteFile(s string, b []byte, fm os.FileMode) error {
 	return ioutil.WriteFile(s, b, fm)
+}
+
+// Resolver is an interface that allows resolving a hostname into IP
+// addresses.
+type Resolver interface {
+	LookupIP(string) ([]net.IP, error)
+}
+
+// ProductionResolver is the hostname resolver used in production builds.
+type ProductionResolver struct{}
+
+// LookupIP is a passthrough function to net.LookupIP. In testing builds it
+// returns a random IP.
+func (ProductionResolver) LookupIP(host string) ([]net.IP, error) {
+	if build.Release == "testing" {
+		rawIP := make([]byte, 16)
+		fastrand.Read(rawIP)
+		return []net.IP{net.IP(rawIP)}, nil
+	}
+	return net.LookupIP(host)
+}
+
+// Resolver returns the ProductionResolver.
+func (*ProductionDependencies) Resolver() Resolver {
+	return ProductionResolver{}
 }

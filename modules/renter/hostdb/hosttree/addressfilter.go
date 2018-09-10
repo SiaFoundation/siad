@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"net"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -14,35 +12,15 @@ const (
 	ipv6FilterRange = 54
 )
 
-// Resolver is an interface that allows resolving a hostname into IP
-// addresses.
-type Resolver interface {
-	LookupIP(string) ([]net.IP, error)
-}
-
-// ProductionResolver is the hostname resolver used in production builds.
-type ProductionResolver struct{}
-
-// LookupIP is a passthrough function to net.LookupIP. In testing builds it
-// returns a random IP.
-func (ProductionResolver) LookupIP(host string) ([]net.IP, error) {
-	if build.Release == "testing" {
-		rawIP := make([]byte, 16)
-		fastrand.Read(rawIP)
-		return []net.IP{net.IP(rawIP)}, nil
-	}
-	return net.LookupIP(host)
-}
-
 // Filter filters host addresses which belong to the same subnet to
 // avoid selecting hosts from the same region.
 type Filter struct {
 	filter   map[string]struct{}
-	resolver Resolver
+	resolver modules.Resolver
 }
 
 // NewFilter creates a new addressFilter object.
-func NewFilter(resolver Resolver) *Filter {
+func NewFilter(resolver modules.Resolver) *Filter {
 	return &Filter{
 		filter:   make(map[string]struct{}),
 		resolver: resolver,
