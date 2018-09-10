@@ -233,7 +233,10 @@ func (hdb *HostDB) AverageContractPrice() (totalPrice types.Currency) {
 // addressFilter sorted by "address age" which means that hosts which have had
 // their IP addresses for a longer time will be prefered.
 func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaPublicKey {
-	// TODO sort by age
+	// TODO right now we expect the contractset to feed contracts to
+	// CheckForIPViolations in a 'random' order. In the future we want to sort the
+	// hosts by how long they have been in posession of their corresponding IP
+	// range.
 
 	// Create a filter.
 	filter := hosttree.NewFilter(hdb.staticResolver)
