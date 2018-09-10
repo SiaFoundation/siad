@@ -637,7 +637,7 @@ func TestCheckForIPViolations(t *testing.T) {
 	if len(badHosts) != 1 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
 	}
-	if len(badHosts) > 0 && !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+	if len(badHosts) > 0 {
 		t.Error("Hdb returned violation for wrong host")
 	}
 

@@ -20,6 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
@@ -280,7 +281,7 @@ func New(params NodeParams) (*Node, error) {
 		persistDir := filepath.Join(dir, modules.RenterDir)
 
 		// HostDB
-		hdb, err := hostdb.NewCustomHostDB(g, cs, persistDir, hostDBDeps)
+		hdb, err := hostdb.NewCustomHostDB(g, cs, persistDir, hostDBDeps, hosttree.ProductionResolver{})
 		if err != nil {
 			return nil, err
 		}

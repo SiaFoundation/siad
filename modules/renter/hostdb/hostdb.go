@@ -12,10 +12,12 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
@@ -233,10 +235,13 @@ func (hdb *HostDB) AverageContractPrice() (totalPrice types.Currency) {
 // addressFilter sorted by "address age" which means that hosts which have had
 // their IP addresses for a longer time will be prefered.
 func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaPublicKey {
-	// TODO right now we expect the contractset to feed contracts to
-	// CheckForIPViolations in a 'random' order. In the future we want to sort the
-	// hosts by how long they have been in posession of their corresponding IP
-	// range.
+	// Shuffle the hosts to non-deterministically decide which host is bad.
+	if build.Release != "testing" {
+		for i := len(hosts) - 1; i > 0; i-- {
+			j := fastrand.Intn(i + 1)
+			hosts[i], hosts[j] = hosts[j], hosts[i]
+		}
+	}
 
 	// Create a filter.
 	filter := hosttree.NewFilter(hdb.staticResolver)
