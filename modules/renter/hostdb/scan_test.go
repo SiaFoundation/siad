@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -15,7 +16,7 @@ func TestUpdateEntry(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	hdbt, err := newHDBTesterDeps(t.Name(), &disableScanLoopDeps{})
+	hdbt, err := newHDBTesterDeps(t.Name(), &disableScanLoopDeps{}, hosttree.ProductionResolver{})
 	if err != nil {
 		t.Fatal(err)
 	}

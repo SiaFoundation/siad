@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -22,24 +23,15 @@ type Resolver interface {
 // ProductionResolver is the hostname resolver used in production builds.
 type ProductionResolver struct{}
 
-// LookupIP is a passthrough function to net.LookupIP.
+// LookupIP is a passthrough function to net.LookupIP. In testing builds it
+// returns a random IP.
 func (ProductionResolver) LookupIP(host string) ([]net.IP, error) {
+	if build.Release == "testing" {
+		rawIP := make([]byte, 16)
+		fastrand.Read(rawIP)
+		return []net.IP{net.IP(rawIP)}, nil
+	}
 	return net.LookupIP(host)
-}
-
-// TestingResolver is the default hostname resolver used in testing builds. It
-// returns a different valid IP address every time it is called.
-type TestingResolver struct {
-	counter uint32
-}
-
-// LookupIP on the TestingResolver returns a random IPv6 address every time it
-// is called. That way we are pretty much guaranteed to never have an address
-// from the same subnet during testing.
-func (tr TestingResolver) LookupIP(host string) ([]net.IP, error) {
-	rawIP := make([]byte, 16)
-	fastrand.Read(rawIP)
-	return []net.IP{net.IP(rawIP)}, nil
 }
 
 // Filter filters host addresses which belong to the same subnet to

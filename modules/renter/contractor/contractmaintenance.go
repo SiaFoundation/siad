@@ -611,7 +611,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.managedPrunePubkeyMap()
 
 	// Deduplicate contracts which share the same subnet.
-	//	c.managedPrunedRedundantAddressRange()
+	c.managedPrunedRedundantAddressRange()
 
 	// Nothing to do if there are no hosts.
 	c.mu.RLock()

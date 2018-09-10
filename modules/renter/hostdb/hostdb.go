@@ -32,14 +32,14 @@ var (
 // for uploading files.
 type HostDB struct {
 	// dependencies
-	cs         modules.ConsensusSet
-	deps       modules.Dependencies
-	gateway    modules.Gateway
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persistDir string
-	resolver   hosttree.Resolver
-	tg         threadgroup.ThreadGroup
+	cs             modules.ConsensusSet
+	deps           modules.Dependencies
+	gateway        modules.Gateway
+	log            *persist.Logger
+	mu             sync.RWMutex
+	persistDir     string
+	staticResolver hosttree.Resolver
+	tg             threadgroup.ThreadGroup
 
 	// The hostTree is the root node of the tree that organizes hosts by
 	// weight. The tree is necessary for selecting weighted hosts at
@@ -71,19 +71,20 @@ func New(g modules.Gateway, cs modules.ConsensusSet, persistDir string) (*HostDB
 		return nil, errNilCS
 	}
 	// Create HostDB using production dependencies.
-	return NewCustomHostDB(g, cs, persistDir, modules.ProdDependencies)
+	return NewCustomHostDB(g, cs, persistDir, modules.ProdDependencies, hosttree.ProductionResolver{})
 }
 
 // NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
 // persistence data, spawns the HostDB's scanning threads, and subscribes it to
 // the consensusSet.
-func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir string, deps modules.Dependencies) (*HostDB, error) {
+func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir string, deps modules.Dependencies, resolver hosttree.Resolver) (*HostDB, error) {
 	// Create the HostDB object.
 	hdb := &HostDB{
-		cs:         cs,
-		deps:       deps,
-		gateway:    g,
-		persistDir: persistDir,
+		cs:             cs,
+		deps:           deps,
+		gateway:        g,
+		persistDir:     persistDir,
+		staticResolver: resolver,
 
 		scanMap: make(map[string]struct{}),
 	}
@@ -235,8 +236,7 @@ func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaP
 	// TODO sort by age
 
 	// Create a filter.
-	// TODO mock this
-	filter := hosttree.NewFilter(hosttree.ProductionResolver{})
+	filter := hosttree.NewFilter(hdb.staticResolver)
 
 	var badHosts []types.SiaPublicKey
 	for _, host := range hosts {

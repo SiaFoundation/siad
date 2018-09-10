@@ -474,7 +474,7 @@ func TestRandomHosts(t *testing.T) {
 	}
 }
 
-// testTooManyAddressesResolver is a resolver for the TestTwoAddresses test.
+// testHostTreeFilterResolver is a resolver for the TestTwoAddresses test.
 type testHostTreeFilterResolver struct{}
 
 func (testHostTreeFilterResolver) LookupIP(host string) ([]net.IP, error) {

@@ -106,9 +106,6 @@ func newHostTree(wf WeightFunc, resolver Resolver) *HostTree {
 // New creates a new, empty, HostTree. It takes one argument, a `WeightFunc`,
 // which is used to determine the weight of a node on Insert.
 func New(wf WeightFunc) *HostTree {
-	if build.Release == "testing" {
-		return newHostTree(wf, TestingResolver{})
-	}
 	return newHostTree(wf, ProductionResolver{})
 }
 
