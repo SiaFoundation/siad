@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/utils/addressfilter"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -50,7 +51,7 @@ type (
 
 		// addressFilter is the filter that filters hosts which share a certain
 		// IP subrange.
-		addressFilter addressFilter
+		addressFilter addressfilter.Filter
 
 		// weightFn calculates the weight of a hostEntry
 		weightFn WeightFunc
@@ -92,7 +93,7 @@ func createNode(parent *node, entry *hostEntry) *node {
 
 // newHostTree creates a new HostTree given a weight function and a resolver
 // for hostnames.
-func newHostTree(wf WeightFunc, filter addressFilter) *HostTree {
+func newHostTree(wf WeightFunc, filter addressfilter.Filter) *HostTree {
 	return &HostTree{
 		addressFilter: filter,
 		root: &node{
@@ -107,9 +108,9 @@ func newHostTree(wf WeightFunc, filter addressFilter) *HostTree {
 // which is used to determine the weight of a node on Insert.
 func New(wf WeightFunc) *HostTree {
 	if build.Release == "testing" {
-		return newHostTree(wf, testingFilter{})
+		return newHostTree(wf, addressfilter.TestingFilter{})
 	}
-	return newHostTree(wf, newProductionFilter(productionResolver{}))
+	return newHostTree(wf, addressfilter.NewProductionFilter(addressfilter.ProductionResolver{}))
 }
 
 // recursiveInsert inserts an entry into the appropriate place in the tree. The
@@ -197,6 +198,11 @@ func (n *node) remove() {
 		current.weight = current.weight.Sub(n.entry.weight)
 		current = current.parent
 	}
+}
+
+// Host returns the address of the HostEntry.
+func (he *hostEntry) Host() string {
+	return he.NetAddress.Host()
 }
 
 // All returns all of the hosts in the host tree, sorted by weight.

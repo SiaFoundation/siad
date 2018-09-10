@@ -13,19 +13,20 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/utils/addressfilter"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
 func verifyTree(tree *HostTree, nentries int) error {
 	expectedWeight := tree.root.entry.weight.Mul64(uint64(nentries))
 	if tree.root.weight.Cmp(expectedWeight) != 0 {
-		return fmt.Errorf("expected weight is incorrect: got %v wanted %v\n", tree.root.weight, expectedWeight)
+		return fmt.Errorf("expected weight is incorrect: got %v wanted %v", tree.root.weight, expectedWeight)
 	}
 
 	// Check that the length of activeHosts and the count of hostTree are
 	// consistent.
 	if len(tree.hosts) != nentries {
-		return fmt.Errorf("unexpected number of hosts: got %v wanted %v\n", len(tree.hosts), nentries)
+		return fmt.Errorf("unexpected number of hosts: got %v wanted %v", len(tree.hosts), nentries)
 	}
 
 	// Select many random hosts and do naive statistical analysis on the
@@ -477,7 +478,7 @@ func TestRandomHosts(t *testing.T) {
 // testTooManyAddressesResolver is a resolver for the TestTwoAddresses test.
 type testHostTreeFilterResolver struct{}
 
-func (testHostTreeFilterResolver) lookupIP(host string) ([]net.IP, error) {
+func (testHostTreeFilterResolver) LookupIP(host string) ([]net.IP, error) {
 	switch host {
 	case "host1":
 		return []net.IP{{127, 0, 0, 1}}, nil
@@ -505,7 +506,7 @@ func TestHostTreeFilter(t *testing.T) {
 	tree := newHostTree(func(dbe modules.HostDBEntry) types.Currency {
 		// All entries have the same weight.
 		return types.NewCurrency64(uint64(10))
-	}, newProductionFilter(testHostTreeFilterResolver{}))
+	}, addressfilter.NewProductionFilter(testHostTreeFilterResolver{}))
 
 	// Insert host1 and host2. Both should be returned by SelectRandom.
 	tree.Insert(entry1)
@@ -518,7 +519,7 @@ func TestHostTreeFilter(t *testing.T) {
 	tree = newHostTree(func(dbe modules.HostDBEntry) types.Currency {
 		// All entries have the same weight.
 		return types.NewCurrency64(uint64(10))
-	}, newProductionFilter(testHostTreeFilterResolver{}))
+	}, addressfilter.NewProductionFilter(testHostTreeFilterResolver{}))
 
 	// Insert host1 and host3. Only a single host should be returned.
 	tree.Insert(entry1)

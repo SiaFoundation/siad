@@ -1,10 +1,8 @@
-package hosttree
+package addressfilter
 
 import (
 	"net"
 	"testing"
-
-	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 var (
@@ -12,17 +10,27 @@ var (
 	ipv6Localhost = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 )
 
+// host is a implementation of the address interface for testing.
+type host struct {
+	address string
+}
+
+// Host returns the address field of the host struct.
+func (h host) Host() string {
+	return h.address
+}
+
 // testTooManyAddressesResolver is a resolver for the TestTwoAddresses test.
 type testTooManyAddressesResolver struct{}
 
-func (testTooManyAddressesResolver) lookupIP(host string) ([]net.IP, error) {
+func (testTooManyAddressesResolver) LookupIP(host string) ([]net.IP, error) {
 	return []net.IP{{}, {}, {}}, nil
 }
 
 // testTwoAddressesResolver is a resolver for the TestTwoAddresses test.
 type testTwoAddressesResolver struct{}
 
-func (testTwoAddressesResolver) lookupIP(host string) ([]net.IP, error) {
+func (testTwoAddressesResolver) LookupIP(host string) ([]net.IP, error) {
 	switch host {
 	case "ipv4.ipv6":
 		return []net.IP{ipv4Localhost, ipv6Localhost}, nil
@@ -40,7 +48,7 @@ func (testTwoAddressesResolver) lookupIP(host string) ([]net.IP, error) {
 // testFilterIPv4Resolver is a resolver for the TestFilterIPv4 test.
 type testFilterIPv4Resolver struct{}
 
-func (testFilterIPv4Resolver) lookupIP(host string) ([]net.IP, error) {
+func (testFilterIPv4Resolver) LookupIP(host string) ([]net.IP, error) {
 	switch host {
 	case "host1":
 		return []net.IP{{127, 0, 0, 1}}, nil
@@ -62,7 +70,7 @@ func (testFilterIPv4Resolver) lookupIP(host string) ([]net.IP, error) {
 // testFilterIPv6Resolver is a resolver for the TestFilterIPv6 test.
 type testFilterIPv6Resolver struct{}
 
-func (testFilterIPv6Resolver) lookupIP(host string) ([]net.IP, error) {
+func (testFilterIPv6Resolver) LookupIP(host string) ([]net.IP, error) {
 	switch host {
 	case "host1":
 		return []net.IP{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
@@ -87,19 +95,17 @@ func (testFilterIPv6Resolver) lookupIP(host string) ([]net.IP, error) {
 	}
 }
 
-// newHostFromAddress is a convenience method to create a new hostEntry from an
+// newHostFromAddress is a convenience method to create a new hostfrom an
 // ip address.
-func newHostFromAddress(address string) *hostEntry {
-	host := &hostEntry{}
-	host.NetAddress = modules.NetAddress(address + ":1234")
-	return host
+func newHostFromAddress(address string) address {
+	return &host{address}
 }
 
 // TestTooManyAddresses checks that hosts with more than 2 associated IP
 // addresses are always filtered.
 func TestTooManyAddresses(t *testing.T) {
 	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := newProductionFilter(testTooManyAddressesResolver{})
+	filter := NewProductionFilter(testTooManyAddressesResolver{})
 	host := newHostFromAddress("any.address")
 
 	// Add host to filter.
@@ -115,7 +121,7 @@ func TestTooManyAddresses(t *testing.T) {
 // they have the same address type.
 func TestTwoAddresses(t *testing.T) {
 	// Check that returning more than 2 addresses causes a host to be filtered.
-	filter := newProductionFilter(testTwoAddressesResolver{})
+	filter := NewProductionFilter(testTwoAddressesResolver{})
 
 	// Create a few hosts for testing.
 	hostValid1 := newHostFromAddress("ipv4.ipv6")
@@ -134,7 +140,7 @@ func TestTwoAddresses(t *testing.T) {
 
 // TestFilterIPv4 tests filtering IPv4 addresses.
 func TestFilterIPv4(t *testing.T) {
-	filter := newProductionFilter(testFilterIPv4Resolver{})
+	filter := NewProductionFilter(testFilterIPv4Resolver{})
 
 	host1 := newHostFromAddress("host1")
 	host2 := newHostFromAddress("host2")
@@ -180,7 +186,7 @@ func TestFilterIPv4(t *testing.T) {
 
 // TestFilterIPv6 tests filtering IPv4 addresses.
 func TestFilterIPv6(t *testing.T) {
-	filter := newProductionFilter(testFilterIPv6Resolver{})
+	filter := NewProductionFilter(testFilterIPv6Resolver{})
 
 	host1 := newHostFromAddress("host1")
 	host2 := newHostFromAddress("host2")
