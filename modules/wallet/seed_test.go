@@ -31,7 +31,7 @@ func TestPrimarySeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sk := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(seed))
+	sk := crypto.NewWalletKey(crypto.HashObject(seed))
 	err = wt.wallet.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestPrimarySeed(t *testing.T) {
 	if err != modules.ErrLockedWallet {
 		t.Error("unexpected err:", err)
 	}
-	sk = crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(seed))
+	sk = crypto.NewWalletKey(crypto.HashObject(seed))
 	err = wt.wallet.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestLoadSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sk := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(newSeed))
+	sk := crypto.NewWalletKey(crypto.HashObject(newSeed))
 	err = w.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +135,7 @@ func TestLoadSeed(t *testing.T) {
 	if !siacoinBal.Equals64(0) {
 		t.Error("fresh wallet should not have a balance")
 	}
-	sk = crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(newSeed))
+	sk = crypto.NewWalletKey(crypto.HashObject(newSeed))
 	err = w.LoadSeed(sk, seed)
 	if err != nil {
 		t.Fatal(err)
@@ -218,7 +218,7 @@ func TestSweepSeedCoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sk := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(newSeed))
+	sk := crypto.NewWalletKey(crypto.HashObject(newSeed))
 	if err != nil {
 		t.Fatal(err)
 	}

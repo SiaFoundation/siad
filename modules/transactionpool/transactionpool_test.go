@@ -23,7 +23,7 @@ type tpoolTester struct {
 	tpool     *TransactionPool
 	miner     modules.TestMiner
 	wallet    modules.Wallet
-	walletKey crypto.SiaKey
+	walletKey crypto.CipherKey
 
 	persistDir string
 }

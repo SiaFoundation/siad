@@ -29,7 +29,7 @@ type hostTester struct {
 	renting   bool
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey crypto.SiaKey
+	walletKey crypto.CipherKey
 
 	host *Host
 

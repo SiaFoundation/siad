@@ -54,13 +54,13 @@ func (key twofishKey) newCipher() cipher.Block {
 	return cipher
 }
 
-// CipherType returns the type of the twofish key.
-func (twofishKey) CipherType() CipherType {
+// Type returns the type of the twofish key.
+func (twofishKey) Type() CipherType {
 	return TypeTwofish
 }
 
 // Cipherkey returns the twofish key.
-func (key twofishKey) CipherKey() []byte {
+func (key twofishKey) Key() []byte {
 	return key[:]
 }
 
@@ -80,11 +80,6 @@ func (key twofishKey) EncryptBytes(piece []byte) Ciphertext {
 	// Encrypt the data. No authenticated data is provided, as EncryptBytes is
 	// meant for file encryption.
 	return aead.Seal(nonce, nonce, piece, nil)
-}
-
-// Overhead returns the overhead added by encrypting data with twofish.
-func (key twofishKey) Overhead() uint64 {
-	return twofishOverhead
 }
 
 // DecryptBytes decrypts a ciphertext created by EncryptPiece. The nonce is

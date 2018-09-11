@@ -245,12 +245,6 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		r.log.Critical("not enough physical pieces to match the upload settings of the file")
 		return
 	}
-	// Get the file's master key.
-	mk, err := chunk.renterFile.MasterKey()
-	if err != nil {
-		r.log.Print("failed to get file's master key, that shouldn't happen")
-		return
-	}
 	// Loop through the pieces and encrypt any that are needed, while dropping
 	// any pieces that are not needed.
 	for i := 0; i < len(chunk.pieceUsage); i++ {
@@ -258,7 +252,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			chunk.physicalChunkData[i] = nil
 		} else {
 			// Encrypt the piece.
-			key, err := deriveKey(mk, chunk.index, uint64(i))
+			key, err := deriveKey(chunk.renterFile.MasterKey(), chunk.index, uint64(i))
 			if err != nil {
 				// NOTE this should never fail since we are deriving from a
 				// valid key.

@@ -37,7 +37,7 @@ type unfinishedDownloadChunk struct {
 	// Fetch + Write instructions - read only or otherwise thread safe.
 	destination downloadDestination // Where to write the recovered logical chunk.
 	erasureCode modules.ErasureCoder
-	masterKey   crypto.SiaKey
+	masterKey   crypto.CipherKey
 
 	// Fetch + Write instructions - read only or otherwise thread safe.
 	staticChunkIndex  uint64                       // Required for deriving the encryption keys for each piece.

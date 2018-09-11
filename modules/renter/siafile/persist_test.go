@@ -39,7 +39,7 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 func newTestFile() *SiaFile {
 	// Create arguments for new file.
 	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
-	pieceSize := modules.SectorSize - sk.Overhead()
+	pieceSize := modules.SectorSize - sk.Type().Overhead()
 	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
 	rc, err := NewRSCode(10, 20)
 	if err != nil {

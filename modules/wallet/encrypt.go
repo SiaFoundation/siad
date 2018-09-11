@@ -30,14 +30,14 @@ var (
 
 // uidEncryptionKey creates an encryption key that is used to decrypt a
 // specific key file.
-func uidEncryptionKey(masterKey crypto.SiaKey, uid uniqueID) (key crypto.SiaKey) {
-	key = crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashAll(masterKey, uid))
+func uidEncryptionKey(masterKey crypto.CipherKey, uid uniqueID) (key crypto.CipherKey) {
+	key = crypto.NewWalletKey(crypto.HashAll(masterKey, uid))
 	return
 }
 
 // verifyEncryption verifies that key properly decrypts the ciphertext to a
 // preset plaintext.
-func verifyEncryption(key crypto.SiaKey, encrypted crypto.Ciphertext) error {
+func verifyEncryption(key crypto.CipherKey, encrypted crypto.Ciphertext) error {
 	verification, err := key.DecryptBytes(encrypted)
 	if err != nil {
 		return modules.ErrBadEncryptionKey
@@ -49,7 +49,7 @@ func verifyEncryption(key crypto.SiaKey, encrypted crypto.Ciphertext) error {
 }
 
 // checkMasterKey verifies that the masterKey is the key used to encrypt the wallet.
-func checkMasterKey(tx *bolt.Tx, masterKey crypto.SiaKey) error {
+func checkMasterKey(tx *bolt.Tx, masterKey crypto.CipherKey) error {
 	if masterKey == nil {
 		return modules.ErrBadEncryptionKey
 	}
@@ -59,7 +59,7 @@ func checkMasterKey(tx *bolt.Tx, masterKey crypto.SiaKey) error {
 }
 
 // initEncryption initializes and encrypts the primary SeedFile.
-func (w *Wallet) initEncryption(masterKey crypto.SiaKey, seed modules.Seed, progress uint64) (modules.Seed, error) {
+func (w *Wallet) initEncryption(masterKey crypto.CipherKey, seed modules.Seed, progress uint64) (modules.Seed, error) {
 	wb := w.dbTx.Bucket(bucketWallet)
 	// Check if the wallet encryption key has already been set.
 	if wb.Get(keyEncryptionVerification) != nil {
@@ -99,7 +99,7 @@ func (w *Wallet) initEncryption(masterKey crypto.SiaKey, seed modules.Seed, prog
 // managedUnlock loads all of the encrypted file structures into wallet memory. Even
 // after loading, the structures are kept encrypted, but some data such as
 // addresses are decrypted so that the wallet knows what to track.
-func (w *Wallet) managedUnlock(masterKey crypto.SiaKey) error {
+func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 	w.mu.RLock()
 	unlocked := w.unlocked
 	encrypted := w.encrypted
@@ -302,7 +302,7 @@ func (w *Wallet) Encrypted() (bool, error) {
 // return an error on subsequent calls (even after restarting the wallet). To
 // reset the wallet, the wallet files must be moved to a different directory
 // or deleted.
-func (w *Wallet) Encrypt(masterKey crypto.SiaKey) (modules.Seed, error) {
+func (w *Wallet) Encrypt(masterKey crypto.CipherKey) (modules.Seed, error) {
 	if err := w.tg.Add(); err != nil {
 		return modules.Seed{}, err
 	}
@@ -316,7 +316,7 @@ func (w *Wallet) Encrypt(masterKey crypto.SiaKey) (modules.Seed, error) {
 
 	// If masterKey is blank, use the hash of the seed.
 	if masterKey == nil {
-		masterKey = crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(seed))
+		masterKey = crypto.NewWalletKey(crypto.HashObject(seed))
 	}
 	// Initial seed progress is 0.
 	return w.initEncryption(masterKey, seed, 0)
@@ -361,7 +361,7 @@ func (w *Wallet) Reset() error {
 // the blockchain will be scanned to determine the seed's progress. For this
 // reason, InitFromSeed should not be called until the blockchain is fully
 // synced.
-func (w *Wallet) InitFromSeed(masterKey crypto.SiaKey, seed modules.Seed) error {
+func (w *Wallet) InitFromSeed(masterKey crypto.CipherKey, seed modules.Seed) error {
 	if err := w.tg.Add(); err != nil {
 		return err
 	}
@@ -374,7 +374,7 @@ func (w *Wallet) InitFromSeed(masterKey crypto.SiaKey, seed modules.Seed) error 
 	// If masterKey is blank, use the hash of the seed.
 	var err error
 	if masterKey == nil {
-		masterKey = crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(seed))
+		masterKey = crypto.NewWalletKey(crypto.HashObject(seed))
 	}
 
 	if !w.scanLock.TryLock() {
@@ -424,7 +424,7 @@ func (w *Wallet) Lock() error {
 }
 
 // ChangeKey changes the wallet's encryption key from masterKey to newKey.
-func (w *Wallet) ChangeKey(masterKey crypto.SiaKey, newKey crypto.SiaKey) error {
+func (w *Wallet) ChangeKey(masterKey crypto.CipherKey, newKey crypto.CipherKey) error {
 	if err := w.tg.Add(); err != nil {
 		return err
 	}
@@ -435,7 +435,7 @@ func (w *Wallet) ChangeKey(masterKey crypto.SiaKey, newKey crypto.SiaKey) error 
 
 // Unlock will decrypt the wallet seed and load all of the addresses into
 // memory.
-func (w *Wallet) Unlock(masterKey crypto.SiaKey) error {
+func (w *Wallet) Unlock(masterKey crypto.CipherKey) error {
 	// By having the wallet's ThreadGroup track the Unlock method, we ensure
 	// that Unlock will never unlock the wallet once the ThreadGroup has been
 	// stopped. Without this precaution, the wallet's Close method would be
@@ -461,7 +461,7 @@ func (w *Wallet) Unlock(masterKey crypto.SiaKey) error {
 
 // managedChangeKey safely performs the database operations required to change
 // the wallet's encryption key.
-func (w *Wallet) managedChangeKey(masterKey crypto.SiaKey, newKey crypto.SiaKey) error {
+func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.CipherKey) error {
 	w.mu.Lock()
 	encrypted := w.encrypted
 	w.mu.Unlock()

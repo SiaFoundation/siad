@@ -15,11 +15,11 @@ var (
 	TypeDefaultWallet = TypeTwofish
 
 	// TypePlain means no encryption is used.
-	TypePlain = CipherType([8]byte{0, 0, 0, 0, 0, 0, 0, 1})
+	TypePlain = CipherType{0, 0, 0, 0, 0, 0, 0, 1}
 	// TypeTwofish is the type for the Twofish-GCM encryption.
-	TypeTwofish = CipherType([8]byte{0, 0, 0, 0, 0, 0, 0, 2})
+	TypeTwofish = CipherType{0, 0, 0, 0, 0, 0, 0, 2}
 	// TypeThreefish is the type for the Threefish encryption.
-	TypeThreefish = CipherType([8]byte{0, 0, 0, 0, 0, 0, 0, 3})
+	TypeThreefish = CipherType{0, 0, 0, 0, 0, 0, 0, 3}
 )
 
 var (
@@ -36,13 +36,13 @@ type (
 	// Ciphertext is an encrypted []byte.
 	Ciphertext []byte
 
-	// SiaKey is a key with Sia specific encryption/decryption methods.
-	SiaKey interface {
-		// CipherKey returns the underlying key.
-		CipherKey() []byte
+	// CipherKey is a key with Sia specific encryption/decryption methods.
+	CipherKey interface {
+		// Key returns the underlying key.
+		Key() []byte
 
-		// CipherType returns the type of the key.
-		CipherType() CipherType
+		// Type returns the type of the key.
+		Type() CipherType
 
 		// EncryptBytes encrypts the given plaintext and returns the
 		// ciphertext.
@@ -56,19 +56,27 @@ type (
 		// plaintext. It will reuse the memory of the ciphertext which means
 		// that it's not save to use it after calling DecryptBytesInPlace.
 		DecryptBytesInPlace(Ciphertext) ([]byte, error)
-
-		// Overhead reports the overhead of the underlying encryption schema in
-		// bytes.
-		Overhead() uint64
 	}
 )
+
+// Overhead reports the overhead produced by a CipherType in bytes.
+func (ct CipherType) Overhead() uint64 {
+	switch ct {
+	case TypePlain, TypeThreefish:
+		return 0
+	case TypeTwofish:
+		return twofishOverhead
+	default:
+		panic(ErrInvalidCipherType)
+	}
+}
 
 // NewWalletKey is a helper method which is meant to be used only if the type
 // and entropy are guaranteed to be valid. In the wallet this is always the
 // case since we always use hashes as the entropy and we don't read the key
 // from file.
-func NewWalletKey(ct CipherType, entropy Hash) SiaKey {
-	sk, err := NewSiaKey(ct, entropy[:])
+func NewWalletKey(entropy Hash) CipherKey {
+	sk, err := NewSiaKey(TypeDefaultWallet, entropy[:])
 	if err != nil {
 		panic(err)
 	}
@@ -76,7 +84,7 @@ func NewWalletKey(ct CipherType, entropy Hash) SiaKey {
 }
 
 // NewSiaKey creates a new SiaKey from the provided type and entropy.
-func NewSiaKey(ct CipherType, entropy []byte) (SiaKey, error) {
+func NewSiaKey(ct CipherType, entropy []byte) (CipherKey, error) {
 	switch ct {
 	case TypePlain:
 		return plainTextCipherKey{}, nil
@@ -91,7 +99,7 @@ func NewSiaKey(ct CipherType, entropy []byte) (SiaKey, error) {
 
 // GenerateSiaKey creates a new SiaKey from the provided type and
 // entropy.
-func GenerateSiaKey(ct CipherType) SiaKey {
+func GenerateSiaKey(ct CipherType) CipherKey {
 	switch ct {
 	case TypePlain:
 		return plainTextCipherKey{}

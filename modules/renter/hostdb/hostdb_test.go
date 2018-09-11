@@ -28,7 +28,7 @@ type hdbTester struct {
 	miner     modules.TestMiner
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey crypto.SiaKey
+	walletKey crypto.CipherKey
 
 	hdb *HostDB
 

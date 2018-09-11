@@ -32,9 +32,9 @@ var (
 )
 
 // newFile is a helper to more easily create a new Siafile.
-func newFile(siaFilePath string, name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, sk crypto.SiaKey, fileSize uint64, mode os.FileMode, source string) (*siafile.SiaFile, error) {
+func newFile(siaFilePath string, name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, sk crypto.CipherKey, fileSize uint64, mode os.FileMode, source string) (*siafile.SiaFile, error) {
 	numChunks := 1
-	chunkSize := (modules.SectorSize - sk.Overhead()) * uint64(rsc.MinPieces())
+	chunkSize := (modules.SectorSize - sk.Type().Overhead()) * uint64(rsc.MinPieces())
 	if fileSize > 0 {
 		numChunks = int(fileSize / chunkSize)
 		if fileSize%chunkSize != 0 {

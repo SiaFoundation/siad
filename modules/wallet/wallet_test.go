@@ -24,7 +24,7 @@ type walletTester struct {
 	miner   modules.TestMiner
 	wallet  *Wallet
 
-	walletMasterKey crypto.SiaKey
+	walletMasterKey crypto.CipherKey
 
 	persistDir string
 }
@@ -579,7 +579,7 @@ func TestDistantWallets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sk := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(wt.wallet.primarySeed))
+	sk := crypto.NewWalletKey(crypto.HashObject(wt.wallet.primarySeed))
 	err = w2.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)

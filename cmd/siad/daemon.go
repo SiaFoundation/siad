@@ -113,16 +113,16 @@ func processConfig(config Config) (Config, error) {
 // unlockWallet is called on siad startup and attempts to automatically
 // unlock the wallet with the given password string.
 func unlockWallet(w modules.Wallet, password string) error {
-	var validKeys []crypto.SiaKey
+	var validKeys []crypto.CipherKey
 	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
 	for _, dict := range dicts {
 		seed, err := modules.StringToSeed(password, dict)
 		if err != nil {
 			continue
 		}
-		validKeys = append(validKeys, crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(seed)))
+		validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seed)))
 	}
-	validKeys = append(validKeys, crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(password)))
+	validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(password)))
 	for _, key := range validKeys {
 		if err := w.Unlock(key); err == nil {
 			return nil

@@ -59,7 +59,7 @@ type savedKey033x struct {
 
 // decryptSpendableKeyFile decrypts a spendableKeyFile, returning a
 // spendableKey.
-func decryptSpendableKeyFile(masterKey crypto.SiaKey, uk spendableKeyFile) (sk spendableKey, err error) {
+func decryptSpendableKeyFile(masterKey crypto.CipherKey, uk spendableKeyFile) (sk spendableKey, err error) {
 	// Verify that the decryption key is correct.
 	decryptionKey := uidEncryptionKey(masterKey, uk.UID)
 	err = verifyEncryption(decryptionKey, uk.EncryptionVerification)
@@ -77,12 +77,12 @@ func decryptSpendableKeyFile(masterKey crypto.SiaKey, uk spendableKeyFile) (sk s
 }
 
 // integrateSpendableKey loads a spendableKey into the wallet.
-func (w *Wallet) integrateSpendableKey(masterKey crypto.SiaKey, sk spendableKey) {
+func (w *Wallet) integrateSpendableKey(masterKey crypto.CipherKey, sk spendableKey) {
 	w.keys[sk.UnlockConditions.UnlockHash()] = sk
 }
 
 // loadSpendableKey loads a spendable key into the wallet database.
-func (w *Wallet) loadSpendableKey(masterKey crypto.SiaKey, sk spendableKey) error {
+func (w *Wallet) loadSpendableKey(masterKey crypto.CipherKey, sk spendableKey) error {
 	// Duplication is detected by looking at the set of unlock conditions. If
 	// the wallet is locked, correct deduplication is uncertain.
 	if !w.unlocked {
@@ -121,7 +121,7 @@ func (w *Wallet) loadSpendableKey(masterKey crypto.SiaKey, sk spendableKey) erro
 
 // loadSiagKeys loads a set of siag keyfiles into the wallet, so that the
 // wallet may spend the siafunds.
-func (w *Wallet) loadSiagKeys(masterKey crypto.SiaKey, keyfiles []string) error {
+func (w *Wallet) loadSiagKeys(masterKey crypto.CipherKey, keyfiles []string) error {
 	// Load the keyfiles from disk.
 	if len(keyfiles) < 1 {
 		return ErrNoKeyfile
@@ -170,7 +170,7 @@ func (w *Wallet) loadSiagKeys(masterKey crypto.SiaKey, keyfiles []string) error 
 }
 
 // LoadSiagKeys loads a set of siag-generated keys into the wallet.
-func (w *Wallet) LoadSiagKeys(masterKey crypto.SiaKey, keyfiles []string) error {
+func (w *Wallet) LoadSiagKeys(masterKey crypto.CipherKey, keyfiles []string) error {
 	if err := w.tg.Add(); err != nil {
 		return err
 	}
@@ -220,7 +220,7 @@ func (w *Wallet) LoadSiagKeys(masterKey crypto.SiaKey, keyfiles []string) error 
 
 // Load033xWallet loads a v0.3.3.x wallet as an unseeded key, such that the
 // funds become spendable to the current wallet.
-func (w *Wallet) Load033xWallet(masterKey crypto.SiaKey, filepath033x string) error {
+func (w *Wallet) Load033xWallet(masterKey crypto.CipherKey, filepath033x string) error {
 	if err := w.tg.Add(); err != nil {
 		return err
 	}

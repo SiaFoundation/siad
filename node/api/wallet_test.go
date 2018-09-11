@@ -98,7 +98,7 @@ func TestWalletEncrypt(t *testing.T) {
 	testdir := build.TempDir("api", t.Name())
 
 	walletPassword := "testpass"
-	key := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(walletPassword))
+	key := crypto.NewWalletKey(crypto.HashObject(walletPassword))
 
 	st, err := assembleServerTester(key, testdir)
 	if err != nil {
@@ -490,7 +490,7 @@ func TestIntegrationWalletLoadSeedPOST(t *testing.T) {
 	}
 
 	// Create a wallet.
-	key := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject("password"))
+	key := crypto.NewWalletKey(crypto.HashObject("password"))
 	st, err := assembleServerTester(key, build.TempDir("api", t.Name()))
 	if err != nil {
 		t.Fatal(err)
@@ -1015,7 +1015,7 @@ func TestWalletReset(t *testing.T) {
 	testdir := build.TempDir("api", t.Name())
 
 	walletPassword := "testpass"
-	key := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(walletPassword))
+	key := crypto.NewWalletKey(crypto.HashObject(walletPassword))
 
 	st, err := assembleServerTester(key, testdir)
 	if err != nil {
@@ -1030,7 +1030,7 @@ func TestWalletReset(t *testing.T) {
 
 	// reencrypt the wallet
 	newPassword := "testpass2"
-	newKey := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(newPassword))
+	newKey := crypto.NewWalletKey(crypto.HashObject(newPassword))
 
 	initValues := url.Values{}
 	initValues.Set("force", "true")
@@ -1096,7 +1096,7 @@ func TestWalletSiafunds(t *testing.T) {
 	t.Parallel()
 
 	walletPassword := "testpass"
-	key := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(walletPassword))
+	key := crypto.NewWalletKey(crypto.HashObject(walletPassword))
 	testdir := build.TempDir("api", t.Name())
 	st, err := assembleServerTester(key, testdir)
 	if err != nil {
@@ -1274,8 +1274,8 @@ func TestWalletChangePassword(t *testing.T) {
 
 	originalPassword := "testpass"
 	newPassword := "newpass"
-	originalKey := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(originalPassword))
-	newKey := crypto.NewWalletKey(crypto.TypeDefaultWallet, crypto.HashObject(newPassword))
+	originalKey := crypto.NewWalletKey(crypto.HashObject(originalPassword))
+	newKey := crypto.NewWalletKey(crypto.HashObject(newPassword))
 
 	st, err := assembleServerTester(originalKey, testdir)
 	if err != nil {

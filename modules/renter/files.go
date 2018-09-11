@@ -64,9 +64,9 @@ type pieceData struct {
 }
 
 // deriveKey derives the key used to encrypt and decrypt a specific file piece.
-func deriveKey(masterKey crypto.SiaKey, chunkIndex, pieceIndex uint64) (crypto.SiaKey, error) {
-	entropy := crypto.HashAll(masterKey.CipherKey(), chunkIndex, pieceIndex)
-	return crypto.NewSiaKey(masterKey.CipherType(), entropy[:])
+func deriveKey(masterKey crypto.CipherKey, chunkIndex, pieceIndex uint64) (crypto.CipherKey, error) {
+	entropy := crypto.HashAll(masterKey.Key(), chunkIndex, pieceIndex)
+	return crypto.NewSiaKey(masterKey.Type(), entropy[:])
 }
 
 // DeleteFile removes a file entry from the renter and deletes its data from
@@ -130,12 +130,6 @@ func (r *Renter) FileList() []modules.FileInfo {
 	// Build the list of FileInfos.
 	fileList := []modules.FileInfo{}
 	for _, f := range files {
-		// Get the master key of the file.
-		mk, err := f.MasterKey()
-		if err != nil {
-			continue
-		}
-
 		var localPath string
 		siaPath := f.SiaPath()
 		lockID := r.mu.RLock()
@@ -145,7 +139,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 			localPath = tf.RepairPath
 		}
 		fileList = append(fileList, modules.FileInfo{
-			CipherType:     mk.CipherType(),
+			CipherType:     f.MasterKey().Type(),
 			SiaPath:        f.SiaPath(),
 			LocalPath:      localPath,
 			Filesize:       f.Size(),
@@ -174,12 +168,6 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	}
 	pks := file.HostPublicKeys()
 
-	// Get the master key of the file.
-	mk, err := file.MasterKey()
-	if err != nil {
-		return fileInfo, errors.AddContext(err, "failed to get file's master key")
-	}
-
 	// Build 2 maps that map every contract id to its offline and goodForRenew
 	// status.
 	goodForRenew := make(map[string]bool)
@@ -203,7 +191,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		localPath = tf.RepairPath
 	}
 	fileInfo = modules.FileInfo{
-		CipherType:     mk.CipherType(),
+		CipherType:     file.MasterKey().Type(),
 		SiaPath:        file.SiaPath(),
 		LocalPath:      localPath,
 		Filesize:       file.Size(),

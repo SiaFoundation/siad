@@ -24,7 +24,7 @@ type renterTester struct {
 	miner     modules.TestMiner
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey crypto.SiaKey
+	walletKey crypto.CipherKey
 
 	renter *Renter
 	dir    string

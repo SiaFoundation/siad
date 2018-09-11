@@ -121,13 +121,6 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 		return nil
 	}
 
-	// Get the file's masterKey to compute the memory requirements.
-	mk, err := f.MasterKey()
-	if err != nil {
-		r.log.Print("unable to get file's masterkey for building unfinished chunk", err)
-		return nil
-	}
-
 	// Assemble the set of chunks.
 	//
 	// TODO / NOTE: Future files may have a different method for determining the
@@ -158,7 +151,7 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 			// TODO: Currently we request memory for all of the pieces as well
 			// as the minimum pieces, but we perhaps don't need to request all
 			// of that.
-			memoryNeeded:  f.PieceSize()*uint64(f.ErasureCode(i).NumPieces()+f.ErasureCode(i).MinPieces()) + uint64(f.ErasureCode(i).NumPieces())*mk.Overhead(),
+			memoryNeeded:  f.PieceSize()*uint64(f.ErasureCode(i).NumPieces()+f.ErasureCode(i).MinPieces()) + uint64(f.ErasureCode(i).NumPieces())*f.MasterKey().Type().Overhead(),
 			minimumPieces: f.ErasureCode(i).MinPieces(),
 			piecesNeeded:  f.ErasureCode(i).NumPieces(),
 

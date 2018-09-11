@@ -24,7 +24,7 @@ type explorerTester struct {
 	miner     modules.TestMiner
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey crypto.SiaKey
+	walletKey crypto.CipherKey
 
 	explorer *Explorer
 	testdir  string

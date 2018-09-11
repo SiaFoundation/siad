@@ -41,8 +41,8 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 	file := &SiaFile{
 		staticMetadata: Metadata{
 			StaticFileSize:      int64(fd.FileSize),
-			StaticMasterKey:     mk.CipherKey(),
-			StaticMasterKeyType: mk.CipherType(),
+			StaticMasterKey:     mk.Key(),
+			StaticMasterKeyType: mk.Type(),
 			Mode:                fd.Mode,
 			StaticPieceSize:     fd.PieceSize,
 			SiaPath:             fd.Name,

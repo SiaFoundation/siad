@@ -10,7 +10,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -38,13 +37,10 @@ func equalFiles(f1, f2 *siafile.SiaFile) error {
 	if f1.Size() != f2.Size() {
 		return fmt.Errorf("sizes do not match: %v %v", f1.Size(), f2.Size())
 	}
-	mk1, err1 := f1.MasterKey()
-	mk2, err2 := f2.MasterKey()
-	if err1 != nil || err2 != nil {
-		panic(errors.Compose(err1, err2))
-	}
-	if !bytes.Equal(mk1.CipherKey(), mk2.CipherKey()) {
-		return fmt.Errorf("keys do not match: %v %v", mk1.CipherKey(), mk2.CipherKey())
+	mk1 := f1.MasterKey()
+	mk2 := f2.MasterKey()
+	if !bytes.Equal(mk1.Key(), mk2.Key()) {
+		return fmt.Errorf("keys do not match: %v %v", mk1.Key(), mk2.Key())
 	}
 	if f1.PieceSize() != f2.PieceSize() {
 		return fmt.Errorf("pieceSizes do not match: %v %v", f1.PieceSize(), f2.PieceSize())

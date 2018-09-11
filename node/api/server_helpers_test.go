@@ -132,7 +132,7 @@ type serverTester struct {
 	renter    modules.Renter
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey crypto.SiaKey
+	walletKey crypto.CipherKey
 
 	server *Server
 
@@ -141,7 +141,7 @@ type serverTester struct {
 
 // assembleServerTester creates a bunch of modules and assembles them into a
 // server tester, without creating any directories or mining any blocks.
-func assembleServerTester(key crypto.SiaKey, testdir string) (*serverTester, error) {
+func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, error) {
 	// assembleServerTester should not get called during short tests, as it
 	// takes a long time to run.
 	if testing.Short() {
@@ -225,7 +225,7 @@ func assembleServerTester(key crypto.SiaKey, testdir string) (*serverTester, err
 // assembleAuthenticatedServerTester creates a bunch of modules and assembles
 // them into a server tester that requires authentication with the given
 // requiredPassword. No directories are created and no blocks are mined.
-func assembleAuthenticatedServerTester(requiredPassword string, key crypto.SiaKey, testdir string) (*serverTester, error) {
+func assembleAuthenticatedServerTester(requiredPassword string, key crypto.CipherKey, testdir string) (*serverTester, error) {
 	// assembleAuthenticatedServerTester should not get called during short
 	// tests, as it takes a long time to run.
 	if testing.Short() {

@@ -79,13 +79,8 @@ func TestFileNumChunks(t *testing.T) {
 		rsc, _ := siafile.NewRSCode(test.dataPieces, 1) // can't use 0
 		// Create the file
 		f := newFileTesting(t.Name(), newTestingWal(), rsc, test.fileSize, 0777, "")
-		// Get file's encryption mode.
-		mk, err := f.MasterKey()
-		if err != nil {
-			t.Fatal(err)
-		}
 		// Make sure the file reports the correct pieceSize.
-		if f.PieceSize() != modules.SectorSize-mk.Overhead() {
+		if f.PieceSize() != modules.SectorSize-f.MasterKey().Type().Overhead() {
 			t.Fatal("file has wrong pieceSize for its encryption type")
 		}
 		// Check that the number of chunks matches the expected number.

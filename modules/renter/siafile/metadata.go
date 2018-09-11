@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -120,12 +121,15 @@ func (sf *SiaFile) LocalPath() string {
 }
 
 // MasterKey returns the masterkey used to encrypt the file.
-func (sf *SiaFile) MasterKey() (crypto.SiaKey, error) {
+func (sf *SiaFile) MasterKey() crypto.CipherKey {
 	sk, err := crypto.NewSiaKey(sf.staticMetadata.StaticMasterKeyType, sf.staticMetadata.StaticMasterKey)
 	if err != nil {
-		return nil, err
+		// This should never happen since the constructor of the SiaFile takes
+		// a CipherKey as an argument which guarantees that it is already a
+		// valid key.
+		panic(errors.AddContext(err, "failed to create masterkey of siafile"))
 	}
-	return sk, nil
+	return sk
 }
 
 // Mode returns the FileMode of the SiaFile.

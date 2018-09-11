@@ -6,13 +6,13 @@ type (
 	plainTextCipherKey struct{}
 )
 
-// CipherType returns the type of the twofish key.
-func (plainTextCipherKey) CipherType() CipherType {
+// Type returns the type of the twofish key.
+func (plainTextCipherKey) Type() CipherType {
 	return TypePlain
 }
 
 // Cipherkey returns the plaintext key which is an empty slice.
-func (p plainTextCipherKey) CipherKey() []byte {
+func (p plainTextCipherKey) Key() []byte {
 	return []byte{}
 }
 
@@ -29,10 +29,4 @@ func (p plainTextCipherKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 // DecryptBytesInPlace is a no-op for the plainTextCipherKey.
 func (p plainTextCipherKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
 	return ct[:], nil
-}
-
-// Overhead return zero for the plainTextCipherKey since it doesn't actually
-// encrypt/decrypt anything.
-func (p plainTextCipherKey) Overhead() uint64 {
-	return 0
 }
