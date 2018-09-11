@@ -237,10 +237,7 @@ func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaP
 	// together violate the rules, passing B first will result in A being
 	// considered a bad host and vice versa.
 	if build.Release != "testing" {
-		for i := len(hosts) - 1; i > 0; i-- {
-			j := fastrand.Intn(i + 1)
-			hosts[i], hosts[j] = hosts[j], hosts[i]
-		}
+		fastrand.Shuffle(len(hosts), func(i, j int) { hosts[i], hosts[j] = hosts[j], hosts[i] })
 	}
 
 	// Create a filter.
