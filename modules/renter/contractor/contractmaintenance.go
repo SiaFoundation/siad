@@ -850,6 +850,13 @@ func (c *Contractor) threadedContractMaintenance() {
 			break
 		}
 
+		// If we are using a custom resolver we need to replace the domain name
+		// with 127.0.0.1 to be able to form contracts.
+		if c.staticDeps.Disrupt("customResolver") {
+			port := host.NetAddress.Port()
+			host.NetAddress = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
+		}
+
 		// Attempt forming a contract with this host.
 		fundsSpent, newContract, err := c.managedNewContract(host, initialContractFunds, endHeight)
 		if err != nil {

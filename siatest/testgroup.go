@@ -422,7 +422,8 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 						return err
 					}
 				}
-				return errors.New("renter hasn't formed enough contracts")
+				return fmt.Errorf("renter hasn't formed enough contracts: expected %v got %v",
+					expectedContracts, contracts)
 			}
 			return nil
 		})

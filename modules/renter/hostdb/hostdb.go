@@ -229,11 +229,13 @@ func (hdb *HostDB) AverageContractPrice() (totalPrice types.Currency) {
 }
 
 // CheckForIPViolations accepts a number of host public keys and returns the
-// ones that violate the rules of the addressFilter. They are passed to the
-// addressFilter sorted by "address age" which means that hosts which have had
-// their IP addresses for a longer time will be prefered.
+// ones that violate the rules of the addressFilter.
 func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaPublicKey {
-	// Shuffle the hosts to non-deterministically decide which host is bad.
+	// Shuffle the hosts to non-deterministically decide which host is bad. The
+	// reason being that the address which is passed to the filter first, has
+	// priority over addresses which are passed in later. So if address A and B
+	// together violate the rules, passing B first will result in A being
+	// considered a bad host and vice versa.
 	if build.Release != "testing" {
 		for i := len(hosts) - 1; i > 0; i-- {
 			j := fastrand.Intn(i + 1)
