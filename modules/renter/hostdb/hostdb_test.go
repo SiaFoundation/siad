@@ -648,7 +648,17 @@ func TestCheckForIPViolations(t *testing.T) {
 	if len(badHosts) != 1 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
 	}
-	if len(badHosts) > 0 {
+	if len(badHosts) > 0 && !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+		t.Error("Hdb returned violation for wrong host")
+	}
+
+	// Calling CheckForIPViolations with entry 2 as the first argument and
+	// entry1 as the second should result in entry3 being the bad host again.
+	badHosts = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry2.PublicKey, entry1.PublicKey, entry3.PublicKey})
+	if len(badHosts) != 1 {
+		t.Errorf("Got %v violations, should be 1", len(badHosts))
+	}
+	if len(badHosts) > 0 && !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
 		t.Error("Hdb returned violation for wrong host")
 	}
 
@@ -658,17 +668,7 @@ func TestCheckForIPViolations(t *testing.T) {
 	if len(badHosts) != 2 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
 	}
-	if len(badHosts) > 0 && (!bytes.Equal(badHosts[0].Key, entry1.PublicKey.Key) || !bytes.Equal(badHosts[1].Key, entry2.PublicKey.Key)) {
-		t.Error("Hdb returned violation for wrong host")
-	}
-
-	// Calling CheckForIPViolations with entry 2 as the first argument and
-	// entry1 as the second should result in entry3 being the bad host.
-	badHosts = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry2.PublicKey, entry1.PublicKey, entry3.PublicKey})
-	if len(badHosts) != 1 {
-		t.Errorf("Got %v violations, should be 1", len(badHosts))
-	}
-	if len(badHosts) > 0 && !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+	if len(badHosts) > 1 && (!bytes.Equal(badHosts[0].Key, entry1.PublicKey.Key) || !bytes.Equal(badHosts[1].Key, entry2.PublicKey.Key)) {
 		t.Error("Hdb returned violation for wrong host")
 	}
 }
