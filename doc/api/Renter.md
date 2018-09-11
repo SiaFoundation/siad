@@ -444,7 +444,8 @@ endpoint for changing file metadata.
 
 ###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters-3)
 ```
-// Providing this parameter changes the tracking path of a file to the specified path. Useful if moving the file to a different location on disk. (optional)
+// If provided, this parameter changes the tracking path of a file to the 
+// specified path. Useful if moving the file to a different location on disk.
 trackingpath
 ```
 

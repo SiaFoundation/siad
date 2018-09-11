@@ -878,7 +878,6 @@ Renter
 | [/renter/delete/*___siapath___](#renterdeletesiapath-post)                | POST      |
 | [/renter/download/*___siapath___](#renterdownloadsiapath-get)             | GET       |
 | [/renter/downloadasync/*___siapath___](#renterdownloadasyncsiapath-get)   | GET       |
-| [/renter/tracking/*__siapath__](#rentertrackingsiapath-post)              | POST      |
 | [/renter/stream/*___siapath___](#renterstreamsiapath-get)                 | GET       |
 | [/renter/upload/*___siapath___](#renteruploadsiapath-post)                | POST      |
 
@@ -1113,7 +1112,8 @@ endpoint for changing file metadata.
 
 ###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters-3)
 ```
-// Providing this parameter changes the tracking path of a file to the specified path. Useful if moving the file to a different location on disk. (optional)
+// If providedg, this parameter changes the tracking path of a file to the
+// specified path. Useful if moving the file to a different location on disk.
 trackingpath
 ```
 
