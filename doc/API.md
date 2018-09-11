@@ -874,10 +874,10 @@ Renter
 | [/renter/prices](#renterprices-get)                                       | GET       |
 | [/renter/files](#renterfiles-get)                                         | GET       |
 | [/renter/file/*___siapath___](#renterfile___siapath___-get)               | GET       |
+| [/renter/file/*___siapath___](#renterfile___siapath___-post)              | POST       |
 | [/renter/delete/*___siapath___](#renterdeletesiapath-post)                | POST      |
 | [/renter/download/*___siapath___](#renterdownloadsiapath-get)             | GET       |
 | [/renter/downloadasync/*___siapath___](#renterdownloadasyncsiapath-get)   | GET       |
-| [/renter/rename/*___siapath___](#renterrenamesiapath-post)                | POST      |
 | [/renter/tracking/*__siapath__](#rentertrackingsiapath-post)              | POST      |
 | [/renter/stream/*___siapath___](#renterstreamsiapath-get)                 | GET       |
 | [/renter/upload/*___siapath___](#renteruploadsiapath-post)                | POST      |
@@ -1099,6 +1099,27 @@ lists the estimated prices of performing various storage and data operations.
 }
 ```
 
+#### /renter/file/*___siapath___ [POST]
+
+endpoint for changing file metadata.
+
+###### Path Parameters [(with comments)](/doc/api/Renter.md#path-parameters-3)
+```
+// SiaPath of the file on the network. The path must be non-empty, may not
+// include any path traversal strings ("./", "../"), and may not begin with a
+// forward-slash character.
+*siapath
+```
+
+###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters-3)
+```
+// Providing this parameter changes the tracking path of a file to the specified path. Useful if moving the file to a different location on disk. (optional)
+trackingpath
+```
+
+###### Response
+standard success or error response. See
+[#standard-responses](#standard-responses).
 
 #### /renter/delete/*___siapath___ [POST]
 
@@ -1169,28 +1190,6 @@ entry in the renter. An error is returned if `siapath` does not exist or
 ###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters-3)
 ```
 newsiapath
-```
-
-###### Response
-standard success or error response. See
-[#standard-responses](#standard-responses).
-
-#### /renter/tracking/*___siapath___ [POST]
-
-changes the tracking path of a file to a new location. The file must exist at
-the location. Siad will perform a check on the file size to guarantee that it
-matches the expected size, but it can't compare checksums. Therefore replacing
-a file with another file of the same name and size but with different content
-corrupts the file.
-
-###### Path Parameters [(with comments)](/doc/api/Renter.md#path-parameters-3)
-```
-*siapath
-```
-
-###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters-3)
-```
-path
 ```
 
 ###### Response

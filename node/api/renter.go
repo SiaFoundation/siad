@@ -171,17 +171,6 @@ type (
 	}
 )
 
-// renterFileTrackingHandler handles the API call to /renter/tracking/*siapath
-func (api *API) renterFileTrackingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	newPath := req.FormValue("path")
-	siapath := strings.TrimPrefix(ps.ByName("siapath"), "/")
-	if err := api.renter.SetFileTrackingPath(siapath, newPath); err != nil {
-		WriteError(w, Error{"unable to parse funds"}, http.StatusBadRequest)
-		return
-	}
-	WriteSuccess(w)
-}
-
 // renterHandlerGET handles the API call to /renter.
 func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	settings := api.renter.Settings()
@@ -529,12 +518,11 @@ func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-
 	WriteSuccess(w)
 }
 
-// renterFileHandler handles the API call to return specific file.
-func (api *API) renterFileHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+// renterFileHandler handles GET requests to the /renter/file/:siapath API endpoint.
+func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	file, err := api.renter.File(strings.TrimPrefix(ps.ByName("siapath"), "/"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -543,6 +531,21 @@ func (api *API) renterFileHandler(w http.ResponseWriter, req *http.Request, ps h
 	WriteJSON(w, RenterFile{
 		File: file,
 	})
+}
+
+// renterFileHandler handles POST requests to the /renter/file/:siapath API endpoint.
+func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	newTrackingPath := req.FormValue("trackingpath")
+
+	// Handle changing the tracking path of a file.
+	if newTrackingPath != "" {
+		siapath := strings.TrimPrefix(ps.ByName("siapath"), "/")
+		if err := api.renter.SetFileTrackingPath(siapath, newTrackingPath); err != nil {
+			WriteError(w, Error{"unable to parse funds"}, http.StatusBadRequest)
+			return
+		}
+	}
+	WriteSuccess(w)
 }
 
 // renterFilesHandler handles the API call to list all of the files.

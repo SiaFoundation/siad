@@ -210,8 +210,8 @@ func (c *Client) RenterStreamPartialGet(siaPath string, start, end uint64) (resp
 // path of a file to a new location. The file at newPath must exists.
 func (c *Client) RenterSetRepairPathPost(siaPath, newPath string) (err error) {
 	values := url.Values{}
-	values.Set("path", newPath)
-	err = c.post("/renter/tracking/"+siaPath, values.Encode(), nil)
+	values.Set("trackingpath", newPath)
+	err = c.post("/renter/file/"+siaPath, values.Encode(), nil)
 	return
 }
 
