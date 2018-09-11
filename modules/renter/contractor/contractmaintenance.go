@@ -372,12 +372,21 @@ func (c *Contractor) managedPrunePubkeyMap() {
 // managedPrunedRedundantAddressRange uses the hostdb to find hosts that
 // violate the rules about address ranges and cancels them.
 func (c *Contractor) managedPrunedRedundantAddressRange() {
+	// Get all contracts which are not canceled.
 	allContracts := c.staticContracts.ViewAll()
+	var contracts []modules.RenterContract
+	for _, contract := range allContracts {
+		if contract.Utility.Locked && !contract.Utility.GoodForRenew && !contract.Utility.GoodForUpload {
+			// contract is canceled
+			continue
+		}
+		contracts = append(contracts, contract)
+	}
 
 	// Get all the public keys and map them to contract ids.
 	pks := make([]types.SiaPublicKey, 0, len(allContracts))
 	cids := make(map[string]types.FileContractID)
-	for _, contract := range allContracts {
+	for _, contract := range contracts {
 		pks = append(pks, contract.HostPublicKey)
 		cids[contract.HostPublicKey.String()] = contract.ID
 	}

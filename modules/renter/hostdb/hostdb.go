@@ -34,14 +34,13 @@ var (
 // for uploading files.
 type HostDB struct {
 	// dependencies
-	cs             modules.ConsensusSet
-	deps           modules.Dependencies
-	gateway        modules.Gateway
-	log            *persist.Logger
-	mu             sync.RWMutex
-	persistDir     string
-	staticResolver modules.Resolver
-	tg             threadgroup.ThreadGroup
+	cs         modules.ConsensusSet
+	deps       modules.Dependencies
+	gateway    modules.Gateway
+	log        *persist.Logger
+	mu         sync.RWMutex
+	persistDir string
+	tg         threadgroup.ThreadGroup
 
 	// The hostTree is the root node of the tree that organizes hosts by
 	// weight. The tree is necessary for selecting weighted hosts at
@@ -243,7 +242,7 @@ func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaP
 	}
 
 	// Create a filter.
-	filter := hosttree.NewFilter(hdb.staticResolver)
+	filter := hosttree.NewFilter(hdb.deps.Resolver())
 
 	var badHosts []types.SiaPublicKey
 	for _, host := range hosts {
