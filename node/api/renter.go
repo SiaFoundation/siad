@@ -760,8 +760,8 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 	WriteSuccess(w)
 }
 
-// renterCreateDirHandler handles the API call to create a directory
-func (api *API) renterCreateDirHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+// renterDirHandlerPOST handles the API call to create a directory
+func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse action
 	action := req.FormValue("action")
 	if action == "" {
