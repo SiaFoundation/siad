@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -14,7 +15,7 @@ type (
 	FileData struct {
 		Name        string
 		FileSize    uint64
-		MasterKey   crypto.TwofishKey
+		MasterKey   [crypto.EntropySize]byte
 		ErasureCode modules.ErasureCoder
 		RepairPath  string
 		PieceSize   uint64
@@ -31,14 +32,20 @@ type (
 
 // NewFromFileData creates a new SiaFile from a FileData object that was
 // previously created from a legacy file.
-func NewFromFileData(fd FileData) *SiaFile {
+func NewFromFileData(fd FileData) (*SiaFile, error) {
+	// legacy masterKeys are always twofish keys
+	mk, err := crypto.NewSiaKey(crypto.TypeTwofish, fd.MasterKey[:])
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to restore master key")
+	}
 	file := &SiaFile{
 		staticMetadata: Metadata{
-			StaticFileSize:  int64(fd.FileSize),
-			StaticMasterKey: fd.MasterKey,
-			Mode:            fd.Mode,
-			StaticPieceSize: fd.PieceSize,
-			SiaPath:         fd.Name,
+			StaticFileSize:      int64(fd.FileSize),
+			StaticMasterKey:     mk.Key(),
+			StaticMasterKeyType: mk.Type(),
+			Mode:                fd.Mode,
+			StaticPieceSize:     fd.PieceSize,
+			SiaPath:             fd.Name,
 		},
 		deleted:   fd.Deleted,
 		staticUID: fd.UID,
@@ -70,5 +77,5 @@ func NewFromFileData(fd FileData) *SiaFile {
 			}
 		}
 	}
-	return file
+	return file, nil
 }

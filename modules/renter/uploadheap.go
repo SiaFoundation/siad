@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -152,7 +151,7 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 			// TODO: Currently we request memory for all of the pieces as well
 			// as the minimum pieces, but we perhaps don't need to request all
 			// of that.
-			memoryNeeded:  f.PieceSize()*uint64(f.ErasureCode(i).NumPieces()+f.ErasureCode(i).MinPieces()) + uint64(f.ErasureCode(i).NumPieces()*crypto.TwofishOverhead),
+			memoryNeeded:  f.PieceSize()*uint64(f.ErasureCode(i).NumPieces()+f.ErasureCode(i).MinPieces()) + uint64(f.ErasureCode(i).NumPieces())*f.MasterKey().Type().Overhead(),
 			minimumPieces: f.ErasureCode(i).MinPieces(),
 			piecesNeeded:  f.ErasureCode(i).NumPieces(),
 

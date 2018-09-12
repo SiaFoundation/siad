@@ -23,7 +23,7 @@ type consensusSetTester struct {
 	miner     modules.TestMiner
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey crypto.TwofishKey
+	walletKey crypto.CipherKey
 
 	cs *ConsensusSet
 
@@ -111,7 +111,7 @@ func blankConsensusSetTester(name string, deps modules.Dependencies) (*consensus
 	if err != nil {
 		return nil, err
 	}
-	key := crypto.GenerateTwofishKey()
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err = w.Encrypt(key)
 	if err != nil {
 		return nil, err

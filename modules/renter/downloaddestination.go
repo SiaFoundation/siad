@@ -37,21 +37,28 @@ type downloadDestination interface {
 
 // downloadDestinationBuffer writes logical chunk data to an in-memory buffer.
 // This buffer is primarily used when performing repairs on uploads.
-type downloadDestinationBuffer [][]byte
+type downloadDestinationBuffer struct {
+	buf       [][]byte
+	pieceSize uint64
+}
 
 // NewDownloadDestinationBuffer allocates the necessary number of shards for
 // the downloadDestinationBuffer and returns the new buffer.
-func NewDownloadDestinationBuffer(length uint64) downloadDestinationBuffer {
+func NewDownloadDestinationBuffer(length, pieceSize uint64) downloadDestinationBuffer {
 	// Round length up to next multiple of SectorSize.
 	if length%pieceSize != 0 {
 		length += pieceSize - length%pieceSize
 	}
-	buf := make([][]byte, 0, length/pieceSize)
+	// Create buffer
+	ddb := downloadDestinationBuffer{
+		buf:       make([][]byte, 0, length/pieceSize),
+		pieceSize: pieceSize,
+	}
 	for length > 0 {
-		buf = append(buf, make([]byte, pieceSize))
+		ddb.buf = append(ddb.buf, make([]byte, pieceSize))
 		length -= pieceSize
 	}
-	return buf
+	return ddb
 }
 
 // Close implements Close for the downloadDestination interface.
@@ -62,12 +69,12 @@ func (dw downloadDestinationBuffer) Close() error {
 // ReadFrom reads data from a io.Reader until the buffer is full.
 func (dw downloadDestinationBuffer) ReadFrom(r io.Reader) (int64, error) {
 	var n int64
-	for len(dw) > 0 {
-		read, err := io.ReadFull(r, dw[0])
+	for len(dw.buf) > 0 {
+		read, err := io.ReadFull(r, dw.buf[0])
 		if err != nil {
 			return n, err
 		}
-		dw = dw[1:]
+		dw.buf = dw.buf[1:]
 		n += int64(read)
 	}
 	return n, nil
@@ -75,14 +82,14 @@ func (dw downloadDestinationBuffer) ReadFrom(r io.Reader) (int64, error) {
 
 // WriteAt writes the provided data to the downloadDestinationBuffer.
 func (dw downloadDestinationBuffer) WriteAt(data []byte, offset int64) (int, error) {
-	if uint64(len(data))+uint64(offset) > uint64(len(dw))*pieceSize || offset < 0 {
+	if uint64(len(data))+uint64(offset) > uint64(len(dw.buf))*dw.pieceSize || offset < 0 {
 		return 0, errors.New("write at specified offset exceeds buffer size")
 	}
 	written := len(data)
 	for len(data) > 0 {
-		shardIndex := offset / int64(pieceSize)
-		sliceIndex := offset % int64(pieceSize)
-		n := copy(dw[shardIndex][sliceIndex:], data)
+		shardIndex := offset / int64(dw.pieceSize)
+		sliceIndex := offset % int64(dw.pieceSize)
+		n := copy(dw.buf[shardIndex][sliceIndex:], data)
 		data = data[n:]
 		offset += int64(n)
 	}

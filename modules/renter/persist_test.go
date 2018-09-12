@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,7 +23,7 @@ func newTestingFile() *siafile.SiaFile {
 
 	name := "testfile-" + strconv.Itoa(int(data[0]))
 
-	return newFileTesting(name, newTestingWal(), rsc, pieceSize, 1000, 0777, "")
+	return newFileTesting(name, newTestingWal(), rsc, 1000, 0777, "")
 }
 
 // equalFiles is a helper function that compares two files for equality.
@@ -36,8 +37,10 @@ func equalFiles(f1, f2 *siafile.SiaFile) error {
 	if f1.Size() != f2.Size() {
 		return fmt.Errorf("sizes do not match: %v %v", f1.Size(), f2.Size())
 	}
-	if f1.MasterKey() != f2.MasterKey() {
-		return fmt.Errorf("keys do not match: %v %v", f1.MasterKey(), f2.MasterKey())
+	mk1 := f1.MasterKey()
+	mk2 := f2.MasterKey()
+	if !bytes.Equal(mk1.Key(), mk2.Key()) {
+		return fmt.Errorf("keys do not match: %v %v", mk1.Key(), mk2.Key())
 	}
 	if f1.PieceSize() != f2.PieceSize() {
 		return fmt.Errorf("pieceSizes do not match: %v %v", f1.PieceSize(), f2.PieceSize())

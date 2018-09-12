@@ -59,7 +59,7 @@ type savedKey033x struct {
 
 // decryptSpendableKeyFile decrypts a spendableKeyFile, returning a
 // spendableKey.
-func decryptSpendableKeyFile(masterKey crypto.TwofishKey, uk spendableKeyFile) (sk spendableKey, err error) {
+func decryptSpendableKeyFile(masterKey crypto.CipherKey, uk spendableKeyFile) (sk spendableKey, err error) {
 	// Verify that the decryption key is correct.
 	decryptionKey := uidEncryptionKey(masterKey, uk.UID)
 	err = verifyEncryption(decryptionKey, uk.EncryptionVerification)
@@ -77,12 +77,12 @@ func decryptSpendableKeyFile(masterKey crypto.TwofishKey, uk spendableKeyFile) (
 }
 
 // integrateSpendableKey loads a spendableKey into the wallet.
-func (w *Wallet) integrateSpendableKey(masterKey crypto.TwofishKey, sk spendableKey) {
+func (w *Wallet) integrateSpendableKey(masterKey crypto.CipherKey, sk spendableKey) {
 	w.keys[sk.UnlockConditions.UnlockHash()] = sk
 }
 
 // loadSpendableKey loads a spendable key into the wallet database.
-func (w *Wallet) loadSpendableKey(masterKey crypto.TwofishKey, sk spendableKey) error {
+func (w *Wallet) loadSpendableKey(masterKey crypto.CipherKey, sk spendableKey) error {
 	// Duplication is detected by looking at the set of unlock conditions. If
 	// the wallet is locked, correct deduplication is uncertain.
 	if !w.unlocked {
@@ -107,9 +107,6 @@ func (w *Wallet) loadSpendableKey(masterKey crypto.TwofishKey, sk spendableKey) 
 	skf.SpendableKey = encryptionKey.EncryptBytes(encoding.Marshal(sk))
 
 	err := checkMasterKey(w.dbTx, masterKey)
-	if err != nil {
-		return err
-	}
 	var current []spendableKeyFile
 	err = encoding.Unmarshal(w.dbTx.Bucket(bucketWallet).Get(keySpendableKeyFiles), &current)
 	if err != nil {
@@ -124,7 +121,7 @@ func (w *Wallet) loadSpendableKey(masterKey crypto.TwofishKey, sk spendableKey) 
 
 // loadSiagKeys loads a set of siag keyfiles into the wallet, so that the
 // wallet may spend the siafunds.
-func (w *Wallet) loadSiagKeys(masterKey crypto.TwofishKey, keyfiles []string) error {
+func (w *Wallet) loadSiagKeys(masterKey crypto.CipherKey, keyfiles []string) error {
 	// Load the keyfiles from disk.
 	if len(keyfiles) < 1 {
 		return ErrNoKeyfile
@@ -173,7 +170,7 @@ func (w *Wallet) loadSiagKeys(masterKey crypto.TwofishKey, keyfiles []string) er
 }
 
 // LoadSiagKeys loads a set of siag-generated keys into the wallet.
-func (w *Wallet) LoadSiagKeys(masterKey crypto.TwofishKey, keyfiles []string) error {
+func (w *Wallet) LoadSiagKeys(masterKey crypto.CipherKey, keyfiles []string) error {
 	if err := w.tg.Add(); err != nil {
 		return err
 	}
@@ -223,7 +220,7 @@ func (w *Wallet) LoadSiagKeys(masterKey crypto.TwofishKey, keyfiles []string) er
 
 // Load033xWallet loads a v0.3.3.x wallet as an unseeded key, such that the
 // funds become spendable to the current wallet.
-func (w *Wallet) Load033xWallet(masterKey crypto.TwofishKey, filepath033x string) error {
+func (w *Wallet) Load033xWallet(masterKey crypto.CipherKey, filepath033x string) error {
 	if err := w.tg.Add(); err != nil {
 		return err
 	}

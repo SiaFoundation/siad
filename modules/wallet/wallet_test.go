@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // A Wallet tester contains a ConsensusTester and has a bunch of helpful
@@ -25,7 +24,7 @@ type walletTester struct {
 	miner   modules.TestMiner
 	wallet  *Wallet
 
-	walletMasterKey crypto.TwofishKey
+	walletMasterKey crypto.CipherKey
 
 	persistDir string
 }
@@ -50,8 +49,7 @@ func createWalletTester(name string, deps modules.Dependencies) (*walletTester, 
 	if err != nil {
 		return nil, err
 	}
-	var masterKey crypto.TwofishKey
-	fastrand.Read(masterKey[:])
+	masterKey := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err = w.Encrypt(masterKey)
 	if err != nil {
 		return nil, err
@@ -577,11 +575,12 @@ func TestDistantWallets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = w2.InitFromSeed(crypto.TwofishKey{}, wt.wallet.primarySeed)
+	err = w2.InitFromSeed(nil, wt.wallet.primarySeed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = w2.Unlock(crypto.TwofishKey(crypto.HashObject(wt.wallet.primarySeed)))
+	sk := crypto.NewWalletKey(crypto.HashObject(wt.wallet.primarySeed))
+	err = w2.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
 	}

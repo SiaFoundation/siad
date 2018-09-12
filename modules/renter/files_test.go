@@ -30,7 +30,7 @@ func newTestingWal() *writeaheadlog.WAL {
 }
 
 // newFileTesting is a helper that calls newFile but returns no error.
-func newFileTesting(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, pieceSize, fileSize uint64, mode os.FileMode, source string) *siafile.SiaFile {
+func newFileTesting(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, fileSize uint64, mode os.FileMode, source string) *siafile.SiaFile {
 	// create the renter/files dir if it doesn't exist
 	siaFilePath := filepath.Join(os.TempDir(), "siafiles", name)
 	dir, _ := filepath.Split(siaFilePath)
@@ -38,7 +38,7 @@ func newFileTesting(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCode
 		panic(err)
 	}
 	// create the file
-	f, err := newFile(siaFilePath, name, wal, rsc, pieceSize, fileSize, mode, source)
+	f, err := newFile(siaFilePath, name, wal, rsc, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, mode, source)
 	if err != nil {
 		panic(err)
 	}
@@ -47,27 +47,53 @@ func newFileTesting(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCode
 
 // TestFileNumChunks checks the numChunks method of the file type.
 func TestFileNumChunks(t *testing.T) {
+	fileSize := func(numSectors uint64) uint64 {
+		return numSectors*modules.SectorSize + uint64(fastrand.Intn(int(modules.SectorSize)))
+	}
+	// Since the pieceSize is 'random' now we test a variety of random inputs.
 	tests := []struct {
-		size           uint64
-		pieceSize      uint64
-		piecesPerChunk int
-		expNumChunks   uint64
+		fileSize   uint64
+		dataPieces int
 	}{
-		{100, 10, 1, 10}, // evenly divides
-		{100, 10, 2, 5},  // evenly divides
+		{fileSize(10), 10},
+		{fileSize(50), 10},
+		{fileSize(100), 10},
 
-		{101, 10, 1, 11}, // padded
-		{101, 10, 2, 6},  // padded
+		{fileSize(11), 10},
+		{fileSize(51), 10},
+		{fileSize(101), 10},
 
-		{10, 100, 1, 1}, // larger piece than file
-		{0, 10, 1, 1},   // 0-length
+		{fileSize(10), 100},
+		{fileSize(50), 100},
+		{fileSize(100), 100},
+
+		{fileSize(11), 100},
+		{fileSize(51), 100},
+		{fileSize(101), 100},
+
+		{0, 10}, // 0-length
 	}
 
 	for _, test := range tests {
-		rsc, _ := siafile.NewRSCode(test.piecesPerChunk, 1) // can't use 0
-		f := newFileTesting(t.Name(), newTestingWal(), rsc, test.pieceSize, test.size, 0777, "")
-		if f.NumChunks() != test.expNumChunks {
-			t.Errorf("Test %v: expected %v, got %v", test, test.expNumChunks, f.NumChunks())
+		// Create erasure-coder
+		rsc, _ := siafile.NewRSCode(test.dataPieces, 1) // can't use 0
+		// Create the file
+		f := newFileTesting(t.Name(), newTestingWal(), rsc, test.fileSize, 0777, "")
+		// Make sure the file reports the correct pieceSize.
+		if f.PieceSize() != modules.SectorSize-f.MasterKey().Type().Overhead() {
+			t.Fatal("file has wrong pieceSize for its encryption type")
+		}
+		// Check that the number of chunks matches the expected number.
+		expectedNumChunks := test.fileSize / (f.PieceSize() * uint64(test.dataPieces))
+		if expectedNumChunks == 0 {
+			// There is at least 1 chunk.
+			expectedNumChunks = 1
+		} else if expectedNumChunks%(f.PieceSize()*uint64(test.dataPieces)) != 0 {
+			// If it doesn't divide evenly there will be 1 chunk padding.
+			expectedNumChunks++
+		}
+		if f.NumChunks() != expectedNumChunks {
+			t.Errorf("Test %v: expected %v, got %v", test, expectedNumChunks, f.NumChunks())
 		}
 	}
 }
@@ -75,7 +101,7 @@ func TestFileNumChunks(t *testing.T) {
 // TestFileAvailable probes the available method of the file type.
 func TestFileAvailable(t *testing.T) {
 	rsc, _ := siafile.NewRSCode(1, 1) // can't use 0
-	f := newFileTesting(t.Name(), newTestingWal(), rsc, pieceSize, 100, 0777, "")
+	f := newFileTesting(t.Name(), newTestingWal(), rsc, 100, 0777, "")
 	neverOffline := make(map[string]bool)
 
 	if f.Available(neverOffline) {
@@ -102,7 +128,7 @@ func TestFileAvailable(t *testing.T) {
 func TestFileUploadedBytes(t *testing.T) {
 	// ensure that a piece fits within a sector
 	rsc, _ := siafile.NewRSCode(1, 3)
-	f := newFileTesting(t.Name(), newTestingWal(), rsc, modules.SectorSize/2, 1000, 0777, "")
+	f := newFileTesting(t.Name(), newTestingWal(), rsc, 1000, 0777, "")
 	for i := uint64(0); i < 4; i++ {
 		err := f.AddPiece(types.SiaPublicKey{}, uint64(0), i, crypto.Hash{})
 		if err != nil {
@@ -118,7 +144,7 @@ func TestFileUploadedBytes(t *testing.T) {
 // 100%, even if more pieces have been uploaded,
 func TestFileUploadProgressPinning(t *testing.T) {
 	rsc, _ := siafile.NewRSCode(1, 1)
-	f := newFileTesting(t.Name(), newTestingWal(), rsc, 2, 4, 0777, "")
+	f := newFileTesting(t.Name(), newTestingWal(), rsc, 4, 0777, "")
 	for i := uint64(0); i < 2; i++ {
 		err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, uint64(0), i, crypto.Hash{})
 		err2 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(1)}}, uint64(0), i, crypto.Hash{})
@@ -144,7 +170,7 @@ func TestFileRedundancy(t *testing.T) {
 
 	for _, nData := range nDatas {
 		rsc, _ := siafile.NewRSCode(nData, 10)
-		f := newFileTesting(t.Name(), newTestingWal(), rsc, 100, 1000, 0777, "")
+		f := newFileTesting(t.Name(), newTestingWal(), rsc, 1000, 0777, "")
 		// Test that an empty file has 0 redundancy.
 		if r := f.Redundancy(neverOffline, goodForRenew); r != 0 {
 			t.Error("expected 0 redundancy, got", r)
@@ -228,7 +254,7 @@ func TestFileExpiration(t *testing.T) {
 		t.SkipNow()
 	}
 	rsc, _ := siafile.NewRSCode(1, 2)
-	f := newFileTesting(t.Name(), newTestingWal(), rsc, pieceSize, 1000, 0777, "")
+	f := newFileTesting(t.Name(), newTestingWal(), rsc, 1000, 0777, "")
 	contracts := make(map[string]modules.RenterContract)
 	if f.Expiration(contracts) != 0 {
 		t.Error("file with no pieces should report as having no time remaining")

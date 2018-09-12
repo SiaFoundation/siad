@@ -31,11 +31,11 @@ type file struct {
 	name        string
 	size        uint64 // Static - can be accessed without lock.
 	contracts   map[types.FileContractID]fileContract
-	masterKey   crypto.TwofishKey    // Static - can be accessed without lock.
-	erasureCode modules.ErasureCoder // Static - can be accessed without lock.
-	pieceSize   uint64               // Static - can be accessed without lock.
-	mode        uint32               // actually an os.FileMode
-	deleted     bool                 // indicates if the file has been deleted.
+	masterKey   [crypto.EntropySize]byte // Static - can be accessed without lock.
+	erasureCode modules.ErasureCoder     // Static - can be accessed without lock.
+	pieceSize   uint64                   // Static - can be accessed without lock.
+	mode        uint32                   // actually an os.FileMode
+	deleted     bool                     // indicates if the file has been deleted.
 
 	staticUID string // A UID assigned to the file when it gets created.
 
@@ -64,8 +64,9 @@ type pieceData struct {
 }
 
 // deriveKey derives the key used to encrypt and decrypt a specific file piece.
-func deriveKey(masterKey crypto.TwofishKey, chunkIndex, pieceIndex uint64) crypto.TwofishKey {
-	return crypto.TwofishKey(crypto.HashAll(masterKey, chunkIndex, pieceIndex))
+func deriveKey(masterKey crypto.CipherKey, chunkIndex, pieceIndex uint64) (crypto.CipherKey, error) {
+	entropy := crypto.HashAll(masterKey.Key(), chunkIndex, pieceIndex)
+	return crypto.NewSiaKey(masterKey.Type(), entropy[:])
 }
 
 // DeleteFile removes a file entry from the renter and deletes its data from
@@ -138,6 +139,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 			localPath = tf.RepairPath
 		}
 		fileList = append(fileList, modules.FileInfo{
+			CipherType:     f.MasterKey().Type(),
 			SiaPath:        f.SiaPath(),
 			LocalPath:      localPath,
 			Filesize:       f.Size(),
@@ -189,6 +191,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		localPath = tf.RepairPath
 	}
 	fileInfo = modules.FileInfo{
+		CipherType:     file.MasterKey().Type(),
 		SiaPath:        file.SiaPath(),
 		LocalPath:      localPath,
 		Filesize:       file.Size(),
@@ -250,7 +253,7 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
-func (r *Renter) fileToSiaFile(f *file, repairPath string) *siafile.SiaFile {
+func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFile, error) {
 	fileData := siafile.FileData{
 		Name:        f.name,
 		FileSize:    f.size,

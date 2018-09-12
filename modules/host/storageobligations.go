@@ -207,7 +207,7 @@ func (so storageObligation) fileSize() uint64 {
 	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].FileSize
 }
 
-// id returns the id of the storage obligation, which is definied by the file
+// id returns the id of the storage obligation, which is defined by the file
 // contract id of the file contract that governs the storage contract.
 func (so storageObligation) id() types.FileContractID {
 	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContractID(0)
@@ -271,7 +271,7 @@ func (so storageObligation) merkleRoot() crypto.Hash {
 	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].FileMerkleRoot
 }
 
-// payous returns the set of valid payouts and missed payouts that represent
+// payouts returns the set of valid payouts and missed payouts that represent
 // the latest revision for the storage obligation.
 func (so storageObligation) payouts() (valid []types.SiacoinOutput, missed []types.SiacoinOutput) {
 	valid = make([]types.SiacoinOutput, 2)

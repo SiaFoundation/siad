@@ -41,7 +41,7 @@ func (rs *RSCode) Encode(data []byte) ([][]byte, error) {
 }
 
 // EncodeShards creates the parity shards for an already sharded input.
-func (rs *RSCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
+func (rs *RSCode) EncodeShards(pieces [][]byte, pieceSize uint64) ([][]byte, error) {
 	// Check that the caller provided the minimum amount of pieces.
 	if len(pieces) != rs.MinPieces() {
 		return nil, fmt.Errorf("invalid number of pieces given %v %v", len(pieces), rs.MinPieces())

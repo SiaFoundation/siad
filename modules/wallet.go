@@ -233,7 +233,7 @@ type (
 		// and will return an error on subsequent calls (even after restarting
 		// the wallet). To reset the wallet, the wallet files must be moved to
 		// a different directory or deleted.
-		Encrypt(masterKey crypto.TwofishKey) (Seed, error)
+		Encrypt(masterKey crypto.CipherKey) (Seed, error)
 
 		// Reset will reset the wallet, clearing the database and returning it to
 		// the unencrypted state. Reset can only be called on a wallet that has
@@ -249,7 +249,7 @@ type (
 		// Unlike Encrypt, the blockchain will be scanned to determine the
 		// seed's progress. For this reason, InitFromSeed should not be called
 		// until the blockchain is fully synced.
-		InitFromSeed(masterKey crypto.TwofishKey, seed Seed) error
+		InitFromSeed(masterKey crypto.CipherKey, seed Seed) error
 
 		// Lock deletes all keys in memory and prevents the wallet from being
 		// used to spend coins or extract keys until 'Unlock' is called.
@@ -262,11 +262,11 @@ type (
 		//
 		// All items in the wallet are encrypted using different keys which are
 		// derived from the master key.
-		Unlock(masterKey crypto.TwofishKey) error
+		Unlock(masterKey crypto.CipherKey) error
 
 		// ChangeKey changes the wallet's materKey from masterKey to newKey,
 		// re-encrypting the wallet with the provided key.
-		ChangeKey(masterKey crypto.TwofishKey, newKey crypto.TwofishKey) error
+		ChangeKey(masterKey crypto.CipherKey, newKey crypto.CipherKey) error
 
 		// Unlocked returns true if the wallet is currently unlocked, false
 		// otherwise.
@@ -295,22 +295,22 @@ type (
 		// LoadBackup will load a backup of the wallet from the provided
 		// address. The backup wallet will be added as an auxiliary seed, not
 		// as a primary seed.
-		// LoadBackup(masterKey, backupMasterKey crypto.TwofishKey, string) error
+		// LoadBackup(masterKey, backupMasterKey crypto.SiaKey, string) error
 
 		// Load033xWallet will load a version 0.3.3.x wallet from disk and add all of
 		// the keys in the wallet as unseeded keys.
-		Load033xWallet(crypto.TwofishKey, string) error
+		Load033xWallet(crypto.CipherKey, string) error
 
 		// LoadSeed will recreate a wallet file using the recovery phrase.
 		// LoadSeed only needs to be called if the original seed file or
 		// encryption password was lost. The master key is used to encrypt the
 		// recovery seed before saving it to disk.
-		LoadSeed(crypto.TwofishKey, Seed) error
+		LoadSeed(crypto.CipherKey, Seed) error
 
 		// LoadSiagKeys will take a set of filepaths that point to a siag key
 		// and will have the siag keys loaded into the wallet so that they will
 		// become spendable.
-		LoadSiagKeys(crypto.TwofishKey, []string) error
+		LoadSiagKeys(crypto.CipherKey, []string) error
 
 		// NextAddress returns a new coin addresses generated from the
 		// primary seed.

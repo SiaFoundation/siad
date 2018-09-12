@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -22,8 +23,10 @@ type (
 		SiaPath         string   `json:"siapath"`   // the path of the file on the Sia network
 
 		// fields for encryption
-		StaticMasterKey  crypto.TwofishKey // masterkey used to encrypt pieces
-		StaticSharingKey crypto.TwofishKey // key used to encrypt shared pieces
+		StaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
+		StaticMasterKeyType  crypto.CipherType `json:"masterkeytype"`
+		StaticSharingKey     []byte            `json:"sharingkey"` // key used to encrypt shared pieces
+		StaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
 
 		// The following fields are the usual unix timestamps of files.
 		ModTime    time.Time `json:"modtime"`    // time of last content modification
@@ -118,8 +121,15 @@ func (sf *SiaFile) LocalPath() string {
 }
 
 // MasterKey returns the masterkey used to encrypt the file.
-func (sf *SiaFile) MasterKey() crypto.TwofishKey {
-	return sf.staticMetadata.StaticMasterKey
+func (sf *SiaFile) MasterKey() crypto.CipherKey {
+	sk, err := crypto.NewSiaKey(sf.staticMetadata.StaticMasterKeyType, sf.staticMetadata.StaticMasterKey)
+	if err != nil {
+		// This should never happen since the constructor of the SiaFile takes
+		// a CipherKey as an argument which guarantees that it is already a
+		// valid key.
+		panic(errors.AddContext(err, "failed to create masterkey of siafile"))
+	}
+	return sk
 }
 
 // Mode returns the FileMode of the SiaFile.

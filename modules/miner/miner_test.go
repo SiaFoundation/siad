@@ -14,7 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // A minerTester is the helper object for miner testing.
@@ -23,7 +22,7 @@ type minerTester struct {
 	cs        modules.ConsensusSet
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey crypto.TwofishKey
+	walletKey crypto.CipherKey
 
 	miner *Miner
 
@@ -52,8 +51,7 @@ func createMinerTester(name string) (*minerTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	var key crypto.TwofishKey
-	fastrand.Read(key[:])
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err = w.Encrypt(key)
 	if err != nil {
 		return nil, err

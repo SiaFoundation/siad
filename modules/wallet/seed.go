@@ -66,7 +66,7 @@ func generateKeys(seed modules.Seed, start, n uint64) []spendableKey {
 }
 
 // createSeedFile creates and encrypts a seedFile.
-func createSeedFile(masterKey crypto.TwofishKey, seed modules.Seed) seedFile {
+func createSeedFile(masterKey crypto.CipherKey, seed modules.Seed) seedFile {
 	var sf seedFile
 	fastrand.Read(sf.UID[:])
 	sek := uidEncryptionKey(masterKey, sf.UID)
@@ -76,7 +76,7 @@ func createSeedFile(masterKey crypto.TwofishKey, seed modules.Seed) seedFile {
 }
 
 // decryptSeedFile decrypts a seed file using the encryption key.
-func decryptSeedFile(masterKey crypto.TwofishKey, sf seedFile) (seed modules.Seed, err error) {
+func decryptSeedFile(masterKey crypto.CipherKey, sf seedFile) (seed modules.Seed, err error) {
 	// Verify that the provided master key is the correct key.
 	decryptionKey := uidEncryptionKey(masterKey, sf.UID)
 	err = verifyEncryption(decryptionKey, sf.EncryptionVerification)
@@ -223,7 +223,7 @@ func (w *Wallet) NextAddress() (types.UnlockConditions, error) {
 // reclaiming any funds that were lost due to a deleted file or lost encryption
 // key. An error will be returned if the seed has already been integrated with
 // the wallet.
-func (w *Wallet) LoadSeed(masterKey crypto.TwofishKey, seed modules.Seed) error {
+func (w *Wallet) LoadSeed(masterKey crypto.CipherKey, seed modules.Seed) error {
 	if err := w.tg.Add(); err != nil {
 		return err
 	}

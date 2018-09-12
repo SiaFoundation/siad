@@ -351,7 +351,11 @@ func (r *Renter) loadSharedFiles(reader io.Reader) ([]string, error) {
 	// Add files to renter.
 	names := make([]string, numFiles)
 	for i, f := range files {
-		r.files[f.name] = r.fileToSiaFile(f, r.persist.Tracking[f.name].RepairPath)
+		sf, err := r.fileToSiaFile(f, r.persist.Tracking[f.name].RepairPath)
+		if err != nil {
+			return nil, err
+		}
+		r.files[f.name] = sf
 		names[i] = f.name
 	}
 	// TODO Save the file in the new format.
