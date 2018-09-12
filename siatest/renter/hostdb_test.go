@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -209,6 +210,156 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		canceledHost := contracts.InactiveContracts[0].NetAddress.Host()
 		if canceledHost != "host3.com" && canceledHost != "host4.com" {
 			return fmt.Errorf("Expected canceled contract to be either host3 or host4 but was %v", canceledHost)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSelectRandomCanceledHost(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Get the testDir for this test.
+	testDir := renterTestDir(t.Name())
+
+	// Create a group with a single host.
+	groupParams := siatest.GroupParams{
+		Hosts:  1,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Get the host's port.
+	hg, err := tg.Hosts()[0].HostGet()
+	if err != nil {
+		t.Fatal("Failed to get port from host", err)
+	}
+	hostPort := hg.ExternalSettings.NetAddress.Port()
+
+	// Reannounce the hosts with custom hostnames which match the hostnames from the custom resolver method.
+	err = tg.Hosts()[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host1.com:%s", hostPort)))
+	if err != nil {
+		t.Fatal("Failed to reannounce at least one of the hosts", err)
+	}
+
+	// Mine the announcements.
+	if err := tg.Miners()[0].MineBlock(); err != nil {
+		t.Fatal("Failed to mine block", err)
+	}
+
+	// Add a renter with a custom resolver to the group.
+	renterTemplate := node.Renter(testDir + "/renter")
+	renterTemplate.HostDBDeps = siatest.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
+		switch host {
+		case "host1.com":
+			return []net.IP{{128, 0, 0, 1}}, nil
+		case "host2.com":
+			return []net.IP{{128, 1, 0, 1}}, nil
+		default:
+			panic("shouldn't happen")
+		}
+	})
+	renterTemplate.ContractorDeps = renterTemplate.HostDBDeps
+
+	// Create renter.
+	_, err = tg.AddNodes(renterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// We expect the renter to have 1 active contract.
+	renter := tg.Renters()[0]
+	contracts, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contracts.ActiveContracts) != 1 {
+		t.Fatalf("Expected 1 active contract but got %v", len(contracts.Contracts))
+	}
+
+	// Cancel the active contract.
+	err = renter.RenterContractCancelPost(contracts.ActiveContracts[0].ID)
+	if err != nil {
+		t.Fatal("Failed to cancel contract", err)
+	}
+
+	// We expect the renter to have 1 inactive contract.
+	contracts, err = renter.RenterInactiveContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contracts.InactiveContracts) != 1 {
+		t.Fatalf("Expected 1 inactive contract but got %v", len(contracts.InactiveContracts))
+	}
+
+	// Create a new host which doesn't announce itself right away.
+	newHostTemplate := node.Host(testDir + "/host")
+	newHostTemplate.SkipHostAnnouncement = true
+	newHost, err := tg.AddNodes(newHostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Announce the new host as host2.com. That should cause a conflict between
+	// the hosts. That shouldn't be an issue though since one of the hosts has
+	// a canceled contract.
+	hg, err = newHost[0].HostGet()
+	if err != nil {
+		t.Fatal("Failed to get port from host", err)
+	}
+	hostPort = hg.ExternalSettings.NetAddress.Port()
+	err1 := newHost[0].HostModifySettingPost(client.HostParamAcceptingContracts, true)
+	err2 := newHost[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host2.com:%s", hostPort)))
+	err = errors.Compose(err1, err2)
+	if err != nil {
+		t.Fatal("Failed to announce the new host", err)
+	}
+
+	// Mine the announcement.
+	if err := tg.Miners()[0].MineBlock(); err != nil {
+		t.Fatal("Failed to mine block", err)
+	}
+
+	// The renter should have an active contract with the new host and an
+	// inactive contract with the old host now.
+	numRetries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			err := tg.Miners()[0].MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		numRetries++
+		// Get the active and inactive contracts.
+		contracts, err := renter.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		// Should have 1 active contract and 1 inactive contract.
+		if len(contracts.ActiveContracts) != 1 || len(contracts.InactiveContracts) != 1 {
+			return fmt.Errorf("Expected 1 active contract and 1 inactive contract. (%v/%v)",
+				len(contracts.ActiveContracts), len(contracts.InactiveContracts))
+		}
+		// The active contract should be with host2.
+		if contracts.ActiveContracts[0].NetAddress.Host() != "host2.com" {
+			return fmt.Errorf("active contract should be with host2.com")
+		}
+		// The inactive contract should be with host1.
+		if contracts.InactiveContracts[0].NetAddress.Host() != "host1.com" {
+			return fmt.Errorf("active contract should be with host1.com")
 		}
 		return nil
 	})

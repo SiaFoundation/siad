@@ -825,17 +825,22 @@ func (c *Contractor) threadedContractMaintenance() {
 		return
 	}
 
-	// Assemble an exclusion list that includes all of the hosts that we already
-	// have contracts with, then select a new batch of hosts to attempt contract
-	// formation with.
+	// Assemble two exclusion lists. The first one includes all hosts that we
+	// already have contracts with and the second one includes all hosts we
+	// have active contracts with. Then select a new batch of hosts to attempt
+	// contract formation with.
 	c.mu.RLock()
-	var exclude []types.SiaPublicKey
+	var blacklist []types.SiaPublicKey
+	var addressBlacklist []types.SiaPublicKey
 	for _, contract := range c.staticContracts.ViewAll() {
-		exclude = append(exclude, contract.HostPublicKey)
+		blacklist = append(blacklist, contract.HostPublicKey)
+		if !contract.Utility.Locked || contract.Utility.GoodForRenew || contract.Utility.GoodForUpload {
+			addressBlacklist = append(addressBlacklist, contract.HostPublicKey)
+		}
 	}
 	initialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(3)
 	c.mu.RUnlock()
-	hosts, err := c.hdb.RandomHosts(neededContracts*2+randomHostsBufferForScore, exclude, exclude)
+	hosts, err := c.hdb.RandomHosts(neededContracts*2+randomHostsBufferForScore, blacklist, addressBlacklist)
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)
 		return
