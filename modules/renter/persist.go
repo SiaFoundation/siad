@@ -240,7 +240,7 @@ func (r *Renter) saveSync() error {
 func (r *Renter) loadSiaFiles() error {
 	// Recursively load all files found in renter directory. Errors
 	// encountered during loading are logged, but are not considered fatal.
-	return filepath.Walk(r.persistDir, func(path string, info os.FileInfo, err error) error {
+	return filepath.Walk(r.filesDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
