@@ -61,7 +61,6 @@ type Contractor struct {
 	pubKeysToContractID map[string]types.FileContractID
 	contractIDToPubKey  map[types.FileContractID]types.SiaPublicKey
 	renewing            map[types.FileContractID]bool // prevent revising during renewal
-	revising            map[types.FileContractID]bool // prevent overlapping revisions
 
 	// renewedFrom links the new contract's ID to the old contract's ID
 	// renewedTo links the old contract's ID to the new contract's ID
@@ -228,7 +227,6 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		contractIDToPubKey:  make(map[types.FileContractID]types.SiaPublicKey),
 		pubKeysToContractID: make(map[string]types.FileContractID),
 		renewing:            make(map[types.FileContractID]bool),
-		revising:            make(map[types.FileContractID]bool),
 		renewedFrom:         make(map[types.FileContractID]types.FileContractID),
 		renewedTo:           make(map[types.FileContractID]types.FileContractID),
 	}
