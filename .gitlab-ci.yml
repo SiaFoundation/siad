@@ -6,6 +6,15 @@ stages:
   - deploy
  
 before_script:
+  - mkdir -p $GOPATH/src/golang.org/x
+  - git clone https://github.com/golang/crypto $GOPATH/src/golang.org/x/crypto
+  - (cd $GOPATH/src/golang.org/x/crypto && git remote set-url origin https://go.googlesource.com/crypto)
+  - git clone https://github.com/golang/net $GOPATH/src/golang.org/x/net
+  - (cd $GOPATH/src/golang.org/x/net && git remote set-url origin https://go.googlesource.com/net)
+  - git clone https://github.com/golang/sys $GOPATH/src/golang.org/x/sys
+  - (cd $GOPATH/src/golang.org/x/sys && git remote set-url origin https://go.googlesource.com/sys)
+  - git clone https://github.com/golang/text $GOPATH/src/golang.org/x/text
+  - (cd $GOPATH/src/golang.org/x/text && git remote set-url origin https://go.googlesource.com/text)
   - make dependencies
   - cp -R $CI_PROJECT_DIR $GOPATH/src/gitlab.com/NebulousLabs/Sia
   - cd $GOPATH/src/gitlab.com/NebulousLabs/Sia

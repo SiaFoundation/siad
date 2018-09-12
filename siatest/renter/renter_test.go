@@ -28,6 +28,43 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// Test Limitations
+//
+// Timeouts - when possible test should be run in parallel to improve runtime
+//
+// panic: too many open files - There is a limit to how many tests can be run in
+// parallel (~10).  When too many test groups are trying to be created at the
+// same time the test package panics because to many files have been created and
+// it can't support any more tests
+
+// test is a helper struct for running subtests when tests can use the same test
+// group
+type test struct {
+	name string
+	test func(*testing.T, *siatest.TestGroup)
+}
+
+// runRenterTests is a helper function to run the subtests when tests can use
+// the same test group
+func runRenterTests(t *testing.T, gp siatest.GroupParams, tests []test) error {
+	tg, err := siatest.NewGroupFromTemplate(siatest.TestDir(t.Name()), gp)
+	if err != nil {
+		return errors.AddContext(err, "failed to create group")
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Run subtests
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.test(t, tg)
+		})
+	}
+	return nil
+}
+
 // TestRenter executes a number of subtests using the same TestGroup to
 // save time on initialization
 func TestRenter(t *testing.T) {
@@ -42,35 +79,47 @@ func TestRenter(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
 	// Specify subtests to run
-	subTests := []struct {
-		name string
-		test func(*testing.T, *siatest.TestGroup)
-	}{
+	subTests := []test{
 		{"TestClearDownloadHistory", testClearDownloadHistory},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
+	}
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenterTwo executes a number of subtests using the same TestGroup to
+// save time on initialization
+func TestRenterTwo(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for the subtests
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+
+	// Specify subtests to run
+	subTests := []test{
 		{"TestRemoteRepair", testRemoteRepair},
 		{"TestSingleFileGet", testSingleFileGet},
 		{"TestStreamingCache", testStreamingCache},
 		{"TestUploadDownload", testUploadDownload},
 	}
-	// Run subtests
-	for _, subtest := range subTests {
-		t.Run(subtest.name, func(t *testing.T) {
-			subtest.test(t, tg)
-		})
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -634,32 +683,19 @@ func TestRenterInterrupt(t *testing.T) {
 		Hosts:  5,
 		Miners: 1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
-	// Download sub tests
-	subTests := []struct {
-		name string
-		test func(*testing.T, *siatest.TestGroup)
-	}{
+	// Specify sub tests
+	subTests := []test{
 		{"TestContractInterruptedSaveToDiskAfterDeletion", testContractInterruptedSaveToDiskAfterDeletion},
 		{"TestDownloadInterruptedAfterSendingRevision", testDownloadInterruptedAfterSendingRevision},
 		{"TestDownloadInterruptedBeforeSendingRevision", testDownloadInterruptedBeforeSendingRevision},
 		{"TestUploadInterruptedAfterSendingRevision", testUploadInterruptedAfterSendingRevision},
 		{"TestUploadInterruptedBeforeSendingRevision", testUploadInterruptedBeforeSendingRevision},
 	}
-	// Run subtests
-	for _, subtest := range subTests {
-		t.Run(subtest.name, func(t *testing.T) {
-			subtest.test(t, tg)
-		})
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -913,33 +949,36 @@ func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.De
 	}
 }
 
-// The following are tests that need to use their own test groups due to
-// specific requirements of the tests
-
-// TestRedundancyReporting verifies that redundancy reporting is accurate if
-// contracts become offline.
-func TestRedundancyReporting(t *testing.T) {
+// TestRenterAddNodes runs a subset of tests that require adding their own renter
+func TestRenterAddNodes(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	// Create a group for testing.
+	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   5,
 		Renters: 1,
 		Miners:  1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
+	// Specify subtests to run
+	subTests := []test{
+		{"TestRedundancyReporting", testRedundancyReporting},
+		{"TestRenterCancelAllowance", testRenterCancelAllowance},
+		{"TestRenewFailing", testRenewFailing}, // Put last because it impacts a host
+	}
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// testRedundancyReporting verifies that redundancy reporting is accurate if
+// contracts become offline.
+func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 	// Upload a file.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts()) - 1)
@@ -1020,35 +1059,12 @@ func TestRedundancyReporting(t *testing.T) {
 	}
 }
 
-// TestRenewFailing checks if a contract gets marked as !goodForRenew after
+// testRenewFailing checks if a contract gets marked as !goodForRenew after
 // failing multiple times in a row.
-func TestRenewFailing(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create testing directory.
-	testDir := renterTestDir(t.Name())
-
-	// Create a group for the subtests
-	groupParams := siatest.GroupParams{
-		Hosts:  3,
-		Miners: 1,
-	}
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
+func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	// Add a renter with a custom allowance to give it plenty of time to renew
 	// the contract later.
-	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 1)
 	renterParams.Allowance.Period = 100
@@ -1138,41 +1154,34 @@ func TestRenewFailing(t *testing.T) {
 	// We should be within the second half of the renew window now. We keep
 	// mining blocks until the host with the locked wallet has been replaced.
 	// This should happen before we reach the endHeight of the contracts. This
-	// means we should have 2 active contracts and 2 inactive contracts.  One of
-	// the inactive contracts will be !goodForRenew due to the host
-	replaced := false
+	// means we should have number of hosts - 1 active contracts and number of
+	// hosts - 1 inactive contracts.  One of the inactive contracts will be
+	// !goodForRenew due to the host
 	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 5*time.Second, func() error {
 		// contract should be !goodForRenew now.
 		rc, err := renter.RenterInactiveContractsGet()
 		if err != nil {
 			return err
 		}
-		if len(rc.ActiveContracts) != 2 {
-			return fmt.Errorf("Expected 2 active contracts, got %v", len(rc.ActiveContracts))
+		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
+			return fmt.Errorf("Expected %v active contracts, got %v", len(tg.Hosts())-1, len(rc.ActiveContracts))
 		}
-		if len(rc.InactiveContracts) != 2 {
-			return fmt.Errorf("Expected 2 inactive contracts, got %v", len(rc.InactiveContracts))
+		if len(rc.InactiveContracts) != len(tg.Hosts())-1 {
+			return fmt.Errorf("Expected %v inactive contracts, got %v", len(tg.Hosts())-1, len(rc.InactiveContracts))
 		}
 
 		notGoodForRenew := 0
-		goodForRenew := 0
 		for _, c := range rc.InactiveContracts {
 			if !c.GoodForRenew {
 				notGoodForRenew++
-			} else {
-				goodForRenew++
 			}
 		}
 		if err := miner.MineBlock(); err != nil {
 			return err
 		}
-		if !replaced && notGoodForRenew != 1 && goodForRenew != 1 {
+		if notGoodForRenew != 1 {
 			return fmt.Errorf("there should be exactly 1 inactive contract that is !goodForRenew but was %v",
 				notGoodForRenew)
-		}
-		replaced = true
-		if replaced && notGoodForRenew != 1 && goodForRenew != 2 {
-			return fmt.Errorf("contract was set to !goodForRenew but hasn't been replaced yet")
 		}
 		return nil
 	})
@@ -1181,35 +1190,94 @@ func TestRenewFailing(t *testing.T) {
 	}
 }
 
-// TestRenterCancelAllowance tests that setting an empty allowance causes
-// uploads, downloads, and renewals to cease.
-func TestRenterCancelAllowance(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a group for testing.
-	groupParams := siatest.GroupParams{
-		Hosts:   2,
-		Renters: 1,
-		Miners:  1,
-	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
+// testRenterCancelAllowance tests that setting an empty allowance causes
+// uploads, downloads, and renewals to cease as well as tests that resetting the
+// allowance after the allowance was cancelled will trigger the correct contract
+// formation.
+func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
+	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
+	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
-		t.Fatal("Failed to create group: ", err)
+		t.Fatal(err)
 	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	renter := nodes[0]
 
+	// Test Resetting allowance
+	// Cancel the allowance
+	if err := renter.RenterCancelAllowance(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give it some time to mark the contracts as !goodForUpload and
+	// !goodForRenew.
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err := renter.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		// Should now only have inactive contracts.
+		if len(rc.ActiveContracts) != 0 {
+			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
+		}
+		if len(rc.InactiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v inactive contracts, got %v", len(tg.Hosts()), len(rc.InactiveContracts))
+		}
+		for _, c := range rc.InactiveContracts {
+			if c.GoodForUpload {
+				return errors.New("contract shouldn't be goodForUpload")
+			}
+			if c.GoodForRenew {
+				return errors.New("contract shouldn't be goodForRenew")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the allowance again.
+	if err := renter.RenterPostAllowance(siatest.DefaultAllowance); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine a block to start the threadedContractMaintenance.
+	if err := tg.Miners()[0].MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give it some time to mark the contracts as goodForUpload and
+	// goodForRenew again.
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err := renter.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		// Should now only have active contracts.
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v active contracts, got %v", len(tg.Hosts()), len(rc.ActiveContracts))
+		}
+		if len(rc.InactiveContracts) != 0 {
+			return fmt.Errorf("expected 0 inactive contracts, got %v", len(rc.InactiveContracts))
+		}
+		for _, c := range rc.ActiveContracts {
+			if !c.GoodForUpload {
+				return errors.New("contract should be goodForUpload")
+			}
+			if !c.GoodForRenew {
+				return errors.New("contract should be goodForRenew")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test Canceling allowance
 	// Upload a file.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts()) - 1)
-
-	renter := tg.Renters()[0]
 	_, rf, err := renter.UploadNewFileBlocking(100, dataPieces, parityPieces)
 	if err != nil {
 		t.Fatal(err)
@@ -1231,8 +1299,8 @@ func TestRenterCancelAllowance(t *testing.T) {
 		if len(rc.ActiveContracts) != 0 {
 			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
 		}
-		if len(rc.InactiveContracts) != groupParams.Hosts {
-			return fmt.Errorf("expected %v inactive contracts, got %v", groupParams.Hosts, len(rc.InactiveContracts))
+		if len(rc.InactiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v inactive contracts, got %v", len(tg.Hosts()), len(rc.InactiveContracts))
 		}
 		for _, c := range rc.InactiveContracts {
 			if c.GoodForUpload {
@@ -1257,7 +1325,7 @@ func TestRenterCancelAllowance(t *testing.T) {
 	// The rebuilt interval is 3 seconds. Sleep for 5 to be safe.
 	time.Sleep(5 * time.Second)
 
-	// Try to upload a file after the allowance was cancelled. Should fail.
+	// Try to upload a file after the allowance was cancelled. Should succeed.
 	_, rf2, err := renter.UploadNewFile(100, dataPieces, parityPieces)
 	if err != nil {
 		t.Fatal(err)
@@ -1300,25 +1368,25 @@ func TestRenterCancelAllowance(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		// Should now have 2 expired contracts.
+		// Should now have num of hosts expired contracts.
 		if len(rc.ActiveContracts) != 0 {
 			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
 		}
 		if len(rc.InactiveContracts) != 0 {
 			return fmt.Errorf("expected 0 inactive contracts, got %v", len(rc.InactiveContracts))
 		}
-		if len(rcExpired.ExpiredContracts) != groupParams.Hosts {
-			return fmt.Errorf("expected %v expired contracts, got %v", groupParams.Hosts, len(rc.InactiveContracts))
+		if len(rcExpired.ExpiredContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v expired contracts, got %v", len(tg.Hosts()), len(rc.InactiveContracts))
 		}
 		return nil
 	})
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	// Try downloading the file; should fail.
 	if _, err := renter.DownloadByStream(rf2); err == nil {
-		t.Error("downloading file succeeded even though it shouldnt", err)
+		t.Fatal("downloading file succeeded even though it shouldnt", err)
 	}
 
 	// The uploaded files should have 0x redundancy now.
@@ -1333,28 +1401,28 @@ func TestRenterCancelAllowance(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 }
 
-// TestRenterContractEndHeight makes sure that the endheight of renewed
-// contracts is set properly, this test also tests canceling a contract
-func TestRenterContractEndHeight(t *testing.T) {
+// TestRenterContracts tests the formation of the contracts, the contracts
+// endpoint, and canceling a contract
+func TestRenterContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	// Create a group for the subtests
+	// Create a group for testing
 	groupParams := siatest.GroupParams{
 		Hosts:   2,
 		Renters: 1,
 		Miners:  1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := siatest.TestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
-		t.Fatal("Failed to create group: ", err)
+		t.Fatal("Failed to create group:", err)
 	}
 	defer func() {
 		if err := tg.Close(); err != nil {
@@ -1388,13 +1456,7 @@ func TestRenterContractEndHeight(t *testing.T) {
 		`, currentPeriodStart, cg.Height, renewWindow)
 	}
 
-	// Get contracts
-	rc, err := r.RenterContractsGet()
-	if err != nil {
-		t.Fatal("Could not get renter contracts:", err)
-	}
-
-	// Confirm Contracts were created as expected.  There should be 2 active
+	// Confirm Contracts were created as expected.  There should only be active
 	// contracts and no inactive or expired contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		rc, err := r.RenterInactiveContractsGet()
@@ -1420,7 +1482,7 @@ func TestRenterContractEndHeight(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rc, err = r.RenterContractsGet()
+	rc, err := r.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1436,6 +1498,13 @@ func TestRenterContractEndHeight(t *testing.T) {
 		}
 	}
 
+	// Record original Contracts and create Maps for comparison
+	originalContracts := rc.ActiveContracts
+	originalContractIDMap := make(map[types.FileContractID]struct{})
+	for _, c := range originalContracts {
+		originalContractIDMap[c.ID] = struct{}{}
+	}
+
 	// Mine blocks to force contract renewal
 	if err = renewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
@@ -1443,12 +1512,23 @@ func TestRenterContractEndHeight(t *testing.T) {
 	numRenewals++
 
 	// Confirm Contracts were renewed as expected, all original contracts should
-	// have been renewed if GoodForRenew = true.  There should be 2 active and
-	// inactive contracts, and 0 expired contracts
+	// have been renewed if GoodForRenew = true.  There should be the same
+	// number of active and inactive contracts, and 0 expired contracts since we
+	// are still within the endheight of the original contracts, and the
+	// inactive contracts should be the same contracts as the original active
+	// contracts.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		rc, err := r.RenterInactiveContractsGet()
 		if err != nil {
 			return err
+		}
+		if len(originalContracts) != len(rc.InactiveContracts) {
+			return fmt.Errorf("Didn't get expected number of inactive contracts, expected %v got %v", len(originalContracts), len(rc.InactiveContracts))
+		}
+		for _, c := range rc.InactiveContracts {
+			if _, ok := originalContractIDMap[c.ID]; !ok {
+				return errors.New("ID from rc not found in originalContracts")
+			}
 		}
 		rcExpired, err := r.RenterExpiredContractsGet()
 		if err != nil {
@@ -1473,7 +1553,7 @@ func TestRenterContractEndHeight(t *testing.T) {
 	// Confirm contract end heights were set properly End height should be the
 	// end of the next period as the contracts are renewed due to reaching the
 	// renew window
-	rc, err = r.RenterContractsGet()
+	rc, err = r.RenterInactiveContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1487,6 +1567,82 @@ func TestRenterContractEndHeight(t *testing.T) {
 		}
 	}
 
+	// Record inactive contracts
+	inactiveContracts := rc.InactiveContracts
+	inactiveContractIDMap := make(map[types.FileContractID]struct{})
+	for _, c := range inactiveContracts {
+		inactiveContractIDMap[c.ID] = struct{}{}
+	}
+
+	// Mine to force inactive contracts to be expired contracts
+	m := tg.Miners()[0]
+	cg, err = r.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < int(inactiveContracts[0].EndHeight-cg.Height+types.MaturityDelay); i++ {
+		if err = m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm contracts, the expired contracts should now be the same contracts
+	// as the previous inactive contracts.
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err = r.RenterExpiredContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return errors.New("Waiting for active contracts to form")
+		}
+		if len(rc.ExpiredContracts) != len(inactiveContracts) {
+			return fmt.Errorf("Expected the same number of expired and inactive contracts; got %v expired and %v inactive", len(rc.ExpiredContracts), len(inactiveContracts))
+		}
+		for _, c := range inactiveContracts {
+			if _, ok := inactiveContractIDMap[c.ID]; !ok {
+				return errors.New("ID from rc not found in inactiveContracts")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Record current active and expired contracts
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err = r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("waiting for active contracts to form")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc, err = r.RenterExpiredContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	activeContracts := rc.ActiveContracts
+	expiredContracts := rc.ExpiredContracts
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiredContractIDMap := make(map[types.FileContractID]struct{})
+	for _, c := range expiredContracts {
+		expiredContractIDMap[c.ID] = struct{}{}
+	}
+
 	// Capturing end height to compare against renewed contracts
 	endHeight := rc.ActiveContracts[0].EndHeight
 
@@ -1496,6 +1652,48 @@ func TestRenterContractEndHeight(t *testing.T) {
 		t.Fatal(err)
 	}
 	numRenewals++
+
+	// Confirm contracts were renewed as expected.  Active contracts prior to
+	// renewal should now be in the inactive contracts
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err = r.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return errors.New("Waiting for active contracts to form")
+		}
+		rcExpired, err := r.RenterExpiredContractsGet()
+		if err != nil {
+			return err
+		}
+
+		// Confirm active and inactive contracts
+		inactiveContractIDMap := make(map[types.FileContractID]struct{})
+		for _, c := range rc.InactiveContracts {
+			inactiveContractIDMap[c.ID] = struct{}{}
+		}
+		for _, c := range activeContracts {
+			if _, ok := inactiveContractIDMap[c.ID]; !ok && c.UploadSpending.Cmp(startingUploadSpend) <= 0 {
+				return errors.New("ID from activeContacts not found in rc")
+			}
+		}
+
+		// Confirm expired contracts
+		if len(expiredContracts) != len(rcExpired.ExpiredContracts) {
+			return fmt.Errorf("Didn't get expected number of expired contracts, expected %v got %v", len(expiredContracts), len(rcExpired.ExpiredContracts))
+		}
+		for _, c := range rcExpired.ExpiredContracts {
+			if _, ok := expiredContractIDMap[c.ID]; !ok {
+				return errors.New("ID from rcExpired not found in expiredContracts")
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Confirm contract end heights were set properly
 	// End height should not have changed since the renewal
@@ -1582,241 +1780,6 @@ func TestRenterContractEndHeight(t *testing.T) {
 			}
 			i++
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-// TestRenterContractsEndpoint tests the API endpoint for old contracts
-func TestRenterContractsEndpoint(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a group for testing.
-	groupParams := siatest.GroupParams{
-		Hosts:   2,
-		Renters: 1,
-		Miners:  1,
-	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// Get Renter
-	r := tg.Renters()[0]
-
-	// Renter should only have active contracts
-	rc, err := r.RenterInactiveContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tg.Hosts()) != len(rc.ActiveContracts) {
-		t.Fatalf("Expected the same number for active contracts as hosts: %v active and %v expected", len(rc.ActiveContracts), len(tg.Hosts()))
-	}
-	if len(rc.InactiveContracts) != 0 {
-		t.Fatal("Expected zero inactive contracts, got", len(rc.InactiveContracts))
-	}
-	rcExpired, err := r.RenterExpiredContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rcExpired.ExpiredContracts) != 0 {
-		t.Fatal("Expected zero expired contracts, got", len(rcExpired.ExpiredContracts))
-	}
-
-	// Record original Contracts and create Maps for comparison
-	originalContracts := rc.ActiveContracts
-	originalContractIDMap := make(map[types.FileContractID]struct{})
-	for _, c := range originalContracts {
-		originalContractIDMap[c.ID] = struct{}{}
-	}
-
-	// Renew contracts
-	// Mine blocks to force contract renewal
-	if err = renewContractsByRenewWindow(r, tg); err != nil {
-		t.Fatal(err)
-	}
-	numRenewals := 1
-	// Waiting for nodes to sync
-	if err = tg.Sync(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Confirm contracts were renewed as expected, there should be no expired
-	// contracts since we are still within the endheight of the original
-	// contracts, there should be the same number of active and inactive
-	// contracts, and the inactive contracts should be the same contracts as the
-	// original active contracts.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		// Check active and expired contracts
-		rc, err = r.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rc.ActiveContracts) != len(rc.InactiveContracts) {
-			return fmt.Errorf("Expected the same number of active and inactive contracts; got %v active and %v inactive", len(rc.ActiveContracts), len(rc.InactiveContracts))
-		}
-		if len(originalContracts) != len(rc.InactiveContracts) {
-			return fmt.Errorf("Didn't get expected number of inactive contracts, expected %v got %v", len(originalContracts), len(rc.InactiveContracts))
-		}
-		for _, c := range rc.InactiveContracts {
-			if _, ok := originalContractIDMap[c.ID]; !ok {
-				return errors.New("ID from rc not found in originalContracts")
-			}
-		}
-
-		// Check expired contracts
-		rcExpired, err = r.RenterExpiredContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rcExpired.ExpiredContracts) != 0 {
-			return fmt.Errorf("Expected zero expired contracts, got %v", len(rcExpired.ExpiredContracts))
-		}
-
-		return nil
-	})
-	if err != nil {
-		t.Error(err)
-	}
-
-	// Record inactive contracts
-	rc, err = r.RenterInactiveContractsGet()
-	inactiveContracts := rc.InactiveContracts
-	if err != nil {
-		t.Fatal(err)
-	}
-	inactiveContractIDMap := make(map[types.FileContractID]struct{})
-	for _, c := range inactiveContracts {
-		inactiveContractIDMap[c.ID] = struct{}{}
-	}
-
-	// Mine to force inactive contracts to be expired contracts
-	m := tg.Miners()[0]
-	cg, err := r.ConsensusGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < int(inactiveContracts[0].EndHeight-cg.Height+types.MaturityDelay); i++ {
-		if err = m.MineBlock(); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Waiting for nodes to sync
-	if err = tg.Sync(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Confirm contracts, the expired contracts should now be the same contracts
-	// as the previous inactive contracts.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err = r.RenterExpiredContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return errors.New("Waiting for active contracts to form")
-		}
-		if len(rc.ExpiredContracts) != len(inactiveContracts) {
-			return fmt.Errorf("Expected the same number of expired and inactive contracts; got %v expired and %v inactive", len(rc.ExpiredContracts), len(inactiveContracts))
-		}
-		for _, c := range inactiveContracts {
-			if _, ok := inactiveContractIDMap[c.ID]; !ok {
-				return errors.New("ID from rc not found in inactiveContracts")
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Record current active and expired contracts
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err = r.RenterContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("waiting for active contracts to form")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rc, err = r.RenterExpiredContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	activeContracts := rc.ActiveContracts
-	expiredContracts := rc.ExpiredContracts
-	if err != nil {
-		t.Fatal(err)
-	}
-	expiredContractIDMap := make(map[types.FileContractID]struct{})
-	for _, c := range expiredContracts {
-		expiredContractIDMap[c.ID] = struct{}{}
-	}
-
-	// Renew contracts by spending
-	startingUploadSpend, err := renewContractsBySpending(r, tg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	numRenewals++
-	// Waiting for nodes to sync
-	if err = tg.Sync(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Confirm contracts were renewed as expected.  Active contracts prior to
-	// renewal should now be in the inactive contracts
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err = r.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return errors.New("Waiting for active contracts to form")
-		}
-		rcExpired, err = r.RenterExpiredContractsGet()
-		if err != nil {
-			return err
-		}
-
-		// Confirm active and inactive contracts
-		inactiveContractIDMap := make(map[types.FileContractID]struct{})
-		for _, c := range rc.InactiveContracts {
-			inactiveContractIDMap[c.ID] = struct{}{}
-		}
-		for _, c := range activeContracts {
-			if _, ok := inactiveContractIDMap[c.ID]; !ok && c.UploadSpending.Cmp(startingUploadSpend) <= 0 {
-				return errors.New("ID from activeContacts not found in rc")
-			}
-		}
-
-		// Confirm expired contracts
-		if len(expiredContracts) != len(rcExpired.ExpiredContracts) {
-			return fmt.Errorf("Didn't get expected number of expired contracts, expected %v got %v", len(expiredContracts), len(rcExpired.ExpiredContracts))
-		}
-		for _, c := range rcExpired.ExpiredContracts {
-			if _, ok := expiredContractIDMap[c.ID]; !ok {
-				return errors.New("ID from rcExpired not found in expiredContracts")
-			}
-		}
-
 		return nil
 	})
 	if err != nil {
@@ -1945,100 +1908,6 @@ func TestRenterPersistData(t *testing.T) {
 	}
 }
 
-// TestRenterResetAllowance tests that resetting the allowance after the
-// allowance was cancelled will trigger the correct contract formation.
-func TestRenterResetAllowance(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a group for testing.
-	groupParams := siatest.GroupParams{
-		Hosts:   2,
-		Renters: 1,
-		Miners:  1,
-	}
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-	renter := tg.Renters()[0]
-
-	// Cancel the allowance
-	if err := renter.RenterCancelAllowance(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Give it some time to mark the contracts as !goodForUpload and
-	// !goodForRenew.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now have 2 inactive contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.InactiveContracts) != groupParams.Hosts {
-			return fmt.Errorf("expected %v inactive contracts, got %v", groupParams.Hosts, len(rc.InactiveContracts))
-		}
-		for _, c := range rc.InactiveContracts {
-			if c.GoodForUpload {
-				return errors.New("contract shouldn't be goodForUpload")
-			}
-			if c.GoodForRenew {
-				return errors.New("contract shouldn't be goodForRenew")
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Set the allowance again.
-	if err := renter.RenterPostAllowance(siatest.DefaultAllowance); err != nil {
-		t.Fatal(err)
-	}
-
-	// Mine a block to start the threadedContractMaintenance.
-	if err := tg.Miners()[0].MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Give it some time to mark the contracts as goodForUpload and
-	// goodForRenew again.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now have 2 active contracts.
-		if len(rc.ActiveContracts) != groupParams.Hosts {
-			return fmt.Errorf("expected %v active contracts, got %v", groupParams.Hosts, len(rc.ActiveContracts))
-		}
-		for _, c := range rc.ActiveContracts {
-			if !c.GoodForUpload {
-				return errors.New("contract should be goodForUpload")
-			}
-			if !c.GoodForRenew {
-				return errors.New("contract should be goodForRenew")
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 // TestRenterSpendingReporting checks the accuracy for the reported
 // spending
 func TestRenterSpendingReporting(t *testing.T) {
@@ -2098,7 +1967,9 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 	numRenewals := 0
 
-	// Confirm Contracts were created as expected
+	// Confirm Contracts were created as expected, check that the funds
+	// allocated when setting the allowance are reflected correctly in the
+	// wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		rc, err := r.RenterInactiveContractsGet()
 		if err != nil {
@@ -2111,15 +1982,6 @@ func TestRenterSpendingReporting(t *testing.T) {
 		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 			return err
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check that the funds allocated when setting the allowance
-	// are reflected correctly in the wallet balance
-	err = build.Retry(200, 100*time.Millisecond, func() error {
 		err = checkBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
@@ -2332,16 +2194,6 @@ func TestRenterSpendingReporting(t *testing.T) {
 		t.Fatal(err)
 	}
 	numRenewals++
-
-	// Mine Block to confirm contracts and spending on blockchain
-	if err = m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Waiting for nodes to sync
-	if err = tg.Sync(); err != nil {
-		t.Fatal(err)
-	}
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
@@ -2805,7 +2657,7 @@ func renewContractsByRenewWindow(renter *siatest.TestNode, tg *siatest.TestGroup
 func renewContractsBySpending(renter *siatest.TestNode, tg *siatest.TestGroup) (startingUploadSpend types.Currency, err error) {
 	// Renew contracts by running out of funds
 	// Set upload price to max price
-	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte) // 30k SC / TB / Month
+	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte)
 	maxUploadPrice := maxStoragePrice.Mul64(30 * 4320)
 	hosts := tg.Hosts()
 	for _, h := range hosts {
@@ -2866,6 +2718,9 @@ LOOP:
 	}
 	if err = m.MineBlock(); err != nil {
 		return startingUploadSpend, err
+	}
+	if err := tg.Sync(); err != nil {
+		return types.ZeroCurrency, err
 	}
 	return startingUploadSpend, nil
 }
