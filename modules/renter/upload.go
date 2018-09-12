@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -31,9 +32,9 @@ var (
 )
 
 // newFile is a helper to more easily create a new Siafile.
-func newFile(siaFilePath string, name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, pieceSize, fileSize uint64, mode os.FileMode, source string) (*siafile.SiaFile, error) {
+func newFile(siaFilePath string, name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, sk crypto.CipherKey, fileSize uint64, mode os.FileMode, source string) (*siafile.SiaFile, error) {
 	numChunks := 1
-	chunkSize := pieceSize * uint64(rsc.MinPieces())
+	chunkSize := (modules.SectorSize - sk.Type().Overhead()) * uint64(rsc.MinPieces())
 	if fileSize > 0 {
 		numChunks = int(fileSize / chunkSize)
 		if fileSize%chunkSize != 0 {
@@ -44,7 +45,7 @@ func newFile(siaFilePath string, name string, wal *writeaheadlog.WAL, rsc module
 	for i := 0; i < numChunks; i++ {
 		ecs[i] = rsc
 	}
-	return siafile.New(siaFilePath, name, source, wal, ecs, pieceSize, fileSize, mode)
+	return siafile.New(siaFilePath, name, source, wal, ecs, sk, fileSize, mode)
 }
 
 // validateSource verifies that a sourcePath meets the
@@ -107,8 +108,10 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
+	cipherType := crypto.TypeDefaultRenter
+
 	// Create the Siafile.
-	f, err := newFile(siaFilePath, up.SiaPath, r.wal, up.ErasureCode, pieceSize, uint64(fileInfo.Size()), fileInfo.Mode(), up.Source)
+	f, err := newFile(siaFilePath, up.SiaPath, r.wal, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode(), up.Source)
 	if err != nil {
 		return err
 	}

@@ -132,7 +132,7 @@ type serverTester struct {
 	renter    modules.Renter
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey crypto.TwofishKey
+	walletKey crypto.CipherKey
 
 	server *Server
 
@@ -141,7 +141,7 @@ type serverTester struct {
 
 // assembleServerTester creates a bunch of modules and assembles them into a
 // server tester, without creating any directories or mining any blocks.
-func assembleServerTester(key crypto.TwofishKey, testdir string) (*serverTester, error) {
+func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, error) {
 	// assembleServerTester should not get called during short tests, as it
 	// takes a long time to run.
 	if testing.Short() {
@@ -225,7 +225,7 @@ func assembleServerTester(key crypto.TwofishKey, testdir string) (*serverTester,
 // assembleAuthenticatedServerTester creates a bunch of modules and assembles
 // them into a server tester that requires authentication with the given
 // requiredPassword. No directories are created and no blocks are mined.
-func assembleAuthenticatedServerTester(requiredPassword string, key crypto.TwofishKey, testdir string) (*serverTester, error) {
+func assembleAuthenticatedServerTester(requiredPassword string, key crypto.CipherKey, testdir string) (*serverTester, error) {
 	// assembleAuthenticatedServerTester should not get called during short
 	// tests, as it takes a long time to run.
 	if testing.Short() {
@@ -366,7 +366,7 @@ func blankServerTester(name string) (*serverTester, error) {
 
 	// Create the server tester with key.
 	testdir := build.TempDir("api", name)
-	key := crypto.GenerateTwofishKey()
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	st, err := assembleServerTester(key, testdir)
 	if err != nil {
 		return nil, err
@@ -386,7 +386,7 @@ func createServerTester(name string) (*serverTester, error) {
 	// Create the testing directory.
 	testdir := build.TempDir("api", name)
 
-	key := crypto.GenerateTwofishKey()
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	st, err := assembleServerTester(key, testdir)
 	if err != nil {
 		return nil, err
@@ -416,7 +416,7 @@ func createAuthenticatedServerTester(name string, password string) (*serverTeste
 	// Create the testing directory.
 	testdir := build.TempDir("authenticated-api", name)
 
-	key := crypto.GenerateTwofishKey()
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	st, err := assembleAuthenticatedServerTester(password, key, testdir)
 	if err != nil {
 		return nil, err

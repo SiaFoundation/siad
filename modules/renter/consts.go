@@ -4,8 +4,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 var (
@@ -47,9 +45,6 @@ var (
 		}
 		panic("undefined defaultParityPieces")
 	}()
-
-	// Erasure-coded piece size
-	pieceSize = modules.SectorSize - crypto.TwofishOverhead
 )
 
 const (

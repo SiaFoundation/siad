@@ -81,16 +81,17 @@ type (
 )
 
 // New create a new SiaFile.
-func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode []modules.ErasureCoder, pieceSize, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
+func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode []modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	file := &SiaFile{
 		staticMetadata: Metadata{
-			ChunkOffset:     defaultReservedMDPages * pageSize,
-			StaticFileSize:  int64(fileSize),
-			LocalPath:       source,
-			StaticMasterKey: crypto.GenerateTwofishKey(),
-			Mode:            fileMode,
-			StaticPieceSize: pieceSize,
-			SiaPath:         siaPath,
+			ChunkOffset:         defaultReservedMDPages * pageSize,
+			StaticFileSize:      int64(fileSize),
+			LocalPath:           source,
+			StaticMasterKey:     masterKey.Key(),
+			StaticMasterKeyType: masterKey.Type(),
+			Mode:                fileMode,
+			StaticPieceSize:     modules.SectorSize - masterKey.Type().Overhead(),
+			SiaPath:             siaPath,
 		},
 		siaFilePath: siaFilePath,
 		staticUID:   hex.EncodeToString(fastrand.Bytes(20)),

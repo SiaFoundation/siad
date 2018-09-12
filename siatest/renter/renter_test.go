@@ -534,12 +534,12 @@ func testStreamingCache(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Set fileSize and redundancy for upload
+	ct := crypto.TypeDefaultRenter
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Set the bandwidth limit to 1 chunk per second.
-	pieceSize := modules.SectorSize - crypto.TwofishOverhead
-	chunkSize := int64(pieceSize * dataPieces)
+	chunkSize := int64(siatest.ChunkSize(dataPieces, ct))
 	if err := r.RenterPostRateLimit(chunkSize, chunkSize); err != nil {
 		t.Fatal(err)
 	}
@@ -802,15 +802,14 @@ func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 
 	// Set the bandwidth limit to 1 chunk per second.
 	renter := nodes[0]
+	ct := crypto.TypeDefaultRenter
 	dataPieces := uint64(len(tg.Hosts())) - 1
 	parityPieces := uint64(1)
-	chunkSize := siatest.ChunkSize(uint64(dataPieces))
+	chunkSize := siatest.ChunkSize(dataPieces, ct)
 	_, remoteFile, err := renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Set the bandwidth limit to 1 chunk per second.
 	if err := renter.RenterPostRateLimit(int64(chunkSize), int64(chunkSize)); err != nil {
 		t.Fatal(err)
 	}
@@ -860,10 +859,11 @@ func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.De
 	}
 
 	// Set the bandwidth limit to 1 chunk per second.
+	ct := crypto.TypeDefaultRenter
 	renter := nodes[0]
 	dataPieces := uint64(len(tg.Hosts())) - 1
 	parityPieces := uint64(1)
-	chunkSize := siatest.ChunkSize(uint64(dataPieces))
+	chunkSize := siatest.ChunkSize(dataPieces, ct)
 	if err := renter.RenterPostRateLimit(int64(chunkSize), int64(chunkSize)); err != nil {
 		t.Fatal(err)
 	}
@@ -2824,10 +2824,10 @@ func renewContractsBySpending(renter *siatest.TestNode, tg *siatest.TestGroup) (
 		return types.ZeroCurrency, err
 	}
 
-	// Set upload parameters
+	// Set upload parameters.
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
-	chunkSize := siatest.ChunkSize(1)
+	chunkSize := siatest.ChunkSize(dataPieces, crypto.TypeDefaultRenter)
 
 	// Upload once to show upload spending
 	_, _, err = renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces)

@@ -31,7 +31,7 @@ func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.Transa
 	if err != nil {
 		return nil, err
 	}
-	key := crypto.GenerateTwofishKey()
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	encrypted, err := w.Encrypted()
 	if err != nil {
 		return nil, err
@@ -133,7 +133,7 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	key := crypto.GenerateTwofishKey()
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	encrypted, err := w.Encrypted()
 	if err != nil {
 		return nil, nil, nil, err

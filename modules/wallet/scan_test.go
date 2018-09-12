@@ -7,7 +7,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestScanLargeIndex tests the limits of the seedScanner.scan function.
@@ -22,8 +21,7 @@ func TestScanLargeIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer wt.closeWt()
-	var masterKey crypto.TwofishKey
-	fastrand.Read(masterKey[:])
+	masterKey := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err = wt.wallet.Encrypt(masterKey)
 	if err != nil {
 		t.Fatal(err)
