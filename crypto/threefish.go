@@ -52,7 +52,7 @@ func newThreefishKey(entropy []byte) (key threefishKey, err error) {
 // expected to be incremented by 1 for every 64 bytes of data.
 func (key threefishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 	// Check if input has correct length.
-	if len(ct) != threefish.BlockSize {
+	if len(ct)%threefish.BlockSize != 0 {
 		return nil, fmt.Errorf("supplied ciphertext is not a multiple of %v", len(ct))
 	}
 
@@ -66,7 +66,7 @@ func (key threefishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 	// Decrypt the ciphertext one block at a time while incrementing the tweak.
 	buf := bytes.NewBuffer(ct)
 	dst := plaintext
-	for block := buf.Next(threefish.BlockSize); block != nil; block = buf.Next(threefish.BlockSize) {
+	for block := buf.Next(threefish.BlockSize); len(block) > 0; block = buf.Next(threefish.BlockSize) {
 		// Decrypt the block.
 		cipher.Decrypt(dst, block)
 
@@ -89,7 +89,7 @@ func (key threefishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 // This means that ct can't be reused after calling DecryptBytesInPlace.
 func (key threefishKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
 	// Check if input has correct length.
-	if len(ct) != threefish.BlockSize {
+	if len(ct)%threefish.BlockSize != 0 {
 		return nil, fmt.Errorf("supplied ciphertext is not a multiple of %v", len(ct))
 	}
 
@@ -102,7 +102,7 @@ func (key threefishKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
 	// Decrypt the ciphertext one block at a time while incrementing the tweak.
 	buf := bytes.NewBuffer(ct)
 	dst := ct
-	for block := buf.Next(threefish.BlockSize); block != nil; block = buf.Next(threefish.BlockSize) {
+	for block := buf.Next(threefish.BlockSize); len(block) > 0; block = buf.Next(threefish.BlockSize) {
 		// Decrypt the block.
 		cipher.Decrypt(dst, block)
 
@@ -148,7 +148,7 @@ func (key threefishKey) EncryptBytes(piece []byte) Ciphertext {
 	// Encrypt the piece one block at a time while incrementing the tweak.
 	buf := bytes.NewBuffer(piece)
 	dst := ciphertext
-	for block := buf.Next(threefish.BlockSize); block != nil; block = buf.Next(threefish.BlockSize) {
+	for block := buf.Next(threefish.BlockSize); len(block) > 0; block = buf.Next(threefish.BlockSize) {
 		// Encrypt the block.
 		cipher.Encrypt(dst, block)
 
