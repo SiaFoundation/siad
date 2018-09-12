@@ -9,7 +9,7 @@ import (
 var (
 	// TypeDefaultRenter is the default CipherType that is used for
 	// encrypting pieces of uploaded data.
-	TypeDefaultRenter = TypeTwofish
+	TypeDefaultRenter = TypeThreefish
 	// TypeDefaultWallet is the default CipherType that is used for
 	// wallet operations like encrypting the wallet files.
 	TypeDefaultWallet = TypeTwofish
@@ -56,6 +56,10 @@ type (
 		// plaintext. It will reuse the memory of the ciphertext which means
 		// that it's not save to use it after calling DecryptBytesInPlace.
 		DecryptBytesInPlace(Ciphertext) ([]byte, error)
+
+		// Derive derives a child cipherkey given a provided chunk index and
+		// piece index.
+		Derive(chunkIndex, pieceIndex uint64) CipherKey
 	}
 )
 
@@ -91,7 +95,7 @@ func NewSiaKey(ct CipherType, entropy []byte) (CipherKey, error) {
 	case TypeTwofish:
 		return newTwofishKey(entropy)
 	case TypeThreefish:
-		panic("not implemented yet")
+		return newThreefishKey(entropy)
 	default:
 		return nil, ErrInvalidCipherType
 	}
@@ -106,7 +110,7 @@ func GenerateSiaKey(ct CipherType) CipherKey {
 	case TypeTwofish:
 		return generateTwofishKey()
 	case TypeThreefish:
-		panic("not implemented yet")
+		return generateThreefishKey()
 	default:
 		panic(ErrInvalidCipherType)
 	}

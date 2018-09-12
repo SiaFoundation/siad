@@ -63,12 +63,6 @@ type pieceData struct {
 	MerkleRoot crypto.Hash // the Merkle root of the piece
 }
 
-// deriveKey derives the key used to encrypt and decrypt a specific file piece.
-func deriveKey(masterKey crypto.CipherKey, chunkIndex, pieceIndex uint64) (crypto.CipherKey, error) {
-	entropy := crypto.HashAll(masterKey.Key(), chunkIndex, pieceIndex)
-	return crypto.NewSiaKey(masterKey.Type(), entropy[:])
-}
-
 // DeleteFile removes a file entry from the renter and deletes its data from
 // the hosts it is stored on.
 //

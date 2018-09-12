@@ -12,21 +12,27 @@ func (plainTextCipherKey) Type() CipherType {
 }
 
 // Cipherkey returns the plaintext key which is an empty slice.
-func (p plainTextCipherKey) Key() []byte {
+func (plainTextCipherKey) Key() []byte {
 	return []byte{}
 }
 
-// EncryptBytes is a no-op for the plainTextCipherKey.
-func (p plainTextCipherKey) EncryptBytes(piece []byte) Ciphertext {
-	return Ciphertext(piece)
-}
-
 // DecryptBytes is a no-op for the plainTextCipherKey.
-func (p plainTextCipherKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
+func (plainTextCipherKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 	return ct[:], nil
 }
 
 // DecryptBytesInPlace is a no-op for the plainTextCipherKey.
-func (p plainTextCipherKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
+func (plainTextCipherKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
 	return ct[:], nil
+}
+
+// Derive for a plainTextCipherKey simply returns itself since there is no key
+// to derive from.
+func (p plainTextCipherKey) Derive(_, _ uint64) CipherKey {
+	return p
+}
+
+// EncryptBytes is a no-op for the plainTextCipherKey.
+func (plainTextCipherKey) EncryptBytes(piece []byte) Ciphertext {
+	return Ciphertext(piece)
 }

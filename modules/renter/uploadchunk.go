@@ -252,13 +252,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			chunk.physicalChunkData[i] = nil
 		} else {
 			// Encrypt the piece.
-			key, err := deriveKey(chunk.renterFile.MasterKey(), chunk.index, uint64(i))
-			if err != nil {
-				// NOTE this should never fail since we are deriving from a
-				// valid key.
-				r.log.Critical(err)
-				return
-			}
+			key := chunk.renterFile.MasterKey().Derive(chunk.index, uint64(i))
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
 		}
 	}

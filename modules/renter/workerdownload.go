@@ -51,12 +51,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	// a large overdrive. It shouldn't be a bottleneck though since bandwidth
 	// is usually a lot more scarce than CPU processing power.
 	pieceIndex := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].index
-	key, err := deriveKey(udc.masterKey, udc.staticChunkIndex, pieceIndex)
-	if err != nil {
-		w.renter.log.Println("worker failed to derive key:", err)
-		udc.managedUnregisterWorker(w)
-		return
-	}
+	key := udc.masterKey.Derive(udc.staticChunkIndex, pieceIndex)
 	decryptedPiece, err := key.DecryptBytesInPlace(pieceData)
 	if err != nil {
 		w.renter.log.Debugln("worker failed to decrypt piece:", err)
