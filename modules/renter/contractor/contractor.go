@@ -1,10 +1,5 @@
 package contractor
 
-// With the contractor's new concurrency model. The contractor should never call
-// out to another package while under a lock (except for the proto package).
-// This is because the renter calls contractor methods while holding the renter
-// lock. So, no contractor thread should attempt to grab a renter lock.
-
 import (
 	"errors"
 	"fmt"
