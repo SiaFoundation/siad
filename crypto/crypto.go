@@ -72,7 +72,7 @@ func (ct CipherType) String() string {
 	case TypeTwofish:
 		return "twofish-gcm"
 	case TypeThreefish:
-		return "threefish"
+		return "threefish512"
 	default:
 		panic(ErrInvalidCipherType)
 	}
@@ -85,7 +85,7 @@ func (ct *CipherType) FromString(s string) error {
 		*ct = TypePlain
 	case "twofish-gcm":
 		*ct = TypeTwofish
-	case "threefish":
+	case "threefish512":
 		*ct = TypeThreefish
 	default:
 		return ErrInvalidCipherType
