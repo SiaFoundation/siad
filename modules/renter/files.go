@@ -124,7 +124,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 	fileList := []modules.FileInfo{}
 	for _, f := range files {
 		fileList = append(fileList, modules.FileInfo{
-			CipherType:     f.MasterKey().Type(),
+			CipherType:     f.MasterKey().Type().String(),
 			SiaPath:        f.SiaPath(),
 			LocalPath:      f.LocalPath(),
 			Filesize:       f.Size(),
@@ -171,7 +171,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	// Build the FileInfo
 	renewing := true
 	fileInfo = modules.FileInfo{
-		CipherType:     file.MasterKey().Type(),
+		CipherType:     file.MasterKey().Type().String(),
 		SiaPath:        file.SiaPath(),
 		LocalPath:      file.LocalPath(),
 		Filesize:       file.Size(),
