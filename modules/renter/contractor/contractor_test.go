@@ -411,6 +411,103 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	}
 }
 
+// TestHostMaxDuration tests that a host will not be used if their max duration
+// is not sufficient when renewing contracts
+func TestHostMaxDuration(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create testing trio
+	h, c, m, err := newTestingTrio(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set host's MaxDuration to 5 to test if host will be skipped when contract
+	// is formed
+	settings := h.InternalSettings()
+	settings.MaxDuration = types.BlockHeight(5)
+	if err := h.SetInternalSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	// Let host settings permeate
+	time.Sleep(2 * time.Second)
+
+	// Create allowance
+	a := modules.Allowance{
+		Funds:       types.SiacoinPrecision.Mul64(100),
+		Hosts:       1,
+		Period:      30,
+		RenewWindow: 20,
+	}
+	err = c.SetAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for Contract creation, using for loop instead of retry because I
+	// want to continuously confirm no contract has been created
+	for i := 0; i < 50; i++ {
+		if len(c.Contracts()) == 1 {
+			t.Fatal("contract created")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Set host's MaxDuration to 50 to test if host will now form contract
+	settings = h.InternalSettings()
+	settings.MaxDuration = types.BlockHeight(50)
+	if err := h.SetInternalSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	// Let host settings permeate
+	time.Sleep(2 * time.Second)
+	_, err = m.AddBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for Contract creation
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		if len(c.Contracts()) != 1 {
+			return errors.New("no contract created")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Set host's MaxDuration to 5 to test if host will be skipped when contract
+	// is renewed
+	settings = h.InternalSettings()
+	settings.MaxDuration = types.BlockHeight(5)
+	if err := h.SetInternalSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	// Let host settings permeate
+	time.Sleep(2 * time.Second)
+
+	// Mine blocks to renew contract
+	for i := types.BlockHeight(0); i <= c.allowance.Period-c.allowance.RenewWindow; i++ {
+		_, err = m.AddBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Confirm Contract is not renewed, using for loop instead of retry because
+	// I want to continuously confirm no contract has been renewed
+	for i := 0; i < 50; i++ {
+		if len(c.OldContracts()) == 1 {
+			t.Fatal("contract created")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // TestLinkedContracts tests that the contractors maps are updated correctly
 // when renewing contracts
 func TestLinkedContracts(t *testing.T) {
