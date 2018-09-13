@@ -23,7 +23,6 @@ type unfinishedUploadChunk struct {
 	// Information about the file. localPath may be the empty string if the file
 	// is known not to exist locally.
 	id         uploadChunkID
-	localPath  string
 	renterFile *siafile.SiaFile
 
 	// Information about the chunk, namely where it exists within the file.
@@ -284,9 +283,9 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	download := chunk.piecesCompleted+minMissingPiecesToDownload < chunk.piecesNeeded
 
 	// Download the chunk if it's not on disk.
-	if chunk.localPath == "" && download {
+	if chunk.renterFile.LocalPath() == "" && download {
 		return r.managedDownloadLogicalChunkData(chunk)
-	} else if chunk.localPath == "" {
+	} else if chunk.renterFile.LocalPath() == "" {
 		return errors.New("file not available locally")
 	}
 
@@ -297,7 +296,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// loading fails. Should do this after we swap the file format, the tracking
 	// data for the file should reside in the file metadata and not in a
 	// separate struct.
-	osFile, err := os.Open(chunk.localPath)
+	osFile, err := os.Open(chunk.renterFile.LocalPath())
 	if err != nil && download {
 		return r.managedDownloadLogicalChunkData(chunk)
 	} else if err != nil {

@@ -103,12 +103,6 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 // the HostPubKey instead of the FileContractID, and can be simplified even
 // further once the layout is per-chunk instead of per-filecontract.
 func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]struct{}) []*unfinishedUploadChunk {
-	// If the file is not being tracked, don't repair it.
-	trackedFile, exists := r.persist.Tracking[f.SiaPath()]
-	if !exists {
-		return nil
-	}
-
 	// If we don't have enough workers for the file, don't repair it right now.
 	minWorkers := 0
 	for i := uint64(0); i < f.NumChunks(); i++ {
@@ -131,7 +125,6 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 	for i := uint64(0); i < chunkCount; i++ {
 		newUnfinishedChunks[i] = &unfinishedUploadChunk{
 			renterFile: f,
-			localPath:  trackedFile.RepairPath,
 
 			id: uploadChunkID{
 				fileUID: f.UID(),
@@ -277,16 +270,10 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 		}
 	}
 	for _, file := range files {
-		// check for local file
-		id := r.mu.RLock()
-		tf, exists := r.persist.Tracking[file.SiaPath()]
-		r.mu.RUnlock(id)
-		if exists {
-			// Check if local file is missing and redundancy is less than 1
-			// log warning to renter log
-			if _, err := os.Stat(tf.RepairPath); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
-				r.log.Println("File not found on disk and possibly unrecoverable:", tf.RepairPath)
-			}
+		// Check if local file is missing and redundancy is less than 1
+		// log warning to renter log
+		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
+			r.log.Println("File not found on disk and possibly unrecoverable:", file.LocalPath())
 		}
 	}
 }

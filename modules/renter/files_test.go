@@ -310,9 +310,6 @@ func TestRenterFileListLocalPath(t *testing.T) {
 	f := newTestingFile()
 	f.SetLocalPath("TestPath")
 	rt.renter.files[f.SiaPath()] = f
-	rt.renter.persist.Tracking[f.SiaPath()] = trackedFile{
-		RepairPath: f.LocalPath(),
-	}
 	rt.renter.mu.Unlock(id)
 	files := rt.renter.FileList()
 	if len(files) != 1 {
@@ -477,17 +474,8 @@ func TestRenterRenameFile(t *testing.T) {
 		t.Error("Expecting ErrPathOverload, got", err)
 	}
 
-	// Renaming should also update the tracking set
-	rt.renter.persist.Tracking["1"] = trackedFile{
-		RepairPath: f2.LocalPath(),
-	}
 	err = rt.renter.RenameFile("1", "1b")
 	if err != nil {
 		t.Fatal(err)
-	}
-	_, oldexists := rt.renter.persist.Tracking["1"]
-	_, newexists := rt.renter.persist.Tracking["1b"]
-	if oldexists || !newexists {
-		t.Error("renaming should have updated the entry in the tracking set")
 	}
 }
