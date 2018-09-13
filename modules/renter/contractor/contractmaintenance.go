@@ -420,7 +420,10 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 		return modules.RenterContract{}, errors.New("no record of that host")
 	} else if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return modules.RenterContract{}, errTooExpensive
+	} else if host.MaxDuration < newEndHeight-c.blockHeight {
+		return modules.RenterContract{}, errors.New("insufficient MaxDuration of host")
 	}
+
 	// cap host.MaxCollateral
 	if host.MaxCollateral.Cmp(maxCollateral) > 0 {
 		host.MaxCollateral = maxCollateral
@@ -853,6 +856,12 @@ func (c *Contractor) threadedContractMaintenance() {
 		if fundsRemaining.Cmp(initialContractFunds) < 0 {
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
+		}
+
+		// Determine if host settings align with allowance period
+		if host.MaxDuration < endHeight-blockHeight {
+			c.log.Println("WARN: need to form new contracts, unable to form contract with host due to insufficient MaxDuration of host")
+			continue
 		}
 
 		// If we are using a custom resolver we need to replace the domain name
