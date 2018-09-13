@@ -281,6 +281,22 @@ func (w *Wallet) WatchAddresses(addrs []types.UnlockHash) error {
 		if err := w.dbTx.Bucket(bucketWallet).Put(keyWatchedAddrs, encoding.Marshal(addrs)); err != nil {
 			return err
 		}
+
+		// prepare to rescan
+		if err := w.dbTx.DeleteBucket(bucketProcessedTransactions); err != nil {
+			return err
+		}
+		if _, err := w.dbTx.CreateBucket(bucketProcessedTransactions); err != nil {
+			return err
+		}
+		w.unconfirmedProcessedTransactions = nil
+		if err := dbPutConsensusChangeID(w.dbTx, modules.ConsensusChangeBeginning); err != nil {
+			return err
+		}
+		if err := dbPutConsensusHeight(w.dbTx, 0); err != nil {
+			return err
+		}
+
 		return w.syncDB()
 	}()
 	if err != nil {
