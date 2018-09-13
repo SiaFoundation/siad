@@ -133,7 +133,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 			localPath = tf.RepairPath
 		}
 		fileList = append(fileList, modules.FileInfo{
-			CipherType:     f.MasterKey().Type(),
+			CipherType:     f.MasterKey().Type().String(),
 			SiaPath:        f.SiaPath(),
 			LocalPath:      localPath,
 			Filesize:       f.Size(),
@@ -185,7 +185,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		localPath = tf.RepairPath
 	}
 	fileInfo = modules.FileInfo{
-		CipherType:     file.MasterKey().Type(),
+		CipherType:     file.MasterKey().Type().String(),
 		SiaPath:        file.SiaPath(),
 		LocalPath:      localPath,
 		Filesize:       file.Size(),

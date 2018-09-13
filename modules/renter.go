@@ -104,7 +104,7 @@ type FileUploadParams struct {
 // FileInfo provides information about a file.
 type FileInfo struct {
 	Available      bool              `json:"available"`
-	CipherType     crypto.CipherType `json:"ciphertype"`
+	CipherType     string            `json:"ciphertype"`
 	Expiration     types.BlockHeight `json:"expiration"`
 	Filesize       uint64            `json:"filesize"`
 	LocalPath      string            `json:"localpath"`

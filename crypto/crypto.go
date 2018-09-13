@@ -63,6 +63,36 @@ type (
 	}
 )
 
+// String creates a string representation of a CipherType that can be converted
+// into a type with FromString.
+func (ct CipherType) String() string {
+	switch ct {
+	case TypePlain:
+		return "plaintext"
+	case TypeTwofish:
+		return "twofish-gcm"
+	case TypeThreefish:
+		return "threefish"
+	default:
+		panic(ErrInvalidCipherType)
+	}
+}
+
+// FromString reads a CipherType from a string.
+func (ct *CipherType) FromString(s string) error {
+	switch s {
+	case "plaintext":
+		*ct = TypePlain
+	case "twofish-gcm":
+		*ct = TypeTwofish
+	case "threefish":
+		*ct = TypeThreefish
+	default:
+		return ErrInvalidCipherType
+	}
+	return nil
+}
+
 // Overhead reports the overhead produced by a CipherType in bytes.
 func (ct CipherType) Overhead() uint64 {
 	switch ct {

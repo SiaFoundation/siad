@@ -1637,7 +1637,11 @@ func TestUploadedBytesReporting(t *testing.T) {
 	}
 
 	// Calculate the encrypted size of our fully redundant encoded file
-	fullyRedundantSize := func(ct crypto.CipherType) uint64 {
+	fullyRedundantSize := func(cipherType string) uint64 {
+		var ct crypto.CipherType
+		if err := ct.FromString(cipherType); err != nil {
+			t.Fatal(err)
+		}
 		pieceSize := modules.SectorSize - ct.Overhead()
 		chunkSize := pieceSize * uint64(dataPieces)
 		numChunks := uint64(filesize) / chunkSize
