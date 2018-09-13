@@ -416,11 +416,14 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 
 	// Fetch the host associated with this contract.
 	host, ok := c.hdb.Host(contract.HostPublicKey)
+	c.mu.Lock()
+	blockHeight := c.blockHeight
+	c.mu.Unlock()
 	if !ok {
 		return modules.RenterContract{}, errors.New("no record of that host")
 	} else if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return modules.RenterContract{}, errTooExpensive
-	} else if host.MaxDuration < newEndHeight-c.blockHeight {
+	} else if host.MaxDuration < newEndHeight-blockHeight {
 		return modules.RenterContract{}, errors.New("insufficient MaxDuration of host")
 	}
 
