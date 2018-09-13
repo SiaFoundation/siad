@@ -62,7 +62,6 @@ type (
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
 		StreamCacheSize  uint64
-		Tracking         map[string]trackedFile
 	}
 )
 
@@ -268,9 +267,7 @@ func (r *Renter) loadSiaFiles() error {
 
 // load fetches the saved renter data from disk.
 func (r *Renter) loadSettings() error {
-	r.persist = persistence{
-		Tracking: make(map[string]trackedFile),
-	}
+	r.persist = persistence{}
 	err := persist.LoadJSON(settingsMetadata, &r.persist, filepath.Join(r.persistDir, PersistFilename))
 	if os.IsNotExist(err) {
 		// No persistence yet, set the defaults and continue.
@@ -301,7 +298,7 @@ func (r *Renter) loadSettings() error {
 
 // loadSharedFiles reads .sia data from reader and registers the contained
 // files in the renter. It returns the nicknames of the loaded files.
-func (r *Renter) loadSharedFiles(reader io.Reader) ([]string, error) {
+func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string, error) {
 	// read header
 	var header [15]byte
 	var version string
@@ -351,7 +348,7 @@ func (r *Renter) loadSharedFiles(reader io.Reader) ([]string, error) {
 	// Add files to renter.
 	names := make([]string, numFiles)
 	for i, f := range files {
-		sf, err := r.fileToSiaFile(f, r.persist.Tracking[f.name].RepairPath)
+		sf, err := r.fileToSiaFile(f, repairPath)
 		if err != nil {
 			return nil, err
 		}
@@ -416,7 +413,7 @@ func (r *Renter) LoadSharedFiles(filename string) ([]string, error) {
 		return nil, err
 	}
 	defer file.Close()
-	return r.loadSharedFiles(file)
+	return r.loadSharedFiles(file, filename)
 }
 
 // LoadSharedFilesASCII loads an ASCII-encoded .sia file into the renter. It
@@ -426,7 +423,7 @@ func (r *Renter) LoadSharedFilesASCII(asciiSia string) ([]string, error) {
 	defer r.mu.Unlock(lockID)
 
 	dec := base64.NewDecoder(base64.URLEncoding, bytes.NewBufferString(asciiSia))
-	return r.loadSharedFiles(dec)
+	return r.loadSharedFiles(dec, "")
 }
 
 // ShareFiles writes an .sia file to disk to be shared with others.
@@ -446,9 +443,7 @@ func convertPersistVersionFrom040To133(path string) error {
 		Header:  settingsMetadata.Header,
 		Version: persistVersion040,
 	}
-	p := persistence{
-		Tracking: make(map[string]trackedFile),
-	}
+	p := persistence{}
 
 	err := persist.LoadJSON(metadata, &p, path)
 	if err != nil {
