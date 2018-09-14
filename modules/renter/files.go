@@ -82,7 +82,6 @@ func (r *Renter) DeleteFile(nickname string) error {
 		return ErrUnknownPath
 	}
 	delete(r.files, nickname)
-	delete(r.persist.Tracking, nickname)
 
 	r.saveSync()
 	r.mu.Unlock(lockID)
@@ -130,18 +129,10 @@ func (r *Renter) FileList() []modules.FileInfo {
 	// Build the list of FileInfos.
 	fileList := []modules.FileInfo{}
 	for _, f := range files {
-		var localPath string
-		siaPath := f.SiaPath()
-		lockID := r.mu.RLock()
-		tf, exists := r.persist.Tracking[siaPath]
-		r.mu.RUnlock(lockID)
-		if exists {
-			localPath = tf.RepairPath
-		}
 		fileList = append(fileList, modules.FileInfo{
 			CipherType:     f.MasterKey().Type(),
 			SiaPath:        f.SiaPath(),
-			LocalPath:      localPath,
+			LocalPath:      f.LocalPath(),
 			Filesize:       f.Size(),
 			Renewing:       true,
 			Available:      f.Available(offline),
@@ -185,15 +176,10 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 
 	// Build the FileInfo
 	renewing := true
-	var localPath string
-	tf, exists := r.persist.Tracking[file.SiaPath()]
-	if exists {
-		localPath = tf.RepairPath
-	}
 	fileInfo = modules.FileInfo{
 		CipherType:     file.MasterKey().Type(),
 		SiaPath:        file.SiaPath(),
-		LocalPath:      localPath,
+		LocalPath:      file.LocalPath(),
 		Filesize:       file.Size(),
 		Renewing:       renewing,
 		Available:      file.Available(offline),
@@ -237,18 +223,8 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 	// Update the entries in the renter.
 	delete(r.files, currentName)
 	r.files[newName] = file
-	if t, ok := r.persist.Tracking[currentName]; ok {
-		delete(r.persist.Tracking, currentName)
-		r.persist.Tracking[newName] = t
-	}
-	err = r.saveSync()
-	if err != nil {
-		return err
-	}
 
-	// Delete the old .sia file.
-	oldPath := filepath.Join(r.persistDir, currentName+ShareExtension)
-	return os.RemoveAll(oldPath)
+	return nil
 }
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
