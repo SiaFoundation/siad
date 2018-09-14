@@ -89,7 +89,7 @@ func TestNewFile(t *testing.T) {
 	sf := newTestFile()
 
 	// Marshal the metadata.
-	md, err := marshalMetadata(sf.staticMetadata)
+	md, err := marshalMetadata(sf.metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Size() != sf.staticMetadata.ChunkOffset+int64(len(chunks)) {
+	if fi.Size() != sf.MDChunkOffset+int64(len(chunks)) {
 		t.Fatal("file doesn't have right size")
 	}
 	// Compare the metadata to the on-disk metadata.
@@ -128,7 +128,7 @@ func TestNewFile(t *testing.T) {
 	}
 	// Compare the pubKeyTable to the on-disk pubKeyTable.
 	readPKT := make([]byte, len(pkt))
-	_, err = f.ReadAt(readPKT, sf.staticMetadata.PubKeyTableOffset)
+	_, err = f.ReadAt(readPKT, sf.MDPubKeyTableOffset)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestNewFile(t *testing.T) {
 	}
 	// Compare the chunks to the on-disk chunks.
 	readChunks := make([]byte, len(chunks))
-	_, err = f.ReadAt(readChunks, sf.staticMetadata.ChunkOffset)
+	_, err = f.ReadAt(readChunks, sf.MDChunkOffset)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,31 +151,31 @@ func TestNewFile(t *testing.T) {
 	}
 	// Compare the timestamps first since they can't be compared with
 	// DeepEqual.
-	if sf.staticMetadata.AccessTime.Unix() != sf2.staticMetadata.AccessTime.Unix() {
+	if sf.MDAccessTime.Unix() != sf2.MDAccessTime.Unix() {
 		t.Fatal("AccessTime's don't match")
 	}
-	if sf.staticMetadata.ChangeTime.Unix() != sf2.staticMetadata.ChangeTime.Unix() {
+	if sf.MDChangeTime.Unix() != sf2.MDChangeTime.Unix() {
 		t.Fatal("ChangeTime's don't match")
 	}
-	if sf.staticMetadata.CreateTime.Unix() != sf2.staticMetadata.CreateTime.Unix() {
+	if sf.MDCreateTime.Unix() != sf2.MDCreateTime.Unix() {
 		t.Fatal("CreateTime's don't match")
 	}
-	if sf.staticMetadata.ModTime.Unix() != sf2.staticMetadata.ModTime.Unix() {
+	if sf.MDModTime.Unix() != sf2.MDModTime.Unix() {
 		t.Fatal("ModTime's don't match")
 	}
 	// Set the timestamps to zero for DeepEqual.
-	sf.staticMetadata.AccessTime = time.Time{}
-	sf.staticMetadata.ChangeTime = time.Time{}
-	sf.staticMetadata.CreateTime = time.Time{}
-	sf.staticMetadata.ModTime = time.Time{}
-	sf2.staticMetadata.AccessTime = time.Time{}
-	sf2.staticMetadata.ChangeTime = time.Time{}
-	sf2.staticMetadata.CreateTime = time.Time{}
-	sf2.staticMetadata.ModTime = time.Time{}
+	sf.MDAccessTime = time.Time{}
+	sf.MDChangeTime = time.Time{}
+	sf.MDCreateTime = time.Time{}
+	sf.MDModTime = time.Time{}
+	sf2.MDAccessTime = time.Time{}
+	sf2.MDChangeTime = time.Time{}
+	sf2.MDCreateTime = time.Time{}
+	sf2.MDModTime = time.Time{}
 	// Compare the rest of sf and sf2.
-	if !reflect.DeepEqual(sf.staticMetadata, sf2.staticMetadata) {
-		fmt.Println(sf.staticMetadata)
-		fmt.Println(sf2.staticMetadata)
+	if !reflect.DeepEqual(sf.metadata, sf2.metadata) {
+		fmt.Println(sf.metadata)
+		fmt.Println(sf2.metadata)
 		t.Error("sf metadata doesn't equal sf2 metadata")
 	}
 	if !reflect.DeepEqual(sf.pubKeyTable, sf2.pubKeyTable) {
@@ -272,7 +272,7 @@ func TestRename(t *testing.T) {
 	sf := newTestFile()
 
 	// Create new paths for the file.
-	newSiaPath := sf.staticMetadata.SiaPath + "1"
+	newSiaPath := sf.MDSiaPath + "1"
 	newSiaFilePath := sf.siaFilePath + "1"
 	oldSiaFilePath := sf.siaFilePath
 
@@ -296,7 +296,7 @@ func TestRename(t *testing.T) {
 	if sf.siaFilePath != newSiaFilePath {
 		t.Fatal("SiaFilePath wasn't updated correctly")
 	}
-	if sf.staticMetadata.SiaPath != newSiaPath {
+	if sf.MDSiaPath != newSiaPath {
 		t.Fatal("SiaPath wasn't updated correctly")
 	}
 }
@@ -392,7 +392,7 @@ func TestMarshalUnmarshalMetadata(t *testing.T) {
 	sf := newTestFile()
 
 	// Marshal metadata
-	raw, err := marshalMetadata(sf.staticMetadata)
+	raw, err := marshalMetadata(sf.metadata)
 	if err != nil {
 		t.Fatal("Failed to marshal metadata", err)
 	}
@@ -403,29 +403,29 @@ func TestMarshalUnmarshalMetadata(t *testing.T) {
 	}
 	// Compare the timestamps first since they can't be compared with
 	// DeepEqual.
-	if sf.staticMetadata.AccessTime.Unix() != md.AccessTime.Unix() {
+	if sf.MDAccessTime.Unix() != md.MDAccessTime.Unix() {
 		t.Fatal("AccessTime's don't match")
 	}
-	if sf.staticMetadata.ChangeTime.Unix() != md.ChangeTime.Unix() {
+	if sf.MDChangeTime.Unix() != md.MDChangeTime.Unix() {
 		t.Fatal("ChangeTime's don't match")
 	}
-	if sf.staticMetadata.CreateTime.Unix() != md.CreateTime.Unix() {
+	if sf.MDCreateTime.Unix() != md.MDCreateTime.Unix() {
 		t.Fatal("CreateTime's don't match")
 	}
-	if sf.staticMetadata.ModTime.Unix() != md.ModTime.Unix() {
+	if sf.MDModTime.Unix() != md.MDModTime.Unix() {
 		t.Fatal("ModTime's don't match")
 	}
 	// Set the timestamps to zero for DeepEqual.
-	sf.staticMetadata.AccessTime = time.Time{}
-	sf.staticMetadata.ChangeTime = time.Time{}
-	sf.staticMetadata.CreateTime = time.Time{}
-	sf.staticMetadata.ModTime = time.Time{}
-	md.AccessTime = time.Time{}
-	md.ChangeTime = time.Time{}
-	md.CreateTime = time.Time{}
-	md.ModTime = time.Time{}
+	sf.MDAccessTime = time.Time{}
+	sf.MDChangeTime = time.Time{}
+	sf.MDCreateTime = time.Time{}
+	sf.MDModTime = time.Time{}
+	md.MDAccessTime = time.Time{}
+	md.MDChangeTime = time.Time{}
+	md.MDCreateTime = time.Time{}
+	md.MDModTime = time.Time{}
 	// Compare result to original
-	if !reflect.DeepEqual(md, sf.staticMetadata) {
+	if !reflect.DeepEqual(md, sf.metadata) {
 		t.Fatal("Unmarshaled metadata not equal to marshaled metadata:", err)
 	}
 }
@@ -496,7 +496,7 @@ func TestSaveSmallHeader(t *testing.T) {
 	defer f.Close()
 
 	// Make sure the metadata was written to disk correctly.
-	rawMetadata, err := marshalMetadata(sf.staticMetadata)
+	rawMetadata, err := marshalMetadata(sf.metadata)
 	if err != nil {
 		t.Fatal("Failed to marshal metadata", err)
 	}
@@ -516,7 +516,7 @@ func TestSaveSmallHeader(t *testing.T) {
 		t.Fatal("Failed to marshal pubKeyTable", err)
 	}
 	readPubKeyTable := make([]byte, len(rawPubKeyTAble))
-	if _, err := f.ReadAt(readPubKeyTable, sf.staticMetadata.PubKeyTableOffset); err != nil {
+	if _, err := f.ReadAt(readPubKeyTable, sf.MDPubKeyTableOffset); err != nil {
 		t.Fatal("Failed to read pubKeyTable", err)
 	}
 	if !bytes.Equal(rawPubKeyTAble, readPubKeyTable) {
@@ -545,7 +545,7 @@ func TestSaveLargeHeader(t *testing.T) {
 
 	// Write some data right after the ChunkOffset as a checksum.
 	chunkData := fastrand.Bytes(100)
-	_, err = f.WriteAt(chunkData, sf.staticMetadata.ChunkOffset)
+	_, err = f.WriteAt(chunkData, sf.MDChunkOffset)
 	if err != nil {
 		t.Fatal("Failed to write random chunk data", err)
 	}
@@ -560,18 +560,18 @@ func TestSaveLargeHeader(t *testing.T) {
 	}
 
 	// Make sure the chunkOffset was updated correctly.
-	if sf.staticMetadata.ChunkOffset != 2*pageSize {
+	if sf.MDChunkOffset != 2*pageSize {
 		t.Fatal("ChunkOffset wasn't updated correctly")
 	}
 
 	// Make sure that the checksum was moved correctly.
 	readChunkData := make([]byte, len(chunkData))
-	if _, err := f.ReadAt(readChunkData, sf.staticMetadata.ChunkOffset); err != nil {
+	if _, err := f.ReadAt(readChunkData, sf.MDChunkOffset); err != nil {
 		t.Fatal("Checksum wasn't moved correctly")
 	}
 
 	// Make sure the metadata was written to disk correctly.
-	rawMetadata, err := marshalMetadata(sf.staticMetadata)
+	rawMetadata, err := marshalMetadata(sf.metadata)
 	if err != nil {
 		t.Fatal("Failed to marshal metadata", err)
 	}
@@ -591,7 +591,7 @@ func TestSaveLargeHeader(t *testing.T) {
 		t.Fatal("Failed to marshal pubKeyTable", err)
 	}
 	readPubKeyTable := make([]byte, len(rawPubKeyTAble))
-	if _, err := f.ReadAt(readPubKeyTable, sf.staticMetadata.PubKeyTableOffset); err != nil {
+	if _, err := f.ReadAt(readPubKeyTable, sf.MDPubKeyTableOffset); err != nil {
 		t.Fatal("Failed to read pubKeyTable", err)
 	}
 	if !bytes.Equal(rawPubKeyTAble, readPubKeyTable) {

@@ -41,19 +41,19 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 	}
 	currentTime := time.Now()
 	file := &SiaFile{
-		staticMetadata: metadata{
-			AccessTime:          currentTime,
-			ChunkOffset:         defaultReservedMDPages * pageSize,
-			ChangeTime:          currentTime,
-			CreateTime:          currentTime,
-			StaticFileSize:      int64(fd.FileSize),
-			LocalPath:           fd.RepairPath,
-			StaticMasterKey:     mk.Key(),
-			StaticMasterKeyType: mk.Type(),
-			Mode:                fd.Mode,
-			ModTime:             currentTime,
-			StaticPieceSize:     fd.PieceSize,
-			SiaPath:             fd.Name,
+		metadata: metadata{
+			MDAccessTime:          currentTime,
+			MDChunkOffset:         defaultReservedMDPages * pageSize,
+			MDChangeTime:          currentTime,
+			MDCreateTime:          currentTime,
+			MDStaticFileSize:      int64(fd.FileSize),
+			MDLocalPath:           fd.RepairPath,
+			MDStaticMasterKey:     mk.Key(),
+			MDStaticMasterKeyType: mk.Type(),
+			MDMode:                fd.Mode,
+			MDModTime:             currentTime,
+			MDStaticPieceSize:     fd.PieceSize,
+			MDSiaPath:             fd.Name,
 		},
 		deleted:   fd.Deleted,
 		staticUID: fd.UID,

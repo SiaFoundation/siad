@@ -80,16 +80,16 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	defer f.Close()
 	// Load the metadata.
 	decoder := json.NewDecoder(f)
-	if err := decoder.Decode(&sf.staticMetadata); err != nil {
+	if err := decoder.Decode(&sf.metadata); err != nil {
 		return nil, errors.AddContext(err, "failed to decode metadata")
 	}
 	// Load the pubKeyTable.
-	pubKeyTableLen := sf.staticMetadata.ChunkOffset - sf.staticMetadata.PubKeyTableOffset
+	pubKeyTableLen := sf.MDChunkOffset - sf.MDPubKeyTableOffset
 	if pubKeyTableLen < 0 {
 		return nil, fmt.Errorf("pubKeyTableLen is %v, can't load file", pubKeyTableLen)
 	}
 	rawPubKeyTable := make([]byte, pubKeyTableLen)
-	if _, err := f.ReadAt(rawPubKeyTable, sf.staticMetadata.PubKeyTableOffset); err != nil {
+	if _, err := f.ReadAt(rawPubKeyTable, sf.MDPubKeyTableOffset); err != nil {
 		return nil, errors.AddContext(err, "failed to read pubKeyTable from disk")
 	}
 	sf.pubKeyTable, err = unmarshalPubKeyTable(rawPubKeyTable)
@@ -97,7 +97,7 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 		return nil, errors.AddContext(err, "failed to unmarshal pubKeyTable")
 	}
 	// Load the chunks.
-	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
+	_, err = f.Seek(sf.MDChunkOffset, io.SeekStart)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to seek to chunkOffset")
 	}
@@ -230,7 +230,7 @@ func readInsertUpdate(update writeaheadlog.Update) (path string, index int64, da
 // applied and also updates the ChunkOffset of the metadata.
 func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 	// Sanity check the chunk offset.
-	if sf.staticMetadata.ChunkOffset%pageSize != 0 {
+	if sf.MDChunkOffset%pageSize != 0 {
 		build.Critical("the chunk offset is not page aligned")
 	}
 	// Open the file.
@@ -240,7 +240,7 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 	}
 	defer f.Close()
 	// Seek the chunk offset.
-	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
+	_, err = f.Seek(sf.MDChunkOffset, io.SeekStart)
 	if err != nil {
 		return writeaheadlog.Update{}, err
 	}
@@ -250,10 +250,10 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 		return writeaheadlog.Update{}, err
 	}
 	// Move the offset back by a pageSize.
-	sf.staticMetadata.ChunkOffset += pageSize
+	sf.MDChunkOffset += pageSize
 
 	// Create and return update.
-	return sf.createInsertUpdate(sf.staticMetadata.ChunkOffset, chunkData), nil
+	return sf.createInsertUpdate(sf.MDChunkOffset, chunkData), nil
 }
 
 // applyUpdates applies updates to the SiaFile. Only updates that belong to the
@@ -383,7 +383,7 @@ func (sf *SiaFile) saveChunks() (writeaheadlog.Update, error) {
 	if err != nil {
 		return writeaheadlog.Update{}, errors.AddContext(err, "failed to marshal chunks")
 	}
-	return sf.createInsertUpdate(sf.staticMetadata.ChunkOffset, chunks), nil
+	return sf.createInsertUpdate(sf.MDChunkOffset, chunks), nil
 }
 
 // saveHeader creates writeaheadlog updates to saves the metadata and
@@ -403,10 +403,10 @@ func (sf *SiaFile) saveHeader() ([]writeaheadlog.Update, error) {
 	// Update the pubKeyTableOffset. This is not necessarily the final offset
 	// but we need to marshal the metadata with this new offset to see if the
 	// metadata and the pubKeyTable overlap.
-	sf.staticMetadata.PubKeyTableOffset = sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
+	sf.MDPubKeyTableOffset = sf.MDChunkOffset - int64(len(pubKeyTable))
 
 	// Marshal the metadata.
-	metadata, err := marshalMetadata(sf.staticMetadata)
+	metadata, err := marshalMetadata(sf.metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -414,7 +414,7 @@ func (sf *SiaFile) saveHeader() ([]writeaheadlog.Update, error) {
 	// If the metadata and the pubKeyTable overlap, we need to allocate a new
 	// page for them. Afterwards we need to marshal the metadata again since
 	// ChunkOffset and PubKeyTableOffset change when allocating a new page.
-	for int64(len(metadata))+int64(len(pubKeyTable)) > sf.staticMetadata.ChunkOffset {
+	for int64(len(metadata))+int64(len(pubKeyTable)) > sf.MDChunkOffset {
 		// Create update to move chunkData back by a page.
 		chunkUpdate, err := sf.allocateHeaderPage()
 		if err != nil {
@@ -422,9 +422,9 @@ func (sf *SiaFile) saveHeader() ([]writeaheadlog.Update, error) {
 		}
 		updates = append(updates, chunkUpdate)
 		// Update the PubKeyTableOffset.
-		sf.staticMetadata.PubKeyTableOffset = sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
+		sf.MDPubKeyTableOffset = sf.MDChunkOffset - int64(len(pubKeyTable))
 		// Marshal the metadata again.
-		metadata, err = marshalMetadata(sf.staticMetadata)
+		metadata, err = marshalMetadata(sf.metadata)
 		if err != nil {
 			return nil, err
 		}
@@ -432,7 +432,7 @@ func (sf *SiaFile) saveHeader() ([]writeaheadlog.Update, error) {
 
 	// Create updates for the metadata and pubKeyTable.
 	updates = append(updates, sf.createInsertUpdate(0, metadata))
-	updates = append(updates, sf.createInsertUpdate(sf.staticMetadata.PubKeyTableOffset, pubKeyTable))
+	updates = append(updates, sf.createInsertUpdate(sf.MDPubKeyTableOffset, pubKeyTable))
 	return updates, nil
 }
 
@@ -451,11 +451,11 @@ func (sf *SiaFile) saveMetadata() ([]writeaheadlog.Update, error) {
 	// Sanity check the length of the pubKeyTable to find out if the length of
 	// the table changed. We should never just save the metadata if the table
 	// changed as well as it might lead to corruptions.
-	if sf.staticMetadata.PubKeyTableOffset+int64(len(pubKeyTable)) != sf.staticMetadata.ChunkOffset {
+	if sf.MDPubKeyTableOffset+int64(len(pubKeyTable)) != sf.MDChunkOffset {
 		panic("never call saveMetadata if the pubKeyTable changed, call saveHeader instead")
 	}
 	// Marshal the metadata.
-	metadata, err := marshalMetadata(sf.staticMetadata)
+	metadata, err := marshalMetadata(sf.metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -463,7 +463,7 @@ func (sf *SiaFile) saveMetadata() ([]writeaheadlog.Update, error) {
 	// and the pubKeyTable, we need to call saveHeader since the pubKeyTable
 	// needs to be moved as well and saveHeader is already handling that
 	// edgecase.
-	if int64(len(metadata)) > sf.staticMetadata.PubKeyTableOffset {
+	if int64(len(metadata)) > sf.MDPubKeyTableOffset {
 		return sf.saveHeader()
 	}
 	// Otherwise we can create and return the updates.

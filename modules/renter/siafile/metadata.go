@@ -14,35 +14,37 @@ import (
 )
 
 type (
-	// metadata is the metadata of a SiaFile and is JSON encoded.
+	// metadata is the metadata of a SiaFile and is JSON encoded. Its fields
+	// are prefixed with 'MD' to avoid name collisions with the getter methods
+	// of the SiaFile type.
 	metadata struct {
-		StaticVersion   [16]byte `json:"version"`   // version of the sia file format used
-		StaticFileSize  int64    `json:"filesize"`  // total size of the file
-		StaticPieceSize uint64   `json:"piecesize"` // size of a single piece of the file
-		LocalPath       string   `json:"localpath"` // file to the local copy of the file used for repairing
-		SiaPath         string   `json:"siapath"`   // the path of the file on the Sia network
+		MDStaticVersion   [16]byte `json:"version"`   // version of the sia file format used
+		MDStaticFileSize  int64    `json:"filesize"`  // total size of the file
+		MDStaticPieceSize uint64   `json:"piecesize"` // size of a single piece of the file
+		MDLocalPath       string   `json:"localpath"` // file to the local copy of the file used for repairing
+		MDSiaPath         string   `json:"siapath"`   // the path of the file on the Sia network
 
 		// fields for encryption
-		StaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
-		StaticMasterKeyType  crypto.CipherType `json:"masterkeytype"`
-		StaticSharingKey     []byte            `json:"sharingkey"` // key used to encrypt shared pieces
-		StaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
+		MDStaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
+		MDStaticMasterKeyType  crypto.CipherType `json:"masterkeytype"`
+		MDStaticSharingKey     []byte            `json:"sharingkey"` // key used to encrypt shared pieces
+		MDStaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
 
 		// The following fields are the usual unix timestamps of files.
-		ModTime    time.Time `json:"modtime"`    // time of last content modification
-		ChangeTime time.Time `json:"changetime"` // time of last metadata modification
-		AccessTime time.Time `json:"accesstime"` // time of last access
-		CreateTime time.Time `json:"createtime"` // time of file creation
+		MDModTime    time.Time `json:"modtime"`    // time of last content modification
+		MDChangeTime time.Time `json:"changetime"` // time of last metadata modification
+		MDAccessTime time.Time `json:"accesstime"` // time of last access
+		MDCreateTime time.Time `json:"createtime"` // time of file creation
 
 		// File ownership/permission fields.
-		Mode os.FileMode `json:"mode"` // unix filemode of the sia file - uint32
-		UID  int         `json:"uid"`  // id of the user who owns the file
-		Gid  int         `json:"gid"`  // id of the group that owns the file
+		MDMode os.FileMode `json:"mode"` // unix filemode of the sia file - uint32
+		MDUID  int         `json:"uid"`  // id of the user who owns the file
+		MDGid  int         `json:"gid"`  // id of the group that owns the file
 
 		// staticChunkMetadataSize is the amount of space allocated within the
 		// siafile for the metadata of a single chunk. It allows us to do
 		// random access operations on the file in constant time.
-		StaticChunkMetadataSize uint64 `json:"chunkmetadatasize"`
+		MDStaticChunkMetadataSize uint64 `json:"chunkmetadatasize"`
 
 		// The following fields are the offsets for data that is written to disk
 		// after the pubKeyTable. We reserve a generous amount of space for the
@@ -55,8 +57,8 @@ type (
 		// pubKeyTableOffset is the offset of the publicKeyTable within the
 		// file.
 		//
-		ChunkOffset       int64 `json:"chunkoffset"`
-		PubKeyTableOffset int64 `json:"pubkeytableoffset"`
+		MDChunkOffset       int64 `json:"chunkoffset"`
+		MDPubKeyTableOffset int64 `json:"pubkeytableoffset"`
 	}
 )
 
@@ -64,21 +66,21 @@ type (
 func (sf *SiaFile) AccessTime() time.Time {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.AccessTime
+	return sf.MDAccessTime
 }
 
 // ChangeTime returns the ChangeTime timestamp of the file.
 func (sf *SiaFile) ChangeTime() time.Time {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.ChangeTime
+	return sf.MDChangeTime
 }
 
 // CreateTime returns the CreateTime timestamp of the file.
 func (sf *SiaFile) CreateTime() time.Time {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.CreateTime
+	return sf.MDCreateTime
 }
 
 // ChunkSize returns the size of a single chunk of the file.
@@ -138,12 +140,12 @@ func (sf *SiaFile) HostPublicKeys() []types.SiaPublicKey {
 func (sf *SiaFile) LocalPath() string {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.LocalPath
+	return sf.MDLocalPath
 }
 
 // MasterKey returns the masterkey used to encrypt the file.
 func (sf *SiaFile) MasterKey() crypto.CipherKey {
-	sk, err := crypto.NewSiaKey(sf.staticMetadata.StaticMasterKeyType, sf.staticMetadata.StaticMasterKey)
+	sk, err := crypto.NewSiaKey(sf.MDStaticMasterKeyType, sf.MDStaticMasterKey)
 	if err != nil {
 		// This should never happen since the constructor of the SiaFile takes
 		// a CipherKey as an argument which guarantees that it is already a
@@ -157,19 +159,19 @@ func (sf *SiaFile) MasterKey() crypto.CipherKey {
 func (sf *SiaFile) Mode() os.FileMode {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.Mode
+	return sf.MDMode
 }
 
 // ModTime returns the ModTime timestamp of the file.
 func (sf *SiaFile) ModTime() time.Time {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.ModTime
+	return sf.MDModTime
 }
 
 // PieceSize returns the size of a single piece of the file.
 func (sf *SiaFile) PieceSize() uint64 {
-	return sf.staticMetadata.StaticPieceSize
+	return sf.MDStaticPieceSize
 }
 
 // Rename changes the name of the file to a new one.
@@ -185,9 +187,9 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
-	sf.staticMetadata.SiaPath = newSiaPath
+	sf.MDSiaPath = newSiaPath
 	// Update the ChangeTime because the metadata changed.
-	sf.staticMetadata.ChangeTime = time.Now()
+	sf.MDChangeTime = time.Now()
 	// Write the header to the new location.
 	headerUpdate, err := sf.saveHeader()
 	if err != nil {
@@ -208,8 +210,8 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 func (sf *SiaFile) SetMode(mode os.FileMode) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.Mode = mode
-	sf.staticMetadata.ChangeTime = time.Now()
+	sf.MDMode = mode
+	sf.MDChangeTime = time.Now()
 
 	// Save changes to metadata to disk.
 	updates, err := sf.saveHeader()
@@ -224,7 +226,7 @@ func (sf *SiaFile) SetMode(mode os.FileMode) error {
 func (sf *SiaFile) SetLocalPath(path string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.LocalPath = path
+	sf.MDLocalPath = path
 
 	// Save changes to metadata to disk.
 	updates, err := sf.saveHeader()
@@ -238,19 +240,19 @@ func (sf *SiaFile) SetLocalPath(path string) error {
 func (sf *SiaFile) SiaPath() string {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.SiaPath
+	return sf.MDSiaPath
 }
 
 // Size returns the file's size.
 func (sf *SiaFile) Size() uint64 {
-	return uint64(sf.staticMetadata.StaticFileSize)
+	return uint64(sf.MDStaticFileSize)
 }
 
 // UpdateAccessTime updates the AccessTime timestamp to the current time.
 func (sf *SiaFile) UpdateAccessTime() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.AccessTime = time.Now()
+	sf.MDAccessTime = time.Now()
 
 	// Save changes to metadata to disk.
 	updates, err := sf.saveHeader()
@@ -296,5 +298,5 @@ func (sf *SiaFile) UploadProgress() float64 {
 
 // ChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) staticChunkSize(chunkIndex uint64) uint64 {
-	return sf.staticMetadata.StaticPieceSize * uint64(sf.staticChunks[chunkIndex].staticErasureCode.MinPieces())
+	return sf.MDStaticPieceSize * uint64(sf.staticChunks[chunkIndex].staticErasureCode.MinPieces())
 }

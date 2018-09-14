@@ -25,11 +25,11 @@ type (
 	// allows for easy constant-time updates of the file without having to read or
 	// write the whole file.
 	SiaFile struct {
-		// staticMetadata is the mostly static staticMetadata of a SiaFile. The reserved
-		// size of the staticMetadata on disk should always be a multiple of 4kib.
-		// The staticMetadata is also the only part of the file that is JSON encoded
-		// and can therefore be easily extended.
-		staticMetadata metadata
+		// The mostly static metadata of a SiaFile. The reserved size of the
+		// metadata on disk should always be a multiple of 4kib.  The metadata
+		// is also the only part of the file that is JSON encoded and can
+		// therefore be easily extended.
+		metadata
 
 		// pubKeyTable stores the public keys of the hosts this file's pieces are uploaded to.
 		// Since multiple pieces from different chunks might be uploaded to the same host, this
@@ -85,19 +85,19 @@ type (
 func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode []modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	currentTime := time.Now()
 	file := &SiaFile{
-		staticMetadata: metadata{
-			AccessTime:          currentTime,
-			ChunkOffset:         defaultReservedMDPages * pageSize,
-			ChangeTime:          currentTime,
-			CreateTime:          currentTime,
-			StaticFileSize:      int64(fileSize),
-			LocalPath:           source,
-			StaticMasterKey:     masterKey.Key(),
-			StaticMasterKeyType: masterKey.Type(),
-			Mode:                fileMode,
-			ModTime:             currentTime,
-			StaticPieceSize:     modules.SectorSize - masterKey.Type().Overhead(),
-			SiaPath:             siaPath,
+		metadata: metadata{
+			MDAccessTime:          currentTime,
+			MDChunkOffset:         defaultReservedMDPages * pageSize,
+			MDChangeTime:          currentTime,
+			MDCreateTime:          currentTime,
+			MDStaticFileSize:      int64(fileSize),
+			MDLocalPath:           source,
+			MDStaticMasterKey:     masterKey.Key(),
+			MDStaticMasterKeyType: masterKey.Type(),
+			MDMode:                fileMode,
+			MDModTime:             currentTime,
+			MDStaticPieceSize:     modules.SectorSize - masterKey.Type().Overhead(),
+			MDSiaPath:             siaPath,
 		},
 		siaFilePath: siaFilePath,
 		staticUID:   hex.EncodeToString(fastrand.Bytes(20)),
@@ -157,9 +157,9 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	})
 
 	// Update the AccessTime, ChangeTime and ModTime.
-	sf.staticMetadata.AccessTime = time.Now()
-	sf.staticMetadata.ChangeTime = sf.staticMetadata.AccessTime
-	sf.staticMetadata.ModTime = sf.staticMetadata.AccessTime
+	sf.MDAccessTime = time.Now()
+	sf.MDChangeTime = sf.MDAccessTime
+	sf.MDModTime = sf.MDAccessTime
 
 	// Update the file atomically.
 	var updates []writeaheadlog.Update
@@ -262,7 +262,7 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	if sf.staticMetadata.StaticFileSize == 0 {
+	if sf.MDStaticFileSize == 0 {
 		// TODO change this once tiny files are supported.
 		if len(sf.staticChunks) != 1 {
 			// should never happen
