@@ -64,11 +64,11 @@ func (key threefishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 	plaintext := make([]byte, len(ct))
 
 	// Decrypt the ciphertext one block at a time while incrementing the tweak.
-	buf := bytes.NewBuffer(ct)
-	dst := plaintext
-	for block := buf.Next(threefish.BlockSize); len(block) > 0; block = buf.Next(threefish.BlockSize) {
+	cbuf := bytes.NewBuffer(ct)
+	pbuf := bytes.NewBuffer(plaintext)
+	for cbuf.Len() > 0 {
 		// Decrypt the block.
-		cipher.Decrypt(dst, block)
+		cipher.Decrypt(pbuf.Next(threefish.BlockSize), cbuf.Next(threefish.BlockSize))
 
 		// Increment the tweak by 1.
 		tweakNum := binary.LittleEndian.Uint64(tweak)
@@ -76,9 +76,6 @@ func (key threefishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 		if err := cipher.SetTweak(tweak); err != nil {
 			panic(err)
 		}
-
-		// Adjust the dst.
-		dst = dst[threefish.BlockSize:]
 	}
 	return plaintext, nil
 }
@@ -121,8 +118,8 @@ func (key threefishKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
 
 // Derive derives a child key for a given combination of chunk and piece index.
 func (key threefishKey) Derive(chunkIndex, pieceIndex uint64) CipherKey {
-	entropy1 := HashAll(key[:], chunkIndex, pieceIndex, "0")
-	entropy2 := HashAll(key[:], chunkIndex, pieceIndex, "1")
+	entropy1 := HashAll(key[:], chunkIndex, pieceIndex, 0)
+	entropy2 := HashAll(key[:], chunkIndex, pieceIndex, 1)
 	ck, err := NewSiaKey(TypeThreefish, append(entropy1[:], entropy2[:]...))
 	if err != nil {
 		panic("this should not be possible when deriving from a valid key")
