@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -148,8 +149,33 @@ func TestNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed to load SiaFile from disk", err)
 	}
-	// Compare the sf and sf2.
+	// Compare the timestamps first since they can't be compared with
+	// DeepEqual.
+	if sf.staticMetadata.AccessTime.Unix() != sf2.staticMetadata.AccessTime.Unix() {
+		t.Fatal("AccessTime's don't match")
+	}
+	if sf.staticMetadata.ChangeTime.Unix() != sf2.staticMetadata.ChangeTime.Unix() {
+		t.Fatal("ChangeTime's don't match")
+	}
+	if sf.staticMetadata.CreateTime.Unix() != sf2.staticMetadata.CreateTime.Unix() {
+		t.Fatal("CreateTime's don't match")
+	}
+	if sf.staticMetadata.ModTime.Unix() != sf2.staticMetadata.ModTime.Unix() {
+		t.Fatal("ModTime's don't match")
+	}
+	// Set the timestamps to zero for DeepEqual.
+	sf.staticMetadata.AccessTime = time.Time{}
+	sf.staticMetadata.ChangeTime = time.Time{}
+	sf.staticMetadata.CreateTime = time.Time{}
+	sf.staticMetadata.ModTime = time.Time{}
+	sf2.staticMetadata.AccessTime = time.Time{}
+	sf2.staticMetadata.ChangeTime = time.Time{}
+	sf2.staticMetadata.CreateTime = time.Time{}
+	sf2.staticMetadata.ModTime = time.Time{}
+	// Compare the rest of sf and sf2.
 	if !reflect.DeepEqual(sf.staticMetadata, sf2.staticMetadata) {
+		fmt.Println(sf.staticMetadata)
+		fmt.Println(sf2.staticMetadata)
 		t.Error("sf metadata doesn't equal sf2 metadata")
 	}
 	if !reflect.DeepEqual(sf.pubKeyTable, sf2.pubKeyTable) {
