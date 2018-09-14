@@ -470,7 +470,7 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 
 	// Wait for Contract creation
-	err = build.Retry(200, 100*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		if len(c.Contracts()) != 1 {
 			return errors.New("no contract created")
 		}
