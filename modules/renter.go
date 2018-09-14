@@ -103,11 +103,15 @@ type FileUploadParams struct {
 
 // FileInfo provides information about a file.
 type FileInfo struct {
+	AccessTime     time.Time         `json:"accesstime"`
 	Available      bool              `json:"available"`
+	ChangeTime     time.Time         `json:"changetime"`
 	CipherType     string            `json:"ciphertype"`
+	CreateTime     time.Time         `json:"createtime"`
 	Expiration     types.BlockHeight `json:"expiration"`
 	Filesize       uint64            `json:"filesize"`
 	LocalPath      string            `json:"localpath"`
+	ModTime        time.Time         `json:"modtime"`
 	Redundancy     float64           `json:"redundancy"`
 	Renewing       bool              `json:"renewing"`
 	SiaPath        string            `json:"siapath"`

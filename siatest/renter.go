@@ -58,6 +58,16 @@ func (tn *TestNode) DownloadByStream(rf *RemoteFile) (data []byte, err error) {
 	return
 }
 
+// Rename renames a remoteFile and returns the new file.
+func (tn *TestNode) Rename(rf *RemoteFile, newPath string) (*RemoteFile, error) {
+	err := tn.RenterRenamePost(rf.siaPath, newPath)
+	if err != nil {
+		return nil, err
+	}
+	rf.siaPath = newPath
+	return rf, nil
+}
+
 // Stream uses the streaming endpoint to download a file.
 func (tn *TestNode) Stream(rf *RemoteFile) (data []byte, err error) {
 	data, err = tn.RenterStreamGet(rf.siaPath)

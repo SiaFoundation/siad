@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -71,6 +72,9 @@ type unfinishedDownloadChunk struct {
 	// The download object, mostly to update download progress.
 	download *download
 	mu       sync.Mutex
+
+	// The SiaFile from which data is being downloaded.
+	renterFile *siafile.SiaFile
 
 	// Caching related fields
 	staticStreamCache *streamCache
@@ -232,10 +236,11 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 		// Download is complete, send out a notification and close the
 		// destination writer.
 		udc.download.endTime = time.Now()
+		err1 := udc.renterFile.UpdateAccessTime()
 		close(udc.download.completeChan)
-		err := udc.download.destination.Close()
+		err2 := udc.download.destination.Close()
 		udc.download.destination = nil
-		return err
+		return errors.Compose(err1, err2)
 	}
 	return nil
 }

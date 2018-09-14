@@ -2,6 +2,7 @@ package siafile
 
 import (
 	"os"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -38,12 +39,19 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to restore master key")
 	}
+	currentTime := time.Now()
 	file := &SiaFile{
 		staticMetadata: Metadata{
+			AccessTime:          currentTime,
+			ChunkOffset:         defaultReservedMDPages * pageSize,
+			ChangeTime:          currentTime,
+			CreateTime:          currentTime,
 			StaticFileSize:      int64(fd.FileSize),
+			LocalPath:           fd.RepairPath,
 			StaticMasterKey:     mk.Key(),
 			StaticMasterKeyType: mk.Type(),
 			Mode:                fd.Mode,
+			ModTime:             currentTime,
 			StaticPieceSize:     fd.PieceSize,
 			SiaPath:             fd.Name,
 		},

@@ -177,7 +177,7 @@ func (c *Client) RenterPostRateLimit(readBPS, writeBPS int64) (err error) {
 func (c *Client) RenterRenamePost(siaPathOld, siaPathNew string) (err error) {
 	siaPathOld = strings.TrimPrefix(siaPathOld, "/")
 	siaPathNew = strings.TrimPrefix(siaPathNew, "/")
-	err = c.post("/renter/rename/"+siaPathOld, "newsiapath=/"+siaPathNew, nil)
+	err = c.post("/renter/rename/"+siaPathOld, "newsiapath="+siaPathNew, nil)
 	return
 }
 
