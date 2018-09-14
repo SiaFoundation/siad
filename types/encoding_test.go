@@ -507,6 +507,46 @@ func TestSiaPublicKeyString(t *testing.T) {
 	}
 }
 
+// TestSiaPublicKeyMarshalJSON checks that SiaPublicKeys are marshalled in
+// JSON identically to the String method.
+func TestSiaPublicKeyMarshalJSON(t *testing.T) {
+	spk := SiaPublicKey{
+		Algorithm: SignatureEd25519,
+		Key:       fastrand.Bytes(32),
+	}
+	b, err := json.Marshal(spk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b[1:len(b)-1]) != spk.String() {
+		t.Error("MarshalJSON encoding differs from String encoding")
+	}
+}
+
+// TestSiaPublicKeyUnmarshalJSON checks that UnmarshalJSON supports both
+// encodings of SiaPublicKey.
+func TestSiaPublicKeyUnmarshalJSON(t *testing.T) {
+	js1 := `{ "algorithm": "ed25519", "key": "5GhilFqVBKtSCedCZc6TIthzxvyBH9gPqqf+Z9hsfBo=" }`
+	var spk1 SiaPublicKey
+	if err := json.Unmarshal([]byte(js1), &spk1); err != nil {
+		t.Error(err)
+	}
+
+	js2 := `"ed25519:e46862945a9504ab5209e74265ce9322d873c6fc811fd80faaa7fe67d86c7c1a"`
+	var spk2 SiaPublicKey
+	var _ json.Unmarshaler = &spk2
+	if err := json.Unmarshal([]byte(js2), &spk2); err != nil {
+		t.Fatal(err)
+	}
+
+	if spk1.Algorithm != spk2.Algorithm {
+		t.Error("unmarshalled algorithms do not match")
+	}
+	if !bytes.Equal(spk1.Key, spk2.Key) {
+		t.Error("unmarshalled keys do not match")
+	}
+}
+
 // TestSpecifierMarshaling tests the marshaling methods of the specifier
 // type.
 func TestSpecifierMarshaling(t *testing.T) {
