@@ -401,6 +401,29 @@ func TestMarshalUnmarshalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to unmarshal metadata", err)
 	}
+	// Compare the timestamps first since they can't be compared with
+	// DeepEqual.
+	if sf.staticMetadata.AccessTime.Unix() != md.AccessTime.Unix() {
+		t.Fatal("AccessTime's don't match")
+	}
+	if sf.staticMetadata.ChangeTime.Unix() != md.ChangeTime.Unix() {
+		t.Fatal("ChangeTime's don't match")
+	}
+	if sf.staticMetadata.CreateTime.Unix() != md.CreateTime.Unix() {
+		t.Fatal("CreateTime's don't match")
+	}
+	if sf.staticMetadata.ModTime.Unix() != md.ModTime.Unix() {
+		t.Fatal("ModTime's don't match")
+	}
+	// Set the timestamps to zero for DeepEqual.
+	sf.staticMetadata.AccessTime = time.Time{}
+	sf.staticMetadata.ChangeTime = time.Time{}
+	sf.staticMetadata.CreateTime = time.Time{}
+	sf.staticMetadata.ModTime = time.Time{}
+	md.AccessTime = time.Time{}
+	md.ChangeTime = time.Time{}
+	md.CreateTime = time.Time{}
+	md.ModTime = time.Time{}
 	// Compare result to original
 	if !reflect.DeepEqual(md, sf.staticMetadata) {
 		t.Fatal("Unmarshaled metadata not equal to marshaled metadata:", err)
