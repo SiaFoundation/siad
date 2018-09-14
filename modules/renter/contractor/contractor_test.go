@@ -2,6 +2,7 @@ package contractor
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -433,7 +434,16 @@ func TestHostMaxDuration(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Let host settings permeate
-	time.Sleep(2 * time.Second)
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		host, _ := c.hdb.Host(h.PublicKey())
+		if settings.MaxDuration != host.MaxDuration {
+			return fmt.Errorf("host max duration not set, expected %v, got %v", settings.MaxDuration, host.MaxDuration)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Create allowance
 	a := modules.Allowance{
@@ -447,13 +457,15 @@ func TestHostMaxDuration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Wait for Contract creation, using for loop instead of retry because I
-	// want to continuously confirm no contract has been created
-	for i := 0; i < 50; i++ {
-		if len(c.Contracts()) == 1 {
-			t.Fatal("contract created")
+	// Wait for and confirm no Contract creation
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		if len(c.Contracts()) == 0 {
+			return errors.New("no contract created")
 		}
-		time.Sleep(100 * time.Millisecond)
+		return nil
+	})
+	if err == nil {
+		t.Fatal("Contract should not have been created")
 	}
 
 	// Set host's MaxDuration to 50 to test if host will now form contract
@@ -463,7 +475,16 @@ func TestHostMaxDuration(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Let host settings permeate
-	time.Sleep(2 * time.Second)
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		host, _ := c.hdb.Host(h.PublicKey())
+		if settings.MaxDuration != host.MaxDuration {
+			return fmt.Errorf("host max duration not set, expected %v, got %v", settings.MaxDuration, host.MaxDuration)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = m.AddBlock()
 	if err != nil {
 		t.Fatal(err)
@@ -488,7 +509,16 @@ func TestHostMaxDuration(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Let host settings permeate
-	time.Sleep(2 * time.Second)
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		host, _ := c.hdb.Host(h.PublicKey())
+		if settings.MaxDuration != host.MaxDuration {
+			return fmt.Errorf("host max duration not set, expected %v, got %v", settings.MaxDuration, host.MaxDuration)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Mine blocks to renew contract
 	for i := types.BlockHeight(0); i <= c.allowance.Period-c.allowance.RenewWindow; i++ {
@@ -498,13 +528,15 @@ func TestHostMaxDuration(t *testing.T) {
 		}
 	}
 
-	// Confirm Contract is not renewed, using for loop instead of retry because
-	// I want to continuously confirm no contract has been renewed
-	for i := 0; i < 50; i++ {
-		if len(c.OldContracts()) == 1 {
-			t.Fatal("contract created")
+	// Confirm Contract is not renewed
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		if len(c.OldContracts()) == 0 {
+			return errors.New("no contract renewed")
 		}
-		time.Sleep(100 * time.Millisecond)
+		return nil
+	})
+	if err == nil {
+		t.Fatal("Contract should not have been renewed")
 	}
 }
 
