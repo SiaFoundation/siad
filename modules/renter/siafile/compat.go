@@ -41,7 +41,7 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 	}
 	currentTime := time.Now()
 	file := &SiaFile{
-		staticMetadata: Metadata{
+		staticMetadata: metadata{
 			AccessTime:          currentTime,
 			ChunkOffset:         defaultReservedMDPages * pageSize,
 			ChangeTime:          currentTime,

@@ -29,7 +29,7 @@ type (
 		// size of the staticMetadata on disk should always be a multiple of 4kib.
 		// The staticMetadata is also the only part of the file that is JSON encoded
 		// and can therefore be easily extended.
-		staticMetadata Metadata
+		staticMetadata metadata
 
 		// pubKeyTable stores the public keys of the hosts this file's pieces are uploaded to.
 		// Since multiple pieces from different chunks might be uploaded to the same host, this
@@ -85,7 +85,7 @@ type (
 func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode []modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	currentTime := time.Now()
 	file := &SiaFile{
-		staticMetadata: Metadata{
+		staticMetadata: metadata{
 			AccessTime:          currentTime,
 			ChunkOffset:         defaultReservedMDPages * pageSize,
 			ChangeTime:          currentTime,

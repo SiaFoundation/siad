@@ -14,8 +14,8 @@ import (
 )
 
 type (
-	// Metadata is the metadata of a SiaFile and is JSON encoded.
-	Metadata struct {
+	// metadata is the metadata of a SiaFile and is JSON encoded.
+	metadata struct {
 		StaticVersion   [16]byte `json:"version"`   // version of the sia file format used
 		StaticFileSize  int64    `json:"filesize"`  // total size of the file
 		StaticPieceSize uint64   `json:"piecesize"` // size of a single piece of the file
