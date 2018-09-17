@@ -781,14 +781,14 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	if action == "delete" {
 		fmt.Println("detele")
 		// TODO - implement
-		WriteSuccess(w)
+		WriteError(w, Error{"not implemented"}, http.StatusNotImplemented)
 		return
 	}
 	if action == "rename" {
 		fmt.Println("rename")
 		// newsiapath := ps.ByName("newsiapath")
 		// TODO - implement
-		WriteSuccess(w)
+		WriteError(w, Error{"not implemented"}, http.StatusNotImplemented)
 		return
 	}
 
