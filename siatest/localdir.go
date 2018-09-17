@@ -76,7 +76,8 @@ func (ld *LocalDir) Path() string {
 }
 
 // PopulateDir populates a LocalDir levels deep with the number of files and
-// directories provided at each level
+// directories provided at each level. The same number of files and directories
+// will be at each level
 func (ld *LocalDir) PopulateDir(files, dirs, levels uint) error {
 	// Check for end level
 	if levels == 0 {

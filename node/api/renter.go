@@ -779,7 +779,7 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 	if action == "delete" {
-		fmt.Println("detele")
+		fmt.Println("delete")
 		// TODO - implement
 		WriteError(w, Error{"not implemented"}, http.StatusNotImplemented)
 		return

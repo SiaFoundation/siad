@@ -52,7 +52,7 @@ func TestCreateDir(t *testing.T) {
 // checkSubDir is a helper function that confirms sub directories are created as
 // expected
 func checkSubDir(path string, files, dirs, levels int) error {
-	// Check for last level
+	// Check to see if all levels have been checked
 	if levels == 0 {
 		return nil
 	}
@@ -69,6 +69,8 @@ func checkSubDir(path string, files, dirs, levels int) error {
 	for _, f := range dirFiles {
 		if f.IsDir() {
 			numDirs++
+			// Check sub directory, there should be the same number of files and
+			// directories
 			if err = checkSubDir(filepath.Join(path, f.Name()), files, dirs, levels-1); err != nil {
 				return err
 			}
