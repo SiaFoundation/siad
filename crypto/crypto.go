@@ -9,7 +9,7 @@ import (
 var (
 	// TypeDefaultRenter is the default CipherType that is used for
 	// encrypting pieces of uploaded data.
-	TypeDefaultRenter = TypeTwofish
+	TypeDefaultRenter = TypeThreefish
 	// TypeDefaultWallet is the default CipherType that is used for
 	// wallet operations like encrypting the wallet files.
 	TypeDefaultWallet = TypeTwofish
@@ -56,8 +56,42 @@ type (
 		// plaintext. It will reuse the memory of the ciphertext which means
 		// that it's not save to use it after calling DecryptBytesInPlace.
 		DecryptBytesInPlace(Ciphertext) ([]byte, error)
+
+		// Derive derives a child cipherkey given a provided chunk index and
+		// piece index.
+		Derive(chunkIndex, pieceIndex uint64) CipherKey
 	}
 )
+
+// String creates a string representation of a CipherType that can be converted
+// into a type with FromString.
+func (ct CipherType) String() string {
+	switch ct {
+	case TypePlain:
+		return "plaintext"
+	case TypeTwofish:
+		return "twofish-gcm"
+	case TypeThreefish:
+		return "threefish512"
+	default:
+		panic(ErrInvalidCipherType)
+	}
+}
+
+// FromString reads a CipherType from a string.
+func (ct *CipherType) FromString(s string) error {
+	switch s {
+	case "plaintext":
+		*ct = TypePlain
+	case "twofish-gcm":
+		*ct = TypeTwofish
+	case "threefish512":
+		*ct = TypeThreefish
+	default:
+		return ErrInvalidCipherType
+	}
+	return nil
+}
 
 // Overhead reports the overhead produced by a CipherType in bytes.
 func (ct CipherType) Overhead() uint64 {
@@ -91,7 +125,7 @@ func NewSiaKey(ct CipherType, entropy []byte) (CipherKey, error) {
 	case TypeTwofish:
 		return newTwofishKey(entropy)
 	case TypeThreefish:
-		panic("not implemented yet")
+		return newThreefishKey(entropy)
 	default:
 		return nil, ErrInvalidCipherType
 	}
@@ -106,7 +140,7 @@ func GenerateSiaKey(ct CipherType) CipherKey {
 	case TypeTwofish:
 		return generateTwofishKey()
 	case TypeThreefish:
-		panic("not implemented yet")
+		return generateThreefishKey()
 	default:
 		panic(ErrInvalidCipherType)
 	}

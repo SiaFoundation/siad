@@ -63,12 +63,6 @@ type pieceData struct {
 	MerkleRoot crypto.Hash // the Merkle root of the piece
 }
 
-// deriveKey derives the key used to encrypt and decrypt a specific file piece.
-func deriveKey(masterKey crypto.CipherKey, chunkIndex, pieceIndex uint64) (crypto.CipherKey, error) {
-	entropy := crypto.HashAll(masterKey.Key(), chunkIndex, pieceIndex)
-	return crypto.NewSiaKey(masterKey.Type(), entropy[:])
-}
-
 // DeleteFile removes a file entry from the renter and deletes its data from
 // the hosts it is stored on.
 //
@@ -130,7 +124,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 	fileList := []modules.FileInfo{}
 	for _, f := range files {
 		fileList = append(fileList, modules.FileInfo{
-			CipherType:     f.MasterKey().Type(),
+			CipherType:     f.MasterKey().Type().String(),
 			SiaPath:        f.SiaPath(),
 			LocalPath:      f.LocalPath(),
 			Filesize:       f.Size(),
@@ -177,7 +171,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	// Build the FileInfo
 	renewing := true
 	fileInfo = modules.FileInfo{
-		CipherType:     file.MasterKey().Type(),
+		CipherType:     file.MasterKey().Type().String(),
 		SiaPath:        file.SiaPath(),
 		LocalPath:      file.LocalPath(),
 		Filesize:       file.Size(),

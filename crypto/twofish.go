@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	// twofishOverhead is the number of bytes added by EncryptBytes
+	// twofishOverhead is the number of bytes added by EncryptBytes.
 	twofishOverhead = 28
 )
 
@@ -25,11 +25,20 @@ type (
 	twofishKey [EntropySize]byte
 )
 
-// generateTwofishKey produces a TwofishKey that can be used for encrypting and
+// generateTwofishKey produces a twofishKey that can be used for encrypting and
 // decrypting data using Twofish-GCM.
 func generateTwofishKey() (key twofishKey) {
 	fastrand.Read(key[:])
 	return
+}
+
+// newCipher creates a new Twofish cipher from the key.
+func (key twofishKey) newCipher() cipher.Block {
+	cipher, err := twofish.NewCipher(key[:])
+	if err != nil {
+		panic("NewCipher only returns an error if len(key) != 16, 24, or 32.")
+	}
+	return cipher
 }
 
 // newTwofishKey creates a new twofishKey from a given entropy.
@@ -43,43 +52,6 @@ func newTwofishKey(entropy []byte) (key twofishKey, err error) {
 	// create key
 	copy(key[:], entropy)
 	return
-}
-
-// newCipher creates a new Twofish cipher from the key.
-func (key twofishKey) newCipher() cipher.Block {
-	cipher, err := twofish.NewCipher(key[:])
-	if err != nil {
-		panic("NewCipher only returns an error if len(key) != 16, 24, or 32.")
-	}
-	return cipher
-}
-
-// Type returns the type of the twofish key.
-func (twofishKey) Type() CipherType {
-	return TypeTwofish
-}
-
-// Cipherkey returns the twofish key.
-func (key twofishKey) Key() []byte {
-	return key[:]
-}
-
-// EncryptBytes encrypts arbitrary data using the TwofishKey, prepending a 12
-// byte nonce to the ciphertext in the process.  GCM and prepends the nonce (12
-// bytes) to the ciphertext.
-func (key twofishKey) EncryptBytes(piece []byte) Ciphertext {
-	// Create the cipher.
-	aead, err := cipher.NewGCM(key.newCipher())
-	if err != nil {
-		panic("NewGCM only returns an error if twofishCipher.BlockSize != 16")
-	}
-
-	// Create the nonce.
-	nonce := fastrand.Bytes(aead.NonceSize())
-
-	// Encrypt the data. No authenticated data is provided, as EncryptBytes is
-	// meant for file encryption.
-	return aead.Seal(nonce, nonce, piece, nil)
 }
 
 // DecryptBytes decrypts a ciphertext created by EncryptPiece. The nonce is
@@ -122,4 +94,42 @@ func (key twofishKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
 	nonce := ct[:aead.NonceSize()]
 	ciphertext := ct[aead.NonceSize():]
 	return aead.Open(ciphertext[:0], nonce, ciphertext, nil)
+}
+
+// Derive derives a child key for a given combination of chunk and piece index.
+func (key twofishKey) Derive(chunkIndex, pieceIndex uint64) CipherKey {
+	entropy := HashAll(key[:], chunkIndex, pieceIndex)
+	ck, err := NewSiaKey(TypeTwofish, entropy[:])
+	if err != nil {
+		panic("this should not be possible when deriving from a valid key")
+	}
+	return ck
+}
+
+// EncryptBytes encrypts arbitrary data using the TwofishKey, prepending a 12
+// byte nonce to the ciphertext in the process.  GCM and prepends the nonce (12
+// bytes) to the ciphertext.
+func (key twofishKey) EncryptBytes(piece []byte) Ciphertext {
+	// Create the cipher.
+	aead, err := cipher.NewGCM(key.newCipher())
+	if err != nil {
+		panic("NewGCM only returns an error if twofishCipher.BlockSize != 16")
+	}
+
+	// Create the nonce.
+	nonce := fastrand.Bytes(aead.NonceSize())
+
+	// Encrypt the data. No authenticated data is provided, as EncryptBytes is
+	// meant for file encryption.
+	return aead.Seal(nonce, nonce, piece, nil)
+}
+
+// Key returns the twofish key.
+func (key twofishKey) Key() []byte {
+	return key[:]
+}
+
+// Type returns the type of the twofish key.
+func (twofishKey) Type() CipherType {
+	return TypeTwofish
 }
