@@ -16,7 +16,7 @@ func (c *Client) DaemonStopGet() (err error) {
 
 // DaemonUpdateGet checks for an available daemon update.
 func (c *Client) DaemonUpdateGet() (dig api.DaemonUpdateGet, err error) {
-	err = c.get("/daemon/update", nil)
+	err = c.get("/daemon/update", &dig)
 	return
 }
 
