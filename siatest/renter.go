@@ -188,7 +188,7 @@ func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*Rem
 func (tn *TestNode) UploadDirectory(ld *LocalDir) (*RemoteDir, error) {
 	// Upload Directory
 	siapath := tn.SiaPath(ld.path)
-	err := tn.RenterCreateDirPost(siapath)
+	err := tn.RenterDirPostCreate(siapath)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to upload directory")
 	}
