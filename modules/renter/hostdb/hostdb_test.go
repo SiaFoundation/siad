@@ -1,8 +1,10 @@
 package hostdb
 
 import (
+	"bytes"
 	"io/ioutil"
 	"math"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -41,7 +43,7 @@ func bareHostDB() *HostDB {
 	hdb := &HostDB{
 		log: persist.NewLogger(ioutil.Discard),
 	}
-	hdb.hostTree = hosttree.New(hdb.calculateHostWeight)
+	hdb.hostTree = hosttree.New(hdb.calculateHostWeight, &modules.ProductionResolver{})
 	return hdb
 }
 
@@ -581,5 +583,92 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	if host.HistoricFailedInteractions != expected || host.HistoricSuccessfulInteractions != expected {
 		t.Errorf("Historic Interactions should be %v but were %v and %v", expected,
 			host.HistoricFailedInteractions, host.HistoricSuccessfulInteractions)
+	}
+}
+
+// testCheckForIPViolationsResolver is a resolver for the TestTwoAddresses test.
+type testCheckForIPViolationsResolver struct{}
+
+func (testCheckForIPViolationsResolver) LookupIP(host string) ([]net.IP, error) {
+	switch host {
+	case "host1":
+		return []net.IP{{127, 0, 0, 1}}, nil
+	case "host2":
+		return []net.IP{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
+	case "host3":
+		return []net.IP{{127, 0, 0, 2}, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2}}, nil
+	default:
+		panic("shouldn't happen")
+	}
+}
+
+// testCheckForIPViolationsDeps is a custom dependency that overrides the
+// Resolver method to return a testCheckForIPViolationsResolver.
+type testCheckForIPViolationsDeps struct {
+	disableScanLoopDeps
+}
+
+// Resolver returns a testCheckForIPViolationsResolver.
+func (*testCheckForIPViolationsDeps) Resolver() modules.Resolver {
+	return &testCheckForIPViolationsResolver{}
+}
+
+// TestCheckForIPViolations tests the hostdb's CheckForIPViolations method.
+func TestCheckForIPViolations(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Prepare a few hosts for the test
+	entry1 := makeHostDBEntry()
+	entry1.NetAddress = "host1:1234"
+	entry2 := makeHostDBEntry()
+	entry2.NetAddress = "host2:1234"
+	entry3 := makeHostDBEntry()
+	entry3.NetAddress = "host3:1234"
+
+	// create a HostDB tester without scanloop to be able to manually increment
+	// the interactions without interference.
+	hdbt, err := newHDBTesterDeps(t.Name(), &testCheckForIPViolationsDeps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add entry1 and entry2. There should be no violation.
+	hdbt.hdb.hostTree.Insert(entry1)
+	hdbt.hdb.hostTree.Insert(entry2)
+	badHosts := hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey})
+	if len(badHosts) != 0 {
+		t.Errorf("Got %v violations, should be 0", len(badHosts))
+	}
+
+	// Add entry3. It should cause a violation for entry 3.
+	hdbt.hdb.hostTree.Insert(entry3)
+	badHosts = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey, entry3.PublicKey})
+	if len(badHosts) != 1 {
+		t.Errorf("Got %v violations, should be 1", len(badHosts))
+	}
+	if len(badHosts) > 0 && !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+		t.Error("Hdb returned violation for wrong host")
+	}
+
+	// Calling CheckForIPViolations with entry 2 as the first argument and
+	// entry1 as the second should result in entry3 being the bad host again.
+	badHosts = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry2.PublicKey, entry1.PublicKey, entry3.PublicKey})
+	if len(badHosts) != 1 {
+		t.Errorf("Got %v violations, should be 1", len(badHosts))
+	}
+	if len(badHosts) > 0 && !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+		t.Error("Hdb returned violation for wrong host")
+	}
+
+	// Calling CheckForIPViolations with entry 3 as the first argument should
+	// result in 2 bad hosts. entry1 and entry2.
+	badHosts = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry3.PublicKey, entry1.PublicKey, entry2.PublicKey})
+	if len(badHosts) != 2 {
+		t.Errorf("Got %v violations, should be 1", len(badHosts))
+	}
+	if len(badHosts) > 1 && (!bytes.Equal(badHosts[0].Key, entry1.PublicKey.Key) || !bytes.Equal(badHosts[1].Key, entry2.PublicKey.Key)) {
+		t.Error("Hdb returned violation for wrong host")
 	}
 }

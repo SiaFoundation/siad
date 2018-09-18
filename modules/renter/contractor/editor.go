@@ -64,7 +64,6 @@ func (he *hostEditor) invalidate() {
 	}
 	he.contractor.mu.Lock()
 	delete(he.contractor.editors, he.id)
-	delete(he.contractor.revising, he.id)
 	he.contractor.mu.Unlock()
 }
 
@@ -92,7 +91,6 @@ func (he *hostEditor) Close() error {
 	he.invalid = true
 	he.contractor.mu.Lock()
 	delete(he.contractor.editors, he.id)
-	delete(he.contractor.revising, he.id)
 	he.contractor.mu.Unlock()
 	return he.editor.Close()
 }
@@ -153,24 +151,6 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	} else if host.UploadBandwidthPrice.Cmp(maxUploadPrice) > 0 {
 		return nil, errTooExpensive
 	}
-
-	// Acquire the revising lock.
-	c.mu.Lock()
-	alreadyRevising := c.revising[contract.ID]
-	if alreadyRevising {
-		c.mu.Unlock()
-		return nil, errors.New("already revising that contract")
-	}
-	c.revising[contract.ID] = true
-	c.mu.Unlock()
-	// Release the revising lock early in the event of an error.
-	defer func() {
-		if err != nil {
-			c.mu.Lock()
-			delete(c.revising, contract.ID)
-			c.mu.Unlock()
-		}
-	}()
 
 	// Create the editor.
 	e, err := c.staticContracts.NewEditor(host, contract.ID, height, c.hdb, cancel)

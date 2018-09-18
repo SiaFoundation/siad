@@ -171,6 +171,10 @@ type (
 		// discovery can be supplied optionally.
 		DiscoverAddress(cancel <-chan struct{}) (NetAddress, error)
 
+		// ForwardPort adds a port mapping to the router. It will block until
+		// the mapping is established or until it is interrupted by a shutdown.
+		ForwardPort(port string) error
+
 		// Address returns the Gateway's address.
 		Address() NetAddress
 

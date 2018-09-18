@@ -369,6 +369,38 @@ func (c *Contractor) managedPrunePubkeyMap() {
 	c.mu.Unlock()
 }
 
+// managedPrunedRedundantAddressRange uses the hostdb to find hosts that
+// violate the rules about address ranges and cancels them.
+func (c *Contractor) managedPrunedRedundantAddressRange() {
+	// Get all contracts which are not canceled.
+	allContracts := c.staticContracts.ViewAll()
+	var contracts []modules.RenterContract
+	for _, contract := range allContracts {
+		if contract.Utility.Locked && !contract.Utility.GoodForRenew && !contract.Utility.GoodForUpload {
+			// contract is canceled
+			continue
+		}
+		contracts = append(contracts, contract)
+	}
+
+	// Get all the public keys and map them to contract ids.
+	pks := make([]types.SiaPublicKey, 0, len(allContracts))
+	cids := make(map[string]types.FileContractID)
+	for _, contract := range contracts {
+		pks = append(pks, contract.HostPublicKey)
+		cids[contract.HostPublicKey.String()] = contract.ID
+	}
+
+	// Let the hostdb filter out bad hosts and cancel contracts with those
+	// hosts.
+	badHosts := c.hdb.CheckForIPViolations(pks)
+	for _, host := range badHosts {
+		if err := c.managedCancelContract(cids[host.String()]); err != nil {
+			c.log.Print("WARNING: Wasn't able to cancel contract in managedPrunedRedundantAddressRange", err)
+		}
+	}
+}
+
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
@@ -587,6 +619,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.managedCheckForDuplicates()
 	c.managedPrunePubkeyMap()
 
+	// Deduplicate contracts which share the same subnet.
+	c.managedPrunedRedundantAddressRange()
+
 	// Nothing to do if there are no hosts.
 	c.mu.RLock()
 	wantedHosts := c.allowance.Hosts
@@ -790,17 +825,22 @@ func (c *Contractor) threadedContractMaintenance() {
 		return
 	}
 
-	// Assemble an exclusion list that includes all of the hosts that we already
-	// have contracts with, then select a new batch of hosts to attempt contract
-	// formation with.
+	// Assemble two exclusion lists. The first one includes all hosts that we
+	// already have contracts with and the second one includes all hosts we
+	// have active contracts with. Then select a new batch of hosts to attempt
+	// contract formation with.
 	c.mu.RLock()
-	var exclude []types.SiaPublicKey
+	var blacklist []types.SiaPublicKey
+	var addressBlacklist []types.SiaPublicKey
 	for _, contract := range c.staticContracts.ViewAll() {
-		exclude = append(exclude, contract.HostPublicKey)
+		blacklist = append(blacklist, contract.HostPublicKey)
+		if !contract.Utility.Locked || contract.Utility.GoodForRenew || contract.Utility.GoodForUpload {
+			addressBlacklist = append(addressBlacklist, contract.HostPublicKey)
+		}
 	}
 	initialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(3)
 	c.mu.RUnlock()
-	hosts, err := c.hdb.RandomHosts(neededContracts*2+randomHostsBufferForScore, exclude, exclude)
+	hosts, err := c.hdb.RandomHosts(neededContracts*2+randomHostsBufferForScore, blacklist, addressBlacklist)
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)
 		return
@@ -813,6 +853,13 @@ func (c *Contractor) threadedContractMaintenance() {
 		if fundsRemaining.Cmp(initialContractFunds) < 0 {
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
+		}
+
+		// If we are using a custom resolver we need to replace the domain name
+		// with 127.0.0.1 to be able to form contracts.
+		if c.staticDeps.Disrupt("customResolver") {
+			port := host.NetAddress.Port()
+			host.NetAddress = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
 		}
 
 		// Attempt forming a contract with this host.

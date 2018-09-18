@@ -50,6 +50,7 @@ type (
 	hostDB interface {
 		AllHosts() []modules.HostDBEntry
 		ActiveHosts() []modules.HostDBEntry
+		CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey
 		Host(types.SiaPublicKey) (modules.HostDBEntry, bool)
 		IncrementSuccessfulInteractions(key types.SiaPublicKey)
 		IncrementFailedInteractions(key types.SiaPublicKey)

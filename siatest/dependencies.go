@@ -1,6 +1,7 @@
 package siatest
 
 import (
+	"net"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -53,4 +54,41 @@ func (d *DependencyInterruptOnceOnKeyword) Disable() {
 	d.mu.Lock()
 	d.f = false
 	d.mu.Unlock()
+}
+
+type (
+	// customResolver is a testing resolver which can be created from any
+	// lookupIP method.
+	customResolver struct {
+		lookupIP func(string) ([]net.IP, error)
+	}
+	// dependencyCustomResolver is a dependency which overrides the Resolver
+	// method to return a custom resolver with a specific lookupIP method.
+	dependencyCustomResolver struct {
+		modules.ProductionDependencies
+		lookupIP func(string) ([]net.IP, error)
+	}
+)
+
+// LookupIP implements the modules.Resolver interface.
+func (cr customResolver) LookupIP(host string) ([]net.IP, error) {
+	return cr.lookupIP(host)
+}
+
+// Disrupt makes sure that hosts which resolve to addresses we can't connect to
+// due to the customResolver will be online in the hostdb.
+func (d *dependencyCustomResolver) Disrupt(s string) bool {
+	return s == "customResolver"
+}
+
+// Resolver creates a new custom resolver.
+func (d *dependencyCustomResolver) Resolver() modules.Resolver {
+	return customResolver{d.lookupIP}
+}
+
+// NewDependencyCustomResolver creates a dependency from a given lookupIP
+// method which returns a custom resolver that uses the specified lookupIP
+// method to resolve hostnames.
+func NewDependencyCustomResolver(lookupIP func(string) ([]net.IP, error)) modules.Dependencies {
+	return &dependencyCustomResolver{lookupIP: lookupIP}
 }

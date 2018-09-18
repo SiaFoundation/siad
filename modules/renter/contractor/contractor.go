@@ -1,12 +1,5 @@
 package contractor
 
-// TODO: We are in the middle of migrating the contractor to a new concurrency
-// model. The contractor should never call out to another package while under a
-// lock (except for the proto package). This is because the renter is going to
-// start calling contractor methods while holding the renter lock, so we need to
-// be absolutely confident that no contractor thread will attempt to grab a
-// renter lock.
-
 import (
 	"errors"
 	"fmt"
@@ -61,7 +54,6 @@ type Contractor struct {
 	pubKeysToContractID map[string]types.FileContractID
 	contractIDToPubKey  map[types.FileContractID]types.SiaPublicKey
 	renewing            map[types.FileContractID]bool // prevent revising during renewal
-	revising            map[types.FileContractID]bool // prevent overlapping revisions
 
 	// renewedFrom links the new contract's ID to the old contract's ID
 	// renewedTo links the old contract's ID to the new contract's ID
@@ -228,7 +220,6 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		contractIDToPubKey:  make(map[types.FileContractID]types.SiaPublicKey),
 		pubKeysToContractID: make(map[string]types.FileContractID),
 		renewing:            make(map[types.FileContractID]bool),
-		revising:            make(map[types.FileContractID]bool),
 		renewedFrom:         make(map[types.FileContractID]types.FileContractID),
 		renewedTo:           make(map[types.FileContractID]types.FileContractID),
 	}

@@ -195,6 +195,15 @@ func (g *Gateway) DiscoverAddress(cancel <-chan struct{}) (modules.NetAddress, e
 	return g.managedLearnHostname(cancel)
 }
 
+// ForwardPort adds a port mapping to the router.
+func (g *Gateway) ForwardPort(port string) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	return g.managedForwardPort(port)
+}
+
 // New returns an initialized Gateway.
 func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	// Create the directory if it doesn't exist.
