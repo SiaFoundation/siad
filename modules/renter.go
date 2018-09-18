@@ -423,6 +423,9 @@ type Renter interface {
 
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
+
+	// CreateDir creates a directory for the renter
+	CreateDir(siaPath string) error
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's

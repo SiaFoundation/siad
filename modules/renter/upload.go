@@ -14,15 +14,16 @@ package renter
 // all need to be fixed when we do enable it, but we should enable it.
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -51,6 +52,13 @@ func newFile(siaFilePath string, name string, wal *writeaheadlog.WAL, rsc module
 // validateSource verifies that a sourcePath meets the
 // requirements for upload.
 func validateSource(sourcePath string) error {
+	// Check for read access
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		return errors.AddContext(err, "unable to open the source file")
+	}
+	file.Close()
+
 	finfo, err := os.Stat(sourcePath)
 	if err != nil {
 		return err
@@ -101,13 +109,18 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (up.ErasureCode.NumPieces()+up.ErasureCode.MinPieces())/2)
 	}
 
+	// Create the directory path on disk. Renter directory is already present so
+	// only files not in top level directory need to have directories created
+	dir, _ := filepath.Split(up.SiaPath)
+	dirSiaPath := strings.TrimSuffix(dir, "/")
+	if dirSiaPath != "" {
+		if err := r.createDir(dirSiaPath); err != nil {
+			return err
+		}
+	}
+
 	// Create file object.
 	siaFilePath := filepath.Join(r.persistDir, up.SiaPath+ShareExtension)
-	// Create the path on disk.
-	dir, _ := filepath.Split(siaFilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
 	cipherType := crypto.TypeDefaultRenter
 
 	// Create the Siafile.

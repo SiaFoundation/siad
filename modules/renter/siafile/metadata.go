@@ -150,6 +150,9 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	defer sf.mu.Unlock()
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
+	// TODO - this code creates directories without metadata files.  Add
+	// metadate file creation in repair by folder code when updating renter
+	// redundancy
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}

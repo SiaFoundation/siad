@@ -33,21 +33,17 @@ func siatestTestDir(testName string) string {
 	return path
 }
 
-// filesDir returns the path to the files directory of the TestNode. The files
-// directory is where new files are stored before being uploaded.
-func (tn *TestNode) filesDir() string {
-	path := filepath.Join(tn.Dir, "files")
-	if err := os.MkdirAll(path, 0777); err != nil {
-		panic(err)
-	}
-	return path
+// DownloadDir returns the LocalDir that is the testnodes download directory
+func (tn *TestNode) DownloadDir() *LocalDir {
+	return tn.downloadDir
 }
 
-// downloadsDir returns the path to the download directory of the TestNode.
-func (tn *TestNode) downloadsDir() string {
-	path := filepath.Join(tn.Dir, "downloads")
-	if err := os.MkdirAll(path, 0777); err != nil {
-		panic(err)
-	}
-	return path
+// RenterDir returns the renter directory for the renter
+func (tn *TestNode) RenterDir() string {
+	return filepath.Join(tn.Dir, "renter")
+}
+
+// UploadDir returns the LocalDir that is the testnodes upload directory
+func (tn *TestNode) UploadDir() *LocalDir {
+	return tn.uploadDir
 }

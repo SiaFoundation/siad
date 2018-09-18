@@ -1,8 +1,6 @@
 package siatest
 
 import (
-	"encoding/hex"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -21,20 +19,6 @@ type (
 		checksum crypto.Hash
 	}
 )
-
-// NewFile creates and returns a new LocalFile. It will write size random bytes
-// to the file and give the file a random name.
-func (tn *TestNode) NewFile(size int) (*LocalFile, error) {
-	fileName := fmt.Sprintf("%dbytes-%s", size, hex.EncodeToString(fastrand.Bytes(4)))
-	path := filepath.Join(tn.filesDir(), fileName)
-	bytes := fastrand.Bytes(size)
-	err := ioutil.WriteFile(path, bytes, 0600)
-	return &LocalFile{
-		path:     path,
-		size:     size,
-		checksum: crypto.HashBytes(bytes),
-	}, err
-}
 
 // Delete removes the LocalFile from disk.
 func (lf *LocalFile) Delete() error {
@@ -57,8 +41,8 @@ func (lf *LocalFile) checkIntegrity() error {
 	return nil
 }
 
-// fileName returns the file name of the file on disk
-func (lf *LocalFile) fileName() string {
+// FileName returns the file name of the file on disk
+func (lf *LocalFile) FileName() string {
 	return filepath.Base(lf.path)
 }
 

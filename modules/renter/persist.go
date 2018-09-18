@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -26,6 +27,8 @@ const (
 	PersistFilename = "renter.json"
 	// ShareExtension is the extension to be used
 	ShareExtension = ".sia"
+	// SiaDirMetadata is the name of the metadata file for the sia directory
+	SiaDirMetadata = ".siadir"
 	// walFile is the filename of the renter's writeaheadlog's file.
 	walFile = modules.RenterDir + ".wal"
 )
@@ -175,6 +178,56 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 		f.contracts[contract.ID] = contract
 	}
 	return nil
+}
+
+// createDir creates directory in the renter directory
+func (r *Renter) createDir(siapath string) error {
+	// Enforce nickname rules.
+	if err := validateSiapath(siapath); err != nil {
+		return err
+	}
+
+	// Create direcotry
+	path := filepath.Join(r.persistDir, siapath)
+	if err := os.MkdirAll(path, 0700); err != nil {
+		return err
+	}
+
+	// Make sure all parent directories have metadata files
+	//
+	// TODO: this should be change when files are moved out of the top level
+	// directory of the renter.
+	for path != filepath.Dir(r.persistDir) {
+		if err := createDirMetadata(path); err != nil {
+			return err
+		}
+		path = filepath.Dir(path)
+	}
+	return nil
+}
+
+// createDirMetadata makes sure there is a metadata file in the directory and
+// updates or creates one as needed
+func createDirMetadata(path string) error {
+	fullPath := filepath.Join(path, SiaDirMetadata)
+	// Check if metadata file exists
+	if _, err := os.Stat(fullPath); err == nil {
+		// TODO: update metadata file
+		return nil
+	}
+
+	// TODO: update to get actual min redundancy
+	data := struct {
+		LastUpdate    int64
+		MinRedundancy float64
+	}{time.Now().UnixNano(), float64(0)}
+
+	metadataHeader := persist.Metadata{
+		Header:  "Sia Directory Metadata",
+		Version: persistVersion,
+	}
+
+	return persist.SaveJSON(metadataHeader, data, fullPath)
 }
 
 // saveSync stores the current renter data to disk and then syncs to disk.

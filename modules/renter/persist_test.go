@@ -108,6 +108,39 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 }
 
+// TestRenterDirectories checks that the renter properly created metadata files
+// for direcotries
+func TestRenterDirectories(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Test creating directory
+	err = rt.renter.CreateDir("foo/bar/baz")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that direcotry metadata files were created in all directories.
+	if _, err = os.Stat(filepath.Join(rt.renter.persistDir, SiaDirMetadata)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(rt.renter.persistDir, "foo/"+SiaDirMetadata)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(rt.renter.persistDir, "foo/bar/"+SiaDirMetadata)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(rt.renter.persistDir, "foo/bar/baz/"+SiaDirMetadata)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestRenterPaths checks that the renter properly handles nicknames
 // containing the path separator ("/").
 func TestRenterPaths(t *testing.T) {

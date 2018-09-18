@@ -226,3 +226,28 @@ func (c *Client) RenterUploadDefaultPost(path, siaPath string) (err error) {
 	err = c.post(fmt.Sprintf("/renter/upload/%v", siaPath), values.Encode(), nil)
 	return
 }
+
+// RenterDirCreatePost uses the /renter/dir/ endpoint to create a directory for the
+// renter
+func (c *Client) RenterDirCreatePost(siaPath string) (err error) {
+	siaPath = strings.TrimPrefix(siaPath, "/")
+	err = c.post(fmt.Sprintf("/renter/dir/%s", siaPath), "action=create", nil)
+	return
+}
+
+// RenterDirDeletePost uses the /renter/dir/ endpoint to delete a directory for the
+// renter
+func (c *Client) RenterDirDeletePost(siaPath string) (err error) {
+	siaPath = strings.TrimPrefix(siaPath, "/")
+	err = c.post(fmt.Sprintf("/renter/dir/%s", siaPath), "action=delete", nil)
+	return
+}
+
+// RenterDirRenamePost uses the /renter/dir/ endpoint to rename a directory for the
+// renter
+func (c *Client) RenterDirRenamePost(siaPath, newSiaPath string) (err error) {
+	siaPath = strings.TrimPrefix(siaPath, "/")
+	newSiaPath = strings.TrimPrefix(newSiaPath, "/")
+	err = c.post(fmt.Sprintf("/renter/dir/%s?newsiapath=%s", siaPath, newSiaPath), "action=rename", nil)
+	return
+}

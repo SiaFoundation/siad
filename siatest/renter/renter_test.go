@@ -3,6 +3,7 @@ package renter
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
@@ -83,6 +84,7 @@ func TestRenter(t *testing.T) {
 	// Specify subtests to run
 	subTests := []test{
 		{"TestClearDownloadHistory", testClearDownloadHistory},
+		{"TestDirectories", testDirectories},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
@@ -271,6 +273,61 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if len(rdg.Downloads) != 0 {
 		t.Fatalf("Download history not cleared: history has %v downloads, expected 0", len(rdg.Downloads))
+	}
+}
+
+// testDirectories checks the functionality of directories in the Renter
+func testDirectories(t *testing.T, tg *siatest.TestGroup) {
+	// TODO - update code once GET directory endpoint is available, directory
+	// should be created with POST directory API endpoint then the contents
+	// should be verified with the GET directory endpoint
+
+	// Grab Renter
+	r := tg.Renters()[0]
+
+	// Test Directory endpoint for creating empty directory
+	rd, err := r.UploadNewDirectory(0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for metadata files, Directory should have been uploaded in the top
+	// level of the renter so there should be a metadata file for /renter and
+	// for the newly uploaded directory
+	metadata := ".siadir"
+	// Check /renter level
+	assertFileExists(r.RenterDir(), metadata, t)
+
+	// Check new directory
+	assertFileExists(filepath.Join(r.RenterDir(), rd.SiaPath()), metadata, t)
+
+	// Check uploading file to new subdirectory
+	// Create local file
+	size := 100 + siatest.Fuzz()
+	ud := r.UploadDir()
+	ld, err := ud.CreateDir("subDir1/subDir2/subDir3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err := ld.NewFile(size)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload file
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	_, err = r.Upload(lf, dataPieces, parityPieces)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for metadata files, uploading file into subdirectory should have
+	// created directories and directory metadata files up through renter
+	path := filepath.Join(ud.Path(), "subDir1/subDir2/subDir3")
+	for path != filepath.Dir(r.RenterDir()) {
+		assertFileExists(path, metadata, t)
+		path = filepath.Dir(path)
 	}
 }
 
@@ -2394,6 +2451,24 @@ func TestZeroByteFile(t *testing.T) {
 }
 
 // The following are helper functions for the renter tests
+
+// assertFileExists is a helper function to confirm that a file exists in a
+// directory
+func assertFileExists(dir, filename string, t *testing.T) {
+	check := 0
+	fileInfos, err := ioutil.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fileInfos {
+		if !f.IsDir() && f.Name() == filename {
+			check++
+		}
+	}
+	if check != 1 {
+		t.Fatalf("Did not find %v file, found %v expected 1", filename, check)
+	}
+}
 
 // checkBalanceVsSpending checks the renters confirmed siacoin balance in their
 // wallet against their reported spending
