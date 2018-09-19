@@ -317,26 +317,32 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	}
 
 	// Grab the storage proof and inspect the contents.
-	ht.host.mu.Lock()
-	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		ht.host.mu.Lock()
+		err = ht.host.db.View(func(tx *bolt.Tx) error {
+			so, err = getStorageObligation(tx, so.id())
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+		ht.host.mu.Unlock()
 		if err != nil {
 			return err
 		}
+		if !so.OriginConfirmed {
+			return errors.New("origin transaction for storage obligation was not confirmed after a block was mined")
+		}
+		if !so.RevisionConfirmed {
+			return errors.New("revision transaction for storage obligation was not confirmed after a block was mined")
+		}
+		if !so.ProofConfirmed {
+			return errors.New("storage obligation is not saying that the storage proof was confirmed on the blockchain")
+		}
 		return nil
 	})
-	ht.host.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !so.OriginConfirmed {
-		t.Fatal("origin transaction for storage obligation was not confirmed after a block was mined")
-	}
-	if !so.RevisionConfirmed {
-		t.Fatal("revision transaction for storage obligation was not confirmed after a block was mined")
-	}
-	if !so.ProofConfirmed {
-		t.Fatal("storage obligation is not saying that the storage proof was confirmed on the blockchain")
 	}
 
 	// Mine blocks until the storage proof has enough confirmations that the
