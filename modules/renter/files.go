@@ -348,7 +348,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 			UploadProgress: uploadProgress,
 			Expiration:     f.expiration(),
 			OnDisk:         onDisk,
-			Recoverable:    onDisk || redundancy > 1,
+			Recoverable:    onDisk || redundancy >= 1,
 		})
 		f.mu.RUnlock()
 		r.mu.RUnlock(lockID)
@@ -417,7 +417,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		UploadProgress: uploadProgress,
 		Expiration:     file.expiration(),
 		OnDisk:         onDisk,
-		Recoverable:    onDisk || redundancy > 1,
+		Recoverable:    onDisk || redundancy >= 1,
 	}
 
 	return fileInfo, nil
