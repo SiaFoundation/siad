@@ -299,6 +299,14 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return types.ZeroCurrency, modules.RenterContract{}, errTooExpensive
 	}
+	// Determine if host settings align with allowance period
+	c.mu.Lock()
+	period := c.allowance.Period
+	c.mu.Unlock()
+	if host.MaxDuration < period {
+		err := errors.New("unable to form contract with host due to insufficient MaxDuration of host")
+		return types.ZeroCurrency, modules.RenterContract{}, err
+	}
 	// cap host.MaxCollateral
 	if host.MaxCollateral.Cmp(maxCollateral) > 0 {
 		host.MaxCollateral = maxCollateral
@@ -416,11 +424,17 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 
 	// Fetch the host associated with this contract.
 	host, ok := c.hdb.Host(contract.HostPublicKey)
+	c.mu.Lock()
+	period := c.allowance.Period
+	c.mu.Unlock()
 	if !ok {
 		return modules.RenterContract{}, errors.New("no record of that host")
 	} else if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return modules.RenterContract{}, errTooExpensive
+	} else if host.MaxDuration < period {
+		return modules.RenterContract{}, errors.New("insufficient MaxDuration of host")
 	}
+
 	// cap host.MaxCollateral
 	if host.MaxCollateral.Cmp(maxCollateral) > 0 {
 		host.MaxCollateral = maxCollateral
