@@ -327,14 +327,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 		//
 		// TODO - once tiny files are stored in the metadata this code should be
 		// able to be cleaned up.
-		var redundancy, uploadProgress float64
-		if f.size == 0 {
-			redundancy = float64(f.erasureCode.NumPieces()) / float64(f.erasureCode.MinPieces())
-			uploadProgress = 100
-		} else {
-			redundancy = f.redundancy(offline, goodForRenew)
-			uploadProgress = f.uploadProgress()
-		}
+		redundancy := f.redundancy(offline, goodForRenew)
 		_, err := os.Stat(localPath)
 		onDisk := !os.IsNotExist(err)
 		fileList = append(fileList, modules.FileInfo{
@@ -345,10 +338,10 @@ func (r *Renter) FileList() []modules.FileInfo {
 			Available:      f.available(offline),
 			Redundancy:     redundancy,
 			UploadedBytes:  f.uploadedBytes(),
-			UploadProgress: uploadProgress,
+			UploadProgress: f.uploadProgress(),
 			Expiration:     f.expiration(),
 			OnDisk:         onDisk,
-			Recoverable:    !(redundancy < 1),
+			Recoverable:    onDisk || redundancy > 1,
 		})
 		f.mu.RUnlock()
 		r.mu.RUnlock(lockID)
@@ -396,14 +389,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	if exists {
 		localPath = tf.RepairPath
 	}
-	var redundancy, uploadProgress float64
-	if file.size == 0 {
-		redundancy = float64(file.erasureCode.NumPieces()) / float64(file.erasureCode.MinPieces())
-		uploadProgress = 100
-	} else {
-		redundancy = file.redundancy(offline, goodForRenew)
-		uploadProgress = file.uploadProgress()
-	}
+	redundancy := file.redundancy(offline, goodForRenew)
 	_, err := os.Stat(localPath)
 	onDisk := !os.IsNotExist(err)
 	fileInfo = modules.FileInfo{
@@ -414,10 +400,10 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		Available:      file.available(offline),
 		Redundancy:     redundancy,
 		UploadedBytes:  file.uploadedBytes(),
-		UploadProgress: uploadProgress,
+		UploadProgress: file.uploadProgress(),
 		Expiration:     file.expiration(),
 		OnDisk:         onDisk,
-		Recoverable:    !(redundancy < 1),
+		Recoverable:    onDisk || redundancy > 1,
 	}
 
 	return fileInfo, nil
