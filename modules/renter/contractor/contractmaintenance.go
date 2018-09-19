@@ -68,9 +68,9 @@ func (c *Contractor) managedCheckForDuplicates() {
 			if err != nil {
 				c.log.Println("Failed to save the contractor after updating renewed maps.")
 			}
+			c.mu.Unlock()
 			// Delete the old contract.
 			c.staticContracts.Delete(oldSC)
-			c.mu.Unlock()
 			// Update map
 			pubkeys[contract.HostPublicKey.String()] = newContract.ID
 			c.log.Println("Duplicate contract found and older contract deleted")
@@ -584,6 +584,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	oldUtility.Locked = true
 	if err := oldContract.UpdateUtility(oldUtility); err != nil {
 		c.log.Println("Failed to update the contract utilities", err)
+		c.staticContracts.Return(oldContract)
 		return amount, nil // Error is not returned because the renew succeeded.
 	}
 
@@ -594,7 +595,6 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// Lock the contractor as we update it to use the new contract
 	// instead of the old contract.
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	// Link Contracts
 	c.renewedFrom[newContract.ID] = id
 	c.renewedTo[id] = newContract.ID
@@ -605,6 +605,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	if err != nil {
 		c.log.Println("Failed to save the contractor after creating a new contract.")
 	}
+	c.mu.Unlock()
 	// Delete the old contract.
 	c.staticContracts.Delete(oldContract)
 	return amount, nil
@@ -843,10 +844,11 @@ func (c *Contractor) threadedContractMaintenance() {
 	// already have contracts with and the second one includes all hosts we
 	// have active contracts with. Then select a new batch of hosts to attempt
 	// contract formation with.
+	allContracts := c.staticContracts.ViewAll()
 	c.mu.RLock()
 	var blacklist []types.SiaPublicKey
 	var addressBlacklist []types.SiaPublicKey
-	for _, contract := range c.staticContracts.ViewAll() {
+	for _, contract := range allContracts {
 		blacklist = append(blacklist, contract.HostPublicKey)
 		if !contract.Utility.Locked || contract.Utility.GoodForRenew || contract.Utility.GoodForUpload {
 			addressBlacklist = append(addressBlacklist, contract.HostPublicKey)
