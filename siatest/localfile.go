@@ -25,7 +25,7 @@ type (
 // NewFile creates and returns a new LocalFile. It will write size random bytes
 // to the file and give the file a random name.
 func (tn *TestNode) NewFile(size int) (*LocalFile, error) {
-	fileName := fmt.Sprintf("%dbytes-%s", size, hex.EncodeToString(fastrand.Bytes(4)))
+	fileName := fmt.Sprintf("%dbytes %s", size, hex.EncodeToString(fastrand.Bytes(4)))
 	path := filepath.Join(tn.filesDir(), fileName)
 	bytes := fastrand.Bytes(size)
 	err := ioutil.WriteFile(path, bytes, 0600)
