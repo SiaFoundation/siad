@@ -41,6 +41,21 @@ func (lf *LocalFile) Delete() error {
 	return os.Remove(lf.path)
 }
 
+// Move moves the file to a new random location.
+func (lf *LocalFile) Move() error {
+	// Get the new path
+	fileName := fmt.Sprintf("%dbytes-%s", lf.size, hex.EncodeToString(fastrand.Bytes(4)))
+	dir, _ := filepath.Split(lf.path)
+	path := filepath.Join(dir, fileName)
+
+	// Move the file
+	if err := os.Rename(lf.path, path); err != nil {
+		return err
+	}
+	lf.path = path
+	return nil
+}
+
 // checkIntegrity compares the in-memory checksum to the checksum of the data
 // on disk
 func (lf *LocalFile) checkIntegrity() error {

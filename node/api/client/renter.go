@@ -235,6 +235,15 @@ func (c *Client) RenterStreamPartialGet(siaPath string, start, end uint64) (resp
 	return
 }
 
+// RenterSetRepairPathPost uses the /renter/tracking endpoint to set the repair
+// path of a file to a new location. The file at newPath must exists.
+func (c *Client) RenterSetRepairPathPost(siaPath, newPath string) (err error) {
+	values := url.Values{}
+	values.Set("trackingpath", newPath)
+	err = c.post("/renter/file/"+siaPath, values.Encode(), nil)
+	return
+}
+
 // RenterUploadPost uses the /renter/upload endpoint to upload a file
 func (c *Client) RenterUploadPost(path, siaPath string, dataPieces, parityPieces uint64) (err error) {
 	siaPath = escapeSiaPath(trimSiaPath(siaPath))
