@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -28,7 +29,7 @@ type (
 		// size of the staticMetadata on disk should always be a multiple of 4kib.
 		// The staticMetadata is also the only part of the file that is JSON encoded
 		// and can therefore be easily extended.
-		staticMetadata Metadata
+		staticMetadata metadata
 
 		// pubKeyTable stores the public keys of the hosts this file's pieces are uploaded to.
 		// Since multiple pieces from different chunks might be uploaded to the same host, this
@@ -82,14 +83,19 @@ type (
 
 // New create a new SiaFile.
 func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode []modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
+	currentTime := time.Now()
 	file := &SiaFile{
-		staticMetadata: Metadata{
+		staticMetadata: metadata{
+			AccessTime:          currentTime,
 			ChunkOffset:         defaultReservedMDPages * pageSize,
+			ChangeTime:          currentTime,
+			CreateTime:          currentTime,
 			StaticFileSize:      int64(fileSize),
 			LocalPath:           source,
 			StaticMasterKey:     masterKey.Key(),
 			StaticMasterKeyType: masterKey.Type(),
 			Mode:                fileMode,
+			ModTime:             currentTime,
 			StaticPieceSize:     modules.SectorSize - masterKey.Type().Overhead(),
 			SiaPath:             siaPath,
 		},
@@ -149,6 +155,11 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		HostPubKey: pk,
 		MerkleRoot: merkleRoot,
 	})
+
+	// Update the AccessTime, ChangeTime and ModTime.
+	sf.staticMetadata.AccessTime = time.Now()
+	sf.staticMetadata.ChangeTime = sf.staticMetadata.AccessTime
+	sf.staticMetadata.ModTime = sf.staticMetadata.AccessTime
 
 	// Update the file atomically.
 	var updates []writeaheadlog.Update

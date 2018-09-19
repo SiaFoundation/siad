@@ -308,7 +308,9 @@ func TestRenterFileListLocalPath(t *testing.T) {
 	defer rt.Close()
 	id := rt.renter.mu.Lock()
 	f := newTestingFile()
-	f.SetLocalPath("TestPath")
+	if err := f.SetLocalPath("TestPath"); err != nil {
+		t.Fatal(err)
+	}
 	rt.renter.files[f.SiaPath()] = f
 	rt.renter.mu.Unlock(id)
 	files := rt.renter.FileList()

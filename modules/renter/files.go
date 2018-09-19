@@ -124,16 +124,20 @@ func (r *Renter) FileList() []modules.FileInfo {
 	fileList := []modules.FileInfo{}
 	for _, f := range files {
 		fileList = append(fileList, modules.FileInfo{
-			CipherType:     f.MasterKey().Type().String(),
-			SiaPath:        f.SiaPath(),
-			LocalPath:      f.LocalPath(),
-			Filesize:       f.Size(),
-			Renewing:       true,
+			AccessTime:     f.AccessTime(),
 			Available:      f.Available(offline),
+			ChangeTime:     f.ChangeTime(),
+			CipherType:     f.MasterKey().Type().String(),
+			CreateTime:     f.CreateTime(),
+			Expiration:     f.Expiration(contracts),
+			Filesize:       f.Size(),
+			LocalPath:      f.LocalPath(),
+			ModTime:        f.ModTime(),
 			Redundancy:     f.Redundancy(offline, goodForRenew),
+			Renewing:       true,
+			SiaPath:        f.SiaPath(),
 			UploadedBytes:  f.UploadedBytes(),
 			UploadProgress: f.UploadProgress(),
-			Expiration:     f.Expiration(contracts),
 		})
 	}
 	return fileList
@@ -171,16 +175,20 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	// Build the FileInfo
 	renewing := true
 	fileInfo = modules.FileInfo{
-		CipherType:     file.MasterKey().Type().String(),
-		SiaPath:        file.SiaPath(),
-		LocalPath:      file.LocalPath(),
-		Filesize:       file.Size(),
-		Renewing:       renewing,
+		AccessTime:     file.AccessTime(),
 		Available:      file.Available(offline),
+		ChangeTime:     file.ChangeTime(),
+		CipherType:     file.MasterKey().Type().String(),
+		CreateTime:     file.CreateTime(),
+		Expiration:     file.Expiration(contracts),
+		Filesize:       file.Size(),
+		LocalPath:      file.LocalPath(),
+		ModTime:        file.ModTime(),
 		Redundancy:     file.Redundancy(offline, goodForRenew),
+		Renewing:       renewing,
+		SiaPath:        file.SiaPath(),
 		UploadedBytes:  file.UploadedBytes(),
 		UploadProgress: file.UploadProgress(),
-		Expiration:     file.Expiration(contracts),
 	}
 
 	return fileInfo, nil

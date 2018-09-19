@@ -457,6 +457,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 			pieceUsage:        make([]bool, params.file.ErasureCode(i).NumPieces()),
 
 			download:          d,
+			renterFile:        params.file,
 			staticStreamCache: r.staticStreamCache,
 		}
 

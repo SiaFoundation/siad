@@ -14,8 +14,8 @@ import (
 )
 
 type (
-	// Metadata is the metadata of a SiaFile and is JSON encoded.
-	Metadata struct {
+	// metadata is the metadata of a SiaFile and is JSON encoded.
+	metadata struct {
 		StaticVersion   [16]byte `json:"version"`   // version of the sia file format used
 		StaticFileSize  int64    `json:"filesize"`  // total size of the file
 		StaticPieceSize uint64   `json:"piecesize"` // size of a single piece of the file
@@ -59,6 +59,27 @@ type (
 		PubKeyTableOffset int64 `json:"pubkeytableoffset"`
 	}
 )
+
+// AccessTime returns the AccessTime timestamp of the file.
+func (sf *SiaFile) AccessTime() time.Time {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.AccessTime
+}
+
+// ChangeTime returns the ChangeTime timestamp of the file.
+func (sf *SiaFile) ChangeTime() time.Time {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.ChangeTime
+}
+
+// CreateTime returns the CreateTime timestamp of the file.
+func (sf *SiaFile) CreateTime() time.Time {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.CreateTime
+}
 
 // ChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) ChunkSize(chunkIndex uint64) uint64 {
@@ -139,6 +160,13 @@ func (sf *SiaFile) Mode() os.FileMode {
 	return sf.staticMetadata.Mode
 }
 
+// ModTime returns the ModTime timestamp of the file.
+func (sf *SiaFile) ModTime() time.Time {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.ModTime
+}
+
 // PieceSize returns the size of a single piece of the file.
 func (sf *SiaFile) PieceSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize
@@ -161,6 +189,8 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
 	sf.staticMetadata.SiaPath = newSiaPath
+	// Update the ChangeTime because the metadata changed.
+	sf.staticMetadata.ChangeTime = time.Now()
 	// Write the header to the new location.
 	headerUpdate, err := sf.saveHeader()
 	if err != nil {
@@ -178,18 +208,33 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 }
 
 // SetMode sets the filemode of the sia file.
-func (sf *SiaFile) SetMode(mode os.FileMode) {
+func (sf *SiaFile) SetMode(mode os.FileMode) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	sf.staticMetadata.Mode = mode
+	sf.staticMetadata.ChangeTime = time.Now()
+
+	// Save changes to metadata to disk.
+	updates, err := sf.saveHeader()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // SetLocalPath changes the local path of the file which is used to repair
 // the file from disk.
-func (sf *SiaFile) SetLocalPath(path string) {
+func (sf *SiaFile) SetLocalPath(path string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	sf.staticMetadata.LocalPath = path
+
+	// Save changes to metadata to disk.
+	updates, err := sf.saveHeader()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // SiaPath returns the file's sia path.
@@ -202,6 +247,20 @@ func (sf *SiaFile) SiaPath() string {
 // Size returns the file's size.
 func (sf *SiaFile) Size() uint64 {
 	return uint64(sf.staticMetadata.StaticFileSize)
+}
+
+// UpdateAccessTime updates the AccessTime timestamp to the current time.
+func (sf *SiaFile) UpdateAccessTime() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.AccessTime = time.Now()
+
+	// Save changes to metadata to disk.
+	updates, err := sf.saveHeader()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // UploadedBytes indicates how many bytes of the file have been uploaded via
