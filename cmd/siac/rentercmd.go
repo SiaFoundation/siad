@@ -642,7 +642,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err != nil {
 		die("\nDownload could not be completed:", err)
 	}
-	fmt.Printf("\nDownloaded '%s' to %s.\n", path, abs(destination))
+	fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
 }
 
 // bandwidthUnit takes bps (bits per second) as an argument and converts
@@ -860,7 +860,7 @@ func renterfilesuploadcmd(source, path string) {
 		if err != nil {
 			die("Could not upload file:", err)
 		}
-		fmt.Printf("Uploaded '%s' as %s.\n", abs(source), path)
+		fmt.Printf("Uploaded '%s' as '%s'.\n", abs(source), path)
 	}
 }
 

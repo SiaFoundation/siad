@@ -73,11 +73,12 @@ func (c *Contractor) Allowance() modules.Allowance {
 // PeriodSpending returns the amount spent on contracts during the current
 // billing period.
 func (c *Contractor) PeriodSpending() modules.ContractorSpending {
+	allContracts := c.staticContracts.ViewAll()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	var spending modules.ContractorSpending
-	for _, contract := range c.staticContracts.ViewAll() {
+	for _, contract := range allContracts {
 		// Calculate ContractFees
 		spending.ContractFees = spending.ContractFees.Add(contract.ContractFee)
 		spending.ContractFees = spending.ContractFees.Add(contract.TxnFee)

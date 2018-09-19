@@ -68,9 +68,9 @@ func (c *Contractor) managedCheckForDuplicates() {
 			if err != nil {
 				c.log.Println("Failed to save the contractor after updating renewed maps.")
 			}
+			c.mu.Unlock()
 			// Delete the old contract.
 			c.staticContracts.Delete(oldSC)
-			c.mu.Unlock()
 			// Update map
 			pubkeys[contract.HostPublicKey.String()] = newContract.ID
 			c.log.Println("Duplicate contract found and older contract deleted")
@@ -299,6 +299,14 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return types.ZeroCurrency, modules.RenterContract{}, errTooExpensive
 	}
+	// Determine if host settings align with allowance period
+	c.mu.Lock()
+	period := c.allowance.Period
+	c.mu.Unlock()
+	if host.MaxDuration < period {
+		err := errors.New("unable to form contract with host due to insufficient MaxDuration of host")
+		return types.ZeroCurrency, modules.RenterContract{}, err
+	}
 	// cap host.MaxCollateral
 	if host.MaxCollateral.Cmp(maxCollateral) > 0 {
 		host.MaxCollateral = maxCollateral
@@ -416,11 +424,17 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 
 	// Fetch the host associated with this contract.
 	host, ok := c.hdb.Host(contract.HostPublicKey)
+	c.mu.Lock()
+	period := c.allowance.Period
+	c.mu.Unlock()
 	if !ok {
 		return modules.RenterContract{}, errors.New("no record of that host")
 	} else if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return modules.RenterContract{}, errTooExpensive
+	} else if host.MaxDuration < period {
+		return modules.RenterContract{}, errors.New("insufficient MaxDuration of host")
 	}
+
 	// cap host.MaxCollateral
 	if host.MaxCollateral.Cmp(maxCollateral) > 0 {
 		host.MaxCollateral = maxCollateral
@@ -570,6 +584,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	oldUtility.Locked = true
 	if err := oldContract.UpdateUtility(oldUtility); err != nil {
 		c.log.Println("Failed to update the contract utilities", err)
+		c.staticContracts.Return(oldContract)
 		return amount, nil // Error is not returned because the renew succeeded.
 	}
 
@@ -580,7 +595,6 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// Lock the contractor as we update it to use the new contract
 	// instead of the old contract.
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	// Link Contracts
 	c.renewedFrom[newContract.ID] = id
 	c.renewedTo[id] = newContract.ID
@@ -591,6 +605,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	if err != nil {
 		c.log.Println("Failed to save the contractor after creating a new contract.")
 	}
+	c.mu.Unlock()
 	// Delete the old contract.
 	c.staticContracts.Delete(oldContract)
 	return amount, nil
@@ -829,10 +844,11 @@ func (c *Contractor) threadedContractMaintenance() {
 	// already have contracts with and the second one includes all hosts we
 	// have active contracts with. Then select a new batch of hosts to attempt
 	// contract formation with.
+	allContracts := c.staticContracts.ViewAll()
 	c.mu.RLock()
 	var blacklist []types.SiaPublicKey
 	var addressBlacklist []types.SiaPublicKey
-	for _, contract := range c.staticContracts.ViewAll() {
+	for _, contract := range allContracts {
 		blacklist = append(blacklist, contract.HostPublicKey)
 		if !contract.Utility.Locked || contract.Utility.GoodForRenew || contract.Utility.GoodForUpload {
 			addressBlacklist = append(addressBlacklist, contract.HostPublicKey)

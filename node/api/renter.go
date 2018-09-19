@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -483,7 +485,11 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 
 // renterLoadHandler handles the API call to load a '.sia' file.
 func (api *API) renterLoadHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	source := req.FormValue("source")
+	source, err := url.QueryUnescape(req.FormValue("source"))
+	if err != nil {
+		WriteError(w, Error{"failed to unescape the source path"}, http.StatusBadRequest)
+		return
+	}
 	if !filepath.IsAbs(source) {
 		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
 		return
@@ -513,7 +519,12 @@ func (api *API) renterLoadASCIIHandler(w http.ResponseWriter, req *http.Request,
 // renterRenameHandler handles the API call to rename a file entry in the
 // renter.
 func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	err := api.renter.RenameFile(strings.TrimPrefix(ps.ByName("siapath"), "/"), req.FormValue("newsiapath"))
+	newSiaPath, err := url.QueryUnescape(req.FormValue("newsiapath"))
+	if err != nil {
+		WriteError(w, Error{"failed to unescape newsiapath"}, http.StatusBadRequest)
+		return
+	}
+	err = api.renter.RenameFile(strings.TrimPrefix(ps.ByName("siapath"), "/"), newSiaPath)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -597,7 +608,10 @@ func (api *API) renterDownloadAsyncHandler(w http.ResponseWriter, req *http.Requ
 // /renter/download endpoint. Validation of these parameters is done by the
 // renter.
 func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (modules.RenterDownloadParameters, error) {
-	destination := req.FormValue("destination")
+	destination, err := url.QueryUnescape(req.FormValue("destination"))
+	if err != nil {
+		return modules.RenterDownloadParameters{}, errors.AddContext(err, "failed to unescape the destination")
+	}
 
 	// The offset and length in bytes.
 	offsetparam := req.FormValue("offset")
@@ -615,26 +629,26 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	if len(offsetparam) > 0 {
 		_, err := fmt.Sscan(offsetparam, &offset)
 		if err != nil {
-			return modules.RenterDownloadParameters{}, build.ExtendErr("could not decode the offset as uint64: ", err)
+			return modules.RenterDownloadParameters{}, errors.AddContext(err, "could not decode the offset as uint64")
 		}
 	}
 	if len(lengthparam) > 0 {
 		_, err := fmt.Sscan(lengthparam, &length)
 		if err != nil {
-			return modules.RenterDownloadParameters{}, build.ExtendErr("could not decode the offset as uint64: ", err)
+			return modules.RenterDownloadParameters{}, errors.AddContext(err, "could not decode the offset as uint64")
 		}
 	}
 
 	// Parse the httpresp parameter.
 	httpresp, err := scanBool(httprespparam)
 	if err != nil {
-		return modules.RenterDownloadParameters{}, build.ExtendErr("httpresp parameter could not be parsed", err)
+		return modules.RenterDownloadParameters{}, errors.AddContext(err, "httpresp parameter could not be parsed")
 	}
 
 	// Parse the async parameter.
 	async, err := scanBool(asyncparam)
 	if err != nil {
-		return modules.RenterDownloadParameters{}, build.ExtendErr("async parameter could not be parsed", err)
+		return modules.RenterDownloadParameters{}, errors.AddContext(err, "async parameter could not be parsed")
 	}
 
 	siapath := strings.TrimPrefix(ps.ByName("siapath"), "/") // Sia file name.
@@ -656,14 +670,18 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 // renterShareHandler handles the API call to create a '.sia' file that
 // shares a set of file.
 func (api *API) renterShareHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	destination := req.FormValue("destination")
+	destination, err := url.QueryUnescape(req.FormValue("destination"))
+	if err != nil {
+		WriteError(w, Error{"failed to unescape the destination path"}, http.StatusBadRequest)
+		return
+	}
 	// Check that the destination path is absolute.
 	if !filepath.IsAbs(destination) {
 		WriteError(w, Error{"destination must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
 
-	err := api.renter.ShareFiles(strings.Split(req.FormValue("siapaths"), ","), destination)
+	err = api.renter.ShareFiles(strings.Split(req.FormValue("siapaths"), ","), destination)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -699,7 +717,11 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 
 // renterUploadHandler handles the API call to upload a file.
 func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	source := req.FormValue("source")
+	source, err := url.QueryUnescape(req.FormValue("source"))
+	if err != nil {
+		WriteError(w, Error{"failed to unescape the source path"}, http.StatusBadRequest)
+		return
+	}
 	if !filepath.IsAbs(source) {
 		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
 		return
@@ -748,7 +770,7 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 	}
 
 	// Call the renter to upload the file.
-	err := api.renter.Upload(modules.FileUploadParams{
+	err = api.renter.Upload(modules.FileUploadParams{
 		Source:      source,
 		SiaPath:     strings.TrimPrefix(ps.ByName("siapath"), "/"),
 		ErasureCode: ec,
