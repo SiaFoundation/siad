@@ -570,6 +570,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	oldUtility.Locked = true
 	if err := oldContract.UpdateUtility(oldUtility); err != nil {
 		c.log.Println("Failed to update the contract utilities", err)
+		c.staticContracts.Return(oldContract)
 		return amount, nil // Error is not returned because the renew succeeded.
 	}
 
