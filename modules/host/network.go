@@ -15,6 +15,8 @@ package host
 // have to keep all the files following a renew in order to get the money.
 
 import (
+	"errors"
+	"io"
 	"net"
 	"sync/atomic"
 	"time"
@@ -270,6 +272,10 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 
 	switch id {
+	// new RPCs: enter an infinite request/response loop
+	case modules.RPCLoopEnter:
+		err = extendErr("incoming RPCLoopEnter failed: ", h.managedRPCLoop(conn))
+	// old RPCs: handle a single request/response
 	case modules.RPCDownload:
 		atomic.AddUint64(&h.atomicDownloadCalls, 1)
 		err = extendErr("incoming RPCDownload failed: ", h.managedRPCDownload(conn))
@@ -295,6 +301,39 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 		atomic.AddUint64(&h.atomicErroredCalls, 1)
 		err = extendErr("error with "+conn.RemoteAddr().String()+": ", err)
 		h.managedLogError(err)
+	}
+}
+
+// managedRPCLoop reads new RPCs from the renter, each consisting of a single
+// request and response. The loop terminates when the renter disconnects or
+// sends modules.RPCLoopExit.
+func (h *Host) managedRPCLoop(conn net.Conn) error {
+	var id types.Specifier
+	var err error
+	for {
+		// allow 5 mins between RPCs
+		// TODO: constant for this?
+		conn.SetDeadline(time.Now().Add(5 * time.Minute))
+
+		if _, err := io.ReadFull(conn, id[:]); err != nil {
+			h.log.Debugf("WARN: renter sent invalid RPC ID: %v", id)
+			return errors.New("invalid RPC ID " + id.String())
+		}
+		switch id {
+		case modules.RPCLoopSettings:
+			err = h.managedRPCLoopSettings(conn)
+		case modules.RPCLoopRecentRevision:
+			err = h.managedRPCLoopRecentRevision(conn)
+		case modules.RPCLoopDownload:
+			err = h.managedRPCLoopDownload(conn)
+		case modules.RPCLoopExit:
+			return nil
+		default:
+			return errors.New("invalid or unknown RPC ID: " + id.String())
+		}
+		if err != nil {
+			return err
+		}
 	}
 }
 
