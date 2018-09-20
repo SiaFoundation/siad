@@ -85,6 +85,7 @@ func TestRenter(t *testing.T) {
 	subTests := []test{
 		{"TestClearDownloadHistory", testClearDownloadHistory},
 		{"TestDirectories", testDirectories},
+		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
@@ -2917,4 +2918,75 @@ LOOP:
 		return types.ZeroCurrency, err
 	}
 	return startingUploadSpend, nil
+}
+
+// testSetFileTrackingPath tests if changing the repairPath of a file works.
+func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+	// Check that we have enough hosts for this test.
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
+	// Set fileSize and redundancy for upload
+	fileSize := int(modules.SectorSize)
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+
+	// Upload file
+	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Move the file to a new location.
+	if err := localFile.Move(); err != nil {
+		t.Fatal(err)
+	}
+	// Take down all the hosts.
+	numHosts := len(tg.Hosts())
+	for _, host := range tg.Hosts() {
+		if err := tg.RemoveNode(host); err != nil {
+			t.Fatal("Failed to shutdown host", err)
+		}
+	}
+	// File should have 0 redunancy now.
+	if err := renter.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
+		t.Fatal("Redundancy isn't decreasing", err)
+	}
+	// Rename the repairPath to match the new location.
+	if err := renter.SetFileRepairPath(remoteFile, localFile); err != nil {
+		t.Fatal("Failed to change the repair path", err)
+	}
+	// Create new hosts.
+	_, err = tg.AddNodeN(node.HostTemplate, numHosts)
+	if err != nil {
+		t.Fatal("Failed to create a new host", err)
+	}
+	// We should reach full redundancy again.
+	expectedRedundancy := float64((dataPieces + parityPieces)) / float64(dataPieces)
+	if err := renter.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
+		t.Logf("numHosts: %v", len(tg.Hosts()))
+		t.Fatal("File wasn't repaired", err)
+	}
+	// We should be able to download
+	if _, err := renter.DownloadByStream(remoteFile); err != nil {
+		t.Fatal("Failed to download file", err)
+	}
+	// Create a new file that is smaller then the first one.
+	smallFile, err := renter.NewFile(fileSize / 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Try to change the repairPath of the remote file again. This shouldn't
+	// work.
+	if err := renter.SetFileRepairPath(remoteFile, smallFile); err == nil {
+		t.Fatal("Changing repair path to file of different size shouldn't work")
+	}
+	// Delete the small file and try again. This also shouldn't work.
+	if err := smallFile.Delete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := renter.SetFileRepairPath(remoteFile, smallFile); err == nil {
+		t.Fatal("Changing repair path to a nonexistent file shouldn't work")
+	}
 }

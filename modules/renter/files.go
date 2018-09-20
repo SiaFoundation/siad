@@ -123,6 +123,10 @@ func (r *Renter) FileList() []modules.FileInfo {
 	// Build the list of FileInfos.
 	fileList := []modules.FileInfo{}
 	for _, f := range files {
+		localPath := f.LocalPath()
+		_, err := os.Stat(localPath)
+		onDisk := !os.IsNotExist(err)
+		redundancy := f.Redundancy(offline, goodForRenew)
 		fileList = append(fileList, modules.FileInfo{
 			AccessTime:     f.AccessTime(),
 			Available:      f.Available(offline),
@@ -131,9 +135,11 @@ func (r *Renter) FileList() []modules.FileInfo {
 			CreateTime:     f.CreateTime(),
 			Expiration:     f.Expiration(contracts),
 			Filesize:       f.Size(),
-			LocalPath:      f.LocalPath(),
+			LocalPath:      localPath,
 			ModTime:        f.ModTime(),
-			Redundancy:     f.Redundancy(offline, goodForRenew),
+			OnDisk:         onDisk,
+			Recoverable:    onDisk || redundancy >= 1,
+			Redundancy:     redundancy,
 			Renewing:       true,
 			SiaPath:        f.SiaPath(),
 			UploadedBytes:  f.UploadedBytes(),
@@ -174,6 +180,10 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 
 	// Build the FileInfo
 	renewing := true
+	localPath := file.LocalPath()
+	_, err := os.Stat(localPath)
+	onDisk := !os.IsNotExist(err)
+	redundancy := file.Redundancy(offline, goodForRenew)
 	fileInfo = modules.FileInfo{
 		AccessTime:     file.AccessTime(),
 		Available:      file.Available(offline),
@@ -182,9 +192,11 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		CreateTime:     file.CreateTime(),
 		Expiration:     file.Expiration(contracts),
 		Filesize:       file.Size(),
-		LocalPath:      file.LocalPath(),
+		LocalPath:      localPath,
 		ModTime:        file.ModTime(),
-		Redundancy:     file.Redundancy(offline, goodForRenew),
+		OnDisk:         onDisk,
+		Recoverable:    onDisk || redundancy >= 1,
+		Redundancy:     redundancy,
 		Renewing:       renewing,
 		SiaPath:        file.SiaPath(),
 		UploadedBytes:  file.UploadedBytes(),

@@ -112,6 +112,8 @@ type FileInfo struct {
 	Filesize       uint64            `json:"filesize"`
 	LocalPath      string            `json:"localpath"`
 	ModTime        time.Time         `json:"modtime"`
+	OnDisk         bool              `json:"ondisk"`
+	Recoverable    bool              `json:"recoverable"`
 	Redundancy     float64           `json:"redundancy"`
 	Renewing       bool              `json:"renewing"`
 	SiaPath        string            `json:"siapath"`
@@ -413,6 +415,10 @@ type Renter interface {
 
 	// SetSettings sets the Renter's settings.
 	SetSettings(RenterSettings) error
+
+	// SetFileTrackingPath sets the on-disk location of an uploaded file to a
+	// new value. Useful if files need to be moved on disk.
+	SetFileTrackingPath(siaPath, newPath string) error
 
 	// ShareFiles creates a '.sia' file that can be shared with others.
 	ShareFiles(paths []string, shareDest string) error

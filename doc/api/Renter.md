@@ -29,11 +29,12 @@ Index
 | [/renter/downloads/clear](#renterdownloadsclear-post)                           | POST      |
 | [/renter/files](#renterfiles-get)                                               | GET       |
 | [/renter/file/*___siapath___](#renterfilesiapath-get)                           | GET       |
+| [/renter/file/*__siapath__](#rentertrackingsiapath-post)                        | POST      |
 | [/renter/prices](#renter-prices-get)                                            | GET       |
-| [/renter/delete/___*siapath___](#renterdeletesiapath-post)                      | POST      |
-| [/renter/download/___*siapath___](#renterdownloadsiapath-get)                   | GET       |
-| [/renter/downloadasync/___*siapath___](#renterdownloadasyncsiapath-get)         | GET       |
-| [/renter/rename/___*siapath___](#renterrenamesiapath-post)                      | POST      |
+| [/renter/delete/___*siapath___](#renterdelete___siapath___-post)                | POST      |
+| [/renter/download/___*siapath___](#renterdownload__siapath___-get)              | GET       |
+| [/renter/downloadasync/___*siapath___](#renterdownloadasync__siapath___-get)    | GET       |
+| [/renter/rename/___*siapath___](#renterrename___siapath___-post)                | POST      |
 | [/renter/stream/___*siapath___](#renterstreamsiapath-get)                       | GET       |
 | [/renter/upload/___*siapath___](#renteruploadsiapath-post)                      | POST      |
 
@@ -428,6 +429,29 @@ lists the status of specified file.
   }   
 }
 ```
+
+#### /renter/file/*___siapath___ [POST]
+
+endpoint for changing file metadata.
+
+###### Path Parameters [(with comments)](/doc/api/Renter.md#path-parameters-3)
+```
+// SiaPath of the file on the network. The path must be non-empty, may not
+// include any path traversal strings ("./", "../"), and may not begin with a
+// forward-slash character.
+*siapath
+```
+
+###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters-3)
+```
+// If provided, this parameter changes the tracking path of a file to the 
+// specified path. Useful if moving the file to a different location on disk.
+trackingpath
+```
+
+###### Response
+standard success or error response. See
+[#standard-responses](#standard-responses).
 
 #### /renter/prices [GET]
 

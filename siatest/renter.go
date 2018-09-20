@@ -68,6 +68,12 @@ func (tn *TestNode) Rename(rf *RemoteFile, newPath string) (*RemoteFile, error) 
 	return rf, nil
 }
 
+// SetFileRepairPath changes the repair path of a remote file to the provided
+// local file's path.
+func (tn *TestNode) SetFileRepairPath(rf *RemoteFile, lf *LocalFile) error {
+	return tn.RenterSetRepairPathPost(rf.siaPath, lf.path)
+}
+
 // Stream uses the streaming endpoint to download a file.
 func (tn *TestNode) Stream(rf *RemoteFile) (data []byte, err error) {
 	data, err = tn.RenterStreamGet(rf.siaPath)
