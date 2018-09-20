@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"strings"
 	"syscall"
 	"time"
 
@@ -536,8 +537,13 @@ func walletsigncmd(cmd *cobra.Command, args []string) {
 	if err == nil {
 		txn = wspr.Transaction
 	} else {
-		// fallback to offline keygen
-		fmt.Println("Signing via API failed: either siad is not running, or your wallet is locked.")
+		// if siad is running, but the wallet is locked, assume the user
+		// wanted to sign with siad
+		if strings.Contains(err.Error(), modules.ErrLockedWallet.Error()) {
+			die("Signing via API failed: siad is running, but the wallet is locked.")
+		}
+
+		// siad is not running; fallback to offline keygen
 		fmt.Println("Enter your wallet seed to generate the signing key(s) now and sign without siad.")
 		seedString, err := passwordPrompt("Seed: ")
 		if err != nil {
@@ -547,10 +553,22 @@ func walletsigncmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			die("Invalid seed:", err)
 		}
+		// signing via seed may take a while, since we need to regenerate
+		// keys. If it takes longer than a second, print a message to assure
+		// the user that this is normal.
+		done := make(chan struct{})
+		go func() {
+			select {
+			case <-time.After(time.Second):
+				fmt.Println("Generating keys; this may take a few seconds...")
+			case <-done:
+			}
+		}()
 		err = wallet.SignTransaction(&txn, seed, toSign)
 		if err != nil {
 			die("Failed to sign transaction:", err)
 		}
+		close(done)
 	}
 
 	if walletRawTxn {
