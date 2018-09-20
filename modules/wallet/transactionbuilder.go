@@ -777,6 +777,9 @@ outer:
 // UnlockConditions returns the UnlockConditions for the specified address, if
 // they are known to the wallet.
 func (w *Wallet) UnlockConditions(addr types.UnlockHash) (uc types.UnlockConditions, err error) {
+	if err := w.tg.Add(); err != nil {
+		return types.UnlockConditions{}, err
+	}
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	if !w.unlocked {
@@ -798,6 +801,9 @@ func (w *Wallet) UnlockConditions(addr types.UnlockHash) (uc types.UnlockConditi
 
 // AddUnlockConditions adds a set of UnlockConditions to the wallet database.
 func (w *Wallet) AddUnlockConditions(uc types.UnlockConditions) error {
+	if err := w.tg.Add(); err != nil {
+		return err
+	}
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	if !w.unlocked {
@@ -901,11 +907,6 @@ func signTransaction(txn *types.Transaction, keys map[types.UnlockHash]spendable
 
 	for _, id := range toSign {
 		// find associated txn signature
-		//
-		// NOTE: it's possible that the Signature field will already be filled
-		// out. Although we could save a bit of work by not signing it, in
-		// practice it's probably best to overwrite any existing signatures,
-		// since we know that ours will be valid.
 		sigIndex := -1
 		for i, sig := range txn.TransactionSignatures {
 			if sig.ParentID == id {
@@ -927,6 +928,11 @@ func signTransaction(txn *types.Transaction, keys map[types.UnlockHash]spendable
 			return errors.New("could not locate signing key for " + id.String())
 		}
 		// add signature
+		//
+		// NOTE: it's possible that the Signature field will already be filled
+		// out. Although we could save a bit of work by not signing it, in
+		// practice it's probably best to overwrite any existing signatures,
+		// since we know that ours will be valid.
 		sigHash := txn.SigHash(sigIndex)
 		encodedSig := crypto.SignHash(sigHash, sk)
 		txn.TransactionSignatures[sigIndex].Signature = encodedSig[:]
