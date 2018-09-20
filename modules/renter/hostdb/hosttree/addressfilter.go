@@ -8,8 +8,12 @@ import (
 )
 
 const (
-	ipv4FilterRange = 24
-	ipv6FilterRange = 54
+	// IPv4FilterRange is the number of bits within an IP address (starting
+	// from the left) which have to be unique for the host not to be filtered.
+	IPv4FilterRange = 24
+	// IPv6FilterRange is the number of bits within an IP address (starting
+	// from the left) which have to be unique for the host not to be filtered.
+	IPv6FilterRange = 54
 )
 
 // Filter filters host addresses which belong to the same subnet to
@@ -44,9 +48,9 @@ func (af *Filter) Add(host modules.NetAddress) {
 		// Set the filterRange according to the type of IP address.
 		var filterRange int
 		if ip.To4() != nil {
-			filterRange = ipv4FilterRange
+			filterRange = IPv4FilterRange
 		} else {
-			filterRange = ipv6FilterRange
+			filterRange = IPv6FilterRange
 		}
 		// Get the subnet.
 		_, ipnet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", ip.String(), filterRange))
@@ -83,10 +87,11 @@ func (af *Filter) Filtered(host modules.NetAddress) bool {
 		// Set the filterRange according to the type of IP address.
 		var filterRange int
 		if ip.To4() != nil {
-			filterRange = ipv4FilterRange
+			filterRange = IPv4FilterRange
 		} else {
-			filterRange = ipv6FilterRange
+			filterRange = IPv6FilterRange
 		}
+
 		// Get the subnet.
 		_, ipnet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", ip.String(), filterRange))
 		if err != nil {

@@ -14,8 +14,29 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// equalIPNets checks if two slices of IP subnets contain the same subnets.
+func equalIPNets(ipNetsA, ipNetsB []string) bool {
+	// Check the length first.
+	if len(ipNetsA) != len(ipNetsB) {
+		return false
+	}
+	// Create a map of all the subnets in ipNetsA.
+	mapNetsA := make(map[string]struct{})
+	for _, subnet := range ipNetsA {
+		mapNetsA[subnet] = struct{}{}
+	}
+	// Make sure that all the subnets from ipNetsB are in the map.
+	for _, subnet := range ipNetsB {
+		if _, exists := mapNetsA[subnet]; !exists {
+			return false
+		}
+	}
+	return true
+}
 
 // queueScan will add a host to the queue to be scanned. The host will be added
 // at a random position which means that the order in which queueScan is called
@@ -251,6 +272,40 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	}
 }
 
+// managedLookupHostIPNets returns string representations of the CIDR subnets
+// used by the host.  In case of an error we return nil. We don't really care
+// about the error because we don't update host entries if we are offline
+// anyway. So if we fail to resolve a hostname, the problem is not related to
+// us.
+func (hdb *HostDB) managedLookupHostIPNets(host modules.HostDBEntry) (ipNets []string) {
+	// Lookup the IP addresses of the host.
+	addresses, err := hdb.deps.Resolver().LookupIP(host.NetAddress.Host())
+	if err != nil {
+		hdb.log.Debugln("failed to resolve host", host.NetAddress.Host(), err)
+		return
+	}
+	// Get the subnets of the addresses.
+	for _, ip := range addresses {
+		// Set the filterRange according to the type of IP address.
+		var filterRange int
+		if ip.To4() != nil {
+			filterRange = hosttree.IPv4FilterRange
+		} else {
+			filterRange = hosttree.IPv6FilterRange
+		}
+
+		// Get the subnet.
+		_, ipnet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", ip.String(), filterRange))
+		if err != nil {
+			hdb.log.Debugln("failed to parse CIDR of host", host.NetAddress.Host(), err)
+			return
+		}
+		// Add the subnet to the host.
+		ipNets = append(ipNets, ipnet.String())
+	}
+	return
+}
+
 // managedScanHost will connect to a host and grab the settings, verifying
 // uptime and updating to the host's preferences.
 func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
@@ -264,6 +319,14 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 	if hdb.deps.Disrupt("customResolver") {
 		port := netAddr.Port()
 		netAddr = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
+	}
+
+	// Resolve the host's used subnets and update the timestamp if they
+	// changed.
+	ipNets := hdb.managedLookupHostIPNets(entry)
+	if !equalIPNets(ipNets, entry.IPNets) {
+		entry.IPNets = ipNets
+		entry.LastIPNetChange = time.Now()
 	}
 
 	// Update historic interactions of entry if necessary
