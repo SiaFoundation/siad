@@ -379,36 +379,33 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // providing a different file with the same size.
 func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 	id := r.mu.Lock()
-	defer r.mu.Unlock(id)
 
 	// Check if file exists and is being tracked.
 	file, exists := r.files[siaPath]
 	if !exists {
+		r.mu.Unlock(id)
 		return fmt.Errorf("unknown file %s", siaPath)
-	}
-	tf, exists := r.persist.Tracking[siaPath]
-	if !exists {
-		return fmt.Errorf("file with path %s is not tracked", siaPath)
 	}
 
 	// Sanity check that a file with the correct size exists at the new
 	// location.
-	file.mu.Lock()
-	defer file.mu.Unlock()
 	fi, err := os.Stat(newPath)
 	if err != nil {
+		r.mu.Unlock(id)
 		return errors.AddContext(err, "failed to get fileinfo of the file")
 	}
-	if uint64(fi.Size()) != file.size {
-		return fmt.Errorf("file sizes don't match - want %v but got %v", file.size, fi.Size())
+	if uint64(fi.Size()) != file.Size() {
+		r.mu.Unlock(id)
+		return fmt.Errorf("file sizes don't match - want %v but got %v", file.Size(), fi.Size())
 	}
 
-	// Set new path
-	tf.RepairPath = newPath
-	r.persist.Tracking[siaPath] = tf
+	// Set new path in memory.
+	delete(r.files, siaPath)
+	r.files[newPath] = file
+	r.mu.Unlock(id)
 
-	// Save the change.
-	return r.saveSync()
+	// Set the new path on disk.
+	return file.SetLocalPath(newPath)
 }
 
 // ActiveHosts returns an array of hostDB's active hosts

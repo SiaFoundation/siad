@@ -2972,8 +2972,8 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
 	}
-	// Create a new file that is smaller then the first one.
-	smallFile, err := renter.NewFile(fileSize / 2)
+	// Create a new file that is smaller than the first one.
+	smallFile, err := renter.UploadDir().NewFile(fileSize - 1)
 	if err != nil {
 		t.Fatal(err)
 	}

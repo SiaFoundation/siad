@@ -1,6 +1,8 @@
 package siatest
 
 import (
+	"encoding/hex"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -28,7 +30,7 @@ func (lf *LocalFile) Delete() error {
 // Move moves the file to a new random location.
 func (lf *LocalFile) Move() error {
 	// Get the new path
-	fileName := fmt.Sprintf("%dbytes-%s", lf.size, hex.EncodeToString(fastrand.Bytes(4)))
+	fileName := fmt.Sprintf("%dbytes %s", lf.size, hex.EncodeToString(fastrand.Bytes(4)))
 	dir, _ := filepath.Split(lf.path)
 	path := filepath.Join(dir, fileName)
 
