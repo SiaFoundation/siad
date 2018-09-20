@@ -6,7 +6,7 @@ type (
 	plainTextCipherKey struct{}
 )
 
-// Type returns the type of the twofish key.
+// Type returns the type of the plaintext 'key'.
 func (plainTextCipherKey) Type() CipherType {
 	return TypePlain
 }
