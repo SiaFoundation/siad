@@ -23,7 +23,7 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 		return nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
 	// Create a random destination for the download
-	fileName := fmt.Sprintf("%dbytes-%s", fi.Filesize, hex.EncodeToString(fastrand.Bytes(4)))
+	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, hex.EncodeToString(fastrand.Bytes(4)))
 	dest := filepath.Join(tn.downloadsDir(), fileName)
 	if err := tn.RenterDownloadGet(rf.siaPath, dest, 0, fi.Filesize, async); err != nil {
 		return nil, errors.AddContext(err, "failed to download file")
@@ -56,6 +56,12 @@ func (tn *TestNode) DownloadByStream(rf *RemoteFile) (data []byte, err error) {
 		err = errors.New("downloaded bytes don't match requested data")
 	}
 	return
+}
+
+// SetFileRepairPath changes the repair path of a remote file to the provided
+// local file's path.
+func (tn *TestNode) SetFileRepairPath(rf *RemoteFile, lf *LocalFile) error {
+	return tn.RenterSetRepairPathPost(rf.siaPath, lf.path)
 }
 
 // Stream uses the streaming endpoint to download a file.

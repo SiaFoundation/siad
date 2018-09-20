@@ -3,6 +3,7 @@ package hosttree
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"sync"
 	"testing"
@@ -18,13 +19,13 @@ import (
 func verifyTree(tree *HostTree, nentries int) error {
 	expectedWeight := tree.root.entry.weight.Mul64(uint64(nentries))
 	if tree.root.weight.Cmp(expectedWeight) != 0 {
-		return fmt.Errorf("expected weight is incorrect: got %v wanted %v\n", tree.root.weight, expectedWeight)
+		return fmt.Errorf("expected weight is incorrect: got %v wanted %v", tree.root.weight, expectedWeight)
 	}
 
 	// Check that the length of activeHosts and the count of hostTree are
 	// consistent.
 	if len(tree.hosts) != nentries {
-		return fmt.Errorf("unexpected number of hosts: got %v wanted %v\n", len(tree.hosts), nentries)
+		return fmt.Errorf("unexpected number of hosts: got %v wanted %v", len(tree.hosts), nentries)
 	}
 
 	// Select many random hosts and do naive statistical analysis on the
@@ -35,7 +36,7 @@ func verifyTree(tree *HostTree, nentries int) error {
 		selectionMap := make(map[string]int)
 		expected := 100
 		for i := 0; i < expected*nentries; i++ {
-			entries := tree.SelectRandom(1, nil)
+			entries := tree.SelectRandom(1, nil, nil)
 			if len(entries) == 0 {
 				return errors.New("no hosts")
 			}
@@ -72,8 +73,7 @@ func verifyTree(tree *HostTree, nentries int) error {
 	return nil
 }
 
-// makeHostDBEntry makes a new host entry with a random public key and the weight
-// provided to `weight`.
+// makeHostDBEntry makes a new host entry with a random public key.
 func makeHostDBEntry() modules.HostDBEntry {
 	dbe := modules.HostDBEntry{}
 
@@ -91,7 +91,7 @@ func makeHostDBEntry() modules.HostDBEntry {
 func TestHostTree(t *testing.T) {
 	tree := New(func(hdbe modules.HostDBEntry) types.Currency {
 		return types.NewCurrency64(20)
-	})
+	}, modules.ProductionResolver{})
 
 	// Create a bunch of host entries of equal weight.
 	firstInsertions := 64
@@ -147,7 +147,7 @@ func TestHostTreeParallel(t *testing.T) {
 
 	tree := New(func(dbe modules.HostDBEntry) types.Currency {
 		return types.NewCurrency64(10)
-	})
+	}, modules.ProductionResolver{})
 
 	// spin up 100 goroutines all randomly inserting, removing, modifying, and
 	// fetching nodes from the tree.
@@ -222,7 +222,7 @@ func TestHostTreeParallel(t *testing.T) {
 
 					// FETCH
 					case 3:
-						tree.SelectRandom(3, nil)
+						tree.SelectRandom(3, nil, nil)
 					}
 				}
 			}
@@ -245,7 +245,7 @@ func TestHostTreeParallel(t *testing.T) {
 func TestHostTreeModify(t *testing.T) {
 	tree := New(func(dbe modules.HostDBEntry) types.Currency {
 		return types.NewCurrency64(10)
-	})
+	}, modules.ProductionResolver{})
 
 	treeSize := 100
 	var keys []types.SiaPublicKey
@@ -295,7 +295,7 @@ func TestVariedWeights(t *testing.T) {
 
 	tree := New(func(dbe modules.HostDBEntry) types.Currency {
 		return types.NewCurrency64(uint64(i))
-	})
+	}, modules.ProductionResolver{})
 
 	hostCount := 5
 	expectedPerWeight := int(10e3)
@@ -310,7 +310,7 @@ func TestVariedWeights(t *testing.T) {
 	// time.
 	selectionMap := make(map[string]int)
 	for i := 0; i < selections; i++ {
-		randEntry := tree.SelectRandom(1, nil)
+		randEntry := tree.SelectRandom(1, nil, nil)
 		if len(randEntry) == 0 {
 			t.Fatal("no hosts!")
 		}
@@ -347,7 +347,7 @@ func TestRepeatInsert(t *testing.T) {
 
 	tree := New(func(dbe modules.HostDBEntry) types.Currency {
 		return types.NewCurrency64(10)
-	})
+	}, modules.ProductionResolver{})
 
 	entry1 := makeHostDBEntry()
 	entry2 := entry1
@@ -365,7 +365,7 @@ func TestNodeAtWeight(t *testing.T) {
 	// create hostTree
 	tree := New(func(dbe modules.HostDBEntry) types.Currency {
 		return weight
-	})
+	}, modules.ProductionResolver{})
 
 	entry := makeHostDBEntry()
 	err := tree.Insert(entry)
@@ -386,10 +386,10 @@ func TestRandomHosts(t *testing.T) {
 	tree := New(func(dbe modules.HostDBEntry) types.Currency {
 		calls++
 		return types.NewCurrency64(uint64(calls))
-	})
+	}, modules.ProductionResolver{})
 
 	// Empty.
-	hosts := tree.SelectRandom(1, nil)
+	hosts := tree.SelectRandom(1, nil, nil)
 	if len(hosts) != 0 {
 		t.Errorf("empty hostdb returns %v hosts: %v", len(hosts), hosts)
 	}
@@ -418,13 +418,13 @@ func TestRandomHosts(t *testing.T) {
 	}
 
 	// Grab 1 random host.
-	randHosts := tree.SelectRandom(1, nil)
+	randHosts := tree.SelectRandom(1, nil, nil)
 	if len(randHosts) != 1 {
 		t.Error("didn't get 1 hosts")
 	}
 
 	// Grab 2 random hosts.
-	randHosts = tree.SelectRandom(2, nil)
+	randHosts = tree.SelectRandom(2, nil, nil)
 	if len(randHosts) != 2 {
 		t.Error("didn't get 2 hosts")
 	}
@@ -433,7 +433,7 @@ func TestRandomHosts(t *testing.T) {
 	}
 
 	// Grab 3 random hosts.
-	randHosts = tree.SelectRandom(3, nil)
+	randHosts = tree.SelectRandom(3, nil, nil)
 	if len(randHosts) != 3 {
 		t.Error("didn't get 3 hosts")
 	}
@@ -443,7 +443,7 @@ func TestRandomHosts(t *testing.T) {
 	}
 
 	// Grab 4 random hosts. 3 should be returned.
-	randHosts = tree.SelectRandom(4, nil)
+	randHosts = tree.SelectRandom(4, nil, nil)
 	if len(randHosts) != 3 {
 		t.Error("didn't get 3 hosts")
 	}
@@ -458,18 +458,86 @@ func TestRandomHosts(t *testing.T) {
 		randHosts[0].PublicKey,
 		randHosts[1].PublicKey,
 		randHosts[2].PublicKey,
-	})
+	}, nil)
 	if len(uniqueHosts) != 0 {
 		t.Error("didn't get 0 hosts")
 	}
 
 	// Ask for 3 hosts, blacklisting non-existent hosts. 3 should be returned.
-	randHosts = tree.SelectRandom(3, []types.SiaPublicKey{{}, {}, {}})
+	randHosts = tree.SelectRandom(3, []types.SiaPublicKey{{}, {}, {}}, nil)
 	if len(randHosts) != 3 {
 		t.Error("didn't get 3 hosts")
 	}
 
 	if randHosts[0].PublicKey.String() == randHosts[1].PublicKey.String() || randHosts[0].PublicKey.String() == randHosts[2].PublicKey.String() || randHosts[1].PublicKey.String() == randHosts[2].PublicKey.String() {
 		t.Error("doubled up")
+	}
+}
+
+// testHostTreeFilterResolver is a resolver for the TestTwoAddresses test.
+type testHostTreeFilterResolver struct{}
+
+func (testHostTreeFilterResolver) LookupIP(host string) ([]net.IP, error) {
+	switch host {
+	case "host1":
+		return []net.IP{{127, 0, 0, 1}}, nil
+	case "host2":
+		return []net.IP{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, nil
+	case "host3":
+		return []net.IP{{127, 0, 0, 2}, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2}}, nil
+	default:
+		panic("shouldn't happen")
+	}
+}
+
+// TestHostTreeFilter verifies that two hosts with the IP submask won't be
+// returned by SelectRandom.
+func TestHostTreeFilter(t *testing.T) {
+	// Insert 3 hosts to be selected.
+	entry1 := makeHostDBEntry()
+	entry1.NetAddress = "host1:1234"
+	entry2 := makeHostDBEntry()
+	entry2.NetAddress = "host2:1234"
+	entry3 := makeHostDBEntry()
+	entry3.NetAddress = "host3:1234"
+
+	// Create the tree.
+	tree := New(func(dbe modules.HostDBEntry) types.Currency {
+		// All entries have the same weight.
+		return types.NewCurrency64(uint64(10))
+	}, testHostTreeFilterResolver{})
+
+	// Insert host1 and host2. Both should be returned by SelectRandom.
+	tree.Insert(entry1)
+	tree.Insert(entry2)
+	if len(tree.SelectRandom(2, nil, nil)) != 2 {
+		t.Error("Expected both hosts to be returned")
+	}
+
+	// Get a new empty tree.
+	tree = New(func(dbe modules.HostDBEntry) types.Currency {
+		// All entries have the same weight.
+		return types.NewCurrency64(uint64(10))
+	}, testHostTreeFilterResolver{})
+
+	// Insert host1 and host3. Only a single host should be returned.
+	tree.Insert(entry1)
+	tree.Insert(entry3)
+	if numHosts := len(tree.SelectRandom(2, nil, nil)); numHosts != 1 {
+		t.Error("Expected only one host but was", numHosts)
+	}
+
+	// Add host2 to the tree to have all 3 hosts in it.
+	tree.Insert(entry2)
+
+	// Call SelectRandom again but ignore host 2. This should give us only 1
+	// host.
+	if numHosts := len(tree.SelectRandom(2, nil, []types.SiaPublicKey{entry2.PublicKey})); numHosts != 1 {
+		t.Error("Expected only one host but was", numHosts)
+	}
+
+	// Call SelectRandom again but ignore host 3. This should give us no host.
+	if numHosts := len(tree.SelectRandom(2, nil, []types.SiaPublicKey{entry3.PublicKey})); numHosts != 0 {
+		t.Error("Expected 0 hosts but was", numHosts)
 	}
 }

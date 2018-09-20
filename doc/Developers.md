@@ -158,7 +158,7 @@ if err != nil {
 	forkBlockchain(node)
 }
 
-// Instead to this:
+// Instead do this:
 if err != nil {
 	return
 }
@@ -179,6 +179,10 @@ proper prefix (see [Function Prefixes](#function-prefixes)). The responsibility
 for thread-safety comes from the exported functions which call the non-exported
 functions. Maintaining this convention minimizes developer overhead when working
 with complex objects.
+
+Our concurrency model is such that modules should never call out to higher level
+packages while under a lock.  For example, the `contractor` module should never
+call the `renter` module while holding a `Lock()`.
 
 Error Handling
 --------------

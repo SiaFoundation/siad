@@ -23,16 +23,18 @@ Index
 | ------------------------------------------------------------------------------- | --------- |
 | [/renter](#renter-get)                                                          | GET       |
 | [/renter](#renter-post)                                                         | POST      |
+| [/renter/contract/cancel](#rentercontractcancel-post)                           | POST      |
 | [/renter/contracts](#rentercontracts-get)                                       | GET       |
 | [/renter/downloads](#renterdownloads-get)                                       | GET       |
 | [/renter/downloads/clear](#renterdownloadsclear-post)                           | POST      |
 | [/renter/files](#renterfiles-get)                                               | GET       |
 | [/renter/file/*___siapath___](#renterfilesiapath-get)                           | GET       |
+| [/renter/file/*__siapath__](#rentertrackingsiapath-post)                        | POST      |
 | [/renter/prices](#renter-prices-get)                                            | GET       |
-| [/renter/delete/___*siapath___](#renterdeletesiapath-post)                      | POST      |
-| [/renter/download/___*siapath___](#renterdownloadsiapath-get)                   | GET       |
-| [/renter/downloadasync/___*siapath___](#renterdownloadasyncsiapath-get)         | GET       |
-| [/renter/rename/___*siapath___](#renterrenamesiapath-post)                      | POST      |
+| [/renter/delete/___*siapath___](#renterdelete___siapath___-post)                | POST      |
+| [/renter/download/___*siapath___](#renterdownload__siapath___-get)              | GET       |
+| [/renter/downloadasync/___*siapath___](#renterdownloadasync__siapath___-get)    | GET       |
+| [/renter/rename/___*siapath___](#renterrename___siapath___-post)                | POST      |
 | [/renter/stream/___*siapath___](#renterstreamsiapath-get)                       | GET       |
 | [/renter/upload/___*siapath___](#renteruploadsiapath-post)                      | POST      |
 
@@ -140,6 +142,20 @@ maxuploadspeed
 // Stream cache size specifies how many data chunks will be cached while 
 // streaming.  
 streamcachesize
+```
+
+###### Response
+standard success or error response. See
+[API.md#standard-responses](/doc/API.md#standard-responses).
+
+#### /renter/contract/cancel [POST]
+
+cancels a specific contract of the Renter.
+
+###### Query String Parameter
+```
+// ID of the file contract
+id
 ```
 
 ###### Response
@@ -414,6 +430,29 @@ lists the status of specified file.
 }
 ```
 
+#### /renter/file/*___siapath___ [POST]
+
+endpoint for changing file metadata.
+
+###### Path Parameters [(with comments)](/doc/api/Renter.md#path-parameters-3)
+```
+// SiaPath of the file on the network. The path must be non-empty, may not
+// include any path traversal strings ("./", "../"), and may not begin with a
+// forward-slash character.
+*siapath
+```
+
+###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters-3)
+```
+// If provided, this parameter changes the tracking path of a file to the 
+// specified path. Useful if moving the file to a different location on disk.
+trackingpath
+```
+
+###### Response
+standard success or error response. See
+[#standard-responses](#standard-responses).
+
 #### /renter/prices [GET]
 
 lists the estimated prices of performing various storage and data operations.
@@ -529,11 +568,13 @@ standard success or error response. See
 downloads a file using http streaming. This call blocks until the data is
 received.
 The streaming endpoint also uses caching internally to prevent siad from
-redownloading the same chunk multiple times when only parts of a file are
+re-downloading the same chunk multiple times when only parts of a file are
 requested at once. This might lead to a substantial increase in ram usage and
 therefore it is not recommended to stream multiple files in parallel at the
 moment. This restriction will be removed together with the caching once partial
-downloads are supported in the future.
+downloads are supported in the future. If you want to stream multiple files you
+should increase the size of the Renter's `streamcachesize` to at least 2x the
+number of files you are steaming.
 
 ###### Path Parameters [(with comments)](/doc/api/Renter.md#path-parameters-1)
 ```

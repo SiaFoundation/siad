@@ -335,6 +335,8 @@ func (r *Renter) FileList() []modules.FileInfo {
 			redundancy = f.redundancy(offline, goodForRenew)
 			uploadProgress = f.uploadProgress()
 		}
+		_, err := os.Stat(localPath)
+		onDisk := !os.IsNotExist(err)
 		fileList = append(fileList, modules.FileInfo{
 			SiaPath:        f.name,
 			LocalPath:      localPath,
@@ -345,6 +347,8 @@ func (r *Renter) FileList() []modules.FileInfo {
 			UploadedBytes:  f.uploadedBytes(),
 			UploadProgress: uploadProgress,
 			Expiration:     f.expiration(),
+			OnDisk:         onDisk,
+			Recoverable:    onDisk || redundancy >= 1,
 		})
 		f.mu.RUnlock()
 		r.mu.RUnlock(lockID)
@@ -392,16 +396,28 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	if exists {
 		localPath = tf.RepairPath
 	}
+	var redundancy, uploadProgress float64
+	if file.size == 0 {
+		redundancy = float64(file.erasureCode.NumPieces()) / float64(file.erasureCode.MinPieces())
+		uploadProgress = 100
+	} else {
+		redundancy = file.redundancy(offline, goodForRenew)
+		uploadProgress = file.uploadProgress()
+	}
+	_, err := os.Stat(localPath)
+	onDisk := !os.IsNotExist(err)
 	fileInfo = modules.FileInfo{
 		SiaPath:        file.name,
 		LocalPath:      localPath,
 		Filesize:       file.size,
 		Renewing:       renewing,
 		Available:      file.available(offline),
-		Redundancy:     file.redundancy(offline, goodForRenew),
+		Redundancy:     redundancy,
 		UploadedBytes:  file.uploadedBytes(),
-		UploadProgress: file.uploadProgress(),
+		UploadProgress: uploadProgress,
 		Expiration:     file.expiration(),
+		OnDisk:         onDisk,
+		Recoverable:    onDisk || redundancy >= 1,
 	}
 
 	return fileInfo, nil

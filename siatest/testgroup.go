@@ -89,7 +89,8 @@ func NewGroup(groupDir string, nodeParams ...node.NodeParams) (*TestGroup, error
 		return nil, errors.New("cannot fund group without miners")
 	}
 	miner := tg.Miners()[0]
-	for i := types.BlockHeight(0); i <= types.MaturityDelay+types.TaxHardforkHeight; i++ {
+	renewWindow := types.BlockHeight(DefaultAllowance.RenewWindow)
+	for i := types.BlockHeight(0); i <= types.MaturityDelay+types.TaxHardforkHeight+renewWindow; i++ {
 		if err := miner.MineBlock(); err != nil {
 			return nil, errors.AddContext(err, "failed to mine block for funding")
 		}
@@ -142,6 +143,9 @@ func addStorageFolderToHosts(hosts map[*TestNode]struct{}) error {
 // announceHosts adds storage to each host and announces them to the group
 func announceHosts(hosts map[*TestNode]struct{}) error {
 	for host := range hosts {
+		if host.params.SkipHostAnnouncement {
+			continue
+		}
 		if err := host.HostModifySettingPost(client.HostParamAcceptingContracts, true); err != nil {
 			return errors.AddContext(err, "failed to set host to accepting contracts")
 		}
@@ -239,6 +243,9 @@ func hostsInRenterDBCheck(miner *TestNode, renters map[*TestNode]struct{}, hosts
 			continue
 		}
 		for host := range hosts {
+			if host.params.SkipHostAnnouncement {
+				continue
+			}
 			numRetries := 0
 			err := Retry(600, 100*time.Millisecond, func() error {
 				numRetries++
@@ -399,17 +406,29 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 		if uint64(len(hosts)) < expectedContracts {
 			expectedContracts = uint64(len(hosts))
 		}
+		// Subtract hosts which the renter doesn't know yet because they
+		// weren't announced automatically.
+		for host := range hosts {
+			if host.params.SkipHostAnnouncement && renter.KnowsHost(host) != nil {
+				expectedContracts--
+			}
+		}
 		// Check if number of contracts is sufficient.
-		err = Retry(1000, 100, func() error {
+		err = Retry(1000, 100*time.Millisecond, func() error {
 			numRetries++
 			contracts := uint64(0)
 			// Get the renter's contracts.
-			rc, err := renter.RenterContractsGet()
+			rc, err := renter.RenterInactiveContractsGet()
 			if err != nil {
 				return err
 			}
 			// Count number of contracts
 			for _, c := range rc.ActiveContracts {
+				if _, exists := hostMap[string(c.HostPublicKey.Key)]; exists {
+					contracts++
+				}
+			}
+			for _, c := range rc.InactiveContracts {
 				if _, exists := hostMap[string(c.HostPublicKey.Key)]; exists {
 					contracts++
 				}
@@ -421,7 +440,8 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 						return err
 					}
 				}
-				return errors.New("renter hasn't formed enough contracts")
+				return fmt.Errorf("renter hasn't formed enough contracts: expected %v got %v",
+					expectedContracts, contracts)
 			}
 			return nil
 		})

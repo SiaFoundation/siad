@@ -5,6 +5,7 @@ package hostdb
 // settings of the hosts.
 
 import (
+	"fmt"
 	"net"
 	"sort"
 	"time"
@@ -257,6 +258,13 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 	netAddr := entry.NetAddress
 	pubKey := entry.PublicKey
 	hdb.log.Debugf("Scanning host %v at %v", pubKey, netAddr)
+
+	// If we use a custom resolver for testing, we replace the custom domain
+	// with 127.0.0.1. Otherwise the scan will fail.
+	if hdb.deps.Disrupt("customResolver") {
+		port := netAddr.Port()
+		netAddr = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
+	}
 
 	// Update historic interactions of entry if necessary
 	hdb.mu.RLock()

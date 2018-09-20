@@ -6,6 +6,15 @@ stages:
   - deploy
  
 before_script:
+  - mkdir -p $GOPATH/src/golang.org/x
+  - git clone https://github.com/golang/crypto $GOPATH/src/golang.org/x/crypto
+  - (cd $GOPATH/src/golang.org/x/crypto && git remote set-url origin https://go.googlesource.com/crypto)
+  - git clone https://github.com/golang/net $GOPATH/src/golang.org/x/net
+  - (cd $GOPATH/src/golang.org/x/net && git remote set-url origin https://go.googlesource.com/net)
+  - git clone https://github.com/golang/sys $GOPATH/src/golang.org/x/sys
+  - (cd $GOPATH/src/golang.org/x/sys && git remote set-url origin https://go.googlesource.com/sys)
+  - git clone https://github.com/golang/text $GOPATH/src/golang.org/x/text
+  - (cd $GOPATH/src/golang.org/x/text && git remote set-url origin https://go.googlesource.com/text)
   - make dependencies
   - cp -R $CI_PROJECT_DIR $GOPATH/src/gitlab.com/NebulousLabs/Sia
   - cd $GOPATH/src/gitlab.com/NebulousLabs/Sia
@@ -24,6 +33,7 @@ legacy-tests:
     paths:
       - $CI_PROJECT_DIR/SiaTesting
       - $CI_PROJECT_DIR/cover/cover.out
+    when: always
   script: 
     - make test-long pkgs="./node ./node/api ./node/api/server" run=.
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
@@ -36,6 +46,7 @@ package-tests:
     paths:
       - $CI_PROJECT_DIR/SiaTesting
       - $CI_PROJECT_DIR/cover/cover.out
+    when: always
   script: 
     - make test-long run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
@@ -48,6 +59,7 @@ integration-tests:
     paths:
       - $CI_PROJECT_DIR/SiaTesting
       - $CI_PROJECT_DIR/cover/cover.out
+    when: always
   script:
     - make test-long run=. pkgs="./siatest ./siatest/consensus ./siatest/renter ./siatest/wallet"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting

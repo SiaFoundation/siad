@@ -134,11 +134,11 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		return modules.RenterContract{}, errors.New("couldn't initiate RPC: " + err.Error())
 	}
 	// verify that both parties are renewing the same contract
-	if err = verifyRecentRevision(conn, contract, host.Version); err != nil {
-		// don't add context; want to preserve the original error type so that
-		// callers can check using IsRevisionMismatch
+	err = verifyRecentRevision(conn, oldContract, host.Version)
+	if err != nil {
 		return modules.RenterContract{}, err
 	}
+
 	// verify the host's settings and confirm its identity
 	host, err = verifySettings(conn, host)
 	if err != nil {

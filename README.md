@@ -1,8 +1,10 @@
-# [![Sia Logo](http://sia.tech/img/svg/sia-green-logo.svg)](http://sia.tech) v1.3.3 (Capricorn)
+# [![Sia Logo](http://sia.tech/img/svg/sia-green-logo.svg)](http://sia.tech) v1.3.4 (Capricorn)
 
-[![Build Status](https://travis-ci.org/NebulousLabs/Sia.svg?branch=master)](https://travis-ci.org/NebulousLabs/Sia)
+[![Build Status](https://gitlab.com/NebulousLabs/Sia/badges/master/build.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
+[![Coverage Report](https://gitlab.com/NebulousLabs/Sia/badges/master/coverage.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
 [![GoDoc](https://godoc.org/gitlab.com/NebulousLabs/Sia?status.svg)](https://godoc.org/gitlab.com/NebulousLabs/Sia)
 [![Go Report Card](https://goreportcard.com/badge/gitlab.com/NebulousLabs/Sia)](https://goreportcard.com/report/gitlab.com/NebulousLabs/Sia)
+[![License MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://img.shields.io/badge/License-MIT-brightgreen.svg)
 
 Sia is a new decentralized cloud storage platform that radically alters the
 landscape of cloud storage. By leveraging smart contracts, client-side

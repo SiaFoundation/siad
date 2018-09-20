@@ -163,16 +163,6 @@ func rentercmd() {
 	fm := rg.FinancialMetrics
 	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
 		Add(fm.DownloadSpending).Add(fm.StorageSpending)
-	// Calculate unspent allocated
-	unspentAllocated := types.ZeroCurrency
-	if fm.TotalAllocated.Cmp(totalSpent) >= 0 {
-		unspentAllocated = fm.TotalAllocated.Sub(totalSpent)
-	}
-	// Calculate unspent unallocated
-	unspentUnallocated := types.ZeroCurrency
-	if fm.Unspent.Cmp(unspentAllocated) >= 0 {
-		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
-	}
 
 	fmt.Printf(`Renter Info:
   Allowance:`)
@@ -180,31 +170,11 @@ func rentercmd() {
 	if rg.Settings.Allowance.Funds.IsZero() {
 		fmt.Printf("\n    No current allowance.\n")
 	} else {
-		fmt.Printf(`         %v
-    Spent Funds:     %v
-      Storage:       %v
-      Upload:        %v
-      Download:      %v
-      Fees:          %v
-    Unspent Funds:   %v
-      Allocated:     %v
-      Unallocated:   %v
+		fmt.Printf(`       %v
+  Spent Funds:     %v
+  Unspent Funds:   %v
 `, currencyUnits(rg.Settings.Allowance.Funds),
-			currencyUnits(totalSpent), currencyUnits(fm.StorageSpending),
-			currencyUnits(fm.UploadSpending), currencyUnits(fm.DownloadSpending),
-			currencyUnits(fm.ContractFees), currencyUnits(fm.Unspent),
-			currencyUnits(unspentAllocated), currencyUnits(unspentUnallocated))
-	}
-
-	fmt.Printf("\n  Previous Spending:")
-	if fm.PreviousSpending.IsZero() && fm.WithheldFunds.IsZero() {
-		fmt.Printf("\n    No previous spending.\n\n")
-	} else {
-		fmt.Printf(` %v
-    Withheld Funds:  %v
-    Release Block:   %v
-
-`, currencyUnits(fm.PreviousSpending), currencyUnits(fm.WithheldFunds), fm.ReleaseBlock)
+			currencyUnits(totalSpent), currencyUnits(fm.Unspent))
 	}
 
 	// also list files
@@ -293,11 +263,61 @@ func renterallowancecmd() {
 	}
 	allowance := rg.Settings.Allowance
 
-	// convert to SC
+	// Show allowance info
 	fmt.Printf(`Allowance:
-	Amount: %v
-	Period: %v blocks
-`, currencyUnits(allowance.Funds), allowance.Period)
+	Amount:       %v
+	Period:       %v blocks
+	Renew Window: %v blocks
+	Hosts:        %v
+`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts)
+
+	// Show spending detail
+	fm := rg.FinancialMetrics
+	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
+		Add(fm.DownloadSpending).Add(fm.StorageSpending)
+	// Calculate unspent allocated
+	unspentAllocated := types.ZeroCurrency
+	if fm.TotalAllocated.Cmp(totalSpent) >= 0 {
+		unspentAllocated = fm.TotalAllocated.Sub(totalSpent)
+	}
+	// Calculate unspent unallocated
+	unspentUnallocated := types.ZeroCurrency
+	if fm.Unspent.Cmp(unspentAllocated) >= 0 {
+		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
+	}
+
+	fmt.Printf(`
+Spending:
+  Current Period Spending:`)
+
+	if rg.Settings.Allowance.Funds.IsZero() {
+		fmt.Printf("\n    No current period spending.\n")
+	} else {
+		fmt.Printf(`
+    Spent Funds:     %v
+      Storage:       %v
+      Upload:        %v
+      Download:      %v
+      Fees:          %v
+    Unspent Funds:   %v
+      Allocated:     %v
+      Unallocated:   %v
+`, currencyUnits(totalSpent), currencyUnits(fm.StorageSpending),
+			currencyUnits(fm.UploadSpending), currencyUnits(fm.DownloadSpending),
+			currencyUnits(fm.ContractFees), currencyUnits(fm.Unspent),
+			currencyUnits(unspentAllocated), currencyUnits(unspentUnallocated))
+	}
+
+	fmt.Printf("\n  Previous Spending:")
+	if fm.PreviousSpending.IsZero() && fm.WithheldFunds.IsZero() {
+		fmt.Printf("\n    No previous spending.\n\n")
+	} else {
+		fmt.Printf(` %v
+    Withheld Funds:  %v
+    Release Block:   %v
+
+`, currencyUnits(fm.PreviousSpending), currencyUnits(fm.WithheldFunds), fm.ReleaseBlock)
+	}
 }
 
 // renterallowancecancelcmd cancels the current allowance.
@@ -622,7 +642,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err != nil {
 		die("\nDownload could not be completed:", err)
 	}
-	fmt.Printf("\nDownloaded '%s' to %s.\n", path, abs(destination))
+	fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
 }
 
 // bandwidthUnit takes bps (bits per second) as an argument and converts
@@ -766,12 +786,11 @@ func renterfileslistcmd() {
 				redundancyStr = "-"
 			}
 			uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
-			_, err := os.Stat(file.LocalPath)
-			onDiskStr := yesNo(!os.IsNotExist(err))
-			recoverableStr := yesNo(!(file.Redundancy < 1))
 			if file.UploadProgress == -1 {
 				uploadProgressStr = "-"
 			}
+			onDiskStr := yesNo(file.OnDisk)
+			recoverableStr := yesNo(file.Recoverable)
 			fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%s\t%s\t%s", availableStr, filesizeUnits(int64(file.UploadedBytes)), uploadProgressStr, redundancyStr, renewingStr, onDiskStr, recoverableStr)
 		}
 		fmt.Fprintf(w, "\t%s", file.SiaPath)
@@ -838,7 +857,7 @@ func renterfilesuploadcmd(source, path string) {
 		if err != nil {
 			die("Could not upload file:", err)
 		}
-		fmt.Printf("Uploaded '%s' as %s.\n", abs(source), path)
+		fmt.Printf("Uploaded '%s' as '%s'.\n", abs(source), path)
 	}
 }
 

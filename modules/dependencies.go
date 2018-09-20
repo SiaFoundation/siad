@@ -56,6 +56,10 @@ type (
 		// LoadFile allows the host to load a persistence structure form disk.
 		LoadFile(persist.Metadata, interface{}, string) error
 
+		// LookupIP resolves a hostname to a number of IP addresses. If an IP
+		// address is provided as an argument it will just return that IP.
+		LookupIP(string) ([]net.IP, error)
+
 		// MkdirAll gives the host the ability to create chains of folders
 		// within the filesystem.
 		MkdirAll(string, os.FileMode) error
@@ -70,6 +74,9 @@ type (
 
 		// OpenFile opens a file for the host.
 		OpenFile(string, int, os.FileMode) (File, error)
+
+		// Resolver returns a Resolver which can resolve hostnames to IPs.
+		Resolver() Resolver
 
 		// RandRead fills the input bytes with random data.
 		RandRead([]byte) (int, error)
@@ -229,6 +236,12 @@ func (*ProductionDependencies) LoadFile(meta persist.Metadata, data interface{},
 	return persist.LoadJSON(meta, data, filename)
 }
 
+// LookupIP resolves a hostname to a number of IP addresses. If an IP address
+// is provided as an argument it will just return that IP.
+func (*ProductionDependencies) LookupIP(host string) ([]net.IP, error) {
+	return net.LookupIP(host)
+}
+
 // SaveFileSync writes JSON encoded data to a file and syncs the file to disk
 // afterwards.
 func (*ProductionDependencies) SaveFileSync(meta persist.Metadata, data interface{}, filename string) error {
@@ -340,4 +353,29 @@ func (*ProductionDependencies) Symlink(s1, s2 string) error {
 // WriteFile writes a file to the filesystem.
 func (*ProductionDependencies) WriteFile(s string, b []byte, fm os.FileMode) error {
 	return ioutil.WriteFile(s, b, fm)
+}
+
+// Resolver is an interface that allows resolving a hostname into IP
+// addresses.
+type Resolver interface {
+	LookupIP(string) ([]net.IP, error)
+}
+
+// ProductionResolver is the hostname resolver used in production builds.
+type ProductionResolver struct{}
+
+// LookupIP is a passthrough function to net.LookupIP. In testing builds it
+// returns a random IP.
+func (ProductionResolver) LookupIP(host string) ([]net.IP, error) {
+	if build.Release == "testing" {
+		rawIP := make([]byte, 16)
+		fastrand.Read(rawIP)
+		return []net.IP{net.IP(rawIP)}, nil
+	}
+	return net.LookupIP(host)
+}
+
+// Resolver returns the ProductionResolver.
+func (*ProductionDependencies) Resolver() Resolver {
+	return ProductionResolver{}
 }

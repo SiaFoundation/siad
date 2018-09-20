@@ -21,7 +21,8 @@ package renter
 // setBandwidthLimits function.
 
 import (
-	"errors"
+	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -34,6 +35,7 @@ import (
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
@@ -84,7 +86,7 @@ type hostDB interface {
 	// RandomHosts returns a set of random hosts, weighted by their estimated
 	// usefulness / attractiveness to the renter. RandomHosts will not return
 	// any offline or inactive hosts.
-	RandomHosts(int, []types.SiaPublicKey) ([]modules.HostDBEntry, error)
+	RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error)
 
 	// ScoreBreakdown returns a detailed explanation of the various properties
 	// of the host.
@@ -109,6 +111,9 @@ type hostContractor interface {
 
 	// Close closes the hostContractor.
 	Close() error
+
+	// CancelContract cancels the Renter's contract
+	CancelContract(id types.FileContractID) error
 
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []modules.RenterContract
@@ -239,7 +244,7 @@ func (r *Renter) PriceEstimation() modules.RenterPriceEstimation {
 	}
 
 	// Grab hosts to perform the estimation.
-	hosts, err := r.hostDB.RandomHosts(priceEstimationScope, nil)
+	hosts, err := r.hostDB.RandomHosts(priceEstimationScope, nil, nil)
 	if err != nil {
 		return modules.RenterPriceEstimation{}
 	}
@@ -365,6 +370,46 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	return nil
 }
 
+// SetFileTrackingPath sets the on-disk location of an uploaded file to a new
+// value. Useful if files need to be moved on disk. SetFileTrackingPath will
+// check that a file exists at the new location and it ensures that it has the
+// right size, but it can't check that the content is the same. Therefore the
+// caller is responsible for not accidentally corrupting the uploaded file by
+// providing a different file with the same size.
+func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+
+	// Check if file exists and is being tracked.
+	file, exists := r.files[siaPath]
+	if !exists {
+		return fmt.Errorf("unknown file %s", siaPath)
+	}
+	tf, exists := r.persist.Tracking[siaPath]
+	if !exists {
+		return fmt.Errorf("file with path %s is not tracked", siaPath)
+	}
+
+	// Sanity check that a file with the correct size exists at the new
+	// location.
+	file.mu.Lock()
+	defer file.mu.Unlock()
+	fi, err := os.Stat(newPath)
+	if err != nil {
+		return errors.AddContext(err, "failed to get fileinfo of the file")
+	}
+	if uint64(fi.Size()) != file.size {
+		return fmt.Errorf("file sizes don't match - want %v but got %v", file.size, fi.Size())
+	}
+
+	// Set new path
+	tf.RepairPath = newPath
+	r.persist.Tracking[siaPath] = tf
+
+	// Save the change.
+	return r.saveSync()
+}
+
 // ActiveHosts returns an array of hostDB's active hosts
 func (r *Renter) ActiveHosts() []modules.HostDBEntry { return r.hostDB.ActiveHosts() }
 
@@ -386,6 +431,11 @@ func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) modules.HostScoreBreakdow
 // EstimateHostScore returns the estimated host score
 func (r *Renter) EstimateHostScore(e modules.HostDBEntry) modules.HostScoreBreakdown {
 	return r.hostDB.EstimateHostScore(e)
+}
+
+// CancelContract cancels a renter's contract by ID by setting goodForRenew and goodForUpload to false
+func (r *Renter) CancelContract(id types.FileContractID) error {
+	return r.hostContractor.CancelContract(id)
 }
 
 // Contracts returns an array of host contractor's staticContracts

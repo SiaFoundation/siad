@@ -34,9 +34,6 @@ var (
 // set. The contracts cannot be used to create Editors or Downloads, and will
 // not be renewed.
 //
-// TODO: can an Editor or Downloader be used across renewals?
-// TODO: will hosts allow renewing the same contract twice?
-//
 // NOTE: At this time, transaction fees are not counted towards the allowance.
 // This means the contractor may spend more than allowance.Funds.
 func (c *Contractor) SetAllowance(a modules.Allowance) error {
