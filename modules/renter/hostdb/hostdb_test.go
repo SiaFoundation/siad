@@ -637,8 +637,22 @@ func TestCheckForIPViolations(t *testing.T) {
 	// Scan the entries. entry1 should be the 'oldest' and entry3 the
 	// 'youngest'. This also inserts the entries into the hosttree.
 	hdbt.hdb.managedScanHost(entry1)
+	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry2)
+	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry3)
+	time.Sleep(time.Millisecond)
+
+	// Scan all the entries again in reversed order. This is a sanity check. If
+	// the code works as expected this shouldn't do anything since the
+	// hostnames didn't change. If it doesn't, it will update the timestamps
+	// and the following checks will fail.
+	time.Sleep(time.Millisecond)
+	hdbt.hdb.managedScanHost(entry3)
+	time.Sleep(time.Millisecond)
+	hdbt.hdb.managedScanHost(entry2)
+	time.Sleep(time.Millisecond)
+	hdbt.hdb.managedScanHost(entry1)
 
 	// Add entry1 and entry2. There should be no violation.
 	badHosts := hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey})
