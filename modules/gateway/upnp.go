@@ -216,7 +216,7 @@ func (g *Gateway) threadedForwardPort(port string) {
 	defer g.threads.Done()
 
 	if err := g.managedForwardPort(port); err != nil {
-		g.log.Debugf("WARN:", err)
+		g.log.Debugf("WARN: %v", err)
 	}
 	g.log.Println("INFO: successfully forwarded port", port)
 	return
