@@ -272,16 +272,16 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	}
 }
 
-// managedLookupHostIPNets returns string representations of the CIDR subnets
+// managedLookupIPNets returns string representations of the CIDR subnets
 // used by the host.  In case of an error we return nil. We don't really care
 // about the error because we don't update host entries if we are offline
 // anyway. So if we fail to resolve a hostname, the problem is not related to
 // us.
-func (hdb *HostDB) managedLookupHostIPNets(host modules.HostDBEntry) (ipNets []string) {
+func (hdb *HostDB) managedLookupIPNets(address modules.NetAddress) (ipNets []string) {
 	// Lookup the IP addresses of the host.
-	addresses, err := hdb.deps.Resolver().LookupIP(host.NetAddress.Host())
+	addresses, err := hdb.deps.Resolver().LookupIP(address.Host())
 	if err != nil {
-		hdb.log.Debugln("failed to resolve host", host.NetAddress.Host(), err)
+		hdb.log.Debugln("failed to resolve host", address.Host(), err)
 		return
 	}
 	// Get the subnets of the addresses.
@@ -297,7 +297,7 @@ func (hdb *HostDB) managedLookupHostIPNets(host modules.HostDBEntry) (ipNets []s
 		// Get the subnet.
 		_, ipnet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", ip.String(), filterRange))
 		if err != nil {
-			hdb.log.Debugln("failed to parse CIDR of host", host.NetAddress.Host(), err)
+			hdb.log.Debugln("failed to parse CIDR of host", address.Host(), err)
 			return
 		}
 		// Add the subnet to the host.
@@ -323,7 +323,7 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 
 	// Resolve the host's used subnets and update the timestamp if they
 	// changed.
-	ipNets := hdb.managedLookupHostIPNets(entry)
+	ipNets := hdb.managedLookupIPNets(entry.NetAddress)
 	if !equalIPNets(ipNets, entry.IPNets) {
 		entry.IPNets = ipNets
 		entry.LastIPNetChange = time.Now()

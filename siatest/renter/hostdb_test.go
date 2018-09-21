@@ -130,18 +130,23 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 	host2Port := hg2.ExternalSettings.NetAddress.Port()
 	host3Port := hg3.ExternalSettings.NetAddress.Port()
 
-	// Reannounce the hosts with custom hostnames which match the hostnames from the custom resolver method.
+	// Reannounce the hosts with custom hostnames which match the hostnames
+	// from the custom resolver method. We announce host1 first and host3 last
+	// to make sure host1 is the 'oldest' and host3 the 'youngest'.
 	err1 = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host1.com:%s", host1Port)))
-	err2 = allHosts[1].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
-	err3 = allHosts[2].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
-	err = errors.Compose(err1, err2, err3)
-	if err != nil {
-		t.Fatal("Failed to reannounce at least one of the hosts", err)
+	err2 = tg.Miners()[0].MineBlock()
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal("failed to announce host1")
 	}
-
-	// Mine the announcements.
-	if err := tg.Miners()[0].MineBlock(); err != nil {
-		t.Fatal("Failed to mine block", err)
+	err1 = allHosts[1].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
+	err2 = tg.Miners()[0].MineBlock()
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal("failed to announce host2")
+	}
+	err1 = allHosts[2].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
+	err2 = tg.Miners()[0].MineBlock()
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal("failed to announce host3")
 	}
 
 	// Add a renter with a custom resolver to the group.
@@ -156,6 +161,8 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 			return []net.IP{{130, 0, 0, 1}}, nil
 		case "host4.com":
 			return []net.IP{{130, 0, 0, 2}}, nil
+		case "localhost":
+			return []net.IP{{127, 0, 0, 1}}, nil
 		default:
 			panic("shouldn't happen")
 		}
@@ -176,7 +183,8 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		t.Fatalf("Expected %v active contracts but got %v", len(allHosts), len(contracts.Contracts))
 	}
 
-	// Reannounce host1 as host4 which creates a violation with host3.
+	// Reannounce host1 as host4 which creates a violation with host3 and
+	// causes host1 to be the 'youngest'.
 	err = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host4.com:%s", host1Port)))
 	if err != nil {
 		t.Fatal("Failed to reannonce host 1")
@@ -195,8 +203,8 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 				return err
 			}
 		}
-		// The renter should now have 2 active contracts and 1 inactive one. The
-		// inactive one should be either host3 or host4.
+		// The renter should now have 2 active contracts and 1 inactive one.
+		// The inactive one should be host4 since it's the 'youngest'.
 		contracts, err = renter.RenterInactiveContractsGet()
 		if err != nil {
 			return err
@@ -208,7 +216,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 			return fmt.Errorf("Expected 1 inactive contract but got %v", len(contracts.InactiveContracts))
 		}
 		canceledHost := contracts.InactiveContracts[0].NetAddress.Host()
-		if canceledHost != "host3.com" && canceledHost != "host4.com" {
+		if canceledHost != "host4.com" {
 			return fmt.Errorf("Expected canceled contract to be either host3 or host4 but was %v", canceledHost)
 		}
 		return nil
@@ -218,6 +226,8 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 	}
 }
 
+// TestSelectRandomCanceledHost makes sure that we can form a contract with a
+// hostB even if it has a conflict with a hostA iff hostA is canceled.
 func TestSelectRandomCanceledHost(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -267,6 +277,8 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 			return []net.IP{{128, 0, 0, 1}}, nil
 		case "host2.com":
 			return []net.IP{{128, 1, 0, 1}}, nil
+		case "localhost":
+			return []net.IP{{127, 0, 0, 1}}, nil
 		default:
 			panic("shouldn't happen")
 		}
