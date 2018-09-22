@@ -233,11 +233,15 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	if build.VersionCmp(entry.Version, "1.4.0") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
 	}
-	// minus 10% for being below the most recent version.
+	// -10% for being below 1.3.5.
+	if build.VersionCmp(entry.Version, "1.3.5") < 0 {
+		base = base * 0.9
+	}
+	// -10% for being below 1.3.4.
 	if build.VersionCmp(entry.Version, "1.3.4") < 0 {
 		base = base * 0.9
 	}
-	// minus another 10% for being below the previous version.
+	// -10% for being below 1.3.3.
 	if build.VersionCmp(entry.Version, "1.3.3") < 0 {
 		base = base * 0.9
 	}
