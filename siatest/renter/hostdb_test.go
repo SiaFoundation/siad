@@ -168,6 +168,13 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		}
 	})
 	renterTemplate.ContractorDeps = renterTemplate.HostDBDeps
+
+	// Adding a custom RenewWindow will make a contract renewal during the test
+	// unlikely.
+	renterTemplate.Allowance = siatest.DefaultAllowance
+	renterTemplate.Allowance.Period *= 2
+	renterTemplate.Allowance.RenewWindow = 1
+	renterTemplate.Allowance.Hosts = uint64(len(allHosts))
 	_, err = tg.AddNodes(renterTemplate)
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +187,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(contracts.ActiveContracts) != len(allHosts) {
-		t.Fatalf("Expected %v active contracts but got %v", len(allHosts), len(contracts.Contracts))
+		t.Fatalf("Expected %v active contracts but got %v", len(allHosts), len(contracts.ActiveContracts))
 	}
 
 	// Reannounce host1 as host4 which creates a violation with host3 and
@@ -197,8 +204,8 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 
 	retry := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		// Mine a block every second.
-		if retry%10 == 0 {
+		// Mine new blocks periodically.
+		if retry%25 == 0 {
 			if tg.Miners()[0].MineBlock() != nil {
 				return err
 			}
@@ -210,7 +217,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 			return err
 		}
 		if len(contracts.ActiveContracts) != len(allHosts)-1 {
-			return fmt.Errorf("Expected %v active contracts but got %v", len(allHosts)-1, len(contracts.Contracts))
+			return fmt.Errorf("Expected %v active contracts but got %v", len(allHosts)-1, len(contracts.ActiveContracts))
 		}
 		if len(contracts.InactiveContracts) != 1 {
 			return fmt.Errorf("Expected 1 inactive contract but got %v", len(contracts.InactiveContracts))
