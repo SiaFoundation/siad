@@ -83,6 +83,11 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	if err := decoder.Decode(&sf.staticMetadata); err != nil {
 		return nil, errors.AddContext(err, "failed to decode metadata")
 	}
+	// Create the erasure coder.
+	sf.staticMetadata.staticErasureCode, err = unmarshalErasureCoder(sf.staticMetadata.StaticErasureCodeType, sf.staticMetadata.StaticErasureCodeParams)
+	if err != nil {
+		return nil, err
+	}
 	// Load the pubKeyTable.
 	pubKeyTableLen := sf.staticMetadata.ChunkOffset - sf.staticMetadata.PubKeyTableOffset
 	if pubKeyTableLen < 0 {
@@ -163,14 +168,6 @@ func unmarshalChunks(raw []byte) (chunks []chunk, err error) {
 	if err != nil {
 		return
 	}
-	// We also need to create the modules.ErasureCoder object for each chunk.
-	for i, chunk := range chunks {
-		ec, err := unmarshalErasureCoder(chunk.StaticErasureCodeType, chunk.StaticErasureCodeParams)
-		if err != nil {
-			return nil, err
-		}
-		chunks[i].staticErasureCode = ec
-	}
 	return
 }
 
@@ -187,6 +184,12 @@ func unmarshalErasureCoder(ecType [4]byte, ecParams [8]byte) (modules.ErasureCod
 // unmarshalMetadata unmarshals the json encoded metadata of the SiaFile.
 func unmarshalMetadata(raw []byte) (md metadata, err error) {
 	err = json.Unmarshal(raw, &md)
+
+	// We also need to create the erasure coder object.
+	md.staticErasureCode, err = unmarshalErasureCoder(md.StaticErasureCodeType, md.StaticErasureCodeParams)
+	if err != nil {
+		return
+	}
 	return
 }
 

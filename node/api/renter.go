@@ -524,7 +524,7 @@ func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{"failed to unescape newsiapath"}, http.StatusBadRequest)
 		return
 	}
-	err = api.renter.RenameFile(strings.TrimPrefix(ps.ByName("siapath"), "/"), newSiaPath)
+	err = api.renter.RenameFile(strings.TrimPrefix(ps.ByName("siapath"), "/"), strings.TrimPrefix(newSiaPath, "/"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -546,13 +546,17 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 // renterFileHandler handles POST requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	newTrackingPath := req.FormValue("trackingpath")
+	newTrackingPath, err := url.QueryUnescape(req.FormValue("trackingpath"))
+	if err != nil {
+		WriteError(w, Error{"unable to unescape new tracking path"}, http.StatusBadRequest)
+		return
+	}
 
 	// Handle changing the tracking path of a file.
 	if newTrackingPath != "" {
 		siapath := strings.TrimPrefix(ps.ByName("siapath"), "/")
 		if err := api.renter.SetFileTrackingPath(siapath, newTrackingPath); err != nil {
-			WriteError(w, Error{"unable to parse funds"}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("unable set tracking path: %v", err)}, http.StatusBadRequest)
 			return
 		}
 	}

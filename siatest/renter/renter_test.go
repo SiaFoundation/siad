@@ -635,7 +635,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// We should still be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {
-		t.Fatal("Failed to download file", err)
+		t.Error("Failed to download file", err)
 	}
 	// Bring up new parity hosts and check if redundancy increments again.
 	_, err = tg.AddNodeN(node.HostTemplate, int(parityPieces))

@@ -68,10 +68,9 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 	if chunkIndex == s.file.NumChunks() {
 		return 0, io.EOF
 	}
-	chunkSize := s.file.ChunkSize(chunkIndex)
 	remainingData := uint64(fileSize - s.offset)
 	requestedData := uint64(len(p))
-	remainingChunk := chunkSize - chunkOffset
+	remainingChunk := s.file.ChunkSize() - chunkOffset
 	length := min(remainingData, requestedData, remainingChunk)
 
 	// Download data

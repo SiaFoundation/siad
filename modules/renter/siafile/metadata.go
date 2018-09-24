@@ -57,6 +57,21 @@ type (
 		//
 		ChunkOffset       int64 `json:"chunkoffset"`
 		PubKeyTableOffset int64 `json:"pubkeytableoffset"`
+
+		// erasure code settings.
+		//
+		// StaticErasureCodeType specifies the algorithm used for erasure coding
+		// chunks. Available types are:
+		//   0 - Invalid / Missing Code
+		//   1 - Reed Solomon Code
+		//
+		// erasureCodeParams specifies possible parameters for a certain
+		// StaticErasureCodeType. Currently params will be parsed as follows:
+		//   Reed Solomon Code - 4 bytes dataPieces / 4 bytes parityPieces
+		//
+		StaticErasureCodeType   [4]byte              `json:"erasurecodetype"`
+		StaticErasureCodeParams [8]byte              `json:"erasurecodeparams"`
+		staticErasureCode       modules.ErasureCoder // not persisted, exists for convenience
 	}
 )
 
@@ -82,8 +97,8 @@ func (sf *SiaFile) CreateTime() time.Time {
 }
 
 // ChunkSize returns the size of a single chunk of the file.
-func (sf *SiaFile) ChunkSize(chunkIndex uint64) uint64 {
-	return sf.staticChunkSize(chunkIndex)
+func (sf *SiaFile) ChunkSize() uint64 {
+	return sf.staticChunkSize()
 }
 
 // Delete removes the file from disk and marks it as deleted. Once the file is
@@ -285,19 +300,15 @@ func (sf *SiaFile) UploadedBytes() uint64 {
 // been uploaded. Note that a file may be Available long before UploadProgress
 // reaches 100%, and UploadProgress may report a value greater than 100%.
 func (sf *SiaFile) UploadProgress() float64 {
-	// TODO change this once tiny files are supported.
 	if sf.Size() == 0 {
 		return 100
 	}
 	uploaded := sf.UploadedBytes()
-	var desired uint64
-	for i := uint64(0); i < sf.NumChunks(); i++ {
-		desired += modules.SectorSize * uint64(sf.ErasureCode(i).NumPieces())
-	}
+	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
 	return math.Min(100*(float64(uploaded)/float64(desired)), 100)
 }
 
 // ChunkSize returns the size of a single chunk of the file.
-func (sf *SiaFile) staticChunkSize(chunkIndex uint64) uint64 {
-	return sf.staticMetadata.StaticPieceSize * uint64(sf.staticChunks[chunkIndex].staticErasureCode.MinPieces())
+func (sf *SiaFile) staticChunkSize() uint64 {
+	return sf.staticMetadata.StaticPieceSize * uint64(sf.staticMetadata.staticErasureCode.MinPieces())
 }
