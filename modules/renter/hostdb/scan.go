@@ -277,12 +277,11 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 // about the error because we don't update host entries if we are offline
 // anyway. So if we fail to resolve a hostname, the problem is not related to
 // us.
-func (hdb *HostDB) managedLookupIPNets(address modules.NetAddress) (ipNets []string) {
+func (hdb *HostDB) managedLookupIPNets(address modules.NetAddress) (ipNets []string, err error) {
 	// Lookup the IP addresses of the host.
 	addresses, err := hdb.deps.Resolver().LookupIP(address.Host())
 	if err != nil {
-		hdb.log.Debugln("failed to resolve host", address.Host(), err)
-		return
+		return nil, err
 	}
 	// Get the subnets of the addresses.
 	for _, ip := range addresses {
@@ -297,8 +296,7 @@ func (hdb *HostDB) managedLookupIPNets(address modules.NetAddress) (ipNets []str
 		// Get the subnet.
 		_, ipnet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", ip.String(), filterRange))
 		if err != nil {
-			hdb.log.Debugln("failed to parse CIDR of host", address.Host(), err)
-			return
+			return nil, err
 		}
 		// Add the subnet to the host.
 		ipNets = append(ipNets, ipnet.String())
@@ -322,11 +320,15 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 	}
 
 	// Resolve the host's used subnets and update the timestamp if they
-	// changed.
-	ipNets := hdb.managedLookupIPNets(entry.NetAddress)
-	if !equalIPNets(ipNets, entry.IPNets) {
+	// changed. We only update the timestamp if resolving the ipNets was
+	// successful.
+	ipNets, err := hdb.managedLookupIPNets(entry.NetAddress)
+	if err == nil && !equalIPNets(ipNets, entry.IPNets) {
 		entry.IPNets = ipNets
 		entry.LastIPNetChange = time.Now()
+	}
+	if err != nil {
+		hdb.log.Debugln("mangedScanHost: failed to look up IP nets", err)
 	}
 
 	// Update historic interactions of entry if necessary
@@ -336,7 +338,7 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 
 	var settings modules.HostExternalSettings
 	var latency time.Duration
-	err := func() error {
+	err = func() error {
 		timeout := hostRequestTimeout
 		hdb.mu.RLock()
 		if len(hdb.initialScanLatencies) > minScansForSpeedup {
