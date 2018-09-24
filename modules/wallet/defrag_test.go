@@ -1,12 +1,14 @@
 package wallet
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestDefragWallet mines many blocks and checks that the wallet's outputs are
@@ -216,7 +218,7 @@ func TestDefragOutputExhaustion(t *testing.T) {
 	<-donechan
 }
 
-// TestDefragInterrupted checks that a failing defrag unmarks spent outputs correctly
+// TestDefragInterrupted checks that a failing defrag un-marks spent outputs correctly
 func TestDefragInterrupted(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -238,21 +240,26 @@ func TestDefragInterrupted(t *testing.T) {
 		}
 	}
 
-	// allow some time for the defrag transaction to occur, then mine another block
-	time.Sleep(time.Second * 5)
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		wt.wallet.mu.Lock()
+		// force a sync because bucket stats may not be reliable until commit
+		wt.wallet.syncDB()
+		spentOutputs := wt.wallet.dbTx.Bucket(bucketSpentOutputs).Stats().KeyN
+		siacoinOutputs := wt.wallet.dbTx.Bucket(bucketSiacoinOutputs).Stats().KeyN
+		wt.wallet.mu.Unlock()
 
-	wt.wallet.mu.Lock()
-	// force a sync because bucket stats may not be reliable until commit
-	wt.wallet.syncDB()
-	spentOutputs := wt.wallet.dbTx.Bucket(bucketSpentOutputs).Stats().KeyN
-	siacoinOutputs := wt.wallet.dbTx.Bucket(bucketSiacoinOutputs).Stats().KeyN
-	wt.wallet.mu.Unlock()
-	if siacoinOutputs <= defragThreshold {
-		t.Fatal("not enough outputs created - defrag wasn't triggered")
-	}
-	if spentOutputs > 0 {
-		t.Fatalf("There should be 0 outputs in the database since defrag failed but there were %v",
-			spentOutputs)
+		if siacoinOutputs <= defragThreshold {
+			return errors.New("not enough outputs created - defrag wasn't triggered")
+		}
+		if spentOutputs > 0 {
+			err := fmt.Errorf("There should be 0 outputs in the database since defrag failed but there were %v",
+				spentOutputs)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Trigger defrag again
@@ -270,18 +277,25 @@ func TestDefragInterrupted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Defrag should have worked this time
-	wt.wallet.mu.Lock()
-	// force a sync because bucket stats may not be reliable until commit
-	wt.wallet.syncDB()
-	spentOutputs = wt.wallet.dbTx.Bucket(bucketSpentOutputs).Stats().KeyN
-	siacoinOutputs = wt.wallet.dbTx.Bucket(bucketSiacoinOutputs).Stats().KeyN
-	wt.wallet.mu.Unlock()
-	if siacoinOutputs > defragThreshold {
-		t.Fatalf("defrag should result in fewer than defragThreshold outputs, got %v wanted %v\n", siacoinOutputs, defragThreshold)
-	}
-	if spentOutputs == 0 {
-		t.Fatalf("There should be > 0 spentOutputs")
-	}
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		// Defrag should have worked this time
+		wt.wallet.mu.Lock()
+		// force a sync because bucket stats may not be reliable until commit
+		wt.wallet.syncDB()
+		spentOutputs := wt.wallet.dbTx.Bucket(bucketSpentOutputs).Stats().KeyN
+		siacoinOutputs := wt.wallet.dbTx.Bucket(bucketSiacoinOutputs).Stats().KeyN
+		wt.wallet.mu.Unlock()
 
+		if siacoinOutputs > defragThreshold {
+			err := fmt.Errorf("defrag should result in fewer than defragThreshold outputs, got %v wanted %v", siacoinOutputs, defragThreshold)
+			return err
+		}
+		if spentOutputs == 0 {
+			return errors.New("There should be > 0 spentOutputs")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
