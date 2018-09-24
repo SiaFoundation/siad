@@ -131,12 +131,17 @@ type HostDBEntry struct {
 	HistoricUptime   time.Duration `json:"historicuptime"`
 	ScanHistory      HostDBScans   `json:"scanhistory"`
 
+	// Measurements that are taken whenever we interact with a host.
 	HistoricFailedInteractions     float64 `json:"historicfailedinteractions"`
 	HistoricSuccessfulInteractions float64 `json:"historicsuccessfulinteractions"`
 	RecentFailedInteractions       float64 `json:"recentfailedinteractions"`
 	RecentSuccessfulInteractions   float64 `json:"recentsuccessfulinteractions"`
 
 	LastHistoricUpdate types.BlockHeight
+
+	// Measurements related to the IP subnet mask.
+	IPNets          []string
+	LastIPNetChange time.Time
 
 	// The public key of the host, stored separately to minimize risk of certain
 	// MitM based vulnerabilities.

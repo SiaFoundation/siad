@@ -634,16 +634,33 @@ func TestCheckForIPViolations(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Scan the entries. entry1 should be the 'oldest' and entry3 the
+	// 'youngest'. This also inserts the entries into the hosttree.
+	hdbt.hdb.managedScanHost(entry1)
+	time.Sleep(time.Millisecond)
+	hdbt.hdb.managedScanHost(entry2)
+	time.Sleep(time.Millisecond)
+	hdbt.hdb.managedScanHost(entry3)
+	time.Sleep(time.Millisecond)
+
+	// Scan all the entries again in reversed order. This is a sanity check. If
+	// the code works as expected this shouldn't do anything since the
+	// hostnames didn't change. If it doesn't, it will update the timestamps
+	// and the following checks will fail.
+	time.Sleep(time.Millisecond)
+	hdbt.hdb.managedScanHost(entry3)
+	time.Sleep(time.Millisecond)
+	hdbt.hdb.managedScanHost(entry2)
+	time.Sleep(time.Millisecond)
+	hdbt.hdb.managedScanHost(entry1)
+
 	// Add entry1 and entry2. There should be no violation.
-	hdbt.hdb.hostTree.Insert(entry1)
-	hdbt.hdb.hostTree.Insert(entry2)
 	badHosts := hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey})
 	if len(badHosts) != 0 {
 		t.Errorf("Got %v violations, should be 0", len(badHosts))
 	}
 
 	// Add entry3. It should cause a violation for entry 3.
-	hdbt.hdb.hostTree.Insert(entry3)
 	badHosts = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey, entry3.PublicKey})
 	if len(badHosts) != 1 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
@@ -663,12 +680,13 @@ func TestCheckForIPViolations(t *testing.T) {
 	}
 
 	// Calling CheckForIPViolations with entry 3 as the first argument should
-	// result in 2 bad hosts. entry1 and entry2.
+	// result in 1 bad host, entry3. The reason being that entry3 is the
+	// 'youngest' entry.
 	badHosts = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry3.PublicKey, entry1.PublicKey, entry2.PublicKey})
-	if len(badHosts) != 2 {
+	if len(badHosts) != 1 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
 	}
-	if len(badHosts) > 1 && (!bytes.Equal(badHosts[0].Key, entry1.PublicKey.Key) || !bytes.Equal(badHosts[1].Key, entry2.PublicKey.Key)) {
+	if len(badHosts) > 1 || !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
 		t.Error("Hdb returned violation for wrong host")
 	}
 }

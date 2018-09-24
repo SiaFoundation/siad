@@ -9,15 +9,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
@@ -231,34 +230,38 @@ func (hdb *HostDB) AverageContractPrice() (totalPrice types.Currency) {
 // CheckForIPViolations accepts a number of host public keys and returns the
 // ones that violate the rules of the addressFilter.
 func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaPublicKey {
-	// Shuffle the hosts to non-deterministically decide which host is bad. The
-	// reason being that the address which is passed to the filter first, has
-	// priority over addresses which are passed in later. So if address A and B
-	// together violate the rules, passing B first will result in A being
-	// considered a bad host and vice versa.
-	if build.Release != "testing" {
-		fastrand.Shuffle(len(hosts), func(i, j int) { hosts[i], hosts[j] = hosts[j], hosts[i] })
-	}
-
-	// Create a filter.
-	filter := hosttree.NewFilter(hdb.deps.Resolver())
-
+	var entries []modules.HostDBEntry
 	var badHosts []types.SiaPublicKey
+
+	// Get the entries which correspond to the keys.
 	for _, host := range hosts {
-		// Get the host from the db.
-		node, exists := hdb.hostTree.Select(host)
+		entry, exists := hdb.hostTree.Select(host)
 		if !exists {
 			// A host that's not in the hostdb is bad.
 			badHosts = append(badHosts, host)
 			continue
 		}
+		entries = append(entries, entry)
+	}
+
+	// Sort the entries by the amount of time they have occupied their
+	// corresponding subnets. This is the order in which they will be passed
+	// into the filter which prioritizes entries which are passed in earlier.
+	// That means 'younger' entries will be replaced in case of a violation.
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].LastIPNetChange.Before(entries[j].LastIPNetChange)
+	})
+
+	// Create a filter and apply it.
+	filter := hosttree.NewFilter(hdb.deps.Resolver())
+	for _, entry := range entries {
 		// Check if the host violates the rules.
-		if filter.Filtered(node.NetAddress) {
-			badHosts = append(badHosts, host)
+		if filter.Filtered(entry.NetAddress) {
+			badHosts = append(badHosts, entry.PublicKey)
 			continue
 		}
 		// If it didn't then we add it to the filter.
-		filter.Add(node.NetAddress)
+		filter.Add(entry.NetAddress)
 	}
 	return badHosts
 }
