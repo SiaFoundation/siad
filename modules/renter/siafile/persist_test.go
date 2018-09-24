@@ -29,9 +29,12 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 		key := fastrand.Bytes(32)
 
 		// Append new key to slice.
-		sf.pubKeyTable = append(sf.pubKeyTable, types.SiaPublicKey{
-			Algorithm: algorithm,
-			Key:       key,
+		sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{
+			PublicKey: types.SiaPublicKey{
+				Algorithm: algorithm,
+				Key:       key,
+			},
+			Used: true,
 		})
 	}
 }
@@ -457,10 +460,13 @@ func TestMarshalUnmarshalPubKeyTAble(t *testing.T) {
 			len(sf.pubKeyTable), len(pubKeyTable))
 	}
 	for i, spk := range pubKeyTable {
-		if spk.Algorithm != sf.pubKeyTable[i].Algorithm {
+		if spk.Used != sf.pubKeyTable[i].Used {
+			t.Fatal("Use fields don't match")
+		}
+		if spk.PublicKey.Algorithm != sf.pubKeyTable[i].PublicKey.Algorithm {
 			t.Fatal("Algorithms don't match")
 		}
-		if !bytes.Equal(spk.Key, sf.pubKeyTable[i].Key) {
+		if !bytes.Equal(spk.PublicKey.Key, sf.pubKeyTable[i].PublicKey.Key) {
 			t.Fatal("Keys don't match")
 		}
 	}

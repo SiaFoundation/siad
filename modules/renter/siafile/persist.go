@@ -150,7 +150,7 @@ func marshalMetadata(md metadata) ([]byte, error) {
 
 // marshalPubKeyTable marshals the public key table of the SiaFile using Sia
 // encoding.
-func marshalPubKeyTable(pubKeyTable []types.SiaPublicKey) ([]byte, error) {
+func marshalPubKeyTable(pubKeyTable []HostPublicKey) ([]byte, error) {
 	// Create a buffer.
 	buf := bytes.NewBuffer(nil)
 	// Marshal all the data into the buffer
@@ -194,22 +194,22 @@ func unmarshalMetadata(raw []byte) (md metadata, err error) {
 }
 
 // unmarshalPubKeyTable unmarshals a sia encoded public key table.
-func unmarshalPubKeyTable(raw []byte) ([]types.SiaPublicKey, error) {
+func unmarshalPubKeyTable(raw []byte) (keys []HostPublicKey, err error) {
 	// Create the buffer.
 	r := bytes.NewBuffer(raw)
-	var err error
-	var spks []types.SiaPublicKey
 	// Unmarshal the keys one by one until EOF or a different error occur.
 	for {
+		var key HostPublicKey
 		var spk types.SiaPublicKey
-		if err = spk.UnmarshalSia(r); err == io.EOF {
+		spk.UnmarshalSia(r)
+		if err = key.UnmarshalSia(r); err == io.EOF {
 			break
 		} else if err != nil {
 			return nil, err
 		}
-		spks = append(spks, spk)
+		keys = append(keys, key)
 	}
-	return spks, nil
+	return keys, nil
 }
 
 // readDeleteUpdate unmarshals the update's instructions and returns the

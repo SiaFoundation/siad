@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -34,7 +36,7 @@ type (
 		// pubKeyTable stores the public keys of the hosts this file's pieces are uploaded to.
 		// Since multiple pieces from different chunks might be uploaded to the same host, this
 		// allows us to deduplicate the rather large public keys.
-		pubKeyTable []types.SiaPublicKey
+		pubKeyTable []HostPublicKey
 
 		// staticChunks are the staticChunks the file was split into.
 		staticChunks []chunk
@@ -61,10 +63,32 @@ type (
 
 	// Piece represents a single piece of a chunk on disk
 	Piece struct {
-		HostPubKey types.SiaPublicKey // public key of the host
-		MerkleRoot crypto.Hash        // merkle root of the piece
+		HostPubKey types.SiaPublicKey `json:"hostpubkey"` // public key of the host
+		MerkleRoot crypto.Hash        `json:"merkleroot"` // merkle root of the piece
+	}
+
+	// HostPublicKey is an entry in the HostPubKey table.
+	HostPublicKey struct {
+		PublicKey types.SiaPublicKey // public key of host
+		Used      bool               // indicates if we currently use this host
 	}
 )
+
+// MarshalSia implements the encoding.SiaMarshaler interface.
+func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
+	e := encoding.NewEncoder(w)
+	e.Encode(hpk.PublicKey)
+	e.WriteBool(hpk.Used)
+	return e.Err()
+}
+
+// UnmarshalSia implements the encoding.SiaUnmarshaler interface.
+func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
+	d := encoding.NewDecoder(r)
+	d.Decode(&hpk.PublicKey)
+	hpk.Used = d.NextBool()
+	return d.Err()
+}
 
 // New create a new SiaFile.
 func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
@@ -119,7 +143,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// Get the index of the host in the public key table.
 	tableIndex := -1
 	for i, hpk := range sf.pubKeyTable {
-		if hpk.Algorithm == pk.Algorithm && bytes.Equal(hpk.Key, pk.Key) {
+		if hpk.PublicKey.Algorithm == pk.Algorithm && bytes.Equal(hpk.PublicKey.Key, pk.Key) {
 			tableIndex = i
 			break
 		}
@@ -127,7 +151,10 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// If we don't know the host yet, we add it to the table.
 	tableChanged := false
 	if tableIndex == -1 {
-		sf.pubKeyTable = append(sf.pubKeyTable, pk)
+		sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{
+			PublicKey: pk,
+			Used:      true,
+		})
 		tableIndex = len(sf.pubKeyTable) - 1
 		tableChanged = true
 	}

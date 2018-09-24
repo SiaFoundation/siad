@@ -75,7 +75,10 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 				// Check if we already added that public key.
 				if _, exists := pubKeyMap[string(piece.HostPubKey.Key)]; !exists {
 					pubKeyMap[string(piece.HostPubKey.Key)] = len(file.pubKeyTable)
-					file.pubKeyTable = append(file.pubKeyTable, piece.HostPubKey)
+					file.pubKeyTable = append(file.pubKeyTable, HostPublicKey{
+						PublicKey: piece.HostPubKey,
+						Used:      true,
+					})
 				}
 				// Add the piece to the SiaFile.
 				file.staticChunks[chunkIndex].Pieces[pieceIndex] = append(file.staticChunks[chunkIndex].Pieces[pieceIndex], Piece{
