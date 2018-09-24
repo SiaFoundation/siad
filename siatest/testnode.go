@@ -22,7 +22,7 @@ type TestNode struct {
 	primarySeed string
 
 	downloadDir *LocalDir
-	uploadDir   *LocalDir
+	filesDir    *LocalDir
 }
 
 // RestartNode restarts a TestNode
@@ -127,10 +127,10 @@ func (tn *TestNode) initRootDirs() error {
 	if err := os.MkdirAll(tn.downloadDir.path, 0777); err != nil {
 		return err
 	}
-	tn.uploadDir = &LocalDir{
-		path: filepath.Join(tn.RenterDir(), "uploads"),
+	tn.filesDir = &LocalDir{
+		path: filepath.Join(tn.RenterDir(), "files"),
 	}
-	if err := os.MkdirAll(tn.uploadDir.path, 0777); err != nil {
+	if err := os.MkdirAll(tn.filesDir.path, 0777); err != nil {
 		return err
 	}
 	return nil

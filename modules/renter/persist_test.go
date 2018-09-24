@@ -127,16 +127,16 @@ func TestRenterDirectories(t *testing.T) {
 	}
 
 	// Confirm that direcotry metadata files were created in all directories.
-	if _, err = os.Stat(filepath.Join(rt.renter.persistDir, SiaDirMetadata)); err != nil {
+	if _, err = os.Stat(filepath.Join(rt.renter.filesDir, SiaDirMetadata)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = os.Stat(filepath.Join(rt.renter.persistDir, "foo/"+SiaDirMetadata)); err != nil {
+	if _, err = os.Stat(filepath.Join(rt.renter.filesDir, "foo/"+SiaDirMetadata)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = os.Stat(filepath.Join(rt.renter.persistDir, "foo/bar/"+SiaDirMetadata)); err != nil {
+	if _, err = os.Stat(filepath.Join(rt.renter.filesDir, "foo/bar/"+SiaDirMetadata)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = os.Stat(filepath.Join(rt.renter.persistDir, "foo/bar/baz/"+SiaDirMetadata)); err != nil {
+	if _, err = os.Stat(filepath.Join(rt.renter.filesDir, "foo/bar/baz/"+SiaDirMetadata)); err != nil {
 		t.Fatal(err)
 	}
 }

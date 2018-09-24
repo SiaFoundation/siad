@@ -188,16 +188,13 @@ func (r *Renter) createDir(siapath string) error {
 	}
 
 	// Create direcotry
-	path := filepath.Join(r.persistDir, siapath)
+	path := filepath.Join(r.filesDir, siapath)
 	if err := os.MkdirAll(path, 0700); err != nil {
 		return err
 	}
 
 	// Make sure all parent directories have metadata files
-	//
-	// TODO: this should be change when files are moved out of the top level
-	// directory of the renter.
-	for path != filepath.Dir(r.persistDir) {
+	for path != filepath.Dir(r.filesDir) {
 		if err := createDirMetadata(path); err != nil {
 			return err
 		}
@@ -362,8 +359,8 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 // initPersist handles all of the persistence initialization, such as creating
 // the persistence directory and starting the logger.
 func (r *Renter) initPersist() error {
-	// Create the perist directory if it does not yet exist.
-	err := os.MkdirAll(r.persistDir, 0700)
+	// Create the perist and files directories if they do not yet exist.
+	err := os.MkdirAll(r.filesDir, 0700)
 	if err != nil {
 		return err
 	}
