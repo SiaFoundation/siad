@@ -138,7 +138,7 @@ func unlockWallet(w modules.Wallet, password string) error {
 // environment variable, stored in a file on disk, or supplied by the user via
 // stdin.
 func apiPassword(siaDir string) (string, error) {
-	// Check environment variable.
+	// Check the environment variable.
 	pw := os.Getenv("SIA_API_PASSWORD")
 	if pw != "" {
 		fmt.Println("Using SIA_API_PASSWORD environment variable")
@@ -155,32 +155,17 @@ func apiPassword(siaDir string) (string, error) {
 		return "", err
 	}
 
-	// No password file; ask user whether they want to generate one or specify
-	// their own.
-	pw, err = passwordPrompt(`WARNING: No API password file found. It is highly recommended that you generate
-a password file now. Alternatively, you may specify a temporary password.
-To disable API authentication entirely, run siad with --authenticate-api=false
-
-Enter API password (or leave blank to generate a password file): `)
-	if err != nil {
+	// No password file; generate a secure one.
+	// Generate a password file.
+	if err := os.MkdirAll(siaDir, 0700); err != nil {
 		return "", err
 	}
-	if pw == "" {
-		// Generate a password file.
-		if err := os.MkdirAll(siaDir, 0700); err != nil {
-			return "", err
-		}
-		pw = hex.EncodeToString(fastrand.Bytes(16))
-		if err := ioutil.WriteFile(path, []byte(pw+"\n"), 0600); err != nil {
-			return "", err
-		}
-		fmt.Println("A secure API password has been written to", path)
-		fmt.Println("This password will be used automatically the next time you run siad.")
-	} else {
-		fmt.Println("Using temporary password.")
+	pw = hex.EncodeToString(fastrand.Bytes(16))
+	if err := ioutil.WriteFile(path, []byte(pw+"\n"), 0600); err != nil {
+		return "", err
 	}
-	// Put some space between the password info and the siad startup messages.
-	fmt.Println()
+	fmt.Println("A secure API password has been written to", path)
+	fmt.Println("This password will be used automatically the next time you run siad.")
 	return pw, nil
 }
 
@@ -188,10 +173,20 @@ Enter API password (or leave blank to generate a password file): `)
 // siad.
 func startDaemon(config Config) (err error) {
 	if config.Siad.AuthenticateAPI {
-		// TODO: allow user to specify location of password file.
-		config.APIPassword, err = apiPassword(build.DefaultSiaDir())
-		if err != nil {
-			return err
+		if config.Siad.TempPassword {
+			config.APIPassword, err = passwordPrompt("Enter API password: ")
+			if err != nil {
+				return err
+			} else if config.APIPassword == "" {
+				return errors.New("password cannot be blank")
+			}
+		} else {
+			// load API password from environment variable or file.
+			// TODO: allow user to specify location of password file.
+			config.APIPassword, err = apiPassword(build.DefaultSiaDir())
+			if err != nil {
+				return err
+			}
 		}
 	}
 
