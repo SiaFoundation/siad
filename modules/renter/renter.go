@@ -399,9 +399,6 @@ func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 		return fmt.Errorf("file sizes don't match - want %v but got %v", file.Size(), fi.Size())
 	}
 
-	// Set new path in memory.
-	delete(r.files, siaPath)
-	r.files[newPath] = file
 	r.mu.Unlock(id)
 
 	// Set the new path on disk.
