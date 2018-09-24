@@ -24,30 +24,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 var (
 	// errUploadDirectory is returned if the user tries to upload a directory.
 	errUploadDirectory = errors.New("cannot upload directory")
 )
-
-// newFile is a helper to more easily create a new Siafile.
-func newFile(siaFilePath string, name string, wal *writeaheadlog.WAL, rsc modules.ErasureCoder, sk crypto.CipherKey, fileSize uint64, mode os.FileMode, source string) (*siafile.SiaFile, error) {
-	numChunks := 1
-	chunkSize := (modules.SectorSize - sk.Type().Overhead()) * uint64(rsc.MinPieces())
-	if fileSize > 0 {
-		numChunks = int(fileSize / chunkSize)
-		if fileSize%chunkSize != 0 {
-			numChunks++
-		}
-	}
-	ecs := make([]modules.ErasureCoder, numChunks)
-	for i := 0; i < numChunks; i++ {
-		ecs[i] = rsc
-	}
-	return siafile.New(siaFilePath, name, source, wal, ecs, sk, fileSize, mode)
-}
 
 // validateSource verifies that a sourcePath meets the
 // requirements for upload.
@@ -124,7 +106,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	cipherType := crypto.TypeDefaultRenter
 
 	// Create the Siafile.
-	f, err := newFile(siaFilePath, up.SiaPath, r.wal, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode(), up.Source)
+	f, err := siafile.New(siaFilePath, up.SiaPath, up.Source, r.wal, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode())
 	if err != nil {
 		return err
 	}

@@ -40,31 +40,31 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 		return nil, errors.AddContext(err, "failed to restore master key")
 	}
 	currentTime := time.Now()
+	ecType, ecParams := marshalErasureCoder(fd.ErasureCode)
 	file := &SiaFile{
 		staticMetadata: metadata{
-			AccessTime:          currentTime,
-			ChunkOffset:         defaultReservedMDPages * pageSize,
-			ChangeTime:          currentTime,
-			CreateTime:          currentTime,
-			StaticFileSize:      int64(fd.FileSize),
-			LocalPath:           fd.RepairPath,
-			StaticMasterKey:     mk.Key(),
-			StaticMasterKeyType: mk.Type(),
-			Mode:                fd.Mode,
-			ModTime:             currentTime,
-			StaticPieceSize:     fd.PieceSize,
-			SiaPath:             fd.Name,
+			AccessTime:              currentTime,
+			ChunkOffset:             defaultReservedMDPages * pageSize,
+			ChangeTime:              currentTime,
+			CreateTime:              currentTime,
+			StaticFileSize:          int64(fd.FileSize),
+			LocalPath:               fd.RepairPath,
+			StaticMasterKey:         mk.Key(),
+			StaticMasterKeyType:     mk.Type(),
+			Mode:                    fd.Mode,
+			ModTime:                 currentTime,
+			staticErasureCode:       fd.ErasureCode,
+			StaticErasureCodeType:   ecType,
+			StaticErasureCodeParams: ecParams,
+			StaticPieceSize:         fd.PieceSize,
+			SiaPath:                 fd.Name,
 		},
 		deleted:   fd.Deleted,
 		staticUID: fd.UID,
 	}
 	file.staticChunks = make([]chunk, len(fd.Chunks))
 	for i := range file.staticChunks {
-		ecType, ecParams := marshalErasureCoder(fd.ErasureCode)
-		file.staticChunks[i].staticErasureCode = fd.ErasureCode
-		file.staticChunks[i].StaticErasureCodeType = ecType
-		file.staticChunks[i].StaticErasureCodeParams = ecParams
-		file.staticChunks[i].Pieces = make([][]Piece, file.staticChunks[i].staticErasureCode.NumPieces())
+		file.staticChunks[i].Pieces = make([][]Piece, file.staticMetadata.staticErasureCode.NumPieces())
 	}
 
 	// Populate the pubKeyTable of the file and add the pieces.

@@ -57,7 +57,7 @@ func newTestFile() *SiaFile {
 		panic(err)
 	}
 	// Create the file.
-	sf, err := New(siaFilePath, siaPath, source, newTestWAL(), []modules.ErasureCoder{rc}, sk, fileSize, fileMode)
+	sf, err := New(siaFilePath, siaPath, source, newTestWAL(), rc, sk, fileSize, fileMode)
 	if err != nil {
 		panic(err)
 	}

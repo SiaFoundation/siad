@@ -51,21 +51,6 @@ type (
 
 	// chunk represents a single chunk of a file on disk
 	chunk struct {
-		// erasure code settings.
-		//
-		// StaticErasureCodeType specifies the algorithm used for erasure coding
-		// chunks. Available types are:
-		//   0 - Invalid / Missing Code
-		//   1 - Reed Solomon Code
-		//
-		// erasureCodeParams specifies possible parameters for a certain
-		// StaticErasureCodeType. Currently params will be parsed as follows:
-		//   Reed Solomon Code - 4 bytes dataPieces / 4 bytes parityPieces
-		//
-		StaticErasureCodeType   [4]byte              `json:"erasurecodetype"`
-		StaticErasureCodeParams [8]byte              `json:"erasurecodeparams"`
-		staticErasureCode       modules.ErasureCoder // not persisted, exists for convenience
-
 		// ExtensionInfo is some reserved space for each chunk that allows us
 		// to indicate if a chunk is special.
 		ExtensionInfo [16]byte `json:"extensioninfo"`
@@ -82,35 +67,39 @@ type (
 )
 
 // New create a new SiaFile.
-func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode []modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
+func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	currentTime := time.Now()
+	ecType, ecParams := marshalErasureCoder(erasureCode)
 	file := &SiaFile{
 		staticMetadata: metadata{
-			AccessTime:          currentTime,
-			ChunkOffset:         defaultReservedMDPages * pageSize,
-			ChangeTime:          currentTime,
-			CreateTime:          currentTime,
-			StaticFileSize:      int64(fileSize),
-			LocalPath:           source,
-			StaticMasterKey:     masterKey.Key(),
-			StaticMasterKeyType: masterKey.Type(),
-			Mode:                fileMode,
-			ModTime:             currentTime,
-			StaticPieceSize:     modules.SectorSize - masterKey.Type().Overhead(),
-			SiaPath:             siaPath,
+			AccessTime:              currentTime,
+			ChunkOffset:             defaultReservedMDPages * pageSize,
+			ChangeTime:              currentTime,
+			CreateTime:              currentTime,
+			StaticFileSize:          int64(fileSize),
+			LocalPath:               source,
+			StaticMasterKey:         masterKey.Key(),
+			StaticMasterKeyType:     masterKey.Type(),
+			Mode:                    fileMode,
+			ModTime:                 currentTime,
+			staticErasureCode:       erasureCode,
+			StaticErasureCodeType:   ecType,
+			StaticErasureCodeParams: ecParams,
+			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
+			SiaPath:                 siaPath,
 		},
 		siaFilePath: siaFilePath,
 		staticUID:   hex.EncodeToString(fastrand.Bytes(20)),
 		wal:         wal,
 	}
 	// Init chunks.
-	file.staticChunks = make([]chunk, len(erasureCode))
+	numChunks := fileSize / file.staticChunkSize()
+	if fileSize%file.staticChunkSize() != 0 || numChunks == 0 {
+		numChunks++
+	}
+	file.staticChunks = make([]chunk, numChunks)
 	for i := range file.staticChunks {
-		ecType, ecParams := marshalErasureCoder(erasureCode[i])
-		file.staticChunks[i].staticErasureCode = erasureCode[i]
-		file.staticChunks[i].StaticErasureCodeType = ecType
-		file.staticChunks[i].StaticErasureCodeParams = ecParams
-		file.staticChunks[i].Pieces = make([][]Piece, erasureCode[i].NumPieces())
+		file.staticChunks[i].Pieces = make([][]Piece, erasureCode.NumPieces())
 	}
 	// Save file.
 	return file, file.saveFile()
@@ -190,7 +179,7 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 	defer sf.mu.RUnlock()
 	// We need to find at least erasureCode.MinPieces different pieces for each
 	// chunk for the file to be available.
-	for chunkIndex, chunk := range sf.staticChunks {
+	for _, chunk := range sf.staticChunks {
 		piecesForChunk := 0
 		for _, pieceSet := range chunk.Pieces {
 			for _, piece := range pieceSet {
@@ -199,11 +188,11 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 					break // break out since we only count unique pieces
 				}
 			}
-			if piecesForChunk >= sf.staticChunks[chunkIndex].staticErasureCode.MinPieces() {
+			if piecesForChunk >= sf.staticMetadata.staticErasureCode.MinPieces() {
 				break // we already have enough pieces for this chunk.
 			}
 		}
-		if piecesForChunk < sf.staticChunks[chunkIndex].staticErasureCode.MinPieces() {
+		if piecesForChunk < sf.staticMetadata.staticErasureCode.MinPieces() {
 			return false // this chunk isn't available.
 		}
 	}
@@ -214,18 +203,14 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 // offset of a file and also the relative offset within the chunk. If the
 // offset is out of bounds, chunkIndex will be equal to NumChunk().
 func (sf *SiaFile) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64) {
-	for chunkIndex := uint64(0); chunkIndex < uint64(len(sf.staticChunks)); chunkIndex++ {
-		if sf.staticChunkSize(chunkIndex) > offset {
-			return chunkIndex, offset
-		}
-		offset -= sf.staticChunkSize(chunkIndex)
-	}
+	chunkIndex = offset / sf.staticChunkSize()
+	off = offset % sf.staticChunkSize()
 	return
 }
 
 // ErasureCode returns the erasure coder used by the file.
-func (sf *SiaFile) ErasureCode(chunkIndex uint64) modules.ErasureCoder {
-	return sf.staticChunks[chunkIndex].staticErasureCode
+func (sf *SiaFile) ErasureCode() modules.ErasureCoder {
+	return sf.staticMetadata.staticErasureCode
 }
 
 // NumChunks returns the number of chunks the file consists of. This will
@@ -268,7 +253,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 			// should never happen
 			return -1
 		}
-		ec := sf.staticChunks[0].staticErasureCode
+		ec := sf.staticMetadata.staticErasureCode
 		return float64(ec.NumPieces()) / float64(ec.MinPieces())
 	}
 
@@ -310,11 +295,11 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 				numPiecesNoRenew++
 			}
 		}
-		redundancy := float64(numPiecesRenew) / float64(chunk.staticErasureCode.MinPieces())
+		redundancy := float64(numPiecesRenew) / float64(sf.staticMetadata.staticErasureCode.MinPieces())
 		if redundancy < minRedundancy {
 			minRedundancy = redundancy
 		}
-		redundancyNoRenew := float64(numPiecesNoRenew) / float64(chunk.staticErasureCode.MinPieces())
+		redundancyNoRenew := float64(numPiecesNoRenew) / float64(sf.staticMetadata.staticErasureCode.MinPieces())
 		if redundancyNoRenew < minRedundancyNoRenew {
 			minRedundancyNoRenew = redundancyNoRenew
 		}

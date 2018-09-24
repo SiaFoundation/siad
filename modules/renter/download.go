@@ -431,13 +431,13 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 	for i := minChunk; i <= maxChunk; i++ {
 		udc := &unfinishedDownloadChunk{
 			destination: params.destination,
-			erasureCode: params.file.ErasureCode(i),
+			erasureCode: params.file.ErasureCode(),
 			masterKey:   params.file.MasterKey(),
 
 			staticChunkIndex: i,
 			staticCacheID:    fmt.Sprintf("%v:%v", d.staticSiaPath, i),
 			staticChunkMap:   chunkMaps[i-minChunk],
-			staticChunkSize:  params.file.ChunkSize(i),
+			staticChunkSize:  params.file.ChunkSize(),
 			staticPieceSize:  params.file.PieceSize(),
 
 			// TODO: 25ms is just a guess for a good default. Really, we want to
@@ -453,8 +453,8 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 			staticNeedsMemory:   params.needsMemory,
 			staticPriority:      params.priority,
 
-			physicalChunkData: make([][]byte, params.file.ErasureCode(i).NumPieces()),
-			pieceUsage:        make([]bool, params.file.ErasureCode(i).NumPieces()),
+			physicalChunkData: make([][]byte, params.file.ErasureCode().NumPieces()),
+			pieceUsage:        make([]bool, params.file.ErasureCode().NumPieces()),
 
 			download:          d,
 			renterFile:        params.file,
@@ -473,7 +473,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		if i == maxChunk && maxChunkOffset != 0 {
 			udc.staticFetchLength = maxChunkOffset - udc.staticFetchOffset
 		} else {
-			udc.staticFetchLength = params.file.ChunkSize(i) - udc.staticFetchOffset
+			udc.staticFetchLength = params.file.ChunkSize() - udc.staticFetchOffset
 		}
 		// Set the writeOffset within the destination for where the data should
 		// be written.

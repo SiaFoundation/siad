@@ -38,7 +38,7 @@ func newFileTesting(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCode
 		panic(err)
 	}
 	// create the file
-	f, err := newFile(siaFilePath, name, wal, rsc, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, mode, source)
+	f, err := siafile.New(siaFilePath, name, source, wal, rsc, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, mode)
 	if err != nil {
 		panic(err)
 	}
@@ -204,33 +204,33 @@ func TestFileRedundancy(t *testing.T) {
 			t.Fatal(err)
 		}
 		// 1.0 / MinPieces because the chunk with the least number of pieces has 1 piece.
-		expectedR := 1.0 / float64(f.ErasureCode(0).MinPieces())
+		expectedR := 1.0 / float64(f.ErasureCode().MinPieces())
 		if r := f.Redundancy(neverOffline, goodForRenew); r != expectedR {
 			t.Errorf("expected %f redundancy, got %f", expectedR, r)
 		}
 		// Test that adding a file contract that has erasureCode.MinPieces() pieces
 		// per chunk for all chunks results in a file with redundancy > 1.
 		for iChunk := uint64(0); iChunk < f.NumChunks(); iChunk++ {
-			for iPiece := uint64(1); iPiece < uint64(f.ErasureCode(0).MinPieces()); iPiece++ {
+			for iPiece := uint64(1); iPiece < uint64(f.ErasureCode().MinPieces()); iPiece++ {
 				err := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(3)}}, iChunk, iPiece, crypto.Hash{})
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
-			err := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(4)}}, iChunk, uint64(f.ErasureCode(0).MinPieces()), crypto.Hash{})
+			err := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(4)}}, iChunk, uint64(f.ErasureCode().MinPieces()), crypto.Hash{})
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
 		// 1+MinPieces / MinPieces because the chunk with the least number of pieces has 1+MinPieces pieces.
-		expectedR = float64(1+f.ErasureCode(0).MinPieces()) / float64(f.ErasureCode(0).MinPieces())
+		expectedR = float64(1+f.ErasureCode().MinPieces()) / float64(f.ErasureCode().MinPieces())
 		if r := f.Redundancy(neverOffline, goodForRenew); r != expectedR {
 			t.Errorf("expected %f redundancy, got %f", expectedR, r)
 		}
 
 		// verify offline file contracts are not counted in the redundancy
 		for iChunk := uint64(0); iChunk < f.NumChunks(); iChunk++ {
-			for iPiece := uint64(0); iPiece < uint64(f.ErasureCode(0).MinPieces()); iPiece++ {
+			for iPiece := uint64(0); iPiece < uint64(f.ErasureCode().MinPieces()); iPiece++ {
 				err := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(5)}}, iChunk, iPiece, crypto.Hash{})
 				if err != nil {
 					t.Fatal(err)
