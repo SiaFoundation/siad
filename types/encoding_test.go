@@ -507,22 +507,6 @@ func TestSiaPublicKeyString(t *testing.T) {
 	}
 }
 
-// TestSiaPublicKeyMarshalJSON checks that SiaPublicKeys are marshalled in
-// JSON identically to the String method.
-func TestSiaPublicKeyMarshalJSON(t *testing.T) {
-	spk := SiaPublicKey{
-		Algorithm: SignatureEd25519,
-		Key:       fastrand.Bytes(32),
-	}
-	b, err := json.Marshal(spk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(b[1:len(b)-1]) != spk.String() {
-		t.Error("MarshalJSON encoding differs from String encoding")
-	}
-}
-
 // TestSiaPublicKeyUnmarshalJSON checks that UnmarshalJSON supports both
 // encodings of SiaPublicKey.
 func TestSiaPublicKeyUnmarshalJSON(t *testing.T) {
