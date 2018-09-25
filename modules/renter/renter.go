@@ -161,15 +161,6 @@ type hostContractor interface {
 	SetRateLimits(int64, int64, uint64)
 }
 
-// A trackedFile contains metadata about files being tracked by the Renter.
-// Tracked files are actively repaired by the Renter. By default, files
-// uploaded by the user are tracked, and files that are added (via loading a
-// .sia file) are not.
-type trackedFile struct {
-	// location of original file on disk
-	RepairPath string
-}
-
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 //
