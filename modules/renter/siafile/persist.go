@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -200,8 +199,6 @@ func unmarshalPubKeyTable(raw []byte) (keys []HostPublicKey, err error) {
 	// Unmarshal the keys one by one until EOF or a different error occur.
 	for {
 		var key HostPublicKey
-		var spk types.SiaPublicKey
-		spk.UnmarshalSia(r)
 		if err = key.UnmarshalSia(r); err == io.EOF {
 			break
 		} else if err != nil {

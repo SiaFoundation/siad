@@ -433,9 +433,9 @@ func TestMarshalUnmarshalMetadata(t *testing.T) {
 	}
 }
 
-// TestMarshalUnmarshalMetadata tests marshaling and unmarshaling the
+// TestMarshalUnmarshalPubKeyTable tests marshaling and unmarshaling the
 // publicKeyTable of a SiaFile.
-func TestMarshalUnmarshalPubKeyTAble(t *testing.T) {
+func TestMarshalUnmarshalPubKeyTable(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
