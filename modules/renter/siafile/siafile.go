@@ -349,3 +349,29 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 func (sf *SiaFile) UID() string {
 	return sf.staticUID
 }
+
+// UpdateUsedHosts updates the 'Used' flag for the entries in the pubKeyTable
+// of the SiaFile. The keys of all used hosts should be passed to the method
+// and the SiaFile will update the flag for hosts it knows of to 'true' and set
+// hosts which were not passed in to 'false'.
+func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Create a map of the used keys for faster lookups.
+	usedMap := make(map[string]struct{})
+	for _, key := range used {
+		usedMap[string(key.Key)] = struct{}{}
+	}
+	// Mark the entries in the table. If the entry exists 'Used' is true.
+	// Otherwise it's 'false'.
+	for i, entry := range sf.pubKeyTable {
+		_, exists := usedMap[string(entry.PublicKey.Key)]
+		sf.pubKeyTable[i].Used = exists
+	}
+	// Save the header to disk.
+	update, err := sf.saveHeader()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(update...)
+}
