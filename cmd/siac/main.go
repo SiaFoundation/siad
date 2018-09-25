@@ -140,8 +140,9 @@ func main() {
 
 	root.AddCommand(consensusCmd)
 
-	root.AddCommand(bashcomplCmd)
-	root.AddCommand(mangenCmd)
+	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsHastingsCmd, utilsEncodeRawTxnCmd, utilsDecodeRawTxnCmd,
+		utilsSigHashCmd, utilsCheckSigCmd)
+	root.AddCommand(utilsCmd)
 
 	// initialize client
 	root.PersistentFlags().StringVarP(&httpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
