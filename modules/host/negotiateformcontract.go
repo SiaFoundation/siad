@@ -39,7 +39,7 @@ func (h *Host) managedAddCollateral(settings modules.HostExternalSettings, txnSe
 	fc := txn.FileContracts[0]
 	hostPortion := contractCollateral(settings, fc)
 	builder, err = h.wallet.RegisterTransaction(txn, parents)
-	if err != nil {
+	if err != nil || hostPortion.IsZero() {
 		return
 	}
 	err = builder.FundSiacoins(hostPortion)
