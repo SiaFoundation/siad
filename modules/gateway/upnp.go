@@ -62,8 +62,17 @@ func (g *Gateway) managedLearnHostname(cancel <-chan struct{}) (modules.NetAddre
 	// try UPnP first, then fallback to myexternalip.com and peer-to-peer
 	// discovery.
 	var host string
-	d, err := upnp.DiscoverCtx(ctx)
+	d, err := upnp.Load(g.persist.RouterURL)
+	if err != nil {
+		d, err = upnp.DiscoverCtx(ctx)
+	}
 	if err == nil {
+		g.mu.Lock()
+		g.persist.RouterURL = d.Location()
+		if err = g.saveSync(); err != nil {
+			g.log.Panicln("WARN: could not save the gateway:", err)
+		}
+		g.mu.Unlock()
 		host, err = d.ExternalIP()
 	}
 	if err != nil {
