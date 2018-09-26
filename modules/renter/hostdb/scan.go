@@ -174,6 +174,8 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	newEntry, exists := hdb.hostTree.Select(entry.PublicKey)
 	if exists {
 		newEntry.HostExternalSettings = entry.HostExternalSettings
+		newEntry.IPNets = entry.IPNets
+		newEntry.LastIPNetChange = entry.LastIPNetChange
 	} else {
 		newEntry = entry
 	}
@@ -391,7 +393,12 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 
 	} else {
 		hdb.log.Debugf("Scan of host at %v succeeded.", netAddr)
+
+		// Set the host address to the one we dialed. We don't want the host to
+		// change it without reannouncing itself.
+		addr := entry.NetAddress
 		entry.HostExternalSettings = settings
+		entry.NetAddress = addr
 	}
 	success := err == nil
 
