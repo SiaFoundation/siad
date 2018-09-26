@@ -64,23 +64,25 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 	}
 	file.staticChunks = make([]chunk, len(fd.Chunks))
 	for i := range file.staticChunks {
-		file.staticChunks[i].Pieces = make([][]Piece, file.staticMetadata.staticErasureCode.NumPieces())
+		file.staticChunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
 	}
 
 	// Populate the pubKeyTable of the file and add the pieces.
-	pubKeyMap := make(map[string]int)
+	pubKeyMap := make(map[string]uint32)
 	for chunkIndex, chunk := range fd.Chunks {
 		for pieceIndex, pieceSet := range chunk.Pieces {
-			for _, piece := range pieceSet {
+			for _, p := range pieceSet {
 				// Check if we already added that public key.
-				if _, exists := pubKeyMap[string(piece.HostPubKey.Key)]; !exists {
-					pubKeyMap[string(piece.HostPubKey.Key)] = len(file.pubKeyTable)
-					file.pubKeyTable = append(file.pubKeyTable, piece.HostPubKey)
+				tableOffset, exists := pubKeyMap[string(p.HostPubKey.Key)]
+				if !exists {
+					tableOffset = uint32(len(file.pubKeyTable))
+					pubKeyMap[string(p.HostPubKey.Key)] = tableOffset
+					file.pubKeyTable = append(file.pubKeyTable, p.HostPubKey)
 				}
 				// Add the piece to the SiaFile.
-				file.staticChunks[chunkIndex].Pieces[pieceIndex] = append(file.staticChunks[chunkIndex].Pieces[pieceIndex], Piece{
-					HostPubKey: piece.HostPubKey,
-					MerkleRoot: piece.MerkleRoot,
+				file.staticChunks[chunkIndex].Pieces[pieceIndex] = append(file.staticChunks[chunkIndex].Pieces[pieceIndex], piece{
+					HostTableOffset: tableOffset,
+					MerkleRoot:      p.MerkleRoot,
 				})
 			}
 		}

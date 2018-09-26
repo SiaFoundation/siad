@@ -340,6 +340,15 @@ func TestMarshalUnmarshalChunks(t *testing.T) {
 	if len(sf.staticChunks) < 8 {
 		t.Fatal("Not enough chunks for testing")
 	}
+	// Add a piece to every chunk.
+	for chunkIndex := range sf.staticChunks {
+		for pieceIndex, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+			sf.staticChunks[chunkIndex].Pieces[pieceIndex] = append(pieceSet, piece{
+				HostTableOffset: uint32(fastrand.Intn(100)),
+				MerkleRoot:      crypto.Hash{},
+			})
+		}
+	}
 	// Marshal the chunks.
 	raw, err := marshalChunks(sf.staticChunks)
 	if err != nil {
