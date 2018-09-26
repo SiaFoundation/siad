@@ -637,11 +637,28 @@ func TestCheckForIPViolations(t *testing.T) {
 	// Scan the entries. entry1 should be the 'oldest' and entry3 the
 	// 'youngest'. This also inserts the entries into the hosttree.
 	hdbt.hdb.managedScanHost(entry1)
+	entry1, _ = hdbt.hdb.Host(entry1.PublicKey)
 	time.Sleep(time.Millisecond)
+
 	hdbt.hdb.managedScanHost(entry2)
+	entry2, _ = hdbt.hdb.Host(entry2.PublicKey)
 	time.Sleep(time.Millisecond)
+
 	hdbt.hdb.managedScanHost(entry3)
+	entry3, _ = hdbt.hdb.Host(entry3.PublicKey)
 	time.Sleep(time.Millisecond)
+
+	// Make sure that the timestamps are not zero and that they entries have
+	// subnets associated with them.
+	if len(entry1.IPNets) == 0 || entry1.LastIPNetChange.IsZero() {
+		t.Fatal("entry1 wasn't updated correctly")
+	}
+	if len(entry2.IPNets) == 0 || entry2.LastIPNetChange.IsZero() {
+		t.Fatal("entry2 wasn't updated correctly")
+	}
+	if len(entry3.IPNets) == 0 || entry3.LastIPNetChange.IsZero() {
+		t.Fatal("entry3 wasn't updated correctly")
+	}
 
 	// Scan all the entries again in reversed order. This is a sanity check. If
 	// the code works as expected this shouldn't do anything since the
@@ -649,10 +666,15 @@ func TestCheckForIPViolations(t *testing.T) {
 	// and the following checks will fail.
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry3)
+	entry3, _ = hdbt.hdb.Host(entry3.PublicKey)
+
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry2)
+	entry2, _ = hdbt.hdb.Host(entry2.PublicKey)
+
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry1)
+	entry1, _ = hdbt.hdb.Host(entry1.PublicKey)
 
 	// Add entry1 and entry2. There should be no violation.
 	badHosts := hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey})
