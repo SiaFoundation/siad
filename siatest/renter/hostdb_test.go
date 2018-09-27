@@ -202,6 +202,20 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		t.Fatal("Failed to mine block", err)
 	}
 
+	// Check that all the hosts have been scanned.
+	hdag, err := renter.HostDbAllGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, host := range hdag.Hosts {
+		if host.LastIPNetChange.IsZero() {
+			t.Fatal("host's LastIPNetChange is still zero", host.NetAddress.Host())
+		}
+		if len(host.IPNets) == 0 {
+			t.Fatal("host doesn't have any IPNets associated with it")
+		}
+	}
+
 	retry := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Mine new blocks periodically.
@@ -210,6 +224,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 				return err
 			}
 		}
+		retry++
 		// The renter should now have 2 active contracts and 1 inactive one.
 		// The inactive one should be host4 since it's the 'youngest'.
 		contracts, err = renter.RenterInactiveContractsGet()
@@ -224,7 +239,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		}
 		canceledHost := contracts.InactiveContracts[0].NetAddress.Host()
 		if canceledHost != "host4.com" {
-			return fmt.Errorf("Expected canceled contract to be either host3 or host4 but was %v", canceledHost)
+			return fmt.Errorf("Expected canceled contract to be host4.com but was %v", canceledHost)
 		}
 		return nil
 	})
