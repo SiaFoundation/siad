@@ -106,6 +106,7 @@ func (w *Wallet) UnlockConditions(addr types.UnlockHash) (uc types.UnlockConditi
 	if err := w.tg.Add(); err != nil {
 		return types.UnlockConditions{}, err
 	}
+	defer w.tg.Done()
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	if !w.unlocked {
@@ -130,6 +131,7 @@ func (w *Wallet) AddUnlockConditions(uc types.UnlockConditions) error {
 	if err := w.tg.Add(); err != nil {
 		return err
 	}
+	defer w.tg.Done()
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	if !w.unlocked {
@@ -143,6 +145,10 @@ func (w *Wallet) AddUnlockConditions(uc types.UnlockConditions) error {
 // of each TransactionSignature referenced by toSign. For convenience, if
 // toSign is empty, SignTransaction signs everything that it can.
 func (w *Wallet) SignTransaction(txn *types.Transaction, toSign []crypto.Hash) error {
+	if err := w.tg.Add(); err != nil {
+		return err
+	}
+	defer w.tg.Done()
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	if !w.unlocked {

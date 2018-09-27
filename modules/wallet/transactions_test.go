@@ -230,7 +230,7 @@ func TestProcessedTxnIndexCompatCode(t *testing.T) {
 	defer wt.closeWt()
 
 	// Mine blocks to get lots of processed transactions
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 100; i++ {
 		if _, err := wt.miner.AddBlock(); err != nil {
 			t.Fatal(err)
 		}

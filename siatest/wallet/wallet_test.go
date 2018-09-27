@@ -260,7 +260,7 @@ func TestWatchOnly(t *testing.T) {
 	}
 
 	// track the address
-	err = testNode.WalletWatchPost([]types.UnlockHash{addr})
+	err = testNode.WalletWatchPost([]types.UnlockHash{addr}, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
