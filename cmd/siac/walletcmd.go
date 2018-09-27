@@ -48,8 +48,9 @@ var (
 	walletBroadcastCmd = &cobra.Command{
 		Use:   "broadcast [txn]",
 		Short: "Broadcast a transaction",
-		Long:  "Broadcast a transaction to connected peers. The transaction must be valid.",
-		Run:   wrap(walletbroadcastcmd),
+		Long: `Broadcast a JSON-encoded transaction to connected peers. The transaction must
+be valid. txn may be either JSON, base64, or a file containing either.`,
+		Run: wrap(walletbroadcastcmd),
 	}
 
 	walletChangepasswordCmd = &cobra.Command{
@@ -166,9 +167,14 @@ Run 'wallet send --help' to see a list of available units.`,
 	walletSignCmd = &cobra.Command{
 		Use:   "sign [txn] [tosign]",
 		Short: "Sign a transaction",
-		Long: `Sign the specified inputs of a transaction. If siad is running with an
-unlocked wallet, the /wallet/sign API call will be used. Otherwise, sign will
-prompt for the wallet seed, and the signing key(s) will be regenerated.`,
+		Long: `Sign a transaction. If siad is running with an unlocked wallet, the
+/wallet/sign API call will be used. Otherwise, sign will prompt for the wallet
+seed, and the signing key(s) will be regenerated.
+
+txn may be either JSON, base64, or a file containing either.
+tosign is an optional JSON array of TransactionSignature ParentIDs to sign. If
+tosign is not provided, the wallet will sign every TransactionSignature it has
+keys for.`,
 		Run: walletsigncmd,
 	}
 
@@ -476,17 +482,7 @@ Estimated Fee:       %v / KB
 
 // walletbroadcastcmd broadcasts a transaction.
 func walletbroadcastcmd(txnStr string) {
-	var txn types.Transaction
-	var err error
-	if walletRawTxn {
-		var txnBytes []byte
-		txnBytes, err = base64.StdEncoding.DecodeString(txnStr)
-		if err == nil {
-			err = encoding.Unmarshal(txnBytes, &txn)
-		}
-	} else {
-		err = json.Unmarshal([]byte(txnStr), &txn)
-	}
+	txn, err := parseTxn(txnStr)
 	if err != nil {
 		die("Could not decode transaction:", err)
 	}
@@ -518,10 +514,9 @@ func walletsigncmd(cmd *cobra.Command, args []string) {
 		os.Exit(exitCodeUsage)
 	}
 
-	var txn types.Transaction
-	err := json.Unmarshal([]byte(args[0]), &txn)
+	txn, err := parseTxn(args[0])
 	if err != nil {
-		die("Invalid transaction:", err)
+		die("Could not decode transaction:", err)
 	}
 
 	var toSign []crypto.Hash

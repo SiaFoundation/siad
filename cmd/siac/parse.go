@@ -1,12 +1,17 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"math/big"
+	"os"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -165,4 +170,33 @@ func yesNo(b bool) string {
 		return "Yes"
 	}
 	return "No"
+}
+
+// parseTxn decodes a transaction from s, which can be JSON, base64, or a path
+// to a file containing either encoding.
+func parseTxn(s string) (types.Transaction, error) {
+	// first assume s is a file
+	txnBytes, err := ioutil.ReadFile(s)
+	if os.IsNotExist(err) {
+		// assume s is a literal encoding
+		txnBytes = []byte(s)
+	} else if err != nil {
+		return types.Transaction{}, err
+	}
+	// txnBytes is either JSON or base64
+	var txn types.Transaction
+	if json.Valid(txnBytes) {
+		if err := json.Unmarshal(txnBytes, &txn); err != nil {
+			return types.Transaction{}, err
+		}
+	} else {
+		bin, err := base64.StdEncoding.DecodeString(string(txnBytes))
+		if err != nil {
+			return types.Transaction{}, errors.New("argument is not valid JSON, base64, or filepath")
+		}
+		if err := encoding.Unmarshal(bin, &txn); err != nil {
+			return types.Transaction{}, err
+		}
+	}
+	return txn, nil
 }
