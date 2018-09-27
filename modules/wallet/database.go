@@ -492,6 +492,11 @@ func dbPutSiafundPool(tx *bolt.Tx, pool types.Currency) error {
 	return tx.Bucket(bucketWallet).Put(keySiafundPool, encoding.Marshal(pool))
 }
 
+// dbPutWatchedAddresses stores the set of watched addresses.
+func dbPutWatchedAddresses(tx *bolt.Tx, addrs []types.UnlockHash) error {
+	return tx.Bucket(bucketWallet).Put(keyWatchedAddrs, encoding.Marshal(addrs))
+}
+
 // COMPATv121: these types were stored in the db in v1.2.2 and earlier.
 type (
 	v121ProcessedInput struct {

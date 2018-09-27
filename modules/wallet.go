@@ -358,6 +358,13 @@ type (
 		// AddUnlockConditions adds a set of UnlockConditions to the wallet database.
 		AddUnlockConditions(uc types.UnlockConditions) error
 
+		// AddWatchAddresses instructs the wallet to begin tracking a set of
+		// addresses, in addition to the addresses it was previously tracking.
+		// If none of the addresses have appeared in the blockchain, the
+		// unused flag may be set to true. Otherwise, the wallet must rescan
+		// the blockchain to search for transactions containing the addresses.
+		AddWatchAddresses(addrs []types.UnlockHash, unused bool) error
+
 		// Close permits clean shutdown during testing and serving.
 		Close() error
 
@@ -402,6 +409,13 @@ type (
 		// a TransactionBuilder which can be used to expand the transaction.
 		RegisterTransaction(t types.Transaction, parents []types.Transaction) (TransactionBuilder, error)
 
+		// RemoveWatchAddresses instructs the wallet to stop tracking a set of
+		// addresses and delete their associated transactions. If none of the
+		// addresses have appeared in the blockchain, the unused flag may be
+		// set to true. Otherwise, the wallet must rescan the blockchain to
+		// rebuild its transaction history.
+		RemoveWatchAddresses(addrs []types.UnlockHash, unused bool) error
+
 		// Rescanning reports whether the wallet is currently rescanning the
 		// blockchain.
 		Rescanning() (bool, error)
@@ -442,9 +456,9 @@ type (
 		// address, if they are known to the wallet.
 		UnlockConditions(addr types.UnlockHash) (types.UnlockConditions, error)
 
-		// WatchAddresses instructs the wallet to begin tracking a set of addresses,
-		// replacing any addresses it was previously tracking.
-		WatchAddresses(addrs []types.UnlockHash) error
+		// WatchAddresses returns the set of addresses that the wallet is
+		// currently watching.
+		WatchAddresses() ([]types.UnlockHash, error)
 	}
 
 	// WalletSettings control the behavior of the Wallet.

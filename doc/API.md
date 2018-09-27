@@ -1335,6 +1335,7 @@ Wallet
 | [/wallet/unlockconditions/:___addr___](#walletunlockconditionsaddr-get) | GET       |
 | [/wallet/unspent](#walletunspent-get)                                   | GET       |
 | [/wallet/verify/address/:___addr___](#walletverifyaddressaddr-get)      | GET       |
+| [/wallet/watch](#walletwatch-get)                                       | GET       |
 | [/wallet/watch](#walletwatch-post)                                      | POST      |
 
 For examples and detailed descriptions of request and response parameters,
@@ -1793,17 +1794,36 @@ takes the address specified by :addr and returns a JSON response indicating if t
 }
 ```
 
+#### /wallet/watch [GET]
+
+returns the set of addresses that the wallet is watching.
+
+###### JSON Response [(with comments)](/doc/api/Wallet.md#json-response-12)
+```javascript
+{
+  "addresses": [
+    "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "abcdef0123456789abcdef0123456789abcd1234567890ef0123456789abcdef"
+  ]
+}
+```
+
 #### /wallet/watch [POST]
 
-Function: Start tracking a set of addresses. Outputs owned by the addresses
-will be reported in /wallet/unspent.
+updates the set of addresses watched by the wallet. Outputs owned by the
+addresses will be reported in /wallet/unspent.
 
 ###### Request Body
 ```
-[
-  "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  "abcdef0123456789abcdef0123456789abcd1234567890ef0123456789abcdef"
-]
+{
+  "addresses": [
+    "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "abcdef0123456789abcdef0123456789abcd1234567890ef0123456789abcdef"
+  ],
+  "remove": false,
+  "unused": true,
+}
+
 ```
 
 ###### Response

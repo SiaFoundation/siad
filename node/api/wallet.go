@@ -135,8 +135,17 @@ type (
 		Valid bool `json:"valid"`
 	}
 
-	// WalletWatchPOST contains the set of addresses that the wallet should begin tracking.
+	// WalletWatchPOST contains the set of addresses to add or remove from the
+	// watch set.
 	WalletWatchPOST struct {
+		Addresses []types.UnlockHash `json:"addresses"`
+		Remove    bool               `json:"remove"`
+		Unused    bool               `json:"unused"`
+	}
+
+	// WalletWatchGET contains the set of addresses that the wallet is
+	// currently watching.
+	WalletWatchGET struct {
 		Addresses []types.UnlockHash `json:"addresses"`
 	}
 )
@@ -757,17 +766,33 @@ func (api *API) walletSignHandler(w http.ResponseWriter, req *http.Request, _ ht
 	})
 }
 
-// walletWatchHandler handles API calls to /wallet/watch.
-func (api *API) walletWatchHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var addrs []types.UnlockHash
-	err := json.NewDecoder(req.Body).Decode(&addrs)
+// walletWatchHandlerGET handles GET calls to /wallet/watch.
+func (api *API) walletWatchHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	addrs, err := api.wallet.WatchAddresses()
+	if err != nil {
+		WriteError(w, Error{"failed to get watch addresses: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, WalletWatchGET{
+		Addresses: addrs,
+	})
+}
+
+// walletWatchHandlerPOST handles POST calls to /wallet/watch.
+func (api *API) walletWatchHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var wwpp WalletWatchPOST
+	err := json.NewDecoder(req.Body).Decode(&wwpp)
 	if err != nil {
 		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	err = api.wallet.WatchAddresses(addrs)
+	if wwpp.Remove {
+		err = api.wallet.RemoveWatchAddresses(wwpp.Addresses, wwpp.Unused)
+	} else {
+		err = api.wallet.AddWatchAddresses(wwpp.Addresses, wwpp.Unused)
+	}
 	if err != nil {
-		WriteError(w, Error{"failed to watch addresses: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to update watch set: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)

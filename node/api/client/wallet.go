@@ -187,10 +187,22 @@ func (c *Client) WalletUnspentGet() (wug api.WalletUnspentGET, err error) {
 	return
 }
 
-// WalletWatchPost uses the /wallet/watch endpoint to track a set of
-// addresses.
-func (c *Client) WalletWatchPost(addrs []types.UnlockHash) error {
-	json, err := json.Marshal(addrs)
+// WalletWatchGet requests the /wallet/watch endpoint and returns the set of
+// currently watched addresses.
+func (c *Client) WalletWatchGet() (wwg api.WalletWatchGET, err error) {
+	err = c.get("/wallet/watch", &wwg)
+	return
+}
+
+// WalletWatchPost uses the /wallet/watch endpoint to add or remove a set of
+// addresses from the watch set. The unused flag should be set to true if the
+// addresses have never appeared in the blockchain.
+func (c *Client) WalletWatchPost(addrs []types.UnlockHash, remove, unused bool) error {
+	json, err := json.Marshal(api.WalletWatchPOST{
+		Addresses: addrs,
+		Remove:    remove,
+		Unused:    unused,
+	})
 	if err != nil {
 		return err
 	}
