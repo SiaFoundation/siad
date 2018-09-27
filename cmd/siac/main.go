@@ -144,7 +144,7 @@ func main() {
 	root.AddCommand(consensusCmd)
 
 	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsHastingsCmd, utilsEncodeRawTxnCmd, utilsDecodeRawTxnCmd,
-		utilsSigHashCmd, utilsCheckSigCmd)
+		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd)
 	root.AddCommand(utilsCmd)
 
 	// initialize client
