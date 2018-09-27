@@ -293,6 +293,8 @@ var (
 
 // New RPC request and response types
 type (
+
+	// LoopDownloadRequest contains the request parameters for RPCLoopDownload.
 	LoopDownloadRequest struct {
 		MerkleRoot  crypto.Hash
 		Offset      uint32
@@ -302,21 +304,26 @@ type (
 		Revision  types.FileContractRevision // TODO: send only valid/missed output values + rev number instead? -- saves 370 bytes
 		Signature types.TransactionSignature // TODO: could just be []byte if host can infer the algorithm and covered fields -- saves 129 bytes
 	}
+
+	// LoopDownloadResponse contains the response data for RPCLoopDownloadResponse.
 	LoopDownloadResponse struct {
 		Signature   types.TransactionSignature // TODO: could just be []byte if renter can infer the algorithm and covered fields -- saves 129 bytes
 		Data        []byte
 		MerkleProof []crypto.Hash
 	}
 
+	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
 	LoopSettingsResponse struct {
 		Settings  HostExternalSettings
 		Signature []byte
 	}
 
+	// LoopRecentRevisionRequest contains the request parameters for RPCLoopRecentRevision.
 	LoopRecentRevisionRequest struct {
 		ContractID types.FileContractID
 	}
 
+	// LoopRecentRevisionResponse contains the response data for RPCLoopRecentRevisionResponse.
 	LoopRecentRevisionResponse struct {
 		Revision   types.FileContractRevision
 		Signatures []types.TransactionSignature

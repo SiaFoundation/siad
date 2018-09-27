@@ -12,6 +12,8 @@ import (
 	"github.com/coreos/bbolt"
 )
 
+// managedRPCLoopSettings writes an RPC response containing the host's
+// settings.
 func (h *Host) managedRPCLoopSettings(conn net.Conn) error {
 	conn.SetDeadline(time.Now().Add(modules.NegotiateSettingsTime))
 
@@ -21,10 +23,6 @@ func (h *Host) managedRPCLoopSettings(conn net.Conn) error {
 	h.mu.Unlock()
 
 	// Construct and send the response.
-	//
-	// TODO: we encode the settings twice here. If that becomes a performance
-	// issue, optimizing it down to a single encode shouldn't be too
-	// difficult; but for simplicity, leave it for now.
 	sig := crypto.SignHash(crypto.HashObject(hes), secretKey)
 	resp := modules.LoopSettingsResponse{
 		Settings:  hes,
@@ -36,13 +34,17 @@ func (h *Host) managedRPCLoopSettings(conn net.Conn) error {
 	return nil
 }
 
+// managedRPCLoopRecentRevision writes an RPC response containing the most
+// recent revision of the requested contract.
 func (h *Host) managedRPCLoopRecentRevision(conn net.Conn) error {
 	conn.SetDeadline(time.Now().Add(modules.NegotiateRecentRevisionTime))
 
 	// Read the request.
 	var req modules.LoopRecentRevisionRequest
 	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
-		// No sense writing an RPC error here
+		// Reading may have failed due to a closed connection; regardless, it
+		// doesn't hurt to try and tell the renter about it.
+		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
 	fcid := req.ContractID
@@ -96,21 +98,22 @@ func (h *Host) managedRPCLoopRecentRevision(conn net.Conn) error {
 	return nil
 }
 
+// managedRPCLoopDownload writes an RPC response containing the requested data
+// (along with signatures and an optional Merkle proof).
 func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 	conn.SetDeadline(time.Now().Add(modules.NegotiateDownloadTime))
 
 	// Read the request.
 	var req modules.LoopDownloadRequest
 	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
-		// No sense writing an RPC error here
+		// Reading may have failed due to a closed connection; regardless, it
+		// doesn't hurt to try and tell the renter about it.
+		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
 	fcid := req.Revision.ParentID
 
 	// Lock the storage obligation.
-	//
-	// TODO: for performance, we will eventually want to keep the obligation
-	// locked, instead of locking and unlocking for each iteration.
 	err := h.managedTryLockStorageObligation(fcid)
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)

@@ -305,27 +305,25 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 }
 
 // managedRPCLoop reads new RPCs from the renter, each consisting of a single
-// request and response. The loop terminates when the renter disconnects or
-// sends modules.RPCLoopExit.
+// request and response. The loop terminates when the an RPC encounters an
+// error or the renter sends modules.RPCLoopExit.
 func (h *Host) managedRPCLoop(conn net.Conn) error {
-	var id types.Specifier
-	var err error
 	for {
-		// allow 5 mins between RPCs
-		// TODO: constant for this?
-		conn.SetDeadline(time.Now().Add(5 * time.Minute))
+		conn.SetDeadline(time.Now().Add(rpcRequestInterval))
 
+		var id types.Specifier
 		if _, err := io.ReadFull(conn, id[:]); err != nil {
 			h.log.Debugf("WARN: renter sent invalid RPC ID: %v", id)
 			return errors.New("invalid RPC ID " + id.String())
 		}
+		var err error
 		switch id {
 		case modules.RPCLoopSettings:
-			err = h.managedRPCLoopSettings(conn)
+			err = extendErr("incoming RPCLoopSettings failed: ", h.managedRPCLoopSettings(conn))
 		case modules.RPCLoopRecentRevision:
-			err = h.managedRPCLoopRecentRevision(conn)
+			err = extendErr("incoming RPCLoopRecentRevision failed: ", h.managedRPCLoopRecentRevision(conn))
 		case modules.RPCLoopDownload:
-			err = h.managedRPCLoopDownload(conn)
+			err = extendErr("incoming RPCLoopDownload failed: ", h.managedRPCLoopDownload(conn))
 		case modules.RPCLoopExit:
 			return nil
 		default:
@@ -337,7 +335,7 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 	}
 }
 
-// listen listens for incoming RPCs and spawns an appropriate handler for each.
+// threadedListen listens for incoming RPCs and spawns an appropriate handler for each.
 func (h *Host) threadedListen(closeChan chan struct{}) {
 	defer close(closeChan)
 
