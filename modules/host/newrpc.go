@@ -1,6 +1,7 @@
 package host
 
 import (
+	"errors"
 	"net"
 	"time"
 
@@ -111,7 +112,7 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
-	fcid := req.Revision.ParentID
+	fcid := req.ContractID
 
 	// Lock the storage obligation.
 	err := h.managedTryLockStorageObligation(fcid)
@@ -140,11 +141,36 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 
 	// Validate the request.
 	if uint64(req.Offset)+uint64(req.Length) > modules.SectorSize {
-		modules.WriteRPCResponse(conn, nil, errRequestOutOfBounds)
-		return extendErr("download iteration request failed: ", errRequestOutOfBounds)
+		err = errRequestOutOfBounds
+	} else if len(req.NewValidProofValues) != len(currentRevision.NewValidProofOutputs) {
+		err = errors.New("wrong number of valid proof values")
+	} else if len(req.NewMissedProofValues) != len(currentRevision.NewMissedProofOutputs) {
+		err = errors.New("wrong number of missed proof values")
 	}
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("download iteration request failed: ", err)
+	}
+
+	// construct the new revision
+	newRevision := currentRevision
+	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
+	for i := range newRevision.NewValidProofOutputs {
+		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewValidProofValues[i],
+			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
+		}
+	}
+	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
+	for i := range newRevision.NewMissedProofOutputs {
+		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewMissedProofValues[i],
+			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
+		}
+	}
+
 	expectedTransfer := settings.DownloadBandwidthPrice.Mul64(uint64(req.Length))
-	err = verifyPaymentRevision(currentRevision, req.Revision, blockHeight, expectedTransfer)
+	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, expectedTransfer)
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
 		return extendErr("payment validation failed: ", err)
@@ -159,14 +185,20 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 	data := sectorData[req.Offset : req.Offset+req.Length]
 
 	// Sign the new revision.
-	txn, err := createRevisionSignature(req.Revision, req.Signature, secretKey, blockHeight)
+	renterSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(newRevision.ParentID),
+		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+		PublicKeyIndex: 0,
+		Signature:      req.Signature,
+	}
+	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
 		return extendErr("failed to create revision signature: ", err)
 	}
 
 	// Update the storage obligation.
-	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(req.Revision.NewValidProofOutputs[0].Value)
+	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
 	so.PotentialDownloadRevenue = so.PotentialDownloadRevenue.Add(paymentTransfer)
 	so.RevisionTransactionSet = []types.Transaction{txn}
 	h.mu.Lock()
@@ -179,7 +211,7 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 
 	// send the response
 	resp := modules.LoopDownloadResponse{
-		Signature:   txn.TransactionSignatures[1],
+		Signature:   txn.TransactionSignatures[1].Signature,
 		Data:        data,
 		MerkleProof: nil,
 	}

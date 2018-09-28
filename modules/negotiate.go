@@ -296,18 +296,21 @@ type (
 
 	// LoopDownloadRequest contains the request parameters for RPCLoopDownload.
 	LoopDownloadRequest struct {
+		ContractID  types.FileContractID
 		MerkleRoot  crypto.Hash
 		Offset      uint32
 		Length      uint32
 		MerkleProof bool
 
-		Revision  types.FileContractRevision // TODO: send only valid/missed output values + rev number instead? -- saves 370 bytes
-		Signature types.TransactionSignature // TODO: could just be []byte if host can infer the algorithm and covered fields -- saves 129 bytes
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+		Signature            []byte
 	}
 
 	// LoopDownloadResponse contains the response data for RPCLoopDownloadResponse.
 	LoopDownloadResponse struct {
-		Signature   types.TransactionSignature // TODO: could just be []byte if renter can infer the algorithm and covered fields -- saves 129 bytes
+		Signature   []byte
 		Data        []byte
 		MerkleProof []crypto.Hash
 	}

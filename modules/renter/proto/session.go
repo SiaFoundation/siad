@@ -53,17 +53,35 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	rev := newDownloadRevision(contract.LastRevision(), price)
 	txn := types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{rev},
-		TransactionSignatures: []types.TransactionSignature{{
-			ParentID:       crypto.Hash(rev.ParentID),
-			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
-			PublicKeyIndex: 0, // renter key is always first -- see formContract
-		}},
+		TransactionSignatures: []types.TransactionSignature{
+			{
+				ParentID:       crypto.Hash(rev.ParentID),
+				CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+				PublicKeyIndex: 0, // renter key is always first -- see formContract
+			},
+			{
+				ParentID:       crypto.Hash(rev.ParentID),
+				PublicKeyIndex: 1,
+				CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+				Signature:      nil, // to be provided by host
+			},
+		},
 	}
 	sig := crypto.SignHash(txn.SigHash(0), contract.SecretKey)
 	txn.TransactionSignatures[0].Signature = sig[:]
 
-	req.Revision = rev
-	req.Signature = txn.TransactionSignatures[0]
+	// fill in the missing request fields
+	req.ContractID = contract.ID()
+	req.NewRevisionNumber = rev.NewRevisionNumber
+	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
+	for i, o := range rev.NewValidProofOutputs {
+		req.NewValidProofValues[i] = o.Value
+	}
+	req.NewMissedProofValues = make([]types.Currency, len(rev.NewMissedProofOutputs))
+	for i, o := range rev.NewMissedProofOutputs {
+		req.NewMissedProofValues[i] = o.Value
+	}
+	req.Signature = sig[:]
 
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
@@ -104,7 +122,7 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	}
 
 	// add host signature
-	txn.TransactionSignatures = append(txn.TransactionSignatures, resp.Signature)
+	txn.TransactionSignatures[1].Signature = resp.Signature
 
 	// update contract and metrics
 	if err := sc.commitDownload(walTxn, txn, price); err != nil {
