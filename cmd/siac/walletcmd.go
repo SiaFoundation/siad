@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -172,9 +173,10 @@ Run 'wallet send --help' to see a list of available units.`,
 seed, and the signing key(s) will be regenerated.
 
 txn may be either JSON, base64, or a file containing either.
-tosign is an optional JSON array of TransactionSignature ParentIDs to sign. If
-tosign is not provided, the wallet will sign every TransactionSignature it has
-keys for.`,
+
+tosign is an optional list of indices. Each index corresponds to a
+TransactionSignature in the txn that will be filled in. If no indices are
+provided, the wallet will fill in every TransactionSignature it has keys for.`,
 		Run: walletsigncmd,
 	}
 
@@ -509,7 +511,7 @@ func walletsweepcmd() {
 
 // walletsigncmd signs a transaction.
 func walletsigncmd(cmd *cobra.Command, args []string) {
-	if len(args) < 1 || len(args) > 2 {
+	if len(args) < 1 {
 		cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
@@ -520,11 +522,14 @@ func walletsigncmd(cmd *cobra.Command, args []string) {
 	}
 
 	var toSign []crypto.Hash
-	if len(args) == 2 {
-		err = json.Unmarshal([]byte(args[1]), &toSign)
+	for _, arg := range args[1:] {
+		index, err := strconv.ParseUint(arg, 10, 32)
 		if err != nil {
-			die("Invalid signature request:", err)
+			die("Invalid signature index", index, "(must be an non-negative integer)")
+		} else if index >= uint64(len(txn.TransactionSignatures)) {
+			die("Invalid signature index", index, "(transaction only has", len(txn.TransactionSignatures), "signatures)")
 		}
+		toSign = append(toSign, txn.TransactionSignatures[index].ParentID)
 	}
 
 	// try API first
