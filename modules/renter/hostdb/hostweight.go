@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -372,28 +373,31 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 	return math.Pow(uptimeRatio, exp)
 }
 
-// calculateHostWeight returns the weight of a host according to the settings of
-// the host database entry.
-func (hdb *HostDB) calculateHostWeight(entry modules.HostDBEntry) types.Currency {
-	collateralReward := hdb.collateralAdjustments(entry)
-	interactionPenalty := hdb.interactionAdjustments(entry)
-	lifetimePenalty := hdb.lifetimeAdjustments(entry)
-	pricePenalty := hdb.priceAdjustments(entry)
-	storageRemainingPenalty := storageRemainingAdjustments(entry)
-	uptimePenalty := hdb.uptimeAdjustments(entry)
-	versionPenalty := versionAdjustments(entry)
+// calculateHostWeightFn creates a hosttree.WeightFunc given an Allowance.
+func (hdb *HostDB) calculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
+	return func(entry modules.HostDBEntry) types.Currency {
+		// TODO change the weight function to use the allowance
 
-	// Combine the adjustments.
-	fullPenalty := collateralReward * interactionPenalty * lifetimePenalty *
-		pricePenalty * storageRemainingPenalty * uptimePenalty * versionPenalty
+		collateralReward := hdb.collateralAdjustments(entry)
+		interactionPenalty := hdb.interactionAdjustments(entry)
+		lifetimePenalty := hdb.lifetimeAdjustments(entry)
+		pricePenalty := hdb.priceAdjustments(entry)
+		storageRemainingPenalty := storageRemainingAdjustments(entry)
+		uptimePenalty := hdb.uptimeAdjustments(entry)
+		versionPenalty := versionAdjustments(entry)
 
-	// Return a types.Currency.
-	weight := baseWeight.MulFloat(fullPenalty)
-	if weight.IsZero() {
-		// A weight of zero is problematic for for the host tree.
-		return types.NewCurrency64(1)
+		// Combine the adjustments.
+		fullPenalty := collateralReward * interactionPenalty * lifetimePenalty *
+			pricePenalty * storageRemainingPenalty * uptimePenalty * versionPenalty
+
+		// Return a types.Currency.
+		weight := baseWeight.MulFloat(fullPenalty)
+		if weight.IsZero() {
+			// A weight of zero is problematic for for the host tree.
+			return types.NewCurrency64(1)
+		}
+		return weight
 	}
-	return weight
 }
 
 // calculateConversionRate calculates the conversion rate of the provided

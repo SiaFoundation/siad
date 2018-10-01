@@ -41,6 +41,10 @@ type HostDB struct {
 	persistDir string
 	tg         threadgroup.ThreadGroup
 
+	// calculateHostWeight is the function used to calculate the weight of the
+	// entries within the hosttree.
+	calculateHostWeight hosttree.WeightFunc
+
 	// The hostTree is the root node of the tree that organizes hosts by
 	// weight. The tree is necessary for selecting weighted hosts at
 	// random.
@@ -87,6 +91,9 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir stri
 
 		scanMap: make(map[string]struct{}),
 	}
+
+	// Set the hostweight function.
+	hdb.calculateHostWeight = hdb.calculateHostWeightFn(modules.Allowance{})
 
 	// Create the persist directory if it does not yet exist.
 	err := os.MkdirAll(persistDir, 0700)
@@ -308,4 +315,42 @@ func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPub
 		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
 	return hdb.hostTree.SelectRandom(n, blacklist, addressBlacklist), nil
+}
+
+// RandomHostsTempAllowance works as RandomHosts but uses a temporary hosttree
+// created from the specified allowance. This is a very expensive call and
+// should be used with caution.
+func (hdb *HostDB) RandomHostsTempAllowance(n int, blacklist, addressBlacklist []types.SiaPublicKey, allowance modules.Allowance) ([]modules.HostDBEntry, error) {
+	hdb.mu.RLock()
+	initialScanComplete := hdb.initialScanComplete
+	hdb.mu.RUnlock()
+	if !initialScanComplete {
+		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
+	}
+	// Create a temporary hosttree from the given allowance.
+	ht := hosttree.New(hdb.calculateHostWeightFn(allowance), hdb.deps.Resolver())
+
+	// Insert all known hosts.
+	allHosts := hdb.hostTree.All()
+	for _, host := range allHosts {
+		if err := ht.Insert(host); err != nil {
+			return nil, err
+		}
+	}
+
+	// Select hosts from the temporary hosttree.
+	return ht.SelectRandom(n, blacklist, addressBlacklist), nil
+}
+
+// UpdateAllowance updates the allowance used by the hostdb for weighing hosts
+// by updating the host weight function.  It will completely rebuild the
+// hosttree so it should be used with care.
+func (hdb *HostDB) UpdateAllowance(allowance modules.Allowance) error {
+	// Update the weight function.
+	hdb.mu.Lock()
+	hdb.calculateHostWeight = hdb.calculateHostWeightFn(allowance)
+	hdb.mu.Unlock()
+
+	// Update the trees weight function.
+	return hdb.hostTree.UpdateWeightFunction(hdb.calculateHostWeightFn(allowance))
 }

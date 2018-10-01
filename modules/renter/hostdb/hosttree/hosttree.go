@@ -199,18 +199,7 @@ func (he *hostEntry) Host() string {
 func (ht *HostTree) All() []modules.HostDBEntry {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
-
-	var he []hostEntry
-	for _, node := range ht.hosts {
-		he = append(he, *node.entry)
-	}
-	sort.Sort(byWeight(he))
-
-	var entries []modules.HostDBEntry
-	for _, entry := range he {
-		entries = append(entries, entry.HostDBEntry)
-	}
-	return entries
+	return ht.all()
 }
 
 // Insert inserts the entry provided to `entry` into the host tree. Insert will
@@ -218,20 +207,7 @@ func (ht *HostTree) All() []modules.HostDBEntry {
 func (ht *HostTree) Insert(hdbe modules.HostDBEntry) error {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
-
-	entry := &hostEntry{
-		HostDBEntry: hdbe,
-		weight:      ht.weightFn(hdbe),
-	}
-
-	if _, exists := ht.hosts[string(entry.PublicKey.Key)]; exists {
-		return errHostExists
-	}
-
-	_, node := ht.root.recursiveInsert(entry)
-
-	ht.hosts[string(entry.PublicKey.Key)] = node
-	return nil
+	return ht.insert(hdbe)
 }
 
 // Remove removes the host with the public key provided by `pk`.
@@ -270,6 +246,33 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 	_, node = ht.root.recursiveInsert(entry)
 
 	ht.hosts[string(entry.PublicKey.Key)] = node
+	return nil
+}
+
+// UpdateWeightFunction resets the HostTree and assigns it a new weight
+// function. This resets the tree and reinserts all the hosts.
+func (ht *HostTree) UpdateWeightFunction(wf WeightFunc) error {
+	ht.mu.Lock()
+	defer ht.mu.Unlock()
+
+	// Get all the hosts.
+	allHosts := ht.all()
+
+	// Reset the tree
+	ht.hosts = make(map[string]*node)
+	ht.root = &node{
+		count: 1,
+	}
+
+	// Assign the new weight function.
+	ht.weightFn = wf
+
+	// Reinsert all the hosts.
+	for _, hdbe := range allHosts {
+		if err := ht.insert(hdbe); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -356,4 +359,37 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 	}
 
 	return hosts
+}
+
+// all returns all of the hosts in the host tree, sorted by weight.
+func (ht *HostTree) all() []modules.HostDBEntry {
+	var he []hostEntry
+	for _, node := range ht.hosts {
+		he = append(he, *node.entry)
+	}
+	sort.Sort(byWeight(he))
+
+	var entries []modules.HostDBEntry
+	for _, entry := range he {
+		entries = append(entries, entry.HostDBEntry)
+	}
+	return entries
+}
+
+// insert inserts the entry provided to `entry` into the host tree. Insert will
+// return an error if the input host already exists.
+func (ht *HostTree) insert(hdbe modules.HostDBEntry) error {
+	entry := &hostEntry{
+		HostDBEntry: hdbe,
+		weight:      ht.weightFn(hdbe),
+	}
+
+	if _, exists := ht.hosts[string(entry.PublicKey.Key)]; exists {
+		return errHostExists
+	}
+
+	_, node := ht.root.recursiveInsert(entry)
+
+	ht.hosts[string(entry.PublicKey.Key)] = node
+	return nil
 }
