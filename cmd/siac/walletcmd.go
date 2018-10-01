@@ -492,7 +492,7 @@ func walletbroadcastcmd(txnStr string) {
 	if err != nil {
 		die("Could not broadcast transaction:", err)
 	}
-	fmt.Println("Transaction broadcast successfully")
+	fmt.Println("Transaction has been broadcast successfully")
 }
 
 // walletsweepcmd sweeps coins and funds from a seed.
@@ -544,31 +544,7 @@ func walletsigncmd(cmd *cobra.Command, args []string) {
 		}
 
 		// siad is not running; fallback to offline keygen
-		fmt.Println("Enter your wallet seed to generate the signing key(s) now and sign without siad.")
-		seedString, err := passwordPrompt("Seed: ")
-		if err != nil {
-			die("Reading seed failed:", err)
-		}
-		seed, err := modules.StringToSeed(seedString, mnemonics.English)
-		if err != nil {
-			die("Invalid seed:", err)
-		}
-		// signing via seed may take a while, since we need to regenerate
-		// keys. If it takes longer than a second, print a message to assure
-		// the user that this is normal.
-		done := make(chan struct{})
-		go func() {
-			select {
-			case <-time.After(time.Second):
-				fmt.Println("Generating keys; this may take a few seconds...")
-			case <-done:
-			}
-		}()
-		err = wallet.SignTransaction(&txn, seed, toSign)
-		if err != nil {
-			die("Failed to sign transaction:", err)
-		}
-		close(done)
+		walletsigncmdoffline(&txn, toSign)
 	}
 
 	if walletRawTxn {
@@ -577,6 +553,36 @@ func walletsigncmd(cmd *cobra.Command, args []string) {
 		json.NewEncoder(os.Stdout).Encode(txn)
 	}
 	fmt.Println()
+}
+
+// walletsigncmdoffline is a helper for walletsigncmd that handles signing
+// transactions without siad.
+func walletsigncmdoffline(txn *types.Transaction, toSign []crypto.Hash) {
+	fmt.Println("Enter your wallet seed to generate the signing key(s) now and sign without siad.")
+	seedString, err := passwordPrompt("Seed: ")
+	if err != nil {
+		die("Reading seed failed:", err)
+	}
+	seed, err := modules.StringToSeed(seedString, mnemonics.English)
+	if err != nil {
+		die("Invalid seed:", err)
+	}
+	// signing via seed may take a while, since we need to regenerate
+	// keys. If it takes longer than a second, print a message to assure
+	// the user that this is normal.
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-time.After(time.Second):
+			fmt.Println("Generating keys; this may take a few seconds...")
+		case <-done:
+		}
+	}()
+	err = wallet.SignTransaction(txn, seed, toSign)
+	if err != nil {
+		die("Failed to sign transaction:", err)
+	}
+	close(done)
 }
 
 // wallettransactionscmd lists all of the transactions related to the wallet,
