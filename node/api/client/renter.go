@@ -221,6 +221,15 @@ func (c *Client) RenterSetStreamCacheSizePost(cacheSize uint64) (err error) {
 	return
 }
 
+// RenterSetIPViolationCheck uses the /renter endpoint to enable/disable the IP
+// violation check in the renter.
+func (c *Client) RenterSetCheckIPViolationPost(enabled bool) (err error) {
+	values := url.Values{}
+	values.Set("checkforipviolation", fmt.Sprint(enabled))
+	err = c.post("/renter", values.Encode(), nil)
+	return
+}
+
 // RenterStreamGet uses the /renter/stream endpoint to download data as a
 // stream.
 func (c *Client) RenterStreamGet(siaPath string) (resp []byte, err error) {

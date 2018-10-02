@@ -146,10 +146,12 @@ type pricesStub struct {
 }
 
 func (pricesStub) InitialScanComplete() (bool, error) { return true, nil }
+func (pricesStub) IPViolationsCheck() bool            { return true }
 
 func (ps pricesStub) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return ps.dbEntries, nil
 }
+func (ps pricesStub) SetIPViolationCheck(enabled bool) { return }
 
 // TestRenterPricesVolatility verifies that the renter caches its price
 // estimation, and subsequent calls result in non-volatile results.
