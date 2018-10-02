@@ -74,8 +74,8 @@ submits a raw transaction to the transaction pool, broadcasting it to the transa
 ###### Query String Parameters
 
 ```
-parents     string // raw base64 encoded transaction parents
-transaction string // raw base64 encoded transaction
+parents     string // JSON- or base64-encoded transaction parents
+transaction string // JSON- or base64-encoded transaction
 ```
 
 ###### Response
