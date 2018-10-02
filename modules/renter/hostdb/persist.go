@@ -24,15 +24,17 @@ var (
 
 // hdbPersist defines what HostDB data persists across sessions.
 type hdbPersist struct {
-	AllHosts    []modules.HostDBEntry
-	BlockHeight types.BlockHeight
-	LastChange  modules.ConsensusChangeID
+	AllHosts                 []modules.HostDBEntry
+	BlockHeight              types.BlockHeight
+	DisableIPViolationsCheck bool
+	LastChange               modules.ConsensusChangeID
 }
 
 // persistData returns the data in the hostdb that will be saved to disk.
 func (hdb *HostDB) persistData() (data hdbPersist) {
 	data.AllHosts = hdb.hostTree.All()
 	data.BlockHeight = hdb.blockHeight
+	data.DisableIPViolationsCheck = hdb.disableIPViolationCheck
 	data.LastChange = hdb.lastChange
 	return data
 }
@@ -53,6 +55,7 @@ func (hdb *HostDB) load() error {
 
 	// Set the hostdb internal values.
 	hdb.blockHeight = data.BlockHeight
+	hdb.disableIPViolationCheck = data.DisableIPViolationsCheck
 	hdb.lastChange = data.LastChange
 
 	// Load each of the hosts into the host tree.
