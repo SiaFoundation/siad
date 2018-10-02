@@ -370,7 +370,11 @@ func (srv *Server) daemonConstantsHandler(w http.ResponseWriter, _ *http.Request
 
 // daemonVersionHandler handles the API call that requests the daemon's version.
 func (srv *Server) daemonVersionHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	api.WriteJSON(w, DaemonVersion{Version: build.Version, GitRevision: build.GitRevision, BuildTime: build.BuildTime})
+	version := build.Version
+	if build.RC != "" {
+		version += "-" + build.RC
+	}
+	api.WriteJSON(w, DaemonVersion{Version: version, GitRevision: build.GitRevision, BuildTime: build.BuildTime})
 }
 
 // daemonStopHandler handles the API call to stop the daemon cleanly.

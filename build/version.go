@@ -17,6 +17,9 @@ const (
 	Version = "1.3.5"
 )
 
+// RC contains the release candidate version, if any. It is supplied at build time.
+var RC string
+
 // IsVersion returns whether str is a valid version number.
 func IsVersion(str string) bool {
 	for _, n := range strings.Split(str, ".") {
