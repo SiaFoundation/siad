@@ -365,8 +365,22 @@ func (w *Wallet) RemoveWatchAddresses(addrs []types.UnlockHash, unused bool) err
 		if err := dbPutWatchedAddresses(w.dbTx, alladdrs); err != nil {
 			return err
 		}
-
 		if !unused {
+			// outputs associated with the addresses may be present in the
+			// SiacoinOutputs bucket. Iterate through the bucket and remove
+			// any outputs that we are no longer watching.
+			var outputIDs []types.SiacoinOutputID
+			dbForEachSiacoinOutput(w.dbTx, func(scoid types.SiacoinOutputID, sco types.SiacoinOutput) {
+				if !w.isWalletAddress(sco.UnlockHash) {
+					outputIDs = append(outputIDs, scoid)
+				}
+			})
+			for _, scoid := range outputIDs {
+				if err := dbDeleteSiacoinOutput(w.dbTx, scoid); err != nil {
+					return err
+				}
+			}
+
 			// prepare to rescan
 			if err := w.dbTx.DeleteBucket(bucketProcessedTransactions); err != nil {
 				return err
