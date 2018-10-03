@@ -184,7 +184,7 @@ func (g *Gateway) requestNodes(conn modules.PeerConn) error {
 		}
 	}
 	if changed {
-		err := g.saveSync()
+		err := g.saveSyncNodes()
 		if err != nil {
 			g.log.Println("ERROR: unable to save new nodes added to the gateway:", err)
 		}

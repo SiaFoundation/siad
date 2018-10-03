@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -21,6 +23,7 @@ var (
 	renterDownloadAsync    bool   // Downloads files asynchronously
 	renterListVerbose      bool   // Show additional info about uploaded files.
 	renterShowHistory      bool   // Show download history in addition to download queue.
+	siaDir                 string // Path to sia data dir
 	walletRawTxn           bool   // Encode/decode transactions in base64-encoded binary.
 )
 
@@ -140,12 +143,14 @@ func main() {
 
 	root.AddCommand(consensusCmd)
 
-	root.AddCommand(bashcomplCmd)
-	root.AddCommand(mangenCmd)
+	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsHastingsCmd, utilsEncodeRawTxnCmd, utilsDecodeRawTxnCmd,
+		utilsSigHashCmd, utilsCheckSigCmd)
+	root.AddCommand(utilsCmd)
 
 	// initialize client
 	root.PersistentFlags().StringVarP(&httpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
 	root.PersistentFlags().StringVarP(&httpClient.Password, "apipassword", "", "", "the password for the API's http authentication")
+	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", build.DefaultSiaDir(), "location of the sia directory")
 	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 
 	// Check if the api password environment variable is set.
@@ -153,6 +158,16 @@ func main() {
 	if apiPassword != "" {
 		httpClient.Password = apiPassword
 		fmt.Println("Using SIA_API_PASSWORD environment variable")
+	}
+
+	// If the API password wasn't set we try to read it from the file. If
+	// reading fails, continue silently; but in the next release, this will
+	// be an error.
+	if httpClient.Password == "" {
+		pw, err := ioutil.ReadFile(build.APIPasswordFile(siaDir))
+		if err == nil {
+			httpClient.Password = strings.TrimSpace(string(pw))
+		}
 	}
 
 	// run

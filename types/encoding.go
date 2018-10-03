@@ -626,13 +626,8 @@ func (spk *SiaPublicKey) LoadString(s string) {
 // String defines how to print a SiaPublicKey - hex is used to keep things
 // compact during logging. The key type prefix and lack of a checksum help to
 // separate it from a sia address.
-func (spk *SiaPublicKey) String() string {
+func (spk SiaPublicKey) String() string {
 	return spk.Algorithm.String() + ":" + fmt.Sprintf("%x", spk.Key)
-}
-
-// MarshalJSON marshals a SiaPublicKey as JSON.
-func (spk SiaPublicKey) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + spk.String() + `"`), nil
 }
 
 // UnmarshalJSON unmarshals a SiaPublicKey as JSON.

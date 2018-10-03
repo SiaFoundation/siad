@@ -17,6 +17,7 @@ standards.
   * [A few guidelines](#naming)
   * [Basic test format](#basic)
   * [Table-driven tests](#table)
+  * [Siatest Package](#siatest)
 * [Questions?](#questions)
 
 <a name="existing"></a>
@@ -225,6 +226,19 @@ func TestParseFilesize(t *testing.T) {
 	}
 }
 ```
+
+<a name="siatest">
+### Siatest Package
+When deciding what tests to write for Sia, you should consider whether the best
+test is a unit test or a siatest. Ideally both a unit test and a siatest is
+written for new code. A unit test should explicitly test the new code
+functionality and a siatest should test the integration of the code and how it
+affects the rest of the platform. All the tests in the siatest package should
+use the API to execute the test. The idea is that everything that is trying to
+be tested should be able to be controlled and verified through the API. If you
+are looking for a place to start, there are many examples of older tests that
+could be upgraded to siatests.
+
 <a name="questions"></a>
 ## Questions?
 Read these if you haven't already:

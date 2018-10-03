@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -14,24 +15,44 @@ func TestLoad(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
+
+	// Start new gateway
 	g := newTestingGateway(t)
 
+	// Add node and persist node and gateway
 	g.mu.Lock()
 	g.addNode(dummyNode)
-	g.saveSync()
+	if err := g.saveSync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.saveSyncNodes(); err != nil {
+		t.Fatal(err)
+	}
 	g.mu.Unlock()
 	g.Close()
 
+	// Start second gateway
 	g2, err := New("localhost:0", false, g.persistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Confirm node from gateway 1 is in gateway 2
 	if _, ok := g2.nodes[dummyNode]; !ok {
 		t.Fatal("gateway did not load old peer list:", g2.nodes)
 	}
+
+	// Confirm the persisted gateway information is the same between the two
+	// gateways
+	if !reflect.DeepEqual(g.persist, g2.persist) {
+		t.Log("g.persit:", g.persist)
+		t.Log("g2.persit:", g2.persist)
+		t.Fatal("Gateway not persisted")
+	}
 }
 
-// TestLoadv033 tests that the gateway can load a v033 persist file.
+// TestLoadv033 tests that the gateway can load a v033 persist file for the node
+// persistence.
 func TestLoadv033(t *testing.T) {
 	var buf bytes.Buffer
 	log := persist.NewLogger(&buf)
@@ -41,7 +62,7 @@ func TestLoadv033(t *testing.T) {
 		persistDir: filepath.Join("testdata", t.Name()),
 		log:        log,
 	}
-	if err := g.load(); err != nil {
+	if err := g.loadNodes(); err != nil {
 		t.Fatal(err)
 	}
 
