@@ -101,7 +101,7 @@ test-long: clean fmt vet lint
 	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug netgo' -timeout=1800s $(pkgs) -run=$(run)
 test-vlong: clean fmt vet lint
 	@mkdir -p cover
-	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=5000s $(pkgs) -run=$(run)
+	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run)
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run)
 test-mem:
