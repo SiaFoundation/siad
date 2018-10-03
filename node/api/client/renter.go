@@ -186,8 +186,10 @@ func (c *Client) RenterCancelAllowance() (err error) {
 }
 
 // RenterPricesGet requests the /renter/prices endpoint's resources.
-func (c *Client) RenterPricesGet() (rpg api.RenterPricesGET, err error) {
-	err = c.get("/renter/prices", &rpg)
+func (c *Client) RenterPricesGet(allowance modules.Allowance) (rpg api.RenterPricesGET, err error) {
+	query := fmt.Sprintf("?funds=%v&hosts=%v&period=%v&renewwindow=%v",
+		allowance.Funds, allowance.Hosts, allowance.Period, allowance.RenewWindow)
+	err = c.get("/renter/prices"+query, &rpg)
 	return
 }
 

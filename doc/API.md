@@ -1086,7 +1086,23 @@ lists the status of specified file.
 
 #### /renter/prices [GET]
 
-lists the estimated prices of performing various storage and data operations.
+lists the estimated prices of performing various storage and data operations. An
+allowance can be submitted to provide a more personalized estimate. If no
+allowance is submitted then the current set allowance will be used, if there is
+no allowance set then sane defaults will be used. Submitting an allowance is
+optional, but when submitting an allowance all the components of the allowance
+are required. The allowance used to create the estimate is returned with the
+estimate.
+
+###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters-5)
+```
+all optional or all required
+
+funds // hastings
+hosts
+period // block height
+renewwindow // block height
+```
 
 ###### JSON Response [(with comments)](/doc/api/Renter.md#json-response-5)
 ```javascript
@@ -1094,7 +1110,11 @@ lists the estimated prices of performing various storage and data operations.
   "downloadterabyte":      "1234", // hastings
   "formcontracts":         "1234", // hastings
   "storageterabytemonth":  "1234", // hastings
-  "uploadterabyte":        "1234"  // hastings
+  "uploadterabyte":        "1234", // hastings
+  "funds":                 "1234", // hastings
+  "hosts":                     24,
+  "period":                  6048, // blocks
+  "renewwindow":             3024  // blocks
 }
 ```
 

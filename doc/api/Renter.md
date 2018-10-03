@@ -30,7 +30,7 @@ Index
 | [/renter/files](#renterfiles-get)                                               | GET       |
 | [/renter/file/*___siapath___](#renterfilesiapath-get)                           | GET       |
 | [/renter/file/*__siapath__](#rentertrackingsiapath-post)                        | POST      |
-| [/renter/prices](#renter-prices-get)                                            | GET       |
+| [/renter/prices](#renterprices-get)                                             | GET       |
 | [/renter/delete/___*siapath___](#renterdelete___siapath___-post)                | POST      |
 | [/renter/download/___*siapath___](#renterdownload__siapath___-get)              | GET       |
 | [/renter/downloadasync/___*siapath___](#renterdownloadasync__siapath___-get)    | GET       |
@@ -455,27 +455,71 @@ standard success or error response. See
 
 #### /renter/prices [GET]
 
-lists the estimated prices of performing various storage and data operations.
+lists the estimated prices of performing various storage and data operations. An
+allowance can be submitted to provide a more personalized estimate. If no
+allowance is submitted then the current set allowance will be used, if there is
+no allowance set then sane defaults will be used. Submitting an allowance is
+optional, but when submitting an allowance all the components of the allowance
+are required. The allowance used to create the estimate is returned with the
+estimate.
 
-###### JSON Response
+###### Query String Parameters 5
+```
+all optional or all required
+
+// Number of hastings allocated for file contracts in the given period.
+funds // hastings
+
+// Number of hosts that contracts should be formed with. Files cannot be
+// uploaded to more hosts than you have contracts with, and it's generally good
+// to form a few more contracts than you need.
+hosts
+
+// Duration of contracts formed. Must be nonzero.
+period // block height
+
+// Renew window specifies how many blocks before the expiration of the current
+// contracts the renter will wait before renewing the contracts. A smaller
+// renew window means that Sia must be run more frequently, but also means
+// fewer total transaction fees. Storage spending is not affected by the renew
+// window size.
+renewwindow // block height
+```
+
+###### JSON Response 5
 ```javascript
 {
-      // The estimated cost of downloading one terabyte of data from the
-      // network.
-      "downloadterabyte": "1234", // hastings
+    // The estimated cost of downloading one terabyte of data from the
+    // network.
+    "downloadterabyte": "1234", // hastings
 
-      // The estimated cost of forming a set of contracts on the network. This
-      // cost also applies to the estimated cost of renewing the renter's set of
-      // contracts.
-      "formcontracts": "1234", // hastings
+    // The estimated cost of forming a set of contracts on the network. This
+    // cost also applies to the estimated cost of renewing the renter's set of
+    // contracts.
+    "formcontracts": "1234", // hastings
 
-      // The estimated cost of storing one terabyte of data on the network for
-      // a month, including accounting for redundancy.
-      "storageterabytemonth": "1234", // hastings
+    // The estimated cost of storing one terabyte of data on the network for
+    // a month, including accounting for redundancy.
+    "storageterabytemonth": "1234", // hastings
 
-      // The estimated cost of uploading one terabyte of data to the network,
-      // including accounting for redundancy.
-      "uploadterabyte": "1234", // hastings
+    // The estimated cost of uploading one terabyte of data to the network,
+    // including accounting for redundancy.
+    "uploadterabyte": "1234", // hastings
+
+    // Amount of money allocated for contracts. Funds are spent on both
+    // storage and bandwidth.
+    "funds": "1234", // hastings
+
+    // Number of hosts that contracts will be formed with.
+    "hosts":24,
+
+    // Duration of contracts formed, in number of blocks.
+    "period": 6048, // blocks
+
+    // If the current blockheight + the renew window >= the height the
+    // contract is scheduled to end, the contract is renewed automatically.
+    // Is always nonzero.
+    "renewwindow": 3024 // blocks
 }
 ```
 

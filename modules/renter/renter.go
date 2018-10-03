@@ -47,18 +47,6 @@ var (
 	errNilTpool      = errors.New("cannot create renter with nil transaction pool")
 )
 
-var (
-	// priceEstimationScope is the number of hosts that get queried by the
-	// renter when providing price estimates. Especially for the 'Standard'
-	// variable, there should be congruence with the number of contracts being
-	// used in the renter allowance.
-	priceEstimationScope = build.Select(build.Var{
-		Standard: int(50),
-		Dev:      int(12),
-		Testing:  int(4),
-	}).(int)
-)
-
 // A hostDB is a database of hosts that the renter can use for figuring out who
 // to upload to, and download from.
 type hostDB interface {
@@ -205,8 +193,8 @@ type Renter struct {
 	memoryManager *memoryManager
 	workerPool    map[types.FileContractID]*worker
 
-	// Cache the last price estimation result.
-	lastEstimation modules.RenterPriceEstimation
+	// Cache the hosts from the last price estimation result.
+	lastEstimationHosts []modules.HostDBEntry
 
 	// Utilities.
 	staticStreamCache *streamCache
@@ -231,27 +219,92 @@ func (r *Renter) Close() error {
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
-// and data operations.
-//
-// TODO: Make this function line up with the actual settings in the renter.
-// Perhaps even make it so it uses the renter's actual contracts if it has any.
-func (r *Renter) PriceEstimation() modules.RenterPriceEstimation {
-	id := r.mu.RLock()
-	lastEstimation := r.lastEstimation
-	r.mu.RUnlock(id)
-	if !reflect.DeepEqual(lastEstimation, modules.RenterPriceEstimation{}) {
-		return lastEstimation
+// and data operations.  The estimation will be done using the provided
+// allowance, if an empty allowance is provided then the renter's current
+// allowance will be used if one is set.  The final allowance used will be
+// returned.
+func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPriceEstimation, modules.Allowance, error) {
+	// Use provide allowance. If no allowance provided use the existing
+	// allowance. If no allowance exists, use a sane default allowance.
+	if reflect.DeepEqual(allowance, modules.Allowance{}) {
+		rs := r.Settings()
+		allowance = rs.Allowance
+		if reflect.DeepEqual(allowance, modules.Allowance{}) {
+			allowance = modules.DefaultAllowance
+		}
 	}
 
-	// Grab hosts to perform the estimation.
-	hosts, err := r.hostDB.RandomHosts(priceEstimationScope, nil, nil)
-	if err != nil {
-		return modules.RenterPriceEstimation{}
+	// Get hosts for estimate
+	var hosts []modules.HostDBEntry
+	hostmap := make(map[string]struct{})
+
+	// Start by grabbing hosts from contracts
+	// Get host pubkeys from contracts
+	contracts := r.Contracts()
+	var pks []types.SiaPublicKey
+	for _, c := range contracts {
+		u, ok := r.ContractUtility(c.HostPublicKey)
+		if !ok {
+			continue
+		}
+		// Check for active contracts only
+		if !u.GoodForRenew {
+			continue
+		}
+		pks = append(pks, c.HostPublicKey)
+	}
+	// Get hosts from pubkeys
+	for _, pk := range pks {
+		host, ok := r.hostDB.Host(pk)
+		if !ok {
+			continue
+		}
+		// confirm host wasn't already added
+		if _, ok := hostmap[host.PublicKey.String()]; ok {
+			continue
+		}
+		hosts = append(hosts, host)
+		hostmap[host.PublicKey.String()] = struct{}{}
+	}
+	// Add hosts from previous estimate cache if needed
+	if len(hosts) < int(allowance.Hosts) {
+		id := r.mu.Lock()
+		cachedHosts := r.lastEstimationHosts
+		r.mu.Unlock(id)
+		for _, host := range cachedHosts {
+			// confirm host wasn't already added
+			if _, ok := hostmap[host.PublicKey.String()]; ok {
+				continue
+			}
+			hosts = append(hosts, host)
+			hostmap[host.PublicKey.String()] = struct{}{}
+		}
+	}
+	// Add random hosts if needed
+	if len(hosts) < int(allowance.Hosts) {
+		// Grab hosts to perform the estimation.
+		var err error
+		randHosts, err := r.hostDB.RandomHosts(int(allowance.Hosts), nil, nil)
+		if err != nil {
+			return modules.RenterPriceEstimation{}, allowance, errors.AddContext(err, "could not generate estimate, could not get random hosts")
+		}
+		for _, host := range randHosts {
+			// confirm host wasn't already added
+			if _, ok := hostmap[host.PublicKey.String()]; ok {
+				continue
+			}
+			hosts = append(hosts, host)
+			hostmap[host.PublicKey.String()] = struct{}{}
+		}
+	}
+	// Make sure there aren't too many hosts
+	if len(hosts) > int(allowance.Hosts) {
+		hosts = hosts[:int(allowance.Hosts)]
 	}
 
 	// Check if there are zero hosts, which means no estimation can be made.
 	if len(hosts) == 0 {
-		return modules.RenterPriceEstimation{}
+		return modules.RenterPriceEstimation{}, allowance, errors.New("estimate cannot be made, there are no hosts")
 	}
 
 	// Add up the costs for each host.
@@ -282,12 +335,53 @@ func (r *Renter) PriceEstimation() modules.RenterPriceEstimation {
 	totalUploadCost = totalUploadCost.Div64(uint64(len(hosts)))
 
 	// Take the average of the host set to estimate the overall cost of the
-	// contract forming.
-	totalContractCost = totalContractCost.Mul64(uint64(priceEstimationScope))
+	// contract forming. This is to protect against the case where less hosts
+	// were gathered for the estimate that the allowance requires
+	totalContractCost = totalContractCost.Mul64(allowance.Hosts)
 
-	// Add the cost of paying the transaction fees for the first contract.
+	// Add the cost of paying the transaction fees and then double the contract
+	// costs to account for renewing a full set of contracts.
 	_, feePerByte := r.tpool.FeeEstimation()
-	totalContractCost = totalContractCost.Add(feePerByte.Mul64(1000).Mul64(uint64(priceEstimationScope)))
+	txnsFees := feePerByte.Mul64(modules.EstimatedFileContractTransactionSetSize).Mul64(uint64(allowance.Hosts))
+	totalContractCost = totalContractCost.Add(txnsFees)
+	totalContractCost = totalContractCost.Mul64(2)
+
+	// Determine host collateral to be added to siafund fee
+	var hostCollateral types.Currency
+	renterPayout := allowance.Funds.Sub(totalContractCost).Div64(uint64(len(hosts))) // renterPayout exclused contract costs
+	for _, host := range hosts {
+		// Divide by zero check.
+		if host.StoragePrice.IsZero() {
+			host.StoragePrice = types.NewCurrency64(1)
+		}
+
+		// Calculate the collateral for the host based on renter payout
+		maxStorageSize := renterPayout.Div(host.StoragePrice)
+		collateral := maxStorageSize.Mul(host.Collateral)
+		if collateral.Cmp(host.MaxCollateral) > 0 {
+			collateral = host.MaxCollateral
+		}
+		hostCollateral = hostCollateral.Add(collateral)
+	}
+
+	// Calculate average collateral and determine collateral for allowance
+	hostCollateral = hostCollateral.Div64(uint64(len(hosts)))
+	hostCollateral = hostCollateral.Mul64(allowance.Hosts)
+
+	// Add in siafund fee. which should be around 10%. The 10% siafund fee
+	// accounts for paying 3.9% siafund on transactions and host collatoral. We
+	// estimate the renter to spend all of it's allowance so the siafund fee
+	// will be calculated on the sum of the allowance and the hosts collateral
+	totalPayout := allowance.Funds.Add(hostCollateral)
+	siafundFee := types.Tax(r.cs.Height(), totalPayout)
+	totalContractCost = totalContractCost.Add(siafundFee)
+
+	// Increase estimates by a factor of safety to account for host churn and
+	// any potential missed additions
+	totalContractCost = totalContractCost.MulFloat(PriceEstimationSafetyFactor)
+	totalDownloadCost = totalDownloadCost.MulFloat(PriceEstimationSafetyFactor)
+	totalStorageCost = totalStorageCost.MulFloat(PriceEstimationSafetyFactor)
+	totalUploadCost = totalUploadCost.MulFloat(PriceEstimationSafetyFactor)
 
 	est := modules.RenterPriceEstimation{
 		FormContracts:        totalContractCost,
@@ -296,11 +390,11 @@ func (r *Renter) PriceEstimation() modules.RenterPriceEstimation {
 		UploadTerabyte:       totalUploadCost,
 	}
 
-	id = r.mu.Lock()
-	r.lastEstimation = est
+	id := r.mu.Lock()
+	r.lastEstimationHosts = hosts
 	r.mu.Unlock(id)
 
-	return est
+	return est, allowance, nil
 }
 
 // setBandwidthLimits will change the bandwidth limits of the renter based on
@@ -472,7 +566,7 @@ func (r *Renter) Settings() modules.RenterSettings {
 // ProcessConsensusChange returns the process consensus change
 func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
-	r.lastEstimation = modules.RenterPriceEstimation{}
+	r.lastEstimationHosts = []modules.HostDBEntry{}
 	r.mu.Unlock(id)
 }
 
