@@ -5,15 +5,37 @@ import (
 	"io"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// ErrHostFault is an error that is usually extended to indicate that an error
-// is the host's fault.
-var ErrHostFault = errors.New("host has returned an error")
+var (
+	// DefaultAllowance is the set of default allowance settings that will be
+	// used when allowances are not set or not fully set
+	DefaultAllowance = Allowance{
+		Funds:       types.SiacoinPrecision.Mul64(500),
+		Hosts:       uint64(PriceEstimationScope),
+		Period:      types.BlockHeight(12096),
+		RenewWindow: types.BlockHeight(4032),
+	}
+
+	// ErrHostFault is an error that is usually extended to indicate that an error
+	// is the host's fault.
+	ErrHostFault = errors.New("host has returned an error")
+
+	// PriceEstimationScope is the number of hosts that get queried by the
+	// renter when providing price estimates. Especially for the 'Standard'
+	// variable, there should be congruence with the number of contracts being
+	// used in the renter allowance.
+	PriceEstimationScope = build.Select(build.Var{
+		Standard: int(50),
+		Dev:      int(12),
+		Testing:  int(4),
+	}).(int)
+)
 
 // IsHostsFault indicates if a returned error is the host's fault.
 func IsHostsFault(err error) bool {
@@ -397,7 +419,7 @@ type Renter interface {
 
 	// PriceEstimation estimates the cost in siacoins of performing various
 	// storage and data operations.
-	PriceEstimation() RenterPriceEstimation
+	PriceEstimation(allowance Allowance) (RenterPriceEstimation, Allowance, error)
 
 	// RenameFile changes the path of a file.
 	RenameFile(path, newPath string) error

@@ -597,7 +597,7 @@ func TestRenterHandlerContracts(t *testing.T) {
 	}
 	defer st.server.panicClose()
 
-	// Anounce the host and start accepting contracts.
+	// Announce the host and start accepting contracts.
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
@@ -682,7 +682,7 @@ func TestRenterHandlerGetAndPost(t *testing.T) {
 	}
 	defer st.server.panicClose()
 
-	// Anounce the host and start accepting contracts.
+	// Announce the host and start accepting contracts.
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
@@ -770,7 +770,7 @@ func TestRenterLoadNonexistent(t *testing.T) {
 	}
 	defer st.server.panicClose()
 
-	// Anounce the host and start accepting contracts.
+	// Announce the host and start accepting contracts.
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
@@ -831,7 +831,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	}
 	defer st.server.panicClose()
 
-	// Anounce the host and start accepting contracts.
+	// Announce the host and start accepting contracts.
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
@@ -947,7 +947,7 @@ func TestRenterHandlerDelete(t *testing.T) {
 	}
 	defer st.server.panicClose()
 
-	// Anounce the host and start accepting contracts.
+	// Announce the host and start accepting contracts.
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
@@ -1014,7 +1014,7 @@ func TestRenterRelativePathErrorUpload(t *testing.T) {
 	}
 	defer st.server.panicClose()
 
-	// Anounce the host and start accepting contracts.
+	// Announce the host and start accepting contracts.
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
@@ -1077,7 +1077,7 @@ func TestRenterRelativePathErrorDownload(t *testing.T) {
 	}
 	defer st.server.panicClose()
 
-	// Anounce the host and start accepting contracts.
+	// Announce the host and start accepting contracts.
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
@@ -1209,8 +1209,8 @@ func TestRenterPricesHandler(t *testing.T) {
 		t.Log(rpeSingle.DownloadTerabyte)
 		t.Error("price changed from single to multi")
 	}
-	if !rpeMulti.FormContracts.Equals(rpeSingle.FormContracts) {
-		t.Error("price changed from single to multi")
+	if rpeMulti.FormContracts.Equals(rpeSingle.FormContracts) {
+		t.Error("price of forming contracts should have increased from single to multi")
 	}
 	if !rpeMulti.StorageTerabyteMonth.Equals(rpeSingle.StorageTerabyteMonth) {
 		t.Error("price changed from single to multi")
@@ -1475,11 +1475,11 @@ func TestRenterPricesHandlerPricey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Set host 5 to be cheaper than the rest by a substantial amount. This
-	// should result in a reduction for the price estimation.
+	// Set host 2 to be more expensive than the rest by a substantial amount. This
+	// should result in an increase for the price estimation.
 	vals := url.Values{}
 	vals.Set("mindownloadbandwidthprice", "100000000000000000000")
-	vals.Set("mincontractprice", "1000000000000000000000000000")
+	vals.Set("mincontractprice", "10000000000000000000000000")
 	vals.Set("minstorageprice", "100000000000000000000")
 	vals.Set("minuploadbandwidthprice", "100000000000000000000")
 	err = stHost2.stdPostAPI("/host", vals)
@@ -1509,20 +1509,30 @@ func TestRenterPricesHandlerPricey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify that the aggregate is the same.
+	// Verify that the estimate for downloading, uploading, and storing
+	// increased but the estimate for formaing contracts decreased. Forming
+	// contracts decreases because with a more expensive host you are not able
+	// to store as much data therefore reducing the amount of host collateral
+	// you have to pay the siafund fee on
 	if !(rpeMulti.DownloadTerabyte.Cmp(rpeSingle.DownloadTerabyte) > 0) {
-		t.Error("price did not drop from single to multi")
+		t.Log("Multi DownloadTerabyte cost:", rpeMulti.DownloadTerabyte.HumanString())
+		t.Log("Single DownloadTerabyte cost:", rpeSingle.DownloadTerabyte.HumanString())
+		t.Fatal("price did not increase from single to multi")
 	}
-	if !(rpeMulti.FormContracts.Cmp(rpeSingle.FormContracts) > 0) {
-		t.Log(rpeMulti.FormContracts)
-		t.Log(rpeSingle.FormContracts)
-		t.Error("price did not drop from single to multi")
+	if rpeMulti.FormContracts.Cmp(rpeSingle.FormContracts) > 0 {
+		t.Log("Multi FormContracts cost:", rpeMulti.FormContracts.HumanString())
+		t.Log("Single FormContracts cost:", rpeSingle.FormContracts.HumanString())
+		t.Fatal("price did not drop from single to multi")
 	}
 	if !(rpeMulti.StorageTerabyteMonth.Cmp(rpeSingle.StorageTerabyteMonth) > 0) {
-		t.Error("price did not drop from single to multi")
+		t.Log("Multi StorageTerabyteMonth cost:", rpeMulti.StorageTerabyteMonth.HumanString())
+		t.Log("Single StorageTerabyteMonth cost:", rpeSingle.StorageTerabyteMonth.HumanString())
+		t.Fatal("price did not increase from single to multi")
 	}
 	if !(rpeMulti.UploadTerabyte.Cmp(rpeSingle.UploadTerabyte) > 0) {
-		t.Error("price did not drop from single to multi")
+		t.Log("Multi UploadTerabyte cost:", rpeMulti.UploadTerabyte.HumanString())
+		t.Log("Single UploadTerabyte cost:", rpeSingle.UploadTerabyte.HumanString())
+		t.Fatal("price did not increase from single to multi")
 	}
 }
 
@@ -1574,7 +1584,7 @@ func TestContractorHostRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Anounce the hosts.
+	// Announce the hosts.
 	err = announceAllHosts(testGroup)
 	if err != nil {
 		t.Fatal(err)
@@ -1684,7 +1694,7 @@ func TestContractorHostRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Anounce the hosts.
+	// Announce the hosts.
 	err = announceAllHosts(testGroup)
 	if err != nil {
 		t.Fatal(err)
