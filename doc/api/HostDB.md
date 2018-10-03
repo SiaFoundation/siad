@@ -76,7 +76,6 @@ numhosts
       // Firstseen is the last block height at which this host was announced.
       "firstseen": 160000, // blocks
 
-      // TODO: give description
       "historicdowntime": 0,
 
       // Number of historic failed interactions with the host.
@@ -220,7 +219,6 @@ any particular order, and the order may change in subsequent calls.
       // Firstseen is the last block height at which this host was announced.
       "firstseen": 160000, // blocks
 
-      // TODO: give description
       "historicdowntime": 0,
 
       // Number of historic failed interactions with the host.
@@ -384,7 +382,6 @@ overall.
 
     "historicuptime": 41634520900246576,
 
-    // TODO: give description
     "lasthistoricupdate": 174900,
 
     // The maximum amount of collateral that the host will put into a
@@ -864,19 +861,19 @@ Examples
 {
   "entry": {
     "acceptingcontracts": true,
-    "collateral": "20000000000", // hastings / byte / block
-    "contractprice": "1000000000000000000000000", // hastings
-    "downloadbandwidthprice": "35000000000000", // hastings / byte
-    "firstseen": 160000, // blocks
+    "collateral": "20000000000",
+    "contractprice": "1000000000000000000000000",
+    "downloadbandwidthprice": "35000000000000",
+    "firstseen": 160000,
     "historicdowntime": 0,
     "historicfailedinteractions": 0,
     "historicsuccessfulinteractions": 5,
     "historicuptime": 41634520900246576,
     "lasthistoricupdate": 174900,
-    "maxcollateral": "1000000000000000000000000000", // hastings
-    "maxdownloadbatchsize": 17825792, // bytes
-    "maxduration": 25920, // blocks
-    "maxrevisebatchsize": 17825792, // bytes
+    "maxcollateral": "1000000000000000000000000000", 
+    "maxdownloadbatchsize": 17825792,
+    "maxduration": 25920,
+    "maxrevisebatchsize": 17825792,
     "netaddress": "123.456.789.0:9982",
     "publickey": {
       "algorithm": "ed25519",
@@ -885,7 +882,7 @@ Examples
     "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
     "recentfailedinteractions": 0,
     "recentsuccessfulinteractions": 0,
-    "remainingstorage": 35000000000, // bytes
+    "remainingstorage": 35000000000,
     "revisionnumber": 12733798,
     "scanhistory": [
       {
@@ -901,13 +898,13 @@ Examples
         "timestamp": "2018-09-23T04:00:00.000000000+04:00"
       }
     ],
-    "sectorsize": 4194304, // bytes
-    "storageprice": "14000000000", // hastings / byte / block
-    "totalstorage": 35000000000, // bytes
+    "sectorsize": 4194304,
+    "storageprice": "14000000000",
+    "totalstorage": 35000000000,
     "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-    "uploadbandwidthprice": "3000000000000", // hastings / byte
+    "uploadbandwidthprice": "3000000000000", 
     "version": "1.3.4",
-    "windowsize": 144 // blocks
+    "windowsize": 144
   },
   "scorebreakdown": {
     "ageadjustment": 0.1234,
