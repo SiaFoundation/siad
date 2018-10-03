@@ -1650,6 +1650,7 @@ func TestRenterContracts(t *testing.T) {
 	// Renew contracts by running out of funds
 	startingUploadSpend, err := renewContractsBySpending(r, tg)
 	if err != nil {
+		r.PrintDebugInfo(t, true, true)
 		t.Fatal(err)
 	}
 	numRenewals++
@@ -2192,6 +2193,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 	// Renew contracts by running out of funds
 	_, err = renewContractsBySpending(r, tg)
 	if err != nil {
+		r.PrintDebugInfo(t, true, true)
 		t.Fatal(err)
 	}
 	numRenewals++
