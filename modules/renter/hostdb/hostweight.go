@@ -16,13 +16,21 @@ var (
 	baseWeight = types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(80), nil))
 
 	// collateralExponentiation is the power to which we raise the weight
-	// during collateral adjustment.
-	collateralExponentiation = 0.75
+	// during collateral adjustment when the collateral is large. This sublinear
+	// number ensures that there is not an overpreference on collateral when
+	// collateral is large relative to the size of the allowance.
+	collateralExponentiationLarge = 0.65
 
-	// minCollateral is the amount of collateral we weight all hosts as having,
-	// even if they do not have any collateral. This is to temporarily prop up
-	// weak / cheap hosts on the network while the network is bootstrapping.
-	minCollateral = types.SiacoinPrecision.Div64(5).Div64(tbMonth)
+	// collateralExponentiationSmall is the power to which we raise the weight
+	// during collateral adjustment when the collateral is small. This large
+	// number ensures a heavy focus on collateral when distinguishing between
+	// hosts that have a very small amount of collateral provided compared to
+	// the size of the allowance.
+	//
+	// The number is set relative to the price exponentiation, because the goal
+	// is to ensure that the collateral has more weight than the price when the
+	// collateral is small.
+	collateralExponentiationSmall = priceExponentiation + 0.5
 
 	// Set a minimum price, below which setting lower prices will no longer put
 	// this host at an advatnage. This price is considered the bar for
@@ -36,11 +44,11 @@ var (
 	// priceDiveNormalization reduces the raw value of the price so that not so
 	// many digits are needed when operating on the weight. This also allows the
 	// base weight to be a lot lower.
-	priceDivNormalization = types.SiacoinPrecision.Div64(10e3).Div64(tbMonth)
+	priceDivNormalization = types.SiacoinPrecision.Div64(100e3).Div64(tbMonth)
 
 	// priceExponentiation is the number of times that the weight is divided by
 	// the price.
-	priceExponentiation = 5
+	priceExponentiation = 5.0
 
 	// requiredStorage indicates the amount of storage that the host must be
 	// offering in order to be considered a valuable/worthwhile host.
@@ -57,52 +65,60 @@ var (
 
 // collateralAdjustments improves the host's weight according to the amount of
 // collateral that they have provided.
-func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry) float64 {
-	// Sanity checks - the constants values need to have certain relationships
-	// to eachother
-	if build.DEBUG {
-		// If the minTotalPrice is not much larger than the divNormalization,
-		// there will be problems with granularity after the divNormalization is
-		// applied.
-		if minCollateral.Div64(1e3).Cmp(priceDivNormalization) < 0 {
-			build.Critical("Maladjusted minCollateral and divNormalization constants in hostdb package")
-		}
+func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance modules.Allowance, expectedStorage uint64) float64 {
+	// Ensure that all values will avoid divide by zero errors.
+	if allowance.Hosts == 0 {
+		allowance.Hosts = 1
+	}
+	if allowance.Period == 0 {
+		allowance.Period = 1
+	}
+	if expectedStorage == 0 {
+		expectedStorage = 1
 	}
 
-	// Set a minimum on the collateral, then normalize to a sane precision.
-	usedCollateral := entry.Collateral
-	if entry.Collateral.Cmp(minCollateral) < 0 {
-		usedCollateral = minCollateral
+	// Ensure that the allowance and expected storage will not brush up against
+	// the max collateral. If the allowance comes within half of the max
+	// collateral, cap the collateral that we use during adjustments based on
+	// the max collateral instead of the per-byte collateral.
+	hostCollateral := entry.Collateral
+	requiredCollateral := entry.Collateral.Mul64(uint64(allowance.Period)).Mul64(expectedStorage)
+	if requiredCollateral.Cmp(entry.MaxCollateral.Div64(2)) < 0 {
+		hostCollateral = entry.MaxCollateral.Div64(uint64(allowance.Period)).Div64(expectedStorage).Div64(2)
 	}
-	baseU64, err := minCollateral.Div(priceDivNormalization).Uint64()
-	if err != nil {
-		baseU64 = math.MaxUint64
-	}
-	actualU64, err := usedCollateral.Div(priceDivNormalization).Uint64()
-	if err != nil {
-		actualU64 = math.MaxUint64
-	}
-	base := float64(baseU64)
-	actual := float64(actualU64)
 
-	// Exponentiate the results.
-	weight := math.Pow(actual/base, collateralExponentiation)
+	// Determine the cutoff for the difference between small collateral and
+	// large collateral. The cutoff is used to create a step function in the
+	// collateral scoring where decreasing collateral results in much higher
+	// penalties below a certain threshold.
+	//
+	// This threshold is attempting to be the threshold where the amount of
+	// money becomes insignificant. A collateral that is 10x higher than the
+	// price is not interesting, compelling, nor a sign of reliability if the
+	// price and collateral are both effectively zero.
+	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(expectedStorage).Div64(3)
+	if cutoff.Cmp(hostCollateral) < 0 {
+		// Set the cutoff equal to the collateral so that the ratio has a
+		// minimum of 1, and also so that the smallWeight is computed based on
+		// the actual collateral instead of just the cutoff.
+		cutoff = hostCollateral
+	}
+	// Get the ratio between the cutoff and the actual collateral so we can
+	// award the bonus for having a large collateral. Perform normalization
+	// before converting to uint64.
+	collateral64, _ := hostCollateral.Div(priceDivNormalization).Uint64()
+	cutoff64, _ := cutoff.Div(priceDivNormalization).Uint64()
+	if cutoff64 == 0 {
+		cutoff64 = 1
+	}
+	ratio := float64(collateral64) / float64(cutoff64)
 
-	// Add in penalties for low MaxCollateral. Hosts should be willing to pay
-	// for at least 100 GB of collateral on a contract.
-	gigaByte := types.NewCurrency64(1e9)
-	if entry.MaxCollateral.Cmp(entry.Collateral.Mul(gigaByte).Mul64(100)) < 0 {
-		weight = weight / 2 // 2x total penalty
-	}
-	if entry.MaxCollateral.Cmp(entry.Collateral.Mul(gigaByte).Mul64(33)) < 0 {
-		weight = weight / 5 // 10x total penalty
-	}
-	if entry.MaxCollateral.Cmp(entry.Collateral.Mul(gigaByte).Mul64(10)) < 0 {
-		weight = weight / 10 // 100x total penalty
-	}
-	if entry.MaxCollateral.Cmp(entry.Collateral.Mul(gigaByte).Mul64(3)) < 0 {
-		weight = weight / 10 // 1000x total penalty
-	}
+	// Use the cutoff to determine the score based on the small exponentiation
+	// factor (which has a high exponentiation), and then use the ratio between
+	// the two to determine the bonus gained from having a high collateral.
+	smallWeight := math.Pow(float64(cutoff64), collateralExponentiationSmall)
+	largeWeight := math.Pow(ratio, collateralExponentiationLarge)
+	weight := smallWeight * largeWeight
 	return weight
 }
 
@@ -130,7 +146,7 @@ func (hdb *HostDB) interactionAdjustments(entry modules.HostDBEntry) float64 {
 
 // priceAdjustments will adjust the weight of the entry according to the prices
 // that it has set.
-func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry) float64 {
+func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules.Allowance, expectedStorage, expectedUploadFrequency, expectedDownloadFrequency uint64) float64 {
 	// Sanity checks - the constants values need to have certain relationships
 	// to eachother
 	if build.DEBUG {
@@ -156,9 +172,9 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry) float64 {
 	//
 	// In the future, the renter should be able to track average user behavior
 	// and adjust accordingly. This flexibility will be added later.
-	adjustedContractPrice := entry.ContractPrice.Div64(6048).Div64(25e9)        // Adjust contract price to match 25GB for 6 weeks.
-	adjustedUploadPrice := entry.UploadBandwidthPrice.Div64(24192)              // Adjust upload price to match a single upload over 24 weeks.
-	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Div64(12096).Div64(3) // Adjust download price to match one download over 12 weeks, 1 redundancy.
+	adjustedContractPrice := entry.ContractPrice.Div64(uint64(allowance.Period)).Div64(expectedStorage) // Adjust contract price to match 'expectedStorage' for 6 weeks.
+	adjustedUploadPrice := entry.UploadBandwidthPrice.Div64(expectedUploadFrequency)                    // Adjust upload price to match a single upload over 24 weeks.
+	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Div64(expectedDownloadFrequency).Div64(3)     // Adjust download price to match one download over 12 weeks, 1 redundancy.
 	siafundFee := adjustedContractPrice.Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(entry.Collateral).MulTax()
 	totalPrice := entry.StoragePrice.Add(adjustedContractPrice).Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(siafundFee)
 
@@ -177,11 +193,7 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry) float64 {
 	base := float64(baseU64)
 	actual := float64(actualU64)
 
-	weight := float64(1)
-	for i := 0; i < priceExponentiation; i++ {
-		weight *= base / actual
-	}
-	return weight
+	return math.Pow(base/actual, priceExponentiation)
 }
 
 // storageRemainingAdjustments adjusts the weight of the entry according to how
@@ -362,26 +374,43 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 	//
 	// 100% uptime = 1
 	// 98%  uptime = 1
-	// 95%  uptime = 0.91
-	// 90%  uptime = 0.51
-	// 85%  uptime = 0.16
-	// 80%  uptime = 0.03
-	// 75%  uptime = 0.005
-	// 70%  uptime = 0.001
-	// 50%  uptime = 0.000002
-	exp := 100 * math.Min(1-uptimeRatio, 0.20)
+	// 95%  uptime = 0.83
+	// 90%  uptime = 0.26
+	// 85%  uptime = 0.03
+	// 80%  uptime = 0.001
+	// 75%  uptime = 0.00001
+	// 70%  uptime = 0.0000001
+	exp := 200 * math.Min(1-uptimeRatio, 0.30)
 	return math.Pow(uptimeRatio, exp)
 }
 
 // calculateHostWeightFn creates a hosttree.WeightFunc given an Allowance.
 func (hdb *HostDB) calculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
-	return func(entry modules.HostDBEntry) types.Currency {
-		// TODO change the weight function to use the allowance
+	// TODO: Pass these in as input instead of fixing them.
+	//
+	// expectedStorage is the amount of data that we expect to have in a
+	// contract.
+	//
+	// expectedUploadFrequency is the expected number of blocks between each
+	// complete re-upload of the filesystem. This will be a combination of the
+	// rate at which a user uploads files, the rate at which a user replaces
+	// files, and the rate at which a user has to repair files due to host
+	// churn. If the expected storage is 25 GB and the expected upload frequency
+	// is 24 weeks, it means the user is expected to do about 1 GB of upload per
+	// week on average throughout the life of the contract.
+	//
+	// expectedDownloadFrequency is the expected number of blocks between each
+	// complete download of the filesystem. This should include the user
+	// downloading, streaming, and repairing files.
+	expectedStorage := uint64(25e9)            // 25 GB - This contract is expected to store 25 GB.
+	expectedUploadFrequency := uint64(24192)   // 24 weeks.
+	expectedDownloadFrequency := uint64(12096) // 12 weeks.
 
-		collateralReward := hdb.collateralAdjustments(entry)
+	return func(entry modules.HostDBEntry) types.Currency {
+		collateralReward := hdb.collateralAdjustments(entry, allowance, expectedStorage)
 		interactionPenalty := hdb.interactionAdjustments(entry)
 		lifetimePenalty := hdb.lifetimeAdjustments(entry)
-		pricePenalty := hdb.priceAdjustments(entry)
+		pricePenalty := hdb.priceAdjustments(entry, allowance, expectedStorage, expectedUploadFrequency, expectedDownloadFrequency)
 		storageRemainingPenalty := storageRemainingAdjustments(entry)
 		uptimePenalty := hdb.uptimeAdjustments(entry)
 		versionPenalty := versionAdjustments(entry)
@@ -420,11 +449,31 @@ func (hdb *HostDB) calculateConversionRate(score types.Currency) float64 {
 
 // EstimateHostScore takes a HostExternalSettings and returns the estimated
 // score of that host in the hostdb, assuming no penalties for age or uptime.
-func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry) modules.HostScoreBreakdown {
+func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance modules.Allowance) modules.HostScoreBreakdown {
+	// TODO: Pass these in as input instead of fixing them.
+	//
+	// expectedStorage is the amount of data that we expect to have in a
+	// contract.
+	//
+	// expectedUploadFrequency is the expected number of blocks between each
+	// complete re-upload of the filesystem. This will be a combination of the
+	// rate at which a user uploads files, the rate at which a user replaces
+	// files, and the rate at which a user has to repair files due to host
+	// churn. If the expected storage is 25 GB and the expected upload frequency
+	// is 24 weeks, it means the user is expected to do about 1 GB of upload per
+	// week on average throughout the life of the contract.
+	//
+	// expectedDownloadFrequency is the expected number of blocks between each
+	// complete download of the filesystem. This should include the user
+	// downloading, streaming, and repairing files.
+	expectedStorage := uint64(25e9)            // 25 GB - This contract is expected to store 25 GB.
+	expectedUploadFrequency := uint64(24192)   // 24 weeks.
+	expectedDownloadFrequency := uint64(12096) // 12 weeks.
+
 	// Grab the adjustments. Age, and uptime penalties are set to '1', to
 	// assume best behavior from the host.
-	collateralReward := hdb.collateralAdjustments(entry)
-	pricePenalty := hdb.priceAdjustments(entry)
+	collateralReward := hdb.collateralAdjustments(entry, allowance, expectedStorage)
+	pricePenalty := hdb.priceAdjustments(entry, allowance, expectedStorage, expectedUploadFrequency, expectedDownloadFrequency)
 	storageRemainingPenalty := storageRemainingAdjustments(entry)
 	versionPenalty := versionAdjustments(entry)
 
@@ -453,7 +502,27 @@ func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry) modules.HostScor
 
 // ScoreBreakdown provdes a detailed set of scalars and bools indicating
 // elements of the host's overall score.
-func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBreakdown {
+func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry, allowance modules.Allowance) modules.HostScoreBreakdown {
+	// TODO: Pass these in as input instead of fixing them.
+	//
+	// expectedStorage is the amount of data that we expect to have in a
+	// contract.
+	//
+	// expectedUploadFrequency is the expected number of blocks between each
+	// complete re-upload of the filesystem. This will be a combination of the
+	// rate at which a user uploads files, the rate at which a user replaces
+	// files, and the rate at which a user has to repair files due to host
+	// churn. If the expected storage is 25 GB and the expected upload frequency
+	// is 24 weeks, it means the user is expected to do about 1 GB of upload per
+	// week on average throughout the life of the contract.
+	//
+	// expectedDownloadFrequency is the expected number of blocks between each
+	// complete download of the filesystem. This should include the user
+	// downloading, streaming, and repairing files.
+	expectedStorage := uint64(25e9)            // 25 GB - This contract is expected to store 25 GB.
+	expectedUploadFrequency := uint64(24192)   // 24 weeks.
+	expectedDownloadFrequency := uint64(12096) // 12 weeks.
+
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
 
@@ -464,9 +533,9 @@ func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBr
 
 		AgeAdjustment:              hdb.lifetimeAdjustments(entry),
 		BurnAdjustment:             1,
-		CollateralAdjustment:       hdb.collateralAdjustments(entry),
+		CollateralAdjustment:       hdb.collateralAdjustments(entry, allowance, expectedStorage),
 		InteractionAdjustment:      hdb.interactionAdjustments(entry),
-		PriceAdjustment:            hdb.priceAdjustments(entry),
+		PriceAdjustment:            hdb.priceAdjustments(entry, allowance, expectedStorage, expectedUploadFrequency, expectedDownloadFrequency),
 		StorageRemainingAdjustment: storageRemainingAdjustments(entry),
 		UptimeAdjustment:           hdb.uptimeAdjustments(entry),
 		VersionAdjustment:          versionAdjustments(entry),

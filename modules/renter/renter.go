@@ -90,11 +90,11 @@ type hostDB interface {
 
 	// ScoreBreakdown returns a detailed explanation of the various properties
 	// of the host.
-	ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown
+	ScoreBreakdown(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown
 
 	// EstimateHostScore returns the estimated score breakdown of a host with the
 	// provided settings.
-	EstimateHostScore(modules.HostDBEntry) modules.HostScoreBreakdown
+	EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown
 }
 
 // A hostContractor negotiates, revises, renews, and provides access to file
@@ -425,7 +425,7 @@ func (r *Renter) InitialScanComplete() (bool, error) { return r.hostDB.InitialSc
 
 // ScoreBreakdown returns the score breakdown
 func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) modules.HostScoreBreakdown {
-	return r.hostDB.ScoreBreakdown(e)
+	return r.hostDB.ScoreBreakdown(e, r.Settings().Allowance)
 }
 
 // EstimateHostScore returns the estimated host score
