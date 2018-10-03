@@ -137,11 +137,11 @@ type HostDBEntry struct {
 	RecentFailedInteractions       float64 `json:"recentfailedinteractions"`
 	RecentSuccessfulInteractions   float64 `json:"recentsuccessfulinteractions"`
 
-	LastHistoricUpdate types.BlockHeight
+	LastHistoricUpdate types.BlockHeight `json:"lasthistoricupdate"`
 
 	// Measurements related to the IP subnet mask.
-	IPNets          []string
-	LastIPNetChange time.Time
+	IPNets          []string  `json:"ipnets"`
+	LastIPNetChange time.Time `json:"lastipnetchange"`
 
 	// The public key of the host, stored separately to minimize risk of certain
 	// MitM based vulnerabilities.
