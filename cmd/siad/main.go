@@ -59,8 +59,8 @@ func die(args ...interface{}) {
 // versionCmd is a cobra command that prints the version of siad.
 func versionCmd(*cobra.Command, []string) {
 	version := build.Version
-	if build.RC != "" {
-		version += "-" + build.RC
+	if build.ReleaseTag != "" {
+		version += "-" + build.ReleaseTag
 	}
 	switch build.Release {
 	case "dev":

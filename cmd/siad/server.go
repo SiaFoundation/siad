@@ -371,8 +371,8 @@ func (srv *Server) daemonConstantsHandler(w http.ResponseWriter, _ *http.Request
 // daemonVersionHandler handles the API call that requests the daemon's version.
 func (srv *Server) daemonVersionHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	version := build.Version
-	if build.RC != "" {
-		version += "-" + build.RC
+	if build.ReleaseTag != "" {
+		version += "-" + build.ReleaseTag
 	}
 	api.WriteJSON(w, DaemonVersion{Version: version, GitRevision: build.GitRevision, BuildTime: build.BuildTime})
 }

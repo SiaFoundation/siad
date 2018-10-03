@@ -40,10 +40,10 @@ var (
 // version prints the version of siac and siad.
 func versioncmd() {
 	fmt.Println("Sia Client")
-	if build.RC == "" {
+	if build.ReleaseTag == "" {
 		fmt.Println("\tVersion " + build.Version)
 	} else {
-		fmt.Println("\tVersion " + build.Version + "-" + build.RC)
+		fmt.Println("\tVersion " + build.Version + "-" + build.ReleaseTag)
 	}
 	if build.GitRevision != "" {
 		fmt.Println("\tGit Revision " + build.GitRevision)
