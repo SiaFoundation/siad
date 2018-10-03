@@ -59,9 +59,43 @@ numhosts
       // true if the host is accepting new contracts.
       "acceptingcontracts": true,
 
+      // The maximum amount of money that the host will put up as collateral
+      // for storage that is contracted by the renter
+      "collateral": "20000000000", // hastings / byte / block
+
+      // The price that a renter has to pay to create a contract with the
+      // host. The payment is intended to cover transaction fees
+      // for the file contract revision and the storage proof that the host
+      // will be submitting to the blockchain.
+      "contractprice": "1000000000000000000000000", // hastings
+
+      // The price that a renter has to pay when downloading data from the
+      // host
+      "downloadbandwidthprice": "35000000000000", // hastings / byte
+
+      // Firstseen is the last block height at which this host was announced.
+      "firstseen": 160000, // blocks
+
+      // TODO: give description
+      "historicdowntime": 0,
+
+      // Number of historic failed interactions with the host.
+      "historicfailedinteractions": 0,
+
+      // Number of historic successful interactions with the host.
+      "historicsuccessfulinteractions": 5,
+
+      "historicuptime": 41634520900246576,
+
+      "lasthistoricupdate": 174900,
+
+      // The maximum amount of collateral that the host will put into a
+      // single file contract.
+      "maxcollateral": "1000000000000000000000000000", // hastings
+
       // Maximum number of bytes that the host will allow to be requested by a
       // single download request.
-      "maxdownloadbatchsize": 17825792,
+      "maxdownloadbatchsize": 17825792, // bytes
 
       // Maximum duration in blocks that a host will allow for a file contract.
       // The host commits to keeping files for the full duration under the
@@ -71,35 +105,17 @@ numhosts
       //
       // There is a block approximately every 10 minutes.
       // e.g. 1 day = 144 blocks
-      "maxduration": 25920,
+      "maxduration": 25920, // blocks
 
       // Maximum size in bytes of a single batch of file contract
       // revisions. Larger batch sizes allow for higher throughput as there is
       // significant communication overhead associated with performing a batch
       // upload.
-      "maxrevisebatchsize": 17825792,
+      "maxrevisebatchsize": 17825792, // bytes
 
       // Remote address of the host. It can be an IPv4, IPv6, or hostname,
       // along with the port. IPv6 addresses are enclosed in square brackets.
       "netaddress": "123.456.789.0:9982",
-
-      // Unused storage capacity the host claims it has, in bytes.
-      "remainingstorage": 35000000000,
-
-      // Smallest amount of data in bytes that can be uploaded or downloaded to
-      // or from the host.
-      "sectorsize": 4194304,
-
-      // Total amount of storage capacity the host claims it has, in bytes.
-      "totalstorage": 35000000000,
-
-      // Address at which the host can be paid when forming file contracts.
-      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-
-      // A storage proof window is the number of blocks that the host has to
-      // get a storage proof onto the blockchain. The window size is the
-      // minimum size of window that the host will accept in a file contract.
-      "windowsize": 144,
 
       // Public key used to identify and verify hosts.
       "publickey": {
@@ -108,7 +124,67 @@ numhosts
 
         // Key used to verify signed host messages.
         "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU="
-      }
+      },
+
+      // The string representation of the full public key, used when calling
+      // /hostdb/hosts.
+      "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+
+      // Number of recent failed interactions with the host.
+      "recentfailedinteractions": 0,
+
+      // Number of recent successful interactions with the host.
+      "recentsuccessfulinteractions": 0,
+
+      // Unused storage capacity the host claims it has.
+      "remainingstorage": 35000000000, // bytes
+
+      // The revision number indicates to the renter what iteration of
+      // settings the host is currently at. Settings are generally signed.
+      // If the renter has multiple conflicting copies of settings from the
+      // host, the renter can expect the one with the higher revision number
+      // to be more recent.
+      "revisionnumber": 12733798,
+
+      // Measurements that have been taken on the host. The most recent measurements
+      // are kept in full detail.
+      "scanhistory": [
+        {
+          "success": true,
+          "timestamp": "2018-09-23T08:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T06:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T04:00:00.000000000+04:00"
+        }
+      ],
+
+      // Smallest amount of data in bytes that can be uploaded or downloaded to
+      // or from the host.
+      "sectorsize": 4194304, // bytes
+
+      // The price that a renter has to pay to store files with the host.
+      "storageprice": "14000000000", // hastings / byte / block
+
+      // Total amount of storage capacity the host claims it has.
+      "totalstorage": 35000000000, // bytes
+
+      // Address at which the host can be paid when forming file contracts.
+      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+
+      "uploadbandwidthprice": "3000000000000", // hastings / byte
+
+      // The version of the host.
+      "version": "1.3.4",
+
+      // A storage proof window is the number of blocks that the host has to
+      // get a storage proof onto the blockchain. The window size is the
+      // minimum size of window that the host will accept in a file contract.
+      "windowsize": 144 // blocks
     }
   ]
 }
@@ -127,9 +203,43 @@ any particular order, and the order may change in subsequent calls.
       // true if the host is accepting new contracts.
       "acceptingcontracts": true,
 
+      // The maximum amount of money that the host will put up as collateral
+      // for storage that is contracted by the renter
+      "collateral": "20000000000", // hastings / byte / block
+
+      // The price that a renter has to pay to create a contract with the
+      // host. The payment is intended to cover transaction fees
+      // for the file contract revision and the storage proof that the host
+      // will be submitting to the blockchain.
+      "contractprice": "1000000000000000000000000", // hastings
+
+      // The price that a renter has to pay when downloading data from the
+      // host
+      "downloadbandwidthprice": "35000000000000", // hastings / byte
+
+      // Firstseen is the last block height at which this host was announced.
+      "firstseen": 160000, // blocks
+
+      // TODO: give description
+      "historicdowntime": 0,
+
+      // Number of historic failed interactions with the host.
+      "historicfailedinteractions": 0,
+
+      // Number of historic successful interactions with the host.
+      "historicsuccessfulinteractions": 5,
+
+      "historicuptime": 41634520900246576,
+
+      "lasthistoricupdate": 174900,
+
+      // The maximum amount of collateral that the host will put into a
+      // single file contract.
+      "maxcollateral": "1000000000000000000000000000", // hastings
+
       // Maximum number of bytes that the host will allow to be requested by a
       // single download request.
-      "maxdownloadbatchsize": 17825792,
+      "maxdownloadbatchsize": 17825792, // bytes
 
       // Maximum duration in blocks that a host will allow for a file contract.
       // The host commits to keeping files for the full duration under the
@@ -139,35 +249,17 @@ any particular order, and the order may change in subsequent calls.
       //
       // There is a block approximately every 10 minutes.
       // e.g. 1 day = 144 blocks
-      "maxduration": 25920,
+      "maxduration": 25920, // blocks
 
       // Maximum size in bytes of a single batch of file contract
       // revisions. Larger batch sizes allow for higher throughput as there is
       // significant communication overhead associated with performing a batch
       // upload.
-      "maxrevisebatchsize": 17825792,
+      "maxrevisebatchsize": 17825792, // bytes
 
       // Remote address of the host. It can be an IPv4, IPv6, or hostname,
       // along with the port. IPv6 addresses are enclosed in square brackets.
       "netaddress": "123.456.789.0:9982",
-
-      // Unused storage capacity the host claims it has, in bytes.
-      "remainingstorage": 35000000000,
-
-      // Smallest amount of data in bytes that can be uploaded or downloaded to
-      // or from the host.
-      "sectorsize": 4194304,
-
-      // Total amount of storage capacity the host claims it has, in bytes.
-      "totalstorage": 35000000000,
-
-      // Address at which the host can be paid when forming file contracts.
-      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-
-      // A storage proof window is the number of blocks that the host has to
-      // get a storage proof onto the blockchain. The window size is the
-      // minimum size of window that the host will accept in a file contract.
-      "windowsize": 144,
 
       // Public key used to identify and verify hosts.
       "publickey": {
@@ -176,7 +268,67 @@ any particular order, and the order may change in subsequent calls.
 
         // Key used to verify signed host messages.
         "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU="
-      }
+      },
+
+      // The string representation of the full public key, used when calling
+      // /hostdb/hosts.
+      "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+
+      // Number of recent failed interactions with the host.
+      "recentfailedinteractions": 0,
+
+      // Number of recent successful interactions with the host.
+      "recentsuccessfulinteractions": 0,
+
+      // Unused storage capacity the host claims it has.
+      "remainingstorage": 35000000000, // bytes
+
+      // The revision number indicates to the renter what iteration of
+      // settings the host is currently at. Settings are generally signed.
+      // If the renter has multiple conflicting copies of settings from the
+      // host, the renter can expect the one with the higher revision number
+      // to be more recent.
+      "revisionnumber": 12733798,
+
+      // Measurements that have been taken on the host. The most recent measurements
+      // are kept in full detail.
+      "scanhistory": [
+        {
+          "success": true,
+          "timestamp": "2018-09-23T08:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T06:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T04:00:00.000000000+04:00"
+        }
+      ],
+
+      // Smallest amount of data in bytes that can be uploaded or downloaded to
+      // or from the host.
+      "sectorsize": 4194304, // bytes
+
+      // The price that a renter has to pay to store files with the host.
+      "storageprice": "14000000000", // hastings / byte / block
+
+      // Total amount of storage capacity the host claims it has.
+      "totalstorage": 35000000000, // bytes
+
+      // Address at which the host can be paid when forming file contracts.
+      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+
+      "uploadbandwidthprice": "3000000000000", // hastings / byte
+
+      // The version of the host.
+      "version": "1.3.4",
+
+      // A storage proof window is the number of blocks that the host has to
+      // get a storage proof onto the blockchain. The window size is the
+      // minimum size of window that the host will accept in a file contract.
+      "windowsize": 144 // blocks
     }
   ]
 }
@@ -195,7 +347,6 @@ overall.
 // The public key of the host. Each public key identifies a single host.
 //
 // Example Pubkey: ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
-
 :pubkey
 ```
 
@@ -206,9 +357,43 @@ overall.
     // true if the host is accepting new contracts.
     "acceptingcontracts": true,
 
+    // The maximum amount of money that the host will put up as collateral
+    // for storage that is contracted by the renter
+    "collateral": "20000000000", // hastings / byte / block
+
+    // The price that a renter has to pay to create a contract with the
+    // host. The payment is intended to cover transaction fees
+    // for the file contract revision and the storage proof that the host
+    // will be submitting to the blockchain.
+    "contractprice": "1000000000000000000000000", // hastings
+
+    // The price that a renter has to pay when downloading data from the
+    // host
+    "downloadbandwidthprice": "35000000000000", // hastings / byte
+
+    // Firstseen is the last block height at which this host was announced.
+    "firstseen": 160000, // blocks
+
+    "historicdowntime": 0,
+
+    // Number of historic failed interactions with the host.
+    "historicfailedinteractions": 0,
+
+    // Number of historic successful interactions with the host.
+    "historicsuccessfulinteractions": 5,
+
+    "historicuptime": 41634520900246576,
+
+    // TODO: give description
+    "lasthistoricupdate": 174900,
+
+    // The maximum amount of collateral that the host will put into a
+    // single file contract.
+    "maxcollateral": "1000000000000000000000000000", // hastings
+
     // Maximum number of bytes that the host will allow to be requested by a
     // single download request.
-    "maxdownloadbatchsize": 17825792,
+    "maxdownloadbatchsize": 17825792, // bytes
 
     // Maximum duration in blocks that a host will allow for a file contract.
     // The host commits to keeping files for the full duration under the
@@ -218,35 +403,17 @@ overall.
     //
     // There is a block approximately every 10 minutes.
     // e.g. 1 day = 144 blocks
-    "maxduration": 25920,
+    "maxduration": 25920, // blocks
 
     // Maximum size in bytes of a single batch of file contract
     // revisions. Larger batch sizes allow for higher throughput as there is
     // significant communication overhead associated with performing a batch
     // upload.
-    "maxrevisebatchsize": 17825792,
+    "maxrevisebatchsize": 17825792, // bytes
 
     // Remote address of the host. It can be an IPv4, IPv6, or hostname,
     // along with the port. IPv6 addresses are enclosed in square brackets.
     "netaddress": "123.456.789.0:9982",
-
-    // Unused storage capacity the host claims it has, in bytes.
-    "remainingstorage": 35000000000,
-
-    // Smallest amount of data in bytes that can be uploaded or downloaded to
-    // or from the host.
-    "sectorsize": 4194304,
-
-    // Total amount of storage capacity the host claims it has, in bytes.
-    "totalstorage": 35000000000,
-
-    // Address at which the host can be paid when forming file contracts.
-    "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-
-    // A storage proof window is the number of blocks that the host has to
-    // get a storage proof onto the blockchain. The window size is the
-    // minimum size of window that the host will accept in a file contract.
-    "windowsize": 144,
 
     // Public key used to identify and verify hosts.
     "publickey": {
@@ -259,7 +426,63 @@ overall.
 
     // The string representation of the full public key, used when calling
     // /hostdb/hosts.
-    "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+    "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+
+    // Number of recent failed interactions with the host.
+    "recentfailedinteractions": 0,
+
+    // Number of recent successful interactions with the host.
+    "recentsuccessfulinteractions": 0,
+
+    // Unused storage capacity the host claims it has.
+    "remainingstorage": 35000000000, // bytes
+
+    // The revision number indicates to the renter what iteration of
+    // settings the host is currently at. Settings are generally signed.
+    // If the renter has multiple conflicting copies of settings from the
+    // host, the renter can expect the one with the higher revision number
+    // to be more recent.
+    "revisionnumber": 12733798,
+
+    // Measurements that have been taken on the host. The most recent measurements
+    // are kept in full detail.
+    "scanhistory": [
+      {
+        "success": true,
+        "timestamp": "2018-09-23T08:00:00.000000000+04:00"
+      },
+      {
+        "success": true,
+        "timestamp": "2018-09-23T06:00:00.000000000+04:00"
+      },
+      {
+        "success": true,
+        "timestamp": "2018-09-23T04:00:00.000000000+04:00"
+      }
+    ],
+
+    // Smallest amount of data in bytes that can be uploaded or downloaded to
+    // or from the host.
+    "sectorsize": 4194304, // bytes
+
+    // The price that a renter has to pay to store files with the host.
+    "storageprice": "14000000000", // hastings / byte / block
+
+    // Total amount of storage capacity the host claims it has.
+    "totalstorage": 35000000000, // bytes
+
+    // Address at which the host can be paid when forming file contracts.
+    "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+
+    "uploadbandwidthprice": "3000000000000", // hastings / byte
+
+    // The version of the host.
+    "version": "1.3.4",
+
+    // A storage proof window is the number of blocks that the host has to
+    // get a storage proof onto the blockchain. The window size is the
+    // minimum size of window that the host will accept in a file contract.
+    "windowsize": 144 // blocks
   },
 
   // A set of scores as determined by the renter. Generally, the host's final
@@ -269,28 +492,23 @@ overall.
   // guide for the score of a host, as every renter sees the world differently
   // and uses different metrics to evaluate hosts.
   "scorebreakdown": {
-	// The overall score for the host. Scores are entriely relative, and are
-	// consistent only within the current hostdb. Between different machines,
-	// different configurations, and different versions the absolute scores for
-	// a given host can be off by many orders of magnitude. When displaying to a
-	// human, some form of normalization with respect to the other hosts (for
-	// example, divide all scores by the median score of the hosts) is
-	// recommended.
-	"score":                      123456,
-
     // The multiplier that gets applied to the host based on how long it has
     // been a host. Older hosts typically have a lower penalty.
-    "ageadjustment":              0.1234,
+    "ageadjustment": 0.1234,
 
     // The multiplier that gets applied to the host based on how much
     // proof-of-burn the host has performed. More burn causes a linear increase
     // in score.
-    "burnadjustment":             23.456,
+    "burnadjustment": 23.456,
 
     // The multiplier that gets applied to a host based on how much collateral
     // the host is offering. More collateral is typically better, though above
     // a point it can be detrimental.
-    "collateraladjustment":       23.456,
+    "collateraladjustment": 23.456,
+
+    // conversionrate is the likelihood that the host will be selected 
+    // by renters forming contracts.
+    "conversionrate": 9.12345,
 
     // The multipler that gets applied to a host based on previous interactions
     // with the host. A high ratio of successful interactions will improve this
@@ -298,12 +516,21 @@ overall.
     // hosts score. This adjustment helps account for hosts that are on
     // unstable connections, don't keep their wallets unlocked, ran out of
     // funds, etc.
-    "interactionadjustment":      0.1234,
+    "interactionadjustment": 0.1234,
 
     // The multiplier that gets applied to a host based on the host's price.
     // Lower prices are almost always better. Below a certain, very low price,
     // there is no advantage.
-    "priceadjustment":            0.1234,
+    "pricesmultiplier": 0.1234,
+
+    // The overall score for the host. Scores are entriely relative, and are
+    // consistent only within the current hostdb. Between different machines,
+    // different configurations, and different versions the absolute scores for
+    // a given host can be off by many orders of magnitude. When displaying to a
+    // human, some form of normalization with respect to the other hosts (for
+    // example, divide all scores by the median score of the hosts) is
+    // recommended.
+    "score": 123456,
 
     // The multiplier that gets applied to a host based on how much storage is
     // remaining for the host. More storage remaining is better, to a point.
@@ -312,13 +539,13 @@ overall.
     // The multiplier that gets applied to a host based on the uptime percentage
     // of the host. The penalty increases extremely quickly as uptime drops
     // below 90%.
-    "uptimeadjustment":           0.1234,
+    "uptimeadjustment": 0.1234,
 
     // The multiplier that gets applied to a host based on the version of Sia
     // that they are running. Versions get penalties if there are known bugs,
     // scaling limitations, performance limitations, etc. Generally, the most
     // recent version is always the one with the highest score.
-    "versionadjustment":          0.1234
+    "versionadjustment": 0.1234
   }
 }
 ```
@@ -363,37 +590,97 @@ Examples
   "hosts": [
     {
       "acceptingcontracts": true,
+      "collateral": "20000000000",
+      "contractprice": "1000000000000000000000000",
+      "downloadbandwidthprice": "35000000000000",
+      "firstseen": 160000,
+      "historicdowntime": 0,
+      "historicfailedinteractions": 0,
+      "historicsuccessfulinteractions": 5,
+      "historicuptime": 41634520900246576,
+      "lasthistoricupdate": 174900,
+      "maxcollateral": "1000000000000000000000000000",
       "maxdownloadbatchsize": 17825792,
       "maxduration": 25920,
       "maxrevisebatchsize": 17825792,
       "netaddress": "123.456.789.0:9982",
-      "remainingstorage": 35000000000,
-      "sectorsize": 4194304,
-      "totalstorage": 35000000000,
-      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-      "windowsize": 144,
       "publickey": {
         "algorithm": "ed25519",
         "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU="
-      }
+      },
       "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "recentfailedinteractions": 0,
+      "recentsuccessfulinteractions": 0,
+      "remainingstorage": 35000000000,
+      "revisionnumber": 12733798,
+      "scanhistory": [
+        {
+          "success": true,
+          "timestamp": "2018-09-23T08:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T06:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T04:00:00.000000000+04:00"
+        }
+      ],
+      "sectorsize": 4194304,
+      "storageprice": "14000000000",
+      "totalstorage": 35000000000,
+      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+      "uploadbandwidthprice": "3000000000000",
+      "version": "1.3.4",
+      "windowsize": 144
     },
     {
       "acceptingcontracts": true,
+      "collateral": "20000000000",
+      "contractprice": "1000000000000000000000000",
+      "downloadbandwidthprice": "35000000000000",
+      "firstseen": 160000,
+      "historicdowntime": 0,
+      "historicfailedinteractions": 0,
+      "historicsuccessfulinteractions": 5,
+      "historicuptime": 41634520900246576,
+      "lasthistoricupdate": 174900,
+      "maxcollateral": "1000000000000000000000000000",
       "maxdownloadbatchsize": 17825792,
       "maxduration": 25920,
       "maxrevisebatchsize": 17825792,
-      "netaddress": "123.456.789.1:9982",
-      "remainingstorage": 314,
-      "sectorsize": 4194304,
-      "totalstorage": 314159265359,
-      "unlockhash": "ba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
-      "windowsize": 144,
+      "netaddress": "123.456.789.0:9982",
       "publickey": {
         "algorithm": "ed25519",
-        "key": "WWVzIEJydWNlIFNjaG5laWVyIGNhbiByZWFkIHRoaXM="
-      }
+        "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU="
+      },
       "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "recentfailedinteractions": 0,
+      "recentsuccessfulinteractions": 0,
+      "remainingstorage": 35000000000,
+      "revisionnumber": 12733798,
+      "scanhistory": [
+        {
+          "success": true,
+          "timestamp": "2018-09-23T08:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T06:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T04:00:00.000000000+04:00"
+        }
+      ],
+      "sectorsize": 4194304,
+      "storageprice": "14000000000",
+      "totalstorage": 35000000000,
+      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+      "uploadbandwidthprice": "3000000000000",
+      "version": "1.3.4",
+      "windowsize": 144
     }
   ]
 }
@@ -416,55 +703,145 @@ Examples
 {
   "hosts": [
     {
-      "acceptingcontracts": false,
-      "maxdownloadbatchsize": 17825792,
-      "maxduration": 25920,
-      "maxrevisebatchsize": 17825792,
-      "netaddress": "123.456.789.2:9982",
-      "remainingstorage": 314,
-      "sectorsize": 4194304,
-      "totalstorage": 314159265359,
-      "unlockhash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-      "windowsize": 144,
-      "publickey": {
-        "algorithm": "ed25519",
-        "key": "SSByYW4gb3V0IG9mIDMyIGNoYXIgbG9uZyBqb2tlcy4="
-      }
-      "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    },
-    {
       "acceptingcontracts": true,
+      "collateral": "20000000000",
+      "contractprice": "1000000000000000000000000",
+      "downloadbandwidthprice": "35000000000000",
+      "firstseen": 160000,
+      "historicdowntime": 0,
+      "historicfailedinteractions": 0,
+      "historicsuccessfulinteractions": 5,
+      "historicuptime": 41634520900246576,
+      "lasthistoricupdate": 174900,
+      "maxcollateral": "1000000000000000000000000000",
       "maxdownloadbatchsize": 17825792,
       "maxduration": 25920,
       "maxrevisebatchsize": 17825792,
       "netaddress": "123.456.789.0:9982",
-      "remainingstorage": 35000000000,
-      "sectorsize": 4194304,
-      "totalstorage": 35000000000,
-      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-      "windowsize": 144,
       "publickey": {
         "algorithm": "ed25519",
         "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU="
-      }
+      },
       "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "recentfailedinteractions": 0,
+      "recentsuccessfulinteractions": 0,
+      "remainingstorage": 35000000000,
+      "revisionnumber": 12733798,
+      "scanhistory": [
+        {
+          "success": true,
+          "timestamp": "2018-09-23T08:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T06:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T04:00:00.000000000+04:00"
+        }
+      ],
+      "sectorsize": 4194304,
+      "storageprice": "14000000000",
+      "totalstorage": 35000000000,
+      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+      "uploadbandwidthprice": "3000000000000",
+      "version": "1.3.4",
+      "windowsize": 144
     },
     {
       "acceptingcontracts": true,
+      "collateral": "20000000000",
+      "contractprice": "1000000000000000000000000",
+      "downloadbandwidthprice": "35000000000000",
+      "firstseen": 160000,
+      "historicdowntime": 0,
+      "historicfailedinteractions": 0,
+      "historicsuccessfulinteractions": 5,
+      "historicuptime": 41634520900246576,
+      "lasthistoricupdate": 174900,
+      "maxcollateral": "1000000000000000000000000000",
       "maxdownloadbatchsize": 17825792,
       "maxduration": 25920,
       "maxrevisebatchsize": 17825792,
-      "netaddress": "123.456.789.1:9982",
-      "remainingstorage": 314,
-      "sectorsize": 4194304,
-      "totalstorage": 314159265359,
-      "unlockhash": "ba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
-      "windowsize": 144,
+      "netaddress": "123.456.789.0:9982",
       "publickey": {
         "algorithm": "ed25519",
-        "key": "WWVzIEJydWNlIFNjaG5laWVyIGNhbiByZWFkIHRoaXM="
-      }
+        "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU="
+      },
       "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "recentfailedinteractions": 0,
+      "recentsuccessfulinteractions": 0,
+      "remainingstorage": 35000000000,
+      "revisionnumber": 12733798,
+      "scanhistory": [
+        {
+          "success": true,
+          "timestamp": "2018-09-23T08:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T06:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T04:00:00.000000000+04:00"
+        }
+      ],
+      "sectorsize": 4194304,
+      "storageprice": "14000000000",
+      "totalstorage": 35000000000,
+      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+      "uploadbandwidthprice": "3000000000000",
+      "version": "1.3.4",
+      "windowsize": 144
+    },
+    {
+      "acceptingcontracts": true,
+      "collateral": "20000000000",
+      "contractprice": "1000000000000000000000000",
+      "downloadbandwidthprice": "35000000000000",
+      "firstseen": 160000,
+      "historicdowntime": 0,
+      "historicfailedinteractions": 0,
+      "historicsuccessfulinteractions": 5,
+      "historicuptime": 41634520900246576,
+      "lasthistoricupdate": 174900,
+      "maxcollateral": "1000000000000000000000000000",
+      "maxdownloadbatchsize": 17825792,
+      "maxduration": 25920,
+      "maxrevisebatchsize": 17825792,
+      "netaddress": "123.456.789.0:9982",
+      "publickey": {
+        "algorithm": "ed25519",
+        "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU="
+      },
+      "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "recentfailedinteractions": 0,
+      "recentsuccessfulinteractions": 0,
+      "remainingstorage": 35000000000,
+      "revisionnumber": 12733798,
+      "scanhistory": [
+        {
+          "success": true,
+          "timestamp": "2018-09-23T08:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T06:00:00.000000000+04:00"
+        },
+        {
+          "success": true,
+          "timestamp": "2018-09-23T04:00:00.000000000+04:00"
+        }
+      ],
+      "sectorsize": 4194304,
+      "storageprice": "14000000000",
+      "totalstorage": 35000000000,
+      "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+      "uploadbandwidthprice": "3000000000000",
+      "version": "1.3.4",
+      "windowsize": 144
     }
   ]
 }
@@ -486,30 +863,63 @@ Examples
 ```javascript
 {
   "entry": {
-    "acceptingcontracts": false,
-    "maxdownloadbatchsize": 17825792,
-    "maxduration": 25920,
-    "maxrevisebatchsize": 17825792,
-    "netaddress": "123.456.789.2:9982",
-    "remainingstorage": 314,
-    "sectorsize": 4194304,
-    "totalstorage": 314159265359,
-    "unlockhash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-    "windowsize": 144,
+    "acceptingcontracts": true,
+    "collateral": "20000000000", // hastings / byte / block
+    "contractprice": "1000000000000000000000000", // hastings
+    "downloadbandwidthprice": "35000000000000", // hastings / byte
+    "firstseen": 160000, // blocks
+    "historicdowntime": 0,
+    "historicfailedinteractions": 0,
+    "historicsuccessfulinteractions": 5,
+    "historicuptime": 41634520900246576,
+    "lasthistoricupdate": 174900,
+    "maxcollateral": "1000000000000000000000000000", // hastings
+    "maxdownloadbatchsize": 17825792, // bytes
+    "maxduration": 25920, // blocks
+    "maxrevisebatchsize": 17825792, // bytes
+    "netaddress": "123.456.789.0:9982",
     "publickey": {
       "algorithm": "ed25519",
-      "key": "SSByYW4gb3V0IG9mIDMyIGNoYXIgbG9uZyBqb2tlcy4="
-    }
+      "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU="
+    },
     "publickeystring": "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "recentfailedinteractions": 0,
+    "recentsuccessfulinteractions": 0,
+    "remainingstorage": 35000000000, // bytes
+    "revisionnumber": 12733798,
+    "scanhistory": [
+      {
+        "success": true,
+        "timestamp": "2018-09-23T08:00:00.000000000+04:00"
+      },
+      {
+        "success": true,
+        "timestamp": "2018-09-23T06:00:00.000000000+04:00"
+      },
+      {
+        "success": true,
+        "timestamp": "2018-09-23T04:00:00.000000000+04:00"
+      }
+    ],
+    "sectorsize": 4194304, // bytes
+    "storageprice": "14000000000", // hastings / byte / block
+    "totalstorage": 35000000000, // bytes
+    "unlockhash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+    "uploadbandwidthprice": "3000000000000", // hastings / byte
+    "version": "1.3.4",
+    "windowsize": 144 // blocks
   },
   "scorebreakdown": {
     "ageadjustment": 0.1234,
-    "burnadjustment": 0.1234,
+    "burnadjustment": 23.456,
     "collateraladjustment": 23.456,
-    "priceadjustment": 0.1234,
+    "conversionrate": 9.12345,
+    "interactionadjustment": 0.1234,
+    "pricesmultiplier": 0.1234,
+    "score": 123456,
     "storageremainingadjustment": 0.1234,
     "uptimeadjustment": 0.1234,
-    "versionadjustment": 0.1234,
+    "versionadjustment": 0.1234
   }
 }
 ```
