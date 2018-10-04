@@ -1,6 +1,8 @@
 package siatest
 
 import (
+	"testing"
+
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
@@ -16,6 +18,36 @@ type TestNode struct {
 	client.Client
 	params      node.NodeParams
 	primarySeed string
+}
+
+// PrintDebugInfo prints out helpful debug information when debug tests and ndfs, the
+// boolean arguments dictate what is printed
+func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo bool) {
+	if contractInfo {
+		rc, err := tn.RenterContractsGet()
+		if err != nil {
+			t.Log(err)
+		}
+		t.Log("Contracts")
+		for _, c := range rc.ActiveContracts {
+			t.Log("ID", c.ID)
+			t.Log("GoodForUpload", c.GoodForUpload)
+			t.Log("GoodForRenew", c.GoodForRenew)
+			t.Log("HostPublicKey", c.HostPublicKey)
+		}
+	}
+
+	if hostInfo {
+		hdbag, err := tn.HostDbActiveGet()
+		if err != nil {
+			t.Log(err)
+		}
+		t.Log("Active Hosts from HostDB")
+		for _, host := range hdbag.Hosts {
+			t.Log("pk", host.PublicKey)
+			t.Log("Accepting Contracts", host.HostExternalSettings.AcceptingContracts)
+		}
+	}
 }
 
 // RestartNode restarts a TestNode

@@ -3,6 +3,7 @@ set -e
 
 # version and keys are supplied as arguments
 version="$1"
+rc=`echo $version | awk -F - '{print $2}'`
 keyfile="$2"
 pubkeyfile="$3" # optional
 if [[ -z $version || -z $keyfile ]]; then
@@ -25,7 +26,7 @@ if [ $keysum != "735320b4698010500d230c487e970e12776e88f33ad777ab380a493691dadb1
 fi
 
 # setup build-time vars
-ldflags="-s -w -X 'gitlab.com/NebulousLabs/Sia/build.GitRevision=`git rev-parse --short HEAD`' -X 'gitlab.com/NebulousLabs/Sia/build.BuildTime=`date`'"
+ldflags="-s -w -X 'gitlab.com/NebulousLabs/Sia/build.GitRevision=`git rev-parse --short HEAD`' -X 'gitlab.com/NebulousLabs/Sia/build.BuildTime=`date`' -X 'gitlab.com/NebulousLabs/Sia/build.ReleaseTag=${rc}'"
 
 for os in darwin linux windows; do
 	echo Packaging ${os}...
