@@ -76,6 +76,7 @@ numhosts
       // Firstseen is the last block height at which this host was announced.
       "firstseen": 160000, // blocks
 
+      // Total amount of time the host has been offline.
       "historicdowntime": 0,
 
       // Number of historic failed interactions with the host.
@@ -84,9 +85,11 @@ numhosts
       // Number of historic successful interactions with the host.
       "historicsuccessfulinteractions": 5,
 
+      // Total amount of time the host has been online.
       "historicuptime": 41634520900246576,
 
-      "lasthistoricupdate": 174900,
+      // The last time that the interactions within scanhistory have been compressed into the historic ones
+      "lasthistoricupdate": 174900, // blocks
 
       // The maximum amount of collateral that the host will put into a
       // single file contract.
@@ -219,6 +222,7 @@ any particular order, and the order may change in subsequent calls.
       // Firstseen is the last block height at which this host was announced.
       "firstseen": 160000, // blocks
 
+      // Total amount of time the host has been offline.
       "historicdowntime": 0,
 
       // Number of historic failed interactions with the host.
@@ -227,9 +231,11 @@ any particular order, and the order may change in subsequent calls.
       // Number of historic successful interactions with the host.
       "historicsuccessfulinteractions": 5,
 
+      // Total amount of time the host has been online.
       "historicuptime": 41634520900246576,
 
-      "lasthistoricupdate": 174900,
+      // The last time that the interactions within scanhistory have been compressed into the historic ones
+      "lasthistoricupdate": 174900, // blocks
 
       // The maximum amount of collateral that the host will put into a
       // single file contract.
@@ -372,6 +378,7 @@ overall.
     // Firstseen is the last block height at which this host was announced.
     "firstseen": 160000, // blocks
 
+    // Total amount of time the host has been offline.
     "historicdowntime": 0,
 
     // Number of historic failed interactions with the host.
@@ -380,9 +387,11 @@ overall.
     // Number of historic successful interactions with the host.
     "historicsuccessfulinteractions": 5,
 
+    // Total amount of time the host has been online.
     "historicuptime": 41634520900246576,
 
-    "lasthistoricupdate": 174900,
+    // The last time that the interactions within scanhistory have been compressed into the historic ones
+    "lasthistoricupdate": 174900, // blocks
 
     // The maximum amount of collateral that the host will put into a
     // single file contract.
