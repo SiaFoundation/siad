@@ -404,6 +404,12 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
+	// If the ip address in the hosttree updated while scanning the host, we
+	// use the new address.
+	oldEntry, exists := hdb.hostTree.Select(entry.PublicKey)
+	if exists {
+		entry.NetAddress = oldEntry.NetAddress
+	}
 	// Update the host tree to have a new entry, including the new error. Then
 	// delete the entry from the scan map as the scan has been successful.
 	hdb.updateEntry(entry, err)
