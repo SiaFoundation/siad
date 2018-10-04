@@ -58,10 +58,17 @@ type (
 		ExtensionInfo [16]byte `json:"extensioninfo"`
 
 		// Pieces are the Pieces of the file the chunk consists of.
-		Pieces [][]Piece `json:"pieces"`
+		Pieces [][]piece `json:"pieces"`
 	}
 
-	// Piece represents a single piece of a chunk on disk
+	// piece represents a single piece of a chunk on disk
+	piece struct {
+		HostTableOffset uint32      // offset of the host's key within the pubKeyTable
+		MerkleRoot      crypto.Hash // merkle root of the piece
+	}
+
+	// Piece is an exported piece. It contains a resolved public key instead of
+	// the table offset.
 	Piece struct {
 		HostPubKey types.SiaPublicKey `json:"hostpubkey"` // public key of the host
 		MerkleRoot crypto.Hash        `json:"merkleroot"` // merkle root of the piece
@@ -123,7 +130,7 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 	}
 	file.staticChunks = make([]chunk, numChunks)
 	for i := range file.staticChunks {
-		file.staticChunks[i].Pieces = make([][]Piece, erasureCode.NumPieces())
+		file.staticChunks[i].Pieces = make([][]piece, erasureCode.NumPieces())
 	}
 	// Save file.
 	return file, file.saveFile()
@@ -167,9 +174,9 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		return fmt.Errorf("pieceIndex %v out of bounds (%v)", pieceIndex, len(sf.staticChunks[chunkIndex].Pieces))
 	}
 	// Add the piece to the chunk.
-	sf.staticChunks[chunkIndex].Pieces[pieceIndex] = append(sf.staticChunks[chunkIndex].Pieces[pieceIndex], Piece{
-		HostPubKey: pk,
-		MerkleRoot: merkleRoot,
+	sf.staticChunks[chunkIndex].Pieces[pieceIndex] = append(sf.staticChunks[chunkIndex].Pieces[pieceIndex], piece{
+		HostTableOffset: uint32(tableIndex),
+		MerkleRoot:      merkleRoot,
 	})
 
 	// Update the AccessTime, ChangeTime and ModTime.
@@ -210,7 +217,7 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 		piecesForChunk := 0
 		for _, pieceSet := range chunk.Pieces {
 			for _, piece := range pieceSet {
-				if !offline[string(piece.HostPubKey.Key)] {
+				if !offline[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)] {
 					piecesForChunk++
 					break // break out since we only count unique pieces
 				}
@@ -261,7 +268,12 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 	pieces := make([][]Piece, len(sf.staticChunks[chunkIndex].Pieces))
 	for pieceIndex := range pieces {
 		pieces[pieceIndex] = make([]Piece, len(sf.staticChunks[chunkIndex].Pieces[pieceIndex]))
-		copy(pieces[pieceIndex], sf.staticChunks[chunkIndex].Pieces[pieceIndex])
+		for i, piece := range sf.staticChunks[chunkIndex].Pieces[pieceIndex] {
+			pieces[pieceIndex][i] = Piece{
+				HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
+				MerkleRoot: piece.MerkleRoot,
+			}
+		}
 	}
 	return pieces, nil
 }
@@ -297,8 +309,8 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 			foundGoodForRenew := false
 			foundOnline := false
 			for _, piece := range pieceSet {
-				offline, exists1 := offlineMap[string(piece.HostPubKey.Key)]
-				goodForRenew, exists2 := goodForRenewMap[string(piece.HostPubKey.Key)]
+				offline, exists1 := offlineMap[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)]
+				goodForRenew, exists2 := goodForRenewMap[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)]
 				if exists1 != exists2 {
 					build.Critical("contract can't be in one map but not in the other")
 				}
