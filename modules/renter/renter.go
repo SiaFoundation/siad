@@ -519,12 +519,20 @@ func (r *Renter) InitialScanComplete() (bool, error) { return r.hostDB.InitialSc
 
 // ScoreBreakdown returns the score breakdown
 func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) modules.HostScoreBreakdown {
-	return r.hostDB.ScoreBreakdown(e, r.Settings().Allowance)
+	a := r.Settings().Allowance
+	if reflect.DeepEqual(a, modules.Allowance{}) {
+		a = modules.DefaultAllowance
+	}
+	return r.hostDB.ScoreBreakdown(e, a)
 }
 
 // EstimateHostScore returns the estimated host score
 func (r *Renter) EstimateHostScore(e modules.HostDBEntry) modules.HostScoreBreakdown {
-	return r.hostDB.EstimateHostScore(e)
+	a := r.Settings().Allowance
+	if reflect.DeepEqual(a, modules.Allowance{}) {
+		a = modules.DefaultAllowance
+	}
+	return r.hostDB.EstimateHostScore(e, a)
 }
 
 // CancelContract cancels a renter's contract by ID by setting goodForRenew and goodForUpload to false
