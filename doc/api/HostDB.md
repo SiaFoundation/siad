@@ -88,8 +88,18 @@ numhosts
       // Total amount of time the host has been online.
       "historicuptime": 41634520900246576,
 
+      // List of IP subnet masks used by the host. For IPv4 the /24 subnet mask is used.
+      "ipnets": [
+        "1.2.3.0",
+        "2.1.3.0"
+      ],
+
       // The last time that the interactions within scanhistory have been compressed into the historic ones
       "lasthistoricupdate": 174900, // blocks
+
+      // The last time the list of IP subnet masks was updated. When equal subnet masks are found for
+      // different hosts, the host that occupies the subnet mask for a longer time is preferred.
+      "lastipnetchange": "2015-01-01T08:00:00.000000000+04:00",
 
       // The maximum amount of collateral that the host will put into a
       // single file contract.
@@ -234,8 +244,18 @@ any particular order, and the order may change in subsequent calls.
       // Total amount of time the host has been online.
       "historicuptime": 41634520900246576,
 
+      // List of IP subnet masks used by the host. For IPv4 the /24 subnet mask is used.
+      "ipnets": [
+        "1.2.3.0",
+        "2.1.3.0"
+      ],
+
       // The last time that the interactions within scanhistory have been compressed into the historic ones
       "lasthistoricupdate": 174900, // blocks
+
+      // The last time the list of IP subnet masks was updated. When equal subnet masks are found for
+      // different hosts, the host that occupies the subnet mask for a longer time is preferred.
+      "lastipnetchange": "2015-01-01T08:00:00.000000000+04:00",
 
       // The maximum amount of collateral that the host will put into a
       // single file contract.
@@ -390,8 +410,18 @@ overall.
     // Total amount of time the host has been online.
     "historicuptime": 41634520900246576,
 
+    // List of IP subnet masks used by the host. For IPv4 the /24 subnet mask is used.
+    "ipnets": [
+      "1.2.3.0",
+      "2.1.3.0"
+    ],
+
     // The last time that the interactions within scanhistory have been compressed into the historic ones
     "lasthistoricupdate": 174900, // blocks
+
+    // The last time the list of IP subnet masks was updated. When equal subnet masks are found for
+    // different hosts, the host that occupies the subnet mask for a longer time is preferred.
+    "lastipnetchange": "2015-01-01T08:00:00.000000000+04:00",
 
     // The maximum amount of collateral that the host will put into a
     // single file contract.
