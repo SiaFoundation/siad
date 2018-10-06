@@ -41,9 +41,11 @@ type HostDB struct {
 	persistDir string
 	tg         threadgroup.ThreadGroup
 
-	// calculateHostWeight is the function used to calculate the weight of the
-	// entries within the hosttree.
-	calculateHostWeight hosttree.WeightFunc
+	// The hostdb gets initialized with an allowance that can be modified. The
+	// allowance is used to build a weightFunc that the hosttree depends on to
+	// determine the weight of a host.
+	allowance           modules.Allowance
+	weightFunc          hosttree.WeightFunc
 
 	// The hostTree is the root node of the tree that organizes hosts by
 	// weight. The tree is necessary for selecting weighted hosts at
@@ -93,7 +95,8 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir stri
 	}
 
 	// Set the hostweight function.
-	hdb.calculateHostWeight = hdb.calculateHostWeightFn(modules.Allowance{})
+	hdb.allowance = modules.Allowance{}
+	hdb.weightFunc = hdb.calculateHostWeightFn(modules.Allowance{})
 
 	// Create the persist directory if it does not yet exist.
 	err := os.MkdirAll(persistDir, 0700)
@@ -120,7 +123,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir stri
 	}
 
 	// The host tree is used to manage hosts and query them at random.
-	hdb.hostTree = hosttree.New(hdb.calculateHostWeight, deps.Resolver())
+	hdb.hostTree = hosttree.New(hdb.weightFunc, deps.Resolver())
 
 	// Load the prior persistence structures.
 	hdb.mu.Lock()
@@ -348,7 +351,8 @@ func (hdb *HostDB) RandomHostsTempAllowance(n int, blacklist, addressBlacklist [
 func (hdb *HostDB) UpdateAllowance(allowance modules.Allowance) error {
 	// Update the weight function.
 	hdb.mu.Lock()
-	hdb.calculateHostWeight = hdb.calculateHostWeightFn(allowance)
+	hdb.allowance = allowance
+	hdb.weightFunc = hdb.calculateHostWeightFn(allowance)
 	hdb.mu.Unlock()
 
 	// Update the trees weight function.

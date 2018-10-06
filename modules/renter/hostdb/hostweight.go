@@ -435,7 +435,7 @@ func (hdb *HostDB) calculateHostWeightFn(allowance modules.Allowance) hosttree.W
 func (hdb *HostDB) calculateConversionRate(score types.Currency) float64 {
 	var totalScore types.Currency
 	for _, h := range hdb.ActiveHosts() {
-		totalScore = totalScore.Add(hdb.calculateHostWeight(h))
+		totalScore = totalScore.Add(hdb.weightFunc(h))
 	}
 	if totalScore.IsZero() {
 		totalScore = types.NewCurrency64(1)
@@ -502,7 +502,7 @@ func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance module
 
 // ScoreBreakdown provdes a detailed set of scalars and bools indicating
 // elements of the host's overall score.
-func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry, allowance modules.Allowance) modules.HostScoreBreakdown {
+func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBreakdown {
 	// TODO: Pass these in as input instead of fixing them.
 	//
 	// expectedStorage is the amount of data that we expect to have in a
@@ -526,16 +526,16 @@ func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry, allowance modules.A
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
 
-	score := hdb.calculateHostWeight(entry)
+	score := hdb.weightFunc(entry)
 	return modules.HostScoreBreakdown{
 		Score:          score,
 		ConversionRate: hdb.calculateConversionRate(score),
 
 		AgeAdjustment:              hdb.lifetimeAdjustments(entry),
 		BurnAdjustment:             1,
-		CollateralAdjustment:       hdb.collateralAdjustments(entry, allowance, expectedStorage),
+		CollateralAdjustment:       hdb.collateralAdjustments(entry, hdb.allowance, expectedStorage),
 		InteractionAdjustment:      hdb.interactionAdjustments(entry),
-		PriceAdjustment:            hdb.priceAdjustments(entry, allowance, expectedStorage, expectedUploadFrequency, expectedDownloadFrequency),
+		PriceAdjustment:            hdb.priceAdjustments(entry, hdb.allowance, expectedStorage, expectedUploadFrequency, expectedDownloadFrequency),
 		StorageRemainingAdjustment: storageRemainingAdjustments(entry),
 		UptimeAdjustment:           hdb.uptimeAdjustments(entry),
 		VersionAdjustment:          versionAdjustments(entry),
