@@ -219,7 +219,9 @@ func readDeleteUpdate(update writeaheadlog.Update) string {
 // and data encoded in the instructions.
 func readInsertUpdate(update writeaheadlog.Update) (path string, index int64, data []byte, err error) {
 	if !IsSiaFileUpdate(update) {
-		panic("readUpdate can't read non-SiaFile update")
+		err = errors.New("readUpdate can't read non-SiaFile update")
+		build.Critical(err)
+		return
 	}
 	err = encoding.UnmarshalAll(update.Instructions, &path, &index, &data)
 	return
@@ -258,9 +260,9 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 
 // applyUpdates applies updates to the SiaFile. Only updates that belong to the
 // SiaFile on which applyUpdates is called can be applied. Everything else will
-// be considered a developer error and cause a panic to avoid corruption.
-// applyUpdates also syncs the SiaFile for convenience since it already has an
-// open file handle.
+// be considered a developer error and cause the update to not be applied to
+// avoid corruption.  applyUpdates also syncs the SiaFile for convenience since
+// it already has an open file handle.
 func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// Open the file.
 	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
@@ -296,7 +298,8 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 
 			// Sanity check path. Update should belong to SiaFile.
 			if sf.siaFilePath != path {
-				panic(fmt.Sprintf("can't apply update for file %s to SiaFile %s", path, sf.siaFilePath))
+				build.Critical(fmt.Sprintf("can't apply update for file %s to SiaFile %s", path, sf.siaFilePath))
+				return nil
 			}
 
 			// Write data.
@@ -354,7 +357,9 @@ func (sf *SiaFile) createDeleteUpdate() writeaheadlog.Update {
 // specific part of the SiaFile. e.g. the metadata
 func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Update {
 	if index < 0 {
-		panic("index passed to createUpdate should never be negative")
+		index = 0
+		data = []byte{}
+		build.Critical("index passed to createUpdate should never be negative")
 	}
 	// Create update
 	return writeaheadlog.Update{
@@ -452,7 +457,8 @@ func (sf *SiaFile) saveMetadata() ([]writeaheadlog.Update, error) {
 	// the table changed. We should never just save the metadata if the table
 	// changed as well as it might lead to corruptions.
 	if sf.staticMetadata.PubKeyTableOffset+int64(len(pubKeyTable)) != sf.staticMetadata.ChunkOffset {
-		panic("never call saveMetadata if the pubKeyTable changed, call saveHeader instead")
+		build.Critical("never call saveMetadata if the pubKeyTable changed, call saveHeader instead")
+		return sf.saveHeader()
 	}
 	// Marshal the metadata.
 	metadata, err := marshalMetadata(sf.staticMetadata)

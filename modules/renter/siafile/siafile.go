@@ -315,7 +315,9 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	if chunkIndex >= uint64(len(sf.staticChunks)) {
-		panic(fmt.Sprintf("index %v out of bounds (%v)", chunkIndex, len(sf.staticChunks)))
+		err := fmt.Errorf("index %v out of bounds (%v)", chunkIndex, len(sf.staticChunks))
+		build.Critical(err)
+		return nil, err
 	}
 	// Return a deep-copy to avoid race conditions.
 	pieces := make([][]Piece, len(sf.staticChunks[chunkIndex].Pieces))
