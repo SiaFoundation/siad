@@ -393,19 +393,14 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 
 	} else {
 		hdb.log.Debugf("Scan of host at %v succeeded.", netAddr)
-
-		// Set the host address to the one we dialed. We don't want the host to
-		// change it without reannouncing itself.
-		addr := entry.NetAddress
 		entry.HostExternalSettings = settings
-		entry.NetAddress = addr
 	}
 	success := err == nil
 
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
-	// If the ip address in the hosttree updated while scanning the host, we
-	// use the new address.
+	// We don't want to override the NetAddress during a scan so we need to
+	// retrieve the most recent NetAddress from the tree first.
 	oldEntry, exists := hdb.hostTree.Select(entry.PublicKey)
 	if exists {
 		entry.NetAddress = oldEntry.NetAddress
