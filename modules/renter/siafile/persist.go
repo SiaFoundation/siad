@@ -67,9 +67,9 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	// Create the SiaFile
 	sf := &SiaFile{
-		staticUID:   hex.EncodeToString(fastrand.Bytes(8)),
-		siaFilePath: path,
-		wal:         wal,
+		staticUniqueID: hex.EncodeToString(fastrand.Bytes(8)),
+		siaFilePath:    path,
+		wal:            wal,
 	}
 	// Open the file.
 	f, err := os.Open(path)

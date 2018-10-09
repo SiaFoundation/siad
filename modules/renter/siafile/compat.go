@@ -59,8 +59,8 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 			StaticPieceSize:         fd.PieceSize,
 			SiaPath:                 fd.Name,
 		},
-		deleted:   fd.Deleted,
-		staticUID: fd.UID,
+		deleted:        fd.Deleted,
+		staticUniqueID: fd.UID,
 	}
 	file.staticChunks = make([]chunk, len(fd.Chunks))
 	for i := range file.staticChunks {

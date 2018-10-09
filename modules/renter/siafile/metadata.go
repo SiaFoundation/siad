@@ -1,14 +1,12 @@
 package siafile
 
 import (
-	"math"
 	"os"
 	"path/filepath"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -35,9 +33,9 @@ type (
 		CreateTime time.Time `json:"createtime"` // time of file creation
 
 		// File ownership/permission fields.
-		Mode os.FileMode `json:"mode"` // unix filemode of the sia file - uint32
-		UID  int         `json:"uid"`  // id of the user who owns the file
-		Gid  int         `json:"gid"`  // id of the group that owns the file
+		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
+		UserID  int         `json:"userid"`  // id of the user who owns the file
+		GroupID int         `json:"groupid"` // id of the group that owns the file
 
 		// staticChunkMetadataSize is the amount of space allocated within the
 		// siafile for the metadata of a single chunk. It allows us to do
@@ -99,59 +97,6 @@ func (sf *SiaFile) CreateTime() time.Time {
 // ChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) ChunkSize() uint64 {
 	return sf.staticChunkSize()
-}
-
-// Delete removes the file from disk and marks it as deleted. Once the file is
-// deleted, certain methods should return an error.
-func (sf *SiaFile) Delete() error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	update := sf.createDeleteUpdate()
-	err := sf.createAndApplyTransaction(update)
-	sf.deleted = true
-	return err
-}
-
-// Deleted indicates if this file has been deleted by the user.
-func (sf *SiaFile) Deleted() bool {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	return sf.deleted
-}
-
-// Expiration returns the lowest height at which any of the file's contracts
-// will expire.
-func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types.BlockHeight {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	if len(sf.pubKeyTable) == 0 {
-		return 0
-	}
-
-	lowest := ^types.BlockHeight(0)
-	for _, pk := range sf.pubKeyTable {
-		contract, exists := contracts[string(pk.PublicKey.Key)]
-		if !exists {
-			continue
-		}
-		if contract.EndHeight < lowest {
-			lowest = contract.EndHeight
-		}
-	}
-	return lowest
-}
-
-// HostPublicKeys returns all the public keys of hosts the file has ever been
-// uploaded to. That means some of those hosts might no longer be in use.
-func (sf *SiaFile) HostPublicKeys() []types.SiaPublicKey {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	// Only return the keys, not the whole entry.
-	keys := make([]types.SiaPublicKey, 0, len(sf.pubKeyTable))
-	for _, key := range sf.pubKeyTable {
-		keys = append(keys, key.PublicKey)
-	}
-	return keys
 }
 
 // LocalPath returns the path of the local data of the file.
@@ -281,36 +226,6 @@ func (sf *SiaFile) UpdateAccessTime() error {
 		return err
 	}
 	return sf.createAndApplyTransaction(updates...)
-}
-
-// UploadedBytes indicates how many bytes of the file have been uploaded via
-// current file contracts. Note that this includes padding and redundancy, so
-// uploadedBytes can return a value much larger than the file's original filesize.
-func (sf *SiaFile) UploadedBytes() uint64 {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	var uploaded uint64
-	for _, chunk := range sf.staticChunks {
-		for _, pieceSet := range chunk.Pieces {
-			// Note: we need to multiply by SectorSize here instead of
-			// f.pieceSize because the actual bytes uploaded include overhead
-			// from TwoFish encryption
-			uploaded += uint64(len(pieceSet)) * modules.SectorSize
-		}
-	}
-	return uploaded
-}
-
-// UploadProgress indicates what percentage of the file (plus redundancy) has
-// been uploaded. Note that a file may be Available long before UploadProgress
-// reaches 100%, and UploadProgress may report a value greater than 100%.
-func (sf *SiaFile) UploadProgress() float64 {
-	if sf.Size() == 0 {
-		return 100
-	}
-	uploaded := sf.UploadedBytes()
-	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
-	return math.Min(100*(float64(uploaded)/float64(desired)), 100)
 }
 
 // ChunkSize returns the size of a single chunk of the file.
