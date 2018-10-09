@@ -45,10 +45,10 @@ type (
 		deleted        bool
 		mu             sync.RWMutex
 		staticUniqueID string
+		wal            *writeaheadlog.WAL // the wal that is used for SiaFiles
 
-		// persistence related fields.
-		siaFilePath string             // path to the .sia file
-		wal         *writeaheadlog.WAL // the wal that is used for SiaFiles
+		// siaFilePath is the path to the .sia file on disk.
+		siaFilePath string
 	}
 
 	// chunk represents a single chunk of a file on disk
