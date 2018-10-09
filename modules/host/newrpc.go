@@ -154,6 +154,7 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 
 	// construct the new revision
 	newRevision := currentRevision
+	newRevision.NewRevisionNumber = req.NewRevisionNumber
 	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
 	for i := range newRevision.NewValidProofOutputs {
 		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
@@ -161,7 +162,7 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
 		}
 	}
-	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
+	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
 	for i := range newRevision.NewMissedProofOutputs {
 		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
 			Value:      req.NewMissedProofValues[i],

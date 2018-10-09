@@ -95,8 +95,7 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	defer func() {
 		if err != nil {
 			s.hdb.IncrementFailedInteractions(contract.HostPublicKey())
-			err = errors.Extend(err, modules.ErrHostFault)
-		} else if err == nil {
+		} else {
 			s.hdb.IncrementSuccessfulInteractions(contract.HostPublicKey())
 		}
 	}()
@@ -188,7 +187,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 	}()
 
 	extendDeadline(conn, modules.NegotiateSettingsTime)
-	if err := encoding.NewEncoder(conn).Encode(modules.RPCLoopEnter); err != nil {
+	if err := encoding.WriteObject(conn, modules.RPCLoopEnter); err != nil {
 		return nil, err
 	}
 
