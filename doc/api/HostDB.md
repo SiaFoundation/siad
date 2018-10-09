@@ -88,7 +88,10 @@ numhosts
       // Total amount of time the host has been online.
       "historicuptime": 41634520900246576,
 
-      // List of IP subnet masks used by the host. For IPv4 the /24 subnet mask is used.
+      // List of IP subnet masks used by the host. For IPv4 the /24 and for IPv6 the /54 subnet mask
+      // is used. A host can have either one IPv4 or one IPv6 subnet or one of each. E.g. these
+      // lists are valid: [ "IPv4" ], [ "IPv6" ] or [ "IPv4", "IPv6" ]. The following lists are 
+      // invalid: [ "IPv4", "IPv4" ], [ "IPv4", "IPv6", "IPv6" ]. Hosts with an invalid list are ignored.
       "ipnets": [
         "1.2.3.0",
         "2.1.3.0"
@@ -244,7 +247,10 @@ any particular order, and the order may change in subsequent calls.
       // Total amount of time the host has been online.
       "historicuptime": 41634520900246576,
 
-      // List of IP subnet masks used by the host. For IPv4 the /24 subnet mask is used.
+      // List of IP subnet masks used by the host. For IPv4 the /24 and for IPv6 the /54 subnet mask
+      // is used. A host can have either one IPv4 or one IPv6 subnet or one of each. E.g. these
+      // lists are valid: [ "IPv4" ], [ "IPv6" ] or [ "IPv4", "IPv6" ]. The following lists are 
+      // invalid: [ "IPv4", "IPv4" ], [ "IPv4", "IPv6", "IPv6" ]. Hosts with an invalid list are ignored.
       "ipnets": [
         "1.2.3.0",
         "2.1.3.0"
@@ -410,7 +416,10 @@ overall.
     // Total amount of time the host has been online.
     "historicuptime": 41634520900246576,
 
-    // List of IP subnet masks used by the host. For IPv4 the /24 subnet mask is used.
+    // List of IP subnet masks used by the host. For IPv4 the /24 and for IPv6 the /54 subnet mask
+    // is used. A host can have either one IPv4 or one IPv6 subnet or one of each. E.g. these
+    // lists are valid: [ "IPv4" ], [ "IPv6" ] or [ "IPv4", "IPv6" ]. The following lists are 
+    // invalid: [ "IPv4", "IPv4" ], [ "IPv4", "IPv6", "IPv6" ]. Hosts with an invalid list are ignored.
     "ipnets": [
       "1.2.3.0",
       "2.1.3.0"
