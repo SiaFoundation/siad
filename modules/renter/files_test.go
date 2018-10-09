@@ -2,6 +2,8 @@ package renter
 
 import (
 	"encoding/hex"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -479,5 +481,60 @@ func TestRenterRenameFile(t *testing.T) {
 	err = rt.renter.RenameFile("1", "1b")
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRenterFileDir tests that the renter files are uploaded to the files
+// directory and not the root directory of the renter.
+func TestRenterFileDir(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Create local file to upload
+	localDir := filepath.Join(rt.dir, "files")
+	if err := os.MkdirAll(localDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	size := 100
+	fileName := fmt.Sprintf("%dbytes %s", size, hex.EncodeToString(fastrand.Bytes(4)))
+	source := filepath.Join(localDir, fileName)
+	bytes := fastrand.Bytes(size)
+	if err := ioutil.WriteFile(source, bytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload local file
+	ec, err := siafile.NewRSCode(defaultDataPieces, defaultParityPieces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := modules.FileUploadParams{
+		Source:      source,
+		SiaPath:     fileName,
+		ErasureCode: ec,
+	}
+	err = rt.renter.Upload(params)
+	if err != nil {
+		t.Fatal("failed to upload file:", err)
+	}
+
+	// Get file and check siapath
+	f := rt.renter.FileList()[0]
+	if f.SiaPath != fileName {
+		t.Fatalf("siapath not set as expected: got %v expected %v", f.SiaPath, fileName)
+	}
+
+	// Confirm .sia file exists on disk in the SiapathRoot directory
+	renterDir := filepath.Join(rt.dir, modules.RenterDir)
+	siapathRootDir := filepath.Join(renterDir, modules.SiapathRoot)
+	fullPath := filepath.Join(siapathRootDir, f.SiaPath+".sia")
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		t.Fatal("No .sia file found on disk")
 	}
 }

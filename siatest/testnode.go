@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
@@ -128,7 +129,7 @@ func (tn *TestNode) initRootDirs() error {
 		return err
 	}
 	tn.filesDir = &LocalDir{
-		path: filepath.Join(tn.RenterDir(), "files"),
+		path: filepath.Join(tn.RenterDir(), modules.SiapathRoot),
 	}
 	if err := os.MkdirAll(tn.filesDir.path, 0777); err != nil {
 		return err
@@ -139,5 +140,5 @@ func (tn *TestNode) initRootDirs() error {
 // SiaPath returns the siapath of a local file or directory to be used for
 // uploading
 func (tn *TestNode) SiaPath(path string) string {
-	return strings.TrimPrefix(path, tn.RenterDir()+"/")
+	return strings.TrimPrefix(path, tn.filesDir.path+"/")
 }
