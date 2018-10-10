@@ -426,7 +426,11 @@ func TestRenterFileList(t *testing.T) {
 	if !((files[0].SiaPath == file1.SiaPath() || files[0].SiaPath == file2.SiaPath()) &&
 		(files[1].SiaPath == file1.SiaPath() || files[1].SiaPath == file2.SiaPath()) &&
 		(files[0].SiaPath != files[1].SiaPath)) {
-		t.Error("FileList is returning wrong names for the files:", files[0].SiaPath, files[1].SiaPath)
+		t.Log("files[0].SiaPath", files[0].SiaPath)
+		t.Log("files[1].SiaPath", files[1].SiaPath)
+		t.Log("file1.SiaPath()", file1.SiaPath())
+		t.Log("file2.SiaPath()", file2.SiaPath())
+		t.Error("FileList is returning wrong names for the files")
 	}
 }
 
