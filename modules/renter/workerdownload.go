@@ -69,7 +69,12 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 		atomic.AddUint64(&udc.download.atomicDataReceived, udc.staticFetchLength/uint64(udc.erasureCode.MinPieces()))
 		udc.physicalChunkData[pieceIndex] = decryptedPiece
 	}
-	if udc.piecesCompleted == udc.erasureCode.MinPieces() {
+	if udc.piecesCompleted >= udc.erasureCode.MinPieces() {
+		// Uint division might not always cause atomicDataReceived to cleanly
+		// add up to staticFetchLength so we need to explicitly set it to that
+		// value once all the pieces are done.
+		atomic.StoreUint64(&udc.download.atomicDataReceived, udc.staticFetchLength)
+		// Recover the logical data.
 		go udc.threadedRecoverLogicalData()
 	}
 	udc.mu.Unlock()

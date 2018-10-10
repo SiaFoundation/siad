@@ -164,7 +164,6 @@ type (
 
 		// Retrieval settings for the file.
 		staticLatencyTarget time.Duration // In milliseconds. Lower latency results in lower total system throughput.
-		staticOverdrive     int           // How many extra pieces to download to prevent slow hosts from being a bottleneck.
 		staticPriority      uint64        // Downloads with higher priority will complete first.
 
 		// Utilities.
@@ -371,7 +370,6 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		staticLatencyTarget:   params.latencyTarget,
 		staticLength:          params.length,
 		staticOffset:          params.offset,
-		staticOverdrive:       params.overdrive,
 		staticSiaPath:         params.file.name,
 		staticPriority:        params.priority,
 
