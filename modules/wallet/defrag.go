@@ -132,7 +132,10 @@ func (w *Wallet) managedCreateDefragTransaction() ([]types.Transaction, error) {
 // outputs.
 func (w *Wallet) threadedDefragWallet() {
 	// Don't defrag if it was disabled
-	if w.defragDisabled {
+	w.mu.RLock()
+	disabled := w.defragDisabled
+	w.mu.RUnlock()
+	if disabled {
 		return
 	}
 
