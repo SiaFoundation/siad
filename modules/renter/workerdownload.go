@@ -71,9 +71,10 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	}
 	if udc.piecesCompleted >= udc.erasureCode.MinPieces() {
 		// Uint division might not always cause atomicDataReceived to cleanly
-		// add up to staticFetchLength so we need to explicitly set it to that
-		// value once all the pieces are done.
-		atomic.StoreUint64(&udc.download.atomicDataReceived, udc.staticFetchLength)
+		// add up to staticFetchLength so we need to figure out how much we
+		// already added to the download and how much is missing.
+		addedReceivedData := uint64(udc.erasureCode.MinPieces()) * (udc.staticFetchLength / uint64(udc.erasureCode.MinPieces()))
+		atomic.AddUint64(&udc.download.atomicDataReceived, udc.staticFetchLength-addedReceivedData)
 		// Recover the logical data.
 		go udc.threadedRecoverLogicalData()
 	}
