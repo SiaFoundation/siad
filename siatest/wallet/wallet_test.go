@@ -320,3 +320,101 @@ func TestWatchOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestUnspentOutputs tests the UnspentOutputs method of the wallet.
+func TestUnspentOutputs(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a new server
+	testNode, err := siatest.NewNode(node.AllModules(siatest.TestDir(t.Name())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := testNode.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// create a dummy address and send coins to it
+	addr := types.UnlockHash{1}
+
+	_, err = testNode.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(77), addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testNode.MineBlock()
+
+	// define a helper function to check whether addr appears in
+	// UnspentOutputs
+	addrIsPresent := func() bool {
+		wug, err := testNode.WalletUnspentGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, o := range wug.Outputs {
+			if o.UnlockHash == addr {
+				return true
+			}
+		}
+		return false
+	}
+
+	// initially, the output should not show up in UnspentOutputs, because the
+	// address is not being tracked yet
+	if addrIsPresent() {
+		t.Fatal("shouldn't see addr in UnspentOutputs yet")
+	}
+
+	// add the address, but tell the wallet it hasn't been used yet. The
+	// wallet won't rescan, so it still won't see any outputs.
+	err = testNode.WalletWatchAddPost([]types.UnlockHash{addr}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if addrIsPresent() {
+		t.Fatal("shouldn't see addr in UnspentOutputs yet")
+	}
+
+	// remove the address, then add it again, this time telling the wallet
+	// that it has been used.
+	err = testNode.WalletWatchRemovePost([]types.UnlockHash{addr}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testNode.WalletWatchAddPost([]types.UnlockHash{addr}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// output should now show up
+	if !addrIsPresent() {
+		t.Fatal("addr not present in UnspentOutputs after AddWatchAddresses")
+	}
+
+	// remove the address, but tell the wallet that the address hasn't been
+	// used. The wallet won't rescan, so the output should still show up.
+	err = testNode.WalletWatchRemovePost([]types.UnlockHash{addr}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !addrIsPresent() {
+		t.Fatal("addr should still be present in UnspentOutputs")
+	}
+
+	// add and remove the address again, this time triggering a rescan. The
+	// output should no longer appear.
+	err = testNode.WalletWatchAddPost([]types.UnlockHash{addr}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testNode.WalletWatchRemovePost([]types.UnlockHash{addr}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if addrIsPresent() {
+		t.Fatal("shouldn't see addr in UnspentOutputs")
+	}
+}
