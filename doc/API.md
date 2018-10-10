@@ -921,13 +921,14 @@ modify settings that control the renter's behavior.
 
 ###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters)
 ```
-funds             // hastings
+checkforipviolation // true or false
+funds               // hastings
 hosts
-period            // block height
-renewwindow       // block height
-maxdownloadspeed  // bytes per second
-maxuploadspeed    // bytes per second
-streamcachesize   // number of data chunks cached when streaming
+period              // block height
+renewwindow         // block height
+maxdownloadspeed    // bytes per second
+maxuploadspeed      // bytes per second
+streamcachesize     // number of data chunks cached when streaming
 ```
 
 ###### Response
