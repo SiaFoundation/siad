@@ -12,6 +12,19 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// cachedMerkleRoot calculates the root of a set of sector roots.
+func cachedMerkleRoot(roots []crypto.Hash) crypto.Hash {
+	log2SectorSize := uint64(0)
+	for 1<<log2SectorSize < (modules.SectorSize / crypto.SegmentSize) {
+		log2SectorSize++
+	}
+	ct := crypto.NewCachedTree(log2SectorSize)
+	for _, root := range roots {
+		ct.Push(root)
+	}
+	return ct.Root()
+}
+
 // managedRevisionIteration handles one iteration of the revision loop. As a
 // performance optimization, multiple iterations of revisions are allowed to be
 // made over the same connection.
@@ -322,16 +335,7 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 	}
 
 	// The Merkle root is checked last because it is the most expensive check.
-	log2SectorSize := uint64(0)
-	for 1<<log2SectorSize < (modules.SectorSize / crypto.SegmentSize) {
-		log2SectorSize++
-	}
-	ct := crypto.NewCachedTree(log2SectorSize)
-	for _, root := range so.SectorRoots {
-		ct.Push(root)
-	}
-	expectedMerkleRoot := ct.Root()
-	if revision.NewFileMerkleRoot != expectedMerkleRoot {
+	if revision.NewFileMerkleRoot != cachedMerkleRoot(so.SectorRoots) {
 		return errBadFileMerkleRoot
 	}
 
