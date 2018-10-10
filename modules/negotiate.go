@@ -289,6 +289,7 @@ var (
 	RPCLoopSettings       = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
 	RPCLoopRecentRevision = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'c', 'e', 'n', 't', 'R', 'e', 'v'}
 	RPCLoopDownload       = types.Specifier{'L', 'o', 'o', 'p', 'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd'}
+	RPCLoopUpload         = types.Specifier{'L', 'o', 'o', 'p', 'U', 'p', 'l', 'o', 'a', 'd'}
 )
 
 // New RPC request and response types
@@ -315,12 +316,6 @@ type (
 		MerkleProof []crypto.Hash
 	}
 
-	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
-	LoopSettingsResponse struct {
-		Settings  HostExternalSettings
-		Signature []byte
-	}
-
 	// LoopRecentRevisionRequest contains the request parameters for RPCLoopRecentRevision.
 	LoopRecentRevisionRequest struct {
 		ContractID types.FileContractID
@@ -330,6 +325,28 @@ type (
 	LoopRecentRevisionResponse struct {
 		Revision   types.FileContractRevision
 		Signatures []types.TransactionSignature
+	}
+
+	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
+	LoopSettingsResponse struct {
+		Settings  HostExternalSettings
+		Signature []byte
+	}
+
+	// LoopUploadRequest contains the request parameters for RPCLoopUpload.
+	LoopUploadRequest struct {
+		ContractID types.FileContractID
+		Data       []byte
+
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+		Signature            []byte
+	}
+
+	// LoopUploadResponse contains the response data for RPCLoopUploadResponse.
+	LoopUploadResponse struct {
+		Signature []byte
 	}
 )
 

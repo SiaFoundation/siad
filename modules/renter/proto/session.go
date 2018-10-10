@@ -15,13 +15,134 @@ import (
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
 type Session struct {
+	closeChan   chan struct{}
 	conn        net.Conn
 	contractID  types.FileContractID
 	contractSet *ContractSet
 	hdb         hostDB
+	height      types.BlockHeight
 	host        modules.HostDBEntry
-	closeChan   chan struct{}
 	once        sync.Once
+}
+
+// Upload calls the Upload RPC and transfers the supplied data, returning the
+// updated contract and the Merkle root of the sector.
+func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
+	// Acquire the contract.
+	sc, haveContract := s.contractSet.Acquire(s.contractID)
+	if !haveContract {
+		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract not present in contract set")
+	}
+	defer s.contractSet.Return(sc)
+	contract := sc.header // for convenience
+
+	// calculate price
+	// TODO: height is never updated, so we'll wind up overpaying on long-running uploads
+	blockBytes := types.NewCurrency64(modules.SectorSize * uint64(contract.LastRevision().NewWindowEnd-s.height))
+	sectorStoragePrice := s.host.StoragePrice.Mul(blockBytes)
+	sectorBandwidthPrice := s.host.UploadBandwidthPrice.Mul64(modules.SectorSize)
+	sectorCollateral := s.host.Collateral.Mul(blockBytes)
+
+	// to mitigate small errors (e.g. differing block heights), fudge the
+	// price and collateral by 0.2%.
+	sectorStoragePrice = sectorStoragePrice.MulFloat(1 + hostPriceLeeway)
+	sectorBandwidthPrice = sectorBandwidthPrice.MulFloat(1 + hostPriceLeeway)
+	sectorCollateral = sectorCollateral.MulFloat(1 - hostPriceLeeway)
+
+	// check that enough funds are available
+	sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
+	if contract.RenterFunds().Cmp(sectorPrice) < 0 {
+		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract has insufficient funds to support upload")
+	}
+	if contract.LastRevision().NewMissedProofOutputs[1].Value.Cmp(sectorCollateral) < 0 {
+		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract has insufficient collateral to support upload")
+	}
+
+	// calculate the new Merkle root
+	sectorRoot := crypto.MerkleRoot(data)
+	merkleRoot := sc.merkleRoots.checkNewRoot(sectorRoot)
+
+	// create the revision and sign it
+	rev := newUploadRevision(contract.LastRevision(), merkleRoot, sectorPrice, sectorCollateral)
+	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{rev},
+		TransactionSignatures: []types.TransactionSignature{
+			{
+				ParentID:       crypto.Hash(rev.ParentID),
+				CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+				PublicKeyIndex: 0, // renter key is always first -- see formContract
+			},
+			{
+				ParentID:       crypto.Hash(rev.ParentID),
+				PublicKeyIndex: 1,
+				CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+				Signature:      nil, // to be provided by host
+			},
+		},
+	}
+	sig := crypto.SignHash(txn.SigHash(0), contract.SecretKey)
+	txn.TransactionSignatures[0].Signature = sig[:]
+
+	// create the request
+	req := modules.LoopUploadRequest{
+		ContractID:        contract.ID(),
+		Data:              data,
+		NewRevisionNumber: rev.NewRevisionNumber,
+		Signature:         sig[:],
+	}
+	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
+	for i, o := range rev.NewValidProofOutputs {
+		req.NewValidProofValues[i] = o.Value
+	}
+	req.NewMissedProofValues = make([]types.Currency, len(rev.NewMissedProofOutputs))
+	for i, o := range rev.NewMissedProofOutputs {
+		req.NewMissedProofValues[i] = o.Value
+	}
+
+	// record the change we are about to make to the contract. If we lose power
+	// mid-revision, this allows us to restore either the pre-revision or
+	// post-revision contract.
+	walTxn, err := sc.recordUploadIntent(rev, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
+	if err != nil {
+		return modules.RenterContract{}, crypto.Hash{}, err
+	}
+
+	defer func() {
+		// Increase Successful/Failed interactions accordingly
+		if err != nil {
+			s.hdb.IncrementFailedInteractions(s.host.PublicKey)
+		} else {
+			s.hdb.IncrementSuccessfulInteractions(s.host.PublicKey)
+		}
+
+		// reset deadline
+		extendDeadline(s.conn, time.Hour)
+	}()
+
+	// send download RPC request
+	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
+	err = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopUpload, req)
+	if err != nil {
+		return modules.RenterContract{}, crypto.Hash{}, err
+	}
+
+	// read the response
+	var resp modules.LoopUploadResponse
+	err = modules.ReadRPCResponse(s.conn, &resp)
+	if err != nil {
+		return modules.RenterContract{}, crypto.Hash{}, err
+	}
+
+	// add host signature
+	txn.TransactionSignatures[1].Signature = resp.Signature
+
+	// update contract
+	err = sc.commitUpload(walTxn, txn, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
+	if err != nil {
+		return modules.RenterContract{}, crypto.Hash{}, err
+	}
+
+	return sc.Metadata(), sectorRoot, nil
 }
 
 // Download calls the download RPC and returns the requested data. The
@@ -149,7 +270,7 @@ func (s *Session) Close() error {
 }
 
 // NewSession initiates the RPC loop with a host and returns a Session.
-func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContractID, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
+func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
 	sc, ok := cs.Acquire(id)
 	if !ok {
 		return nil, errors.New("invalid contract")
@@ -199,11 +320,12 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 
 	// the host is now ready to accept revisions
 	return &Session{
+		closeChan:   closeChan,
+		conn:        conn,
 		contractID:  id,
 		contractSet: cs,
-		host:        host,
-		conn:        conn,
-		closeChan:   closeChan,
 		hdb:         hdb,
+		height:      currentHeight,
+		host:        host,
 	}, nil
 }

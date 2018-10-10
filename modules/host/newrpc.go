@@ -99,6 +99,122 @@ func (h *Host) managedRPCLoopRecentRevision(conn net.Conn) error {
 	return nil
 }
 
+// managedRPCLoopUpload reads an upload request and responds with a signature
+// for the new revision.
+func (h *Host) managedRPCLoopUpload(conn net.Conn) error {
+	conn.SetDeadline(time.Now().Add(modules.NegotiateFileContractRevisionTime))
+
+	// Read the request.
+	var req modules.LoopUploadRequest
+	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
+		// Reading may have failed due to a closed connection; regardless, it
+		// doesn't hurt to try and tell the renter about it.
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+	fcid := req.ContractID
+
+	// Perform some basic input validation.
+	if uint64(len(req.Data)) != modules.SectorSize {
+		modules.WriteRPCResponse(conn, nil, errBadSectorSize)
+		return errBadSectorSize
+	}
+
+	// Lock the storage obligation.
+	err := h.managedTryLockStorageObligation(fcid)
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("could not lock contract "+fcid.String()+": ", err)
+	}
+	defer h.managedUnlockStorageObligation(fcid)
+	var so storageObligation
+	h.mu.RLock()
+	// Read some internal fields for later.
+	blockHeight := h.blockHeight
+	secretKey := h.secretKey
+	settings := h.externalSettings()
+	// Fetch the storage obligation from the db.
+	err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = getStorageObligation(tx, fcid)
+		return err
+	})
+	h.mu.RUnlock()
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("could not lock contract "+fcid.String()+": ", err)
+	}
+	currentRevision := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
+
+	// construct the new revision
+	newRevision := currentRevision
+	newRevision.NewRevisionNumber = req.NewRevisionNumber
+	newRevision.NewFileSize += modules.SectorSize
+	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
+	for i := range newRevision.NewValidProofOutputs {
+		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewValidProofValues[i],
+			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
+		}
+	}
+	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
+	for i := range newRevision.NewMissedProofOutputs {
+		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewMissedProofValues[i],
+			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
+		}
+	}
+
+	// verify the revision and calculate the root of the sector
+	blocksRemaining := so.proofDeadline() - blockHeight
+	blockBytesCurrency := types.NewCurrency64(uint64(blocksRemaining)).Mul64(modules.SectorSize)
+	bandwidthRevenue := settings.UploadBandwidthPrice.Mul64(modules.SectorSize)
+	storageRevenue := settings.StoragePrice.Mul(blockBytesCurrency)
+	newCollateral := settings.Collateral.Mul(blockBytesCurrency)
+	newRoot := crypto.MerkleRoot(req.Data)
+	so.SectorRoots = append(so.SectorRoots, newRoot)
+	newRevision.NewFileMerkleRoot = cachedMerkleRoot(so.SectorRoots)
+	newRevenue := storageRevenue.Add(bandwidthRevenue)
+	if err := verifyRevision(so, newRevision, blockHeight, newRevenue, newCollateral); err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("unable to verify updated contract: ", err)
+	}
+
+	// Sign the new revision.
+	renterSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(newRevision.ParentID),
+		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+		PublicKeyIndex: 0,
+		Signature:      req.Signature,
+	}
+	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("failed to create revision signature: ", err)
+	}
+
+	// Update the storage obligation.
+	so.PotentialStorageRevenue = so.PotentialStorageRevenue.Add(storageRevenue)
+	so.RiskedCollateral = so.RiskedCollateral.Add(newCollateral)
+	so.PotentialUploadRevenue = so.PotentialUploadRevenue.Add(bandwidthRevenue)
+	so.RevisionTransactionSet = []types.Transaction{txn}
+	h.mu.Lock()
+	err = h.modifyStorageObligation(so, nil, []crypto.Hash{newRoot}, [][]byte{req.Data})
+	h.mu.Unlock()
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("failed to modify storage obligation: ", err)
+	}
+
+	// Send the response.
+	resp := modules.LoopUploadResponse{
+		Signature: txn.TransactionSignatures[1].Signature,
+	}
+	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
 // managedRPCLoopDownload writes an RPC response containing the requested data
 // (along with signatures and an optional Merkle proof).
 func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
