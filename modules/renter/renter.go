@@ -523,8 +523,10 @@ func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) modules.HostScoreBreakdow
 }
 
 // EstimateHostScore returns the estimated host score
-func (r *Renter) EstimateHostScore(e modules.HostDBEntry) modules.HostScoreBreakdown {
-	a := r.Settings().Allowance
+func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) modules.HostScoreBreakdown {
+	if reflect.DeepEqual(a, modules.Allowance{}) {
+		a = r.Settings().Allowance
+	}
 	if reflect.DeepEqual(a, modules.Allowance{}) {
 		a = modules.DefaultAllowance
 	}

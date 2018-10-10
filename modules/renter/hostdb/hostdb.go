@@ -44,8 +44,8 @@ type HostDB struct {
 	// The hostdb gets initialized with an allowance that can be modified. The
 	// allowance is used to build a weightFunc that the hosttree depends on to
 	// determine the weight of a host.
-	allowance           modules.Allowance
-	weightFunc          hosttree.WeightFunc
+	allowance  modules.Allowance
+	weightFunc hosttree.WeightFunc
 
 	// The hostTree is the root node of the tree that organizes hosts by
 	// weight. The tree is necessary for selecting weighted hosts at

@@ -254,7 +254,9 @@ func (api *API) hostEstimateScoreGET(w http.ResponseWriter, req *http.Request, _
 	entry := modules.HostDBEntry{}
 	entry.PublicKey = api.host.PublicKey()
 	entry.HostExternalSettings = mergedSettings
-	estimatedScoreBreakdown := api.renter.EstimateHostScore(entry)
+	// Use the default allowance for now, since we do not know what sort of
+	// allowance the renters may use to attempt to access this host.
+	estimatedScoreBreakdown := api.renter.EstimateHostScore(entry, modules.DefaultAllowance)
 	e := HostEstimateScoreGET{
 		EstimatedScore: estimatedScoreBreakdown.Score,
 		ConversionRate: estimatedScoreBreakdown.ConversionRate,

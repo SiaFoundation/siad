@@ -158,6 +158,20 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 		}
 	}
 
+	// Divide by zero mitigation.
+	if allowance.Period == 0 {
+		allowance.Period = 1
+	}
+	if expectedStorage == 0 {
+		expectedStorage = 1
+	}
+	if expectedUploadFrequency == 0 {
+		expectedUploadFrequency = 1
+	}
+	if expectedDownloadFrequency == 0 {
+		expectedDownloadFrequency = 1
+	}
+
 	// Prices tiered as follows:
 	//    - the storage price is presented as 'per block per byte'
 	//    - the contract price is presented as a flat rate
