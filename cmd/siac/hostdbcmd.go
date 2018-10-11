@@ -42,9 +42,9 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintf(w, "\t\tAge:\t %.3f\n", info.ScoreBreakdown.AgeAdjustment)
 	fmt.Fprintf(w, "\t\tBurn:\t %.3f\n", info.ScoreBreakdown.BurnAdjustment)
-	fmt.Fprintf(w, "\t\tCollateral:\t %.3f\n", info.ScoreBreakdown.CollateralAdjustment)
+	fmt.Fprintf(w, "\t\tCollateral:\t %.3f\n", info.ScoreBreakdown.CollateralAdjustment/1e36)
 	fmt.Fprintf(w, "\t\tInteraction:\t %.3f\n", info.ScoreBreakdown.InteractionAdjustment)
-	fmt.Fprintf(w, "\t\tPrice:\t %.3f\n", info.ScoreBreakdown.PriceAdjustment*1e6)
+	fmt.Fprintf(w, "\t\tPrice:\t %.3f\n", info.ScoreBreakdown.PriceAdjustment*1e9)
 	fmt.Fprintf(w, "\t\tStorage:\t %.3f\n", info.ScoreBreakdown.StorageRemainingAdjustment)
 	fmt.Fprintf(w, "\t\tUptime:\t %.3f\n", info.ScoreBreakdown.UptimeAdjustment)
 	fmt.Fprintf(w, "\t\tVersion:\t %.3f\n", info.ScoreBreakdown.VersionAdjustment)
@@ -223,7 +223,7 @@ func hostdbcmd() {
 		fmt.Println()
 		fmt.Println(len(activeHosts), "Active Hosts:")
 		w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tScore\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tScore\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
 		for i, host := range activeHosts {
 			// Compute the total measured uptime and total measured downtime for this
 			// host.
@@ -270,9 +270,9 @@ func hostdbcmd() {
 			price := host.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)
 			collateral := host.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)
 			downloadBWPrice := host.DownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)
-			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%12.6g\t%v\t%v\t%v\t%.3f\t%s\n", len(activeHosts)-i, host.PublicKeyString, host.NetAddress, score, currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
+			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%12.6g\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(activeHosts)-i, host.PublicKeyString, host.NetAddress, score, currencyUnits(host.ContractPrice), currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
 		}
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tScore\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tScore\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
 		w.Flush()
 	}
 }
@@ -289,6 +289,7 @@ func hostdbviewcmd(pubkey string) {
 
 	fmt.Println("  Public Key:", info.Entry.PublicKeyString)
 	fmt.Println("  Block First Seen:", info.Entry.FirstSeen)
+	fmt.Println("  Absolute Score:", info.ScoreBreakdown.Score)
 
 	fmt.Println("\n  Host Settings:")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
