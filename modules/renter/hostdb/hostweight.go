@@ -148,7 +148,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	expectedDownloadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedDownloadFrequency * ug.expectedDataPieces / (ug.expectedDataPieces + ug.expectedParityPieces)
 	expectedBandwidth := expectedUploadBandwidth + expectedDownloadBandwidth
 	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(5)
-	if cutoff.Cmp(hostCollateral) < 0 {
+	if hostCollateral.Cmp(cutoff) < 0 {
 		// Set the cutoff equal to the collateral so that the ratio has a
 		// minimum of 1, and also so that the smallWeight is computed based on
 		// the actual collateral instead of just the cutoff.
@@ -472,12 +472,12 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 // calculateHostWeightFn creates a hosttree.WeightFunc given an Allowance.
 func (hdb *HostDB) calculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
 	// TODO: Pass these in as input instead of fixing them.
-	ug := usageGuidelines {
-		expectedStorage: 25e9,
-		expectedUploadFrequency: 24192,
+	ug := usageGuidelines{
+		expectedStorage:           25e9,
+		expectedUploadFrequency:   24192,
 		expectedDownloadFrequency: 12096,
-		expectedDataPieces: 10,
-		expectedParityPieces: 20,
+		expectedDataPieces:        10,
+		expectedParityPieces:      20,
 	}
 
 	return func(entry modules.HostDBEntry) types.Currency {
@@ -525,12 +525,12 @@ func (hdb *HostDB) calculateConversionRate(score types.Currency) float64 {
 // score of that host in the hostdb, assuming no penalties for age or uptime.
 func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance modules.Allowance) modules.HostScoreBreakdown {
 	// TODO: Pass these in as input instead of fixing them.
-	ug := usageGuidelines {
-		expectedStorage: 25e9,
-		expectedUploadFrequency: 24192,
+	ug := usageGuidelines{
+		expectedStorage:           25e9,
+		expectedUploadFrequency:   24192,
 		expectedDownloadFrequency: 12096,
-		expectedDataPieces: 10,
-		expectedParityPieces: 20,
+		expectedDataPieces:        10,
+		expectedParityPieces:      20,
 	}
 
 	// Grab the adjustments. Age, and uptime penalties are set to '1', to
@@ -567,12 +567,12 @@ func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance module
 // elements of the host's overall score.
 func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBreakdown {
 	// TODO: Pass these in as input instead of fixing them.
-	ug := usageGuidelines {
-		expectedStorage: 25e9,
-		expectedUploadFrequency: 24192,
+	ug := usageGuidelines{
+		expectedStorage:           25e9,
+		expectedUploadFrequency:   24192,
 		expectedDownloadFrequency: 12096,
-		expectedDataPieces: 10,
-		expectedParityPieces: 20,
+		expectedDataPieces:        10,
+		expectedParityPieces:      20,
 	}
 
 	hdb.mu.Lock()
