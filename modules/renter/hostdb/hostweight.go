@@ -82,9 +82,9 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// collateral, cap the collateral that we use during adjustments based on
 	// the max collateral instead of the per-byte collateral.
 	hostCollateral := entry.Collateral
-	requiredCollateral := entry.Collateral.Mul64(uint64(allowance.Period)).Mul64(expectedStorage)
-	if requiredCollateral.Cmp(entry.MaxCollateral.Div64(2)) < 0 {
-		hostCollateral = entry.MaxCollateral.Div64(uint64(allowance.Period)).Div64(expectedStorage).Div64(2)
+	possibleCollateral := entry.MaxCollateral.Div64(uint64(allowance.Period)).Div64(expectedStorage).Div64(2)
+	if hostCollateral.Cmp(possibleCollateral) {
+		hostCollateral = possibleCollateral
 	}
 
 	// Determine the cutoff for the difference between small collateral and
