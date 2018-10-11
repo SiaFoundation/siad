@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -349,6 +350,12 @@ func (hdb *HostDB) RandomHostsTempAllowance(n int, blacklist, addressBlacklist [
 // by updating the host weight function.  It will completely rebuild the
 // hosttree so it should be used with care.
 func (hdb *HostDB) UpdateAllowance(allowance modules.Allowance) error {
+	// If the allowance is empty, set it to the default allowance. This ensures
+	// that the estimates are at least moderately grounded.
+	if reflect.DeepEqual(allowance, modules.Allowance{}) {
+		allowance = modules.DefaultAllowance
+	}
+
 	// Update the weight function.
 	hdb.mu.Lock()
 	hdb.allowance = allowance
