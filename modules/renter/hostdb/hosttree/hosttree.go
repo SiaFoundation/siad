@@ -267,13 +267,16 @@ func (ht *HostTree) UpdateWeightFunction(wf WeightFunc) error {
 	// Assign the new weight function.
 	ht.weightFn = wf
 
-	// Reinsert all the hosts.
+	// Reinsert all the hosts. To prevent the host tree from having a
+	// catastrophic failure in the event of an error early on, we tally up all
+	// of the insertion errors and return them all at the end.
+	var insertErrs error
 	for _, hdbe := range allHosts {
 		if err := ht.insert(hdbe); err != nil {
-			return err
+			insertErrs = errors.Compose(err, insertErrs)
 		}
 	}
-	return nil
+	return insertErrs
 }
 
 // Select returns the host with the provided public key, should the host exist.
