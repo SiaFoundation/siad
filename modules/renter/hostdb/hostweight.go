@@ -19,7 +19,7 @@ var (
 	// during collateral adjustment when the collateral is large. This sublinear
 	// number ensures that there is not an overpreference on collateral when
 	// collateral is large relative to the size of the allowance.
-	collateralExponentiationLarge = 0.65
+	collateralExponentiationLarge = 0.5
 
 	// collateralExponentiationSmall is the power to which we raise the weight
 	// during collateral adjustment when the collateral is small. This large
@@ -30,25 +30,24 @@ var (
 	// The number is set relative to the price exponentiation, because the goal
 	// is to ensure that the collateral has more weight than the price when the
 	// collateral is small.
-	collateralExponentiationSmall = priceExponentiation + 0.5
-
-	// Set a minimum price, below which setting lower prices will no longer put
-	// this host at an advatnage. This price is considered the bar for
-	// 'essentially free', and is kept to a minimum to prevent certain Sybil
-	// attack related attack vectors.
-	//
-	// NOTE: This needs to be intelligently adjusted down as the practical price
-	// of storage changes, and as the price of the siacoin changes.
-	minTotalPrice = types.SiacoinPrecision.Mul64(1).Div64(tbMonth)
+	collateralExponentiationSmall = priceExponentiationLarge + 1
 
 	// priceDiveNormalization reduces the raw value of the price so that not so
 	// many digits are needed when operating on the weight. This also allows the
 	// base weight to be a lot lower.
 	priceDivNormalization = types.SiacoinPrecision.Div64(100e3).Div64(tbMonth)
 
-	// priceExponentiation is the number of times that the weight is divided by
-	// the price.
-	priceExponentiation = 5.0
+	// priceExponentiationLarge is the number of times that the weight is
+	// divided by the price when the price is large relative to the allowance.
+	// The exponentiation is a lot higher because we care greatly about high
+	// priced hosts.
+	priceExponentiationLarge = 5.0
+
+	// priceExponentiationSmall is the number of times that the weight is
+	// divided by the price when the price is small relative to the allowance.
+	// The exponentiation is lower because we do not care about saving
+	// substantial amounts of money when the price is low.
+	priceExponentiationSmall = 1.5
 
 	// requiredStorage indicates the amount of storage that the host must be
 	// offering in order to be considered a valuable/worthwhile host.
@@ -169,8 +168,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// the two to determine the bonus gained from having a high collateral.
 	smallWeight := math.Pow(float64(cutoff64), collateralExponentiationSmall)
 	largeWeight := math.Pow(ratio, collateralExponentiationLarge)
-	weight := smallWeight * largeWeight
-	return weight
+	return smallWeight * largeWeight
 }
 
 // expectedStorage is the amount of data that we expect to have in a
@@ -213,18 +211,10 @@ func (hdb *HostDB) interactionAdjustments(entry modules.HostDBEntry) float64 {
 // priceAdjustments will adjust the weight of the entry according to the prices
 // that it has set.
 func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules.Allowance, ug usageGuidelines) float64 {
-	// Sanity checks - the constants values need to have certain relationships
-	// to eachother
-	if build.DEBUG {
-		// If the minTotalPrice is not much larger than the divNormalization,
-		// there will be problems with granularity after the divNormalization is
-		// applied.
-		if minTotalPrice.Div64(1e3).Cmp(priceDivNormalization) < 0 {
-			build.Critical("Maladjusted minDivePrice and divNormalization constants in hostdb package")
-		}
-	}
-
 	// Divide by zero mitigation.
+	if allowance.Hosts == 0 {
+		allowance.Hosts = 1
+	}
 	if allowance.Period == 0 {
 		allowance.Period = 1
 	}
@@ -254,28 +244,31 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// (like bandwidth and fees) and convert them into terms that are relative
 	// to the storage price.
 	adjustedContractPrice := entry.ContractPrice.Div64(uint64(allowance.Period)).Div64(ug.expectedStorage)
-	// TODO: adjustedTxnFees := // Need to pass fees into hostdb, not look at tpool, because the value is not allowed to change without updating the whole tree.
 	adjustedUploadPrice := entry.UploadBandwidthPrice.Div64(ug.expectedUploadFrequency)
 	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Div64(ug.expectedDownloadFrequency).Mul64(ug.expectedDataPieces).Div64(ug.expectedDataPieces + ug.expectedParityPieces)
 	siafundFee := adjustedContractPrice.Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(entry.Collateral).MulTax()
 	totalPrice := entry.StoragePrice.Add(adjustedContractPrice).Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(siafundFee)
 
-	// Set a minimum on the price, then normalize to a sane precision.
-	if totalPrice.Cmp(minTotalPrice) < 0 {
-		totalPrice = minTotalPrice
+	// Determine a cutoff for whether the total price is considered a high price
+	// or a low price. This cutoff attempts to determine where the price becomes
+	// insignificant.
+	expectedUploadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedUploadFrequency
+	expectedDownloadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedDownloadFrequency * ug.expectedDataPieces / (ug.expectedDataPieces + ug.expectedParityPieces)
+	expectedBandwidth := expectedUploadBandwidth + expectedDownloadBandwidth
+	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(5)
+	if totalPrice.Cmp(cutoff) < 0 {
+		cutoff = totalPrice
 	}
-	baseU64, err := minTotalPrice.Div(priceDivNormalization).Uint64()
-	if err != nil {
-		baseU64 = math.MaxUint64
+	price64, _ := totalPrice.Div(priceDivNormalization).Uint64()
+	cutoff64, _ := cutoff.Div(priceDivNormalization).Uint64()
+	if cutoff64 == 0 {
+		cutoff64 = 1
 	}
-	actualU64, err := totalPrice.Div(priceDivNormalization).Uint64()
-	if err != nil {
-		actualU64 = math.MaxUint64
-	}
-	base := float64(baseU64)
-	actual := float64(actualU64)
+	ratio := float64(price64) / float64(cutoff64)
 
-	return math.Pow(base/actual, priceExponentiation)
+	smallWeight := math.Pow(float64(cutoff64), priceExponentiationSmall)
+	largeWeight := math.Pow(ratio, priceExponentiationLarge)
+	return 1 / (smallWeight * largeWeight)
 }
 
 // storageRemainingAdjustments adjusts the weight of the entry according to how
