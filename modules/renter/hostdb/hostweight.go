@@ -63,9 +63,36 @@ var (
 	tbMonth = uint64(4032) * uint64(1e12)
 )
 
+// TODO: These values should be rolled into the allowance, instead of being a
+// separate struct that we pass in.
+//
+// expectedStorage is the amount of data that we expect to have in a contract.
+//
+// expectedUploadFrequency is the expected number of blocks between each
+// complete re-upload of the filesystem. This will be a combination of the rate
+// at which a user uploads files, the rate at which a user replaces files, and
+// the rate at which a user has to repair files due to host churn. If the
+// expected storage is 25 GB and the expected upload frequency is 24 weeks, it
+// means the user is expected to do about 1 GB of upload per week on average
+// throughout the life of the contract.
+//
+// expectedDownloadFrequency is the expected number of blocks between each
+// complete download of the filesystem. This should include the user
+// downloading, streaming, and repairing files.
+//
+// expectedDataPieces and expectedParityPieces are used to give information
+// about the redundancy of the files being uploaded.
+type usageGuidelines struct {
+	expectedStorage           uint64
+	expectedUploadFrequency   uint64
+	expectedDownloadFrequency uint64
+	expectedDataPieces        uint64
+	expectedParityPieces      uint64
+}
+
 // collateralAdjustments improves the host's weight according to the amount of
 // collateral that they have provided.
-func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance modules.Allowance, expectedStorage uint64) float64 {
+func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance modules.Allowance, ug usageGuidelines) float64 {
 	// Ensure that all values will avoid divide by zero errors.
 	if allowance.Hosts == 0 {
 		allowance.Hosts = 1
@@ -73,8 +100,20 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	if allowance.Period == 0 {
 		allowance.Period = 1
 	}
-	if expectedStorage == 0 {
-		expectedStorage = 1
+	if ug.expectedStorage == 0 {
+		ug.expectedStorage = 1
+	}
+	if ug.expectedUploadFrequency == 0 {
+		ug.expectedUploadFrequency = 1
+	}
+	if ug.expectedDownloadFrequency == 0 {
+		ug.expectedDownloadFrequency = 1
+	}
+	if ug.expectedDataPieces == 0 {
+		ug.expectedDataPieces = 1
+	}
+	if ug.expectedParityPieces == 0 {
+		ug.expectedParityPieces = 1
 	}
 
 	// Ensure that the allowance and expected storage will not brush up against
@@ -82,8 +121,8 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// collateral, cap the collateral that we use during adjustments based on
 	// the max collateral instead of the per-byte collateral.
 	hostCollateral := entry.Collateral
-	possibleCollateral := entry.MaxCollateral.Div64(uint64(allowance.Period)).Div64(expectedStorage).Div64(2)
-	if hostCollateral.Cmp(possibleCollateral) {
+	possibleCollateral := entry.MaxCollateral.Div64(uint64(allowance.Period)).Div64(ug.expectedStorage).Div64(2)
+	if hostCollateral.Cmp(possibleCollateral) < 0 {
 		hostCollateral = possibleCollateral
 	}
 
@@ -96,7 +135,19 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// money becomes insignificant. A collateral that is 10x higher than the
 	// price is not interesting, compelling, nor a sign of reliability if the
 	// price and collateral are both effectively zero.
-	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(expectedStorage).Div64(3)
+	//
+	// The strategy is to take our total allowance and divide it by the number
+	// of hosts, to get an expected allowance per host. We then adjust based on
+	// the period, and then adjust by adding in the expected storage, upload and
+	// download. We add the three together so that storage heavy allowances will
+	// have higher expectations for collateral than bandwidth heavy allowances.
+	// Finally, we divide the whole thing by 5 to give some wiggle room to
+	// hosts. The large multiplier provided for low collaterals is only intended
+	// to discredit hosts that have a meaningless amount of collateral.
+	expectedUploadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedUploadFrequency
+	expectedDownloadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedDownloadFrequency * ug.expectedDataPieces / (ug.expectedDataPieces + ug.expectedParityPieces)
+	expectedBandwidth := expectedUploadBandwidth + expectedDownloadBandwidth
+	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(5)
 	if cutoff.Cmp(hostCollateral) < 0 {
 		// Set the cutoff equal to the collateral so that the ratio has a
 		// minimum of 1, and also so that the smallWeight is computed based on
@@ -122,6 +173,21 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	return weight
 }
 
+// expectedStorage is the amount of data that we expect to have in a
+// contract.
+//
+// expectedUploadFrequency is the expected number of blocks between each
+// complete re-upload of the filesystem. This will be a combination of the
+// rate at which a user uploads files, the rate at which a user replaces
+// files, and the rate at which a user has to repair files due to host
+// churn. If the expected storage is 25 GB and the expected upload frequency
+// is 24 weeks, it means the user is expected to do about 1 GB of upload per
+// week on average throughout the life of the contract.
+//
+// expectedDownloadFrequency is the expected number of blocks between each
+// complete download of the filesystem. This should include the user
+// downloading, streaming, and repairing files.
+
 // interactionAdjustments determine the penalty to be applied to a host for the
 // historic and currnet interactions with that host. This function focuses on
 // historic interactions and ignores recent interactions.
@@ -146,7 +212,7 @@ func (hdb *HostDB) interactionAdjustments(entry modules.HostDBEntry) float64 {
 
 // priceAdjustments will adjust the weight of the entry according to the prices
 // that it has set.
-func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules.Allowance, expectedStorage, expectedUploadFrequency, expectedDownloadFrequency uint64) float64 {
+func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules.Allowance, ug usageGuidelines) float64 {
 	// Sanity checks - the constants values need to have certain relationships
 	// to eachother
 	if build.DEBUG {
@@ -162,14 +228,20 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	if allowance.Period == 0 {
 		allowance.Period = 1
 	}
-	if expectedStorage == 0 {
-		expectedStorage = 1
+	if ug.expectedStorage == 0 {
+		ug.expectedStorage = 1
 	}
-	if expectedUploadFrequency == 0 {
-		expectedUploadFrequency = 1
+	if ug.expectedUploadFrequency == 0 {
+		ug.expectedUploadFrequency = 1
 	}
-	if expectedDownloadFrequency == 0 {
-		expectedDownloadFrequency = 1
+	if ug.expectedDownloadFrequency == 0 {
+		ug.expectedDownloadFrequency = 1
+	}
+	if ug.expectedDataPieces == 0 {
+		ug.expectedDataPieces = 1
+	}
+	if ug.expectedParityPieces == 0 {
+		ug.expectedParityPieces = 1
 	}
 
 	// Prices tiered as follows:
@@ -178,17 +250,13 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	//    - the upload bandwidth price is per byte
 	//    - the download bandwidth price is per byte
 	//
-	// The hostdb will naively assume the following for now:
-	//    - each contract covers 6 weeks of storage (default is 12 weeks, but
-	//      renewals occur at midpoint) - 6048 blocks - and 25GB of storage.
-	//    - uploads happen once per 12 weeks (average lifetime of a file is 12 weeks)
-	//    - downloads happen once per 12 weeks (files are on average downloaded once throughout lifetime)
-	//
-	// In the future, the renter should be able to track average user behavior
-	// and adjust accordingly. This flexibility will be added later.
-	adjustedContractPrice := entry.ContractPrice.Div64(uint64(allowance.Period)).Div64(expectedStorage) // Adjust contract price to match 'expectedStorage' for 6 weeks.
-	adjustedUploadPrice := entry.UploadBandwidthPrice.Div64(expectedUploadFrequency)                    // Adjust upload price to match a single upload over 24 weeks.
-	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Div64(expectedDownloadFrequency).Div64(3)     // Adjust download price to match one download over 12 weeks, 1 redundancy.
+	// The adjusted prices take the pricing for other parts of the contract
+	// (like bandwidth and fees) and convert them into terms that are relative
+	// to the storage price.
+	adjustedContractPrice := entry.ContractPrice.Div64(uint64(allowance.Period)).Div64(ug.expectedStorage)
+	// TODO: adjustedTxnFees := // Need to pass fees into hostdb, not look at tpool, because the value is not allowed to change without updating the whole tree.
+	adjustedUploadPrice := entry.UploadBandwidthPrice.Div64(ug.expectedUploadFrequency)
+	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Div64(ug.expectedDownloadFrequency).Mul64(ug.expectedDataPieces).Div64(ug.expectedDataPieces + ug.expectedParityPieces)
 	siafundFee := adjustedContractPrice.Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(entry.Collateral).MulTax()
 	totalPrice := entry.StoragePrice.Add(adjustedContractPrice).Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(siafundFee)
 
@@ -404,30 +472,19 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 // calculateHostWeightFn creates a hosttree.WeightFunc given an Allowance.
 func (hdb *HostDB) calculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
 	// TODO: Pass these in as input instead of fixing them.
-	//
-	// expectedStorage is the amount of data that we expect to have in a
-	// contract.
-	//
-	// expectedUploadFrequency is the expected number of blocks between each
-	// complete re-upload of the filesystem. This will be a combination of the
-	// rate at which a user uploads files, the rate at which a user replaces
-	// files, and the rate at which a user has to repair files due to host
-	// churn. If the expected storage is 25 GB and the expected upload frequency
-	// is 24 weeks, it means the user is expected to do about 1 GB of upload per
-	// week on average throughout the life of the contract.
-	//
-	// expectedDownloadFrequency is the expected number of blocks between each
-	// complete download of the filesystem. This should include the user
-	// downloading, streaming, and repairing files.
-	expectedStorage := uint64(25e9)            // 25 GB - This contract is expected to store 25 GB.
-	expectedUploadFrequency := uint64(24192)   // 24 weeks.
-	expectedDownloadFrequency := uint64(12096) // 12 weeks.
+	ug := usageGuidelines {
+		expectedStorage: 25e9,
+		expectedUploadFrequency: 24192,
+		expectedDownloadFrequency: 12096,
+		expectedDataPieces: 10,
+		expectedParityPieces: 20,
+	}
 
 	return func(entry modules.HostDBEntry) types.Currency {
-		collateralReward := hdb.collateralAdjustments(entry, allowance, expectedStorage)
+		collateralReward := hdb.collateralAdjustments(entry, allowance, ug)
 		interactionPenalty := hdb.interactionAdjustments(entry)
 		lifetimePenalty := hdb.lifetimeAdjustments(entry)
-		pricePenalty := hdb.priceAdjustments(entry, allowance, expectedStorage, expectedUploadFrequency, expectedDownloadFrequency)
+		pricePenalty := hdb.priceAdjustments(entry, allowance, ug)
 		storageRemainingPenalty := storageRemainingAdjustments(entry)
 		uptimePenalty := hdb.uptimeAdjustments(entry)
 		versionPenalty := versionAdjustments(entry)
@@ -468,29 +525,18 @@ func (hdb *HostDB) calculateConversionRate(score types.Currency) float64 {
 // score of that host in the hostdb, assuming no penalties for age or uptime.
 func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance modules.Allowance) modules.HostScoreBreakdown {
 	// TODO: Pass these in as input instead of fixing them.
-	//
-	// expectedStorage is the amount of data that we expect to have in a
-	// contract.
-	//
-	// expectedUploadFrequency is the expected number of blocks between each
-	// complete re-upload of the filesystem. This will be a combination of the
-	// rate at which a user uploads files, the rate at which a user replaces
-	// files, and the rate at which a user has to repair files due to host
-	// churn. If the expected storage is 25 GB and the expected upload frequency
-	// is 24 weeks, it means the user is expected to do about 1 GB of upload per
-	// week on average throughout the life of the contract.
-	//
-	// expectedDownloadFrequency is the expected number of blocks between each
-	// complete download of the filesystem. This should include the user
-	// downloading, streaming, and repairing files.
-	expectedStorage := uint64(25e9)            // 25 GB - This contract is expected to store 25 GB.
-	expectedUploadFrequency := uint64(24192)   // 24 weeks.
-	expectedDownloadFrequency := uint64(12096) // 12 weeks.
+	ug := usageGuidelines {
+		expectedStorage: 25e9,
+		expectedUploadFrequency: 24192,
+		expectedDownloadFrequency: 12096,
+		expectedDataPieces: 10,
+		expectedParityPieces: 20,
+	}
 
 	// Grab the adjustments. Age, and uptime penalties are set to '1', to
 	// assume best behavior from the host.
-	collateralReward := hdb.collateralAdjustments(entry, allowance, expectedStorage)
-	pricePenalty := hdb.priceAdjustments(entry, allowance, expectedStorage, expectedUploadFrequency, expectedDownloadFrequency)
+	collateralReward := hdb.collateralAdjustments(entry, allowance, ug)
+	pricePenalty := hdb.priceAdjustments(entry, allowance, ug)
 	storageRemainingPenalty := storageRemainingAdjustments(entry)
 	versionPenalty := versionAdjustments(entry)
 
@@ -521,24 +567,13 @@ func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance module
 // elements of the host's overall score.
 func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBreakdown {
 	// TODO: Pass these in as input instead of fixing them.
-	//
-	// expectedStorage is the amount of data that we expect to have in a
-	// contract.
-	//
-	// expectedUploadFrequency is the expected number of blocks between each
-	// complete re-upload of the filesystem. This will be a combination of the
-	// rate at which a user uploads files, the rate at which a user replaces
-	// files, and the rate at which a user has to repair files due to host
-	// churn. If the expected storage is 25 GB and the expected upload frequency
-	// is 24 weeks, it means the user is expected to do about 1 GB of upload per
-	// week on average throughout the life of the contract.
-	//
-	// expectedDownloadFrequency is the expected number of blocks between each
-	// complete download of the filesystem. This should include the user
-	// downloading, streaming, and repairing files.
-	expectedStorage := uint64(25e9)            // 25 GB - This contract is expected to store 25 GB.
-	expectedUploadFrequency := uint64(24192)   // 24 weeks.
-	expectedDownloadFrequency := uint64(12096) // 12 weeks.
+	ug := usageGuidelines {
+		expectedStorage: 25e9,
+		expectedUploadFrequency: 24192,
+		expectedDownloadFrequency: 12096,
+		expectedDataPieces: 10,
+		expectedParityPieces: 20,
+	}
 
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
@@ -550,9 +585,9 @@ func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBr
 
 		AgeAdjustment:              hdb.lifetimeAdjustments(entry),
 		BurnAdjustment:             1,
-		CollateralAdjustment:       hdb.collateralAdjustments(entry, hdb.allowance, expectedStorage),
+		CollateralAdjustment:       hdb.collateralAdjustments(entry, hdb.allowance, ug),
 		InteractionAdjustment:      hdb.interactionAdjustments(entry),
-		PriceAdjustment:            hdb.priceAdjustments(entry, hdb.allowance, expectedStorage, expectedUploadFrequency, expectedDownloadFrequency),
+		PriceAdjustment:            hdb.priceAdjustments(entry, hdb.allowance, ug),
 		StorageRemainingAdjustment: storageRemainingAdjustments(entry),
 		UptimeAdjustment:           hdb.uptimeAdjustments(entry),
 		VersionAdjustment:          versionAdjustments(entry),
