@@ -252,10 +252,15 @@ func TestWatchOnly(t *testing.T) {
 	unspentResp, err := testNode.WalletUnspentGet()
 	if err != nil {
 		t.Fatal("failed to get spendable outputs:", err)
+	} else if len(unspentResp.Outputs) == 0 {
+		t.Fatal("expected at least one unspent output")
 	}
 	for _, o := range unspentResp.Outputs {
 		if o.UnlockHash == addr {
 			t.Fatal("shouldn't see addr in UnspentOutputs yet")
+		}
+		if o.IsWatchOnly {
+			t.Error("no outputs should be marked watch-only yet")
 		}
 	}
 
@@ -279,6 +284,9 @@ func TestWatchOnly(t *testing.T) {
 	}
 	if output.ID == (types.OutputID{}) {
 		t.Fatal("addr not present in UnspentOutputs after WatchAddresses")
+	}
+	if !output.IsWatchOnly {
+		t.Error("output should be marked watch-only")
 	}
 
 	// create a transaction that sends an output to the void
