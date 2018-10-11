@@ -9,13 +9,24 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-func calculateWeightFromUInt64Price(price uint64) (weight types.Currency) {
+var (
+	DefaultTestAllowance = modules.Allowance{
+		Funds:       types.SiacoinPrecision.Mul64(500),
+		Hosts:       uint64(50),
+		Period:      types.BlockHeight(12096),
+		RenewWindow: types.BlockHeight(4032),
+	}
+)
+
+func calculateWeightFromUInt64Price(price, collateral uint64) (weight types.Currency) {
 	hdb := bareHostDB()
+	hdb.UpdateAllowance(DefaultTestAllowance)
 	hdb.blockHeight = 0
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
-	entry.StoragePrice = types.NewCurrency64(price).Mul(types.SiacoinPrecision).Div64(4032).Div64(1e9)
+	entry.StoragePrice = types.NewCurrency64(price).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
+	entry.Collateral = types.NewCurrency64(collateral).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 	return hdb.weightFunc(entry)
 }
 
@@ -23,9 +34,52 @@ func TestHostWeightDistinctPrices(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	weight1 := calculateWeightFromUInt64Price(300)
-	weight2 := calculateWeightFromUInt64Price(301)
+	weight1 := calculateWeightFromUInt64Price(300, 100)
+	weight2 := calculateWeightFromUInt64Price(301, 100)
 	if weight1.Cmp(weight2) <= 0 {
+		t.Log(weight1)
+		t.Log(weight2)
+		t.Error("Weight of expensive host is not the correct value.")
+	}
+}
+
+func TestHostWeightDistinctCollateral(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	weight1 := calculateWeightFromUInt64Price(300, 100)
+	weight2 := calculateWeightFromUInt64Price(300, 99)
+	if weight1.Cmp(weight2) <= 0 {
+		t.Log(weight1)
+		t.Log(weight2)
+		t.Error("Weight of expensive host is not the correct value.")
+	}
+}
+
+// When the collateral is below the cutoff, the collateral should be more
+// important than the price.
+func TestHostWeightCollateralBelowCutoff(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	weight1 := calculateWeightFromUInt64Price(300, 10)
+	weight2 := calculateWeightFromUInt64Price(150, 5)
+	if weight1.Cmp(weight2) <= 0 {
+		t.Log(weight1)
+		t.Log(weight2)
+		t.Error("Weight of expensive host is not the correct value.")
+	}
+}
+
+// When the collateral is below the cutoff, the price should be more important
+// than the collateral.
+func TestHostWeightCollateralAboveCutoff(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	weight1 := calculateWeightFromUInt64Price(300, 1000)
+	weight2 := calculateWeightFromUInt64Price(150, 500)
+	if weight1.Cmp(weight2) >= 0 {
 		t.Log(weight1)
 		t.Log(weight2)
 		t.Error("Weight of expensive host is not the correct value.")
@@ -36,8 +90,8 @@ func TestHostWeightIdenticalPrices(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	weight1 := calculateWeightFromUInt64Price(42)
-	weight2 := calculateWeightFromUInt64Price(42)
+	weight1 := calculateWeightFromUInt64Price(42, 100)
+	weight2 := calculateWeightFromUInt64Price(42, 100)
 	if weight1.Cmp(weight2) != 0 {
 		t.Error("Weight of identically priced hosts should be equal.")
 	}
@@ -47,8 +101,8 @@ func TestHostWeightWithOnePricedZero(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	weight1 := calculateWeightFromUInt64Price(5)
-	weight2 := calculateWeightFromUInt64Price(0)
+	weight1 := calculateWeightFromUInt64Price(5, 100)
+	weight2 := calculateWeightFromUInt64Price(0, 100)
 	if weight1.Cmp(weight2) >= 0 {
 		t.Error("Zero-priced host should have higher weight than nonzero-priced host.")
 	}
@@ -58,10 +112,23 @@ func TestHostWeightWithBothPricesZero(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	weight1 := calculateWeightFromUInt64Price(0)
-	weight2 := calculateWeightFromUInt64Price(0)
+	weight1 := calculateWeightFromUInt64Price(0, 100)
+	weight2 := calculateWeightFromUInt64Price(0, 100)
 	if weight1.Cmp(weight2) != 0 {
 		t.Error("Weight of two zero-priced hosts should be equal.")
+	}
+}
+
+func TestHostWeightWithNoCollateral(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	weight1 := calculateWeightFromUInt64Price(300, 1)
+	weight2 := calculateWeightFromUInt64Price(300, 0)
+	if weight1.Cmp(weight2) <= 0 {
+		t.Log(weight1)
+		t.Log(weight2)
+		t.Error("Weight of lower priced host should be higher")
 	}
 }
 
