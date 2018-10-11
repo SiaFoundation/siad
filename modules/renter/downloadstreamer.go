@@ -65,11 +65,9 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 	}
 
 	// Calculate how much we can download. We never download more than a single chunk.
-	chunkSize := s.file.staticChunkSize()
 	remainingData := uint64(fileSize - s.offset)
 	requestedData := uint64(len(p))
-	remainingChunk := chunkSize - uint64(s.offset)%chunkSize
-	length := min(remainingData, requestedData, remainingChunk)
+	length := min(remainingData, requestedData)
 
 	// Download data
 	buffer := bytes.NewBuffer([]byte{})

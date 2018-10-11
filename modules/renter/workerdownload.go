@@ -34,6 +34,17 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 		return
 	}
 	defer d.Close()
+
+	// If we the download of the chunk is marked as done or if we are shutting
+	// down, we close the downloader early to interrupt the download.
+	go func() {
+		select {
+		case <-w.renter.tg.StopChan():
+		case <-udc.download.completeChan:
+		}
+		d.Close()
+	}()
+
 	pieceData, err := d.Sector(udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].root)
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
