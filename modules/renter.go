@@ -35,7 +35,42 @@ var (
 		Dev:      int(12),
 		Testing:  int(4),
 	}).(int)
+
+	// DefaultUsageGuideLines is a sane set of guidelines.
+	DefaultUsageGuideLines = UsageGuidelines{
+		ExpectedStorage:           25e9,
+		ExpectedUploadFrequency:   24192,
+		ExpectedDownloadFrequency: 12096,
+		ExpectedRedundancy:        3.0,
+	}
 )
+
+// UsageGuidelines is a temporary helper struct.
+// TODO: These values should be rolled into the allowance, instead of being a
+// separate struct that we pass in.
+//
+// expectedStorage is the amount of data that we expect to have in a contract.
+//
+// expectedUploadFrequency is the expected number of blocks between each
+// complete re-upload of the filesystem. This will be a combination of the rate
+// at which a user uploads files, the rate at which a user replaces files, and
+// the rate at which a user has to repair files due to host churn. If the
+// expected storage is 25 GB and the expected upload frequency is 24 weeks, it
+// means the user is expected to do about 1 GB of upload per week on average
+// throughout the life of the contract.
+//
+// expectedDownloadFrequency is the expected number of blocks between each
+// complete download of the filesystem. This should include the user
+// downloading, streaming, and repairing files.
+//
+// expectedDataPieces and expectedParityPieces are used to give information
+// about the redundancy of the files being uploaded.
+type UsageGuidelines struct {
+	ExpectedStorage           uint64
+	ExpectedUploadFrequency   uint64
+	ExpectedDownloadFrequency uint64
+	ExpectedRedundancy        float64
+}
 
 // IsHostsFault indicates if a returned error is the host's fault.
 func IsHostsFault(err error) bool {

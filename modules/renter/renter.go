@@ -353,20 +353,15 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 
 	// Determine host collateral to be added to siafund fee
 	var hostCollateral types.Currency
-	renterPayout := allowance.Funds.Sub(totalContractCost).Div64(uint64(len(hosts))) // renterPayout exclused contract costs
+	contractCostPerHost := totalContractCost.Div64(allowance.Hosts)
+	fundingPerHost := allowance.Funds.Div64(allowance.Hosts)
 	for _, host := range hosts {
-		// Divide by zero check.
-		if host.StoragePrice.IsZero() {
-			host.StoragePrice = types.NewCurrency64(1)
-		}
-
-		// Calculate the collateral for the host based on renter payout.
-		maxStorageSize := renterPayout.Div(host.StoragePrice)
-		collateral := maxStorageSize.Mul(host.Collateral)
-		if collateral.Cmp(host.MaxCollateral) > 0 {
-			collateral = host.MaxCollateral
-		}
-		hostCollateral = hostCollateral.Add(collateral)
+		// Assume that the ContractPrice equals contractCostPerHost and that
+		// the txnFee was zero. It doesn't matter since RenterPayoutsPreTax
+		// simply subtracts both values from the funding.
+		host.ContractPrice = contractCostPerHost
+		maxRenterCollateral := modules.MaxRenterCollateral(host, modules.DefaultUsageGuideLines.ExpectedStorage, allowance.Period)
+		_, _, hostCollateral = modules.RenterPayoutsPreTax(host, fundingPerHost, types.ZeroCurrency, types.ZeroCurrency, maxRenterCollateral)
 	}
 
 	// Calculate average collateral and determine collateral for allowance

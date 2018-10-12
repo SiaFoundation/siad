@@ -40,21 +40,10 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	if funding.Cmp(host.ContractPrice.Add(txnFee).Add(basePrice)) <= 0 {
 		return modules.RenterContract{}, errors.New("insufficient funds to cover contract fee and transaction fee during contract renewal")
 	}
-	// Divide by zero check.
-	if host.StoragePrice.IsZero() {
-		host.StoragePrice = types.NewCurrency64(1)
-	}
 
 	// Calculate the payouts for the renter, host, and whole contract.
-	renterPayout := funding.Sub(host.ContractPrice).Sub(txnFee).Sub(basePrice) // renter payout is pre-tax
-	maxStorageSize := renterPayout.Div(host.StoragePrice)
-	hostCollateral := maxStorageSize.Mul(host.Collateral)
-	if hostCollateral.Cmp(host.MaxCollateral) > 0 {
-		hostCollateral = host.MaxCollateral
-	}
-
-	// Determine the host payout and the total payout for the contract.
-	hostPayout := hostCollateral.Add(host.ContractPrice).Add(basePrice)
+	maxRenterCollateral := modules.MaxRenterCollateral(host, modules.DefaultUsageGuideLines.ExpectedStorage, endHeight-startHeight)
+	renterPayout, hostPayout, hostCollateral := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, maxRenterCollateral)
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// check for negative currency
