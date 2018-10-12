@@ -264,41 +264,35 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 // much storage it has remaining.
 func storageRemainingAdjustments(entry modules.HostDBEntry) float64 {
 	base := float64(1)
-	if entry.RemainingStorage < 200*requiredStorage {
+	if entry.RemainingStorage < 100*requiredStorage {
 		base = base / 2 // 2x total penalty
 	}
-	if entry.RemainingStorage < 150*requiredStorage {
+	if entry.RemainingStorage < 80*requiredStorage {
 		base = base / 2 // 4x total penalty
 	}
-	if entry.RemainingStorage < 100*requiredStorage {
+	if entry.RemainingStorage < 40*requiredStorage {
 		base = base / 2 // 8x total penalty
 	}
-	if entry.RemainingStorage < 80*requiredStorage {
+	if entry.RemainingStorage < 20*requiredStorage {
 		base = base / 2 // 16x total penalty
 	}
-	if entry.RemainingStorage < 40*requiredStorage {
+	if entry.RemainingStorage < 15*requiredStorage {
 		base = base / 2 // 32x total penalty
 	}
-	if entry.RemainingStorage < 20*requiredStorage {
+	if entry.RemainingStorage < 10*requiredStorage {
 		base = base / 2 // 64x total penalty
 	}
-	if entry.RemainingStorage < 15*requiredStorage {
+	if entry.RemainingStorage < 5*requiredStorage {
 		base = base / 2 // 128x total penalty
 	}
-	if entry.RemainingStorage < 10*requiredStorage {
+	if entry.RemainingStorage < 3*requiredStorage {
 		base = base / 2 // 256x total penalty
 	}
-	if entry.RemainingStorage < 5*requiredStorage {
+	if entry.RemainingStorage < 2*requiredStorage {
 		base = base / 2 // 512x total penalty
 	}
-	if entry.RemainingStorage < 3*requiredStorage {
-		base = base / 2 // 1024x total penalty
-	}
-	if entry.RemainingStorage < 2*requiredStorage {
-		base = base / 2 // 2048x total penalty
-	}
 	if entry.RemainingStorage < requiredStorage {
-		base = base / 2 // 4096x total penalty
+		base = base / 2 // 1024x total penalty
 	}
 	return base
 }
