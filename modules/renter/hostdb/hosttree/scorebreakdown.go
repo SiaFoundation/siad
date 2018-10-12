@@ -3,18 +3,20 @@ package hosttree
 import (
 	"math/big"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// scoreBreakdown is an interface that allows us to mock the hostAdjustments
+// ScoreBreakdown is an interface that allows us to mock the hostAdjustments
 // during testing.
-type scoreBreakdown interface {
+type ScoreBreakdown interface {
+	HostScoreBreakdown(totalScore types.Currency, ignoreAge, ignoreUptime bool) modules.HostScoreBreakdown
 	Score() types.Currency
 }
 
-// hostAdjustments contains all the adjustments relevant to a host's score and
+// HostAdjustments contains all the adjustments relevant to a host's score and
 // implements the scoreBreakdown interface.
-type hostAdjustments struct {
+type HostAdjustments struct {
 	AgeAdjustment              float64
 	BurnAdjustment             float64
 	CollateralAdjustment       float64
@@ -31,11 +33,51 @@ var (
 	baseWeight = types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(80), nil))
 )
 
+// conversionRate computes the likelyhood of a host with 'score' to be drawn
+// from the hosttree assuming that all hosts have 'totalScore'.
+func conversionRate(score, totalScore types.Currency) float64 {
+	if totalScore.IsZero() {
+		totalScore = types.NewCurrency64(1)
+	}
+	conversionRate, _ := big.NewRat(0, 1).SetFrac(score.Mul64(50).Big(), totalScore.Big()).Float64()
+	if conversionRate > 100 {
+		conversionRate = 100
+	}
+	return conversionRate
+}
+
+// HostScoreBreakdown converts a HostAdjustments object into a
+// modules.HostScoreBreakdown.
+func (h HostAdjustments) HostScoreBreakdown(totalScore types.Currency, ignoreAge, ignoreUptime bool) modules.HostScoreBreakdown {
+	// Set the ignored fields to 1.
+	if ignoreAge {
+		h.AgeAdjustment = 1.0
+	}
+	if ignoreUptime {
+		h.UptimeAdjustment = 1.0
+	}
+	// Create the breakdown.
+	score := h.Score()
+	return modules.HostScoreBreakdown{
+		Score:          score,
+		ConversionRate: conversionRate(score, totalScore),
+
+		AgeAdjustment:              h.AgeAdjustment,
+		BurnAdjustment:             h.BurnAdjustment,
+		CollateralAdjustment:       h.CollateralAdjustment,
+		InteractionAdjustment:      h.InteractionAdjustment,
+		PriceAdjustment:            h.PriceAdjustment,
+		StorageRemainingAdjustment: h.StorageRemainingAdjustment,
+		UptimeAdjustment:           h.UptimeAdjustment,
+		VersionAdjustment:          h.VersionAdjustment,
+	}
+}
+
 // Score combines the individual adjustments of the breakdown into a single
 // score.
-func (h hostAdjustments) Score() types.Currency {
+func (h HostAdjustments) Score() types.Currency {
 	// Combine the adjustments.
-	fullPenalty := h.CollateralAdjustment * h.InteractionAdjustment * h.AgeAdjustment *
+	fullPenalty := h.BurnAdjustment * h.CollateralAdjustment * h.InteractionAdjustment * h.AgeAdjustment *
 		h.PriceAdjustment * h.StorageRemainingAdjustment * h.UptimeAdjustment * h.VersionAdjustment
 
 	// Return a types.Currency.

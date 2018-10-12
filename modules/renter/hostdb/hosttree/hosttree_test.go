@@ -16,6 +16,27 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// customScoreBreakdown is a helper struct to create scoreBreakdown's for
+// testing which return a specific Score.
+type customScoreBreakdown struct {
+	score types.Currency
+}
+
+func (sb customScoreBreakdown) Score() types.Currency {
+	return sb.score
+}
+func (sb customScoreBreakdown) ConversionRate(_ types.Currency) float64 {
+	return 0.0
+}
+func (sb customScoreBreakdown) HostScoreBreakdown(_ types.Currency, _, _ bool) modules.HostScoreBreakdown {
+	return modules.HostScoreBreakdown{}
+}
+func newCustomScoreBreakdown(score types.Currency) ScoreBreakdown {
+	return customScoreBreakdown{
+		score: score,
+	}
+}
+
 func verifyTree(tree *HostTree, nentries int) error {
 	expectedWeight := tree.root.entry.weight.Mul64(uint64(nentries))
 	if tree.root.weight.Cmp(expectedWeight) != 0 {
@@ -89,8 +110,8 @@ func makeHostDBEntry() modules.HostDBEntry {
 }
 
 func TestHostTree(t *testing.T) {
-	tree := New(func(hdbe modules.HostDBEntry) types.Currency {
-		return types.NewCurrency64(20)
+	tree := New(func(hdbe modules.HostDBEntry) ScoreBreakdown {
+		return newCustomScoreBreakdown(types.NewCurrency64(20))
 	}, modules.ProductionResolver{})
 
 	// Create a bunch of host entries of equal weight.
@@ -145,8 +166,8 @@ func TestHostTreeParallel(t *testing.T) {
 		t.SkipNow()
 	}
 
-	tree := New(func(dbe modules.HostDBEntry) types.Currency {
-		return types.NewCurrency64(10)
+	tree := New(func(dbe modules.HostDBEntry) ScoreBreakdown {
+		return newCustomScoreBreakdown(types.NewCurrency64(10))
 	}, modules.ProductionResolver{})
 
 	// spin up 100 goroutines all randomly inserting, removing, modifying, and
@@ -243,8 +264,8 @@ func TestHostTreeParallel(t *testing.T) {
 }
 
 func TestHostTreeModify(t *testing.T) {
-	tree := New(func(dbe modules.HostDBEntry) types.Currency {
-		return types.NewCurrency64(10)
+	tree := New(func(dbe modules.HostDBEntry) ScoreBreakdown {
+		return newCustomScoreBreakdown(types.NewCurrency64(10))
 	}, modules.ProductionResolver{})
 
 	treeSize := 100
@@ -293,8 +314,8 @@ func TestVariedWeights(t *testing.T) {
 	// will be tallied up as hosts are created.
 	i := 0
 
-	tree := New(func(dbe modules.HostDBEntry) types.Currency {
-		return types.NewCurrency64(uint64(i))
+	tree := New(func(dbe modules.HostDBEntry) ScoreBreakdown {
+		return newCustomScoreBreakdown(types.NewCurrency64(uint64(i)))
 	}, modules.ProductionResolver{})
 
 	hostCount := 5
@@ -345,8 +366,8 @@ func TestRepeatInsert(t *testing.T) {
 		t.SkipNow()
 	}
 
-	tree := New(func(dbe modules.HostDBEntry) types.Currency {
-		return types.NewCurrency64(10)
+	tree := New(func(dbe modules.HostDBEntry) ScoreBreakdown {
+		return newCustomScoreBreakdown(types.NewCurrency64(10))
 	}, modules.ProductionResolver{})
 
 	entry1 := makeHostDBEntry()
@@ -363,8 +384,8 @@ func TestRepeatInsert(t *testing.T) {
 func TestNodeAtWeight(t *testing.T) {
 	weight := types.NewCurrency64(10)
 	// create hostTree
-	tree := New(func(dbe modules.HostDBEntry) types.Currency {
-		return weight
+	tree := New(func(dbe modules.HostDBEntry) ScoreBreakdown {
+		return newCustomScoreBreakdown(weight)
 	}, modules.ProductionResolver{})
 
 	entry := makeHostDBEntry()
@@ -383,9 +404,9 @@ func TestNodeAtWeight(t *testing.T) {
 func TestRandomHosts(t *testing.T) {
 	calls := 0
 	// Create the tree.
-	tree := New(func(dbe modules.HostDBEntry) types.Currency {
+	tree := New(func(dbe modules.HostDBEntry) ScoreBreakdown {
 		calls++
-		return types.NewCurrency64(uint64(calls))
+		return newCustomScoreBreakdown(types.NewCurrency64(uint64(calls)))
 	}, modules.ProductionResolver{})
 
 	// Empty.
@@ -502,9 +523,9 @@ func TestHostTreeFilter(t *testing.T) {
 	entry3.NetAddress = "host3:1234"
 
 	// Create the tree.
-	tree := New(func(dbe modules.HostDBEntry) types.Currency {
+	tree := New(func(dbe modules.HostDBEntry) ScoreBreakdown {
 		// All entries have the same weight.
-		return types.NewCurrency64(uint64(10))
+		return newCustomScoreBreakdown(types.NewCurrency64(uint64(10)))
 	}, testHostTreeFilterResolver{})
 
 	// Insert host1 and host2. Both should be returned by SelectRandom.
@@ -515,9 +536,9 @@ func TestHostTreeFilter(t *testing.T) {
 	}
 
 	// Get a new empty tree.
-	tree = New(func(dbe modules.HostDBEntry) types.Currency {
+	tree = New(func(dbe modules.HostDBEntry) ScoreBreakdown {
 		// All entries have the same weight.
-		return types.NewCurrency64(uint64(10))
+		return newCustomScoreBreakdown(types.NewCurrency64(uint64(10)))
 	}, testHostTreeFilterResolver{})
 
 	// Insert host1 and host3. Only a single host should be returned.
