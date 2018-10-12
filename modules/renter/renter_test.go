@@ -3,6 +3,7 @@ package renter
 import (
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -176,15 +177,10 @@ func TestRenterPricesVolatility(t *testing.T) {
 	dbe.ContractPrice = types.SiacoinPrecision
 	dbe.DownloadBandwidthPrice = types.SiacoinPrecision
 	dbe.UploadBandwidthPrice = types.SiacoinPrecision
-	// Create unique public keys for the host entries.
-	pks := []byte{1, 2, 3, 4, 5}
-	// Add 4 host entries in the database with different values.
-	for i := 0; i < 4; i++ {
-		dbe.ContractPrice = dbe.ContractPrice.Mul64(2)
-		dbe.DownloadBandwidthPrice = dbe.DownloadBandwidthPrice.Mul64(2)
-		dbe.StoragePrice = dbe.StoragePrice.Mul64(2)
-		dbe.UploadBandwidthPrice = dbe.UploadBandwidthPrice.Mul64(2)
-		dbe.PublicKey = types.SiaPublicKey{Key: []byte{pks[i]}}
+	// Add 4 host entries in the database with different public keys.
+	for len(hdb.dbEntries) < modules.PriceEstimationScope {
+		pk := []byte(strconv.Itoa(len(hdb.dbEntries)))
+		dbe.PublicKey = types.SiaPublicKey{Key: pk}
 		hdb.dbEntries = append(hdb.dbEntries, dbe)
 	}
 	allowance := modules.Allowance{}
@@ -195,7 +191,8 @@ func TestRenterPricesVolatility(t *testing.T) {
 	// Changing the contract price should be enough to trigger a change
 	// if the hosts are not cached.
 	dbe.ContractPrice = dbe.ContractPrice.Mul64(2)
-	dbe.PublicKey = types.SiaPublicKey{Key: []byte{pks[4]}}
+	pk := []byte(strconv.Itoa(len(hdb.dbEntries)))
+	dbe.PublicKey = types.SiaPublicKey{Key: pk}
 	hdb.dbEntries = append(hdb.dbEntries, dbe)
 	after, _, err := rt.renter.PriceEstimation(allowance)
 	if err != nil {
