@@ -37,7 +37,7 @@ dependencies:
 	# Developer Dependencies
 	go install -race std
 	go get -u github.com/client9/misspell/cmd/misspell
-	go get -u github.com/golang/lint/golint
+	go get -u golang.org/x/lint/golint
 	go get -u gitlab.com/NebulousLabs/glyphcheck
 
 # pkgs changes which packages the makefile calls operate on. run changes which

@@ -32,6 +32,14 @@ var (
 	// collateral is small.
 	collateralExponentiationSmall = priceExponentiationLarge + 1
 
+	// collateralFloor is a part of the equation for determining the collateral
+	// cutoff between large and small collateral. The equation figures out how
+	// much collateral is expected given the allowance, and then divided by
+	// 'collateralFloor' so that the cutoff for how much collateral counts as
+	// 'not much' is reasonably below what we are actually expecting from the
+	// host.
+	collateralFloor = 2
+
 	// interactionExponentiation determines how heavily we penalize hosts for
 	// having poor interactions - disconnecting, RPCs with errors, etc. The
 	// exponentiation is very high because the renter will already intentionally
@@ -55,6 +63,14 @@ var (
 	// The exponentiation is lower because we do not care about saving
 	// substantial amounts of money when the price is low.
 	priceExponentiationSmall = 0.75
+
+	// priceFloor is used in the final step of the equation that determines the
+	// cutoff for where a low price no longer counts as interesting to the
+	// renter. A priceFloor of '5' means that if the host can provide us with
+	// the amount of storage we require for less than 20% of the total
+	// allowance, then we switch to a new equation where further decreases in
+	// price are valued much less aggressively (though they are still valued).
+	priceFloor = 5
 
 	// requiredStorage indicates the amount of storage that the host must be
 	// offering in order to be considered a valuable/worthwhile host.
@@ -147,13 +163,13 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// the period, and then adjust by adding in the expected storage, upload and
 	// download. We add the three together so that storage heavy allowances will
 	// have higher expectations for collateral than bandwidth heavy allowances.
-	// Finally, we divide the whole thing by 5 to give some wiggle room to
+	// Finally, we divide the whole thing by collateralFloor to give some wiggle room to
 	// hosts. The large multiplier provided for low collaterals is only intended
 	// to discredit hosts that have a meaningless amount of collateral.
 	expectedUploadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedUploadFrequency
 	expectedDownloadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedDownloadFrequency * ug.expectedDataPieces / (ug.expectedDataPieces + ug.expectedParityPieces)
 	expectedBandwidth := expectedUploadBandwidth + expectedDownloadBandwidth
-	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(2)
+	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(collateralFloor)
 	if hostCollateral.Cmp(cutoff) < 0 {
 		// Set the cutoff equal to the collateral so that the ratio has a
 		// minimum of 1, and also so that the smallWeight is computed based on
@@ -241,7 +257,7 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	expectedUploadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedUploadFrequency
 	expectedDownloadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedDownloadFrequency * ug.expectedDataPieces / (ug.expectedDataPieces + ug.expectedParityPieces)
 	expectedBandwidth := expectedUploadBandwidth + expectedDownloadBandwidth
-	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(5)
+	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(priceFloor)
 	if totalPrice.Cmp(cutoff) < 0 {
 		cutoff = totalPrice
 	}

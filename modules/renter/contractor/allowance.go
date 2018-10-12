@@ -92,13 +92,15 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 
 	// We changed the allowance successfully. Update the hostdb.
 	err = c.hdb.UpdateAllowance(a)
+	if err != nil {
+		return err
+	}
 
 	// Interrupt any existing maintenance and launch a new round of
 	// maintenance.
 	c.managedInterruptContractMaintenance()
 	go c.threadedContractMaintenance()
-
-	return err
+	return nil
 }
 
 // managedCancelAllowance handles the special case where the allowance is empty.

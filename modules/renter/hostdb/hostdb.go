@@ -5,7 +5,6 @@
 package hostdb
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +18,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -96,8 +97,8 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir stri
 	}
 
 	// Set the hostweight function.
-	hdb.allowance = modules.Allowance{}
-	hdb.weightFunc = hdb.calculateHostWeightFn(modules.Allowance{})
+	hdb.allowance = modules.DefaultAllowance
+	hdb.weightFunc = hdb.calculateHostWeightFn(hdb.allowance)
 
 	// Create the persist directory if it does not yet exist.
 	err := os.MkdirAll(persistDir, 0700)
@@ -335,15 +336,16 @@ func (hdb *HostDB) RandomHostsTempAllowance(n int, blacklist, addressBlacklist [
 	ht := hosttree.New(hdb.calculateHostWeightFn(allowance), hdb.deps.Resolver())
 
 	// Insert all known hosts.
+	var insertErrs error
 	allHosts := hdb.hostTree.All()
 	for _, host := range allHosts {
 		if err := ht.Insert(host); err != nil {
-			return nil, err
+			insertErrs = errors.Compose(insertErrs, err)
 		}
 	}
 
 	// Select hosts from the temporary hosttree.
-	return ht.SelectRandom(n, blacklist, addressBlacklist), nil
+	return ht.SelectRandom(n, blacklist, addressBlacklist), insertErrs
 }
 
 // UpdateAllowance updates the allowance used by the hostdb for weighing hosts
