@@ -163,15 +163,15 @@ func TestSignTransaction(t *testing.T) {
 			UnlockHash: types.UnlockHash{},
 		}},
 		TransactionSignatures: []types.TransactionSignature{
-			{ParentID: crypto.Hash(outputs[0].ID)},
-			{ParentID: crypto.Hash(outputs[1].ID)},
+			{ParentID: crypto.Hash(outputs[0].ID), CoveredFields: types.CoveredFields{WholeTransaction: true}},
+			{ParentID: crypto.Hash(outputs[1].ID), CoveredFields: types.CoveredFields{WholeTransaction: true}},
 		},
 	}
 
 	// sign the first input
 	signResp, err := testNode.WalletSignPost(txn, []crypto.Hash{txn.TransactionSignatures[0].ParentID})
 	if err != nil {
-		t.Fatal("failed to sign the transaction", err)
+		t.Fatal("failed to sign the transaction:", err)
 	}
 	txn = signResp.Transaction
 
@@ -185,7 +185,7 @@ func TestSignTransaction(t *testing.T) {
 	// sign the second input
 	signResp, err = testNode.WalletSignPost(txn, []crypto.Hash{txn.TransactionSignatures[1].ParentID})
 	if err != nil {
-		t.Fatal("failed to sign the transaction", err)
+		t.Fatal("failed to sign the transaction:", err)
 	}
 	txn = signResp.Transaction
 
@@ -197,7 +197,7 @@ func TestSignTransaction(t *testing.T) {
 	// the resulting transaction should be valid; submit it to the tpool and
 	// mine a block to confirm it
 	if err := testNode.TransactionPoolRawPost(txn, nil); err != nil {
-		t.Fatal("failed to add transaction to pool", err)
+		t.Fatal("failed to add transaction to pool:", err)
 	}
 	if err := testNode.MineBlock(); err != nil {
 		t.Fatal("failed to mine block", err)
