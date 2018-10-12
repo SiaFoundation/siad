@@ -25,6 +25,7 @@ func calculateWeightFromUInt64Price(price, collateral uint64) (weight types.Curr
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
+	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
 	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
 	entry.StoragePrice = types.NewCurrency64(price).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 	entry.Collateral = types.NewCurrency64(collateral).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
