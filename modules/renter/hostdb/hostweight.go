@@ -10,11 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-var (
-	// Because most weights would otherwise be fractional, we set the base
-	// weight to be very large.
-	baseWeight = types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(80), nil))
-
+const (
 	// collateralExponentiation is the power to which we raise the weight
 	// during collateral adjustment when the collateral is large. This sublinear
 	// number ensures that there is not an overpreference on collateral when
@@ -45,18 +41,13 @@ var (
 	// exponentiation is very high because the renter will already intentionally
 	// avoid hosts that do not have many successful interactions, meaning that
 	// the bad points do not rack up very quickly.
-	interactionExponentiation = 10.0
-
-	// priceDiveNormalization reduces the raw value of the price so that not so
-	// many digits are needed when operating on the weight. This also allows the
-	// base weight to be a lot lower.
-	priceDivNormalization = types.SiacoinPrecision.Div64(1e3).Div64(tbMonth)
+	interactionExponentiation = 10
 
 	// priceExponentiationLarge is the number of times that the weight is
 	// divided by the price when the price is large relative to the allowance.
 	// The exponentiation is a lot higher because we care greatly about high
 	// priced hosts.
-	priceExponentiationLarge = 5.0
+	priceExponentiationLarge = 5
 
 	// priceExponentiationSmall is the number of times that the weight is
 	// divided by the price when the price is small relative to the allowance.
@@ -72,6 +63,21 @@ var (
 	// price are valued much less aggressively (though they are still valued).
 	priceFloor = 5
 
+	// tbMonth is the number of bytes in a terabyte times the number of blocks
+	// in a month.
+	tbMonth = 4032 * 1e12
+)
+
+var (
+	// Because most weights would otherwise be fractional, we set the base
+	// weight to be very large.
+	baseWeight = types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(80), nil))
+
+	// priceDiveNormalization reduces the raw value of the price so that not so
+	// many digits are needed when operating on the weight. This also allows the
+	// base weight to be a lot lower.
+	priceDivNormalization = types.SiacoinPrecision.Div64(1e3).Div64(tbMonth)
+
 	// requiredStorage indicates the amount of storage that the host must be
 	// offering in order to be considered a valuable/worthwhile host.
 	requiredStorage = build.Select(build.Var{
@@ -79,10 +85,6 @@ var (
 		Dev:      uint64(1e6),
 		Testing:  uint64(1e3),
 	}).(uint64)
-
-	// tbMonth is the number of bytes in a terabyte times the number of blocks
-	// in a month.
-	tbMonth = uint64(4032) * uint64(1e12)
 )
 
 // TODO: These values should be rolled into the allowance, instead of being a

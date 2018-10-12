@@ -355,7 +355,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 			host.StoragePrice = types.NewCurrency64(1)
 		}
 
-		// Calculate the collateral for the host based on renter payout
+		// Calculate the collateral for the host based on renter payout.
 		maxStorageSize := renterPayout.Div(host.StoragePrice)
 		collateral := maxStorageSize.Mul(host.Collateral)
 		if collateral.Cmp(host.MaxCollateral) > 0 {
