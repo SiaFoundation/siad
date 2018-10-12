@@ -130,7 +130,7 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 
 	lowest := ^types.BlockHeight(0)
 	for _, pk := range sf.pubKeyTable {
-		contract, exists := contracts[string(pk.Key)]
+		contract, exists := contracts[string(pk.PublicKey.Key)]
 		if !exists {
 			continue
 		}
@@ -146,7 +146,12 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 func (sf *SiaFile) HostPublicKeys() []types.SiaPublicKey {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.pubKeyTable
+	// Only return the keys, not the whole entry.
+	keys := make([]types.SiaPublicKey, 0, len(sf.pubKeyTable))
+	for _, key := range sf.pubKeyTable {
+		keys = append(keys, key.PublicKey)
+	}
+	return keys
 }
 
 // LocalPath returns the path of the local data of the file.

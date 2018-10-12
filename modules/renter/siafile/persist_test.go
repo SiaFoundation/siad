@@ -29,9 +29,12 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 		key := fastrand.Bytes(32)
 
 		// Append new key to slice.
-		sf.pubKeyTable = append(sf.pubKeyTable, types.SiaPublicKey{
-			Algorithm: algorithm,
-			Key:       key,
+		sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{
+			PublicKey: types.SiaPublicKey{
+				Algorithm: algorithm,
+				Key:       key,
+			},
+			Used: true,
 		})
 	}
 }
@@ -439,9 +442,9 @@ func TestMarshalUnmarshalMetadata(t *testing.T) {
 	}
 }
 
-// TestMarshalUnmarshalMetadata tests marshaling and unmarshaling the
+// TestMarshalUnmarshalPubKeyTable tests marshaling and unmarshaling the
 // publicKeyTable of a SiaFile.
-func TestMarshalUnmarshalPubKeyTAble(t *testing.T) {
+func TestMarshalUnmarshalPubKeyTable(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -466,10 +469,13 @@ func TestMarshalUnmarshalPubKeyTAble(t *testing.T) {
 			len(sf.pubKeyTable), len(pubKeyTable))
 	}
 	for i, spk := range pubKeyTable {
-		if spk.Algorithm != sf.pubKeyTable[i].Algorithm {
+		if spk.Used != sf.pubKeyTable[i].Used {
+			t.Fatal("Use fields don't match")
+		}
+		if spk.PublicKey.Algorithm != sf.pubKeyTable[i].PublicKey.Algorithm {
 			t.Fatal("Algorithms don't match")
 		}
-		if !bytes.Equal(spk.Key, sf.pubKeyTable[i].Key) {
+		if !bytes.Equal(spk.PublicKey.Key, sf.pubKeyTable[i].PublicKey.Key) {
 			t.Fatal("Keys don't match")
 		}
 	}
@@ -631,5 +637,72 @@ func testApply(t *testing.T, siaFile *SiaFile, apply func(...writeaheadlog.Updat
 	}
 	if !bytes.Equal(data, readData) {
 		t.Fatal("Read data doesn't equal written data")
+	}
+}
+
+// TestUpdateUsedHosts tests the UpdateUsedHosts method.
+func TestUpdateUsedHosts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	sf := newTestFile()
+	sf.addRandomHostKeys(10)
+
+	// All the host keys should be used.
+	for _, entry := range sf.pubKeyTable {
+		if !entry.Used {
+			t.Fatal("all hosts are expected to be used at the beginning of the test")
+		}
+	}
+
+	// Report only half the hosts as still being used.
+	var used []types.SiaPublicKey
+	for i, entry := range sf.pubKeyTable {
+		if i%2 == 0 {
+			used = append(used, entry.PublicKey)
+		}
+	}
+	if err := sf.UpdateUsedHosts(used); err != nil {
+		t.Fatal("failed to update hosts", err)
+	}
+
+	// Create a map of the used keys for faster lookups.
+	usedMap := make(map[string]struct{})
+	for _, key := range used {
+		usedMap[string(key.Key)] = struct{}{}
+	}
+
+	// Check that the flag was set correctly.
+	for _, entry := range sf.pubKeyTable {
+		_, exists := usedMap[string(entry.PublicKey.Key)]
+		if entry.Used != exists {
+			t.Errorf("expected flag to be %v but was %v", exists, entry.Used)
+		}
+	}
+
+	// Reload the siafile to see if the flags were also persisted.
+	var err error
+	sf, err = LoadSiaFile(sf.siaFilePath, sf.wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the flags are still set correctly.
+	for _, entry := range sf.pubKeyTable {
+		_, exists := usedMap[string(entry.PublicKey.Key)]
+		if entry.Used != exists {
+			t.Errorf("expected flag to be %v but was %v", exists, entry.Used)
+		}
+	}
+
+	// Also check the flags in order. Making sure that persisting them didn't
+	// change the order.
+	for i, entry := range sf.pubKeyTable {
+		expectedUsed := i%2 == 0
+		if entry.Used != expectedUsed {
+			t.Errorf("expected flag to be %v but was %v", expectedUsed, entry.Used)
+		}
 	}
 }

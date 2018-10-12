@@ -77,7 +77,10 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 				if !exists {
 					tableOffset = uint32(len(file.pubKeyTable))
 					pubKeyMap[string(p.HostPubKey.Key)] = tableOffset
-					file.pubKeyTable = append(file.pubKeyTable, p.HostPubKey)
+					file.pubKeyTable = append(file.pubKeyTable, HostPublicKey{
+						PublicKey: p.HostPubKey,
+						Used:      true,
+					})
 				}
 				// Add the piece to the SiaFile.
 				file.staticChunks[chunkIndex].Pieces[pieceIndex] = append(file.staticChunks[chunkIndex].Pieces[pieceIndex], piece{

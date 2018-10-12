@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -34,7 +36,7 @@ type (
 		// pubKeyTable stores the public keys of the hosts this file's pieces are uploaded to.
 		// Since multiple pieces from different chunks might be uploaded to the same host, this
 		// allows us to deduplicate the rather large public keys.
-		pubKeyTable []types.SiaPublicKey
+		pubKeyTable []HostPublicKey
 
 		// staticChunks are the staticChunks the file was split into.
 		staticChunks []chunk
@@ -68,10 +70,32 @@ type (
 	// Piece is an exported piece. It contains a resolved public key instead of
 	// the table offset.
 	Piece struct {
-		HostPubKey types.SiaPublicKey // public key of the host
-		MerkleRoot crypto.Hash        // merkle root of the piece
+		HostPubKey types.SiaPublicKey `json:"hostpubkey"` // public key of the host
+		MerkleRoot crypto.Hash        `json:"merkleroot"` // merkle root of the piece
+	}
+
+	// HostPublicKey is an entry in the HostPubKey table.
+	HostPublicKey struct {
+		PublicKey types.SiaPublicKey // public key of host
+		Used      bool               // indicates if we currently use this host
 	}
 )
+
+// MarshalSia implements the encoding.SiaMarshaler interface.
+func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
+	e := encoding.NewEncoder(w)
+	e.Encode(hpk.PublicKey)
+	e.WriteBool(hpk.Used)
+	return e.Err()
+}
+
+// UnmarshalSia implements the encoding.SiaUnmarshaler interface.
+func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
+	d := encoding.NewDecoder(r)
+	d.Decode(&hpk.PublicKey)
+	hpk.Used = d.NextBool()
+	return d.Err()
+}
 
 // New create a new SiaFile.
 func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
@@ -124,18 +148,21 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	}
 
 	// Get the index of the host in the public key table.
-	tableOffset := -1
+	tableIndex := -1
 	for i, hpk := range sf.pubKeyTable {
-		if hpk.Algorithm == pk.Algorithm && bytes.Equal(hpk.Key, pk.Key) {
-			tableOffset = i
+		if hpk.PublicKey.Algorithm == pk.Algorithm && bytes.Equal(hpk.PublicKey.Key, pk.Key) {
+			tableIndex = i
 			break
 		}
 	}
 	// If we don't know the host yet, we add it to the table.
 	tableChanged := false
-	if tableOffset == -1 {
-		sf.pubKeyTable = append(sf.pubKeyTable, pk)
-		tableOffset = len(sf.pubKeyTable) - 1
+	if tableIndex == -1 {
+		sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{
+			PublicKey: pk,
+			Used:      true,
+		})
+		tableIndex = len(sf.pubKeyTable) - 1
 		tableChanged = true
 	}
 	// Check if the chunkIndex is valid.
@@ -148,7 +175,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	}
 	// Add the piece to the chunk.
 	sf.staticChunks[chunkIndex].Pieces[pieceIndex] = append(sf.staticChunks[chunkIndex].Pieces[pieceIndex], piece{
-		HostTableOffset: uint32(tableOffset),
+		HostTableOffset: uint32(tableIndex),
 		MerkleRoot:      merkleRoot,
 	})
 
@@ -190,7 +217,7 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 		piecesForChunk := 0
 		for _, pieceSet := range chunk.Pieces {
 			for _, piece := range pieceSet {
-				if !offline[string(sf.pubKeyTable[piece.HostTableOffset].Key)] {
+				if !offline[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)] {
 					piecesForChunk++
 					break // break out since we only count unique pieces
 				}
@@ -243,7 +270,7 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 		pieces[pieceIndex] = make([]Piece, len(sf.staticChunks[chunkIndex].Pieces[pieceIndex]))
 		for i, piece := range sf.staticChunks[chunkIndex].Pieces[pieceIndex] {
 			pieces[pieceIndex][i] = Piece{
-				HostPubKey: sf.pubKeyTable[piece.HostTableOffset],
+				HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
 				MerkleRoot: piece.MerkleRoot,
 			}
 		}
@@ -282,8 +309,8 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 			foundGoodForRenew := false
 			foundOnline := false
 			for _, piece := range pieceSet {
-				offline, exists1 := offlineMap[string(sf.pubKeyTable[piece.HostTableOffset].Key)]
-				goodForRenew, exists2 := goodForRenewMap[string(sf.pubKeyTable[piece.HostTableOffset].Key)]
+				offline, exists1 := offlineMap[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)]
+				goodForRenew, exists2 := goodForRenewMap[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)]
 				if exists1 != exists2 {
 					build.Critical("contract can't be in one map but not in the other")
 				}
@@ -333,4 +360,30 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 // UID returns a unique identifier for this file.
 func (sf *SiaFile) UID() string {
 	return sf.staticUID
+}
+
+// UpdateUsedHosts updates the 'Used' flag for the entries in the pubKeyTable
+// of the SiaFile. The keys of all used hosts should be passed to the method
+// and the SiaFile will update the flag for hosts it knows of to 'true' and set
+// hosts which were not passed in to 'false'.
+func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Create a map of the used keys for faster lookups.
+	usedMap := make(map[string]struct{})
+	for _, key := range used {
+		usedMap[string(key.Key)] = struct{}{}
+	}
+	// Mark the entries in the table. If the entry exists 'Used' is true.
+	// Otherwise it's 'false'.
+	for i, entry := range sf.pubKeyTable {
+		_, exists := usedMap[string(entry.PublicKey.Key)]
+		sf.pubKeyTable[i].Used = exists
+	}
+	// Save the header to disk.
+	update, err := sf.saveHeader()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(update...)
 }
