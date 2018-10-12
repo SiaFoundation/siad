@@ -177,6 +177,7 @@ func TestRenterPricesVolatility(t *testing.T) {
 	dbe.ContractPrice = types.SiacoinPrecision
 	dbe.DownloadBandwidthPrice = types.SiacoinPrecision
 	dbe.UploadBandwidthPrice = types.SiacoinPrecision
+	dbe.StoragePrice = types.SiacoinPrecision
 	// Add 4 host entries in the database with different public keys.
 	for len(hdb.dbEntries) < modules.PriceEstimationScope {
 		pk := []byte(strconv.Itoa(len(hdb.dbEntries)))
