@@ -175,15 +175,27 @@ func TestRenterPricesVolatility(t *testing.T) {
 	dbe := modules.HostDBEntry{}
 	dbe.ContractPrice = types.SiacoinPrecision
 	dbe.DownloadBandwidthPrice = types.SiacoinPrecision
-	dbe.StoragePrice = types.SiacoinPrecision
 	dbe.UploadBandwidthPrice = types.SiacoinPrecision
-	hdb.dbEntries = append(hdb.dbEntries, dbe)
+	// Create unique public keys for the host entries.
+	pks := []byte{1, 2, 3, 4, 5}
+	// Add 4 host entries in the database with different values.
+	for i := 0; i < 4; i++ {
+		dbe.ContractPrice = dbe.ContractPrice.Mul64(2)
+		dbe.DownloadBandwidthPrice = dbe.DownloadBandwidthPrice.Mul64(2)
+		dbe.StoragePrice = dbe.StoragePrice.Mul64(2)
+		dbe.UploadBandwidthPrice = dbe.UploadBandwidthPrice.Mul64(2)
+		dbe.PublicKey = types.SiaPublicKey{Key: []byte{pks[i]}}
+		hdb.dbEntries = append(hdb.dbEntries, dbe)
+	}
 	allowance := modules.Allowance{}
 	initial, _, err := rt.renter.PriceEstimation(allowance)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Changing the contract price should be enough to trigger a change
+	// if the hosts are not cached.
 	dbe.ContractPrice = dbe.ContractPrice.Mul64(2)
+	dbe.PublicKey = types.SiaPublicKey{Key: []byte{pks[4]}}
 	hdb.dbEntries = append(hdb.dbEntries, dbe)
 	after, _, err := rt.renter.PriceEstimation(allowance)
 	if err != nil {
