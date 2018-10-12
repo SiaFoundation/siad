@@ -289,11 +289,9 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	if len(hosts) < int(allowance.Hosts) {
 		// Re-initialize the list with SiaPublicKeys to hold the public keys from the current
 		// set of hosts. This list will be used as address filter when requesting random hosts.
-		pks = make([]types.SiaPublicKey, len(hosts))
-		i := 0
+		var pks []types.SiaPublicKey
 		for _, host := range hosts {
-			pks[i] = host.PublicKey
-			i++
+			pks = append(pks, host.PublicKey)
 		}
 		// Grab hosts to perform the estimation.
 		var err error
