@@ -32,10 +32,17 @@ var (
 	// collateral is small.
 	collateralExponentiationSmall = priceExponentiationLarge + 1
 
+	// interactionExponentiation determines how heavily we penalize hosts for
+	// having poor interactions - disconnecting, RPCs with errors, etc. The
+	// exponentiation is very high because the renter will already intentionally
+	// avoid hosts that do not have many successful interactions, meaning that
+	// the bad points do not rack up very quickly.
+	interactionExponentiation = 10.0
+
 	// priceDiveNormalization reduces the raw value of the price so that not so
 	// many digits are needed when operating on the weight. This also allows the
 	// base weight to be a lot lower.
-	priceDivNormalization = types.SiacoinPrecision.Div64(100e3).Div64(tbMonth)
+	priceDivNormalization = types.SiacoinPrecision.Div64(1e3).Div64(tbMonth)
 
 	// priceExponentiationLarge is the number of times that the weight is
 	// divided by the price when the price is large relative to the allowance.
@@ -47,7 +54,7 @@ var (
 	// divided by the price when the price is small relative to the allowance.
 	// The exponentiation is lower because we do not care about saving
 	// substantial amounts of money when the price is low.
-	priceExponentiationSmall = 1.5
+	priceExponentiationSmall = 0.75
 
 	// requiredStorage indicates the amount of storage that the host must be
 	// offering in order to be considered a valuable/worthwhile host.
@@ -121,7 +128,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// the max collateral instead of the per-byte collateral.
 	hostCollateral := entry.Collateral
 	possibleCollateral := entry.MaxCollateral.Div64(uint64(allowance.Period)).Div64(ug.expectedStorage).Div64(2)
-	if hostCollateral.Cmp(possibleCollateral) < 0 {
+	if possibleCollateral.Cmp(hostCollateral) < 0 {
 		hostCollateral = possibleCollateral
 	}
 
@@ -146,7 +153,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	expectedUploadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedUploadFrequency
 	expectedDownloadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedDownloadFrequency * ug.expectedDataPieces / (ug.expectedDataPieces + ug.expectedParityPieces)
 	expectedBandwidth := expectedUploadBandwidth + expectedDownloadBandwidth
-	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(5)
+	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(2)
 	if hostCollateral.Cmp(cutoff) < 0 {
 		// Set the cutoff equal to the collateral so that the ratio has a
 		// minimum of 1, and also so that the smallWeight is computed based on
@@ -171,21 +178,6 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	return smallWeight * largeWeight
 }
 
-// expectedStorage is the amount of data that we expect to have in a
-// contract.
-//
-// expectedUploadFrequency is the expected number of blocks between each
-// complete re-upload of the filesystem. This will be a combination of the
-// rate at which a user uploads files, the rate at which a user replaces
-// files, and the rate at which a user has to repair files due to host
-// churn. If the expected storage is 25 GB and the expected upload frequency
-// is 24 weeks, it means the user is expected to do about 1 GB of upload per
-// week on average throughout the life of the contract.
-//
-// expectedDownloadFrequency is the expected number of blocks between each
-// complete download of the filesystem. This should include the user
-// downloading, streaming, and repairing files.
-
 // interactionAdjustments determine the penalty to be applied to a host for the
 // historic and currnet interactions with that host. This function focuses on
 // historic interactions and ignores recent interactions.
@@ -199,13 +191,7 @@ func (hdb *HostDB) interactionAdjustments(entry modules.HostDBEntry) float64 {
 
 	// Determine the intraction ratio based off of the historic interactions.
 	ratio := float64(hsi) / float64(hsi+hfi)
-
-	// Raise the ratio to the 15th power and return that. The exponentiation is
-	// very high because the renter will already intentionally avoid hosts that
-	// do not have many successful interactions, meaning that the bad points do
-	// not rack up very quickly. We want to signal a bad score for the host
-	// nonetheless.
-	return math.Pow(ratio, 15)
+	return math.Pow(ratio, interactionExponentiation)
 }
 
 // priceAdjustments will adjust the weight of the entry according to the prices
@@ -263,6 +249,9 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	cutoff64, _ := cutoff.Div(priceDivNormalization).Uint64()
 	if cutoff64 == 0 {
 		cutoff64 = 1
+	}
+	if price64 == 0 {
+		price64 = 1
 	}
 	ratio := float64(price64) / float64(cutoff64)
 
@@ -559,7 +548,8 @@ func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance module
 // ScoreBreakdown provdes a detailed set of scalars and bools indicating
 // elements of the host's overall score.
 func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBreakdown {
-	// TODO: Pass these in as input instead of fixing them.
+	// TODO: Pass these in as input instead of fixing them. Note that expected
+	// storage is a per-contract value.
 	ug := usageGuidelines{
 		expectedStorage:           25e9,
 		expectedUploadFrequency:   24192,
