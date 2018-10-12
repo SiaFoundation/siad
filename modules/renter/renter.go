@@ -360,8 +360,8 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 		// the txnFee was zero. It doesn't matter since RenterPayoutsPreTax
 		// simply subtracts both values from the funding.
 		host.ContractPrice = contractCostPerHost
-		maxRenterCollateral := modules.MaxRenterCollateral(host, modules.DefaultUsageGuideLines.ExpectedStorage, allowance.Period)
-		_, _, hostCollateral = modules.RenterPayoutsPreTax(host, fundingPerHost, types.ZeroCurrency, types.ZeroCurrency, maxRenterCollateral)
+		expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
+		_, _, hostCollateral = modules.RenterPayoutsPreTax(host, fundingPerHost, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, expectedStorage)
 	}
 
 	// Calculate average collateral and determine collateral for allowance

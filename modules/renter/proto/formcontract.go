@@ -39,8 +39,9 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	}
 
 	// Calculate the payouts for the renter, host, and whole contract.
-	maxRenterCollateral := modules.MaxRenterCollateral(host, modules.DefaultUsageGuideLines.ExpectedStorage, endHeight-startHeight)
-	renterPayout, hostPayout, _ := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, maxRenterCollateral)
+	period := endHeight - startHeight
+	expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
+	renterPayout, hostPayout, _ := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, period, expectedStorage)
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// Check for negative currency.

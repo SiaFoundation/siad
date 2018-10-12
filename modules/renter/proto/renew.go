@@ -42,8 +42,9 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	}
 
 	// Calculate the payouts for the renter, host, and whole contract.
-	maxRenterCollateral := modules.MaxRenterCollateral(host, modules.DefaultUsageGuideLines.ExpectedStorage, endHeight-startHeight)
-	renterPayout, hostPayout, hostCollateral := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, maxRenterCollateral)
+	period := endHeight - startHeight
+	expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
+	renterPayout, hostPayout, hostCollateral := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, period, expectedStorage)
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// check for negative currency

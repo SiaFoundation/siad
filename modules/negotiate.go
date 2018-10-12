@@ -414,13 +414,22 @@ func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevis
 	return txn.StandaloneValid(height)
 }
 
+// RenterPayoutsPreTaxArgs contains the arguments which are passed into
+// RenterPayoutsPreTax.
+type RenterPayoutsPreTaxArgs struct {
+	host            HostDBEntry
+	funding         types.Currency
+	txnFee          types.Currency
+	basePrice       types.Currency
+	expectedStorage uint64
+	period          types.BlockHeight
+}
+
 // RenterPayoutsPreTax calculates the renterPayout before tax and the hostPayout
 // given a host, the available renter funding, the expected txnFee for the
 // transaction and an optional basePrice in case this helper is used for a
 // renewal. It also returns the hostCollateral.
-// TODO we can get rid of the baseCollateral argument and the error return
-// value once !3160 is merged.
-func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, maxRenterCollateral types.Currency) (renterPayout, hostPayout, hostCollateral types.Currency) {
+func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice types.Currency, period types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency) {
 	// Divide by zero check.
 	if host.StoragePrice.IsZero() {
 		host.StoragePrice = types.NewCurrency64(1)
@@ -428,22 +437,18 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, maxRenter
 	// Calculate renterPayout.
 	renterPayout = funding.Sub(host.ContractPrice).Sub(txnFee).Sub(basePrice)
 	// Calculate hostCollateral.
-	maxStorageSize := renterPayout.Div(host.StoragePrice)
-	hostCollateral = maxStorageSize.Mul(host.Collateral)
+	maxStorageSizeTime := renterPayout.Div(host.StoragePrice)
+	hostCollateral = maxStorageSizeTime.Mul(host.Collateral)
+	// Compare hostCollateral to maxCollateral of host.
 	if hostCollateral.Cmp(host.MaxCollateral) > 0 {
 		hostCollateral = host.MaxCollateral
 	}
+	// Compare hostCollateral to maxCollateral of renter.
+	maxRenterCollateral := host.Collateral.Mul64(uint64(period)).Mul64(expectedStorage).Mul64(10)
 	if hostCollateral.Cmp(maxRenterCollateral) > 0 {
 		hostCollateral = maxRenterCollateral
 	}
 	// Calculate hostPayout.
 	hostPayout = hostCollateral.Add(host.ContractPrice).Add(basePrice)
 	return
-}
-
-// MaxRenterCollateral is the maximum amount of collateral a renter wants to
-// put into a contract given a host, storage expectation and contract period.
-func MaxRenterCollateral(host HostDBEntry, expectedStorage uint64, period types.BlockHeight) types.Currency {
-	expectedCollateral := host.Collateral.Mul64(uint64(period)).Mul64(expectedStorage)
-	return expectedCollateral.Mul64(10)
 }
