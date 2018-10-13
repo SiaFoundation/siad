@@ -157,9 +157,12 @@ func TestHostWeightStorageRemainingDifferences(t *testing.T) {
 	}
 	hdb := bareHostDB()
 	var entry modules.HostDBEntry
+	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
-	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
+	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
+	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
+	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
+	entry.Collateral = types.NewCurrency64(300).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 
 	entry2 := entry
 	entry2.RemainingStorage = 50e3
@@ -167,6 +170,8 @@ func TestHostWeightStorageRemainingDifferences(t *testing.T) {
 	w2 := hdb.weightFunc(entry2)
 
 	if w1.Cmp(w2) <= 0 {
+		t.Log(w1)
+		t.Log(w2)
 		t.Error("Larger storage remaining should have more weight")
 	}
 }
@@ -179,10 +184,12 @@ func TestHostWeightVersionDifferences(t *testing.T) {
 	}
 	hdb := bareHostDB()
 	var entry modules.HostDBEntry
+	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
-	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Version = "v1.3.4"
+	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
+	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
+	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
+	entry.Collateral = types.NewCurrency64(300).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 
 	entry2 := entry
 	entry2.Version = "v1.3.2"
@@ -190,6 +197,8 @@ func TestHostWeightVersionDifferences(t *testing.T) {
 	w2 := hdb.weightFunc(entry2)
 
 	if w1.Cmp(w2) <= 0 {
+		t.Log(w1)
+		t.Log(w2)
 		t.Error("Higher version should have more weight")
 	}
 }
@@ -203,10 +212,12 @@ func TestHostWeightLifetimeDifferences(t *testing.T) {
 	hdb := bareHostDB()
 	hdb.blockHeight = 10000
 	var entry modules.HostDBEntry
+	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
-	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Version = "v1.3.4"
+	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
+	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
+	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
+	entry.Collateral = types.NewCurrency64(300).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 
 	entry2 := entry
 	entry2.FirstSeen = 8100
@@ -214,6 +225,8 @@ func TestHostWeightLifetimeDifferences(t *testing.T) {
 	w2 := hdb.weightFunc(entry2)
 
 	if w1.Cmp(w2) <= 0 {
+		t.Log(w1)
+		t.Log(w2)
 		t.Error("Been around longer should have more weight")
 	}
 }
@@ -227,10 +240,12 @@ func TestHostWeightUptimeDifferences(t *testing.T) {
 	hdb := bareHostDB()
 	hdb.blockHeight = 10000
 	var entry modules.HostDBEntry
+	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
-	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Version = "v1.0.4"
+	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
+	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
+	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
+	entry.Collateral = types.NewCurrency64(300).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 	entry.ScanHistory = modules.HostDBScans{
 		{Timestamp: time.Now().Add(time.Hour * -100), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -80), Success: true},
@@ -250,7 +265,9 @@ func TestHostWeightUptimeDifferences(t *testing.T) {
 	w1 := hdb.weightFunc(entry)
 	w2 := hdb.weightFunc(entry2)
 
-	if w1.Cmp(w2) <= 0 {
+	if w1.Cmp(w2) < 0 {
+		t.Log(w1)
+		t.Log(w2)
 		t.Error("Been around longer should have more weight")
 	}
 }
@@ -264,10 +281,12 @@ func TestHostWeightUptimeDifferences2(t *testing.T) {
 	hdb := bareHostDB()
 	hdb.blockHeight = 10000
 	var entry modules.HostDBEntry
+	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
-	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Version = "v1.0.4"
+	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
+	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
+	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
+	entry.Collateral = types.NewCurrency64(300).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 	entry.ScanHistory = modules.HostDBScans{
 		{Timestamp: time.Now().Add(time.Hour * -100), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -80), Success: false},
@@ -301,10 +320,12 @@ func TestHostWeightUptimeDifferences3(t *testing.T) {
 	hdb := bareHostDB()
 	hdb.blockHeight = 10000
 	var entry modules.HostDBEntry
+	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
-	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Version = "v1.0.4"
+	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
+	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
+	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
+	entry.Collateral = types.NewCurrency64(300).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 	entry.ScanHistory = modules.HostDBScans{
 		{Timestamp: time.Now().Add(time.Hour * -100), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -80), Success: false},
@@ -338,10 +359,12 @@ func TestHostWeightUptimeDifferences4(t *testing.T) {
 	hdb := bareHostDB()
 	hdb.blockHeight = 10000
 	var entry modules.HostDBEntry
+	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
-	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Version = "v1.0.4"
+	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
+	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
+	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
+	entry.Collateral = types.NewCurrency64(300).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 	entry.ScanHistory = modules.HostDBScans{
 		{Timestamp: time.Now().Add(time.Hour * -100), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -80), Success: true},
