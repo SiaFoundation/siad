@@ -76,13 +76,18 @@ type hostDB interface {
 	// any offline or inactive hosts.
 	RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error)
 
+	// RandomHostsWithAllowance is the same as RandomHosts but accepts an
+	// allowance as an argument to be used instead of the allowance set in the
+	// renter.
+	RandomHostsWithAllowance(int, []types.SiaPublicKey, []types.SiaPublicKey, modules.Allowance) ([]modules.HostDBEntry, error)
+
 	// ScoreBreakdown returns a detailed explanation of the various properties
 	// of the host.
 	ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown
 
 	// EstimateHostScore returns the estimated score breakdown of a host with the
 	// provided settings.
-	EstimateHostScore(modules.HostDBEntry) modules.HostScoreBreakdown
+	EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown
 }
 
 // A hostContractor negotiates, revises, renews, and provides access to file
@@ -284,7 +289,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	if len(hosts) < int(allowance.Hosts) {
 		// Grab hosts to perform the estimation.
 		var err error
-		randHosts, err := r.hostDB.RandomHosts(int(allowance.Hosts), nil, nil)
+		randHosts, err := r.hostDB.RandomHostsWithAllowance(int(allowance.Hosts), nil, nil, allowance)
 		if err != nil {
 			return modules.RenterPriceEstimation{}, allowance, errors.AddContext(err, "could not generate estimate, could not get random hosts")
 		}
@@ -355,7 +360,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 			host.StoragePrice = types.NewCurrency64(1)
 		}
 
-		// Calculate the collateral for the host based on renter payout
+		// Calculate the collateral for the host based on renter payout.
 		maxStorageSize := renterPayout.Div(host.StoragePrice)
 		collateral := maxStorageSize.Mul(host.Collateral)
 		if collateral.Cmp(host.MaxCollateral) > 0 {
@@ -523,8 +528,14 @@ func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) modules.HostScoreBreakdow
 }
 
 // EstimateHostScore returns the estimated host score
-func (r *Renter) EstimateHostScore(e modules.HostDBEntry) modules.HostScoreBreakdown {
-	return r.hostDB.EstimateHostScore(e)
+func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) modules.HostScoreBreakdown {
+	if reflect.DeepEqual(a, modules.Allowance{}) {
+		a = r.Settings().Allowance
+	}
+	if reflect.DeepEqual(a, modules.Allowance{}) {
+		a = modules.DefaultAllowance
+	}
+	return r.hostDB.EstimateHostScore(e, a)
 }
 
 // CancelContract cancels a renter's contract by ID by setting goodForRenew and goodForUpload to false

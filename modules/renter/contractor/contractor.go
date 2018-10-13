@@ -276,5 +276,11 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		c.pubKeysToContractID[string(contract.HostPublicKey.Key)] = contract.ID
 	}
 
+	// Update the allowance in the hostdb with the one that was loaded from
+	// disk.
+	err = c.hdb.SetAllowance(c.allowance)
+	if err != nil {
+		return nil, err
+	}
 	return c, nil
 }
