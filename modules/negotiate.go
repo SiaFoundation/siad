@@ -429,10 +429,15 @@ type RenterPayoutsPreTaxArgs struct {
 // given a host, the available renter funding, the expected txnFee for the
 // transaction and an optional basePrice in case this helper is used for a
 // renewal. It also returns the hostCollateral.
-func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice types.Currency, period types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency) {
+func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice types.Currency, period types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency, err error) {
 	// Divide by zero check.
 	if host.StoragePrice.IsZero() {
 		host.StoragePrice = types.NewCurrency64(1)
+	}
+	// Underflow check.
+	if funding.Cmp(host.ContractPrice.Add(txnFee)) <= 0 {
+		err = errors.New("insufficient funds to cover contract fee and transaction fee during contract formation")
+		return
 	}
 	// Calculate renterPayout.
 	renterPayout = funding.Sub(host.ContractPrice).Sub(txnFee).Sub(basePrice)

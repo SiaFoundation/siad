@@ -36,15 +36,13 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	_, maxFee := tpool.FeeEstimation()
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
 
-	// Underflow check.
-	if funding.Cmp(host.ContractPrice.Add(txnFee).Add(basePrice)) <= 0 {
-		return modules.RenterContract{}, errors.New("insufficient funds to cover contract fee and transaction fee during contract renewal")
-	}
-
 	// Calculate the payouts for the renter, host, and whole contract.
 	period := endHeight - startHeight
 	expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
-	renterPayout, hostPayout, hostCollateral := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, period, expectedStorage)
+	renterPayout, hostPayout, hostCollateral, err := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, period, expectedStorage)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// check for negative currency

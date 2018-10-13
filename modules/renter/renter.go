@@ -353,6 +353,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 
 	// Determine host collateral to be added to siafund fee
 	var hostCollateral types.Currency
+	var err error
 	contractCostPerHost := totalContractCost.Div64(allowance.Hosts)
 	fundingPerHost := allowance.Funds.Div64(allowance.Hosts)
 	for _, host := range hosts {
@@ -361,7 +362,10 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 		// simply subtracts both values from the funding.
 		host.ContractPrice = contractCostPerHost
 		expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
-		_, _, hostCollateral = modules.RenterPayoutsPreTax(host, fundingPerHost, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, expectedStorage)
+		_, _, hostCollateral, err = modules.RenterPayoutsPreTax(host, fundingPerHost, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, expectedStorage)
+		if err != nil {
+			return modules.RenterPriceEstimation{}, allowance, err
+		}
 	}
 
 	// Calculate average collateral and determine collateral for allowance

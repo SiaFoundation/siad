@@ -33,15 +33,13 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	_, maxFee := tpool.FeeEstimation()
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
 
-	// Underflow check.
-	if funding.Cmp(host.ContractPrice.Add(txnFee)) <= 0 {
-		return modules.RenterContract{}, errors.New("insufficient funds to cover contract fee and transaction fee during contract formation")
-	}
-
 	// Calculate the payouts for the renter, host, and whole contract.
 	period := endHeight - startHeight
 	expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
-	renterPayout, hostPayout, _ := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, period, expectedStorage)
+	renterPayout, hostPayout, _, err := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, period, expectedStorage)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// Check for negative currency.
