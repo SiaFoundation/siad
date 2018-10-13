@@ -44,6 +44,7 @@ func (newStub) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]m
 func (newStub) ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown {
 	return modules.HostScoreBreakdown{}
 }
+func (newStub) SetAllowance(allowance modules.Allowance) error { return nil }
 
 // TestNew tests the New function.
 func TestNew(t *testing.T) {
@@ -120,6 +121,7 @@ func (stubHostDB) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) (
 func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown {
 	return modules.HostScoreBreakdown{}
 }
+func (stubHostDB) SetAllowance(allowance modules.Allowance) error { return nil }
 
 // TestAllowanceSpending verifies that the contractor will not spend more or
 // less than the allowance if uploading causes repeated early renewal, and that

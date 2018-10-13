@@ -1798,7 +1798,8 @@ returns a list of outputs that the wallet can spend.
       "fundtype": "siacoin output",
       "confirmationheight": 50000,
       "unlockhash": "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-      "value": "1234" // big int
+      "value": "1234", // big int
+      "iswatchonly": false
     }
   ]
 }

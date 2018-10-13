@@ -875,7 +875,10 @@ returns a list of unspent outputs that the wallet is tracking.
 
       // Amount of funds in the output; hastings for siacoin outputs, and
       // siafunds for siafund outputs.
-      "value": "1234" // big int
+      "value": "1234", // big int
+
+      // Whether the output comes from a watched address or from the wallet's seed.
+      "iswatchonly": false
     }
   ]
 }

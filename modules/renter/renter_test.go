@@ -112,7 +112,7 @@ func (stubHostDB) IsOffline(modules.NetAddress) bool    { return true }
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return []modules.HostDBEntry{}, nil
 }
-func (stubHostDB) EstimateHostScore(modules.HostDBEntry) modules.HostScoreBreakdown {
+func (stubHostDB) EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown {
 	return modules.HostScoreBreakdown{}
 }
 func (stubHostDB) Host(types.SiaPublicKey) (modules.HostDBEntry, bool) {
@@ -148,7 +148,10 @@ type pricesStub struct {
 func (pricesStub) InitialScanComplete() (bool, error) { return true, nil }
 func (pricesStub) IPViolationsCheck() bool            { return true }
 
-func (ps pricesStub) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
+func (ps pricesStub) RandomHosts(_ int, _, _ []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
+	return ps.dbEntries, nil
+}
+func (ps pricesStub) RandomHostsWithAllowance(_ int, _, _ []types.SiaPublicKey, _ modules.Allowance) ([]modules.HostDBEntry, error) {
 	return ps.dbEntries, nil
 }
 func (ps pricesStub) SetIPViolationCheck(enabled bool) { return }

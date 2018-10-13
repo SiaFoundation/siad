@@ -97,6 +97,12 @@ outer:
 		}
 	}
 
+	// mark the watch-only outputs
+	for i, o := range outputs {
+		_, ok := w.watchedAddrs[o.UnlockHash]
+		outputs[i].IsWatchOnly = ok
+	}
+
 	return outputs, nil
 }
 
