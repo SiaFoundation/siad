@@ -91,7 +91,7 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	}
 
 	// We changed the allowance successfully. Update the hostdb.
-	err = c.hdb.UpdateAllowance(a)
+	err = c.hdb.SetAllowance(a)
 	if err != nil {
 		return err
 	}

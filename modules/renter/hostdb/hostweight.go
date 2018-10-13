@@ -110,8 +110,7 @@ type usageGuidelines struct {
 	expectedStorage           uint64
 	expectedUploadFrequency   uint64
 	expectedDownloadFrequency uint64
-	expectedDataPieces        uint64
-	expectedParityPieces      uint64
+	expectedRedundancy        float64
 }
 
 // collateralAdjustments improves the host's weight according to the amount of
@@ -133,17 +132,20 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	if ug.expectedDownloadFrequency == 0 {
 		ug.expectedDownloadFrequency = 1
 	}
-	if ug.expectedDataPieces == 0 {
-		ug.expectedDataPieces = 1
-	}
-	if ug.expectedParityPieces == 0 {
-		ug.expectedParityPieces = 1
+	if ug.expectedRedundancy == 0 {
+		ug.expectedRedundancy = 1
 	}
 
 	// Ensure that the allowance and expected storage will not brush up against
 	// the max collateral. If the allowance comes within half of the max
 	// collateral, cap the collateral that we use during adjustments based on
 	// the max collateral instead of the per-byte collateral.
+	//
+	// The purpose of this code is to make sure that the host actually has a
+	// high enough MaxCollateral to cover all of the data that we intend to
+	// store with the host at the collateral price that the host is advertising.
+	// We add a 2x buffer to account for the fact that the renter may end up
+	// storing extra data on this host.
 	hostCollateral := entry.Collateral
 	possibleCollateral := entry.MaxCollateral.Div64(uint64(allowance.Period)).Div64(ug.expectedStorage).Div64(2)
 	if possibleCollateral.Cmp(hostCollateral) < 0 {
@@ -169,7 +171,8 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// hosts. The large multiplier provided for low collaterals is only intended
 	// to discredit hosts that have a meaningless amount of collateral.
 	expectedUploadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedUploadFrequency
-	expectedDownloadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedDownloadFrequency * ug.expectedDataPieces / (ug.expectedDataPieces + ug.expectedParityPieces)
+	expectedDownloadBandwidthRedundant := ug.expectedStorage * uint64(allowance.Period) / ug.expectedDownloadFrequency
+	expectedDownloadBandwidth := uint64(float64(expectedDownloadBandwidthRedundant)/ug.expectedRedundancy)
 	expectedBandwidth := expectedUploadBandwidth + expectedDownloadBandwidth
 	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(collateralFloor)
 	if hostCollateral.Cmp(cutoff) < 0 {
@@ -231,11 +234,8 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	if ug.expectedDownloadFrequency == 0 {
 		ug.expectedDownloadFrequency = 1
 	}
-	if ug.expectedDataPieces == 0 {
-		ug.expectedDataPieces = 1
-	}
-	if ug.expectedParityPieces == 0 {
-		ug.expectedParityPieces = 1
+	if ug.expectedRedundancy == 0 {
+		ug.expectedRedundancy = 1
 	}
 
 	// Prices tiered as follows:
@@ -249,7 +249,7 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// to the storage price.
 	adjustedContractPrice := entry.ContractPrice.Div64(uint64(allowance.Period)).Div64(ug.expectedStorage)
 	adjustedUploadPrice := entry.UploadBandwidthPrice.Div64(ug.expectedUploadFrequency)
-	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Div64(ug.expectedDownloadFrequency).Mul64(ug.expectedDataPieces).Div64(ug.expectedDataPieces + ug.expectedParityPieces)
+	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Div64(ug.expectedDownloadFrequency).MulFloat(ug.expectedRedundancy)
 	siafundFee := adjustedContractPrice.Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(entry.Collateral).MulTax()
 	totalPrice := entry.StoragePrice.Add(adjustedContractPrice).Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(siafundFee)
 
@@ -257,7 +257,8 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// or a low price. This cutoff attempts to determine where the price becomes
 	// insignificant.
 	expectedUploadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedUploadFrequency
-	expectedDownloadBandwidth := ug.expectedStorage * uint64(allowance.Period) / ug.expectedDownloadFrequency * ug.expectedDataPieces / (ug.expectedDataPieces + ug.expectedParityPieces)
+	expectedDownloadBandwidthRedundant := ug.expectedStorage * uint64(allowance.Period) / ug.expectedDownloadFrequency
+	expectedDownloadBandwidth := uint64(float64(expectedDownloadBandwidthRedundant)/ug.expectedRedundancy)
 	expectedBandwidth := expectedUploadBandwidth + expectedDownloadBandwidth
 	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(ug.expectedStorage + expectedBandwidth).Div64(priceFloor)
 	if totalPrice.Cmp(cutoff) < 0 {
@@ -470,8 +471,7 @@ func (hdb *HostDB) calculateHostWeightFn(allowance modules.Allowance) hosttree.W
 		expectedStorage:           25e9,
 		expectedUploadFrequency:   24192,
 		expectedDownloadFrequency: 12096,
-		expectedDataPieces:        10,
-		expectedParityPieces:      20,
+		expectedRedundancy:        3,
 	}
 
 	return func(entry modules.HostDBEntry) types.Currency {
@@ -523,8 +523,7 @@ func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance module
 		expectedStorage:           25e9,
 		expectedUploadFrequency:   24192,
 		expectedDownloadFrequency: 12096,
-		expectedDataPieces:        10,
-		expectedParityPieces:      20,
+		expectedRedundancy:        3,
 	}
 
 	// Grab the adjustments. Age, and uptime penalties are set to '1', to
@@ -566,8 +565,7 @@ func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBr
 		expectedStorage:           25e9,
 		expectedUploadFrequency:   24192,
 		expectedDownloadFrequency: 12096,
-		expectedDataPieces:        10,
-		expectedParityPieces:      20,
+		expectedRedundancy:        3,
 	}
 
 	hdb.mu.Lock()

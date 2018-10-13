@@ -205,8 +205,8 @@ func hostdbcmd() {
 		fmt.Fprintln(w, "\t\tPubkey\tAddress\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
 		w.Flush()
 
-		// Grab the host at the 1/5th point and use it as the reference. (it's
-		// like using the median, except at the 1/5th point instead of the 1/2
+		// Grab the host at the 3/5th point and use it as the reference. (it's
+		// like using the median, except at the 3/5th point instead of the 1/2
 		// point.)
 		referenceScore := big.NewRat(1, 1)
 		if len(activeHosts) > 0 {

@@ -20,7 +20,7 @@ var (
 
 func calculateWeightFromUInt64Price(price, collateral uint64) (weight types.Currency) {
 	hdb := bareHostDB()
-	hdb.UpdateAllowance(DefaultTestAllowance)
+	hdb.SetAllowance(DefaultTestAllowance)
 	hdb.blockHeight = 0
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
@@ -32,6 +32,8 @@ func calculateWeightFromUInt64Price(price, collateral uint64) (weight types.Curr
 	return hdb.weightFunc(entry)
 }
 
+// TestHostWeightDistinctPrices ensures that the host weight is different if the
+// prices are different, and that a higher price has a lower score.
 func TestHostWeightDistinctPrices(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -45,6 +47,9 @@ func TestHostWeightDistinctPrices(t *testing.T) {
 	}
 }
 
+// TestHostWeightDistinctCollateral ensures that the host weight is different if
+// the collaterals are different, and that a higher collateral has a higher
+// score.
 func TestHostWeightDistinctCollateral(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -88,6 +93,9 @@ func TestHostWeightCollateralAboveCutoff(t *testing.T) {
 	}
 }
 
+// TestHostWeightIdenticalPrices checks that the weight function is
+// deterministic for two hosts that have identical settings - each should get
+// the same score.
 func TestHostWeightIdenticalPrices(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -99,6 +107,9 @@ func TestHostWeightIdenticalPrices(t *testing.T) {
 	}
 }
 
+// TestHostWeightWithOnePricedZero checks that nothing unexpected happens when
+// there is a zero price, and also checks that the zero priced host scores
+// higher  than the host that charges money.
 func TestHostWeightWithOnePricedZero(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -110,6 +121,8 @@ func TestHostWeightWithOnePricedZero(t *testing.T) {
 	}
 }
 
+// TestHostWeightBothPricesZero checks that there is nondeterminism in the
+// weight function even with zero value prices.
 func TestHostWeightWithBothPricesZero(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -121,6 +134,8 @@ func TestHostWeightWithBothPricesZero(t *testing.T) {
 	}
 }
 
+// TestHostWeightWithNoCollateral checks that nothing bad (like a panic) happens
+// when the collateral is set to zero.
 func TestHostWeightWithNoCollateral(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -134,25 +149,8 @@ func TestHostWeightWithNoCollateral(t *testing.T) {
 	}
 }
 
-func TestHostWeightCollateralDifferences(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	hdb := bareHostDB()
-	var entry modules.HostDBEntry
-	entry.RemainingStorage = 250e3
-	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry2 := entry
-	entry2.Collateral = types.NewCurrency64(500).Mul(types.SiacoinPrecision)
-
-	w1 := hdb.weightFunc(entry)
-	w2 := hdb.weightFunc(entry2)
-	if w1.Cmp(w2) < 0 {
-		t.Error("Larger collateral should have more weight")
-	}
-}
-
+// TestHostWeightStorageRemainingDifferences checks that hosts with less storage
+// remaining have a lower weight.
 func TestHostWeightStorageRemainingDifferences(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -168,11 +166,13 @@ func TestHostWeightStorageRemainingDifferences(t *testing.T) {
 	w1 := hdb.weightFunc(entry)
 	w2 := hdb.weightFunc(entry2)
 
-	if w1.Cmp(w2) < 0 {
+	if w1.Cmp(w2) <= 0 {
 		t.Error("Larger storage remaining should have more weight")
 	}
 }
 
+// TestHostWeightVersionDifferences checks that a host with an out of date
+// version has a lower score than a host with a more recent version.
 func TestHostWeightVersionDifferences(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -182,18 +182,20 @@ func TestHostWeightVersionDifferences(t *testing.T) {
 	entry.RemainingStorage = 250e3
 	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
 	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Version = "v1.0.4"
+	entry.Version = "v1.3.4"
 
 	entry2 := entry
-	entry2.Version = "v1.0.3"
+	entry2.Version = "v1.3.2"
 	w1 := hdb.weightFunc(entry)
 	w2 := hdb.weightFunc(entry2)
 
-	if w1.Cmp(w2) < 0 {
+	if w1.Cmp(w2) <= 0 {
 		t.Error("Higher version should have more weight")
 	}
 }
 
+// TestHostWeightLifetimeDifferences checks that a host that has been on the
+// chain for more time has a higher weight than a host that is newer.
 func TestHostWeightLifetimeDifferences(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -204,18 +206,20 @@ func TestHostWeightLifetimeDifferences(t *testing.T) {
 	entry.RemainingStorage = 250e3
 	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
 	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
-	entry.Version = "v1.0.4"
+	entry.Version = "v1.3.4"
 
 	entry2 := entry
 	entry2.FirstSeen = 8100
 	w1 := hdb.weightFunc(entry)
 	w2 := hdb.weightFunc(entry2)
 
-	if w1.Cmp(w2) < 0 {
+	if w1.Cmp(w2) <= 0 {
 		t.Error("Been around longer should have more weight")
 	}
 }
 
+// TestHostWeightUptimeDifferences checks that hosts with poorer uptimes have
+// lower weights.
 func TestHostWeightUptimeDifferences(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -246,11 +250,13 @@ func TestHostWeightUptimeDifferences(t *testing.T) {
 	w1 := hdb.weightFunc(entry)
 	w2 := hdb.weightFunc(entry2)
 
-	if w1.Cmp(w2) < 0 {
+	if w1.Cmp(w2) <= 0 {
 		t.Error("Been around longer should have more weight")
 	}
 }
 
+// TestHostWeightUptimeDifferences2 checks that hosts with poorer uptimes have
+// lower weights.
 func TestHostWeightUptimeDifferences2(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -286,6 +292,8 @@ func TestHostWeightUptimeDifferences2(t *testing.T) {
 	}
 }
 
+// TestHostWeightUptimeDifferences3 checks that hosts with poorer uptimes have
+// lower weights.
 func TestHostWeightUptimeDifferences3(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -321,6 +329,8 @@ func TestHostWeightUptimeDifferences3(t *testing.T) {
 	}
 }
 
+// TestHostWeightUptimeDifferences4 checks that hosts with poorer uptimes have
+// lower weights.
 func TestHostWeightUptimeDifferences4(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()

@@ -322,10 +322,10 @@ func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPub
 	return hdb.hostTree.SelectRandom(n, blacklist, addressBlacklist), nil
 }
 
-// RandomHostsTempAllowance works as RandomHosts but uses a temporary hosttree
+// RandomHostsWithAllowance works as RandomHosts but uses a temporary hosttree
 // created from the specified allowance. This is a very expensive call and
 // should be used with caution.
-func (hdb *HostDB) RandomHostsTempAllowance(n int, blacklist, addressBlacklist []types.SiaPublicKey, allowance modules.Allowance) ([]modules.HostDBEntry, error) {
+func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist []types.SiaPublicKey, allowance modules.Allowance) ([]modules.HostDBEntry, error) {
 	hdb.mu.RLock()
 	initialScanComplete := hdb.initialScanComplete
 	hdb.mu.RUnlock()
@@ -348,10 +348,10 @@ func (hdb *HostDB) RandomHostsTempAllowance(n int, blacklist, addressBlacklist [
 	return ht.SelectRandom(n, blacklist, addressBlacklist), insertErrs
 }
 
-// UpdateAllowance updates the allowance used by the hostdb for weighing hosts
-// by updating the host weight function.  It will completely rebuild the
-// hosttree so it should be used with care.
-func (hdb *HostDB) UpdateAllowance(allowance modules.Allowance) error {
+// SetAllowance updates the allowance used by the hostdb for weighing hosts by
+// updating the host weight function. It will completely rebuild the hosttree so
+// it should be used with care.
+func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 	// If the allowance is empty, set it to the default allowance. This ensures
 	// that the estimates are at least moderately grounded.
 	if reflect.DeepEqual(allowance, modules.Allowance{}) {
@@ -365,5 +365,5 @@ func (hdb *HostDB) UpdateAllowance(allowance modules.Allowance) error {
 	hdb.mu.Unlock()
 
 	// Update the trees weight function.
-	return hdb.hostTree.UpdateWeightFunction(hdb.calculateHostWeightFn(allowance))
+	return hdb.hostTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
 }

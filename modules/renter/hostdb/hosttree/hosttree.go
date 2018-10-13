@@ -250,9 +250,9 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 	return nil
 }
 
-// UpdateWeightFunction resets the HostTree and assigns it a new weight
+// SetWeightFunction resets the HostTree and assigns it a new weight
 // function. This resets the tree and reinserts all the hosts.
-func (ht *HostTree) UpdateWeightFunction(wf WeightFunc) error {
+func (ht *HostTree) SetWeightFunction(wf WeightFunc) error {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
