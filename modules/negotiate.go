@@ -414,17 +414,6 @@ func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevis
 	return txn.StandaloneValid(height)
 }
 
-// RenterPayoutsPreTaxArgs contains the arguments which are passed into
-// RenterPayoutsPreTax.
-type RenterPayoutsPreTaxArgs struct {
-	host            HostDBEntry
-	funding         types.Currency
-	txnFee          types.Currency
-	basePrice       types.Currency
-	expectedStorage uint64
-	period          types.BlockHeight
-}
-
 // RenterPayoutsPreTax calculates the renterPayout before tax and the hostPayout
 // given a host, the available renter funding, the expected txnFee for the
 // transaction and an optional basePrice in case this helper is used for a

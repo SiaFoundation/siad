@@ -355,6 +355,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	var hostCollateral types.Currency
 	contractCostPerHost := totalContractCost.Div64(allowance.Hosts)
 	fundingPerHost := allowance.Funds.Div64(allowance.Hosts)
+	numHosts := uint64(0)
 	for _, host := range hosts {
 		// Assume that the ContractPrice equals contractCostPerHost and that
 		// the txnFee was zero. It doesn't matter since RenterPayoutsPreTax
@@ -363,13 +364,14 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 		expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
 		_, _, collateral, err := modules.RenterPayoutsPreTax(host, fundingPerHost, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, expectedStorage)
 		if err != nil {
-			return modules.RenterPriceEstimation{}, allowance, err
+			continue
 		}
 		hostCollateral = hostCollateral.Add(collateral)
+		numHosts++
 	}
 
 	// Calculate average collateral and determine collateral for allowance
-	hostCollateral = hostCollateral.Div64(uint64(len(hosts)))
+	hostCollateral = hostCollateral.Div64(numHosts)
 	hostCollateral = hostCollateral.Mul64(allowance.Hosts)
 
 	// Add in siafund fee. which should be around 10%. The 10% siafund fee
