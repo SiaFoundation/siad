@@ -436,7 +436,7 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice types.Curr
 	}
 	// Underflow check.
 	if funding.Cmp(host.ContractPrice.Add(txnFee)) <= 0 {
-		err = errors.New("insufficient funds to cover contract fee and transaction fee during contract formation")
+		err = errors.New("underflow detected, funding < contractPrice + txnFee")
 		return
 	}
 	// Calculate renterPayout.

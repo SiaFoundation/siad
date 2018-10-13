@@ -142,8 +142,8 @@ func TestEstimateWeight(t *testing.T) {
 	}{
 		{types.SiacoinPrecision, 100},
 		{types.SiacoinPrecision.Mul64(50), 98},
-		{types.SiacoinPrecision.Mul64(2500), 50},
-		{types.SiacoinPrecision.Mul64(3000), 10},
+		{types.SiacoinPrecision.Mul64(2500), 10},
+		{types.SiacoinPrecision.Mul64(3000), 1},
 		{types.SiacoinPrecision.Mul64(30000), 0.00001},
 	}
 	for i, test := range tests {
@@ -152,7 +152,7 @@ func TestEstimateWeight(t *testing.T) {
 			t.Fatal("test", i, "failed:", err)
 		}
 		if eg.ConversionRate < test.minConversionRate {
-			t.Fatalf("test %v: incorrect conversion rate: got %v wanted %v\n", i, eg.ConversionRate, test.minConversionRate)
+			t.Errorf("test %v: incorrect conversion rate: got %v wanted %v\n", i, eg.ConversionRate, test.minConversionRate)
 		}
 	}
 }
