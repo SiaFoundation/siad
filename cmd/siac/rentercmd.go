@@ -768,7 +768,7 @@ func renterfileslistcmd() {
 		fmt.Println("No files have been uploaded.")
 		return
 	}
-	fmt.Print("Tracking ", len(rf.Files), " files:")
+	fmt.Print("\nTracking ", len(rf.Files), " files:")
 	var totalStored uint64
 	for _, file := range rf.Files {
 		totalStored += file.Filesize
