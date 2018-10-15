@@ -81,7 +81,7 @@ var (
 	// with the host. The current default is 0.1. This was chosen since it is
 	// the minimum fee estimation of the transactionpool for a filecontract
 	// transaction..
-	defaultContractPrice = types.SiacoinPrecision.Div64(100).Div64(1e3).Mul64(modules.EstimatedFileContractTransactionSetSize)
+	defaultContractPrice = types.SiacoinPrecision.Div64(100).Div64(1e3).Mul64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
 
 	// defaultDownloadBandwidthPrice defines the default price of upload
 	// bandwidth. The default is set to 10 siacoins per gigabyte, because

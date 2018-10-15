@@ -38,7 +38,7 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 
 	// Calculate contract price
 	_, maxFee := h.tpool.FeeEstimation()
-	contractPrice := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
+	contractPrice := maxFee.Mul64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
 	if contractPrice.Cmp(h.settings.MinContractPrice) < 0 {
 		contractPrice = h.settings.MinContractPrice
 	}
