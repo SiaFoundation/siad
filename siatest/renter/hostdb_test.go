@@ -240,12 +240,12 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 			return hdag.Hosts[i].LastIPNetChange.Before(hdag.Hosts[j].LastIPNetChange)
 		})
 		if hdag.Hosts[len(hdag.Hosts)-1].NetAddress.Host() != "host4.com" {
-			renter.PrintDebugInfo(t, true, true)
 			return fmt.Errorf("Youngest host should be host4.com but was %v", hdag.Hosts[len(hdag.Hosts)-1].NetAddress.Host())
 		}
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true)
 		t.Fatal(err)
 	}
 
@@ -267,21 +267,19 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 			return err
 		}
 		if len(contracts.InactiveContracts) != 1 {
-			renter.PrintDebugInfo(t, true, true)
 			return fmt.Errorf("Expected 1 inactive contract but got %v", len(contracts.InactiveContracts))
 		}
 		if len(contracts.ActiveContracts) != len(allHosts)-1 {
-			renter.PrintDebugInfo(t, true, true)
 			return fmt.Errorf("Expected %v active contracts but got %v", len(allHosts)-1, len(contracts.ActiveContracts))
 		}
 		canceledHost := contracts.InactiveContracts[0].NetAddress.Host()
 		if canceledHost != "host4.com" {
-			renter.PrintDebugInfo(t, true, true)
 			return fmt.Errorf("Expected canceled contract to be host4.com but was %v", canceledHost)
 		}
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true)
 		t.Fatal(err)
 	}
 }
