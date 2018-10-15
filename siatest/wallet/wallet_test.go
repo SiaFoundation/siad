@@ -163,15 +163,15 @@ func TestSignTransaction(t *testing.T) {
 			UnlockHash: types.UnlockHash{},
 		}},
 		TransactionSignatures: []types.TransactionSignature{
-			{ParentID: crypto.Hash(outputs[0].ID)},
-			{ParentID: crypto.Hash(outputs[1].ID)},
+			{ParentID: crypto.Hash(outputs[0].ID), CoveredFields: types.CoveredFields{WholeTransaction: true}},
+			{ParentID: crypto.Hash(outputs[1].ID), CoveredFields: types.CoveredFields{WholeTransaction: true}},
 		},
 	}
 
 	// sign the first input
 	signResp, err := testNode.WalletSignPost(txn, []crypto.Hash{txn.TransactionSignatures[0].ParentID})
 	if err != nil {
-		t.Fatal("failed to sign the transaction", err)
+		t.Fatal("failed to sign the transaction:", err)
 	}
 	txn = signResp.Transaction
 
@@ -185,7 +185,7 @@ func TestSignTransaction(t *testing.T) {
 	// sign the second input
 	signResp, err = testNode.WalletSignPost(txn, []crypto.Hash{txn.TransactionSignatures[1].ParentID})
 	if err != nil {
-		t.Fatal("failed to sign the transaction", err)
+		t.Fatal("failed to sign the transaction:", err)
 	}
 	txn = signResp.Transaction
 
@@ -197,7 +197,7 @@ func TestSignTransaction(t *testing.T) {
 	// the resulting transaction should be valid; submit it to the tpool and
 	// mine a block to confirm it
 	if err := testNode.TransactionPoolRawPost(txn, nil); err != nil {
-		t.Fatal("failed to add transaction to pool", err)
+		t.Fatal("failed to add transaction to pool:", err)
 	}
 	if err := testNode.MineBlock(); err != nil {
 		t.Fatal("failed to mine block", err)
@@ -252,15 +252,20 @@ func TestWatchOnly(t *testing.T) {
 	unspentResp, err := testNode.WalletUnspentGet()
 	if err != nil {
 		t.Fatal("failed to get spendable outputs:", err)
+	} else if len(unspentResp.Outputs) == 0 {
+		t.Fatal("expected at least one unspent output")
 	}
 	for _, o := range unspentResp.Outputs {
 		if o.UnlockHash == addr {
 			t.Fatal("shouldn't see addr in UnspentOutputs yet")
 		}
+		if o.IsWatchOnly {
+			t.Error("no outputs should be marked watch-only yet")
+		}
 	}
 
 	// track the address
-	err = testNode.WalletWatchPost([]types.UnlockHash{addr}, false, false)
+	err = testNode.WalletWatchAddPost([]types.UnlockHash{addr}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,6 +284,9 @@ func TestWatchOnly(t *testing.T) {
 	}
 	if output.ID == (types.OutputID{}) {
 		t.Fatal("addr not present in UnspentOutputs after WatchAddresses")
+	}
+	if !output.IsWatchOnly {
+		t.Error("output should be marked watch-only")
 	}
 
 	// create a transaction that sends an output to the void
@@ -318,5 +326,103 @@ func TestWatchOnly(t *testing.T) {
 		if o.UnlockHash == addr {
 			t.Fatal("spent output still listed as spendable")
 		}
+	}
+}
+
+// TestUnspentOutputs tests the UnspentOutputs method of the wallet.
+func TestUnspentOutputs(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a new server
+	testNode, err := siatest.NewNode(node.AllModules(siatest.TestDir(t.Name())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := testNode.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// create a dummy address and send coins to it
+	addr := types.UnlockHash{1}
+
+	_, err = testNode.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(77), addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testNode.MineBlock()
+
+	// define a helper function to check whether addr appears in
+	// UnspentOutputs
+	addrIsPresent := func() bool {
+		wug, err := testNode.WalletUnspentGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, o := range wug.Outputs {
+			if o.UnlockHash == addr {
+				return true
+			}
+		}
+		return false
+	}
+
+	// initially, the output should not show up in UnspentOutputs, because the
+	// address is not being tracked yet
+	if addrIsPresent() {
+		t.Fatal("shouldn't see addr in UnspentOutputs yet")
+	}
+
+	// add the address, but tell the wallet it hasn't been used yet. The
+	// wallet won't rescan, so it still won't see any outputs.
+	err = testNode.WalletWatchAddPost([]types.UnlockHash{addr}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if addrIsPresent() {
+		t.Fatal("shouldn't see addr in UnspentOutputs yet")
+	}
+
+	// remove the address, then add it again, this time telling the wallet
+	// that it has been used.
+	err = testNode.WalletWatchRemovePost([]types.UnlockHash{addr}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testNode.WalletWatchAddPost([]types.UnlockHash{addr}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// output should now show up
+	if !addrIsPresent() {
+		t.Fatal("addr not present in UnspentOutputs after AddWatchAddresses")
+	}
+
+	// remove the address, but tell the wallet that the address hasn't been
+	// used. The wallet won't rescan, so the output should still show up.
+	err = testNode.WalletWatchRemovePost([]types.UnlockHash{addr}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !addrIsPresent() {
+		t.Fatal("addr should still be present in UnspentOutputs")
+	}
+
+	// add and remove the address again, this time triggering a rescan. The
+	// output should no longer appear.
+	err = testNode.WalletWatchAddPost([]types.UnlockHash{addr}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testNode.WalletWatchRemovePost([]types.UnlockHash{addr}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if addrIsPresent() {
+		t.Fatal("shouldn't see addr in UnspentOutputs")
 	}
 }

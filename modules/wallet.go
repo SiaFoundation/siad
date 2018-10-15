@@ -112,6 +112,7 @@ type (
 		UnlockHash         types.UnlockHash  `json:"unlockhash"`
 		Value              types.Currency    `json:"value"`
 		ConfirmationHeight types.BlockHeight `json:"confirmationheight"`
+		IsWatchOnly        bool              `json:"iswatchonly"`
 	}
 
 	// TransactionBuilder is used to construct custom transactions. A transaction

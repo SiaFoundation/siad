@@ -225,7 +225,7 @@ func renterdownloadscmd() {
 	// Filter out files that have been downloaded.
 	var downloading []api.DownloadInfo
 	for _, file := range queue.Downloads {
-		if file.Received != file.Filesize {
+		if !file.Completed {
 			downloading = append(downloading, file)
 		}
 	}
@@ -244,7 +244,7 @@ func renterdownloadscmd() {
 	// Filter out files that are downloading.
 	var downloaded []api.DownloadInfo
 	for _, file := range queue.Downloads {
-		if file.Received == file.Filesize {
+		if file.Completed {
 			downloaded = append(downloaded, file)
 		}
 	}
