@@ -1479,8 +1479,8 @@ func TestRenterPricesHandlerPricey(t *testing.T) {
 	// should result in an increase for the price estimation.
 	vals := url.Values{}
 	vals.Set("mindownloadbandwidthprice", "100000000000000000000")
-	vals.Set("mincontractprice", "10000000000000000000000000")
-	vals.Set("minstorageprice", "100000000000000000000")
+	vals.Set("mincontractprice", "1000000000000000000000000")
+	vals.Set("minstorageprice", "1000000000000000000000")
 	vals.Set("minuploadbandwidthprice", "100000000000000000000")
 	err = stHost2.stdPostAPI("/host", vals)
 	if err != nil {
@@ -1517,22 +1517,22 @@ func TestRenterPricesHandlerPricey(t *testing.T) {
 	if !(rpeMulti.DownloadTerabyte.Cmp(rpeSingle.DownloadTerabyte) > 0) {
 		t.Log("Multi DownloadTerabyte cost:", rpeMulti.DownloadTerabyte.HumanString())
 		t.Log("Single DownloadTerabyte cost:", rpeSingle.DownloadTerabyte.HumanString())
-		t.Fatal("price did not increase from single to multi")
+		t.Error("price did not increase from single to multi")
 	}
 	if rpeMulti.FormContracts.Cmp(rpeSingle.FormContracts) > 0 {
 		t.Log("Multi FormContracts cost:", rpeMulti.FormContracts.HumanString())
 		t.Log("Single FormContracts cost:", rpeSingle.FormContracts.HumanString())
-		t.Fatal("price did not drop from single to multi")
+		t.Error("price did not drop from single to multi")
 	}
 	if !(rpeMulti.StorageTerabyteMonth.Cmp(rpeSingle.StorageTerabyteMonth) > 0) {
 		t.Log("Multi StorageTerabyteMonth cost:", rpeMulti.StorageTerabyteMonth.HumanString())
 		t.Log("Single StorageTerabyteMonth cost:", rpeSingle.StorageTerabyteMonth.HumanString())
-		t.Fatal("price did not increase from single to multi")
+		t.Error("price did not increase from single to multi")
 	}
 	if !(rpeMulti.UploadTerabyte.Cmp(rpeSingle.UploadTerabyte) > 0) {
 		t.Log("Multi UploadTerabyte cost:", rpeMulti.UploadTerabyte.HumanString())
 		t.Log("Single UploadTerabyte cost:", rpeSingle.UploadTerabyte.HumanString())
-		t.Fatal("price did not increase from single to multi")
+		t.Error("price did not increase from single to multi")
 	}
 }
 
