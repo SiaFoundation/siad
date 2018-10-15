@@ -816,6 +816,18 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		return
 	}
 
+	// Check whether existing file should be overwritten
+	overwrite := false
+	if req.FormValue("overwrite") != "" {
+		b, err := strconv.ParseBool(req.FormValue("overwrite"))
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'overwrite' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		} else {
+			overwrite = b
+		}
+	}
+
 	// Check whether the erasure coding parameters have been supplied.
 	var ec modules.ErasureCoder
 	if req.FormValue("datapieces") != "" || req.FormValue("paritypieces") != "" {
@@ -863,6 +875,7 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		Source:      source,
 		SiaPath:     strings.TrimPrefix(ps.ByName("siapath"), "/"),
 		ErasureCode: ec,
+		Overwrite:   overwrite,
 	})
 	if err != nil {
 		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)

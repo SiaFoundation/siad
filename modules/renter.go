@@ -121,6 +121,7 @@ type FileUploadParams struct {
 	Source      string
 	SiaPath     string
 	ErasureCode ErasureCoder
+	Overwrite   bool
 }
 
 // FileInfo provides information about a file.

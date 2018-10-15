@@ -58,7 +58,16 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	_, exists := r.files[up.SiaPath]
 	r.mu.RUnlock(lockID)
 	if exists {
-		return ErrPathOverload
+		// Remove existing file if overwrite is specified
+		if up.Overwrite {
+			err := r.DeleteFile(up.SiaPath)
+			// Return of ErrUnknownPath should not prevent upload
+			if err != nil && err != ErrUnknownPath {
+				return err
+			}
+		} else {
+			return ErrPathOverload
+		}
 	}
 
 	// Fill in any missing upload params with sensible defaults.
