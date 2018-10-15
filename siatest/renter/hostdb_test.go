@@ -245,7 +245,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		renter.PrintDebugInfo(t, true, true)
+		renter.PrintDebugInfo(t, true, true, false)
 		t.Fatal(err)
 	}
 
@@ -279,7 +279,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		renter.PrintDebugInfo(t, true, true)
+		renter.PrintDebugInfo(t, true, true, false)
 		t.Fatal(err)
 	}
 }
