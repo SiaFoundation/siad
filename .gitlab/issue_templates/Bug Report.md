@@ -1,13 +1,13 @@
 # BUG REPORT
 
-**Stack Trace or error message**
+## Stack Trace or error message
 
-**Expected Behavior**
+## Expected Behavior
 
-**Observed Behavior**
+## Observed Behavior
 
-**How to reproduce it (as minimally and precisely as possible)**
+## How to reproduce it (as minimally and precisely as possible)
 
-**Environment**
+## Environment
 * Sia version:
 * OS:
