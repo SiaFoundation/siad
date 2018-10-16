@@ -228,7 +228,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		FileContractRevisions: []types.FileContractRevision{initRevision},
 		TransactionSignatures: []types.TransactionSignature{renterRevisionSig},
 	}
-	encodedSig := crypto.SignHash(revisionTxn.SigHash(0), ourSK)
+	encodedSig := crypto.SignHash(revisionTxn.SigHash(0, startHeight), ourSK)
 	revisionTxn.TransactionSignatures[0].Signature = encodedSig[:]
 
 	// Send acceptance and signatures

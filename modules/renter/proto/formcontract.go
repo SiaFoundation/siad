@@ -215,7 +215,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 		FileContractRevisions: []types.FileContractRevision{initRevision},
 		TransactionSignatures: []types.TransactionSignature{renterRevisionSig},
 	}
-	encodedSig := crypto.SignHash(revisionTxn.SigHash(0), ourSK)
+	encodedSig := crypto.SignHash(revisionTxn.SigHash(0, startHeight), ourSK)
 	revisionTxn.TransactionSignatures[0].Signature = encodedSig[:]
 
 	// Send acceptance and signatures.

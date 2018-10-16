@@ -145,7 +145,7 @@ func (he *Editor) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 
 	// send revision to host and exchange signatures
 	extendDeadline(he.conn, connTimeout)
-	signedTxn, err := negotiateRevision(he.conn, rev, contract.SecretKey)
+	signedTxn, err := negotiateRevision(he.conn, rev, contract.SecretKey, he.height)
 	if err == modules.ErrStopResponse {
 		// if host gracefully closed, close our connection as well; this will
 		// cause the next operation to fail
@@ -204,12 +204,13 @@ func (cs *ContractSet) NewEditor(host modules.HostDBEntry, id types.FileContract
 	return &Editor{
 		host:        host,
 		hdb:         hdb,
-		height:      currentHeight,
 		contractID:  id,
 		contractSet: cs,
 		conn:        conn,
 		closeChan:   closeChan,
 		deps:        cs.deps,
+
+		height: currentHeight,
 	}, nil
 }
 

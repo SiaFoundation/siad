@@ -38,7 +38,7 @@ func BenchmarkStandaloneValid(b *testing.B) {
 	}
 	// Transaction must be constructed before signing
 	for i := 0; i < numSigs; i++ {
-		sigHash := txn.SigHash(i)
+		sigHash := txn.SigHash(i, 0)
 		sig0 := crypto.SignHash(sigHash, sk[i])
 		txn.TransactionSignatures[i].Signature = sig0[:]
 	}

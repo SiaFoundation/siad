@@ -180,7 +180,7 @@ func (uc UnlockConditions) UnlockHash() UnlockHash {
 
 // SigHash returns the hash of the fields in a transaction covered by a given
 // signature. See CoveredFields for more details.
-func (t Transaction) SigHash(i int) (hash crypto.Hash) {
+func (t Transaction) SigHash(i int, height BlockHeight) (hash crypto.Hash) {
 	cf := t.TransactionSignatures[i].CoveredFields
 	h := crypto.NewHash()
 	if cf.WholeTransaction {
@@ -398,7 +398,7 @@ func (t *Transaction) validSignatures(currentHeight BlockHeight) error {
 			var edSig crypto.Signature
 			copy(edSig[:], sig.Signature)
 
-			sigHash := t.SigHash(i)
+			sigHash := t.SigHash(i, currentHeight)
 			err = crypto.VerifyHash(sigHash, edPK, edSig)
 			if err != nil {
 				return err

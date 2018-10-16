@@ -511,7 +511,7 @@ func (cst *consensusSetTester) testFileContractRevision() {
 		FileContractRevisions: []types.FileContractRevision{fcr},
 		TransactionSignatures: []types.TransactionSignature{ts},
 	}
-	encodedSig := crypto.SignHash(txn.SigHash(0), sk)
+	encodedSig := crypto.SignHash(txn.SigHash(0, 0), sk)
 	txn.TransactionSignatures[0].Signature = encodedSig[:]
 	err = cst.tpool.AcceptTransactionSet([]types.Transaction{txn})
 	if err != nil {
