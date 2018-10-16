@@ -16,6 +16,16 @@ func TestUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Mine a few more blocks to get past the hardfork height.
+	for i := types.BlockHeight(0); i <= 2; i++ {
+		b, _ := wt.miner.FindBlock()
+		err := wt.cs.AcceptBlock(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// mine a block and add it to the consensus set
 	b, err := wt.miner.FindBlock()
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -173,10 +174,10 @@ func TestIntegrationBlocksMined(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Unsolve the header - necessary because the target is very low when
+	// Solve the header - necessary because the target is very low when
 	// mining.
 	for {
-		unsolvedHeader.Nonce[0]++
+		*(*uint64)(unsafe.Pointer(&unsolvedHeader.Nonce)) += types.ASICHardforkFactor
 		id := crypto.HashObject(unsolvedHeader)
 		if bytes.Compare(target[:], id[:]) < 0 {
 			break

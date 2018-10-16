@@ -40,7 +40,7 @@ func solveHeader(target types.Target, bh types.BlockHeader) (types.BlockHeader, 
 			return bh, nil
 		}
 		*(*uint64)(unsafe.Pointer(&header[32])) = nonce
-		nonce++
+		nonce += types.ASICHardforkFactor
 	}
 	return bh, errors.New("couldn't solve block")
 }

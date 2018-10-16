@@ -3,6 +3,7 @@ package miner
 import (
 	"bytes"
 	"testing"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -17,7 +18,7 @@ func solveHeader(header types.BlockHeader, target types.Target) types.BlockHeade
 	for {
 		// Increment the nonce first to guarantee that a new header is formed
 		// - this helps check for pointer errors.
-		header.Nonce[0]++
+		*(*uint64)(unsafe.Pointer(&header.Nonce)) += types.ASICHardforkFactor
 		id := crypto.HashObject(header)
 		if bytes.Compare(target[:], id[:]) >= 0 {
 			break
