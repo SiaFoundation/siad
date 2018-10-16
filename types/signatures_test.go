@@ -70,8 +70,8 @@ func TestSigHash(t *testing.T) {
 		},
 	}
 
-	_ = txn.SigHash(0)
-	_ = txn.SigHash(1)
+	_ = txn.SigHash(0, 0)
+	_ = txn.SigHash(1, 0)
 
 }
 
@@ -238,9 +238,9 @@ func TestTransactionValidSignatures(t *testing.T) {
 	txn.TransactionSignatures[2].ParentID[0] = 2
 	txn.TransactionSignatures[4].ParentID[0] = 1
 	txn.TransactionSignatures[5].ParentID[0] = 2
-	sigHash0 := txn.SigHash(0)
-	sigHash1 := txn.SigHash(1)
-	sigHash2 := txn.SigHash(2)
+	sigHash0 := txn.SigHash(0, 10)
+	sigHash1 := txn.SigHash(1, 10)
+	sigHash2 := txn.SigHash(2, 10)
 	sig0 := crypto.SignHash(sigHash0, sk)
 	sig1 := crypto.SignHash(sigHash1, sk)
 	sig2 := crypto.SignHash(sigHash2, sk)

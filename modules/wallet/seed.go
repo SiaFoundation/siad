@@ -358,9 +358,13 @@ func (w *Wallet) SweepSeed(seed modules.Seed) (coins, funds types.Currency, err 
 	// get an address to spend into
 	w.mu.Lock()
 	uc, err := w.nextPrimarySeedAddress(w.dbTx)
+	height, err2 := dbGetConsensusHeight(w.dbTx)
 	w.mu.Unlock()
 	if err != nil {
-		return
+		return types.Currency{}, types.Currency{}, err
+	}
+	if err2 != nil {
+		return types.Currency{}, types.Currency{}, err2
 	}
 
 	// scan blockchain for outputs, filtering out 'dust' (outputs that cost
@@ -496,11 +500,11 @@ func (w *Wallet) SweepSeed(seed modules.Seed) (coins, funds types.Currency, err 
 		txn, parents := tb.View()
 		for _, output := range txnSiacoinOutputs {
 			sk := generateSpendableKey(seed, output.seedIndex)
-			addSignatures(&txn, types.FullCoveredFields, sk.UnlockConditions, crypto.Hash(output.id), sk)
+			addSignatures(&txn, types.FullCoveredFields, sk.UnlockConditions, crypto.Hash(output.id), sk, height)
 		}
 		for _, sfo := range txnSiafundOutputs {
 			sk := generateSpendableKey(seed, sfo.seedIndex)
-			addSignatures(&txn, types.FullCoveredFields, sk.UnlockConditions, crypto.Hash(sfo.id), sk)
+			addSignatures(&txn, types.FullCoveredFields, sk.UnlockConditions, crypto.Hash(sfo.id), sk, height)
 		}
 		// Usually, all the inputs will come from swept outputs. However, there is
 		// an edge case in which inputs will be added from the wallet. To cover
@@ -509,7 +513,7 @@ func (w *Wallet) SweepSeed(seed modules.Seed) (coins, funds types.Currency, err 
 		w.mu.RLock()
 		for _, input := range txn.SiacoinInputs {
 			if key, ok := w.keys[input.UnlockConditions.UnlockHash()]; ok {
-				addSignatures(&txn, types.FullCoveredFields, input.UnlockConditions, crypto.Hash(input.ParentID), key)
+				addSignatures(&txn, types.FullCoveredFields, input.UnlockConditions, crypto.Hash(input.ParentID), key, height)
 			}
 		}
 		w.mu.RUnlock()
