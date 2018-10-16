@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -106,6 +107,19 @@ func (c *Client) WalletSiacoinsPost(amount types.Currency, destination types.Unl
 	return
 }
 
+// WalletSignPost uses the /wallet/sign api endpoint to sign a transaction.
+func (c *Client) WalletSignPost(txn types.Transaction, toSign []crypto.Hash) (wspr api.WalletSignPOSTResp, err error) {
+	json, err := json.Marshal(api.WalletSignPOSTParams{
+		Transaction: txn,
+		ToSign:      toSign,
+	})
+	if err != nil {
+		return
+	}
+	err = c.post("/wallet/sign", string(json), &wspr)
+	return
+}
+
 // WalletSiafundsPost uses the /wallet/siafunds api endpoint to send siafunds
 // to a single address.
 func (c *Client) WalletSiafundsPost(amount types.Currency, destination types.UnlockHash) (wsp api.WalletSiafundsPOST, err error) {
@@ -157,6 +171,57 @@ func (c *Client) WalletUnlockPost(password string) (err error) {
 	values.Set("encryptionpassword", password)
 	err = c.post("/wallet/unlock", values.Encode(), nil)
 	return
+}
+
+// WalletUnlockConditionsGet requests the /wallet/unlockconditions endpoint
+// and returns the UnlockConditions of addr.
+func (c *Client) WalletUnlockConditionsGet(addr types.UnlockHash) (wucg api.WalletUnlockConditionsGET, err error) {
+	err = c.get("/wallet/unlockconditions/"+addr.String(), &wucg)
+	return
+}
+
+// WalletUnspentGet requests the /wallet/unspent endpoint and returns all of
+// the unspent outputs related to the wallet.
+func (c *Client) WalletUnspentGet() (wug api.WalletUnspentGET, err error) {
+	err = c.get("/wallet/unspent", &wug)
+	return
+}
+
+// WalletWatchGet requests the /wallet/watch endpoint and returns the set of
+// currently watched addresses.
+func (c *Client) WalletWatchGet() (wwg api.WalletWatchGET, err error) {
+	err = c.get("/wallet/watch", &wwg)
+	return
+}
+
+// WalletWatchPost uses the /wallet/watch endpoint to add a set of addresses
+// to the watch set. The unused flag should be set to true if the addresses
+// have never appeared in the blockchain.
+func (c *Client) WalletWatchAddPost(addrs []types.UnlockHash, unused bool) error {
+	json, err := json.Marshal(api.WalletWatchPOST{
+		Addresses: addrs,
+		Remove:    false,
+		Unused:    unused,
+	})
+	if err != nil {
+		return err
+	}
+	return c.post("/wallet/watch", string(json), nil)
+}
+
+// WalletWatchPost uses the /wallet/watch endpoint to remove a set of
+// addresses from the watch set. The unused flag should be set to true if the
+// addresses have never appeared in the blockchain.
+func (c *Client) WalletWatchRemovePost(addrs []types.UnlockHash, unused bool) error {
+	json, err := json.Marshal(api.WalletWatchPOST{
+		Addresses: addrs,
+		Remove:    true,
+		Unused:    unused,
+	})
+	if err != nil {
+		return err
+	}
+	return c.post("/wallet/watch", string(json), nil)
 }
 
 // Wallet033xPost uses the /wallet/033x endpoint to load a v0.3.3.x wallet into

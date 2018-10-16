@@ -3,6 +3,7 @@ package siatest
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"path/filepath"
 	"reflect"
 	"time"
@@ -16,7 +17,7 @@ import (
 )
 
 // DownloadToDisk downloads a previously uploaded file. The file will be downloaded
-// to a random location and returned as a TestFile object.
+// to a random location and returned as a LocalFile object.
 func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, error) {
 	fi, err := tn.FileInfo(rf)
 	if err != nil {
@@ -43,6 +44,49 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 		return lf, errors.AddContext(err, "downloaded file's checksum doesn't match")
 	}
 	return lf, nil
+}
+
+// DownloadToDiskPartial downloads a part of a previously uploaded file. The
+// file will be downloaded to a random location and returned as a LocalFile
+// object.
+func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async bool, offset, length uint64) (*LocalFile, error) {
+	fi, err := tn.FileInfo(rf)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to retrieve FileInfo")
+	}
+	// Create a random destination for the download
+	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, hex.EncodeToString(fastrand.Bytes(4)))
+	dest := filepath.Join(tn.downloadDir.path, fileName)
+	if err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async); err != nil {
+		return nil, errors.AddContext(err, "failed to download file")
+	}
+	// Create the TestFile
+	destFile := &LocalFile{
+		path:     dest,
+		size:     int(fi.Filesize),
+		checksum: rf.checksum,
+	}
+	// If we download the file asynchronously we are done
+	if async {
+		return destFile, nil
+	}
+	// Verify checksum if we downloaded the file blocking and if lf was
+	// provided.
+	if lf != nil {
+		var checksum crypto.Hash
+		checksum, err = lf.partialChecksum(offset, offset+length)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to get partial checksum")
+		}
+		data, err := ioutil.ReadFile(dest)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to read downloaded file")
+		}
+		if checksum != crypto.HashBytes(data) {
+			return nil, fmt.Errorf("downloaded bytes don't match requested data %v-%v", offset, length)
+		}
+	}
+	return destFile, nil
 }
 
 // DownloadByStream downloads a file and returns its contents as a slice of bytes.

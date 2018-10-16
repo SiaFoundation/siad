@@ -257,7 +257,7 @@ func TestReviseContract(t *testing.T) {
 	}
 
 	// sign the transaction
-	encodedSig := crypto.SignHash(signedTxn.SigHash(0), sk)
+	encodedSig := crypto.SignHash(signedTxn.SigHash(0, ct.cs.Height()), sk)
 	signedTxn.TransactionSignatures[0].Signature = encodedSig[:]
 
 	err = signedTxn.StandaloneValid(ct.contractor.blockHeight)

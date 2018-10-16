@@ -74,6 +74,9 @@ func (w *Wallet) openDB(filename string) (err error) {
 		if wb.Get(keySiafundPool) == nil {
 			wb.Put(keySiafundPool, encoding.Marshal(types.ZeroCurrency))
 		}
+		if wb.Get(keyWatchedAddrs) == nil {
+			wb.Put(keyWatchedAddrs, encoding.Marshal([]types.UnlockHash{}))
+		}
 
 		// build the bucketAddrTransactions bucket if necessary
 		if buildAddrTxns {

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/base64"
 	"net/url"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -16,10 +17,10 @@ func (c *Client) TransactionPoolFeeGet() (tfg api.TpoolFeeGET, err error) {
 
 // TransactionPoolRawPost uses the /tpool/raw endpoint to send a raw
 // transaction to the transaction pool.
-func (c *Client) TransactionPoolRawPost(txn types.Transaction, parents types.Transaction) (err error) {
+func (c *Client) TransactionPoolRawPost(txn types.Transaction, parents []types.Transaction) (err error) {
 	values := url.Values{}
-	values.Set("transaction", string(encoding.Marshal(txn)))
-	values.Set("parents", string(encoding.Marshal(parents)))
+	values.Set("transaction", base64.StdEncoding.EncodeToString(encoding.Marshal(txn)))
+	values.Set("parents", base64.StdEncoding.EncodeToString(encoding.Marshal(parents)))
 	err = c.post("/tpool/raw", values.Encode(), nil)
 	return
 }

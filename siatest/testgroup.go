@@ -255,7 +255,7 @@ func hostsInRenterDBCheck(miner *TestNode, renters map[*TestNode]struct{}, hosts
 				}
 				// Check if the renter has the host in its db.
 				err := errors.AddContext(renter.KnowsHost(host), "renter doesn't know host")
-				if err != nil && numRetries%10 == 0 {
+				if err != nil && numRetries%100 == 0 {
 					return errors.Compose(err, miner.MineBlock())
 				}
 				if err != nil {
@@ -435,7 +435,7 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 			}
 			// Check if number is sufficient
 			if contracts < expectedContracts {
-				if numRetries%10 == 0 {
+				if numRetries%100 == 0 {
 					if err := miner.MineBlock(); err != nil {
 						return err
 					}

@@ -96,7 +96,6 @@ import (
 // more difficult.
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -106,6 +105,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -148,6 +148,7 @@ type Gateway struct {
 	// Utilities.
 	log        *persist.Logger
 	mu         sync.RWMutex
+	persist    persistence
 	persistDir string
 	threads    siasync.ThreadGroup
 
@@ -183,7 +184,7 @@ func (g *Gateway) Close() error {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.saveSync()
+	return errors.Compose(g.saveSync(), g.saveSyncNodes())
 }
 
 // DiscoverAddress discovers and returns the current public IP address of the
@@ -260,9 +261,13 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 		g.UnregisterConnectCall("ShareNodes")
 	})
 
-	// Load the old node list. If it doesn't exist, no problem, but if it does,
-	// we want to know about any errors preventing us from loading it.
+	// Load the old node list and gateway persistence. If it doesn't exist, no
+	// problem, but if it does, we want to know about any errors preventing us
+	// from loading it.
 	if loadErr := g.load(); loadErr != nil && !os.IsNotExist(loadErr) {
+		return nil, loadErr
+	}
+	if loadErr := g.loadNodes(); loadErr != nil && !os.IsNotExist(loadErr) {
 		return nil, loadErr
 	}
 	// Spawn the thread to periodically save the gateway.
@@ -270,11 +275,13 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	// Make sure that the gateway saves after shutdown.
 	g.threads.AfterStop(func() {
 		g.mu.Lock()
-		err = g.saveSync()
-		g.mu.Unlock()
-		if err != nil {
+		if err := g.saveSync(); err != nil {
 			g.log.Println("ERROR: Unable to save gateway:", err)
 		}
+		if err := g.saveSyncNodes(); err != nil {
+			g.log.Println("ERROR: Unable to save gateway nodes:", err)
+		}
+		g.mu.Unlock()
 	})
 
 	// Add the bootstrap peers to the node list.

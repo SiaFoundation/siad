@@ -70,8 +70,8 @@ func TestSigHash(t *testing.T) {
 		},
 	}
 
-	_ = txn.SigHash(0)
-	_ = txn.SigHash(1)
+	_ = txn.SigHash(0, 0)
+	_ = txn.SigHash(1, 0)
 
 }
 
@@ -104,7 +104,7 @@ func TestSortedUnique(t *testing.T) {
 	}
 }
 
-// TestTransactionValidCoveredFields probes the validCoveredFields menthod of
+// TestTransactionValidCoveredFields probes the validCoveredFields method of
 // the transaction type.
 func TestTransactionValidCoveredFields(t *testing.T) {
 	if testing.Short() {
@@ -123,13 +123,9 @@ func TestTransactionValidCoveredFields(t *testing.T) {
 		SiafundOutputs:        []SiafundOutput{{}},
 		MinerFees:             []Currency{{}},
 		ArbitraryData:         [][]byte{{'o'}, {'t'}},
-		TransactionSignatures: []TransactionSignature{
-			{
-				CoveredFields: CoveredFields{
-					WholeTransaction: true,
-				},
-			},
-		},
+		TransactionSignatures: []TransactionSignature{{
+			CoveredFields: CoveredFields{WholeTransaction: true},
+		}},
 	}
 	err := txn.validCoveredFields()
 	if err != nil {
@@ -174,6 +170,13 @@ func TestTransactionValidCoveredFields(t *testing.T) {
 	err = txn.validCoveredFields()
 	if err != ErrSortedUniqueViolation {
 		t.Error("Expecting ErrSortedUniqueViolation, got", err)
+	}
+
+	// Clear the CoveredFields completely.
+	txn.TransactionSignatures[0].CoveredFields = CoveredFields{}
+	err = txn.validCoveredFields()
+	if err != ErrWholeTransactionViolation {
+		t.Error("Expecting ErrWholeTransactionViolation, got", err)
 	}
 }
 
@@ -227,17 +230,17 @@ func TestTransactionValidSignatures(t *testing.T) {
 
 		// The second signatures should always work for being unrecognized
 		// types.
-		{PublicKeyIndex: 1},
-		{PublicKeyIndex: 1},
-		{PublicKeyIndex: 1},
+		{PublicKeyIndex: 1, CoveredFields: CoveredFields{WholeTransaction: true}},
+		{PublicKeyIndex: 1, CoveredFields: CoveredFields{WholeTransaction: true}},
+		{PublicKeyIndex: 1, CoveredFields: CoveredFields{WholeTransaction: true}},
 	}
 	txn.TransactionSignatures[1].ParentID[0] = 1
 	txn.TransactionSignatures[2].ParentID[0] = 2
 	txn.TransactionSignatures[4].ParentID[0] = 1
 	txn.TransactionSignatures[5].ParentID[0] = 2
-	sigHash0 := txn.SigHash(0)
-	sigHash1 := txn.SigHash(1)
-	sigHash2 := txn.SigHash(2)
+	sigHash0 := txn.SigHash(0, 10)
+	sigHash1 := txn.SigHash(1, 10)
+	sigHash2 := txn.SigHash(2, 10)
 	sig0 := crypto.SignHash(sigHash0, sk)
 	sig1 := crypto.SignHash(sigHash1, sk)
 	sig2 := crypto.SignHash(sigHash2, sk)
@@ -290,7 +293,7 @@ func TestTransactionValidSignatures(t *testing.T) {
 	txn.SiafundInputs = txn.SiafundInputs[:len(txn.SiafundInputs)-1]
 
 	// Add a frivolous signature
-	txn.TransactionSignatures = append(txn.TransactionSignatures, TransactionSignature{})
+	txn.TransactionSignatures = append(txn.TransactionSignatures, TransactionSignature{CoveredFields: CoveredFields{WholeTransaction: true}})
 	err = txn.validSignatures(10)
 	if err != ErrFrivolousSignature {
 		t.Error(err)
@@ -301,7 +304,7 @@ func TestTransactionValidSignatures(t *testing.T) {
 	// signature. This should get rejected because the always-accepted
 	// signature has already been used.
 	tmpTxn0 := txn.TransactionSignatures[0]
-	txn.TransactionSignatures[0] = TransactionSignature{PublicKeyIndex: 1}
+	txn.TransactionSignatures[0] = TransactionSignature{PublicKeyIndex: 1, CoveredFields: CoveredFields{WholeTransaction: true}}
 	err = txn.validSignatures(10)
 	if err != ErrPublicKeyOveruse {
 		t.Error(err)
@@ -315,7 +318,7 @@ func TestTransactionValidSignatures(t *testing.T) {
 	}
 
 	// Try to spend an entropy signature.
-	txn.TransactionSignatures[0] = TransactionSignature{PublicKeyIndex: 2}
+	txn.TransactionSignatures[0] = TransactionSignature{PublicKeyIndex: 2, CoveredFields: CoveredFields{WholeTransaction: true}}
 	err = txn.validSignatures(10)
 	if err != ErrEntropyKey {
 		t.Error(err)
@@ -323,7 +326,7 @@ func TestTransactionValidSignatures(t *testing.T) {
 	txn.TransactionSignatures[0] = tmpTxn0
 
 	// Try to point to a nonexistent public key.
-	txn.TransactionSignatures[0] = TransactionSignature{PublicKeyIndex: 5}
+	txn.TransactionSignatures[0] = TransactionSignature{PublicKeyIndex: 5, CoveredFields: CoveredFields{WholeTransaction: true}}
 	err = txn.validSignatures(10)
 	if err != ErrInvalidPubKeyIndex {
 		t.Error(err)

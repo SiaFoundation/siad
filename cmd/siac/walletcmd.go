@@ -1,18 +1,27 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"math/big"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh/terminal"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/entropy-mnemonics"
 )
 
 var (
@@ -35,6 +44,14 @@ var (
 		Short: "View wallet balance",
 		Long:  "View wallet balance, including confirmed and unconfirmed siacoins and siafunds.",
 		Run:   wrap(walletbalancecmd),
+	}
+
+	walletBroadcastCmd = &cobra.Command{
+		Use:   "broadcast [txn]",
+		Short: "Broadcast a transaction",
+		Long: `Broadcast a JSON-encoded transaction to connected peers. The transaction must
+be valid. txn may be either JSON, base64, or a file containing either.`,
+		Run: wrap(walletbroadcastcmd),
 	}
 
 	walletChangepasswordCmd = &cobra.Command{
@@ -146,6 +163,21 @@ A dynamic transaction fee is applied depending on the size of the transaction an
 		Long: `Send siafunds to an address, and transfer the claim siacoins to your wallet.
 Run 'wallet send --help' to see a list of available units.`,
 		Run: wrap(walletsendsiafundscmd),
+	}
+
+	walletSignCmd = &cobra.Command{
+		Use:   "sign [txn] [tosign]",
+		Short: "Sign a transaction",
+		Long: `Sign a transaction. If siad is running with an unlocked wallet, the
+/wallet/sign API call will be used. Otherwise, sign will prompt for the wallet
+seed, and the signing key(s) will be regenerated.
+
+txn may be either JSON, base64, or a file containing either.
+
+tosign is an optional list of indices. Each index corresponds to a
+TransactionSignature in the txn that will be filled in. If no indices are
+provided, the wallet will fill in every TransactionSignature it has keys for.`,
+		Run: walletsigncmd,
 	}
 
 	walletSweepCmd = &cobra.Command{
@@ -450,6 +482,19 @@ Estimated Fee:       %v / KB
 		fees.Maximum.Mul64(1e3).HumanString())
 }
 
+// walletbroadcastcmd broadcasts a transaction.
+func walletbroadcastcmd(txnStr string) {
+	txn, err := parseTxn(txnStr)
+	if err != nil {
+		die("Could not decode transaction:", err)
+	}
+	err = httpClient.TransactionPoolRawPost(txn, nil)
+	if err != nil {
+		die("Could not broadcast transaction:", err)
+	}
+	fmt.Println("Transaction has been broadcast successfully")
+}
+
 // walletsweepcmd sweeps coins and funds from a seed.
 func walletsweepcmd() {
 	seed, err := passwordPrompt("Seed: ")
@@ -462,6 +507,82 @@ func walletsweepcmd() {
 		die("Could not sweep seed:", err)
 	}
 	fmt.Printf("Swept %v and %v SF from seed.\n", currencyUnits(swept.Coins), swept.Funds)
+}
+
+// walletsigncmd signs a transaction.
+func walletsigncmd(cmd *cobra.Command, args []string) {
+	if len(args) < 1 {
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+
+	txn, err := parseTxn(args[0])
+	if err != nil {
+		die("Could not decode transaction:", err)
+	}
+
+	var toSign []crypto.Hash
+	for _, arg := range args[1:] {
+		index, err := strconv.ParseUint(arg, 10, 32)
+		if err != nil {
+			die("Invalid signature index", index, "(must be an non-negative integer)")
+		} else if index >= uint64(len(txn.TransactionSignatures)) {
+			die("Invalid signature index", index, "(transaction only has", len(txn.TransactionSignatures), "signatures)")
+		}
+		toSign = append(toSign, txn.TransactionSignatures[index].ParentID)
+	}
+
+	// try API first
+	wspr, err := httpClient.WalletSignPost(txn, toSign)
+	if err == nil {
+		txn = wspr.Transaction
+	} else {
+		// if siad is running, but the wallet is locked, assume the user
+		// wanted to sign with siad
+		if strings.Contains(err.Error(), modules.ErrLockedWallet.Error()) {
+			die("Signing via API failed: siad is running, but the wallet is locked.")
+		}
+
+		// siad is not running; fallback to offline keygen
+		walletsigncmdoffline(&txn, toSign)
+	}
+
+	if walletRawTxn {
+		base64.NewEncoder(base64.StdEncoding, os.Stdout).Write(encoding.Marshal(txn))
+	} else {
+		json.NewEncoder(os.Stdout).Encode(txn)
+	}
+	fmt.Println()
+}
+
+// walletsigncmdoffline is a helper for walletsigncmd that handles signing
+// transactions without siad.
+func walletsigncmdoffline(txn *types.Transaction, toSign []crypto.Hash) {
+	fmt.Println("Enter your wallet seed to generate the signing key(s) now and sign without siad.")
+	seedString, err := passwordPrompt("Seed: ")
+	if err != nil {
+		die("Reading seed failed:", err)
+	}
+	seed, err := modules.StringToSeed(seedString, mnemonics.English)
+	if err != nil {
+		die("Invalid seed:", err)
+	}
+	// signing via seed may take a while, since we need to regenerate
+	// keys. If it takes longer than a second, print a message to assure
+	// the user that this is normal.
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-time.After(time.Second):
+			fmt.Println("Generating keys; this may take a few seconds...")
+		case <-done:
+		}
+	}()
+	err = wallet.SignTransaction(txn, seed, toSign, 180e3)
+	if err != nil {
+		die("Failed to sign transaction:", err)
+	}
+	close(done)
 }
 
 // wallettransactionscmd lists all of the transactions related to the wallet,

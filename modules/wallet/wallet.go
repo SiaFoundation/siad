@@ -71,9 +71,10 @@ type Wallet struct {
 	// from the seeds, when checking new outputs or spending outputs, the seeds
 	// are not referenced at all. The seeds are only stored so that the user
 	// may access them.
-	seeds     []modules.Seed
-	keys      map[types.UnlockHash]spendableKey
-	lookahead map[types.UnlockHash]uint64
+	seeds        []modules.Seed
+	keys         map[types.UnlockHash]spendableKey
+	lookahead    map[types.UnlockHash]uint64
+	watchedAddrs map[types.UnlockHash]struct{}
 
 	// unconfirmedProcessedTransactions tracks unconfirmed transactions.
 	//
@@ -122,6 +123,7 @@ func (w *Wallet) Height() (types.BlockHeight, error) {
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.syncDB()
 
 	var height uint64
 	err := w.db.View(func(tx *bolt.Tx) error {
@@ -156,8 +158,9 @@ func NewCustomWallet(cs modules.ConsensusSet, tpool modules.TransactionPool, per
 		cs:    cs,
 		tpool: tpool,
 
-		keys:      make(map[types.UnlockHash]spendableKey),
-		lookahead: make(map[types.UnlockHash]uint64),
+		keys:         make(map[types.UnlockHash]spendableKey),
+		lookahead:    make(map[types.UnlockHash]uint64),
+		watchedAddrs: make(map[types.UnlockHash]struct{}),
 
 		unconfirmedSets: make(map[modules.TransactionSetID][]types.TransactionID),
 

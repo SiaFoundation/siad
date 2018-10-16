@@ -467,7 +467,7 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 	g.addNode(addr)
 	g.nodes[addr].WasOutboundPeer = true
 
-	if err := g.saveSync(); err != nil {
+	if err := g.saveSyncNodes(); err != nil {
 		g.log.Println("ERROR: Unable to save new outbound peer to gateway:", err)
 	}
 

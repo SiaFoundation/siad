@@ -81,6 +81,10 @@ const (
 	// DefaultMaxUploadSpeed is set to zero to indicate no limit, the user
 	// can set a custom MaxUploadSpeed through the API
 	DefaultMaxUploadSpeed = 0
+
+	// PriceEstimationSafetyFactor is the factor of safety used in the price
+	// estimation to account for any missed costs
+	PriceEstimationSafetyFactor = 1.33
 )
 
 var (

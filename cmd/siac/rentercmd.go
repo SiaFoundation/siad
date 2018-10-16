@@ -103,10 +103,13 @@ var (
 	}
 
 	renterPricesCmd = &cobra.Command{
-		Use:   "prices",
+		Use:   "prices [amount] [period] [hosts] [renew window]",
 		Short: "Display the price of storage and bandwidth",
-		Long:  "Display the estimated prices of storing files, retrieving files, and creating a set of contracts",
-		Run:   wrap(renterpricescmd),
+		Long: `Display the estimated prices of storing files, retrieving files, and creating a set of contracts.
+
+An allowance can be provided for a more accurate estimate, if no allowance is provided the current set allowance will be used,
+and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w renew window will be used.`,
+		Run: renterpricescmd,
 	}
 
 	renterSetAllowanceCmd = &cobra.Command{
@@ -222,7 +225,7 @@ func renterdownloadscmd() {
 	// Filter out files that have been downloaded.
 	var downloading []api.DownloadInfo
 	for _, file := range queue.Downloads {
-		if file.Received != file.Filesize {
+		if !file.Completed {
 			downloading = append(downloading, file)
 		}
 	}
@@ -241,7 +244,7 @@ func renterdownloadscmd() {
 	// Filter out files that are downloading.
 	var downloaded []api.DownloadInfo
 	for _, file := range queue.Downloads {
-		if file.Received == file.Filesize {
+		if file.Completed {
 			downloaded = append(downloaded, file)
 		}
 	}
@@ -864,18 +867,70 @@ func renterfilesuploadcmd(source, path string) {
 }
 
 // renterpricescmd is the handler for the command `siac renter prices`, which
-// displays the prices of various storage operations.
-func renterpricescmd() {
-	rpg, err := httpClient.RenterPricesGet()
+// displays the prices of various storage operations. The user can submit an
+// allowance to have the estimate reflect those settings or the user can submit
+// nothing
+func renterpricescmd(cmd *cobra.Command, args []string) {
+	allowance := modules.Allowance{}
+
+	if len(args) != 0 && len(args) != 4 {
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+	if len(args) > 0 {
+		hastings, err := parseCurrency(args[0])
+		if err != nil {
+			die("Could not parse amount:", err)
+		}
+		blocks, err := parsePeriod(args[1])
+		if err != nil {
+			die("Could not parse period:", err)
+		}
+		_, err = fmt.Sscan(hastings, &allowance.Funds)
+		if err != nil {
+			die("Could not set allowance funds:", err)
+		}
+
+		_, err = fmt.Sscan(blocks, &allowance.Period)
+		if err != nil {
+			die("Could not set allowance period:", err)
+		}
+		hosts, err := strconv.Atoi(args[2])
+		if err != nil {
+			die("Could not parse host count")
+		}
+		allowance.Hosts = uint64(hosts)
+		renewWindow, err := parsePeriod(args[3])
+		if err != nil {
+			die("Could not parse renew window")
+		}
+		_, err = fmt.Sscan(renewWindow, &allowance.RenewWindow)
+		if err != nil {
+			die("Could not set allowance renew window:", err)
+		}
+	}
+
+	rpg, err := httpClient.RenterPricesGet(allowance)
 	if err != nil {
 		die("Could not read the renter prices:", err)
 	}
+	periodFactor := uint64(rpg.Allowance.Period / types.BlockHeight(4032))
 
+	// Display Estimate
 	fmt.Println("Renter Prices (estimated):")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "\tFees for Creating a Set of Contracts:\t", currencyUnits(rpg.FormContracts))
 	fmt.Fprintln(w, "\tDownload 1 TB:\t", currencyUnits(rpg.DownloadTerabyte))
 	fmt.Fprintln(w, "\tStore 1 TB for 1 Month:\t", currencyUnits(rpg.StorageTerabyteMonth))
+	fmt.Fprintln(w, "\tStore 1 TB for Allowance Period:\t", currencyUnits(rpg.StorageTerabyteMonth.Mul64(periodFactor)))
 	fmt.Fprintln(w, "\tUpload 1 TB:\t", currencyUnits(rpg.UploadTerabyte))
+	w.Flush()
+
+	// Display allowance used for estimate
+	fmt.Println("\nAllowance used for estimate:")
+	fmt.Fprintln(w, "\tFunds:\t", currencyUnits(rpg.Allowance.Funds))
+	fmt.Fprintln(w, "\tPeriod:\t", rpg.Allowance.Period)
+	fmt.Fprintln(w, "\tHosts:\t", rpg.Allowance.Hosts)
+	fmt.Fprintln(w, "\tRenew Window:\t", rpg.Allowance.RenewWindow)
 	w.Flush()
 }

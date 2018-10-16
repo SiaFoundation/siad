@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +26,7 @@ var (
 	recommendedHosts = build.Select(build.Var{
 		Standard: uint64(50),
 		Dev:      uint64(2),
-		Testing:  uint64(1),
+		Testing:  uint64(4),
 	}).(uint64)
 
 	// requiredHosts specifies the minimum number of hosts that must be set in
@@ -147,6 +148,7 @@ type (
 	// to /renter/prices.
 	RenterPricesGET struct {
 		modules.RenterPriceEstimation
+		modules.Allowance
 	}
 
 	// RenterShareASCII contains an ASCII-encoded .sia file.
@@ -572,9 +574,82 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 
 // renterPricesHandler reports the expected costs of various actions given the
 // renter settings and the set of available hosts.
-func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	allowance := modules.Allowance{}
+	// Scan the allowance amount. (optional parameter)
+	if f := req.FormValue("funds"); f != "" {
+		funds, ok := scanAmount(f)
+		if !ok {
+			WriteError(w, Error{"unable to parse funds"}, http.StatusBadRequest)
+			return
+		}
+		allowance.Funds = funds
+	}
+	// Scan the number of hosts to use. (optional parameter)
+	if h := req.FormValue("hosts"); h != "" {
+		var hosts uint64
+		if _, err := fmt.Sscan(h, &hosts); err != nil {
+			WriteError(w, Error{"unable to parse hosts: " + err.Error()}, http.StatusBadRequest)
+			return
+		} else if hosts != 0 && hosts < requiredHosts {
+			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", recommendedHosts, hosts)}, http.StatusBadRequest)
+		} else {
+			allowance.Hosts = hosts
+		}
+	}
+	// Scan the period. (optional parameter)
+	if p := req.FormValue("period"); p != "" {
+		var period types.BlockHeight
+		if _, err := fmt.Sscan(p, &period); err != nil {
+			WriteError(w, Error{"unable to parse period: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		allowance.Period = types.BlockHeight(period)
+	}
+	// Scan the renew window. (optional parameter)
+	if rw := req.FormValue("renewwindow"); rw != "" {
+		var renewWindow types.BlockHeight
+		if _, err := fmt.Sscan(rw, &renewWindow); err != nil {
+			WriteError(w, Error{"unable to parse renewwindow: " + err.Error()}, http.StatusBadRequest)
+			return
+		} else if renewWindow != 0 && types.BlockHeight(renewWindow) < requiredRenewWindow {
+			WriteError(w, Error{fmt.Sprintf("renew window is too small, must be at least %v blocks but have %v blocks", requiredRenewWindow, renewWindow)}, http.StatusBadRequest)
+			return
+		} else {
+			allowance.RenewWindow = types.BlockHeight(renewWindow)
+		}
+	}
+
+	// Check for partially set allowance, which can happen since hosts and renew
+	// window can be optional fields. Checking here instead of assigning values
+	// above so that an empty allowance can still be submitted
+	if !reflect.DeepEqual(allowance, modules.Allowance{}) {
+		if allowance.Funds.Cmp(types.ZeroCurrency) == 0 {
+			WriteError(w, Error{fmt.Sprint("Allowance not set correctly, `funds` parameter left empty")}, http.StatusBadRequest)
+			return
+		}
+		if allowance.Period == 0 {
+			WriteError(w, Error{fmt.Sprint("Allowance not set correctly, `period` parameter left empty")}, http.StatusBadRequest)
+			return
+		}
+		if allowance.Hosts == 0 {
+			WriteError(w, Error{fmt.Sprint("Allowance not set correctly, `hosts` parameter left empty")}, http.StatusBadRequest)
+			return
+		}
+		if allowance.RenewWindow == 0 {
+			WriteError(w, Error{fmt.Sprint("Allowance not set correctly, `renewwindow` parameter left empty")}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	estimate, a, err := api.renter.PriceEstimation(allowance)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
 	WriteJSON(w, RenterPricesGET{
-		RenterPriceEstimation: api.renter.PriceEstimation(),
+		RenterPriceEstimation: estimate,
+		Allowance:             a,
 	})
 }
 

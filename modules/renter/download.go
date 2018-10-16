@@ -125,6 +125,7 @@ package renter
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -314,6 +315,15 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		}
 		dw = osFile
 		destinationType = "file"
+	}
+
+	// If the destination is a httpWriter, we set the Content-Length in the
+	// header.
+	if isHTTPResp {
+		w, ok := p.Httpwriter.(http.ResponseWriter)
+		if ok {
+			w.Header().Set("Content-Length", fmt.Sprint(p.Length))
+		}
 	}
 
 	// Create the download object.

@@ -15,7 +15,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -102,14 +101,11 @@ type (
 		Available bool   `json:"available"`
 		Version   string `json:"version"`
 	}
-	// githubRelease represents some of the JSON returned by the GitHub release API
-	// endpoint. Only the fields relevant to updating are included.
-	githubRelease struct {
-		TagName string `json:"tag_name"`
-		Assets  []struct {
-			Name        string `json:"name"`
-			DownloadURL string `json:"browser_download_url"`
-		} `json:"assets"`
+	// gitlabRelease represents some of the JSON returned by the GitLab
+	// release API endpoint. Only the fields relevant to updating are
+	// included.
+	gitlabRelease struct {
+		TagName string `json:"name"`
 	}
 )
 
@@ -143,69 +139,25 @@ bwIDAQAB
 -----END PUBLIC KEY-----`
 )
 
-// version returns the version number of a non-LTS release. This assumes that
-// tag names will always be of the form "vX.Y.Z".
-func (r *githubRelease) version() string {
-	return strings.TrimPrefix(r.TagName, "v")
-}
-
-// byVersion sorts non-LTS releases by their version string, placing the highest
-// version number first.
-type byVersion []githubRelease
-
-func (rs byVersion) Len() int      { return len(rs) }
-func (rs byVersion) Swap(i, j int) { rs[i], rs[j] = rs[j], rs[i] }
-func (rs byVersion) Less(i, j int) bool {
-	// we want the higher version number to reported as "less" so that it is
-	// placed first in the slice
-	return build.VersionCmp(rs[i].version(), rs[j].version()) >= 0
-}
-
-// latestRelease returns the latest non-LTS release, given a set of arbitrary
-// releases.
-func latestRelease(releases []githubRelease) (githubRelease, error) {
-	// filter the releases to exclude LTS releases
-	nonLTS := releases[:0]
-	for _, r := range releases {
-		if !strings.Contains(r.TagName, "lts") && build.IsVersion(r.version()) {
-			nonLTS = append(nonLTS, r)
-		}
-	}
-
-	// sort by version
-	sort.Sort(byVersion(nonLTS))
-
-	// return the latest release
-	if len(nonLTS) == 0 {
-		return githubRelease{}, errEmptyUpdateResponse
-	}
-	return nonLTS[0], nil
-}
-
-// fetchLatestRelease returns metadata about the most recent non-LTS GitHub
-// release.
-func fetchLatestRelease() (githubRelease, error) {
-	req, err := http.NewRequest("GET", "https://api.github.com/repos/NebulousLabs/Sia/releases", nil)
+// fetchLatestRelease returns metadata about the most recent GitLab release.
+func fetchLatestRelease() (gitlabRelease, error) {
+	resp, err := http.Get("https://gitlab.com/api/v4/projects/7508674/repository/tags?order_by=name")
 	if err != nil {
-		return githubRelease{}, err
-	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return githubRelease{}, err
+		return gitlabRelease{}, err
 	}
 	defer resp.Body.Close()
-	var releases []githubRelease
-	err = json.NewDecoder(resp.Body).Decode(&releases)
-	if err != nil {
-		return githubRelease{}, err
+	var releases []gitlabRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return gitlabRelease{}, err
+	} else if len(releases) == 0 {
+		return gitlabRelease{}, errors.New("no releases found")
 	}
-	return latestRelease(releases)
+	return releases[0], nil
 }
 
 // updateToRelease updates siad and siac to the release specified. siac is
 // assumed to be in the same folder as siad.
-func updateToRelease(release githubRelease) error {
+func updateToRelease(version string) error {
 	updateOpts := update.Options{
 		Verifier: update.NewRSAVerifier(),
 	}
@@ -220,23 +172,8 @@ func updateToRelease(release githubRelease) error {
 		return err
 	}
 
-	// construct release filename
-	releaseName := fmt.Sprintf("Sia-%s-%s-%s.zip", release.TagName, runtime.GOOS, runtime.GOARCH)
-
-	// find release
-	var downloadURL string
-	for _, asset := range release.Assets {
-		if asset.Name == releaseName {
-			downloadURL = asset.DownloadURL
-			break
-		}
-	}
-	if downloadURL == "" {
-		return errors.New("couldn't find download URL for " + releaseName)
-	}
-
 	// download release archive
-	resp, err := http.Get(downloadURL)
+	resp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/Sia-%s-%s-%s.zip", version, runtime.GOOS, runtime.GOARCH))
 	if err != nil {
 		return err
 	}
@@ -322,7 +259,7 @@ func (srv *Server) daemonUpdateHandlerPOST(w http.ResponseWriter, _ *http.Reques
 		api.WriteError(w, api.Error{Message: "Failed to fetch latest release: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-	err = updateToRelease(release)
+	err = updateToRelease(release.TagName)
 	if err != nil {
 		if rerr := update.RollbackError(err); rerr != nil {
 			api.WriteError(w, api.Error{Message: "Serious error: Failed to rollback from bad update: " + rerr.Error()}, http.StatusInternalServerError)
@@ -370,7 +307,11 @@ func (srv *Server) daemonConstantsHandler(w http.ResponseWriter, _ *http.Request
 
 // daemonVersionHandler handles the API call that requests the daemon's version.
 func (srv *Server) daemonVersionHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	api.WriteJSON(w, DaemonVersion{Version: build.Version, GitRevision: build.GitRevision, BuildTime: build.BuildTime})
+	version := build.Version
+	if build.ReleaseTag != "" {
+		version += "-" + build.ReleaseTag
+	}
+	api.WriteJSON(w, DaemonVersion{Version: version, GitRevision: build.GitRevision, BuildTime: build.BuildTime})
 }
 
 // daemonStopHandler handles the API call to stop the daemon cleanly.

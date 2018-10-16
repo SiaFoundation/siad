@@ -116,6 +116,7 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 	var primarySeedProgress uint64
 	var auxiliarySeedFiles []seedFile
 	var unseededKeyFiles []spendableKeyFile
+	var watchedAddrs []types.UnlockHash
 	err := func() error {
 		w.mu.Lock()
 		defer w.mu.Unlock()
@@ -148,6 +149,12 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 
 		// unseededKeyFiles
 		err = encoding.Unmarshal(wb.Get(keySpendableKeyFiles), &unseededKeyFiles)
+		if err != nil {
+			return err
+		}
+
+		// watchedAddrs
+		err = encoding.Unmarshal(wb.Get(keyWatchedAddrs), &watchedAddrs)
 		if err != nil {
 			return err
 		}
@@ -190,6 +197,12 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 			}
 			w.integrateSpendableKey(masterKey, sk)
 		}
+
+		// watchedAddrs
+		for _, addr := range watchedAddrs {
+			w.watchedAddrs[addr] = struct{}{}
+		}
+
 		return nil
 	}()
 	if err != nil {

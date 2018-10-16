@@ -1,7 +1,7 @@
 # PROGRAMMING TASK
 
-**Description of Task**
+## Description of Task
 
-**Reason or Need for Change**
+## Reason or Need for Change
 
-**Design / Proposal**
+## Design / Proposal

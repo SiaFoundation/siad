@@ -17,6 +17,10 @@ const (
 	Version = "1.3.5"
 )
 
+// ReleaseTag contains the release tag, such as "rc3". It is supplied at build
+// time. For full releases, this string is blank.
+var ReleaseTag string = "master"
+
 // IsVersion returns whether str is a valid version number.
 func IsVersion(str string) bool {
 	for _, n := range strings.Split(str, ".") {

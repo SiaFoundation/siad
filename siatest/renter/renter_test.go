@@ -114,6 +114,7 @@ func TestRenterTwo(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
+		{"TestReceivedFieldEqualsFileSize", testReceivedFieldEqualsFileSize},
 		{"TestRemoteRepair", testRemoteRepair},
 		{"TestSingleFileGet", testSingleFileGet},
 		{"TestStreamingCache", testStreamingCache},
@@ -242,6 +243,67 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if fi2.ModTime != fi3.ModTime {
 		t.Fatal("ModTime changed after download")
+	}
+}
+
+// testReceivedFieldEqualsFileSize tests that the bug that caused finished
+// downloads to stall in the UI and siac is gone.
+func testReceivedFieldEqualsFileSize(t *testing.T, tg *siatest.TestGroup) {
+	// Make sure the test has enough hosts.
+	if len(tg.Hosts()) < 4 {
+		t.Fatal("testReceivedFieldEqualsFileSize requires at least 4 hosts")
+	}
+	// Grab the first of the group's renters
+	r := tg.Renters()[0]
+
+	// Clear the download history to make sure it's empty before we start the test.
+	err := r.RenterClearAllDownloadsPost()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a file.
+	dataPieces := uint64(3)
+	parityPieces := uint64(1)
+	fileSize := int(modules.SectorSize)
+	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// This code sums up the 'received' variable in a similar way the renter
+	// does it. We use it to find a fetchLen for which received != fetchLen due
+	// to the implicit rounding of the unsigned integers.
+	var fetchLen uint64
+	for fetchLen = uint64(100); ; fetchLen++ {
+		received := uint64(0)
+		for piecesCompleted := uint64(1); piecesCompleted <= dataPieces; piecesCompleted++ {
+			received += fetchLen / dataPieces
+		}
+		if received != fetchLen {
+			break
+		}
+	}
+
+	// Download fetchLen bytes of the file.
+	_, err = r.DownloadToDiskPartial(rf, lf, false, 0, fetchLen)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the download.
+	rdg, err := r.RenterDownloadsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := rdg.Downloads[0]
+
+	// Make sure that 'Received' matches the amount of data we fetched.
+	if !d.Completed {
+		t.Error("Download should be completed but wasn't")
+	}
+	if d.Received != fetchLen {
+		t.Errorf("Received was %v but should be %v", d.Received, fetchLen)
 	}
 }
 
@@ -1826,6 +1888,7 @@ func TestRenterContracts(t *testing.T) {
 	// Renew contracts by running out of funds
 	startingUploadSpend, err := renewContractsBySpending(r, tg)
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 	numRenewals++
@@ -2368,6 +2431,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 	// Renew contracts by running out of funds
 	_, err = renewContractsBySpending(r, tg)
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 	numRenewals++

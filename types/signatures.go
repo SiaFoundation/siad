@@ -180,44 +180,101 @@ func (uc UnlockConditions) UnlockHash() UnlockHash {
 
 // SigHash returns the hash of the fields in a transaction covered by a given
 // signature. See CoveredFields for more details.
-func (t Transaction) SigHash(i int) (hash crypto.Hash) {
-	cf := t.TransactionSignatures[i].CoveredFields
+func (t Transaction) SigHash(i int, height BlockHeight) (hash crypto.Hash) {
+	sig := t.TransactionSignatures[i]
+	if sig.CoveredFields.WholeTransaction {
+		return t.wholeSigHash(sig, height)
+	}
+	return t.partialSigHash(sig.CoveredFields, height)
+}
+
+// wholeSigHash calculates the hash for a signature that specifies
+// WholeTransaction = true.
+func (t *Transaction) wholeSigHash(sig TransactionSignature, height BlockHeight) (hash crypto.Hash) {
 	h := crypto.NewHash()
-	if cf.WholeTransaction {
-		t.marshalSiaNoSignatures(h)
-		h.Write(t.TransactionSignatures[i].ParentID[:])
-		encoding.WriteUint64(h, t.TransactionSignatures[i].PublicKeyIndex)
-		encoding.WriteUint64(h, uint64(t.TransactionSignatures[i].Timelock))
-	} else {
-		for _, input := range cf.SiacoinInputs {
-			t.SiacoinInputs[input].MarshalSia(h)
-		}
-		for _, output := range cf.SiacoinOutputs {
-			t.SiacoinOutputs[output].MarshalSia(h)
-		}
-		for _, contract := range cf.FileContracts {
-			t.FileContracts[contract].MarshalSia(h)
-		}
-		for _, revision := range cf.FileContractRevisions {
-			t.FileContractRevisions[revision].MarshalSia(h)
-		}
-		for _, storageProof := range cf.StorageProofs {
-			t.StorageProofs[storageProof].MarshalSia(h)
-		}
-		for _, siafundInput := range cf.SiafundInputs {
-			t.SiafundInputs[siafundInput].MarshalSia(h)
-		}
-		for _, siafundOutput := range cf.SiafundOutputs {
-			t.SiafundOutputs[siafundOutput].MarshalSia(h)
-		}
-		for _, minerFee := range cf.MinerFees {
-			t.MinerFees[minerFee].MarshalSia(h)
-		}
-		for _, arbData := range cf.ArbitraryData {
-			encoding.WritePrefixedBytes(h, t.ArbitraryData[arbData])
-		}
+	e := encoding.NewEncoder(h)
+
+	e.WriteInt(len((t.SiacoinInputs)))
+	for i := range t.SiacoinInputs {
+		t.SiacoinInputs[i].MarshalSia(e)
+	}
+	e.WriteInt(len((t.SiacoinOutputs)))
+	for i := range t.SiacoinOutputs {
+		t.SiacoinOutputs[i].MarshalSia(e)
+	}
+	e.WriteInt(len((t.FileContracts)))
+	for i := range t.FileContracts {
+		t.FileContracts[i].MarshalSia(e)
+	}
+	e.WriteInt(len((t.FileContractRevisions)))
+	for i := range t.FileContractRevisions {
+		t.FileContractRevisions[i].MarshalSia(e)
+	}
+	e.WriteInt(len((t.StorageProofs)))
+	for i := range t.StorageProofs {
+		t.StorageProofs[i].MarshalSia(e)
+	}
+	e.WriteInt(len((t.SiafundInputs)))
+	for i := range t.SiafundInputs {
+		t.SiafundInputs[i].MarshalSia(e)
+	}
+	e.WriteInt(len((t.SiafundOutputs)))
+	for i := range t.SiafundOutputs {
+		t.SiafundOutputs[i].MarshalSia(e)
+	}
+	e.WriteInt(len((t.MinerFees)))
+	for i := range t.MinerFees {
+		t.MinerFees[i].MarshalSia(e)
+	}
+	e.WriteInt(len((t.ArbitraryData)))
+	for i := range t.ArbitraryData {
+		e.WritePrefixedBytes(t.ArbitraryData[i])
 	}
 
+	h.Write(sig.ParentID[:])
+	encoding.WriteUint64(h, sig.PublicKeyIndex)
+	encoding.WriteUint64(h, uint64(sig.Timelock))
+
+	for _, i := range sig.CoveredFields.TransactionSignatures {
+		t.TransactionSignatures[i].MarshalSia(h)
+	}
+
+	h.Sum(hash[:0])
+	return
+}
+
+// partialSigHash calculates the hash of the fields of the transaction
+// specified in cf.
+func (t *Transaction) partialSigHash(cf CoveredFields, height BlockHeight) (hash crypto.Hash) {
+	h := crypto.NewHash()
+
+	for _, input := range cf.SiacoinInputs {
+		t.SiacoinInputs[input].MarshalSia(h)
+	}
+	for _, output := range cf.SiacoinOutputs {
+		t.SiacoinOutputs[output].MarshalSia(h)
+	}
+	for _, contract := range cf.FileContracts {
+		t.FileContracts[contract].MarshalSia(h)
+	}
+	for _, revision := range cf.FileContractRevisions {
+		t.FileContractRevisions[revision].MarshalSia(h)
+	}
+	for _, storageProof := range cf.StorageProofs {
+		t.StorageProofs[storageProof].MarshalSia(h)
+	}
+	for _, siafundInput := range cf.SiafundInputs {
+		t.SiafundInputs[siafundInput].MarshalSia(h)
+	}
+	for _, siafundOutput := range cf.SiafundOutputs {
+		t.SiafundOutputs[siafundOutput].MarshalSia(h)
+	}
+	for _, minerFee := range cf.MinerFees {
+		t.MinerFees[minerFee].MarshalSia(h)
+	}
+	for _, arbData := range cf.ArbitraryData {
+		encoding.WritePrefixedBytes(h, t.ArbitraryData[arbData])
+	}
 	for _, sig := range cf.TransactionSignatures {
 		t.TransactionSignatures[sig].MarshalSia(h)
 	}
@@ -270,14 +327,26 @@ func (t Transaction) validCoveredFields() error {
 			{cf.TransactionSignatures, len(t.TransactionSignatures)},
 		}
 
-		// Check that all fields are empty if 'WholeTransaction' is set, except
-		// for the Signatures field which isn't affected.
 		if cf.WholeTransaction {
-			// 'WholeTransaction' does not check signatures.
+			// If WholeTransaction is set, all fields must be
+			// empty, except TransactionSignatures.
 			for _, fieldMax := range fieldMaxs[:len(fieldMaxs)-1] {
 				if len(fieldMax.field) != 0 {
 					return ErrWholeTransactionViolation
 				}
+			}
+		} else {
+			// If WholeTransaction is not set, at least one field
+			// must be non-empty.
+			allEmpty := true
+			for _, fieldMax := range fieldMaxs {
+				if len(fieldMax.field) != 0 {
+					allEmpty = false
+					break
+				}
+			}
+			if allEmpty {
+				return ErrWholeTransactionViolation
 			}
 		}
 
@@ -382,19 +451,12 @@ func (t *Transaction) validSignatures(currentHeight BlockHeight) error {
 		case SignatureEd25519:
 			// Decode the public key and signature.
 			var edPK crypto.PublicKey
-			err := encoding.Unmarshal([]byte(publicKey.Key), &edPK)
-			if err != nil {
-				return err
-			}
-			var edSig [crypto.SignatureSize]byte
-			err = encoding.Unmarshal([]byte(sig.Signature), &edSig)
-			if err != nil {
-				return err
-			}
-			cryptoSig := crypto.Signature(edSig)
+			copy(edPK[:], publicKey.Key)
+			var edSig crypto.Signature
+			copy(edSig[:], sig.Signature)
 
-			sigHash := t.SigHash(i)
-			err = crypto.VerifyHash(sigHash, edPK, cryptoSig)
+			sigHash := t.SigHash(i, currentHeight)
+			err = crypto.VerifyHash(sigHash, edPK, edSig)
 			if err != nil {
 				return err
 			}

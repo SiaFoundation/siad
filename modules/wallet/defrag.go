@@ -84,7 +84,7 @@ func (w *Wallet) managedCreateDefragTransaction() ([]types.Transaction, error) {
 
 	// Sign all of the inputs to the parent transaction.
 	for _, sci := range parentTxn.SiacoinInputs {
-		addSignatures(&parentTxn, types.FullCoveredFields, sci.UnlockConditions, crypto.Hash(sci.ParentID), w.keys[sci.UnlockConditions.UnlockHash()])
+		addSignatures(&parentTxn, types.FullCoveredFields, sci.UnlockConditions, crypto.Hash(sci.ParentID), w.keys[sci.UnlockConditions.UnlockHash()], consensusHeight)
 	}
 
 	// Create the defrag transaction.
@@ -108,7 +108,7 @@ func (w *Wallet) managedCreateDefragTransaction() ([]types.Transaction, error) {
 		}},
 		MinerFees: []types.Currency{fee},
 	}
-	addSignatures(&txn, types.FullCoveredFields, parentUnlockConditions, crypto.Hash(parentTxn.SiacoinOutputID(0)), w.keys[parentUnlockConditions.UnlockHash()])
+	addSignatures(&txn, types.FullCoveredFields, parentUnlockConditions, crypto.Hash(parentTxn.SiacoinOutputID(0)), w.keys[parentUnlockConditions.UnlockHash()], consensusHeight)
 
 	// Mark all outputs that were spent as spent.
 	for _, scoid := range spentScoids {
@@ -132,7 +132,10 @@ func (w *Wallet) managedCreateDefragTransaction() ([]types.Transaction, error) {
 // outputs.
 func (w *Wallet) threadedDefragWallet() {
 	// Don't defrag if it was disabled
-	if w.defragDisabled {
+	w.mu.RLock()
+	disabled := w.defragDisabled
+	w.mu.RUnlock()
+	if disabled {
 		return
 	}
 

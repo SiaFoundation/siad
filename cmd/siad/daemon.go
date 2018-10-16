@@ -1,8 +1,9 @@
 package main
 
 import (
-	"errors"
+	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"strconv"
@@ -15,6 +16,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/profile"
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh/terminal"
@@ -131,22 +134,58 @@ func unlockWallet(w modules.Wallet, password string) error {
 	return modules.ErrBadEncryptionKey
 }
 
+// apiPassword discovers the API password, which may be specified in an
+// environment variable, stored in a file on disk, or supplied by the user via
+// stdin.
+func apiPassword(siaDir string) (string, error) {
+	// Check the environment variable.
+	pw := os.Getenv("SIA_API_PASSWORD")
+	if pw != "" {
+		fmt.Println("Using SIA_API_PASSWORD environment variable")
+		return pw, nil
+	}
+
+	// Try to read the password from disk.
+	path := build.APIPasswordFile(siaDir)
+	pwFile, err := ioutil.ReadFile(path)
+	if err == nil {
+		// This is the "normal" case, so don't print anything.
+		return strings.TrimSpace(string(pwFile)), nil
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+
+	// No password file; generate a secure one.
+	// Generate a password file.
+	if err := os.MkdirAll(siaDir, 0700); err != nil {
+		return "", err
+	}
+	pw = hex.EncodeToString(fastrand.Bytes(16))
+	if err := ioutil.WriteFile(path, []byte(pw+"\n"), 0600); err != nil {
+		return "", err
+	}
+	fmt.Println("A secure API password has been written to", path)
+	fmt.Println("This password will be used automatically the next time you run siad.")
+	return pw, nil
+}
+
 // startDaemon uses the config parameters to initialize Sia modules and start
 // siad.
 func startDaemon(config Config) (err error) {
 	if config.Siad.AuthenticateAPI {
-		password := os.Getenv("SIA_API_PASSWORD")
-		if password != "" {
-			fmt.Println("Using SIA_API_PASSWORD environment variable")
-			config.APIPassword = password
-		} else {
-			// Prompt user for API password.
+		if config.Siad.TempPassword {
 			config.APIPassword, err = passwordPrompt("Enter API password: ")
 			if err != nil {
 				return err
-			}
-			if config.APIPassword == "" {
+			} else if config.APIPassword == "" {
 				return errors.New("password cannot be blank")
+			}
+		} else {
+			// load API password from environment variable or file.
+			// TODO: allow user to specify location of password file.
+			config.APIPassword, err = apiPassword(build.DefaultSiaDir())
+			if err != nil {
+				return err
 			}
 		}
 	}

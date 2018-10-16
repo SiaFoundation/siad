@@ -27,28 +27,34 @@ require the miner to be unlocked.
 Index
 -----
 
-| Route                                                               | HTTP verb |
-| ------------------------------------------------------------------- | --------- |
-| [/wallet](#wallet-get)                                              | GET       |
-| [/wallet/033x](#wallet033x-post)                                    | POST      |
-| [/wallet/address](#walletaddress-get)                               | GET       |
-| [/wallet/addresses](#walletaddresses-get)                           | GET       |
-| [/wallet/backup](#walletbackup-get)                                 | GET       |
-| [/wallet/init](#walletinit-post)                                    | POST      |
-| [/wallet/init/seed](#walletinitseed-post)                           | POST      |
-| [/wallet/lock](#walletlock-post)                                    | POST      |
-| [/wallet/seed](#walletseed-post)                                    | POST      |
-| [/wallet/seeds](#walletseeds-get)                                   | GET       |
-| [/wallet/siacoins](#walletsiacoins-post)                            | POST      |
-| [/wallet/siafunds](#walletsiafunds-post)                            | POST      |
-| [/wallet/siagkey](#walletsiagkey-post)                              | POST      |
-| [/wallet/sweep/seed](#walletsweepseed-post)                         | POST      |
-| [/wallet/transaction/___:id___](#wallettransactionid-get)           | GET       |
-| [/wallet/transactions](#wallettransactions-get)                     | GET       |
-| [/wallet/transactions/___:addr___](#wallettransactionsaddr-get)     | GET       |
-| [/wallet/unlock](#walletunlock-post)                                | POST      |
-| [/wallet/verify/address/:___addr___](#walletverifyaddressaddr-get)  | GET       |
-| [/wallet/changepassword](#walletchangepassword-post)                | POST      |
+| Route                                                                   | HTTP verb |
+| ----------------------------------------------------------------------- | --------- |
+| [/wallet](#wallet-get)                                                  | GET       |
+| [/wallet/033x](#wallet033x-post)                                        | POST      |
+| [/wallet/address](#walletaddress-get)                                   | GET       |
+| [/wallet/addresses](#walletaddresses-get)                               | GET       |
+| [/wallet/backup](#walletbackup-get)                                     | GET       |
+| [/wallet/changepassword](#walletchangepassword-post)                    | POST      |
+| [/wallet/init](#walletinit-post)                                        | POST      |
+| [/wallet/init/seed](#walletinitseed-post)                               | POST      |
+| [/wallet/lock](#walletlock-post)                                        | POST      |
+| [/wallet/seed](#walletseed-post)                                        | POST      |
+| [/wallet/seeds](#walletseeds-get)                                       | GET       |
+| [/wallet/siacoins](#walletsiacoins-post)                                | POST      |
+| [/wallet/siafunds](#walletsiafunds-post)                                | POST      |
+| [/wallet/siagkey](#walletsiagkey-post)                                  | POST      |
+| [/wallet/sign](#walletsign-post)                                        | POST      |
+| [/wallet/sweep/seed](#walletsweepseed-post)                             | POST      |
+| [/wallet/transaction/___:id___](#wallettransactionid-get)               | GET       |
+| [/wallet/transactions](#wallettransactions-get)                         | GET       |
+| [/wallet/transactions/___:addr___](#wallettransactionsaddr-get)         | GET       |
+| [/wallet/unlock](#walletunlock-post)                                    | POST      |
+| [/wallet/unlockconditions](#walletunlockconditions-post)                | POST      |
+| [/wallet/unlockconditions/___:addr___](#walletunlockconditionsaddr-get) | GET       |
+| [/wallet/unspent](#walletunspent-get)                                   | GET       |
+| [/wallet/verify/address/:___addr___](#walletverifyaddressaddr-get)      | GET       |
+| [/wallet/watch](#walletwatch-post)                                      | POST      |
+
 
 #### /wallet [GET]
 
@@ -179,6 +185,22 @@ destination
 ###### Response
 standard success or error response. See
 [API.md#standard-responses](/doc/API.md#standard-responses).
+
+#### /wallet/changepassword [POST]
+
+changes the wallet's encryption password.
+
+###### Query String Parameter
+```
+// encryptionpassword is the wallet's current encryption password.
+encryptionpassword
+// newpassword is the new password for the wallet.
+newpassword
+```
+
+###### Response
+standard success or error response. See
+[#standard-responses](#standard-responses).
 
 #### /wallet/init [POST]
 
@@ -483,6 +505,94 @@ keyfiles
 standard success or error response. See
 [API.md#standard-responses](/doc/API.md#standard-responses).
 
+#### /wallet/sign [POST]
+
+Function: Sign a transaction. The transaction's TransactionSignatures should
+be complete except for the Signature field. If `tosign` is provided, the
+wallet will attempt to fill in signatures for each TransactionSignature
+specified. If `tosign` is not provided, the wallet will add signatures for
+every TransactionSignature that it has keys for.
+
+###### Request Body
+```javascript
+{
+  // Unsigned transaction
+  "transaction": {
+    "siacoininputs": [
+      {
+        "parentid": "af1a88781c362573943cda006690576b150537c1ae142a364dbfc7f04ab99584",
+        "unlockconditions": {
+          "timelock": 0,
+          "publickeys": [ "ed25519:8b845bf4871bcdf4ff80478939e508f43a2d4b2f68e94e8b2e3d1ea9b5f33ef1" ],
+          "signaturesrequired": 1
+        }
+      }
+    ],
+    "siacoinoutputs": [
+      {
+        "value": "5000000000000000000000000",
+        "unlockhash": "17d25299caeccaa7d1598751f239dd47570d148bb08658e596112d917dfa6bc8400b44f239bb"
+      },
+      {
+        "value": "299990000000000000000000000000",
+        "unlockhash": "b4bf662170622944a7c838c7e75665a9a4cf76c4cebd97d0e5dcecaefad1c8df312f90070966"
+      }
+    ],
+    "minerfees": [ "1000000000000000000000000" ],
+    "transactionsignatures": [
+      {
+        "parentid": "af1a88781c362573943cda006690576b150537c1ae142a364dbfc7f04ab99584",
+        "publickeyindex": 0,
+        "coveredfields": {"wholetransaction": true}
+      }
+    ]
+  },
+
+  // Optional IDs to sign; each should correspond to a parentid in the transactionsignatures.
+  "tosign": [
+    "af1a88781c362573943cda006690576b150537c1ae142a364dbfc7f04ab99584"
+  ]
+}
+```
+
+###### Response
+```javascript
+{
+  // signed transaction
+  "transaction": {
+    "siacoininputs": [
+      {
+        "parentid": "af1a88781c362573943cda006690576b150537c1ae142a364dbfc7f04ab99584",
+        "unlockconditions": {
+          "timelock": 0,
+          "publickeys": [ "ed25519:8b845bf4871bcdf4ff80478939e508f43a2d4b2f68e94e8b2e3d1ea9b5f33ef1" ],
+          "signaturesrequired": 1
+        }
+      }
+    ],
+    "siacoinoutputs": [
+      {
+        "value": "5000000000000000000000000",
+        "unlockhash": "17d25299caeccaa7d1598751f239dd47570d148bb08658e596112d917dfa6bc8400b44f239bb"
+      },
+      {
+        "value": "299990000000000000000000000000",
+        "unlockhash": "b4bf662170622944a7c838c7e75665a9a4cf76c4cebd97d0e5dcecaefad1c8df312f90070966"
+      }
+    ],
+    "minerfees": [ "1000000000000000000000000" ],
+    "transactionsignatures": [
+      {
+        "parentid": "af1a88781c362573943cda006690576b150537c1ae142a364dbfc7f04ab99584",
+        "publickeyindex": 0,
+        "coveredfields": {"wholetransaction": true},
+        "signature": "CVkGjy4The6h+UU+O8rlZd/O3Gb1xRJdyQ2vzBFEb/5KveDKDrrieCiFoNtUaknXEQbdxlrDqMujc+x3aZbKCQ=="
+      }
+    ]
+  }
+}
+```
+
 #### /wallet/sweep/seed [POST]
 
 Function: Scan the blockchain for outputs belonging to a seed and send them to
@@ -693,7 +803,88 @@ encryptionpassword string
 standard success or error response. See
 [API.md#standard-responses](/doc/API.md#standard-responses).
 
-#### /wallet/verify/address/:addr [GET]
+#### /wallet/unlockconditions [POST]
+
+stores a set of unlock conditions in the wallet database.
+
+###### Request Body
+```javascript
+{
+  "unlockconditions": {
+    // the minimum blockheight required
+    "timelock": 0,
+    // the number of signatures required
+    "signaturesrequired": 1,
+    // the set of keys whose signatures count towards signaturesrequired
+    "publickeys": [{
+      "algorithm": "ed25519",
+      "key": "/XUGj8PxMDkqdae6Js6ubcERxfxnXN7XPjZyANBZH1I="
+    }]
+  }
+}
+```
+
+###### Response
+standard success or error response. See
+[API.md#standard-responses](/doc/API.md#standard-responses).
+
+#### /wallet/unlockconditions/___:addr___ [GET]
+
+returns the unlock conditions of :addr, if they are known to the wallet.
+
+###### Response
+```javascript
+{
+  "unlockconditions": {
+    // the minimum blockheight required
+    "timelock": 0,
+    // the number of signatures required
+    "signaturesrequired": 1,
+    // the set of keys whose signatures count towards signaturesrequired
+    "publickeys": [{
+      "algorithm": "ed25519",
+      "key": "/XUGj8PxMDkqdae6Js6ubcERxfxnXN7XPjZyANBZH1I="
+    }]
+  }
+}
+```
+
+#### /wallet/unspent [GET]
+
+returns a list of unspent outputs that the wallet is tracking.
+
+###### Response
+```javascript
+{
+  // Array of outputs that the wallet can spend.
+  "outputs": [
+    {
+      // The id of the output.
+      "id": "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+
+      // Type of output, either 'siacoin output' or 'siafund output'.
+      "fundtype": "siacoin output",
+
+      // Height of block in which the output appeared. To calculate the
+      // number of confirmations, subtract this number from the current
+      // block height.
+      "confirmationheight": 50000,
+
+      // Hash of the output's unlock conditions, commonly known as the "address".
+      "unlockhash": "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+
+      // Amount of funds in the output; hastings for siacoin outputs, and
+      // siafunds for siafund outputs.
+      "value": "1234", // big int
+
+      // Whether the output comes from a watched address or from the wallet's seed.
+      "iswatchonly": false
+    }
+  ]
+}
+```
+
+#### /wallet/verify/address/___:addr___ [GET]
 
 takes the address specified by :addr and returns a JSON response indicating if the address is valid.
 
@@ -705,16 +896,45 @@ takes the address specified by :addr and returns a JSON response indicating if t
 }
 ```
 
-#### /wallet/changepassword [POST]
+#### /wallet/watch [GET]
 
-changes the wallet's encryption password.
+returns the set of addresses that the wallet is watching. This set only
+includes addresses that were explicitly requested to be watched; addresses
+that were generated automatically by the wallet, or by /wallet/address, are
+not included.
 
-###### Query String Parameter
+###### JSON Response [(with comments)](/doc/api/Wallet.md#json-response-12)
+```javascript
+{
+  // The addresses currently watched by the wallet.
+  "addresses": [
+    "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "abcdef0123456789abcdef0123456789abcd1234567890ef0123456789abcdef"
+  ]
+}
 ```
-// encryptionpassword is the wallet's current encryption password.
-encryptionpassword
-// newpassword is the new password for the wallet.
-newpassword
+
+#### /wallet/watch [POST]
+
+updates the set of addresses watched by the wallet.
+
+###### Request Body
+```
+{
+  // The addresses to add or remove from the current set.
+  "addresses": [
+    "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "abcdef0123456789abcdef0123456789abcd1234567890ef0123456789abcdef"
+  ],
+
+  // If true, remove the addresses instead of adding them.
+  "remove": false,
+
+  // If true, the wallet will not rescan the blockchain. Only set this flag if
+  // the addresses have never appeared in the blockchain.
+  "unused": true,
+}
+
 ```
 
 ###### Response

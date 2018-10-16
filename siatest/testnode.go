@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -23,6 +24,67 @@ type TestNode struct {
 
 	downloadDir *LocalDir
 	uploadDir   *LocalDir
+}
+
+// PrintDebugInfo prints out helpful debug information when debug tests and ndfs, the
+// boolean arguments dictate what is printed
+func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterInfo bool) {
+	if contractInfo {
+		rc, err := tn.RenterInactiveContractsGet()
+		if err != nil {
+			t.Log(err)
+		}
+		t.Log("Active Contracts")
+		for _, c := range rc.ActiveContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
+		}
+		t.Log()
+		t.Log("Inactive Contracts")
+		for _, c := range rc.InactiveContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
+		}
+		t.Log()
+	}
+
+	if hostInfo {
+		hdbag, err := tn.HostDbActiveGet()
+		if err != nil {
+			t.Log(err)
+		}
+		t.Log("Active Hosts from HostDB")
+		for _, host := range hdbag.Hosts {
+			t.Log("    Host:", host.NetAddress)
+			t.Log("        pk", host.PublicKey)
+			t.Log("        Accepting Contracts", host.HostExternalSettings.AcceptingContracts)
+			t.Log("        LastIPNetChange", host.LastIPNetChange.String())
+			t.Log("        Subnets")
+			for _, subnet := range host.IPNets {
+				t.Log("            ", subnet)
+			}
+		}
+		t.Log()
+	}
+
+	if renterInfo {
+		rg, err := tn.RenterGet()
+		if err != nil {
+			t.Log(err)
+		}
+		t.Log("CP:", rg.CurrentPeriod)
+		settings := rg.Settings
+		t.Log("Allowance Funds:", settings.Allowance.Funds)
+		fm := rg.FinancialMetrics
+		t.Log("Unspent Funds:", fm.Unspent)
+		t.Log()
+	}
 }
 
 // RestartNode restarts a TestNode
