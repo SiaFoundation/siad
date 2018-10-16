@@ -244,7 +244,7 @@ func (srv *Server) daemonUpdateHandlerGET(w http.ResponseWriter, _ *http.Request
 	}
 	latestVersion := release.TagName[1:] // delete leading 'v'
 	api.WriteJSON(w, UpdateInfo{
-		Available: build.VersionCmp(latestVersion, build.Version) > 0 && false,
+		Available: build.VersionCmp(latestVersion, build.Version) > 0,
 		Version:   latestVersion,
 	})
 }

@@ -21,12 +21,12 @@ var (
 
 	// ASICHardforkFactor is the factor by which the hashrate of targeted
 	// ASICs will be reduced.
-	ASICHardforkFactor = uint64(1)
+	ASICHardforkFactor = uint64(1009)
 
 	// ASICHardforkReplayProtectionPrefix is a byte that prefixes
 	// SiacoinInputs and SiafundInputs when calculating SigHashes to protect
 	// against replay attacks.
-	ASICHardforkReplayProtectionPrefix = []byte(nil)
+	ASICHardforkReplayProtectionPrefix = []byte{0}
 
 	// BlockFrequency is the desired number of seconds that
 	// should elapse, on average, between successive Blocks.
