@@ -69,6 +69,15 @@ func TestSaveLoad(t *testing.T) {
 	c.persist = NewPersist(build.TempDir("contractor", t.Name()))
 	os.MkdirAll(build.TempDir("contractor", t.Name()), 0700)
 
+	// COMPATv136 save the allowance but make sure that the newly added fields
+	// are 0. After loading them from disk they should be set to the default
+	// values.
+	c.allowance = modules.DefaultAllowance
+	c.allowance.ExpectedStorage = 0
+	c.allowance.ExpectedUploadFrequency = 0
+	c.allowance.ExpectedDownloadFrequency = 0
+	c.allowance.ExpectedRedundancy = 0
+
 	// save, clear, and reload
 	err = c.save()
 	if err != nil {
@@ -93,6 +102,22 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if c.renewedTo[types.FileContractID{1}] != id {
 		t.Fatal("renewedTo not restored properly:", c.renewedTo)
+	}
+	if c.allowance.ExpectedStorage != modules.DefaultAllowance.ExpectedStorage {
+		t.Errorf("ExpectedStorage was %v but should be %v",
+			c.allowance.ExpectedStorage, modules.DefaultAllowance.ExpectedStorage)
+	}
+	if c.allowance.ExpectedUploadFrequency != modules.DefaultAllowance.ExpectedUploadFrequency {
+		t.Errorf("ExpectedUploadFrequency was %v but should be %v",
+			c.allowance.ExpectedUploadFrequency, modules.DefaultAllowance.ExpectedUploadFrequency)
+	}
+	if c.allowance.ExpectedDownloadFrequency != modules.DefaultAllowance.ExpectedDownloadFrequency {
+		t.Errorf("ExpectedDownloadFrequency was %v but should be %v",
+			c.allowance.ExpectedDownloadFrequency, modules.DefaultAllowance.ExpectedDownloadFrequency)
+	}
+	if c.allowance.ExpectedRedundancy != modules.DefaultAllowance.ExpectedRedundancy {
+		t.Errorf("ExpectedRedundancy was %v but should be %v",
+			c.allowance.ExpectedRedundancy, modules.DefaultAllowance.ExpectedRedundancy)
 	}
 }
 

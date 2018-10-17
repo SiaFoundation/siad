@@ -44,6 +44,11 @@ var (
 		Hosts:       5,
 		Period:      50,
 		RenewWindow: 24,
+
+		ExpectedStorage:           modules.SectorSize,
+		ExpectedUploadFrequency:   50,
+		ExpectedDownloadFrequency: 50,
+		ExpectedRedundancy:        5.0,
 	}
 )
 
@@ -614,6 +619,15 @@ func (tg *TestGroup) RemoveNode(tn *TestNode) error {
 
 	// Close node.
 	return tn.StopNode()
+}
+
+// RestartNode stops a node and then starts it again while conducting a few
+// checks and guaranteeing that the node is connected to the group afterwards.
+func (tg *TestGroup) RestartNode(tn *TestNode) error {
+	if err := tg.StopNode(tn); err != nil {
+		return err
+	}
+	return tg.StartNode(tn)
 }
 
 // StartNode starts a node from the group that has previously been stopped.

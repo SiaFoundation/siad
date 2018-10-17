@@ -175,6 +175,10 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) (err error) {
 	values.Set("hosts", fmt.Sprint(allowance.Hosts))
 	values.Set("period", fmt.Sprint(uint64(allowance.Period)))
 	values.Set("renewwindow", fmt.Sprint(uint64(allowance.RenewWindow)))
+	values.Set("expectedstorage", fmt.Sprint(uint64(allowance.ExpectedStorage)))
+	values.Set("expecteduploadfrequency", fmt.Sprint(uint64(allowance.ExpectedUploadFrequency)))
+	values.Set("expecteddownloadfrequency", fmt.Sprint(uint64(allowance.ExpectedDownloadFrequency)))
+	values.Set("expectedredundancy", fmt.Sprint(uint64(allowance.ExpectedRedundancy)))
 	err = c.post("/renter", values.Encode(), nil)
 	return
 }

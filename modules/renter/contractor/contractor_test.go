@@ -334,10 +334,30 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != errAllowanceWindowSize {
 		t.Errorf("expected %q, got %q", errAllowanceWindowSize, err)
 	}
+	a.RenewWindow = 10
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedStorage {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedStorage, err)
+	}
+	a.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedUploadFrequency {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedUploadFrequency, err)
+	}
+	a.ExpectedUploadFrequency = modules.DefaultAllowance.ExpectedUploadFrequency
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedDownloadFrequency {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedDownloadFrequency, err)
+	}
+	a.ExpectedDownloadFrequency = modules.DefaultAllowance.ExpectedDownloadFrequency
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedRedundancy {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedRedundancy, err)
+	}
+	a.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 
 	// reasonable values; should succeed
 	a.Funds = types.SiacoinPrecision.Mul64(100)
-	a.RenewWindow = 10
 	err = c.SetAllowance(a)
 	if err != nil {
 		t.Fatal(err)
