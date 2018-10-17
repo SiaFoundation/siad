@@ -739,7 +739,7 @@ func TestRenterInterrupt(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -818,7 +818,7 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 	wg.Add(1)
 	go func() {
 		for {
-			// Cause the next download to fail.
+			// Cause the contract renewal to fail
 			deps.Fail()
 			select {
 			case <-cancel:
@@ -836,19 +836,17 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 
 	// Disrupt statement should prevent inactive contracts from being created
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
+		rc, err := renter.RenterContractsGet()
 		if err != nil {
 			return err
 		}
-		if len(rc.InactiveContracts) != 0 {
-			return fmt.Errorf("Incorrect number of inactive contracts: have %v expected 0", len(rc.InactiveContracts))
-		}
-		if len(rc.ActiveContracts) != len(tg.Hosts())*2 {
-			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), len(tg.Hosts())*2)
+		if len(rc.Contracts) != len(tg.Hosts())*2 {
+			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), len(tg.Hosts())*2)
 		}
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, false, true)
 		t.Fatal(err)
 	}
 
@@ -873,12 +871,16 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 		if len(rc.ActiveContracts) != len(tg.Hosts()) {
 			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), len(tg.Hosts()))
 		}
+		if len(rc.Contracts) != len(tg.Hosts()) {
+			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), len(tg.Hosts()))
+		}
 		if err = m.MineBlock(); err != nil {
 			return err
 		}
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, false, true)
 		t.Fatal(err)
 	}
 
@@ -1255,7 +1257,7 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 		return nil
 	})
 	if err != nil {
-		nodes[0].PrintDebugInfo(t, true, true)
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }
