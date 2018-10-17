@@ -50,17 +50,6 @@ func (h *Host) managedRPCLoopRecentRevision(conn net.Conn) error {
 	}
 	fcid := req.ContractID
 
-	// Attempt to lock the storage obligation for the specified contract.
-	//
-	// TODO: is this necessary? Can we fetch the revision/sigs without locking
-	// the obligation?
-	if err := h.managedTryLockStorageObligation(fcid); err != nil {
-		err = extendErr("could not get "+fcid.String()+" lock: ", ErrorInternal(err.Error()))
-		modules.WriteRPCResponse(conn, nil, err)
-		return err
-	}
-	defer h.managedUnlockStorageObligation(fcid)
-
 	// Fetch the storage obligation and extract the revision and signatures.
 	var so storageObligation
 	h.mu.RLock()

@@ -35,7 +35,7 @@ const (
 	// rpcRequestInterval is the amount of time that the renter has to send
 	// the next RPC ID in the new RPC loop. (More time is alloted for sending
 	// the actual RPC request object.)
-	rpcRequestInterval = 1 * time.Minute
+	rpcRequestInterval = 2 * time.Minute
 )
 
 var (
