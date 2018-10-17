@@ -437,3 +437,160 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestDisableIPViolationCheck checks if disabling the ip violation check
+// allows for forming multiple contracts with the same ip.
+func TestDisableIPViolationCheck(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Get the testDir for this test.
+	testDir := renterTestDir(t.Name())
+
+	// Create a group with a few hosts.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Get the ports of the hosts.
+	allHosts := tg.Hosts()
+	hg1, err1 := allHosts[0].HostGet()
+	hg2, err2 := allHosts[1].HostGet()
+	hg3, err3 := allHosts[2].HostGet()
+	err = errors.Compose(err1, err2, err3)
+	if err != nil {
+		t.Fatal("Failed to get ports from at least one host", err)
+	}
+	host1Port := hg1.ExternalSettings.NetAddress.Port()
+	host2Port := hg2.ExternalSettings.NetAddress.Port()
+	host3Port := hg3.ExternalSettings.NetAddress.Port()
+
+	// Reannounce the hosts with custom hostnames which match the hostnames
+	// from the custom resolver method. We announce host1 first and host3 last
+	// to make sure host1 is the 'oldest' and host3 the 'youngest'.
+	err1 = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host1.com:%s", host1Port)))
+	err2 = tg.Miners()[0].MineBlock()
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal("failed to announce host1")
+	}
+	err1 = allHosts[1].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
+	err2 = tg.Miners()[0].MineBlock()
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal("failed to announce host2")
+	}
+	err1 = allHosts[2].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
+	err2 = tg.Miners()[0].MineBlock()
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal("failed to announce host3")
+	}
+
+	// Add a renter with a custom resolver to the group.
+	renterTemplate := node.Renter(testDir + "/renter")
+	renterTemplate.HostDBDeps = siatest.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
+		switch host {
+		case "host1.com":
+			return []net.IP{{128, 0, 0, 1}}, nil
+		case "host2.com":
+			return []net.IP{{129, 0, 0, 1}}, nil
+		case "host3.com":
+			return []net.IP{{130, 0, 0, 1}}, nil
+		case "host4.com":
+			return []net.IP{{130, 0, 0, 2}}, nil
+		case "localhost":
+			return []net.IP{{127, 0, 0, 1}}, nil
+		default:
+			panic("shouldn't happen")
+		}
+	})
+	renterTemplate.ContractorDeps = renterTemplate.HostDBDeps
+
+	// Adding a custom RenewWindow will make a contract renewal during the test
+	// unlikely.
+	renterTemplate.Allowance = siatest.DefaultAllowance
+	renterTemplate.Allowance.Period *= 2
+	renterTemplate.Allowance.RenewWindow = 1
+	renterTemplate.Allowance.Hosts = uint64(len(allHosts))
+	_, err = tg.AddNodes(renterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// We expect the renter to have 3 active contracts.
+	renter := tg.Renters()[0]
+	contracts, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contracts.ActiveContracts) != len(allHosts) {
+		t.Fatalf("Expected %v active contracts but got %v", len(allHosts), len(contracts.ActiveContracts))
+	}
+
+	// Disable the ip violation check.
+	if err := renter.RenterSetCheckIPViolationPost(false); err != nil {
+		t.Fatal("Failed to disable IP violation check", err)
+	}
+
+	// Reannounce host1 as host4 which creates a violation with host3 and
+	// causes host1 to be the 'youngest'.
+	err = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host4.com:%s", host1Port)))
+	if err != nil {
+		t.Fatal("Failed to reannonce host 1")
+	}
+
+	// Mine the announcement.
+	if err := tg.Miners()[0].MineBlock(); err != nil {
+		t.Fatal("Failed to mine block", err)
+	}
+
+	// Check that all the hosts have been scanned.
+	hdag, err := renter.HostDbAllGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, host := range hdag.Hosts {
+		if host.LastIPNetChange.IsZero() {
+			t.Fatal("host's LastIPNetChange is still zero", host.NetAddress.Host())
+		}
+		if len(host.IPNets) == 0 {
+			t.Fatal("host doesn't have any IPNets associated with it")
+		}
+	}
+
+	retry := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Mine new blocks periodically.
+		if retry%25 == 0 {
+			if tg.Miners()[0].MineBlock() != nil {
+				return err
+			}
+		}
+		retry++
+		// The renter should now have one contract with every host since we
+		// disabled the ip violation check.
+		contracts, err = renter.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(contracts.ActiveContracts) != len(allHosts) {
+			return fmt.Errorf("Expected %v active contracts but got %v", len(allHosts), len(contracts.ActiveContracts))
+		}
+		if len(contracts.InactiveContracts) != 0 {
+			return fmt.Errorf("Expected 0 inactive contracts but got %v", len(contracts.InactiveContracts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

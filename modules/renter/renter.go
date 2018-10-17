@@ -71,6 +71,10 @@ type hostDB interface {
 	// hostdb is completed.
 	InitialScanComplete() (bool, error)
 
+	// IPViolationsCheck returns a boolean indicating if the IP violation check is
+	// enabled or not.
+	IPViolationsCheck() bool
+
 	// RandomHosts returns a set of random hosts, weighted by their estimated
 	// usefulness / attractiveness to the renter. RandomHosts will not return
 	// any offline or inactive hosts.
@@ -84,6 +88,10 @@ type hostDB interface {
 	// ScoreBreakdown returns a detailed explanation of the various properties
 	// of the host.
 	ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown
+
+	// SetIPViolationCheck enables/disables the IP violation check within the
+	// hostdb.
+	SetIPViolationCheck(enabled bool)
 
 	// EstimateHostScore returns the estimated score breakdown of a host with the
 	// provided settings.
@@ -458,6 +466,9 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	}
 	r.persist.StreamCacheSize = s.StreamCacheSize
 
+	// Set IPViolationsCheck
+	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
+
 	// Save the changes.
 	err = r.saveSync()
 	if err != nil {
@@ -564,14 +575,15 @@ func (r *Renter) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility
 // PeriodSpending returns the host contractor's period spending
 func (r *Renter) PeriodSpending() modules.ContractorSpending { return r.hostContractor.PeriodSpending() }
 
-// Settings returns the host contractor's allowance
+// Settings returns the renter's allowance
 func (r *Renter) Settings() modules.RenterSettings {
 	download, upload, _ := r.hostContractor.RateLimits()
 	return modules.RenterSettings{
-		Allowance:        r.hostContractor.Allowance(),
-		MaxDownloadSpeed: download,
-		MaxUploadSpeed:   upload,
-		StreamCacheSize:  r.staticStreamCache.cacheSize,
+		Allowance:         r.hostContractor.Allowance(),
+		IPViolationsCheck: r.hostDB.IPViolationsCheck(),
+		MaxDownloadSpeed:  download,
+		MaxUploadSpeed:    upload,
+		StreamCacheSize:   r.staticStreamCache.cacheSize,
 	}
 }
 
@@ -580,6 +592,12 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
 	r.mu.Unlock(id)
+}
+
+// SetIPViolationCheck is a passthrough method to the hostdb's method of the
+// same name.
+func (r *Renter) SetIPViolationCheck(enabled bool) {
+	r.hostDB.SetIPViolationCheck(enabled)
 }
 
 // validateSiapath checks that a Siapath is a legal filename.
