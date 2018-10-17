@@ -324,6 +324,7 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	// create contract params
 	c.mu.RLock()
 	params := proto.ContractParams{
+		Allowance:     c.allowance,
 		Host:          host,
 		Funding:       contractFunding,
 		StartHeight:   c.blockHeight,
@@ -454,6 +455,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// create contract params
 	c.mu.RLock()
 	params := proto.ContractParams{
+		Allowance:     c.allowance,
 		Host:          host,
 		Funding:       contractFunding,
 		StartHeight:   c.blockHeight,

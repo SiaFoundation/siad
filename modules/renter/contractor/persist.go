@@ -3,6 +3,7 @@ package contractor
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
@@ -52,6 +53,20 @@ func (c *Contractor) load() error {
 	if err != nil {
 		return err
 	}
+
+	// COMPATv136 if the allowance is not the empty allowance and "Expected"
+	// fields are not set, set them to the default values.
+	if !reflect.DeepEqual(data.Allowance, modules.Allowance{}) {
+		if data.Allowance.ExpectedStorage == 0 && data.Allowance.ExpectedUploadFrequency == 0 &&
+			data.Allowance.ExpectedDownloadFrequency == 0 && data.Allowance.ExpectedRedundancy == 0 {
+			// Set the fields to the defauls.
+			data.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
+			data.Allowance.ExpectedUploadFrequency = modules.DefaultAllowance.ExpectedUploadFrequency
+			data.Allowance.ExpectedDownloadFrequency = modules.DefaultAllowance.ExpectedDownloadFrequency
+			data.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+		}
+	}
+
 	c.allowance = data.Allowance
 	c.blockHeight = data.BlockHeight
 	c.currentPeriod = data.CurrentPeriod
