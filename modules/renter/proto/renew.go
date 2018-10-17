@@ -46,6 +46,9 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// check for negative currency
+	if hostCollateral.Cmp(baseCollateral) < 0 {
+		baseCollateral = hostCollateral
+	}
 	if types.PostTax(startHeight, totalPayout).Cmp(hostPayout) < 0 {
 		return modules.RenterContract{}, errors.New("insufficient funds to pay both siafund fee and also host payout")
 	}

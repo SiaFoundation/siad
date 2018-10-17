@@ -3,7 +3,6 @@ package modules
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"time"
 
@@ -448,12 +447,6 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 	// Compare hostCollateral to maxCollateral of host.
 	if hostCollateral.Cmp(host.MaxCollateral) > 0 {
 		hostCollateral = host.MaxCollateral
-	}
-	// Make sure the hostCollateral isn't smaller than the baseCollateral
-	// before returning it.
-	if hostCollateral.Cmp(baseCollateral) < 0 {
-		err = fmt.Errorf("baseCollateral can't be smaller than hostCollateral %v < %v", hostCollateral.HumanString(), baseCollateral.HumanString())
-		return
 	}
 	// Calculate hostPayout.
 	hostPayout = hostCollateral.Add(host.ContractPrice).Add(basePrice)
