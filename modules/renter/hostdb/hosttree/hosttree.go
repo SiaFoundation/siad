@@ -37,7 +37,7 @@ var (
 
 type (
 	// WeightFunc is a function used to weight a given HostDBEntry in the tree.
-	WeightFunc func(modules.HostDBEntry) types.Currency
+	WeightFunc func(modules.HostDBEntry) ScoreBreakdown
 
 	// HostTree is used to store and select host database entries. Each HostTree
 	// is initialized with a weighting func that is able to assign a weight to
@@ -241,7 +241,7 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 
 	entry := &hostEntry{
 		HostDBEntry: hdbe,
-		weight:      ht.weightFn(hdbe),
+		weight:      ht.weightFn(hdbe).Score(),
 	}
 
 	_, node = ht.root.recursiveInsert(entry)
@@ -385,7 +385,7 @@ func (ht *HostTree) all() []modules.HostDBEntry {
 func (ht *HostTree) insert(hdbe modules.HostDBEntry) error {
 	entry := &hostEntry{
 		HostDBEntry: hdbe,
-		weight:      ht.weightFn(hdbe),
+		weight:      ht.weightFn(hdbe).Score(),
 	}
 
 	if _, exists := ht.hosts[string(entry.PublicKey.Key)]; exists {
