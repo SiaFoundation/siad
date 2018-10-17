@@ -182,7 +182,7 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	// worker and return nil. Worker only needs to be removed if worker is being
 	// dropped.
 	udc.mu.Lock()
-	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces()
+	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces() || udc.download.staticComplete()
 	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
 	pieceData, workerHasPiece := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)]
 	pieceCompleted := udc.completedPieces[pieceData.index]
