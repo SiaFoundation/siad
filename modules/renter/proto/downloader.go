@@ -104,7 +104,7 @@ func (hd *Downloader) Sector(root crypto.Hash) (_ modules.RenterContract, _ []by
 	extendDeadline(hd.conn, connTimeout)
 	signedTxn, err := negotiateRevision(hd.conn, rev, contract.SecretKey, hd.height)
 	if err == modules.ErrStopResponse {
-		// If the host wants to stop communicating after this iteration, closer
+		// If the host wants to stop communicating after this iteration, close
 		// our connection; this will cause the next download to fail. However,
 		// we must delay closing until we've finished downloading the sector.
 		defer hd.conn.Close()

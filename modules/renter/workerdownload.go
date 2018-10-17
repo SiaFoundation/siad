@@ -35,7 +35,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	}
 	defer d.Close()
 
-	// If we the download of the chunk is marked as done or if we are shutting
+	// If the download of the chunk is marked as done or if we are shutting
 	// down, we close the downloader early to interrupt the download.
 	go func() {
 		select {
