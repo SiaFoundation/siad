@@ -88,6 +88,11 @@ const (
 	// the host and the renter, and will also contain a file contract and file
 	// contract revision that have each been signed by all parties.
 	EstimatedFileContractTransactionSetSize = 2048
+
+	// EstimatedFileContractRevisionAndProofTransactionSetSize is the
+	// estimcated blockchain size of a transaction set used by the host to
+	// provide the storage proof at the end of the contract duration.
+	EstimatedFileContractRevisionAndProofTransactionSetSize = 5000
 )
 
 // An ErasureCoder is an error-correcting encoder and decoder.
