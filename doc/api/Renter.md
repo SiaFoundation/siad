@@ -148,6 +148,25 @@ maxuploadspeed
 // Stream cache size specifies how many data chunks will be cached while 
 // streaming.  
 streamcachesize
+
+// The expected storage in bytes the user expects to upload to the network.
+// Shouldn't include redundancy.
+expectedstorage
+
+// The expected frequency in blocks after which the user expects to upload the
+// expected amount of storage. If the user expects to upload 1TB within a 50
+// blocks period, the frequency should be 50.
+expecteduploadfrequency
+
+// The expected frequency in blocks after which the user expects to download
+// the expected amount of storage. If the user expects to download 1TB within a
+// 50 blocks period, the frequency should be 50.
+expecteddownloadfrequency
+
+// Expected redundancy is the expected redundancy of the majority of the files
+// the user is going to upload. If most files are going to be uploaded at a 3.0x
+// redundancy, this should be set to 3.0.
+expectedredundancy
 ```
 
 ###### Response
