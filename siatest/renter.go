@@ -233,10 +233,10 @@ func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*Rem
 	return rf, nil
 }
 
-// UploadWithForce uses the node to upload the file including force overwrite parameter.
-func (tn *TestNode) UploadWithForce(lf *LocalFile, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
+// UploadWithForce uses the node to upload the file and overwrite if exists.
+func (tn *TestNode) UploadWithForce(lf *LocalFile, dataPieces, parityPieces uint64) (*RemoteFile, error) {
 	// Upload file
-	err := tn.RenterUploadForcePost(lf.path, "/"+lf.fileName(), dataPieces, parityPieces, force)
+	err := tn.RenterUploadForcePost(lf.path, "/"+lf.fileName(), dataPieces, parityPieces)
 	if err != nil {
 		return nil, err
 	}
@@ -269,14 +269,14 @@ func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces 
 }
 
 // UploadNewFileWithForce initiates the upload of a filesize bytes large file with force overwrite option
-func (tn *TestNode) UploadNewFileWithForce(filesize int, dataPieces uint64, parityPieces uint64, force bool) (*LocalFile, *RemoteFile, error) {
+func (tn *TestNode) UploadNewFileWithForce(filesize int, dataPieces uint64, parityPieces uint64) (*LocalFile, *RemoteFile, error) {
 	// Create file for upload
 	localFile, err := tn.NewFile(filesize)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to create file")
 	}
 	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.UploadWithForce(localFile, dataPieces, parityPieces, force)
+	remoteFile, err := tn.UploadWithForce(localFile, dataPieces, parityPieces)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to start upload")
 	}
@@ -320,9 +320,9 @@ func (tn *TestNode) UploadExistingFileBlocking(localFile *LocalFile, dataPieces 
 
 // UploadExistingFileWithForceBlocking attempts to upload an existing file with the option to force
 // overwrite and waits for the upload to reach 100% progress and redundancy.
-func (tn *TestNode) UploadExistingFileWithForceBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
+func (tn *TestNode) UploadExistingFileWithForceBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64) (*RemoteFile, error) {
 	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.UploadWithForce(localFile, dataPieces, parityPieces, force)
+	remoteFile, err := tn.UploadWithForce(localFile, dataPieces, parityPieces)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to start upload")
 	}

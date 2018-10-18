@@ -144,7 +144,6 @@ func TestRenterThree(t *testing.T) {
 	subTests := []test{
 		{"TestUploadNoForceParameter", testUploadNoForceParameter},
 		{"TestUploadWithForceTrue", testUploadWithForceTrue},
-		{"TestUploadWithForceFalse", testUploadWithForceFalse},
 	}
 
 	// Run tests
@@ -793,28 +792,9 @@ func testUploadWithForceTrue(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
-	_, err = renter.UploadExistingFileWithForceBlocking(localFile, dataPieces, parityPieces, true)
+	_, err = renter.UploadExistingFileWithForceBlocking(localFile, dataPieces, parityPieces)
 	if err != nil {
 		t.Fatal("Failed to force overwrite a file when specifying 'force=true': ", err)
-	}
-}
-
-// testUploadWithForceFalse is a subtest that uses an existing TestGroup to test if
-// uploading an existing file fails when setting 'force' to 'false'
-func testUploadWithForceFalse(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the first of the group's renters
-	renter := tg.Renters()[0]
-	// Upload file, creating a piece for each host in the group
-	dataPieces := uint64(1)
-	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := 100 + siatest.Fuzz()
-	localFile, _, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
-	if err != nil {
-		t.Fatal("Failed to upload a file for testing: ", err)
-	}
-	_, err = renter.UploadExistingFileWithForceBlocking(localFile, dataPieces, parityPieces, false)
-	if err == nil {
-		t.Fatal("Existing file incorrectly overwritten when specifying 'force=false'")
 	}
 }
 
