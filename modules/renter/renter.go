@@ -58,14 +58,20 @@ type hostDB interface {
 	// order of preference.
 	AllHosts() []modules.HostDBEntry
 
-	// AverageContractPrice returns the average contract price of a host.
-	AverageContractPrice() types.Currency
-
 	// Close closes the hostdb.
 	Close() error
 
+	// ListedHosts returns the hostdb's listedHosts
+	ListedHosts() map[string]types.SiaPublicKey
+
+	// WhiteListMode returns if the hostdb is in whitelist mode
+	WhiteListMode() bool
+
+	// SetListMode sets the renter's hostdb to be in whiteList or blacklist mode
+	SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
+
 	// Host returns the HostDBEntry for a given host.
-	Host(types.SiaPublicKey) (modules.HostDBEntry, bool)
+	Host(pk types.SiaPublicKey, listmode bool) (modules.HostDBEntry, bool)
 
 	// initialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
@@ -268,7 +274,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	}
 	// Get hosts from pubkeys
 	for _, pk := range pks {
-		host, ok := r.hostDB.Host(pk)
+		host, ok := r.hostDB.Host(pk, true)
 		if !ok {
 			continue
 		}
@@ -523,8 +529,52 @@ func (r *Renter) ActiveHosts() []modules.HostDBEntry { return r.hostDB.ActiveHos
 // AllHosts returns an array of all hosts
 func (r *Renter) AllHosts() []modules.HostDBEntry { return r.hostDB.AllHosts() }
 
+// SetListMode sets the renter's hostdb to be in whiteList or blacklist mode
+func (r *Renter) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
+	// Check to see how many hosts are needed for the allowance
+	minHosts := r.Settings().Allowance.Hosts
+	if len(hosts) < int(minHosts) && whitelist {
+		r.log.Printf("WARN: There are fewer whitelisted hosts than the allowance requires.  Have %v whitelisted hosts, need %v to support allowance\n", len(hosts), minHosts)
+	}
+
+	// Set list mode for the hostdb
+	if err := r.hostDB.SetListMode(whitelist, hosts); err != nil {
+		return err
+	}
+
+	// New settings
+	listedHosts := r.hostDB.ListedHosts()
+
+	// Unlock any previously Locked contracts
+	//	(edge case is that it unlocks a contract that you manually canceled)
+	r.unlockContracts()
+
+	// Cancel Contracts
+	// Disable
+	if len(hosts) == 0 {
+		return nil
+	}
+
+	contracts := r.Contracts()
+	var ids []types.FileContractID
+	for _, c := range contracts {
+		_, ok := listedHosts[string(c.HostPublicKey.Key)]
+		if whitelist == ok {
+			continue
+		}
+		ids = append(ids, c.ID)
+	}
+	if err := r.CancelContracts(ids); err != nil {
+		r.log.Println("WARN: unable to cancel contracts with non whitelisted hosts")
+	}
+
+	return nil
+}
+
 // Host returns the host associated with the given public key
-func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) { return r.hostDB.Host(spk) }
+func (r *Renter) Host(spk types.SiaPublicKey, listmode bool) (modules.HostDBEntry, bool) {
+	return r.hostDB.Host(spk, listmode)
+}
 
 // InitialScanComplete returns a boolean indicating if the initial scan of the
 // hostdb is completed.

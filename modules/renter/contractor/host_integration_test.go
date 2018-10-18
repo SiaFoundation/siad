@@ -201,7 +201,7 @@ func TestIntegrationFormContract(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok := c.hdb.Host(h.PublicKey(), false)
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -229,7 +229,7 @@ func TestIntegrationReviseContract(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok := c.hdb.Host(h.PublicKey(), false)
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -272,7 +272,7 @@ func TestIntegrationUploadDownload(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok := c.hdb.Host(h.PublicKey(), false)
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -332,7 +332,7 @@ func TestIntegrationRenew(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok := c.hdb.Host(h.PublicKey(), false)
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -445,7 +445,7 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok := c.hdb.Host(h.PublicKey(), false)
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -536,7 +536,7 @@ func TestIntegrationEditorCaching(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok := c.hdb.Host(h.PublicKey(), false)
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -627,7 +627,7 @@ func TestContractPresenceLeak(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok := c.hdb.Host(h.PublicKey(), false)
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}

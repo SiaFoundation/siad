@@ -141,7 +141,7 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	if !haveContract {
 		return nil, errors.New("no record of that contract")
 	}
-	host, haveHost := c.hdb.Host(contract.HostPublicKey)
+	host, haveHost := c.hdb.Host(contract.HostPublicKey, false)
 	if height > contract.EndHeight {
 		return nil, errors.New("contract has already ended")
 	} else if !haveHost {

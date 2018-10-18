@@ -171,7 +171,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 }
 
 // interactionAdjustments determine the penalty to be applied to a host for the
-// historic and currnet interactions with that host. This function focuses on
+// historic and current interactions with that host. This function focuses on
 // historic interactions and ignores recent interactions.
 func (hdb *HostDB) interactionAdjustments(entry modules.HostDBEntry) float64 {
 	// Give the host a baseline of 30 successful interactions and 1 failed

@@ -28,6 +28,8 @@ type hdbPersist struct {
 	BlockHeight              types.BlockHeight
 	DisableIPViolationsCheck bool
 	LastChange               modules.ConsensusChangeID
+	ListedHosts              map[string]types.SiaPublicKey
+	WhiteList                bool
 }
 
 // persistData returns the data in the hostdb that will be saved to disk.
@@ -36,6 +38,8 @@ func (hdb *HostDB) persistData() (data hdbPersist) {
 	data.BlockHeight = hdb.blockHeight
 	data.DisableIPViolationsCheck = hdb.disableIPViolationCheck
 	data.LastChange = hdb.lastChange
+	data.ListedHosts = hdb.listedHosts
+	data.WhiteList = hdb.whiteList
 	return data
 }
 
@@ -57,6 +61,8 @@ func (hdb *HostDB) load() error {
 	hdb.blockHeight = data.BlockHeight
 	hdb.disableIPViolationCheck = data.DisableIPViolationsCheck
 	hdb.lastChange = data.LastChange
+	hdb.whiteList = data.WhiteList
+	hdb.listedHosts = data.ListedHosts
 
 	// Load each of the hosts into the host tree.
 	for _, host := range data.AllHosts {

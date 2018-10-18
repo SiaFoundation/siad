@@ -135,33 +135,6 @@ func (hdbt *hdbTester) initWallet() error {
 	return nil
 }
 
-// TestAverageContractPrice tests the AverageContractPrice method, which also depends on the
-// randomHosts method.
-func TestAverageContractPrice(t *testing.T) {
-	hdb := bareHostDB()
-
-	// empty
-	if avg := hdb.AverageContractPrice(); !avg.IsZero() {
-		t.Error("average of empty hostdb should be zero:", avg)
-	}
-
-	// with one host
-	h1 := makeHostDBEntry()
-	h1.ContractPrice = types.NewCurrency64(100)
-	hdb.hostTree.Insert(h1)
-	if avg := hdb.AverageContractPrice(); avg.Cmp(h1.ContractPrice) != 0 {
-		t.Error("average of one host should be that host's price:", avg)
-	}
-
-	// with two hosts
-	h2 := makeHostDBEntry()
-	h2.ContractPrice = types.NewCurrency64(300)
-	hdb.hostTree.Insert(h2)
-	if avg := hdb.AverageContractPrice(); avg.Cmp64(200) != 0 {
-		t.Error("average of two hosts should be their sum/2:", avg)
-	}
-}
-
 // TestNew tests the New function.
 func TestNew(t *testing.T) {
 	if testing.Short() {
@@ -370,7 +343,7 @@ func TestRandomHosts(t *testing.T) {
 		for _, host := range rand {
 			_, exists := dupCheck[string(host.PublicKey.Key)]
 			if exists {
-				t.Error("RandomHosts is seleccting duplicates")
+				t.Error("RandomHosts is selecting duplicates")
 			}
 			dupCheck[string(host.PublicKey.Key)] = struct{}{}
 			_, exists = includeMap[string(host.PublicKey.Key)]
@@ -391,7 +364,7 @@ func TestRandomHosts(t *testing.T) {
 		for _, host := range rand {
 			_, exists := dupCheck[string(host.PublicKey.Key)]
 			if exists {
-				t.Error("RandomHosts is seleccting duplicates")
+				t.Error("RandomHosts is selecting duplicates")
 			}
 			dupCheck[string(host.PublicKey.Key)] = struct{}{}
 			_, exists = includeMap[string(host.PublicKey.Key)]
@@ -412,7 +385,7 @@ func TestRandomHosts(t *testing.T) {
 		for _, host := range rand {
 			_, exists := dupCheck[string(host.PublicKey.Key)]
 			if exists {
-				t.Error("RandomHosts is seleccting duplicates")
+				t.Error("RandomHosts is selecting duplicates")
 			}
 			dupCheck[string(host.PublicKey.Key)] = struct{}{}
 			_, exists = includeMap[string(host.PublicKey.Key)]
@@ -470,7 +443,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	}
 
 	// get updated host from hostdb
-	host, ok := hdbt.hdb.Host(host.PublicKey)
+	host, ok := hdbt.hdb.Host(host.PublicKey, false)
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -498,7 +471,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	}
 
 	// get updated host from hostdb
-	host, ok = hdbt.hdb.Host(host.PublicKey)
+	host, ok = hdbt.hdb.Host(host.PublicKey, false)
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -533,7 +506,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	}
 
 	// get updated host from hostdb
-	host, ok = hdbt.hdb.Host(host.PublicKey)
+	host, ok = hdbt.hdb.Host(host.PublicKey, false)
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -555,7 +528,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	host, ok = hdbt.hdb.Host(host.PublicKey)
+	host, ok = hdbt.hdb.Host(host.PublicKey, false)
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -576,7 +549,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	host, ok = hdbt.hdb.Host(host.PublicKey)
+	host, ok = hdbt.hdb.Host(host.PublicKey, false)
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -638,15 +611,15 @@ func TestCheckForIPViolations(t *testing.T) {
 	// Scan the entries. entry1 should be the 'oldest' and entry3 the
 	// 'youngest'. This also inserts the entries into the hosttree.
 	hdbt.hdb.managedScanHost(entry1)
-	entry1, _ = hdbt.hdb.Host(entry1.PublicKey)
+	entry1, _ = hdbt.hdb.Host(entry1.PublicKey, false)
 	time.Sleep(time.Millisecond)
 
 	hdbt.hdb.managedScanHost(entry2)
-	entry2, _ = hdbt.hdb.Host(entry2.PublicKey)
+	entry2, _ = hdbt.hdb.Host(entry2.PublicKey, false)
 	time.Sleep(time.Millisecond)
 
 	hdbt.hdb.managedScanHost(entry3)
-	entry3, _ = hdbt.hdb.Host(entry3.PublicKey)
+	entry3, _ = hdbt.hdb.Host(entry3.PublicKey, false)
 	time.Sleep(time.Millisecond)
 
 	// Make sure that the timestamps are not zero and that they entries have
@@ -667,15 +640,15 @@ func TestCheckForIPViolations(t *testing.T) {
 	// and the following checks will fail.
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry3)
-	entry3, _ = hdbt.hdb.Host(entry3.PublicKey)
+	entry3, _ = hdbt.hdb.Host(entry3.PublicKey, false)
 
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry2)
-	entry2, _ = hdbt.hdb.Host(entry2.PublicKey)
+	entry2, _ = hdbt.hdb.Host(entry2.PublicKey, false)
 
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry1)
-	entry1, _ = hdbt.hdb.Host(entry1.PublicKey)
+	entry1, _ = hdbt.hdb.Host(entry1.PublicKey, false)
 
 	// Add entry1 and entry2. There should be no violation.
 	badHosts := hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey})

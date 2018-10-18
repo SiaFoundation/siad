@@ -109,14 +109,21 @@ func (stubHostDB) ActiveHosts() []modules.HostDBEntry   { return nil }
 func (stubHostDB) AllHosts() []modules.HostDBEntry      { return nil }
 func (stubHostDB) AverageContractPrice() types.Currency { return types.Currency{} }
 func (stubHostDB) Close() error                         { return nil }
-func (stubHostDB) IsOffline(modules.NetAddress) bool    { return true }
+func (stubHostDB) ListedHosts() map[string]types.SiaPublicKey {
+	return make(map[string]types.SiaPublicKey)
+}
+func (stubHostDB) WhiteListMode() bool { return false }
+func (stubHostDB) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
+	return nil
+}
+func (stubHostDB) IsOffline(modules.NetAddress) bool { return true }
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return []modules.HostDBEntry{}, nil
 }
 func (stubHostDB) EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown {
 	return modules.HostScoreBreakdown{}
 }
-func (stubHostDB) Host(types.SiaPublicKey) (modules.HostDBEntry, bool) {
+func (stubHostDB) Host(types.SiaPublicKey, bool) (modules.HostDBEntry, bool) {
 	return modules.HostDBEntry{}, false
 }
 func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown {

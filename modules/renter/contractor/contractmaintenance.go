@@ -84,7 +84,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 // contract has been.
 func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.RenterContract, blockHeight types.BlockHeight, allowance modules.Allowance) (types.Currency, error) {
 	// Fetch the host pricing to use in the estimate.
-	host, exists := c.hdb.Host(contract.HostPublicKey)
+	host, exists := c.hdb.Host(contract.HostPublicKey, true)
 	if !exists {
 		return types.ZeroCurrency, errors.New("could not find host in hostdb")
 	}
@@ -251,7 +251,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 				u.GoodForRenew = true
 			}
 
-			host, exists := c.hdb.Host(contract.HostPublicKey)
+			host, exists := c.hdb.Host(contract.HostPublicKey, true)
 			// Contract has no utility if the host is not in the database.
 			if !exists {
 				u.GoodForUpload = false
@@ -423,7 +423,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 
 	// Fetch the host associated with this contract.
-	host, ok := c.hdb.Host(contract.HostPublicKey)
+	host, ok := c.hdb.Host(contract.HostPublicKey, true)
 	c.mu.Lock()
 	period := c.allowance.Period
 	c.mu.Unlock()
@@ -718,7 +718,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// if less than 'minContractFundRenewalThreshold' funds are remaining
 		// (3% at time of writing), or if there is less than 3 sectors worth of
 		// storage+upload+download remaining.
-		host, _ := c.hdb.Host(contract.HostPublicKey)
+		host, _ := c.hdb.Host(contract.HostPublicKey, true)
 		blockBytes := types.NewCurrency64(modules.SectorSize * uint64(allowance.Period))
 		sectorStoragePrice := host.StoragePrice.Mul(blockBytes)
 		sectorUploadBandwidthPrice := host.UploadBandwidthPrice.Mul64(modules.SectorSize)

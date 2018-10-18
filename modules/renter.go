@@ -443,8 +443,11 @@ type Renter interface {
 	// FileList returns information on all of the files stored by the renter.
 	FileList() []FileInfo
 
+	// SetListMode sets the renter's hostdb to be in whiteList or blacklist mode
+	SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
+
 	// Host provides the DB entry and score breakdown for the requested host.
-	Host(pk types.SiaPublicKey) (HostDBEntry, bool)
+	Host(pk types.SiaPublicKey, listmode bool) (HostDBEntry, bool)
 
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
