@@ -270,6 +270,16 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		}
 		settings.StreamCacheSize = streamCacheSize
 	}
+	// Scan the checkforipviolation flag.
+	if ipc := req.FormValue("checkforipviolation"); ipc != "" {
+		var ipviolationcheck bool
+		if _, err := fmt.Sscan(ipc, &ipviolationcheck); err != nil {
+			WriteError(w, Error{"unable to parse ipviolationcheck: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		settings.IPViolationsCheck = ipviolationcheck
+	}
+
 	// Set the settings in the renter.
 	err := api.renter.SetSettings(settings)
 	if err != nil {

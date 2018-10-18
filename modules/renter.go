@@ -251,10 +251,11 @@ type RenterPriceEstimation struct {
 
 // RenterSettings control the behavior of the Renter.
 type RenterSettings struct {
-	Allowance        Allowance `json:"allowance"`
-	MaxUploadSpeed   int64     `json:"maxuploadspeed"`
-	MaxDownloadSpeed int64     `json:"maxdownloadspeed"`
-	StreamCacheSize  uint64    `json:"streamcachesize"`
+	Allowance         Allowance `json:"allowance"`
+	IPViolationsCheck bool      `json:"ipviolationcheck"`
+	MaxUploadSpeed    int64     `json:"maxuploadspeed"`
+	MaxDownloadSpeed  int64     `json:"maxdownloadspeed"`
+	StreamCacheSize   uint64    `json:"streamcachesize"`
 }
 
 // HostDBScans represents a sortable slice of scans.

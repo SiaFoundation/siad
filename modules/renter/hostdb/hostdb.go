@@ -58,12 +58,13 @@ type HostDB struct {
 	// handful of goroutines constantly waiting on the channel for hosts to
 	// scan. The scan map is used to prevent duplicates from entering the scan
 	// pool.
-	initialScanComplete  bool
-	initialScanLatencies []time.Duration
-	scanList             []modules.HostDBEntry
-	scanMap              map[string]struct{}
-	scanWait             bool
-	scanningThreads      int
+	initialScanComplete     bool
+	initialScanLatencies    []time.Duration
+	disableIPViolationCheck bool
+	scanList                []modules.HostDBEntry
+	scanMap                 map[string]struct{}
+	scanWait                bool
+	scanningThreads         int
 
 	blockHeight types.BlockHeight
 	lastChange  modules.ConsensusChangeID
@@ -242,6 +243,14 @@ func (hdb *HostDB) AverageContractPrice() (totalPrice types.Currency) {
 // CheckForIPViolations accepts a number of host public keys and returns the
 // ones that violate the rules of the addressFilter.
 func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaPublicKey {
+	// If the check was disabled we don't return any bad hosts.
+	hdb.mu.RLock()
+	disabled := hdb.disableIPViolationCheck
+	hdb.mu.RUnlock()
+	if disabled {
+		return nil
+	}
+
 	var entries []modules.HostDBEntry
 	var badHosts []types.SiaPublicKey
 
@@ -309,17 +318,39 @@ func (hdb *HostDB) InitialScanComplete() (complete bool, err error) {
 	return
 }
 
+// IPViolationsCheck returns a boolean indicating if the IP violation check is
+// enabled or not.
+func (hdb *HostDB) IPViolationsCheck() bool {
+	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
+	return !hdb.disableIPViolationCheck
+}
+
 // RandomHosts implements the HostDB interface's RandomHosts() method. It takes
 // a number of hosts to return, and a slice of netaddresses to ignore, and
-// returns a slice of entries.
+// returns a slice of entries. If the IP violation check was disabled, the
+// addressBlacklist is ignored.
 func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	hdb.mu.RLock()
 	initialScanComplete := hdb.initialScanComplete
+	ipCheckDisabled := hdb.disableIPViolationCheck
 	hdb.mu.RUnlock()
 	if !initialScanComplete {
 		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
+	if ipCheckDisabled {
+		return hdb.hostTree.SelectRandom(n, blacklist, nil), nil
+	}
 	return hdb.hostTree.SelectRandom(n, blacklist, addressBlacklist), nil
+}
+
+// SetIPViolationCheck enables or disables the IP violation check. If disabled,
+// CheckForIPViolations won't return bad hosts and RandomHosts will return the
+// address blacklist.
+func (hdb *HostDB) SetIPViolationCheck(enabled bool) {
+	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
+	hdb.disableIPViolationCheck = !enabled
 }
 
 // RandomHostsWithAllowance works as RandomHosts but uses a temporary hosttree
