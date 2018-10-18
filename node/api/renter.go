@@ -817,14 +817,12 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 	}
 
 	// Check whether existing file should be overwritten
-	overwrite := false
-	if req.FormValue("overwrite") != "" {
-		b, err := strconv.ParseBool(req.FormValue("overwrite"))
+	force := false
+	if req.FormValue("force") != "" {
+		force, err = strconv.ParseBool(req.FormValue("force"))
 		if err != nil {
-			WriteError(w, Error{"unable to parse 'overwrite' parameter: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
-		} else {
-			overwrite = b
 		}
 	}
 
@@ -875,7 +873,7 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		Source:      source,
 		SiaPath:     strings.TrimPrefix(ps.ByName("siapath"), "/"),
 		ErasureCode: ec,
-		Overwrite:   overwrite,
+		Force:       force,
 	})
 	if err != nil {
 		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)

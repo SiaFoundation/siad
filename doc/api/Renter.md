@@ -643,7 +643,7 @@ starts a file upload to the Sia network from the local filesystem.
 
 // Optional paramater used to overwrite an existing file
 // Default is 'false' if unspecified
-overwrite // bool
+force // bool
 ```
 
 ###### Query String Parameters

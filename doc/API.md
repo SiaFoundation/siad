@@ -1252,6 +1252,7 @@ uploads a file to the network from the local filesystem.
 datapieces   // int
 paritypieces // int
 source       // string - a filepath
+force        // bool - (optional) default is 'false'
 ```
 
 ###### Response

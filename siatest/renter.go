@@ -233,6 +233,26 @@ func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*Rem
 	return rf, nil
 }
 
+// UploadWithForce uses the node to upload the file including force overwrite parameter.
+func (tn *TestNode) UploadWithForce(lf *LocalFile, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
+	// Upload file
+	err := tn.RenterUploadForcePost(lf.path, "/"+lf.fileName(), dataPieces, parityPieces, force)
+	if err != nil {
+		return nil, err
+	}
+	// Create remote file object
+	rf := &RemoteFile{
+		siaPath:  lf.fileName(),
+		checksum: lf.checksum,
+	}
+	// Make sure renter tracks file
+	_, err = tn.FileInfo(rf)
+	if err != nil {
+		return rf, errors.AddContext(err, "uploaded file is not tracked by the renter")
+	}
+	return rf, nil
+}
+
 // UploadNewFile initiates the upload of a filesize bytes large file.
 func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces uint64) (*LocalFile, *RemoteFile, error) {
 	// Create file for upload
@@ -242,6 +262,21 @@ func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces 
 	}
 	// Upload file, creating a parity piece for each host in the group
 	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces)
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "failed to start upload")
+	}
+	return localFile, remoteFile, nil
+}
+
+// UploadNewFileWithForce initiates the upload of a filesize bytes large file with force overwrite option
+func (tn *TestNode) UploadNewFileWithForce(filesize int, dataPieces uint64, parityPieces uint64, force bool) (*LocalFile, *RemoteFile, error) {
+	// Create file for upload
+	localFile, err := tn.NewFile(filesize)
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "failed to create file")
+	}
+	// Upload file, creating a parity piece for each host in the group
+	remoteFile, err := tn.UploadWithForce(localFile, dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to start upload")
 	}
@@ -262,6 +297,43 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 	// Wait until upload reaches a certain redundancy
 	err = tn.WaitForUploadRedundancy(remoteFile, float64((dataPieces+parityPieces))/float64(dataPieces))
 	return localFile, remoteFile, err
+}
+
+// UploadExistingFileBlocking attempts to upload an existing file and waits for the
+// upload to reach 100% progress and redundancy.
+func (tn *TestNode) UploadExistingFileBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64) (*RemoteFile, error) {
+	// Upload file, creating a parity piece for each host in the group
+	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to start upload")
+	}
+
+	// Wait until upload reached the specified progress
+	if err = tn.WaitForUploadProgress(remoteFile, 1); err != nil {
+		return nil, err
+	}
+
+	// Wait until upload reaches a certain redundancy
+	err = tn.WaitForUploadRedundancy(remoteFile, float64((dataPieces+parityPieces))/float64(dataPieces))
+	return remoteFile, err
+}
+
+// UploadExistingFileWithForceBlocking attempts to upload an existing file with the option to force
+// overwrite and waits for the upload to reach 100% progress and redundancy.
+func (tn *TestNode) UploadExistingFileWithForceBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
+	// Upload file, creating a parity piece for each host in the group
+	remoteFile, err := tn.UploadWithForce(localFile, dataPieces, parityPieces, force)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to start upload")
+	}
+
+	// Wait until upload reached the specified progress
+	if err = tn.WaitForUploadProgress(remoteFile, 1); err != nil {
+		return nil, err
+	}
+	// Wait until upload reaches a certain redundancy
+	err = tn.WaitForUploadRedundancy(remoteFile, float64((dataPieces+parityPieces))/float64(dataPieces))
+	return remoteFile, err
 }
 
 // WaitForDownload waits for the download of a file to finish. If a file wasn't
