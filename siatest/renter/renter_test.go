@@ -1165,8 +1165,10 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 		hostMap[pk.String()] = host
 	}
 	// Lock the wallet of one of the used hosts to make the renew fail.
+	var lockedHostPK types.SiaPublicKey
 	for _, c := range rcg.ActiveContracts {
 		if host, used := hostMap[c.HostPublicKey.String()]; used {
+			lockedHostPK = c.HostPublicKey
 			if err := host.WalletLockPost(); err != nil {
 				t.Fatal(err)
 			}
@@ -1221,6 +1223,10 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	// hosts - 1 inactive contracts.  One of the inactive contracts will be
 	// !goodForRenew due to the host
 	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 5*time.Second, func() error {
+		if err := miner.MineBlock(); err != nil {
+			return err
+		}
+
 		// contract should be !goodForRenew now.
 		rc, err := renter.RenterInactiveContractsGet()
 		if err != nil {
@@ -1233,22 +1239,23 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 			return fmt.Errorf("Expected %v inactive contracts, got %v", len(tg.Hosts())-1, len(rc.InactiveContracts))
 		}
 
-		notGoodForRenew := 0
-		for _, c := range rc.InactiveContracts {
-			if !c.GoodForRenew {
-				notGoodForRenew++
+		// Check that the locked host is in inactive and not in active.
+		for _, c := range rc.ActiveContracts {
+			if c.HostPublicKey.String() == lockedHostPK.String() {
+				return errors.New("locked host still appears in set of active contracts")
 			}
 		}
-		if err := miner.MineBlock(); err != nil {
-			return err
-		}
-		if notGoodForRenew != 1 {
-			return fmt.Errorf("there should be exactly 1 inactive contract that is !goodForRenew but was %v",
-				notGoodForRenew)
+		// If the host does appear in the inactive, set, then the test has
+		// passed.
+		for _, c := range rc.ActiveContracts {
+			if c.HostPublicKey.String() == lockedHostPK.String() {
+				return nil
+			}
 		}
 		return nil
 	})
 	if err != nil {
+		nodes[0].PrintDebugInfo(t, true, true)
 		t.Fatal(err)
 	}
 }
