@@ -268,21 +268,6 @@ func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces 
 	return localFile, remoteFile, nil
 }
 
-// UploadNewFileWithForce initiates the upload of a filesize bytes large file with force overwrite option
-func (tn *TestNode) UploadNewFileWithForce(filesize int, dataPieces uint64, parityPieces uint64) (*LocalFile, *RemoteFile, error) {
-	// Create file for upload
-	localFile, err := tn.NewFile(filesize)
-	if err != nil {
-		return nil, nil, errors.AddContext(err, "failed to create file")
-	}
-	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.UploadWithForce(localFile, dataPieces, parityPieces)
-	if err != nil {
-		return nil, nil, errors.AddContext(err, "failed to start upload")
-	}
-	return localFile, remoteFile, nil
-}
-
 // UploadNewFileBlocking uploads a filesize bytes large file and waits for the
 // upload to reach 100% progress and redundancy.
 func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parityPieces uint64) (*LocalFile, *RemoteFile, error) {
