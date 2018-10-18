@@ -1,6 +1,8 @@
 package client
 
 import (
+	"encoding/json"
+
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -20,6 +22,21 @@ func (c *Client) HostDbActiveGet() (hdag api.HostdbActiveGET, err error) {
 // HostDbAllGet requests the /hostdb/all endpoint's resources.
 func (c *Client) HostDbAllGet() (hdag api.HostdbAllGET, err error) {
 	err = c.get("/hostdb/all", &hdag)
+	return
+}
+
+// HostDbListmodePost requests the /hostdb/listmode endpoint
+func (c *Client) HostDbListmodePost(hosts []types.SiaPublicKey, mode string) (err error) {
+	hdblp := api.HostdbListmodePOST{
+		Mode:  mode,
+		Hosts: hosts,
+	}
+
+	data, err := json.Marshal(hdblp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/hostdb/listmode", string(data), nil)
 	return
 }
 

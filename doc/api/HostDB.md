@@ -24,6 +24,7 @@ Index
 | [/hostdb/active](#hostdbactive-get-example)                   | GET       | [Active hosts](#active-hosts) |
 | [/hostdb/all](#hostdball-get-example)                         | GET       | [All hosts](#all-hosts)       |
 | [/hostdb/hosts/___:pubkey___](#hostdbhostspubkey-get-example) | GET       | [Hosts](#hosts)               |
+| [/hostdb/listmode](#hostdblistmode-post)                      | POST      |                               |
 
 #### /hostdb [GET] [(example)](#hostdb-get)
 
@@ -594,6 +595,33 @@ overall.
   }
 }
 ```
+#### /hostdb/listmode [POST] 
+
+lets you enable and disable `blacklist` mode and `whitelist` mode. In
+`blacklist` mode, any hosts you identify as being on the `blacklist` will not be
+used to form contracts. In `whitelist` mode, only the hosts identified as being
+on the `whitelist` will be used to form contracts. To enable the `blacklist`,
+submit a list of host pubkeys that you wish to black list and set the
+`mode` parameter to `blacklist`. To enable the `whitelist` mode, submit the list
+of host pubkeys that you wish to white list and set the `mode` parameter to
+`whitelist`. To disable either list, submit an empty list of hosts with the
+`mode` parameter set to `disable`.
+
+###### Query String Parameters 1
+```
+// Set to blacklist or whitelist to enable either, set to disable to disable either mode
+mode    // string
+
+// This is a list of the host pubkeys that will either be black listed or white
+// listed. Pubkeys should be comma separated. To disable either mode, leave hosts
+// blank.
+hosts   // string of comma separated pubkeys
+// Example Pubkey: ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+```
+
+###### Response
+standard success or error response. See
+[#standard-responses](#standard-responses).
 
 Examples
 --------

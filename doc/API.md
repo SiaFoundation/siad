@@ -668,12 +668,14 @@ minuploadbandwidthprice   // Optional, hastings / byte
 Host DB
 -------
 
-| Route                                                   | HTTP verb |
-| ------------------------------------------------------- | --------- |
-| [/hostdb](#hostdb-get-example)                          | GET       |
-| [/hostdb/active](#hostdbactive-get-example)             | GET       |
-| [/hostdb/all](#hostdball-get-example)                   | GET       |
+| Route                                                         | HTTP verb |
+| ------------------------------------------------------------- | --------- |
+| [/hostdb](#hostdb-get-example)                                | GET       |
+| [/hostdb/active](#hostdbactive-get-example)                   | GET       |
+| [/hostdb/all](#hostdball-get-example)                         | GET       |
 | [/hostdb/hosts/:___pubkey___](#hostdbhostspubkey-get-example) | GET       |
+| [/hostdb/listmode](#hostdblistmode-post)                      | POST      |
+
 
 For examples and detailed descriptions of request and response parameters,
 refer to [HostDB.md](/doc/api/HostDB.md).
@@ -803,6 +805,29 @@ overall.
   }
 }
 ```
+
+#### /hostdb/listmode [POST] 
+
+lets you enable and disable `blacklist` mode and `whitelist` mode. In
+`blacklist` mode, any hosts you identify as being on the `blacklist` will not be
+used to form contracts. In `whitelist` mode, only the hosts identified as being
+on the `whitelist` will be used to form contracts. To enable the `blacklist`,
+submit a list of host pubkeys that you wish to black list and set the
+`mode` parameter to `blacklist`. To enable the `whitelist` mode, submit the list
+of host pubkeys that you wish to white list and set the `mode` parameter to
+`whitelist`. To disable either list, submit an empty list of hosts with the
+`mode` parameter set to `disable`.
+
+###### Query String Parameters [(with comments)](/doc/api/HostDB.md#query-string-parameters-1)
+```
+mode    // string
+hosts   // string of comma separated pubkeys
+// Example Pubkey: ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+```
+
+###### Response
+standard success or error response. See
+[#standard-responses](#standard-responses).
 
 
 Miner

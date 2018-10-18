@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -39,6 +40,13 @@ type (
 	// HostdbGet holds information about the hostdb.
 	HostdbGet struct {
 		InitialScanComplete bool `json:"initialscancomplete"`
+	}
+
+	// HostdbListmodePOST contains the information needed to set the the
+	// listmode of the hostDB
+	HostdbListmodePOST struct {
+		Mode  string               `json:"mode"`
+		Hosts []types.SiaPublicKey `json:"hosts"`
 	}
 )
 
@@ -110,12 +118,12 @@ func (api *API) hostdbAllHandler(w http.ResponseWriter, req *http.Request, _ htt
 }
 
 // hostdbHostsHandler handles the API call asking for a specific host,
-// returning detailed informatino about that host.
+// returning detailed information about that host.
 func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	var pk types.SiaPublicKey
 	pk.LoadString(ps.ByName("pubkey"))
 
-	entry, exists := api.renter.Host(pk)
+	entry, exists := api.renter.Host(pk, false)
 	if !exists {
 		WriteError(w, Error{"requested host does not exist"}, http.StatusBadRequest)
 		return
@@ -131,4 +139,32 @@ func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps 
 		Entry:          extendedEntry,
 		ScoreBreakdown: breakdown,
 	})
+}
+
+// hostdbListModeHandlerPOST handles the API call to set the hostdb to whitelist
+// of blacklist mode
+func (api *API) hostdbListModeHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse parameters
+	var params HostdbListmodePOST
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Determine mode
+	var whitelist bool
+	if params.Mode == "whitelist" {
+		whitelist = true
+	}
+	if !whitelist && params.Mode != "blacklist" && params.Mode != "disable" {
+		WriteError(w, Error{"mode unrecognized, must be either whitelist, blacklist, or disable"}, http.StatusBadRequest)
+		return
+	}
+
+	if err := api.renter.SetListMode(whitelist, params.Hosts); err != nil {
+		WriteError(w, Error{"failed to set the list mode: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
 }
