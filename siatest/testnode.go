@@ -46,7 +46,7 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
-		rce, err := tn.RenterInactiveContractsGet()
+		rce, err := tn.RenterExpiredContractsGet()
 		if err != nil {
 			t.Log(err)
 		}
@@ -62,7 +62,7 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 	}
 
 	if hostInfo {
-		hdbag, err := tn.HostDbActiveGet()
+		hdbag, err := tn.HostDbAllGet()
 		if err != nil {
 			t.Log(err)
 		}

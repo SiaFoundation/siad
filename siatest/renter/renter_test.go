@@ -1033,7 +1033,7 @@ func TestRenterAddNodes(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		{"TestRedundancyReporting", testRedundancyReporting},
+		{"TestRedundancyReporting", testRedundancyReporting}, // Put first because it pulls the original tg renter
 		{"TestRenterCancelAllowance", testRenterCancelAllowance},
 		{"TestRenewFailing", testRenewFailing}, // Put last because it impacts a host
 	}

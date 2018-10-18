@@ -594,3 +594,268 @@ func TestDisableIPViolationCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestListMode tests enabling and disabling the blacklist and whitelist modes
+func TestListMode(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:  5,
+		Miners: 1,
+	}
+
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "failed to create group"))
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Set allowance of 2 with 5 total hosts, this will allow a blacklist of 2,
+	// a whitelist of 2, and an extra host
+	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 3)
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Wait for contracts to form
+	allowHosts := int(renterParams.Allowance.Hosts)
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != allowHosts {
+			return fmt.Errorf("Contracts did not form as expected, have %v expected %v", len(rc.ActiveContracts), allowHosts)
+		}
+		return nil
+	})
+	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+
+	// Get hosts that currently have contracts to create blacklist, this will
+	// ensure that the functionality of cancelling contracts with blacklisted
+	// hosts is tested
+	rc, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blacklistHosts []types.SiaPublicKey
+	for _, c := range rc.ActiveContracts {
+		blacklistHosts = append(blacklistHosts, c.HostPublicKey)
+	}
+
+	// enable blacklist mode
+	if err = renter.HostDbListmodePost(blacklistHosts, "blacklist"); err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm blacklisted host contracts are dropped and replaced with new contracts
+	blacklistHostsMap := make(map[string]struct{})
+	for _, pk := range blacklistHosts {
+		blacklistHostsMap[pk.String()] = struct{}{}
+	}
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != allowHosts {
+			return fmt.Errorf("Contracts did not form as expected, have %v expected %v", len(rc.ActiveContracts), allowHosts)
+		}
+		for _, c := range rc.ActiveContracts {
+			if _, exists := blacklistHostsMap[c.HostPublicKey.String()]; exists {
+				return errors.New("blacklisted host found in active contracts")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+
+	// create whitelist and map of whitelisted hosts
+	var whitelistHosts []types.SiaPublicKey
+	whitelistHostsMap := make(map[string]struct{})
+	for _, h := range tg.Hosts() {
+		pk, err := h.HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := blacklistHostsMap[pk.String()]; !ok && len(whitelistHosts) < len(blacklistHosts) {
+			whitelistHosts = append(whitelistHosts, pk)
+			whitelistHostsMap[pk.String()] = struct{}{}
+		}
+	}
+
+	// Confirm that only non blacklisted hosts are returned from HostDbActiveGet
+	hdbActive, err := renter.HostDbActiveGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hdbActive.Hosts) != len(tg.Hosts())-len(blacklistHosts) {
+		t.Fatalf("Number of active hosts doesn't equal number of non list hosts: got %v expected %v", len(hdbActive.Hosts), len(tg.Hosts())-len(blacklistHosts))
+	}
+	for _, h := range hdbActive.Hosts {
+		if _, ok := blacklistHostsMap[h.PublicKeyString]; ok {
+			t.Fatal("Blacklisted host returned as active host")
+		}
+	}
+
+	// Confirm that HostDbAllGet is not filtered
+	hdbAll, err := renter.HostDbAllGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hdbAll.Hosts) != len(tg.Hosts()) {
+		t.Fatalf("Number of all hosts doesn't equal number of test group hosts: got %v expected %v", len(hdbAll.Hosts), len(tg.Hosts()))
+	}
+
+	// Disable blacklist
+	var nullList []types.SiaPublicKey
+	if err = renter.HostDbListmodePost(nullList, "blacklist"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that contracts will form with blacklisted hosts again but
+	// canceling contracts until a contract is formed with a blacklisted host.
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) == 0 {
+			return errors.New("no contracts")
+		}
+		var ids []types.FileContractID
+		for _, c := range rc.ActiveContracts {
+			if _, exists := blacklistHostsMap[c.HostPublicKey.String()]; exists {
+				return nil
+			}
+			ids = append(ids, c.ID)
+		}
+		if err = renter.RenterContractsCancelPost(ids); err != nil {
+			return err
+		}
+		return errors.New("no contracts reformed with blacklist hosts")
+	})
+	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+
+	// Enable white list
+	if err = renter.HostDbListmodePost(whitelistHosts, "whitelist"); err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm contracts are only formed with hosts on the white list, since it
+	// was just confirmed that there are contracts with at least one blacklisted
+	// host it will ensure that the canceling of non whitelisted hosts is tested
+	loop := 0
+	m := tg.Miners()[0]
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		loop++
+		// Mine a block every 10 iterations to make sure
+		// threadedContractMaintenance is forming contracts
+		if loop%10 == 0 {
+			if err = m.MineBlock(); err != nil {
+				return err
+			}
+		}
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(whitelistHosts) {
+			return fmt.Errorf("not the correct number of contracts: have %v expected %v", len(rc.ActiveContracts), len(whitelistHosts))
+		}
+		for _, c := range rc.ActiveContracts {
+			if _, exists := whitelistHostsMap[c.HostPublicKey.String()]; !exists {
+				return errors.New("non whitelisted host found in active contracts")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+
+	// Confirm that only whitelisted hosts are returned from HostDbActiveGet
+	hdbActive, err = renter.HostDbActiveGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hdbActive.Hosts) != len(whitelistHostsMap) {
+		t.Fatalf("Number of active hosts doesn't equal number of whitelisted hosts: got %v expected %v", len(hdbActive.Hosts), len(whitelistHostsMap))
+	}
+	for _, h := range hdbActive.Hosts {
+		if _, ok := whitelistHostsMap[h.PublicKeyString]; !ok {
+			t.Fatal("Whitelisted host not returned as active host")
+		}
+	}
+
+	// Confirm that HostDbAllGet is not filtered
+	hdbAll, err = renter.HostDbAllGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hdbAll.Hosts) != len(tg.Hosts()) {
+		t.Fatalf("Number of all hosts doesn't equal number of test group hosts: got %v expected %v", len(hdbAll.Hosts), len(tg.Hosts()))
+	}
+
+	// Disable whitelist
+	if err = renter.HostDbListmodePost(nullList, "blacklist"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that contracts will form with non whitelisted hosts again
+	loop = 0
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		loop++
+		// Mine a block every 10 iterations to make sure
+		// threadedContractMaintenance is forming contracts
+		if loop%10 == 0 {
+			if err = m.MineBlock(); err != nil {
+				return err
+			}
+		}
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) == 0 {
+			return errors.New("no contracts")
+		}
+		var ids []types.FileContractID
+		for _, c := range rc.ActiveContracts {
+			if _, exists := whitelistHostsMap[c.HostPublicKey.String()]; !exists {
+				return nil
+			}
+			ids = append(ids, c.ID)
+		}
+		if err = renter.RenterContractsCancelPost(ids); err != nil {
+			return err
+		}
+		return errors.New("no contracts reformed with non whitelisted hosts")
+	})
+	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+}
