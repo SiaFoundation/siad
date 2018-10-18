@@ -1743,6 +1743,18 @@ func TestRenterContracts(t *testing.T) {
 			}
 		}
 
+		// Check that there are inactive contracts, and that the inactive
+		// contracts correctly mark the GoodForUpload and GoodForRenew fields as
+		// false.
+		if len(rc.InactiveContracts) == 0 {
+			return errors.New("no reported inactive contracts")
+		}
+		for _, c := range rc.InactiveContracts {
+			if c.GoodForUpload || c.GoodForRenew {
+				return errors.New("an inactive contract is being reported as either good for upload or good for renew")
+			}
+		}
+
 		// Confirm expired contracts
 		if len(expiredContracts) != len(rcExpired.ExpiredContracts) {
 			return fmt.Errorf("Didn't get expected number of expired contracts, expected %v got %v", len(expiredContracts), len(rcExpired.ExpiredContracts))
