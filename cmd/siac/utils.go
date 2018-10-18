@@ -7,10 +7,8 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
@@ -228,50 +226,11 @@ func utilsverifyseed() {
 		die("Could not read seed")
 	}
 
-	if _, err := modules.StringToSeed(seed, mnemonics.English); err == nil {
-		fmt.Println("Your seed is valid")
+	_, err = modules.StringToSeed(seed, mnemonics.English)
+	if err != nil {
+		fmt.Println(err)
 	} else {
-		seeddebug(seed)
-	}
-}
-
-func seeddebug(seed string) {
-	words := strings.Fields(seed)
-
-	// check seed length
-	if len(words) != 29 {
-		fmt.Println("Seed length: fail - seed has ", len(words), " words, it should have 29 words.")
+		fmt.Println("No issues detected with your seed")
 	}
 
-	// check if all lowercase letters
-	for _, w := range words {
-		for _, l := range w {
-			if !unicode.IsLower(l) {
-				fmt.Println("lowercase: fail - the word ", w, " must be all lowercase letters")
-			}
-			if !unicode.IsLetter(l) {
-				fmt.Println("letter: fail - ", l, " is not a valid letter")
-			}
-		}
-	}
-
-	// check for other formatting errors.  Note: this regex only works with the English dictionary
-	IsFormat := regexp.MustCompile(`^([a-z]{4,12}){1}( {1}[a-z]{4,12}){28}$`).MatchString
-	if !IsFormat(seed) {
-		fmt.Println("Seed formatting: fail - seed is not formatted correctly. Check whitespace, capitalization, and punctuation.")
-	}
-
-	// check if words are in dictionary
-	validWord := false
-	for _, w := range words {
-		validWord = false
-		for _, dictionaryWord := range mnemonics.EnglishDictionary {
-			if strings.ToLower(w) == dictionaryWord {
-				validWord = true
-			}
-		}
-		if !validWord {
-			fmt.Println("verify words: fail - ", w, "was not found in the dictionary")
-		}
-	}
 }

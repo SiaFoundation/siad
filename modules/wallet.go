@@ -3,6 +3,10 @@ package modules
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+	"unicode"
 
 	"gitlab.com/NebulousLabs/entropy-mnemonics"
 
@@ -487,10 +491,46 @@ func SeedToString(seed Seed, did mnemonics.DictionaryID) (string, error) {
 
 // StringToSeed converts a string to a wallet seed.
 func StringToSeed(str string, did mnemonics.DictionaryID) (Seed, error) {
+	// Ensure the string is all lowercase letters and spaces
+	for _, char := range str {
+		if unicode.IsUpper(char) {
+			return Seed{}, errors.New("Seed must be all lowercase characters")
+		}
+		if !unicode.IsLetter(char) && !unicode.IsSpace(char) {
+			return Seed{}, errors.New("Seed must be all letters and spaces")
+		}
+	}
+
 	// Decode the string into the checksummed byte slice.
 	checksumSeedBytes, err := mnemonics.FromString(str, did)
 	if err != nil {
 		return Seed{}, err
+	}
+
+	// ToDo: Add other languages
+	switch {
+	case did == "english":
+		// Check seed has 28 or 29 words
+		if len(strings.Fields(str)) != 28 && len(strings.Fields(str)) != 29 {
+			return Seed{}, errors.New("Seed is expected to have 28 or 29 words")
+		}
+
+		// Check for other formatting errors (English only)
+		IsFormat := regexp.MustCompile(`^([a-z]{4,12}){1}( {1}[a-z]{4,12}){27,28}$`).MatchString
+		if !IsFormat(str) {
+			return Seed{}, errors.New("Seed is not formatted correctly.  Check whitespace, capitalization, and punctuation")
+		}
+	case did == "german":
+		fmt.Println("Couldn't check German regex")
+	case did == "japanese":
+		fmt.Println("Couldn't check Japanese regex")
+	default:
+		return Seed{}, errors.New("Unknown Dictionary")
+	}
+
+	// Ensure the seed is 38 bytes
+	if len(checksumSeedBytes) != 38 {
+		return Seed{}, errors.New("Seed is not the correct number of bytes")
 	}
 
 	// Copy the seed from the checksummed slice.
