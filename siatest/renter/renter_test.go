@@ -739,7 +739,7 @@ func TestRenterInterrupt(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// t.Parallel()
+	t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -834,7 +834,9 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 		t.Fatal(err)
 	}
 
-	// Disrupt statement should prevent inactive contracts from being created
+	// Disrupt statement should prevent contracts from being renewed properly.
+	// This means that both old and new contracts will be staticContracts which
+	// are exported through the API via RenterContracts.Contracts
 	err = build.Retry(50, 100*time.Millisecond, func() error {
 		rc, err := renter.RenterContractsGet()
 		if err != nil {
@@ -851,8 +853,9 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 	}
 
 	// By mining blocks to trigger threadContractMaintenance,
-	// managedCheckForDuplicates should move renewed contracts to inactive even
-	// though disrupt statement is still interrtupting renew code
+	// managedCheckForDuplicates should move renewed contracts from
+	// staticContracts to oldContracts even though disrupt statement is still
+	// interrupting renew code.
 	m := tg.Miners()[0]
 	if err = m.MineBlock(); err != nil {
 		t.Fatal(err)
