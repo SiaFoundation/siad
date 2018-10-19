@@ -31,6 +31,11 @@ const (
 	// Typically, this transaction will contain either a file contract, a file
 	// contract revision, or a storage proof.
 	resubmissionTimeout = 3
+
+	// rpcRequestInterval is the amount of time that the renter has to send
+	// the next RPC ID in the new RPC loop. (More time is alloted for sending
+	// the actual RPC request object.)
+	rpcRequestInterval = 2 * time.Minute
 )
 
 var (

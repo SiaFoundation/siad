@@ -282,6 +282,99 @@ type (
 	}
 )
 
+// New RPC IDs
+var (
+	RPCLoopEnter          = types.Specifier{'L', 'o', 'o', 'p', 'E', 'n', 't', 'e', 'r'}
+	RPCLoopExit           = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
+	RPCLoopSettings       = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
+	RPCLoopRecentRevision = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'c', 'e', 'n', 't', 'R', 'e', 'v'}
+	RPCLoopDownload       = types.Specifier{'L', 'o', 'o', 'p', 'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd'}
+	RPCLoopUpload         = types.Specifier{'L', 'o', 'o', 'p', 'U', 'p', 'l', 'o', 'a', 'd'}
+)
+
+// New RPC request and response types
+type (
+
+	// LoopDownloadRequest contains the request parameters for RPCLoopDownload.
+	LoopDownloadRequest struct {
+		ContractID  types.FileContractID
+		MerkleRoot  crypto.Hash
+		Offset      uint32
+		Length      uint32
+		MerkleProof bool
+
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+		Signature            []byte
+	}
+
+	// LoopDownloadResponse contains the response data for RPCLoopDownloadResponse.
+	LoopDownloadResponse struct {
+		Signature   []byte
+		Data        []byte
+		MerkleProof []crypto.Hash
+	}
+
+	// LoopRecentRevisionRequest contains the request parameters for RPCLoopRecentRevision.
+	LoopRecentRevisionRequest struct {
+		ContractID types.FileContractID
+	}
+
+	// LoopRecentRevisionResponse contains the response data for RPCLoopRecentRevisionResponse.
+	LoopRecentRevisionResponse struct {
+		Revision   types.FileContractRevision
+		Signatures []types.TransactionSignature
+	}
+
+	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
+	LoopSettingsResponse struct {
+		Settings  HostExternalSettings
+		Signature []byte
+	}
+
+	// LoopUploadRequest contains the request parameters for RPCLoopUpload.
+	LoopUploadRequest struct {
+		ContractID types.FileContractID
+		Data       []byte
+
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+		Signature            []byte
+	}
+
+	// LoopUploadResponse contains the response data for RPCLoopUploadResponse.
+	LoopUploadResponse struct {
+		Signature []byte
+	}
+)
+
+// WriteRPCResponse writes an RPC response using the new loop protocol.
+func WriteRPCResponse(w io.Writer, resp interface{}, err error) error {
+	if err != nil {
+		return encoding.NewEncoder(w).EncodeAll(true, err.Error())
+	}
+	return encoding.NewEncoder(w).EncodeAll(false, resp)
+}
+
+// ReadRPCResponse reads an RPC response using the new loop protocol.
+func ReadRPCResponse(r io.Reader, resp interface{}) error {
+	dec := encoding.NewDecoder(r)
+	var isError bool
+	if err := dec.Decode(&isError); err != nil {
+		return err
+	}
+	if isError {
+		var errStr string
+		if err := dec.Decode(&errStr); err != nil {
+			return err
+		}
+		return errors.New(errStr)
+	}
+	return dec.Decode(resp)
+}
+
 // ReadNegotiationAcceptance reads an accept/reject response from r (usually a
 // net.Conn). If the response is not AcceptResponse, ReadNegotiationAcceptance
 // returns the response as an error. If the response is StopResponse,
