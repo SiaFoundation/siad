@@ -7,6 +7,7 @@ package contractor
 import (
 	"fmt"
 	"math/big"
+	"reflect"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -304,8 +305,13 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	}
 	// Determine if host settings align with allowance period
 	c.mu.Lock()
+	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
+		c.mu.Unlock()
+		return types.ZeroCurrency, modules.RenterContract{}, errors.New("called managedNewContract but allowance wasn't set yet")
+	}
 	period := c.allowance.Period
 	c.mu.Unlock()
+
 	if host.MaxDuration < period {
 		err := errors.New("unable to form contract with host due to insufficient MaxDuration of host")
 		return types.ZeroCurrency, modules.RenterContract{}, err
@@ -429,6 +435,10 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// Fetch the host associated with this contract.
 	host, ok := c.hdb.Host(contract.HostPublicKey)
 	c.mu.Lock()
+	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
+		c.mu.Unlock()
+		return modules.RenterContract{}, errors.New("called managedRenew but allowance isn't set")
+	}
 	period := c.allowance.Period
 	c.mu.Unlock()
 	if !ok {

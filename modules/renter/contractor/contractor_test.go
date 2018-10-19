@@ -178,10 +178,14 @@ func TestAllowanceSpending(t *testing.T) {
 
 	// set an allowance
 	testAllowance := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(6000),
-		RenewWindow: 100,
-		Hosts:       1,
-		Period:      200,
+		Funds:                     types.SiacoinPrecision.Mul64(6000),
+		RenewWindow:               100,
+		Hosts:                     1,
+		Period:                    200,
+		ExpectedStorage:           modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUploadFrequency:   modules.DefaultAllowance.ExpectedUploadFrequency,
+		ExpectedDownloadFrequency: modules.DefaultAllowance.ExpectedDownloadFrequency,
+		ExpectedRedundancy:        modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(testAllowance)
 	if err != nil {
@@ -477,10 +481,14 @@ func TestHostMaxDuration(t *testing.T) {
 
 	// Create allowance
 	a := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(100),
-		Hosts:       1,
-		Period:      30,
-		RenewWindow: 20,
+		Funds:                     types.SiacoinPrecision.Mul64(100),
+		Hosts:                     1,
+		Period:                    30,
+		RenewWindow:               20,
+		ExpectedStorage:           modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUploadFrequency:   modules.DefaultAllowance.ExpectedUploadFrequency,
+		ExpectedDownloadFrequency: modules.DefaultAllowance.ExpectedDownloadFrequency,
+		ExpectedRedundancy:        modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
@@ -586,10 +594,14 @@ func TestLinkedContracts(t *testing.T) {
 
 	// Create allowance
 	a := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(100),
-		Hosts:       1,
-		Period:      20,
-		RenewWindow: 10,
+		Funds:                     types.SiacoinPrecision.Mul64(100),
+		Hosts:                     1,
+		Period:                    20,
+		RenewWindow:               10,
+		ExpectedStorage:           modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUploadFrequency:   modules.DefaultAllowance.ExpectedUploadFrequency,
+		ExpectedDownloadFrequency: modules.DefaultAllowance.ExpectedDownloadFrequency,
+		ExpectedRedundancy:        modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {

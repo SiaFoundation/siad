@@ -206,6 +206,12 @@ func TestIntegrationFormContract(t *testing.T) {
 		t.Fatal("no entry for host in db")
 	}
 
+	// set an allowance but don't use SetAllowance to avoid automatic contract
+	// formation.
+	c.mu.Lock()
+	c.allowance = modules.DefaultAllowance
+	c.mu.Unlock()
+
 	// form a contract with the host
 	_, _, err = c.managedNewContract(hostEntry, types.SiacoinPrecision.Mul64(50), c.blockHeight+100)
 	if err != nil {
@@ -233,6 +239,12 @@ func TestIntegrationReviseContract(t *testing.T) {
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
+
+	// set an allowance but don't use SetAllowance to avoid automatic contract
+	// formation.
+	c.mu.Lock()
+	c.allowance = modules.DefaultAllowance
+	c.mu.Unlock()
 
 	// form a contract with the host
 	_, contract, err := c.managedNewContract(hostEntry, types.SiacoinPrecision.Mul64(50), c.blockHeight+100)
@@ -276,6 +288,12 @@ func TestIntegrationUploadDownload(t *testing.T) {
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
+
+	// set an allowance but don't use SetAllowance to avoid automatic contract
+	// formation.
+	c.mu.Lock()
+	c.allowance = modules.DefaultAllowance
+	c.mu.Unlock()
 
 	// form a contract with the host
 	_, contract, err := c.managedNewContract(hostEntry, types.SiacoinPrecision.Mul64(50), c.blockHeight+100)
@@ -336,6 +354,12 @@ func TestIntegrationRenew(t *testing.T) {
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
+
+	// set an allowance but don't use SetAllowance to avoid automatic contract
+	// formation.
+	c.mu.Lock()
+	c.allowance = modules.DefaultAllowance
+	c.mu.Unlock()
 
 	// form a contract with the host
 	_, contract, err := c.managedNewContract(hostEntry, types.SiacoinPrecision.Mul64(50), c.blockHeight+100)
@@ -450,6 +474,12 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 		t.Fatal("no entry for host in db")
 	}
 
+	// set an allowance but don't use SetAllowance to avoid automatic contract
+	// formation.
+	c.mu.Lock()
+	c.allowance = modules.DefaultAllowance
+	c.mu.Unlock()
+
 	// form a contract with the host
 	_, contract, err := c.managedNewContract(hostEntry, types.SiacoinPrecision.Mul64(50), c.blockHeight+100)
 	if err != nil {
@@ -541,6 +571,12 @@ func TestIntegrationEditorCaching(t *testing.T) {
 		t.Fatal("no entry for host in db")
 	}
 
+	// set an allowance but don't use SetAllowance to avoid automatic contract
+	// formation.
+	c.mu.Lock()
+	c.allowance = modules.DefaultAllowance
+	c.mu.Unlock()
+
 	// form a contract with the host
 	_, contract, err := c.managedNewContract(hostEntry, types.SiacoinPrecision.Mul64(50), c.blockHeight+100)
 	if err != nil {
@@ -631,6 +667,12 @@ func TestContractPresenceLeak(t *testing.T) {
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
+
+	// set an allowance but don't use SetAllowance to avoid automatic contract
+	// formation.
+	c.mu.Lock()
+	c.allowance = modules.DefaultAllowance
+	c.mu.Unlock()
 
 	// form a contract with the host
 	_, contract, err := c.managedNewContract(hostEntry, types.SiacoinPrecision.Mul64(10), c.blockHeight+100)

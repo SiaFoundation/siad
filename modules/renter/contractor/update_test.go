@@ -28,10 +28,14 @@ func TestIntegrationAutoRenew(t *testing.T) {
 
 	// form a contract with the host
 	a := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(100), // 100 SC
-		Hosts:       1,
-		Period:      50,
-		RenewWindow: 10,
+		Funds:                     types.SiacoinPrecision.Mul64(100), // 100 SC
+		Hosts:                     1,
+		Period:                    50,
+		RenewWindow:               10,
+		ExpectedStorage:           modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUploadFrequency:   modules.DefaultAllowance.ExpectedUploadFrequency,
+		ExpectedDownloadFrequency: modules.DefaultAllowance.ExpectedDownloadFrequency,
+		ExpectedRedundancy:        modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
@@ -100,10 +104,14 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 
 	// form a contract with the host
 	a := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(100), // 100 SC
-		Hosts:       1,
-		Period:      50,
-		RenewWindow: 10,
+		Funds:                     types.SiacoinPrecision.Mul64(100), // 100 SC
+		Hosts:                     1,
+		Period:                    50,
+		RenewWindow:               10,
+		ExpectedStorage:           modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUploadFrequency:   modules.DefaultAllowance.ExpectedUploadFrequency,
+		ExpectedDownloadFrequency: modules.DefaultAllowance.ExpectedDownloadFrequency,
+		ExpectedRedundancy:        modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
