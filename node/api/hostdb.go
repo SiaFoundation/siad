@@ -123,7 +123,7 @@ func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps 
 	var pk types.SiaPublicKey
 	pk.LoadString(ps.ByName("pubkey"))
 
-	entry, exists := api.renter.Host(pk, false)
+	entry, exists := api.renter.Host(pk)
 	if !exists {
 		WriteError(w, Error{"requested host does not exist"}, http.StatusBadRequest)
 		return

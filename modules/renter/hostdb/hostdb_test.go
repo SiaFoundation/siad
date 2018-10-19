@@ -443,7 +443,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	}
 
 	// get updated host from hostdb
-	host, ok := hdbt.hdb.Host(host.PublicKey, false)
+	host, ok := hdbt.hdb.Host(host.PublicKey)
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -471,7 +471,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	}
 
 	// get updated host from hostdb
-	host, ok = hdbt.hdb.Host(host.PublicKey, false)
+	host, ok = hdbt.hdb.Host(host.PublicKey)
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -506,7 +506,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	}
 
 	// get updated host from hostdb
-	host, ok = hdbt.hdb.Host(host.PublicKey, false)
+	host, ok = hdbt.hdb.Host(host.PublicKey)
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -528,7 +528,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	host, ok = hdbt.hdb.Host(host.PublicKey, false)
+	host, ok = hdbt.hdb.Host(host.PublicKey)
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -549,7 +549,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	host, ok = hdbt.hdb.Host(host.PublicKey, false)
+	host, ok = hdbt.hdb.Host(host.PublicKey)
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -611,15 +611,15 @@ func TestCheckForIPViolations(t *testing.T) {
 	// Scan the entries. entry1 should be the 'oldest' and entry3 the
 	// 'youngest'. This also inserts the entries into the hosttree.
 	hdbt.hdb.managedScanHost(entry1)
-	entry1, _ = hdbt.hdb.Host(entry1.PublicKey, false)
+	entry1, _ = hdbt.hdb.Host(entry1.PublicKey)
 	time.Sleep(time.Millisecond)
 
 	hdbt.hdb.managedScanHost(entry2)
-	entry2, _ = hdbt.hdb.Host(entry2.PublicKey, false)
+	entry2, _ = hdbt.hdb.Host(entry2.PublicKey)
 	time.Sleep(time.Millisecond)
 
 	hdbt.hdb.managedScanHost(entry3)
-	entry3, _ = hdbt.hdb.Host(entry3.PublicKey, false)
+	entry3, _ = hdbt.hdb.Host(entry3.PublicKey)
 	time.Sleep(time.Millisecond)
 
 	// Make sure that the timestamps are not zero and that they entries have
@@ -640,15 +640,15 @@ func TestCheckForIPViolations(t *testing.T) {
 	// and the following checks will fail.
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry3)
-	entry3, _ = hdbt.hdb.Host(entry3.PublicKey, false)
+	entry3, _ = hdbt.hdb.Host(entry3.PublicKey)
 
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry2)
-	entry2, _ = hdbt.hdb.Host(entry2.PublicKey, false)
+	entry2, _ = hdbt.hdb.Host(entry2.PublicKey)
 
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry1)
-	entry1, _ = hdbt.hdb.Host(entry1.PublicKey, false)
+	entry1, _ = hdbt.hdb.Host(entry1.PublicKey)
 
 	// Add entry1 and entry2. There should be no violation.
 	badHosts := hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey})

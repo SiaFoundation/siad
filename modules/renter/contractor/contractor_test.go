@@ -41,9 +41,9 @@ func (newStub) ListedHosts() map[string]types.SiaPublicKey {
 func (newStub) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
 	return nil
 }
-func (newStub) Host(types.SiaPublicKey, bool) (settings modules.HostDBEntry, ok bool) { return }
-func (newStub) IncrementSuccessfulInteractions(key types.SiaPublicKey)                { return }
-func (newStub) IncrementFailedInteractions(key types.SiaPublicKey)                    { return }
+func (newStub) Host(types.SiaPublicKey) (settings modules.HostDBEntry, ok bool) { return }
+func (newStub) IncrementSuccessfulInteractions(key types.SiaPublicKey)          { return }
+func (newStub) IncrementFailedInteractions(key types.SiaPublicKey)              { return }
 func (newStub) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return nil, nil
 }
@@ -123,10 +123,10 @@ func (stubHostDB) ListedHosts() map[string]types.SiaPublicKey {
 func (stubHostDB) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
 	return nil
 }
-func (stubHostDB) Host(types.SiaPublicKey, bool) (h modules.HostDBEntry, ok bool) { return }
-func (stubHostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey)         { return }
-func (stubHostDB) IncrementFailedInteractions(key types.SiaPublicKey)             { return }
-func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                            { return }
+func (stubHostDB) Host(types.SiaPublicKey) (h modules.HostDBEntry, ok bool) { return }
+func (stubHostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey)   { return }
+func (stubHostDB) IncrementFailedInteractions(key types.SiaPublicKey)       { return }
+func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                      { return }
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) (hs []modules.HostDBEntry, _ error) {
 	return
 }
@@ -449,7 +449,7 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _ := c.hdb.Host(h.PublicKey(), false)
+		host, _ := c.hdb.Host(h.PublicKey())
 		if settings.MaxDuration != host.MaxDuration {
 			return fmt.Errorf("host max duration not set, expected %v, got %v", settings.MaxDuration, host.MaxDuration)
 		}
@@ -490,7 +490,7 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _ := c.hdb.Host(h.PublicKey(), false)
+		host, _ := c.hdb.Host(h.PublicKey())
 		if settings.MaxDuration != host.MaxDuration {
 			return fmt.Errorf("host max duration not set, expected %v, got %v", settings.MaxDuration, host.MaxDuration)
 		}
@@ -524,7 +524,7 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _ := c.hdb.Host(h.PublicKey(), false)
+		host, _ := c.hdb.Host(h.PublicKey())
 		if settings.MaxDuration != host.MaxDuration {
 			return fmt.Errorf("host max duration not set, expected %v, got %v", settings.MaxDuration, host.MaxDuration)
 		}

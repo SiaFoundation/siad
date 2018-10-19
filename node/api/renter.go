@@ -344,7 +344,7 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 
 		// Fetch host address
 		var netAddress modules.NetAddress
-		hdbe, exists := api.renter.Host(c.HostPublicKey, false)
+		hdbe, exists := api.renter.Host(c.HostPublicKey)
 		if exists {
 			netAddress = hdbe.NetAddress
 		}
@@ -386,7 +386,7 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 
 			// Fetch host address
 			var netAddress modules.NetAddress
-			hdbe, exists := api.renter.Host(c.HostPublicKey, false)
+			hdbe, exists := api.renter.Host(c.HostPublicKey)
 			if exists {
 				netAddress = hdbe.NetAddress
 			}

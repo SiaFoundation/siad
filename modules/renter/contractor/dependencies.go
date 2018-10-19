@@ -53,7 +53,7 @@ type (
 		CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey
 		ListedHosts() map[string]types.SiaPublicKey
 		SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
-		Host(types.SiaPublicKey, bool) (modules.HostDBEntry, bool)
+		Host(types.SiaPublicKey) (modules.HostDBEntry, bool)
 		IncrementSuccessfulInteractions(key types.SiaPublicKey)
 		IncrementFailedInteractions(key types.SiaPublicKey)
 		RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error)

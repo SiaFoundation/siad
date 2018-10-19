@@ -94,7 +94,7 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 
 	// Calculate needed spending to be reported from old contracts
 	for _, contract := range c.oldContracts {
-		host, exist := c.hdb.Host(contract.HostPublicKey, false)
+		host, exist := c.hdb.Host(contract.HostPublicKey)
 		if contract.StartHeight >= c.currentPeriod {
 			// Calculate spending from contracts that were renewed during the current period
 			// Calculate ContractFees

@@ -122,7 +122,7 @@ func (stubHostDB) RandomHosts(int, []types.SiaPublicKey) ([]modules.HostDBEntry,
 func (stubHostDB) EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown {
 	return modules.HostScoreBreakdown{}
 }
-func (stubHostDB) Host(types.SiaPublicKey, bool) (modules.HostDBEntry, bool) {
+func (stubHostDB) Host(types.SiaPublicKey) (modules.HostDBEntry, bool) {
 	return modules.HostDBEntry{}, false
 }
 func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown {

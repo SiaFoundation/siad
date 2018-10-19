@@ -126,7 +126,7 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 	if !haveContract {
 		return nil, errors.New("no record of that contract")
 	}
-	host, haveHost := c.hdb.Host(contract.HostPublicKey, true)
+	host, haveHost := c.hdb.Host(contract.HostPublicKey)
 	if height > contract.EndHeight {
 		return nil, errors.New("contract has already ended")
 	} else if !haveHost {

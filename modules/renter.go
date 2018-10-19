@@ -208,6 +208,9 @@ type HostDBEntry struct {
 	// The public key of the host, stored separately to minimize risk of certain
 	// MitM based vulnerabilities.
 	PublicKey types.SiaPublicKey `json:"publickey"`
+
+	// Blacklisted says whether or not a HostDBEntry can be used
+	Blacklisted bool `json:"blacklisted"`
 }
 
 // HostDBScan represents a single scan event.
@@ -447,7 +450,7 @@ type Renter interface {
 	SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
 
 	// Host provides the DB entry and score breakdown for the requested host.
-	Host(pk types.SiaPublicKey, listmode bool) (HostDBEntry, bool)
+	Host(pk types.SiaPublicKey) (HostDBEntry, bool)
 
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.

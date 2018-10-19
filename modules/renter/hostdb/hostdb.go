@@ -258,7 +258,7 @@ func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaP
 
 	// Get the entries which correspond to the keys.
 	for _, host := range hosts {
-		entry, exists := hdb.filteredTree.Select(host)
+		entry, exists := hdb.hostTree.Select(host)
 		if !exists {
 			// A host that's not in the hostdb is bad.
 			badHosts = append(badHosts, host)
@@ -296,20 +296,20 @@ func (hdb *HostDB) Close() error {
 
 // Host returns the HostSettings associated with the specified pubkey. If no
 // matching host is found, Host returns false.  For black and white list modes,
-// indicate if the results should be filter by passing in the listmode boolean
-func (hdb *HostDB) Host(spk types.SiaPublicKey, listmode bool) (modules.HostDBEntry, bool) {
-	var host modules.HostDBEntry
-	var exists bool
-	if listmode {
-		host, exists = hdb.filteredTree.Select(spk)
-		if !exists {
-			return host, exists
-		}
-	} else {
-		host, exists = hdb.hostTree.Select(spk)
-		if !exists {
-			return host, exists
-		}
+// the Blacklist field for the HostDBEntry is set to indicate it the host is
+// blacklisted
+func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
+	hdb.mu.Lock()
+	whitelist := hdb.whiteList
+	listedHosts := hdb.listedHosts
+	hdb.mu.Unlock()
+	host, exists := hdb.hostTree.Select(spk)
+	if !exists {
+		return host, exists
+	}
+	_, ok := listedHosts[string(spk.Key)]
+	if whitelist != ok {
+		host.Blacklisted = true
 	}
 	hdb.mu.RLock()
 	updateHostHistoricInteractions(&host, hdb.blockHeight)

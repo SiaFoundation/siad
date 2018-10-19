@@ -68,7 +68,7 @@ type hostDB interface {
 	SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
 
 	// Host returns the HostDBEntry for a given host.
-	Host(pk types.SiaPublicKey, listmode bool) (modules.HostDBEntry, bool)
+	Host(pk types.SiaPublicKey) (modules.HostDBEntry, bool)
 
 	// initialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
@@ -271,8 +271,8 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	}
 	// Get hosts from pubkeys
 	for _, pk := range pks {
-		host, ok := r.hostDB.Host(pk, true)
-		if !ok {
+		host, ok := r.hostDB.Host(pk)
+		if !ok || host.Blacklisted {
 			continue
 		}
 		// confirm host wasn't already added
@@ -569,8 +569,8 @@ func (r *Renter) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
 }
 
 // Host returns the host associated with the given public key
-func (r *Renter) Host(spk types.SiaPublicKey, listmode bool) (modules.HostDBEntry, bool) {
-	return r.hostDB.Host(spk, listmode)
+func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
+	return r.hostDB.Host(spk)
 }
 
 // InitialScanComplete returns a boolean indicating if the initial scan of the
