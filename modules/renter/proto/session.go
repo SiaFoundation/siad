@@ -80,7 +80,7 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 			},
 		},
 	}
-	sig := crypto.SignHash(txn.SigHash(0), contract.SecretKey)
+	sig := crypto.SignHash(txn.SigHash(0, s.height), contract.SecretKey)
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// create the request
@@ -188,7 +188,7 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 			},
 		},
 	}
-	sig := crypto.SignHash(txn.SigHash(0), contract.SecretKey)
+	sig := crypto.SignHash(txn.SigHash(0, s.height), contract.SecretKey)
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// fill in the missing request fields
