@@ -82,9 +82,9 @@ func TestLoadExistingMerkleRoots(t *testing.T) {
 	}
 
 	// Load the existing file using LoadExistingMerkleRoots
-	merkleRoots2, err := loadExistingMerkleRoots(rootSection)
-	if err != nil {
-		t.Fatal(err)
+	merkleRoots2, applyTxns, err := loadExistingMerkleRoots(rootSection)
+	if err != nil || applyTxns {
+		t.Fatal(applyTxns, err)
 	}
 	if merkleRoots2.len() != merkleRoots.len() {
 		t.Errorf("expected len %v but was %v", merkleRoots.len(), merkleRoots2.len())
@@ -158,8 +158,8 @@ func TestInsertMerkleRoot(t *testing.T) {
 	}
 	// Reload the roots. The in-memory structure and the roots on disk should
 	// still be consistent.
-	loadedRoots, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
-	if err != nil {
+	loadedRoots, applyTxns, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
+	if err != nil || applyTxns {
 		t.Fatal("failed to load existing roots", err)
 	}
 	if err := cmpRoots(merkleRoots, loadedRoots); err != nil {
@@ -183,8 +183,8 @@ func TestInsertMerkleRoot(t *testing.T) {
 	}
 	// Reload the roots. The in-memory structure and the roots on disk should
 	// still be consistent.
-	loadedRoots, err = loadExistingMerkleRoots(merkleRoots.rootsFile)
-	if err != nil {
+	loadedRoots, applyTxns, err = loadExistingMerkleRoots(merkleRoots.rootsFile)
+	if err != nil || applyTxns {
 		t.Fatal("failed to load existing roots", err)
 	}
 	if err := cmpRoots(merkleRoots, loadedRoots); err != nil {
@@ -278,8 +278,8 @@ func TestDeleteLastRoot(t *testing.T) {
 
 	// Reload the roots. The in-memory structure and the roots on disk should
 	// still be consistent.
-	loadedRoots, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
-	if err != nil {
+	loadedRoots, applyTxns, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
+	if err != nil || applyTxns {
 		t.Fatal("failed to load existing roots", err)
 	}
 	if err := cmpRoots(merkleRoots, loadedRoots); err != nil {
@@ -316,8 +316,8 @@ func TestDelete(t *testing.T) {
 	for merkleRoots.numMerkleRoots > 0 {
 		// 1% chance to reload the roots and check if they are consistent.
 		if fastrand.Intn(100) == 0 {
-			loadedRoots, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
-			if err != nil {
+			loadedRoots, applyTxns, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
+			if err != nil || applyTxns {
 				t.Fatal("failed to load existing roots", err)
 			}
 			if err := cmpRoots(loadedRoots, merkleRoots); err != nil {
@@ -411,8 +411,8 @@ func TestMerkleRootsRandom(t *testing.T) {
 	for i := 0; i < numMerkleRoots; i++ {
 		// 1% chance to reload the roots and check if they are consistent.
 		if fastrand.Intn(100) == 0 {
-			loadedRoots, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
-			if err != nil {
+			loadedRoots, applyTxns, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
+			if err != nil || applyTxns {
 				t.Fatal("failed to load existing roots")
 			}
 			if err := cmpRoots(loadedRoots, merkleRoots); err != nil {
