@@ -226,7 +226,16 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// The adjusted prices take the pricing for other parts of the contract
 	// (like bandwidth and fees) and convert them into terms that are relative
 	// to the storage price.
-	adjustedCollateralPrice := hostCollateral.Div64(uint64(allowance.Period)).Div64(ug.ExpectedStorage)
+	//
+	// The adjustedCollateralPrice is multiplied by a number greater than 1
+	// because we will be forming multiple contracts with each host during each
+	// renew cycle as a result of running out of money in the contract. This has
+	// the added benefit of emphasizing lower fees in favor of other metrics,
+	// which increases user satisfaction.
+	//
+	// TODO: This weighting system also does not take into account transaction
+	// fees.
+	adjustedCollateralPrice := hostCollateral.Div64(uint64(allowance.Period)).Div64(ug.ExpectedStorage).MulFloat(expectedContractFeesMultiplier)
 	adjustedContractPrice := entry.ContractPrice.Div64(uint64(allowance.Period)).Div64(ug.ExpectedStorage)
 	adjustedUploadPrice := entry.UploadBandwidthPrice.Div64(ug.ExpectedUploadFrequency)
 	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Div64(ug.ExpectedDownloadFrequency).MulFloat(ug.ExpectedRedundancy)
