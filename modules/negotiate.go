@@ -430,21 +430,20 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 	}
 	// Calculate renterPayout.
 	renterPayout = funding.Sub(host.ContractPrice).Sub(txnFee).Sub(basePrice)
-	// Calculate hostCollateral.
+	// Calculate hostCollateral by calculating the maximum amount of storage
+	// the renter can afford with 'funding' and calculating how much collateral
+	// the host wouldl have to put into the contract for that. We also add a
+	// potential baseCollateral.
 	maxStorageSizeTime := renterPayout.Div(host.StoragePrice)
-	hostCollateral = maxStorageSizeTime.Mul(host.Collateral)
-	// Compare hostCollateral to maxCollateral of renter.
+	hostCollateral = maxStorageSizeTime.Mul(host.Collateral).Add(baseCollateral)
+	// Don't add more collateral than 10x the collateral for the expected
+	// storage to save on fees.
 	maxRenterCollateral := host.Collateral.Mul64(uint64(period)).Mul64(expectedStorage).Mul64(10)
 	if hostCollateral.Cmp(maxRenterCollateral) > 0 {
 		hostCollateral = maxRenterCollateral
 	}
-	// Add the baseCollateral to the hostCollateral. We do that after checking
-	// that we are below the maxRenterCollateral but before checking that we
-	// are below the host's MaxCollateral since we don't mind going over that
-	// if we need to add the baseCollateral. On the other hand we can't force
-	// the host to go over its max collateral.
-	hostCollateral = hostCollateral.Add(baseCollateral)
-	// Compare hostCollateral to maxCollateral of host.
+	// Don't add more collateral than the host is willing to put into a single
+	// contract.
 	if hostCollateral.Cmp(host.MaxCollateral) > 0 {
 		hostCollateral = host.MaxCollateral
 	}
