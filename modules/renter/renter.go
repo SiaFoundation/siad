@@ -64,9 +64,6 @@ type hostDB interface {
 	// ListedHosts returns the hostdb's listedHosts
 	ListedHosts() map[string]types.SiaPublicKey
 
-	// WhiteListMode returns if the hostdb is in whitelist mode
-	WhiteListMode() bool
-
 	// SetListMode sets the renter's hostdb to be in whiteList or blacklist mode
 	SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
 

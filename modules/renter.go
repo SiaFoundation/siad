@@ -90,7 +90,7 @@ const (
 	EstimatedFileContractTransactionSetSize = 2048
 
 	// EstimatedFileContractRevisionAndProofTransactionSetSize is the
-	// estimcated blockchain size of a transaction set used by the host to
+	// estimated blockchain size of a transaction set used by the host to
 	// provide the storage proof at the end of the contract duration.
 	EstimatedFileContractRevisionAndProofTransactionSetSize = 5000
 )

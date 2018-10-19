@@ -72,8 +72,9 @@ type HostDB struct {
 	// the listedHosts will not be returned from the hosttree, when whiteList is
 	// set to true then the hostdb will make sure that the listedHosts are the
 	// only hosts returned from the hosttree.
-	listedHosts map[string]types.SiaPublicKey
-	whiteList   bool
+	filteredTree *hosttree.HostTree
+	listedHosts  map[string]types.SiaPublicKey
+	whiteList    bool
 
 	blockHeight types.BlockHeight
 	lastChange  modules.ConsensusChangeID
@@ -136,8 +137,10 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir stri
 		return nil, err
 	}
 
-	// The host tree is used to manage hosts and query them at random.
+	// The host tree is used to manage hosts and query them at random. The
+	// filteredTree is used when whitelist or blacklist is enabled
 	hdb.hostTree = hosttree.New(hdb.weightFunc, deps.Resolver())
+	hdb.filteredTree = hosttree.New(hdb.weightFunc, deps.Resolver())
 
 	// Load the prior persistence structures.
 	hdb.mu.Lock()
@@ -214,15 +217,11 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir stri
 }
 
 // ActiveHosts returns a list of hosts that are currently online, sorted by
-// weight. If hostdb is in black or white list mode, then only hosts that fit
-// those modes will be returned
+// weight. If hostdb is in black or white list mode, then only active hosts from
+// the filteredTree will be returned
 func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry) {
-	allHosts := hdb.hostTree.All()
+	allHosts := hdb.filteredTree.All()
 	for _, entry := range allHosts {
-		_, ok := hdb.listedHosts[string(entry.PublicKey.Key)]
-		if hdb.whiteList != ok {
-			continue
-		}
 		if len(entry.ScanHistory) == 0 {
 			continue
 		}
@@ -259,7 +258,7 @@ func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaP
 
 	// Get the entries which correspond to the keys.
 	for _, host := range hosts {
-		entry, exists := hdb.hostTree.Select(host)
+		entry, exists := hdb.filteredTree.Select(host)
 		if !exists {
 			// A host that's not in the hostdb is bad.
 			badHosts = append(badHosts, host)
@@ -299,17 +298,18 @@ func (hdb *HostDB) Close() error {
 // matching host is found, Host returns false.  For black and white list modes,
 // indicate if the results should be filter by passing in the listmode boolean
 func (hdb *HostDB) Host(spk types.SiaPublicKey, listmode bool) (modules.HostDBEntry, bool) {
-	hdb.mu.RLock()
-	listedHosts := hdb.listedHosts
-	whiteList := hdb.whiteList
-	hdb.mu.RUnlock()
-	_, ok := listedHosts[string(spk.Key)]
-	if whiteList != ok && listmode {
-		return modules.HostDBEntry{}, false
-	}
-	host, exists := hdb.hostTree.Select(spk)
-	if !exists {
-		return host, exists
+	var host modules.HostDBEntry
+	var exists bool
+	if listmode {
+		host, exists = hdb.filteredTree.Select(spk)
+		if !exists {
+			return host, exists
+		}
+	} else {
+		host, exists = hdb.hostTree.Select(spk)
+		if !exists {
+			return host, exists
+		}
 	}
 	hdb.mu.RLock()
 	updateHostHistoricInteractions(&host, hdb.blockHeight)
@@ -322,13 +322,6 @@ func (hdb *HostDB) ListedHosts() map[string]types.SiaPublicKey {
 	hdb.mu.RLock()
 	defer hdb.mu.RUnlock()
 	return hdb.listedHosts
-}
-
-// WhiteListMode returns if the hostdb is in whitelist mode
-func (hdb *HostDB) WhiteListMode() bool {
-	hdb.mu.RLock()
-	defer hdb.mu.RUnlock()
-	return hdb.whiteList
 }
 
 // SetListMode sets the hostdb to be in whiteList or blacklist mode
@@ -344,9 +337,31 @@ func (hdb *HostDB) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
 		}
 		hostMap[string(h.Key)] = h
 	}
+	var allErrs error
+	allHosts := hdb.AllHosts()
+	for _, host := range allHosts {
+		// If disabling, insert hosts back into filtered tree
+		if len(hosts) == 0 {
+			err := hdb.filteredTree.Insert(host)
+			if err != hosttree.ErrHostExists && err != nil {
+				allErrs = errors.Compose(allErrs, err)
+			}
+			continue
+		}
+
+		// Remove hosts from filtered tree
+		_, ok := hostMap[string(host.PublicKey.Key)]
+		if whitelist == ok {
+			continue
+		}
+		err := hdb.filteredTree.Remove(host.PublicKey)
+		if err != nil {
+			allErrs = errors.Compose(allErrs, err)
+		}
+	}
 	hdb.listedHosts = hostMap
 	hdb.whiteList = whitelist
-	return hdb.saveSync()
+	return errors.Compose(allErrs, hdb.saveSync())
 }
 
 // InitialScanComplete returns a boolean indicating if the initial scan of the
@@ -378,24 +393,14 @@ func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPub
 	hdb.mu.RLock()
 	initialScanComplete := hdb.initialScanComplete
 	ipCheckDisabled := hdb.disableIPViolationCheck
-	hdbWhiteList := hdb.whiteList
-	listedHosts := hdb.listedHosts
 	hdb.mu.RUnlock()
 	if !initialScanComplete {
 		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
-	var whitelist []types.SiaPublicKey
-	for _, pk := range listedHosts {
-		if hdbWhiteList {
-			whitelist = append(whitelist, pk)
-			continue
-		}
-		blacklist = append(blacklist, pk)
-	}
 	if ipCheckDisabled {
-		return hdb.hostTree.SelectRandom(n, blacklist, nil, whitelist), nil
+		return hdb.filteredTree.SelectRandom(n, blacklist, nil), nil
 	}
-	return hdb.hostTree.SelectRandom(n, blacklist, addressBlacklist, whitelist), nil
+	return hdb.filteredTree.SelectRandom(n, blacklist, addressBlacklist), nil
 }
 
 // SetIPViolationCheck enables or disables the IP violation check. If disabled,
@@ -426,7 +431,7 @@ func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist [
 	var insertErrs error
 	allHosts := hdb.hostTree.All()
 	for _, host := range allHosts {
-		// TODO - filter out whitelist hosts
+		// Filter out listed hosts
 		_, ok := listedHosts[string(host.PublicKey.Key)]
 		if whiteList != ok {
 			continue
@@ -437,7 +442,7 @@ func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist [
 	}
 
 	// Select hosts from the temporary hosttree.
-	return ht.SelectRandom(n, blacklist, addressBlacklist, nil), insertErrs
+	return ht.SelectRandom(n, blacklist, addressBlacklist), insertErrs
 }
 
 // SetAllowance updates the allowance used by the hostdb for weighing hosts by
@@ -457,5 +462,7 @@ func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 	hdb.mu.Unlock()
 
 	// Update the trees weight function.
-	return hdb.hostTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
+	err1 := hdb.hostTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
+	err2 := hdb.filteredTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
+	return errors.Compose(err1, err2)
 }

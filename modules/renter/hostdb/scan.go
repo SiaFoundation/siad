@@ -170,7 +170,7 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 		return
 	}
 
-	// Grab the host from the host tree, and update it with the neew settings.
+	// Grab the host from the host tree, and update it with the new settings.
 	newEntry, exists := hdb.hostTree.Select(entry.PublicKey)
 	if exists {
 		newEntry.HostExternalSettings = entry.HostExternalSettings
@@ -235,9 +235,20 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	// hostdb. Only delete if there have been enough scans over a long enough
 	// period to be confident that the host really is offline for good.
 	if time.Now().Sub(newEntry.ScanHistory[0].Timestamp) > maxHostDowntime && !recentUptime && len(newEntry.ScanHistory) >= minScans {
+		// Remove from full hosttree
 		err := hdb.hostTree.Remove(newEntry.PublicKey)
 		if err != nil {
 			hdb.log.Println("ERROR: unable to remove host newEntry which has had a ton of downtime:", err)
+		}
+		// Remove from filtered hosttree, checking if the entry was whitelisted
+		// or blacklisted will avoid unnecessary errors for hosts not found in
+		// hosttree
+		_, ok := hdb.listedHosts[string(newEntry.PublicKey.Key)]
+		if hdb.whiteList == ok {
+			err = hdb.filteredTree.Remove(newEntry.PublicKey)
+			if err != nil {
+				hdb.log.Println("ERROR: unable to remove host newEntry which has had a ton of downtime:", err)
+			}
 		}
 
 		// The function should terminate here as no more interaction is needed
@@ -258,18 +269,40 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 
 	// Add the updated entry
 	if !exists {
+		// Insert into Full Hosttree
 		err := hdb.hostTree.Insert(newEntry)
 		if err != nil {
 			hdb.log.Println("ERROR: unable to insert entry which is was thought to be new:", err)
 		} else {
 			hdb.log.Debugf("Adding host %v to the hostdb. Net error: %v\n", newEntry.PublicKey.String(), netErr)
 		}
+		// Insert into filtered Hosttree
+		_, ok := hdb.listedHosts[string(newEntry.PublicKey.Key)]
+		if hdb.whiteList == ok {
+			err = hdb.filteredTree.Insert(newEntry)
+			if err != nil {
+				hdb.log.Println("ERROR: unable to insert entry into the filtered hostdb which is was thought to be new:", err)
+			} else {
+				hdb.log.Debugf("Adding host %v to the filtered hostdb. Net error: %v\n", newEntry.PublicKey.String(), netErr)
+			}
+		}
 	} else {
+		// Modify full hosttree
 		err := hdb.hostTree.Modify(newEntry)
 		if err != nil {
 			hdb.log.Println("ERROR: unable to modify entry which is thought to exist:", err)
 		} else {
 			hdb.log.Debugf("Adding host %v to the hostdb. Net error: %v\n", newEntry.PublicKey.String(), netErr)
+		}
+		// Modify filtered hosttree
+		_, ok := hdb.listedHosts[string(newEntry.PublicKey.Key)]
+		if hdb.whiteList == ok {
+			err = hdb.filteredTree.Modify(newEntry)
+			if err != nil {
+				hdb.log.Println("ERROR: unable to modify entry in filtered hostdb which is thought to exist:", err)
+			} else {
+				hdb.log.Debugf("Adding host %v to the filtered hostdb. Net error: %v\n", newEntry.PublicKey.String(), netErr)
+			}
 		}
 	}
 }
@@ -507,7 +540,7 @@ func (hdb *HostDB) threadedScan() {
 	hdb.mu.Unlock()
 
 	for {
-		// Set up a scan for the hostCheckupQuanity most valuable hosts in the
+		// Set up a scan for the hostCheckupQuantity most valuable hosts in the
 		// hostdb. Hosts that fail their scans will be docked significantly,
 		// pushing them further back in the hierarchy, ensuring that for the
 		// most part only online hosts are getting scanned unless there are

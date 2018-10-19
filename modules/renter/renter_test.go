@@ -112,7 +112,6 @@ func (stubHostDB) Close() error                         { return nil }
 func (stubHostDB) ListedHosts() map[string]types.SiaPublicKey {
 	return make(map[string]types.SiaPublicKey)
 }
-func (stubHostDB) WhiteListMode() bool { return false }
 func (stubHostDB) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
 	return nil
 }

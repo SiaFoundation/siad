@@ -52,6 +52,7 @@ func (hdb *HostDB) saveSync() error {
 func (hdb *HostDB) load() error {
 	// Fetch the data from the file.
 	var data hdbPersist
+	data.ListedHosts = make(map[string]types.SiaPublicKey)
 	err := hdb.deps.LoadFile(persistMetadata, &data, filepath.Join(hdb.persistDir, persistFilename))
 	if err != nil {
 		return err
@@ -61,8 +62,8 @@ func (hdb *HostDB) load() error {
 	hdb.blockHeight = data.BlockHeight
 	hdb.disableIPViolationCheck = data.DisableIPViolationsCheck
 	hdb.lastChange = data.LastChange
-	hdb.whiteList = data.WhiteList
 	hdb.listedHosts = data.ListedHosts
+	hdb.whiteList = data.WhiteList
 
 	// Load each of the hosts into the host tree.
 	for _, host := range data.AllHosts {
@@ -77,12 +78,24 @@ func (hdb *HostDB) load() error {
 
 		err := hdb.hostTree.Insert(host)
 		if err != nil {
-			hdb.log.Debugln("ERROR: could not insert host while loading:", host.NetAddress)
+			hdb.log.Debugln("ERROR: could not insert host into hosttree while loading:", host.NetAddress)
 		}
 
 		// Make sure that all hosts have gone through the initial scanning.
 		if len(host.ScanHistory) < 2 {
 			hdb.queueScan(host)
+		}
+
+		// Check whitelist mode and add appropriate hosts into filtered
+		// hosttree, if listmode is disabled the filtered tree should be the
+		// entire host tree
+		_, ok := data.ListedHosts[string(host.PublicKey.Key)]
+		if data.WhiteList != ok {
+			continue
+		}
+		err = hdb.filteredTree.Insert(host)
+		if err != nil {
+			hdb.log.Debugln("ERROR: could not insert host into filtered hosttree while loading:", host.NetAddress)
 		}
 	}
 	return nil

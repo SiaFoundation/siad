@@ -66,15 +66,33 @@ func (hdb *HostDB) insertBlockchainHost(host modules.HostDBEntry) {
 			oldEntry.IPNets = ipNets
 			oldEntry.LastIPNetChange = time.Now()
 		}
+		// Modify full hosttree
 		err = hdb.hostTree.Modify(oldEntry)
 		if err != nil {
 			hdb.log.Println("ERROR: unable to modify host entry of host tree after a blockchain scan:", err)
 		}
+		// Modify filtered hosttree
+		_, ok := hdb.listedHosts[string(host.PublicKey.Key)]
+		if hdb.whiteList == ok {
+			err = hdb.filteredTree.Modify(oldEntry)
+			if err != nil {
+				hdb.log.Println("ERROR: unable to modify host entry of filtered host tree after a blockchain scan:", err)
+			}
+		}
 	} else {
 		host.FirstSeen = hdb.blockHeight
+		// Insert into full hosttree
 		err := hdb.hostTree.Insert(host)
 		if err != nil {
 			hdb.log.Println("ERROR: unable to insert host entry into host tree after a blockchain scan:", err)
+		}
+		// Insert into filtered hosttree
+		_, ok := hdb.listedHosts[string(host.PublicKey.Key)]
+		if hdb.whiteList == ok {
+			err = hdb.filteredTree.Insert(host)
+			if err != nil {
+				hdb.log.Println("ERROR: unable to insert host entry into filtered host tree after a blockchain scan:", err)
+			}
 		}
 	}
 

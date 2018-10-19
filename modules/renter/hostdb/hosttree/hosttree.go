@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	// errHostExists is returned if an Insert is called with a public key that
+	// ErrHostExists is returned if an Insert is called with a public key that
 	// already exists in the tree.
-	errHostExists = errors.New("host already exists in the tree")
+	ErrHostExists = errors.New("host already exists in the tree")
 
 	// errNegativeWeight is returned from an Insert() call if an entry with a
 	// negative weight is added to the tree. Entries must always have a positive
@@ -301,7 +301,7 @@ func (ht *HostTree) Select(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 // those hosts will be ignored. In most cases those blacklists contain the same
 // elements but sometimes it is useful to block a host without blocking its IP
 // range.
-func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaPublicKey, whitelist []types.SiaPublicKey) []modules.HostDBEntry {
+func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaPublicKey) []modules.HostDBEntry {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
@@ -336,61 +336,32 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 
 	var hosts []modules.HostDBEntry
 
-	// If the hostdb is in whitelist mode then grab hosts from the whitelist.
-	// Otherwise the length of whitelist will be zero and this code block will
-	// be skipped
-	for len(whitelist) > 0 && len(hosts) < n {
-		randIndex := fastrand.Intn(len(whitelist))
-		pk := whitelist[randIndex]
-		whitelist = append(whitelist[:randIndex], whitelist[randIndex+1:]...)
-		node, exists := ht.hosts[string(pk.Key)]
-		if !exists {
-			continue
-		}
-		hosts = ht.addHost(node, hosts, filter)
-		removedEntries = append(removedEntries, node.entry)
-		if len(hosts) >= n {
-			break
-		}
-	}
+	for len(hosts) < n && len(ht.hosts) > 0 {
+		randWeight := fastrand.BigIntn(ht.root.weight.Big())
+		node := ht.root.nodeAtWeight(types.NewCurrency(randWeight))
 
-	// Check if any hosts were added already, if so then that means whitelist
-	// mode is enabled and the appropriate hosts have already been returned
-	if len(hosts) == 0 {
-		for len(hosts) < n && len(ht.hosts) > 0 {
-			randWeight := fastrand.BigIntn(ht.root.weight.Big())
-			node := ht.root.nodeAtWeight(types.NewCurrency(randWeight))
-			hosts = ht.addHost(node, hosts, filter)
-			removedEntries = append(removedEntries, node.entry)
+		if node.entry.AcceptingContracts &&
+			len(node.entry.ScanHistory) > 0 &&
+			node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success &&
+			!filter.Filtered(node.entry.NetAddress) {
+			// The host must be online and accepting contracts to be returned
+			// by the random function. It also has to pass the addressFilter
+			// check.
+			hosts = append(hosts, node.entry.HostDBEntry)
+
+			// If the host passed the filter, we add it to the filter.
+			filter.Add(node.entry.NetAddress)
 		}
+
+		removedEntries = append(removedEntries, node.entry)
+		node.remove()
+		delete(ht.hosts, string(node.entry.PublicKey.Key))
 	}
 
 	for _, entry := range removedEntries {
 		_, node := ht.root.recursiveInsert(entry)
 		ht.hosts[string(entry.PublicKey.Key)] = node
 	}
-
-	return hosts
-}
-
-// addHosts is a helper function for SelectRandom. It decides whether or not to
-// add a host to the list of hosts to be returned by SelectRandom
-func (ht *HostTree) addHost(node *node, hosts []modules.HostDBEntry, filter *Filter) []modules.HostDBEntry {
-	if node.entry.AcceptingContracts &&
-		len(node.entry.ScanHistory) > 0 &&
-		node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success &&
-		!filter.Filtered(node.entry.NetAddress) {
-		// The host must be online and accepting contracts to be returned
-		// by the random function. It also has to pass the addressFilter
-		// check.
-		hosts = append(hosts, node.entry.HostDBEntry)
-
-		// If the host passed the filter, we add it to the filter.
-		filter.Add(node.entry.NetAddress)
-	}
-
-	node.remove()
-	delete(ht.hosts, string(node.entry.PublicKey.Key))
 
 	return hosts
 }
@@ -419,7 +390,7 @@ func (ht *HostTree) insert(hdbe modules.HostDBEntry) error {
 	}
 
 	if _, exists := ht.hosts[string(entry.PublicKey.Key)]; exists {
-		return errHostExists
+		return ErrHostExists
 	}
 
 	_, node := ht.root.recursiveInsert(entry)

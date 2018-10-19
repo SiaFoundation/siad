@@ -52,7 +52,6 @@ type (
 		ActiveHosts() []modules.HostDBEntry
 		CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey
 		ListedHosts() map[string]types.SiaPublicKey
-		WhiteListMode() bool
 		SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
 		Host(types.SiaPublicKey, bool) (modules.HostDBEntry, bool)
 		IncrementSuccessfulInteractions(key types.SiaPublicKey)

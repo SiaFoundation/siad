@@ -38,7 +38,6 @@ func (newStub) CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey {
 func (newStub) ListedHosts() map[string]types.SiaPublicKey {
 	return make(map[string]types.SiaPublicKey)
 }
-func (newStub) WhiteListMode() bool { return false }
 func (newStub) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
 	return nil
 }
@@ -121,7 +120,6 @@ func (stubHostDB) CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKe
 func (stubHostDB) ListedHosts() map[string]types.SiaPublicKey {
 	return make(map[string]types.SiaPublicKey)
 }
-func (stubHostDB) WhiteListMode() bool { return false }
 func (stubHostDB) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
 	return nil
 }

@@ -727,7 +727,7 @@ func TestListMode(t *testing.T) {
 
 	// Disable blacklist
 	var nullList []types.SiaPublicKey
-	if err = renter.HostDbListmodePost(nullList, "blacklist"); err != nil {
+	if err = renter.HostDbListmodePost(nullList, "disable"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -820,7 +820,7 @@ func TestListMode(t *testing.T) {
 	}
 
 	// Disable whitelist
-	if err = renter.HostDbListmodePost(nullList, "blacklist"); err != nil {
+	if err = renter.HostDbListmodePost(nullList, "disable"); err != nil {
 		t.Fatal(err)
 	}
 
