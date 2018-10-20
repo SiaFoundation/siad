@@ -3,7 +3,6 @@ package renter
 import (
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
