@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
@@ -23,7 +24,7 @@ type TestNode struct {
 	primarySeed string
 
 	downloadDir *LocalDir
-	uploadDir   *LocalDir
+	filesDir    *LocalDir
 }
 
 // PrintDebugInfo prints out helpful debug information when debug tests and ndfs, the
@@ -189,10 +190,10 @@ func (tn *TestNode) initRootDirs() error {
 	if err := os.MkdirAll(tn.downloadDir.path, 0777); err != nil {
 		return err
 	}
-	tn.uploadDir = &LocalDir{
-		path: filepath.Join(tn.RenterDir(), "uploads"),
+	tn.filesDir = &LocalDir{
+		path: filepath.Join(tn.RenterDir(), modules.SiapathRoot),
 	}
-	if err := os.MkdirAll(tn.uploadDir.path, 0777); err != nil {
+	if err := os.MkdirAll(tn.filesDir.path, 0777); err != nil {
 		return err
 	}
 	return nil
@@ -201,5 +202,5 @@ func (tn *TestNode) initRootDirs() error {
 // SiaPath returns the siapath of a local file or directory to be used for
 // uploading
 func (tn *TestNode) SiaPath(path string) string {
-	return strings.TrimPrefix(path, tn.RenterDir()+"/")
+	return strings.TrimPrefix(path, tn.filesDir.path+"/")
 }

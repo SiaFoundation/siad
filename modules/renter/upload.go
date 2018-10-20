@@ -102,7 +102,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 
 	// Create file object.
-	siaFilePath := filepath.Join(r.persistDir, up.SiaPath+ShareExtension)
+	siaFilePath := filepath.Join(r.filesDir, up.SiaPath+ShareExtension)
 	cipherType := crypto.TypeDefaultRenter
 
 	// Create the Siafile.

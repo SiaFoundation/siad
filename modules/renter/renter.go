@@ -23,6 +23,7 @@ package renter
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -202,6 +203,7 @@ type Renter struct {
 	log               *persist.Logger
 	persist           persistence
 	persistDir        string
+	filesDir          string
 	mu                *siasync.RWMutex
 	tg                threadgroup.ThreadGroup
 	tpool             modules.TransactionPool
@@ -649,6 +651,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		hostDB:         hdb,
 		hostContractor: hc,
 		persistDir:     persistDir,
+		filesDir:       filepath.Join(persistDir, modules.SiapathRoot),
 		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
 	}

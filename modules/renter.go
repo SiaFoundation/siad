@@ -82,6 +82,10 @@ const (
 	// renter's persistent data.
 	RenterDir = "renter"
 
+	// SiapathRoot is the name of the directory that is used to store the
+	// renter's siafiles.
+	SiapathRoot = "siafiles"
+
 	// EstimatedFileContractTransactionSetSize is the estimated blockchain size
 	// of a transaction set between a renter and a host that contains a file
 	// contract. This transaction set will contain a setup transaction from each

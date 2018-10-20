@@ -43,7 +43,12 @@ func (tn *TestNode) RenterDir() string {
 	return filepath.Join(tn.Dir, "renter")
 }
 
-// UploadDir returns the LocalDir that is the testnodes upload directory
-func (tn *TestNode) UploadDir() *LocalDir {
-	return tn.uploadDir
+// RenterFilesDir returns the renter's files directory
+func (tn *TestNode) RenterFilesDir() string {
+	return filepath.Join(tn.RenterDir(), "siafiles")
+}
+
+// FilesDir returns the LocalDir that is the testnodes upload directory
+func (tn *TestNode) FilesDir() *LocalDir {
+	return tn.filesDir
 }

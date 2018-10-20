@@ -2,6 +2,8 @@ package renter
 
 import (
 	"encoding/hex"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -358,7 +360,7 @@ func TestRenterDeleteFile(t *testing.T) {
 
 	// Put a file in the renter, then rename it.
 	f := newTestingFile()
-	f.Rename("1", filepath.Join(rt.renter.persistDir, "1"+ShareExtension)) // set name to "1"
+	f.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension)) // set name to "1"
 	rt.renter.files[f.SiaPath()] = f
 	rt.renter.RenameFile(f.SiaPath(), "one")
 	// Call delete on the previous name.
@@ -374,10 +376,10 @@ func TestRenterDeleteFile(t *testing.T) {
 
 	// Check that all .sia files have been deleted.
 	var walkStr string
-	filepath.Walk(rt.renter.persistDir, func(path string, _ os.FileInfo, _ error) error {
+	filepath.Walk(rt.renter.filesDir, func(path string, _ os.FileInfo, _ error) error {
 		// capture only .sia files
 		if filepath.Ext(path) == ".sia" {
-			rel, _ := filepath.Rel(rt.renter.persistDir, path) // strip testdir prefix
+			rel, _ := filepath.Rel(rt.renter.filesDir, path) // strip testdir prefix
 			walkStr += rel
 		}
 		return nil
@@ -424,7 +426,11 @@ func TestRenterFileList(t *testing.T) {
 	if !((files[0].SiaPath == file1.SiaPath() || files[0].SiaPath == file2.SiaPath()) &&
 		(files[1].SiaPath == file1.SiaPath() || files[1].SiaPath == file2.SiaPath()) &&
 		(files[0].SiaPath != files[1].SiaPath)) {
-		t.Error("FileList is returning wrong names for the files:", files[0].SiaPath, files[1].SiaPath)
+		t.Log("files[0].SiaPath", files[0].SiaPath)
+		t.Log("files[1].SiaPath", files[1].SiaPath)
+		t.Log("file1.SiaPath()", file1.SiaPath())
+		t.Log("file2.SiaPath()", file2.SiaPath())
+		t.Error("FileList is returning wrong names for the files")
 	}
 }
 
@@ -447,7 +453,7 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file that does exist.
 	f := newTestingFile()
-	f.Rename("1", filepath.Join(rt.renter.persistDir, "1"+ShareExtension))
+	f.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
 	rt.renter.files["1"] = f
 	err = rt.renter.RenameFile("1", "1a")
 	if err != nil {
@@ -463,7 +469,7 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file to an existing name.
 	f2 := newTestingFile()
-	f2.Rename("1", filepath.Join(rt.renter.persistDir, "1"+ShareExtension))
+	f2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
 	rt.renter.files["1"] = f2
 	err = rt.renter.RenameFile("1", "1a")
 	if err != ErrPathOverload {
@@ -479,5 +485,60 @@ func TestRenterRenameFile(t *testing.T) {
 	err = rt.renter.RenameFile("1", "1b")
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRenterFileDir tests that the renter files are uploaded to the files
+// directory and not the root directory of the renter.
+func TestRenterFileDir(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Create local file to upload
+	localDir := filepath.Join(rt.dir, "files")
+	if err := os.MkdirAll(localDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	size := 100
+	fileName := fmt.Sprintf("%dbytes %s", size, hex.EncodeToString(fastrand.Bytes(4)))
+	source := filepath.Join(localDir, fileName)
+	bytes := fastrand.Bytes(size)
+	if err := ioutil.WriteFile(source, bytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload local file
+	ec, err := siafile.NewRSCode(defaultDataPieces, defaultParityPieces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := modules.FileUploadParams{
+		Source:      source,
+		SiaPath:     fileName,
+		ErasureCode: ec,
+	}
+	err = rt.renter.Upload(params)
+	if err != nil {
+		t.Fatal("failed to upload file:", err)
+	}
+
+	// Get file and check siapath
+	f := rt.renter.FileList()[0]
+	if f.SiaPath != fileName {
+		t.Fatalf("siapath not set as expected: got %v expected %v", f.SiaPath, fileName)
+	}
+
+	// Confirm .sia file exists on disk in the SiapathRoot directory
+	renterDir := filepath.Join(rt.dir, modules.RenterDir)
+	siapathRootDir := filepath.Join(renterDir, modules.SiapathRoot)
+	fullPath := filepath.Join(siapathRootDir, f.SiaPath+".sia")
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		t.Fatal("No .sia file found on disk")
 	}
 }

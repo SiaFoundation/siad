@@ -264,7 +264,7 @@ func (tn *TestNode) UploadDirectory(ld *LocalDir) (*RemoteDir, error) {
 // random name
 func (tn *TestNode) UploadNewDirectory(files, dirs, levels uint) (*RemoteDir, error) {
 	// Create Directory
-	ld, err := tn.uploadDir.newDir()
+	ld, err := tn.filesDir.newDir()
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to create local directory")
 	}
@@ -279,7 +279,7 @@ func (tn *TestNode) UploadNewDirectory(files, dirs, levels uint) (*RemoteDir, er
 // UploadNewFile initiates the upload of a filesize bytes large file.
 func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces uint64) (*LocalFile, *RemoteFile, error) {
 	// Create file for upload
-	localFile, err := tn.uploadDir.NewFile(filesize)
+	localFile, err := tn.filesDir.NewFile(filesize)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to create file")
 	}

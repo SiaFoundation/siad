@@ -173,7 +173,7 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("AccessTime, ChangeTime and ModTime are not the same")
 	}
 
-	// The CreateTime should preceed the other timestamps.
+	// The CreateTime should precede the other timestamps.
 	if fi.CreateTime.After(fi.AccessTime) {
 		t.Fatal("CreateTime should before other timestamps")
 	}
@@ -478,16 +478,16 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	// for the newly uploaded directory
 	metadata := ".siadir"
 	// Check /renter level
-	assertFileExists(r.RenterDir(), metadata, t)
+	assertFileExists(r.RenterFilesDir(), metadata, t)
 
 	// Check new directory
-	assertFileExists(filepath.Join(r.RenterDir(), rd.SiaPath()), metadata, t)
+	assertFileExists(filepath.Join(r.RenterFilesDir(), rd.SiaPath()), metadata, t)
 
 	// Check uploading file to new subdirectory
 	// Create local file
 	size := 100 + siatest.Fuzz()
-	ud := r.UploadDir()
-	ld, err := ud.CreateDir("subDir1/subDir2/subDir3")
+	fd := r.FilesDir()
+	ld, err := fd.CreateDir("subDir1/subDir2/subDir3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -506,8 +506,8 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check for metadata files, uploading file into subdirectory should have
 	// created directories and directory metadata files up through renter
-	path := filepath.Join(ud.Path(), "subDir1/subDir2/subDir3")
-	for path != filepath.Dir(r.RenterDir()) {
+	path := filepath.Join(r.RenterFilesDir(), "subDir1/subDir2/subDir3")
+	for path != filepath.Dir(r.RenterFilesDir()) {
 		assertFileExists(path, metadata, t)
 		path = filepath.Dir(path)
 	}
@@ -2650,7 +2650,7 @@ func assertFileExists(dir, filename string, t *testing.T) {
 		}
 	}
 	if check != 1 {
-		t.Fatalf("Did not find %v file, found %v expected 1", filename, check)
+		t.Fatalf("Did not find %v file in %v directory, found %v expected 1", filename, dir, check)
 	}
 }
 
@@ -3013,7 +3013,7 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("Failed to shutdown host", err)
 		}
 	}
-	// File should have 0 redunancy now.
+	// File should have 0 redundancy now.
 	if err := renter.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
@@ -3037,7 +3037,7 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to download file", err)
 	}
 	// Create a new file that is smaller than the first one.
-	smallFile, err := renter.UploadDir().NewFile(fileSize - 1)
+	smallFile, err := renter.FilesDir().NewFile(fileSize - 1)
 	if err != nil {
 		t.Fatal(err)
 	}
