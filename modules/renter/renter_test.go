@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // renterTester contains all of the modules that are used while testing the renter.
@@ -180,7 +181,7 @@ func TestRenterPricesVolatility(t *testing.T) {
 	dbe.StoragePrice = types.SiacoinPrecision
 	// Add 4 host entries in the database with different public keys.
 	for len(hdb.dbEntries) < modules.PriceEstimationScope {
-		pk := []byte(strconv.Itoa(len(hdb.dbEntries)))
+		pk := fastrand.Bytes(crypto.EntropySize)
 		dbe.PublicKey = types.SiaPublicKey{Key: pk}
 		hdb.dbEntries = append(hdb.dbEntries, dbe)
 	}
@@ -192,7 +193,7 @@ func TestRenterPricesVolatility(t *testing.T) {
 	// Changing the contract price should be enough to trigger a change
 	// if the hosts are not cached.
 	dbe.ContractPrice = dbe.ContractPrice.Mul64(2)
-	pk := []byte(strconv.Itoa(len(hdb.dbEntries)))
+	pk := fastrand.Bytes(crypto.EntropySize)
 	dbe.PublicKey = types.SiaPublicKey{Key: pk}
 	hdb.dbEntries = append(hdb.dbEntries, dbe)
 	after, _, err := rt.renter.PriceEstimation(allowance)
