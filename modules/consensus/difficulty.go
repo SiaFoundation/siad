@@ -180,6 +180,13 @@ func (cs *ConsensusSet) storeBlockTotals(tx *bolt.Tx, currentHeight types.BlockH
 	newTotalTime = (prevTotalTime * types.OakDecayNum / types.OakDecayDenom) + (int64(currentTimestamp) - int64(parentTimestamp))
 	newTotalTarget = prevTotalTarget.MulDifficulty(big.NewRat(types.OakDecayNum, types.OakDecayDenom)).AddDifficulties(targetOfCurrentBlock)
 
+	// At the hardfork height to adjust the acceptable nonce conditions, reset
+	// the total time and total target.
+	if currentHeight == types.ASICHardforkHeight {
+		newTotalTime = types.ASICHardforkTotalTime
+		newTotalTarget = types.ASICHardforkTotalTarget
+	}
+
 	// Store the new total time and total target in the database at the
 	// appropriate id.
 	bytes := make([]byte, 40)
