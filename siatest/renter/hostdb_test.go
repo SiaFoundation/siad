@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -604,7 +605,7 @@ func TestListMode(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:  5,
+		Hosts:  10,
 		Miners: 1,
 	}
 
@@ -618,11 +619,12 @@ func TestListMode(t *testing.T) {
 		}
 	}()
 
-	// Set allowance of 2 with 5 total hosts, this will allow a blacklist of 2,
-	// a whitelist of 2, and an extra host
+	// Set allowance of 2 with 10 total hosts, this will allow a blacklist of 2,
+	// a whitelist of 2, and a number of extra hosts to potentially cancel
+	// contracts with
 	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
-	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 3)
+	renterParams.Allowance.Hosts = uint64(2)
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -668,7 +670,17 @@ func TestListMode(t *testing.T) {
 	for _, pk := range blacklistHosts {
 		blacklistHostsMap[pk.String()] = struct{}{}
 	}
+	loop := 0
+	m := tg.Miners()[0]
 	err = build.Retry(50, 100*time.Millisecond, func() error {
+		loop++
+		// Mine a block every 10 iterations to make sure
+		// threadedContractMaintenance is being triggered
+		if loop%10 == 0 {
+			if err = m.MineBlock(); err != nil {
+				return err
+			}
+		}
 		rc, err := renter.RenterContractsGet()
 		if err != nil {
 			return err
@@ -686,20 +698,6 @@ func TestListMode(t *testing.T) {
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
-	}
-
-	// create whitelist and map of whitelisted hosts
-	var whitelistHosts []types.SiaPublicKey
-	whitelistHostsMap := make(map[string]struct{})
-	for _, h := range tg.Hosts() {
-		pk, err := h.HostPublicKey()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := blacklistHostsMap[pk.String()]; !ok && len(whitelistHosts) < len(blacklistHosts) {
-			whitelistHosts = append(whitelistHosts, pk)
-			whitelistHostsMap[pk.String()] = struct{}{}
-		}
 	}
 
 	// Confirm that only non blacklisted hosts are returned from HostDbActiveGet
@@ -741,21 +739,61 @@ func TestListMode(t *testing.T) {
 		if len(rc.ActiveContracts) == 0 {
 			return errors.New("no contracts")
 		}
-		var ids []types.FileContractID
 		for _, c := range rc.ActiveContracts {
 			if _, exists := blacklistHostsMap[c.HostPublicKey.String()]; exists {
 				return nil
 			}
-			ids = append(ids, c.ID)
-		}
-		if err = renter.RenterContractsCancelPost(ids); err != nil {
-			return err
+			if err = renter.RenterContractCancelPost(c.ID); err != nil {
+				return err
+			}
 		}
 		return errors.New("no contracts reformed with blacklist hosts")
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
+	}
+
+	// create whitelist and map of whitelisted hosts, confirm whitelisted hosts
+	// are hosts that have not been used yet to avoid canceled contracts
+	rc, err = renter.RenterInactiveContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contractHosts := make(map[string]struct{})
+	for _, c := range rc.ActiveContracts {
+		if _, ok := contractHosts[c.HostPublicKey.String()]; ok {
+			continue
+		}
+		contractHosts[c.HostPublicKey.String()] = struct{}{}
+	}
+	for _, c := range rc.InactiveContracts {
+		if _, ok := contractHosts[c.HostPublicKey.String()]; ok {
+			continue
+		}
+		contractHosts[c.HostPublicKey.String()] = struct{}{}
+	}
+	var whitelistHosts []types.SiaPublicKey
+	whitelistHostsMap := make(map[string]struct{})
+	for _, h := range tg.Hosts() {
+		pk, err := h.HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Make sure host wasn't previously a blacklisted host
+		if _, ok := blacklistHostsMap[pk.String()]; ok {
+			continue
+		}
+		// Make sure the host hasn't already had a contract
+		if _, ok := contractHosts[pk.String()]; ok {
+			continue
+		}
+		// Check to see if there are enough white listed hosts
+		if len(whitelistHosts) >= len(blacklistHosts) {
+			break
+		}
+		whitelistHosts = append(whitelistHosts, pk)
+		whitelistHostsMap[pk.String()] = struct{}{}
 	}
 
 	// Enable white list
@@ -766,9 +804,8 @@ func TestListMode(t *testing.T) {
 	// confirm contracts are only formed with hosts on the white list, since it
 	// was just confirmed that there are contracts with at least one blacklisted
 	// host it will ensure that the canceling of non whitelisted hosts is tested
-	loop := 0
-	m := tg.Miners()[0]
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	loop = 0
+	err = build.Retry(50, 100*time.Millisecond, func() error {
 		loop++
 		// Mine a block every 10 iterations to make sure
 		// threadedContractMaintenance is forming contracts
@@ -842,15 +879,13 @@ func TestListMode(t *testing.T) {
 		if len(rc.ActiveContracts) == 0 {
 			return errors.New("no contracts")
 		}
-		var ids []types.FileContractID
 		for _, c := range rc.ActiveContracts {
 			if _, exists := whitelistHostsMap[c.HostPublicKey.String()]; !exists {
 				return nil
 			}
-			ids = append(ids, c.ID)
-		}
-		if err = renter.RenterContractsCancelPost(ids); err != nil {
-			return err
+			if err = renter.RenterContractCancelPost(c.ID); err != nil {
+				return err
+			}
 		}
 		return errors.New("no contracts reformed with non whitelisted hosts")
 	})

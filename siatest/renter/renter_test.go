@@ -3222,7 +3222,7 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("Failed to shutdown host", err)
 		}
 	}
-	// File should have 0 redunancy now.
+	// File should have 0 redundancy now.
 	if err := renter.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}

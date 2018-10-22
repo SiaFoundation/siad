@@ -539,32 +539,6 @@ func (r *Renter) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
 		return err
 	}
 
-	// New settings
-	listedHosts := r.hostDB.ListedHosts()
-
-	// Unlock any previously Locked contracts
-	//	(edge case is that it unlocks a contract that you manually canceled)
-	r.unlockContracts()
-
-	// Cancel Contracts
-	// Disable
-	if len(hosts) == 0 {
-		return nil
-	}
-
-	contracts := r.Contracts()
-	var ids []types.FileContractID
-	for _, c := range contracts {
-		_, ok := listedHosts[string(c.HostPublicKey.Key)]
-		if whitelist == ok {
-			continue
-		}
-		ids = append(ids, c.ID)
-	}
-	if err := r.CancelContracts(ids); err != nil {
-		r.log.Println("WARN: unable to cancel contracts with non whitelisted hosts")
-	}
-
 	return nil
 }
 

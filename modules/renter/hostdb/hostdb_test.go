@@ -45,6 +45,7 @@ func bareHostDB() *HostDB {
 	}
 	hdb.weightFunc = hdb.calculateHostWeightFn(modules.DefaultAllowance)
 	hdb.hostTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
+	hdb.filteredTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
 	return hdb
 }
 
@@ -202,7 +203,7 @@ func TestRandomHosts(t *testing.T) {
 	for i := 0; i < nEntries; i++ {
 		entry := makeHostDBEntry()
 		entries[string(entry.PublicKey.Key)] = entry
-		err := hdbt.hdb.hostTree.Insert(entry)
+		err := hdbt.hdb.filteredTree.Insert(entry)
 		if err != nil {
 			t.Error(err)
 		}
