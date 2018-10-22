@@ -349,19 +349,13 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 			netAddress = hdbe.NetAddress
 		}
 
-		// Fetch utilities for contract
-		var goodForUpload bool
-		var goodForRenew bool
-		if utility, ok := api.renter.ContractUtility(c.HostPublicKey); ok {
-			goodForUpload = utility.GoodForUpload
-			goodForRenew = utility.GoodForRenew
-		}
+		// Build the contract.
 		contract := RenterContract{
 			DownloadSpending:          c.DownloadSpending,
 			EndHeight:                 c.EndHeight,
 			Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
-			GoodForUpload:             goodForUpload,
-			GoodForRenew:              goodForRenew,
+			GoodForUpload:             c.Utility.GoodForUpload,
+			GoodForRenew:              c.Utility.GoodForRenew,
 			HostPublicKey:             c.HostPublicKey,
 			ID:                        c.ID,
 			LastTransaction:           c.Transaction,
@@ -374,9 +368,9 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 			TotalCost:                 c.TotalCost,
 			UploadSpending:            c.UploadSpending,
 		}
-		if goodForRenew {
+		if c.Utility.GoodForRenew {
 			activeContracts = append(activeContracts, contract)
-		} else if inactive && !goodForRenew {
+		} else if inactive && !c.Utility.GoodForRenew {
 			inactiveContracts = append(inactiveContracts, contract)
 		}
 		contracts = append(contracts, contract)
@@ -397,20 +391,12 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 				netAddress = hdbe.NetAddress
 			}
 
-			// Fetch utilities for contract
-			var goodForUpload bool
-			var goodForRenew bool
-			if utility, ok := api.renter.ContractUtility(c.HostPublicKey); ok {
-				goodForUpload = utility.GoodForUpload
-				goodForRenew = utility.GoodForRenew
-			}
-
 			contract := RenterContract{
 				DownloadSpending:          c.DownloadSpending,
 				EndHeight:                 c.EndHeight,
 				Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
-				GoodForUpload:             goodForUpload,
-				GoodForRenew:              goodForRenew,
+				GoodForUpload:             c.Utility.GoodForUpload,
+				GoodForRenew:              c.Utility.GoodForRenew,
 				HostPublicKey:             c.HostPublicKey,
 				ID:                        c.ID,
 				LastTransaction:           c.Transaction,

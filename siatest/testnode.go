@@ -46,6 +46,19 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
+		rce, err := tn.RenterInactiveContractsGet()
+		if err != nil {
+			t.Log(err)
+		}
+		t.Log("Expired Contracts")
+		for _, c := range rce.ExpiredContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
+		}
+		t.Log()
 	}
 
 	if hostInfo {
@@ -73,10 +86,15 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log(err)
 		}
 		t.Log("CP:", rg.CurrentPeriod)
+		cg, err := tn.ConsensusGet()
+		if err != nil {
+			t.Log(err)
+		}
+		t.Log("BH:", cg.Height)
 		settings := rg.Settings
-		t.Log("Allowance Funds:", settings.Allowance.Funds)
+		t.Log("Allowance Funds:", settings.Allowance.Funds.HumanString())
 		fm := rg.FinancialMetrics
-		t.Log("Unspent Funds:", fm.Unspent)
+		t.Log("Unspent Funds:", fm.Unspent.HumanString())
 		t.Log()
 	}
 }

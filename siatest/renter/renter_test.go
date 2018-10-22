@@ -818,7 +818,7 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 	wg.Add(1)
 	go func() {
 		for {
-			// Cause the next download to fail.
+			// Cause the contract renewal to fail
 			deps.Fail()
 			select {
 			case <-cancel:
@@ -834,27 +834,28 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 		t.Fatal(err)
 	}
 
-	// Disrupt statement should prevent inactive contracts from being created
+	// Disrupt statement should prevent contracts from being renewed properly.
+	// This means that both old and new contracts will be staticContracts which
+	// are exported through the API via RenterContracts.Contracts
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
+		rc, err := renter.RenterContractsGet()
 		if err != nil {
 			return err
 		}
-		if len(rc.InactiveContracts) != 0 {
-			return fmt.Errorf("Incorrect number of inactive contracts: have %v expected 0", len(rc.InactiveContracts))
-		}
-		if len(rc.ActiveContracts) != len(tg.Hosts())*2 {
-			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), len(tg.Hosts())*2)
+		if len(rc.Contracts) != len(tg.Hosts())*2 {
+			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), len(tg.Hosts())*2)
 		}
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, false, true)
 		t.Fatal(err)
 	}
 
 	// By mining blocks to trigger threadContractMaintenance,
-	// managedCheckForDuplicates should move renewed contracts to inactive even
-	// though disrupt statement is still interrtupting renew code
+	// managedCheckForDuplicates should move renewed contracts from
+	// staticContracts to oldContracts even though disrupt statement is still
+	// interrupting renew code.
 	m := tg.Miners()[0]
 	if err = m.MineBlock(); err != nil {
 		t.Fatal(err)
@@ -873,12 +874,16 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 		if len(rc.ActiveContracts) != len(tg.Hosts()) {
 			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), len(tg.Hosts()))
 		}
+		if len(rc.Contracts) != len(tg.Hosts()) {
+			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), len(tg.Hosts()))
+		}
 		if err = m.MineBlock(); err != nil {
 			return err
 		}
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, false, true)
 		t.Fatal(err)
 	}
 
@@ -1165,8 +1170,10 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 		hostMap[pk.String()] = host
 	}
 	// Lock the wallet of one of the used hosts to make the renew fail.
+	var lockedHostPK types.SiaPublicKey
 	for _, c := range rcg.ActiveContracts {
 		if host, used := hostMap[c.HostPublicKey.String()]; used {
+			lockedHostPK = c.HostPublicKey
 			if err := host.WalletLockPost(); err != nil {
 				t.Fatal(err)
 			}
@@ -1221,6 +1228,10 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	// hosts - 1 inactive contracts.  One of the inactive contracts will be
 	// !goodForRenew due to the host
 	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 5*time.Second, func() error {
+		if err := miner.MineBlock(); err != nil {
+			return err
+		}
+
 		// contract should be !goodForRenew now.
 		rc, err := renter.RenterInactiveContractsGet()
 		if err != nil {
@@ -1233,22 +1244,23 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 			return fmt.Errorf("Expected %v inactive contracts, got %v", len(tg.Hosts())-1, len(rc.InactiveContracts))
 		}
 
-		notGoodForRenew := 0
-		for _, c := range rc.InactiveContracts {
-			if !c.GoodForRenew {
-				notGoodForRenew++
+		// Check that the locked host is in inactive and not in active.
+		for _, c := range rc.ActiveContracts {
+			if c.HostPublicKey.String() == lockedHostPK.String() {
+				return errors.New("locked host still appears in set of active contracts")
 			}
 		}
-		if err := miner.MineBlock(); err != nil {
-			return err
-		}
-		if notGoodForRenew != 1 {
-			return fmt.Errorf("there should be exactly 1 inactive contract that is !goodForRenew but was %v",
-				notGoodForRenew)
+		// If the host does appear in the inactive, set, then the test has
+		// passed.
+		for _, c := range rc.ActiveContracts {
+			if c.HostPublicKey.String() == lockedHostPK.String() {
+				return nil
+			}
 		}
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }
@@ -1740,6 +1752,18 @@ func TestRenterContracts(t *testing.T) {
 		for _, c := range activeContracts {
 			if _, ok := inactiveContractIDMap[c.ID]; !ok && c.UploadSpending.Cmp(startingUploadSpend) <= 0 {
 				return errors.New("ID from activeContacts not found in rc")
+			}
+		}
+
+		// Check that there are inactive contracts, and that the inactive
+		// contracts correctly mark the GoodForUpload and GoodForRenew fields as
+		// false.
+		if len(rc.InactiveContracts) == 0 {
+			return errors.New("no reported inactive contracts")
+		}
+		for _, c := range rc.InactiveContracts {
+			if c.GoodForUpload || c.GoodForRenew {
+				return errors.New("an inactive contract is being reported as either good for upload or good for renew")
 			}
 		}
 
