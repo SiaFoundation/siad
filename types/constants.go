@@ -17,9 +17,17 @@ import (
 var (
 	// ASICHardforkHeight is the height at which the hardfork targeting
 	// selected ASICs was activated.
-	ASICHardforkHeight      BlockHeight
+	ASICHardforkHeight BlockHeight
+
+	// ASICHardforkTotalTarget is the initial target after the ASIC hardfork.
+	// The actual target at ASICHardforkHeight is replaced with this value in
+	// order to prevent intolerably slow block times post-fork.
 	ASICHardforkTotalTarget Target
-	ASICHardforkTotalTime   int64
+
+	// ASICHardforkTotalTime is the initial total time after the ASIC
+	// hardfork. The actual total time at ASICHardforkHeight is replaced with
+	// this value in order to prevent intolerably slow block times post-fork.
+	ASICHardforkTotalTime int64
 
 	// ASICHardforkFactor is the factor by which the hashrate of targeted
 	// ASICs will be reduced.
