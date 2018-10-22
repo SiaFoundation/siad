@@ -1,6 +1,16 @@
 Version History
 ---------------
 
+Oct 2018:
+
+v1.3.6 (patch release)
+- Enable ASIC hardfork
+
+v1.3.5 (patch release)
+- Add offline signing functionality
+- Overhaul hostdb weighting
+- Add siac utils
+
 Sep 2018:
 
 v1.3.4 (patch release)

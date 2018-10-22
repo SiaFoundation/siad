@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -69,6 +70,10 @@ func (bv stdBlockValidator) ValidateBlock(b types.Block, id types.BlockID, minTi
 		return errEarlyTimestamp
 	}
 
+	// Check that the nonce is a legal nonce.
+	if height >= types.ASICHardforkHeight && binary.LittleEndian.Uint64(b.Nonce[:])%types.ASICHardforkFactor != 0 {
+		return errors.New("block does not meet nonce requirements")
+	}
 	// Check that the target of the new block is sufficient.
 	if !checkTarget(b, id, target) {
 		return modules.ErrBlockUnsolved

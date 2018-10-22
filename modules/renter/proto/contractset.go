@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -204,7 +205,8 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 		}
 		path := filepath.Join(dir, filename)
 		if err := cs.loadSafeContract(path, walTxns); err != nil {
-			return nil, err
+			extErr := fmt.Errorf("failed to load safecontract %v", path)
+			return nil, errors.Compose(extErr, err)
 		}
 	}
 

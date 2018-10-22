@@ -175,6 +175,13 @@ func TestValidRevertedTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tpt.Close()
+	// Mine a few extra blocks on tpt to get past the signature hardfork height.
+	for i := 0; i < 10; i++ {
+		_, err = tpt.miner.AddBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	tpt2, err := blankTpoolTester(t.Name() + "-tpt2")
 	if err != nil {
 		t.Fatal(err)

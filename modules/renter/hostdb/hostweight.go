@@ -2,7 +2,6 @@ package hostdb
 
 import (
 	"math"
-	"math/big"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -69,10 +68,6 @@ const (
 )
 
 var (
-	// Because most weights would otherwise be fractional, we set the base
-	// weight to be very large.
-	baseWeight = types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(80), nil))
-
 	// priceDiveNormalization reduces the raw value of the price so that not so
 	// many digits are needed when operating on the weight. This also allows the
 	// base weight to be a lot lower.
@@ -215,7 +210,7 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// Calculate the hostCollateral the renter would expect the host to put
 	// into a contract.
 	// TODO: Use actual transaction fee estimation instead of hardcoded 1SC.
-	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, allowance.Funds.Div64(allowance.Hosts), types.SiacoinPrecision, types.ZeroCurrency, allowance.Period, ug.ExpectedStorage)
+	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, allowance.Funds.Div64(allowance.Hosts), types.SiacoinPrecision, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, ug.ExpectedStorage)
 	if err != nil {
 		hdb.log.Println(err)
 		return 0
@@ -231,7 +226,16 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// The adjusted prices take the pricing for other parts of the contract
 	// (like bandwidth and fees) and convert them into terms that are relative
 	// to the storage price.
-	adjustedCollateralPrice := hostCollateral.Div64(uint64(allowance.Period)).Div64(ug.ExpectedStorage)
+	//
+	// The adjustedCollateralPrice is multiplied by a number greater than 1
+	// because we will be forming multiple contracts with each host during each
+	// renew cycle as a result of running out of money in the contract. This has
+	// the added benefit of emphasizing lower fees in favor of other metrics,
+	// which increases user satisfaction.
+	//
+	// TODO: This weighting system also does not take into account transaction
+	// fees.
+	adjustedCollateralPrice := hostCollateral.Div64(uint64(allowance.Period)).Div64(ug.ExpectedStorage).MulFloat(expectedContractFeesMultiplier)
 	adjustedContractPrice := entry.ContractPrice.Div64(uint64(allowance.Period)).Div64(ug.ExpectedStorage)
 	adjustedUploadPrice := entry.UploadBandwidthPrice.Div64(ug.ExpectedUploadFrequency)
 	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Div64(ug.ExpectedDownloadFrequency).MulFloat(ug.ExpectedRedundancy)
@@ -454,104 +458,44 @@ func (hdb *HostDB) calculateHostWeightFn(allowance modules.Allowance) hosttree.W
 	// TODO: Pass these in as input instead of using the defaults.
 	ug := modules.DefaultUsageGuideLines
 
-	return func(entry modules.HostDBEntry) types.Currency {
-		collateralReward := hdb.collateralAdjustments(entry, allowance, ug)
-		interactionPenalty := hdb.interactionAdjustments(entry)
-		lifetimePenalty := hdb.lifetimeAdjustments(entry)
-		pricePenalty := hdb.priceAdjustments(entry, allowance, ug)
-		storageRemainingPenalty := storageRemainingAdjustments(entry)
-		uptimePenalty := hdb.uptimeAdjustments(entry)
-		versionPenalty := versionAdjustments(entry)
-
-		// Combine the adjustments.
-		fullPenalty := collateralReward * interactionPenalty * lifetimePenalty *
-			pricePenalty * storageRemainingPenalty * uptimePenalty * versionPenalty
-
-		// Return a types.Currency.
-		weight := baseWeight.MulFloat(fullPenalty)
-		if weight.IsZero() {
-			// A weight of zero is problematic for for the host tree.
-			return types.NewCurrency64(1)
+	return func(entry modules.HostDBEntry) hosttree.ScoreBreakdown {
+		return hosttree.HostAdjustments{
+			BurnAdjustment:             1,
+			CollateralAdjustment:       hdb.collateralAdjustments(entry, allowance, ug),
+			InteractionAdjustment:      hdb.interactionAdjustments(entry),
+			AgeAdjustment:              hdb.lifetimeAdjustments(entry),
+			PriceAdjustment:            hdb.priceAdjustments(entry, allowance, ug),
+			StorageRemainingAdjustment: storageRemainingAdjustments(entry),
+			UptimeAdjustment:           hdb.uptimeAdjustments(entry),
+			VersionAdjustment:          versionAdjustments(entry),
 		}
-		return weight
 	}
-}
-
-// calculateConversionRate calculates the conversion rate of the provided
-// host score, comparing it to the hosts in the database and returning what
-// percentage of contracts it is likely to participate in.
-func (hdb *HostDB) calculateConversionRate(score types.Currency) float64 {
-	var totalScore types.Currency
-	for _, h := range hdb.ActiveHosts() {
-		totalScore = totalScore.Add(hdb.weightFunc(h))
-	}
-	if totalScore.IsZero() {
-		totalScore = types.NewCurrency64(1)
-	}
-	conversionRate, _ := big.NewRat(0, 1).SetFrac(score.Mul64(50).Big(), totalScore.Big()).Float64()
-	if conversionRate > 100 {
-		conversionRate = 100
-	}
-	return conversionRate
 }
 
 // EstimateHostScore takes a HostExternalSettings and returns the estimated
 // score of that host in the hostdb, assuming no penalties for age or uptime.
 func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance modules.Allowance) modules.HostScoreBreakdown {
-	// TODO: Pass these in as input instead of using the defaults.
-	ug := modules.DefaultUsageGuideLines
-
-	// Grab the adjustments. Age, and uptime penalties are set to '1', to
-	// assume best behavior from the host.
-	collateralReward := hdb.collateralAdjustments(entry, allowance, ug)
-	pricePenalty := hdb.priceAdjustments(entry, allowance, ug)
-	storageRemainingPenalty := storageRemainingAdjustments(entry)
-	versionPenalty := versionAdjustments(entry)
-
-	// Combine into a full penalty, then determine the resulting estimated
-	// score.
-	fullPenalty := collateralReward * pricePenalty * storageRemainingPenalty * versionPenalty
-	estimatedScore := baseWeight.MulFloat(fullPenalty)
-	if estimatedScore.IsZero() {
-		estimatedScore = types.NewCurrency64(1)
-	}
-
-	// Compile the estimates into a host score breakdown.
-	return modules.HostScoreBreakdown{
-		Score:          estimatedScore,
-		ConversionRate: hdb.calculateConversionRate(estimatedScore),
-
-		AgeAdjustment:              1,
-		BurnAdjustment:             1,
-		CollateralAdjustment:       collateralReward,
-		PriceAdjustment:            pricePenalty,
-		StorageRemainingAdjustment: storageRemainingPenalty,
-		UptimeAdjustment:           1,
-		VersionAdjustment:          versionPenalty,
-	}
+	return hdb.managedScoreBreakdown(entry, true, true)
 }
 
 // ScoreBreakdown provdes a detailed set of scalars and bools indicating
 // elements of the host's overall score.
 func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBreakdown {
-	// TODO: Pass these in as input instead of using the defaults.
-	ug := modules.DefaultUsageGuideLines
+	return hdb.managedScoreBreakdown(entry, false, false)
+}
 
+// managedScoreBreakdown computes the score breakdown of a host. Certain
+// adjustments can be ignored.
+func (hdb *HostDB) managedScoreBreakdown(entry modules.HostDBEntry, ignoreAge, ignoreUptime bool) modules.HostScoreBreakdown {
+	hosts := hdb.AllHosts()
+
+	// Compute the totalScore.
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
-
-	score := hdb.weightFunc(entry)
-	return modules.HostScoreBreakdown{
-		Score:          score,
-		ConversionRate: hdb.calculateConversionRate(score),
-
-		AgeAdjustment:              hdb.lifetimeAdjustments(entry),
-		BurnAdjustment:             1,
-		CollateralAdjustment:       hdb.collateralAdjustments(entry, hdb.allowance, ug),
-		InteractionAdjustment:      hdb.interactionAdjustments(entry),
-		PriceAdjustment:            hdb.priceAdjustments(entry, hdb.allowance, ug),
-		StorageRemainingAdjustment: storageRemainingAdjustments(entry),
-		UptimeAdjustment:           hdb.uptimeAdjustments(entry),
-		VersionAdjustment:          versionAdjustments(entry),
+	totalScore := types.Currency{}
+	for _, host := range hosts {
+		totalScore = totalScore.Add(hdb.weightFunc(host).Score())
 	}
+	// Compute the breakdown.
+	return hdb.weightFunc(entry).HostScoreBreakdown(totalScore, ignoreAge, ignoreUptime)
 }

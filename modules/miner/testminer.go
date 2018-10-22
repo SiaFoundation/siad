@@ -39,7 +39,7 @@ func solveBlock(b types.Block, target types.Target) (types.Block, bool) {
 			return b, true
 		}
 		*(*uint64)(unsafe.Pointer(&header[32])) = nonce
-		nonce++
+		nonce += types.ASICHardforkFactor
 	}
 	return b, false
 }

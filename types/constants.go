@@ -15,6 +15,19 @@ import (
 )
 
 var (
+	// ASICHardforkHeight is the height at which the hardfork targeting
+	// selected ASICs was activated.
+	ASICHardforkHeight BlockHeight
+
+	// ASICHardforkFactor is the factor by which the hashrate of targeted
+	// ASICs will be reduced.
+	ASICHardforkFactor = uint64(1009)
+
+	// ASICHardforkReplayProtectionPrefix is a byte that prefixes
+	// SiacoinInputs and SiafundInputs when calculating SigHashes to protect
+	// against replay attacks.
+	ASICHardforkReplayProtectionPrefix = []byte{0}
+
 	// BlockFrequency is the desired number of seconds that
 	// should elapse, on average, between successive Blocks.
 	BlockFrequency BlockHeight
@@ -149,6 +162,8 @@ func init() {
 		// can coordinate their actions over a the developer testnets, but fast
 		// enough that there isn't much time wasted on waiting for things to
 		// happen.
+		ASICHardforkHeight = 20
+
 		BlockFrequency = 12                      // 12 seconds: slow enough for developers to see ~each block, fast enough that blocks don't waste time.
 		MaturityDelay = 10                       // 60 seconds before a delayed output matures.
 		GenesisTimestamp = Timestamp(1424139000) // Change as necessary.
@@ -187,6 +202,8 @@ func init() {
 	} else if build.Release == "testing" {
 		// 'testing' settings are for automatic testing, and create much faster
 		// environments than a human can interact with.
+		ASICHardforkHeight = 5
+
 		BlockFrequency = 1 // As fast as possible
 		MaturityDelay = 3
 		GenesisTimestamp = CurrentTimestamp() - 1e6
@@ -231,6 +248,7 @@ func init() {
 	} else if build.Release == "standard" {
 		// 'standard' settings are for the full network. They are slow enough
 		// that the network is secure in a real-world byzantine environment.
+		ASICHardforkHeight = 179000
 
 		// A block time of 1 block per 10 minutes is chosen to follow Bitcoin's
 		// example. The security lost by lowering the block time is not

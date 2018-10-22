@@ -196,6 +196,9 @@ func (t *Transaction) wholeSigHash(sig TransactionSignature, height BlockHeight)
 
 	e.WriteInt(len((t.SiacoinInputs)))
 	for i := range t.SiacoinInputs {
+		if height >= ASICHardforkHeight {
+			e.Write(ASICHardforkReplayProtectionPrefix)
+		}
 		t.SiacoinInputs[i].MarshalSia(e)
 	}
 	e.WriteInt(len((t.SiacoinOutputs)))
@@ -216,6 +219,9 @@ func (t *Transaction) wholeSigHash(sig TransactionSignature, height BlockHeight)
 	}
 	e.WriteInt(len((t.SiafundInputs)))
 	for i := range t.SiafundInputs {
+		if height >= ASICHardforkHeight {
+			e.Write(ASICHardforkReplayProtectionPrefix)
+		}
 		t.SiafundInputs[i].MarshalSia(e)
 	}
 	e.WriteInt(len((t.SiafundOutputs)))
@@ -249,6 +255,9 @@ func (t *Transaction) partialSigHash(cf CoveredFields, height BlockHeight) (hash
 	h := crypto.NewHash()
 
 	for _, input := range cf.SiacoinInputs {
+		if height >= ASICHardforkHeight {
+			h.Write(ASICHardforkReplayProtectionPrefix)
+		}
 		t.SiacoinInputs[input].MarshalSia(h)
 	}
 	for _, output := range cf.SiacoinOutputs {
@@ -264,6 +273,9 @@ func (t *Transaction) partialSigHash(cf CoveredFields, height BlockHeight) (hash
 		t.StorageProofs[storageProof].MarshalSia(h)
 	}
 	for _, siafundInput := range cf.SiafundInputs {
+		if height >= ASICHardforkHeight {
+			h.Write(ASICHardforkReplayProtectionPrefix)
+		}
 		t.SiafundInputs[siafundInput].MarshalSia(h)
 	}
 	for _, siafundOutput := range cf.SiafundOutputs {
