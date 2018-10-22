@@ -210,9 +210,12 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// Calculate the hostCollateral the renter would expect the host to put
 	// into a contract.
 	// TODO: Use actual transaction fee estimation instead of hardcoded 1SC.
-	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, allowance.Funds.Div64(allowance.Hosts), types.SiacoinPrecision, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, ug.ExpectedStorage)
+	txnFees := types.SiacoinPrecision
+	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, allowance.Funds.Div64(allowance.Hosts), txnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, ug.ExpectedStorage)
 	if err != nil {
-		hdb.log.Println(err)
+		hdb.log.Debugf("Host %v, ContractPrice %v, TxnFees %v, Funds %v\n",
+			entry.PublicKey.String(), entry.ContractPrice.HumanString(), txnFees.HumanString(), allowance.Funds.HumanString())
+		hdb.log.Debugln(err)
 		return 0
 	}
 
