@@ -2118,10 +2118,6 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = st.announceHost()
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	for i := 0; i < 100; i++ {
 		_, err = st.miner.AddBlock()
