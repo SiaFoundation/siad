@@ -19,6 +19,16 @@ var (
 	// selected ASICs was activated.
 	ASICHardforkHeight BlockHeight
 
+	// ASICHardforkTotalTarget is the initial target after the ASIC hardfork.
+	// The actual target at ASICHardforkHeight is replaced with this value in
+	// order to prevent intolerably slow block times post-fork.
+	ASICHardforkTotalTarget Target
+
+	// ASICHardforkTotalTime is the initial total time after the ASIC
+	// hardfork. The actual total time at ASICHardforkHeight is replaced with
+	// this value in order to prevent intolerably slow block times post-fork.
+	ASICHardforkTotalTime int64
+
 	// ASICHardforkFactor is the factor by which the hashrate of targeted
 	// ASICs will be reduced.
 	ASICHardforkFactor = uint64(1009)
@@ -163,6 +173,8 @@ func init() {
 		// enough that there isn't much time wasted on waiting for things to
 		// happen.
 		ASICHardforkHeight = 20
+		ASICHardforkTotalTarget = Target{0, 0, 0, 8}
+		ASICHardforkTotalTime = 800
 
 		BlockFrequency = 12                      // 12 seconds: slow enough for developers to see ~each block, fast enough that blocks don't waste time.
 		MaturityDelay = 10                       // 60 seconds before a delayed output matures.
@@ -203,6 +215,8 @@ func init() {
 		// 'testing' settings are for automatic testing, and create much faster
 		// environments than a human can interact with.
 		ASICHardforkHeight = 5
+		ASICHardforkTotalTarget = Target{255, 255}
+		ASICHardforkTotalTime = 10e3
 
 		BlockFrequency = 1 // As fast as possible
 		MaturityDelay = 3
@@ -248,7 +262,16 @@ func init() {
 	} else if build.Release == "standard" {
 		// 'standard' settings are for the full network. They are slow enough
 		// that the network is secure in a real-world byzantine environment.
+
+		// A total time of 120,000 is chosen because that represents the total
+		// time elapsed at a perfect equilibrium, indicating a visible average
+		// block time that perfectly aligns with what is expected. A total
+		// target of 67 leading zeroes is chosen because that aligns with the
+		// amount of hashrate that we expect to be on the network after the
+		// hardfork.
 		ASICHardforkHeight = 179000
+		ASICHardforkTotalTarget = Target{0, 0, 0, 0, 0, 0, 0, 0, 32}
+		ASICHardforkTotalTime = 120e3
 
 		// A block time of 1 block per 10 minutes is chosen to follow Bitcoin's
 		// example. The security lost by lowering the block time is not

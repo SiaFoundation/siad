@@ -3,6 +3,9 @@ Version History
 
 Oct 2018:
 
+v1.3.7 (patch release)
+- Adjust difficulty for ASIC hardfork
+
 v1.3.6 (patch release)
 - Enable ASIC hardfork
 
