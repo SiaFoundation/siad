@@ -109,7 +109,7 @@ func (cs *ConsensusSet) validateHeader(tx dbTx, h types.BlockHeader) error {
 	}
 
 	// Check that the nonce is a legal nonce.
-	if parent.Height >= types.ASICHardforkHeight && binary.LittleEndian.Uint64(h.Nonce[:])%types.ASICHardforkFactor != 0 {
+	if parent.Height+1 >= types.ASICHardforkHeight && binary.LittleEndian.Uint64(h.Nonce[:])%types.ASICHardforkFactor != 0 {
 		return errors.New("block does not meet nonce requirements")
 	}
 	// Check that the target of the new block is sufficient.
