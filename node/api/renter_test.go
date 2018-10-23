@@ -1655,11 +1655,11 @@ func TestContractorHostRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rc.Contracts) != 2 {
+	if len(rc.ActiveContracts) != 2 {
 		t.Fatal("wrong contract count")
 	}
-	rc1Host := rc.Contracts[0].HostPublicKey.String()
-	rc2Host := rc.Contracts[1].HostPublicKey.String()
+	rc1Host := rc.ActiveContracts[0].HostPublicKey.String()
+	rc2Host := rc.ActiveContracts[1].HostPublicKey.String()
 
 	// Add 3 new hosts that will be competing with the expensive hosts.
 	stH2, err := blankServerTester(t.Name() + " - Host 2")
@@ -1723,7 +1723,8 @@ func TestContractorHostRemoval(t *testing.T) {
 	}
 
 	// Verify that st and stH1 are dropped in favor of the newer, better hosts.
-	err = build.Retry(150, time.Millisecond*250, func() error {
+	rc = RenterContracts{}
+	err = build.Retry(100, time.Millisecond*100, func() error {
 		var newContracts int
 		err = st.getAPI("/renter/contracts", &rc)
 		if err != nil {
@@ -1732,7 +1733,7 @@ func TestContractorHostRemoval(t *testing.T) {
 		hostMap := make(map[string]struct{})
 		hostMap[rc1Host] = struct{}{}
 		hostMap[rc2Host] = struct{}{}
-		for _, contract := range rc.Contracts {
+		for _, contract := range rc.ActiveContracts {
 			_, exists := hostMap[contract.HostPublicKey.String()]
 			if !exists {
 				newContracts++
@@ -1760,14 +1761,14 @@ func TestContractorHostRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Grab the old contracts, then mine blocks to trigger a renew, and then
+	// Grab the current contracts, then mine blocks to trigger a renew, and then
 	// wait until the renew is complete.
 	err = st.getAPI("/renter/contracts", &rc)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Check the amount of data in each contract.
-	for _, contract := range rc.Contracts {
+	for _, contract := range rc.ActiveContracts {
 		if contract.Size != modules.SectorSize {
 			t.Error("Each contrat should have 1 sector:", contract.Size, contract.ID)
 		}
@@ -1787,7 +1788,17 @@ func TestContractorHostRemoval(t *testing.T) {
 	}
 	// Give the renter time to renew. Two of the contracts should renew.
 	var rc2 RenterContracts
-	err = build.Retry(50, time.Millisecond*250, func() error {
+	loop := 0
+	err = build.Retry(100, time.Millisecond*100, func() error {
+		loop++
+		// Mine a block every 10 iterations to make sure
+		// threadedContractMaintenance continues to create and replace contracts
+		if loop%10 == 0 {
+			_, err = st.miner.AddBlock()
+			if err != nil {
+				return err
+			}
+		}
 		err = st.getAPI("/renter/contracts", &rc2)
 		if err != nil {
 			return errors.New("couldn't get renter stats")
@@ -1796,14 +1807,14 @@ func TestContractorHostRemoval(t *testing.T) {
 		// Check that at least 2 contracts are different between rc and rc2.
 		tracker := make(map[types.FileContractID]struct{})
 		// Add all the contracts.
-		for _, contract := range rc.Contracts {
+		for _, contract := range rc.ActiveContracts {
 			tracker[contract.ID] = struct{}{}
 		}
 		// Count the number of contracts that were not seen in the previous
 		// batch of contracts, and check that the new contracts are not with the
 		// expensive hosts.
 		var unseen int
-		for _, contract := range rc2.Contracts {
+		for _, contract := range rc2.ActiveContracts {
 			_, exists := tracker[contract.ID]
 			if !exists {
 				unseen++
@@ -1814,7 +1825,7 @@ func TestContractorHostRemoval(t *testing.T) {
 			}
 		}
 		if unseen != 2 {
-			return fmt.Errorf("the wrong number of contracts seem to be getting renewed")
+			return fmt.Errorf("the wrong number of contracts seem to be getting renewed, have %v expect 2", unseen)
 		}
 		return nil
 	})
@@ -1823,7 +1834,7 @@ func TestContractorHostRemoval(t *testing.T) {
 	}
 	// The renewing process should not have resulted in additional data being
 	// uploaded - it should be the same data in the contracts.
-	for _, contract := range rc2.Contracts {
+	for _, contract := range rc2.ActiveContracts {
 		if contract.Size != modules.SectorSize {
 			t.Error("Contract has the wrong size:", contract.Size)
 		}
@@ -1861,29 +1872,30 @@ func TestContractorHostRemoval(t *testing.T) {
 	// st and stH1 are dropped in favor of the newer, better hosts. The
 	// contracts should also have data in them.
 	err = build.Retry(50, time.Millisecond*250, func() error {
+		var rc RenterContracts
 		err = st.getAPI("/renter/contracts", &rc)
 		if err != nil {
 			return errors.New("couldn't get renter stats")
 		}
-		if len(rc.Contracts) != 2 {
-			return fmt.Errorf("renewing seems to have failed: %v", len(rc.Contracts))
+		if len(rc.ActiveContracts) != 2 {
+			return fmt.Errorf("renewing seems to have failed: %v", len(rc.ActiveContracts))
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rc.Contracts[0].HostPublicKey.String() == rc1Host || rc.Contracts[0].HostPublicKey.String() == rc2Host {
-		t.Error("renter is renewing the wrong contracts", rc.Contracts[0].HostPublicKey.String())
+	if rc.ActiveContracts[0].HostPublicKey.String() == rc1Host || rc.ActiveContracts[0].HostPublicKey.String() == rc2Host {
+		t.Error("renter is renewing the wrong contracts", rc.ActiveContracts[0].HostPublicKey.String())
 	}
-	if rc.Contracts[1].HostPublicKey.String() == rc1Host || rc.Contracts[1].HostPublicKey.String() == rc2Host {
-		t.Error("renter is renewing the wrong contracts", rc.Contracts[1].HostPublicKey.String())
+	if rc.ActiveContracts[1].HostPublicKey.String() == rc1Host || rc.ActiveContracts[1].HostPublicKey.String() == rc2Host {
+		t.Error("renter is renewing the wrong contracts", rc.ActiveContracts[1].HostPublicKey.String())
 	}
 	// The renewing process should not have resulted in additional data being
 	// uploaded - it should be the same data in the contracts.
-	for _, contract := range rc.Contracts {
+	for _, contract := range rc.ActiveContracts {
 		if contract.Size != modules.SectorSize {
-			t.Error("Contract has the wrong size:", contract.Size)
+			t.Error("Contract has the wrong size:", contract.Size, contract.ID)
 		}
 	}
 	// Redundancy should still be 2.
