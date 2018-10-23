@@ -115,6 +115,12 @@ modify settings that control the renter's behavior.
 
 ###### Query String Parameters
 ```
+// Enables or disables the check for hosts using the same ip subnets within the
+hostdb. It's turned on by default and causes Sia to not form contracts with
+hosts from the same subnet and if such contracts already exist, it will
+deactivate the contract which has occupied that subnet for the shorter time.
+checkforipviolation // true or false
+
 // Number of hastings allocated for file contracts in the given period.
 funds // hastings
 
