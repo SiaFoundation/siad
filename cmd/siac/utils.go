@@ -228,9 +228,8 @@ func utilsverifyseed() {
 
 	_, err = modules.StringToSeed(seed, mnemonics.English)
 	if err != nil {
-		fmt.Println(err)
-	} else {
-		fmt.Println("No issues detected with your seed")
+		die(err)
 	}
+	fmt.Println("No issues detected with your seed")
 
 }
