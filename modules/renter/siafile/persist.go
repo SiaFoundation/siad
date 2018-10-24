@@ -1,8 +1,6 @@
 package siafile
 
 import (
-	"bytes"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,7 +10,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -100,113 +97,31 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to unmarshal pubKeyTable")
 	}
+	// Seek to the start of the chunks.
+	off, err := f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	// Sanity check that the offset is page aligned.
+	if off%pageSize != 0 {
+		return nil, errors.New("chunkOff is not page aligned")
+	}
 	// Load the chunks.
-	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to seek to chunkOffset")
-	}
-	rawChunks, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to read chunks from disk")
-	}
-	sf.staticChunks, err = unmarshalChunks(rawChunks)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to unmarshal chunks")
-	}
-	return sf, nil
-}
-
-// marshalChunks marshals the chunks of the SiaFile using json encoding.
-func marshalChunks(chunks []chunk) ([]byte, error) {
-	// Encode the chunks.
-	jsonChunks, err := json.Marshal(chunks)
-	if err != nil {
-		return nil, err
-	}
-	return jsonChunks, nil
-}
-
-// marshalErasureCoder marshals an erasure coder into its type and params.
-func marshalErasureCoder(ec modules.ErasureCoder) ([4]byte, [8]byte) {
-	// Since we only support one type we assume it is ReedSolomon for now.
-	ecType := ecReedSolomon
-	// Read params from ec.
-	ecParams := [8]byte{}
-	binary.LittleEndian.PutUint32(ecParams[:4], uint32(ec.MinPieces()))
-	binary.LittleEndian.PutUint32(ecParams[4:], uint32(ec.NumPieces()-ec.MinPieces()))
-	return ecType, ecParams
-}
-
-// marshalMetadata marshals the metadata of the SiaFile using json encoding.
-func marshalMetadata(md metadata) ([]byte, error) {
-	// Encode the metadata.
-	jsonMD, err := json.Marshal(md)
-	if err != nil {
-		return nil, err
-	}
-	return jsonMD, nil
-}
-
-// marshalPubKeyTable marshals the public key table of the SiaFile using Sia
-// encoding.
-func marshalPubKeyTable(pubKeyTable []HostPublicKey) ([]byte, error) {
-	// Create a buffer.
-	buf := bytes.NewBuffer(nil)
-	// Marshal all the data into the buffer
-	for _, pk := range pubKeyTable {
-		if err := pk.MarshalSia(buf); err != nil {
-			return nil, err
-		}
-	}
-	return buf.Bytes(), nil
-}
-
-// unmarshalChunks unmarshals the json encoded chunks of the SiaFile.
-func unmarshalChunks(raw []byte) (chunks []chunk, err error) {
-	err = json.Unmarshal(raw, &chunks)
-	if err != nil {
-		return
-	}
-	return
-}
-
-// unmarshalErasureCoder unmarshals an ErasureCoder from the given params.
-func unmarshalErasureCoder(ecType [4]byte, ecParams [8]byte) (modules.ErasureCoder, error) {
-	if ecType != ecReedSolomon {
-		return nil, errors.New("unknown erasure code type")
-	}
-	dataPieces := int(binary.LittleEndian.Uint32(ecParams[:4]))
-	parityPieces := int(binary.LittleEndian.Uint32(ecParams[4:]))
-	return NewRSCode(dataPieces, parityPieces)
-}
-
-// unmarshalMetadata unmarshals the json encoded metadata of the SiaFile.
-func unmarshalMetadata(raw []byte) (md metadata, err error) {
-	err = json.Unmarshal(raw, &md)
-
-	// We also need to create the erasure coder object.
-	md.staticErasureCode, err = unmarshalErasureCoder(md.StaticErasureCodeType, md.StaticErasureCodeParams)
-	if err != nil {
-		return
-	}
-	return
-}
-
-// unmarshalPubKeyTable unmarshals a sia encoded public key table.
-func unmarshalPubKeyTable(raw []byte) (keys []HostPublicKey, err error) {
-	// Create the buffer.
-	r := bytes.NewBuffer(raw)
-	// Unmarshal the keys one by one until EOF or a different error occur.
+	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	for {
-		var key HostPublicKey
-		if err = key.UnmarshalSia(r); err == io.EOF {
+		n, err := f.Read(chunkBytes)
+		if n == 0 && err == io.EOF {
 			break
 		} else if err != nil {
 			return nil, err
 		}
-		keys = append(keys, key)
+		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
+		if err != nil {
+			return nil, err
+		}
+		sf.staticChunks = append(sf.staticChunks, chunk)
 	}
-	return keys, nil
+	return sf, nil
 }
 
 // readDeleteUpdate unmarshals the update's instructions and returns the
@@ -317,6 +232,14 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	return nil
 }
 
+// chunkOffset returns the offset of a marshaled chunk withint the file.
+func (sf *SiaFile) chunkOffset(chunkIndex int) int64 {
+	if chunkIndex < 0 {
+		panic("chunk index can't be negative")
+	}
+	return sf.staticMetadata.ChunkOffset + int64(chunkIndex)*int64(sf.staticMetadata.StaticPagesPerChunk)*pageSize
+}
+
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
 func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
@@ -374,21 +297,37 @@ func (sf *SiaFile) saveFile() error {
 	if err != nil {
 		return err
 	}
-	chunksUpdate, err := sf.saveChunks()
+	chunksUpdates, err := sf.saveChunks()
 	if err != nil {
 		return err
 	}
-	return sf.createAndApplyTransaction(append(headerUpdates, chunksUpdate)...)
+	return sf.createAndApplyTransaction(append(headerUpdates, chunksUpdates...)...)
+}
+
+// saveChunk creates a writeaheadlog update that saves a single marshaled chunk
+// to disk when applied.
+func (sf *SiaFile) saveChunk(chunkIndex int) (writeaheadlog.Update, error) {
+	offset := sf.chunkOffset(chunkIndex)
+	chunkBytes, err := marshalChunk(sf.staticChunks[chunkIndex])
+	if err != nil {
+		return writeaheadlog.Update{}, err
+	}
+	return sf.createInsertUpdate(offset, chunkBytes), nil
 }
 
 // saveChunks creates a writeaheadlog update that saves the marshaled chunks of
 // the SiaFile to disk when applied.
-func (sf *SiaFile) saveChunks() (writeaheadlog.Update, error) {
-	chunks, err := marshalChunks(sf.staticChunks)
-	if err != nil {
-		return writeaheadlog.Update{}, errors.AddContext(err, "failed to marshal chunks")
+func (sf *SiaFile) saveChunks() ([]writeaheadlog.Update, error) {
+	// Marshal all the chunks and create updates for them.
+	updates := make([]writeaheadlog.Update, 0, len(sf.staticChunks))
+	for chunkIndex := range sf.staticChunks {
+		update, err := sf.saveChunk(chunkIndex)
+		if err != nil {
+			return nil, err
+		}
+		updates = append(updates, update)
 	}
-	return sf.createInsertUpdate(sf.staticMetadata.ChunkOffset, chunks), nil
+	return updates, nil
 }
 
 // saveHeader creates writeaheadlog updates to saves the metadata and

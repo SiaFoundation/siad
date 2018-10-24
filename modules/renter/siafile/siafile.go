@@ -97,6 +97,16 @@ func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	return d.Err()
 }
 
+// numPieces returns the total number of pieces uploaded for a chunk. This
+// means that numPieces can be greater than the number of pieces created by the
+// erasure coder.
+func (c *chunk) numPieces() (numPieces int) {
+	for _, c := range c.Pieces {
+		numPieces += len(c)
+	}
+	return
+}
+
 // New create a new SiaFile.
 func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	currentTime := time.Now()
@@ -116,6 +126,7 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 			staticErasureCode:       erasureCode,
 			StaticErasureCodeType:   ecType,
 			StaticErasureCodeParams: ecParams,
+			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
 			SiaPath:                 siaPath,
 		},
@@ -198,13 +209,12 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	if err != nil {
 		return err
 	}
-	// Get the updates for the chunks.
-	// TODO Change this to update only a single chunk instead of all of them.
-	chunksUpdate, err := sf.saveChunks()
+	// Save the changed chunk to disk.
+	chunkUpdate, err := sf.saveChunk(int(chunkIndex))
 	if err != nil {
 		return err
 	}
-	return sf.createAndApplyTransaction(append(updates, chunksUpdate)...)
+	return sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
 }
 
 // Available indicates whether the file is ready to be downloaded.

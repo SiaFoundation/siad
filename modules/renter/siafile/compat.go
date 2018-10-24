@@ -56,6 +56,7 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 			staticErasureCode:       fd.ErasureCode,
 			StaticErasureCodeType:   ecType,
 			StaticErasureCodeParams: ecParams,
+			StaticPagesPerChunk:     numChunkPagesRequired(fd.ErasureCode.NumPieces()),
 			StaticPieceSize:         fd.PieceSize,
 			SiaPath:                 fd.Name,
 		},
