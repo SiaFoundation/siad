@@ -42,13 +42,13 @@ type (
 		staticChunks []chunk
 
 		// utility fields. These are not persisted.
-		deleted   bool
-		mu        sync.RWMutex
-		staticUID string
+		deleted        bool
+		mu             sync.RWMutex
+		staticUniqueID string
+		wal            *writeaheadlog.WAL // the wal that is used for SiaFiles
 
-		// persistence related fields.
-		siaFilePath string             // path to the .sia file
-		wal         *writeaheadlog.WAL // the wal that is used for SiaFiles
+		// siaFilePath is the path to the .sia file on disk.
+		siaFilePath string
 	}
 
 	// chunk represents a single chunk of a file on disk
@@ -119,9 +119,9 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
 			SiaPath:                 siaPath,
 		},
-		siaFilePath: siaFilePath,
-		staticUID:   hex.EncodeToString(fastrand.Bytes(20)),
-		wal:         wal,
+		siaFilePath:    siaFilePath,
+		staticUniqueID: hex.EncodeToString(fastrand.Bytes(20)),
+		wal:            wal,
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()
@@ -242,9 +242,62 @@ func (sf *SiaFile) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uin
 	return
 }
 
+// Delete removes the file from disk and marks it as deleted. Once the file is
+// deleted, certain methods should return an error.
+func (sf *SiaFile) Delete() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	update := sf.createDeleteUpdate()
+	err := sf.createAndApplyTransaction(update)
+	sf.deleted = true
+	return err
+}
+
+// Deleted indicates if this file has been deleted by the user.
+func (sf *SiaFile) Deleted() bool {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.deleted
+}
+
 // ErasureCode returns the erasure coder used by the file.
 func (sf *SiaFile) ErasureCode() modules.ErasureCoder {
 	return sf.staticMetadata.staticErasureCode
+}
+
+// Expiration returns the lowest height at which any of the file's contracts
+// will expire.
+func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types.BlockHeight {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	if len(sf.pubKeyTable) == 0 {
+		return 0
+	}
+
+	lowest := ^types.BlockHeight(0)
+	for _, pk := range sf.pubKeyTable {
+		contract, exists := contracts[string(pk.PublicKey.Key)]
+		if !exists {
+			continue
+		}
+		if contract.EndHeight < lowest {
+			lowest = contract.EndHeight
+		}
+	}
+	return lowest
+}
+
+// HostPublicKeys returns all the public keys of hosts the file has ever been
+// uploaded to. That means some of those hosts might no longer be in use.
+func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	// Only return the keys, not the whole entry.
+	keys := make([]types.SiaPublicKey, 0, len(sf.pubKeyTable))
+	for _, key := range sf.pubKeyTable {
+		keys = append(keys, key.PublicKey)
+	}
+	return keys
 }
 
 // NumChunks returns the number of chunks the file consists of. This will
@@ -262,7 +315,9 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	if chunkIndex >= uint64(len(sf.staticChunks)) {
-		panic(fmt.Sprintf("index %v out of bounds (%v)", chunkIndex, len(sf.staticChunks)))
+		err := fmt.Errorf("index %v out of bounds (%v)", chunkIndex, len(sf.staticChunks))
+		build.Critical(err)
+		return nil, err
 	}
 	// Return a deep-copy to avoid race conditions.
 	pieces := make([][]Piece, len(sf.staticChunks[chunkIndex].Pieces))
@@ -359,7 +414,25 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 
 // UID returns a unique identifier for this file.
 func (sf *SiaFile) UID() string {
-	return sf.staticUID
+	return sf.staticUniqueID
+}
+
+// UploadedBytes indicates how many bytes of the file have been uploaded via
+// current file contracts. Note that this includes padding and redundancy, so
+// uploadedBytes can return a value much larger than the file's original filesize.
+func (sf *SiaFile) UploadedBytes() uint64 {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	var uploaded uint64
+	for _, chunk := range sf.staticChunks {
+		for _, pieceSet := range chunk.Pieces {
+			// Note: we need to multiply by SectorSize here instead of
+			// f.pieceSize because the actual bytes uploaded include overhead
+			// from TwoFish encryption
+			uploaded += uint64(len(pieceSet)) * modules.SectorSize
+		}
+	}
+	return uploaded
 }
 
 // UpdateUsedHosts updates the 'Used' flag for the entries in the pubKeyTable
@@ -386,4 +459,16 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 		return err
 	}
 	return sf.createAndApplyTransaction(update...)
+}
+
+// UploadProgress indicates what percentage of the file (plus redundancy) has
+// been uploaded. Note that a file may be Available long before UploadProgress
+// reaches 100%, and UploadProgress may report a value greater than 100%.
+func (sf *SiaFile) UploadProgress() float64 {
+	if sf.Size() == 0 {
+		return 100
+	}
+	uploaded := sf.UploadedBytes()
+	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
+	return math.Min(100*(float64(uploaded)/float64(desired)), 100)
 }
