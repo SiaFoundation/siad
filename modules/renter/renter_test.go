@@ -112,10 +112,8 @@ func (stubHostDB) Close() error                         { return nil }
 func (stubHostDB) ListedHosts() map[string]types.SiaPublicKey {
 	return make(map[string]types.SiaPublicKey)
 }
-func (stubHostDB) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
-	return nil
-}
-func (stubHostDB) IsOffline(modules.NetAddress) bool { return true }
+func (stubHostDB) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error { return nil }
+func (stubHostDB) IsOffline(modules.NetAddress) bool                            { return true }
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return []modules.HostDBEntry{}, nil
 }

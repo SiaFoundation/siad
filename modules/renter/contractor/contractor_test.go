@@ -32,15 +32,11 @@ func (newStub) AcceptTransactionSet([]types.Transaction) error      { return nil
 func (newStub) FeeEstimation() (a types.Currency, b types.Currency) { return }
 
 // hdb stubs
-func (newStub) AllHosts() []modules.HostDBEntry                                { return nil }
-func (newStub) ActiveHosts() []modules.HostDBEntry                             { return nil }
-func (newStub) CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey { return nil }
-func (newStub) ListedHosts() map[string]types.SiaPublicKey {
-	return make(map[string]types.SiaPublicKey)
-}
-func (newStub) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
-	return nil
-}
+func (newStub) AllHosts() []modules.HostDBEntry                                 { return nil }
+func (newStub) ActiveHosts() []modules.HostDBEntry                              { return nil }
+func (newStub) CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey  { return nil }
+func (newStub) ListedHosts() map[string]types.SiaPublicKey                      { return make(map[string]types.SiaPublicKey) }
+func (newStub) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error    { return nil }
 func (newStub) Host(types.SiaPublicKey) (settings modules.HostDBEntry, ok bool) { return }
 func (newStub) IncrementSuccessfulInteractions(key types.SiaPublicKey)          { return }
 func (newStub) IncrementFailedInteractions(key types.SiaPublicKey)              { return }
@@ -120,13 +116,11 @@ func (stubHostDB) CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKe
 func (stubHostDB) ListedHosts() map[string]types.SiaPublicKey {
 	return make(map[string]types.SiaPublicKey)
 }
-func (stubHostDB) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
-	return nil
-}
-func (stubHostDB) Host(types.SiaPublicKey) (h modules.HostDBEntry, ok bool) { return }
-func (stubHostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey)   { return }
-func (stubHostDB) IncrementFailedInteractions(key types.SiaPublicKey)       { return }
-func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                      { return }
+func (stubHostDB) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error { return nil }
+func (stubHostDB) Host(types.SiaPublicKey) (h modules.HostDBEntry, ok bool)     { return }
+func (stubHostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey)       { return }
+func (stubHostDB) IncrementFailedInteractions(key types.SiaPublicKey)           { return }
+func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                          { return }
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) (hs []modules.HostDBEntry, _ error) {
 	return
 }

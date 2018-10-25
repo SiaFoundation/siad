@@ -42,9 +42,9 @@ type (
 		InitialScanComplete bool `json:"initialscancomplete"`
 	}
 
-	// HostdbListmodePOST contains the information needed to set the the
+	// HostdbListModePOST contains the information needed to set the the
 	// listmode of the hostDB
-	HostdbListmodePOST struct {
+	HostdbListModePOST struct {
 		Mode  string               `json:"mode"`
 		Hosts []types.SiaPublicKey `json:"hosts"`
 	}
@@ -145,7 +145,7 @@ func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps 
 // of blacklist mode
 func (api *API) hostdbListModeHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
-	var params HostdbListmodePOST
+	var params HostdbListModePOST
 	err := json.NewDecoder(req.Body).Decode(&params)
 	if err != nil {
 		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)

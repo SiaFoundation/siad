@@ -543,9 +543,7 @@ func (r *Renter) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
 }
 
 // Host returns the host associated with the given public key
-func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
-	return r.hostDB.Host(spk)
-}
+func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) { return r.hostDB.Host(spk) }
 
 // InitialScanComplete returns a boolean indicating if the initial scan of the
 // hostdb is completed.

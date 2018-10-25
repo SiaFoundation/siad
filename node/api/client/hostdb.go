@@ -25,9 +25,9 @@ func (c *Client) HostDbAllGet() (hdag api.HostdbAllGET, err error) {
 	return
 }
 
-// HostDbListmodePost requests the /hostdb/listmode endpoint
-func (c *Client) HostDbListmodePost(hosts []types.SiaPublicKey, mode string) (err error) {
-	hdblp := api.HostdbListmodePOST{
+// HostDbListModePost requests the /hostdb/listmode endpoint
+func (c *Client) HostDbListModePost(hosts []types.SiaPublicKey, mode string) (err error) {
+	hdblp := api.HostdbListModePOST{
 		Mode:  mode,
 		Hosts: hosts,
 	}

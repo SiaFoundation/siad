@@ -65,7 +65,7 @@ func (hdb *HostDB) load() error {
 	hdb.listedHosts = data.ListedHosts
 	hdb.whiteList = data.WhiteList
 
-	// Load each of the hosts into the host tree.
+	// Load each of the hosts into the host trees.
 	for _, host := range data.AllHosts {
 		// COMPATv1.1.0
 		//
@@ -76,7 +76,7 @@ func (hdb *HostDB) load() error {
 			host.FirstSeen = hdb.blockHeight
 		}
 
-		err := hdb.hostTree.Insert(host)
+		err := hdb.insert(host)
 		if err != nil {
 			hdb.log.Debugln("ERROR: could not insert host into hosttree while loading:", host.NetAddress)
 		}
@@ -84,18 +84,6 @@ func (hdb *HostDB) load() error {
 		// Make sure that all hosts have gone through the initial scanning.
 		if len(host.ScanHistory) < 2 {
 			hdb.queueScan(host)
-		}
-
-		// Check whitelist mode and add appropriate hosts into filtered
-		// hosttree, if listmode is disabled the filtered tree should be the
-		// entire host tree
-		_, ok := data.ListedHosts[string(host.PublicKey.Key)]
-		if data.WhiteList != ok {
-			continue
-		}
-		err = hdb.filteredTree.Insert(host)
-		if err != nil {
-			hdb.log.Debugln("ERROR: could not insert host into filtered hosttree while loading:", host.NetAddress)
 		}
 	}
 	return nil

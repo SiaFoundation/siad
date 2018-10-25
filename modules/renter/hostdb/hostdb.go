@@ -308,9 +308,7 @@ func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 		return host, exists
 	}
 	_, ok := listedHosts[string(spk.Key)]
-	if whitelist != ok {
-		host.Blacklisted = true
-	}
+	host.Blacklisted = whitelist != ok
 	hdb.mu.RLock()
 	updateHostHistoricInteractions(&host, hdb.blockHeight)
 	hdb.mu.RUnlock()
@@ -338,7 +336,7 @@ func (hdb *HostDB) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
 		hostMap[string(h.Key)] = h
 	}
 	var allErrs error
-	allHosts := hdb.AllHosts()
+	allHosts := hdb.hostTree.All()
 	for _, host := range allHosts {
 		// If disabling, insert hosts back into filtered tree
 		if len(hosts) == 0 {
@@ -465,4 +463,34 @@ func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 	err1 := hdb.hostTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
 	err2 := hdb.filteredTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
 	return errors.Compose(err1, err2)
+}
+
+// insert inserts the HostDBEntry into both hosttrees
+func (hdb *HostDB) insert(host modules.HostDBEntry) error {
+	err := hdb.hostTree.Insert(host)
+	_, ok := hdb.listedHosts[string(host.PublicKey.Key)]
+	if hdb.whiteList == ok {
+		err = errors.Compose(err, hdb.filteredTree.Insert(host))
+	}
+	return err
+}
+
+// modify modifies the HostDBEntry in both hosttrees
+func (hdb *HostDB) modify(host modules.HostDBEntry) error {
+	err := hdb.hostTree.Modify(host)
+	_, ok := hdb.listedHosts[string(host.PublicKey.Key)]
+	if hdb.whiteList == ok {
+		err = errors.Compose(err, hdb.filteredTree.Modify(host))
+	}
+	return err
+}
+
+// remove removes the HostDBEntry from both hosttrees
+func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
+	err := hdb.hostTree.Remove(pk)
+	_, ok := hdb.listedHosts[string(pk.Key)]
+	if hdb.whiteList == ok {
+		err = errors.Compose(err, hdb.filteredTree.Remove(pk))
+	}
+	return err
 }
