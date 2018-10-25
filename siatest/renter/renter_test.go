@@ -116,7 +116,7 @@ func TestRenterTwo(t *testing.T) {
 		{"TestRemoteRepair", testRemoteRepair},
 		{"TestSingleFileGet", testSingleFileGet},
 		{"TestStreamingCache", testStreamingCache},
-		{"TestUploadDownload", testUploadDownload},
+		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
 
 	// Run tests
@@ -1871,6 +1871,254 @@ func TestRenterContracts(t *testing.T) {
 		return nil
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenterLosingHosts tests that hosts will be replaced if they go offline
+// and downloads will succeed with hosts going offline until the redundancy
+// drops below 1
+func TestRenterLosingHosts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup without a renter so renter can be added with custom
+	// allowance
+	groupParams := siatest.GroupParams{
+		Hosts:  4,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+
+	// Add renter to the group
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Hosts = 3
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal("Failed to add renter:", err)
+	}
+	r := nodes[0]
+
+	// Wait for contracts
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != int(renterParams.Allowance.Hosts) {
+			return fmt.Errorf("Expected %v contracts but got %v", renterParams.Allowance.Hosts, len(rc.ActiveContracts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Remember hosts with whom there are contracts
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contractHosts := make(map[string]struct{})
+	for _, c := range rc.ActiveContracts {
+		if _, ok := contractHosts[c.HostPublicKey.String()]; ok {
+			continue
+		}
+		contractHosts[c.HostPublicKey.String()] = struct{}{}
+	}
+
+	// Upload a file
+	_, rf, err := r.UploadNewFileBlocking(100, 2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be at redundancy of 1.5
+	files, err := r.RenterFilesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files.Files[0].Redundancy != 1.5 {
+		t.Fatal("Expected filed redundancy to be 1.5 but was", files.Files[0].Redundancy)
+	}
+
+	// Verify we can download the file
+	_, err = r.DownloadToDisk(rf, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop one of the hosts that the renter has a contract with
+	var pk types.SiaPublicKey
+	for _, h := range tg.Hosts() {
+		pk, err = h.HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := contractHosts[pk.String()]; !ok {
+			continue
+		}
+		if err = h.StopNode(); err == nil {
+			break
+		}
+	}
+
+	// Wait for contract to be replaced
+	loop := 0
+	m := tg.Miners()[0]
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if loop%10 == 0 {
+			if err := m.MineBlock(); err != nil {
+				return err
+			}
+		}
+		loop++
+		rc, err = r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != int(renterParams.Allowance.Hosts) {
+			return fmt.Errorf("Expected %v contracts but got %v", int(renterParams.Allowance.Hosts), len(rc.ActiveContracts))
+		}
+		for _, c := range rc.ActiveContracts {
+			if _, ok := contractHosts[c.HostPublicKey.String()]; !ok {
+				contractHosts[c.HostPublicKey.String()] = struct{}{}
+				return nil
+			}
+		}
+		return errors.New("Contract not formed with new host")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Remove stopped host for map
+	delete(contractHosts, pk.String())
+
+	// Since there is another host, another contract should for and the
+	// redundancy should stay at 1.5
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		files, err := r.RenterFilesGet()
+		if err != nil {
+			return err
+		}
+		if files.Files[0].Redundancy != 1.5 {
+			return fmt.Errorf("Expected redundancy to be 1.5 but was %v", files.Files[0].Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that renter can still download file
+	_, err = r.DownloadToDisk(rf, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop another one of the hosts that the renter has a contract with
+	for _, h := range tg.Hosts() {
+		pk, err = h.HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := contractHosts[pk.String()]; !ok {
+			continue
+		}
+		if err = h.StopNode(); err == nil {
+			break
+		}
+	}
+	// Remove stopped host for map
+	delete(contractHosts, pk.String())
+
+	// Now that the renter has fewer hosts online than needed the redundancy
+	// should drop to 1
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		files, err := r.RenterFilesGet()
+		if err != nil {
+			return err
+		}
+		if files.Files[0].Redundancy != 1 {
+			return fmt.Errorf("Expected redundancy to be 1 but was %v", files.Files[0].Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that renter can still download file
+	_, err = r.DownloadToDisk(rf, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop another one of the hosts that the renter has a contract with
+	for _, h := range tg.Hosts() {
+		pk, err = h.HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := contractHosts[pk.String()]; !ok {
+			continue
+		}
+		if err = h.StopNode(); err == nil {
+			break
+		}
+	}
+	// Remove stopped host for map
+	delete(contractHosts, pk.String())
+
+	// Now that the renter only has one host online the redundancy should be 0.5
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		files, err := r.RenterFilesGet()
+		if err != nil {
+			return err
+		}
+		if files.Files[0].Redundancy != 0.5 {
+			return fmt.Errorf("Expected redundancy to be 0.5 but was %v", files.Files[0].Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the download will now fail because the file is less than a
+	// redundancy of 1
+	_, err = r.DownloadToDisk(rf, false)
+	if err == nil {
+		t.Fatal("Expected download to fail")
+	}
+
+	// Close remaining host to close test group
+	for _, h := range tg.Hosts() {
+		pk, err = h.HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := contractHosts[pk.String()]; !ok {
+			continue
+		}
+		if err = h.StopNode(); err == nil {
+			break
+		}
+	}
+
+	// Close renter and miner to finish closing test group
+	if err = r.StopNode(); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.StopNode(); err != nil {
 		t.Fatal(err)
 	}
 }
