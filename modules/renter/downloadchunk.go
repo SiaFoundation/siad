@@ -260,8 +260,8 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 		// destination writer.
 		udc.download.endTime = time.Now()
 		err1 := udc.renterFile.UpdateAccessTime()
-		close(udc.download.completeChan)
 		err2 := udc.download.destination.Close()
+		close(udc.download.completeChan)
 		udc.download.destination = nil
 		return errors.Compose(err1, err2)
 	}
