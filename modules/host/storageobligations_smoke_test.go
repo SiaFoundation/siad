@@ -297,12 +297,17 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	ht.host.mu.Lock()
 	bh := ht.host.blockHeight
 	ht.host.mu.Unlock()
-	for i := bh; i <= so.expiration()+resubmissionTimeout; i++ {
+	for i := bh; i < so.expiration()+resubmissionTimeout; i++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
+
+	// Need Sleep for online CI, otherwise threadedHandleActionItem thread group
+	// is not added in time and Flush() does not block
+	time.Sleep(time.Second)
+
 	// Flush the host - flush will block until the host has submitted the
 	// storage proof to the transaction pool.
 	err = ht.host.tg.Flush()
@@ -317,32 +322,26 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	}
 
 	// Grab the storage proof and inspect the contents.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		ht.host.mu.Lock()
-		err = ht.host.db.View(func(tx *bolt.Tx) error {
-			so, err = getStorageObligation(tx, so.id())
-			if err != nil {
-				return err
-			}
-			return nil
-		})
-		ht.host.mu.Unlock()
+	ht.host.mu.Lock()
+	err = ht.host.db.View(func(tx *bolt.Tx) error {
+		so, err = getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
-		if !so.OriginConfirmed {
-			return errors.New("origin transaction for storage obligation was not confirmed after a block was mined")
-		}
-		if !so.RevisionConfirmed {
-			return errors.New("revision transaction for storage obligation was not confirmed after a block was mined")
-		}
-		if !so.ProofConfirmed {
-			return errors.New("storage obligation is not saying that the storage proof was confirmed on the blockchain")
-		}
 		return nil
 	})
+	ht.host.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !so.OriginConfirmed {
+		t.Fatal("origin transaction for storage obligation was not confirmed after a block was mined")
+	}
+	if !so.RevisionConfirmed {
+		t.Fatal("revision transaction for storage obligation was not confirmed after a block was mined")
+	}
+	if !so.ProofConfirmed {
+		t.Fatal("storage obligation is not saying that the storage proof was confirmed on the blockchain")
 	}
 
 	// Mine blocks until the storage proof has enough confirmations that the
@@ -568,51 +567,50 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	ht.host.mu.Lock()
 	bh := ht.host.blockHeight
 	ht.host.mu.Unlock()
-	for i := bh; i <= so.expiration()+resubmissionTimeout; i++ {
+	for i := bh; i < so.expiration()+resubmissionTimeout; i++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
+
+	// Need Sleep for online CI, otherwise threadedHandleActionItem thread group
+	// is not added in time and Flush() does not block
+	time.Sleep(time.Second)
+
 	// Flush the host - flush will block until the host has submitted the
 	// storage proof to the transaction pool.
 	err = ht.host.tg.Flush()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// Mine another block, to get the storage proof from the transaction pool
 	// into the blockchain.
 	_, err = ht.miner.AddBlock()
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		ht.host.mu.Lock()
-		err := ht.host.db.View(func(tx *bolt.Tx) error {
-			so, err = getStorageObligation(tx, so.id())
-			if err != nil {
-				return err
-			}
-			return nil
-		})
-		ht.host.mu.Unlock()
+	ht.host.mu.Lock()
+	err = ht.host.db.View(func(tx *bolt.Tx) error {
+		so, err = getStorageObligation(tx, so.id())
 		if err != nil {
-			return (err)
-		}
-		if !so.OriginConfirmed {
-			return errors.New("origin transaction for storage obligation was not confirmed after a block was mined")
-		}
-		if !so.RevisionConfirmed {
-			return errors.New("revision transaction for storage obligation was not confirmed after a block was mined")
-		}
-		if !so.ProofConfirmed {
-			return errors.New("storage obligation is not saying that the storage proof was confirmed on the blockchain")
+			return err
 		}
 		return nil
 	})
+	ht.host.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !so.OriginConfirmed {
+		t.Fatal("origin transaction for storage obligation was not confirmed after a block was mined")
+	}
+	if !so.RevisionConfirmed {
+		t.Fatal("revision transaction for storage obligation was not confirmed after a block was mined")
+	}
+	if !so.ProofConfirmed {
+		t.Fatal("storage obligation is not saying that the storage proof was confirmed on the blockchain")
 	}
 
 	// Mine blocks until the storage proof has enough confirmations that the

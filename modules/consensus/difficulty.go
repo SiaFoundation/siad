@@ -131,10 +131,10 @@ func (cs *ConsensusSet) childTargetOak(parentTotalTime int64, parentTotalTarget,
 	maxNewTarget := currentTarget.MulDifficulty(types.OakMaxRise) // Max = difficulty increase (target decrease)
 	minNewTarget := currentTarget.MulDifficulty(types.OakMaxDrop) // Min = difficulty decrease (target increase)
 	newTarget := types.RatToTarget(new(big.Rat).SetFrac(types.RootDepth.Int(), visibleHashrate.Mul64(uint64(targetBlockTime)).Big()))
-	if newTarget.Cmp(maxNewTarget) < 0 {
+	if newTarget.Cmp(maxNewTarget) < 0 && parentHeight+1 != types.ASICHardforkHeight {
 		newTarget = maxNewTarget
 	}
-	if newTarget.Cmp(minNewTarget) > 0 {
+	if newTarget.Cmp(minNewTarget) > 0 && parentHeight+1 != types.ASICHardforkHeight {
 		// This can only possibly trigger if the BlockFrequency is less than 3
 		// seconds, but during testing it is 1 second.
 		newTarget = minNewTarget
@@ -179,6 +179,13 @@ func (cs *ConsensusSet) storeBlockTotals(tx *bolt.Tx, currentHeight types.BlockH
 	// delta.
 	newTotalTime = (prevTotalTime * types.OakDecayNum / types.OakDecayDenom) + (int64(currentTimestamp) - int64(parentTimestamp))
 	newTotalTarget = prevTotalTarget.MulDifficulty(big.NewRat(types.OakDecayNum, types.OakDecayDenom)).AddDifficulties(targetOfCurrentBlock)
+
+	// At the hardfork height to adjust the acceptable nonce conditions, reset
+	// the total time and total target.
+	if currentHeight+1 == types.ASICHardforkHeight {
+		newTotalTime = types.ASICHardforkTotalTime
+		newTotalTarget = types.ASICHardforkTotalTarget
+	}
 
 	// Store the new total time and total target in the database at the
 	// appropriate id.
