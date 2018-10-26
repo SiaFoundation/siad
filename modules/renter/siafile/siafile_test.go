@@ -130,18 +130,15 @@ func TestDefragChunk(t *testing.T) {
 
 	// Save the above changes to disk to avoid failing sanity checks when
 	// calling AddPiece.
-	updates, err := sf.saveHeader()
+	err := sf.saveFile()
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sf.createAndApplyTransaction(updates...); err != nil {
 		t.Fatal(err)
 	}
 
 	// Add 500 pieces to the first chunk of the file, randomly belonging to
 	// any of the 3 hosts. This should never produce an error.
 	var duration time.Duration
-	for i := 0; i < 500; i++ {
+	for i := 0; i < 50; i++ {
 		pk := sf.pubKeyTable[fastrand.Intn(len(sf.pubKeyTable))].PublicKey
 		pieceIndex := fastrand.Intn(len(sf.staticChunks[0].Pieces))
 		before := time.Now()
@@ -149,5 +146,15 @@ func TestDefragChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 		duration += time.Since(before)
+	}
+
+	// Finally load the file from disk again and compare it to the original.
+	sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compare the files.
+	if err := equalFiles(sf, sf2); err != nil {
+		t.Fatal(err)
 	}
 }

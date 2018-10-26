@@ -14,9 +14,65 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
+
+// equalFiles is a helper that compares two SiaFiles for equality.
+func equalFiles(sf, sf2 *SiaFile) error {
+	// Backup the metadata structs for both files.
+	md := sf.staticMetadata
+	md2 := sf2.staticMetadata
+	// Compare the timestamps first since they can't be compared with
+	// DeepEqual.
+	if sf.staticMetadata.AccessTime.Unix() != sf2.staticMetadata.AccessTime.Unix() {
+		return errors.New("AccessTime's don't match")
+	}
+	if sf.staticMetadata.ChangeTime.Unix() != sf2.staticMetadata.ChangeTime.Unix() {
+		return errors.New("ChangeTime's don't match")
+	}
+	if sf.staticMetadata.CreateTime.Unix() != sf2.staticMetadata.CreateTime.Unix() {
+		return errors.New("CreateTime's don't match")
+	}
+	if sf.staticMetadata.ModTime.Unix() != sf2.staticMetadata.ModTime.Unix() {
+		return errors.New("ModTime's don't match")
+	}
+	// Set the timestamps to zero for DeepEqual.
+	sf.staticMetadata.AccessTime = time.Time{}
+	sf.staticMetadata.ChangeTime = time.Time{}
+	sf.staticMetadata.CreateTime = time.Time{}
+	sf.staticMetadata.ModTime = time.Time{}
+	sf2.staticMetadata.AccessTime = time.Time{}
+	sf2.staticMetadata.ChangeTime = time.Time{}
+	sf2.staticMetadata.CreateTime = time.Time{}
+	sf2.staticMetadata.ModTime = time.Time{}
+	// Compare the rest of sf and sf2.
+	if !reflect.DeepEqual(sf.staticMetadata, sf2.staticMetadata) {
+		fmt.Println(sf.staticMetadata)
+		fmt.Println(sf2.staticMetadata)
+		return errors.New("sf metadata doesn't equal sf2 metadata")
+	}
+	if !reflect.DeepEqual(sf.pubKeyTable, sf2.pubKeyTable) {
+		fmt.Println(sf.pubKeyTable)
+		fmt.Println(sf2.pubKeyTable)
+		return errors.New("sf pubKeyTable doesn't equal sf2 pubKeyTable")
+	}
+	if !reflect.DeepEqual(sf.staticChunks, sf2.staticChunks) {
+		fmt.Println(len(sf.staticChunks), len(sf2.staticChunks))
+		fmt.Println("sf1", sf.staticChunks)
+		fmt.Println("sf2", sf2.staticChunks)
+		return errors.New("sf chunks don't equal sf2 chunks")
+	}
+	if sf.siaFilePath != sf2.siaFilePath {
+		return fmt.Errorf("sf2 filepath was %v but should be %v",
+			sf2.siaFilePath, sf.siaFilePath)
+	}
+	// Restore the original metadata.
+	sf.staticMetadata = md
+	sf2.staticMetadata = md2
+	return nil
+}
 
 // addRandomHostKeys adds n random host keys to the SiaFile's pubKeyTable. It
 // doesn't write them to disk.
@@ -193,46 +249,9 @@ func TestNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed to load SiaFile from disk", err)
 	}
-	// Compare the timestamps first since they can't be compared with
-	// DeepEqual.
-	if sf.staticMetadata.AccessTime.Unix() != sf2.staticMetadata.AccessTime.Unix() {
-		t.Fatal("AccessTime's don't match")
-	}
-	if sf.staticMetadata.ChangeTime.Unix() != sf2.staticMetadata.ChangeTime.Unix() {
-		t.Fatal("ChangeTime's don't match")
-	}
-	if sf.staticMetadata.CreateTime.Unix() != sf2.staticMetadata.CreateTime.Unix() {
-		t.Fatal("CreateTime's don't match")
-	}
-	if sf.staticMetadata.ModTime.Unix() != sf2.staticMetadata.ModTime.Unix() {
-		t.Fatal("ModTime's don't match")
-	}
-	// Set the timestamps to zero for DeepEqual.
-	sf.staticMetadata.AccessTime = time.Time{}
-	sf.staticMetadata.ChangeTime = time.Time{}
-	sf.staticMetadata.CreateTime = time.Time{}
-	sf.staticMetadata.ModTime = time.Time{}
-	sf2.staticMetadata.AccessTime = time.Time{}
-	sf2.staticMetadata.ChangeTime = time.Time{}
-	sf2.staticMetadata.CreateTime = time.Time{}
-	sf2.staticMetadata.ModTime = time.Time{}
-	// Compare the rest of sf and sf2.
-	if !reflect.DeepEqual(sf.staticMetadata, sf2.staticMetadata) {
-		fmt.Println(sf.staticMetadata)
-		fmt.Println(sf2.staticMetadata)
-		t.Error("sf metadata doesn't equal sf2 metadata")
-	}
-	if !reflect.DeepEqual(sf.pubKeyTable, sf2.pubKeyTable) {
-		t.Log(sf.pubKeyTable)
-		t.Log(sf2.pubKeyTable)
-		t.Error("sf pubKeyTable doesn't equal sf2 pubKeyTable")
-	}
-	if !reflect.DeepEqual(sf.staticChunks, sf2.staticChunks) {
-		t.Error("sf chunks don't equal sf2 chunks")
-	}
-	if sf.siaFilePath != sf2.siaFilePath {
-		t.Errorf("sf2 filepath was %v but should be %v",
-			sf2.siaFilePath, sf.siaFilePath)
+	// Compare the files.
+	if err := equalFiles(sf, sf2); err != nil {
+		t.Fatal(err)
 	}
 }
 
