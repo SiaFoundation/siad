@@ -195,6 +195,20 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	sf.staticMetadata.ChangeTime = sf.staticMetadata.AccessTime
 	sf.staticMetadata.ModTime = sf.staticMetadata.AccessTime
 
+	// Defrag the chunk if necessary.
+	chunk := &sf.staticChunks[chunkIndex]
+	chunkSize := marshaledChunkSize(chunk.numPieces())
+	maxChunkSize := int64(sf.staticMetadata.StaticPagesPerChunk) * pageSize
+	if chunkSize > maxChunkSize {
+		sf.defragChunk(chunk)
+	}
+
+	// If the chunk is still too large after the defrag, we abort.
+	chunkSize = marshaledChunkSize(chunk.numPieces())
+	if chunkSize > maxChunkSize {
+		return fmt.Errorf("chunk doesn't fit into allocated space %v > %v", chunkSize, maxChunkSize)
+	}
+
 	// Update the file atomically.
 	var updates []writeaheadlog.Update
 	var err error
@@ -481,4 +495,35 @@ func (sf *SiaFile) UploadProgress() float64 {
 	uploaded := sf.UploadedBytes()
 	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
 	return math.Min(100*(float64(uploaded)/float64(desired)), 100)
+}
+
+// defragChunk removes pieces which belong to bad hosts and if that wasn't
+// enough to reduce the chunkSize below the maximum size, it will remove
+// redundant pieces.
+func (sf *SiaFile) defragChunk(chunk *chunk) {
+	// Calculate how many pieces every pieceSet can contain.
+	maxChunkSize := int64(sf.staticMetadata.StaticPagesPerChunk) * pageSize
+	maxPieces := (maxChunkSize - marshaledChunkOverhead) / marshaledPieceSize
+	maxPiecesPerSet := maxPieces / int64(len(chunk.Pieces))
+
+	// Truncate pieces to maxPiecesPerSet.
+	truncate := func(p []piece) []piece {
+		if int64(len(p)) <= maxPiecesPerSet {
+			return p
+		}
+		return p[:maxPiecesPerSet]
+	}
+
+	// Filter out pieces with unused hosts since we don't have contracts with
+	// those anymore.
+	for i, pieceSet := range chunk.Pieces {
+		var newPieceSet []piece
+		for _, piece := range pieceSet {
+			if sf.pubKeyTable[piece.HostTableOffset].Used {
+				newPieceSet = append(newPieceSet, piece)
+			}
+		}
+		// Truncate the pieces to maxPiecesPerSet pieces.
+		chunk.Pieces[i] = truncate(newPieceSet)
+	}
 }
