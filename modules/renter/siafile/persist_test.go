@@ -40,8 +40,9 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 	}
 }
 
-// newTestFile is a helper method to create a SiaFile for testing.
-func newTestFile() *SiaFile {
+// newBlankTestFile is a helper method to create a SiaFile for testing without
+// any hosts or uploaded pieces.
+func newBlankTestFile() *SiaFile {
 	// Create arguments for new file.
 	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
 	pieceSize := modules.SectorSize - sk.Type().Overhead()
@@ -70,9 +71,16 @@ func newTestFile() *SiaFile {
 	if len(sf.staticChunks) != numChunks {
 		panic("newTestFile didn't create the expected number of chunks")
 	}
+	return sf
+}
+
+// newTestFile creates a SiaFile for testing where each chunk has a random
+// number of pieces.
+func newTestFile() *SiaFile {
+	sf := newBlankTestFile()
 	// Add pieces to each chunk.
 	for chunkIndex := range sf.staticChunks {
-		for pieceIndex := 0; pieceIndex < rc.NumPieces(); pieceIndex++ {
+		for pieceIndex := 0; pieceIndex < sf.ErasureCode().NumPieces(); pieceIndex++ {
 			numPieces := fastrand.Intn(3) // up to 2 hosts for each piece
 			for i := 0; i < numPieces; i++ {
 				pk := types.SiaPublicKey{Key: fastrand.Bytes(crypto.EntropySize)}
@@ -369,7 +377,7 @@ func TestSaveSmallHeader(t *testing.T) {
 	}
 	t.Parallel()
 
-	sf := newTestFile()
+	sf := newBlankTestFile()
 
 	// Add some host keys.
 	sf.addRandomHostKeys(10)
@@ -426,9 +434,10 @@ func TestSaveLargeHeader(t *testing.T) {
 	}
 	t.Parallel()
 
-	sf := newTestFile()
+	sf := newBlankTestFile()
 
-	// Add some host keys.
+	// Add some host keys. This should force the SiaFile to allocate a new page
+	// for the pubKeyTable.
 	sf.addRandomHostKeys(100)
 
 	// Open the file.
@@ -456,7 +465,7 @@ func TestSaveLargeHeader(t *testing.T) {
 
 	// Make sure the chunkOffset was updated correctly.
 	if sf.staticMetadata.ChunkOffset != 2*pageSize {
-		t.Fatal("ChunkOffset wasn't updated correctly")
+		t.Fatal("ChunkOffset wasn't updated correctly", sf.staticMetadata.ChunkOffset, 2*pageSize)
 	}
 
 	// Make sure that the checksum was moved correctly.
