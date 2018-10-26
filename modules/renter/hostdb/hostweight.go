@@ -213,7 +213,7 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	txnFees := types.SiacoinPrecision
 	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, allowance.Funds.Div64(allowance.Hosts), txnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, ug.ExpectedStorage)
 	if err != nil {
-		hdb.log.Debugf("Host %v, ContractPrice %v, TxnFees %v, Funds %v\n",
+		hdb.log.Debugf("Host %v, ContractPrice %v, TxnFees %v, Funds %v",
 			entry.PublicKey.String(), entry.ContractPrice.HumanString(), txnFees.HumanString(), allowance.Funds.HumanString())
 		hdb.log.Debugln(err)
 		return 0
