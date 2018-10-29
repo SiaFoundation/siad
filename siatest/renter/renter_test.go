@@ -1895,6 +1895,7 @@ func TestRenterLosingHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
+	defer tg.Close()
 
 	// Add renter to the group
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
@@ -1905,21 +1906,6 @@ func TestRenterLosingHosts(t *testing.T) {
 		t.Fatal("Failed to add renter:", err)
 	}
 	r := nodes[0]
-
-	// Wait for contracts
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		rc, err := r.RenterContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rc.ActiveContracts) != int(renterParams.Allowance.Hosts) {
-			return fmt.Errorf("Expected %v contracts but got %v", renterParams.Allowance.Hosts, len(rc.ActiveContracts))
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Remember hosts with whom there are contracts
 	rc, err := r.RenterContractsGet()
@@ -1965,9 +1951,10 @@ func TestRenterLosingHosts(t *testing.T) {
 		if _, ok := contractHosts[pk.String()]; !ok {
 			continue
 		}
-		if err = h.StopNode(); err == nil {
-			break
+		if err = tg.StopNode(h); err != nil {
+			t.Fatal(err)
 		}
+		break
 	}
 
 	// Wait for contract to be replaced
@@ -2033,9 +2020,10 @@ func TestRenterLosingHosts(t *testing.T) {
 		if _, ok := contractHosts[pk.String()]; !ok {
 			continue
 		}
-		if err = h.StopNode(); err == nil {
-			break
+		if err = tg.StopNode(h); err != nil {
+			t.Fatal(err)
 		}
+		break
 	}
 	// Remove stopped host for map
 	delete(contractHosts, pk.String())
@@ -2074,9 +2062,10 @@ func TestRenterLosingHosts(t *testing.T) {
 		if _, ok := contractHosts[pk.String()]; !ok {
 			continue
 		}
-		if err = h.StopNode(); err == nil {
-			break
+		if err = tg.StopNode(h); err != nil {
+			t.Fatal(err)
 		}
+		break
 	}
 	// Remove stopped host for map
 	delete(contractHosts, pk.String())
@@ -2101,28 +2090,6 @@ func TestRenterLosingHosts(t *testing.T) {
 	_, err = r.DownloadToDisk(rf, false)
 	if err == nil {
 		t.Fatal("Expected download to fail")
-	}
-
-	// Close remaining host to close test group
-	for _, h := range tg.Hosts() {
-		pk, err = h.HostPublicKey()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := contractHosts[pk.String()]; !ok {
-			continue
-		}
-		if err = h.StopNode(); err == nil {
-			break
-		}
-	}
-
-	// Close renter and miner to finish closing test group
-	if err = r.StopNode(); err != nil {
-		t.Fatal(err)
-	}
-	if err = m.StopNode(); err != nil {
-		t.Fatal(err)
 	}
 }
 
