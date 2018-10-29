@@ -174,8 +174,7 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces()
 	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
 	pieceData, workerHasPiece := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)]
-	pieceTaken := udc.pieceUsage[pieceData.index]
-	if chunkComplete || chunkFailed || w.ownedOnDownloadCooldown() || !workerHasPiece || pieceTaken {
+	if chunkComplete || chunkFailed || w.ownedOnDownloadCooldown() || !workerHasPiece {
 		udc.mu.Unlock()
 		udc.managedRemoveWorker()
 		return nil
@@ -221,9 +220,10 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	// number of overdrive workers (typically zero). For our purposes, completed
 	// pieces count as active workers, though the workers have actually
 	// finished.
+	pieceTaken := udc.pieceUsage[pieceData.index]
 	piecesInProgress := udc.piecesRegistered + udc.piecesCompleted
 	desiredPiecesInProgress := udc.erasureCode.MinPieces() + udc.staticOverdrive
-	workersDesired := piecesInProgress < desiredPiecesInProgress
+	workersDesired := piecesInProgress < desiredPiecesInProgress && !pieceTaken
 
 	if workersDesired && meetsExtraCriteria {
 		// Worker can be useful. Register the worker and return the chunk for

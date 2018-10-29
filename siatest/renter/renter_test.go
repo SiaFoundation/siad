@@ -2045,11 +2045,8 @@ func TestRenterLosingHosts(t *testing.T) {
 	}
 
 	// Verify that renter can still download file
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		_, err = r.DownloadToDisk(rf, false)
-		return err
-	})
-	if err != nil {
+	if _, err = r.DownloadToDisk(rf, false); err != nil {
+		r.PrintDebugInfo(t, true, false, true)
 		t.Fatal(err)
 	}
 
