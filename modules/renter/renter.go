@@ -61,11 +61,11 @@ type hostDB interface {
 	// Close closes the hostdb.
 	Close() error
 
-	// ListedHosts returns the hostdb's listedHosts
-	ListedHosts() map[string]types.SiaPublicKey
+	// Filter returns the hostdb's filterMode and filteredHosts
+	Filter() (modules.FilterMode, map[string]types.SiaPublicKey)
 
-	// SetListMode sets the renter's hostdb to be in whiteList or blacklist mode
-	SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
+	// SetFilterMode sets the renter's hostdb filter mode
+	SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error
 
 	// Host returns the HostDBEntry for a given host.
 	Host(pk types.SiaPublicKey) (modules.HostDBEntry, bool)
@@ -526,16 +526,16 @@ func (r *Renter) ActiveHosts() []modules.HostDBEntry { return r.hostDB.ActiveHos
 // AllHosts returns an array of all hosts
 func (r *Renter) AllHosts() []modules.HostDBEntry { return r.hostDB.AllHosts() }
 
-// SetListMode sets the renter's hostdb to be in whiteList or blacklist mode
-func (r *Renter) SetListMode(whitelist bool, hosts []types.SiaPublicKey) error {
+// SetFilterMode sets the renter's hostdb filter mode
+func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error {
 	// Check to see how many hosts are needed for the allowance
 	minHosts := r.Settings().Allowance.Hosts
-	if len(hosts) < int(minHosts) && whitelist {
+	if len(hosts) < int(minHosts) && lm == modules.HostDBActiveWhitelist {
 		r.log.Printf("WARN: There are fewer whitelisted hosts than the allowance requires.  Have %v whitelisted hosts, need %v to support allowance\n", len(hosts), minHosts)
 	}
 
-	// Set list mode for the hostdb
-	if err := r.hostDB.SetListMode(whitelist, hosts); err != nil {
+	// Set list mode filter for the hostdb
+	if err := r.hostDB.SetFilterMode(lm, hosts); err != nil {
 		return err
 	}
 

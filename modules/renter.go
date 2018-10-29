@@ -2,6 +2,7 @@ package modules
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"time"
 
@@ -44,6 +45,52 @@ var (
 		ExpectedRedundancy:        3.0,
 	}
 )
+
+// FilterMode is the helper type for the enum constants for the HostDB filter
+// mode
+type FilterMode int
+
+// HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and
+// HostDBActiveWhitelist are the constants used to enable and disable the filter
+// mode of the renter's hostdb
+const (
+	HostDBFilterError FilterMode = iota
+	HostDBDisableFilter
+	HostDBActivateBlacklist
+	HostDBActiveWhitelist
+)
+
+// String returns the string value for the FilterMode
+func (fm FilterMode) String() string {
+	switch fm {
+	case HostDBFilterError:
+		return "error"
+	case HostDBDisableFilter:
+		return "disable"
+	case HostDBActivateBlacklist:
+		return "blacklist"
+	case HostDBActiveWhitelist:
+		return "whitelist"
+	default:
+		return ""
+	}
+}
+
+// FromString assigned the FilterMode from the provide string
+func (fm *FilterMode) FromString(s string) error {
+	switch s {
+	case "disable":
+		*fm = HostDBDisableFilter
+	case "blacklist":
+		*fm = HostDBActivateBlacklist
+	case "whitelist":
+		*fm = HostDBActiveWhitelist
+	default:
+		*fm = HostDBFilterError
+		return fmt.Errorf("Could not assigned FilterMode from string %v", s)
+	}
+	return nil
+}
 
 // UsageGuidelines is a temporary helper struct.
 // TODO: These values should be rolled into the allowance, instead of being a
@@ -446,8 +493,8 @@ type Renter interface {
 	// FileList returns information on all of the files stored by the renter.
 	FileList() []FileInfo
 
-	// SetListMode sets the renter's hostdb to be in whiteList or blacklist mode
-	SetListMode(whitelist bool, hosts []types.SiaPublicKey) error
+	// SetFilterMode sets the renter's hostdb filter mode
+	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error
 
 	// Host provides the DB entry and score breakdown for the requested host.
 	Host(pk types.SiaPublicKey) (HostDBEntry, bool)

@@ -3,6 +3,7 @@ package client
 import (
 	"encoding/json"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -25,18 +26,19 @@ func (c *Client) HostDbAllGet() (hdag api.HostdbAllGET, err error) {
 	return
 }
 
-// HostDbListModePost requests the /hostdb/listmode endpoint
-func (c *Client) HostDbListModePost(hosts []types.SiaPublicKey, mode string) (err error) {
-	hdblp := api.HostdbListModePOST{
-		Mode:  mode,
-		Hosts: hosts,
+// HostDbFilterModePost requests the /hostdb/filtermode endpoint
+func (c *Client) HostDbFilterModePost(fm modules.FilterMode, hosts []types.SiaPublicKey) (err error) {
+	filterMode := fm.String()
+	hdblp := api.HostdbFilterModePOST{
+		FilterMode: filterMode,
+		Hosts:      hosts,
 	}
 
 	data, err := json.Marshal(hdblp)
 	if err != nil {
 		return err
 	}
-	err = c.post("/hostdb/listmode", string(data), nil)
+	err = c.post("/hostdb/FilterMode", string(data), nil)
 	return
 }
 

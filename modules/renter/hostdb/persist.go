@@ -29,8 +29,8 @@ type hdbPersist struct {
 	BlockHeight              types.BlockHeight
 	DisableIPViolationsCheck bool
 	LastChange               modules.ConsensusChangeID
-	ListedHosts              map[string]types.SiaPublicKey
-	WhiteList                bool
+	FilteredHosts            map[string]types.SiaPublicKey
+	FilterMode               modules.FilterMode
 }
 
 // persistData returns the data in the hostdb that will be saved to disk.
@@ -39,8 +39,8 @@ func (hdb *HostDB) persistData() (data hdbPersist) {
 	data.BlockHeight = hdb.blockHeight
 	data.DisableIPViolationsCheck = hdb.disableIPViolationCheck
 	data.LastChange = hdb.lastChange
-	data.ListedHosts = hdb.listedHosts
-	data.WhiteList = hdb.whiteList
+	data.FilteredHosts = hdb.filteredHosts
+	data.FilterMode = hdb.filterMode
 	return data
 }
 
@@ -53,7 +53,7 @@ func (hdb *HostDB) saveSync() error {
 func (hdb *HostDB) load() error {
 	// Fetch the data from the file.
 	var data hdbPersist
-	data.ListedHosts = make(map[string]types.SiaPublicKey)
+	data.FilteredHosts = make(map[string]types.SiaPublicKey)
 	err := hdb.deps.LoadFile(persistMetadata, &data, filepath.Join(hdb.persistDir, persistFilename))
 	if err != nil {
 		return err
@@ -63,10 +63,10 @@ func (hdb *HostDB) load() error {
 	hdb.blockHeight = data.BlockHeight
 	hdb.disableIPViolationCheck = data.DisableIPViolationsCheck
 	hdb.lastChange = data.LastChange
-	hdb.listedHosts = data.ListedHosts
-	hdb.whiteList = data.WhiteList
+	hdb.filteredHosts = data.FilteredHosts
+	hdb.filterMode = data.FilterMode
 
-	if len(hdb.listedHosts) > 0 {
+	if len(hdb.filteredHosts) > 0 {
 		hdb.filteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
 	}
 

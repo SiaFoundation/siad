@@ -42,11 +42,11 @@ type (
 		InitialScanComplete bool `json:"initialscancomplete"`
 	}
 
-	// HostdbListModePOST contains the information needed to set the the
-	// listmode of the hostDB
-	HostdbListModePOST struct {
-		Mode  string               `json:"mode"`
-		Hosts []types.SiaPublicKey `json:"hosts"`
+	// HostdbFilterModePOST contains the information needed to set the the
+	// FilterMode of the hostDB
+	HostdbFilterModePOST struct {
+		FilterMode string               `json:"filtermode"`
+		Hosts      []types.SiaPublicKey `json:"hosts"`
 	}
 )
 
@@ -141,28 +141,25 @@ func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps 
 	})
 }
 
-// hostdbListModeHandlerPOST handles the API call to set the hostdb to whitelist
-// of blacklist mode
-func (api *API) hostdbListModeHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// hostdbFilterModeHandlerPOST handles the API call to set the hostdb's filter
+// mode
+func (api *API) hostdbFilterModeHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
-	var params HostdbListModePOST
+	var params HostdbFilterModePOST
 	err := json.NewDecoder(req.Body).Decode(&params)
 	if err != nil {
 		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
-	// Determine mode
-	var whitelist bool
-	if params.Mode == "whitelist" {
-		whitelist = true
-	}
-	if !whitelist && params.Mode != "blacklist" && params.Mode != "disable" {
-		WriteError(w, Error{"mode unrecognized, must be either whitelist, blacklist, or disable"}, http.StatusBadRequest)
+	var fm modules.FilterMode
+	if err = fm.FromString(params.FilterMode); err != nil {
+		WriteError(w, Error{"unable to load filter mode from string: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
-	if err := api.renter.SetListMode(whitelist, params.Hosts); err != nil {
+	// Set list mode
+	if err := api.renter.SetFilterMode(fm, params.Hosts); err != nil {
 		WriteError(w, Error{"failed to set the list mode: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
