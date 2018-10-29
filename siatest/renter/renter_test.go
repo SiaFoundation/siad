@@ -2002,7 +2002,7 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Remove stopped host for map
 	delete(contractHosts, pk.String())
 
-	// Since there is another host, another contract should for and the
+	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		files, err := r.RenterFilesGet()
@@ -2057,7 +2057,10 @@ func TestRenterLosingHosts(t *testing.T) {
 	}
 
 	// Verify that renter can still download file
-	_, err = r.DownloadToDisk(rf, false)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		_, err = r.DownloadToDisk(rf, false)
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
