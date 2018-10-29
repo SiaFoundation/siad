@@ -281,7 +281,7 @@ func TestHostTreeModify(t *testing.T) {
 
 	// should fail with a nonexistent key
 	err := tree.Modify(modules.HostDBEntry{})
-	if err != errNoSuchHost {
+	if err != ErrNoSuchHost {
 		t.Fatalf("modify should fail with ErrNoSuchHost when provided a nonexistent public key. Got error: %v\n", err)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -64,6 +65,10 @@ func (hdb *HostDB) load() error {
 	hdb.lastChange = data.LastChange
 	hdb.listedHosts = data.ListedHosts
 	hdb.whiteList = data.WhiteList
+
+	if len(hdb.listedHosts) > 0 {
+		hdb.filteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
+	}
 
 	// Load each of the hosts into the host trees.
 	for _, host := range data.AllHosts {

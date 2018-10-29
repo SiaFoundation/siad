@@ -26,9 +26,9 @@ var (
 	// should always have a non-nil entry, unless they have been Delete()ed.
 	errNilEntry = errors.New("node has a nil entry")
 
-	// errNoSuchHost is returned if Remove is called with a public key that does
+	// ErrNoSuchHost is returned if Remove is called with a public key that does
 	// not exist in the tree.
-	errNoSuchHost = errors.New("no host with specified public key")
+	ErrNoSuchHost = errors.New("no host with specified public key")
 
 	// errWeightTooHeavy is returned from a SelectRandom() call if a weight that exceeds
 	// the total weight of the tree is requested.
@@ -218,7 +218,7 @@ func (ht *HostTree) Remove(pk types.SiaPublicKey) error {
 
 	node, exists := ht.hosts[string(pk.Key)]
 	if !exists {
-		return errNoSuchHost
+		return ErrNoSuchHost
 	}
 	node.remove()
 	delete(ht.hosts, string(pk.Key))
@@ -234,7 +234,7 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 
 	node, exists := ht.hosts[string(hdbe.PublicKey.Key)]
 	if !exists {
-		return errNoSuchHost
+		return ErrNoSuchHost
 	}
 
 	node.remove()
