@@ -2098,7 +2098,7 @@ func TestRenterLosingHosts(t *testing.T) {
 // can succeed, Sia should wake up one worker after another until it finally
 // realizes that it doesn't have enough workers and the download fails.
 func TestRenterFailingStandbyDownload(t *testing.T) {
-	if testing.Short() {
+	if !build.VLONG {
 		t.SkipNow()
 	}
 	t.Parallel()
