@@ -217,6 +217,11 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
+	if req.MerkleProof {
+		err := errors.New("Merkle proofs are not implemented")
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
 	fcid := req.ContractID
 
 	// Lock the storage obligation.
@@ -319,6 +324,131 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 	resp := modules.LoopDownloadResponse{
 		Signature:   txn.TransactionSignatures[1].Signature,
 		Data:        data,
+		MerkleProof: nil,
+	}
+	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+// managedRPCLoopSectorRoots writes an RPC response containing the requested
+// contract roots (along with signatures and an optional Merkle proof).
+func (h *Host) managedRPCLoopSectorRoots(conn net.Conn) error {
+	conn.SetDeadline(time.Now().Add(modules.NegotiateDownloadTime))
+
+	// Read the request.
+	var req modules.LoopSectorRootsRequest
+	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
+		// Reading may have failed due to a closed connection; regardless, it
+		// doesn't hurt to try and tell the renter about it.
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+	if req.MerkleProof {
+		err := errors.New("Merkle proofs are not implemented")
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+	fcid := req.ContractID
+
+	// Lock the storage obligation.
+	err := h.managedTryLockStorageObligation(fcid)
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("could not lock contract "+fcid.String()+": ", err)
+	}
+	defer h.managedUnlockStorageObligation(fcid)
+	var so storageObligation
+	h.mu.RLock()
+	// Read some internal fields for later.
+	blockHeight := h.blockHeight
+	secretKey := h.secretKey
+	settings := h.externalSettings()
+	// Fetch the storage obligation from the db.
+	err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = getStorageObligation(tx, fcid)
+		return err
+	})
+	h.mu.RUnlock()
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("could not lock contract "+fcid.String()+": ", err)
+	}
+	currentRevision := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
+
+	// Validate the request.
+	if req.NumRoots > settings.MaxDownloadBatchSize/crypto.HashSize {
+		err = errLargeDownloadBatch
+	}
+	if req.RootOffset > uint64(len(so.SectorRoots)) || req.RootOffset+req.NumRoots > uint64(len(so.SectorRoots)) {
+		err = errRequestOutOfBounds
+	} else if len(req.NewValidProofValues) != len(currentRevision.NewValidProofOutputs) {
+		err = errors.New("wrong number of valid proof values")
+	} else if len(req.NewMissedProofValues) != len(currentRevision.NewMissedProofOutputs) {
+		err = errors.New("wrong number of missed proof values")
+	}
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("download iteration request failed: ", err)
+	}
+
+	// construct the new revision
+	newRevision := currentRevision
+	newRevision.NewRevisionNumber = req.NewRevisionNumber
+	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
+	for i := range newRevision.NewValidProofOutputs {
+		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewValidProofValues[i],
+			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
+		}
+	}
+	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
+	for i := range newRevision.NewMissedProofOutputs {
+		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewMissedProofValues[i],
+			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
+		}
+	}
+
+	expectedTransfer := settings.DownloadBandwidthPrice.Mul64(req.NumRoots).Mul64(crypto.HashSize)
+	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, expectedTransfer)
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("payment validation failed: ", err)
+	}
+
+	contractRoots := so.SectorRoots[req.RootOffset : req.RootOffset+req.NumRoots]
+
+	// Sign the new revision.
+	renterSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(newRevision.ParentID),
+		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+		PublicKeyIndex: 0,
+		Signature:      req.Signature,
+	}
+	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("failed to create revision signature: ", err)
+	}
+
+	// Update the storage obligation.
+	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
+	so.PotentialDownloadRevenue = so.PotentialDownloadRevenue.Add(paymentTransfer)
+	so.RevisionTransactionSet = []types.Transaction{txn}
+	h.mu.Lock()
+	err = h.modifyStorageObligation(so, nil, nil, nil)
+	h.mu.Unlock()
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("failed to modify storage obligation: ", err)
+	}
+
+	// send the response
+	resp := modules.LoopSectorRootsResponse{
+		Signature:   txn.TransactionSignatures[1].Signature,
+		SectorRoots: contractRoots,
 		MerkleProof: nil,
 	}
 	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {

@@ -289,6 +289,7 @@ var (
 	RPCLoopSettings       = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
 	RPCLoopRecentRevision = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'c', 'e', 'n', 't', 'R', 'e', 'v'}
 	RPCLoopDownload       = types.Specifier{'L', 'o', 'o', 'p', 'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd'}
+	RPCLoopSectorRoots    = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
 	RPCLoopUpload         = types.Specifier{'L', 'o', 'o', 'p', 'U', 'p', 'l', 'o', 'a', 'd'}
 )
 
@@ -309,10 +310,30 @@ type (
 		Signature            []byte
 	}
 
-	// LoopDownloadResponse contains the response data for RPCLoopDownloadResponse.
+	// LoopDownloadResponse contains the response data for RPCLoopDownload.
 	LoopDownloadResponse struct {
 		Signature   []byte
 		Data        []byte
+		MerkleProof []crypto.Hash
+	}
+
+	// LoopSectorRootsRequest contains the request parameters for RPCLoopSectorRoots.
+	LoopSectorRootsRequest struct {
+		ContractID  types.FileContractID
+		RootOffset  uint64
+		NumRoots    uint64
+		MerkleProof bool
+
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+		Signature            []byte
+	}
+
+	// LoopSectorRootsResponse contains the response data for RPCLoopSectorRoots.
+	LoopSectorRootsResponse struct {
+		Signature   []byte
+		SectorRoots []crypto.Hash
 		MerkleProof []crypto.Hash
 	}
 
