@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -63,6 +64,8 @@ func marshalPiece(out []byte, pieceIndex uint32, piece piece) ([]byte, error) {
 	// Check if out has enough capacity left for the piece. If not, we extend
 	// out.
 	if cap(out)-len(out) < marshaledPieceSize {
+		build.Critical(fmt.Sprintf("capacity of out not sufficient %v < %v",
+			cap(out)-len(out), marshaledPieceSize)) // make sure we always allocate enough memory
 		extendedOut := make([]byte, len(out), len(out)+marshaledPieceSize)
 		copy(extendedOut, out)
 		out = extendedOut
