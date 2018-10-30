@@ -238,7 +238,11 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	if len(resp.Data) != int(req.Length) {
 		return modules.RenterContract{}, nil, errors.New("host did not send enough sector data")
 	} else if req.MerkleProof {
-		// TODO: verify Merkle proof
+		proofStart := int(req.Offset) / crypto.SegmentSize
+		proofEnd := int(req.Offset+req.Length) / crypto.SegmentSize
+		if !crypto.VerifyRangeProof(resp.Data, resp.MerkleProof, proofStart, proofEnd, req.MerkleRoot) {
+			return modules.RenterContract{}, nil, errors.New("host provided incorrect data or Merkle proof")
+		}
 	}
 
 	// add host signature
