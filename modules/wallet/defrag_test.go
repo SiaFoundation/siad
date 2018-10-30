@@ -268,19 +268,21 @@ func TestDefragInterrupted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// allow some time for the defrag
-	time.Sleep(time.Second * 5)
-
-	// Mine another block to update the wallet
-	_, err = wt.miner.AddBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	// Check to make sure wallet is updated
+	loop := 0
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		// Defrag should have worked this time
-		wt.wallet.mu.Lock()
+		// Mine another block every 10 iterations to make sure the wallet is
+		// updated
+		if loop%10 == 0 {
+			_, err = wt.miner.AddBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		loop++
+
 		// force a sync because bucket stats may not be reliable until commit
+		wt.wallet.mu.Lock()
 		wt.wallet.syncDB()
 		spentOutputs := wt.wallet.dbTx.Bucket(bucketSpentOutputs).Stats().KeyN
 		siacoinOutputs := wt.wallet.dbTx.Bucket(bucketSiacoinOutputs).Stats().KeyN
