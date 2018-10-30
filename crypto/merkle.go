@@ -117,6 +117,8 @@ func MerkleRoot(b []byte) Hash {
 
 // MerkleProof builds a Merkle proof that the data at segment 'proofIndex' is a
 // part of the Merkle root formed by 'b'.
+//
+// MerkleProof is NOT equivalent to MerkleRangeProof for a single segment.
 func MerkleProof(b []byte, proofIndex uint64) (base []byte, hashSet []Hash) {
 	// Create the tree.
 	t := NewTree()
@@ -145,6 +147,8 @@ func MerkleProof(b []byte, proofIndex uint64) (base []byte, hashSet []Hash) {
 
 // VerifySegment will verify that a segment, given the proof, is a part of a
 // Merkle root.
+//
+// VerifySegment is NOT equivalent to VerifyRangeProof for a single segment.
 func VerifySegment(base []byte, hashSet []Hash, numSegments, proofIndex uint64, root Hash) bool {
 	// convert base and hashSet to proofSet
 	proofSet := make([][]byte, len(hashSet)+1)
@@ -153,4 +157,27 @@ func VerifySegment(base []byte, hashSet []Hash, numSegments, proofIndex uint64, 
 		proofSet[i+1] = hashSet[i][:]
 	}
 	return merkletree.VerifyProof(NewHash(), root[:], proofSet, proofIndex, numSegments)
+}
+
+// MerkleRangeProof builds a Merkle proof for the segment range [start,end).
+//
+// MerkleRangeProof for a single segment is NOT equivalent to MerkleProof.
+func MerkleRangeProof(b []byte, start, end int) []Hash {
+	proof, _ := merkletree.BuildReaderRangeProof(bytes.NewReader(b), NewHash(), SegmentSize, start, end)
+	proofHashes := make([]Hash, len(proof))
+	for i := range proofHashes {
+		copy(proofHashes[i][:], proof[i])
+	}
+	return proofHashes
+}
+
+// VerifyRangeProof verifies a proof produced by MerkleRangeProof.
+//
+// VerifyRangeProof for a single segment is NOT equivalent to VerifySegment.
+func VerifyRangeProof(segments []byte, proof []Hash, start, end int, root Hash) bool {
+	proofBytes := make([][]byte, len(proof))
+	for i := range proof {
+		proofBytes[i] = proof[i][:]
+	}
+	return merkletree.VerifyRangeProof(segments, NewHash(), SegmentSize, start, end, proofBytes, root[:])
 }
