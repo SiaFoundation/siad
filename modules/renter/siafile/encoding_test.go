@@ -59,25 +59,29 @@ func TestMarshalUnmarshalChunk(t *testing.T) {
 // TestMarshalUnmarshalErasureCoder tests marshaling and unmarshaling an
 // ErasureCoder.
 func TestMarshalUnmarshalErasureCoder(t *testing.T) {
-	rc, err := NewRSCode(10, 20)
-	if err != nil {
-		t.Fatal("failed to create reed solomon coder", err)
-	}
-	// Get the minimum pieces and the total number of pieces.
-	numPieces, minPieces := rc.NumPieces(), rc.MinPieces()
-	// Marshal the erasure coder.
-	ecType, ecParams := marshalErasureCoder(rc)
-	// Unmarshal it.
-	rc2, err := unmarshalErasureCoder(ecType, ecParams)
-	if err != nil {
-		t.Fatal("failed to unmarshal reed solomon coder", err)
-	}
-	// Check if the settings are still the same.
-	if numPieces != rc2.NumPieces() {
-		t.Errorf("expected %v numPieces but was %v", numPieces, rc2.NumPieces())
-	}
-	if minPieces != rc2.MinPieces() {
-		t.Errorf("expected %v minPieces but was %v", minPieces, rc2.MinPieces())
+	for i := 0; i < 10; i++ {
+		for j := 0; j < 20; j++ {
+			rc, err := NewRSCode(10, 20)
+			if err != nil {
+				t.Fatal("failed to create reed solomon coder", err)
+			}
+			// Get the minimum pieces and the total number of pieces.
+			numPieces, minPieces := rc.NumPieces(), rc.MinPieces()
+			// Marshal the erasure coder.
+			ecType, ecParams := marshalErasureCoder(rc)
+			// Unmarshal it.
+			rc2, err := unmarshalErasureCoder(ecType, ecParams)
+			if err != nil {
+				t.Fatal("failed to unmarshal reed solomon coder", err)
+			}
+			// Check if the settings are still the same.
+			if numPieces != rc2.NumPieces() {
+				t.Errorf("expected %v numPieces but was %v", numPieces, rc2.NumPieces())
+			}
+			if minPieces != rc2.MinPieces() {
+				t.Errorf("expected %v minPieces but was %v", minPieces, rc2.MinPieces())
+			}
+		}
 	}
 }
 
