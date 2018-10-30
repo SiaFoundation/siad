@@ -63,7 +63,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	// enough pieces to do so. Chunk recovery is an expensive operation that
 	// should be performed in a separate thread as to not block the worker.
 	udc.mu.Lock()
-	udc.piecesCompleted++
+	udc.markPieceCompleted(pieceIndex)
 	udc.piecesRegistered--
 	if udc.piecesCompleted <= udc.erasureCode.MinPieces() {
 		atomic.AddUint64(&udc.download.atomicDataReceived, udc.staticFetchLength/uint64(udc.erasureCode.MinPieces()))
@@ -174,7 +174,8 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces()
 	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
 	pieceData, workerHasPiece := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)]
-	if chunkComplete || chunkFailed || w.ownedOnDownloadCooldown() || !workerHasPiece {
+	pieceCompleted := udc.completedPieces[pieceData.index]
+	if chunkComplete || chunkFailed || w.ownedOnDownloadCooldown() || !workerHasPiece || pieceCompleted {
 		udc.mu.Unlock()
 		udc.managedRemoveWorker()
 		return nil
