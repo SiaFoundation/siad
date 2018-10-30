@@ -116,6 +116,7 @@ func TestRenterTwo(t *testing.T) {
 		{"TestRemoteRepair", testRemoteRepair},
 		{"TestSingleFileGet", testSingleFileGet},
 		{"TestStreamingCache", testStreamingCache},
+		{"TestZeroByteFile", testZeroByteFile},
 		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
 
@@ -2404,7 +2405,7 @@ func TestRenterPersistData(t *testing.T) {
 // TestRenterSpendingReporting checks the accuracy for the reported
 // spending
 func TestRenterSpendingReporting(t *testing.T) {
-	if testing.Short() {
+	if testing.Short() || !build.VLONG {
 		t.SkipNow()
 	}
 	t.Parallel()
@@ -2812,31 +2813,8 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 }
 
-// TestZeroByteFile tests uploading and downloading a 0 and 1 byte file
-func TestZeroByteFile(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup, creating without renter so the renter's
-	// initial balance can be obtained
-	groupParams := siatest.GroupParams{
-		Hosts:   2,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
+// testZeroByteFile tests uploading and downloading a 0 and 1 byte file
+func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	// Grab renter
 	r := tg.Renters()[0]
 
@@ -2852,20 +2830,17 @@ func TestZeroByteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Get renter files, should only be 0 byte file
-	rf, err := r.RenterFilesGet()
+	// Get zerobyte file
+	rf, err := r.File(zeroRF.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rf.Files) != 1 {
-		t.Fatalf("Expected 1 file, got %v", len(rf.Files))
-	}
 	// Check redundancy and upload progress
-	if rf.Files[0].Redundancy != redundancy {
-		t.Fatalf("Expected redundancy to be %v, got %v", redundancy, rf.Files[0].Redundancy)
+	if rf.Redundancy != redundancy {
+		t.Fatalf("Expected redundancy to be %v, got %v", redundancy, rf.Redundancy)
 	}
-	if rf.Files[0].UploadProgress != 100 {
-		t.Fatalf("Expected upload progress to be 100, got %v", rf.Files[0].UploadProgress)
+	if rf.UploadProgress != 100 {
+		t.Fatalf("Expected upload progress to be 100, got %v", rf.UploadProgress)
 	}
 
 	// Test uploading 1 byte file
