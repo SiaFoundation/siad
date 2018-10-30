@@ -11,17 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// numChunkPagesRequired calculates the number of pages on disk we need to
-// reserve for each chunk to store numPieces.
-func numChunkPagesRequired(numPieces int) int8 {
-	chunkSize := marshaledChunkSize(numPieces)
-	numPages := chunkSize / pageSize
-	if chunkSize%pageSize != 0 {
-		numPages++
-	}
-	return int8(numPages)
-}
-
 // marshalChunk binary encodes a chunk. It only allocates memory a single time
 // for the whole chunk.
 func marshalChunk(chunk chunk) (chunkBytes []byte, err error) {
@@ -44,6 +33,70 @@ func marshalChunk(chunk chunk) (chunkBytes []byte, err error) {
 		}
 	}
 	return
+}
+
+// marshalErasureCoder marshals an erasure coder into its type and params.
+func marshalErasureCoder(ec modules.ErasureCoder) ([4]byte, [8]byte) {
+	// Since we only support one type we assume it is ReedSolomon for now.
+	ecType := ecReedSolomon
+	// Read params from ec.
+	ecParams := [8]byte{}
+	binary.LittleEndian.PutUint32(ecParams[:4], uint32(ec.MinPieces()))
+	binary.LittleEndian.PutUint32(ecParams[4:], uint32(ec.NumPieces()-ec.MinPieces()))
+	return ecType, ecParams
+}
+
+// marshalMetadata marshals the metadata of the SiaFile using json encoding.
+func marshalMetadata(md metadata) ([]byte, error) {
+	// Encode the metadata.
+	jsonMD, err := json.Marshal(md)
+	if err != nil {
+		return nil, err
+	}
+	return jsonMD, nil
+}
+
+// marshalPiece uses binary encoding to marshal a piece and append the
+// marshaled piece to out. That way when marshaling a chunk, the whole chunk's
+// memory can be allocated with a single allocation.
+func marshalPiece(out []byte, pieceIndex uint32, piece piece) ([]byte, error) {
+	// Check if out has enough capacity left for the piece. If not, we extend
+	// out.
+	if cap(out)-len(out) < marshaledPieceSize {
+		extendedOut := make([]byte, len(out), len(out)+marshaledPieceSize)
+		copy(extendedOut, out)
+		out = extendedOut
+	}
+	pieceBytes := out[len(out) : len(out)+marshaledPieceSize]
+	binary.LittleEndian.PutUint32(pieceBytes[:4], pieceIndex)
+	binary.LittleEndian.PutUint32(pieceBytes[4:8], piece.HostTableOffset)
+	copy(pieceBytes[8:], piece.MerkleRoot[:])
+	return out[:len(out)+marshaledPieceSize], nil
+}
+
+// marshalPubKeyTable marshals the public key table of the SiaFile using Sia
+// encoding.
+func marshalPubKeyTable(pubKeyTable []HostPublicKey) ([]byte, error) {
+	// Create a buffer.
+	buf := bytes.NewBuffer(nil)
+	// Marshal all the data into the buffer
+	for _, pk := range pubKeyTable {
+		if err := pk.MarshalSia(buf); err != nil {
+			return nil, err
+		}
+	}
+	return buf.Bytes(), nil
+}
+
+// numChunkPagesRequired calculates the number of pages on disk we need to
+// reserve for each chunk to store numPieces.
+func numChunkPagesRequired(numPieces int) int8 {
+	chunkSize := marshaledChunkSize(numPieces)
+	numPages := chunkSize / pageSize
+	if chunkSize%pageSize != 0 {
+		numPages++
+	}
+	return int8(numPages)
 }
 
 // unmarshalChunk unmarshals a chunk which was previously marshaled using
@@ -85,59 +138,6 @@ func unmarshalChunk(numPieces uint32, raw []byte) (chunk chunk, err error) {
 		loadedPieces++
 	}
 	return
-}
-
-// marshalPiece uses binary encoding to marshal a piece and append the
-// marshaled piece to out. That way when marshaling a chunk, the whole chunk's
-// memory can be allocated with a single allocation.
-func marshalPiece(out []byte, pieceIndex uint32, piece piece) ([]byte, error) {
-	// Check if out has enough capacity left for the piece. If not, we extend
-	// out.
-	if cap(out)-len(out) < marshaledPieceSize {
-		extendedOut := make([]byte, len(out), len(out)+marshaledPieceSize)
-		copy(extendedOut, out)
-		out = extendedOut
-	}
-	pieceBytes := out[len(out) : len(out)+marshaledPieceSize]
-	binary.LittleEndian.PutUint32(pieceBytes[:4], pieceIndex)
-	binary.LittleEndian.PutUint32(pieceBytes[4:8], piece.HostTableOffset)
-	copy(pieceBytes[8:], piece.MerkleRoot[:])
-	return out[:len(out)+marshaledPieceSize], nil
-}
-
-// marshalErasureCoder marshals an erasure coder into its type and params.
-func marshalErasureCoder(ec modules.ErasureCoder) ([4]byte, [8]byte) {
-	// Since we only support one type we assume it is ReedSolomon for now.
-	ecType := ecReedSolomon
-	// Read params from ec.
-	ecParams := [8]byte{}
-	binary.LittleEndian.PutUint32(ecParams[:4], uint32(ec.MinPieces()))
-	binary.LittleEndian.PutUint32(ecParams[4:], uint32(ec.NumPieces()-ec.MinPieces()))
-	return ecType, ecParams
-}
-
-// marshalMetadata marshals the metadata of the SiaFile using json encoding.
-func marshalMetadata(md metadata) ([]byte, error) {
-	// Encode the metadata.
-	jsonMD, err := json.Marshal(md)
-	if err != nil {
-		return nil, err
-	}
-	return jsonMD, nil
-}
-
-// marshalPubKeyTable marshals the public key table of the SiaFile using Sia
-// encoding.
-func marshalPubKeyTable(pubKeyTable []HostPublicKey) ([]byte, error) {
-	// Create a buffer.
-	buf := bytes.NewBuffer(nil)
-	// Marshal all the data into the buffer
-	for _, pk := range pubKeyTable {
-		if err := pk.MarshalSia(buf); err != nil {
-			return nil, err
-		}
-	}
-	return buf.Bytes(), nil
 }
 
 // unmarshalErasureCoder unmarshals an ErasureCoder from the given params.
