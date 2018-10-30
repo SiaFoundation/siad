@@ -14,7 +14,12 @@ import (
 // numChunkPagesRequired calculates the number of pages on disk we need to
 // reserve for each chunk to store numPieces.
 func numChunkPagesRequired(numPieces int) int8 {
-	return int8(marshaledChunkSize(numPieces)/pageSize) + 1
+	chunkSize := marshaledChunkSize(numPieces)
+	numPages := chunkSize / pageSize
+	if chunkSize%pageSize != 0 {
+		numPages++
+	}
+	return int8(numPages)
 }
 
 // marshalChunk binary encodes a chunk. It only allocates memory a single time

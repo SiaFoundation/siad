@@ -13,7 +13,10 @@ import (
 func TestNumChunkPagesRequired(t *testing.T) {
 	for numPieces := 0; numPieces < 1000; numPieces++ {
 		chunkSize := marshaledChunkSize(numPieces)
-		expectedPages := int8(chunkSize/pageSize + 1)
+		expectedPages := int8(chunkSize / pageSize)
+		if chunkSize%pageSize != 0 {
+			expectedPages++
+		}
 		if numChunkPagesRequired(numPieces) != expectedPages {
 			t.Fatalf("expected %v pages but got %v", expectedPages, numChunkPagesRequired(numPieces))
 		}
