@@ -152,6 +152,15 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	// Reset deadline when finished.
 	defer extendDeadline(s.conn, time.Hour) // TODO: Constant.
 
+	// Sanity-check the request.
+	if req.MerkleProof {
+		if req.Offset%crypto.SegmentSize != 0 || req.Length%crypto.SegmentSize != 0 {
+			return modules.RenterContract{}, nil, errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
+		}
+	} else if uint64(req.Length) != modules.SectorSize {
+		return modules.RenterContract{}, nil, errors.New("must request Merkle proof when downloading less than a full sector")
+	}
+
 	// Acquire the contract.
 	// TODO: why not just lock the SafeContract directly?
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
