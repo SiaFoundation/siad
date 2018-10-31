@@ -548,6 +548,85 @@ func (h *Host) modifyStorageObligation(so storageObligation, sectorsRemoved []cr
 	return nil
 }
 
+// PruneStaleStoragObligations will delete storage obligations from the host
+// that, for whatever reason, did not make it on the block chain.
+// As these stale storage obligations have an impact on the host financial metrics,
+// this method updates the host financial metrics to show the correct values.
+func (h *Host) PruneStaleStorageObligations() error {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	// Initialize new values for the host financial metrics
+	fm := modules.HostFinancialMetrics{}
+
+	err := h.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketStorageObligations)
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var so storageObligation
+			err := json.Unmarshal(v, &so)
+			if err != nil {
+				return build.ExtendErr("unable to unmarshal storage obligation:", err)
+			}
+			final := len(so.OriginTransactionSet) - 1
+			txid := so.OriginTransactionSet[final].ID()
+			conf, err := h.tpool.TransactionConfirmed(txid)
+			if err != nil {
+				return build.ExtendErr("unable to get transaction id:", err)
+			}
+			if !conf {
+				// If the transaction id was not confirmed the obligation
+				// is removed from the database.
+				err = b.Delete(k)
+				if err != nil {
+					return build.ExtendErr("unable to remove storage obligation from database:", err)
+				}
+				continue
+			}
+			// Transaction fees are always added.
+			fm.TransactionFeeExpenses = fm.TransactionFeeExpenses.Add(so.TransactionFeesAdded)
+
+			// Update the other financial values based on the obligation status.
+			if so.ObligationStatus == obligationUnresolved {
+				fm.ContractCount++
+				fm.PotentialContractCompensation = fm.PotentialContractCompensation.Add(so.ContractCost)
+				fm.LockedStorageCollateral = fm.LockedStorageCollateral.Add(so.LockedCollateral)
+				fm.PotentialStorageRevenue = fm.PotentialStorageRevenue.Add(so.PotentialStorageRevenue)
+				fm.RiskedStorageCollateral = fm.RiskedStorageCollateral.Add(so.RiskedCollateral)
+				fm.PotentialDownloadBandwidthRevenue = fm.PotentialDownloadBandwidthRevenue.Add(so.PotentialDownloadRevenue)
+				fm.PotentialUploadBandwidthRevenue = fm.PotentialUploadBandwidthRevenue.Add(so.PotentialUploadRevenue)
+			}
+			if so.ObligationStatus == obligationSucceeded {
+				fm.ContractCompensation = fm.ContractCompensation.Add(so.ContractCost)
+				fm.StorageRevenue = fm.StorageRevenue.Add(so.PotentialStorageRevenue)
+				fm.DownloadBandwidthRevenue = fm.DownloadBandwidthRevenue.Add(so.PotentialDownloadRevenue)
+				fm.UploadBandwidthRevenue = fm.UploadBandwidthRevenue.Add(so.PotentialUploadRevenue)
+			}
+			if so.ObligationStatus == obligationFailed {
+				// If there was no risked collateral for the failed obligation, we don't
+				// update anything since no revenues were lost. Only the contract compensation
+				// and transaction fees are added.
+				fm.ContractCompensation = fm.ContractCompensation.Add(so.ContractCost)
+				if so.RiskedCollateral.Cmp(types.ZeroCurrency) > 0 {
+					// Storage obligation failed with risked collateral.
+					fm.LostRevenue = fm.LostRevenue.Add(so.PotentialStorageRevenue).Add(so.PotentialDownloadRevenue).Add(so.PotentialUploadRevenue)
+					fm.LostStorageCollateral = fm.LostStorageCollateral.Add(so.RiskedCollateral)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		h.log.Println(build.ExtendErr("database failed to provide storage obligations:", err))
+		return err
+	}
+
+	// Assign new values to the host
+	h.financialMetrics = fm
+
+	return err
+}
+
 // removeStorageObligation will remove a storage obligation from the host,
 // either due to failure or success.
 func (h *Host) removeStorageObligation(so storageObligation, sos storageObligationStatus) error {
