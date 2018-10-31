@@ -460,6 +460,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 			staticNeedsMemory:   params.needsMemory,
 			staticPriority:      params.priority,
 
+			completedPieces:   make([]bool, params.file.ErasureCode().NumPieces()),
 			physicalChunkData: make([][]byte, params.file.ErasureCode().NumPieces()),
 			pieceUsage:        make([]bool, params.file.ErasureCode().NumPieces()),
 
