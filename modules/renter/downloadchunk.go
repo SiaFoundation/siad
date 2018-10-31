@@ -58,7 +58,7 @@ type unfinishedDownloadChunk struct {
 	staticPriority      uint64
 
 	// Download chunk state - need mutex to access.
-	completedPieces   []bool    // Which pieces wer downloaded successfully.
+	completedPieces   []bool    // Which pieces were downloaded successfully.
 	failed            bool      // Indicates if the chunk has been marked as failed.
 	physicalChunkData [][]byte  // Used to recover the logical data.
 	pieceUsage        []bool    // Which pieces are being actively fetched.
