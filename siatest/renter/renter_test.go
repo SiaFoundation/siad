@@ -559,7 +559,6 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to get renter files: ", err)
 	}
 
-	var file modules.FileInfo
 	checks := 0
 	for _, f := range files {
 		// Only request files if file was fully uploaded for first API request
@@ -567,7 +566,7 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 			continue
 		}
 		checks++
-		file, err = renter.File(f.SiaPath)
+		rf, err := renter.RenterFileGet(f.SiaPath)
 		if err != nil {
 			t.Fatal("Failed to request single file", err)
 		}
@@ -576,24 +575,24 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		// however those fields are also not indicative of whether or not the
 		// files are the same.  Not checking Redundancy, Available, Renewing
 		// ,UploadProgress, UploadedBytes, or Renewing
-		if f.Expiration != file.Expiration {
+		if f.Expiration != rf.File.Expiration {
 			t.Log("File from Files() Expiration:", f.Expiration)
-			t.Log("File from File() Expiration:", file.Expiration)
+			t.Log("File from File() Expiration:", rf.File.Expiration)
 			t.Fatal("Single file queries does not match file previously requested.")
 		}
-		if f.Filesize != file.Filesize {
+		if f.Filesize != rf.File.Filesize {
 			t.Log("File from Files() Filesize:", f.Filesize)
-			t.Log("File from File() Filesize:", file.Filesize)
+			t.Log("File from File() Filesize:", rf.File.Filesize)
 			t.Fatal("Single file queries does not match file previously requested.")
 		}
-		if f.LocalPath != file.LocalPath {
+		if f.LocalPath != rf.File.LocalPath {
 			t.Log("File from Files() LocalPath:", f.LocalPath)
-			t.Log("File from File() LocalPath:", file.LocalPath)
+			t.Log("File from File() LocalPath:", rf.File.LocalPath)
 			t.Fatal("Single file queries does not match file previously requested.")
 		}
-		if f.SiaPath != file.SiaPath {
+		if f.SiaPath != rf.File.SiaPath {
 			t.Log("File from Files() SiaPath:", f.SiaPath)
-			t.Log("File from File() SiaPath:", file.SiaPath)
+			t.Log("File from File() SiaPath:", rf.File.SiaPath)
 			t.Fatal("Single file queries does not match file previously requested.")
 		}
 	}
@@ -1418,7 +1417,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	if len(renterFiles.Files) != 2 {
 		t.Fatal("There should be exactly 2 tracked files")
 	}
-	fileInfo, err := renter.File(rf2.SiaPath())
+	fileInfo, err := renter.File(rf2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2831,7 +2830,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Get zerobyte file
-	rf, err := r.File(zeroRF.SiaPath())
+	rf, err := r.File(zeroRF)
 	if err != nil {
 		t.Fatal(err)
 	}
