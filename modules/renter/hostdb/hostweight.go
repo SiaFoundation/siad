@@ -1,12 +1,14 @@
 package hostdb
 
 import (
+	"fmt"
 	"math"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
@@ -210,9 +212,12 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// Calculate the hostCollateral the renter would expect the host to put
 	// into a contract.
 	// TODO: Use actual transaction fee estimation instead of hardcoded 1SC.
-	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, allowance.Funds.Div64(allowance.Hosts), types.SiacoinPrecision, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, ug.ExpectedStorage)
+	txnFees := types.SiacoinPrecision
+	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, allowance.Funds.Div64(allowance.Hosts), txnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, ug.ExpectedStorage)
 	if err != nil {
-		hdb.log.Println(err)
+		info := fmt.Sprintf("Error while estimating collateral for host: Host %v, ContractPrice %v, TxnFees %v, Funds %v",
+			entry.PublicKey.String(), entry.ContractPrice.HumanString(), txnFees.HumanString(), allowance.Funds.HumanString())
+		hdb.log.Debugln(errors.AddContext(err, info))
 		return 0
 	}
 

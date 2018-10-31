@@ -289,26 +289,22 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	}
 	// Add random hosts if needed
 	if len(hosts) < int(allowance.Hosts) {
+		// Re-initialize the list with SiaPublicKeys to hold the public keys from the current
+		// set of hosts. This list will be used as address filter when requesting random hosts.
+		var pks []types.SiaPublicKey
+		for _, host := range hosts {
+			pks = append(pks, host.PublicKey)
+		}
 		// Grab hosts to perform the estimation.
 		var err error
-		randHosts, err := r.hostDB.RandomHostsWithAllowance(int(allowance.Hosts), nil, nil, allowance)
+		randHosts, err := r.hostDB.RandomHostsWithAllowance(int(allowance.Hosts)-len(hosts), pks, pks, allowance)
 		if err != nil {
 			return modules.RenterPriceEstimation{}, allowance, errors.AddContext(err, "could not generate estimate, could not get random hosts")
 		}
-		for _, host := range randHosts {
-			// confirm host wasn't already added
-			if _, ok := hostmap[host.PublicKey.String()]; ok {
-				continue
-			}
-			hosts = append(hosts, host)
-			hostmap[host.PublicKey.String()] = struct{}{}
-		}
+		// As the returned random hosts are checked for IP violations and double entries against the current
+		// slice of hosts, the returned hosts can be safely added to the current slice.
+		hosts = append(hosts, randHosts...)
 	}
-	// Make sure there aren't too many hosts
-	if len(hosts) > int(allowance.Hosts) {
-		hosts = hosts[:int(allowance.Hosts)]
-	}
-
 	// Check if there are zero hosts, which means no estimation can be made.
 	if len(hosts) == 0 {
 		return modules.RenterPriceEstimation{}, allowance, errors.New("estimate cannot be made, there are no hosts")
