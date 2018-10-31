@@ -250,8 +250,10 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 		proofStart := int(req.Offset) / crypto.SegmentSize
 		proofEnd := int(req.Offset+req.Length) / crypto.SegmentSize
 		if !crypto.VerifyRangeProof(resp.Data, resp.MerkleProof, proofStart, proofEnd, req.MerkleRoot) {
-			return modules.RenterContract{}, nil, errors.New("host provided incorrect data or Merkle proof")
+			return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data or Merkle proof")
 		}
+	} else if crypto.MerkleRoot(resp.Data) != req.MerkleRoot {
+		return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data")
 	}
 
 	// add host signature
