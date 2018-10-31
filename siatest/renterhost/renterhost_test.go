@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/siatest"
@@ -69,7 +70,21 @@ func TestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(sector, dsector) {
+	if !bytes.Equal(dsector, sector) {
+		t.Fatal("downloaded sector does not match")
+	}
+
+	// download less than a full sector
+	_, partialSector, err := s.Download(modules.LoopDownloadRequest{
+		MerkleRoot:  root,
+		Offset:      crypto.SegmentSize * 5,
+		Length:      crypto.SegmentSize * 12,
+		MerkleProof: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(partialSector, sector[crypto.SegmentSize*5:crypto.SegmentSize*17]) {
 		t.Fatal("downloaded sector does not match")
 	}
 }
