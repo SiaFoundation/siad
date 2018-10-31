@@ -548,7 +548,7 @@ func (h *Host) modifyStorageObligation(so storageObligation, sectorsRemoved []cr
 	return nil
 }
 
-// PruneStaleStoragObligations will delete storage obligations from the host
+// PruneStaleStorageObligations will delete storage obligations from the host
 // that, for whatever reason, did not make it on the block chain.
 // As these stale storage obligations have an impact on the host financial metrics,
 // this method updates the host financial metrics to show the correct values.
