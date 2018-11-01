@@ -733,21 +733,13 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-func TestRenterInterrupt(t *testing.T) {
-	for {
-		if !t.Run("TestRenterInterrupt", testRenterInterrupt) {
-			break
-		}
-	}
-}
-
 // TestRenterInterrupt executes a number of subtests using the same TestGroup to
 // save time on initialization
-func testRenterInterrupt(t *testing.T) {
+func TestRenterInterrupt(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	//t.Parallel()
+	t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -757,11 +749,11 @@ func testRenterInterrupt(t *testing.T) {
 
 	// Specify sub tests
 	subTests := []test{
-		//{"TestContractInterruptedSaveToDiskAfterDeletion", testContractInterruptedSaveToDiskAfterDeletion},
-		//{"TestDownloadInterruptedAfterSendingRevision", testDownloadInterruptedAfterSendingRevision}, // race
-		{"TestDownloadInterruptedBeforeSendingRevision", testDownloadInterruptedBeforeSendingRevision}, // race
-		// {"TestUploadInterruptedAfterSendingRevision", testUploadInterruptedAfterSendingRevision},
-		//	{"TestUploadInterruptedBeforeSendingRevision", testUploadInterruptedBeforeSendingRevision},
+		{"TestContractInterruptedSaveToDiskAfterDeletion", testContractInterruptedSaveToDiskAfterDeletion},
+		{"TestDownloadInterruptedAfterSendingRevision", testDownloadInterruptedAfterSendingRevision},
+		{"TestDownloadInterruptedBeforeSendingRevision", testDownloadInterruptedBeforeSendingRevision},
+		{"TestUploadInterruptedAfterSendingRevision", testUploadInterruptedAfterSendingRevision},
+		{"TestUploadInterruptedBeforeSendingRevision", testUploadInterruptedBeforeSendingRevision},
 	}
 
 	// Run tests

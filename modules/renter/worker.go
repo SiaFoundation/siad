@@ -82,7 +82,7 @@ func (r *Renter) managedUpdateWorkerPool() {
 			}
 			r.workerPool[id] = worker
 			if err := r.tg.Add(); err != nil {
-				// Stop starting worker on shutdown.
+				// Stop starting workers on shutdown.
 				break
 			}
 			go func() {
