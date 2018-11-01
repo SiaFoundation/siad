@@ -81,7 +81,14 @@ func (r *Renter) managedUpdateWorkerPool() {
 				renter: r,
 			}
 			r.workerPool[id] = worker
-			go worker.threadedWorkLoop()
+			if err := r.tg.Add(); err != nil {
+				// Stop starting workers on shutdown.
+				break
+			}
+			go func() {
+				defer r.tg.Done()
+				worker.threadedWorkLoop()
+			}()
 		}
 		r.mu.Unlock(lockID)
 	}
@@ -101,11 +108,6 @@ func (r *Renter) managedUpdateWorkerPool() {
 // threadedWorkLoop repeatedly issues work to a worker, stopping when the worker
 // is killed or when the thread group is closed.
 func (w *worker) threadedWorkLoop() {
-	err := w.renter.tg.Add()
-	if err != nil {
-		return
-	}
-	defer w.renter.tg.Done()
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 

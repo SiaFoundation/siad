@@ -192,12 +192,12 @@ func (tn *TestNode) DownloadInfo(lf *LocalFile, rf *RemoteFile) (*api.DownloadIn
 }
 
 // File returns the file queried by the user
-func (tn *TestNode) File(siaPath string) (modules.FileInfo, error) {
-	rf, err := tn.RenterFileGet(siaPath)
+func (tn *TestNode) File(rf *RemoteFile) (modules.FileInfo, error) {
+	rfile, err := tn.RenterFileGet(rf.siaPath)
 	if err != nil {
-		return rf.File, err
+		return rfile.File, err
 	}
-	return rf.File, err
+	return rfile.File, err
 }
 
 // Files lists the files tracked by the renter
