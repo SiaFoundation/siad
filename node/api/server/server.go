@@ -3,6 +3,7 @@
 package server
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strings"
@@ -43,10 +44,12 @@ func (srv *Server) serve() error {
 // Close closes the Server's listener, causing the HTTP server to shut down.
 func (srv *Server) Close() error {
 	// Stop accepting API requests.
-	err := srv.listener.Close()
+	err := srv.apiServer.Shutdown(context.Background())
 	// Wait for serve() to return and capture its error.
 	<-srv.done
-	err = errors.Compose(err, srv.serveErr)
+	if srv.serveErr != http.ErrServerClosed {
+		err = errors.Compose(err, srv.serveErr)
+	}
 	// Shutdown modules.
 	err = errors.Compose(err, srv.node.Close())
 	return errors.AddContext(err, "error while closing server")

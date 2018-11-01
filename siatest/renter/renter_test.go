@@ -919,7 +919,7 @@ func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 		t.Fatal(err)
 	}
 
-	// Call fail on the dependency every 100 ms.
+	// Call fail on the dependency every 10 ms.
 	cancel := make(chan struct{})
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
