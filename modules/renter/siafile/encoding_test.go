@@ -181,7 +181,8 @@ func TestMarshalUnmarshalPiece(t *testing.T) {
 	pieceIndex := uint32(fastrand.Intn(100))
 
 	// Marshal the piece.
-	rawPiece, err := marshalPiece(nil, pieceIndex, piece)
+	buf := make([]byte, 0, 2*marshaledPieceSize)
+	rawPiece, err := marshalPiece(buf, pieceIndex, piece)
 	if err != nil {
 		t.Fatal(err)
 	}
