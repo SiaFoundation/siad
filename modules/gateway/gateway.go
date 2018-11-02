@@ -192,7 +192,7 @@ func (g *Gateway) Close() error {
 // multiple minutes to return. A channel to cancel the discovery can be
 // supplied optionally. If nil is supplied, a reasonable timeout will be used
 // by default.
-func (g *Gateway) DiscoverAddress(cancel <-chan struct{}) (modules.NetAddress, error) {
+func (g *Gateway) DiscoverAddress(cancel <-chan struct{}) (net.IP, error) {
 	return g.managedLearnHostname(cancel)
 }
 
