@@ -45,10 +45,10 @@ var (
 		Period:      50,
 		RenewWindow: 24,
 
-		ExpectedStorage:           modules.SectorSize,
-		ExpectedUploadFrequency:   50,
-		ExpectedDownloadFrequency: 50,
-		ExpectedRedundancy:        5.0,
+		ExpectedStorage:    modules.SectorSize,
+		ExpectedUpload:     modules.SectorSize / 50,
+		ExpectedDownload:   modules.SectorSize / 50,
+		ExpectedRedundancy: 5.0,
 	}
 )
 

@@ -307,7 +307,7 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	c.mu.Lock()
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.mu.Unlock()
-		return types.ZeroCurrency, modules.RenterContract{}, errors.New("called managedNewContract but allowance wasn't set yet")
+		return types.ZeroCurrency, modules.RenterContract{}, errors.New("called managedNewContract but allowance wasn't set")
 	}
 	period := c.allowance.Period
 	c.mu.Unlock()

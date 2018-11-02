@@ -97,11 +97,11 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	if allowance.ExpectedStorage == 0 {
 		allowance.ExpectedStorage = 1
 	}
-	if allowance.ExpectedUploadFrequency == 0 {
-		allowance.ExpectedUploadFrequency = 1
+	if allowance.ExpectedUpload == 0 {
+		allowance.ExpectedUpload = 1
 	}
-	if allowance.ExpectedDownloadFrequency == 0 {
-		allowance.ExpectedDownloadFrequency = 1
+	if allowance.ExpectedDownload == 0 {
+		allowance.ExpectedDownload = 1
 	}
 	if allowance.ExpectedRedundancy == 0 {
 		allowance.ExpectedRedundancy = 1
@@ -141,10 +141,9 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// Finally, we divide the whole thing by collateralFloor to give some wiggle room to
 	// hosts. The large multiplier provided for low collaterals is only intended
 	// to discredit hosts that have a meaningless amount of collateral.
-	expectedUploadBandwidth := allowance.ExpectedStorage * uint64(allowance.Period) / allowance.ExpectedUploadFrequency
-	expectedDownloadBandwidthRedundant := allowance.ExpectedStorage * uint64(allowance.Period) / allowance.ExpectedDownloadFrequency
-	expectedDownloadBandwidth := uint64(float64(expectedDownloadBandwidthRedundant) / allowance.ExpectedRedundancy)
-	expectedBandwidth := expectedUploadBandwidth + expectedDownloadBandwidth
+	expectedUploadBandwidth := float64(allowance.ExpectedUpload) * allowance.ExpectedRedundancy
+	expectedDownloadBandwidth := float64(allowance.ExpectedDownload)
+	expectedBandwidth := uint64(expectedUploadBandwidth + expectedDownloadBandwidth)
 	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(allowance.ExpectedStorage + expectedBandwidth).Div64(collateralFloor)
 	if hostCollateral.Cmp(cutoff) < 0 {
 		// Set the cutoff equal to the collateral so that the ratio has a
@@ -199,11 +198,11 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	if allowance.ExpectedStorage == 0 {
 		allowance.ExpectedStorage = 1
 	}
-	if allowance.ExpectedUploadFrequency == 0 {
-		allowance.ExpectedUploadFrequency = 1
+	if allowance.ExpectedUpload == 0 {
+		allowance.ExpectedUpload = 1
 	}
-	if allowance.ExpectedDownloadFrequency == 0 {
-		allowance.ExpectedDownloadFrequency = 1
+	if allowance.ExpectedDownload == 0 {
+		allowance.ExpectedDownload = 1
 	}
 	if allowance.ExpectedRedundancy == 0 {
 		allowance.ExpectedRedundancy = 1
@@ -242,18 +241,17 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// fees.
 	adjustedCollateralPrice := hostCollateral.Div64(uint64(allowance.Period)).Div64(allowance.ExpectedStorage).MulFloat(expectedContractFeesMultiplier)
 	adjustedContractPrice := entry.ContractPrice.Div64(uint64(allowance.Period)).Div64(allowance.ExpectedStorage)
-	adjustedUploadPrice := entry.UploadBandwidthPrice.Div64(allowance.ExpectedUploadFrequency)
-	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Div64(allowance.ExpectedDownloadFrequency).MulFloat(allowance.ExpectedRedundancy)
+	adjustedUploadPrice := entry.UploadBandwidthPrice.Mul64(allowance.ExpectedUpload).MulFloat(allowance.ExpectedRedundancy)
+	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Mul64(allowance.ExpectedDownload)
 	siafundFee := adjustedContractPrice.Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(adjustedCollateralPrice).MulTax()
 	totalPrice := entry.StoragePrice.Add(adjustedContractPrice).Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(siafundFee)
 
 	// Determine a cutoff for whether the total price is considered a high price
 	// or a low price. This cutoff attempts to determine where the price becomes
 	// insignificant.
-	expectedUploadBandwidth := allowance.ExpectedStorage * uint64(allowance.Period) / allowance.ExpectedUploadFrequency
-	expectedDownloadBandwidthRedundant := allowance.ExpectedStorage * uint64(allowance.Period) / allowance.ExpectedDownloadFrequency
-	expectedDownloadBandwidth := uint64(float64(expectedDownloadBandwidthRedundant) / allowance.ExpectedRedundancy)
-	expectedBandwidth := expectedUploadBandwidth + expectedDownloadBandwidth
+	expectedUploadBandwidth := float64(allowance.ExpectedUpload) * allowance.ExpectedRedundancy
+	expectedDownloadBandwidth := float64(allowance.ExpectedDownload)
+	expectedBandwidth := uint64(expectedUploadBandwidth + expectedDownloadBandwidth)
 	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(allowance.ExpectedStorage + expectedBandwidth).Div64(priceFloor)
 	if totalPrice.Cmp(cutoff) < 0 {
 		cutoff = totalPrice

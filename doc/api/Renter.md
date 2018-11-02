@@ -149,19 +149,23 @@ maxuploadspeed
 // streaming.  
 streamcachesize
 
+// The next 4 values all relate to tuning the allowance. The usage pattern for
+// the storage (e.g. download heavy, storage heavy, etc.) impacts which hosts are
+// optimal. These values provide hints indicating what sort of usage pattern the
+// user will be employing, allowing the software to pick more optimal selections
+// of hosts.
+//
 // The expected storage in bytes the user expects to upload to the network.
 // Shouldn't include redundancy.
 expectedstorage
 
-// The expected frequency in blocks after which the user expects to upload the
-// expected amount of storage. If the user expects to upload 1TB within a 50
-// blocks period, the frequency should be 50.
-expecteduploadfrequency
+// The expected amount of data which will be uploaded through the API before
+// redundancy in bytes per block.
+expectedupload
 
-// The expected frequency in blocks after which the user expects to download
-// the expected amount of storage. If the user expects to download 1TB within a
-// 50 blocks period, the frequency should be 50.
-expecteddownloadfrequency
+// The expected amount of data which will be downloaded through the API in
+// bytes per block.
+expecteddownload
 
 // Expected redundancy is the expected redundancy of the majority of the files
 // the user is going to upload. If most files are going to be uploaded at a 3.0x

@@ -176,8 +176,8 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) (err error) {
 	values.Set("period", fmt.Sprint(uint64(allowance.Period)))
 	values.Set("renewwindow", fmt.Sprint(uint64(allowance.RenewWindow)))
 	values.Set("expectedstorage", fmt.Sprint(uint64(allowance.ExpectedStorage)))
-	values.Set("expecteduploadfrequency", fmt.Sprint(uint64(allowance.ExpectedUploadFrequency)))
-	values.Set("expecteddownloadfrequency", fmt.Sprint(uint64(allowance.ExpectedDownloadFrequency)))
+	values.Set("expectedupload", fmt.Sprint(uint64(allowance.ExpectedUpload)))
+	values.Set("expecteddownload", fmt.Sprint(uint64(allowance.ExpectedDownload)))
 	values.Set("expectedredundancy", fmt.Sprint(uint64(allowance.ExpectedRedundancy)))
 	err = c.post("/renter", values.Encode(), nil)
 	return
@@ -225,7 +225,7 @@ func (c *Client) RenterSetStreamCacheSizePost(cacheSize uint64) (err error) {
 	return
 }
 
-// RenterSetIPViolationCheck uses the /renter endpoint to enable/disable the IP
+// RenterSetCheckIPViolationPost uses the /renter endpoint to enable/disable the IP
 // violation check in the renter.
 func (c *Client) RenterSetCheckIPViolationPost(enabled bool) (err error) {
 	values := url.Values{}

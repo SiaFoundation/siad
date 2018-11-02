@@ -11,14 +11,14 @@ import (
 
 var (
 	DefaultTestAllowance = modules.Allowance{
-		Funds:                     types.SiacoinPrecision.Mul64(500),
-		Hosts:                     uint64(50),
-		Period:                    types.BlockHeight(12096),
-		RenewWindow:               types.BlockHeight(4032),
-		ExpectedStorage:           modules.DefaultAllowance.ExpectedStorage,
-		ExpectedUploadFrequency:   modules.DefaultAllowance.ExpectedUploadFrequency,
-		ExpectedDownloadFrequency: modules.DefaultAllowance.ExpectedDownloadFrequency,
-		ExpectedRedundancy:        modules.DefaultAllowance.ExpectedRedundancy,
+		Funds:              types.SiacoinPrecision.Mul64(500),
+		Hosts:              uint64(50),
+		Period:             types.BlockHeight(12096),
+		RenewWindow:        types.BlockHeight(4032),
+		ExpectedStorage:    modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
+		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
+		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
 	}
 )
 

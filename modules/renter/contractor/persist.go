@@ -57,12 +57,12 @@ func (c *Contractor) load() error {
 	// COMPATv136 if the allowance is not the empty allowance and "Expected"
 	// fields are not set, set them to the default values.
 	if !reflect.DeepEqual(data.Allowance, modules.Allowance{}) {
-		if data.Allowance.ExpectedStorage == 0 && data.Allowance.ExpectedUploadFrequency == 0 &&
-			data.Allowance.ExpectedDownloadFrequency == 0 && data.Allowance.ExpectedRedundancy == 0 {
+		if data.Allowance.ExpectedStorage == 0 && data.Allowance.ExpectedUpload == 0 &&
+			data.Allowance.ExpectedDownload == 0 && data.Allowance.ExpectedRedundancy == 0 {
 			// Set the fields to the defauls.
 			data.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
-			data.Allowance.ExpectedUploadFrequency = modules.DefaultAllowance.ExpectedUploadFrequency
-			data.Allowance.ExpectedDownloadFrequency = modules.DefaultAllowance.ExpectedDownloadFrequency
+			data.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
+			data.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 			data.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 		}
 	}

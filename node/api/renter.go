@@ -247,29 +247,29 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		// Sane defaults if it hasn't been set before.
 		settings.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 	}
-	// Scan the upload frequency. (optional parameter)
-	if euf := req.FormValue("expecteduploadfrequency"); euf != "" {
-		var expectedUploadFrequency uint64
-		if _, err := fmt.Sscan(euf, &expectedUploadFrequency); err != nil {
-			WriteError(w, Error{"unable to parse expectedUploadFrequency: " + err.Error()}, http.StatusBadRequest)
+	// Scan the upload bandwidth. (optional parameter)
+	if euf := req.FormValue("expectedupload"); euf != "" {
+		var expectedUpload uint64
+		if _, err := fmt.Sscan(euf, &expectedUpload); err != nil {
+			WriteError(w, Error{"unable to parse expectedUpload: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
-		settings.Allowance.ExpectedUploadFrequency = expectedUploadFrequency
-	} else if settings.Allowance.ExpectedUploadFrequency == 0 {
+		settings.Allowance.ExpectedUpload = expectedUpload
+	} else if settings.Allowance.ExpectedUpload == 0 {
 		// Sane defaults if it hasn't been set before.
-		settings.Allowance.ExpectedUploadFrequency = modules.DefaultAllowance.ExpectedUploadFrequency
+		settings.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 	}
-	// Scan the download frequency. (optional parameter)
-	if edf := req.FormValue("expecteddownloadfrequency"); edf != "" {
-		var expectedDownloadFrequency uint64
-		if _, err := fmt.Sscan(edf, &expectedDownloadFrequency); err != nil {
-			WriteError(w, Error{"unable to parse expectedDownloadFrequency: " + err.Error()}, http.StatusBadRequest)
+	// Scan the download bandwidth. (optional parameter)
+	if edf := req.FormValue("expecteddownload"); edf != "" {
+		var expectedDownload uint64
+		if _, err := fmt.Sscan(edf, &expectedDownload); err != nil {
+			WriteError(w, Error{"unable to parse expectedDownload: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
-		settings.Allowance.ExpectedDownloadFrequency = expectedDownloadFrequency
-	} else if settings.Allowance.ExpectedDownloadFrequency == 0 {
+		settings.Allowance.ExpectedDownload = expectedDownload
+	} else if settings.Allowance.ExpectedDownload == 0 {
 		// Sane defaults if it hasn't been set before.
-		settings.Allowance.ExpectedDownloadFrequency = modules.DefaultAllowance.ExpectedDownloadFrequency
+		settings.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 	}
 	// Scan the expected redundancy. (optional parameter)
 	if er := req.FormValue("expectedredundancy"); er != "" {

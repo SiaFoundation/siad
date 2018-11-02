@@ -22,10 +22,10 @@ var (
 		Period:      types.BlockHeight(12096),
 		RenewWindow: types.BlockHeight(4032),
 
-		ExpectedStorage:           25e9,
-		ExpectedUploadFrequency:   24192,
-		ExpectedDownloadFrequency: 12096,
-		ExpectedRedundancy:        3.0,
+		ExpectedStorage:    25e9,                 // 25 GB
+		ExpectedUpload:     uint64(25e9) / 24192, // 25 GB in 6 months
+		ExpectedDownload:   uint64(25e9) / 12096, // 25 GB in 3 months
+		ExpectedRedundancy: 3.0,                  // default is 10/30 erasure coding
 	}
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
@@ -146,19 +146,13 @@ type Allowance struct {
 	// ExpectedStorage is the amount of data that we expect to have in a contract.
 	ExpectedStorage uint64 `json:"expectedstorage"`
 
-	// ExpectedUploadFrequency is the expected number of blocks between each
-	// complete re-upload of the filesystem. This will be a combination of the rate
-	// at which a user uploads files, the rate at which a user replaces files, and
-	// the rate at which a user has to repair files due to host churn. If the
-	// expected storage is 25 GB and the expected upload frequency is 24 weeks, it
-	// means the user is expected to do about 1 GB of upload per week on average
-	// throughout the life of the contract.
-	ExpectedUploadFrequency uint64 `json:"expecteduploadfrequency"`
+	// ExpectedUpload is the expected amount of data uploaded through the API,
+	// before redundancy, per block.
+	ExpectedUpload uint64 `json:"expectedupload"`
 
-	// ExpectedDownloadFrequency is the expected number of blocks between each
-	// complete download of the filesystem. This should include the user
-	// downloading, streaming, and repairing files.
-	ExpectedDownloadFrequency uint64 `json:"expecteddownloadfrequency"`
+	// ExpectedDownload is the expected amount of data downloaded through the
+	// API per block.
+	ExpectedDownload uint64 `json:"expecteddownload"`
 
 	// ExpectedRedundancy is the average redundancy of files being uploaded.
 	ExpectedRedundancy float64 `json:"expectedredundancy"`
