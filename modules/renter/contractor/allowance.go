@@ -75,8 +75,12 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	// empty. the current period is set in the past by the renew window to make sure
 	// the first period aligns with the first period contracts in the same way
 	// that future periods align with contracts
+	// Also remember that we might have to unlock our contracts if the
+	// allowance was set to the empty allowance before.
+	unlockContracts := false
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.currentPeriod = c.blockHeight - a.RenewWindow
+		unlockContracts = true
 	}
 	c.allowance = a
 	err := c.saveSync()
@@ -87,18 +91,20 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 
 	// Cycle through all contracts and unlock them again since they might have
 	// been locked by managedCancelAllowance previously.
-	ids := c.staticContracts.IDs()
-	for _, id := range ids {
-		contract, exists := c.staticContracts.Acquire(id)
-		if !exists {
-			continue
-		}
-		utility := contract.Utility()
-		utility.Locked = false
-		err := contract.UpdateUtility(utility)
-		c.staticContracts.Return(contract)
-		if err != nil {
-			return err
+	if unlockContracts {
+		ids := c.staticContracts.IDs()
+		for _, id := range ids {
+			contract, exists := c.staticContracts.Acquire(id)
+			if !exists {
+				continue
+			}
+			utility := contract.Utility()
+			utility.Locked = false
+			err := contract.UpdateUtility(utility)
+			c.staticContracts.Return(contract)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -110,8 +116,14 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 
 	// Interrupt any existing maintenance and launch a new round of
 	// maintenance.
-	c.managedInterruptContractMaintenance()
-	go c.threadedContractMaintenance()
+	if err := c.tg.Add(); err != nil {
+		return err
+	}
+	go func() {
+		defer c.tg.Done()
+		c.managedInterruptContractMaintenance()
+		c.threadedContractMaintenance()
+	}()
 	return nil
 }
 

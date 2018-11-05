@@ -117,16 +117,6 @@ and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w r
 		Short: "Set the allowance",
 		Long: `Set the amount of money that can be spent over a given period.
 
-amount is given in currency units (SC, KS, etc.)
-
-period is given in either blocks (b), hours (h), days (d), or weeks (w). A
-block is approximately 10 minutes, so one hour is six blocks, a day is 144
-blocks, and a week is 1008 blocks.
-
-The Sia renter module spreads data across more than one Sia server computer
-or "host". The "hosts" parameter for the setallowance command determines
-how many different hosts the renter will spread the data across.
-
 Allowance can be automatically renewed periodically. If the current
 blockheight + the renew window >= the end height the contract,
 then the contract is renewed automatically.
@@ -266,13 +256,24 @@ func renterallowancecmd() {
 	}
 	allowance := rg.Settings.Allowance
 
+	// Normalize the expectations over the period.
+	allowance.ExpectedUpload *= uint64(allowance.Period)
+	allowance.ExpectedDownload *= uint64(allowance.Period)
+
 	// Show allowance info
 	fmt.Printf(`Allowance:
-	Amount:       %v
-	Period:       %v blocks
-	Renew Window: %v blocks
-	Hosts:        %v
-`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts)
+	Amount:               %v
+	Period:               %v blocks
+	Renew Window:         %v blocks
+	Hosts:                %v
+
+Expectations for period:
+	Expected Storage:     %v
+	Expected Upload:      %v
+	Expected Download:    %v
+	Expected Redundancy:  %v
+`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, filesizeUnits(int64(allowance.ExpectedStorage)),
+		filesizeUnits(int64(allowance.ExpectedUpload)), filesizeUnits(int64(allowance.ExpectedDownload)), allowance.ExpectedRedundancy)
 
 	// Show spending detail
 	fm := rg.FinancialMetrics
@@ -347,56 +348,134 @@ again:
 	fmt.Println("Allowance canceled.")
 }
 
-// rentersetallowancecmd allows the user to set the allowance.
-// the first two parameters, amount and period, are required.
-// the second two parameters are optional:
-//    hosts                 integer number of hosts
-//    renewperiod           how many blocks between renewals
+// rentersetallowancecmd allows the user to set the allowance or modify
+// individual fields of it.
 func rentersetallowancecmd(cmd *cobra.Command, args []string) {
-	if len(args) < 2 || len(args) > 4 {
-		cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
-	hastings, err := parseCurrency(args[0])
-	if err != nil {
-		die("Could not parse amount:", err)
-	}
-	blocks, err := parsePeriod(args[1])
-	if err != nil {
-		die("Could not parse period:", err)
-	}
-	allowance := modules.Allowance{}
-	_, err = fmt.Sscan(hastings, &allowance.Funds)
-	if err != nil {
-		die("Could not parse amount:", err)
-	}
+	req := httpClient.RenterPostPartialAllowance()
+	changedFields := 0
 
-	_, err = fmt.Sscan(blocks, &allowance.Period)
+	// Get the current period setting.
+	rg, err := httpClient.RenterGet()
 	if err != nil {
-		die("Could not parse period:", err)
+		die("Could not get renter settings")
 	}
-	if len(args) > 2 {
-		hosts, err := strconv.Atoi(args[2])
+	period := rg.Settings.Allowance.Period
+
+	// parse funds
+	if allowanceFunds != "" {
+		hastings, err := parseCurrency(allowanceFunds)
+		if err != nil {
+			die("Could not parse amount:", err)
+		}
+		var funds types.Currency
+		_, err = fmt.Sscan(hastings, &funds)
+		if err != nil {
+			die("Could not parse amount:", err)
+		}
+		req = req.WithFunds(funds)
+		changedFields++
+	}
+	// parse period
+	if allowancePeriod != "" {
+		blocks, err := parsePeriod(allowancePeriod)
+		if err != nil {
+			die("Could not parse period:", err)
+		}
+		_, err = fmt.Sscan(blocks, &period)
+		if err != nil {
+			die("Could not parse period:", err)
+		}
+		req = req.WithPeriod(period)
+		changedFields++
+	}
+	// parse hosts
+	if allowanceHosts != "" {
+		hosts, err := strconv.Atoi(allowanceHosts)
 		if err != nil {
 			die("Could not parse host count")
 		}
-		allowance.Hosts = uint64(hosts)
+		req = req.WithHosts(uint64(hosts))
+		changedFields++
 	}
-	if len(args) > 3 {
-		renewWindow, err := parsePeriod(args[3])
+	// parse renewWindow
+	if allowanceRenewWindow != "" {
+		rw, err := parsePeriod(allowanceRenewWindow)
 		if err != nil {
 			die("Could not parse renew window")
 		}
-		_, err = fmt.Sscan(renewWindow, &allowance.RenewWindow)
+		var renewWindow types.BlockHeight
+		_, err = fmt.Sscan(rw, &renewWindow)
 		if err != nil {
 			die("Could not parse renew window:", err)
 		}
+		req = req.WithRenewWindow(renewWindow)
+		changedFields++
 	}
-	err = httpClient.RenterPostAllowance(allowance)
-	if err != nil {
+	// parse expectedStorage
+	if allowanceExpectedStorage != "" {
+		es, err := parseFilesize(allowanceExpectedStorage)
+		if err != nil {
+			die("Could not parse expected storage")
+		}
+		var expectedStorage uint64
+		_, err = fmt.Sscan(es, &expectedStorage)
+		if err != nil {
+			die("Could not parse expected storage")
+		}
+		req = req.WithExpectedStorage(expectedStorage)
+		changedFields++
+	}
+	// parse expectedUpload
+	if allowanceExpectedUpload != "" {
+		eu, err := parseFilesize(allowanceExpectedUpload)
+		if err != nil {
+			die("Could not parse expected upload")
+		}
+		var expectedUpload uint64
+		_, err = fmt.Sscan(eu, &expectedUpload)
+		if err != nil {
+			die("Could not parse expected upload")
+		}
+		req = req.WithExpectedUpload(expectedUpload / uint64(period))
+		changedFields++
+	}
+	// parse expectedDownload
+	if allowanceExpectedDownload != "" {
+		ed, err := parseFilesize(allowanceExpectedDownload)
+		if err != nil {
+			die("Could not parse expected download")
+		}
+		var expectedDownload uint64
+		_, err = fmt.Sscan(ed, &expectedDownload)
+		if err != nil {
+			die("Could not parse expected download")
+		}
+		req = req.WithExpectedDownload(expectedDownload / uint64(period))
+		changedFields++
+	}
+	// parse expectedRedundancy
+	if allowanceExpectedRedundancy != "" {
+		er, err := parseFilesize(allowanceExpectedRedundancy)
+		if err != nil {
+			die("Could not parse expected redundancy")
+		}
+		var expectedRedundancy float64
+		_, err = fmt.Sscan(er, &expectedRedundancy)
+		if err != nil {
+			die("Could not parse expected redundancy")
+		}
+		req = req.WithExpectedRedundancy(expectedRedundancy)
+		changedFields++
+	}
+	// check if any fields were updated.
+	if changedFields == 0 {
+		fmt.Println("No flags specified. Allowance not updated.")
+		return
+	}
+	if err := req.Send(); err != nil {
 		die("Could not set allowance:", err)
 	}
-	fmt.Println("Allowance updated.")
+	fmt.Printf("Allowance updated. %v setting(s) changed.\n", changedFields)
 }
 
 // byValue sorts contracts by their value in siacoins, high to low. If two
