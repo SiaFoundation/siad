@@ -293,8 +293,52 @@ var (
 	RPCLoopUpload         = types.Specifier{'L', 'o', 'o', 'p', 'U', 'p', 'l', 'o', 'a', 'd'}
 )
 
+// RPC ciphers
+var (
+	CipherPlaintext = types.Specifier{'p', 'l', 'a', 'i', 'n', 't', 'e', 'x', 't'}
+)
+
+var (
+	// RPCChallengePrefix is the prefix prepended to the challenge data
+	// supplied by the host when proving ownership of a contract's secret key.
+	RPCChallengePrefix = types.Specifier{'c', 'h', 'a', 'l', 'l', 'e', 'n', 'g', 'e'}
+)
+
 // New RPC request and response types
 type (
+	// LoopHandshakeRequest contains the information sent by the renter during
+	// the initial RPC handshake.
+	LoopHandshakeRequest struct {
+		// The version of the renter-host protocol that the renter
+		// intends to use.
+		Version byte
+
+		// Ciphers that the renter supports.
+		Ciphers []types.Specifier
+
+		// Entropy used to construct the session key (construction
+		// depends on the cipher selected).
+		KeyData []byte
+
+		// The contract being modified; may be blank if the renter
+		// does not intend to modify a contract (e.g. when forming
+		// a contract).
+		ContractID types.FileContractID
+	}
+
+	// LoopHandshakeResponse contains the information sent by the host in
+	// response to the renter's handshake request.
+	LoopHandshakeResponse struct {
+		// Cipher selected by the host. Must be one of the ciphers offered in
+		// the handshake request.
+		Cipher types.Specifier
+
+		// Entropy signed by the renter to prove that it can sign contract
+		// revisions. The actual data signed should be:
+		//
+		//    blake2b(RPCChallengePrefix | Challenge)
+		Challenge [16]byte
+	}
 
 	// LoopDownloadRequest contains the request parameters for RPCLoopDownload.
 	LoopDownloadRequest struct {
@@ -339,7 +383,7 @@ type (
 
 	// LoopRecentRevisionRequest contains the request parameters for RPCLoopRecentRevision.
 	LoopRecentRevisionRequest struct {
-		ContractID types.FileContractID
+		Signature []byte
 	}
 
 	// LoopRecentRevisionResponse contains the response data for RPCLoopRecentRevisionResponse.

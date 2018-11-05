@@ -21,10 +21,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
@@ -308,6 +310,62 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 // request and response. The loop terminates when the an RPC encounters an
 // error or the renter sends modules.RPCLoopExit.
 func (h *Host) managedRPCLoop(conn net.Conn) error {
+	// perform initial handshake
+	conn.SetDeadline(time.Now().Add(rpcRequestInterval))
+	var req modules.LoopHandshakeRequest
+	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+
+	// check handshake version and ciphers
+	if req.Version != 1 {
+		err := errors.New("protocol version not supported")
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+	var supportsPlaintext bool
+	for _, c := range req.Ciphers {
+		if c == modules.CipherPlaintext {
+			supportsPlaintext = true
+		}
+	}
+	if !supportsPlaintext {
+		err := errors.New("no supported ciphers")
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+
+	// lock contract, if supplied
+	var so storageObligation
+	if req.ContractID != (types.FileContractID{}) {
+		// Lock the storage obligation.
+		err := h.managedTryLockStorageObligation(req.ContractID)
+		if err != nil {
+			modules.WriteRPCResponse(conn, nil, err)
+			return extendErr("could not lock contract "+req.ContractID.String()+": ", err)
+		}
+		defer h.managedUnlockStorageObligation(req.ContractID)
+		h.mu.RLock()
+		err = h.db.View(func(tx *bolt.Tx) error {
+			so, err = getStorageObligation(tx, req.ContractID)
+			return err
+		})
+		h.mu.RUnlock()
+	}
+
+	// send handshake response
+	var challenge [16]byte
+	fastrand.Read(challenge[:])
+	resp := modules.LoopHandshakeResponse{
+		Cipher:    modules.CipherPlaintext,
+		Challenge: challenge,
+	}
+	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
+		return err
+	}
+
+	// enter RPC loop
 	for {
 		conn.SetDeadline(time.Now().Add(rpcRequestInterval))
 
@@ -316,18 +374,19 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 			h.log.Debugf("WARN: renter sent invalid RPC ID: %v", id)
 			return errors.New("invalid RPC ID " + id.String())
 		}
+
 		var err error
 		switch id {
 		case modules.RPCLoopSettings:
 			err = extendErr("incoming RPCLoopSettings failed: ", h.managedRPCLoopSettings(conn))
 		case modules.RPCLoopRecentRevision:
-			err = extendErr("incoming RPCLoopRecentRevision failed: ", h.managedRPCLoopRecentRevision(conn))
+			err = extendErr("incoming RPCLoopRecentRevision failed: ", h.managedRPCLoopRecentRevision(conn, &so, challenge))
 		case modules.RPCLoopUpload:
-			err = extendErr("incoming RPCLoopUpload failed: ", h.managedRPCLoopUpload(conn))
+			err = extendErr("incoming RPCLoopUpload failed: ", h.managedRPCLoopUpload(conn, &so))
 		case modules.RPCLoopDownload:
-			err = extendErr("incoming RPCLoopDownload failed: ", h.managedRPCLoopDownload(conn))
+			err = extendErr("incoming RPCLoopDownload failed: ", h.managedRPCLoopDownload(conn, &so))
 		case modules.RPCLoopSectorRoots:
-			err = extendErr("incoming RPCLoopSectorRoots failed: ", h.managedRPCLoopSectorRoots(conn))
+			err = extendErr("incoming RPCLoopSectorRoots failed: ", h.managedRPCLoopSectorRoots(conn, &so))
 		case modules.RPCLoopExit:
 			return nil
 		default:

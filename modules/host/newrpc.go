@@ -9,8 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 // managedRPCLoopSettings writes an RPC response containing the host's
@@ -37,7 +35,7 @@ func (h *Host) managedRPCLoopSettings(conn net.Conn) error {
 
 // managedRPCLoopRecentRevision writes an RPC response containing the most
 // recent revision of the requested contract.
-func (h *Host) managedRPCLoopRecentRevision(conn net.Conn) error {
+func (h *Host) managedRPCLoopRecentRevision(conn net.Conn, so *storageObligation, challenge [16]byte) error {
 	conn.SetDeadline(time.Now().Add(modules.NegotiateRecentRevisionTime))
 
 	// Read the request.
@@ -48,33 +46,29 @@ func (h *Host) managedRPCLoopRecentRevision(conn net.Conn) error {
 		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
-	fcid := req.ContractID
 
-	// Fetch the storage obligation and extract the revision and signatures.
-	var so storageObligation
-	h.mu.RLock()
-	err := h.db.View(func(tx *bolt.Tx) error {
-		var err error
-		so, err = getStorageObligation(tx, fcid)
-		return err
-	})
-	h.mu.RUnlock()
-	if err != nil {
-		err = extendErr("could not fetch "+fcid.String()+": ", ErrorInternal(err.Error()))
-		modules.WriteRPCResponse(conn, nil, err)
-		return err
-	}
+	// Fetch the revision and signatures.
 	txn := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1]
 	rev := txn.FileContractRevisions[0]
 	var sigs []types.TransactionSignature
 	for _, sig := range txn.TransactionSignatures {
 		// The transaction may have additional signatures that are only
 		// relevant to the host.
-		//
-		// TODO: is this correct?
-		if sig.ParentID == crypto.Hash(fcid) {
+		if sig.ParentID == crypto.Hash(rev.ParentID) {
 			sigs = append(sigs, sig)
 		}
+	}
+
+	// Validate the renter's signature.
+	hash := crypto.HashAll(modules.RPCChallengePrefix, challenge)
+	var renterPK crypto.PublicKey
+	var renterSig crypto.Signature
+	copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
+	copy(renterSig[:], req.Signature)
+	if crypto.VerifyHash(hash, renterPK, renterSig) != nil {
+		err := errors.New("challenge signature is invalid")
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
 	}
 
 	// Write the response.
@@ -90,7 +84,7 @@ func (h *Host) managedRPCLoopRecentRevision(conn net.Conn) error {
 
 // managedRPCLoopUpload reads an upload request and responds with a signature
 // for the new revision.
-func (h *Host) managedRPCLoopUpload(conn net.Conn) error {
+func (h *Host) managedRPCLoopUpload(conn net.Conn, so *storageObligation) error {
 	conn.SetDeadline(time.Now().Add(modules.NegotiateFileContractRevisionTime))
 
 	// Read the request.
@@ -101,7 +95,6 @@ func (h *Host) managedRPCLoopUpload(conn net.Conn) error {
 		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
-	fcid := req.ContractID
 
 	// Perform some basic input validation.
 	if uint64(len(req.Data)) != modules.SectorSize {
@@ -109,29 +102,12 @@ func (h *Host) managedRPCLoopUpload(conn net.Conn) error {
 		return errBadSectorSize
 	}
 
-	// Lock the storage obligation.
-	err := h.managedTryLockStorageObligation(fcid)
-	if err != nil {
-		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("could not lock contract "+fcid.String()+": ", err)
-	}
-	defer h.managedUnlockStorageObligation(fcid)
-	var so storageObligation
-	h.mu.RLock()
 	// Read some internal fields for later.
+	h.mu.RLock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
 	settings := h.externalSettings()
-	// Fetch the storage obligation from the db.
-	err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, fcid)
-		return err
-	})
 	h.mu.RUnlock()
-	if err != nil {
-		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("could not lock contract "+fcid.String()+": ", err)
-	}
 	currentRevision := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// construct the new revision
@@ -163,7 +139,7 @@ func (h *Host) managedRPCLoopUpload(conn net.Conn) error {
 	so.SectorRoots = append(so.SectorRoots, newRoot)
 	newRevision.NewFileMerkleRoot = cachedMerkleRoot(so.SectorRoots)
 	newRevenue := storageRevenue.Add(bandwidthRevenue)
-	if err := verifyRevision(so, newRevision, blockHeight, newRevenue, newCollateral); err != nil {
+	if err := verifyRevision(*so, newRevision, blockHeight, newRevenue, newCollateral); err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
 		return extendErr("unable to verify updated contract: ", err)
 	}
@@ -187,7 +163,7 @@ func (h *Host) managedRPCLoopUpload(conn net.Conn) error {
 	so.PotentialUploadRevenue = so.PotentialUploadRevenue.Add(bandwidthRevenue)
 	so.RevisionTransactionSet = []types.Transaction{txn}
 	h.mu.Lock()
-	err = h.modifyStorageObligation(so, nil, []crypto.Hash{newRoot}, [][]byte{req.Data})
+	err = h.modifyStorageObligation(*so, nil, []crypto.Hash{newRoot}, [][]byte{req.Data})
 	h.mu.Unlock()
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
@@ -206,7 +182,7 @@ func (h *Host) managedRPCLoopUpload(conn net.Conn) error {
 
 // managedRPCLoopDownload writes an RPC response containing the requested data
 // (along with signatures and an optional Merkle proof).
-func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
+func (h *Host) managedRPCLoopDownload(conn net.Conn, so *storageObligation) error {
 	conn.SetDeadline(time.Now().Add(modules.NegotiateDownloadTime))
 
 	// Read the request.
@@ -217,39 +193,17 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
-	if req.MerkleProof {
-		err := errors.New("Merkle proofs are not implemented")
-		modules.WriteRPCResponse(conn, nil, err)
-		return err
-	}
-	fcid := req.ContractID
 
-	// Lock the storage obligation.
-	err := h.managedTryLockStorageObligation(fcid)
-	if err != nil {
-		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("could not lock contract "+fcid.String()+": ", err)
-	}
-	defer h.managedUnlockStorageObligation(fcid)
-	var so storageObligation
-	h.mu.RLock()
 	// Read some internal fields for later.
+	h.mu.RLock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
 	settings := h.externalSettings()
-	// Fetch the storage obligation from the db.
-	err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, fcid)
-		return err
-	})
 	h.mu.RUnlock()
-	if err != nil {
-		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("could not lock contract "+fcid.String()+": ", err)
-	}
 	currentRevision := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Validate the request.
+	var err error
 	if uint64(req.Offset)+uint64(req.Length) > modules.SectorSize {
 		err = errRequestOutOfBounds
 	} else if req.Length == 0 {
@@ -325,7 +279,7 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 	so.PotentialDownloadRevenue = so.PotentialDownloadRevenue.Add(paymentTransfer)
 	so.RevisionTransactionSet = []types.Transaction{txn}
 	h.mu.Lock()
-	err = h.modifyStorageObligation(so, nil, nil, nil)
+	err = h.modifyStorageObligation(*so, nil, nil, nil)
 	h.mu.Unlock()
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
@@ -345,8 +299,8 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 }
 
 // managedRPCLoopSectorRoots writes an RPC response containing the requested
-// contract roots (along with signatures and an optional Merkle proof).
-func (h *Host) managedRPCLoopSectorRoots(conn net.Conn) error {
+// contract roots (along with signatures and a Merkle proof).
+func (h *Host) managedRPCLoopSectorRoots(conn net.Conn, so *storageObligation) error {
 	conn.SetDeadline(time.Now().Add(modules.NegotiateDownloadTime))
 
 	// Read the request.
@@ -357,36 +311,16 @@ func (h *Host) managedRPCLoopSectorRoots(conn net.Conn) error {
 		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
-	if req.MerkleProof {
-		err := errors.New("Merkle proofs are not implemented")
-		modules.WriteRPCResponse(conn, nil, err)
-		return err
-	}
-	fcid := req.ContractID
+	err := errors.New("Merkle proofs are not implemented")
+	modules.WriteRPCResponse(conn, nil, err)
+	return err
 
-	// Lock the storage obligation.
-	err := h.managedTryLockStorageObligation(fcid)
-	if err != nil {
-		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("could not lock contract "+fcid.String()+": ", err)
-	}
-	defer h.managedUnlockStorageObligation(fcid)
-	var so storageObligation
-	h.mu.RLock()
 	// Read some internal fields for later.
+	h.mu.RLock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
 	settings := h.externalSettings()
-	// Fetch the storage obligation from the db.
-	err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, fcid)
-		return err
-	})
 	h.mu.RUnlock()
-	if err != nil {
-		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("could not lock contract "+fcid.String()+": ", err)
-	}
 	currentRevision := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Validate the request.
@@ -430,7 +364,7 @@ func (h *Host) managedRPCLoopSectorRoots(conn net.Conn) error {
 		return extendErr("payment validation failed: ", err)
 	}
 
-	contractRoots := so.SectorRoots[req.RootOffset : req.RootOffset+req.NumRoots]
+	contractRoots := so.SectorRoots[req.RootOffset:][:req.NumRoots]
 
 	// Sign the new revision.
 	renterSig := types.TransactionSignature{
@@ -450,7 +384,7 @@ func (h *Host) managedRPCLoopSectorRoots(conn net.Conn) error {
 	so.PotentialDownloadRevenue = so.PotentialDownloadRevenue.Add(paymentTransfer)
 	so.RevisionTransactionSet = []types.Transaction{txn}
 	h.mu.Lock()
-	err = h.modifyStorageObligation(so, nil, nil, nil)
+	err = h.modifyStorageObligation(*so, nil, nil, nil)
 	h.mu.Unlock()
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)

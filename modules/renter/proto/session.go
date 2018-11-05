@@ -435,6 +435,24 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		return nil, err
 	}
 
+	// perform initial handshake
+	req := modules.LoopHandshakeRequest{
+		Version:    1,
+		Ciphers:    []types.Specifier{modules.CipherPlaintext},
+		KeyData:    nil,
+		ContractID: id,
+	}
+	if err := encoding.NewEncoder(conn).EncodeAll(req); err != nil {
+		return nil, err
+	}
+	var resp modules.LoopHandshakeResponse
+	if err := modules.ReadRPCResponse(conn, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Cipher != modules.CipherPlaintext {
+		return nil, errors.New("host selected unsupported cipher")
+	}
+
 	// if we succeeded, we can safely discard the unappliedTxns
 	for _, txn := range sc.unappliedTxns {
 		txn.SignalUpdatesApplied()
