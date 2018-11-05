@@ -15,6 +15,7 @@ import (
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
 type Session struct {
+	challenge   [16]byte
 	closeChan   chan struct{}
 	conn        net.Conn
 	contractID  types.FileContractID
@@ -23,6 +24,68 @@ type Session struct {
 	height      types.BlockHeight
 	host        modules.HostDBEntry
 	once        sync.Once
+}
+
+// Settings calls the Settings RPC, returning the host's reported settings.
+func (s *Session) Settings() (modules.HostExternalSettings, error) {
+	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
+
+	// send Settings RPC request
+	if err := encoding.NewEncoder(s.conn).Encode(modules.RPCLoopSettings); err != nil {
+		return modules.HostExternalSettings{}, err
+	}
+
+	// read the response
+	var resp modules.LoopSettingsResponse
+	if err := modules.ReadRPCResponse(s.conn, &resp); err != nil {
+		return modules.HostExternalSettings{}, err
+	}
+
+	// verify signature
+	hash := crypto.HashObject(resp.Settings)
+	var pk crypto.PublicKey
+	copy(pk[:], s.host.PublicKey.Key)
+	var sig crypto.Signature
+	copy(sig[:], resp.Signature)
+	if crypto.VerifyHash(hash, pk, sig) != nil {
+		return modules.HostExternalSettings{}, errors.New("host sent invalid signature")
+	}
+
+	s.host.HostExternalSettings = resp.Settings
+	return resp.Settings, nil
+}
+
+// RecentRevision calls the RecentRevision RPC, returning (what the host
+// claims is) the most recent revision of the contract.
+func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
+	// Acquire the contract.
+	sc, haveContract := s.contractSet.Acquire(s.contractID)
+	if !haveContract {
+		return types.FileContractRevision{}, nil, errors.New("contract not present in contract set")
+	}
+	defer s.contractSet.Return(sc)
+	contract := sc.header // for convenience
+
+	// send RecentRevision RPC request
+	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
+	hash := crypto.HashAll(modules.RPCChallengePrefix, s.challenge)
+	sig := crypto.SignHash(hash, contract.SecretKey)
+	req := modules.LoopRecentRevisionRequest{
+		Signature: sig[:],
+	}
+	if err := encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopRecentRevision, req); err != nil {
+		return types.FileContractRevision{}, nil, err
+	}
+
+	// read the response
+	var resp modules.LoopRecentRevisionResponse
+	if err := modules.ReadRPCResponse(s.conn, &resp); err != nil {
+		return types.FileContractRevision{}, nil, err
+	}
+
+	// TODO: update contract if appropriate?
+
+	return resp.Revision, resp.Signatures, nil
 }
 
 // Upload calls the Upload RPC and transfers the supplied data, returning the
@@ -461,6 +524,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 
 	// the host is now ready to accept revisions
 	return &Session{
+		challenge:   resp.Challenge,
 		closeChan:   closeChan,
 		conn:        conn,
 		contractID:  id,
