@@ -233,10 +233,10 @@ func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*Rem
 	return rf, nil
 }
 
-// UploadWithForce uses the node to upload the file and overwrite if exists.
-func (tn *TestNode) UploadWithForce(lf *LocalFile, dataPieces, parityPieces uint64) (*RemoteFile, error) {
+// UploadWithForce uses the node to upload the file and specify option to overwrite if exists.
+func (tn *TestNode) UploadWithForce(lf *LocalFile, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file
-	err := tn.RenterUploadForcePost(lf.path, "/"+lf.fileName(), dataPieces, parityPieces)
+	err := tn.RenterUploadForcePost(lf.path, "/"+lf.fileName(), dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, err
 	}
@@ -286,9 +286,9 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 
 // UploadExistingFileBlocking attempts to upload an existing file and waits for the
 // upload to reach 100% progress and redundancy.
-func (tn *TestNode) UploadExistingFileBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64) (*RemoteFile, error) {
+func (tn *TestNode) UploadExistingFileBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces)
+	remoteFile, err := tn.UploadWithForce(localFile, dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to start upload")
 	}
@@ -298,24 +298,6 @@ func (tn *TestNode) UploadExistingFileBlocking(localFile *LocalFile, dataPieces 
 		return nil, err
 	}
 
-	// Wait until upload reaches a certain redundancy
-	err = tn.WaitForUploadRedundancy(remoteFile, float64((dataPieces+parityPieces))/float64(dataPieces))
-	return remoteFile, err
-}
-
-// UploadExistingFileWithForceBlocking attempts to upload an existing file with the option to force
-// overwrite and waits for the upload to reach 100% progress and redundancy.
-func (tn *TestNode) UploadExistingFileWithForceBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64) (*RemoteFile, error) {
-	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.UploadWithForce(localFile, dataPieces, parityPieces)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to start upload")
-	}
-
-	// Wait until upload reached the specified progress
-	if err = tn.WaitForUploadProgress(remoteFile, 1); err != nil {
-		return nil, err
-	}
 	// Wait until upload reaches a certain redundancy
 	err = tn.WaitForUploadRedundancy(remoteFile, float64((dataPieces+parityPieces))/float64(dataPieces))
 	return remoteFile, err

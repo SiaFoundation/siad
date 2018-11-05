@@ -814,8 +814,8 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 
 	// Check whether existing file should be overwritten
 	force := false
-	if req.FormValue("force") != "" {
-		force, err = strconv.ParseBool(req.FormValue("force"))
+	if f := req.FormValue("force"); f != "" {
+		force, err = strconv.ParseBool(f)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
 			return

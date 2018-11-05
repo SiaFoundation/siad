@@ -268,13 +268,13 @@ func (c *Client) RenterUploadPost(path, siaPath string, dataPieces, parityPieces
 
 // RenterUploadForcePost uses the /renter/upload endpoint to upload a file
 // and to overwrite if the file already exists
-func (c *Client) RenterUploadForcePost(path, siaPath string, dataPieces, parityPieces uint64) (err error) {
+func (c *Client) RenterUploadForcePost(path, siaPath string, dataPieces, parityPieces uint64, force bool) (err error) {
 	siaPath = escapeSiaPath(trimSiaPath(siaPath))
 	values := url.Values{}
 	values.Set("source", path)
 	values.Set("datapieces", strconv.FormatUint(dataPieces, 10))
 	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
-	values.Set("force", "true")
+	values.Set("force", strconv.FormatBool(force))
 	err = c.post(fmt.Sprintf("/renter/upload/%s", siaPath), values.Encode(), nil)
 	return
 }
