@@ -247,6 +247,10 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 	// Validate the request.
 	if uint64(req.Offset)+uint64(req.Length) > modules.SectorSize {
 		err = errRequestOutOfBounds
+	} else if req.Length == 0 {
+		err = errors.New("length cannot be zero")
+	} else if req.MerkleProof && (req.Offset%crypto.SegmentSize != 0 || req.Length%crypto.SegmentSize != 0) {
+		err = errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
 	} else if len(req.NewValidProofValues) != len(currentRevision.NewValidProofOutputs) {
 		err = errors.New("wrong number of valid proof values")
 	} else if len(req.NewMissedProofValues) != len(currentRevision.NewMissedProofOutputs) {
@@ -290,6 +294,14 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 	}
 	data := sectorData[req.Offset : req.Offset+req.Length]
 
+	// Construct the Merkle proof, if requested.
+	var proof []crypto.Hash
+	if req.MerkleProof {
+		proofStart := int(req.Offset) / crypto.SegmentSize
+		proofEnd := int(req.Offset+req.Length) / crypto.SegmentSize
+		proof = crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
+	}
+
 	// Sign the new revision.
 	renterSig := types.TransactionSignature{
 		ParentID:       crypto.Hash(newRevision.ParentID),
@@ -319,7 +331,7 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn) error {
 	resp := modules.LoopDownloadResponse{
 		Signature:   txn.TransactionSignatures[1].Signature,
 		Data:        data,
-		MerkleProof: nil,
+		MerkleProof: proof,
 	}
 	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
 		return err

@@ -152,6 +152,15 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	// Reset deadline when finished.
 	defer extendDeadline(s.conn, time.Hour) // TODO: Constant.
 
+	// Sanity-check the request.
+	if req.MerkleProof {
+		if req.Offset%crypto.SegmentSize != 0 || req.Length%crypto.SegmentSize != 0 {
+			return modules.RenterContract{}, nil, errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
+		}
+	} else if uint64(req.Length) != modules.SectorSize {
+		return modules.RenterContract{}, nil, errors.New("must request Merkle proof when downloading less than a full sector")
+	}
+
 	// Acquire the contract.
 	// TODO: why not just lock the SafeContract directly?
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
@@ -238,7 +247,13 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	if len(resp.Data) != int(req.Length) {
 		return modules.RenterContract{}, nil, errors.New("host did not send enough sector data")
 	} else if req.MerkleProof {
-		// TODO: verify Merkle proof
+		proofStart := int(req.Offset) / crypto.SegmentSize
+		proofEnd := int(req.Offset+req.Length) / crypto.SegmentSize
+		if !crypto.VerifyRangeProof(resp.Data, resp.MerkleProof, proofStart, proofEnd, req.MerkleRoot) {
+			return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data or Merkle proof")
+		}
+	} else if crypto.MerkleRoot(resp.Data) != req.MerkleRoot {
+		return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data")
 	}
 
 	// add host signature
