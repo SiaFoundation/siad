@@ -189,6 +189,8 @@ type (
 		overdrive     int           // How many extra pieces to download to prevent slow hosts from being a bottleneck.
 		priority      uint64        // Files with a higher priority will be downloaded first.
 	}
+
+	downloadCompleteFunc func(error)
 )
 
 // managedFail will mark the download as complete, but with the provided error.
@@ -210,13 +212,6 @@ func (d *download) managedFail(err error) {
 	// Mark the download as complete and set the error.
 	d.err = err
 	close(d.completeChan)
-	if d.destination != nil {
-		err = d.destination.Close()
-		d.destination = nil
-	}
-	if err != nil {
-		d.log.Println("unable to close download destination:", err)
-	}
 }
 
 // staticComplete is a helper function to indicate whether or not the download
@@ -236,6 +231,15 @@ func (d *download) Err() (err error) {
 	err = d.err
 	d.mu.Unlock()
 	return err
+}
+
+// RegisterOnComplete registers a function to be called when the
+// download is completed. This can either mean that it worked or failed.
+func (d *download) RegisterOnComplete(f downloadCompleteFunc) {
+	go func() {
+		<-d.completeChan
+		f(d.Err())
+	}()
 }
 
 // Download performs a file download using the passed parameters and blocks
@@ -306,7 +310,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	var dw downloadDestination
 	var destinationType string
 	if isHTTPResp {
-		dw = newDownloadDestinationWriteCloserFromWriter(p.Httpwriter)
+		dw = newDownloadDestinationWriter(p.Httpwriter)
 		destinationType = "http stream"
 	} else {
 		osFile, err := os.OpenFile(p.Destination, os.O_CREATE|os.O_WRONLY, file.Mode())
@@ -340,8 +344,18 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		overdrive:     3, // TODO: moderate default until full overdrive support is added.
 		priority:      5, // TODO: moderate default until full priority support is added.
 	})
-	if err != nil {
+	if osFile, ok := dw.(*os.File); err != nil && ok {
+		// If the destination was a file we close it.
+		return nil, errors.Compose(err, osFile.Close())
+	} else if err != nil {
 		return nil, err
+	}
+
+	// Once the download is done we close the file if we downloaded to disk.
+	if osFile, ok := dw.(*os.File); ok {
+		d.RegisterOnComplete(func(_ error) {
+			osFile.Close()
+		})
 	}
 
 	// Add the download object to the download queue.
