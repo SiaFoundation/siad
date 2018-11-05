@@ -22,19 +22,43 @@ type TestNode struct {
 
 // PrintDebugInfo prints out helpful debug information when debug tests and ndfs, the
 // boolean arguments dictate what is printed
-func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo bool) {
+func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterInfo bool) {
 	if contractInfo {
-		rc, err := tn.RenterContractsGet()
+		rc, err := tn.RenterInactiveContractsGet()
 		if err != nil {
 			t.Log(err)
 		}
-		t.Log("Contracts")
+		t.Log("Active Contracts")
 		for _, c := range rc.ActiveContracts {
 			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
 			t.Log("    GoodForRenew", c.GoodForRenew)
-			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    EndHeight", c.EndHeight)
 		}
+		t.Log()
+		t.Log("Inactive Contracts")
+		for _, c := range rc.InactiveContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
+		}
+		t.Log()
+		rce, err := tn.RenterInactiveContractsGet()
+		if err != nil {
+			t.Log(err)
+		}
+		t.Log("Expired Contracts")
+		for _, c := range rce.ExpiredContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
+		}
+		t.Log()
 	}
 
 	if hostInfo {
@@ -53,6 +77,25 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo bool) {
 				t.Log("            ", subnet)
 			}
 		}
+		t.Log()
+	}
+
+	if renterInfo {
+		rg, err := tn.RenterGet()
+		if err != nil {
+			t.Log(err)
+		}
+		t.Log("CP:", rg.CurrentPeriod)
+		cg, err := tn.ConsensusGet()
+		if err != nil {
+			t.Log(err)
+		}
+		t.Log("BH:", cg.Height)
+		settings := rg.Settings
+		t.Log("Allowance Funds:", settings.Allowance.Funds.HumanString())
+		fm := rg.FinancialMetrics
+		t.Log("Unspent Funds:", fm.Unspent.HumanString())
+		t.Log()
 	}
 }
 

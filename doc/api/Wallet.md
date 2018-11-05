@@ -53,6 +53,7 @@ Index
 | [/wallet/unlockconditions/___:addr___](#walletunlockconditionsaddr-get) | GET       |
 | [/wallet/unspent](#walletunspent-get)                                   | GET       |
 | [/wallet/verify/address/:___addr___](#walletverifyaddressaddr-get)      | GET       |
+| [/wallet/watch](#walletwatch-get)                                       | GET       |
 | [/wallet/watch](#walletwatch-post)                                      | POST      |
 
 
@@ -875,7 +876,10 @@ returns a list of unspent outputs that the wallet is tracking.
 
       // Amount of funds in the output; hastings for siacoin outputs, and
       // siafunds for siafund outputs.
-      "value": "1234" // big int
+      "value": "1234", // big int
+
+      // Whether the output comes from a watched address or from the wallet's seed.
+      "iswatchonly": false
     }
   ]
 }

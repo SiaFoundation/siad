@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // renterTester contains all of the modules that are used while testing the renter.
@@ -112,7 +113,7 @@ func (stubHostDB) IsOffline(modules.NetAddress) bool    { return true }
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return []modules.HostDBEntry{}, nil
 }
-func (stubHostDB) EstimateHostScore(modules.HostDBEntry) modules.HostScoreBreakdown {
+func (stubHostDB) EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown {
 	return modules.HostScoreBreakdown{}
 }
 func (stubHostDB) Host(types.SiaPublicKey) (modules.HostDBEntry, bool) {
@@ -146,10 +147,15 @@ type pricesStub struct {
 }
 
 func (pricesStub) InitialScanComplete() (bool, error) { return true, nil }
+func (pricesStub) IPViolationsCheck() bool            { return true }
 
-func (ps pricesStub) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
+func (ps pricesStub) RandomHosts(_ int, _, _ []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return ps.dbEntries, nil
 }
+func (ps pricesStub) RandomHostsWithAllowance(_ int, _, _ []types.SiaPublicKey, _ modules.Allowance) ([]modules.HostDBEntry, error) {
+	return ps.dbEntries, nil
+}
+func (ps pricesStub) SetIPViolationCheck(enabled bool) { return }
 
 // TestRenterPricesVolatility verifies that the renter caches its price
 // estimation, and subsequent calls result in non-volatile results.
@@ -172,15 +178,24 @@ func TestRenterPricesVolatility(t *testing.T) {
 	dbe := modules.HostDBEntry{}
 	dbe.ContractPrice = types.SiacoinPrecision
 	dbe.DownloadBandwidthPrice = types.SiacoinPrecision
-	dbe.StoragePrice = types.SiacoinPrecision
 	dbe.UploadBandwidthPrice = types.SiacoinPrecision
-	hdb.dbEntries = append(hdb.dbEntries, dbe)
+	dbe.StoragePrice = types.SiacoinPrecision
+	// Add 4 host entries in the database with different public keys.
+	for len(hdb.dbEntries) < modules.PriceEstimationScope {
+		pk := fastrand.Bytes(crypto.EntropySize)
+		dbe.PublicKey = types.SiaPublicKey{Key: pk}
+		hdb.dbEntries = append(hdb.dbEntries, dbe)
+	}
 	allowance := modules.Allowance{}
 	initial, _, err := rt.renter.PriceEstimation(allowance)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Changing the contract price should be enough to trigger a change
+	// if the hosts are not cached.
 	dbe.ContractPrice = dbe.ContractPrice.Mul64(2)
+	pk := fastrand.Bytes(crypto.EntropySize)
+	dbe.PublicKey = types.SiaPublicKey{Key: pk}
 	hdb.dbEntries = append(hdb.dbEntries, dbe)
 	after, _, err := rt.renter.PriceEstimation(allowance)
 	if err != nil {

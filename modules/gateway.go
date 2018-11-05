@@ -169,7 +169,7 @@ type (
 		// of the gateway. Contrary to Address, DiscoverAddress is blocking and
 		// might take multiple minutes to return. A channel to cancel the
 		// discovery can be supplied optionally.
-		DiscoverAddress(cancel <-chan struct{}) (NetAddress, error)
+		DiscoverAddress(cancel <-chan struct{}) (net.IP, error)
 
 		// ForwardPort adds a port mapping to the router. It will block until
 		// the mapping is established or until it is interrupted by a shutdown.

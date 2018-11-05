@@ -43,7 +43,8 @@ func bareHostDB() *HostDB {
 	hdb := &HostDB{
 		log: persist.NewLogger(ioutil.Discard),
 	}
-	hdb.hostTree = hosttree.New(hdb.calculateHostWeight, &modules.ProductionResolver{})
+	hdb.weightFunc = hdb.calculateHostWeightFn(modules.DefaultAllowance)
+	hdb.hostTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
 	return hdb
 }
 

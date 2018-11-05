@@ -5,10 +5,10 @@
 package hostdb
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -18,6 +18,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -41,6 +43,12 @@ type HostDB struct {
 	persistDir string
 	tg         threadgroup.ThreadGroup
 
+	// The hostdb gets initialized with an allowance that can be modified. The
+	// allowance is used to build a weightFunc that the hosttree depends on to
+	// determine the weight of a host.
+	allowance  modules.Allowance
+	weightFunc hosttree.WeightFunc
+
 	// The hostTree is the root node of the tree that organizes hosts by
 	// weight. The tree is necessary for selecting weighted hosts at
 	// random.
@@ -50,12 +58,13 @@ type HostDB struct {
 	// handful of goroutines constantly waiting on the channel for hosts to
 	// scan. The scan map is used to prevent duplicates from entering the scan
 	// pool.
-	initialScanComplete  bool
-	initialScanLatencies []time.Duration
-	scanList             []modules.HostDBEntry
-	scanMap              map[string]struct{}
-	scanWait             bool
-	scanningThreads      int
+	initialScanComplete     bool
+	initialScanLatencies    []time.Duration
+	disableIPViolationCheck bool
+	scanList                []modules.HostDBEntry
+	scanMap                 map[string]struct{}
+	scanWait                bool
+	scanningThreads         int
 
 	blockHeight types.BlockHeight
 	lastChange  modules.ConsensusChangeID
@@ -88,6 +97,10 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir stri
 		scanMap: make(map[string]struct{}),
 	}
 
+	// Set the hostweight function.
+	hdb.allowance = modules.DefaultAllowance
+	hdb.weightFunc = hdb.calculateHostWeightFn(hdb.allowance)
+
 	// Create the persist directory if it does not yet exist.
 	err := os.MkdirAll(persistDir, 0700)
 	if err != nil {
@@ -113,7 +126,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir stri
 	}
 
 	// The host tree is used to manage hosts and query them at random.
-	hdb.hostTree = hosttree.New(hdb.calculateHostWeight, deps.Resolver())
+	hdb.hostTree = hosttree.New(hdb.weightFunc, deps.Resolver())
 
 	// Load the prior persistence structures.
 	hdb.mu.Lock()
@@ -230,6 +243,14 @@ func (hdb *HostDB) AverageContractPrice() (totalPrice types.Currency) {
 // CheckForIPViolations accepts a number of host public keys and returns the
 // ones that violate the rules of the addressFilter.
 func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaPublicKey {
+	// If the check was disabled we don't return any bad hosts.
+	hdb.mu.RLock()
+	disabled := hdb.disableIPViolationCheck
+	hdb.mu.RUnlock()
+	if disabled {
+		return nil
+	}
+
 	var entries []modules.HostDBEntry
 	var badHosts []types.SiaPublicKey
 
@@ -297,15 +318,83 @@ func (hdb *HostDB) InitialScanComplete() (complete bool, err error) {
 	return
 }
 
+// IPViolationsCheck returns a boolean indicating if the IP violation check is
+// enabled or not.
+func (hdb *HostDB) IPViolationsCheck() bool {
+	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
+	return !hdb.disableIPViolationCheck
+}
+
 // RandomHosts implements the HostDB interface's RandomHosts() method. It takes
 // a number of hosts to return, and a slice of netaddresses to ignore, and
-// returns a slice of entries.
+// returns a slice of entries. If the IP violation check was disabled, the
+// addressBlacklist is ignored.
 func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
+	hdb.mu.RLock()
+	initialScanComplete := hdb.initialScanComplete
+	ipCheckDisabled := hdb.disableIPViolationCheck
+	hdb.mu.RUnlock()
+	if !initialScanComplete {
+		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
+	}
+	if ipCheckDisabled {
+		return hdb.hostTree.SelectRandom(n, blacklist, nil), nil
+	}
+	return hdb.hostTree.SelectRandom(n, blacklist, addressBlacklist), nil
+}
+
+// SetIPViolationCheck enables or disables the IP violation check. If disabled,
+// CheckForIPViolations won't return bad hosts and RandomHosts will return the
+// address blacklist.
+func (hdb *HostDB) SetIPViolationCheck(enabled bool) {
+	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
+	hdb.disableIPViolationCheck = !enabled
+}
+
+// RandomHostsWithAllowance works as RandomHosts but uses a temporary hosttree
+// created from the specified allowance. This is a very expensive call and
+// should be used with caution.
+func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist []types.SiaPublicKey, allowance modules.Allowance) ([]modules.HostDBEntry, error) {
 	hdb.mu.RLock()
 	initialScanComplete := hdb.initialScanComplete
 	hdb.mu.RUnlock()
 	if !initialScanComplete {
 		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
-	return hdb.hostTree.SelectRandom(n, blacklist, addressBlacklist), nil
+	// Create a temporary hosttree from the given allowance.
+	ht := hosttree.New(hdb.calculateHostWeightFn(allowance), hdb.deps.Resolver())
+
+	// Insert all known hosts.
+	var insertErrs error
+	allHosts := hdb.hostTree.All()
+	for _, host := range allHosts {
+		if err := ht.Insert(host); err != nil {
+			insertErrs = errors.Compose(insertErrs, err)
+		}
+	}
+
+	// Select hosts from the temporary hosttree.
+	return ht.SelectRandom(n, blacklist, addressBlacklist), insertErrs
+}
+
+// SetAllowance updates the allowance used by the hostdb for weighing hosts by
+// updating the host weight function. It will completely rebuild the hosttree so
+// it should be used with care.
+func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
+	// If the allowance is empty, set it to the default allowance. This ensures
+	// that the estimates are at least moderately grounded.
+	if reflect.DeepEqual(allowance, modules.Allowance{}) {
+		allowance = modules.DefaultAllowance
+	}
+
+	// Update the weight function.
+	hdb.mu.Lock()
+	hdb.allowance = allowance
+	hdb.weightFunc = hdb.calculateHostWeightFn(allowance)
+	hdb.mu.Unlock()
+
+	// Update the trees weight function.
+	return hdb.hostTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
 }

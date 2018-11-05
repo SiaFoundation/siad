@@ -178,7 +178,7 @@ func utilssighashcmd(indexStr, txnStr string) {
 		}
 	}
 
-	fmt.Println(txn.SigHash(index))
+	fmt.Println(txn.SigHash(index, 180e3))
 }
 
 func utilschecksigcmd(base64Sig, hexHash, pkStr string) {

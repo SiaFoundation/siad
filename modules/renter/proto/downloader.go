@@ -24,6 +24,8 @@ type Downloader struct {
 	hdb         hostDB
 	host        modules.HostDBEntry
 	once        sync.Once
+
+	height types.BlockHeight
 }
 
 // Sector retrieves the sector with the specified Merkle root, and revises
@@ -97,7 +99,7 @@ func (hd *Downloader) Sector(root crypto.Hash) (_ modules.RenterContract, _ []by
 
 	// send the revision to the host for approval
 	extendDeadline(hd.conn, connTimeout)
-	signedTxn, err := negotiateRevision(hd.conn, rev, contract.SecretKey)
+	signedTxn, err := negotiateRevision(hd.conn, rev, contract.SecretKey, hd.height)
 	if err == modules.ErrStopResponse {
 		// if host gracefully closed, close our connection as well; this will
 		// cause the next download to fail. However, we must delay closing
@@ -156,7 +158,7 @@ func (hd *Downloader) Close() error {
 
 // NewDownloader initiates the download request loop with a host, and returns a
 // Downloader.
-func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileContractID, hdb hostDB, cancel <-chan struct{}) (_ *Downloader, err error) {
+func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Downloader, err error) {
 	sc, ok := cs.Acquire(id)
 	if !ok {
 		return nil, errors.New("invalid contract")
@@ -200,5 +202,7 @@ func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileCont
 		closeChan:   closeChan,
 		deps:        cs.deps,
 		hdb:         hdb,
+
+		height: currentHeight,
 	}, nil
 }

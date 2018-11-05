@@ -28,40 +28,29 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	var basePrice, baseCollateral types.Currency
 	if endHeight+host.WindowSize > lastRev.NewWindowEnd {
 		timeExtension := uint64((endHeight + host.WindowSize) - lastRev.NewWindowEnd)
-		basePrice = host.StoragePrice.Mul64(lastRev.NewFileSize).Mul64(timeExtension)    // cost of data already covered by contract, i.e. lastrevision.Filesize
-		baseCollateral = host.Collateral.Mul64(lastRev.NewFileSize).Mul64(timeExtension) // same but collateral
+		basePrice = host.StoragePrice.Mul64(lastRev.NewFileSize).Mul64(timeExtension)    // cost of already uploaded data that needs to be covered by the renewed contract.
+		baseCollateral = host.Collateral.Mul64(lastRev.NewFileSize).Mul64(timeExtension) // same as basePrice.
 	}
 
 	// Calculate the anticipated transaction fee.
 	_, maxFee := tpool.FeeEstimation()
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
 
-	// Underflow check.
-	if funding.Cmp(host.ContractPrice.Add(txnFee).Add(basePrice)) <= 0 {
-		return modules.RenterContract{}, errors.New("insufficient funds to cover contract fee and transaction fee during contract renewal")
-	}
-	// Divide by zero check.
-	if host.StoragePrice.IsZero() {
-		host.StoragePrice = types.NewCurrency64(1)
-	}
-
 	// Calculate the payouts for the renter, host, and whole contract.
-	renterPayout := funding.Sub(host.ContractPrice).Sub(txnFee).Sub(basePrice) // renter payout is pre-tax
-	maxStorageSize := renterPayout.Div(host.StoragePrice)
-	hostCollateral := maxStorageSize.Mul(host.Collateral)
-	if hostCollateral.Cmp(host.MaxCollateral) > 0 {
-		hostCollateral = host.MaxCollateral
+	period := endHeight - startHeight
+	expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
+	renterPayout, hostPayout, hostCollateral, err := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, expectedStorage)
+	if err != nil {
+		return modules.RenterContract{}, err
 	}
-
-	// Determine the host payout and the total payout for the contract.
-	hostPayout := hostCollateral.Add(host.ContractPrice).Add(basePrice)
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// check for negative currency
+	if hostCollateral.Cmp(baseCollateral) < 0 {
+		baseCollateral = hostCollateral
+	}
 	if types.PostTax(startHeight, totalPayout).Cmp(hostPayout) < 0 {
 		return modules.RenterContract{}, errors.New("insufficient funds to pay both siafund fee and also host payout")
-	} else if hostCollateral.Cmp(baseCollateral) < 0 {
-		return modules.RenterContract{}, errors.New("new collateral smaller than base collateral")
 	}
 
 	// create file contract
@@ -228,7 +217,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		FileContractRevisions: []types.FileContractRevision{initRevision},
 		TransactionSignatures: []types.TransactionSignature{renterRevisionSig},
 	}
-	encodedSig := crypto.SignHash(revisionTxn.SigHash(0), ourSK)
+	encodedSig := crypto.SignHash(revisionTxn.SigHash(0, startHeight), ourSK)
 	revisionTxn.TransactionSignatures[0].Signature = encodedSig[:]
 
 	// Send acceptance and signatures

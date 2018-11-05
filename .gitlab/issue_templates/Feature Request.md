@@ -1,7 +1,7 @@
 # FEATURE REQUEST
 
-**Description of Request**
+## Description of Request
 
-**Reason or Need for Feature**
+## Reason or Need for Feature
 
-**Design / Proposal**
+## Design / Proposal

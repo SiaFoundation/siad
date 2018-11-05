@@ -150,7 +150,7 @@ func createRevisionSignature(fcr types.FileContractRevision, renterSig types.Tra
 		FileContractRevisions: []types.FileContractRevision{fcr},
 		TransactionSignatures: []types.TransactionSignature{renterSig, hostSig},
 	}
-	sigHash := txn.SigHash(1)
+	sigHash := txn.SigHash(1, blockHeight)
 	encodedSig := crypto.SignHash(sigHash, secretKey)
 	txn.TransactionSignatures[1].Signature = encodedSig[:]
 	err := modules.VerifyFileContractRevisionTransactionSignatures(fcr, txn.TransactionSignatures, blockHeight)
@@ -217,6 +217,8 @@ func (h *Host) managedFinalizeContract(builder modules.TransactionBuilder, rente
 		LockedCollateral:        hostCollateral,
 		PotentialStorageRevenue: hostInitialRevenue,
 		RiskedCollateral:        hostInitialRisk,
+
+		NegotiationHeight: h.blockHeight,
 
 		OriginTransactionSet:   fullTxnSet,
 		RevisionTransactionSet: []types.Transaction{revisionTransaction},

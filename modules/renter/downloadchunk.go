@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 
@@ -56,6 +57,7 @@ type unfinishedDownloadChunk struct {
 	staticPriority      uint64
 
 	// Download chunk state - need mutex to access.
+	completedPieces   []bool    // Which pieces were downloaded successfully.
 	failed            bool      // Indicates if the chunk has been marked as failed.
 	physicalChunkData [][]byte  // Used to recover the logical data.
 	pieceUsage        []bool    // Which pieces are being actively fetched.
@@ -139,6 +141,27 @@ func (udc *unfinishedDownloadChunk) managedRemoveWorker() {
 	udc.workersRemaining--
 	udc.mu.Unlock()
 	udc.managedCleanUp()
+}
+
+// markPieceCompleted marks the piece with pieceIndex as completed.
+func (udc *unfinishedDownloadChunk) markPieceCompleted(pieceIndex uint64) {
+	udc.completedPieces[pieceIndex] = true
+	udc.piecesCompleted++
+
+	// Sanity check to make sure the slice and counter are consistent.
+	if !build.DEBUG {
+		return
+	}
+	completed := 0
+	for _, b := range udc.completedPieces {
+		if b {
+			completed++
+		}
+	}
+	if completed != udc.piecesCompleted {
+		build.Critical(fmt.Sprintf("pieces completed and completedPieces out of sync %v != %v",
+			completed, udc.piecesCompleted))
+	}
 }
 
 // returnMemory will check on the status of all the workers and pieces, and

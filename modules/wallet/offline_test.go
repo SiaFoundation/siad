@@ -160,7 +160,7 @@ func TestSignTransactionNoWallet(t *testing.T) {
 	}
 
 	// can't sign without toSign argument
-	if err := SignTransaction(&txn, seed, nil); err == nil {
+	if err := SignTransaction(&txn, seed, nil, 0); err == nil {
 		t.Fatal("expected error when attempting to sign without specifying ParentIDs")
 	}
 
@@ -169,7 +169,7 @@ func TestSignTransactionNoWallet(t *testing.T) {
 		txn.TransactionSignatures[0].ParentID,
 		txn.TransactionSignatures[1].ParentID,
 	}
-	if err := SignTransaction(&txn, seed, toSign); err != nil {
+	if err := SignTransaction(&txn, seed, toSign, 0); err != nil {
 		t.Fatal(err)
 	}
 	// txn should now have a signature
@@ -368,7 +368,7 @@ func TestWatchOnly(t *testing.T) {
 	}
 
 	// sign the transaction
-	sig := crypto.SignHash(txn.SigHash(0), sk.SecretKeys[0])
+	sig := crypto.SignHash(txn.SigHash(0, wt.cs.Height()), sk.SecretKeys[0])
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// the resulting transaction should be valid; submit it to the tpool and

@@ -40,7 +40,7 @@ func (h *Host) managedLearnHostname() {
 		return
 	}
 
-	autoAddress := modules.NetAddress(net.JoinHostPort(string(hostname), hostPort))
+	autoAddress := modules.NetAddress(net.JoinHostPort(hostname.String(), hostPort))
 	if err := autoAddress.IsValid(); err != nil {
 		h.log.Printf("WARN: discovered hostname %q is invalid: %v", autoAddress, err)
 		return

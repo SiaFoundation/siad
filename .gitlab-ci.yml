@@ -120,7 +120,7 @@ deploy:
   stage: deploy
   only:
     refs:
-      - master
+      - master@NebulousLabs/Sia
   artifacts:
     name: "Binaries"
     paths:

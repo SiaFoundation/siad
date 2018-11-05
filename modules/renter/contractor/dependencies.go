@@ -56,6 +56,7 @@ type (
 		IncrementFailedInteractions(key types.SiaPublicKey)
 		RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error)
 		ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown
+		SetAllowance(allowance modules.Allowance) error
 	}
 
 	persister interface {

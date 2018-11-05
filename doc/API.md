@@ -21,12 +21,12 @@ Notes:
 
 Example GET curl call:
 ```
-curl -A "Sia-Agent" "localhost:9980/wallet/transactions?startheight=1&endheight=250"
+curl -A "Sia-Agent" -u "":foobar "localhost:9980/wallet/transactions?startheight=1&endheight=250"
 ```
 
 Example POST curl call:
 ```
-curl -A "Sia-Agent" --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
+curl -A "Sia-Agent" -u "":foobar --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
 ```
 
 Standard responses
@@ -54,7 +54,16 @@ The standard error response indicating the request failed for any reason, is a
 Authentication
 --------------
 
-API authentication can be enabled with the `--authenticate-api` siad flag.
+API authentication is enabled by default, using a password stored in a flat
+file. The location of this file is:
+
+- Linux:   `$HOME/.sia/apipassword`
+- MacOS:   `$HOME/Library/Application Support/Sia/apipassword`
+- Windows: `%LOCALAPPDATA%\Sia\apipassword`
+
+Note that the file contains a trailing newline, which must be trimmed before
+use.
+
 Authentication is HTTP Basic Authentication as described in
 [RFC 2617](https://tools.ietf.org/html/rfc2617), however, the username is the
 empty string. The flag does not enforce authentication on all API endpoints.
@@ -65,6 +74,11 @@ For example, if the API password is "foobar" the request header should include
 ```
 Authorization: Basic OmZvb2Jhcg==
 ```
+
+Authentication can be disabled by passing the `--authenticate-api=false` flag
+to `siad`. You can change the password by modifying the password file, setting
+the `SIA_API_PASSWORD` environment variable, or passing the `--temp-password`
+flag to `siad.`
 
 Units
 -----
@@ -921,13 +935,14 @@ modify settings that control the renter's behavior.
 
 ###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters)
 ```
-funds             // hastings
+checkforipviolation // true or false
+funds               // hastings
 hosts
-period            // block height
-renewwindow       // block height
-maxdownloadspeed  // bytes per second
-maxuploadspeed    // bytes per second
-streamcachesize   // number of data chunks cached when streaming
+period              // block height
+renewwindow         // block height
+maxdownloadspeed    // bytes per second
+maxuploadspeed      // bytes per second
+streamcachesize     // number of data chunks cached when streaming
 ```
 
 ###### Response
@@ -1798,7 +1813,8 @@ returns a list of outputs that the wallet can spend.
       "fundtype": "siacoin output",
       "confirmationheight": 50000,
       "unlockhash": "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
-      "value": "1234" // big int
+      "value": "1234", // big int
+      "iswatchonly": false
     }
   ]
 }

@@ -1,11 +1,11 @@
 # NEW FEATURE
 
-**Description of Feature**
+## Description of Feature
 
-**Description of Work Flow**
+## Description of Work Flow
 
-**Testing Added**
+## Testing Added
 
-**Modules and Packages Impacted**
+## Modules and Packages Impacted
 
-**Example of Feature if applicable (ie Screenshot)**
+## Example of Feature if applicable (ie Screenshot)

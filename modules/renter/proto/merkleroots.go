@@ -70,16 +70,29 @@ func parseRootsFromData(b []byte) ([]crypto.Hash, error) {
 }
 
 // loadExistingMerkleRoots reads creates a merkleRoots object from existing
-// merkle roots.
-func loadExistingMerkleRoots(file *fileSection) (*merkleRoots, error) {
+// merkle roots. If the file has an unexpected length, we truncate it and
+// return a boolean to indicate that the last write was incomplete and that the
+// unapplied wal transactions should be applied after loading the roots.
+func loadExistingMerkleRoots(file *fileSection) (*merkleRoots, bool, error) {
 	mr := &merkleRoots{
 		rootsFile: file,
 	}
+	applyTxns := false
+	// Get the filesize and truncate the file if necessary.
+	size, err := file.Size()
+	if err != nil {
+		return nil, applyTxns, err
+	}
+	if mod := size % crypto.HashSize; mod != 0 {
+		if err := file.Truncate(size - mod); err != nil {
+			return nil, applyTxns, err
+		}
+		applyTxns = true
+	}
 	// Get the number of roots stored in the file.
-	var err error
 	mr.numMerkleRoots, err = mr.lenFromFile()
 	if err != nil {
-		return nil, err
+		return nil, applyTxns, err
 	}
 	// Read the roots from the file without reading all of them at once.
 	readOff := int64(0)
@@ -93,16 +106,16 @@ func loadExistingMerkleRoots(file *fileSection) (*merkleRoots, error) {
 			break
 		}
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return nil, err
+			return nil, applyTxns, err
 		}
 		roots, err := parseRootsFromData(rootsData[:n])
 		if err != nil {
-			return nil, err
+			return nil, applyTxns, err
 		}
 		mr.appendRootMemory(roots...)
 		readOff += int64(n)
 	}
-	return mr, nil
+	return mr, applyTxns, nil
 }
 
 // newCachedSubTree creates a cachedSubTree from exactly

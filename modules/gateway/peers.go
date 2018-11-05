@@ -153,10 +153,8 @@ func (g *Gateway) threadedAcceptConn(conn net.Conn) {
 		return
 	}
 
-	if build.VersionCmp(remoteVersion, minimumAcceptablePeerVersion) >= 0 {
+	if err = acceptableVersion(remoteVersion); err == nil {
 		err = g.managedAcceptConnPeer(conn, remoteVersion)
-	} else {
-		err = errors.New("version number is below threshold")
 	}
 	if err != nil {
 		g.log.Debugf("INFO: %v wanted to connect, but failed: %v", addr, err)
@@ -437,10 +435,8 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 		return err
 	}
 
-	if build.VersionCmp(remoteVersion, minimumAcceptablePeerVersion) >= 0 {
+	if err = acceptableVersion(remoteVersion); err == nil {
 		err = g.managedConnectPeer(conn, remoteVersion, addr)
-	} else {
-		err = errors.New("version number is below threshold")
 	}
 	if err != nil {
 		conn.Close()

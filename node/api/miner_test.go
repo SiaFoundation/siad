@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -134,7 +135,7 @@ func TestMinerHeader(t *testing.T) {
 	copy(header[:], targetAndHeader[32:])
 	headerHash := crypto.HashObject(header)
 	for headerHash[0] >= types.RootTarget[0] {
-		header[35]++
+		*(*uint64)(unsafe.Pointer(&header[32])) += types.ASICHardforkFactor
 		headerHash = crypto.HashObject(header)
 	}
 

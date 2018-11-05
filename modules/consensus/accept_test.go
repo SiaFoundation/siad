@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -645,8 +646,8 @@ func TestMissedTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for checkTarget(block, block.ID(), target) && block.Nonce[0] != 255 {
-		block.Nonce[0]++
+	for checkTarget(block, block.ID(), target) {
+		*(*uint64)(unsafe.Pointer(&block.Nonce)) += types.ASICHardforkFactor
 	}
 	if checkTarget(block, block.ID(), target) {
 		t.Fatal("unable to find a failing target")

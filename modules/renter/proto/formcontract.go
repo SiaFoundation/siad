@@ -33,24 +33,13 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	_, maxFee := tpool.FeeEstimation()
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
 
-	// Underflow check.
-	if funding.Cmp(host.ContractPrice.Add(txnFee)) <= 0 {
-		return modules.RenterContract{}, errors.New("insufficient funds to cover contract fee and transaction fee during contract formation")
-	}
-	// Divide by zero check.
-	if host.StoragePrice.IsZero() {
-		host.StoragePrice = types.NewCurrency64(1)
-	}
-
 	// Calculate the payouts for the renter, host, and whole contract.
-	renterPayout := funding.Sub(host.ContractPrice).Sub(txnFee) // renter payout is pre-tax
-	maxStorageSize := renterPayout.Div(host.StoragePrice)
-	hostCollateral := maxStorageSize.Mul(host.Collateral)
-	if hostCollateral.Cmp(host.MaxCollateral) > 0 {
-		hostCollateral = host.MaxCollateral
+	period := endHeight - startHeight
+	expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
+	renterPayout, hostPayout, _, err := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, types.ZeroCurrency, period, expectedStorage)
+	if err != nil {
+		return modules.RenterContract{}, err
 	}
-	// Calculate the initial host payout.
-	hostPayout := hostCollateral.Add(host.ContractPrice)
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// Check for negative currency.
@@ -215,7 +204,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 		FileContractRevisions: []types.FileContractRevision{initRevision},
 		TransactionSignatures: []types.TransactionSignature{renterRevisionSig},
 	}
-	encodedSig := crypto.SignHash(revisionTxn.SigHash(0), ourSK)
+	encodedSig := crypto.SignHash(revisionTxn.SigHash(0, startHeight), ourSK)
 	revisionTxn.TransactionSignatures[0].Signature = encodedSig[:]
 
 	// Send acceptance and signatures.
