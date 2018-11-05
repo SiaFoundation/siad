@@ -85,8 +85,11 @@ func (c *Contractor) managedCheckForDuplicates() {
 func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.RenterContract, blockHeight types.BlockHeight, allowance modules.Allowance) (types.Currency, error) {
 	// Fetch the host pricing to use in the estimate.
 	host, exists := c.hdb.Host(contract.HostPublicKey)
-	if !exists || host.Blacklisted {
-		return types.ZeroCurrency, errors.New("could not find host in hostdb or host is blacklisted")
+	if !exists {
+		return types.ZeroCurrency, errors.New("could not find host in hostdb")
+	}
+	if host.Filtered {
+		return types.ZeroCurrency, errors.New("host is blacklisted")
 	}
 
 	// Estimate the amount of money that's going to be needed for existing
@@ -253,7 +256,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 			host, exists := c.hdb.Host(contract.HostPublicKey)
 			// Contract has no utility if the host is not in the database. Or is blacklisted
-			if !exists || host.Blacklisted {
+			if !exists || host.Filtered {
 				u.GoodForUpload = false
 				u.GoodForRenew = false
 				return
@@ -427,8 +430,10 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	c.mu.Lock()
 	period := c.allowance.Period
 	c.mu.Unlock()
-	if !ok || host.Blacklisted {
-		return modules.RenterContract{}, errors.New("no record of that host or host is blacklisted")
+	if !ok {
+		return modules.RenterContract{}, errors.New("no record of that host")
+	} else if host.Filtered {
+		return modules.RenterContract{}, errors.New("host is blacklisted")
 	} else if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return modules.RenterContract{}, errTooExpensive
 	} else if host.MaxDuration < period {
@@ -719,7 +724,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// (3% at time of writing), or if there is less than 3 sectors worth of
 		// storage+upload+download remaining.
 		host, _ := c.hdb.Host(contract.HostPublicKey)
-		if host.Blacklisted {
+		if host.Filtered {
 			continue
 		}
 		blockBytes := types.NewCurrency64(modules.SectorSize * uint64(allowance.Period))

@@ -77,6 +77,46 @@ type HostDB struct {
 	lastChange  modules.ConsensusChangeID
 }
 
+// insert inserts the HostDBEntry into both hosttrees
+func (hdb *HostDB) insert(host modules.HostDBEntry) error {
+	err := hdb.hostTree.Insert(host)
+	_, ok := hdb.filteredHosts[string(host.PublicKey.Key)]
+	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
+	if isWhitelist == ok {
+		errF := hdb.filteredTree.Insert(host)
+		if errF != nil && errF != hosttree.ErrHostExists {
+			err = errors.Compose(err, errF)
+		}
+	}
+	return err
+}
+
+// modify modifies the HostDBEntry in both hosttrees
+func (hdb *HostDB) modify(host modules.HostDBEntry) error {
+	err := hdb.hostTree.Modify(host)
+	_, ok := hdb.filteredHosts[string(host.PublicKey.Key)]
+	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
+	if isWhitelist == ok {
+		err = errors.Compose(err, hdb.filteredTree.Modify(host))
+	}
+	return err
+}
+
+// remove removes the HostDBEntry from both hosttrees
+func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
+	err := hdb.hostTree.Remove(pk)
+	_, ok := hdb.filteredHosts[string(pk.Key)]
+	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
+	if isWhitelist == ok {
+		errF := hdb.filteredTree.Remove(pk)
+		if err == nil && errF == hosttree.ErrNoSuchHost {
+			return nil
+		}
+		err = errors.Compose(err, errF)
+	}
+	return err
+}
+
 // New returns a new HostDB.
 func New(g modules.Gateway, cs modules.ConsensusSet, persistDir string) (*HostDB, error) {
 	// Check for nil inputs.
@@ -293,8 +333,8 @@ func (hdb *HostDB) Close() error {
 
 // Host returns the HostSettings associated with the specified pubkey. If no
 // matching host is found, Host returns false.  For black and white list modes,
-// the Blacklist field for the HostDBEntry is set to indicate it the host is
-// blacklisted
+// the Filtered field for the HostDBEntry is set to indicate it the host is
+// being filtered from the filtered hosttree
 func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 	hdb.mu.Lock()
 	whitelist := hdb.filterMode == modules.HostDBActiveWhitelist
@@ -305,7 +345,7 @@ func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 		return host, exists
 	}
 	_, ok := filteredHosts[string(spk.Key)]
-	host.Blacklisted = whitelist != ok
+	host.Filtered = whitelist != ok
 	hdb.mu.RLock()
 	updateHostHistoricInteractions(&host, hdb.blockHeight)
 	hdb.mu.RUnlock()
@@ -316,7 +356,11 @@ func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 func (hdb *HostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey) {
 	hdb.mu.RLock()
 	defer hdb.mu.RUnlock()
-	return hdb.filterMode, hdb.filteredHosts
+	filteredHosts := make(map[string]types.SiaPublicKey)
+	for k, v := range hdb.filteredHosts {
+		filteredHosts[k] = v
+	}
+	return hdb.filterMode, filteredHosts
 }
 
 // SetFilterMode sets the hostdb filter mode
@@ -473,44 +517,4 @@ func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 	err1 := hdb.hostTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
 	err2 := hdb.filteredTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
 	return errors.Compose(err1, err2)
-}
-
-// insert inserts the HostDBEntry into both hosttrees
-func (hdb *HostDB) insert(host modules.HostDBEntry) error {
-	err := hdb.hostTree.Insert(host)
-	_, ok := hdb.filteredHosts[string(host.PublicKey.Key)]
-	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
-	if isWhitelist == ok {
-		errF := hdb.filteredTree.Insert(host)
-		if errF != nil && errF != hosttree.ErrHostExists {
-			err = errors.Compose(err, errF)
-		}
-	}
-	return err
-}
-
-// modify modifies the HostDBEntry in both hosttrees
-func (hdb *HostDB) modify(host modules.HostDBEntry) error {
-	err := hdb.hostTree.Modify(host)
-	_, ok := hdb.filteredHosts[string(host.PublicKey.Key)]
-	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
-	if isWhitelist == ok {
-		err = errors.Compose(err, hdb.filteredTree.Modify(host))
-	}
-	return err
-}
-
-// remove removes the HostDBEntry from both hosttrees
-func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
-	err := hdb.hostTree.Remove(pk)
-	_, ok := hdb.filteredHosts[string(pk.Key)]
-	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
-	if isWhitelist == ok {
-		errF := hdb.filteredTree.Remove(pk)
-		if err == nil && errF == hosttree.ErrNoSuchHost {
-			return nil
-		}
-		err = errors.Compose(err, errF)
-	}
-	return err
 }

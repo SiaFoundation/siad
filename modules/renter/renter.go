@@ -272,7 +272,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	// Get hosts from pubkeys
 	for _, pk := range pks {
 		host, ok := r.hostDB.Host(pk)
-		if !ok || host.Blacklisted {
+		if !ok || host.Filtered {
 			continue
 		}
 		// confirm host wasn't already added

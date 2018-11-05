@@ -144,8 +144,10 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	host, haveHost := c.hdb.Host(contract.HostPublicKey)
 	if height > contract.EndHeight {
 		return nil, errors.New("contract has already ended")
-	} else if !haveHost || host.Blacklisted {
-		return nil, errors.New("no record of that host or host is blacklisted")
+	} else if !haveHost {
+		return nil, errors.New("no record of that host")
+	} else if host.Filtered {
+		return nil, errors.New("host is blacklisted")
 	} else if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return nil, errTooExpensive
 	} else if host.UploadBandwidthPrice.Cmp(maxUploadPrice) > 0 {

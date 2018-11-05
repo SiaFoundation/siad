@@ -256,8 +256,9 @@ type HostDBEntry struct {
 	// MitM based vulnerabilities.
 	PublicKey types.SiaPublicKey `json:"publickey"`
 
-	// Blacklisted says whether or not a HostDBEntry can be used
-	Blacklisted bool `json:"blacklisted"`
+	// Filtered says whether or not a HostDBEntry is being filtered out of the
+	// filtered hosttree due to the filter mode of the hosttree
+	Filtered bool `json:"filtered"`
 }
 
 // HostDBScan represents a single scan event.

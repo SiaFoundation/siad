@@ -71,7 +71,7 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    Host:", host.NetAddress)
 			t.Log("        pk", host.PublicKey)
 			t.Log("        Accepting Contracts", host.HostExternalSettings.AcceptingContracts)
-			t.Log("        Blacklisted", host.Blacklisted)
+			t.Log("        Filtered", host.Filtered)
 			t.Log("        LastIPNetChange", host.LastIPNetChange.String())
 			t.Log("        Subnets")
 			for _, subnet := range host.IPNets {

@@ -620,8 +620,8 @@ are better scoring hosts in your hostdb that were previously being filtered out.
 ###### Request Body
 ```javascript
 {
-  "filtermode": string, // can be either whitelist, blacklist, or disable
-  "hosts": [            // comma separated pubkeys
+  "filtermode": "whitelist", // can be either whitelist, blacklist, or disable
+  "hosts": [                 // comma separated pubkeys
     "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
     "ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
   ]
