@@ -40,6 +40,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"github.com/coreos/bbolt"
@@ -576,14 +577,17 @@ func (h *Host) PruneStaleStorageObligations() error {
 			}
 			if !conf {
 				// If the transaction id was not confirmed the obligation
-				// is removed from the database.
-
-				err = b.Delete(k)
-				if err != nil {
-					return build.ExtendErr("unable to remove storage obligation from database:", err)
+				// is removed from the database. But only if the transaction is at
+				// least maxTxnAge blocks old.
+				if h.blockHeight > so.NegotiationHeight+transactionpool.MaxTxnAge {
+					err = b.Delete(k)
+					if err != nil {
+						return build.ExtendErr("unable to remove storage obligation from database:", err)
+					}
+					continue
 				}
-				continue
 			}
+
 			// Transaction fees are always added.
 			fm.TransactionFeeExpenses = fm.TransactionFeeExpenses.Add(so.TransactionFeesAdded)
 
