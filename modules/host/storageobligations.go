@@ -577,6 +577,7 @@ func (h *Host) PruneStaleStorageObligations() error {
 			if !conf {
 				// If the transaction id was not confirmed the obligation
 				// is removed from the database.
+
 				err = b.Delete(k)
 				if err != nil {
 					return build.ExtendErr("unable to remove storage obligation from database:", err)
@@ -607,7 +608,7 @@ func (h *Host) PruneStaleStorageObligations() error {
 				// update anything since no revenues were lost. Only the contract compensation
 				// and transaction fees are added.
 				fm.ContractCompensation = fm.ContractCompensation.Add(so.ContractCost)
-				if so.RiskedCollateral.Cmp(types.ZeroCurrency) > 0 {
+				if !so.RiskedCollateral.IsZero() {
 					// Storage obligation failed with risked collateral.
 					fm.LostRevenue = fm.LostRevenue.Add(so.PotentialStorageRevenue).Add(so.PotentialDownloadRevenue).Add(so.PotentialUploadRevenue)
 					fm.LostStorageCollateral = fm.LostStorageCollateral.Add(so.RiskedCollateral)
