@@ -117,33 +117,8 @@ func TestRenterTwo(t *testing.T) {
 		{"TestSingleFileGet", testSingleFileGet},
 		{"TestStreamingCache", testStreamingCache},
 		{"TestZeroByteFile", testZeroByteFile},
-		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
-	}
-
-	// Run tests
-	if err := runRenterTests(t, groupParams, subTests); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// TestRenterThree executes a number of subtests using the same TestGroup to
-// save time on initialization
-func TestRenterThree(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a group for the subtests
-	groupParams := siatest.GroupParams{
-		Hosts:   5,
-		Renters: 1,
-		Miners:  1,
-	}
-
-	// Specify subtests to run
-	subTests := []test{
 		{"TestUploadWithAndWithoutForceParameter", testUploadWithAndWithoutForceParameter},
+		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
 
 	// Run tests
