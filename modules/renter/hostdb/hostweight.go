@@ -162,26 +162,48 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// hosts. The large multiplier provided for low collaterals is only intended
 	// to discredit hosts that have a meaningless amount of collateral.
 	cutoff := contractExpectedFunds.MulFloat(collateralFloor)
+
+	// Perform normalization between the price and the cutoff.
+	normalizationFactor := 0
+	for hostCollateral.Cmp64(1e12) > 0 {
+		hostCollateral = hostCollateral.Div64(10)
+		normalizationFactor++
+	}
+	for normalizationFactor > 0 {
+		cutoff = cutoff.Div64(10)
+		normalizationFactor--
+	}
+
+	// If the hostCollateral is less than the cutoff, set the cutoff equal to
+	// the collateral so that the ratio has a minimum of 1, and also so that
+	// the smallWeight is computed based on the actual collateral instead of
+	// just the cutoff.
 	if hostCollateral.Cmp(cutoff) < 0 {
-		// Set the cutoff equal to the collateral so that the ratio has a
-		// minimum of 1, and also so that the smallWeight is computed based on
-		// the actual collateral instead of just the cutoff.
 		cutoff = hostCollateral
 	}
+
 	// Get the ratio between the cutoff and the actual collateral so we can
 	// award the bonus for having a large collateral. Perform normalization
 	// before converting to uint64.
-	collateral64, _ := hostCollateral.Div(priceDivNormalization).Uint64()
-	cutoff64, _ := cutoff.Div(priceDivNormalization).Uint64()
-	if cutoff64 == 0 {
-		cutoff64 = 1
+	collateral64, err := hostCollateral.Div(priceDivNormalization).Uint64()
+	if err != nil {
+		panic("developer error, normalization should have prevented this:" + err.Error())
 	}
-	ratio := float64(collateral64) / float64(cutoff64)
+	cutoff64, err := cutoff.Div(priceDivNormalization).Uint64()
+	if err != nil {
+		panic("developer error, normalization should have prevented this:" + err.Error())
+	}
+	collateralF64 := float64(collateral64)
+	cutoffF64 := float64(cutoff64)
+	if cutoffF64 == 0 {
+		cutoffF64 = 1
+	}
+	ratio := collateralF64 / cutoffF64
 
 	// Use the cutoff to determine the score based on the small exponentiation
 	// factor (which has a high exponentiation), and then use the ratio between
 	// the two to determine the bonus gained from having a high collateral.
-	smallWeight := math.Pow(float64(cutoff64), collateralExponentiationSmall)
+	smallWeight := math.Pow(cutoffF64, collateralExponentiationSmall)
 	largeWeight := math.Pow(ratio, collateralExponentiationLarge)
 	return smallWeight * largeWeight
 }
@@ -291,11 +313,11 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// Convert the price and cutoff to floats.
 	priceU64, err := totalPrice.Uint64()
 	if err != nil {
-		panic("developer error, normalization should have prevented this:"+ err.Error())
+		panic("developer error, normalization should have prevented this:" + err.Error())
 	}
 	cutoffU64, err := cutoff.Uint64()
 	if err != nil {
-		panic("developer error, normalization should have prevented this:"+ err.Error())
+		panic("developer error, normalization should have prevented this:" + err.Error())
 	}
 	priceF64 := float64(priceU64)
 	cutoffF64 := float64(cutoffU64)
