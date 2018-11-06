@@ -306,6 +306,13 @@ var (
 
 // New RPC request and response types
 type (
+	// An RPCError may be sent instead of a Response to any RPC.
+	RPCError struct {
+		Type        types.Specifier
+		Data        []byte // structure depends on Type
+		Description string // human-readable error string
+	}
+
 	// LoopHandshakeRequest contains the information sent by the renter during
 	// the initial RPC handshake.
 	LoopHandshakeRequest struct {
@@ -415,27 +422,34 @@ type (
 	}
 )
 
-// WriteRPCResponse writes an RPC response using the new loop protocol.
+// Error implements the error interface.
+func (e *RPCError) Error() string {
+	return e.Description
+}
+
+// WriteRPCResponse writes an RPC response or error using the new loop
+// protocol. Either resp or err must be nil. If err is an *RPCError, it is
+// sent directly; otherwise, a generic RPCError is created from err's Error
+// string.
 func WriteRPCResponse(w io.Writer, resp interface{}, err error) error {
 	if err != nil {
-		return encoding.NewEncoder(w).EncodeAll(true, err.Error())
+		re, ok := err.(*RPCError)
+		if !ok {
+			re = &RPCError{Description: err.Error()}
+		}
+		return encoding.NewEncoder(w).Encode(re)
 	}
-	return encoding.NewEncoder(w).EncodeAll(false, resp)
+	return encoding.NewEncoder(w).EncodeAll((*RPCError)(nil), resp)
 }
 
 // ReadRPCResponse reads an RPC response using the new loop protocol.
 func ReadRPCResponse(r io.Reader, resp interface{}) error {
 	dec := encoding.NewDecoder(r)
-	var isError bool
-	if err := dec.Decode(&isError); err != nil {
+	var rpcErr *RPCError
+	if err := dec.Decode(&rpcErr); err != nil {
 		return err
-	}
-	if isError {
-		var errStr string
-		if err := dec.Decode(&errStr); err != nil {
-			return err
-		}
-		return errors.New(errStr)
+	} else if rpcErr != nil {
+		return rpcErr
 	}
 	return dec.Decode(resp)
 }
