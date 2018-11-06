@@ -512,7 +512,7 @@ func StringToSeed(str string, did mnemonics.DictionaryID) (Seed, error) {
 	case did == "english":
 		// Check seed has 28 or 29 words
 		if len(strings.Fields(str)) != 28 && len(strings.Fields(str)) != 29 {
-			return Seed{}, errors.New(fmt.Sprintf("Your seed is %v words; seeds are expected to have 28 or 29 words", len(strings.Fields(str))))
+			return Seed{}, fmt.Errorf("Your seed is %v words; seeds are expected to have 28 or 29 words", len(strings.Fields(str)))
 		}
 
 		// Check for other formatting errors (English only)
@@ -525,7 +525,7 @@ func StringToSeed(str string, did mnemonics.DictionaryID) (Seed, error) {
 	}
 
 	// Ensure the seed is 38 bytes (this check is not too helpful since it doesn't
-	// give any hints about what is wrong to the end user, which is why it's the 
+	// give any hints about what is wrong to the end user, which is why it's the
 	// last thing checked)
 	if len(checksumSeedBytes) != 38 {
 		return Seed{}, errors.New("Your seed is not the correct number of bytes, this can be caused by a misspelled word, missing or added words, etc.")

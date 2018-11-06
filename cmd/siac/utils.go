@@ -97,10 +97,10 @@ Use sighash to calculate the hash of a transaction.
 	}
 
 	utilsVerifySeedCmd = &cobra.Command{
-		Use:   "verify-seed",
+		Use:   "verify-seed [language]",
 		Short: "verify seed is formatted correctly",
-		Long: `Verify that a seed has 29 words, no extra whitespace,
-and all words appear in the Sia dictionary`,
+		Long: `Verify that a seed has correct number of words, no extra whitespace,
+and all words appear in the Sia dictionary. The language may be english (default), japanese, or german`,
 		Run: wrap(utilsverifyseed),
 	}
 )
@@ -220,13 +220,19 @@ func utilschecksigcmd(base64Sig, hexHash, pkStr string) {
 	}
 }
 
-func utilsverifyseed() {
+func utilsverifyseed(dictionary string) {
 	seed, err := passwordPrompt("Please enter your seed: ")
 	if err != nil {
 		die("Could not read seed")
 	}
-
-	_, err = modules.StringToSeed(seed, mnemonics.English)
+	switch {
+	case strings.ToLower(dictionary) == "german":
+		_, err = modules.StringToSeed(seed, mnemonics.German)
+	case strings.ToLower(dictionary) == "japanese":
+		_, err = modules.StringToSeed(seed, mnemonics.Japanese)
+	default:
+		_, err = modules.StringToSeed(seed, mnemonics.English)
+	}
 	if err != nil {
 		die(err)
 	}
