@@ -506,24 +506,18 @@ func (sf *SiaFile) defragChunk(chunk *chunk) {
 	maxPieces := (maxChunkSize - marshaledChunkOverhead) / marshaledPieceSize
 	maxPiecesPerSet := maxPieces / int64(len(chunk.Pieces))
 
-	// Truncate pieces to maxPiecesPerSet.
-	truncate := func(p []piece) []piece {
-		if int64(len(p)) <= maxPiecesPerSet {
-			return p
-		}
-		return p[:maxPiecesPerSet]
-	}
-
 	// Filter out pieces with unused hosts since we don't have contracts with
 	// those anymore.
 	for i, pieceSet := range chunk.Pieces {
 		var newPieceSet []piece
 		for _, piece := range pieceSet {
+			if int64(len(newPieceSet)) == maxPiecesPerSet {
+				break
+			}
 			if sf.pubKeyTable[piece.HostTableOffset].Used {
 				newPieceSet = append(newPieceSet, piece)
 			}
 		}
-		// Truncate the pieces to maxPiecesPerSet pieces.
-		chunk.Pieces[i] = truncate(newPieceSet)
+		chunk.Pieces[i] = newPieceSet
 	}
 }

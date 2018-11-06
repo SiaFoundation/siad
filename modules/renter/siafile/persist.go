@@ -308,10 +308,7 @@ func (sf *SiaFile) saveFile() error {
 // to disk when applied.
 func (sf *SiaFile) saveChunk(chunkIndex int) (writeaheadlog.Update, error) {
 	offset := sf.chunkOffset(chunkIndex)
-	chunkBytes, err := marshalChunk(sf.staticChunks[chunkIndex])
-	if err != nil {
-		return writeaheadlog.Update{}, err
-	}
+	chunkBytes := marshalChunk(sf.staticChunks[chunkIndex])
 	return sf.createInsertUpdate(offset, chunkBytes), nil
 }
 

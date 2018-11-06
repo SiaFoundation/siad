@@ -193,10 +193,7 @@ func TestNewFile(t *testing.T) {
 	// Marshal the chunks.
 	var chunks [][]byte
 	for _, chunk := range sf.staticChunks {
-		c, err := marshalChunk(chunk)
-		if err != nil {
-			t.Fatal(err)
-		}
+		c := marshalChunk(chunk)
 		chunks = append(chunks, c)
 	}
 
@@ -620,7 +617,7 @@ func TestChunkOffset(t *testing.T) {
 	sf := newTestFile()
 
 	// Set the static pages per chunk to a random value.
-	sf.staticMetadata.StaticPagesPerChunk = int8(fastrand.Intn(5)) + 1
+	sf.staticMetadata.StaticPagesPerChunk = uint8(fastrand.Intn(5)) + 1
 
 	// Calculate the offset of the first chunk.
 	offset1 := sf.chunkOffset(0)
@@ -661,10 +658,7 @@ func TestSaveChunk(t *testing.T) {
 	}
 
 	// Marshal the chunk.
-	marshaledChunk, err := marshalChunk(chunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+	marshaledChunk := marshalChunk(chunk)
 
 	// Read the chunk from disk.
 	f, err := os.Open(sf.siaFilePath)

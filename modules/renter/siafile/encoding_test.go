@@ -13,7 +13,7 @@ import (
 func TestNumChunkPagesRequired(t *testing.T) {
 	for numPieces := 0; numPieces < 1000; numPieces++ {
 		chunkSize := marshaledChunkSize(numPieces)
-		expectedPages := int8(chunkSize / pageSize)
+		expectedPages := uint8(chunkSize / pageSize)
 		if chunkSize%pageSize != 0 {
 			expectedPages++
 		}
@@ -30,10 +30,7 @@ func TestMarshalUnmarshalChunk(t *testing.T) {
 	numPieces := uint32(len(chunk.Pieces))
 
 	// Marshal the chunk.
-	chunkBytes, err := marshalChunk(chunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+	chunkBytes := marshalChunk(chunk)
 	// Check the length of the marshaled chunk.
 	if int64(len(chunkBytes)) != marshaledChunkSize(chunk.numPieces()) {
 		t.Fatalf("ChunkBytes should have len %v but was %v",
@@ -181,18 +178,11 @@ func TestMarshalUnmarshalPiece(t *testing.T) {
 	pieceIndex := uint32(fastrand.Intn(100))
 
 	// Marshal the piece.
-	buf := make([]byte, 0, 2*marshaledPieceSize)
-	rawPiece, err := marshalPiece(buf, pieceIndex, piece)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Check the length.
-	if len(rawPiece) != marshaledPieceSize {
-		t.Fatalf("Expected marshaled piece to have length %v but was %v",
-			marshaledPieceSize, len(rawPiece))
-	}
+	pieceBytes := make([]byte, marshaledPieceSize)
+	putPiece(pieceBytes, pieceIndex, piece)
+
 	// Unmarshal the piece.
-	unmarshaledPieceIndex, unmarshaledPiece, err := unmarshalPiece(rawPiece)
+	unmarshaledPieceIndex, unmarshaledPiece, err := unmarshalPiece(pieceBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,68 +193,5 @@ func TestMarshalUnmarshalPiece(t *testing.T) {
 	// Compare the piece to the original.
 	if !reflect.DeepEqual(unmarshaledPiece, piece) {
 		t.Fatal("Piece doesn't equal unmarshaled piece")
-	}
-
-	// Marshal the piece again but this time append it to the existing piece.
-	twoRawPieces, err := marshalPiece(rawPiece, pieceIndex, piece)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Check the length.
-	if len(twoRawPieces) != 2*marshaledPieceSize {
-		t.Fatalf("Expected marshaled pieces to have length %v but was %v",
-			2*marshaledPieceSize, len(rawPiece))
-	}
-	// Unmarshal both pieces.
-	unmarshaledPieceIndex1, unmarshaledPiece1, err := unmarshalPiece(twoRawPieces[:marshaledPieceSize])
-	if err != nil {
-		t.Fatal(err)
-	}
-	unmarshaledPieceIndex2, unmarshaledPiece2, err := unmarshalPiece(twoRawPieces[marshaledPieceSize:])
-	if err != nil {
-		t.Fatal(err)
-	}
-	// They should be the same and also equal to piece.
-	if !reflect.DeepEqual(unmarshaledPiece1, unmarshaledPiece2) {
-		t.Fatal("Unmarshaled pieces don't match")
-	}
-	if !reflect.DeepEqual(unmarshaledPiece1, piece) {
-		t.Fatal("Unmarshaled pieces don't match original piece")
-	}
-	// Their index should be the same and equal to pieceIndex.
-	if pieceIndex != unmarshaledPieceIndex1 || unmarshaledPieceIndex1 != unmarshaledPieceIndex2 {
-		t.Fatal("Piece indices don't match")
-	}
-
-	// Marshal the piece again but this time use already allocated memory.
-	rawPiece = make([]byte, 0, 2*marshaledPieceSize) // enough memory for 2 pieces.
-	rawPieceBefore := rawPiece
-	rawPiece, err = marshalPiece(rawPiece, pieceIndex, piece)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Check the length.
-	if len(rawPiece) != marshaledPieceSize {
-		t.Fatalf("Expected marshaled piece to have length %v but was %v",
-			marshaledPieceSize, len(rawPiece))
-	}
-	// Unmarshal the piece.
-	unmarshaledPieceIndex, unmarshaledPiece, err = unmarshalPiece(rawPiece)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Compare the pieceIndex.
-	if unmarshaledPieceIndex != pieceIndex {
-		t.Fatalf("Piece index should be %v but was %v", pieceIndex, unmarshaledPieceIndex)
-	}
-	// Compare the piece to the original.
-	if !reflect.DeepEqual(unmarshaledPiece, piece) {
-		t.Fatal("Piece doesn't equal unmarshaled piece")
-	}
-	// Make sure that rawPiece uses the same address in memory as before.
-	rawPiece = rawPiece[:cap(rawPiece)]
-	rawPieceBefore = rawPieceBefore[:cap(rawPieceBefore)]
-	if &rawPiece[cap(rawPiece)-1] != &rawPieceBefore[cap(rawPieceBefore)-1] {
-		t.Fatal("rawPiece doesn't use the same memory as rawPieceBefore")
 	}
 }

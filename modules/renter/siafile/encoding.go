@@ -7,33 +7,32 @@ import (
 	"fmt"
 	"io"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 // marshalChunk binary encodes a chunk. It only allocates memory a single time
 // for the whole chunk.
-func marshalChunk(chunk chunk) (chunkBytes []byte, err error) {
-	chunkBytes = make([]byte, 0, marshaledChunkSize(chunk.numPieces()))
+func marshalChunk(chunk chunk) []byte {
+	chunkBytes := make([]byte, marshaledChunkSize(chunk.numPieces()))
+	buf := bytes.NewBuffer(chunkBytes)
 
 	// Write the extension info.
-	chunkBytes = append(chunkBytes, chunk.ExtensionInfo[:]...)
+	ei := buf.Next(len(chunk.ExtensionInfo))
+	copy(ei, chunk.ExtensionInfo[:])
 
 	// Write the pieces length prefix.
-	chunkBytes = chunkBytes[:len(chunkBytes)+2]
-	binary.LittleEndian.PutUint16(chunkBytes[len(chunk.ExtensionInfo):], uint16(chunk.numPieces()))
+	np := buf.Next(2)
+	binary.LittleEndian.PutUint16(np[:], uint16(chunk.numPieces()))
 
 	// Write the pieces.
 	for pieceIndex, pieceSet := range chunk.Pieces {
 		for _, piece := range pieceSet {
-			chunkBytes, err = marshalPiece(chunkBytes, uint32(pieceIndex), piece)
-			if err != nil {
-				return
-			}
+			p := buf.Next(marshaledPieceSize)
+			putPiece(p, uint32(pieceIndex), piece)
 		}
 	}
-	return
+	return chunkBytes
 }
 
 // marshalErasureCoder marshals an erasure coder into its type and params.
@@ -49,42 +48,17 @@ func marshalErasureCoder(ec modules.ErasureCoder) ([4]byte, [8]byte) {
 
 // marshalMetadata marshals the metadata of the SiaFile using json encoding.
 func marshalMetadata(md metadata) ([]byte, error) {
-	// Encode the metadata.
-	jsonMD, err := json.Marshal(md)
-	if err != nil {
-		return nil, err
-	}
-	return jsonMD, nil
-}
-
-// marshalPiece uses binary encoding to marshal a piece and append the
-// marshaled piece to out. That way when marshaling a chunk, the whole chunk's
-// memory can be allocated with a single allocation.
-func marshalPiece(out []byte, pieceIndex uint32, piece piece) ([]byte, error) {
-	// Check if out has enough capacity left for the piece. If not, we extend
-	// out.
-	if cap(out)-len(out) < marshaledPieceSize {
-		build.Critical(fmt.Sprintf("capacity of out not sufficient %v < %v",
-			cap(out)-len(out), marshaledPieceSize)) // make sure we always allocate enough memory
-		extendedOut := make([]byte, len(out), len(out)+marshaledPieceSize)
-		copy(extendedOut, out)
-		out = extendedOut
-	}
-	pieceBytes := out[len(out) : len(out)+marshaledPieceSize]
-	binary.LittleEndian.PutUint32(pieceBytes[:4], pieceIndex)
-	binary.LittleEndian.PutUint32(pieceBytes[4:8], piece.HostTableOffset)
-	copy(pieceBytes[8:], piece.MerkleRoot[:])
-	return out[:len(out)+marshaledPieceSize], nil
+	return json.Marshal(md)
 }
 
 // marshalPubKeyTable marshals the public key table of the SiaFile using Sia
 // encoding.
 func marshalPubKeyTable(pubKeyTable []HostPublicKey) ([]byte, error) {
 	// Create a buffer.
-	buf := bytes.NewBuffer(nil)
+	var buf bytes.Buffer
 	// Marshal all the data into the buffer
 	for _, pk := range pubKeyTable {
-		if err := pk.MarshalSia(buf); err != nil {
+		if err := pk.MarshalSia(&buf); err != nil {
 			return nil, err
 		}
 	}
@@ -93,20 +67,29 @@ func marshalPubKeyTable(pubKeyTable []HostPublicKey) ([]byte, error) {
 
 // numChunkPagesRequired calculates the number of pages on disk we need to
 // reserve for each chunk to store numPieces.
-func numChunkPagesRequired(numPieces int) int8 {
+func numChunkPagesRequired(numPieces int) uint8 {
 	chunkSize := marshaledChunkSize(numPieces)
 	numPages := chunkSize / pageSize
 	if chunkSize%pageSize != 0 {
 		numPages++
 	}
-	return int8(numPages)
+	return uint8(numPages)
+}
+
+// putPiece uses binary encoding to marshal a piece and puts the marshaled
+// piece into out. That way when marshaling a chunk, the whole chunk's memory
+// can be allocated with a single allocation.
+func putPiece(out []byte, pieceIndex uint32, piece piece) {
+	binary.LittleEndian.PutUint32(out[:4], pieceIndex)
+	binary.LittleEndian.PutUint32(out[4:8], piece.HostTableOffset)
+	copy(out[8:], piece.MerkleRoot[:])
 }
 
 // unmarshalChunk unmarshals a chunk which was previously marshaled using
-// marshalChunk. It also requires the number of piec as an argument to know how
-// many unique pieces to expect when reading the pieces which we can easily
+// marshalChunk. It also requires the number of pieces as an argument to know
+// how many unique pieces to expect when reading the pieces which we can easily
 // find out by taking a look at the erasure coder within the siafile header.
-// Unfortunately it's not enoug to simply look at the piece indices when
+// Unfortunately it's not enough to simply look at the piece indices when
 // reading the pieces from disk, since there is no guarantee that we already
 // uploaded a piece for each index.
 func unmarshalChunk(numPieces uint32, raw []byte) (chunk chunk, err error) {
@@ -172,11 +155,9 @@ func unmarshalPiece(raw []byte) (pieceIndex uint32, piece piece, err error) {
 		err = fmt.Errorf("unexpected piece size, should be %v but was %v", marshaledPieceSize, len(raw))
 		return
 	}
-	buf := bytes.NewBuffer(raw)
-	err1 := binary.Read(buf, binary.LittleEndian, &pieceIndex)
-	err2 := binary.Read(buf, binary.LittleEndian, &piece.HostTableOffset)
-	_, err3 := io.ReadFull(buf, piece.MerkleRoot[:])
-	err = errors.Compose(err1, err2, err3)
+	pieceIndex = binary.LittleEndian.Uint32(raw[:4])
+	piece.HostTableOffset = binary.LittleEndian.Uint32(raw[4:8])
+	copy(piece.MerkleRoot[:], raw[8:])
 	return
 }
 

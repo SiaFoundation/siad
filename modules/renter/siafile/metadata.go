@@ -14,7 +14,7 @@ import (
 type (
 	// metadata is the metadata of a SiaFile and is JSON encoded.
 	metadata struct {
-		StaticPagesPerChunk int8     `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
+		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
 		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
 		StaticFileSize      int64    `json:"filesize"`      // total size of the file
 		StaticPieceSize     uint64   `json:"piecesize"`     // size of a single piece of the file
