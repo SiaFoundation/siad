@@ -430,3 +430,50 @@ func TestUnspentOutputs(t *testing.T) {
 		t.Fatal("shouldn't see addr in UnspentOutputs")
 	}
 }
+
+// TestFileContractUnspentOutputs tests that outputs created from file
+// contracts are properly handled by the wallet.
+func TestFileContractUnspentOutputs(t *testing.T) {
+	gp := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(siatest.TestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Close()
+
+	// pick a renter contract
+	renter := tg.Renters()[0]
+	rc, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := rc.ActiveContracts[0]
+
+	// mine until the contract has ended
+	miner := tg.Miners()[0]
+	for i := types.BlockHeight(0); i < contract.EndHeight; i++ {
+		miner.MineBlock()
+	}
+
+	// wallet should report the unspent output (the storage proof is missed
+	// because we did not upload any data to the contract -- the host has no
+	// incentive to submit a proof)
+	outputID := contract.ID.StorageProofOutputID(types.ProofMissed, 0)
+	wug, err := renter.WalletUnspentGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, o := range wug.Outputs {
+		if types.SiacoinOutputID(o.ID) == outputID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("wallet's spendable outputs did not contain file contract output")
+	}
+}
