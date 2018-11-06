@@ -578,7 +578,7 @@ func (h *Host) PruneStaleStorageObligations() error {
 			if !conf {
 				// If the transaction id was not confirmed the obligation
 				// is removed from the database. But only if the transaction is at
-				// least maxTxnAge blocks old.
+				// least MaxTxnAge blocks old.
 				if h.blockHeight > so.NegotiationHeight+transactionpool.MaxTxnAge {
 					err = b.Delete(k)
 					if err != nil {

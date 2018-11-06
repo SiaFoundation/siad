@@ -16,7 +16,7 @@ const (
 
 // Constants related to the size and ease-of-entry of the transaction pool.
 const (
-	// maxTxnAge determines the maximum age of a transaction (in block height)
+	// MaxTxnAge determines the maximum age of a transaction (in block height)
 	// allowed before the transaction is pruned from the transaction pool.
 	MaxTxnAge = types.BlockHeight(24)
 
