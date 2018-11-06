@@ -213,28 +213,8 @@ func (tn *TestNode) FileInfo(rf *RemoteFile) (modules.FileInfo, error) {
 	return modules.FileInfo{}, errors.New("file is not tracked by the renter")
 }
 
-// Upload uses the node to upload the file.
-func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*RemoteFile, error) {
-	// Upload file
-	err := tn.RenterUploadPost(lf.path, "/"+lf.fileName(), dataPieces, parityPieces)
-	if err != nil {
-		return nil, err
-	}
-	// Create remote file object
-	rf := &RemoteFile{
-		siaPath:  lf.fileName(),
-		checksum: lf.checksum,
-	}
-	// Make sure renter tracks file
-	_, err = tn.FileInfo(rf)
-	if err != nil {
-		return rf, errors.AddContext(err, "uploaded file is not tracked by the renter")
-	}
-	return rf, nil
-}
-
-// UploadWithForce uses the node to upload the file and specify option to overwrite if exists.
-func (tn *TestNode) UploadWithForce(lf *LocalFile, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
+// Upload uses the node to upload the file with the option to overwrite if exists.
+func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file
 	err := tn.RenterUploadForcePost(lf.path, "/"+lf.fileName(), dataPieces, parityPieces, force)
 	if err != nil {
@@ -253,25 +233,25 @@ func (tn *TestNode) UploadWithForce(lf *LocalFile, dataPieces, parityPieces uint
 	return rf, nil
 }
 
-// UploadNewFile initiates the upload of a filesize bytes large file.
-func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces uint64) (*LocalFile, *RemoteFile, error) {
+// UploadNewFile initiates the upload of a filesize bytes large file with the option to overwrite if exists.
+func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces uint64, force bool) (*LocalFile, *RemoteFile, error) {
 	// Create file for upload
 	localFile, err := tn.NewFile(filesize)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to create file")
 	}
 	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces)
+	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to start upload")
 	}
 	return localFile, remoteFile, nil
 }
 
-// UploadNewFileBlocking uploads a filesize bytes large file and waits for the
-// upload to reach 100% progress and redundancy.
-func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parityPieces uint64) (*LocalFile, *RemoteFile, error) {
-	localFile, remoteFile, err := tn.UploadNewFile(filesize, dataPieces, parityPieces)
+// UploadNewFileBlocking uploads a filesize bytes large file with the option to overwrite if exists
+// and waits for the upload to reach 100% progress and redundancy.
+func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parityPieces uint64, force bool) (*LocalFile, *RemoteFile, error) {
+	localFile, remoteFile, err := tn.UploadNewFile(filesize, dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -284,11 +264,11 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 	return localFile, remoteFile, err
 }
 
-// UploadExistingFileBlocking attempts to upload an existing file and waits for the
-// upload to reach 100% progress and redundancy.
-func (tn *TestNode) UploadExistingFileBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
+// UploadBlocking attempts to upload an existing file with the option to overwrite if exists
+// and waits for the upload to reach 100% progress and redundancy.
+func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.UploadWithForce(localFile, dataPieces, parityPieces, force)
+	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to start upload")
 	}

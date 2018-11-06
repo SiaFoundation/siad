@@ -257,13 +257,7 @@ func (c *Client) RenterSetRepairPathPost(siaPath, newPath string) (err error) {
 
 // RenterUploadPost uses the /renter/upload endpoint to upload a file
 func (c *Client) RenterUploadPost(path, siaPath string, dataPieces, parityPieces uint64) (err error) {
-	siaPath = escapeSiaPath(trimSiaPath(siaPath))
-	values := url.Values{}
-	values.Set("source", path)
-	values.Set("datapieces", strconv.FormatUint(dataPieces, 10))
-	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
-	err = c.post(fmt.Sprintf("/renter/upload/%s", siaPath), values.Encode(), nil)
-	return
+	return c.RenterUploadForcePost(path, siaPath, dataPieces, parityPieces, false)
 }
 
 // RenterUploadForcePost uses the /renter/upload endpoint to upload a file
