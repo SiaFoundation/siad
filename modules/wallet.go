@@ -520,8 +520,10 @@ func StringToSeed(str string, did mnemonics.DictionaryID) (Seed, error) {
 		if !IsFormat(str) {
 			return Seed{}, errors.New("Your seed is not formatted correctly.  Check whitespace, capitalization, and punctuation")
 		}
+	case did == "german":
+	case did == "japanese":
 	default:
-		return Seed{}, errors.New("non english dictionary provided, english dictionary is the only supported dictionary")
+		return Seed{}, errors.New("unsupported dictionary language provided, please use the english, japanese, or german dictionary.")
 	}
 
 	// Ensure the seed is 38 bytes (this check is not too helpful since it doesn't
