@@ -45,15 +45,15 @@ var (
 	// that is permitted by the consensus rules.
 	BlockSizeLimit = uint64(2e6)
 	// BlocksPerHour is the number of blocks expected to be mined per hour.
-	BlocksPerHour uint64
+	BlocksPerHour = uint64(6)
 	// BlocksPerDay is the number of blocks expected to be mined per day.
-	BlocksPerDay uint64
+	BlocksPerDay = 24 * BlocksPerHour
 	// BlocksPerWeek is the number of blocks expected to be mined per week.
-	BlocksPerWeek uint64
+	BlocksPerWeek = 7 * BlocksPerDay
 	// BlocksPerMonth is the number of blocks expected to be mined per month.
-	BlocksPerMonth uint64
+	BlocksPerMonth = 30 * BlocksPerDay
 	// BlocksPerYear is the number of blocks expected to be mined per year.
-	BlocksPerYear uint64
+	BlocksPerYear = 365 * BlocksPerDay
 
 	// EndOfTime is value to be used when a date in the future is needed for
 	// validation
@@ -580,9 +580,4 @@ func init() {
 	}
 	// Calculate the genesis ID.
 	GenesisID = GenesisBlock.ID()
-	BlocksPerHour = 3600 / uint64(BlockFrequency)
-	BlocksPerDay = 24 * BlocksPerHour
-	BlocksPerWeek = 7 * BlocksPerDay
-	BlocksPerMonth = 30 * BlocksPerDay
-	BlocksPerYear = 365 * BlocksPerDay
 }
