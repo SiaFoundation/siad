@@ -75,6 +75,13 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 // RecentRevision calls the RecentRevision RPC, returning (what the host
 // claims is) the most recent revision of the contract.
 func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
+	// Acquire the contract.
+	sc, haveContract := s.contractSet.Acquire(s.contractID)
+	if !haveContract {
+		return types.FileContractRevision{}, nil, errors.New("contract not present in contract set")
+	}
+	defer s.contractSet.Return(sc)
+
 	// send RecentRevision RPC request
 	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
 	if err := s.writeRequest(modules.RPCLoopRecentRevision, nil); err != nil {
@@ -87,7 +94,12 @@ func (s *Session) RecentRevision() (types.FileContractRevision, []types.Transact
 		return types.FileContractRevision{}, nil, err
 	}
 
-	// TODO: update contract if appropriate?
+	// if necessary, update our contract to match the host's.
+	if resp.Revision.NewRevisionNumber != sc.header.LastRevision().NewRevisionNumber {
+		if err := sc.commitTxns(); err != nil {
+			return types.FileContractRevision{}, nil, errors.AddContext(err, "failed to commit transactions")
+		}
+	}
 
 	return resp.Revision, resp.Signatures, nil
 }
@@ -528,12 +540,6 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 	if err := encoding.NewEncoder(conn).Encode(cresp); err != nil {
 		return nil, err
 	}
-
-	// if we succeeded, we can safely discard the unappliedTxns
-	for _, txn := range sc.unappliedTxns {
-		txn.SignalUpdatesApplied()
-	}
-	sc.unappliedTxns = nil
 
 	// the host is now ready to accept revisions
 	return &Session{
