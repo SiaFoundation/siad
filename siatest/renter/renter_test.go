@@ -745,7 +745,7 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := 100 + siatest.Fuzz()
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
 	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
