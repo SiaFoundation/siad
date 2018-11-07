@@ -245,8 +245,8 @@ func (hdb *HostDB) AverageContractPrice() (totalPrice types.Currency) {
 func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaPublicKey {
 	// If the check was disabled we don't return any bad hosts.
 	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
 	disabled := hdb.disableIPViolationCheck
-	hdb.mu.RUnlock()
 	if disabled {
 		return nil
 	}
