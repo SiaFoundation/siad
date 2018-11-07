@@ -281,7 +281,7 @@ func TestHostTreeModify(t *testing.T) {
 
 	// should fail with a nonexistent key
 	err := tree.Modify(modules.HostDBEntry{})
-	if err != errNoSuchHost {
+	if err != ErrNoSuchHost {
 		t.Fatalf("modify should fail with ErrNoSuchHost when provided a nonexistent public key. Got error: %v\n", err)
 	}
 
@@ -376,7 +376,7 @@ func TestRepeatInsert(t *testing.T) {
 	tree.Insert(entry1)
 	tree.Insert(entry2)
 	if len(tree.hosts) != 1 {
-		t.Error("insterting the same entry twice should result in only 1 entry")
+		t.Error("inserting the same entry twice should result in only 1 entry")
 	}
 }
 

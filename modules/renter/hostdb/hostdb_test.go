@@ -45,6 +45,7 @@ func bareHostDB() *HostDB {
 	}
 	hdb.weightFunc = hdb.calculateHostWeightFn(modules.DefaultAllowance)
 	hdb.hostTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
+	hdb.filteredTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
 	return hdb
 }
 
@@ -135,33 +136,6 @@ func (hdbt *hdbTester) initWallet() error {
 	return nil
 }
 
-// TestAverageContractPrice tests the AverageContractPrice method, which also depends on the
-// randomHosts method.
-func TestAverageContractPrice(t *testing.T) {
-	hdb := bareHostDB()
-
-	// empty
-	if avg := hdb.AverageContractPrice(); !avg.IsZero() {
-		t.Error("average of empty hostdb should be zero:", avg)
-	}
-
-	// with one host
-	h1 := makeHostDBEntry()
-	h1.ContractPrice = types.NewCurrency64(100)
-	hdb.hostTree.Insert(h1)
-	if avg := hdb.AverageContractPrice(); avg.Cmp(h1.ContractPrice) != 0 {
-		t.Error("average of one host should be that host's price:", avg)
-	}
-
-	// with two hosts
-	h2 := makeHostDBEntry()
-	h2.ContractPrice = types.NewCurrency64(300)
-	hdb.hostTree.Insert(h2)
-	if avg := hdb.AverageContractPrice(); avg.Cmp64(200) != 0 {
-		t.Error("average of two hosts should be their sum/2:", avg)
-	}
-}
-
 // TestNew tests the New function.
 func TestNew(t *testing.T) {
 	if testing.Short() {
@@ -229,7 +203,7 @@ func TestRandomHosts(t *testing.T) {
 	for i := 0; i < nEntries; i++ {
 		entry := makeHostDBEntry()
 		entries[string(entry.PublicKey.Key)] = entry
-		err := hdbt.hdb.hostTree.Insert(entry)
+		err := hdbt.hdb.filteredTree.Insert(entry)
 		if err != nil {
 			t.Error(err)
 		}
@@ -370,7 +344,7 @@ func TestRandomHosts(t *testing.T) {
 		for _, host := range rand {
 			_, exists := dupCheck[string(host.PublicKey.Key)]
 			if exists {
-				t.Error("RandomHosts is seleccting duplicates")
+				t.Error("RandomHosts is selecting duplicates")
 			}
 			dupCheck[string(host.PublicKey.Key)] = struct{}{}
 			_, exists = includeMap[string(host.PublicKey.Key)]
@@ -391,7 +365,7 @@ func TestRandomHosts(t *testing.T) {
 		for _, host := range rand {
 			_, exists := dupCheck[string(host.PublicKey.Key)]
 			if exists {
-				t.Error("RandomHosts is seleccting duplicates")
+				t.Error("RandomHosts is selecting duplicates")
 			}
 			dupCheck[string(host.PublicKey.Key)] = struct{}{}
 			_, exists = includeMap[string(host.PublicKey.Key)]
@@ -412,7 +386,7 @@ func TestRandomHosts(t *testing.T) {
 		for _, host := range rand {
 			_, exists := dupCheck[string(host.PublicKey.Key)]
 			if exists {
-				t.Error("RandomHosts is seleccting duplicates")
+				t.Error("RandomHosts is selecting duplicates")
 			}
 			dupCheck[string(host.PublicKey.Key)] = struct{}{}
 			_, exists = includeMap[string(host.PublicKey.Key)]

@@ -1033,7 +1033,7 @@ func TestRenterAddNodes(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		{"TestRedundancyReporting", testRedundancyReporting},
+		{"TestRedundancyReporting", testRedundancyReporting}, // Put first because it pulls the original tg renter
 		{"TestRenterCancelAllowance", testRenterCancelAllowance},
 		{"TestRenewFailing", testRenewFailing}, // Put last because it impacts a host
 	}
@@ -3222,7 +3222,7 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("Failed to shutdown host", err)
 		}
 	}
-	// File should have 0 redunancy now.
+	// File should have 0 redundancy now.
 	if err := renter.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}

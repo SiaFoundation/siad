@@ -2,6 +2,7 @@ package modules
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"time"
 
@@ -44,6 +45,52 @@ var (
 		ExpectedRedundancy:        3.0,
 	}
 )
+
+// FilterMode is the helper type for the enum constants for the HostDB filter
+// mode
+type FilterMode int
+
+// HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and
+// HostDBActiveWhitelist are the constants used to enable and disable the filter
+// mode of the renter's hostdb
+const (
+	HostDBFilterError FilterMode = iota
+	HostDBDisableFilter
+	HostDBActivateBlacklist
+	HostDBActiveWhitelist
+)
+
+// String returns the string value for the FilterMode
+func (fm FilterMode) String() string {
+	switch fm {
+	case HostDBFilterError:
+		return "error"
+	case HostDBDisableFilter:
+		return "disable"
+	case HostDBActivateBlacklist:
+		return "blacklist"
+	case HostDBActiveWhitelist:
+		return "whitelist"
+	default:
+		return ""
+	}
+}
+
+// FromString assigned the FilterMode from the provide string
+func (fm *FilterMode) FromString(s string) error {
+	switch s {
+	case "disable":
+		*fm = HostDBDisableFilter
+	case "blacklist":
+		*fm = HostDBActivateBlacklist
+	case "whitelist":
+		*fm = HostDBActiveWhitelist
+	default:
+		*fm = HostDBFilterError
+		return fmt.Errorf("Could not assigned FilterMode from string %v", s)
+	}
+	return nil
+}
 
 // UsageGuidelines is a temporary helper struct.
 // TODO: These values should be rolled into the allowance, instead of being a
@@ -90,7 +137,7 @@ const (
 	EstimatedFileContractTransactionSetSize = 2048
 
 	// EstimatedFileContractRevisionAndProofTransactionSetSize is the
-	// estimcated blockchain size of a transaction set used by the host to
+	// estimated blockchain size of a transaction set used by the host to
 	// provide the storage proof at the end of the contract duration.
 	EstimatedFileContractRevisionAndProofTransactionSetSize = 5000
 )
@@ -208,6 +255,10 @@ type HostDBEntry struct {
 	// The public key of the host, stored separately to minimize risk of certain
 	// MitM based vulnerabilities.
 	PublicKey types.SiaPublicKey `json:"publickey"`
+
+	// Filtered says whether or not a HostDBEntry is being filtered out of the
+	// filtered hosttree due to the filter mode of the hosttree
+	Filtered bool `json:"filtered"`
 }
 
 // HostDBScan represents a single scan event.
@@ -442,6 +493,9 @@ type Renter interface {
 
 	// FileList returns information on all of the files stored by the renter.
 	FileList() []FileInfo
+
+	// SetFilterMode sets the renter's hostdb filter mode
+	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error
 
 	// Host provides the DB entry and score breakdown for the requested host.
 	Host(pk types.SiaPublicKey) (HostDBEntry, bool)

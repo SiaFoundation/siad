@@ -58,14 +58,17 @@ type hostDB interface {
 	// order of preference.
 	AllHosts() []modules.HostDBEntry
 
-	// AverageContractPrice returns the average contract price of a host.
-	AverageContractPrice() types.Currency
-
 	// Close closes the hostdb.
 	Close() error
 
+	// Filter returns the hostdb's filterMode and filteredHosts
+	Filter() (modules.FilterMode, map[string]types.SiaPublicKey)
+
+	// SetFilterMode sets the renter's hostdb filter mode
+	SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error
+
 	// Host returns the HostDBEntry for a given host.
-	Host(types.SiaPublicKey) (modules.HostDBEntry, bool)
+	Host(pk types.SiaPublicKey) (modules.HostDBEntry, bool)
 
 	// initialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
@@ -269,7 +272,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	// Get hosts from pubkeys
 	for _, pk := range pks {
 		host, ok := r.hostDB.Host(pk)
-		if !ok {
+		if !ok || host.Filtered {
 			continue
 		}
 		// confirm host wasn't already added
@@ -522,6 +525,22 @@ func (r *Renter) ActiveHosts() []modules.HostDBEntry { return r.hostDB.ActiveHos
 
 // AllHosts returns an array of all hosts
 func (r *Renter) AllHosts() []modules.HostDBEntry { return r.hostDB.AllHosts() }
+
+// SetFilterMode sets the renter's hostdb filter mode
+func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error {
+	// Check to see how many hosts are needed for the allowance
+	minHosts := r.Settings().Allowance.Hosts
+	if len(hosts) < int(minHosts) && lm == modules.HostDBActiveWhitelist {
+		r.log.Printf("WARN: There are fewer whitelisted hosts than the allowance requires.  Have %v whitelisted hosts, need %v to support allowance\n", len(hosts), minHosts)
+	}
+
+	// Set list mode filter for the hostdb
+	if err := r.hostDB.SetFilterMode(lm, hosts); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 // Host returns the host associated with the given public key
 func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) { return r.hostDB.Host(spk) }
