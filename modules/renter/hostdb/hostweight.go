@@ -329,6 +329,11 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	if cutoffF64 < 1 {
 		cutoffF64 = 1
 	}
+	// Perform this check one more time after all of the conversions, just in
+	// case there was some sort of rounding error.
+	if priceF64 < cutoffF64 {
+		cutoffF64 = priceF64
+	}
 	ratio := priceF64 / cutoffF64
 
 	smallWeight := math.Pow(cutoffF64, priceExponentiationSmall)
