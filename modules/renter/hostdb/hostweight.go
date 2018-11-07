@@ -269,20 +269,47 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// or a low price. This cutoff attempts to determine where the price becomes
 	// insignificant.
 	cutoff := contractExpectedFunds.MulFloat(priceFloor)
+
+	// Perform normalization between the price and the cutoff.
+	normalizationFactor := 0
+	for totalPrice.Cmp(types.NewCurrency64(1e12)) > 0 {
+		totalPrice = totalPrice.Div64(10)
+		normalizationFactor++
+	}
+	for normalizationFactor > 0 {
+		cutoff = cutoff.Div64(10)
+		normalizationFactor--
+	}
+
+	// If the total price is less than the cutoff, set the cutoff equal to the
+	// price. This ensures that the ratio (totalPrice / cutoff) can never be
+	// less than 1.
 	if totalPrice.Cmp(cutoff) < 0 {
 		cutoff = totalPrice
 	}
-	price64, _ := totalPrice.Div(priceDivNormalization).Uint64()
-	cutoff64, _ := cutoff.Div(priceDivNormalization).Uint64()
-	if cutoff64 == 0 {
-		cutoff64 = 1
-	}
-	if price64 == 0 {
-		price64 = 1
-	}
-	ratio := float64(price64) / float64(cutoff64)
 
-	smallWeight := math.Pow(float64(cutoff64), priceExponentiationSmall)
+	// Convert the price and cutoff to floats.
+	priceU64, err := totalPrice.Uint64()
+	if err != nil {
+		panic("developer error, normalization should have prevented this:"+ err.Error())
+	}
+	cutoffU64, err := cutoff.Uint64()
+	if err != nil {
+		panic("developer error, normalization should have prevented this:"+ err.Error())
+	}
+	priceF64 := float64(priceU64)
+	cutoffF64 := float64(cutoffU64)
+
+	// Check for less-than-one.
+	if priceF64 < 1 {
+		priceF64 = 1
+	}
+	if cutoffF64 < 1 {
+		cutoffF64 = 1
+	}
+	ratio := priceF64 / cutoffF64
+
+	smallWeight := math.Pow(cutoffF64, priceExponentiationSmall)
 	largeWeight := math.Pow(ratio, priceExponentiationLarge)
 	return 1 / (smallWeight * largeWeight)
 }
