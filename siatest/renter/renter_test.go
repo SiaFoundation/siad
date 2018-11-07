@@ -1690,6 +1690,13 @@ func TestRenterContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Renewing contracts by spending is very time consuming, the rest of the
+	// test is only run during vlong so the rest of the test package doesn't
+	// time out
+	if !build.VLONG {
+		return
+	}
+
 	// Record current active and expired contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		rc, err = r.RenterContractsGet()
