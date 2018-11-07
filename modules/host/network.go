@@ -23,6 +23,7 @@ import (
 
 	"github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -336,24 +337,6 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 		return err
 	}
 
-	// lock contract, if supplied
-	var so storageObligation
-	if req.ContractID != (types.FileContractID{}) {
-		// Lock the storage obligation.
-		err := h.managedTryLockStorageObligation(req.ContractID)
-		if err != nil {
-			modules.WriteRPCResponse(conn, nil, err)
-			return extendErr("could not lock contract "+req.ContractID.String()+": ", err)
-		}
-		defer h.managedUnlockStorageObligation(req.ContractID)
-		h.mu.RLock()
-		err = h.db.View(func(tx *bolt.Tx) error {
-			so, err = getStorageObligation(tx, req.ContractID)
-			return err
-		})
-		h.mu.RUnlock()
-	}
-
 	// send handshake response
 	var challenge [16]byte
 	fastrand.Read(challenge[:])
@@ -363,6 +346,56 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 	}
 	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
 		return err
+	}
+
+	// read challenge response
+	var cresp modules.LoopChallengeResponse
+	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+
+	// if a contract was supplied, look it up, verify the challenge response,
+	// and lock the storage obligation
+	var so storageObligation
+	if req.ContractID != (types.FileContractID{}) {
+		// NOTE: if we encounter an error here, we send it to the renter and
+		// close the connection immediately. From the renter's perspective,
+		// this error may arrive either before or after sending their first
+		// RPC request.
+
+		// look up the renter's public key
+		var err error
+		h.mu.RLock()
+		err = h.db.View(func(tx *bolt.Tx) error {
+			so, err = getStorageObligation(tx, req.ContractID)
+			return err
+		})
+		h.mu.RUnlock()
+		if err != nil {
+			modules.WriteRPCResponse(conn, nil, errors.New("no record of that contract"))
+			return extendErr("could not lock contract "+req.ContractID.String()+": ", err)
+		}
+
+		// verify the challenge response
+		rev := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
+		hash := crypto.HashAll(modules.RPCChallengePrefix, challenge)
+		var renterPK crypto.PublicKey
+		var renterSig crypto.Signature
+		copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
+		copy(renterSig[:], cresp.Signature)
+		if crypto.VerifyHash(hash, renterPK, renterSig) != nil {
+			err := errors.New("challenge signature is invalid")
+			modules.WriteRPCResponse(conn, nil, err)
+			return err
+		}
+
+		// lock the storage obligation until the end of the RPC loop
+		if err := h.managedTryLockStorageObligation(req.ContractID); err != nil {
+			modules.WriteRPCResponse(conn, nil, err)
+			return extendErr("could not lock contract "+req.ContractID.String()+": ", err)
+		}
+		defer h.managedUnlockStorageObligation(req.ContractID)
 	}
 
 	// enter RPC loop

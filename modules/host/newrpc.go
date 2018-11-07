@@ -38,15 +38,6 @@ func (h *Host) managedRPCLoopSettings(conn net.Conn) error {
 func (h *Host) managedRPCLoopRecentRevision(conn net.Conn, so *storageObligation, challenge [16]byte) error {
 	conn.SetDeadline(time.Now().Add(modules.NegotiateRecentRevisionTime))
 
-	// Read the request.
-	var req modules.LoopRecentRevisionRequest
-	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
-		// Reading may have failed due to a closed connection; regardless, it
-		// doesn't hurt to try and tell the renter about it.
-		modules.WriteRPCResponse(conn, nil, err)
-		return err
-	}
-
 	// Fetch the revision and signatures.
 	txn := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1]
 	rev := txn.FileContractRevisions[0]
@@ -57,18 +48,6 @@ func (h *Host) managedRPCLoopRecentRevision(conn net.Conn, so *storageObligation
 		if sig.ParentID == crypto.Hash(rev.ParentID) {
 			sigs = append(sigs, sig)
 		}
-	}
-
-	// Validate the renter's signature.
-	hash := crypto.HashAll(modules.RPCChallengePrefix, challenge)
-	var renterPK crypto.PublicKey
-	var renterSig crypto.Signature
-	copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
-	copy(renterSig[:], req.Signature)
-	if crypto.VerifyHash(hash, renterPK, renterSig) != nil {
-		err := errors.New("challenge signature is invalid")
-		modules.WriteRPCResponse(conn, nil, err)
-		return err
 	}
 
 	// Write the response.

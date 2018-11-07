@@ -347,6 +347,11 @@ type (
 		Challenge [16]byte
 	}
 
+	// LoopChallengeResponse contains the response to the host's challenge.
+	LoopChallengeResponse struct {
+		Signature []byte
+	}
+
 	// LoopDownloadRequest contains the request parameters for RPCLoopDownload.
 	LoopDownloadRequest struct {
 		ContractID  types.FileContractID
@@ -386,11 +391,6 @@ type (
 		Signature   []byte
 		SectorRoots []crypto.Hash
 		MerkleProof []crypto.Hash
-	}
-
-	// LoopRecentRevisionRequest contains the request parameters for RPCLoopRecentRevision.
-	LoopRecentRevisionRequest struct {
-		Signature []byte
 	}
 
 	// LoopRecentRevisionResponse contains the response data for RPCLoopRecentRevisionResponse.

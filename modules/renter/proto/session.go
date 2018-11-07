@@ -15,7 +15,6 @@ import (
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
 type Session struct {
-	challenge   [16]byte
 	closeChan   chan struct{}
 	conn        net.Conn
 	contractID  types.FileContractID
@@ -58,22 +57,9 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 // RecentRevision calls the RecentRevision RPC, returning (what the host
 // claims is) the most recent revision of the contract.
 func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
-	// Acquire the contract.
-	sc, haveContract := s.contractSet.Acquire(s.contractID)
-	if !haveContract {
-		return types.FileContractRevision{}, nil, errors.New("contract not present in contract set")
-	}
-	defer s.contractSet.Return(sc)
-	contract := sc.header // for convenience
-
 	// send RecentRevision RPC request
 	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
-	hash := crypto.HashAll(modules.RPCChallengePrefix, s.challenge)
-	sig := crypto.SignHash(hash, contract.SecretKey)
-	req := modules.LoopRecentRevisionRequest{
-		Signature: sig[:],
-	}
-	if err := encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopRecentRevision, req); err != nil {
+	if err := encoding.NewEncoder(s.conn).Encode(modules.RPCLoopRecentRevision); err != nil {
 		return types.FileContractRevision{}, nil, err
 	}
 
@@ -505,7 +491,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		KeyData:    nil,
 		ContractID: id,
 	}
-	if err := encoding.NewEncoder(conn).EncodeAll(req); err != nil {
+	if err := encoding.NewEncoder(conn).Encode(req); err != nil {
 		return nil, err
 	}
 	var resp modules.LoopHandshakeResponse
@@ -514,6 +500,15 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 	}
 	if resp.Cipher != modules.CipherPlaintext {
 		return nil, errors.New("host selected unsupported cipher")
+	}
+	// respond to challenge
+	hash := crypto.HashAll(modules.RPCChallengePrefix, resp.Challenge)
+	sig := crypto.SignHash(hash, contract.SecretKey)
+	cresp := modules.LoopChallengeResponse{
+		Signature: sig[:],
+	}
+	if err := encoding.NewEncoder(conn).Encode(cresp); err != nil {
+		return nil, err
 	}
 
 	// if we succeeded, we can safely discard the unappliedTxns
@@ -524,7 +519,6 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 
 	// the host is now ready to accept revisions
 	return &Session{
-		challenge:   resp.Challenge,
 		closeChan:   closeChan,
 		conn:        conn,
 		contractID:  id,
