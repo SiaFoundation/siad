@@ -25,12 +25,30 @@ type Session struct {
 	once        sync.Once
 }
 
+// writeRequest sends an RPC request to the host.
+func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
+	if req == nil {
+		req = struct{}{}
+	}
+	err := encoding.NewEncoder(s.conn).EncodeAll(rpcID, req)
+	if err != nil {
+		// The write may have failed because the host rejected our challenge
+		// signature and closed the connection. Attempt to read the rejection
+		// error and return it instead of the write failure.
+		readErr := modules.ReadRPCResponse(s.conn, nil)
+		if _, ok := readErr.(*modules.RPCError); ok {
+			err = readErr
+		}
+	}
+	return err
+}
+
 // Settings calls the Settings RPC, returning the host's reported settings.
 func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
 
 	// send Settings RPC request
-	if err := encoding.NewEncoder(s.conn).Encode(modules.RPCLoopSettings); err != nil {
+	if err := s.writeRequest(modules.RPCLoopSettings, nil); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
 
@@ -59,7 +77,7 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
 	// send RecentRevision RPC request
 	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
-	if err := encoding.NewEncoder(s.conn).Encode(modules.RPCLoopRecentRevision); err != nil {
+	if err := s.writeRequest(modules.RPCLoopRecentRevision, nil); err != nil {
 		return types.FileContractRevision{}, nil, err
 	}
 
@@ -170,7 +188,7 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 
 	// send download RPC request
 	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
-	err = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopUpload, req)
+	err = s.writeRequest(modules.RPCLoopUpload, req)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}
@@ -281,7 +299,7 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 
 	// send download RPC request
 	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
-	err = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopDownload, req)
+	err = s.writeRequest(modules.RPCLoopDownload, req)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -429,7 +447,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 func (s *Session) shutdown() {
 	extendDeadline(s.conn, modules.NegotiateSettingsTime)
 	// don't care about this error
-	_ = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopExit)
+	_ = s.writeRequest(modules.RPCLoopExit, nil)
 	close(s.closeChan)
 }
 

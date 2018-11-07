@@ -350,7 +350,7 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 
 	// read challenge response
 	var cresp modules.LoopChallengeResponse
-	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
+	if err := encoding.NewDecoder(conn).Decode(&cresp); err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
