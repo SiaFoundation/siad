@@ -44,7 +44,7 @@ const (
 	// intensly favors adding more collateral. As long as the host has provided
 	// sufficient skin-in-the-game, enormous amounts of extra collateral are
 	// less important.
-	collateralFloor = 0.5
+	collateralFloor = 0.2
 
 	// interactionExponentiation determines how heavily we penalize hosts for
 	// having poor interactions - disconnecting, RPCs with errors, etc. The
@@ -76,7 +76,7 @@ const (
 	//
 	// This is necessary to prevent exploits where a host gets an unreasonable
 	// score by putting it's price way too low.
-	priceFloor = 0.2
+	priceFloor = 0.1
 
 	// tbMonth is the number of bytes in a terabyte times the number of blocks
 	// in a month.
@@ -137,8 +137,8 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// store with the host at the collateral price that the host is advertising.
 	// We add a 2x buffer to account for the fact that the renter may end up
 	// storing extra data on this host.
-	hostCollateral := entry.Collateral
-	possibleCollateral := entry.MaxCollateral.Div(contractExpectedStorageTime).Div64(2)
+	hostCollateral := entry.Collateral.Mul(contractExpectedStorageTime)
+	possibleCollateral := entry.MaxCollateral.Div64(2)
 	if possibleCollateral.Cmp(hostCollateral) < 0 {
 		hostCollateral = possibleCollateral
 	}
@@ -198,7 +198,17 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	if cutoffF64 == 0 {
 		cutoffF64 = 1
 	}
+	// One last check for safety before grabbing the ratio. This ensures that
+	// the ratio is never less than one, which is critical to getting a coherent
+	// large weight - large weight should never be below one.
+	if collateralF64 < 1 {
+		collateralF64 = 1
+	}
+	if cutoffF64 < 1 {
+		cutoffF64 = 1
+	}
 	ratio := collateralF64 / cutoffF64
+
 
 	// Use the cutoff to determine the score based on the small exponentiation
 	// factor (which has a high exponentiation), and then use the ratio between
