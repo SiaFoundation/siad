@@ -272,7 +272,7 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 
 	// Perform normalization between the price and the cutoff.
 	normalizationFactor := 0
-	for totalPrice.Cmp(types.NewCurrency64(1e12)) > 0 {
+	for totalPrice.Cmp64(1e12) > 0 {
 		totalPrice = totalPrice.Div64(10)
 		normalizationFactor++
 	}
