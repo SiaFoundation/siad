@@ -15,6 +15,7 @@ import (
 
 var (
 	// Flags.
+	dictionaryLanguage     string // dictionary for seed utils
 	hostContractOutputType string // output type for host contracts
 	hostVerbose            bool   // display additional host info
 	initForce              bool   // destroy and re-encrypt the wallet on init if it already exists
@@ -145,6 +146,7 @@ func main() {
 
 	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsHastingsCmd, utilsEncodeRawTxnCmd, utilsDecodeRawTxnCmd,
 		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd)
+	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
 	root.AddCommand(utilsCmd)
 
 	// initialize client
