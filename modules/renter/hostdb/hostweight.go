@@ -77,17 +77,13 @@ const (
 	// This is necessary to prevent exploits where a host gets an unreasonable
 	// score by putting it's price way too low.
 	priceFloor = 0.1
-
-	// tbMonth is the number of bytes in a terabyte times the number of blocks
-	// in a month.
-	tbMonth = 4032 * 1e12
 )
 
 var (
 	// priceDiveNormalization reduces the raw value of the price so that not so
 	// many digits are needed when operating on the weight. This also allows the
 	// base weight to be a lot lower.
-	priceDivNormalization = types.SiacoinPrecision.Div64(1e3).Div64(tbMonth)
+	priceDivNormalization = types.SiacoinPrecision.Div64(1e9)
 
 	// requiredStorage indicates the amount of storage that the host must be
 	// offering in order to be considered a valuable/worthwhile host.
@@ -152,28 +148,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// money becomes insignificant. A collateral that is 10x higher than the
 	// price is not interesting, compelling, nor a sign of reliability if the
 	// price and collateral are both effectively zero.
-	//
-	// The strategy is to take our total allowance and divide it by the number
-	// of hosts, to get an expected allowance per host. We then adjust based on
-	// the period, and then adjust by adding in the expected storage, upload and
-	// download. We add the three together so that storage heavy allowances will
-	// have higher expectations for collateral than bandwidth heavy allowances.
-	// Finally, we divide the whole thing by collateralFloor to give some wiggle room to
-	// hosts. The large multiplier provided for low collaterals is only intended
-	// to discredit hosts that have a meaningless amount of collateral.
 	cutoff := contractExpectedFunds.MulFloat(collateralFloor)
-
-	// Perform normalization between the price and the cutoff.
-	normalizationFactor := 0
-	for hostCollateral.Cmp64(1e12) > 0 {
-		hostCollateral = hostCollateral.Div64(10)
-		normalizationFactor++
-	}
-	for normalizationFactor > 0 {
-		cutoff = cutoff.Div64(10)
-		normalizationFactor--
-	}
-
 	// If the hostCollateral is less than the cutoff, set the cutoff equal to
 	// the collateral so that the ratio has a minimum of 1, and also so that
 	// the smallWeight is computed based on the actual collateral instead of
@@ -185,19 +160,20 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// Get the ratio between the cutoff and the actual collateral so we can
 	// award the bonus for having a large collateral. Perform normalization
 	// before converting to uint64.
-	collateral64, err := hostCollateral.Div(priceDivNormalization).Uint64()
+	collateral64, err := hostCollateral.Div(priceDivNormalization).Div64(1e3).Uint64()
 	if err != nil {
-		panic("developer error, normalization should have prevented this:" + err.Error())
+		build.Critical("developer error, normalization should have prevented this:" + err.Error())
 	}
-	cutoff64, err := cutoff.Div(priceDivNormalization).Uint64()
+	cutoff64, err := cutoff.Div(priceDivNormalization).Div64(1e3).Uint64()
 	if err != nil {
-		panic("developer error, normalization should have prevented this:" + err.Error())
+		build.Critical("developer error, normalization should have prevented this:" + err.Error())
 	}
 	collateralF64 := float64(collateral64)
 	cutoffF64 := float64(cutoff64)
 	if cutoffF64 == 0 {
 		cutoffF64 = 1
 	}
+
 	// One last check for safety before grabbing the ratio. This ensures that
 	// the ratio is never less than one, which is critical to getting a coherent
 	// large weight - large weight should never be below one.
@@ -302,17 +278,6 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// insignificant.
 	cutoff := contractExpectedFunds.MulFloat(priceFloor)
 
-	// Perform normalization between the price and the cutoff.
-	normalizationFactor := 0
-	for totalPrice.Cmp64(1e12) > 0 {
-		totalPrice = totalPrice.Div64(10)
-		normalizationFactor++
-	}
-	for normalizationFactor > 0 {
-		cutoff = cutoff.Div64(10)
-		normalizationFactor--
-	}
-
 	// If the total price is less than the cutoff, set the cutoff equal to the
 	// price. This ensures that the ratio (totalPrice / cutoff) can never be
 	// less than 1.
@@ -321,11 +286,11 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	}
 
 	// Convert the price and cutoff to floats.
-	priceU64, err := totalPrice.Uint64()
+	priceU64, err := totalPrice.Div(priceDivNormalization).Uint64()
 	if err != nil {
 		panic("developer error, normalization should have prevented this:" + err.Error())
 	}
-	cutoffU64, err := cutoff.Uint64()
+	cutoffU64, err := cutoff.Div(priceDivNormalization).Uint64()
 	if err != nil {
 		panic("developer error, normalization should have prevented this:" + err.Error())
 	}
