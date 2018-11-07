@@ -35,7 +35,16 @@ const (
 	// 'collateralFloor' so that the cutoff for how much collateral counts as
 	// 'not much' is reasonably below what we are actually expecting from the
 	// host.
-	collateralFloor = 2
+
+	// collateralFloor determines how much lower than the expected collateral
+	// the host can provide before switching to a different scoring strategy. A
+	// collateral floor of 0.5 means that once the host is offering a collateral
+	// that is more than 50% of what the renter would expect given the amount of
+	// storage being used, the host switching to a scoring strategy which less
+	// intensly favors adding more collateral. As long as the host has provided
+	// sufficient skin-in-the-game, enormous amounts of extra collateral are
+	// less important.
+	collateralFloor = 0.5
 
 	// interactionExponentiation determines how heavily we penalize hosts for
 	// having poor interactions - disconnecting, RPCs with errors, etc. The
@@ -56,13 +65,18 @@ const (
 	// substantial amounts of money when the price is low.
 	priceExponentiationSmall = 0.75
 
-	// priceFloor is used in the final step of the equation that determines the
-	// cutoff for where a low price no longer counts as interesting to the
-	// renter. A priceFloor of '5' means that if the host can provide us with
-	// the amount of storage we require for less than 20% of the total
-	// allowance, then we switch to a new equation where further decreases in
-	// price are valued much less aggressively (though they are still valued).
-	priceFloor = 5
+	// priceFloor determines how much cheaper than the expected allowance the
+	// host can be before switching to a different scoring strategy for the
+	// score. A price floor of 0.2 means that once the host is less than 20% of
+	// the expected price for that amount of resources (using the allowance as a
+	// guide), instead of using priceExponentiationLarge to reward decreasing
+	// prices, we use priceExponentiationSmall to reward decreasing prices. This
+	// reduced steepness reflects the reality that getting 99.9% off is not all
+	// that different from getting 80% off - both feel like an amazing deal.
+	//
+	// This is necessary to prevent exploits where a host gets an unreasonable
+	// score by putting it's price way too low.
+	priceFloor = 0.2
 
 	// tbMonth is the number of bytes in a terabyte times the number of blocks
 	// in a month.
@@ -107,6 +121,12 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 		allowance.ExpectedRedundancy = 1
 	}
 
+	// Convert each element of the allowance into a number of resources that we
+	// expect to use in this contract.
+	contractExpectedFunds := allowance.Funds.Div64(allowance.Hosts)
+	contractExpectedStorage := uint64(float64(allowance.ExpectedStorage) * allowance.ExpectedRedundancy / float64(allowance.Hosts))
+	contractExpectedStorageTime := types.NewCurrency64(contractExpectedStorage).Mul64(uint64(allowance.Period))
+
 	// Ensure that the allowance and expected storage will not brush up against
 	// the max collateral. If the allowance comes within half of the max
 	// collateral, cap the collateral that we use during adjustments based on
@@ -118,7 +138,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// We add a 2x buffer to account for the fact that the renter may end up
 	// storing extra data on this host.
 	hostCollateral := entry.Collateral
-	possibleCollateral := entry.MaxCollateral.Div64(uint64(allowance.Period)).Div64(allowance.ExpectedStorage).Div64(2)
+	possibleCollateral := entry.MaxCollateral.Div(contractExpectedStorageTime).Div64(2)
 	if possibleCollateral.Cmp(hostCollateral) < 0 {
 		hostCollateral = possibleCollateral
 	}
@@ -141,10 +161,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// Finally, we divide the whole thing by collateralFloor to give some wiggle room to
 	// hosts. The large multiplier provided for low collaterals is only intended
 	// to discredit hosts that have a meaningless amount of collateral.
-	expectedUploadBandwidth := float64(allowance.ExpectedUpload) * allowance.ExpectedRedundancy
-	expectedDownloadBandwidth := float64(allowance.ExpectedDownload)
-	expectedBandwidth := uint64(expectedUploadBandwidth + expectedDownloadBandwidth)
-	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(allowance.ExpectedStorage + expectedBandwidth).Div64(collateralFloor)
+	cutoff := contractExpectedFunds.MulFloat(collateralFloor)
 	if hostCollateral.Cmp(cutoff) < 0 {
 		// Set the cutoff equal to the collateral so that the ratio has a
 		// minimum of 1, and also so that the smallWeight is computed based on
@@ -187,6 +204,13 @@ func (hdb *HostDB) interactionAdjustments(entry modules.HostDBEntry) float64 {
 
 // priceAdjustments will adjust the weight of the entry according to the prices
 // that it has set.
+//
+// REMINDER: The allowance contains an absolute number of bytes for expected
+// storage on a per-renter basis that doesn't account for redundancy.. This
+// value needs to be adjusted to a per-contract basis that accounts for
+// redundancy. The upload and download values also do not account for
+// redundancy, and they are on a per-block basis, meaning you need to multiply
+// be the allowance period when working with these values.
 func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules.Allowance) float64 {
 	// Divide by zero mitigation.
 	if allowance.Hosts == 0 {
@@ -208,11 +232,20 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 		allowance.ExpectedRedundancy = 1
 	}
 
+	// Convert each element of the allowance into a number of resources that we
+	// expect to use in this contract.
+	contractExpectedDownload := types.NewCurrency64(allowance.ExpectedDownload).Mul64(uint64(allowance.Period)).Div64(allowance.Hosts)
+	contractExpectedFunds := allowance.Funds.Div64(allowance.Hosts)
+	contractExpectedStorage := uint64(float64(allowance.ExpectedStorage) * allowance.ExpectedRedundancy / float64(allowance.Hosts))
+	contractExpectedStorageTime := types.NewCurrency64(contractExpectedStorage).Mul64(uint64(allowance.Period))
+	contractExpectedUpload := types.NewCurrency64(allowance.ExpectedUpload).Mul64(uint64(allowance.Period)).MulFloat(allowance.ExpectedRedundancy).Div64(allowance.Hosts)
+
 	// Calculate the hostCollateral the renter would expect the host to put
 	// into a contract.
+	//
 	// TODO: Use actual transaction fee estimation instead of hardcoded 1SC.
 	txnFees := types.SiacoinPrecision
-	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, allowance.Funds.Div64(allowance.Hosts), txnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, allowance.ExpectedStorage)
+	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, contractExpectedFunds, txnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, contractExpectedStorage)
 	if err != nil {
 		info := fmt.Sprintf("Error while estimating collateral for host: Host %v, ContractPrice %v, TxnFees %v, Funds %v",
 			entry.PublicKey.String(), entry.ContractPrice.HumanString(), txnFees.HumanString(), allowance.Funds.HumanString())
@@ -220,39 +253,22 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 		return 0
 	}
 
-	// Prices tiered as follows:
-	//    - the collateral price is presented as 'per block per byte'
-	//    - the storage price is presented as 'per block per byte'
-	//    - the contract price is presented as a flat rate
-	//    - the upload bandwidth price is per byte
-	//    - the download bandwidth price is per byte
+	// Determine the pricing for each type of resource in the contract. We have
+	// already converted the resources into absolute terms for this contract.
 	//
-	// The adjusted prices take the pricing for other parts of the contract
-	// (like bandwidth and fees) and convert them into terms that are relative
-	// to the storage price.
-	//
-	// The adjustedCollateralPrice is multiplied by a number greater than 1
-	// because we will be forming multiple contracts with each host during each
-	// renew cycle as a result of running out of money in the contract. This has
-	// the added benefit of emphasizing lower fees in favor of other metrics,
-	// which increases user satisfaction.
-	//
-	// TODO: This weighting system also does not take into account transaction
-	// fees.
-	adjustedCollateralPrice := hostCollateral.Div64(uint64(allowance.Period)).Div64(allowance.ExpectedStorage).MulFloat(expectedContractFeesMultiplier)
-	adjustedContractPrice := entry.ContractPrice.Div64(uint64(allowance.Period)).Div64(allowance.ExpectedStorage)
-	adjustedUploadPrice := entry.UploadBandwidthPrice.Mul64(allowance.ExpectedUpload).MulFloat(allowance.ExpectedRedundancy)
-	adjustedDownloadPrice := entry.DownloadBandwidthPrice.Mul64(allowance.ExpectedDownload)
-	siafundFee := adjustedContractPrice.Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(adjustedCollateralPrice).MulTax()
-	totalPrice := entry.StoragePrice.Add(adjustedContractPrice).Add(adjustedUploadPrice).Add(adjustedDownloadPrice).Add(siafundFee)
+	// TODO: The total price of this contract is not using transaction fees at
+	// all.
+	contractPrice := entry.ContractPrice
+	downloadPrice := entry.DownloadBandwidthPrice.Mul(contractExpectedDownload)
+	storagePrice := entry.StoragePrice.Mul(contractExpectedStorageTime)
+	uploadPrice := entry.UploadBandwidthPrice.Mul(contractExpectedUpload)
+	siafundFee := contractPrice.Add(hostCollateral).Add(downloadPrice).Add(storagePrice).Add(uploadPrice).MulTax()
+	totalPrice := contractPrice.Add(downloadPrice).Add(storagePrice).Add(uploadPrice).Add(siafundFee)
 
 	// Determine a cutoff for whether the total price is considered a high price
 	// or a low price. This cutoff attempts to determine where the price becomes
 	// insignificant.
-	expectedUploadBandwidth := float64(allowance.ExpectedUpload) * allowance.ExpectedRedundancy
-	expectedDownloadBandwidth := float64(allowance.ExpectedDownload)
-	expectedBandwidth := uint64(expectedUploadBandwidth + expectedDownloadBandwidth)
-	cutoff := allowance.Funds.Div64(allowance.Hosts).Div64(uint64(allowance.Period)).Div64(allowance.ExpectedStorage + expectedBandwidth).Div64(priceFloor)
+	cutoff := contractExpectedFunds.MulFloat(priceFloor)
 	if totalPrice.Cmp(cutoff) < 0 {
 		cutoff = totalPrice
 	}
