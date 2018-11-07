@@ -368,7 +368,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 		// the txnFee was zero. It doesn't matter since RenterPayoutsPreTax
 		// simply subtracts both values from the funding.
 		host.ContractPrice = contractCostPerHost
-		expectedStorage := allowance.ExpectedStorage
+		expectedStorage := allowance.ExpectedStorage / uint64(len(hosts))
 		_, _, collateral, err := modules.RenterPayoutsPreTax(host, fundingPerHost, types.ZeroCurrency, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, expectedStorage)
 		if err != nil {
 			continue
