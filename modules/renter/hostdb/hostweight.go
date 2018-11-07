@@ -161,13 +161,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// Finally, we divide the whole thing by collateralFloor to give some wiggle room to
 	// hosts. The large multiplier provided for low collaterals is only intended
 	// to discredit hosts that have a meaningless amount of collateral.
-	expectedStorageSpending := entry.StoragePrice.Mul(contractExpectedStorageTime)
-	// Check to see that the expected storage spending does not exceed the total
-	// amount of money going into the contract.
-	if contractExpectedFunds.Cmp(expectedStorageSpending) < 0 {
-		expectedStorageSpending = contractExpectedFunds
-	}
-	cutoff := expectedStorageSpending.MulFloat(collateralFloor)
+	cutoff := contractExpectedFunds.MulFloat(collateralFloor)
 	if hostCollateral.Cmp(cutoff) < 0 {
 		// Set the cutoff equal to the collateral so that the ratio has a
 		// minimum of 1, and also so that the smallWeight is computed based on
