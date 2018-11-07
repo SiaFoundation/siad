@@ -22,10 +22,10 @@ var (
 		Period:      types.BlockHeight(3 * types.BlocksPerMonth),
 		RenewWindow: types.BlockHeight(types.BlocksPerMonth),
 
-		ExpectedStorage:    25e9,                                    // 25 GB
-		ExpectedUpload:     uint64(25e9) / 6 / types.BlocksPerMonth, // 25 GB in 6 months
-		ExpectedDownload:   uint64(25e9) / 3 / types.BlocksPerMonth, // 25 GB in 3 months
-		ExpectedRedundancy: 3.0,                                     // default is 10/30 erasure coding
+		ExpectedStorage:    1e12,                                 // 1 TB
+		ExpectedUpload:     uint64(200e9) / types.BlocksPerMonth, // 200 GB per month
+		ExpectedDownload:   uint64(100e9) / types.BlocksPerMonth, // 100 GB per month
+		ExpectedRedundancy: 3.0,                                  // default is 10/30 erasure coding
 	}
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
