@@ -89,7 +89,7 @@ const (
 
 	// PriceEstimationSafetyFactor is the factor of safety used in the price
 	// estimation to account for any missed costs
-	PriceEstimationSafetyFactor = 1.33
+	PriceEstimationSafetyFactor = 1.2
 )
 
 var (
