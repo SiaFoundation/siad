@@ -165,6 +165,79 @@ func TestCurrencyEquals64(t *testing.T) {
 	}
 }
 
+// TestCurrencyFloat64 checks that the float64 function is implemented
+// correctly.
+func TestCurrencyFloat64(t *testing.T) {
+	c := ZeroCurrency
+	c64, exact := c.Float64()
+	if !exact {
+		t.Error("Float64 doesn't return exact value when converting zero currency")
+	}
+	if c64 != 0 {
+		t.Error("wrong value returned by Float64")
+	}
+
+	c = NewCurrency64(1)
+	c64, exact = c.Float64()
+	if !exact {
+		t.Error("Float64 doesn't return exact value when converting zero currency")
+	}
+	if c64 != 1 {
+		t.Error("wrong value returned by Float64")
+	}
+
+	c = NewCurrency64(1000)
+	c64, exact = c.Float64()
+	if !exact {
+		t.Error("Float64 doesn't return exact value when converting zero currency")
+	}
+	if c64 != 1000 {
+		t.Error("wrong value returned by Float64")
+	}
+
+	c = NewCurrency64(1e12)
+	c64, exact = c.Float64()
+	if !exact {
+		t.Error("Float64 doesn't return exact value when converting zero currency")
+	}
+	if c64 != 1e12 {
+		t.Error("wrong value returned by Float64")
+	}
+
+	c = NewCurrency64(1e12).Mul64(1e12)
+	c64, exact = c.Float64()
+	if c64 <= 999e21 || c64 > 1001e21 {
+		t.Error("wrong value returned by Float64")
+	}
+
+	c = NewCurrency64(1e12).Mul64(1e12).Mul64(1e12)
+	c64, exact = c.Float64()
+	if c64 <= 999e33 || c64 > 1001e33 {
+		t.Error("wrong value returned by Float64")
+	}
+
+	c = NewCurrency64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12)
+	c64, exact = c.Float64()
+	if c64 <= 999e45 || c64 > 1001e45 {
+		t.Error(len(c.String()))
+		t.Error("wrong value returned by Float64", c64)
+	}
+
+	c = NewCurrency64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12)
+	c64, exact = c.Float64()
+	if c64 <= 999e69 || c64 > 1001e69 {
+		t.Error(len(c.String()))
+		t.Error("wrong value returned by Float64", c64)
+	}
+
+	c = NewCurrency64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12).Mul64(1e12)
+	c64, exact = c.Float64()
+	if c64 <= 999e129 || c64 > 1001e129 {
+		t.Error(len(c.String()))
+		t.Error("wrong value returned by Float64", c64)
+	}
+}
+
 // TestCurrencyMul probes the Mul function of the currency type.
 func TestCurrencyMul(t *testing.T) {
 	c5 := NewCurrency64(5)
