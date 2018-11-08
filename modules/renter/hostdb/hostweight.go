@@ -148,6 +148,10 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// money becomes insignificant. A collateral that is 10x higher than the
 	// price is not interesting, compelling, nor a sign of reliability if the
 	// price and collateral are both effectively zero.
+	//
+	// TODO: This method has no way to account for bandwidth heavy vs. storage
+	// heavy hosts, nor did we give the user any way to configure a situation
+	// where hosts aren't needed to be nearly as reliable.
 	cutoff := contractExpectedFunds.MulFloat(collateralFloor)
 	// If the hostCollateral is less than the cutoff, set the cutoff equal to
 	// the collateral so that the ratio has a minimum of 1, and also so that
@@ -264,9 +268,10 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// Determine the pricing for each type of resource in the contract. We have
 	// already converted the resources into absolute terms for this contract.
 	//
-	// TODO: The total price of this contract is not using transaction fees at
-	// all.
-	contractPrice := entry.ContractPrice
+	// The contract price and transaction fees get doubled because we expect
+	// that there will be on average one early renewal per contract, due to
+	// spending all of the contract's money.
+	contractPrice := entry.ContractPrice.Add(txnFees).Mul64(2)
 	downloadPrice := entry.DownloadBandwidthPrice.Mul(contractExpectedDownload)
 	storagePrice := entry.StoragePrice.Mul(contractExpectedStorageTime)
 	uploadPrice := entry.UploadBandwidthPrice.Mul(contractExpectedUpload)
