@@ -270,6 +270,7 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
 			r.log.Println("File not found on disk and possibly unrecoverable:", file.LocalPath())
 		}
+		r.staticFiles.Return(file)
 	}
 }
 

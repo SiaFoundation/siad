@@ -178,7 +178,7 @@ type hostContractor interface {
 type Renter struct {
 	// File management.
 	//
-	staticFiles *siaFileSet
+	staticFiles *siafile.SiaFileSet
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -219,132 +219,6 @@ type Renter struct {
 	tg                threadgroup.ThreadGroup
 	tpool             modules.TransactionPool
 	wal               *writeaheadlog.WAL
-}
-
-type (
-	// siaFileSet is responsible for managing the renter's siafiles in memory
-	siaFileSet struct {
-		mu         sync.Mutex
-		siaFileMap map[string]*siaFileSetEntry
-	}
-	// siaFileSetEntry is responsible for managing a siafile in memory
-	siaFileSetEntry struct {
-		counter int
-		siaFile *siafile.SiaFile
-	}
-)
-
-// All returns all the siafiles in the siaFileSet, this will also increment all
-// the counters
-//
-// TODO - this method should be updated when siafiles are removed from memory.
-// When All() is called from should be looked at to determine if the calling
-// methods needs all siafiles from disk or just the current siafiles in memory
-func (sfs *siaFileSet) All() []*siafile.SiaFile {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	var siaFiles []*siafile.SiaFile
-	for _, entry := range sfs.siaFileMap {
-		entry.counter++
-		siaFiles = append(siaFiles, entry.siaFile)
-	}
-	return siaFiles
-}
-
-// Delete removes the entry from the map and deletes the siafile
-func (sfs *siaFileSet) Delete(key string) error {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	entry, exists := sfs.siaFileMap[key]
-	if !exists {
-		return fmt.Errorf("no entry found for corresponding to %v", key)
-	}
-	entry.counter--
-	if entry.counter < 0 {
-		build.Critical("siaFileEntry counter less than zero")
-	}
-	if entry.counter == 0 {
-		// TODO - enable when ready to remove files from memory
-		// sfs.Remove(key)
-	}
-	return entry.siaFile.Delete()
-}
-
-// Get returns the siafile from the siaFileSet for the corresponding key and
-// increments the counter
-func (sfs *siaFileSet) Get(key string) (*siafile.SiaFile, bool) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	entry, exists := sfs.siaFileMap[key]
-	if !exists {
-		return nil, exists
-	}
-	entry.counter++
-	return entry.siaFile, exists
-}
-
-// Insert adds a siafile to the siaFileSet
-func (sfs *siaFileSet) Insert(sf *siafile.SiaFile) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	_, exists := sfs.siaFileMap[sf.SiaPath()]
-	if exists {
-		return
-	}
-	sfs.siaFileMap[sf.SiaPath()] = &siaFileSetEntry{
-		counter: 1,
-		siaFile: sf,
-	}
-}
-
-// Remove deletes the entry from the map
-func (sfs *siaFileSet) Remove(key string) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	delete(sfs.siaFileMap, key)
-}
-
-// Rename changes the key corresponding to the siafile in the siaFileSet and then calls Rename on the siafile
-func (sfs *siaFileSet) Rename(oldKey, newKey, newPath string) error {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	entry, exists := sfs.siaFileMap[oldKey]
-	if !exists {
-		return fmt.Errorf("no entry found corresponding to key %v", oldKey)
-	}
-	_, exists = sfs.siaFileMap[newKey]
-	if exists {
-		return fmt.Errorf("entry already exists with siapath %v", newKey)
-	}
-	entry.counter++
-	err := entry.siaFile.Rename(newKey, newPath)
-	if err != nil {
-		return err
-	}
-	sfs.siaFileMap[newKey] = entry
-	delete(sfs.siaFileMap, oldKey)
-	return nil
-}
-
-// Return returns the siafile to the siaFileSet by decrementing the counter. The
-// siafile should have been acquired by Get()
-func (sfs *siaFileSet) Return(sf *siafile.SiaFile) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	entry, exists := sfs.siaFileMap[sf.SiaPath()]
-	if !exists {
-		build.Critical("siaFileEntry counter less than zero")
-		return
-	}
-	entry.counter--
-	if entry.counter < 0 {
-		build.Critical("siaFileEntry counter less than zero")
-		return
-	}
-	if entry.counter == 0 {
-		// TODO - enable when ready to remove files from memory
-		// sfs.Remove(key)
-	}
 }
 
 // Close closes the Renter and its dependencies
@@ -619,6 +493,7 @@ func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 	if !exists {
 		return fmt.Errorf("unknown file %s", siaPath)
 	}
+	defer r.staticFiles.Return(file)
 
 	// Sanity check that a file with the correct size exists at the new
 	// location.
@@ -632,10 +507,8 @@ func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 
 	// Set the new path on disk.
 	if err := file.SetLocalPath(newPath); err != nil {
-		r.staticFiles.Return(file)
 		return err
 	}
-	r.staticFiles.Return(file)
 	return nil
 }
 
@@ -792,10 +665,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 
 	r := &Renter{
-		staticFiles: &siaFileSet{
-			siaFileMap: make(map[string]*siaFileSetEntry),
-		},
-
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the
 		// download heap loop, searching for a chunk that's not there. This is
@@ -822,6 +691,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		tpool:          tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.staticFiles = siafile.NewSiaFileSet()
 
 	// Load all saved data.
 	if err := r.initPersist(); err != nil {

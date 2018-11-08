@@ -16,14 +16,19 @@ import (
 
 // newTestingFile initializes a file object with random parameters.
 func newTestingFile() *siafile.SiaFile {
+	name, rsc := testingFileParams()
+	return newFileTesting(name, newTestingWal(), rsc, 1000, 0777, "")
+}
+
+// testingFileParams generates the ErasureCoder and a random name for a testing
+// file
+func testingFileParams() (string, modules.ErasureCoder) {
 	data := fastrand.Bytes(8)
 	nData := fastrand.Intn(10)
 	nParity := fastrand.Intn(10)
 	rsc, _ := siafile.NewRSCode(nData+1, nParity+1)
-
 	name := "testfile-" + strconv.Itoa(int(data[0]))
-
-	return newFileTesting(name, newTestingWal(), rsc, 1000, 0777, "")
+	return name, rsc
 }
 
 // equalFiles is a helper function that compares two files for equality.

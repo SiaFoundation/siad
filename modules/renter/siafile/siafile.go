@@ -21,6 +21,13 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
+var (
+	// ErrPathOverload is an error when a file already exists at that location
+	ErrPathOverload = errors.New("a file already exists at that location")
+	// ErrUnknownPath is an error when a file cannot be found with the given path
+	ErrUnknownPath = errors.New("no file known with that path")
+)
+
 type (
 	// SiaFile is the disk format for files uploaded to the Sia network.  It
 	// contains all the necessary information to recover a file from its hosts and

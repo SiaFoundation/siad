@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -571,9 +572,9 @@ func TestRenterConflicts(t *testing.T) {
 
 	// Upload using the same nickname.
 	err = st.stdPostAPI("/renter/upload/foo/bar.sia/test", uploadValues)
-	expectedErr := Error{"upload failed: " + renter.ErrPathOverload.Error()}
+	expectedErr := Error{"upload failed: " + siafile.ErrPathOverload.Error()}
 	if err != expectedErr {
-		t.Fatalf("expected %v, got %v", Error{"upload failed: " + renter.ErrPathOverload.Error()}, err)
+		t.Fatalf("expected %v, got %v", Error{"upload failed: " + siafile.ErrPathOverload.Error()}, err)
 	}
 
 	// Upload using nickname that conflicts with folder.
@@ -845,8 +846,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	renameValues := url.Values{}
 	renameValues.Set("newsiapath", "newdne")
 	err = st.stdPostAPI("/renter/rename/dne", renameValues)
-	if err == nil || err.Error() != renter.ErrUnknownPath.Error() {
-		t.Errorf("expected error to be %v; got %v", renter.ErrUnknownPath, err)
+	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+		t.Errorf("expected error to be %v; got %v", siafile.ErrUnknownPath, err)
 	}
 
 	// Set an allowance for the renter, allowing a contract to be formed.
@@ -927,8 +928,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to a name that's already taken.
 	renameValues.Set("newsiapath", "newtest1")
 	err = st.stdPostAPI("/renter/rename/test2", renameValues)
-	if err == nil || err.Error() != renter.ErrPathOverload.Error() {
-		t.Errorf("expected error to be %v; got %v", renter.ErrPathOverload, err)
+	if err == nil || err.Error() != siafile.ErrPathOverload.Error() {
+		t.Errorf("expected error to be %v; got %v", siafile.ErrPathOverload, err)
 	}
 }
 
@@ -968,7 +969,8 @@ func TestRenterHandlerDelete(t *testing.T) {
 	}
 
 	// Create a file.
-	path := filepath.Join(st.dir, "test.dat")
+	siapath := "test.dat"
+	path := filepath.Join(st.dir, siapath)
 	if err = createRandFile(path, 1024); err != nil {
 		t.Fatal(err)
 	}
@@ -980,7 +982,7 @@ func TestRenterHandlerDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Delete the file.
+	// Delete the file.""
 	if err = st.stdPostAPI("/renter/delete/test", url.Values{}); err != nil {
 		t.Fatal(err)
 	}
@@ -996,8 +998,8 @@ func TestRenterHandlerDelete(t *testing.T) {
 
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
-	if err == nil || err.Error() != renter.ErrUnknownPath.Error() {
-		t.Errorf("expected error to be %v, got %v", renter.ErrUnknownPath, err)
+	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+		t.Errorf("expected error to be %v, got %v", siafile.ErrUnknownPath, err)
 	}
 }
 

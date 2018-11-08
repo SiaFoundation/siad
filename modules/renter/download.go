@@ -270,6 +270,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	if !exists {
 		return nil, fmt.Errorf("no file with that path: %s", p.SiaPath)
 	}
+	defer r.staticFiles.Return(file)
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil

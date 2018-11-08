@@ -16,10 +16,6 @@ import (
 var (
 	// ErrEmptyFilename is an error when filename is empty
 	ErrEmptyFilename = errors.New("filename must be a nonempty string")
-	// ErrPathOverload is an error when a file already exists at that location
-	ErrPathOverload = errors.New("a file already exists at that location")
-	// ErrUnknownPath is an error when a file cannot be found with the given path
-	ErrUnknownPath = errors.New("no file known with that path")
 )
 
 // A file is a single file that has been uploaded to the network. Files are
@@ -69,6 +65,10 @@ type pieceData struct {
 // TODO: The data is not cleared from any contracts where the host is not
 // immediately online.
 func (r *Renter) DeleteFile(nickname string) error {
+	_, exists := r.staticFiles.Get(nickname)
+	if !exists {
+		return siafile.ErrUnknownPath
+	}
 	// TODO: delete the sectors of the file as well.
 	if err := r.staticFiles.Delete(nickname); err != nil {
 		return err
@@ -146,8 +146,9 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	// Get the file and its contracts
 	file, exists := r.staticFiles.Get(siaPath)
 	if !exists {
-		return fileInfo, ErrUnknownPath
+		return fileInfo, siafile.ErrUnknownPath
 	}
+	defer r.staticFiles.Return(file)
 	pks := file.HostPublicKeys()
 
 	// Build 2 maps that map every contract id to its offline and goodForRenew
@@ -232,7 +233,7 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFile, er
 		}
 	}
 	fileData.Chunks = chunks
-	return siafile.NewFromFileData(fileData)
+	return r.staticFiles.NewFromFileData(fileData)
 }
 
 // numChunks returns the number of chunks that f was split into.

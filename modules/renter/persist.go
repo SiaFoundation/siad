@@ -251,13 +251,13 @@ func (r *Renter) loadSiaFiles() error {
 		}
 
 		// Load the Siafile.
-		sf, err := siafile.LoadSiaFile(path, r.wal)
+		sf, err := r.staticFiles.LoadSiaFile(path, r.wal)
 		if err != nil {
 			// TODO try loading the file with the legacy format.
 			r.log.Println("ERROR: could not open .sia file:", err)
 			return nil
 		}
-		r.staticFiles.Insert(sf)
+		r.staticFiles.Return(sf)
 		return nil
 	})
 }
@@ -345,11 +345,13 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 	// Add files to renter.
 	names := make([]string, numFiles)
 	for i, f := range files {
+		// fileToSiaFile returns the siafile which means that the siafile needs
+		// to be returned to the SiaFileSet
 		sf, err := r.fileToSiaFile(f, repairPath)
 		if err != nil {
 			return nil, err
 		}
-		r.staticFiles.Insert(sf)
+		r.staticFiles.Return(sf)
 		names[i] = f.name
 	}
 	// TODO Save the file in the new format.
