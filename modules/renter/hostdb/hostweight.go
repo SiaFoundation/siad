@@ -189,7 +189,6 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	}
 	ratio := collateralF64 / cutoffF64
 
-
 	// Use the cutoff to determine the score based on the small exponentiation
 	// factor (which has a high exponentiation), and then use the ratio between
 	// the two to determine the bonus gained from having a high collateral.
