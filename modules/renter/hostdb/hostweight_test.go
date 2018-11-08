@@ -417,3 +417,45 @@ func TestHostWeightUptimeDifferences4(t *testing.T) {
 		t.Error("Been around longer should have more weight")
 	}
 }
+
+// TestHostWeightConstants checks a few relationships between the constants in
+// the hostdb.
+func TestHostWeightConstants(t *testing.T) {
+	// Becaues we no longer use a large base weight, we require that the
+	// collateral floor be higher than the price floor, and also that the
+	// collateralExponentiationSmall be larger than the
+	// priceExponentiationSmall. This protects most hosts from going anywhere
+	// near a 0 score.
+	if collateralFloor < priceFloor {
+		t.Error("Collateral floor should be greater than or equal to price floor")
+	}
+	if collateralExponentiationSmall < priceExponentiationSmall {
+		t.Error("small collateral exponentiation should be larger than small price exponentiation")
+	}
+
+	// Try a few hosts and make sure we always end up with a score that is
+	// greater than 1 million.
+	weight := calculateWeightFromUInt64Price(300, 100)
+	if weight.Cmp(types.NewCurrency64(1e9)) < 0 {
+		t.Error("weight is not sufficiently high for hosts")
+	}
+	weight = calculateWeightFromUInt64Price(1000, 1)
+	if weight.Cmp(types.NewCurrency64(1e9)) < 0 {
+		t.Error("weight is not sufficiently high for hosts")
+	}
+
+	hdb := bareHostDB()
+	hdb.SetAllowance(DefaultTestAllowance)
+	hdb.blockHeight = 0
+	var entry modules.HostDBEntry
+	entry.Version = build.Version
+	entry.RemainingStorage = 250e3
+	entry.MaxCollateral = types.NewCurrency64(100e3).Mul(types.SiacoinPrecision)
+	entry.ContractPrice = types.NewCurrency64(50e3)
+	entry.StoragePrice = types.NewCurrency64(100e3).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
+	entry.Collateral = types.NewCurrency64(50e3)
+	weight = hdb.weightFunc(entry).Score()
+	if weight.Cmp(types.NewCurrency64(1e9)) < 0 {
+		t.Error("weight is not sufficiently high for hosts")
+	}
+}

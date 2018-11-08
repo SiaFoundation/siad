@@ -19,15 +19,13 @@ const (
 	collateralExponentiationLarge = 0.5
 
 	// collateralExponentiationSmall is the power to which we raise the weight
-	// during collateral adjustment when the collateral is small. This large
-	// number ensures a heavy focus on collateral when distinguishing between
-	// hosts that have a very small amount of collateral provided compared to
-	// the size of the allowance.
+	// during collateral adjustment when the collateral is small. A large number
+	// ensures a heavy focus on collateral when distinguishing between hosts
+	// that have a very small amount of collateral provided compared to the size
+	// of the allowance.
 	//
-	// The number is set relative to the price exponentiation, because the goal
-	// is to ensure that the collateral has more weight than the price when the
-	// collateral is small.
-	collateralExponentiationSmall = priceExponentiationLarge + 0.5
+	// For safety, this number needs to be larger than priceExponentiationSmall.
+	collateralExponentiationSmall = 4
 
 	// collateralFloor is a part of the equation for determining the collateral
 	// cutoff between large and small collateral. The equation figures out how
@@ -44,7 +42,10 @@ const (
 	// intensly favors adding more collateral. As long as the host has provided
 	// sufficient skin-in-the-game, enormous amounts of extra collateral are
 	// less important.
-	collateralFloor = 0.15
+	//
+	// The collateralFloor is set relative to the price floor because generally
+	// we look for the collateral to be about 2x the price.
+	collateralFloor = priceFloor * 2
 
 	// interactionExponentiation determines how heavily we penalize hosts for
 	// having poor interactions - disconnecting, RPCs with errors, etc. The
@@ -498,7 +499,7 @@ func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBr
 // managedScoreBreakdown computes the score breakdown of a host. Certain
 // adjustments can be ignored.
 func (hdb *HostDB) managedScoreBreakdown(entry modules.HostDBEntry, ignoreAge, ignoreUptime bool) modules.HostScoreBreakdown {
-	hosts := hdb.AllHosts()
+	hosts := hdb.ActiveHosts()
 
 	// Compute the totalScore.
 	hdb.mu.Lock()
