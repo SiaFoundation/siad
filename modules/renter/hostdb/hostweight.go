@@ -27,7 +27,7 @@ const (
 	// The number is set relative to the price exponentiation, because the goal
 	// is to ensure that the collateral has more weight than the price when the
 	// collateral is small.
-	collateralExponentiationSmall = priceExponentiationLarge + 1
+	collateralExponentiationSmall = priceExponentiationLarge + 0.5
 
 	// collateralFloor is a part of the equation for determining the collateral
 	// cutoff between large and small collateral. The equation figures out how
@@ -44,7 +44,7 @@ const (
 	// intensly favors adding more collateral. As long as the host has provided
 	// sufficient skin-in-the-game, enormous amounts of extra collateral are
 	// less important.
-	collateralFloor = 0.2
+	collateralFloor = 0.15
 
 	// interactionExponentiation determines how heavily we penalize hosts for
 	// having poor interactions - disconnecting, RPCs with errors, etc. The
