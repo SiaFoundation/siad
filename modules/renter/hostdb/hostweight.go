@@ -80,11 +80,6 @@ const (
 )
 
 var (
-	// priceDiveNormalization reduces the raw value of the price so that not so
-	// many digits are needed when operating on the weight. This also allows the
-	// base weight to be a lot lower.
-	priceDivNormalization = types.SiacoinPrecision.Div64(1e9)
-
 	// requiredStorage indicates the amount of storage that the host must be
 	// offering in order to be considered a valuable/worthwhile host.
 	requiredStorage = build.Select(build.Var{
@@ -153,46 +148,33 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// heavy hosts, nor did we give the user any way to configure a situation
 	// where hosts aren't needed to be nearly as reliable.
 	cutoff := contractExpectedFunds.MulFloat(collateralFloor)
+
+	// Get the ratio between the cutoff and the actual collateral so we can
+	// award the bonus for having a large collateral.
+	collateral64, _ := hostCollateral.Float64()
+	cutoff64, _ := cutoff.Float64()
 	// If the hostCollateral is less than the cutoff, set the cutoff equal to
 	// the collateral so that the ratio has a minimum of 1, and also so that
 	// the smallWeight is computed based on the actual collateral instead of
 	// just the cutoff.
-	if hostCollateral.Cmp(cutoff) < 0 {
-		cutoff = hostCollateral
+	if collateral64 < cutoff64 {
+		cutoff64 = collateral64
 	}
-
-	// Get the ratio between the cutoff and the actual collateral so we can
-	// award the bonus for having a large collateral. Perform normalization
-	// before converting to uint64.
-	collateral64, err := hostCollateral.Div(priceDivNormalization).Div64(1e3).Uint64()
-	if err != nil {
-		build.Critical("developer error, normalization should have prevented this:" + err.Error())
-	}
-	cutoff64, err := cutoff.Div(priceDivNormalization).Div64(1e3).Uint64()
-	if err != nil {
-		build.Critical("developer error, normalization should have prevented this:" + err.Error())
-	}
-	collateralF64 := float64(collateral64)
-	cutoffF64 := float64(cutoff64)
-	if cutoffF64 == 0 {
-		cutoffF64 = 1
-	}
-
 	// One last check for safety before grabbing the ratio. This ensures that
 	// the ratio is never less than one, which is critical to getting a coherent
 	// large weight - large weight should never be below one.
-	if collateralF64 < 1 {
-		collateralF64 = 1
+	if collateral64 < 1 {
+		collateral64 = 1
 	}
-	if cutoffF64 < 1 {
-		cutoffF64 = 1
+	if cutoff64 < 1 {
+		cutoff64 = 1
 	}
-	ratio := collateralF64 / cutoffF64
+	ratio := collateral64 / cutoff64
 
 	// Use the cutoff to determine the score based on the small exponentiation
 	// factor (which has a high exponentiation), and then use the ratio between
 	// the two to determine the bonus gained from having a high collateral.
-	smallWeight := math.Pow(cutoffF64, collateralExponentiationSmall)
+	smallWeight := math.Pow(cutoff64, collateralExponentiationSmall)
 	largeWeight := math.Pow(ratio, collateralExponentiationLarge)
 	return smallWeight * largeWeight
 }
@@ -282,41 +264,33 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// insignificant.
 	cutoff := contractExpectedFunds.MulFloat(priceFloor)
 
+	// Convert the price and cutoff to floats.
+	price64, _ := totalPrice.Float64()
+	cutoff64, _ := cutoff.Float64()
 	// If the total price is less than the cutoff, set the cutoff equal to the
 	// price. This ensures that the ratio (totalPrice / cutoff) can never be
 	// less than 1.
-	if totalPrice.Cmp(cutoff) < 0 {
-		cutoff = totalPrice
+	if price64 < cutoff64 {
+		cutoff64 = price64
 	}
-
-	// Convert the price and cutoff to floats.
-	priceU64, err := totalPrice.Div(priceDivNormalization).Uint64()
-	if err != nil {
-		panic("developer error, normalization should have prevented this:" + err.Error())
-	}
-	cutoffU64, err := cutoff.Div(priceDivNormalization).Uint64()
-	if err != nil {
-		panic("developer error, normalization should have prevented this:" + err.Error())
-	}
-	priceF64 := float64(priceU64)
-	cutoffF64 := float64(cutoffU64)
 
 	// Check for less-than-one.
-	if priceF64 < 1 {
-		priceF64 = 1
+	if price64 < 1 {
+		price64 = 1
 	}
-	if cutoffF64 < 1 {
-		cutoffF64 = 1
+	if cutoff64 < 1 {
+		cutoff64 = 1
 	}
 	// Perform this check one more time after all of the conversions, just in
 	// case there was some sort of rounding error.
-	if priceF64 < cutoffF64 {
-		cutoffF64 = priceF64
+	if price64 < cutoff64 {
+		cutoff64 = price64
 	}
-	ratio := priceF64 / cutoffF64
+	ratio := price64 / cutoff64
 
-	smallWeight := math.Pow(cutoffF64, priceExponentiationSmall)
+	smallWeight := math.Pow(cutoff64, priceExponentiationSmall)
 	largeWeight := math.Pow(ratio, priceExponentiationLarge)
+
 	return 1 / (smallWeight * largeWeight)
 }
 

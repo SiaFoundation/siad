@@ -22,6 +22,8 @@ var (
 	}
 )
 
+// calculateWeightFromUInt64Price will fill out a host entry with a bunch of
+// defaults, and then grab the weight of that host using a set price.
 func calculateWeightFromUInt64Price(price, collateral uint64) (weight types.Currency) {
 	hdb := bareHostDB()
 	hdb.SetAllowance(DefaultTestAllowance)
@@ -118,9 +120,11 @@ func TestHostWeightWithOnePricedZero(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	weight1 := calculateWeightFromUInt64Price(5, 100)
-	weight2 := calculateWeightFromUInt64Price(0, 100)
+	weight1 := calculateWeightFromUInt64Price(5, 10)
+	weight2 := calculateWeightFromUInt64Price(0, 10)
 	if weight1.Cmp(weight2) >= 0 {
+		t.Log(weight1)
+		t.Log(weight2)
 		t.Error("Zero-priced host should have higher weight than nonzero-priced host.")
 	}
 }
