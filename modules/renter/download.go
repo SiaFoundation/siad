@@ -266,9 +266,7 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters) error {
 // setup was successful.
 func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
 	// Lookup the file associated with the nickname.
-	lockID := r.mu.RLock()
-	file, exists := r.files[p.SiaPath]
-	r.mu.RUnlock(lockID)
+	file, exists := r.staticFiles.Get(p.SiaPath)
 	if !exists {
 		return nil, fmt.Errorf("no file with that path: %s", p.SiaPath)
 	}

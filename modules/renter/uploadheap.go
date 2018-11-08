@@ -230,12 +230,7 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 // construct a chunk heap.
 func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	// Get all the files holding the readlock.
-	lockID := r.mu.RLock()
-	files := make([]*siafile.SiaFile, 0, len(r.files))
-	for _, file := range r.files {
-		files = append(files, file)
-	}
-	r.mu.RUnlock(lockID)
+	files := r.staticFiles.All()
 
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.

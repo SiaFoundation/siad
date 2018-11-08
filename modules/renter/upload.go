@@ -72,9 +72,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 
 	// Check for a nickname conflict.
-	lockID := r.mu.RLock()
-	_, exists := r.files[up.SiaPath]
-	r.mu.RUnlock(lockID)
+	_, exists := r.staticFiles.Get(up.SiaPath)
 	if exists {
 		return ErrPathOverload
 	}
@@ -119,9 +117,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 
 	// Add file to renter.
-	lockID = r.mu.Lock()
-	r.files[up.SiaPath] = f
-	r.mu.Unlock(lockID)
+	r.staticFiles.Insert(f)
 
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()

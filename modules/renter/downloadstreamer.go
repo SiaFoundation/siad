@@ -36,9 +36,7 @@ func min(values ...uint64) uint64 {
 // the sia network.
 func (r *Renter) Streamer(siaPath string) (string, io.ReadSeeker, error) {
 	// Lookup the file associated with the nickname.
-	lockID := r.mu.RLock()
-	file, exists := r.files[siaPath]
-	r.mu.RUnlock(lockID)
+	file, exists := r.staticFiles.Get(siaPath)
 	if !exists || file.Deleted() {
 		return "", nil, fmt.Errorf("no file with that path: %s", siaPath)
 	}

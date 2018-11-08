@@ -257,7 +257,7 @@ func (r *Renter) loadSiaFiles() error {
 			r.log.Println("ERROR: could not open .sia file:", err)
 			return nil
 		}
-		r.files[sf.SiaPath()] = sf
+		r.staticFiles.Insert(sf)
 		return nil
 	})
 }
@@ -333,7 +333,7 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		dupCount := 0
 		origName := files[i].name
 		for {
-			_, exists := r.files[files[i].name]
+			_, exists := r.staticFiles.Get(files[i].name)
 			if !exists {
 				break
 			}
@@ -349,7 +349,7 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		if err != nil {
 			return nil, err
 		}
-		r.files[f.name] = sf
+		r.staticFiles.Insert(sf)
 		names[i] = f.name
 	}
 	// TODO Save the file in the new format.
@@ -359,7 +359,7 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 // initPersist handles all of the persistence initialization, such as creating
 // the persistence directory and starting the logger.
 func (r *Renter) initPersist() error {
-	// Create the perist and files directories if they do not yet exist.
+	// Create the persist and files directories if they do not yet exist.
 	err := os.MkdirAll(r.filesDir, 0700)
 	if err != nil {
 		return err

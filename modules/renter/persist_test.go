@@ -176,13 +176,25 @@ func TestRenterPaths(t *testing.T) {
 	}
 
 	// Check that the files were loaded properly.
-	if err := equalFiles(f1, rt.renter.files[f1.SiaPath()]); err != nil {
+	file, exists := rt.renter.staticFiles.Get(f1.SiaPath())
+	if !exists {
+		t.Fatal("File not found in renter")
+	}
+	if err := equalFiles(f1, file); err != nil {
 		t.Fatal(err)
 	}
-	if err := equalFiles(f2, rt.renter.files[f2.SiaPath()]); err != nil {
+	file, exists = rt.renter.staticFiles.Get(f2.SiaPath())
+	if !exists {
+		t.Fatal("File not found in renter")
+	}
+	if err := equalFiles(f2, file); err != nil {
 		t.Fatal(err)
 	}
-	if err := equalFiles(f3, rt.renter.files[f3.SiaPath()]); err != nil {
+	file, exists = rt.renter.staticFiles.Get(f3.SiaPath())
+	if !exists {
+		t.Fatal("File not found in renter")
+	}
+	if err := equalFiles(f3, file); err != nil {
 		t.Fatal(err)
 	}
 

@@ -313,7 +313,7 @@ func TestRenterFileListLocalPath(t *testing.T) {
 	if err := f.SetLocalPath("TestPath"); err != nil {
 		t.Fatal(err)
 	}
-	rt.renter.files[f.SiaPath()] = f
+	rt.renter.staticFiles.Insert(f)
 	rt.renter.mu.Unlock(id)
 	files := rt.renter.FileList()
 	if len(files) != 1 {
@@ -343,7 +343,7 @@ func TestRenterDeleteFile(t *testing.T) {
 
 	// Put a file in the renter.
 	file1 := newTestingFile()
-	rt.renter.files[file1.SiaPath()] = file1
+	rt.renter.staticFiles.Insert(file1)
 	// Delete a different file.
 	err = rt.renter.DeleteFile("one")
 	if err != ErrUnknownPath {
@@ -360,8 +360,8 @@ func TestRenterDeleteFile(t *testing.T) {
 
 	// Put a file in the renter, then rename it.
 	f := newTestingFile()
-	f.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension)) // set name to "1"
-	rt.renter.files[f.SiaPath()] = f
+	rt.renter.staticFiles.Rename(f.SiaPath(), "1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension)) // set name to "1"
+	rt.renter.staticFiles.Insert(f)
 	rt.renter.RenameFile(f.SiaPath(), "one")
 	// Call delete on the previous name.
 	err = rt.renter.DeleteFile("1")
@@ -408,7 +408,7 @@ func TestRenterFileList(t *testing.T) {
 
 	// Put a file in the renter.
 	file1 := newTestingFile()
-	rt.renter.files[file1.SiaPath()] = file1
+	rt.renter.staticFiles.Insert(file1)
 	if len(rt.renter.FileList()) != 1 {
 		t.Error("FileList is not returning the only file in the renter")
 	}
@@ -418,7 +418,7 @@ func TestRenterFileList(t *testing.T) {
 
 	// Put multiple files in the renter.
 	file2 := newTestingFile()
-	rt.renter.files["2"] = file2
+	rt.renter.staticFiles.Insert(file2)
 	if len(rt.renter.FileList()) != 2 {
 		t.Error("FileList is not returning both files in the renter")
 	}
@@ -453,8 +453,8 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file that does exist.
 	f := newTestingFile()
-	f.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
-	rt.renter.files["1"] = f
+	rt.renter.staticFiles.Rename(f.SiaPath(), "1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
+	rt.renter.staticFiles.Insert(f)
 	err = rt.renter.RenameFile("1", "1a")
 	if err != nil {
 		t.Fatal(err)
@@ -469,8 +469,8 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file to an existing name.
 	f2 := newTestingFile()
-	f2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
-	rt.renter.files["1"] = f2
+	rt.renter.staticFiles.Rename(f2.SiaPath(), "1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
+	rt.renter.staticFiles.Insert(f2)
 	err = rt.renter.RenameFile("1", "1a")
 	if err != ErrPathOverload {
 		t.Error("Expecting ErrPathOverload, got", err)

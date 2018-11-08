@@ -69,38 +69,26 @@ type pieceData struct {
 // TODO: The data is not cleared from any contracts where the host is not
 // immediately online.
 func (r *Renter) DeleteFile(nickname string) error {
-	lockID := r.mu.Lock()
-	f, exists := r.files[nickname]
-	if !exists {
-		r.mu.Unlock(lockID)
-		return ErrUnknownPath
-	}
-	delete(r.files, nickname)
-
-	r.saveSync()
-	r.mu.Unlock(lockID)
-
 	// TODO: delete the sectors of the file as well.
-
-	// mark the file as deleted
-	return f.Delete()
+	if err := r.staticFiles.Delete(nickname); err != nil {
+		return err
+	}
+	// Save renter
+	lockID := r.mu.Lock()
+	defer r.mu.Unlock(lockID)
+	return r.saveSync()
 }
 
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() []modules.FileInfo {
-	// Get all the files holding the readlock.
-	lockID := r.mu.RLock()
-	files := make([]*siafile.SiaFile, 0, len(r.files))
-	for _, file := range r.files {
-		files = append(files, file)
-	}
-	r.mu.RUnlock(lockID)
+	// Get all the renter files
+	files := r.staticFiles.All()
 
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.
 	pks := make(map[string]types.SiaPublicKey)
-	for _, f := range r.files {
-		for _, pk := range f.HostPublicKeys() {
+	for _, file := range files {
+		for _, pk := range file.HostPublicKeys() {
 			pks[string(pk.Key)] = pk
 		}
 	}
@@ -145,6 +133,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 			UploadedBytes:  f.UploadedBytes(),
 			UploadProgress: f.UploadProgress(),
 		})
+		r.staticFiles.Return(f)
 	}
 	return fileList
 }
@@ -155,9 +144,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	var fileInfo modules.FileInfo
 
 	// Get the file and its contracts
-	lockID := r.mu.RLock()
-	file, exists := r.files[siaPath]
-	r.mu.RUnlock(lockID)
+	file, exists := r.staticFiles.Get(siaPath)
 	if !exists {
 		return fileInfo, ErrUnknownPath
 	}
@@ -210,35 +197,11 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 // file must exist, and there must not be any file that already has the
 // replacement nickname.
 func (r *Renter) RenameFile(currentName, newName string) error {
-	lockID := r.mu.Lock()
-	defer r.mu.Unlock(lockID)
-
 	err := validateSiapath(newName)
 	if err != nil {
 		return err
 	}
-
-	// Check that currentName exists and newName doesn't.
-	file, exists := r.files[currentName]
-	if !exists {
-		return ErrUnknownPath
-	}
-	_, exists = r.files[newName]
-	if exists {
-		return ErrPathOverload
-	}
-
-	// Modify the file and save it to disk.
-	err = file.Rename(newName, filepath.Join(r.filesDir, newName+ShareExtension)) // TODO: violation of locking convention
-	if err != nil {
-		return err
-	}
-
-	// Update the entries in the renter.
-	delete(r.files, currentName)
-	r.files[newName] = file
-
-	return nil
+	return r.staticFiles.Rename(currentName, newName, filepath.Join(r.filesDir, newName+ShareExtension))
 }
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
