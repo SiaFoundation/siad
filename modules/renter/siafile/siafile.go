@@ -97,6 +97,16 @@ func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	return d.Err()
 }
 
+// numPieces returns the total number of pieces uploaded for a chunk. This
+// means that numPieces can be greater than the number of pieces created by the
+// erasure coder.
+func (c *chunk) numPieces() (numPieces int) {
+	for _, c := range c.Pieces {
+		numPieces += len(c)
+	}
+	return
+}
+
 // New create a new SiaFile.
 func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	currentTime := time.Now()
@@ -116,6 +126,7 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 			staticErasureCode:       erasureCode,
 			StaticErasureCodeType:   ecType,
 			StaticErasureCodeParams: ecParams,
+			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
 			SiaPath:                 siaPath,
 		},
@@ -184,6 +195,20 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	sf.staticMetadata.ChangeTime = sf.staticMetadata.AccessTime
 	sf.staticMetadata.ModTime = sf.staticMetadata.AccessTime
 
+	// Defrag the chunk if necessary.
+	chunk := &sf.staticChunks[chunkIndex]
+	chunkSize := marshaledChunkSize(chunk.numPieces())
+	maxChunkSize := int64(sf.staticMetadata.StaticPagesPerChunk) * pageSize
+	if chunkSize > maxChunkSize {
+		sf.defragChunk(chunk)
+	}
+
+	// If the chunk is still too large after the defrag, we abort.
+	chunkSize = marshaledChunkSize(chunk.numPieces())
+	if chunkSize > maxChunkSize {
+		return fmt.Errorf("chunk doesn't fit into allocated space %v > %v", chunkSize, maxChunkSize)
+	}
+
 	// Update the file atomically.
 	var updates []writeaheadlog.Update
 	var err error
@@ -198,13 +223,12 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	if err != nil {
 		return err
 	}
-	// Get the updates for the chunks.
-	// TODO Change this to update only a single chunk instead of all of them.
-	chunksUpdate, err := sf.saveChunks()
+	// Save the changed chunk to disk.
+	chunkUpdate, err := sf.saveChunk(int(chunkIndex))
 	if err != nil {
 		return err
 	}
-	return sf.createAndApplyTransaction(append(updates, chunksUpdate)...)
+	return sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
 }
 
 // Available indicates whether the file is ready to be downloaded.
@@ -471,4 +495,29 @@ func (sf *SiaFile) UploadProgress() float64 {
 	uploaded := sf.UploadedBytes()
 	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
 	return math.Min(100*(float64(uploaded)/float64(desired)), 100)
+}
+
+// defragChunk removes pieces which belong to bad hosts and if that wasn't
+// enough to reduce the chunkSize below the maximum size, it will remove
+// redundant pieces.
+func (sf *SiaFile) defragChunk(chunk *chunk) {
+	// Calculate how many pieces every pieceSet can contain.
+	maxChunkSize := int64(sf.staticMetadata.StaticPagesPerChunk) * pageSize
+	maxPieces := (maxChunkSize - marshaledChunkOverhead) / marshaledPieceSize
+	maxPiecesPerSet := maxPieces / int64(len(chunk.Pieces))
+
+	// Filter out pieces with unused hosts since we don't have contracts with
+	// those anymore.
+	for i, pieceSet := range chunk.Pieces {
+		var newPieceSet []piece
+		for _, piece := range pieceSet {
+			if int64(len(newPieceSet)) == maxPiecesPerSet {
+				break
+			}
+			if sf.pubKeyTable[piece.HostTableOffset].Used {
+				newPieceSet = append(newPieceSet, piece)
+			}
+		}
+		chunk.Pieces[i] = newPieceSet
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,9 +14,65 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
+
+// equalFiles is a helper that compares two SiaFiles for equality.
+func equalFiles(sf, sf2 *SiaFile) error {
+	// Backup the metadata structs for both files.
+	md := sf.staticMetadata
+	md2 := sf2.staticMetadata
+	// Compare the timestamps first since they can't be compared with
+	// DeepEqual.
+	if sf.staticMetadata.AccessTime.Unix() != sf2.staticMetadata.AccessTime.Unix() {
+		return errors.New("AccessTime's don't match")
+	}
+	if sf.staticMetadata.ChangeTime.Unix() != sf2.staticMetadata.ChangeTime.Unix() {
+		return errors.New("ChangeTime's don't match")
+	}
+	if sf.staticMetadata.CreateTime.Unix() != sf2.staticMetadata.CreateTime.Unix() {
+		return errors.New("CreateTime's don't match")
+	}
+	if sf.staticMetadata.ModTime.Unix() != sf2.staticMetadata.ModTime.Unix() {
+		return errors.New("ModTime's don't match")
+	}
+	// Set the timestamps to zero for DeepEqual.
+	sf.staticMetadata.AccessTime = time.Time{}
+	sf.staticMetadata.ChangeTime = time.Time{}
+	sf.staticMetadata.CreateTime = time.Time{}
+	sf.staticMetadata.ModTime = time.Time{}
+	sf2.staticMetadata.AccessTime = time.Time{}
+	sf2.staticMetadata.ChangeTime = time.Time{}
+	sf2.staticMetadata.CreateTime = time.Time{}
+	sf2.staticMetadata.ModTime = time.Time{}
+	// Compare the rest of sf and sf2.
+	if !reflect.DeepEqual(sf.staticMetadata, sf2.staticMetadata) {
+		fmt.Println(sf.staticMetadata)
+		fmt.Println(sf2.staticMetadata)
+		return errors.New("sf metadata doesn't equal sf2 metadata")
+	}
+	if !reflect.DeepEqual(sf.pubKeyTable, sf2.pubKeyTable) {
+		fmt.Println(sf.pubKeyTable)
+		fmt.Println(sf2.pubKeyTable)
+		return errors.New("sf pubKeyTable doesn't equal sf2 pubKeyTable")
+	}
+	if !reflect.DeepEqual(sf.staticChunks, sf2.staticChunks) {
+		fmt.Println(len(sf.staticChunks), len(sf2.staticChunks))
+		fmt.Println("sf1", sf.staticChunks)
+		fmt.Println("sf2", sf2.staticChunks)
+		return errors.New("sf chunks don't equal sf2 chunks")
+	}
+	if sf.siaFilePath != sf2.siaFilePath {
+		return fmt.Errorf("sf2 filepath was %v but should be %v",
+			sf2.siaFilePath, sf.siaFilePath)
+	}
+	// Restore the original metadata.
+	sf.staticMetadata = md
+	sf2.staticMetadata = md2
+	return nil
+}
 
 // addRandomHostKeys adds n random host keys to the SiaFile's pubKeyTable. It
 // doesn't write them to disk.
@@ -39,8 +96,9 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 	}
 }
 
-// newTestFile is a helper method to create a SiaFile for testing.
-func newTestFile() *SiaFile {
+// newBlankTestFile is a helper method to create a SiaFile for testing without
+// any hosts or uploaded pieces.
+func newBlankTestFile() *SiaFile {
 	// Create arguments for new file.
 	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
 	pieceSize := modules.SectorSize - sk.Type().Overhead()
@@ -49,7 +107,8 @@ func newTestFile() *SiaFile {
 	if err != nil {
 		panic(err)
 	}
-	fileSize := pieceSize * 10
+	numChunks := fastrand.Intn(10) + 1
+	fileSize := pieceSize * uint64(rc.MinPieces()) * uint64(numChunks)
 	fileMode := os.FileMode(777)
 	source := string(hex.EncodeToString(fastrand.Bytes(8)))
 
@@ -63,6 +122,31 @@ func newTestFile() *SiaFile {
 	sf, err := New(siaFilePath, siaPath, source, newTestWAL(), rc, sk, fileSize, fileMode)
 	if err != nil {
 		panic(err)
+	}
+	// Check that the number of chunks in the file is correct.
+	if len(sf.staticChunks) != numChunks {
+		panic("newTestFile didn't create the expected number of chunks")
+	}
+	return sf
+}
+
+// newTestFile creates a SiaFile for testing where each chunk has a random
+// number of pieces.
+func newTestFile() *SiaFile {
+	sf := newBlankTestFile()
+	// Add pieces to each chunk.
+	for chunkIndex := range sf.staticChunks {
+		for pieceIndex := 0; pieceIndex < sf.ErasureCode().NumPieces(); pieceIndex++ {
+			numPieces := fastrand.Intn(3) // up to 2 hosts for each piece
+			for i := 0; i < numPieces; i++ {
+				pk := types.SiaPublicKey{Key: fastrand.Bytes(crypto.EntropySize)}
+				mr := crypto.Hash{}
+				fastrand.Read(mr[:])
+				if err := sf.AddPiece(pk, uint64(chunkIndex), uint64(pieceIndex), mr); err != nil {
+					panic(err)
+				}
+			}
+		}
 	}
 	return sf
 }
@@ -91,6 +175,11 @@ func TestNewFile(t *testing.T) {
 	t.Parallel()
 	sf := newTestFile()
 
+	// Check that StaticPagesPerChunk was set correctly.
+	if sf.staticMetadata.StaticPagesPerChunk != numChunkPagesRequired(sf.staticMetadata.staticErasureCode.NumPieces()) {
+		t.Fatal("StaticPagesPerChunk wasn't set correctly")
+	}
+
 	// Marshal the metadata.
 	md, err := marshalMetadata(sf.staticMetadata)
 	if err != nil {
@@ -102,22 +191,25 @@ func TestNewFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Marshal the chunks.
-	chunks, err := marshalChunks(sf.staticChunks)
-	if err != nil {
-		t.Fatal(err)
+	var chunks [][]byte
+	for _, chunk := range sf.staticChunks {
+		c := marshalChunk(chunk)
+		chunks = append(chunks, c)
 	}
+
 	// Open the file.
 	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 777)
 	if err != nil {
 		t.Fatal("Failed to open file", err)
 	}
 	defer f.Close()
-	// Check the filesize.
+	// Check the filesize. It should be equal to the offset of the last chunk
+	// on disk + its marshaled length.
 	fi, err := f.Stat()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Size() != sf.staticMetadata.ChunkOffset+int64(len(chunks)) {
+	if fi.Size() != sf.chunkOffset(len(sf.staticChunks)-1)+int64(len(chunks[len(chunks)-1])) {
 		t.Fatal("file doesn't have right size")
 	}
 	// Compare the metadata to the on-disk metadata.
@@ -138,58 +230,25 @@ func TestNewFile(t *testing.T) {
 	if !bytes.Equal(readPKT, pkt) {
 		t.Fatal("pubKeyTable doesn't equal on-disk pubKeyTable")
 	}
-	// Compare the chunks to the on-disk chunks.
-	readChunks := make([]byte, len(chunks))
-	_, err = f.ReadAt(readChunks, sf.staticMetadata.ChunkOffset)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(readChunks, chunks) {
-		t.Fatal("readChunks don't equal on-disk readChunks")
+	// Compare the chunks to the on-disk chunks one-by-one.
+	readChunk := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
+	for chunkIndex := range sf.staticChunks {
+		_, err := f.ReadAt(readChunk, sf.chunkOffset(chunkIndex))
+		if err != nil && err != io.EOF {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(readChunk[:len(chunks[chunkIndex])], chunks[chunkIndex]) {
+			t.Fatal("readChunks don't equal on-disk readChunks")
+		}
 	}
 	// Load the file from disk and check that they are the same.
 	sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
 	if err != nil {
 		t.Fatal("failed to load SiaFile from disk", err)
 	}
-	// Compare the timestamps first since they can't be compared with
-	// DeepEqual.
-	if sf.staticMetadata.AccessTime.Unix() != sf2.staticMetadata.AccessTime.Unix() {
-		t.Fatal("AccessTime's don't match")
-	}
-	if sf.staticMetadata.ChangeTime.Unix() != sf2.staticMetadata.ChangeTime.Unix() {
-		t.Fatal("ChangeTime's don't match")
-	}
-	if sf.staticMetadata.CreateTime.Unix() != sf2.staticMetadata.CreateTime.Unix() {
-		t.Fatal("CreateTime's don't match")
-	}
-	if sf.staticMetadata.ModTime.Unix() != sf2.staticMetadata.ModTime.Unix() {
-		t.Fatal("ModTime's don't match")
-	}
-	// Set the timestamps to zero for DeepEqual.
-	sf.staticMetadata.AccessTime = time.Time{}
-	sf.staticMetadata.ChangeTime = time.Time{}
-	sf.staticMetadata.CreateTime = time.Time{}
-	sf.staticMetadata.ModTime = time.Time{}
-	sf2.staticMetadata.AccessTime = time.Time{}
-	sf2.staticMetadata.ChangeTime = time.Time{}
-	sf2.staticMetadata.CreateTime = time.Time{}
-	sf2.staticMetadata.ModTime = time.Time{}
-	// Compare the rest of sf and sf2.
-	if !reflect.DeepEqual(sf.staticMetadata, sf2.staticMetadata) {
-		fmt.Println(sf.staticMetadata)
-		fmt.Println(sf2.staticMetadata)
-		t.Error("sf metadata doesn't equal sf2 metadata")
-	}
-	if !reflect.DeepEqual(sf.pubKeyTable, sf2.pubKeyTable) {
-		t.Error("sf pubKeyTable doesn't equal sf2 pubKeyTable")
-	}
-	if !reflect.DeepEqual(sf.staticChunks, sf2.staticChunks) {
-		t.Error("sf chunks don't equal sf2 chunks")
-	}
-	if sf.siaFilePath != sf2.siaFilePath {
-		t.Errorf("sf2 filepath was %v but should be %v",
-			sf2.siaFilePath, sf.siaFilePath)
+	// Compare the files.
+	if err := equalFiles(sf, sf2); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -326,161 +385,6 @@ func TestApplyUpdates(t *testing.T) {
 	})
 }
 
-// TestMarshalUnmarshalChunks tests marshaling and unmarshaling the chunks of a
-// SiaFile.
-func TestMarshalUnmarshalChunks(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	sf := newTestFile()
-	// The testing file has a chunk. Duplicate that to get more chunks for
-	// testing.
-	for i := 0; i < 3; i++ {
-		sf.staticChunks = append(sf.staticChunks, sf.staticChunks...)
-	}
-	if len(sf.staticChunks) < 8 {
-		t.Fatal("Not enough chunks for testing")
-	}
-	// Add a piece to every chunk.
-	for chunkIndex := range sf.staticChunks {
-		for pieceIndex, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
-			sf.staticChunks[chunkIndex].Pieces[pieceIndex] = append(pieceSet, piece{
-				HostTableOffset: uint32(fastrand.Intn(100)),
-				MerkleRoot:      crypto.Hash{},
-			})
-		}
-	}
-	// Marshal the chunks.
-	raw, err := marshalChunks(sf.staticChunks)
-	if err != nil {
-		t.Fatal("Failed to marshal chunks", err)
-	}
-	// Unmarshal the chunks again.
-	chunks, err := unmarshalChunks(raw)
-	if err != nil {
-		t.Fatal("Failed to unmarshal chunks", err)
-	}
-	// Compare them to the original ones.
-	if !reflect.DeepEqual(sf.staticChunks, chunks) {
-		t.Fatal("Unmarshaled chunks don't equal origin chunks")
-	}
-}
-
-// TestMarshalUnmarshalErasureCoder tests marshaling and unmarshaling an
-// ErasureCoder.
-func TestMarshalUnmarshalErasureCoder(t *testing.T) {
-	rc, err := NewRSCode(10, 20)
-	if err != nil {
-		t.Fatal("failed to create reed solomon coder", err)
-	}
-	// Get the minimum pieces and the total number of pieces.
-	numPieces, minPieces := rc.NumPieces(), rc.MinPieces()
-	// Marshal the erasure coder.
-	ecType, ecParams := marshalErasureCoder(rc)
-	// Unmarshal it.
-	rc2, err := unmarshalErasureCoder(ecType, ecParams)
-	if err != nil {
-		t.Fatal("failed to unmarshal reed solomon coder", err)
-	}
-	// Check if the settings are still the same.
-	if numPieces != rc2.NumPieces() {
-		t.Errorf("expected %v numPieces but was %v", numPieces, rc2.NumPieces())
-	}
-	if minPieces != rc2.MinPieces() {
-		t.Errorf("expected %v minPieces but was %v", minPieces, rc2.MinPieces())
-	}
-}
-
-// TestMarshalUnmarshalMetadata tests marshaling and unmarshaling the metadata
-// of a SiaFile.
-func TestMarshalUnmarshalMetadata(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	sf := newTestFile()
-
-	// Marshal metadata
-	raw, err := marshalMetadata(sf.staticMetadata)
-	if err != nil {
-		t.Fatal("Failed to marshal metadata", err)
-	}
-	// Unmarshal metadata
-	md, err := unmarshalMetadata(raw)
-	if err != nil {
-		t.Fatal("Failed to unmarshal metadata", err)
-	}
-	// Compare the timestamps first since they can't be compared with
-	// DeepEqual.
-	if sf.staticMetadata.AccessTime.Unix() != md.AccessTime.Unix() {
-		t.Fatal("AccessTime's don't match")
-	}
-	if sf.staticMetadata.ChangeTime.Unix() != md.ChangeTime.Unix() {
-		t.Fatal("ChangeTime's don't match")
-	}
-	if sf.staticMetadata.CreateTime.Unix() != md.CreateTime.Unix() {
-		t.Fatal("CreateTime's don't match")
-	}
-	if sf.staticMetadata.ModTime.Unix() != md.ModTime.Unix() {
-		t.Fatal("ModTime's don't match")
-	}
-	// Set the timestamps to zero for DeepEqual.
-	sf.staticMetadata.AccessTime = time.Time{}
-	sf.staticMetadata.ChangeTime = time.Time{}
-	sf.staticMetadata.CreateTime = time.Time{}
-	sf.staticMetadata.ModTime = time.Time{}
-	md.AccessTime = time.Time{}
-	md.ChangeTime = time.Time{}
-	md.CreateTime = time.Time{}
-	md.ModTime = time.Time{}
-	// Compare result to original
-	if !reflect.DeepEqual(md, sf.staticMetadata) {
-		t.Fatal("Unmarshaled metadata not equal to marshaled metadata:", err)
-	}
-}
-
-// TestMarshalUnmarshalPubKeyTable tests marshaling and unmarshaling the
-// publicKeyTable of a SiaFile.
-func TestMarshalUnmarshalPubKeyTable(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	sf := newTestFile()
-	sf.addRandomHostKeys(10)
-
-	// Marshal pubKeyTable.
-	raw, err := marshalPubKeyTable(sf.pubKeyTable)
-	if err != nil {
-		t.Fatal("Failed to marshal pubKeyTable", err)
-	}
-	// Unmarshal pubKeyTable.
-	pubKeyTable, err := unmarshalPubKeyTable(raw)
-	if err != nil {
-		t.Fatal("Failed to unmarshal pubKeyTable", err)
-	}
-	// Compare them.
-	if len(sf.pubKeyTable) != len(pubKeyTable) {
-		t.Fatalf("Lengths of tables don't match %v vs %v",
-			len(sf.pubKeyTable), len(pubKeyTable))
-	}
-	for i, spk := range pubKeyTable {
-		if spk.Used != sf.pubKeyTable[i].Used {
-			t.Fatal("Use fields don't match")
-		}
-		if spk.PublicKey.Algorithm != sf.pubKeyTable[i].PublicKey.Algorithm {
-			t.Fatal("Algorithms don't match")
-		}
-		if !bytes.Equal(spk.PublicKey.Key, sf.pubKeyTable[i].PublicKey.Key) {
-			t.Fatal("Keys don't match")
-		}
-	}
-}
-
 // TestSaveSmallHeader tests the saveHeader method for a header that is not big
 // enough to need more than a single page on disk.
 func TestSaveSmallHeader(t *testing.T) {
@@ -489,7 +393,7 @@ func TestSaveSmallHeader(t *testing.T) {
 	}
 	t.Parallel()
 
-	sf := newTestFile()
+	sf := newBlankTestFile()
 
 	// Add some host keys.
 	sf.addRandomHostKeys(10)
@@ -546,9 +450,10 @@ func TestSaveLargeHeader(t *testing.T) {
 	}
 	t.Parallel()
 
-	sf := newTestFile()
+	sf := newBlankTestFile()
 
-	// Add some host keys.
+	// Add some host keys. This should force the SiaFile to allocate a new page
+	// for the pubKeyTable.
 	sf.addRandomHostKeys(100)
 
 	// Open the file.
@@ -576,7 +481,7 @@ func TestSaveLargeHeader(t *testing.T) {
 
 	// Make sure the chunkOffset was updated correctly.
 	if sf.staticMetadata.ChunkOffset != 2*pageSize {
-		t.Fatal("ChunkOffset wasn't updated correctly")
+		t.Fatal("ChunkOffset wasn't updated correctly", sf.staticMetadata.ChunkOffset, 2*pageSize)
 	}
 
 	// Make sure that the checksum was moved correctly.
@@ -704,5 +609,71 @@ func TestUpdateUsedHosts(t *testing.T) {
 		if entry.Used != expectedUsed {
 			t.Errorf("expected flag to be %v but was %v", expectedUsed, entry.Used)
 		}
+	}
+}
+
+// TestChunkOffset tests the chunkOffset method.
+func TestChunkOffset(t *testing.T) {
+	sf := newTestFile()
+
+	// Set the static pages per chunk to a random value.
+	sf.staticMetadata.StaticPagesPerChunk = uint8(fastrand.Intn(5)) + 1
+
+	// Calculate the offset of the first chunk.
+	offset1 := sf.chunkOffset(0)
+	if expectedOffset := sf.staticMetadata.ChunkOffset; expectedOffset != offset1 {
+		t.Fatalf("expected offset %v but got %v", sf.staticMetadata.ChunkOffset, offset1)
+	}
+
+	// Calculate the offset of the second chunk.
+	offset2 := sf.chunkOffset(1)
+	if expectedOffset := offset1 + int64(sf.staticMetadata.StaticPagesPerChunk)*pageSize; expectedOffset != offset2 {
+		t.Fatalf("expected offset %v but got %v", expectedOffset, offset2)
+	}
+
+	// Make sure that the offsets we calculated are not the same due to not
+	// initializing the file correctly.
+	if offset2 == offset1 {
+		t.Fatal("the calculated offsets are the same")
+	}
+}
+
+// TestSaveChunk checks that saveChunk creates an updated which if applied
+// writes the correct data to disk.
+func TestSaveChunk(t *testing.T) {
+	sf := newTestFile()
+
+	// Choose a random chunk from the file and replace it.
+	chunkIndex := fastrand.Intn(len(sf.staticChunks))
+	chunk := randomChunk()
+	sf.staticChunks[chunkIndex] = chunk
+
+	// Write the chunk to disk using saveChunk.
+	update, err := sf.saveChunk(chunkIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sf.createAndApplyTransaction(update); err != nil {
+		t.Fatal(err)
+	}
+
+	// Marshal the chunk.
+	marshaledChunk := marshalChunk(chunk)
+
+	// Read the chunk from disk.
+	f, err := os.Open(sf.siaFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	readChunk := make([]byte, len(marshaledChunk))
+	if _, err := f.ReadAt(readChunk, sf.chunkOffset(chunkIndex)); err != nil {
+		t.Fatal(err)
+	}
+
+	// The marshaled chunk should equal the chunk we read from disk.
+	if !bytes.Equal(readChunk, marshaledChunk) {
+		t.Fatal("marshaled chunk doesn't equal chunk on disk")
 	}
 }

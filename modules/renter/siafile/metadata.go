@@ -14,11 +14,12 @@ import (
 type (
 	// metadata is the metadata of a SiaFile and is JSON encoded.
 	metadata struct {
-		StaticVersion   [16]byte `json:"version"`   // version of the sia file format used
-		StaticFileSize  int64    `json:"filesize"`  // total size of the file
-		StaticPieceSize uint64   `json:"piecesize"` // size of a single piece of the file
-		LocalPath       string   `json:"localpath"` // file to the local copy of the file used for repairing
-		SiaPath         string   `json:"siapath"`   // the path of the file on the Sia network
+		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
+		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
+		StaticFileSize      int64    `json:"filesize"`      // total size of the file
+		StaticPieceSize     uint64   `json:"piecesize"`     // size of a single piece of the file
+		LocalPath           string   `json:"localpath"`     // file to the local copy of the file used for repairing
+		SiaPath             string   `json:"siapath"`       // the path of the file on the Sia network
 
 		// fields for encryption
 		StaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
@@ -163,11 +164,11 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	}
 	updates = append(updates, headerUpdate...)
 	// Write the chunks to the new location.
-	chunksUpdate, err := sf.saveChunks()
+	chunksUpdates, err := sf.saveChunks()
 	if err != nil {
 		return err
 	}
-	updates = append(updates, chunksUpdate)
+	updates = append(updates, chunksUpdates...)
 	// Apply updates.
 	return sf.createAndApplyTransaction(updates...)
 }
