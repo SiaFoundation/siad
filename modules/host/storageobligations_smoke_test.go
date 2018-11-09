@@ -14,7 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -359,8 +359,8 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 
 	// Mine enough blocks so that all active storage obligations succeed and we
 	// know for sure the other obligations are stale, i.e. not in the transaction pool
-	// and with a NegotiationHeight, MaxTxnAge blocks behind the currrent block.
-	endblock := ht.host.blockHeight + revisionSubmissionBuffer + defaultWindowSize + 2 + transactionpool.MaxTxnAge + 1
+	// and with a NegotiationHeight, RespendTimeout blocks behind the currrent block.
+	endblock := ht.host.blockHeight + revisionSubmissionBuffer + defaultWindowSize + 2 + wallet.RespendTimeout + 1
 	for cb := ht.host.blockHeight; cb <= endblock; cb++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
@@ -418,7 +418,7 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 				}
 				// Transaction was not found on the transaction pool. Double check if
 				// this obligation is in the process of being accepted.
-				if so.NegotiationHeight+transactionpool.MaxTxnAge < ht.host.blockHeight {
+				if so.NegotiationHeight+wallet.RespendTimeout < ht.host.blockHeight {
 					// This obligation was created too far in the past and it is safe
 					// to assume this is a stale obligation.
 					k++
@@ -492,7 +492,7 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 				}
 				// Transaction was not found on the transaction pool. Double check if
 				// this obligation is in the process of being accepted.
-				if so.NegotiationHeight+transactionpool.MaxTxnAge < ht.host.blockHeight {
+				if so.NegotiationHeight+wallet.RespendTimeout < ht.host.blockHeight {
 					// This obligation was created too far in the past and it is safe
 					// to assume this is a stale obligation.
 					k++

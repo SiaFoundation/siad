@@ -40,7 +40,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"github.com/coreos/bbolt"
@@ -578,8 +578,8 @@ func (h *Host) PruneStaleStorageObligations() error {
 			if !conf {
 				// If the transaction id was not confirmed the obligation
 				// is removed from the database. But only if the transaction is at
-				// least MaxTxnAge blocks old.
-				if h.blockHeight > so.NegotiationHeight+transactionpool.MaxTxnAge {
+				// least RespendTimeout blocks old.
+				if h.blockHeight > so.NegotiationHeight+wallet.RespendTimeout {
 					err = b.Delete(k)
 					if err != nil {
 						return build.ExtendErr("unable to remove storage obligation from database:", err)

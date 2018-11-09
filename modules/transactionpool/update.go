@@ -355,12 +355,12 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// after the consensus change.
 	tp.purge()
 
-	// prune transactions older than MaxTxnAge.
+	// prune transactions older than maxTxnAge.
 	for i, tSet := range unconfirmedSets {
 		var validTxns []types.Transaction
 		for _, txn := range tSet {
 			seenHeight, seen := tp.transactionHeights[txn.ID()]
-			if tp.blockHeight-seenHeight <= MaxTxnAge || !seen {
+			if tp.blockHeight-seenHeight <= maxTxnAge || !seen {
 				validTxns = append(validTxns, txn)
 			} else {
 				delete(tp.transactionHeights, txn.ID())

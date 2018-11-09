@@ -272,7 +272,7 @@ func TestValidRevertedTransaction(t *testing.T) {
 }
 
 // TestTransactionPoolPruning verifies that the transaction pool correctly
-// prunes transactions older than MaxTxnAge.
+// prunes transactions older than maxTxnAge.
 func TestTransactionPoolPruning(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -305,7 +305,7 @@ func TestTransactionPoolPruning(t *testing.T) {
 		t.Fatal("testers did not have the same block height after one minute")
 	}
 
-	// disconnect tpt, create an unconfirmed transaction on tpt, mine MaxTxnAge
+	// disconnect tpt, create an unconfirmed transaction on tpt, mine maxTxnAge
 	// blocks on tpt2 and reconnect. The unconfirmed transactions should be
 	// removed from tpt's pool.
 	err = tpt.gateway.Disconnect(tpt2.gateway.Address())
@@ -317,7 +317,7 @@ func TestTransactionPoolPruning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := types.BlockHeight(0); i < MaxTxnAge+1; i++ {
+	for i := types.BlockHeight(0); i < maxTxnAge+1; i++ {
 		_, err = tpt2.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)
