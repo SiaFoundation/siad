@@ -326,6 +326,8 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 			err = extendErr("incoming RPCLoopUpload failed: ", h.managedRPCLoopUpload(conn))
 		case modules.RPCLoopDownload:
 			err = extendErr("incoming RPCLoopDownload failed: ", h.managedRPCLoopDownload(conn))
+		case modules.RPCLoopSectorRoots:
+			err = extendErr("incoming RPCLoopSectorRoots failed: ", h.managedRPCLoopSectorRoots(conn))
 		case modules.RPCLoopExit:
 			return nil
 		default:

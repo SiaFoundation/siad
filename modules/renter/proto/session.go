@@ -267,6 +267,114 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	return sc.Metadata(), resp.Data, nil
 }
 
+// SectorRoots calls the contract roots download RPC and returns the requested sector roots. The
+// Revision and Signature fields of req are filled in automatically. If a
+// Merkle proof is requested, it is verified.
+func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.RenterContract, _ []crypto.Hash, err error) {
+	// Reset deadline when finished.
+	defer extendDeadline(s.conn, time.Hour) // TODO: Constant.
+
+	// Acquire the contract.
+	// TODO: why not just lock the SafeContract directly?
+	sc, haveContract := s.contractSet.Acquire(s.contractID)
+	if !haveContract {
+		return modules.RenterContract{}, nil, errors.New("contract not present in contract set")
+	}
+	defer s.contractSet.Return(sc)
+	contract := sc.header // for convenience
+
+	// calculate price
+	paidBytes := uint64(req.NumRoots) * crypto.HashSize
+	price := s.host.DownloadBandwidthPrice.Mul64(paidBytes)
+	if contract.RenterFunds().Cmp(price) < 0 {
+		return modules.RenterContract{}, nil, errors.New("contract has insufficient funds to support sector roots download")
+	}
+	// To mitigate small errors (e.g. differing block heights), fudge the
+	// price and collateral by 0.2%.
+	price = price.MulFloat(1 + hostPriceLeeway)
+
+	// create the download revision and sign it
+	rev := newDownloadRevision(contract.LastRevision(), price)
+	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{rev},
+		TransactionSignatures: []types.TransactionSignature{
+			{
+				ParentID:       crypto.Hash(rev.ParentID),
+				CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+				PublicKeyIndex: 0, // renter key is always first -- see formContract
+			},
+			{
+				ParentID:       crypto.Hash(rev.ParentID),
+				PublicKeyIndex: 1,
+				CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+				Signature:      nil, // to be provided by host
+			},
+		},
+	}
+	sig := crypto.SignHash(txn.SigHash(0, s.height), contract.SecretKey)
+	txn.TransactionSignatures[0].Signature = sig[:]
+
+	// fill in the missing request fields
+	req.ContractID = contract.ID()
+	req.NewRevisionNumber = rev.NewRevisionNumber
+	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
+	for i, o := range rev.NewValidProofOutputs {
+		req.NewValidProofValues[i] = o.Value
+	}
+	req.NewMissedProofValues = make([]types.Currency, len(rev.NewMissedProofOutputs))
+	for i, o := range rev.NewMissedProofOutputs {
+		req.NewMissedProofValues[i] = o.Value
+	}
+	req.Signature = sig[:]
+
+	// record the change we are about to make to the contract. If we lose power
+	// mid-revision, this allows us to restore either the pre-revision or
+	// post-revision contract.
+	walTxn, err := sc.recordDownloadIntent(rev, price)
+	if err != nil {
+		return modules.RenterContract{}, nil, err
+	}
+
+	// Increase Successful/Failed interactions accordingly
+	defer func() {
+		if err != nil {
+			s.hdb.IncrementFailedInteractions(contract.HostPublicKey())
+		} else {
+			s.hdb.IncrementSuccessfulInteractions(contract.HostPublicKey())
+		}
+	}()
+
+	// send download RPC request
+	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
+	err = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopSectorRoots, req)
+	if err != nil {
+		return modules.RenterContract{}, nil, err
+	}
+
+	// read the response
+	var resp modules.LoopSectorRootsResponse
+	err = modules.ReadRPCResponse(s.conn, &resp)
+	if err != nil {
+		return modules.RenterContract{}, nil, err
+	}
+
+	if len(resp.SectorRoots) != int(req.NumRoots) {
+		return modules.RenterContract{}, nil, errors.New("host did not send the requested number of sector roots")
+	} else if req.MerkleProof {
+		// TODO: verify Merkle proof
+	}
+
+	// add host signature
+	txn.TransactionSignatures[1].Signature = resp.Signature
+
+	// update contract and metrics
+	if err := sc.commitDownload(walTxn, txn, price); err != nil {
+		return modules.RenterContract{}, nil, err
+	}
+
+	return sc.Metadata(), resp.SectorRoots, nil
+}
+
 // shutdown terminates the revision loop and signals the goroutine spawned in
 // NewSession to return.
 func (s *Session) shutdown() {

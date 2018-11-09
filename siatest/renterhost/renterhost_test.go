@@ -62,6 +62,18 @@ func TestSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// download the sector root
+	_, droots, err := s.SectorRoots(modules.LoopSectorRootsRequest{
+		RootOffset: 0,
+		NumRoots:   1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(droots[0][:], root[:]) {
+		t.Fatal("downloaded sector root does not match")
+	}
+
 	// download the sector
 	_, dsector, err := s.Download(modules.LoopDownloadRequest{
 		MerkleRoot: root,
