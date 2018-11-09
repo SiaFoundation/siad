@@ -478,11 +478,10 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
-		// A revision mismatch might not be the host's fault.
-		if err != nil && !IsRevisionMismatch(err) {
+		if err != nil {
 			hdb.IncrementFailedInteractions(contract.HostPublicKey())
 			err = errors.Extend(err, modules.ErrHostFault)
-		} else if err == nil {
+		} else {
 			hdb.IncrementSuccessfulInteractions(contract.HostPublicKey())
 		}
 	}()

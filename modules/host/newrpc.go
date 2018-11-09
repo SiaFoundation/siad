@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -121,7 +122,7 @@ func (h *Host) managedRPCLoopUpload(conn net.Conn, so *storageObligation) error 
 	newRevenue := storageRevenue.Add(bandwidthRevenue)
 	if err := verifyRevision(*so, newRevision, blockHeight, newRevenue, newCollateral); err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("unable to verify updated contract: ", err)
+		return err
 	}
 
 	// Sign the new revision.
@@ -134,7 +135,7 @@ func (h *Host) managedRPCLoopUpload(conn net.Conn, so *storageObligation) error 
 	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("failed to create revision signature: ", err)
+		return err
 	}
 
 	// Update the storage obligation.
@@ -147,7 +148,7 @@ func (h *Host) managedRPCLoopUpload(conn net.Conn, so *storageObligation) error 
 	h.mu.Unlock()
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("failed to modify storage obligation: ", err)
+		return err
 	}
 
 	// Send the response.
@@ -197,7 +198,7 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn, so *storageObligation) erro
 	}
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("download iteration request failed: ", err)
+		return err
 	}
 
 	// construct the new revision
@@ -222,14 +223,14 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn, so *storageObligation) erro
 	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, expectedTransfer)
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("payment validation failed: ", err)
+		return err
 	}
 
 	// Fetch the requested data.
 	sectorData, err := h.ReadSector(req.MerkleRoot)
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("failed to load sector: ", ErrorInternal(err.Error()))
+		return err
 	}
 	data := sectorData[req.Offset : req.Offset+req.Length]
 
@@ -251,7 +252,7 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn, so *storageObligation) erro
 	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("failed to create revision signature: ", err)
+		return err
 	}
 
 	// Update the storage obligation.
@@ -263,7 +264,7 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn, so *storageObligation) erro
 	h.mu.Unlock()
 	if err != nil {
 		modules.WriteRPCResponse(conn, nil, err)
-		return extendErr("failed to modify storage obligation: ", err)
+		return err
 	}
 
 	// send the response
@@ -275,6 +276,94 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn, so *storageObligation) erro
 	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
 		return err
 	}
+	return nil
+}
+
+// managedRPCLoopFormContract handles the contract formation RPC.
+func (h *Host) managedRPCLoopFormContract(conn net.Conn, so *storageObligation) error {
+	// NOTE: this RPC contains two request/response exchanges.
+
+	conn.SetDeadline(time.Now().Add(modules.NegotiateFileContractTime))
+
+	// Read the contract request.
+	var req modules.LoopFormContractRequest
+	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+
+	h.mu.Lock()
+	settings := h.externalSettings()
+	h.mu.Unlock()
+	if !settings.AcceptingContracts {
+		modules.WriteRPCResponse(conn, nil, errors.New("host is not accepting new contracts"))
+		return nil
+	}
+
+	// The host verifies that the file contract coming over the wire is
+	// acceptable.
+	txnSet := req.Transactions
+	var renterPK crypto.PublicKey
+	copy(renterPK[:], req.RenterKey.Key)
+	if err := h.managedVerifyNewContract(txnSet, renterPK, settings); err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+	// The host adds collateral to the transaction.
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddCollateral(settings, txnSet)
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+	// Send any new inputs and outputs that were added to the transaction.
+	resp := modules.LoopFormContractResponse{
+		Parents: newParents,
+		Inputs:  newInputs,
+		Outputs: newOutputs,
+	}
+	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
+		return err
+	}
+
+	// The renter will now send transaction signatures for the file contract
+	// transaction and a signature for the implicit no-op file contract
+	// revision.
+	var renterSigs modules.LoopContractSignatures
+	if err := encoding.NewDecoder(conn).Decode(&renterSigs); err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+
+	// The host adds the renter transaction signatures, then signs the
+	// transaction and submits it to the blockchain, creating a storage
+	// obligation in the process.
+	h.mu.RLock()
+	hostCollateral := contractCollateral(settings, txnSet[len(txnSet)-1].FileContracts[0])
+	h.mu.RUnlock()
+	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, renterPK, renterSigs.ContractSignatures, renterSigs.RevisionSignature, nil, hostCollateral, types.ZeroCurrency, types.ZeroCurrency, settings)
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+	defer h.managedUnlockStorageObligation(newSOID)
+
+	// Send our signatures for the contract transaction and initial revision.
+	hostSigs := modules.LoopContractSignatures{
+		ContractSignatures: hostTxnSignatures,
+		RevisionSignature:  hostRevisionSignature,
+	}
+	if err := modules.WriteRPCResponse(conn, hostSigs, nil); err != nil {
+		return err
+	}
+
+	// Set the storageObligation so that subsequent RPCs can use it.
+	h.mu.RLock()
+	err = h.db.View(func(tx *bolt.Tx) error {
+		*so, err = getStorageObligation(tx, newSOID)
+		return err
+	})
+	h.mu.RUnlock()
+
 	return nil
 }
 

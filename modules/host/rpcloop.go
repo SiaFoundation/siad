@@ -119,6 +119,8 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 		switch id {
 		case modules.RPCLoopSettings:
 			err = extendErr("incoming RPCLoopSettings failed: ", h.managedRPCLoopSettings(conn))
+		case modules.RPCLoopFormContract:
+			err = extendErr("incoming RPCLoopFormContract failed: ", h.managedRPCLoopFormContract(conn, &so))
 		case modules.RPCLoopRecentRevision:
 			err = extendErr("incoming RPCLoopRecentRevision failed: ", h.managedRPCLoopRecentRevision(conn, &so, challenge))
 		case modules.RPCLoopUpload:
