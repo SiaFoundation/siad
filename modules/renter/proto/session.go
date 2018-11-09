@@ -436,9 +436,8 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 
 	if len(resp.SectorRoots) != int(req.NumRoots) {
 		return modules.RenterContract{}, nil, errors.New("host did not send the requested number of sector roots")
-	} else if req.MerkleProof {
-		// TODO: verify Merkle proof
 	}
+	return modules.RenterContract{}, nil, errors.New("validate Merkle proof")
 
 	// add host signature
 	txn.TransactionSignatures[1].Signature = resp.Signature
