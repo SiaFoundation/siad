@@ -197,6 +197,11 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		t.Fatalf("Expected %v active contracts but got %v", len(allHosts), len(contracts.ActiveContracts))
 	}
 
+	// Disable the IPViolationCheck to avoid race conditions during testing.
+	if err := renter.RenterSetCheckIPViolationPost(false); err != nil {
+		t.Fatal(err)
+	}
+
 	// Check that all the hosts have been scanned.
 	hdag, err := renter.HostDbAllGet()
 	if err != nil {
@@ -247,6 +252,11 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, false)
+		t.Fatal(err)
+	}
+
+	// Enable the IPViolationCheck again to cancel the "youngest" host.
+	if err := renter.RenterSetCheckIPViolationPost(true); err != nil {
 		t.Fatal(err)
 	}
 

@@ -284,8 +284,8 @@ func (hdb *HostDB) AllHosts() (allHosts []modules.HostDBEntry) {
 func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaPublicKey {
 	// If the check was disabled we don't return any bad hosts.
 	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
 	disabled := hdb.disableIPViolationCheck
-	hdb.mu.RUnlock()
 	if disabled {
 		return nil
 	}
