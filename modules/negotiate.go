@@ -354,7 +354,6 @@ type (
 
 	// LoopDownloadRequest contains the request parameters for RPCLoopDownload.
 	LoopDownloadRequest struct {
-		ContractID  types.FileContractID
 		MerkleRoot  crypto.Hash
 		Offset      uint32
 		Length      uint32
@@ -375,10 +374,8 @@ type (
 
 	// LoopSectorRootsRequest contains the request parameters for RPCLoopSectorRoots.
 	LoopSectorRootsRequest struct {
-		ContractID  types.FileContractID
-		RootOffset  uint64
-		NumRoots    uint64
-		MerkleProof bool
+		RootOffset uint64
+		NumRoots   uint64
 
 		NewRevisionNumber    uint64
 		NewValidProofValues  []types.Currency
@@ -407,8 +404,7 @@ type (
 
 	// LoopUploadRequest contains the request parameters for RPCLoopUpload.
 	LoopUploadRequest struct {
-		ContractID types.FileContractID
-		Data       []byte
+		Data []byte
 
 		NewRevisionNumber    uint64
 		NewValidProofValues  []types.Currency

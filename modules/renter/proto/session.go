@@ -164,7 +164,6 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 
 	// create the request
 	req := modules.LoopUploadRequest{
-		ContractID:        contract.ID(),
 		Data:              data,
 		NewRevisionNumber: rev.NewRevisionNumber,
 		Signature:         sig[:],
@@ -280,7 +279,6 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// fill in the missing request fields
-	req.ContractID = contract.ID()
 	req.NewRevisionNumber = rev.NewRevisionNumber
 	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
 	for i, o := range rev.NewValidProofOutputs {
@@ -394,7 +392,6 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// fill in the missing request fields
-	req.ContractID = contract.ID()
 	req.NewRevisionNumber = rev.NewRevisionNumber
 	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
 	for i, o := range rev.NewValidProofOutputs {
