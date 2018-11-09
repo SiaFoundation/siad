@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -280,6 +281,8 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn, so *storageObligation) erro
 // managedRPCLoopSectorRoots writes an RPC response containing the requested
 // contract roots (along with signatures and a Merkle proof).
 func (h *Host) managedRPCLoopSectorRoots(conn net.Conn, so *storageObligation) error {
+	build.Critical("Merkle proofs not implemented")
+
 	conn.SetDeadline(time.Now().Add(modules.NegotiateDownloadTime))
 
 	// Read the request.
@@ -290,9 +293,6 @@ func (h *Host) managedRPCLoopSectorRoots(conn net.Conn, so *storageObligation) e
 		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
-	err := errors.New("Merkle proofs are not implemented")
-	modules.WriteRPCResponse(conn, nil, err)
-	return err
 
 	// Read some internal fields for later.
 	h.mu.RLock()
@@ -303,6 +303,7 @@ func (h *Host) managedRPCLoopSectorRoots(conn net.Conn, so *storageObligation) e
 	currentRevision := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Validate the request.
+	var err error
 	if req.NumRoots > settings.MaxDownloadBatchSize/crypto.HashSize {
 		err = errLargeDownloadBatch
 	}
