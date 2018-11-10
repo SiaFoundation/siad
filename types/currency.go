@@ -99,10 +99,7 @@ func (x Currency) Equals(y Currency) bool {
 
 // Float64 will return the types.Currency as a float64.
 func (x Currency) Float64() (f64 float64, exact bool) {
-	one := big.NewInt(1)
-	var r big.Rat
-	r.SetFrac(&x.i, one)
-	return r.Float64()
+	return new(big.Rat).SetInt(&x.i).Float64()
 }
 
 // Equals64 returns true if x and y have the same value.
