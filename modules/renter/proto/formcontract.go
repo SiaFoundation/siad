@@ -16,7 +16,7 @@ import (
 // metadata is returned.
 func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
 	// Extract vars from params, for convenience.
-	host, funding, startHeight, endHeight, refundAddress := params.Host, params.Funding, params.StartHeight, params.EndHeight, params.RefundAddress
+	allowance, host, funding, startHeight, endHeight, refundAddress := params.Allowance, params.Host, params.Funding, params.StartHeight, params.EndHeight, params.RefundAddress
 
 	// Create our key.
 	ourSK, ourPK := crypto.GenerateKeyPair()
@@ -35,7 +35,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 
 	// Calculate the payouts for the renter, host, and whole contract.
 	period := endHeight - startHeight
-	expectedStorage := modules.DefaultUsageGuideLines.ExpectedStorage
+	expectedStorage := allowance.ExpectedStorage / allowance.Hosts
 	renterPayout, hostPayout, _, err := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, types.ZeroCurrency, period, expectedStorage)
 	if err != nil {
 		return modules.RenterContract{}, err

@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -124,6 +125,55 @@ func TestRenterTwo(t *testing.T) {
 	// Run tests
 	if err := runRenterTests(t, groupParams, subTests); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRenterThree executes a number of subtests using the same TestGroup to
+// save time on initialization
+func TestRenterThree(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for the subtests
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+
+	// Specify subtests to run
+	subTests := []test{
+		{"TestAllowanceDefaultSet", testAllowanceDefaultSet},
+	}
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// testAllowanceDefaultSet tests that a renter's allowance is correctly set to
+// the defaults after creating it and therefore confirming that the API
+// endpoint and siatest package both work.
+func testAllowanceDefaultSet(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Renters()) == 0 {
+		t.Fatal("Test requires at least 1 renter")
+	}
+	// Get allowance.
+	r := tg.Renters()[0]
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure that the allowance was set correctly.
+	if !reflect.DeepEqual(rg.Settings.Allowance, siatest.DefaultAllowance) {
+		expected, _ := json.Marshal(siatest.DefaultAllowance)
+		was, _ := json.Marshal(rg.Settings.Allowance)
+		t.Log("Expected", string(expected))
+		t.Log("Was", string(was))
+		t.Fatal("Renter's allowance doesn't match siatest.DefaultAllowance")
 	}
 }
 

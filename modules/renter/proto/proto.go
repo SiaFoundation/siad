@@ -37,6 +37,7 @@ type (
 
 // ContractParams are supplied as an argument to FormContract.
 type ContractParams struct {
+	Allowance     modules.Allowance
 	Host          modules.HostDBEntry
 	Funding       types.Currency
 	StartHeight   types.BlockHeight

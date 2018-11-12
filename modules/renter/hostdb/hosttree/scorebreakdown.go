@@ -28,9 +28,10 @@ type HostAdjustments struct {
 }
 
 var (
-	// Because most weights would otherwise be fractional, we set the base
-	// weight to be very large.
-	baseWeight = types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(80), nil))
+	// Previous constructions of the hostdb required the baseWeight to be large
+	// to prevent fractional results, but the current iteration of the hostdb
+	// has no issues, the scores will always be quite large.
+	baseWeight = types.NewCurrency64(1)
 )
 
 // conversionRate computes the likelyhood of a host with 'score' to be drawn

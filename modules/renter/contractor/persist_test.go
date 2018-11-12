@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // memPersist implements the persister interface in-memory.
@@ -69,6 +70,15 @@ func TestSaveLoad(t *testing.T) {
 	c.persist = NewPersist(build.TempDir("contractor", t.Name()))
 	os.MkdirAll(build.TempDir("contractor", t.Name()), 0700)
 
+	// COMPATv136 save the allowance but make sure that the newly added fields
+	// are 0. After loading them from disk they should be set to the default
+	// values.
+	c.allowance = modules.DefaultAllowance
+	c.allowance.ExpectedStorage = 0
+	c.allowance.ExpectedUpload = 0
+	c.allowance.ExpectedDownload = 0
+	c.allowance.ExpectedRedundancy = 0
+
 	// save, clear, and reload
 	err = c.save()
 	if err != nil {
@@ -93,6 +103,58 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if c.renewedTo[types.FileContractID{1}] != id {
 		t.Fatal("renewedTo not restored properly:", c.renewedTo)
+	}
+	if c.allowance.ExpectedStorage != modules.DefaultAllowance.ExpectedStorage {
+		t.Errorf("ExpectedStorage was %v but should be %v",
+			c.allowance.ExpectedStorage, modules.DefaultAllowance.ExpectedStorage)
+	}
+	if c.allowance.ExpectedUpload != modules.DefaultAllowance.ExpectedUpload {
+		t.Errorf("ExpectedUpload was %v but should be %v",
+			c.allowance.ExpectedUpload, modules.DefaultAllowance.ExpectedUpload)
+	}
+	if c.allowance.ExpectedDownload != modules.DefaultAllowance.ExpectedDownload {
+		t.Errorf("ExpectedDownload was %v but should be %v",
+			c.allowance.ExpectedDownload, modules.DefaultAllowance.ExpectedDownload)
+	}
+	if c.allowance.ExpectedRedundancy != modules.DefaultAllowance.ExpectedRedundancy {
+		t.Errorf("ExpectedRedundancy was %v but should be %v",
+			c.allowance.ExpectedRedundancy, modules.DefaultAllowance.ExpectedRedundancy)
+	}
+
+	// Change the expected* fields of the allowance again, save, clear and reload.
+	c.allowance.ExpectedStorage = uint64(fastrand.Intn(100))
+	c.allowance.ExpectedUpload = uint64(fastrand.Intn(100))
+	c.allowance.ExpectedDownload = uint64(fastrand.Intn(100))
+	c.allowance.ExpectedRedundancy = float64(fastrand.Intn(100))
+	a := c.allowance
+	// Save
+	err = c.save()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Clear allowance.
+	c.allowance = modules.Allowance{}
+	// Load
+	err = c.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check if fields were restored.
+	if c.allowance.ExpectedStorage != a.ExpectedStorage {
+		t.Errorf("ExpectedStorage was %v but should be %v",
+			c.allowance.ExpectedStorage, a.ExpectedStorage)
+	}
+	if c.allowance.ExpectedUpload != a.ExpectedUpload {
+		t.Errorf("ExpectedUpload was %v but should be %v",
+			c.allowance.ExpectedUpload, a.ExpectedUpload)
+	}
+	if c.allowance.ExpectedDownload != a.ExpectedDownload {
+		t.Errorf("ExpectedDownload was %v but should be %v",
+			c.allowance.ExpectedDownload, a.ExpectedDownload)
+	}
+	if c.allowance.ExpectedRedundancy != a.ExpectedRedundancy {
+		t.Errorf("ExpectedRedundancy was %v but should be %v",
+			c.allowance.ExpectedRedundancy, a.ExpectedRedundancy)
 	}
 }
 

@@ -44,6 +44,16 @@ var (
 	// BlockSizeLimit is the maximum size of a binary-encoded Block
 	// that is permitted by the consensus rules.
 	BlockSizeLimit = uint64(2e6)
+	// BlocksPerHour is the number of blocks expected to be mined per hour.
+	BlocksPerHour = uint64(6)
+	// BlocksPerDay is the number of blocks expected to be mined per day.
+	BlocksPerDay = 24 * BlocksPerHour
+	// BlocksPerWeek is the number of blocks expected to be mined per week.
+	BlocksPerWeek = 7 * BlocksPerDay
+	// BlocksPerMonth is the number of blocks expected to be mined per month.
+	BlocksPerMonth = 30 * BlocksPerDay
+	// BlocksPerYear is the number of blocks expected to be mined per year.
+	BlocksPerYear = 365 * BlocksPerDay
 
 	// EndOfTime is value to be used when a date in the future is needed for
 	// validation

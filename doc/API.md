@@ -974,14 +974,20 @@ modify settings that control the renter's behavior.
 
 ###### Query String Parameters [(with comments)](/doc/api/Renter.md#query-string-parameters)
 ```
-checkforipviolation // true or false
-funds               // hastings
+expectedstorage       // bytes expected to be stored on sia (without redundancy)
+expectedupload        // blocks
+expecteddownload      // blocks
+expectedredundancy    // float
+
+funds                 // hastings
 hosts
-period              // block height
-renewwindow         // block height
-maxdownloadspeed    // bytes per second
-maxuploadspeed      // bytes per second
-streamcachesize     // number of data chunks cached when streaming
+period                // block height
+renewwindow           // block height
+maxdownloadspeed      // bytes per second
+maxuploadspeed        // bytes per second
+
+checkforipviolation   // true or false
+streamcachesize       // number of data chunks cached when streaming
 ```
 
 ###### Response

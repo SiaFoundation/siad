@@ -178,10 +178,14 @@ func TestAllowanceSpending(t *testing.T) {
 
 	// set an allowance
 	testAllowance := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(6000),
-		RenewWindow: 100,
-		Hosts:       1,
-		Period:      200,
+		Funds:              types.SiacoinPrecision.Mul64(6000),
+		RenewWindow:        100,
+		Hosts:              1,
+		Period:             200,
+		ExpectedStorage:    modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
+		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
+		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(testAllowance)
 	if err != nil {
@@ -334,10 +338,30 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != errAllowanceWindowSize {
 		t.Errorf("expected %q, got %q", errAllowanceWindowSize, err)
 	}
+	a.RenewWindow = 10
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedStorage {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedStorage, err)
+	}
+	a.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedUpload {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedUpload, err)
+	}
+	a.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedDownload {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedDownload, err)
+	}
+	a.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedRedundancy {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedRedundancy, err)
+	}
+	a.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 
 	// reasonable values; should succeed
 	a.Funds = types.SiacoinPrecision.Mul64(100)
-	a.RenewWindow = 10
 	err = c.SetAllowance(a)
 	if err != nil {
 		t.Fatal(err)
@@ -457,10 +481,14 @@ func TestHostMaxDuration(t *testing.T) {
 
 	// Create allowance
 	a := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(100),
-		Hosts:       1,
-		Period:      30,
-		RenewWindow: 20,
+		Funds:              types.SiacoinPrecision.Mul64(100),
+		Hosts:              1,
+		Period:             30,
+		RenewWindow:        20,
+		ExpectedStorage:    modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
+		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
+		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
@@ -566,10 +594,14 @@ func TestLinkedContracts(t *testing.T) {
 
 	// Create allowance
 	a := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(100),
-		Hosts:       1,
-		Period:      20,
-		RenewWindow: 10,
+		Funds:              types.SiacoinPrecision.Mul64(100),
+		Hosts:              1,
+		Period:             20,
+		RenewWindow:        10,
+		ExpectedStorage:    modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
+		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
+		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
