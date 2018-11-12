@@ -97,8 +97,8 @@ var (
 
 	renterFilesUploadCmd = &cobra.Command{
 		Use:   "upload [source] [path]",
-		Short: "Upload a file",
-		Long:  "Upload a file to [path] on the Sia network.",
+		Short: "Upload a file or folder",
+		Long:  "Upload a file or folder to [path] on the Sia network.",
 		Run:   wrap(renterfilesuploadcmd),
 	}
 
