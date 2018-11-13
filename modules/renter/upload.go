@@ -72,7 +72,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 
 	// Check for a nickname conflict.
-	_, exists := r.staticFiles.Get(up.SiaPath)
+	_, exists := r.staticFileSet.Open(up.SiaPath)
 	if exists {
 		return siafile.ErrPathOverload
 	}
@@ -111,11 +111,11 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	cipherType := crypto.TypeDefaultRenter
 
 	// Create the Siafile and add to renter
-	f, err := r.staticFiles.NewSiaFile(siaFilePath, up.SiaPath, up.Source, r.wal, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode())
+	f, err := r.staticFileSet.NewSiaFile(siaFilePath, up.SiaPath, up.Source, r.wal, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode())
 	if err != nil {
 		return err
 	}
-	defer r.staticFiles.Return(f)
+	defer r.staticFileSet.Close(f)
 
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()

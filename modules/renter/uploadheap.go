@@ -230,7 +230,7 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 // construct a chunk heap.
 func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	// Get all the files holding the readlock.
-	files := r.staticFiles.All()
+	files := r.staticFileSet.All()
 
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.
@@ -270,7 +270,7 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
 			r.log.Println("File not found on disk and possibly unrecoverable:", file.LocalPath())
 		}
-		r.staticFiles.Return(file)
+		r.staticFileSet.Close(file)
 	}
 }
 

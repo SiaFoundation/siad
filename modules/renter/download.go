@@ -266,11 +266,11 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters) error {
 // setup was successful.
 func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
 	// Lookup the file associated with the nickname.
-	file, exists := r.staticFiles.Get(p.SiaPath)
+	file, exists := r.staticFileSet.Open(p.SiaPath)
 	if !exists {
 		return nil, fmt.Errorf("no file with that path: %s", p.SiaPath)
 	}
-	defer r.staticFiles.Return(file)
+	defer r.staticFileSet.Close(file)
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil

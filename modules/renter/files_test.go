@@ -62,7 +62,7 @@ func (r *Renter) newRenterTestFile() *siafile.SiaFile {
 		panic(err)
 	}
 	// Create File
-	f, err := r.staticFiles.NewSiaFile(siaFilePath, name, "", newTestingWal(), rsc, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, 0777)
+	f, err := r.staticFileSet.NewSiaFile(siaFilePath, name, "", newTestingWal(), rsc, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, 0777)
 	if err != nil {
 		panic(err)
 	}
@@ -365,7 +365,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	// Put a file in the renter.
 	file1 := rt.renter.newRenterTestFile()
 	siapath := file1.SiaPath()
-	rt.renter.staticFiles.Return(file1)
+	rt.renter.staticFileSet.Close(file1)
 	// Delete a different file.
 	err = rt.renter.DeleteFile("one")
 	if err != siafile.ErrUnknownPath {
@@ -382,9 +382,9 @@ func TestRenterDeleteFile(t *testing.T) {
 
 	// Put a file in the renter, then rename it.
 	file2 := rt.renter.newRenterTestFile()
-	rt.renter.staticFiles.Rename(file2.SiaPath(), "1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension)) // set name to "1"
+	file2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension)) // set name to "1"
 	siapath2 := file2.SiaPath()
-	rt.renter.staticFiles.Return(file2)
+	rt.renter.staticFileSet.Close(file2)
 	rt.renter.RenameFile(siapath2, "one")
 	// Call delete on the previous name.
 	err = rt.renter.DeleteFile("1")
@@ -474,8 +474,8 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file that does exist.
 	f := rt.renter.newRenterTestFile()
-	rt.renter.staticFiles.Rename(f.SiaPath(), "1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
-	rt.renter.staticFiles.Return(f)
+	f.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
+	rt.renter.staticFileSet.Close(f)
 	err = rt.renter.RenameFile("1", "1a")
 	if err != nil {
 		t.Fatal(err)
@@ -490,8 +490,8 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file to an existing name.
 	f2 := rt.renter.newRenterTestFile()
-	rt.renter.staticFiles.Rename(f2.SiaPath(), "1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
-	rt.renter.staticFiles.Return(f2)
+	f2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
+	rt.renter.staticFileSet.Close(f2)
 	err = rt.renter.RenameFile("1", "1a")
 	if err != siafile.ErrPathOverload {
 		t.Error("Expecting ErrPathOverload, got", err)

@@ -56,6 +56,10 @@ type (
 
 		// siaFilePath is the path to the .sia file on disk.
 		siaFilePath string
+
+		// SiaFileSet helps track the number of threads using a siafile
+		SiaFileSet  *SiaFileSet
+		threadCount int
 	}
 
 	// chunk represents a single chunk of a file on disk
@@ -281,7 +285,7 @@ func (sf *SiaFile) Delete() error {
 	update := sf.createDeleteUpdate()
 	err := sf.createAndApplyTransaction(update)
 	sf.deleted = true
-	return err
+	return errors.Compose(err, sf.SiaFileSet.delete(sf.staticMetadata.SiaPath))
 }
 
 // Deleted indicates if this file has been deleted by the user.

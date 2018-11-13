@@ -65,12 +65,12 @@ type pieceData struct {
 // TODO: The data is not cleared from any contracts where the host is not
 // immediately online.
 func (r *Renter) DeleteFile(nickname string) error {
-	_, exists := r.staticFiles.Get(nickname)
+	sf, exists := r.staticFileSet.Open(nickname)
 	if !exists {
 		return siafile.ErrUnknownPath
 	}
 	// TODO: delete the sectors of the file as well.
-	if err := r.staticFiles.Delete(nickname); err != nil {
+	if err := sf.Delete(); err != nil {
 		return err
 	}
 	// Save renter
@@ -82,7 +82,7 @@ func (r *Renter) DeleteFile(nickname string) error {
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() []modules.FileInfo {
 	// Get all the renter files
-	files := r.staticFiles.All()
+	files := r.staticFileSet.All()
 
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.
@@ -133,7 +133,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 			UploadedBytes:  f.UploadedBytes(),
 			UploadProgress: f.UploadProgress(),
 		})
-		r.staticFiles.Return(f)
+		r.staticFileSet.Close(f)
 	}
 	return fileList
 }
@@ -144,11 +144,11 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	var fileInfo modules.FileInfo
 
 	// Get the file and its contracts
-	file, exists := r.staticFiles.Get(siaPath)
+	file, exists := r.staticFileSet.Open(siaPath)
 	if !exists {
 		return fileInfo, siafile.ErrUnknownPath
 	}
-	defer r.staticFiles.Return(file)
+	defer r.staticFileSet.Close(file)
 	pks := file.HostPublicKeys()
 
 	// Build 2 maps that map every contract id to its offline and goodForRenew
@@ -202,7 +202,11 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 	if err != nil {
 		return err
 	}
-	return r.staticFiles.Rename(currentName, newName, filepath.Join(r.filesDir, newName+ShareExtension))
+	sf, exists := r.staticFileSet.Open(currentName)
+	if !exists {
+		return siafile.ErrUnknownPath
+	}
+	return sf.Rename(newName, filepath.Join(r.filesDir, newName+ShareExtension))
 }
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
@@ -233,7 +237,7 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFile, er
 		}
 	}
 	fileData.Chunks = chunks
-	return r.staticFiles.NewFromFileData(fileData)
+	return siafile.NewFromFileData(fileData)
 }
 
 // numChunks returns the number of chunks that f was split into.

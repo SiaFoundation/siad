@@ -178,7 +178,7 @@ type hostContractor interface {
 type Renter struct {
 	// File management.
 	//
-	staticFiles *siafile.SiaFileSet
+	staticFileSet *siafile.SiaFileSet
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -489,11 +489,11 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // providing a different file with the same size.
 func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 	// Check if file exists and is being tracked.
-	file, exists := r.staticFiles.Get(siaPath)
+	file, exists := r.staticFileSet.Open(siaPath)
 	if !exists {
 		return fmt.Errorf("unknown file %s", siaPath)
 	}
-	defer r.staticFiles.Return(file)
+	defer r.staticFileSet.Close(file)
 
 	// Sanity check that a file with the correct size exists at the new
 	// location.
@@ -691,7 +691,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		tpool:          tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
-	r.staticFiles = siafile.NewSiaFileSet()
+	r.staticFileSet = siafile.NewSiaFileSet()
 
 	// Load all saved data.
 	if err := r.initPersist(); err != nil {

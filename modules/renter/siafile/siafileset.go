@@ -24,122 +24,94 @@ type (
 	// siafiles in memory
 	SiaFileSet struct {
 		mu         sync.Mutex
-		SiaFileMap map[string]*SiaFileSetEntry
-	}
-	// SiaFileSetEntry is responsible for managing a siafile in memory
-	SiaFileSetEntry struct {
-		counter int
-		siaFile *SiaFile
+		SiaFileMap map[string]*SiaFile
 	}
 )
 
 // NewSiaFileSet initializes and returns a SiaFileSet
 func NewSiaFileSet() *SiaFileSet {
 	return &SiaFileSet{
-		SiaFileMap: make(map[string]*SiaFileSetEntry),
+		SiaFileMap: make(map[string]*SiaFile),
 	}
 }
 
 // All returns all the siafiles in the SiaFileSet, this will also increment all
-// the counters
+// the threadCounts
 //
-// TODO - this method should be updated when siafiles are removed from memory.
-// Where All() is called from should be looked at to determine if the calling
-// method(s) need all siafiles from disk or just the current siafiles in memory
+// Note: This is currently only needed for the Files endpoint. This is an
+// expensive call so it should be avoided unless absolutely necessary
 func (sfs *SiaFileSet) All() []*SiaFile {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	var siaFiles []*SiaFile
-	for _, entry := range sfs.SiaFileMap {
-		entry.counter++
-		siaFiles = append(siaFiles, entry.siaFile)
+	for _, sf := range sfs.SiaFileMap {
+		sf.mu.Lock()
+		sf.threadCount++
+		sf.mu.Unlock()
+		siaFiles = append(siaFiles, sf)
 	}
 	return siaFiles
 }
 
-// Delete removes the entry from the map, decrements the counter, and deletes
+// delete removes the entry from the map, decrements the threadCount, and deletes
 // the siafile
-func (sfs *SiaFileSet) Delete(key string) error {
+func (sfs *SiaFileSet) delete(key string) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	entry, exists := sfs.SiaFileMap[key]
+	sf, exists := sfs.SiaFileMap[key]
 	if !exists {
 		return ErrUnknownPath
 	}
-	err := entry.siaFile.Delete()
-	if err != nil {
-		return err
+	sf.threadCount--
+	if sf.threadCount < 0 {
+		build.Critical("siafile threadCount less than zero")
 	}
-	entry.counter--
-	if entry.counter < 0 {
-		build.Critical("siaFileEntry counter less than zero")
-	}
-	if entry.counter == 0 {
+	if sf.threadCount == 0 {
 		delete(sfs.SiaFileMap, key)
 	}
 	return nil
 }
 
-// Get returns the siafile from the SiaFileSet for the corresponding key and
-// increments the counter
-func (sfs *SiaFileSet) Get(key string) (*SiaFile, bool) {
+// Open returns the siafile from the SiaFileSet for the corresponding key and
+// increments the threadCount
+//
+// TODO - when files are removed from memory this method should be updated to
+// either return the siafile in memory or load from disk
+func (sfs *SiaFileSet) Open(key string) (*SiaFile, bool) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	entry, exists := sfs.SiaFileMap[key]
+	sf, exists := sfs.SiaFileMap[key]
 	if !exists {
 		return nil, exists
 	}
-	entry.counter++
-	return entry.siaFile, exists
+	sf.threadCount++
+	return sf, exists
 }
 
 // LoadSiaFile loads a SiaFile from disk, adds it to the SiaFileSet, increments
-// the counter, and returns the SiaFile. Since this method returns the siafile,
+// the threadCount, and returns the SiaFile. Since this method returns the siafile,
 // wherever LoadSiaFile is called should then Return the SiaFile to the
-// SiaFileSet to avoid the file being stuck in memory due the counter never
+// SiaFileSet to avoid the file being stuck in memory due the threadCount never
 // being decremented after load
-//
-// TODO - Currently this method is only called on load. Once lazy loading is
-// enabled and files are being removed from memory when not in use, a check
-// should be added before calling this method to confirm that the file is not
-// already in memory
-func (sfs *SiaFileSet) LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
+func (sfs *SiaFileSet) LoadSiaFile(siapath, path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
+	sf, ok := sfs.SiaFileMap[siapath]
+	if ok {
+		return sf, nil
+	}
 	sf, err := LoadSiaFile(path, wal)
 	if err != nil {
 		return nil, err
 	}
-	sfs.SiaFileMap[sf.SiaPath()] = &SiaFileSetEntry{
-		counter: 1,
-		siaFile: sf,
-	}
-	return sf, nil
-}
-
-// NewFromFileData creates a new SiaFile from a FileData object that was
-// previously created from a legacy file. Since this method returns the siafile,
-// wherever NewFromFileData is called should then Return the SiaFile to the
-// SiaFileSet to avoid the file being stuck in memory due the counter never
-// being decremented after creating the SiaFile
-func (sfs *SiaFileSet) NewFromFileData(fd FileData) (*SiaFile, error) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	sf, err := NewFromFileData(fd)
-	if err != nil {
-		return nil, err
-	}
-	sfs.SiaFileMap[sf.SiaPath()] = &SiaFileSetEntry{
-		counter: 1,
-		siaFile: sf,
-	}
+	sfs.SiaFileMap[sf.SiaPath()] = sf
 	return sf, nil
 }
 
 // NewSiaFile create a new SiaFile, adds it to the SiaFileSet, increments the
-// counter, and returns the SiaFile. Since this method returns the siafile,
+// threadCount, and returns the SiaFile. Since this method returns the siafile,
 // wherever NewSiaFile is called should then Return the SiaFile to the
-// SiaFileSet to avoid the file being stuck in memory due the counter never
+// SiaFileSet to avoid the file being stuck in memory due the threadCount never
 // being decremented after creating the SiaFile
 func (sfs *SiaFileSet) NewSiaFile(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	sfs.mu.Lock()
@@ -148,10 +120,10 @@ func (sfs *SiaFileSet) NewSiaFile(siaFilePath, siaPath, source string, wal *writ
 	if err != nil {
 		return nil, err
 	}
-	sfs.SiaFileMap[sf.SiaPath()] = &SiaFileSetEntry{
-		counter: 1,
-		siaFile: sf,
-	}
+	sf.mu.Lock()
+	sf.threadCount++
+	sf.mu.Unlock()
+	sfs.SiaFileMap[sf.SiaPath()] = sf
 	return sf, nil
 }
 
@@ -162,12 +134,11 @@ func (sfs *SiaFileSet) Remove(key string) {
 	delete(sfs.SiaFileMap, key)
 }
 
-// Rename changes the key corresponding to the siafile in the SiaFileSet and
-// then calls Rename on the siafile
-func (sfs *SiaFileSet) Rename(oldKey, newKey, newPath string) error {
+// rename changes the key corresponding to the siafile in the SiaFileSet
+func (sfs *SiaFileSet) rename(oldKey, newKey string) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	entry, exists := sfs.SiaFileMap[oldKey]
+	sf, exists := sfs.SiaFileMap[oldKey]
 	if !exists {
 		return ErrUnknownPath
 	}
@@ -175,31 +146,29 @@ func (sfs *SiaFileSet) Rename(oldKey, newKey, newPath string) error {
 	if exists {
 		return ErrPathOverload
 	}
-	err := entry.siaFile.Rename(newKey, newPath)
-	if err != nil {
-		return err
-	}
-	sfs.SiaFileMap[newKey] = entry
+	sfs.SiaFileMap[newKey] = sf
 	delete(sfs.SiaFileMap, oldKey)
 	return nil
 }
 
-// Return returns the siafile to the SiaFileSet by decrementing the counter. The
-// siafile should have been acquired by Get()
-func (sfs *SiaFileSet) Return(sf *SiaFile) {
+// Close returns the siafile to the SiaFileSet and decrementing the threadCount.
+// If the threadCount is 0 then it will remove the file from memory
+//
+// NOTE: The siafile should have been acquired by Get()
+func (sfs *SiaFileSet) Close(sf *SiaFile) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	entry, exists := sfs.SiaFileMap[sf.SiaPath()]
+	sf, exists := sfs.SiaFileMap[sf.SiaPath()]
 	if !exists {
-		build.Critical("siaFileEntry doesn't exist")
+		build.Critical("siafile doesn't exist")
 		return
 	}
-	entry.counter--
-	if entry.counter < 0 {
-		build.Critical("siaFileEntry counter less than zero")
+	sf.threadCount--
+	if sf.threadCount < 0 {
+		build.Critical("siafile threadCount less than zero")
 		return
 	}
-	if entry.counter == 0 {
+	if sf.threadCount == 0 {
 		// TODO - when ready to remove files from memory, remove files that are
 		// no longer being used by any of the active threads
 		//

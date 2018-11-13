@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -251,13 +252,13 @@ func (r *Renter) loadSiaFiles() error {
 		}
 
 		// Load the Siafile.
-		sf, err := r.staticFiles.LoadSiaFile(path, r.wal)
+		sf, err := r.staticFileSet.LoadSiaFile(strings.TrimPrefix(path, r.filesDir), path, r.wal)
 		if err != nil {
 			// TODO try loading the file with the legacy format.
 			r.log.Println("ERROR: could not open .sia file:", err)
 			return nil
 		}
-		r.staticFiles.Return(sf)
+		r.staticFileSet.Close(sf)
 		return nil
 	})
 }
@@ -333,7 +334,7 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		dupCount := 0
 		origName := files[i].name
 		for {
-			_, exists := r.staticFiles.Get(files[i].name)
+			_, exists := r.staticFileSet.Open(files[i].name)
 			if !exists {
 				break
 			}
@@ -351,7 +352,7 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		if err != nil {
 			return nil, err
 		}
-		r.staticFiles.Return(sf)
+		r.staticFileSet.Close(sf)
 		names[i] = f.name
 	}
 	// TODO Save the file in the new format.

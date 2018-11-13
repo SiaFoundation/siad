@@ -154,6 +154,7 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
+	oldSiaPath := sf.staticMetadata.SiaPath
 	sf.staticMetadata.SiaPath = newSiaPath
 	// Update the ChangeTime because the metadata changed.
 	sf.staticMetadata.ChangeTime = time.Now()
@@ -170,7 +171,8 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	}
 	updates = append(updates, chunksUpdates...)
 	// Apply updates.
-	return sf.createAndApplyTransaction(updates...)
+	err = sf.createAndApplyTransaction(updates...)
+	return errors.Compose(err, sf.SiaFileSet.rename(oldSiaPath, newSiaPath))
 }
 
 // SetMode sets the filemode of the sia file.
