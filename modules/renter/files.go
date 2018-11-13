@@ -237,7 +237,7 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFile, er
 		}
 	}
 	fileData.Chunks = chunks
-	return siafile.NewFromFileData(fileData)
+	return siafile.NewFromFileData(fileData, r.staticFileSet)
 }
 
 // numChunks returns the number of chunks that f was split into.

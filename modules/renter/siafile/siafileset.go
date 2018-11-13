@@ -72,22 +72,6 @@ func (sfs *SiaFileSet) delete(key string) error {
 	return nil
 }
 
-// Open returns the siafile from the SiaFileSet for the corresponding key and
-// increments the threadCount
-//
-// TODO - when files are removed from memory this method should be updated to
-// either return the siafile in memory or load from disk
-func (sfs *SiaFileSet) Open(key string) (*SiaFile, bool) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	sf, exists := sfs.SiaFileMap[key]
-	if !exists {
-		return nil, exists
-	}
-	sf.threadCount++
-	return sf, exists
-}
-
 // LoadSiaFile loads a SiaFile from disk, adds it to the SiaFileSet, increments
 // the threadCount, and returns the SiaFile. Since this method returns the siafile,
 // wherever LoadSiaFile is called should then Return the SiaFile to the
@@ -104,6 +88,9 @@ func (sfs *SiaFileSet) LoadSiaFile(siapath, path string, wal *writeaheadlog.WAL)
 	if err != nil {
 		return nil, err
 	}
+	sf.mu.Lock()
+	sf.threadCount++
+	sf.mu.Unlock()
 	sfs.SiaFileMap[sf.SiaPath()] = sf
 	return sf, nil
 }
@@ -121,10 +108,29 @@ func (sfs *SiaFileSet) NewSiaFile(siaFilePath, siaPath, source string, wal *writ
 		return nil, err
 	}
 	sf.mu.Lock()
+	sf.SiaFileSet = sfs
 	sf.threadCount++
 	sf.mu.Unlock()
 	sfs.SiaFileMap[sf.SiaPath()] = sf
 	return sf, nil
+}
+
+// Open returns the siafile from the SiaFileSet for the corresponding key and
+// increments the threadCount
+//
+// TODO - when files are removed from memory this method should be updated to
+// either return the siafile in memory or load from disk
+func (sfs *SiaFileSet) Open(key string) (*SiaFile, bool) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	sf, exists := sfs.SiaFileMap[key]
+	if !exists {
+		return nil, exists
+	}
+	sf.mu.Lock()
+	sf.threadCount++
+	sf.mu.Unlock()
+	return sf, exists
 }
 
 // Remove deletes the entry from the map
@@ -163,6 +169,8 @@ func (sfs *SiaFileSet) Close(sf *SiaFile) {
 		build.Critical("siafile doesn't exist")
 		return
 	}
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
 	sf.threadCount--
 	if sf.threadCount < 0 {
 		build.Critical("siafile threadCount less than zero")

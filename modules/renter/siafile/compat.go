@@ -33,7 +33,10 @@ type (
 
 // NewFromFileData creates a new SiaFile from a FileData object that was
 // previously created from a legacy file.
-func NewFromFileData(fd FileData) (*SiaFile, error) {
+//
+// Accepting SiaFileSet as argument so that it can be added to the SiaFile and
+// vice versa. Needed for compatibility and tests
+func NewFromFileData(fd FileData, sfs *SiaFileSet) (*SiaFile, error) {
 	// legacy masterKeys are always twofish keys
 	mk, err := crypto.NewSiaKey(crypto.TypeTwofish, fd.MasterKey[:])
 	if err != nil {
@@ -91,5 +94,9 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 			}
 		}
 	}
+	file.SiaFileSet = sfs
+	sfs.mu.Lock()
+	sfs.SiaFileMap[fd.Name] = file
+	sfs.mu.Unlock()
 	return file, nil
 }

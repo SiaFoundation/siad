@@ -99,25 +99,8 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 // newBlankTestFile is a helper method to create a SiaFile for testing without
 // any hosts or uploaded pieces.
 func newBlankTestFile() *SiaFile {
-	// Create arguments for new file.
-	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
-	pieceSize := modules.SectorSize - sk.Type().Overhead()
-	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
-	rc, err := NewRSCode(10, 20)
-	if err != nil {
-		panic(err)
-	}
-	numChunks := fastrand.Intn(10) + 1
-	fileSize := pieceSize * uint64(rc.MinPieces()) * uint64(numChunks)
-	fileMode := os.FileMode(777)
-	source := string(hex.EncodeToString(fastrand.Bytes(8)))
-
-	// Create the path to the file.
-	siaFilePath := filepath.Join(os.TempDir(), "siafiles", siaPath)
-	dir, _ := filepath.Split(siaFilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		panic(err)
-	}
+	// Get new file params
+	siaFilePath, siaPath, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams()
 	// Create the file.
 	sf, err := New(siaFilePath, siaPath, source, newTestWAL(), rc, sk, fileSize, fileMode)
 	if err != nil {
@@ -149,6 +132,31 @@ func newTestFile() *SiaFile {
 		}
 	}
 	return sf
+}
+
+// newTestFileParams creates the required parameters for creating a siafile and
+// creates a directory for the file
+func newTestFileParams() (string, string, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
+	// Create arguments for new file.
+	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
+	pieceSize := modules.SectorSize - sk.Type().Overhead()
+	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
+	rc, err := NewRSCode(10, 20)
+	if err != nil {
+		panic(err)
+	}
+	numChunks := fastrand.Intn(10) + 1
+	fileSize := pieceSize * uint64(rc.MinPieces()) * uint64(numChunks)
+	fileMode := os.FileMode(777)
+	source := string(hex.EncodeToString(fastrand.Bytes(8)))
+
+	// Create the path to the file.
+	siaFilePath := filepath.Join(os.TempDir(), "siafiles", siaPath)
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		panic(err)
+	}
+	return siaFilePath, siaPath, source, rc, sk, fileSize, numChunks, fileMode
 }
 
 // newTestWal is a helper method to create a WAL for testing.
@@ -309,7 +317,8 @@ func TestDelete(t *testing.T) {
 	}
 	t.Parallel()
 
-	sf := newTestFile()
+	// Create SiaFileSet with SiaFile
+	sf, _ := newTestSiaFileSetWithFile()
 	// Delete file.
 	if err := sf.Delete(); err != nil {
 		t.Fatal("Failed to delete file", err)
@@ -331,7 +340,8 @@ func TestRename(t *testing.T) {
 	}
 	t.Parallel()
 
-	sf := newTestFile()
+	// Create SiaFileSet with SiaFile
+	sf, _ := newTestSiaFileSetWithFile()
 
 	// Create new paths for the file.
 	newSiaPath := sf.staticMetadata.SiaPath + "1"

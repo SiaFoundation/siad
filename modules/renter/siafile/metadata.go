@@ -171,8 +171,10 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	}
 	updates = append(updates, chunksUpdates...)
 	// Apply updates.
-	err = sf.createAndApplyTransaction(updates...)
-	return errors.Compose(err, sf.SiaFileSet.rename(oldSiaPath, newSiaPath))
+	if err = sf.createAndApplyTransaction(updates...); err != nil {
+		return err
+	}
+	return sf.SiaFileSet.rename(oldSiaPath, newSiaPath)
 }
 
 // SetMode sets the filemode of the sia file.

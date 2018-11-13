@@ -346,13 +346,12 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 	// Add files to renter.
 	names := make([]string, numFiles)
 	for i, f := range files {
-		// fileToSiaFile returns the siafile which means that the siafile needs
-		// to be returned to the SiaFileSet
-		sf, err := r.fileToSiaFile(f, repairPath)
+		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
+		// be returned here
+		_, err = r.fileToSiaFile(f, repairPath)
 		if err != nil {
 			return nil, err
 		}
-		r.staticFileSet.Close(sf)
 		names[i] = f.name
 	}
 	// TODO Save the file in the new format.

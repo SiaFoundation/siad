@@ -86,6 +86,18 @@ func TestRenterSaveLoad(t *testing.T) {
 	settings.StreamCacheSize = newCacheSize
 	rt.renter.SetSettings(settings)
 
+	// Add a file to the renter
+	sf := rt.renter.newRenterTestFile()
+	siapath := sf.SiaPath()
+	rt.renter.staticFileSet.Close(sf)
+
+	// Check that SiaFileSet knows of the SiaFile
+	sf, exists := rt.renter.staticFileSet.Open(siapath)
+	if !exists {
+		t.Fatal("SiaFile not found in the renter's staticFileSet after creation")
+	}
+	rt.renter.staticFileSet.Close(sf)
+
 	err = rt.renter.saveSync() // save metadata
 	if err != nil {
 		t.Fatal(err)
@@ -110,6 +122,12 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 	if newSettings.StreamCacheSize != newCacheSize {
 		t.Error("cache settings not being persisted correctly")
+	}
+
+	// Check that SiaFileSet loaded the renter's file
+	_, exists = rt.renter.staticFileSet.Open(siapath)
+	if !exists {
+		t.Fatal("SiaFile not found in the renter's staticFileSet after load")
 	}
 }
 
@@ -163,11 +181,11 @@ func TestRenterPaths(t *testing.T) {
 	//   foo.sia
 	//   foo/bar.sia
 	//   foo/bar/baz.sia
-	f1 := newTestingFile()
+	f1 := rt.renter.newRenterTestFile()
 	f1.Rename("foo", filepath.Join(rt.renter.filesDir, "foo"+ShareExtension))
-	f2 := newTestingFile()
+	f2 := rt.renter.newRenterTestFile()
 	f2.Rename("foo/bar", filepath.Join(rt.renter.filesDir, "foo/bar"+ShareExtension))
-	f3 := newTestingFile()
+	f3 := rt.renter.newRenterTestFile()
 	f3.Rename("foo/bar/baz", filepath.Join(rt.renter.filesDir, "foo/bar/baz"+ShareExtension))
 
 	// Restart the renter to re-do the init cycle.
