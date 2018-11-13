@@ -377,6 +377,13 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 		numHosts++
 	}
 
+	// Divide by zero check. The only way to get 0 numHosts is if
+	// RenterPayoutsPreTax errors for every host. This would happend if the
+	// funding of the allowance is not enough as that would cause the
+	// fundingPerHost to be less than the contract price
+	if numHosts == 0 {
+		return modules.RenterPriceEstimation{}, allowance, errors.New("funding insufficient for number of hosts")
+	}
 	// Calculate average collateral and determine collateral for allowance
 	hostCollateral = hostCollateral.Div64(numHosts)
 	hostCollateral = hostCollateral.Mul64(allowance.Hosts)
