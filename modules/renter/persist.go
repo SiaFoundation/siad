@@ -252,14 +252,13 @@ func (r *Renter) loadSiaFiles() error {
 		}
 
 		// Load the Siafile.
-		sf, err := r.staticFileSet.LoadSiaFile(strings.TrimPrefix(path, r.filesDir), path, r.wal)
+		sf, err := r.staticFileSet.LoadSiaFile(strings.TrimPrefix(path, r.filesDir), path, r.wal, siafile.SiaFileLoadThread)
 		if err != nil {
 			// TODO try loading the file with the legacy format.
 			r.log.Println("ERROR: could not open .sia file:", err)
 			return nil
 		}
-		r.staticFileSet.Close(sf)
-		return nil
+		return r.staticFileSet.Close(sf, siafile.SiaFileLoadThread)
 	})
 }
 
@@ -334,12 +333,16 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		dupCount := 0
 		origName := files[i].name
 		for {
-			_, exists := r.staticFileSet.Open(files[i].name)
-			if !exists {
+			sf, err := r.staticFileSet.Open(files[i].name, siafile.SiaFileLoadThread)
+			if err != nil {
 				break
 			}
 			dupCount++
 			files[i].name = origName + "_" + strconv.Itoa(dupCount)
+			err = r.staticFileSet.Close(sf, siafile.SiaFileLoadThread)
+			if err != nil {
+				break
+			}
 		}
 	}
 

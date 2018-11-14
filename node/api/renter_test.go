@@ -363,7 +363,7 @@ func TestRenterDownloadAsyncNonexistentFile(t *testing.T) {
 
 	downpath := filepath.Join(st.dir, "testfile")
 	err = st.getAPI(fmt.Sprintf("/renter/downloadasync/doesntexist?destination=%v", downpath), nil)
-	if err == nil || err.Error() != fmt.Sprintf("download failed: no file with that path: doesntexist") {
+	if err == nil || err.Error() != fmt.Sprintf("download failed: no file known with that path") {
 		t.Fatal("downloadasync did not return error on nonexistent file")
 	}
 }
@@ -803,7 +803,7 @@ func TestRenterLoadNonexistent(t *testing.T) {
 	// Try downloading a nonexistent file.
 	downpath := filepath.Join(st.dir, "dnedown.dat")
 	err = st.stdGetAPI("/renter/download/dne?destination=" + downpath)
-	hasPrefix := strings.HasPrefix(err.Error(), "download failed: no file with that path")
+	hasPrefix := strings.HasPrefix(err.Error(), "download failed: no file known with that path")
 	if err == nil || !hasPrefix {
 		t.Errorf("expected error to be 'download failed: no file with that path'; got %v instead", err)
 	}

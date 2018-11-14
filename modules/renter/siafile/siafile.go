@@ -26,6 +26,9 @@ var (
 	ErrPathOverload = errors.New("a file already exists at that location")
 	// ErrUnknownPath is an error when a file cannot be found with the given path
 	ErrUnknownPath = errors.New("no file known with that path")
+	// ErrUnknownThread is an error when a SiaFile is trying to be closed by a
+	// thread that is not in the threadMap
+	ErrUnknownThread = errors.New("thread should not be calling Close(), does not have control of the siafile")
 )
 
 type (
@@ -57,9 +60,12 @@ type (
 		// siaFilePath is the path to the .sia file on disk.
 		siaFilePath string
 
-		// SiaFileSet helps track the number of threads using a siafile
-		SiaFileSet  *SiaFileSet
-		threadCount int
+		// SiaFileSet helps track the number of threads using a siafile.
+		// threadMap maps ThreadType to an int as some threads, like download,
+		// can have multiple of the same threadType accessing the file. In those
+		// cases the int will be incremented
+		SiaFileSet *SiaFileSet
+		threadMap  map[ThreadType]int
 	}
 
 	// chunk represents a single chunk of a file on disk
@@ -90,6 +96,27 @@ type (
 		PublicKey types.SiaPublicKey // public key of host
 		Used      bool               // indicates if we currently use this host
 	}
+)
+
+// ThreadType is the helper type for the enum constants for the SiaFile threadMap
+type ThreadType int
+
+// The following constants are threadTypes that acquire the lock of the SiaFile.
+// This enables the ability to know what threads, or types of threads, are
+// holding the lock on the SiaFile which will allow better control over handling
+// of SiaFile actions like Delete and Rename
+const (
+	SiaFileThreadError ThreadType = iota
+	SiaFileRepairThread
+	SiaFileUploadThread
+	SiaFileRenameThread
+	SiaFileLoadThread
+	SiaFileNewThread
+	SiaFileTestThread
+	SiaFileDownloadThread
+	SiaFileStreamThread
+	SiaFileDeleteThread
+	SiaFileAPIThread
 )
 
 // MarshalSia implements the encoding.SiaMarshaler interface.
@@ -144,6 +171,7 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 		siaFilePath:    siaFilePath,
 		staticUniqueID: hex.EncodeToString(fastrand.Bytes(20)),
 		wal:            wal,
+		threadMap:      make(map[ThreadType]int),
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()

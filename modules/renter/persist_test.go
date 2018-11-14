@@ -89,14 +89,14 @@ func TestRenterSaveLoad(t *testing.T) {
 	// Add a file to the renter
 	sf := rt.renter.newRenterTestFile()
 	siapath := sf.SiaPath()
-	rt.renter.staticFileSet.Close(sf)
+	rt.renter.staticFileSet.Close(sf, siafile.SiaFileTestThread)
 
 	// Check that SiaFileSet knows of the SiaFile
-	sf, exists := rt.renter.staticFileSet.Open(siapath)
-	if !exists {
+	sf, err = rt.renter.staticFileSet.Open(siapath, siafile.SiaFileTestThread)
+	if err != nil {
 		t.Fatal("SiaFile not found in the renter's staticFileSet after creation")
 	}
-	rt.renter.staticFileSet.Close(sf)
+	rt.renter.staticFileSet.Close(sf, siafile.SiaFileTestThread)
 
 	err = rt.renter.saveSync() // save metadata
 	if err != nil {
@@ -125,8 +125,8 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 
 	// Check that SiaFileSet loaded the renter's file
-	_, exists = rt.renter.staticFileSet.Open(siapath)
-	if !exists {
+	_, err = rt.renter.staticFileSet.Open(siapath, siafile.SiaFileTestThread)
+	if err != nil {
 		t.Fatal("SiaFile not found in the renter's staticFileSet after load")
 	}
 }
@@ -199,22 +199,22 @@ func TestRenterPaths(t *testing.T) {
 	}
 
 	// Check that the files were loaded properly.
-	file, exists := rt.renter.staticFileSet.Open(f1.SiaPath())
-	if !exists {
+	file, err := rt.renter.staticFileSet.Open(f1.SiaPath(), siafile.SiaFileTestThread)
+	if err != nil {
 		t.Fatal("File not found in renter")
 	}
 	if err := equalFiles(f1, file); err != nil {
 		t.Fatal(err)
 	}
-	file, exists = rt.renter.staticFileSet.Open(f2.SiaPath())
-	if !exists {
+	file, err = rt.renter.staticFileSet.Open(f2.SiaPath(), siafile.SiaFileTestThread)
+	if err != nil {
 		t.Fatal("File not found in renter")
 	}
 	if err := equalFiles(f2, file); err != nil {
 		t.Fatal(err)
 	}
-	file, exists = rt.renter.staticFileSet.Open(f3.SiaPath())
-	if !exists {
+	file, err = rt.renter.staticFileSet.Open(f3.SiaPath(), siafile.SiaFileTestThread)
+	if err != nil {
 		t.Fatal("File not found in renter")
 	}
 	if err := equalFiles(f3, file); err != nil {

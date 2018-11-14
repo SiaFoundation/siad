@@ -183,6 +183,14 @@ func TestNewFile(t *testing.T) {
 	t.Parallel()
 	sf := newTestFile()
 
+	// Check that the threadMap is initialized properly and add a thread type
+	if len(sf.threadMap) != 0 {
+		t.Fatalf("Expected threadMap to be length of 0: got length %v", len(sf.threadMap))
+	}
+	sf.mu.Lock()
+	sf.threadMap[SiaFileTestThread] = 1
+	sf.mu.Unlock()
+
 	// Check that StaticPagesPerChunk was set correctly.
 	if sf.staticMetadata.StaticPagesPerChunk != numChunkPagesRequired(sf.staticMetadata.staticErasureCode.NumPieces()) {
 		t.Fatal("StaticPagesPerChunk wasn't set correctly")
@@ -258,6 +266,13 @@ func TestNewFile(t *testing.T) {
 	if err := equalFiles(sf, sf2); err != nil {
 		t.Fatal(err)
 	}
+	// Check that the threadMap was not persisted, was initialized properly, and add a thread type
+	if len(sf2.threadMap) != 0 {
+		t.Fatalf("Expected threadMap to be length of 0: got length %v", len(sf2.threadMap))
+	}
+	sf2.mu.Lock()
+	sf2.threadMap[SiaFileTestThread] = 1
+	sf2.mu.Unlock()
 }
 
 // TestCreateReadInsertUpdate tests if an update can be created using createInsertUpdate

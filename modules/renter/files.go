@@ -65,9 +65,9 @@ type pieceData struct {
 // TODO: The data is not cleared from any contracts where the host is not
 // immediately online.
 func (r *Renter) DeleteFile(nickname string) error {
-	sf, exists := r.staticFileSet.Open(nickname)
-	if !exists {
-		return siafile.ErrUnknownPath
+	sf, err := r.staticFileSet.Open(nickname, siafile.SiaFileDeleteThread)
+	if err != nil {
+		return err
 	}
 	// TODO: delete the sectors of the file as well.
 	if err := sf.Delete(); err != nil {
@@ -82,7 +82,12 @@ func (r *Renter) DeleteFile(nickname string) error {
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() []modules.FileInfo {
 	// Get all the renter files
-	files := r.staticFileSet.All()
+	//
+	// TODO - this should call the persist method to read from disk
+	files, err := r.staticFileSet.All(siafile.SiaFileAPIThread)
+	if err != nil {
+		return []modules.FileInfo{}
+	}
 
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.
@@ -133,7 +138,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 			UploadedBytes:  f.UploadedBytes(),
 			UploadProgress: f.UploadProgress(),
 		})
-		r.staticFileSet.Close(f)
+		r.staticFileSet.Close(f, siafile.SiaFileAPIThread)
 	}
 	return fileList
 }
@@ -144,11 +149,11 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	var fileInfo modules.FileInfo
 
 	// Get the file and its contracts
-	file, exists := r.staticFileSet.Open(siaPath)
-	if !exists {
-		return fileInfo, siafile.ErrUnknownPath
+	file, err := r.staticFileSet.Open(siaPath, siafile.SiaFileAPIThread)
+	if err != nil {
+		return fileInfo, err
 	}
-	defer r.staticFileSet.Close(file)
+	defer r.staticFileSet.Close(file, siafile.SiaFileAPIThread)
 	pks := file.HostPublicKeys()
 
 	// Build 2 maps that map every contract id to its offline and goodForRenew
@@ -169,7 +174,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	// Build the FileInfo
 	renewing := true
 	localPath := file.LocalPath()
-	_, err := os.Stat(localPath)
+	_, err = os.Stat(localPath)
 	onDisk := !os.IsNotExist(err)
 	redundancy := file.Redundancy(offline, goodForRenew)
 	fileInfo = modules.FileInfo{
@@ -202,10 +207,11 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 	if err != nil {
 		return err
 	}
-	sf, exists := r.staticFileSet.Open(currentName)
-	if !exists {
-		return siafile.ErrUnknownPath
+	sf, err := r.staticFileSet.Open(currentName, siafile.SiaFileRenameThread)
+	if err != nil {
+		return err
 	}
+	defer r.staticFileSet.Close(sf, siafile.SiaFileRenameThread)
 	return sf.Rename(newName, filepath.Join(r.filesDir, newName+ShareExtension))
 }
 

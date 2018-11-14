@@ -67,6 +67,7 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 		staticUniqueID: hex.EncodeToString(fastrand.Bytes(8)),
 		siaFilePath:    path,
 		wal:            wal,
+		threadMap:      make(map[ThreadType]int),
 	}
 	// Open the file.
 	f, err := os.Open(path)
