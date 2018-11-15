@@ -582,3 +582,82 @@ func TestRenterFileDir(t *testing.T) {
 		t.Fatal("No .sia file found on disk")
 	}
 }
+
+// TestRenterFilesInMemory confirms that files are added and removed from memory
+// as expected when files are in use and not in use
+func TestRenterFilesInMemory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Add file to renter
+	sf := rt.renter.newRenterTestFile()
+
+	// Confirm that renter has 1 file in memory
+	if len(rt.renter.staticFileSet.SiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(rt.renter.staticFileSet.SiaFileMap))
+	}
+
+	// Record siaPath
+	siaPath := sf.SiaPath()
+
+	// Close File
+	err = rt.renter.staticFileSet.Close(sf, siafile.SiaFileTestThread)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm renter has no files in memory
+	if len(rt.renter.staticFileSet.SiaFileMap) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(rt.renter.staticFileSet.SiaFileMap))
+	}
+
+	// Open file
+	sf, err = rt.renter.staticFileSet.Open(siaPath, rt.renter.filesDir, siafile.SiaFileTestThread, rt.renter.wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that renter has 1 file in memory
+	if len(rt.renter.staticFileSet.SiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(rt.renter.staticFileSet.SiaFileMap))
+	}
+
+	// Access the file again
+	sf2, err := rt.renter.staticFileSet.Open(siaPath, rt.renter.filesDir, siafile.SiaFileTestThread, rt.renter.wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that renter still only has 1 file in memory
+	if len(rt.renter.staticFileSet.SiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(rt.renter.staticFileSet.SiaFileMap))
+	}
+
+	// Close one of the file instances
+	err = rt.renter.staticFileSet.Close(sf, siafile.SiaFileTestThread)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that renter still only has 1 file in memory
+	if len(rt.renter.staticFileSet.SiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(rt.renter.staticFileSet.SiaFileMap))
+	}
+
+	// Close other instance of the file
+	err = rt.renter.staticFileSet.Close(sf2, siafile.SiaFileTestThread)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm renter has no files in memory
+	if len(rt.renter.staticFileSet.SiaFileMap) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(rt.renter.staticFileSet.SiaFileMap))
+	}
+}
