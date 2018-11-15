@@ -29,6 +29,9 @@ var (
 	// ErrUnknownThread is an error when a SiaFile is trying to be closed by a
 	// thread that is not in the threadMap
 	ErrUnknownThread = errors.New("thread should not be calling Close(), does not have control of the siafile")
+
+	// ShareExtension is the extension to be used
+	ShareExtension = ".sia"
 )
 
 type (

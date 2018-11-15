@@ -363,8 +363,8 @@ func TestRenterDownloadAsyncNonexistentFile(t *testing.T) {
 
 	downpath := filepath.Join(st.dir, "testfile")
 	err = st.getAPI(fmt.Sprintf("/renter/downloadasync/doesntexist?destination=%v", downpath), nil)
-	if err == nil || err.Error() != fmt.Sprintf("download failed: no file known with that path") {
-		t.Fatal("downloadasync did not return error on nonexistent file")
+	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
+		t.Error("Expected error to contain 'no such file or directory':", err)
 	}
 }
 
@@ -803,9 +803,8 @@ func TestRenterLoadNonexistent(t *testing.T) {
 	// Try downloading a nonexistent file.
 	downpath := filepath.Join(st.dir, "dnedown.dat")
 	err = st.stdGetAPI("/renter/download/dne?destination=" + downpath)
-	hasPrefix := strings.HasPrefix(err.Error(), "download failed: no file known with that path")
-	if err == nil || !hasPrefix {
-		t.Errorf("expected error to be 'download failed: no file with that path'; got %v instead", err)
+	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
+		t.Error("Expected error to contain 'no such file or directory':", err)
 	}
 
 	// The renter's downloads queue should be empty.
@@ -846,8 +845,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	renameValues := url.Values{}
 	renameValues.Set("newsiapath", "newdne")
 	err = st.stdPostAPI("/renter/rename/dne", renameValues)
-	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
-		t.Errorf("expected error to be %v; got %v", siafile.ErrUnknownPath, err)
+	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
+		t.Error("Expected error to contain 'no such file or directory':", err)
 	}
 
 	// Set an allowance for the renter, allowing a contract to be formed.
@@ -998,8 +997,8 @@ func TestRenterHandlerDelete(t *testing.T) {
 
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
-	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
-		t.Errorf("expected error to be %v, got %v", siafile.ErrUnknownPath, err)
+	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
+		t.Error("Expected error to contain 'no such file or directory':", err)
 	}
 }
 

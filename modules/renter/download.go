@@ -266,7 +266,7 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters) error {
 // setup was successful.
 func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
 	// Lookup the file associated with the nickname.
-	file, err := r.staticFileSet.Open(p.SiaPath, siafile.SiaFileDownloadThread)
+	file, err := r.staticFileSet.Open(p.SiaPath, r.filesDir, siafile.SiaFileDownloadThread, r.wal)
 	if err != nil {
 		return nil, err
 	}

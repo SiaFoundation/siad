@@ -72,7 +72,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 
 	// Check for a nickname conflict.
-	_, err := r.staticFileSet.Open(up.SiaPath, siafile.SiaFileUploadThread)
+	_, err := r.staticFileSet.Open(up.SiaPath, r.filesDir, siafile.SiaFileUploadThread, r.wal)
 	if err == nil {
 		return siafile.ErrPathOverload
 	}
@@ -107,7 +107,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 
 	// Create file object.
-	siaFilePath := filepath.Join(r.filesDir, up.SiaPath+ShareExtension)
+	siaFilePath := filepath.Join(r.filesDir, up.SiaPath+siafile.ShareExtension)
 	cipherType := crypto.TypeDefaultRenter
 
 	// Create the Siafile and add to renter

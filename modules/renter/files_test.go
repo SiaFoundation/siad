@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -56,7 +57,7 @@ func (r *Renter) newRenterTestFile() *siafile.SiaFile {
 	// Generate name and erasure coding
 	name, rsc := testingFileParams()
 	// create the renter/files dir if it doesn't exist
-	siaFilePath := filepath.Join(r.filesDir, name+ShareExtension)
+	siaFilePath := filepath.Join(r.filesDir, name+siafile.ShareExtension)
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		panic(err)
@@ -358,8 +359,8 @@ func TestRenterDeleteFile(t *testing.T) {
 
 	// Delete a file from an empty renter.
 	err = rt.renter.DeleteFile("dne")
-	if err != siafile.ErrUnknownPath {
-		t.Error("Expected ErrUnknownPath:", err)
+	if !strings.Contains(err.Error(), "no such file or directory") {
+		t.Error("Expected error to contain 'no such file or directory':", err)
 	}
 
 	// Put a file in the renter.
@@ -368,8 +369,8 @@ func TestRenterDeleteFile(t *testing.T) {
 	rt.renter.staticFileSet.Close(file1, siafile.SiaFileTestThread)
 	// Delete a different file.
 	err = rt.renter.DeleteFile("one")
-	if err != siafile.ErrUnknownPath {
-		t.Error("Expected ErrUnknownPath, got", err)
+	if !strings.Contains(err.Error(), "no such file or directory") {
+		t.Error("Expected error to contain 'no such file or directory':", err)
 	}
 	// Delete the file.
 	err = rt.renter.DeleteFile(siapath)
@@ -380,21 +381,21 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Error("file was deleted, but is still reported in FileList")
 	}
 	// Confirm that file was removed from SiaFileSet
-	_, err = rt.renter.staticFileSet.Open(siapath, siafile.SiaFileTestThread)
+	_, err = rt.renter.staticFileSet.Open(siapath, rt.renter.filesDir, siafile.SiaFileTestThread, rt.renter.wal)
 	if err == nil {
 		t.Fatal("Deleted file still found in staticFileSet")
 	}
 
 	// Put a file in the renter, then rename it.
 	file2 := rt.renter.newRenterTestFile()
-	file2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension)) // set name to "1"
+	file2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+siafile.ShareExtension)) // set name to "1"
 	siapath2 := file2.SiaPath()
 	rt.renter.staticFileSet.Close(file2, siafile.SiaFileTestThread)
 	rt.renter.RenameFile(siapath2, "one")
 	// Call delete on the previous name.
 	err = rt.renter.DeleteFile("1")
-	if err != siafile.ErrUnknownPath {
-		t.Error("Expected ErrUnknownPath, got", err)
+	if !strings.Contains(err.Error(), "no such file or directory") {
+		t.Error("Expected error to contain 'no such file or directory':", err)
 	}
 	// Call delete on the new name.
 	err = rt.renter.DeleteFile("one")
@@ -473,14 +474,13 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file that doesn't exist.
 	err = rt.renter.RenameFile("1", "1a")
-	if err != siafile.ErrUnknownPath {
-		t.Error("Expecting ErrUnknownPath:", err)
+	if !strings.Contains(err.Error(), "no such file or directory") {
+		t.Error("Expected error to contain 'no such file or directory':", err)
 	}
 
 	// Rename a file that does exist.
 	f := rt.renter.newRenterTestFile()
-	f.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
-	rt.renter.staticFileSet.Close(f, siafile.SiaFileTestThread)
+	f.Rename("1", filepath.Join(rt.renter.filesDir, "1"+siafile.ShareExtension))
 	newName := "1a"
 	err = rt.renter.RenameFile("1", newName)
 	if err != nil {
@@ -494,18 +494,18 @@ func TestRenterRenameFile(t *testing.T) {
 		t.Errorf("RenameFile failed: expected %v, got %v", newName, files[0].SiaPath)
 	}
 	// Confirm SiaFileSet was updated
-	_, err = rt.renter.staticFileSet.Open(newName, siafile.SiaFileTestThread)
+	_, err = rt.renter.staticFileSet.Open(newName, rt.renter.filesDir, siafile.SiaFileTestThread, rt.renter.wal)
 	if err != nil {
 		t.Fatal("renter staticFileSet not updated to new file name")
 	}
-	_, err = rt.renter.staticFileSet.Open("1", siafile.SiaFileTestThread)
+	_, err = rt.renter.staticFileSet.Open("1", rt.renter.filesDir, siafile.SiaFileTestThread, rt.renter.wal)
 	if err == nil {
 		t.Fatal("old name not removed from renter staticFileSet")
 	}
 
 	// Rename a file to an existing name.
 	f2 := rt.renter.newRenterTestFile()
-	f2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+ShareExtension))
+	f2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+siafile.ShareExtension))
 	rt.renter.staticFileSet.Close(f2, siafile.SiaFileTestThread)
 	err = rt.renter.RenameFile("1", newName)
 	if err != siafile.ErrPathOverload {
@@ -566,7 +566,10 @@ func TestRenterFileDir(t *testing.T) {
 	}
 
 	// Get file and check siapath
-	f := rt.renter.FileList()[0]
+	f, err := rt.renter.File(fileName)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if f.SiaPath != fileName {
 		t.Fatalf("siapath not set as expected: got %v expected %v", f.SiaPath, fileName)
 	}

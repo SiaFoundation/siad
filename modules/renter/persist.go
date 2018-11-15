@@ -26,8 +26,6 @@ const (
 	logFile = modules.RenterDir + ".log"
 	// PersistFilename is the filename to be used when persisting renter information to a JSON file
 	PersistFilename = "renter.json"
-	// ShareExtension is the extension to be used
-	ShareExtension = ".sia"
 	// SiaDirMetadata is the name of the metadata file for the sia directory
 	SiaDirMetadata = ".siadir"
 	// walFile is the filename of the renter's writeaheadlog's file.
@@ -42,7 +40,7 @@ var (
 	// ErrNoNicknames is an error when no nickname is given
 	ErrNoNicknames = errors.New("at least one nickname must be supplied")
 	// ErrNonShareSuffix is an error when the suffix of a file does not match the defined share extension
-	ErrNonShareSuffix = errors.New("suffix of file must be " + ShareExtension)
+	ErrNonShareSuffix = errors.New("suffix of file must be " + siafile.ShareExtension)
 
 	settingsMetadata = persist.Metadata{
 		Header:  "Renter Persistence",
@@ -247,18 +245,23 @@ func (r *Renter) loadSiaFiles() error {
 		}
 
 		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != ShareExtension {
+		if info.IsDir() || filepath.Ext(path) != siafile.ShareExtension {
 			return nil
 		}
 
 		// Load the Siafile.
-		sf, err := r.staticFileSet.LoadSiaFile(strings.TrimPrefix(path, r.filesDir), path, r.wal, siafile.SiaFileLoadThread)
+		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.filesDir), siafile.ShareExtension)
+		sf, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileLoadThread, r.wal)
 		if err != nil {
 			// TODO try loading the file with the legacy format.
 			r.log.Println("ERROR: could not open .sia file:", err)
 			return nil
 		}
-		return r.staticFileSet.Close(sf, siafile.SiaFileLoadThread)
+		err = r.staticFileSet.Close(sf, siafile.SiaFileLoadThread)
+		if err != nil {
+			r.log.Println("ERROR: could not close siafile:", siaPath)
+		}
+		return nil
 	})
 }
 
@@ -333,7 +336,7 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		dupCount := 0
 		origName := files[i].name
 		for {
-			sf, err := r.staticFileSet.Open(files[i].name, siafile.SiaFileLoadThread)
+			sf, err := r.staticFileSet.Open(files[i].name, r.filesDir, siafile.SiaFileLoadThread, r.wal)
 			if err != nil {
 				break
 			}

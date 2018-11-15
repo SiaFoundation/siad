@@ -2,6 +2,8 @@ package siafile
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -31,26 +33,37 @@ func NewSiaFileSet() *SiaFileSet {
 	}
 }
 
-// All returns all the siafiles in the SiaFileSet, this will also add the
-// threadType to all the SiaFile threadMaps and increment the thread type
-// counters
+// All returns all the siafiles in the renter by either returning them from the
+// SiaFileSet of reading them from disk, this will also add the threadType to
+// all the SiaFile threadMaps and increment the thread type counters.
 //
 // Note: This is currently only needed for the Files endpoint. This is an
 // expensive call so it should be avoided unless absolutely necessary
-func (sfs *SiaFileSet) All(threadType ThreadType) ([]*SiaFile, error) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
+func (sfs *SiaFileSet) All(dir string, threadType ThreadType, wal *writeaheadlog.WAL) ([]*SiaFile, error) {
 	var siaFiles []*SiaFile
-	for _, sf := range sfs.SiaFileMap {
-		sf.mu.Lock()
-		if _, ok := sf.threadMap[threadType]; !ok {
-			sf.threadMap[threadType] = 0
+	// Recursively load all files found in renter directory. Errors
+	// are not considered fatal and are ignored.
+	return siaFiles, filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		// This error is non-nil if filepath.Walk couldn't stat a file or
+		// folder.
+		if err != nil {
+			return nil
 		}
-		sf.threadMap[threadType]++
-		sf.mu.Unlock()
+
+		// Skip folders and non-sia files.
+		if info.IsDir() || filepath.Ext(path) != ShareExtension {
+			return nil
+		}
+
+		// Load the Siafile.
+		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, dir), ShareExtension)
+		sf, err := sfs.Open(siaPath, dir, SiaFileLoadThread, wal)
+		if err != nil {
+			return nil
+		}
 		siaFiles = append(siaFiles, sf)
-	}
-	return siaFiles, nil
+		return nil
+	})
 }
 
 // delete removes the SiaFile from the map
@@ -63,32 +76,6 @@ func (sfs *SiaFileSet) delete(key string) error {
 	}
 	delete(sfs.SiaFileMap, key)
 	return nil
-}
-
-// LoadSiaFile loads a SiaFile from disk, adds it to the SiaFileSet, increments
-// the threadCount, and returns the SiaFile. Since this method returns the siafile,
-// wherever LoadSiaFile is called should then Return the SiaFile to the
-// SiaFileSet to avoid the file being stuck in memory due the threadCount never
-// being decremented after load
-func (sfs *SiaFileSet) LoadSiaFile(siapath, path string, wal *writeaheadlog.WAL, threadType ThreadType) (*SiaFile, error) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	sf, ok := sfs.SiaFileMap[siapath]
-	if ok {
-		return sf, nil
-	}
-	sf, err := LoadSiaFile(path, wal)
-	if err != nil {
-		return nil, err
-	}
-	sf.mu.Lock()
-	if _, ok := sf.threadMap[threadType]; !ok {
-		sf.threadMap[threadType] = 0
-	}
-	sf.threadMap[threadType]++
-	sf.mu.Unlock()
-	sfs.SiaFileMap[sf.SiaPath()] = sf
-	return sf, nil
 }
 
 // NewSiaFile create a new SiaFile, adds it to the SiaFileSet, increments the
@@ -115,16 +102,25 @@ func (sfs *SiaFileSet) NewSiaFile(siaFilePath, siaPath, source string, wal *writ
 }
 
 // Open returns the siafile from the SiaFileSet for the corresponding key and
-// increments the threadCount
-//
-// TODO - when files are removed from memory this method should be updated to
-// either return the siafile in memory or load from disk
-func (sfs *SiaFileSet) Open(key string, threadType ThreadType) (*SiaFile, error) {
+// increments the threadCount. If the siafile is not in memory it will load it
+// from disk
+func (sfs *SiaFileSet) Open(siaPath, filesDir string, threadType ThreadType, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	sf, exists := sfs.SiaFileMap[key]
+	// Check for file in Memory
+	var sf *SiaFile
+	var err error
+	sf, exists := sfs.SiaFileMap[siaPath]
 	if !exists {
-		return nil, ErrUnknownPath
+		// Try and Load File from disk
+		sf, err = LoadSiaFile(filepath.Join(filesDir, siaPath+ShareExtension), wal)
+		if err != nil {
+			return nil, err
+		}
+		sfs.SiaFileMap[sf.SiaPath()] = sf
+		sf.mu.Lock()
+		sf.SiaFileSet = sfs
+		sf.mu.Unlock()
 	}
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -162,6 +158,7 @@ func (sfs *SiaFileSet) Close(sf *SiaFile, threadType ThreadType) error {
 		build.Critical("siafile doesn't exist")
 		return ErrUnknownPath
 	}
+	siaPath := sf.SiaPath()
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if _, ok := sf.threadMap[threadType]; !ok {
@@ -178,7 +175,7 @@ func (sfs *SiaFileSet) Close(sf *SiaFile, threadType ThreadType) error {
 		delete(sf.threadMap, threadType)
 	}
 	if len(sf.threadMap) == 0 {
-		// delete(sfs.SiaFileMap, sf.SiaPath())
+		delete(sfs.SiaFileMap, siaPath)
 	}
 	return nil
 }

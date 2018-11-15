@@ -36,7 +36,7 @@ func min(values ...uint64) uint64 {
 // the sia network.
 func (r *Renter) Streamer(siaPath string) (string, io.ReadSeeker, error) {
 	// Lookup the file associated with the nickname.
-	file, err := r.staticFileSet.Open(siaPath, siafile.SiaFileStreamThread)
+	file, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileStreamThread, r.wal)
 	if err != nil {
 		return "", nil, nil
 	}

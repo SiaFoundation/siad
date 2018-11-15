@@ -1,6 +1,10 @@
 package siafile
 
-import "testing"
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 // newTestSiaFileSetWithFile creates a new SiaFileSet and SiaFile and makes sure
 // that they are linked
@@ -30,10 +34,20 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 	sf, sfs := newTestSiaFileSetWithFile()
 	siaPath := sf.SiaPath()
 
+	// Confirm file is in memory
+	sfs.mu.Lock()
+	if len(sfs.SiaFileMap) != 1 {
+		t.Fatalf("Expected SiaFileSet map to be of length 1, instead is length %v", len(sfs.SiaFileMap))
+	}
+	sfs.mu.Unlock()
+
 	// Confirm threadCount is incremented properly
 	if len(sf.threadMap) != 1 {
 		t.Fatalf("Expected threadMap to be of length 1, got %v", len(sf.threadMap))
 	}
+
+	// Record siafile path
+	path := sf.siaFilePath
 
 	// Close siafile
 	sfs.closeTestFile(sf)
@@ -43,8 +57,16 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 		t.Fatalf("Expected threadCount to be 0, got %v", len(sf.threadMap))
 	}
 
+	// Confirm file was removed from memory
+	sfs.mu.Lock()
+	if len(sfs.SiaFileMap) != 0 {
+		t.Fatalf("Expected SiaFileSet map to be empty, instead is length %v", len(sfs.SiaFileMap))
+	}
+	sfs.mu.Unlock()
+
 	// Open siafile again and confirm threadCount was incremented
-	sf, err := sfs.Open(siaPath, SiaFileTestThread)
+	dir := filepath.Dir(strings.TrimSuffix(path, ShareExtension))
+	sf, err := sfs.Open(siaPath, dir, SiaFileTestThread, newTestWAL())
 	if err != nil {
 		t.Fatal(err)
 	}

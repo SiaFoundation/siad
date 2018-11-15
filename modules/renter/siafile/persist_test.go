@@ -151,7 +151,7 @@ func newTestFileParams() (string, string, string, modules.ErasureCoder, crypto.C
 	source := string(hex.EncodeToString(fastrand.Bytes(8)))
 
 	// Create the path to the file.
-	siaFilePath := filepath.Join(os.TempDir(), "siafiles", siaPath)
+	siaFilePath := filepath.Join(os.TempDir(), "siafiles", siaPath+ShareExtension)
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		panic(err)

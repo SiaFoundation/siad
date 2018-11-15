@@ -489,7 +489,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // providing a different file with the same size.
 func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 	// Check if file exists and is being tracked.
-	file, err := r.staticFileSet.Open(siaPath, siafile.SiaFileAPIThread)
+	file, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileAPIThread, r.wal)
 	if err != nil {
 		return err
 	}

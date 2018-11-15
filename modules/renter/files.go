@@ -65,7 +65,7 @@ type pieceData struct {
 // TODO: The data is not cleared from any contracts where the host is not
 // immediately online.
 func (r *Renter) DeleteFile(nickname string) error {
-	sf, err := r.staticFileSet.Open(nickname, siafile.SiaFileDeleteThread)
+	sf, err := r.staticFileSet.Open(nickname, r.filesDir, siafile.SiaFileDeleteThread, r.wal)
 	if err != nil {
 		return err
 	}
@@ -82,9 +82,7 @@ func (r *Renter) DeleteFile(nickname string) error {
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() []modules.FileInfo {
 	// Get all the renter files
-	//
-	// TODO - this should call the persist method to read from disk
-	files, err := r.staticFileSet.All(siafile.SiaFileAPIThread)
+	files, err := r.staticFileSet.All(r.filesDir, siafile.SiaFileAPIThread, r.wal)
 	if err != nil {
 		return []modules.FileInfo{}
 	}
@@ -149,7 +147,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	var fileInfo modules.FileInfo
 
 	// Get the file and its contracts
-	file, err := r.staticFileSet.Open(siaPath, siafile.SiaFileAPIThread)
+	file, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileAPIThread, r.wal)
 	if err != nil {
 		return fileInfo, err
 	}
@@ -207,12 +205,12 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 	if err != nil {
 		return err
 	}
-	sf, err := r.staticFileSet.Open(currentName, siafile.SiaFileRenameThread)
+	sf, err := r.staticFileSet.Open(currentName, r.filesDir, siafile.SiaFileRenameThread, r.wal)
 	if err != nil {
 		return err
 	}
 	defer r.staticFileSet.Close(sf, siafile.SiaFileRenameThread)
-	return sf.Rename(newName, filepath.Join(r.filesDir, newName+ShareExtension))
+	return sf.Rename(newName, filepath.Join(r.filesDir, newName+siafile.ShareExtension))
 }
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
