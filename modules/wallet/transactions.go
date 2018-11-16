@@ -95,6 +95,11 @@ func (w *Wallet) Transaction(txid types.TransactionID) (pt modules.ProcessedTran
 	// Get the keyBytes for the given txid
 	keyBytes, err := dbGetTransactionIndex(w.dbTx, txid)
 	if err != nil {
+		for _, txn := range w.unconfirmedProcessedTransactions {
+			if txn.TransactionID == txid {
+				return txn, true, nil
+			}
+		}
 		return modules.ProcessedTransaction{}, false, nil
 	}
 
