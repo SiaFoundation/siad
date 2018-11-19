@@ -68,6 +68,10 @@ const (
 	// scanCheckInterval is the interval used when waiting for the scanList to
 	// empty itself and for waiting on the consensus set to be synced.
 	scanCheckInterval = time.Second
+
+	// txnFeesUpdateRatio is the amount of change we tolerate in the txnFees
+	// before we rebuild the hosttree.
+	txnFeesUpdateRatio = 0.05 // 5%
 )
 
 var (

@@ -281,7 +281,7 @@ func New(params NodeParams) (*Node, error) {
 		persistDir := filepath.Join(dir, modules.RenterDir)
 
 		// HostDB
-		hdb, err := hostdb.NewCustomHostDB(g, cs, persistDir, hostDBDeps)
+		hdb, err := hostdb.NewCustomHostDB(g, cs, tp, persistDir, hostDBDeps)
 		if err != nil {
 			return nil, err
 		}

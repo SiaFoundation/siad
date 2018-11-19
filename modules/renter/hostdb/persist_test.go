@@ -82,7 +82,7 @@ func TestSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hdbt.hdb, err = NewCustomHostDB(hdbt.gateway, hdbt.cs, filepath.Join(hdbt.persistDir, modules.RenterDir), &quitAfterLoadDeps{})
+	hdbt.hdb, err = NewCustomHostDB(hdbt.gateway, hdbt.cs, hdbt.tpool, filepath.Join(hdbt.persistDir, modules.RenterDir), &quitAfterLoadDeps{})
 	if err != nil {
 		t.Fatal(err)
 	}

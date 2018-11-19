@@ -205,7 +205,7 @@ func (hdb *HostDB) interactionAdjustments(entry modules.HostDBEntry) float64 {
 // redundancy. The upload and download values also do not account for
 // redundancy, and they are on a per-block basis, meaning you need to multiply
 // be the allowance period when working with these values.
-func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules.Allowance) float64 {
+func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules.Allowance, txnFees types.Currency) float64 {
 	// Divide by zero mitigation.
 	if allowance.Hosts == 0 {
 		allowance.Hosts = 1
@@ -237,8 +237,6 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// Calculate the hostCollateral the renter would expect the host to put
 	// into a contract.
 	//
-	// TODO: Use actual transaction fee estimation instead of hardcoded 1SC.
-	txnFees := types.SiacoinPrecision
 	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, contractExpectedFunds, txnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, contractExpectedStorage)
 	if err != nil {
 		info := fmt.Sprintf("Error while estimating collateral for host: Host %v, ContractPrice %v, TxnFees %v, Funds %v",
@@ -468,15 +466,20 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 	return math.Pow(uptimeRatio, exp)
 }
 
-// calculateHostWeightFn creates a hosttree.WeightFunc given an Allowance.
-func (hdb *HostDB) calculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
+// managedCalculateHostWeightFn creates a hosttree.WeightFunc given an Allowance.
+func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
+	// Get the txnFees.
+	hdb.mu.RLock()
+	txnFees := hdb.txnFees
+	hdb.mu.RUnlock()
+	// Create the weight function.
 	return func(entry modules.HostDBEntry) hosttree.ScoreBreakdown {
 		return hosttree.HostAdjustments{
 			BurnAdjustment:             1,
 			CollateralAdjustment:       hdb.collateralAdjustments(entry, allowance),
 			InteractionAdjustment:      hdb.interactionAdjustments(entry),
 			AgeAdjustment:              hdb.lifetimeAdjustments(entry),
-			PriceAdjustment:            hdb.priceAdjustments(entry, allowance),
+			PriceAdjustment:            hdb.priceAdjustments(entry, allowance, txnFees),
 			StorageRemainingAdjustment: storageRemainingAdjustments(entry),
 			UptimeAdjustment:           hdb.uptimeAdjustments(entry),
 			VersionAdjustment:          versionAdjustments(entry),

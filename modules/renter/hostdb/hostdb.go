@@ -28,6 +28,7 @@ var (
 	ErrInitialScanIncomplete = errors.New("initial hostdb scan is not yet completed")
 	errNilCS                 = errors.New("cannot create hostdb with nil consensus set")
 	errNilGateway            = errors.New("cannot create hostdb with nil gateway")
+	errNilTPool              = errors.New("cannot create hostdb with nil transaction pool")
 )
 
 // The HostDB is a database of potential hosts. It assigns a weight to each
@@ -35,9 +36,11 @@ var (
 // for uploading files.
 type HostDB struct {
 	// dependencies
-	cs         modules.ConsensusSet
-	deps       modules.Dependencies
-	gateway    modules.Gateway
+	cs      modules.ConsensusSet
+	deps    modules.Dependencies
+	gateway modules.Gateway
+	tpool   modules.TransactionPool
+
 	log        *persist.Logger
 	mu         sync.RWMutex
 	persistDir string
@@ -48,6 +51,11 @@ type HostDB struct {
 	// determine the weight of a host.
 	allowance  modules.Allowance
 	weightFunc hosttree.WeightFunc
+
+	// txnFees are the most recent fees used in the score estimation. It is
+	// used to determine if the transaction fees have changed enough to warrant
+	// rebuilding the hosttree with an updated weight function.
+	txnFees types.Currency
 
 	// The hostTree is the root node of the tree that organizes hosts by
 	// weight. The tree is necessary for selecting weighted hosts at
@@ -118,7 +126,7 @@ func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
 }
 
 // New returns a new HostDB.
-func New(g modules.Gateway, cs modules.ConsensusSet, persistDir string) (*HostDB, error) {
+func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, error) {
 	// Check for nil inputs.
 	if g == nil {
 		return nil, errNilGateway
@@ -126,29 +134,34 @@ func New(g modules.Gateway, cs modules.ConsensusSet, persistDir string) (*HostDB
 	if cs == nil {
 		return nil, errNilCS
 	}
+	if tpool == nil {
+		return nil, errNilTPool
+	}
 	// Create HostDB using production dependencies.
-	return NewCustomHostDB(g, cs, persistDir, modules.ProdDependencies)
+	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
 }
 
 // NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
 // persistence data, spawns the HostDB's scanning threads, and subscribes it to
 // the consensusSet.
-func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, persistDir string, deps modules.Dependencies) (*HostDB, error) {
+func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Create the HostDB object.
 	hdb := &HostDB{
 		cs:         cs,
 		deps:       deps,
 		gateway:    g,
 		persistDir: persistDir,
+		tpool:      tpool,
 
 		scanMap: make(map[string]struct{}),
 
 		filteredHosts: make(map[string]types.SiaPublicKey),
 	}
 
-	// Set the hostweight function.
+	// Set the allowance, txnFees and hostweight function.
 	hdb.allowance = modules.DefaultAllowance
-	hdb.weightFunc = hdb.calculateHostWeightFn(hdb.allowance)
+	_, hdb.txnFees = hdb.tpool.FeeEstimation()
+	hdb.weightFunc = hdb.managedCalculateHostWeightFn(hdb.allowance)
 
 	// Create the persist directory if it does not yet exist.
 	err := os.MkdirAll(persistDir, 0700)
@@ -476,7 +489,7 @@ func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist [
 		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
 	// Create a temporary hosttree from the given allowance.
-	ht := hosttree.New(hdb.calculateHostWeightFn(allowance), hdb.deps.Resolver())
+	ht := hosttree.New(hdb.managedCalculateHostWeightFn(allowance), hdb.deps.Resolver())
 
 	// Insert all known hosts.
 	var insertErrs error
@@ -508,13 +521,14 @@ func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 	}
 
 	// Update the weight function.
+	hwf := hdb.managedCalculateHostWeightFn(allowance)
 	hdb.mu.Lock()
 	hdb.allowance = allowance
-	hdb.weightFunc = hdb.calculateHostWeightFn(allowance)
+	hdb.weightFunc = hwf
 	hdb.mu.Unlock()
 
 	// Update the trees weight function.
-	err1 := hdb.hostTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
-	err2 := hdb.filteredTree.SetWeightFunction(hdb.calculateHostWeightFn(allowance))
+	err1 := hdb.hostTree.SetWeightFunction(hdb.managedCalculateHostWeightFn(allowance))
+	err2 := hdb.filteredTree.SetWeightFunction(hdb.managedCalculateHostWeightFn(allowance))
 	return errors.Compose(err1, err2)
 }

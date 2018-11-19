@@ -752,7 +752,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 
 // New returns an initialized renter.
 func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, persistDir string) (*Renter, error) {
-	hdb, err := hostdb.New(g, cs, persistDir)
+	hdb, err := hostdb.New(g, cs, tpool, persistDir)
 	if err != nil {
 		return nil, err
 	}

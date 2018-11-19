@@ -15,6 +15,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -36,6 +38,55 @@ func equalIPNets(ipNetsA, ipNetsB []string) bool {
 		}
 	}
 	return true
+}
+
+// managedUpdateTxnFees checks if the txnFees have changed significantly since
+// the last time they were updated and updates them if necessary.
+func (hdb *HostDB) managedUpdateTxnFees() {
+	// Get the old txnFees from the hostdb.
+	hdb.mu.RLock()
+	allowance := hdb.allowance
+	oldTxnFees := hdb.txnFees
+	hdb.mu.RUnlock()
+
+	// Get the new fees from the tpool.
+	_, newTxnFees := hdb.tpool.FeeEstimation()
+
+	// Determine the difference between the old and new fees.
+	var difference types.Currency
+	if newTxnFees.Cmp(oldTxnFees) > 0 {
+		difference = newTxnFees.Sub(oldTxnFees)
+	} else {
+		difference = oldTxnFees.Sub(newTxnFees)
+	}
+	// Compute the percentage of change.
+	ratio, exact := difference.Div(oldTxnFees).Float64()
+	if !exact {
+		hdb.log.Println("WARNING: converting difference to float wasn't exact")
+	}
+	// If the change is not significant we are done.
+	if ratio < txnFeesUpdateRatio {
+		hdb.log.Printf("No need to update txnFees oldFees %v newFees %v",
+			oldTxnFees.HumanString(), newTxnFees.HumanString())
+		return
+	}
+	// Update the txnFees.
+	hdb.mu.Lock()
+	hdb.txnFees = newTxnFees
+	hdb.mu.Unlock()
+	// Recompute the host weight function.
+	hwf := hdb.managedCalculateHostWeightFn(allowance)
+	hdb.mu.Lock()
+	hdb.weightFunc = hwf
+	hdb.mu.Unlock()
+	// Set the weight funtion and rebuild the tree.
+	err1 := hdb.hostTree.SetWeightFunction(hwf)
+	err2 := hdb.filteredTree.SetWeightFunction(hwf)
+	if err := errors.Compose(err1, err2); err != nil {
+		// This shouldn't happen.
+		build.Critical("Failed to set the new weight function", err)
+	}
+	hdb.log.Println("Updated the hostdb txnFees to", newTxnFees.HumanString())
 }
 
 // queueScan will add a host to the queue to be scanned. The host will be added
@@ -510,6 +561,10 @@ func (hdb *HostDB) threadedScan() {
 	hdb.mu.Unlock()
 
 	for {
+		// Before we start a new iteration of the scanloop we check if the
+		// txnFees need to be updated.
+		hdb.managedUpdateTxnFees()
+
 		// Set up a scan for the hostCheckupQuantity most valuable hosts in the
 		// hostdb. Hosts that fail their scans will be docked significantly,
 		// pushing them further back in the hierarchy, ensuring that for the
