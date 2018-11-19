@@ -489,11 +489,13 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // providing a different file with the same size.
 func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 	// Check if file exists and is being tracked.
-	file, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileAPIThread, r.wal)
+	file, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileAPIThread)
 	if err != nil {
 		return err
 	}
-	defer r.staticFileSet.Close(file, siafile.SiaFileAPIThread)
+	// Close must be called with the siaPath of the file when it was opened to
+	// prevent errors on close if the file was renamed by a parallel thread
+	defer r.staticFileSet.Close(siaPath, siafile.SiaFileAPIThread)
 
 	// Sanity check that a file with the correct size exists at the new
 	// location.
@@ -506,10 +508,7 @@ func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 	}
 
 	// Set the new path on disk.
-	if err := file.SetLocalPath(newPath); err != nil {
-		return err
-	}
-	return nil
+	return file.SetLocalPath(newPath)
 }
 
 // ActiveHosts returns an array of hostDB's active hosts
@@ -665,6 +664,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 
 	r := &Renter{
+		staticFileSet: siafile.NewSiaFileSet(),
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the
 		// download heap loop, searching for a chunk that's not there. This is
@@ -691,7 +691,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		tpool:          tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
-	r.staticFileSet = siafile.NewSiaFileSet()
 
 	// Load all saved data.
 	if err := r.initPersist(); err != nil {

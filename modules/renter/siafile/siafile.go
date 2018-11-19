@@ -316,7 +316,7 @@ func (sf *SiaFile) Delete() error {
 	update := sf.createDeleteUpdate()
 	err := sf.createAndApplyTransaction(update)
 	sf.deleted = true
-	return errors.Compose(err, sf.SiaFileSet.delete(sf.staticMetadata.SiaPath))
+	return err
 }
 
 // Deleted indicates if this file has been deleted by the user.

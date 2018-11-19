@@ -66,13 +66,13 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if up.Force {
-		if err := r.DeleteFile(up.SiaPath); err != nil && err != ErrUnknownPath {
+		if err := r.DeleteFile(up.SiaPath); err != nil && err != siafile.ErrUnknownPath {
 			return err
 		}
 	}
 
 	// Check for a nickname conflict.
-	_, err := r.staticFileSet.Open(up.SiaPath, r.filesDir, siafile.SiaFileUploadThread, r.wal)
+	_, err := r.staticFileSet.Open(up.SiaPath, r.filesDir, siafile.SiaFileUploadThread)
 	if err == nil {
 		return siafile.ErrPathOverload
 	}
@@ -111,11 +111,13 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	cipherType := crypto.TypeDefaultRenter
 
 	// Create the Siafile and add to renter
-	f, err := r.staticFileSet.NewSiaFile(siaFilePath, up.SiaPath, up.Source, r.wal, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode(), siafile.SiaFileUploadThread)
+	f, err := r.staticFileSet.NewSiaFile(siaFilePath, up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode(), siafile.SiaFileUploadThread)
 	if err != nil {
 		return err
 	}
-	defer r.staticFileSet.Close(f, siafile.SiaFileUploadThread)
+	// Close must be called with the siaPath of the file when it was opened to
+	// prevent errors on close if the file was renamed by a parallel thread
+	defer r.staticFileSet.Close(up.SiaPath, siafile.SiaFileUploadThread)
 
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()

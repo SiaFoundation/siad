@@ -14,7 +14,7 @@ func newTestSiaFileSetWithFile() (*SiaFile, *SiaFileSet) {
 
 	// Create new SiaFile
 	siaFilePath, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
-	sf, err := sfs.NewSiaFile(siaFilePath, siaPath, source, newTestWAL(), rc, sk, fileSize, fileMode, SiaFileTestThread)
+	sf, err := sfs.NewSiaFile(siaFilePath, siaPath, source, rc, sk, fileSize, fileMode, SiaFileTestThread)
 	if err != nil {
 		return nil, nil
 	}
@@ -66,7 +66,7 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 
 	// Open siafile again and confirm threadCount was incremented
 	dir := filepath.Dir(strings.TrimSuffix(path, ShareExtension))
-	sf, err := sfs.Open(siaPath, dir, SiaFileTestThread, newTestWAL())
+	sf, err := sfs.Open(siaPath, dir, SiaFileTestThread)
 	if err != nil {
 		t.Fatal(err)
 	}

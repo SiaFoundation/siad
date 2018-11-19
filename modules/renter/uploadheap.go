@@ -232,7 +232,7 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	// Get all the files holding the readlock.
 	//
 	// TODO - update to just read from disk
-	files, err := r.staticFileSet.All(r.filesDir, siafile.SiaFileRepairThread, r.wal)
+	files, err := r.staticFileSet.All(r.filesDir, siafile.SiaFileRepairThread)
 	if err != nil {
 		return
 	}
@@ -275,7 +275,13 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
 			r.log.Println("File not found on disk and possibly unrecoverable:", file.LocalPath())
 		}
-		r.staticFileSet.Close(file, siafile.SiaFileRepairThread)
+		// Close must be called with the siaPath of the file when it was
+		// opened to prevent errors on close if the file was renamed by a
+		// parallel thread
+		//
+		// TODO - needs to be updated with repair loop updates to close with
+		// siapath that file was opened with
+		r.staticFileSet.Close(file.SiaPath(), siafile.SiaFileRepairThread)
 	}
 }
 

@@ -142,6 +142,16 @@ func (sf *SiaFile) PieceSize() uint64 {
 func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Check for conflicts on disk
+	_, err := os.Stat(newSiaFilePath)
+	if err == nil {
+		return ErrPathOverload
+	}
+	// Check for conflicts in memory
+	err = sf.SiaFileSet.managedCheckConflict(sf.staticMetadata.SiaPath, newSiaPath)
+	if err != nil {
+		return err
+	}
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
 	// TODO - this code creates directories without metadata files.  Add
@@ -154,7 +164,6 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
-	oldSiaPath := sf.staticMetadata.SiaPath
 	sf.staticMetadata.SiaPath = newSiaPath
 	// Update the ChangeTime because the metadata changed.
 	sf.staticMetadata.ChangeTime = time.Now()
@@ -171,10 +180,7 @@ func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	}
 	updates = append(updates, chunksUpdates...)
 	// Apply updates.
-	if err = sf.createAndApplyTransaction(updates...); err != nil {
-		return err
-	}
-	return sf.SiaFileSet.rename(oldSiaPath, newSiaPath)
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // SetMode sets the filemode of the sia file.
