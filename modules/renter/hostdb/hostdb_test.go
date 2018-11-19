@@ -174,7 +174,7 @@ func TestNew(t *testing.T) {
 	}
 	// Nil tpool.
 	_, err = New(g, cs, nil, hdbName+"3")
-	if err != errNilCS {
+	if err != errNilTPool {
 		t.Fatalf("expected %v, got %v", errNilTPool, err)
 	}
 	// Bad persistDir.

@@ -60,6 +60,10 @@ func (hdb *HostDB) managedUpdateTxnFees() {
 		difference = oldTxnFees.Sub(newTxnFees)
 	}
 	// Compute the percentage of change.
+	if oldTxnFees.Cmp(types.ZeroCurrency) == 0 {
+		// Avoid division by zero.
+		oldTxnFees = types.NewCurrency64(1)
+	}
 	ratio, exact := difference.Div(oldTxnFees).Float64()
 	if !exact {
 		hdb.log.Println("WARNING: converting difference to float wasn't exact")
