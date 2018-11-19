@@ -132,6 +132,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -151,6 +152,10 @@ type (
 		chunksRemaining uint64        // Number of chunks whose downloads are incomplete.
 		completeChan    chan struct{} // Closed once the download is complete.
 		err             error         // Only set if there was an error which prevented the download from completing.
+
+		// downloadCompleteFunc is a slice of functions which are called when
+		// completeChan is closed.
+		downloadCompleteFuncs []downloadCompleteFunc
 
 		// Timestamp information.
 		endTime         time.Time // Set immediately before closing 'completeChan'.
@@ -211,6 +216,22 @@ func (d *download) managedFail(err error) {
 
 	// Mark the download as complete and set the error.
 	d.err = err
+	d.markComplete()
+}
+
+// markComplete is a helper method which closes the completeChan and and
+// executes the downloadCompleteFuncs. The completeChan should always be closed
+// using this method.
+func (d *download) markComplete() {
+	// Execute the downloadCompleteFuncs before closing the channel. This gives
+	// the initiator of the download the nice guarantee that waiting for the
+	// completeChan to be closed also means that the downloadCompleteFuncs are
+	// done.
+	for _, f := range d.downloadCompleteFuncs {
+		f(d.err)
+	}
+	// Set downloadCompleteFuncs to nil to avoid executing them multiple times.
+	d.downloadCompleteFuncs = nil
 	close(d.completeChan)
 }
 
@@ -233,13 +254,20 @@ func (d *download) Err() (err error) {
 	return err
 }
 
-// RegisterOnComplete registers a function to be called when the
-// download is completed. This can either mean that it worked or failed.
-func (d *download) RegisterOnComplete(f downloadCompleteFunc) {
-	go func() {
-		<-d.completeChan
-		f(d.Err())
-	}()
+// OnComplete registers a function to be called when the download is completed.
+// This can either mean that the download worked or failed. The registered
+// functions are executed in the same order as they are registered and waiting
+// for the download's completeChan to be closed implies that the registered
+// functions were executed.
+func (d *download) OnComplete(f downloadCompleteFunc) {
+	select {
+	case <-d.completeChan:
+		build.Critical("Can't call OnComplete after download is completed")
+	default:
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.downloadCompleteFuncs = append(d.downloadCompleteFuncs, f)
 }
 
 // Download performs a file download using the passed parameters and blocks
@@ -353,7 +381,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 
 	// Once the download is done we close the file if we downloaded to disk.
 	if osFile, ok := dw.(*os.File); ok {
-		d.RegisterOnComplete(func(_ error) {
+		d.OnComplete(func(_ error) {
 			osFile.Close()
 		})
 	}
