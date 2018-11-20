@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // quitAfterLoadDeps will quit startup in newHostDB
@@ -58,11 +59,20 @@ func TestSaveLoad(t *testing.T) {
 	hdbt.hdb.hostTree.Insert(host2)
 	hdbt.hdb.hostTree.Insert(host3)
 
+	// Manually set listed Hosts and filterMode
+	filteredHosts := make(map[string]types.SiaPublicKey)
+	filteredHosts[string(host1.PublicKey.Key)] = host1.PublicKey
+	filteredHosts[string(host2.PublicKey.Key)] = host2.PublicKey
+	filteredHosts[string(host3.PublicKey.Key)] = host3.PublicKey
+	filterMode := modules.HostDBActiveWhitelist
+
 	// Save, close, and reload.
 	hdbt.hdb.mu.Lock()
 	hdbt.hdb.lastChange = modules.ConsensusChangeID{1, 2, 3}
 	hdbt.hdb.disableIPViolationCheck = true
 	stashedLC := hdbt.hdb.lastChange
+	hdbt.hdb.filteredHosts = filteredHosts
+	hdbt.hdb.filterMode = filterMode
 	err = hdbt.hdb.saveSync()
 	hdbt.hdb.mu.Unlock()
 	if err != nil {
@@ -104,6 +114,20 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if h3.FirstSeen != 2 {
 		t.Error("h1 block height loaded incorrectly")
+	}
+
+	// Check that FilterMode was saved
+	if hdbt.hdb.filterMode != modules.HostDBActiveWhitelist {
+		t.Error("filter mode should be whitelist")
+	}
+	if _, ok := hdbt.hdb.filteredHosts[string(host1.PublicKey.Key)]; !ok {
+		t.Error("host1 not found in filteredHosts")
+	}
+	if _, ok := hdbt.hdb.filteredHosts[string(host2.PublicKey.Key)]; !ok {
+		t.Error("host2 not found in filteredHosts")
+	}
+	if _, ok := hdbt.hdb.filteredHosts[string(host3.PublicKey.Key)]; !ok {
+		t.Error("host3 not found in filteredHosts")
 	}
 }
 

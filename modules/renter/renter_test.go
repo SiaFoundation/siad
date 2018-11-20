@@ -109,7 +109,11 @@ func (stubHostDB) ActiveHosts() []modules.HostDBEntry   { return nil }
 func (stubHostDB) AllHosts() []modules.HostDBEntry      { return nil }
 func (stubHostDB) AverageContractPrice() types.Currency { return types.Currency{} }
 func (stubHostDB) Close() error                         { return nil }
-func (stubHostDB) IsOffline(modules.NetAddress) bool    { return true }
+func (stubHostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey) {
+	return 0, make(map[string]types.SiaPublicKey)
+}
+func (stubHostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error { return nil }
+func (stubHostDB) IsOffline(modules.NetAddress) bool                                     { return true }
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return []modules.HostDBEntry{}, nil
 }
@@ -156,6 +160,63 @@ func (ps pricesStub) RandomHostsWithAllowance(_ int, _, _ []types.SiaPublicKey, 
 	return ps.dbEntries, nil
 }
 func (ps pricesStub) SetIPViolationCheck(enabled bool) { return }
+
+// TestRenterPricesDivideByZero verifies that the Price Estimation catches
+// divide by zero errors.
+func TestRenterPricesDivideByZero(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Confirm price estimation returns error if there are no hosts available
+	_, _, err = rt.renter.PriceEstimation(modules.Allowance{})
+	if err == nil {
+		t.Fatal("Expected error due to no hosts")
+	}
+
+	// Create a stubbed hostdb, add an entry.
+	hdb := &pricesStub{}
+	id := rt.renter.mu.Lock()
+	rt.renter.hostDB = hdb
+	rt.renter.mu.Unlock(id)
+	dbe := modules.HostDBEntry{}
+	dbe.ContractPrice = types.SiacoinPrecision
+	dbe.DownloadBandwidthPrice = types.SiacoinPrecision
+	dbe.UploadBandwidthPrice = types.SiacoinPrecision
+	dbe.StoragePrice = types.SiacoinPrecision
+	pk := fastrand.Bytes(crypto.EntropySize)
+	dbe.PublicKey = types.SiaPublicKey{Key: pk}
+	hdb.dbEntries = append(hdb.dbEntries, dbe)
+
+	// Confirm price estimation does not return an error now that there is a
+	// host available
+	_, _, err = rt.renter.PriceEstimation(modules.Allowance{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set allowance funds and host contract price such that the allowance funds
+	// are not sufficient to cover the contract price
+	allowance := modules.Allowance{
+		Funds:       types.SiacoinPrecision,
+		Hosts:       1,
+		Period:      12096,
+		RenewWindow: 4032,
+	}
+	dbe.ContractPrice = allowance.Funds.Mul64(2)
+
+	// Confirm price estimation returns error because of the contract and
+	// funding prices
+	_, _, err = rt.renter.PriceEstimation(allowance)
+	if err == nil {
+		t.Fatal("Expected error due to allowance funds inefficient")
+	}
+}
 
 // TestRenterPricesVolatility verifies that the renter caches its price
 // estimation, and subsequent calls result in non-volatile results.

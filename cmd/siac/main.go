@@ -15,6 +15,7 @@ import (
 
 var (
 	// Flags.
+	dictionaryLanguage     string // dictionary for seed utils
 	hostContractOutputType string // output type for host contracts
 	hostVerbose            bool   // display additional host info
 	initForce              bool   // destroy and re-encrypt the wallet on init if it already exists
@@ -25,6 +26,15 @@ var (
 	renterShowHistory      bool   // Show download history in addition to download queue.
 	siaDir                 string // Path to sia data dir
 	walletRawTxn           bool   // Encode/decode transactions in base64-encoded binary.
+
+	allowanceFunds              string // amount of money to be used within a period
+	allowancePeriod             string // length of period
+	allowanceHosts              string // number of hosts to form contracts with
+	allowanceRenewWindow        string // renew window of allowance
+	allowanceExpectedStorage    string // expected storage stored on hosts before redundancy
+	allowanceExpectedUpload     string // expected data uploaded within period
+	allowanceExpectedDownload   string // expected data downloaded within period
+	allowanceExpectedRedundancy string // expected redundancy of most uploaded files
 )
 
 var (
@@ -138,13 +148,23 @@ func main() {
 	renterFilesListCmd.Flags().BoolVarP(&renterListVerbose, "verbose", "v", false, "Show additional file info such as redundancy")
 	renterExportCmd.AddCommand(renterExportContractTxnsCmd)
 
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceFunds, "amount", "", "amount of money in allowance, specified in currency units")
+	renterSetAllowanceCmd.Flags().StringVar(&allowancePeriod, "period", "", "period of allowance in blocks (b), hours (h), days (d) or weeks (w)")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceHosts, "hosts", "", "number of hosts the renter will spread the uploaded data across")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceRenewWindow, "renew-window", "", "renew window in blocks (b), hours (h), days (d) or weeks (w)")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedStorage, "expected-storage", "", "expected storage in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedUpload, "expected-upload", "", "expected upload in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedRedundancy, "expected-redundancy", "", "expected redundancy of most uploaded files")
+
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd)
 
 	root.AddCommand(consensusCmd)
 
 	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsHastingsCmd, utilsEncodeRawTxnCmd, utilsDecodeRawTxnCmd,
-		utilsSigHashCmd, utilsCheckSigCmd)
+		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd)
+	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
 	root.AddCommand(utilsCmd)
 
 	// initialize client

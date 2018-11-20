@@ -170,7 +170,7 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 		return
 	}
 
-	// Grab the host from the host tree, and update it with the neew settings.
+	// Grab the host from the host tree, and update it with the new settings.
 	newEntry, exists := hdb.hostTree.Select(entry.PublicKey)
 	if exists {
 		newEntry.HostExternalSettings = entry.HostExternalSettings
@@ -235,7 +235,8 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	// hostdb. Only delete if there have been enough scans over a long enough
 	// period to be confident that the host really is offline for good.
 	if time.Now().Sub(newEntry.ScanHistory[0].Timestamp) > maxHostDowntime && !recentUptime && len(newEntry.ScanHistory) >= minScans {
-		err := hdb.hostTree.Remove(newEntry.PublicKey)
+		// Remove from hosttrees
+		err := hdb.remove(newEntry.PublicKey)
 		if err != nil {
 			hdb.log.Println("ERROR: unable to remove host newEntry which has had a ton of downtime:", err)
 		}
@@ -258,14 +259,16 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 
 	// Add the updated entry
 	if !exists {
-		err := hdb.hostTree.Insert(newEntry)
+		// Insert into Hosttrees
+		err := hdb.insert(newEntry)
 		if err != nil {
 			hdb.log.Println("ERROR: unable to insert entry which is was thought to be new:", err)
 		} else {
 			hdb.log.Debugf("Adding host %v to the hostdb. Net error: %v\n", newEntry.PublicKey.String(), netErr)
 		}
 	} else {
-		err := hdb.hostTree.Modify(newEntry)
+		// Modify hosttrees
+		err := hdb.modify(newEntry)
 		if err != nil {
 			hdb.log.Println("ERROR: unable to modify entry which is thought to exist:", err)
 		} else {
@@ -507,7 +510,7 @@ func (hdb *HostDB) threadedScan() {
 	hdb.mu.Unlock()
 
 	for {
-		// Set up a scan for the hostCheckupQuanity most valuable hosts in the
+		// Set up a scan for the hostCheckupQuantity most valuable hosts in the
 		// hostdb. Hosts that fail their scans will be docked significantly,
 		// pushing them further back in the hierarchy, ensuring that for the
 		// most part only online hosts are getting scanned unless there are

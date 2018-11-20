@@ -97,6 +97,11 @@ func (x Currency) Equals(y Currency) bool {
 	return x.Cmp(y) == 0
 }
 
+// Float64 will return the types.Currency as a float64.
+func (x Currency) Float64() (f64 float64, exact bool) {
+	return new(big.Rat).SetInt(&x.i).Float64()
+}
+
 // Equals64 returns true if x and y have the same value.
 func (x Currency) Equals64(y uint64) bool {
 	return x.Cmp64(y) == 0

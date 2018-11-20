@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -28,6 +29,8 @@ type hdbPersist struct {
 	BlockHeight              types.BlockHeight
 	DisableIPViolationsCheck bool
 	LastChange               modules.ConsensusChangeID
+	FilteredHosts            map[string]types.SiaPublicKey
+	FilterMode               modules.FilterMode
 }
 
 // persistData returns the data in the hostdb that will be saved to disk.
@@ -36,6 +39,8 @@ func (hdb *HostDB) persistData() (data hdbPersist) {
 	data.BlockHeight = hdb.blockHeight
 	data.DisableIPViolationsCheck = hdb.disableIPViolationCheck
 	data.LastChange = hdb.lastChange
+	data.FilteredHosts = hdb.filteredHosts
+	data.FilterMode = hdb.filterMode
 	return data
 }
 
@@ -48,6 +53,7 @@ func (hdb *HostDB) saveSync() error {
 func (hdb *HostDB) load() error {
 	// Fetch the data from the file.
 	var data hdbPersist
+	data.FilteredHosts = make(map[string]types.SiaPublicKey)
 	err := hdb.deps.LoadFile(persistMetadata, &data, filepath.Join(hdb.persistDir, persistFilename))
 	if err != nil {
 		return err
@@ -57,8 +63,14 @@ func (hdb *HostDB) load() error {
 	hdb.blockHeight = data.BlockHeight
 	hdb.disableIPViolationCheck = data.DisableIPViolationsCheck
 	hdb.lastChange = data.LastChange
+	hdb.filteredHosts = data.FilteredHosts
+	hdb.filterMode = data.FilterMode
 
-	// Load each of the hosts into the host tree.
+	if len(hdb.filteredHosts) > 0 {
+		hdb.filteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
+	}
+
+	// Load each of the hosts into the host trees.
 	for _, host := range data.AllHosts {
 		// COMPATv1.1.0
 		//
@@ -69,9 +81,9 @@ func (hdb *HostDB) load() error {
 			host.FirstSeen = hdb.blockHeight
 		}
 
-		err := hdb.hostTree.Insert(host)
+		err := hdb.insert(host)
 		if err != nil {
-			hdb.log.Debugln("ERROR: could not insert host while loading:", host.NetAddress)
+			hdb.log.Debugln("ERROR: could not insert host into hosttree while loading:", host.NetAddress)
 		}
 
 		// Make sure that all hosts have gone through the initial scanning.

@@ -51,6 +51,8 @@ type (
 		AllHosts() []modules.HostDBEntry
 		ActiveHosts() []modules.HostDBEntry
 		CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey
+		Filter() (modules.FilterMode, map[string]types.SiaPublicKey)
+		SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error
 		Host(types.SiaPublicKey) (modules.HostDBEntry, bool)
 		IncrementSuccessfulInteractions(key types.SiaPublicKey)
 		IncrementFailedInteractions(key types.SiaPublicKey)

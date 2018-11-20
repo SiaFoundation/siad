@@ -32,12 +32,16 @@ func (newStub) AcceptTransactionSet([]types.Transaction) error      { return nil
 func (newStub) FeeEstimation() (a types.Currency, b types.Currency) { return }
 
 // hdb stubs
-func (newStub) AllHosts() []modules.HostDBEntry                                 { return nil }
-func (newStub) ActiveHosts() []modules.HostDBEntry                              { return nil }
-func (newStub) CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey  { return nil }
-func (newStub) Host(types.SiaPublicKey) (settings modules.HostDBEntry, ok bool) { return }
-func (newStub) IncrementSuccessfulInteractions(key types.SiaPublicKey)          { return }
-func (newStub) IncrementFailedInteractions(key types.SiaPublicKey)              { return }
+func (newStub) AllHosts() []modules.HostDBEntry                                { return nil }
+func (newStub) ActiveHosts() []modules.HostDBEntry                             { return nil }
+func (newStub) CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey { return nil }
+func (newStub) Filter() (modules.FilterMode, map[string]types.SiaPublicKey) {
+	return 0, make(map[string]types.SiaPublicKey)
+}
+func (newStub) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error { return nil }
+func (newStub) Host(types.SiaPublicKey) (settings modules.HostDBEntry, ok bool)       { return }
+func (newStub) IncrementSuccessfulInteractions(key types.SiaPublicKey)                { return }
+func (newStub) IncrementFailedInteractions(key types.SiaPublicKey)                    { return }
 func (newStub) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return nil, nil
 }
@@ -111,10 +115,14 @@ type stubHostDB struct{}
 func (stubHostDB) AllHosts() (hs []modules.HostDBEntry)                           { return }
 func (stubHostDB) ActiveHosts() (hs []modules.HostDBEntry)                        { return }
 func (stubHostDB) CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey { return nil }
-func (stubHostDB) Host(types.SiaPublicKey) (h modules.HostDBEntry, ok bool)       { return }
-func (stubHostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey)         { return }
-func (stubHostDB) IncrementFailedInteractions(key types.SiaPublicKey)             { return }
-func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                            { return }
+func (stubHostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey) {
+	return 0, make(map[string]types.SiaPublicKey)
+}
+func (stubHostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error { return nil }
+func (stubHostDB) Host(types.SiaPublicKey) (h modules.HostDBEntry, ok bool)              { return }
+func (stubHostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey)                { return }
+func (stubHostDB) IncrementFailedInteractions(key types.SiaPublicKey)                    { return }
+func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                                   { return }
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) (hs []modules.HostDBEntry, _ error) {
 	return
 }
@@ -170,10 +178,14 @@ func TestAllowanceSpending(t *testing.T) {
 
 	// set an allowance
 	testAllowance := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(6000),
-		RenewWindow: 100,
-		Hosts:       1,
-		Period:      200,
+		Funds:              types.SiacoinPrecision.Mul64(6000),
+		RenewWindow:        100,
+		Hosts:              1,
+		Period:             200,
+		ExpectedStorage:    modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
+		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
+		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(testAllowance)
 	if err != nil {
@@ -326,10 +338,30 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != errAllowanceWindowSize {
 		t.Errorf("expected %q, got %q", errAllowanceWindowSize, err)
 	}
+	a.RenewWindow = 10
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedStorage {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedStorage, err)
+	}
+	a.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedUpload {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedUpload, err)
+	}
+	a.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedDownload {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedDownload, err)
+	}
+	a.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
+	err = c.SetAllowance(a)
+	if err != errAllowanceZeroExpectedRedundancy {
+		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedRedundancy, err)
+	}
+	a.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 
 	// reasonable values; should succeed
 	a.Funds = types.SiacoinPrecision.Mul64(100)
-	a.RenewWindow = 10
 	err = c.SetAllowance(a)
 	if err != nil {
 		t.Fatal(err)
@@ -449,10 +481,14 @@ func TestHostMaxDuration(t *testing.T) {
 
 	// Create allowance
 	a := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(100),
-		Hosts:       1,
-		Period:      30,
-		RenewWindow: 20,
+		Funds:              types.SiacoinPrecision.Mul64(100),
+		Hosts:              1,
+		Period:             30,
+		RenewWindow:        20,
+		ExpectedStorage:    modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
+		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
+		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
@@ -558,10 +594,14 @@ func TestLinkedContracts(t *testing.T) {
 
 	// Create allowance
 	a := modules.Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(100),
-		Hosts:       1,
-		Period:      20,
-		RenewWindow: 10,
+		Funds:              types.SiacoinPrecision.Mul64(100),
+		Hosts:              1,
+		Period:             20,
+		RenewWindow:        10,
+		ExpectedStorage:    modules.DefaultAllowance.ExpectedStorage,
+		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
+		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
+		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {

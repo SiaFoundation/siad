@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -39,6 +40,13 @@ type (
 	// HostdbGet holds information about the hostdb.
 	HostdbGet struct {
 		InitialScanComplete bool `json:"initialscancomplete"`
+	}
+
+	// HostdbFilterModePOST contains the information needed to set the the
+	// FilterMode of the hostDB
+	HostdbFilterModePOST struct {
+		FilterMode string               `json:"filtermode"`
+		Hosts      []types.SiaPublicKey `json:"hosts"`
 	}
 )
 
@@ -110,7 +118,7 @@ func (api *API) hostdbAllHandler(w http.ResponseWriter, req *http.Request, _ htt
 }
 
 // hostdbHostsHandler handles the API call asking for a specific host,
-// returning detailed informatino about that host.
+// returning detailed information about that host.
 func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	var pk types.SiaPublicKey
 	pk.LoadString(ps.ByName("pubkey"))
@@ -131,4 +139,29 @@ func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps 
 		Entry:          extendedEntry,
 		ScoreBreakdown: breakdown,
 	})
+}
+
+// hostdbFilterModeHandlerPOST handles the API call to set the hostdb's filter
+// mode
+func (api *API) hostdbFilterModeHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse parameters
+	var params HostdbFilterModePOST
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	var fm modules.FilterMode
+	if err = fm.FromString(params.FilterMode); err != nil {
+		WriteError(w, Error{"unable to load filter mode from string: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Set list mode
+	if err := api.renter.SetFilterMode(fm, params.Hosts); err != nil {
+		WriteError(w, Error{"failed to set the list mode: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
 }

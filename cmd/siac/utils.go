@@ -14,7 +14,9 @@ import (
 	"github.com/spf13/cobra/doc"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 )
 
 var (
@@ -92,6 +94,14 @@ e.g. ed25519:d0e1a2d3b4e5e6f7...
 Use sighash to calculate the hash of a transaction.
 `,
 		Run: wrap(utilschecksigcmd),
+	}
+
+	utilsVerifySeedCmd = &cobra.Command{
+		Use:   "verify-seed",
+		Short: "verify seed is formatted correctly",
+		Long: `Verify that a seed has correct number of words, no extra whitespace,
+and all words appear in the Sia dictionary. The language may be english (default), japanese, or german`,
+		Run: wrap(utilsverifyseed),
 	}
 )
 
@@ -208,4 +218,18 @@ func utilschecksigcmd(base64Sig, hexHash, pkStr string) {
 	} else {
 		log.Fatalln("Bad signature")
 	}
+}
+
+func utilsverifyseed() {
+	seed, err := passwordPrompt("Please enter your seed: ")
+	if err != nil {
+		die("Could not read seed")
+	}
+
+	_, err = modules.StringToSeed(seed, mnemonics.DictionaryID(strings.ToLower(dictionaryLanguage)))
+	if err != nil {
+		die(err)
+	}
+	fmt.Println("No issues detected with your seed")
+
 }

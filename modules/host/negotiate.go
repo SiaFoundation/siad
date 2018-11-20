@@ -218,6 +218,8 @@ func (h *Host) managedFinalizeContract(builder modules.TransactionBuilder, rente
 		PotentialStorageRevenue: hostInitialRevenue,
 		RiskedCollateral:        hostInitialRisk,
 
+		NegotiationHeight: blockHeight,
+
 		OriginTransactionSet:   fullTxnSet,
 		RevisionTransactionSet: []types.Transaction{revisionTransaction},
 	}

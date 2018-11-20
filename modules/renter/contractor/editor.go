@@ -146,6 +146,8 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 		return nil, errors.New("contract has already ended")
 	} else if !haveHost {
 		return nil, errors.New("no record of that host")
+	} else if host.Filtered {
+		return nil, errors.New("host is blacklisted")
 	} else if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return nil, errTooExpensive
 	} else if host.UploadBandwidthPrice.Cmp(maxUploadPrice) > 0 {

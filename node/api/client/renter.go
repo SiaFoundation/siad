@@ -10,7 +10,82 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
+
+type (
+	// AllowanceRequestPost is a helper type to be able to build an allowance
+	// request.
+	AllowanceRequestPost struct {
+		c      *Client
+		sent   bool
+		values url.Values
+	}
+)
+
+// RenterPostPartialAllowance starts an allowance request which can be extended
+// using its methods.
+func (c *Client) RenterPostPartialAllowance() *AllowanceRequestPost {
+	return &AllowanceRequestPost{c: c, values: make(url.Values)}
+}
+
+// WithFunds adds the funds field to the request.
+func (a *AllowanceRequestPost) WithFunds(funds types.Currency) *AllowanceRequestPost {
+	a.values.Set("funds", funds.String())
+	return a
+}
+
+// WithHosts adds the hosts field to the request.
+func (a *AllowanceRequestPost) WithHosts(hosts uint64) *AllowanceRequestPost {
+	a.values.Set("hosts", fmt.Sprint(hosts))
+	return a
+}
+
+// WithPeriod adds the period field to the request.
+func (a *AllowanceRequestPost) WithPeriod(period types.BlockHeight) *AllowanceRequestPost {
+	a.values.Set("period", fmt.Sprint(period))
+	return a
+}
+
+// WithRenewWindow adds the renewwindow field to the request.
+func (a *AllowanceRequestPost) WithRenewWindow(renewWindow types.BlockHeight) *AllowanceRequestPost {
+	a.values.Set("renewwindow", fmt.Sprint(renewWindow))
+	return a
+}
+
+// WithExpectedStorage adds the expected storage field to the request.
+func (a *AllowanceRequestPost) WithExpectedStorage(expectedStorage uint64) *AllowanceRequestPost {
+	a.values.Set("expectedstorage", fmt.Sprint(expectedStorage))
+	return a
+}
+
+// WithExpectedUpload adds the expected upload field to the request.
+func (a *AllowanceRequestPost) WithExpectedUpload(expectedUpload uint64) *AllowanceRequestPost {
+	a.values.Set("expectedupload", fmt.Sprint(expectedUpload))
+	return a
+}
+
+// WithExpectedDownload adds the expected download field to the request.
+func (a *AllowanceRequestPost) WithExpectedDownload(expectedDownload uint64) *AllowanceRequestPost {
+	a.values.Set("expecteddownload", fmt.Sprint(expectedDownload))
+	return a
+}
+
+// WithExpectedRedundancy adds the expected redundancy field to the request.
+func (a *AllowanceRequestPost) WithExpectedRedundancy(expectedRedundancy float64) *AllowanceRequestPost {
+	a.values.Set("expectedredundancy", fmt.Sprint(expectedRedundancy))
+	return a
+}
+
+// Send finalizes and sends the request.
+func (a *AllowanceRequestPost) Send() (err error) {
+	if a.sent {
+		return errors.New("Error, request already sent")
+	}
+	a.sent = true
+	err = a.c.post("/renter", a.values.Encode(), nil)
+	return
+}
 
 // escapeSiaPath escapes the siapath to make it safe to use within a URL. This
 // should only be used on SiaPaths which are used as part of the URL path.
@@ -169,14 +244,17 @@ func (c *Client) RenterGet() (rg api.RenterGET, err error) {
 }
 
 // RenterPostAllowance uses the /renter endpoint to change the renter's allowance
-func (c *Client) RenterPostAllowance(allowance modules.Allowance) (err error) {
-	values := url.Values{}
-	values.Set("funds", allowance.Funds.String())
-	values.Set("hosts", fmt.Sprint(allowance.Hosts))
-	values.Set("period", fmt.Sprint(uint64(allowance.Period)))
-	values.Set("renewwindow", fmt.Sprint(uint64(allowance.RenewWindow)))
-	err = c.post("/renter", values.Encode(), nil)
-	return
+func (c *Client) RenterPostAllowance(allowance modules.Allowance) error {
+	a := c.RenterPostPartialAllowance()
+	a = a.WithFunds(allowance.Funds)
+	a = a.WithHosts(allowance.Hosts)
+	a = a.WithPeriod(allowance.Period)
+	a = a.WithRenewWindow(allowance.RenewWindow)
+	a = a.WithExpectedStorage(allowance.ExpectedStorage)
+	a = a.WithExpectedUpload(allowance.ExpectedUpload)
+	a = a.WithExpectedDownload(allowance.ExpectedDownload)
+	a = a.WithExpectedRedundancy(allowance.ExpectedRedundancy)
+	return a.Send()
 }
 
 // RenterCancelAllowance uses the /renter endpoint to cancel the allowance.
@@ -221,7 +299,7 @@ func (c *Client) RenterSetStreamCacheSizePost(cacheSize uint64) (err error) {
 	return
 }
 
-// RenterSetIPViolationCheck uses the /renter endpoint to enable/disable the IP
+// RenterSetCheckIPViolationPost uses the /renter endpoint to enable/disable the IP
 // violation check in the renter.
 func (c *Client) RenterSetCheckIPViolationPost(enabled bool) (err error) {
 	values := url.Values{}
@@ -257,11 +335,18 @@ func (c *Client) RenterSetRepairPathPost(siaPath, newPath string) (err error) {
 
 // RenterUploadPost uses the /renter/upload endpoint to upload a file
 func (c *Client) RenterUploadPost(path, siaPath string, dataPieces, parityPieces uint64) (err error) {
+	return c.RenterUploadForcePost(path, siaPath, dataPieces, parityPieces, false)
+}
+
+// RenterUploadForcePost uses the /renter/upload endpoint to upload a file
+// and to overwrite if the file already exists
+func (c *Client) RenterUploadForcePost(path, siaPath string, dataPieces, parityPieces uint64, force bool) (err error) {
 	siaPath = escapeSiaPath(trimSiaPath(siaPath))
 	values := url.Values{}
 	values.Set("source", path)
 	values.Set("datapieces", strconv.FormatUint(dataPieces, 10))
 	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
+	values.Set("force", strconv.FormatBool(force))
 	err = c.post(fmt.Sprintf("/renter/upload/%s", siaPath), values.Encode(), nil)
 	return
 }
