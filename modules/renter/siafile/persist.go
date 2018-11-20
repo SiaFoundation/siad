@@ -10,16 +10,29 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
-// ApplyUpdates applies a number of writeaheadlog updates to the corresponding
+// ApplyUpdates is a wrapper for applyUpdates that uses the production
+// dependencies.
+func ApplyUpdates(updates ...writeaheadlog.Update) error {
+	return applyUpdates(modules.ProdDependencies, updates...)
+}
+
+// LoadSiaFile is a wrapper for loadSiaFile that uses the production
+// dependencies.
+func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
+	return loadSiaFile(path, wal, modules.ProdDependencies)
+}
+
+// applyUpdates applies a number of writeaheadlog updates to the corresponding
 // SiaFile. This method can apply updates from different SiaFiles and should
 // only be run before the SiaFiles are loaded from disk right after the startup
 // of siad. Otherwise we might run into concurrency issues.
-func ApplyUpdates(updates ...writeaheadlog.Update) error {
+func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := func() error {
 			// Check if it is a delete update.
@@ -60,16 +73,17 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	return nil
 }
 
-// LoadSiaFile loads a SiaFile from disk.
-func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
+// loadSiaFile loads a SiaFile from disk.
+func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
 	// Create the SiaFile
 	sf := &SiaFile{
+		deps:           deps,
 		staticUniqueID: hex.EncodeToString(fastrand.Bytes(8)),
 		siaFilePath:    path,
 		wal:            wal,
 	}
 	// Open the file.
-	f, err := os.Open(path)
+	f, err := sf.deps.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +165,7 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 		build.Critical("the chunk offset is not page aligned")
 	}
 	// Open the file.
-	f, err := os.Open(sf.siaFilePath)
+	f, err := sf.deps.Open(sf.siaFilePath)
 	if err != nil {
 		return writeaheadlog.Update{}, err
 	}
@@ -180,7 +194,7 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 // it already has an open file handle.
 func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// Open the file.
-	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
+	f, err := sf.deps.OpenFile(sf.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return err
 	}
