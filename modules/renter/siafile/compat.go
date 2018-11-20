@@ -94,9 +94,5 @@ func NewFromFileData(fd FileData, sfs *SiaFileSet) (*SiaFile, error) {
 			}
 		}
 	}
-	file.SiaFileSet = sfs
-	sfs.mu.Lock()
-	sfs.SiaFileMap[fd.Name] = file
-	sfs.mu.Unlock()
 	return file, nil
 }

@@ -21,24 +21,85 @@ type (
 	// SiaFileSet is a helper struct responsible for managing the renter's
 	// siafiles in memory
 	SiaFileSet struct {
-		SiaFileMap map[string]*SiaFile
+		siaFileMap map[string]*SiaFileSetEntry
 
 		// utilities
 		mu  sync.Mutex
 		wal *writeaheadlog.WAL
+	}
+
+	// SiaFileSetEntry contains information about the threads accessing the
+	// SiaFile and references to the SiaFile and the SiaFileSet
+	SiaFileSetEntry struct {
+		siaFile    *SiaFile
+		siaFileSet *SiaFileSet
+		siaPath    string // This is the siaPath used to open the file
+
+		threadMap map[ThreadType]int
+
+		mu sync.Mutex
 	}
 )
 
 // NewSiaFileSet initializes and returns a SiaFileSet
 func NewSiaFileSet() *SiaFileSet {
 	return &SiaFileSet{
-		SiaFileMap: make(map[string]*SiaFile),
+		siaFileMap: make(map[string]*SiaFileSetEntry),
+	}
+}
+
+// Close decrements the threadType count. If the threadType count is 0 then it
+// will remove the SiaFileSetEntry from the SiaFileSet map, which will remove it
+// from memory
+//
+// NOTE: Close should use the SiaPath that is stored in the SiaFileSetEntry as
+// it was used to open the file, otherwise there is risk of SiaFileSetEntries
+// being stuck in the map or not being found in the map if another thread
+// renames the SiaPath
+func (entry *SiaFileSetEntry) Close(threadType ThreadType) error {
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if _, ok := entry.threadMap[threadType]; !ok {
+		return ErrUnknownThread
+	}
+	entry.threadMap[threadType]--
+	if entry.threadMap[threadType] < 0 {
+		build.Critical("threadType count should never be less than zero")
+	}
+	if entry.threadMap[threadType] == 0 {
+		delete(entry.threadMap, threadType)
+	}
+	if len(entry.threadMap) == 0 {
+		entry.siaFileSet.mu.Lock()
+		delete(entry.siaFileSet.siaFileMap, entry.siaPath)
+		entry.siaFileSet.mu.Unlock()
+	}
+	return nil
+}
+
+// SiaFile returns the SiaFileSetEntry's SiaFile
+func (entry *SiaFileSetEntry) SiaFile() *SiaFile {
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	return entry.siaFile
+}
+
+// newSiaFileSetEntry initializes and returns a SiaFileSetEntry
+func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile, siaPath string, threadType ThreadType) *SiaFileSetEntry {
+	threads := make(map[ThreadType]int)
+	threads[threadType] = 0
+	return &SiaFileSetEntry{
+		siaPath:    siaPath,
+		siaFile:    sf,
+		siaFileSet: sfs,
+		threadMap:  threads,
 	}
 }
 
 // All returns all the siafiles in the renter by either returning them from the
-// SiaFileSet of reading them from disk, this will also add the threadType to
-// all the SiaFile threadMaps and increment the thread type counters.
+// SiaFileSet of reading them from disk. The SiaFileSetEntry is closed after the
+// SiaFile is added to the slice. This way the files are removed from memory by
+// GC as soon as the calling method returns
 //
 // Note: This is currently only needed for the Files endpoint. This is an
 // expensive call so it should be avoided unless absolutely necessary
@@ -60,11 +121,14 @@ func (sfs *SiaFileSet) All(dir string, threadType ThreadType) ([]*SiaFile, error
 
 		// Load the Siafile.
 		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, dir), ShareExtension)
-		sf, err := sfs.Open(siaPath, dir, SiaFileLoadThread)
+		entry, err := sfs.Open(siaPath, dir, SiaFileLoadThread)
 		if err != nil {
 			return nil
 		}
-		siaFiles = append(siaFiles, sf)
+		siaFiles = append(siaFiles, entry.siaFile)
+		if err := entry.Close(SiaFileLoadThread); err != nil {
+			return nil
+		}
 		return nil
 	})
 }
@@ -76,104 +140,93 @@ func (sfs *SiaFileSet) AssignWAL(wal *writeaheadlog.WAL) {
 	sfs.wal = wal
 }
 
-// Close finds the siafile with the corresponding siapath and decrements the
-// threadType count. If the threadType count is 0 then it will remove the file
-// from memory
-//
-// NOTE: Close should be called with the SiaPath that was used to open the file,
-// otherwise there is risk of SiaFiles being stuck in the map or not being found
-// in the map if another thread rename's the SiaPath
-func (sfs *SiaFileSet) Close(siaPath string, threadType ThreadType) error {
+// Delete deletes the SiaFileSetEntry's SiaFile
+func (sfs *SiaFileSet) Delete(entry *SiaFileSetEntry) error {
+	// Lock the SiaFileSet
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	sf, exists := sfs.SiaFileMap[siaPath]
+	// Lock the entry
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	// Check that the entry is in SiaFileSet
+	_, exists := sfs.siaFileMap[entry.siaPath]
 	if !exists {
-		build.Critical("siafile doesn't exist")
 		return ErrUnknownPath
 	}
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	if _, ok := sf.threadMap[threadType]; !ok {
-		return ErrUnknownThread
-	}
-	sf.threadMap[threadType]--
-	if sf.threadMap[threadType] < 0 {
-		build.Critical("threadType count should never be less than zero")
-	}
-	if sf.threadMap[threadType] == 0 {
-		delete(sf.threadMap, threadType)
-	}
-	if len(sf.threadMap) == 0 {
-		delete(sfs.SiaFileMap, siaPath)
+	// Delete SiaFile
+	if err := entry.siaFile.Delete(); err != nil {
+		return err
 	}
 	return nil
 }
 
 // NewSiaFile create a new SiaFile, adds it to the SiaFileSet, increments the
-// threadCount, and returns the SiaFile. Since this method returns the siafile,
-// wherever NewSiaFile is called should then Return the SiaFile to the
+// threadCount, and returns the SiaFileSetEntry. Since this method returns the
+// siafile, wherever NewSiaFile is called should then Return the SiaFile to the
 // SiaFileSet to avoid the file being stuck in memory due the threadCount never
 // being decremented after creating the SiaFile
-func (sfs *SiaFileSet) NewSiaFile(siaFilePath, siaPath, source string, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, threadType ThreadType) (*SiaFile, error) {
+func (sfs *SiaFileSet) NewSiaFile(siaFilePath, siaPath, source string, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, threadType ThreadType) (*SiaFileSetEntry, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	sf, err := New(siaFilePath, siaPath, source, sfs.wal, erasureCode, masterKey, fileSize, fileMode)
 	if err != nil {
 		return nil, err
 	}
-	sf.mu.Lock()
-	if _, ok := sf.threadMap[threadType]; !ok {
-		sf.threadMap[threadType] = 0
-	}
-	sf.threadMap[threadType]++
-	sf.SiaFileSet = sfs
-	sf.mu.Unlock()
-	sfs.SiaFileMap[sf.SiaPath()] = sf
-	return sf, nil
-}
-
-// managedCheckConflict checks to see if there is a conflict between a new and
-// an old key when renaming files
-func (sfs *SiaFileSet) managedCheckConflict(oldKey, newKey string) error {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	_, exists := sfs.SiaFileMap[oldKey]
-	if !exists {
-		return ErrUnknownPath
-	}
-	_, exists = sfs.SiaFileMap[newKey]
-	if exists {
-		return ErrPathOverload
-	}
-	return nil
+	entry := sfs.newSiaFileSetEntry(sf, siaPath, threadType)
+	entry.threadMap[threadType]++
+	sfs.siaFileMap[siaPath] = entry
+	return entry, nil
 }
 
 // Open returns the siafile from the SiaFileSet for the corresponding key and
 // increments the threadCount. If the siafile is not in memory it will load it
 // from disk
-func (sfs *SiaFileSet) Open(siaPath, filesDir string, threadType ThreadType) (*SiaFile, error) {
+func (sfs *SiaFileSet) Open(siaPath, filesDir string, threadType ThreadType) (*SiaFileSetEntry, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	// Check for file in Memory
-	var sf *SiaFile
-	var err error
-	sf, exists := sfs.SiaFileMap[siaPath]
+	var entry *SiaFileSetEntry
+	entry, exists := sfs.siaFileMap[siaPath]
 	if !exists {
 		// Try and Load File from disk
-		sf, err = LoadSiaFile(filepath.Join(filesDir, siaPath+ShareExtension), sfs.wal)
+		sf, err := LoadSiaFile(filepath.Join(filesDir, siaPath+ShareExtension), sfs.wal)
 		if err != nil {
 			return nil, err
 		}
-		sfs.SiaFileMap[sf.SiaPath()] = sf
-		sf.mu.Lock()
-		sf.SiaFileSet = sfs
-		sf.mu.Unlock()
+		entry = sfs.newSiaFileSetEntry(sf, siaPath, threadType)
+		sfs.siaFileMap[siaPath] = entry
 	}
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	if _, ok := sf.threadMap[threadType]; !ok {
-		sf.threadMap[threadType] = 0
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if _, ok := entry.threadMap[threadType]; !ok {
+		entry.threadMap[threadType] = 0
 	}
-	sf.threadMap[threadType]++
-	return sf, nil
+	entry.threadMap[threadType]++
+	return entry, nil
+}
+
+// Rename renames the SiaFile of the SiaFileSetEntry, it does not create a new
+// entry for the new name nor does it delete the entry with with old name
+func (sfs *SiaFileSet) Rename(entry *SiaFileSetEntry, newSiaPath, newSiaFilePath string) error {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	_, exists := sfs.siaFileMap[entry.siaPath]
+	if !exists {
+		return ErrUnknownPath
+	}
+	_, exists = sfs.siaFileMap[newSiaPath]
+	if exists {
+		return ErrPathOverload
+	}
+
+	return entry.siaFile.Rename(newSiaPath, newSiaFilePath)
+}
+
+// SiaFileMap returns the SiaFileMap of the SiaFileSet
+func (sfs *SiaFileSet) SiaFileMap() map[string]*SiaFileSetEntry {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.siaFileMap
 }

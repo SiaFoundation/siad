@@ -266,13 +266,12 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters) error {
 // setup was successful.
 func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
 	// Lookup the file associated with the nickname.
-	file, err := r.staticFileSet.Open(p.SiaPath, r.filesDir, siafile.SiaFileDownloadThread)
+	entry, err := r.staticFileSet.Open(p.SiaPath, r.filesDir, siafile.SiaFileDownloadThread)
 	if err != nil {
 		return nil, err
 	}
-	// Close must be called with the siaPath of the file when it was opened to
-	// prevent errors on close if the file was renamed by a parallel thread
-	defer r.staticFileSet.Close(p.SiaPath, siafile.SiaFileDownloadThread)
+	defer entry.Close(siafile.SiaFileDownloadThread)
+	file := entry.SiaFile()
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil

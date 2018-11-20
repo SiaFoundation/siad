@@ -62,13 +62,6 @@ type (
 
 		// siaFilePath is the path to the .sia file on disk.
 		siaFilePath string
-
-		// SiaFileSet helps track the number of threads using a siafile.
-		// threadMap maps ThreadType to an int as some threads, like download,
-		// can have multiple of the same threadType accessing the file. In those
-		// cases the int will be incremented
-		SiaFileSet *SiaFileSet
-		threadMap  map[ThreadType]int
 	}
 
 	// chunk represents a single chunk of a file on disk
@@ -174,7 +167,6 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 		siaFilePath:    siaFilePath,
 		staticUniqueID: hex.EncodeToString(fastrand.Bytes(20)),
 		wal:            wal,
-		threadMap:      make(map[ThreadType]int),
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()

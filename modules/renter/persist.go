@@ -251,16 +251,13 @@ func (r *Renter) loadSiaFiles() error {
 
 		// Load the Siafile.
 		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.filesDir), siafile.ShareExtension)
-		_, err = r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileLoadThread)
+		entry, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileLoadThread)
 		if err != nil {
 			// TODO try loading the file with the legacy format.
 			r.log.Println("ERROR: could not open .sia file:", err)
 			return nil
 		}
-		// Close must be called with the siaPath of the file when it was opened
-		// to prevent errors on close if the file was renamed by a parallel
-		// thread
-		err = r.staticFileSet.Close(siaPath, siafile.SiaFileLoadThread)
+		err = entry.Close(siafile.SiaFileLoadThread)
 		if err != nil {
 			r.log.Println("ERROR: could not close siafile:", siaPath)
 		}
@@ -339,16 +336,13 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		dupCount := 0
 		origName := files[i].name
 		for {
-			_, err = r.staticFileSet.Open(files[i].name, r.filesDir, siafile.SiaFileLoadThread)
+			entry, err := r.staticFileSet.Open(files[i].name, r.filesDir, siafile.SiaFileLoadThread)
 			if err != nil {
 				break
 			}
 			dupCount++
 			files[i].name = origName + "_" + strconv.Itoa(dupCount)
-			// Close must be called with the siaPath of the file when it was
-			// opened to prevent errors on close if the file was renamed by a
-			// parallel thread
-			err = r.staticFileSet.Close(files[i].name, siafile.SiaFileLoadThread)
+			err = entry.Close(siafile.SiaFileLoadThread)
 			if err != nil {
 				break
 			}

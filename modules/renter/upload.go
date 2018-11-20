@@ -111,13 +111,12 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	cipherType := crypto.TypeDefaultRenter
 
 	// Create the Siafile and add to renter
-	f, err := r.staticFileSet.NewSiaFile(siaFilePath, up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode(), siafile.SiaFileUploadThread)
+	entry, err := r.staticFileSet.NewSiaFile(siaFilePath, up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode(), siafile.SiaFileUploadThread)
 	if err != nil {
 		return err
 	}
-	// Close must be called with the siaPath of the file when it was opened to
-	// prevent errors on close if the file was renamed by a parallel thread
-	defer r.staticFileSet.Close(up.SiaPath, siafile.SiaFileUploadThread)
+	defer entry.Close(siafile.SiaFileUploadThread)
+	f := entry.SiaFile()
 
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()

@@ -65,15 +65,13 @@ type pieceData struct {
 // TODO: The data is not cleared from any contracts where the host is not
 // immediately online.
 func (r *Renter) DeleteFile(nickname string) error {
-	sf, err := r.staticFileSet.Open(nickname, r.filesDir, siafile.SiaFileDeleteThread)
+	entry, err := r.staticFileSet.Open(nickname, r.filesDir, siafile.SiaFileDeleteThread)
 	if err != nil {
 		return err
 	}
-	// Close must be called with the siaPath of the file when it was opened to
-	// prevent errors on close if the file was renamed by a parallel thread
-	defer r.staticFileSet.Close(nickname, siafile.SiaFileDownloadThread)
+	defer entry.Close(siafile.SiaFileDeleteThread)
 	// TODO: delete the sectors of the file as well.
-	if err := sf.Delete(); err != nil {
+	if err := r.staticFileSet.Delete(entry); err != nil {
 		return err
 	}
 	// Save renter
@@ -139,12 +137,6 @@ func (r *Renter) FileList() []modules.FileInfo {
 			UploadedBytes:  f.UploadedBytes(),
 			UploadProgress: f.UploadProgress(),
 		})
-		// TODO: this needs to be updated now as this is not thread safe to call
-		// close the siafile with the current siapath, it needs to be closed
-		// with the siapath that it was opened with
-		if err := r.staticFileSet.Close(f.SiaPath(), siafile.SiaFileAPIThread); err != nil {
-			r.log.Debugln("WARN: the following file could not be closed:", f.SiaPath())
-		}
 	}
 	return fileList
 }
@@ -153,13 +145,12 @@ func (r *Renter) FileList() []modules.FileInfo {
 // Update based on FileList
 func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	// Get the file and its contracts
-	file, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileAPIThread)
+	entry, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileAPIThread)
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
-	// Close must be called with the siaPath of the file when it was opened to
-	// prevent errors on close if the file was renamed by a parallel thread
-	defer r.staticFileSet.Close(siaPath, siafile.SiaFileAPIThread)
+	defer entry.Close(siafile.SiaFileAPIThread)
+	file := entry.SiaFile()
 	pks := file.HostPublicKeys()
 
 	// Build 2 maps that map every contract id to its offline and goodForRenew
@@ -213,14 +204,12 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 	if err != nil {
 		return err
 	}
-	sf, err := r.staticFileSet.Open(currentName, r.filesDir, siafile.SiaFileRenameThread)
+	entry, err := r.staticFileSet.Open(currentName, r.filesDir, siafile.SiaFileRenameThread)
 	if err != nil {
 		return err
 	}
-	// Close must be called with the siaPath of the file when it was opened to
-	// prevent errors on close if the file was renamed by a parallel thread
-	defer r.staticFileSet.Close(currentName, siafile.SiaFileRenameThread)
-	return sf.Rename(newName, filepath.Join(r.filesDir, newName+siafile.ShareExtension))
+	defer entry.Close(siafile.SiaFileRenameThread)
+	return r.staticFileSet.Rename(entry, newName, filepath.Join(r.filesDir, newName+siafile.ShareExtension))
 }
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
