@@ -16,7 +16,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -80,13 +79,8 @@ func (hdb *HostDB) managedUpdateTxnFees() {
 	hdb.mu.Unlock()
 	// Recompute the host weight function.
 	hwf := hdb.managedCalculateHostWeightFn(allowance)
-	hdb.mu.Lock()
-	hdb.weightFunc = hwf
-	hdb.mu.Unlock()
-	// Set the weight funtion and rebuild the tree.
-	err1 := hdb.hostTree.SetWeightFunction(hwf)
-	err2 := hdb.filteredTree.SetWeightFunction(hwf)
-	if err := errors.Compose(err1, err2); err != nil {
+	// Set the weight funtion.
+	if err := hdb.managedSetWeightFunction(hwf); err != nil {
 		// This shouldn't happen.
 		build.Critical("Failed to set the new weight function", err)
 	}

@@ -125,6 +125,23 @@ func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
 	return err
 }
 
+// managedSetWeightFunction is a helper function that sets the weightFunc field
+// of the hostdb and also updates the the weight function used by the hosttrees
+// by rebuilding them. Apart from the constructor of the hostdb, this method
+// should be used to update the weight function in the hostdb and hosttrees.
+func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
+	// Set the weight function in the hostdb.
+	hdb.mu.Lock()
+	hdb.weightFunc = wf
+	hdb.mu.Unlock()
+	// Update the hosttree and also the filteredTree if they are not the same.
+	err := hdb.hostTree.SetWeightFunction(wf)
+	if hdb.filteredTree != hdb.hostTree {
+		err = errors.Compose(err, hdb.filteredTree.SetWeightFunction(wf))
+	}
+	return err
+}
+
 // New returns a new HostDB.
 func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, error) {
 	// Check for nil inputs.
@@ -520,15 +537,12 @@ func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 		allowance = modules.DefaultAllowance
 	}
 
-	// Update the weight function.
-	hwf := hdb.managedCalculateHostWeightFn(allowance)
+	// Update the allowance.
 	hdb.mu.Lock()
 	hdb.allowance = allowance
-	hdb.weightFunc = hwf
 	hdb.mu.Unlock()
 
-	// Update the trees weight function.
-	err1 := hdb.hostTree.SetWeightFunction(hdb.managedCalculateHostWeightFn(allowance))
-	err2 := hdb.filteredTree.SetWeightFunction(hdb.managedCalculateHostWeightFn(allowance))
-	return errors.Compose(err1, err2)
+	// Update the weight function.
+	wf := hdb.managedCalculateHostWeightFn(allowance)
+	return hdb.managedSetWeightFunction(wf)
 }
