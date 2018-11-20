@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -51,7 +50,6 @@ OUTER:
 	for {
 		select {
 		case <-testDone:
-			fmt.Println(testTimeout.Seconds())
 			break OUTER
 		default:
 		}
@@ -83,6 +81,10 @@ OUTER:
 					t.Fatal(err)
 				}
 			}
+		}
+		// 50% chance to reset the dependency.
+		if fastrand.Intn(100) < 50 {
+			fdd.reset()
 		}
 
 		// Close existing wal.
