@@ -45,7 +45,7 @@ func myExternalIP() (string, error) {
 
 // managedLearnHostname tries to discover the external ip of the machine. If
 // discovering the address failed or if it is invalid, an error is returned.
-func (g *Gateway) managedLearnHostname(cancel <-chan struct{}) (modules.NetAddress, error) {
+func (g *Gateway) managedLearnHostname(cancel <-chan struct{}) (net.IP, error) {
 	// create ctx to cancel upnp discovery during shutdown
 	ctx, ctxCancel := context.WithTimeout(context.Background(), timeoutIPDiscovery)
 	defer ctxCancel()
@@ -82,10 +82,13 @@ func (g *Gateway) managedLearnHostname(cancel <-chan struct{}) (modules.NetAddre
 		host, err = myExternalIP()
 	}
 	if err != nil {
-		return "", errors.AddContext(err, "failed to discover external IP")
+		return nil, errors.AddContext(err, "failed to discover external IP")
 	}
-	addr := modules.NetAddress(host)
-	return addr, addr.IsValid()
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil, fmt.Errorf("%v is not a valid IP", host)
+	}
+	return ip, nil
 }
 
 // threadedLearnHostname discovers the external IP of the Gateway regularly.
@@ -113,7 +116,7 @@ func (g *Gateway) threadedLearnHostname() {
 		}
 
 		g.mu.RLock()
-		addr := modules.NetAddress(net.JoinHostPort(string(host), g.port))
+		addr := modules.NetAddress(net.JoinHostPort(host.String(), g.port))
 		g.mu.RUnlock()
 		if err := addr.IsValid(); err != nil {
 			g.log.Printf("WARN: discovered hostname %q is invalid: %v", addr, err)

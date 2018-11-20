@@ -148,6 +148,29 @@ maxuploadspeed
 // Stream cache size specifies how many data chunks will be cached while 
 // streaming.  
 streamcachesize
+
+// The next 4 values all relate to tuning the allowance. The usage pattern for
+// the storage (e.g. download heavy, storage heavy, etc.) impacts which hosts are
+// optimal. These values provide hints indicating what sort of usage pattern the
+// user will be employing, allowing the software to pick more optimal selections
+// of hosts.
+//
+// The expected storage in bytes the user expects to upload to the network.
+// Shouldn't include redundancy.
+expectedstorage
+
+// The expected amount of data which will be uploaded through the API before
+// redundancy in bytes per block.
+expectedupload
+
+// The expected amount of data which will be downloaded through the API in
+// bytes per block.
+expecteddownload
+
+// Expected redundancy is the expected redundancy of the majority of the files
+// the user is going to upload. If most files are going to be uploaded at a 3.0x
+// redundancy, this should be set to 3.0.
+expectedredundancy
 ```
 
 ###### Response
@@ -646,6 +669,10 @@ starts a file upload to the Sia network from the local filesystem.
 // must be non-empty, may not include any path traversal strings ("./", "../"),
 // and may not begin with a forward-slash character.
 *siapath
+
+// Optional paramater used to overwrite an existing file
+// Default is 'false' if unspecified
+force // bool
 ```
 
 ###### Query String Parameters

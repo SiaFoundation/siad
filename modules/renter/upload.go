@@ -64,6 +64,13 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return err
 	}
 
+	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
+	if up.Force {
+		if err := r.DeleteFile(up.SiaPath); err != nil && err != ErrUnknownPath {
+			return err
+		}
+	}
+
 	// Check for a nickname conflict.
 	lockID := r.mu.RLock()
 	_, exists := r.files[up.SiaPath]

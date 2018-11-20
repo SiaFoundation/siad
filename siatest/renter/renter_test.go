@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -120,6 +121,7 @@ func TestRenterTwo(t *testing.T) {
 		{"TestStreamingCache", testStreamingCache},
 		{"TestSiaFileTimestamps", testSiafileTimestamps},
 		{"TestZeroByteFile", testZeroByteFile},
+		{"TestUploadWithAndWithoutForceParameter", testUploadWithAndWithoutForceParameter},
 		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
 
@@ -139,7 +141,7 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	beforeUploadTime := time.Now()
 
 	// Upload a new file.
-	_, rf, err := r.UploadNewFileBlocking(100+siatest.Fuzz(), 1, 1)
+	_, rf, err := r.UploadNewFileBlocking(100+siatest.Fuzz(), 1, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,6 +249,55 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// TestRenterThree executes a number of subtests using the same TestGroup to
+// save time on initialization
+func TestRenterThree(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for the subtests
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+
+	// Specify subtests to run
+	subTests := []test{
+		{"TestAllowanceDefaultSet", testAllowanceDefaultSet},
+	}
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// testAllowanceDefaultSet tests that a renter's allowance is correctly set to
+// the defaults after creating it and therefore confirming that the API
+// endpoint and siatest package both work.
+func testAllowanceDefaultSet(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Renters()) == 0 {
+		t.Fatal("Test requires at least 1 renter")
+	}
+	// Get allowance.
+	r := tg.Renters()[0]
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure that the allowance was set correctly.
+	if !reflect.DeepEqual(rg.Settings.Allowance, siatest.DefaultAllowance) {
+		expected, _ := json.Marshal(siatest.DefaultAllowance)
+		was, _ := json.Marshal(rg.Settings.Allowance)
+		t.Log("Expected", string(expected))
+		t.Log("Was", string(was))
+		t.Fatal("Renter's allowance doesn't match siatest.DefaultAllowance")
+	}
+}
+
 // testReceivedFieldEqualsFileSize tests that the bug that caused finished
 // downloads to stall in the UI and siac is gone.
 func testReceivedFieldEqualsFileSize(t *testing.T, tg *siatest.TestGroup) {
@@ -267,7 +318,7 @@ func testReceivedFieldEqualsFileSize(t *testing.T, tg *siatest.TestGroup) {
 	dataPieces := uint64(3)
 	parityPieces := uint64(1)
 	fileSize := int(modules.SectorSize)
-	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
@@ -331,7 +382,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 			dataPieces := uint64(1)
 			parityPieces := uint64(1)
 			fileSize := 100 + siatest.Fuzz()
-			_, _, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+			_, _, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 			if err != nil {
 				t.Fatal("Failed to upload a file for testing: ", err)
 			}
@@ -500,7 +551,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
-	_, err = r.Upload(lf, dataPieces, parityPieces)
+	_, err = r.Upload(lf, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -523,7 +574,7 @@ func testDownloadAfterRenew(t *testing.T, tg *siatest.TestGroup) {
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := 100 + siatest.Fuzz()
-	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
@@ -571,7 +622,7 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 	parityPieces := uint64(1)
 	remoteFiles := make([]*siatest.RemoteFile, 0, uniqueRemoteFiles)
 	for i := 0; i < uniqueRemoteFiles; i++ {
-		_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+		_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 		if err != nil {
 			t.Fatal("Failed to upload a file for testing: ", err)
 		}
@@ -616,7 +667,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Upload file
-	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,7 +721,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Upload file
-	localFile, remoteFile, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+	localFile, remoteFile, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -725,7 +776,7 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := 100 + siatest.Fuzz()
-	_, _, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+	_, _, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
@@ -844,7 +895,7 @@ func testStreamingCache(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Upload a file that is a single chunk big.
-	_, remoteFile, err := r.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces)
+	_, remoteFile, err := r.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -871,7 +922,7 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := 100 + siatest.Fuzz()
-	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
@@ -906,6 +957,39 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// testUploadWithAndWithoutForceParameter is a subtest that uses an existing TestGroup to test if
+// uploading an existing file is successful when setting 'force' to 'true' and 'force' set to 'false'
+func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := 100 + siatest.Fuzz()
+	localFile, _, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to force overwrite a file when specifying 'force=true': ", err)
+	}
+
+	// Upload file, creating a piece for each host in the group
+	dataPieces = uint64(1)
+	parityPieces = uint64(len(tg.Hosts())) - dataPieces
+	fileSize = 100 + siatest.Fuzz()
+	localFile, _, err = renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
+	if err == nil {
+		t.Fatal("File overwritten without specifying 'force=true'")
 	}
 }
 
@@ -1086,7 +1170,7 @@ func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 	dataPieces := uint64(len(tg.Hosts())) - 1
 	parityPieces := uint64(1)
 	chunkSize := siatest.ChunkSize(dataPieces, ct)
-	_, remoteFile, err := renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces)
+	_, remoteFile, err := renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1172,7 +1256,7 @@ func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.De
 	}()
 
 	// Upload a file that's 1 chunk large.
-	_, remoteFile, err := renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces)
+	_, remoteFile, err := renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1209,7 +1293,7 @@ func TestRenterAddNodes(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		{"TestRedundancyReporting", testRedundancyReporting},
+		{"TestRedundancyReporting", testRedundancyReporting}, // Put first because it pulls the original tg renter
 		{"TestRenterCancelAllowance", testRenterCancelAllowance},
 		{"TestRenewFailing", testRenewFailing}, // Put last because it impacts a host
 	}
@@ -1228,7 +1312,7 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 	parityPieces := uint64(len(tg.Hosts()) - 1)
 
 	renter := tg.Renters()[0]
-	_, rf, err := renter.UploadNewFileBlocking(100, dataPieces, parityPieces)
+	_, rf, err := renter.UploadNewFileBlocking(100, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1529,7 +1613,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	// Upload a file.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts()) - 1)
-	_, rf, err := renter.UploadNewFileBlocking(100, dataPieces, parityPieces)
+	_, rf, err := renter.UploadNewFileBlocking(100, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1577,7 +1661,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	time.Sleep(5 * time.Second)
 
 	// Try to upload a file after the allowance was cancelled. Should succeed.
-	_, rf2, err := renter.UploadNewFile(100, dataPieces, parityPieces)
+	_, rf2, err := renter.UploadNewFile(100, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1866,6 +1950,13 @@ func TestRenterContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Renewing contracts by spending is very time consuming, the rest of the
+	// test is only run during vlong so the rest of the test package doesn't
+	// time out
+	if !build.VLONG {
+		return
+	}
+
 	// Record current active and expired contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		rc, err = r.RenterContractsGet()
@@ -2097,7 +2188,7 @@ func TestRenterLosingHosts(t *testing.T) {
 	}
 
 	// Upload a file
-	_, rf, err := r.UploadNewFileBlocking(100, 2, 1)
+	_, rf, err := r.UploadNewFileBlocking(100, 2, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2316,7 +2407,7 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	}
 
 	// Upload a file
-	_, rf, err := r.UploadNewFileBlocking(100, 2, 1)
+	_, rf, err := r.UploadNewFileBlocking(100, 2, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2667,7 +2758,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 		dataPieces := uint64(1)
 		parityPieces := uint64(1)
 		fileSize := 100 + siatest.Fuzz()
-		_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+		_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 		if err != nil {
 			t.Fatal("Failed to upload a file for testing: ", err)
 		}
@@ -3001,7 +3092,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	redundancy := float64((dataPieces + parityPieces) / dataPieces)
-	_, zeroRF, err := r.UploadNewFile(zeroByteFile, dataPieces, parityPieces)
+	_, zeroRF, err := r.UploadNewFile(zeroByteFile, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3019,7 +3110,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Test uploading 1 byte file
-	_, oneRF, err := r.UploadNewFileBlocking(oneByteFile, dataPieces, parityPieces)
+	_, oneRF, err := r.UploadNewFileBlocking(oneByteFile, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3344,7 +3435,7 @@ func renewContractsBySpending(renter *siatest.TestNode, tg *siatest.TestGroup) (
 	chunkSize := siatest.ChunkSize(dataPieces, crypto.TypeDefaultRenter)
 
 	// Upload once to show upload spending
-	_, _, err = renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces)
+	_, _, err = renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "failed to upload first file in renewContractsBySpending")
 	}
@@ -3366,7 +3457,7 @@ LOOP:
 				break LOOP
 			}
 		}
-		_, _, err = renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces)
+		_, _, err = renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
 		if err != nil {
 			pr, _ := big.NewRat(0, 1).SetFrac(rc.ActiveContracts[0].RenterFunds.Big(), rc.ActiveContracts[0].TotalCost.Big()).Float64()
 			s := fmt.Sprintf("failed to upload file in renewContractsBySpending loop, percentRemaining: %v", pr)
@@ -3401,7 +3492,7 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Upload file
-	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces)
+	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}

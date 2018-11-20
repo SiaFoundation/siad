@@ -223,11 +223,11 @@ func (tn *TestNode) FileInfo(rf *RemoteFile) (modules.FileInfo, error) {
 	return modules.FileInfo{}, errors.New("file is not tracked by the renter")
 }
 
-// Upload uses the node to upload the file.
-func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64) (*RemoteFile, error) {
+// Upload uses the node to upload the file with the option to overwrite if exists.
+func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file
 	siapath := tn.SiaPath(lf.path)
-	err := tn.RenterUploadPost(lf.path, siapath, dataPieces, parityPieces)
+	err := tn.RenterUploadForcePost(lf.path, siapath, dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, err
 	}
@@ -276,25 +276,25 @@ func (tn *TestNode) UploadNewDirectory(files, dirs, levels uint) (*RemoteDir, er
 	return tn.UploadDirectory(ld)
 }
 
-// UploadNewFile initiates the upload of a filesize bytes large file.
-func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces uint64) (*LocalFile, *RemoteFile, error) {
+// UploadNewFile initiates the upload of a filesize bytes large file with the option to overwrite if exists.
+func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces uint64, force bool) (*LocalFile, *RemoteFile, error) {
 	// Create file for upload
 	localFile, err := tn.filesDir.NewFile(filesize)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to create file")
 	}
 	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces)
+	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to start upload")
 	}
 	return localFile, remoteFile, nil
 }
 
-// UploadNewFileBlocking uploads a filesize bytes large file and waits for the
-// upload to reach 100% progress and redundancy.
-func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parityPieces uint64) (*LocalFile, *RemoteFile, error) {
-	localFile, remoteFile, err := tn.UploadNewFile(filesize, dataPieces, parityPieces)
+// UploadNewFileBlocking uploads a filesize bytes large file with the option to overwrite if exists
+// and waits for the upload to reach 100% progress and redundancy.
+func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parityPieces uint64, force bool) (*LocalFile, *RemoteFile, error) {
+	localFile, remoteFile, err := tn.UploadNewFile(filesize, dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -305,6 +305,25 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 	// Wait until upload reaches a certain redundancy
 	err = tn.WaitForUploadRedundancy(remoteFile, float64((dataPieces+parityPieces))/float64(dataPieces))
 	return localFile, remoteFile, err
+}
+
+// UploadBlocking attempts to upload an existing file with the option to overwrite if exists
+// and waits for the upload to reach 100% progress and redundancy.
+func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
+	// Upload file, creating a parity piece for each host in the group
+	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces, force)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to start upload")
+	}
+
+	// Wait until upload reached the specified progress
+	if err = tn.WaitForUploadProgress(remoteFile, 1); err != nil {
+		return nil, err
+	}
+
+	// Wait until upload reaches a certain redundancy
+	err = tn.WaitForUploadRedundancy(remoteFile, float64((dataPieces+parityPieces))/float64(dataPieces))
+	return remoteFile, err
 }
 
 // WaitForDownload waits for the download of a file to finish. If a file wasn't

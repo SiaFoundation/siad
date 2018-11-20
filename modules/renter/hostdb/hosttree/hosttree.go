@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	// errHostExists is returned if an Insert is called with a public key that
+	// ErrHostExists is returned if an Insert is called with a public key that
 	// already exists in the tree.
-	errHostExists = errors.New("host already exists in the tree")
+	ErrHostExists = errors.New("host already exists in the tree")
 
 	// errNegativeWeight is returned from an Insert() call if an entry with a
 	// negative weight is added to the tree. Entries must always have a positive
@@ -26,9 +26,9 @@ var (
 	// should always have a non-nil entry, unless they have been Delete()ed.
 	errNilEntry = errors.New("node has a nil entry")
 
-	// errNoSuchHost is returned if Remove is called with a public key that does
+	// ErrNoSuchHost is returned if Remove is called with a public key that does
 	// not exist in the tree.
-	errNoSuchHost = errors.New("no host with specified public key")
+	ErrNoSuchHost = errors.New("no host with specified public key")
 
 	// errWeightTooHeavy is returned from a SelectRandom() call if a weight that exceeds
 	// the total weight of the tree is requested.
@@ -218,7 +218,7 @@ func (ht *HostTree) Remove(pk types.SiaPublicKey) error {
 
 	node, exists := ht.hosts[string(pk.Key)]
 	if !exists {
-		return errNoSuchHost
+		return ErrNoSuchHost
 	}
 	node.remove()
 	delete(ht.hosts, string(pk.Key))
@@ -234,7 +234,7 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 
 	node, exists := ht.hosts[string(hdbe.PublicKey.Key)]
 	if !exists {
-		return errNoSuchHost
+		return ErrNoSuchHost
 	}
 
 	node.remove()
@@ -305,7 +305,6 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
-	var hosts []modules.HostDBEntry
 	var removedEntries []*hostEntry
 
 	// Create a filter.
@@ -334,6 +333,8 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 		// Remember the host to insert it again later.
 		removedEntries = append(removedEntries, node.entry)
 	}
+
+	var hosts []modules.HostDBEntry
 
 	for len(hosts) < n && len(ht.hosts) > 0 {
 		randWeight := fastrand.BigIntn(ht.root.weight.Big())
@@ -389,7 +390,7 @@ func (ht *HostTree) insert(hdbe modules.HostDBEntry) error {
 	}
 
 	if _, exists := ht.hosts[string(entry.PublicKey.Key)]; exists {
-		return errHostExists
+		return ErrHostExists
 	}
 
 	_, node := ht.root.recursiveInsert(entry)

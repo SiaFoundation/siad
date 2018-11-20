@@ -20,15 +20,6 @@ import (
 )
 
 var (
-	// recommendedHosts is the number of hosts that the renter will form
-	// contracts with if the value is not specified explicitly in the call to
-	// SetSettings.
-	recommendedHosts = build.Select(build.Var{
-		Standard: uint64(50),
-		Dev:      uint64(2),
-		Testing:  uint64(4),
-	}).(uint64)
-
 	// requiredHosts specifies the minimum number of hosts that must be set in
 	// the renter settings for the renter settings to be valid. This minimum is
 	// there to prevent users from shooting themselves in the foot.
@@ -207,13 +198,14 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{"unable to parse hosts: " + err.Error()}, http.StatusBadRequest)
 			return
 		} else if hosts != 0 && hosts < requiredHosts {
-			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", recommendedHosts, hosts)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", requiredHosts, hosts)}, http.StatusBadRequest)
+			return
 		} else {
 			settings.Allowance.Hosts = hosts
 		}
 	} else if settings.Allowance.Hosts == 0 {
 		// Sane defaults if host haven't been set before.
-		settings.Allowance.Hosts = recommendedHosts
+		settings.Allowance.Hosts = modules.DefaultAllowance.Hosts
 	}
 	// Scan the period. (optional parameter)
 	if p := req.FormValue("period"); p != "" {
@@ -242,6 +234,54 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 	} else if settings.Allowance.RenewWindow == 0 {
 		// Sane defaults if renew window hasn't been set before.
 		settings.Allowance.RenewWindow = settings.Allowance.Period / 2
+	}
+	// Scan the expected storage. (optional parameter)
+	if es := req.FormValue("expectedstorage"); es != "" {
+		var expectedStorage uint64
+		if _, err := fmt.Sscan(es, &expectedStorage); err != nil {
+			WriteError(w, Error{"unable to parse expectedStorage: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.ExpectedStorage = expectedStorage
+	} else if settings.Allowance.ExpectedStorage == 0 {
+		// Sane defaults if it hasn't been set before.
+		settings.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
+	}
+	// Scan the upload bandwidth. (optional parameter)
+	if euf := req.FormValue("expectedupload"); euf != "" {
+		var expectedUpload uint64
+		if _, err := fmt.Sscan(euf, &expectedUpload); err != nil {
+			WriteError(w, Error{"unable to parse expectedUpload: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.ExpectedUpload = expectedUpload
+	} else if settings.Allowance.ExpectedUpload == 0 {
+		// Sane defaults if it hasn't been set before.
+		settings.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
+	}
+	// Scan the download bandwidth. (optional parameter)
+	if edf := req.FormValue("expecteddownload"); edf != "" {
+		var expectedDownload uint64
+		if _, err := fmt.Sscan(edf, &expectedDownload); err != nil {
+			WriteError(w, Error{"unable to parse expectedDownload: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.ExpectedDownload = expectedDownload
+	} else if settings.Allowance.ExpectedDownload == 0 {
+		// Sane defaults if it hasn't been set before.
+		settings.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
+	}
+	// Scan the expected redundancy. (optional parameter)
+	if er := req.FormValue("expectedredundancy"); er != "" {
+		var expectedRedundancy float64
+		if _, err := fmt.Sscan(er, &expectedRedundancy); err != nil {
+			WriteError(w, Error{"unable to parse expectedRedundancy: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.ExpectedRedundancy = expectedRedundancy
+	} else if settings.Allowance.ExpectedRedundancy == 0 {
+		// Sane defaults if it hasn't been set before.
+		settings.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 	}
 	// Scan the download speed limit. (optional parameter)
 	if d := req.FormValue("maxdownloadspeed"); d != "" {
@@ -588,7 +628,7 @@ func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, ps
 			WriteError(w, Error{"unable to parse hosts: " + err.Error()}, http.StatusBadRequest)
 			return
 		} else if hosts != 0 && hosts < requiredHosts {
-			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", recommendedHosts, hosts)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", modules.DefaultAllowance.Hosts, hosts)}, http.StatusBadRequest)
 		} else {
 			allowance.Hosts = hosts
 		}
@@ -816,6 +856,16 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		return
 	}
 
+	// Check whether existing file should be overwritten
+	force := false
+	if f := req.FormValue("force"); f != "" {
+		force, err = strconv.ParseBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Check whether the erasure coding parameters have been supplied.
 	var ec modules.ErasureCoder
 	if req.FormValue("datapieces") != "" || req.FormValue("paritypieces") != "" {
@@ -863,6 +913,7 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		Source:      source,
 		SiaPath:     strings.TrimPrefix(ps.ByName("siapath"), "/"),
 		ErasureCode: ec,
+		Force:       force,
 	})
 	if err != nil {
 		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)

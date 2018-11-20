@@ -66,13 +66,15 @@ func (hdb *HostDB) insertBlockchainHost(host modules.HostDBEntry) {
 			oldEntry.IPNets = ipNets
 			oldEntry.LastIPNetChange = time.Now()
 		}
-		err = hdb.hostTree.Modify(oldEntry)
+		// Modify hosttree
+		err = hdb.modify(oldEntry)
 		if err != nil {
 			hdb.log.Println("ERROR: unable to modify host entry of host tree after a blockchain scan:", err)
 		}
 	} else {
 		host.FirstSeen = hdb.blockHeight
-		err := hdb.hostTree.Insert(host)
+		// Insert into hosttree
+		err := hdb.insert(host)
 		if err != nil {
 			hdb.log.Println("ERROR: unable to insert host entry into host tree after a blockchain scan:", err)
 		}

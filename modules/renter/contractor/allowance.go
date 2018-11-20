@@ -8,10 +8,14 @@ import (
 )
 
 var (
-	errAllowanceNoHosts    = errors.New("hosts must be non-zero")
-	errAllowanceNotSynced  = errors.New("you must be synced to set an allowance")
-	errAllowanceWindowSize = errors.New("renew window must be less than period")
-	errAllowanceZeroPeriod = errors.New("period must be non-zero")
+	errAllowanceNoHosts                = errors.New("hosts must be non-zero")
+	errAllowanceNotSynced              = errors.New("you must be synced to set an allowance")
+	errAllowanceWindowSize             = errors.New("renew window must be less than period")
+	errAllowanceZeroPeriod             = errors.New("period must be non-zero")
+	errAllowanceZeroExpectedStorage    = errors.New("expected storage must be non-zero")
+	errAllowanceZeroExpectedUpload     = errors.New("expected upload  must be non-zero")
+	errAllowanceZeroExpectedDownload   = errors.New("expected download  must be non-zero")
+	errAllowanceZeroExpectedRedundancy = errors.New("expected redundancy must be non-zero")
 
 	// ErrAllowanceZeroWindow is returned when the caller requests a
 	// zero-length renewal window. This will happen if the caller sets the
@@ -53,6 +57,14 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 		return ErrAllowanceZeroWindow
 	} else if a.RenewWindow >= a.Period {
 		return errAllowanceWindowSize
+	} else if a.ExpectedStorage == 0 {
+		return errAllowanceZeroExpectedStorage
+	} else if a.ExpectedUpload == 0 {
+		return errAllowanceZeroExpectedUpload
+	} else if a.ExpectedDownload == 0 {
+		return errAllowanceZeroExpectedDownload
+	} else if a.ExpectedRedundancy == 0 {
+		return errAllowanceZeroExpectedRedundancy
 	} else if !c.cs.Synced() {
 		return errAllowanceNotSynced
 	}
@@ -63,8 +75,12 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	// empty. the current period is set in the past by the renew window to make sure
 	// the first period aligns with the first period contracts in the same way
 	// that future periods align with contracts
+	// Also remember that we might have to unlock our contracts if the
+	// allowance was set to the empty allowance before.
+	unlockContracts := false
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.currentPeriod = c.blockHeight - a.RenewWindow
+		unlockContracts = true
 	}
 	c.allowance = a
 	err := c.saveSync()
@@ -75,18 +91,20 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 
 	// Cycle through all contracts and unlock them again since they might have
 	// been locked by managedCancelAllowance previously.
-	ids := c.staticContracts.IDs()
-	for _, id := range ids {
-		contract, exists := c.staticContracts.Acquire(id)
-		if !exists {
-			continue
-		}
-		utility := contract.Utility()
-		utility.Locked = false
-		err := contract.UpdateUtility(utility)
-		c.staticContracts.Return(contract)
-		if err != nil {
-			return err
+	if unlockContracts {
+		ids := c.staticContracts.IDs()
+		for _, id := range ids {
+			contract, exists := c.staticContracts.Acquire(id)
+			if !exists {
+				continue
+			}
+			utility := contract.Utility()
+			utility.Locked = false
+			err := contract.UpdateUtility(utility)
+			c.staticContracts.Return(contract)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -98,8 +116,14 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 
 	// Interrupt any existing maintenance and launch a new round of
 	// maintenance.
-	c.managedInterruptContractMaintenance()
-	go c.threadedContractMaintenance()
+	if err := c.tg.Add(); err != nil {
+		return err
+	}
+	go func() {
+		defer c.tg.Done()
+		c.managedInterruptContractMaintenance()
+		c.threadedContractMaintenance()
+	}()
 	return nil
 }
 
