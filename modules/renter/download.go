@@ -195,7 +195,10 @@ type (
 		priority      uint64        // Files with a higher priority will be downloaded first.
 	}
 
-	downloadCompleteFunc func(error)
+	// downloadCompleteFunc is a function called upon completion of the
+	// download. It accepts an error as an argument and returns an error. That
+	// way it's possible to add custom behavior for failing downloads.
+	downloadCompleteFunc func(error) error
 )
 
 // managedFail will mark the download as complete, but with the provided error.
@@ -223,16 +226,29 @@ func (d *download) managedFail(err error) {
 // executes the downloadCompleteFuncs. The completeChan should always be closed
 // using this method.
 func (d *download) markComplete() {
+	// Avoid calling markComplete multiple times. In a production build
+	// build.Critical won't panic which is fine since we set
+	// downloadCompleteFunc to nil after executing them. We still don't want to
+	// close the completeChan again though to avoid a crash.
+	if d.staticComplete() {
+		build.Critical("Can't call markComplete multiple times")
+	} else {
+		defer close(d.completeChan)
+	}
 	// Execute the downloadCompleteFuncs before closing the channel. This gives
 	// the initiator of the download the nice guarantee that waiting for the
 	// completeChan to be closed also means that the downloadCompleteFuncs are
 	// done.
+	var err error
 	for _, f := range d.downloadCompleteFuncs {
-		f(d.err)
+		err = errors.Compose(err, f(d.err))
+	}
+	// Log potential errors.
+	if err != nil {
+		d.log.Println("Failed to execute at least one downloadCompleteFunc", err)
 	}
 	// Set downloadCompleteFuncs to nil to avoid executing them multiple times.
 	d.downloadCompleteFuncs = nil
-	close(d.completeChan)
 }
 
 // staticComplete is a helper function to indicate whether or not the download
@@ -255,18 +271,18 @@ func (d *download) Err() (err error) {
 }
 
 // OnComplete registers a function to be called when the download is completed.
-// This can either mean that the download worked or failed. The registered
+// This can either mean that the download succeeded or failed. The registered
 // functions are executed in the same order as they are registered and waiting
 // for the download's completeChan to be closed implies that the registered
 // functions were executed.
 func (d *download) OnComplete(f downloadCompleteFunc) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	select {
 	case <-d.completeChan:
 		build.Critical("Can't call OnComplete after download is completed")
 	default:
 	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
 	d.downloadCompleteFuncs = append(d.downloadCompleteFuncs, f)
 }
 
@@ -381,8 +397,8 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 
 	// Once the download is done we close the file if we downloaded to disk.
 	if osFile, ok := dw.(*os.File); ok {
-		d.OnComplete(func(_ error) {
-			osFile.Close()
+		d.OnComplete(func(_ error) error {
+			return osFile.Close()
 		})
 	}
 
