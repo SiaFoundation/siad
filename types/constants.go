@@ -214,7 +214,7 @@ func init() {
 			},
 			{
 				Value:      NewCurrency64(7000),
-				UnlockHash: UnlockHashFromAddrStr("7d0c44f7664e2d34e53efde0661a6f628ec9264785ae8e3cd7c973e8d190c3c97b5e3ecbc567"),
+				UnlockHash: UnlockHashFromAddrStr("d1f6e43cf84ef26e0908e3f8e1d8a3348e5d2fb067298950d408843af1bd021154874ee3dca0"),
 			},
 			{
 				Value:      NewCurrency64(1000),
@@ -262,7 +262,7 @@ func init() {
 			},
 			{
 				Value:      NewCurrency64(7000),
-				UnlockHash: UnlockHashFromAddrStr("7d0c44f7664e2d34e53efde0661a6f628ec9264785ae8e3cd7c973e8d190c3c97b5e3ecbc567"),
+				UnlockHash: UnlockHashFromAddrStr("d1f6e43cf84ef26e0908e3f8e1d8a3348e5d2fb067298950d408843af1bd021154874ee3dca0"),
 			},
 			{
 				Value:      NewCurrency64(1000),
