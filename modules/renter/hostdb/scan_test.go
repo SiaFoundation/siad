@@ -182,3 +182,47 @@ func TestUpdateEntry(t *testing.T) {
 		t.Error("host not reporting historic uptime?")
 	}
 }
+
+// TestFeeChangeSignificant is a unit test for the feeChangeSignificant
+// function.
+func TestFeeChangeSignificant(t *testing.T) {
+	// If the difference is exactly txnFeesUpdateRatio it is significant.
+	n1 := uint64(100)
+	n2 := uint64(100 * (1 + txnFeesUpdateRatio))
+	s := feeChangeSignificant(types.NewCurrency64(n1), types.NewCurrency64(n2))
+	if !s {
+		t.Fatalf("should be significant but wasn't")
+	}
+	n1 = uint64(100)
+	n2 = uint64(100 * (1 - txnFeesUpdateRatio))
+	s = feeChangeSignificant(types.NewCurrency64(n1), types.NewCurrency64(n2))
+	if !s {
+		t.Fatalf("should be significant but wasn't")
+	}
+	// If the difference is bigger than txnFeesUpdateRatio it is significant.
+	n1 = uint64(100)
+	n2 = uint64(100*(1+txnFeesUpdateRatio) + 1)
+	s = feeChangeSignificant(types.NewCurrency64(n1), types.NewCurrency64(n2))
+	if !s {
+		t.Fatalf("should be significant but wasn't")
+	}
+	n1 = uint64(100)
+	n2 = uint64(100*(1-txnFeesUpdateRatio) - 1)
+	s = feeChangeSignificant(types.NewCurrency64(n1), types.NewCurrency64(n2))
+	if !s {
+		t.Fatalf("should be significant but wasn't")
+	}
+	// If the difference is a bit less then it shouldn't be significant.
+	n1 = uint64(100)
+	n2 = uint64(100*(1+txnFeesUpdateRatio) - 1)
+	s = feeChangeSignificant(types.NewCurrency64(n1), types.NewCurrency64(n2))
+	if s {
+		t.Fatalf("shouldn't be significant but was")
+	}
+	n1 = uint64(100)
+	n2 = uint64(100*(1-txnFeesUpdateRatio) + 1)
+	s = feeChangeSignificant(types.NewCurrency64(n1), types.NewCurrency64(n2))
+	if s {
+		t.Fatalf("shouldn't be significant but was")
+	}
+}

@@ -39,18 +39,9 @@ func equalIPNets(ipNetsA, ipNetsB []string) bool {
 	return true
 }
 
-// managedUpdateTxnFees checks if the txnFees have changed significantly since
-// the last time they were updated and updates them if necessary.
-func (hdb *HostDB) managedUpdateTxnFees() {
-	// Get the old txnFees from the hostdb.
-	hdb.mu.RLock()
-	allowance := hdb.allowance
-	oldTxnFees := hdb.txnFees
-	hdb.mu.RUnlock()
-
-	// Get the new fees from the tpool.
-	_, newTxnFees := hdb.tpool.FeeEstimation()
-
+// feeChangeSignificant determines if the difference between two transaction
+// fees is significant enough to warrant rebuilding the hosttree.
+func feeChangeSignificant(oldTxnFees, newTxnFees types.Currency) bool {
 	// Determine the difference between the old and new fees.
 	var difference types.Currency
 	if newTxnFees.Cmp(oldTxnFees) > 0 {
@@ -63,13 +54,29 @@ func (hdb *HostDB) managedUpdateTxnFees() {
 		// Avoid division by zero.
 		oldTxnFees = types.NewCurrency64(1)
 	}
-	ratio, exact := difference.Div(oldTxnFees).Float64()
-	if !exact {
-		hdb.log.Println("WARNING: converting difference to float wasn't exact")
-	}
+	differenceF64, _ := difference.Float64()
+	oldTxnFeesF64, _ := oldTxnFees.Float64()
+	ratio := differenceF64 / oldTxnFeesF64
+	// If the ratio is >= txnFeesUpdateRatio we consider the change to be
+	// significant.
+	return ratio >= txnFeesUpdateRatio
+}
+
+// managedUpdateTxnFees checks if the txnFees have changed significantly since
+// the last time they were updated and updates them if necessary.
+func (hdb *HostDB) managedUpdateTxnFees() {
+	// Get the old txnFees from the hostdb.
+	hdb.mu.RLock()
+	allowance := hdb.allowance
+	oldTxnFees := hdb.txnFees
+	hdb.mu.RUnlock()
+
+	// Get the new fees from the tpool.
+	_, newTxnFees := hdb.tpool.FeeEstimation()
+
 	// If the change is not significant we are done.
-	if ratio < txnFeesUpdateRatio {
-		hdb.log.Printf("No need to update txnFees oldFees %v newFees %v",
+	if !feeChangeSignificant(oldTxnFees, newTxnFees) {
+		hdb.log.Debugf("No need to update txnFees oldFees %v newFees %v",
 			oldTxnFees.HumanString(), newTxnFees.HumanString())
 		return
 	}
