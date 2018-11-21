@@ -37,7 +37,7 @@ func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) er
 		err := func() error {
 			// Check if it is a delete update.
 			if u.Name == updateDeleteName {
-				if err := os.Remove(readDeleteUpdate(u)); os.IsNotExist(err) {
+				if err := deps.RemoveFile(readDeleteUpdate(u)); os.IsNotExist(err) {
 					return nil
 				} else if err != nil {
 					return err
@@ -51,7 +51,7 @@ func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) er
 			}
 
 			// Open the file.
-			f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+			f, err := deps.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
 			if err != nil {
 				return err
 			}
@@ -274,9 +274,11 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	if err := sf.applyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
 	}
-
 	// Updates are applied. Let the writeaheadlog know.
-	return errors.AddContext(err, "failed to signal that updates are applied")
+	if err := txn.SignalUpdatesApplied(); err != nil {
+		return errors.AddContext(err, "failed to signal that updates are applied")
+	}
+	return nil
 }
 
 // createDeleteUpdate is a helper method that creates a writeaheadlog for

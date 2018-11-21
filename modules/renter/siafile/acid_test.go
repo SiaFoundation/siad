@@ -82,35 +82,59 @@ OUTER:
 				}
 			}
 		}
-		// 50% chance to reset the dependency.
-		if fastrand.Intn(100) < 50 {
+
+		// 20% chance that drive is repaired.
+		if fastrand.Intn(100) < 20 {
 			fdd.reset()
 		}
 
-		// Close existing wal.
-		_, err := wal.CloseIncomplete()
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Reopen wal.
-		var txns []*writeaheadlog.Transaction
-		txns, wal, err = writeaheadlog.New(walPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Apply unfinished txns.
-		for _, txn := range txns {
-			if err := applyUpdates(fdd, txn.Updates...); err != nil {
+		// Try to reload the file. This simulates failures during recovery.
+	LOAD:
+		for tries := 0; ; tries++ {
+			// If we have already tried for 10 times, we reset the dependency
+			// to avoid getting stuck here.
+			if tries%10 == 0 {
+				fdd.reset()
+			}
+			// Close existing wal.
+			_, err := wal.CloseIncomplete()
+			if err != nil {
 				t.Fatal(err)
 			}
+			// Reopen wal.
+			var txns []*writeaheadlog.Transaction
+			txns, wal, err = writeaheadlog.New(walPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Apply unfinished txns.
+			for _, txn := range txns {
+				if err := applyUpdates(fdd, txn.Updates...); err != nil {
+					if errors.Contains(err, errDiskFault) {
+						numRecoveries++
+						continue LOAD // try again
+					} else {
+						t.Fatal(err)
+					}
+				}
+				if err := txn.SignalUpdatesApplied(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Load file again.
+			sf, err = loadSiaFile(sf.siaFilePath, wal, fdd)
+			if err != nil {
+				if errors.Contains(err, errDiskFault) {
+					numRecoveries++
+					continue // try again
+				} else {
+					t.Fatal(err)
+				}
+			}
+			sf.deps = fdd
+			break
 		}
-		// Load file again.
-		sf, err = loadSiaFile(sf.siaFilePath, wal, fdd)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sf.deps = fdd
-		// TODO Additional checks on the file.
+
 	}
 	t.Logf("Recovered from %v disk failures", numRecoveries)
 }
