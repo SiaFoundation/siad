@@ -483,7 +483,7 @@ func (api *API) walletSiacoinsHandler(w http.ResponseWriter, req *http.Request, 
 			WriteError(w, Error{"could not read amount from POST call to /wallet/siacoins"}, http.StatusBadRequest)
 			return
 		}
-		dest, err := scanAddress(req.FormValue("destination"))
+		dest, err := types.ScanAddress(req.FormValue("destination"))
 		if err != nil {
 			WriteError(w, Error{"could not read address from POST call to /wallet/siacoins"}, http.StatusBadRequest)
 			return
@@ -513,7 +513,7 @@ func (api *API) walletSiafundsHandler(w http.ResponseWriter, req *http.Request, 
 		WriteError(w, Error{"could not read 'amount' from POST call to /wallet/siafunds"}, http.StatusBadRequest)
 		return
 	}
-	dest, err := scanAddress(req.FormValue("destination"))
+	dest, err := types.ScanAddress(req.FormValue("destination"))
 	if err != nil {
 		WriteError(w, Error{"error when calling /wallet/siafunds: " + err.Error()}, http.StatusBadRequest)
 		return

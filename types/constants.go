@@ -210,11 +210,11 @@ func init() {
 		GenesisSiafundAllocation = []SiafundOutput{
 			{
 				Value:      NewCurrency64(2000),
-				UnlockHash: UnlockHash{214, 166, 197, 164, 29, 201, 53, 236, 106, 239, 10, 158, 127, 131, 20, 138, 63, 221, 230, 16, 98, 247, 32, 77, 210, 68, 116, 12, 241, 89, 27, 223},
+				UnlockHash: UnlockHashFromAddrStr("d6a6c5a41dc935ec6aef0a9e7f83148a3fdde61062f7204dd244740cf1591bdfc10dca990dd5"),
 			},
 			{
 				Value:      NewCurrency64(7000),
-				UnlockHash: UnlockHash{209, 246, 228, 60, 248, 78, 242, 110, 9, 8, 227, 248, 225, 216, 163, 52, 142, 93, 47, 176, 103, 41, 137, 80, 212, 8, 132, 58, 241, 189, 2, 17},
+				UnlockHash: UnlockHashFromAddrStr("7d0c44f7664e2d34e53efde0661a6f628ec9264785ae8e3cd7c973e8d190c3c97b5e3ecbc567"),
 			},
 			{
 				Value:      NewCurrency64(1000),
@@ -258,11 +258,11 @@ func init() {
 		GenesisSiafundAllocation = []SiafundOutput{
 			{
 				Value:      NewCurrency64(2000),
-				UnlockHash: UnlockHash{214, 166, 197, 164, 29, 201, 53, 236, 106, 239, 10, 158, 127, 131, 20, 138, 63, 221, 230, 16, 98, 247, 32, 77, 210, 68, 116, 12, 241, 89, 27, 223},
+				UnlockHash: UnlockHashFromAddrStr("d6a6c5a41dc935ec6aef0a9e7f83148a3fdde61062f7204dd244740cf1591bdfc10dca990dd5"),
 			},
 			{
 				Value:      NewCurrency64(7000),
-				UnlockHash: UnlockHash{209, 246, 228, 60, 248, 78, 242, 110, 9, 8, 227, 248, 225, 216, 163, 52, 142, 93, 47, 176, 103, 41, 137, 80, 212, 8, 132, 58, 241, 189, 2, 17},
+				UnlockHash: UnlockHashFromAddrStr("7d0c44f7664e2d34e53efde0661a6f628ec9264785ae8e3cd7c973e8d190c3c97b5e3ecbc567"),
 			},
 			{
 				Value:      NewCurrency64(1000),

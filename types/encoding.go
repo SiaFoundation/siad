@@ -1016,3 +1016,21 @@ func (uh *UnlockHash) Scan(s fmt.ScanState, ch rune) error {
 	}
 	return uh.LoadString(string(tok))
 }
+
+// ScanAddress scans a types.UnlockHash from a string.
+func ScanAddress(addrStr string) (addr UnlockHash, err error) {
+	err = addr.LoadString(addrStr)
+	if err != nil {
+		return UnlockHash{}, err
+	}
+	return addr, nil
+}
+
+// UnlockHashFromAddrStr convert string address to UnlockHash
+func UnlockHashFromAddrStr(addrStr string) (addr UnlockHash) {
+	dest, err := ScanAddress(addrStr)
+	if err != nil {
+		return UnlockHash{}
+	}
+	return dest
+}
