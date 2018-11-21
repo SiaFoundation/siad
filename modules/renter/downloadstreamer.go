@@ -54,8 +54,11 @@ func (r *Renter) Streamer(siaPath string) (string, io.ReadSeeker, error) {
 // prevent http.ServeContent from requesting too much data at once, Read can
 // only request a single chunk at once.
 func (s *streamer) Read(p []byte) (n int, err error) {
+	// Create a snapshot of the file.
+	snap := s.file.Snapshot()
+
 	// Get the file's size
-	fileSize := int64(s.file.Size())
+	fileSize := int64(snap.Size())
 
 	// Make sure we haven't reached the EOF yet.
 	if s.offset >= fileSize {
@@ -63,13 +66,13 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 	}
 
 	// Calculate how much we can download. We never download more than a single chunk.
-	chunkIndex, chunkOffset := s.file.ChunkIndexByOffset(uint64(s.offset))
-	if chunkIndex == s.file.NumChunks() {
+	chunkIndex, chunkOffset := snap.ChunkIndexByOffset(uint64(s.offset))
+	if chunkIndex == snap.NumChunks() {
 		return 0, io.EOF
 	}
 	remainingData := uint64(fileSize - s.offset)
 	requestedData := uint64(len(p))
-	remainingChunk := s.file.ChunkSize() - chunkOffset
+	remainingChunk := snap.ChunkSize() - chunkOffset
 	length := min(remainingData, requestedData, remainingChunk)
 
 	// Download data
@@ -78,7 +81,7 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 		destination:       newDownloadDestinationWriter(buffer),
 		destinationType:   destinationTypeSeekStream,
 		destinationString: "httpresponse",
-		file:              s.file,
+		file:              snap,
 
 		latencyTarget: 50 * time.Millisecond, // TODO low default until full latency suport is added.
 		length:        length,

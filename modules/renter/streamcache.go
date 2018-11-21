@@ -154,7 +154,7 @@ func (sc *streamCache) Retrieve(udc *unfinishedDownloadChunk) bool {
 	udc.download.chunksRemaining--
 	if udc.download.chunksRemaining == 0 {
 		udc.download.endTime = time.Now()
-		udc.renterFile.UpdateAccessTime()
+		panic("udc.renterFile.UpdateAccessTime()")
 		udc.download.markComplete()
 	}
 	return true

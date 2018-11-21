@@ -272,15 +272,6 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 	return true
 }
 
-// ChunkIndexByOffset will return the chunkIndex that contains the provided
-// offset of a file and also the relative offset within the chunk. If the
-// offset is out of bounds, chunkIndex will be equal to NumChunk().
-func (sf *SiaFile) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64) {
-	chunkIndex = offset / sf.staticChunkSize()
-	off = offset % sf.staticChunkSize()
-	return
-}
-
 // Delete removes the file from disk and marks it as deleted. Once the file is
 // deleted, certain methods should return an error.
 func (sf *SiaFile) Delete() error {
