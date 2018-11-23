@@ -473,16 +473,34 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	}
 	// Mark the entries in the table. If the entry exists 'Used' is true.
 	// Otherwise it's 'false'.
+	var unusedHosts uint
 	for i, entry := range sf.pubKeyTable {
-		_, exists := usedMap[string(entry.PublicKey.Key)]
-		sf.pubKeyTable[i].Used = exists
+		_, used := usedMap[string(entry.PublicKey.Key)]
+		sf.pubKeyTable[i].Used = used
+		if !used {
+			unusedHosts++
+		}
+	}
+	// Prune the pubKeyTable if necessary.
+	pruned := false
+	if unusedHosts > pubKeyTablePruneThreshold {
+		sf.pruneHosts()
+		pruned = true
 	}
 	// Save the header to disk.
-	update, err := sf.saveHeader()
+	updates, err := sf.saveHeader()
 	if err != nil {
 		return err
 	}
-	return sf.createAndApplyTransaction(update...)
+	// If we pruned the hosts we also need to save the body.
+	if pruned {
+		chunkUpdates, err := sf.saveChunks()
+		if err != nil {
+			return err
+		}
+		updates = append(updates, chunkUpdates...)
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // UploadProgress indicates what percentage of the file (plus redundancy) has
@@ -519,5 +537,28 @@ func (sf *SiaFile) defragChunk(chunk *chunk) {
 			}
 		}
 		chunk.Pieces[i] = newPieceSet
+	}
+}
+
+// pruneHosts prunes the unused hostkeys from the file. It returns true if
+// pruning was necessary and false otherwise.
+func (sf *SiaFile) pruneHosts() {
+	var prunedTable []HostPublicKey
+	// Create a map to track how the indices of the hostkeys changed when being
+	// pruned.
+	indexMap := make(map[uint32]uint32)
+	for i := uint32(0); i < uint32(len(sf.pubKeyTable)); i++ {
+		if sf.pubKeyTable[i].Used {
+			prunedTable = append(prunedTable, sf.pubKeyTable[i])
+			indexMap[i] = uint32(len(prunedTable) - 1)
+		}
+	}
+	// With this map we loop over all the chunks and pieces and update those
+	for chunkIndex := range sf.staticChunks {
+		for _, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+			for i, piece := range pieceSet {
+				pieceSet[i].HostTableOffset = indexMap[piece.HostTableOffset]
+			}
+		}
 	}
 }
