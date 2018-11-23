@@ -253,6 +253,20 @@ func (d *download) markComplete() {
 	d.downloadCompleteFuncs = nil
 }
 
+// onComplete registers a function to be called when the download is completed.
+// This can either mean that the download succeeded or failed. The registered
+// functions are executed in the same order as they are registered and waiting
+// for the download's completeChan to be closed implies that the registered
+// functions were executed.
+func (d *download) onComplete(f downloadCompleteFunc) {
+	select {
+	case <-d.completeChan:
+		build.Critical("Can't call OnComplete after download is completed")
+	default:
+	}
+	d.downloadCompleteFuncs = append(d.downloadCompleteFuncs, f)
+}
+
 // staticComplete is a helper function to indicate whether or not the download
 // has completed.
 func (d *download) staticComplete() bool {
@@ -280,12 +294,7 @@ func (d *download) Err() (err error) {
 func (d *download) OnComplete(f downloadCompleteFunc) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	select {
-	case <-d.completeChan:
-		build.Critical("Can't call OnComplete after download is completed")
-	default:
-	}
-	d.downloadCompleteFuncs = append(d.downloadCompleteFuncs, f)
+	d.onComplete(f)
 }
 
 // Download performs a file download using the passed parameters and blocks
@@ -320,7 +329,6 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	if err != nil {
 		return nil, err
 	}
-	defer entry.Close()
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil
@@ -399,7 +407,10 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	// Once the download is done we close the file if we downloaded to disk.
 	if closer, ok := dw.(io.Closer); ok {
 		d.OnComplete(func(_ error) error {
-			return closer.Close()
+			err1 := entry.SiaFile.UpdateAccessTime()
+			err2 := entry.Close()
+			err3 := closer.Close()
+			return errors.Compose(err1, err2, err3)
 		})
 	}
 
@@ -448,6 +459,12 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		log:           r.log,
 		memoryManager: r.memoryManager,
 	}
+
+	// Update the endTime of the download when it's done.
+	d.onComplete(func(_ error) error {
+		d.endTime = time.Now()
+		return nil
+	})
 
 	// Determine which chunks to download.
 	minChunk, minChunkOffset := params.file.ChunkIndexByOffset(params.offset)

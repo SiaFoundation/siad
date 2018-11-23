@@ -257,8 +257,6 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 	udc.download.chunksRemaining--
 	if udc.download.chunksRemaining == 0 {
 		// Download is complete, send out a notification.
-		udc.download.endTime = time.Now()
-		panic("err1 := udc.renterFile.UpdateAccessTime()")
 		udc.download.markComplete()
 		return err
 	}

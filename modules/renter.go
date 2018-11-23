@@ -532,13 +532,20 @@ type Renter interface {
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed
 	// resource.
-	Streamer(siaPath string) (string, io.ReadSeeker, error)
+	Streamer(siapath string) (string, Streamer, error)
 
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
 
 	// CreateDir creates a directory for the renter
 	CreateDir(siaPath string) error
+}
+
+// Streamer is the interface implemented by the Renter's streamer type which
+// allows for streaming files uploaded to the Sia network.
+type Streamer interface {
+	io.ReadSeeker
+	io.Closer
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's

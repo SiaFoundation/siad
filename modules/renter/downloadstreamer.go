@@ -6,15 +6,16 @@ import (
 	"math"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
-	// streamer is a io.ReadSeeker that can be used to stream downloads from
+	// streamer is a modules.Streamer that can be used to stream downloads from
 	// the sia network.
 	streamer struct {
-		file   *siafile.SiaFile
+		file   *siafile.SiaFileSetEntry
 		offset int64
 		r      *Renter
 	}
@@ -31,22 +32,28 @@ func min(values ...uint64) uint64 {
 	return min
 }
 
-// Streamer creates an io.ReadSeeker that can be used to stream downloads from
+// Streamer creates a modules.Streamer that can be used to stream downloads from
 // the sia network.
-func (r *Renter) Streamer(siaPath string) (string, io.ReadSeeker, error) {
+func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
-	defer entry.Close()
-
 	// Create the streamer
 	s := &streamer{
-		file: entry.SiaFile,
+		file: entry,
 		r:    r,
 	}
 	return entry.SiaPath(), s, nil
+}
+
+// Close closes the streamer and let's the fileSet know that the SiaFile is no
+// longer in use.
+func (s *streamer) Close() error {
+	err1 := s.file.UpdateAccessTime()
+	err2 := s.file.Close()
+	return errors.Compose(err1, err2)
 }
 
 // Read implements the standard Read interface. It will download the requested
