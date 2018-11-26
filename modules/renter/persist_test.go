@@ -188,27 +188,17 @@ func TestRenterPaths(t *testing.T) {
 	//   foo.sia
 	//   foo/bar.sia
 	//   foo/bar/baz.sia
-	entry1 := rt.renter.newRenterTestFile()
-	f1 := entry1.SiaFile()
+
 	siaPath1 := "foo"
-	err = rt.renter.staticFileSet.Rename(entry1, siaPath1, filepath.Join(rt.renter.filesDir, siaPath1+siafile.ShareExtension))
-	if err != nil {
-		t.Fatal(err)
-	}
-	entry2 := rt.renter.newRenterTestFile()
-	f2 := entry2.SiaFile()
 	siaPath2 := "foo/bar"
-	err = f2.Rename(siaPath2, filepath.Join(rt.renter.filesDir, siaPath2+siafile.ShareExtension))
-	if err != nil {
-		t.Fatal(err)
-	}
-	entry3 := rt.renter.newRenterTestFile()
-	f3 := entry3.SiaFile()
 	siaPath3 := "foo/bar/baz"
-	err = f3.Rename(siaPath3, filepath.Join(rt.renter.filesDir, siaPath3+siafile.ShareExtension))
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	f1 := newTestingFile()
+	f1.Rename(siaPath1, filepath.Join(rt.renter.filesDir, siaPath1+siafile.ShareExtension))
+	f2 := newTestingFile()
+	f2.Rename(siaPath2, filepath.Join(rt.renter.filesDir, siaPath2+siafile.ShareExtension))
+	f3 := newTestingFile()
+	f3.Rename(siaPath3, filepath.Join(rt.renter.filesDir, siaPath3+siafile.ShareExtension))
 
 	// Restart the renter to re-do the init cycle.
 	err = rt.renter.Close()

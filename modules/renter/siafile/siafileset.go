@@ -162,6 +162,24 @@ func (sfs *SiaFileSet) Delete(entry *SiaFileSetEntry) error {
 	return nil
 }
 
+// Exists checks to see if a file with the provided siaPath already exists in
+// the renter
+func (sfs *SiaFileSet) Exists(siaPath, filesDir string) bool {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	// Check for file in Memory
+	_, exists := sfs.siaFileMap[siaPath]
+	if exists {
+		return exists
+	}
+	// Check for file on disk
+	_, err := os.Stat(filepath.Join(filesDir, siaPath))
+	if err == nil {
+		return true
+	}
+	return false
+}
+
 // NewFromFileData creates a new SiaFile from a FileData object that was
 // previously created from a legacy file.
 func (sfs *SiaFileSet) NewFromFileData(fd FileData, threadType ThreadType) (*SiaFileSetEntry, error) {
@@ -194,7 +212,9 @@ func (sfs *SiaFileSet) NewFromFileData(fd FileData, threadType ThreadType) (*Sia
 			SiaPath:                 fd.Name,
 		},
 		deleted:        fd.Deleted,
+		siaFilePath:    fd.RepairPath,
 		staticUniqueID: fd.UID,
+		wal:            sfs.wal,
 	}
 	file.staticChunks = make([]chunk, len(fd.Chunks))
 	for i := range file.staticChunks {
@@ -280,17 +300,12 @@ func (sfs *SiaFileSet) Open(siaPath, filesDir string, threadType ThreadType) (*S
 func (sfs *SiaFileSet) Rename(entry *SiaFileSetEntry, newSiaPath, newSiaFilePath string) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	entry.mu.Lock()
-	defer entry.mu.Unlock()
-	_, exists := sfs.siaFileMap[entry.siaPath]
-	if !exists {
-		return ErrUnknownPath
-	}
-	_, exists = sfs.siaFileMap[newSiaPath]
+	_, exists := sfs.siaFileMap[newSiaPath]
 	if exists {
 		return ErrPathOverload
 	}
-
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
 	return entry.siaFile.Rename(newSiaPath, newSiaFilePath)
 }
 

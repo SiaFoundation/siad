@@ -186,7 +186,7 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	}
 	defer func() {
 		if err == nil {
-			// If no error occured we sync and close the file.
+			// If no error occurred we sync and close the file.
 			err = errors.Compose(f.Sync(), f.Close())
 		} else {
 			// Otherwise we still need to close the file.
@@ -245,7 +245,7 @@ func (sf *SiaFile) chunkOffset(chunkIndex int) int64 {
 func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
 	// This should never be called on a deleted file.
 	if sf.deleted {
-		return errors.New("shouldn't apply udates on deleted file")
+		return errors.New("shouldn't apply updates on deleted file")
 	}
 	// Create the writeaheadlog transaction.
 	txn, err := sf.wal.NewTransaction(updates)

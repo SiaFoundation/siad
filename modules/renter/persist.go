@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -231,40 +230,6 @@ func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
 }
 
-// loadSiaFiles walks through the directory searching for siafiles and loading
-// them into memory.
-func (r *Renter) loadSiaFiles() error {
-	// Recursively load all files found in renter directory. Errors
-	// encountered during loading are logged, but are not considered fatal.
-	return filepath.Walk(r.filesDir, func(path string, info os.FileInfo, err error) error {
-		// This error is non-nil if filepath.Walk couldn't stat a file or
-		// folder.
-		if err != nil {
-			r.log.Println("WARN: could not stat file or folder during walk:", err)
-			return nil
-		}
-
-		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != siafile.ShareExtension {
-			return nil
-		}
-
-		// Load the Siafile.
-		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.filesDir), siafile.ShareExtension)
-		entry, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileLoadThread)
-		if err != nil {
-			// TODO try loading the file with the legacy format.
-			r.log.Println("ERROR: could not open .sia file:", err)
-			return nil
-		}
-		err = entry.Close(siafile.SiaFileLoadThread)
-		if err != nil {
-			r.log.Println("ERROR: could not close siafile:", siaPath)
-		}
-		return nil
-	})
-}
-
 // load fetches the saved renter data from disk.
 func (r *Renter) loadSettings() error {
 	r.persist = persistence{}
@@ -336,16 +301,11 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		dupCount := 0
 		origName := files[i].name
 		for {
-			entry, err := r.staticFileSet.Open(files[i].name, r.filesDir, siafile.SiaFileLoadThread)
-			if err != nil {
+			if !r.staticFileSet.Exists(files[i].name, r.filesDir) {
 				break
 			}
 			dupCount++
 			files[i].name = origName + "_" + strconv.Itoa(dupCount)
-			err = entry.Close(siafile.SiaFileLoadThread)
-			if err != nil {
-				break
-			}
 		}
 	}
 
@@ -354,7 +314,8 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 	for i, f := range files {
 		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
 		// be returned here
-		entry, err := r.fileToSiaFile(f, repairPath, siafile.SiaFileNewThread)
+		siafilePath := filepath.Join(r.filesDir, f.name)
+		entry, err := r.fileToSiaFile(f, siafilePath, siafile.SiaFileNewThread)
 		if err != nil {
 			return nil, err
 		}
@@ -405,8 +366,7 @@ func (r *Renter) initPersist() error {
 		}
 	}
 
-	// Load the siafiles into memory.
-	return r.loadSiaFiles()
+	return nil
 }
 
 // LoadSharedFiles loads a .sia file into the renter. It returns the nicknames
@@ -431,16 +391,6 @@ func (r *Renter) LoadSharedFilesASCII(asciiSia string) ([]string, error) {
 
 	dec := base64.NewDecoder(base64.URLEncoding, bytes.NewBufferString(asciiSia))
 	return r.loadSharedFiles(dec, "")
-}
-
-// ShareFiles writes an .sia file to disk to be shared with others.
-func (r *Renter) ShareFiles(paths []string, shareDest string) error {
-	return errors.New("Not implemented for new format yet")
-}
-
-// ShareFilesASCII creates an ASCII-encoded '.sia' file.
-func (r *Renter) ShareFilesASCII(paths []string) (asciiSia string, err error) {
-	return "", errors.New("Not implemented for new format yet")
 }
 
 // convertPersistVersionFrom040to133 upgrades a legacy persist file to the next

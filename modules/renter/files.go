@@ -204,6 +204,11 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 	if err != nil {
 		return err
 	}
+	// Check for conflict with new Name
+	if r.staticFileSet.Exists(newName, r.filesDir) {
+		return siafile.ErrPathOverload
+	}
+	// Grab file to rename
 	entry, err := r.staticFileSet.Open(currentName, r.filesDir, siafile.SiaFileRenameThread)
 	if err != nil {
 		return err
