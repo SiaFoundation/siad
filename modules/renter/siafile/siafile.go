@@ -540,25 +540,35 @@ func (sf *SiaFile) defragChunk(chunk *chunk) {
 	}
 }
 
-// pruneHosts prunes the unused hostkeys from the file. It returns true if
-// pruning was necessary and false otherwise.
+// pruneHosts prunes the unused hostkeys from the file, updates the
+// HostTableOffset of the pieces and removes pieces which do no longer have a
+// host.
 func (sf *SiaFile) pruneHosts() {
 	var prunedTable []HostPublicKey
 	// Create a map to track how the indices of the hostkeys changed when being
 	// pruned.
-	indexMap := make(map[uint32]uint32)
+	offsetMap := make(map[uint32]uint32)
 	for i := uint32(0); i < uint32(len(sf.pubKeyTable)); i++ {
 		if sf.pubKeyTable[i].Used {
 			prunedTable = append(prunedTable, sf.pubKeyTable[i])
-			indexMap[i] = uint32(len(prunedTable) - 1)
+			offsetMap[i] = uint32(len(prunedTable) - 1)
 		}
 	}
-	// With this map we loop over all the chunks and pieces and update those
+	sf.pubKeyTable = prunedTable
+	// With this map we loop over all the chunks and pieces and update the ones
+	// who got a new offset and remove the ones that no longer have one.
 	for chunkIndex := range sf.staticChunks {
-		for _, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+		for pieceIndex, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+			var newPieceSet []piece
 			for i, piece := range pieceSet {
-				pieceSet[i].HostTableOffset = indexMap[piece.HostTableOffset]
+				newOffset, exists := offsetMap[piece.HostTableOffset]
+				if exists {
+					pieceSet[i].HostTableOffset = newOffset
+					newPieceSet = append(newPieceSet, pieceSet[i])
+
+				}
 			}
+			sf.staticChunks[chunkIndex].Pieces[pieceIndex] = newPieceSet
 		}
 	}
 }

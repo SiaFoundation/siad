@@ -552,7 +552,7 @@ func TestUpdateUsedHosts(t *testing.T) {
 	}
 	t.Parallel()
 
-	sf := newTestFile()
+	sf := newBlankTestFile()
 	sf.addRandomHostKeys(10)
 
 	// All the host keys should be used.
