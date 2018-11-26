@@ -57,6 +57,35 @@ func TestRSEncode(t *testing.T) {
 	}
 }
 
+func TestPartialEncodeRecover(t *testing.T) {
+	// Create the RSCode
+	rsc, err := NewRSCode(10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Encode 1000 bytes of data into 10 pieces.
+	data := fastrand.Bytes(1000)
+	shards, err := rsc.Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Pick 10 random shards to use for recovery.
+	pickedShards := make(map[int]struct{})
+	for len(pickedShards) < rsc.MinPieces() {
+		pickedShards[fastrand.Intn(rsc.NumPieces())] = struct{}{}
+	}
+	// Try to only use the first 50 bytes of each shard for the recovery and
+	// see what happens.
+	recoverShards := make([][]byte, len(shards))
+	for i := range pickedShards {
+		recoverShards[i] = shards[i][:50]
+	}
+	buf := new(bytes.Buffer)
+	if err := rsc.Recover(recoverShards, 777, buf); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func BenchmarkRSEncode(b *testing.B) {
 	rsc, err := NewRSCode(80, 20)
 	if err != nil {
