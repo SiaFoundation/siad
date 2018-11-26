@@ -417,7 +417,7 @@ func (w *Wallet) computeProcessedTransactionsFromBlock(tx *bolt.Tx, block types.
 				po := modules.ProcessedOutput{
 					ID:             types.OutputID(txn.FileContractID(uint64(i)).StorageProofOutputID(types.ProofValid, uint64(j))),
 					FundType:       types.SpecifierSiacoinOutput,
-					MaturityHeight: fc.WindowEnd,
+					MaturityHeight: fc.WindowEnd + types.MaturityDelay,
 					WalletAddress:  w.isWalletAddress(o.UnlockHash),
 					RelatedAddress: o.UnlockHash,
 					Value:          o.Value,
@@ -432,7 +432,7 @@ func (w *Wallet) computeProcessedTransactionsFromBlock(tx *bolt.Tx, block types.
 				po := modules.ProcessedOutput{
 					ID:             types.OutputID(txn.FileContractID(uint64(i)).StorageProofOutputID(types.ProofMissed, uint64(j))),
 					FundType:       types.SpecifierSiacoinOutput,
-					MaturityHeight: fc.WindowEnd,
+					MaturityHeight: fc.WindowEnd + types.MaturityDelay,
 					WalletAddress:  w.isWalletAddress(o.UnlockHash),
 					RelatedAddress: o.UnlockHash,
 					Value:          o.Value,
@@ -450,7 +450,7 @@ func (w *Wallet) computeProcessedTransactionsFromBlock(tx *bolt.Tx, block types.
 				po := modules.ProcessedOutput{
 					ID:             types.OutputID(fcr.ParentID.StorageProofOutputID(types.ProofValid, uint64(j))),
 					FundType:       types.SpecifierSiacoinOutput,
-					MaturityHeight: fcr.NewWindowEnd,
+					MaturityHeight: fcr.NewWindowEnd + types.MaturityDelay,
 					WalletAddress:  w.isWalletAddress(o.UnlockHash),
 					RelatedAddress: o.UnlockHash,
 					Value:          o.Value,
@@ -465,7 +465,7 @@ func (w *Wallet) computeProcessedTransactionsFromBlock(tx *bolt.Tx, block types.
 				po := modules.ProcessedOutput{
 					ID:             types.OutputID(fcr.ParentID.StorageProofOutputID(types.ProofMissed, uint64(j))),
 					FundType:       types.SpecifierSiacoinOutput,
-					MaturityHeight: fcr.NewWindowEnd,
+					MaturityHeight: fcr.NewWindowEnd + types.MaturityDelay,
 					WalletAddress:  w.isWalletAddress(o.UnlockHash),
 					RelatedAddress: o.UnlockHash,
 					Value:          o.Value,
