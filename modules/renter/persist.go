@@ -354,14 +354,15 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 	for i, f := range files {
 		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
 		// be returned here
-		_, err = r.fileToSiaFile(f, repairPath)
+		entry, err := r.fileToSiaFile(f, repairPath, siafile.SiaFileNewThread)
 		if err != nil {
 			return nil, err
 		}
 		names[i] = f.name
+		err = errors.Compose(err, entry.Close(siafile.SiaFileNewThread))
 	}
 	// TODO Save the file in the new format.
-	return names, nil
+	return names, err
 }
 
 // initPersist handles all of the persistence initialization, such as creating

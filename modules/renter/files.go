@@ -214,7 +214,7 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
-func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFile, error) {
+func (r *Renter) fileToSiaFile(f *file, repairPath string, threadType siafile.ThreadType) (*siafile.SiaFileSetEntry, error) {
 	fileData := siafile.FileData{
 		Name:        f.name,
 		FileSize:    f.size,
@@ -240,7 +240,7 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFile, er
 		}
 	}
 	fileData.Chunks = chunks
-	return siafile.NewFromFileData(fileData, r.staticFileSet)
+	return r.staticFileSet.NewFromFileData(fileData, threadType)
 }
 
 // numChunks returns the number of chunks that f was split into.

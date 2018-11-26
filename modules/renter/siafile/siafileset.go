@@ -5,10 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -158,6 +160,74 @@ func (sfs *SiaFileSet) Delete(entry *SiaFileSetEntry) error {
 		return err
 	}
 	return nil
+}
+
+// NewFromFileData creates a new SiaFile from a FileData object that was
+// previously created from a legacy file.
+func (sfs *SiaFileSet) NewFromFileData(fd FileData, threadType ThreadType) (*SiaFileSetEntry, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	// legacy masterKeys are always twofish keys
+	mk, err := crypto.NewSiaKey(crypto.TypeTwofish, fd.MasterKey[:])
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to restore master key")
+	}
+	currentTime := time.Now()
+	ecType, ecParams := marshalErasureCoder(fd.ErasureCode)
+	file := &SiaFile{
+		staticMetadata: metadata{
+			AccessTime:              currentTime,
+			ChunkOffset:             defaultReservedMDPages * pageSize,
+			ChangeTime:              currentTime,
+			CreateTime:              currentTime,
+			StaticFileSize:          int64(fd.FileSize),
+			LocalPath:               fd.RepairPath,
+			StaticMasterKey:         mk.Key(),
+			StaticMasterKeyType:     mk.Type(),
+			Mode:                    fd.Mode,
+			ModTime:                 currentTime,
+			staticErasureCode:       fd.ErasureCode,
+			StaticErasureCodeType:   ecType,
+			StaticErasureCodeParams: ecParams,
+			StaticPagesPerChunk:     numChunkPagesRequired(fd.ErasureCode.NumPieces()),
+			StaticPieceSize:         fd.PieceSize,
+			SiaPath:                 fd.Name,
+		},
+		deleted:        fd.Deleted,
+		staticUniqueID: fd.UID,
+	}
+	file.staticChunks = make([]chunk, len(fd.Chunks))
+	for i := range file.staticChunks {
+		file.staticChunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
+	}
+
+	// Populate the pubKeyTable of the file and add the pieces.
+	pubKeyMap := make(map[string]uint32)
+	for chunkIndex, chunk := range fd.Chunks {
+		for pieceIndex, pieceSet := range chunk.Pieces {
+			for _, p := range pieceSet {
+				// Check if we already added that public key.
+				tableOffset, exists := pubKeyMap[string(p.HostPubKey.Key)]
+				if !exists {
+					tableOffset = uint32(len(file.pubKeyTable))
+					pubKeyMap[string(p.HostPubKey.Key)] = tableOffset
+					file.pubKeyTable = append(file.pubKeyTable, HostPublicKey{
+						PublicKey: p.HostPubKey,
+						Used:      true,
+					})
+				}
+				// Add the piece to the SiaFile.
+				file.staticChunks[chunkIndex].Pieces[pieceIndex] = append(file.staticChunks[chunkIndex].Pieces[pieceIndex], piece{
+					HostTableOffset: tableOffset,
+					MerkleRoot:      p.MerkleRoot,
+				})
+			}
+		}
+	}
+	entry := sfs.newSiaFileSetEntry(file, fd.Name, threadType)
+	entry.threadMap[SiaFileNewThread]++
+	sfs.siaFileMap[fd.Name] = entry
+	return entry, file.saveFile()
 }
 
 // NewSiaFile create a new SiaFile, adds it to the SiaFileSet, increments the
