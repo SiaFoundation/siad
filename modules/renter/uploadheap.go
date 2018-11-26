@@ -232,7 +232,7 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	// Get all the files holding the readlock.
 	//
 	// TODO - update to just read from disk
-	files, err := r.staticFileSet.All(r.filesDir, siafile.SiaFileRepairThread)
+	files, err := r.staticFileSet.All(r.filesDir)
 	if err != nil {
 		return
 	}

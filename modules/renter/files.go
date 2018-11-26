@@ -65,11 +65,12 @@ type pieceData struct {
 // TODO: The data is not cleared from any contracts where the host is not
 // immediately online.
 func (r *Renter) DeleteFile(nickname string) error {
-	entry, err := r.staticFileSet.Open(nickname, r.filesDir, siafile.SiaFileDeleteThread)
+	thread := siafile.RandomThread()
+	entry, err := r.staticFileSet.Open(nickname, r.filesDir, thread)
 	if err != nil {
 		return err
 	}
-	defer entry.Close(siafile.SiaFileDeleteThread)
+	defer entry.Close(thread)
 	// TODO: delete the sectors of the file as well.
 	if err := r.staticFileSet.Delete(entry); err != nil {
 		return err
@@ -83,7 +84,7 @@ func (r *Renter) DeleteFile(nickname string) error {
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() []modules.FileInfo {
 	// Get all the renter files
-	files, err := r.staticFileSet.All(r.filesDir, siafile.SiaFileAPIThread)
+	files, err := r.staticFileSet.All(r.filesDir)
 	if err != nil {
 		return []modules.FileInfo{}
 	}
@@ -145,11 +146,12 @@ func (r *Renter) FileList() []modules.FileInfo {
 // Update based on FileList
 func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	// Get the file and its contracts
-	entry, err := r.staticFileSet.Open(siaPath, r.filesDir, siafile.SiaFileAPIThread)
+	thread := siafile.RandomThread()
+	entry, err := r.staticFileSet.Open(siaPath, r.filesDir, thread)
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
-	defer entry.Close(siafile.SiaFileAPIThread)
+	defer entry.Close(thread)
 	file := entry.SiaFile()
 	pks := file.HostPublicKeys()
 
@@ -209,17 +211,18 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 		return siafile.ErrPathOverload
 	}
 	// Grab file to rename
-	entry, err := r.staticFileSet.Open(currentName, r.filesDir, siafile.SiaFileRenameThread)
+	thread := siafile.RandomThread()
+	entry, err := r.staticFileSet.Open(currentName, r.filesDir, thread)
 	if err != nil {
 		return err
 	}
-	defer entry.Close(siafile.SiaFileRenameThread)
+	defer entry.Close(thread)
 	return r.staticFileSet.Rename(entry, newName, filepath.Join(r.filesDir, newName+siafile.ShareExtension))
 }
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
-func (r *Renter) fileToSiaFile(f *file, repairPath string, threadType siafile.ThreadType) (*siafile.SiaFileSetEntry, error) {
+func (r *Renter) fileToSiaFile(f *file, repairPath string, thread int) (*siafile.SiaFileSetEntry, error) {
 	fileData := siafile.FileData{
 		Name:        f.name,
 		FileSize:    f.size,
@@ -245,7 +248,7 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string, threadType siafile.Th
 		}
 	}
 	fileData.Chunks = chunks
-	return r.staticFileSet.NewFromFileData(fileData, threadType)
+	return r.staticFileSet.NewFromFileData(fileData, thread)
 }
 
 // numChunks returns the number of chunks that f was split into.

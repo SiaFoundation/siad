@@ -94,26 +94,12 @@ type (
 	}
 )
 
-// ThreadType is the helper type for the enum constants for the SiaFile threadMap
-type ThreadType int
-
-// The following constants are threadTypes that acquire the lock of the SiaFile.
-// This enables the ability to know what threads, or types of threads, are
-// holding the lock on the SiaFile which will allow better control over handling
-// of SiaFile actions like Delete and Rename
-const (
-	SiaFileThreadError ThreadType = iota
-	SiaFileRepairThread
-	SiaFileUploadThread
-	SiaFileRenameThread
-	SiaFileLoadThread
-	SiaFileNewThread
-	SiaFileTestThread
-	SiaFileDownloadThread
-	SiaFileStreamThread
-	SiaFileDeleteThread
-	SiaFileAPIThread
-)
+// ThreadType is the helper type for the SiaFile threadMap
+type ThreadType struct {
+	lockTime     time.Time
+	callingFiles []string
+	callingLines []int
+}
 
 // MarshalSia implements the encoding.SiaMarshaler interface.
 func (hpk HostPublicKey) MarshalSia(w io.Writer) error {

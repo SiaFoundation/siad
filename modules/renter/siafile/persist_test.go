@@ -318,7 +318,7 @@ func TestDelete(t *testing.T) {
 	t.Parallel()
 
 	// Create SiaFileSet with SiaFile
-	sf, _ := newTestSiaFileSetWithFile()
+	sf, _ := newTestSiaFileSetWithFile(RandomThread())
 	// Delete file.
 	if err := sf.Delete(); err != nil {
 		t.Fatal("Failed to delete file", err)
@@ -341,7 +341,7 @@ func TestRename(t *testing.T) {
 	t.Parallel()
 
 	// Create SiaFileSet with SiaFile
-	sf, _ := newTestSiaFileSetWithFile()
+	sf, _ := newTestSiaFileSetWithFile(RandomThread())
 
 	// Create new paths for the file.
 	newSiaPath := sf.staticMetadata.SiaPath + "1"

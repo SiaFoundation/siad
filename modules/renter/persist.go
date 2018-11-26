@@ -315,12 +315,13 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
 		// be returned here
 		siafilePath := filepath.Join(r.filesDir, f.name)
-		entry, err := r.fileToSiaFile(f, siafilePath, siafile.SiaFileNewThread)
+		thread := siafile.RandomThread()
+		entry, err := r.fileToSiaFile(f, siafilePath, thread)
 		if err != nil {
 			return nil, err
 		}
 		names[i] = f.name
-		err = errors.Compose(err, entry.Close(siafile.SiaFileNewThread))
+		err = errors.Compose(err, entry.Close(thread))
 	}
 	// TODO Save the file in the new format.
 	return names, err

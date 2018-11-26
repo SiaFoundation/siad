@@ -142,11 +142,6 @@ func (sf *SiaFile) PieceSize() uint64 {
 func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	// Check for conflicts on disk as the file might not be in memory
-	_, err := os.Stat(newSiaFilePath)
-	if err == nil {
-		return ErrPathOverload
-	}
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
 	// TODO - this code creates directories without metadata files.  Add
