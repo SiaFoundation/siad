@@ -22,8 +22,8 @@ func (plainTextCipherKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 }
 
 // DecryptBytesInPlace is a no-op for the plainTextCipherKey.
-func (plainTextCipherKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
-	return ct[:], nil
+func (plainTextCipherKey) DecryptBytesInPlace(ct Ciphertext, off uint64) ([]byte, error) {
+	return ct[off:], nil
 }
 
 // Derive for a plainTextCipherKey simply returns itself since there is no key

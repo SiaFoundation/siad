@@ -78,7 +78,10 @@ func (key twofishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 // nonce is expected to be the first 12 bytes of the ciphertext.
 // DecryptBytesInPlace reuses the memory of ct to be able to operate in-place.
 // This means that ct can't be reused after calling DecryptBytesInPlace.
-func (key twofishKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
+func (key twofishKey) DecryptBytesInPlace(ct Ciphertext, blockIndex uint64) ([]byte, error) {
+	if blockIndex != 0 {
+		return nil, errors.New("twofish doesn't support a blockIndex != 0")
+	}
 	// Create the cipher.
 	aead, err := cipher.NewGCM(key.newCipher())
 	if err != nil {

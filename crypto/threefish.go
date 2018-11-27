@@ -84,7 +84,7 @@ func (key threefishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 // expected to be incremented by 1 for every 64 bytes of data.
 // DecryptBytesInPlace reuses the memory of ct to be able to operate in-place.
 // This means that ct can't be reused after calling DecryptBytesInPlace.
-func (key threefishKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
+func (key threefishKey) DecryptBytesInPlace(ct Ciphertext, blockIndex uint64) ([]byte, error) {
 	// Check if input has correct length.
 	if len(ct)%threefish.BlockSize != 0 {
 		return nil, fmt.Errorf("supplied ciphertext is not a multiple of %v", len(ct))
@@ -95,6 +95,10 @@ func (key threefishKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
 
 	// Create the initial tweak.
 	tweak := make([]byte, threefish.TweakSize)
+	binary.LittleEndian.PutUint64(tweak, blockIndex)
+	if err := cipher.SetTweak(tweak); err != nil {
+		panic(err)
+	}
 
 	// Decrypt the ciphertext one block at a time while incrementing the tweak.
 	buf := bytes.NewBuffer(ct)
