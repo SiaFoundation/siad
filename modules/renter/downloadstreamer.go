@@ -2,7 +2,6 @@ package renter
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"math"
 	"time"
@@ -36,20 +35,15 @@ func min(values ...uint64) uint64 {
 // the sia network.
 func (r *Renter) Streamer(siaPath string) (string, io.ReadSeeker, error) {
 	// Lookup the file associated with the nickname.
-	thread := siafile.RandomThread()
-	entry, err := r.staticFileSet.Open(siaPath, r.filesDir, thread)
+	entry, threadUID, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
-	defer entry.Close(thread)
-	file := entry.SiaFile()
+	defer entry.Close(threadUID)
 
-	if file.Deleted() {
-		return "", nil, fmt.Errorf("no file with that path: %s", siaPath)
-	}
 	// Create the streamer
 	s := &streamer{
-		file: file,
+		file: entry.SiaFile,
 		r:    r,
 	}
 	return siaPath, s, nil

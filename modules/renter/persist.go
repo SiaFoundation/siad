@@ -301,7 +301,7 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		dupCount := 0
 		origName := files[i].name
 		for {
-			if !r.staticFileSet.Exists(files[i].name, r.filesDir) {
+			if !r.staticFileSet.Exists(files[i].name) {
 				break
 			}
 			dupCount++
@@ -315,13 +315,12 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
 		// be returned here
 		siafilePath := filepath.Join(r.filesDir, f.name)
-		thread := siafile.RandomThread()
-		entry, err := r.fileToSiaFile(f, siafilePath, thread)
+		entry, threadUID, err := r.fileToSiaFile(f, siafilePath)
 		if err != nil {
 			return nil, err
 		}
 		names[i] = f.name
-		err = errors.Compose(err, entry.Close(thread))
+		err = errors.Compose(err, entry.Close(threadUID))
 	}
 	// TODO Save the file in the new format.
 	return names, err
@@ -354,7 +353,7 @@ func (r *Renter) initPersist() error {
 		return err
 	}
 	r.wal = wal
-	r.staticFileSet.AssignWAL(wal)
+	r.staticFileSet = siafile.NewSiaFileSet(r.filesDir, wal)
 
 	// Apply unapplied wal txns.
 	for _, txn := range txns {

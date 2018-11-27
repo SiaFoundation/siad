@@ -232,10 +232,11 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	// Get all the files holding the readlock.
 	//
 	// TODO - update to just read from disk
-	files, err := r.staticFileSet.All(r.filesDir)
-	if err != nil {
-		return
-	}
+	// files, err := r.staticFileSet.All()
+	// if err != nil {
+	// 	return
+	// }
+	files := []*siafile.SiaFile{}
 
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.

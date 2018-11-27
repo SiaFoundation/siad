@@ -489,13 +489,11 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // providing a different file with the same size.
 func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 	// Check if file exists and is being tracked.
-	thread := siafile.RandomThread()
-	entry, err := r.staticFileSet.Open(siaPath, r.filesDir, thread)
+	entry, threadUID, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
 		return err
 	}
-	defer entry.Close(thread)
-	file := entry.SiaFile()
+	defer entry.Close(threadUID)
 
 	// Sanity check that a file with the correct size exists at the new
 	// location.
@@ -503,12 +501,12 @@ func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to get fileinfo of the file")
 	}
-	if uint64(fi.Size()) != file.Size() {
-		return fmt.Errorf("file sizes don't match - want %v but got %v", file.Size(), fi.Size())
+	if uint64(fi.Size()) != entry.Size() {
+		return fmt.Errorf("file sizes don't match - want %v but got %v", entry.Size(), fi.Size())
 	}
 
 	// Set the new path on disk.
-	return file.SetLocalPath(newPath)
+	return entry.SetLocalPath(newPath)
 }
 
 // ActiveHosts returns an array of hostDB's active hosts
@@ -664,7 +662,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 
 	r := &Renter{
-		staticFileSet: siafile.NewSiaFileSet(),
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the
 		// download heap loop, searching for a chunk that's not there. This is

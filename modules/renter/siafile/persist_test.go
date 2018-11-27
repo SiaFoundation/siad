@@ -318,16 +318,16 @@ func TestDelete(t *testing.T) {
 	t.Parallel()
 
 	// Create SiaFileSet with SiaFile
-	sf, _ := newTestSiaFileSetWithFile(RandomThread())
+	entry, _, _ := newTestSiaFileSetWithFile()
 	// Delete file.
-	if err := sf.Delete(); err != nil {
+	if err := entry.Delete(); err != nil {
 		t.Fatal("Failed to delete file", err)
 	}
 	// Check if file was deleted and if deleted flag was set.
-	if !sf.Deleted() {
+	if !entry.Deleted() {
 		t.Fatal("Deleted flag was not set correctly")
 	}
-	if _, err := os.Open(sf.siaFilePath); !os.IsNotExist(err) {
+	if _, err := os.Open(entry.siaFilePath); !os.IsNotExist(err) {
 		t.Fatal("Expected a file doesn't exist error but got", err)
 	}
 }
@@ -341,15 +341,15 @@ func TestRename(t *testing.T) {
 	t.Parallel()
 
 	// Create SiaFileSet with SiaFile
-	sf, _ := newTestSiaFileSetWithFile(RandomThread())
+	entry, _, _ := newTestSiaFileSetWithFile()
 
 	// Create new paths for the file.
-	newSiaPath := sf.staticMetadata.SiaPath + "1"
-	newSiaFilePath := sf.siaFilePath + "1"
-	oldSiaFilePath := sf.siaFilePath
+	newSiaPath := entry.staticMetadata.SiaPath + "1"
+	newSiaFilePath := entry.siaFilePath + "1"
+	oldSiaFilePath := entry.siaFilePath
 
 	// Rename file
-	if err := sf.Rename(newSiaPath, newSiaFilePath); err != nil {
+	if err := entry.Rename(newSiaPath, newSiaFilePath); err != nil {
 		t.Fatal("Failed to rename file", err)
 	}
 
@@ -365,10 +365,10 @@ func TestRename(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check the metadata.
-	if sf.siaFilePath != newSiaFilePath {
+	if entry.siaFilePath != newSiaFilePath {
 		t.Fatal("SiaFilePath wasn't updated correctly")
 	}
-	if sf.staticMetadata.SiaPath != newSiaPath {
+	if entry.staticMetadata.SiaPath != newSiaPath {
 		t.Fatal("SiaPath wasn't updated correctly")
 	}
 }

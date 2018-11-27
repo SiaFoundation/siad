@@ -72,7 +72,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 
 	// Check for a nickname conflict.
-	if r.staticFileSet.Exists(up.SiaPath, r.filesDir) {
+	if r.staticFileSet.Exists(up.SiaPath) {
 		return siafile.ErrPathOverload
 	}
 
@@ -110,18 +110,16 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	cipherType := crypto.TypeDefaultRenter
 
 	// Create the Siafile and add to renter
-	thread := siafile.RandomThread()
-	entry, err := r.staticFileSet.NewSiaFile(siaFilePath, up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode(), thread)
+	entry, threadUID, err := r.staticFileSet.NewSiaFile(siaFilePath, up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode())
 	if err != nil {
 		return err
 	}
-	defer entry.Close(thread)
-	f := entry.SiaFile()
+	defer entry.Close(threadUID)
 
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
 	id := r.mu.Lock()
-	unfinishedChunks := r.buildUnfinishedChunks(f, hosts)
+	unfinishedChunks := r.buildUnfinishedChunks(entry.SiaFile, hosts)
 	r.mu.Unlock(id)
 	for i := 0; i < len(unfinishedChunks); i++ {
 		r.uploadHeap.managedPush(unfinishedChunks[i])

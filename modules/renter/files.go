@@ -2,7 +2,6 @@ package renter
 
 import (
 	"os"
-	"path/filepath"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -65,14 +64,12 @@ type pieceData struct {
 // TODO: The data is not cleared from any contracts where the host is not
 // immediately online.
 func (r *Renter) DeleteFile(nickname string) error {
-	thread := siafile.RandomThread()
-	entry, err := r.staticFileSet.Open(nickname, r.filesDir, thread)
-	if err != nil {
-		return err
+	// Confirm file exists
+	if !r.staticFileSet.Exists(nickname) {
+		return siafile.ErrUnknownPath
 	}
-	defer entry.Close(thread)
 	// TODO: delete the sectors of the file as well.
-	if err := r.staticFileSet.Delete(entry); err != nil {
+	if err := r.staticFileSet.Delete(nickname); err != nil {
 		return err
 	}
 	// Save renter
@@ -84,7 +81,7 @@ func (r *Renter) DeleteFile(nickname string) error {
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() []modules.FileInfo {
 	// Get all the renter files
-	files, err := r.staticFileSet.All(r.filesDir)
+	files, err := r.staticFileSet.All()
 	if err != nil {
 		return []modules.FileInfo{}
 	}
@@ -146,14 +143,12 @@ func (r *Renter) FileList() []modules.FileInfo {
 // Update based on FileList
 func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	// Get the file and its contracts
-	thread := siafile.RandomThread()
-	entry, err := r.staticFileSet.Open(siaPath, r.filesDir, thread)
+	entry, threadUID, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
-	defer entry.Close(thread)
-	file := entry.SiaFile()
-	pks := file.HostPublicKeys()
+	defer entry.Close(threadUID)
+	pks := entry.HostPublicKeys()
 
 	// Build 2 maps that map every contract id to its offline and goodForRenew
 	// status.
@@ -172,27 +167,27 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 
 	// Build the FileInfo
 	renewing := true
-	localPath := file.LocalPath()
+	localPath := entry.LocalPath()
 	_, err = os.Stat(localPath)
 	onDisk := !os.IsNotExist(err)
-	redundancy := file.Redundancy(offline, goodForRenew)
+	redundancy := entry.Redundancy(offline, goodForRenew)
 	fileInfo := modules.FileInfo{
-		AccessTime:     file.AccessTime(),
-		Available:      file.Available(offline),
-		ChangeTime:     file.ChangeTime(),
-		CipherType:     file.MasterKey().Type().String(),
-		CreateTime:     file.CreateTime(),
-		Expiration:     file.Expiration(contracts),
-		Filesize:       file.Size(),
+		AccessTime:     entry.AccessTime(),
+		Available:      entry.Available(offline),
+		ChangeTime:     entry.ChangeTime(),
+		CipherType:     entry.MasterKey().Type().String(),
+		CreateTime:     entry.CreateTime(),
+		Expiration:     entry.Expiration(contracts),
+		Filesize:       entry.Size(),
 		LocalPath:      localPath,
-		ModTime:        file.ModTime(),
+		ModTime:        entry.ModTime(),
 		OnDisk:         onDisk,
 		Recoverable:    onDisk || redundancy >= 1,
 		Redundancy:     redundancy,
 		Renewing:       renewing,
-		SiaPath:        file.SiaPath(),
-		UploadedBytes:  file.UploadedBytes(),
-		UploadProgress: file.UploadProgress(),
+		SiaPath:        entry.SiaPath(),
+		UploadedBytes:  entry.UploadedBytes(),
+		UploadProgress: entry.UploadProgress(),
 	}
 
 	return fileInfo, nil
@@ -207,22 +202,15 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 		return err
 	}
 	// Check for conflict with new Name
-	if r.staticFileSet.Exists(newName, r.filesDir) {
+	if r.staticFileSet.Exists(newName) {
 		return siafile.ErrPathOverload
 	}
-	// Grab file to rename
-	thread := siafile.RandomThread()
-	entry, err := r.staticFileSet.Open(currentName, r.filesDir, thread)
-	if err != nil {
-		return err
-	}
-	defer entry.Close(thread)
-	return r.staticFileSet.Rename(entry, newName, filepath.Join(r.filesDir, newName+siafile.ShareExtension))
+	return r.staticFileSet.Rename(currentName, newName)
 }
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
-func (r *Renter) fileToSiaFile(f *file, repairPath string, thread int) (*siafile.SiaFileSetEntry, error) {
+func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFileSetEntry, int, error) {
 	fileData := siafile.FileData{
 		Name:        f.name,
 		FileSize:    f.size,
@@ -248,7 +236,7 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string, thread int) (*siafile
 		}
 	}
 	fileData.Chunks = chunks
-	return r.staticFileSet.NewFromFileData(fileData, thread)
+	return r.staticFileSet.NewFromFileData(fileData)
 }
 
 // numChunks returns the number of chunks that f was split into.
