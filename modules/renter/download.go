@@ -125,6 +125,7 @@ package renter
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -388,9 +389,9 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		overdrive:     3, // TODO: moderate default until full overdrive support is added.
 		priority:      5, // TODO: moderate default until full priority support is added.
 	})
-	if osFile, ok := dw.(*os.File); err != nil && ok {
-		// If the destination was a file we close it.
-		return nil, errors.Compose(err, osFile.Close())
+	if closer, ok := dw.(io.Closer); err != nil && ok {
+		// If the destination can be closed we do so.
+		return nil, errors.Compose(err, closer.Close())
 	} else if err != nil {
 		return nil, err
 	}
