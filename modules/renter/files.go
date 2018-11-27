@@ -81,7 +81,7 @@ func (r *Renter) DeleteFile(nickname string) error {
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() []modules.FileInfo {
 	// Get all the renter files
-	files, err := r.staticFileSet.All()
+	entries, err := r.staticFileSet.All()
 	if err != nil {
 		return []modules.FileInfo{}
 	}
@@ -89,8 +89,8 @@ func (r *Renter) FileList() []modules.FileInfo {
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.
 	pks := make(map[string]types.SiaPublicKey)
-	for _, file := range files {
-		for _, pk := range file.HostPublicKeys() {
+	for _, entry := range entries {
+		for _, pk := range entry.HostPublicKeys() {
 			pks[string(pk.Key)] = pk
 		}
 	}
@@ -112,29 +112,33 @@ func (r *Renter) FileList() []modules.FileInfo {
 
 	// Build the list of FileInfos.
 	fileList := []modules.FileInfo{}
-	for _, f := range files {
-		localPath := f.LocalPath()
+	for threadUID, entry := range entries {
+		localPath := entry.LocalPath()
 		_, err := os.Stat(localPath)
 		onDisk := !os.IsNotExist(err)
-		redundancy := f.Redundancy(offline, goodForRenew)
+		redundancy := entry.Redundancy(offline, goodForRenew)
 		fileList = append(fileList, modules.FileInfo{
-			AccessTime:     f.AccessTime(),
-			Available:      f.Available(offline),
-			ChangeTime:     f.ChangeTime(),
-			CipherType:     f.MasterKey().Type().String(),
-			CreateTime:     f.CreateTime(),
-			Expiration:     f.Expiration(contracts),
-			Filesize:       f.Size(),
+			AccessTime:     entry.AccessTime(),
+			Available:      entry.Available(offline),
+			ChangeTime:     entry.ChangeTime(),
+			CipherType:     entry.MasterKey().Type().String(),
+			CreateTime:     entry.CreateTime(),
+			Expiration:     entry.Expiration(contracts),
+			Filesize:       entry.Size(),
 			LocalPath:      localPath,
-			ModTime:        f.ModTime(),
+			ModTime:        entry.ModTime(),
 			OnDisk:         onDisk,
 			Recoverable:    onDisk || redundancy >= 1,
 			Redundancy:     redundancy,
 			Renewing:       true,
-			SiaPath:        f.SiaPath(),
-			UploadedBytes:  f.UploadedBytes(),
-			UploadProgress: f.UploadProgress(),
+			SiaPath:        entry.SiaPath(),
+			UploadedBytes:  entry.UploadedBytes(),
+			UploadProgress: entry.UploadProgress(),
 		})
+		err = entry.Close(threadUID)
+		if err != nil {
+			r.log.Debugln("WARN: Could not close thread:", err)
+		}
 	}
 	return fileList
 }
@@ -169,6 +173,9 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	renewing := true
 	localPath := entry.LocalPath()
 	_, err = os.Stat(localPath)
+	if err != nil && !os.IsNotExist(err) {
+		return modules.FileInfo{}, err
+	}
 	onDisk := !os.IsNotExist(err)
 	redundancy := entry.Redundancy(offline, goodForRenew)
 	fileInfo := modules.FileInfo{

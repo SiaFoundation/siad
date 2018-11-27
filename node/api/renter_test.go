@@ -997,8 +997,8 @@ func TestRenterHandlerDelete(t *testing.T) {
 
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
-	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
-		t.Error("Expected error to contain 'no such file or directory':", err)
+	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 }
 

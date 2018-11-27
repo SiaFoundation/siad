@@ -94,13 +94,6 @@ type (
 	}
 )
 
-// ThreadType is the helper type for the SiaFile threadMap
-type ThreadType struct {
-	lockTime     time.Time
-	callingFiles []string
-	callingLines []int
-}
-
 // MarshalSia implements the encoding.SiaMarshaler interface.
 func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)

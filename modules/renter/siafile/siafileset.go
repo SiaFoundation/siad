@@ -41,6 +41,13 @@ type (
 		threadMap   map[int]ThreadType
 		threadMapMU sync.Mutex
 	}
+
+	// ThreadType is the helper type for the SiaFile threadMap
+	ThreadType struct {
+		lockTime     time.Time
+		callingFiles []string
+		callingLines []int
+	}
 )
 
 // NewSiaFileSet initializes and returns a SiaFileSet
@@ -80,10 +87,24 @@ func (entry *SiaFileSetEntry) close(thread int) error {
 	}
 	delete(entry.threadMap, thread)
 	if len(entry.threadMap) == 0 {
-		// fmt.Println("deleted", entry.SiaPath())
 		delete(entry.siaFileSet.siaFileMap, entry.SiaPath())
 	}
 	return nil
+}
+
+// ChunkThreads returns an array for threadUIDs to be used for the chunks when
+// doing chunk operations
+func (entry *SiaFileSetEntry) ChunkThreads() []int {
+	var threads []int
+	chunkCount := int(entry.NumChunks())
+	entry.threadMapMU.Lock()
+	defer entry.threadMapMU.Unlock()
+	for i := 0; i < chunkCount; i++ {
+		threadUID := randomThreadUID()
+		threads = append(threads, threadUID)
+		entry.threadMap[threadUID] = newThreadType()
+	}
+	return threads
 }
 
 // Close removes the thread from the threadMap. If the length of threadMap count
@@ -129,10 +150,6 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, int, error) {
 	entry.threadMapMU.Lock()
 	defer entry.threadMapMU.Unlock()
 	entry.threadMap[threadUID] = newThreadType()
-	// fmt.Println("open", siaPath)
-	// fmt.Printf("Entry: %v - %v\n", siaPath, &entry)
-	// fmt.Printf("Siafile: %v - %v\n", siaPath, &entry.SiaFile)
-	// fmt.Println()
 	return entry, threadUID, nil
 }
 
@@ -143,14 +160,14 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, int, error) {
 //
 // Note: This is currently only needed for the Files endpoint. This is an
 // expensive call so it should be avoided unless absolutely necessary
-func (sfs *SiaFileSet) All() ([]*SiaFile, error) {
-	var siaFiles []*SiaFile
+func (sfs *SiaFileSet) All() (map[int]*SiaFileSetEntry, error) {
+	entries := make(map[int]*SiaFileSetEntry)
 	sfs.mu.Lock()
 	dir := sfs.siaFileDir
 	sfs.mu.Unlock()
 	// Recursively load all files found in renter directory. Errors
 	// are not considered fatal and are ignored.
-	return siaFiles, filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	return entries, filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
@@ -168,10 +185,7 @@ func (sfs *SiaFileSet) All() ([]*SiaFile, error) {
 		if err != nil {
 			return nil
 		}
-		siaFiles = append(siaFiles, entry.SiaFile)
-		if err := entry.Close(threadUID); err != nil {
-			return nil
-		}
+		entries[threadUID] = entry
 		return nil
 	})
 }

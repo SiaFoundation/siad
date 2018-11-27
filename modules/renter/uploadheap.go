@@ -22,8 +22,9 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -68,11 +69,11 @@ func (uch *uploadChunkHeap) Pop() interface{} {
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) {
 	// Create the unique chunk id.
 	ucid := uploadChunkID{
-		fileUID: uuc.renterFile.UID(),
+		fileUID: uuc.fileEntry.UID(),
 		index:   uuc.index,
 	}
 	// Sanity check: fileUID should not be the empty value.
-	if uuc.renterFile.UID() == "" {
+	if uuc.fileEntry.UID() == "" {
 		panic("empty string for file UID")
 	}
 
@@ -102,11 +103,11 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 // TODO / NOTE: This code can be substantially simplified once the files store
 // the HostPubKey instead of the FileContractID, and can be simplified even
 // further once the layout is per-chunk instead of per-filecontract.
-func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]struct{}) []*unfinishedUploadChunk {
+func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, threadUIDs []int, hosts map[string]struct{}) []*unfinishedUploadChunk {
 	// If we don't have enough workers for the file, don't repair it right now.
 	minWorkers := 0
-	for i := uint64(0); i < f.NumChunks(); i++ {
-		minPieces := f.ErasureCode().MinPieces()
+	for i := uint64(0); i < entry.NumChunks(); i++ {
+		minPieces := entry.ErasureCode().MinPieces()
 		if minPieces > minWorkers {
 			minWorkers = minPieces
 		}
@@ -120,20 +121,21 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 	// TODO / NOTE: Future files may have a different method for determining the
 	// number of chunks. Changes will be made due to things like sparse files,
 	// and the fact that chunks are going to be different sizes.
-	chunkCount := f.NumChunks()
+	chunkCount := entry.NumChunks()
 	newUnfinishedChunks := make([]*unfinishedUploadChunk, chunkCount)
 	for i := uint64(0); i < chunkCount; i++ {
 		newUnfinishedChunks[i] = &unfinishedUploadChunk{
-			renterFile: f,
+			fileEntry: entry,
+			threadUID: threadUIDs[i],
 
 			id: uploadChunkID{
-				fileUID: f.UID(),
+				fileUID: entry.UID(),
 				index:   i,
 			},
 
 			index:  i,
-			length: f.ChunkSize(),
-			offset: int64(i * f.ChunkSize()),
+			length: entry.ChunkSize(),
+			offset: int64(i * entry.ChunkSize()),
 
 			// memoryNeeded has to also include the logical data, and also
 			// include the overhead for encryption.
@@ -144,13 +146,13 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 			// TODO: Currently we request memory for all of the pieces as well
 			// as the minimum pieces, but we perhaps don't need to request all
 			// of that.
-			memoryNeeded:  f.PieceSize()*uint64(f.ErasureCode().NumPieces()+f.ErasureCode().MinPieces()) + uint64(f.ErasureCode().NumPieces())*f.MasterKey().Type().Overhead(),
-			minimumPieces: f.ErasureCode().MinPieces(),
-			piecesNeeded:  f.ErasureCode().NumPieces(),
+			memoryNeeded:  entry.PieceSize()*uint64(entry.ErasureCode().NumPieces()+entry.ErasureCode().MinPieces()) + uint64(entry.ErasureCode().NumPieces())*entry.MasterKey().Type().Overhead(),
+			minimumPieces: entry.ErasureCode().MinPieces(),
+			piecesNeeded:  entry.ErasureCode().NumPieces(),
 
-			physicalChunkData: make([][]byte, f.ErasureCode().NumPieces()),
+			physicalChunkData: make([][]byte, entry.ErasureCode().NumPieces()),
 
-			pieceUsage:  make([]bool, f.ErasureCode().NumPieces()),
+			pieceUsage:  make([]bool, entry.ErasureCode().NumPieces()),
 			unusedHosts: make(map[string]struct{}),
 		}
 		// Every chunk can have a different set of unused hosts.
@@ -161,15 +163,15 @@ func (r *Renter) buildUnfinishedChunks(f *siafile.SiaFile, hosts map[string]stru
 
 	// Build a map of host public keys.
 	pks := make(map[string]types.SiaPublicKey)
-	for _, pk := range f.HostPublicKeys() {
+	for _, pk := range entry.HostPublicKeys() {
 		pks[string(pk.Key)] = pk
 	}
 
 	// Iterate through the pieces of all chunks of the file and mark which
 	// hosts are already in use for a particular chunk. As you delete hosts
 	// from the 'unusedHosts' map, also increment the 'piecesCompleted' value.
-	for chunkIndex := uint64(0); chunkIndex < f.NumChunks(); chunkIndex++ {
-		pieces, err := f.Pieces(chunkIndex)
+	for chunkIndex := uint64(0); chunkIndex < entry.NumChunks(); chunkIndex++ {
+		pieces, err := entry.Pieces(chunkIndex)
 		if err != nil {
 			r.log.Println("failed to get pieces for building incomplete chunks")
 			return nil
@@ -232,19 +234,18 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	// Get all the files holding the readlock.
 	//
 	// TODO - update to just read from disk
-	// files, err := r.staticFileSet.All()
-	// if err != nil {
-	// 	return
-	// }
-	files := []*siafile.SiaFile{}
+	entries, err := r.staticFileSet.All()
+	if err != nil {
+		return
+	}
 
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.
 	pks := make(map[string]types.SiaPublicKey)
 	goodForRenew := make(map[string]bool)
 	offline := make(map[string]bool)
-	for _, f := range files {
-		for _, pk := range f.HostPublicKeys() {
+	for _, e := range entries {
+		for _, pk := range e.HostPublicKeys() {
 			pks[string(pk.Key)] = pk
 		}
 	}
@@ -262,19 +263,23 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 
 	// Loop through the whole set of files and get a list of chunks to add to
 	// the heap.
-	for _, file := range files {
+	for _, entry := range entries {
 		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(file, hosts)
+		unfinishedUploadChunks := r.buildUnfinishedChunks(entry, entry.ChunkThreads(), hosts)
 		r.mu.Unlock(id)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
 		}
 	}
-	for _, file := range files {
+	for threadUID, entry := range entries {
 		// Check if local file is missing and redundancy is less than 1
 		// log warning to renter log
-		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
-			r.log.Println("File not found on disk and possibly unrecoverable:", file.LocalPath())
+		if _, err := os.Stat(entry.LocalPath()); os.IsNotExist(err) && entry.Redundancy(offline, goodForRenew) < 1 {
+			r.log.Println("File not found on disk and possibly unrecoverable:", entry.LocalPath())
+		}
+		err := entry.Close(threadUID)
+		if err != nil {
+			r.log.Debugln("WARN: Could not close thread:", err)
 		}
 	}
 }

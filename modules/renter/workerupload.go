@@ -119,7 +119,7 @@ func (w *worker) managedUpload(uc *unfinishedUploadChunk, pieceIndex uint64) {
 	w.mu.Unlock()
 
 	// Add piece to renterFile
-	err = uc.renterFile.AddPiece(w.contract.HostPublicKey, uc.index, pieceIndex, root)
+	err = uc.fileEntry.AddPiece(w.contract.HostPublicKey, uc.index, pieceIndex, root)
 	if err != nil {
 		w.renter.log.Debugln("Worker failed to add new piece to SiaFile:", err)
 		w.managedUploadFailed(uc, pieceIndex)
