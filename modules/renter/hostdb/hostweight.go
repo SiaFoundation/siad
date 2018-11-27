@@ -237,7 +237,8 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// Calculate the hostCollateral the renter would expect the host to put
 	// into a contract.
 	//
-	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, contractExpectedFunds, txnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, contractExpectedStorage)
+	contractTxnFees := txnFees.Mul64(modules.EstimatedFileContractTransactionSetSize)
+	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, contractExpectedFunds, contractTxnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, contractExpectedStorage)
 	if err != nil {
 		info := fmt.Sprintf("Error while estimating collateral for host: Host %v, ContractPrice %v, TxnFees %v, Funds %v",
 			entry.PublicKey.String(), entry.ContractPrice.HumanString(), txnFees.HumanString(), allowance.Funds.HumanString())
