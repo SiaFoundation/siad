@@ -144,7 +144,7 @@ type ErasureCoder interface {
 
 	// RecoverSegment accepts encoded pieces and decodes the segment at
 	// segmentIndex.
-	RecoverSegment(pieces [][]byte, segmentIndex int, w io.Writer) error
+	RecoverSegment(pieces [][]byte, segmentIndex int, pieceSize, segmentSize uint64, w io.Writer) error
 }
 
 // An Allowance dictates how much the Renter is allowed to spend in a given

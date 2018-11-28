@@ -101,21 +101,16 @@ func (rs *RSCode) EncodeSubShards(segments [][][]byte, pieceSize, segmentSize ui
 		}
 	}
 	// Convert the encoded segments to the output format.
-	// TODO this is not in-place yet.
+	// NOTE this is not in-place yet.
 	var pieces [][]byte
 	for i := 0; i < rs.NumPieces(); i++ {
-		piece := make([]byte, pieceSize)
+		var piece []byte
 		for j := uint64(0); j < pieceSize/segmentSize; j++ {
 			piece = append(piece, segments[j][i]...)
 		}
+		pieces = append(pieces, piece)
 	}
 	return pieces, nil
-}
-
-// RecoverSegment accepts encoded pieces and decodes the segment at
-// segmentIndex.
-func (rs *RSCode) RecoverSegment(pieces [][]byte, segmentIndex int, w io.Writer) error {
-	panic("not yet implemented yet")
 }
 
 // Recover recovers the original data from pieces and writes it to w.
@@ -127,6 +122,36 @@ func (rs *RSCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 		return err
 	}
 	return rs.enc.Join(w, pieces, int(n))
+}
+
+// RecoverSegment accepts encoded pieces and decodes the segment at
+// segmentIndex. The size of the decoded data is segmentSize * dataPieces.
+func (rs *RSCode) RecoverSegment(pieces [][]byte, segmentIndex int, pieceSize, segmentSize uint64, w io.Writer) error {
+	// pieceSize must be divisible by segmentSize
+	if pieceSize%segmentSize != 0 {
+		return errors.New("pieceSize not divisible by segmentSize")
+	}
+	// Check the length of pieces.
+	if len(pieces) != rs.NumPieces() {
+		return fmt.Errorf("expected pieces to have len %v but was %v",
+			rs.NumPieces(), len(pieces))
+	}
+	// Extract the segment from the pieces.
+	// NOTE not in-place
+	var segment [][]byte
+	for _, piece := range pieces {
+		if uint64(len(piece)) <= uint64(segmentIndex)*segmentSize {
+			segment = append(segment, []byte{})
+		} else {
+			segment = append(segment, piece[uint64(segmentIndex)*segmentSize:][:segmentSize])
+		}
+	}
+	// Reconstruct the segment.
+	err := rs.enc.ReconstructData(segment)
+	if err != nil {
+		return err
+	}
+	return rs.enc.Join(w, segment, int(segmentSize)*rs.MinPieces())
 }
 
 // NewRSCode creates a new Reed-Solomon encoder/decoder using the supplied

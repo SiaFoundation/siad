@@ -95,11 +95,20 @@ func TestPartialEncodeRecover(t *testing.T) {
 	if len(encodedPieces) != rsc.NumPieces() {
 		t.Fatalf("encodedPieces should've length %v but was %v", rsc.NumPieces(), len(encodedPieces))
 	}
-	// TODO delete pieces.
+	// Every piece should have pieceSize.
+	for _, piece := range encodedPieces {
+		if len(piece) != pieceSize {
+			t.Fatalf("expecte len(piece) to be %v but was %v", pieceSize, len(piece))
+		}
+	}
+	// Delete as many random pieces as possible.
+	for _, i := range fastrand.Perm(len(encodedPieces))[:parityPieces] {
+		encodedPieces[i] = nil
+	}
 	// Recover every segment individually.
 	for i := range segments {
 		buf := new(bytes.Buffer)
-		err = rsc.RecoverSegment(encodedPieces, i, buf)
+		err = rsc.RecoverSegment(encodedPieces, i, uint64(pieceSize), uint64(segmentSize), buf)
 		if err != nil {
 			t.Fatal(err)
 		}
