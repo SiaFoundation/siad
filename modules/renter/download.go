@@ -397,9 +397,9 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	}
 
 	// Once the download is done we close the file if we downloaded to disk.
-	if osFile, ok := dw.(*os.File); ok {
+	if closer, ok := dw.(io.Closer); ok {
 		d.OnComplete(func(_ error) error {
-			return osFile.Close()
+			return closer.Close()
 		})
 	}
 
