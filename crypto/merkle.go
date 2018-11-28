@@ -163,7 +163,7 @@ func VerifySegment(base []byte, hashSet []Hash, numSegments, proofIndex uint64, 
 //
 // MerkleRangeProof for a single segment is NOT equivalent to MerkleProof.
 func MerkleRangeProof(b []byte, start, end int) []Hash {
-	proof, _ := merkletree.BuildReaderRangeProof(bytes.NewReader(b), NewHash(), SegmentSize, start, end)
+	proof, _ := merkletree.BuildRangeProof(start, end, merkletree.NewReaderSubtreeHasher(bytes.NewReader(b), SegmentSize, NewHash()))
 	proofHashes := make([]Hash, len(proof))
 	for i := range proofHashes {
 		copy(proofHashes[i][:], proof[i])
@@ -179,5 +179,6 @@ func VerifyRangeProof(segments []byte, proof []Hash, start, end int, root Hash) 
 	for i := range proof {
 		proofBytes[i] = proof[i][:]
 	}
-	return merkletree.VerifyRangeProof(segments, NewHash(), SegmentSize, start, end, proofBytes, root[:])
+	result, _ := merkletree.VerifyRangeProof(merkletree.NewReaderLeafHasher(bytes.NewReader(segments), NewHash(), SegmentSize), NewHash(), start, end, proofBytes, root[:])
+	return result
 }
