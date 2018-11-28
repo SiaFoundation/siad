@@ -100,12 +100,8 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		}
 	}
 
-	// Create file object.
-	siaFilePath := filepath.Join(r.filesDir, up.SiaPath+siafile.ShareExtension)
-	cipherType := crypto.TypeDefaultRenter
-
 	// Create the Siafile and add to renter
-	entry, threadUID, err := r.staticFileSet.NewSiaFile(siaFilePath, up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode())
+	entry, threadUID, err := r.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fileInfo.Size()), fileInfo.Mode())
 	if err != nil {
 		return err
 	}

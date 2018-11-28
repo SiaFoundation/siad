@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -13,12 +14,17 @@ import (
 // that they are linked
 func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, int) {
 	// Create new SiaFile params
-	siaFilePath, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
 	dir := filepath.Join(os.TempDir(), "siafiles")
 	// Create SiaFileSet
 	sfs := NewSiaFileSet(dir, newTestWAL())
 	// Create SiaFile
-	entry, threadUID, err := sfs.NewSiaFile(siaFilePath, siaPath, source, rc, sk, fileSize, fileMode)
+	up := modules.FileUploadParams{
+		Source:      source,
+		SiaPath:     siaPath,
+		ErasureCode: rc,
+	}
+	entry, threadUID, err := sfs.NewSiaFile(up, sk, fileSize, fileMode)
 	if err != nil {
 		return nil, nil, 0
 	}

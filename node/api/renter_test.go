@@ -845,8 +845,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	renameValues := url.Values{}
 	renameValues.Set("newsiapath", "newdne")
 	err = st.stdPostAPI("/renter/rename/dne", renameValues)
-	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
-		t.Error("Expected error to contain 'no such file or directory':", err)
+	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
 	// Set an allowance for the renter, allowing a contract to be formed.

@@ -318,16 +318,17 @@ func (sfs *SiaFileSet) NewFromFileData(fd FileData) (*SiaFileSetEntry, int, erro
 // the SiaFileSetEntry, wherever NewSiaFile is called there should be a Close
 // called on the SiaFileSetEntry to avoid the file being stuck in memory due the
 // thread never being removed from the threadMap
-func (sfs *SiaFileSet) NewSiaFile(siaFilePath, siaPath, source string, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFileSetEntry, int, error) {
+func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFileSetEntry, int, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
+	siaPath := strings.TrimPrefix(up.SiaPath, "/")
 	// Check is SiaFile already exists
-	if sfs.exists(siaPath) {
+	if sfs.exists(siaPath) && !up.Force {
 		return nil, 0, ErrPathOverload
 	}
 	// Make sure there are no leading slashes
-	siaPath = strings.TrimPrefix(siaPath, "/")
-	sf, err := New(siaFilePath, siaPath, source, sfs.wal, erasureCode, masterKey, fileSize, fileMode)
+	siaFilePath := filepath.Join(sfs.siaFileDir, siaPath+ShareExtension)
+	sf, err := New(siaFilePath, siaPath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -352,16 +353,15 @@ func (sfs *SiaFileSet) Open(siaPath string) (*SiaFileSetEntry, int, error) {
 func (sfs *SiaFileSet) Rename(siaPath, newSiaPath string) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
+	// Make sure there are no leading slashes
+	siaPath = strings.TrimPrefix(siaPath, "/")
+	newSiaPath = strings.TrimPrefix(newSiaPath, "/")
 	// Check if SiaFile Exists
 	if !sfs.exists(siaPath) {
 		return ErrUnknownPath
 	}
-	// Make sure there are no leading slashes
-	siaPath = strings.TrimPrefix(siaPath, "/")
-	newSiaPath = strings.TrimPrefix(newSiaPath, "/")
 	// Check for Conflict
-	_, exists := sfs.siaFileMap[newSiaPath]
-	if exists {
+	if sfs.exists(newSiaPath) {
 		return ErrPathOverload
 	}
 	// Grab entry

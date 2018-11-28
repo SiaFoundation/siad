@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -64,7 +63,12 @@ func (r *Renter) newRenterTestFile() (*siafile.SiaFileSetEntry, int) {
 		panic(err)
 	}
 	// Create File
-	entry, threadUID, err := r.staticFileSet.NewSiaFile(siaFilePath, name, "", rsc, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, 0777)
+	up := modules.FileUploadParams{
+		Source:      "",
+		SiaPath:     name,
+		ErasureCode: rsc,
+	}
+	entry, threadUID, err := r.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, 0777)
 	if err != nil {
 		panic(err)
 	}
@@ -487,8 +491,8 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file that doesn't exist.
 	err = rt.renter.RenameFile("1", "1a")
-	if !strings.Contains(err.Error(), "no such file or directory") {
-		t.Error("Expected error to contain 'no such file or directory':", err)
+	if err.Error() != siafile.ErrUnknownPath.Error() {
+		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
 	// Rename a file that does exist.

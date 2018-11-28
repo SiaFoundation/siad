@@ -60,18 +60,8 @@ type pieceData struct {
 
 // DeleteFile removes a file entry from the renter and deletes its data from
 // the hosts it is stored on.
-//
-// TODO: The data is not cleared from any contracts where the host is not
-// immediately online.
 func (r *Renter) DeleteFile(nickname string) error {
-	// TODO: delete the sectors of the file as well.
-	if err := r.staticFileSet.Delete(nickname); err != nil {
-		return err
-	}
-	// Save renter
-	lockID := r.mu.Lock()
-	defer r.mu.Unlock(lockID)
-	return r.saveSync()
+	return r.staticFileSet.Delete(nickname)
 }
 
 // FileList returns all of the files that the renter has.
