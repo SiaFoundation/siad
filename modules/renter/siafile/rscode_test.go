@@ -69,35 +69,44 @@ func TestPartialEncodeRecover(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Allocate space for the pieces.
-	pieces := make([][][]byte, pieceSize/segmentSize)
-	for i := range pieces {
-		pieces[i] = make([][]byte, dataPieces)
-		for j := range pieces[i] {
-			pieces[i][j] = make([]byte, segmentSize)
+	segments := make([][][]byte, pieceSize/segmentSize)
+	for i := range segments {
+		segments[i] = make([][]byte, dataPieces)
+		for j := range segments[i] {
+			segments[i][j] = make([]byte, pieceSize)
 		}
 	}
-	// Write the data to the pieces.
+	// Write the data to the segments.
 	buf := bytes.NewBuffer(data)
 	for i := 0; i < pieceSize/segmentSize; i++ {
 		for j := 0; j < dataPieces; j++ {
 			if buf.Len() < segmentSize {
 				t.Fatal("Buffer is empty")
 			}
-			pieces[i][j] = buf.Next(segmentSize)
+			segments[i][j] = buf.Next(segmentSize)
 		}
 	}
 	// Encode the pieces.
-	encodedPieces, err := rsc.EncodeSubShards(pieces, uint64(pieceSize), uint64(segmentSize))
+	encodedPieces, err := rsc.EncodeSubShards(segments, uint64(pieceSize), uint64(segmentSize))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Check that the parity shards have been created.
-	for _, piece := range encodedPieces {
-		if len(piece) != rsc.NumPieces() {
-			t.Fatalf("Piece should've length %v but was %v", rsc.NumPieces(), len(piece))
+	if len(encodedPieces) != rsc.NumPieces() {
+		t.Fatalf("encodedPieces should've length %v but was %v", rsc.NumPieces(), len(encodedPieces))
+	}
+	// TODO delete pieces.
+	// Recover every segment individually.
+	for i := range segments {
+		buf := new(bytes.Buffer)
+		err = rsc.RecoverSegment(encodedPieces, i, buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(buf.Bytes(), data[i*segmentSize*dataPieces:][:segmentSize*dataPieces]) {
+			t.Fatal("decoded bytes don't equal original segment")
 		}
 	}
-	// TODO Recover random segments.
 }
 
 func BenchmarkRSEncode(b *testing.B) {

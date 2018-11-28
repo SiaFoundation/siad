@@ -64,42 +64,58 @@ func (rs *RSCode) EncodeShards(pieces [][]byte, pieceSize uint64) ([][]byte, err
 //   len(pieces) == pieceSize / segmentSize
 //   len(pieces[i]) == rs.MinPieces
 //   len(pieces[i][j]) == segmentSize
-func (rs *RSCode) EncodeSubShards(pieces [][][]byte, pieceSize, segmentSize uint64) ([][][]byte, error) {
+// The result will be a slice of rs.NumPieces pieces of pieceSize.
+func (rs *RSCode) EncodeSubShards(segments [][][]byte, pieceSize, segmentSize uint64) ([][]byte, error) {
 	// pieceSize must be divisible by segmentSize
 	if pieceSize%segmentSize != 0 {
 		return nil, errors.New("pieceSize not divisible by segmentSize")
 	}
-	// Check that there are enough subshards to make up for a whole piece.
-	if uint64(len(pieces)) != pieceSize/segmentSize {
-		return nil, fmt.Errorf("not enough subshards expected %v but was %v",
-			pieceSize/segmentSize, len(pieces))
+	// Check that there are enough segments.
+	if uint64(len(segments)) != pieceSize/segmentSize {
+		return nil, fmt.Errorf("not enough segments expected %v but was %v",
+			pieceSize/segmentSize, len(segments))
 	}
-	for i := range pieces {
+	for i := range segments {
 		// Check that the caller provided the minimum amount of pieces.
-		if len(pieces[i]) != rs.MinPieces() {
+		if len(segments[i]) != rs.MinPieces() {
 			return nil, fmt.Errorf("invalid number of pieces given %v %v",
-				len(pieces), rs.MinPieces())
+				len(segments), rs.MinPieces())
 		}
-		// Check that each subshard consists of the minimum amount of pieces.
-		for j := range pieces[i] {
-			if uint64(len(pieces[i][j])) != segmentSize {
+		// Check that each subshard consists of the minimum amount of segments.
+		for j := range segments[i] {
+			if uint64(len(segments[i][j])) != segmentSize {
 				return nil, errors.New("segments have wrong size")
 			}
 		}
 	}
-	// Add pieces until pieces has the correct length.
-	for i := range pieces {
-		for len(pieces[i]) < rs.NumPieces() {
-			pieces[i] = append(pieces[i], make([]byte, segmentSize))
+	// Add segments until segments has the correct length.
+	for i := range segments {
+		for len(segments[i]) < rs.NumPieces() {
+			segments[i] = append(segments[i], make([]byte, segmentSize))
 		}
 	}
-	// Encode the pieces.
-	for i := range pieces {
-		if err := rs.enc.Encode(pieces[i]); err != nil {
+	// Encode the segments.
+	for i := range segments {
+		if err := rs.enc.Encode(segments[i]); err != nil {
 			return nil, err
 		}
 	}
+	// Convert the encoded segments to the output format.
+	// TODO this is not in-place yet.
+	var pieces [][]byte
+	for i := 0; i < rs.NumPieces(); i++ {
+		piece := make([]byte, pieceSize)
+		for j := uint64(0); j < pieceSize/segmentSize; j++ {
+			piece = append(piece, segments[j][i]...)
+		}
+	}
 	return pieces, nil
+}
+
+// RecoverSegment accepts encoded pieces and decodes the segment at
+// segmentIndex.
+func (rs *RSCode) RecoverSegment(pieces [][]byte, segmentIndex int, w io.Writer) error {
+	panic("not yet implemented yet")
 }
 
 // Recover recovers the original data from pieces and writes it to w.
