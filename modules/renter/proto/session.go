@@ -46,7 +46,7 @@ func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
 
 // Settings calls the Settings RPC, returning the host's reported settings.
 func (s *Session) Settings() (modules.HostExternalSettings, error) {
-	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
+	extendDeadline(s.conn, modules.NegotiateSettingsTime)
 
 	// send Settings RPC request
 	if err := s.writeRequest(modules.RPCLoopSettings, nil); err != nil {
@@ -84,7 +84,7 @@ func (s *Session) RecentRevision() (types.FileContractRevision, []types.Transact
 	defer s.contractSet.Return(sc)
 
 	// send RecentRevision RPC request
-	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
+	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
 	if err := s.writeRequest(modules.RPCLoopRecentRevision, nil); err != nil {
 		return types.FileContractRevision{}, nil, err
 	}
@@ -198,8 +198,8 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 		extendDeadline(s.conn, time.Hour)
 	}()
 
-	// send download RPC request
-	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
+	// send upload RPC request
+	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
 	err = s.writeRequest(modules.RPCLoopUpload, req)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
@@ -229,7 +229,7 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 // Merkle proof is requested, it is verified.
 func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterContract, _ []byte, err error) {
 	// Reset deadline when finished.
-	defer extendDeadline(s.conn, time.Hour) // TODO: Constant.
+	defer extendDeadline(s.conn, time.Hour)
 
 	// Sanity-check the request.
 	if req.MerkleProof {
@@ -241,7 +241,6 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	}
 
 	// Acquire the contract.
-	// TODO: why not just lock the SafeContract directly?
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
 		return modules.RenterContract{}, nil, errors.New("contract not present in contract set")
@@ -309,7 +308,7 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	}()
 
 	// send download RPC request
-	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
+	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	err = s.writeRequest(modules.RPCLoopDownload, req)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
@@ -352,10 +351,9 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	build.Critical("Merkle proofs not implemented")
 
 	// Reset deadline when finished.
-	defer extendDeadline(s.conn, time.Hour) // TODO: Constant.
+	defer extendDeadline(s.conn, time.Hour)
 
 	// Acquire the contract.
-	// TODO: why not just lock the SafeContract directly?
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
 		return modules.RenterContract{}, nil, errors.New("contract not present in contract set")
@@ -423,8 +421,8 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 		}
 	}()
 
-	// send download RPC request
-	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
+	// send SectorRoots RPC request
+	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	err = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopSectorRoots, req)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
@@ -461,7 +459,7 @@ func (s *Session) shutdown() {
 	close(s.closeChan)
 }
 
-// Close cleanly terminates the download loop with the host and closes the
+// Close cleanly terminates the protocol session with the host and closes the
 // connection.
 func (s *Session) Close() error {
 	// using once ensures that Close is idempotent
