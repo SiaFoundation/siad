@@ -64,10 +64,6 @@ type pieceData struct {
 // TODO: The data is not cleared from any contracts where the host is not
 // immediately online.
 func (r *Renter) DeleteFile(nickname string) error {
-	// Confirm file exists
-	if !r.staticFileSet.Exists(nickname) {
-		return siafile.ErrUnknownPath
-	}
 	// TODO: delete the sectors of the file as well.
 	if err := r.staticFileSet.Delete(nickname); err != nil {
 		return err
@@ -207,10 +203,6 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 	err := validateSiapath(newName)
 	if err != nil {
 		return err
-	}
-	// Check for conflict with new Name
-	if r.staticFileSet.Exists(newName) {
-		return siafile.ErrPathOverload
 	}
 	return r.staticFileSet.Rename(currentName, newName)
 }

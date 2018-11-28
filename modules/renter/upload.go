@@ -71,11 +71,6 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		}
 	}
 
-	// Check for a nickname conflict.
-	if r.staticFileSet.Exists(up.SiaPath) {
-		return siafile.ErrPathOverload
-	}
-
 	// Fill in any missing upload params with sensible defaults.
 	fileInfo, err := os.Stat(up.Source)
 	if err != nil {

@@ -111,11 +111,29 @@ func (entry *SiaFileSetEntry) ChunkThreads() []int {
 // is 0 then it will remove the SiaFileSetEntry from the SiaFileSet map, which
 // will remove it from memory
 func (entry *SiaFileSetEntry) Close(thread int) error {
-	entry.threadMapMU.Lock()
-	defer entry.threadMapMU.Unlock()
 	entry.siaFileSet.mu.Lock()
 	defer entry.siaFileSet.mu.Unlock()
+	entry.threadMapMU.Lock()
+	defer entry.threadMapMU.Unlock()
 	return entry.close(thread)
+}
+
+// exists checks to see if a file with the provided siaPath already exists in
+// the renter
+func (sfs *SiaFileSet) exists(siaPath string) bool {
+	// Make sure there are no leading slashes
+	siaPath = strings.TrimPrefix(siaPath, "/")
+	// Check for file in Memory
+	_, exists := sfs.siaFileMap[siaPath]
+	if exists {
+		return exists
+	}
+	// Check for file on disk
+	_, err := os.Stat(filepath.Join(sfs.siaFileDir, siaPath+ShareExtension))
+	if err == nil {
+		return true
+	}
+	return false
 }
 
 // newSiaFileSetEntry initializes and returns a SiaFileSetEntry
@@ -194,6 +212,10 @@ func (sfs *SiaFileSet) All() (map[int]*SiaFileSetEntry, error) {
 func (sfs *SiaFileSet) Delete(siaPath string) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
+	// Check if SiaFile exists
+	if !sfs.exists(siaPath) {
+		return ErrUnknownPath
+	}
 	// Grab entry
 	entry, threadUID, err := sfs.open(siaPath)
 	if err != nil {
@@ -215,19 +237,7 @@ func (sfs *SiaFileSet) Delete(siaPath string) error {
 func (sfs *SiaFileSet) Exists(siaPath string) bool {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	// Make sure there are no leading slashes
-	siaPath = strings.TrimPrefix(siaPath, "/")
-	// Check for file in Memory
-	_, exists := sfs.siaFileMap[siaPath]
-	if exists {
-		return exists
-	}
-	// Check for file on disk
-	_, err := os.Stat(filepath.Join(sfs.siaFileDir, siaPath+ShareExtension))
-	if err == nil {
-		return true
-	}
-	return false
+	return sfs.exists(siaPath)
 }
 
 // NewFromFileData creates a new SiaFile from a FileData object that was
@@ -311,6 +321,10 @@ func (sfs *SiaFileSet) NewFromFileData(fd FileData) (*SiaFileSetEntry, int, erro
 func (sfs *SiaFileSet) NewSiaFile(siaFilePath, siaPath, source string, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFileSetEntry, int, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
+	// Check is SiaFile already exists
+	if sfs.exists(siaPath) {
+		return nil, 0, ErrPathOverload
+	}
 	// Make sure there are no leading slashes
 	siaPath = strings.TrimPrefix(siaPath, "/")
 	sf, err := New(siaFilePath, siaPath, source, sfs.wal, erasureCode, masterKey, fileSize, fileMode)
@@ -338,6 +352,10 @@ func (sfs *SiaFileSet) Open(siaPath string) (*SiaFileSetEntry, int, error) {
 func (sfs *SiaFileSet) Rename(siaPath, newSiaPath string) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
+	// Check if SiaFile Exists
+	if !sfs.exists(siaPath) {
+		return ErrUnknownPath
+	}
 	// Make sure there are no leading slashes
 	siaPath = strings.TrimPrefix(siaPath, "/")
 	newSiaPath = strings.TrimPrefix(newSiaPath, "/")
