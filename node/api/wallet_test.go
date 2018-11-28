@@ -677,7 +677,20 @@ func TestWalletTransactionGETid(t *testing.T) {
 	if len(wtg.UnconfirmedTransactions) != 2 {
 		t.Fatal("expecting two unconfirmed transactions in sender wallet")
 	}
-	// Check that undocumented API behaviour used in Sia-UI still works with
+
+	// Testing GET :id for unconfirmed transactions
+	var wutgid WalletTransactionGETid
+	err = st.getAPI(fmt.Sprintf("/wallet/transaction/%s", wtg.UnconfirmedTransactions[0].TransactionID), &wutgid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wutgid2 WalletTransactionGETid
+	err = st.getAPI(fmt.Sprintf("/wallet/transaction/%s", wtg.UnconfirmedTransactions[1].TransactionID), &wutgid2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that undocumented API behavior used in Sia-UI still works with
 	// current API.
 	err = st.getAPI("/wallet/transactions?startheight=0&endheight=-1", &wtg)
 	if err != nil {

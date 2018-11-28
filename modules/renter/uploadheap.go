@@ -352,10 +352,14 @@ func (r *Renter) threadedUploadLoop() {
 		// and re-checks the health of all the files.
 		rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
 		for {
-			// Return if the renter has shut down.
 			select {
 			case <-r.tg.StopChan():
+				// Return if the renter has shut down.
 				return
+			case <-rebuildHeapSignal:
+				// Break to the outer loop if workers/heap need to be
+				// refreshed.
+				break
 			default:
 			}
 
