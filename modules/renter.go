@@ -131,6 +131,10 @@ type ErasureCoder interface {
 	// sharded input.
 	EncodeShards(data [][]byte, pieceSize uint64) ([][]byte, error)
 
+	// EncodeSubShards encodes data in a way that every 64 bytes of the encoded
+	// data can be decoded independently.
+	EncodeSubShards(pieces [][][]byte, pieceSize, segmentSize uint64) ([][][]byte, error)
+
 	// Recover recovers the original data from pieces and writes it to w.
 	// pieces should be identical to the slice returned by Encode (length and
 	// order must be preserved), but with missing elements set to nil. n is

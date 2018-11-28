@@ -58,32 +58,46 @@ func TestRSEncode(t *testing.T) {
 }
 
 func TestPartialEncodeRecover(t *testing.T) {
-	// Create the RSCode
-	rsc, err := NewRSCode(10, 20)
+	segmentSize := 64
+	pieceSize := 4096
+	dataPieces := 10
+	parityPieces := 20
+	data := fastrand.Bytes(pieceSize * dataPieces)
+	// Create the erasure coder.
+	rsc, err := NewRSCode(dataPieces, parityPieces)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Encode 1000 bytes of data into 10 pieces.
-	data := fastrand.Bytes(1000)
-	shards, err := rsc.Encode(data)
+	// Allocate space for the pieces.
+	pieces := make([][][]byte, pieceSize/segmentSize)
+	for i := range pieces {
+		pieces[i] = make([][]byte, dataPieces)
+		for j := range pieces[i] {
+			pieces[i][j] = make([]byte, segmentSize)
+		}
+	}
+	// Write the data to the pieces.
+	buf := bytes.NewBuffer(data)
+	for i := 0; i < pieceSize/segmentSize; i++ {
+		for j := 0; j < dataPieces; j++ {
+			if buf.Len() < segmentSize {
+				t.Fatal("Buffer is empty")
+			}
+			pieces[i][j] = buf.Next(segmentSize)
+		}
+	}
+	// Encode the pieces.
+	encodedPieces, err := rsc.EncodeSubShards(pieces, uint64(pieceSize), uint64(segmentSize))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Pick 10 random shards to use for recovery.
-	pickedShards := make(map[int]struct{})
-	for len(pickedShards) < rsc.MinPieces() {
-		pickedShards[fastrand.Intn(rsc.NumPieces())] = struct{}{}
+	// Check that the parity shards have been created.
+	for _, piece := range encodedPieces {
+		if len(piece) != rsc.NumPieces() {
+			t.Fatalf("Piece should've length %v but was %v", rsc.NumPieces(), len(piece))
+		}
 	}
-	// Try to only use the first 50 bytes of each shard for the recovery and
-	// see what happens.
-	recoverShards := make([][]byte, len(shards))
-	for i := range pickedShards {
-		recoverShards[i] = shards[i][:50]
-	}
-	buf := new(bytes.Buffer)
-	if err := rsc.Recover(recoverShards, 777, buf); err != nil {
-		t.Fatal(err)
-	}
+	// TODO Recover random segments.
 }
 
 func BenchmarkRSEncode(b *testing.B) {

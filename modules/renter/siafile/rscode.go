@@ -61,24 +61,24 @@ func (rs *RSCode) EncodeShards(pieces [][]byte, pieceSize uint64) ([][]byte, err
 // EncodeSubShards encodes data in a way that every 64 bytes of the encoded
 // data can be decoded independently.
 // The input 'pieces' needs to have the following properties:
-//   len(pieces) == rs.MinPieces
-//   len(pieces[i]) == pieceSize / segmentSize
+//   len(pieces) == pieceSize / segmentSize
+//   len(pieces[i]) == rs.MinPieces
 //   len(pieces[i][j]) == segmentSize
 func (rs *RSCode) EncodeSubShards(pieces [][][]byte, pieceSize, segmentSize uint64) ([][][]byte, error) {
 	// pieceSize must be divisible by segmentSize
 	if pieceSize%segmentSize != 0 {
 		return nil, errors.New("pieceSize not divisible by segmentSize")
 	}
-	// Check that the caller provided the minimum amount of pieces.
-	if len(pieces) != rs.MinPieces() {
-		return nil, fmt.Errorf("invalid number of pieces given %v %v",
-			len(pieces), rs.MinPieces())
+	// Check that there are enough subshards to make up for a whole piece.
+	if uint64(len(pieces)) != pieceSize/segmentSize {
+		return nil, fmt.Errorf("not enough subshards expected %v but was %v",
+			pieceSize/segmentSize, len(pieces))
 	}
 	for i := range pieces {
-		// Check that there are enough subshards to make up for a whole piece.
-		if uint64(len(pieces[i])) != pieceSize/segmentSize {
-			return nil, fmt.Errorf("not enough subshards expected %v but was %v",
-				pieceSize/segmentSize, len(pieces[0]))
+		// Check that the caller provided the minimum amount of pieces.
+		if len(pieces[i]) != rs.MinPieces() {
+			return nil, fmt.Errorf("invalid number of pieces given %v %v",
+				len(pieces), rs.MinPieces())
 		}
 		// Check that each subshard consists of the minimum amount of pieces.
 		for j := range pieces[i] {
@@ -88,17 +88,14 @@ func (rs *RSCode) EncodeSubShards(pieces [][][]byte, pieceSize, segmentSize uint
 		}
 	}
 	// Add pieces until pieces has the correct length.
-	for len(pieces) < rs.NumPieces() {
-		var piece [][]byte
-		// Add segments until the piece has the correct length.
-		for uint64(len(piece)) < pieceSize/segmentSize {
-			piece = append(piece, make([]byte, segmentSize))
+	for i := range pieces {
+		for len(pieces[i]) < rs.NumPieces() {
+			pieces[i] = append(pieces[i], make([]byte, segmentSize))
 		}
-		pieces = append(pieces, piece)
 	}
 	// Encode the pieces.
-	for _, piece := range pieces {
-		if err := rs.enc.Encode(piece); err != nil {
+	for i := range pieces {
+		if err := rs.enc.Encode(pieces[i]); err != nil {
 			return nil, err
 		}
 	}
