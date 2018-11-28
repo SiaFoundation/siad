@@ -6,6 +6,7 @@ import (
 
 	"github.com/klauspost/reedsolomon"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // RSCode is a Reed-Solomon encoder/decoder. It implements the
@@ -53,6 +54,53 @@ func (rs *RSCode) EncodeShards(pieces [][]byte, pieceSize uint64) ([][]byte, err
 	err := rs.enc.Encode(pieces)
 	if err != nil {
 		return nil, err
+	}
+	return pieces, nil
+}
+
+// EncodeSubShards encodes data in a way that every 64 bytes of the encoded
+// data can be decoded independently.
+// The input 'pieces' needs to have the following properties:
+//   len(pieces) == rs.MinPieces
+//   len(pieces[i]) == pieceSize / segmentSize
+//   len(pieces[i][j]) == segmentSize
+func (rs *RSCode) EncodeSubShards(pieces [][][]byte, pieceSize, segmentSize uint64) ([][][]byte, error) {
+	// pieceSize must be divisible by segmentSize
+	if pieceSize%segmentSize != 0 {
+		return nil, errors.New("pieceSize not divisible by segmentSize")
+	}
+	// Check that the caller provided the minimum amount of pieces.
+	if len(pieces) != rs.MinPieces() {
+		return nil, fmt.Errorf("invalid number of pieces given %v %v",
+			len(pieces), rs.MinPieces())
+	}
+	for i := range pieces {
+		// Check that there are enough subshards to make up for a whole piece.
+		if uint64(len(pieces[i])) != pieceSize/segmentSize {
+			return nil, fmt.Errorf("not enough subshards expected %v but was %v",
+				pieceSize/segmentSize, len(pieces[0]))
+		}
+		// Check that each subshard consists of the minimum amount of pieces.
+		for j := range pieces[i] {
+			if uint64(len(pieces[i][j])) != segmentSize {
+				return nil, errors.New("segments have wrong size")
+			}
+		}
+	}
+	// Add pieces until pieces has the correct length.
+	for len(pieces) < rs.NumPieces() {
+		var piece [][]byte
+		// Add segments until the piece has the correct length.
+		for uint64(len(piece)) < pieceSize/segmentSize {
+			piece = append(piece, make([]byte, segmentSize))
+		}
+		pieces = append(pieces, piece)
+	}
+	// Encode the pieces.
+	for _, piece := range pieces {
+		if err := rs.enc.Encode(piece); err != nil {
+			return nil, err
+		}
 	}
 	return pieces, nil
 }
