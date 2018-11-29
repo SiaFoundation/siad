@@ -293,12 +293,67 @@ var (
 	RPCLoopUpload         = types.Specifier{'L', 'o', 'o', 'p', 'U', 'p', 'l', 'o', 'a', 'd'}
 )
 
+// RPC ciphers
+var (
+	CipherPlaintext = types.Specifier{'p', 'l', 'a', 'i', 'n', 't', 'e', 'x', 't'}
+)
+
+var (
+	// RPCChallengePrefix is the prefix prepended to the challenge data
+	// supplied by the host when proving ownership of a contract's secret key.
+	RPCChallengePrefix = types.Specifier{'c', 'h', 'a', 'l', 'l', 'e', 'n', 'g', 'e'}
+)
+
 // New RPC request and response types
 type (
+	// An RPCError may be sent instead of a Response to any RPC.
+	RPCError struct {
+		Type        types.Specifier
+		Data        []byte // structure depends on Type
+		Description string // human-readable error string
+	}
+
+	// LoopHandshakeRequest contains the information sent by the renter during
+	// the initial RPC handshake.
+	LoopHandshakeRequest struct {
+		// The version of the renter-host protocol that the renter
+		// intends to use.
+		Version byte
+
+		// Ciphers that the renter supports.
+		Ciphers []types.Specifier
+
+		// Entropy used to construct the session key (construction
+		// depends on the cipher selected).
+		KeyData []byte
+
+		// The contract being modified; may be blank if the renter
+		// does not intend to modify a contract (e.g. when forming
+		// a contract).
+		ContractID types.FileContractID
+	}
+
+	// LoopHandshakeResponse contains the information sent by the host in
+	// response to the renter's handshake request.
+	LoopHandshakeResponse struct {
+		// Cipher selected by the host. Must be one of the ciphers offered in
+		// the handshake request.
+		Cipher types.Specifier
+
+		// Entropy signed by the renter to prove that it can sign contract
+		// revisions. The actual data signed should be:
+		//
+		//    blake2b(RPCChallengePrefix | Challenge)
+		Challenge [16]byte
+	}
+
+	// LoopChallengeResponse contains the response to the host's challenge.
+	LoopChallengeResponse struct {
+		Signature []byte
+	}
 
 	// LoopDownloadRequest contains the request parameters for RPCLoopDownload.
 	LoopDownloadRequest struct {
-		ContractID  types.FileContractID
 		MerkleRoot  crypto.Hash
 		Offset      uint32
 		Length      uint32
@@ -319,10 +374,8 @@ type (
 
 	// LoopSectorRootsRequest contains the request parameters for RPCLoopSectorRoots.
 	LoopSectorRootsRequest struct {
-		ContractID  types.FileContractID
-		RootOffset  uint64
-		NumRoots    uint64
-		MerkleProof bool
+		RootOffset uint64
+		NumRoots   uint64
 
 		NewRevisionNumber    uint64
 		NewValidProofValues  []types.Currency
@@ -335,11 +388,6 @@ type (
 		Signature   []byte
 		SectorRoots []crypto.Hash
 		MerkleProof []crypto.Hash
-	}
-
-	// LoopRecentRevisionRequest contains the request parameters for RPCLoopRecentRevision.
-	LoopRecentRevisionRequest struct {
-		ContractID types.FileContractID
 	}
 
 	// LoopRecentRevisionResponse contains the response data for RPCLoopRecentRevisionResponse.
@@ -356,8 +404,7 @@ type (
 
 	// LoopUploadRequest contains the request parameters for RPCLoopUpload.
 	LoopUploadRequest struct {
-		ContractID types.FileContractID
-		Data       []byte
+		Data []byte
 
 		NewRevisionNumber    uint64
 		NewValidProofValues  []types.Currency
@@ -371,27 +418,34 @@ type (
 	}
 )
 
-// WriteRPCResponse writes an RPC response using the new loop protocol.
+// Error implements the error interface.
+func (e *RPCError) Error() string {
+	return e.Description
+}
+
+// WriteRPCResponse writes an RPC response or error using the new loop
+// protocol. Either resp or err must be nil. If err is an *RPCError, it is
+// sent directly; otherwise, a generic RPCError is created from err's Error
+// string.
 func WriteRPCResponse(w io.Writer, resp interface{}, err error) error {
 	if err != nil {
-		return encoding.NewEncoder(w).EncodeAll(true, err.Error())
+		re, ok := err.(*RPCError)
+		if !ok {
+			re = &RPCError{Description: err.Error()}
+		}
+		return encoding.NewEncoder(w).Encode(re)
 	}
-	return encoding.NewEncoder(w).EncodeAll(false, resp)
+	return encoding.NewEncoder(w).EncodeAll((*RPCError)(nil), resp)
 }
 
 // ReadRPCResponse reads an RPC response using the new loop protocol.
 func ReadRPCResponse(r io.Reader, resp interface{}) error {
 	dec := encoding.NewDecoder(r)
-	var isError bool
-	if err := dec.Decode(&isError); err != nil {
+	var rpcErr *RPCError
+	if err := dec.Decode(&rpcErr); err != nil {
 		return err
-	}
-	if isError {
-		var errStr string
-		if err := dec.Decode(&errStr); err != nil {
-			return err
-		}
-		return errors.New(errStr)
+	} else if rpcErr != nil {
+		return rpcErr
 	}
 	return dec.Decode(resp)
 }

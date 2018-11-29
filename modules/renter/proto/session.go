@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -23,6 +24,85 @@ type Session struct {
 	height      types.BlockHeight
 	host        modules.HostDBEntry
 	once        sync.Once
+}
+
+// writeRequest sends an RPC request to the host.
+func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
+	if req == nil {
+		req = struct{}{}
+	}
+	err := encoding.NewEncoder(s.conn).EncodeAll(rpcID, req)
+	if err != nil {
+		// The write may have failed because the host rejected our challenge
+		// signature and closed the connection. Attempt to read the rejection
+		// error and return it instead of the write failure.
+		readErr := modules.ReadRPCResponse(s.conn, nil)
+		if _, ok := readErr.(*modules.RPCError); ok {
+			err = readErr
+		}
+	}
+	return err
+}
+
+// Settings calls the Settings RPC, returning the host's reported settings.
+func (s *Session) Settings() (modules.HostExternalSettings, error) {
+	extendDeadline(s.conn, modules.NegotiateSettingsTime)
+
+	// send Settings RPC request
+	if err := s.writeRequest(modules.RPCLoopSettings, nil); err != nil {
+		return modules.HostExternalSettings{}, err
+	}
+
+	// read the response
+	var resp modules.LoopSettingsResponse
+	if err := modules.ReadRPCResponse(s.conn, &resp); err != nil {
+		return modules.HostExternalSettings{}, err
+	}
+
+	// verify signature
+	hash := crypto.HashObject(resp.Settings)
+	var pk crypto.PublicKey
+	copy(pk[:], s.host.PublicKey.Key)
+	var sig crypto.Signature
+	copy(sig[:], resp.Signature)
+	if crypto.VerifyHash(hash, pk, sig) != nil {
+		return modules.HostExternalSettings{}, errors.New("host sent invalid signature")
+	}
+
+	s.host.HostExternalSettings = resp.Settings
+	return resp.Settings, nil
+}
+
+// RecentRevision calls the RecentRevision RPC, returning (what the host
+// claims is) the most recent revision of the contract.
+func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
+	// Acquire the contract.
+	sc, haveContract := s.contractSet.Acquire(s.contractID)
+	if !haveContract {
+		return types.FileContractRevision{}, nil, errors.New("contract not present in contract set")
+	}
+	defer s.contractSet.Return(sc)
+
+	// send RecentRevision RPC request
+	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
+	if err := s.writeRequest(modules.RPCLoopRecentRevision, nil); err != nil {
+		return types.FileContractRevision{}, nil, err
+	}
+
+	// read the response
+	var resp modules.LoopRecentRevisionResponse
+	if err := modules.ReadRPCResponse(s.conn, &resp); err != nil {
+		return types.FileContractRevision{}, nil, err
+	}
+
+	// if necessary, update our contract to match the host's.
+	if resp.Revision.NewRevisionNumber != sc.header.LastRevision().NewRevisionNumber {
+		if err := sc.commitTxns(); err != nil {
+			return types.FileContractRevision{}, nil, errors.AddContext(err, "failed to commit transactions")
+		}
+	}
+
+	return resp.Revision, resp.Signatures, nil
 }
 
 // Upload calls the Upload RPC and transfers the supplied data, returning the
@@ -85,7 +165,6 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 
 	// create the request
 	req := modules.LoopUploadRequest{
-		ContractID:        contract.ID(),
 		Data:              data,
 		NewRevisionNumber: rev.NewRevisionNumber,
 		Signature:         sig[:],
@@ -119,9 +198,9 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 		extendDeadline(s.conn, time.Hour)
 	}()
 
-	// send download RPC request
-	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
-	err = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopUpload, req)
+	// send upload RPC request
+	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
+	err = s.writeRequest(modules.RPCLoopUpload, req)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}
@@ -150,7 +229,7 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 // Merkle proof is requested, it is verified.
 func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterContract, _ []byte, err error) {
 	// Reset deadline when finished.
-	defer extendDeadline(s.conn, time.Hour) // TODO: Constant.
+	defer extendDeadline(s.conn, time.Hour)
 
 	// Sanity-check the request.
 	if req.MerkleProof {
@@ -162,7 +241,6 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	}
 
 	// Acquire the contract.
-	// TODO: why not just lock the SafeContract directly?
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
 		return modules.RenterContract{}, nil, errors.New("contract not present in contract set")
@@ -201,7 +279,6 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// fill in the missing request fields
-	req.ContractID = contract.ID()
 	req.NewRevisionNumber = rev.NewRevisionNumber
 	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
 	for i, o := range rev.NewValidProofOutputs {
@@ -231,8 +308,8 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	}()
 
 	// send download RPC request
-	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
-	err = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopDownload, req)
+	extendDeadline(s.conn, modules.NegotiateDownloadTime)
+	err = s.writeRequest(modules.RPCLoopDownload, req)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -271,11 +348,12 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 // Revision and Signature fields of req are filled in automatically. If a
 // Merkle proof is requested, it is verified.
 func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.RenterContract, _ []crypto.Hash, err error) {
+	build.Critical("Merkle proofs not implemented")
+
 	// Reset deadline when finished.
-	defer extendDeadline(s.conn, time.Hour) // TODO: Constant.
+	defer extendDeadline(s.conn, time.Hour)
 
 	// Acquire the contract.
-	// TODO: why not just lock the SafeContract directly?
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
 		return modules.RenterContract{}, nil, errors.New("contract not present in contract set")
@@ -315,7 +393,6 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// fill in the missing request fields
-	req.ContractID = contract.ID()
 	req.NewRevisionNumber = rev.NewRevisionNumber
 	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
 	for i, o := range rev.NewValidProofOutputs {
@@ -344,8 +421,8 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 		}
 	}()
 
-	// send download RPC request
-	extendDeadline(s.conn, 2*time.Minute) // TODO: Constant.
+	// send SectorRoots RPC request
+	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	err = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopSectorRoots, req)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
@@ -360,8 +437,6 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 
 	if len(resp.SectorRoots) != int(req.NumRoots) {
 		return modules.RenterContract{}, nil, errors.New("host did not send the requested number of sector roots")
-	} else if req.MerkleProof {
-		// TODO: verify Merkle proof
 	}
 
 	// add host signature
@@ -380,11 +455,11 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 func (s *Session) shutdown() {
 	extendDeadline(s.conn, modules.NegotiateSettingsTime)
 	// don't care about this error
-	_ = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopExit)
+	_ = s.writeRequest(modules.RPCLoopExit, nil)
 	close(s.closeChan)
 }
 
-// Close cleanly terminates the download loop with the host and closes the
+// Close cleanly terminates the protocol session with the host and closes the
 // connection.
 func (s *Session) Close() error {
 	// using once ensures that Close is idempotent
@@ -435,11 +510,32 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		return nil, err
 	}
 
-	// if we succeeded, we can safely discard the unappliedTxns
-	for _, txn := range sc.unappliedTxns {
-		txn.SignalUpdatesApplied()
+	// perform initial handshake
+	req := modules.LoopHandshakeRequest{
+		Version:    1,
+		Ciphers:    []types.Specifier{modules.CipherPlaintext},
+		KeyData:    nil,
+		ContractID: id,
 	}
-	sc.unappliedTxns = nil
+	if err := encoding.NewEncoder(conn).Encode(req); err != nil {
+		return nil, err
+	}
+	var resp modules.LoopHandshakeResponse
+	if err := modules.ReadRPCResponse(conn, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Cipher != modules.CipherPlaintext {
+		return nil, errors.New("host selected unsupported cipher")
+	}
+	// respond to challenge
+	hash := crypto.HashAll(modules.RPCChallengePrefix, resp.Challenge)
+	sig := crypto.SignHash(hash, contract.SecretKey)
+	cresp := modules.LoopChallengeResponse{
+		Signature: sig[:],
+	}
+	if err := encoding.NewEncoder(conn).Encode(cresp); err != nil {
+		return nil, err
+	}
 
 	// the host is now ready to accept revisions
 	return &Session{
