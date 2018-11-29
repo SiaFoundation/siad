@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 
@@ -60,38 +61,53 @@ func (rs *RSCode) EncodeShards(pieces [][]byte, pieceSize uint64) ([][]byte, err
 
 // EncodeSubShards encodes data in a way that every 64 bytes of the encoded
 // data can be decoded independently.
-// The input 'pieces' needs to have the following properties:
-//   len(pieces) == pieceSize / segmentSize
-//   len(pieces[i]) == rs.MinPieces
-//   len(pieces[i][j]) == segmentSize
-// The result will be a slice of rs.NumPieces pieces of pieceSize.
-func (rs *RSCode) EncodeSubShards(segments [][][]byte, pieceSize, segmentSize uint64) ([][]byte, error) {
+func (rs *RSCode) EncodeSubShards(pieces [][]byte, pieceSize, segmentSize uint64) ([][]byte, error) {
 	// pieceSize must be divisible by segmentSize
 	if pieceSize%segmentSize != 0 {
 		return nil, errors.New("pieceSize not divisible by segmentSize")
 	}
-	// Check that there are enough segments.
-	if uint64(len(segments)) != pieceSize/segmentSize {
+	// Check that there are enough pieces.
+	if len(pieces) != rs.MinPieces() {
 		return nil, fmt.Errorf("not enough segments expected %v but was %v",
-			pieceSize/segmentSize, len(segments))
+			rs.MinPieces(), len(pieces))
 	}
-	for i := range segments {
-		// Check that the caller provided the minimum amount of pieces.
-		if len(segments[i]) != rs.MinPieces() {
-			return nil, fmt.Errorf("invalid number of pieces given %v %v",
-				len(segments), rs.MinPieces())
+	// Each piece should've pieceSize bytes.
+	for _, piece := range pieces {
+		if uint64(len(piece)) != pieceSize {
+			return nil, fmt.Errorf("pieces don't have right size expected %v but was %v",
+				pieceSize, len(piece))
 		}
-		// Check that each subshard consists of the minimum amount of segments.
-		for j := range segments[i] {
-			if uint64(len(segments[i][j])) != segmentSize {
-				return nil, errors.New("segments have wrong size")
+	}
+	// Convert pieces.
+	tmpPieces := make([][]byte, len(pieces))
+	i := 0
+	for _, piece := range pieces {
+		for buf := bytes.NewBuffer(piece); buf.Len() > 0; {
+			segment := buf.Next(int(segmentSize))
+			pieceIndex := i % len(pieces)
+			segmentIndex := i / len(pieces)
+			if tmpPieces[pieceIndex] == nil {
+				tmpPieces[pieceIndex] = make([]byte, pieceSize)
 			}
+			copy(tmpPieces[pieceIndex][uint64(segmentIndex)*segmentSize:][:segmentSize], segment)
+			i++
 		}
 	}
-	// Add segments until segments has the correct length.
-	for i := range segments {
-		for len(segments[i]) < rs.NumPieces() {
-			segments[i] = append(segments[i], make([]byte, segmentSize))
+	pieces = tmpPieces
+	// Add the parity shards to pieces.
+	for len(pieces) < rs.NumPieces() {
+		pieces = append(pieces, make([]byte, pieceSize))
+	}
+	// Convert the pieces to segments.
+	segments := make([][][]byte, pieceSize/segmentSize)
+	for pieceIndex, piece := range pieces {
+		for segmentIndex := uint64(0); segmentIndex < pieceSize/segmentSize; segmentIndex++ {
+			// Allocate space for segments as needed.
+			if segments[segmentIndex] == nil {
+				segments[segmentIndex] = make([][]byte, rs.NumPieces())
+			}
+			segment := piece[segmentIndex*segmentSize:][:segmentSize]
+			segments[segmentIndex][pieceIndex] = segment
 		}
 	}
 	// Encode the segments.
@@ -99,16 +115,6 @@ func (rs *RSCode) EncodeSubShards(segments [][][]byte, pieceSize, segmentSize ui
 		if err := rs.enc.Encode(segments[i]); err != nil {
 			return nil, err
 		}
-	}
-	// Convert the encoded segments to the output format.
-	// NOTE this is not in-place yet.
-	var pieces [][]byte
-	for i := 0; i < rs.NumPieces(); i++ {
-		var piece []byte
-		for j := uint64(0); j < pieceSize/segmentSize; j++ {
-			piece = append(piece, segments[j][i]...)
-		}
-		pieces = append(pieces, piece)
 	}
 	return pieces, nil
 }

@@ -69,25 +69,20 @@ func TestPartialEncodeRecover(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Allocate space for the pieces.
-	segments := make([][][]byte, pieceSize/segmentSize)
-	for i := range segments {
-		segments[i] = make([][]byte, dataPieces)
-		for j := range segments[i] {
-			segments[i][j] = make([]byte, pieceSize)
-		}
+	pieces := make([][]byte, dataPieces)
+	for i := range pieces {
+		pieces[i] = make([]byte, pieceSize)
 	}
-	// Write the data to the segments.
+	// Write the data to the pieces.
 	buf := bytes.NewBuffer(data)
-	for i := 0; i < pieceSize/segmentSize; i++ {
-		for j := 0; j < dataPieces; j++ {
-			if buf.Len() < segmentSize {
-				t.Fatal("Buffer is empty")
-			}
-			segments[i][j] = buf.Next(segmentSize)
+	for i := range pieces {
+		if buf.Len() < pieceSize {
+			t.Fatal("Buffer is empty")
 		}
+		pieces[i] = buf.Next(pieceSize)
 	}
 	// Encode the pieces.
-	encodedPieces, err := rsc.EncodeSubShards(segments, uint64(pieceSize), uint64(segmentSize))
+	encodedPieces, err := rsc.EncodeSubShards(pieces, uint64(pieceSize), uint64(segmentSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +101,7 @@ func TestPartialEncodeRecover(t *testing.T) {
 		encodedPieces[i] = nil
 	}
 	// Recover every segment individually.
-	for i := range segments {
+	for i := 0; i < pieceSize/segmentSize; i++ {
 		buf := new(bytes.Buffer)
 		err = rsc.RecoverSegment(encodedPieces, i, uint64(pieceSize), uint64(segmentSize), buf)
 		if err != nil {
