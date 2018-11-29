@@ -22,8 +22,9 @@ type uploadChunkID struct {
 type unfinishedUploadChunk struct {
 	// Information about the file. localPath may be the empty string if the file
 	// is known not to exist locally.
-	id         uploadChunkID
-	renterFile *siafile.SiaFile
+	id        uploadChunkID
+	fileEntry *siafile.SiaFileSetEntry
+	threadUID int
 
 	// Information about the chunk, namely where it exists within the file.
 	//
@@ -129,16 +130,16 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	// TODO: There is a disparity in the way that the upload and download code
 	// handle the last chunk, which may not be full sized.
 	downloadLength := chunk.length
-	if chunk.index == chunk.renterFile.NumChunks()-1 && chunk.renterFile.Size()%chunk.length != 0 {
-		downloadLength = chunk.renterFile.Size() % chunk.length
+	if chunk.index == chunk.fileEntry.NumChunks()-1 && chunk.fileEntry.Size()%chunk.length != 0 {
+		downloadLength = chunk.fileEntry.Size() % chunk.length
 	}
 
 	// Create the download.
-	buf := NewDownloadDestinationBuffer(chunk.length, chunk.renterFile.PieceSize())
+	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 	d, err := r.managedNewDownload(downloadParams{
 		destination:     buf,
 		destinationType: "buffer",
-		file:            chunk.renterFile,
+		file:            chunk.fileEntry.SiaFile,
 
 		latencyTarget: 200e3, // No need to rush latency on repair downloads.
 		length:        downloadLength,
@@ -176,7 +177,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// Calculate the amount of memory needed for erasure coding. This will need
 	// to be released if there's an error before erasure coding is complete.
-	erasureCodingMemory := chunk.renterFile.PieceSize() * uint64(chunk.renterFile.ErasureCode().MinPieces())
+	erasureCodingMemory := chunk.fileEntry.PieceSize() * uint64(chunk.fileEntry.ErasureCode().MinPieces())
 
 	// Calculate the amount of memory to release due to already completed
 	// pieces. This memory gets released during encryption, but needs to be
@@ -221,7 +222,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// fact to reduce the total memory required to create the physical data.
 	// That will also change the amount of memory we need to allocate, and the
 	// number of times we need to return memory.
-	chunk.physicalChunkData, err = chunk.renterFile.ErasureCode().EncodeShards(chunk.logicalChunkData, chunk.renterFile.PieceSize())
+	chunk.physicalChunkData, err = chunk.fileEntry.ErasureCode().EncodeShards(chunk.logicalChunkData, chunk.fileEntry.PieceSize())
 	chunk.logicalChunkData = nil
 	r.memoryManager.Return(erasureCodingMemory)
 	chunk.memoryReleased += erasureCodingMemory
@@ -251,7 +252,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			chunk.physicalChunkData[i] = nil
 		} else {
 			// Encrypt the piece.
-			key := chunk.renterFile.MasterKey().Derive(chunk.index, uint64(i))
+			key := chunk.fileEntry.MasterKey().Derive(chunk.index, uint64(i))
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
 		}
 	}
@@ -277,9 +278,9 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	download := chunk.piecesCompleted+minMissingPiecesToDownload < chunk.piecesNeeded
 
 	// Download the chunk if it's not on disk.
-	if chunk.renterFile.LocalPath() == "" && download {
+	if chunk.fileEntry.LocalPath() == "" && download {
 		return r.managedDownloadLogicalChunkData(chunk)
-	} else if chunk.renterFile.LocalPath() == "" {
+	} else if chunk.fileEntry.LocalPath() == "" {
 		return errors.New("file not available locally")
 	}
 
@@ -290,7 +291,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// loading fails. Should do this after we swap the file format, the tracking
 	// data for the file should reside in the file metadata and not in a
 	// separate struct.
-	osFile, err := os.Open(chunk.renterFile.LocalPath())
+	osFile, err := os.Open(chunk.fileEntry.LocalPath())
 	if err != nil && download {
 		return r.managedDownloadLogicalChunkData(chunk)
 	} else if err != nil {
@@ -300,7 +301,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// TODO: Once we have enabled support for small chunks, we should stop
 	// needing to ignore the EOF errors, because the chunk size should always
 	// match the tail end of the file. Until then, we ignore io.EOF.
-	buf := NewDownloadDestinationBuffer(chunk.length, chunk.renterFile.PieceSize())
+	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 	sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
 	_, err = buf.ReadFrom(sr)
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF && download {
@@ -374,6 +375,10 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	// If required, remove the chunk from the set of active chunks.
 	if chunkComplete && !released {
+		err := uc.fileEntry.Close()
+		if err != nil {
+			r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", uc.fileEntry.SiaPath(), err)
+		}
 		r.uploadHeap.mu.Lock()
 		delete(r.uploadHeap.activeChunks, uc.id)
 		r.uploadHeap.mu.Unlock()

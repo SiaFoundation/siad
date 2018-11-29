@@ -178,7 +178,7 @@ type hostContractor interface {
 type Renter struct {
 	// File management.
 	//
-	files map[string]*siafile.SiaFile
+	staticFileSet *siafile.SiaFileSet
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -488,31 +488,25 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // caller is responsible for not accidentally corrupting the uploaded file by
 // providing a different file with the same size.
 func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
-	id := r.mu.Lock()
-
 	// Check if file exists and is being tracked.
-	file, exists := r.files[siaPath]
-	if !exists {
-		r.mu.Unlock(id)
-		return fmt.Errorf("unknown file %s", siaPath)
+	entry, err := r.staticFileSet.Open(siaPath)
+	if err != nil {
+		return err
 	}
+	defer entry.Close()
 
 	// Sanity check that a file with the correct size exists at the new
 	// location.
 	fi, err := os.Stat(newPath)
 	if err != nil {
-		r.mu.Unlock(id)
 		return errors.AddContext(err, "failed to get fileinfo of the file")
 	}
-	if uint64(fi.Size()) != file.Size() {
-		r.mu.Unlock(id)
-		return fmt.Errorf("file sizes don't match - want %v but got %v", file.Size(), fi.Size())
+	if uint64(fi.Size()) != entry.Size() {
+		return fmt.Errorf("file sizes don't match - want %v but got %v", entry.Size(), fi.Size())
 	}
 
-	r.mu.Unlock(id)
-
 	// Set the new path on disk.
-	return file.SetLocalPath(newPath)
+	return entry.SetLocalPath(newPath)
 }
 
 // ActiveHosts returns an array of hostDB's active hosts
@@ -668,8 +662,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 
 	r := &Renter{
-		files: make(map[string]*siafile.SiaFile),
-
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the
 		// download heap loop, searching for a chunk that's not there. This is
@@ -749,6 +741,5 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 	if err != nil {
 		return nil, err
 	}
-
 	return NewCustomRenter(g, cs, tpool, hdb, hc, persistDir, modules.ProdDependencies)
 }

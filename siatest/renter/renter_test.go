@@ -255,7 +255,7 @@ func TestRenterThree(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -2552,7 +2552,7 @@ func TestRenterPersistData(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Get test directory
 	testDir := renterTestDir(t.Name())

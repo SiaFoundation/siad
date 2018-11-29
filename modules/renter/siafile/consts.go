@@ -29,6 +29,10 @@ const (
 	// the encoded pieces. It consists of the 16 byte extension info and a 2
 	// byte length prefix for the pieces.
 	marshaledChunkOverhead = 16 + 2
+
+	// threadDepth is how deep the ThreadType will track calling files and
+	// calling lines
+	threadDepth = 3
 )
 
 var (

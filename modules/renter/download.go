@@ -266,12 +266,11 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters) error {
 // setup was successful.
 func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
 	// Lookup the file associated with the nickname.
-	lockID := r.mu.RLock()
-	file, exists := r.files[p.SiaPath]
-	r.mu.RUnlock(lockID)
-	if !exists {
-		return nil, fmt.Errorf("no file with that path: %s", p.SiaPath)
+	entry, err := r.staticFileSet.Open(p.SiaPath)
+	if err != nil {
+		return nil, err
 	}
+	defer entry.Close()
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil
@@ -287,19 +286,19 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	if p.Destination != "" && !filepath.IsAbs(p.Destination) {
 		return nil, errors.New("destination must be an absolute path")
 	}
-	if p.Offset == file.Size() && file.Size() != 0 {
+	if p.Offset == entry.Size() && entry.Size() != 0 {
 		return nil, errors.New("offset equals filesize")
 	}
 	// Sentinel: if length == 0, download the entire file.
 	if p.Length == 0 {
-		if p.Offset > file.Size() {
+		if p.Offset > entry.Size() {
 			return nil, errors.New("offset cannot be greater than file size")
 		}
-		p.Length = file.Size() - p.Offset
+		p.Length = entry.Size() - p.Offset
 	}
 	// Check whether offset and length is valid.
-	if p.Offset < 0 || p.Offset+p.Length > file.Size() {
-		return nil, fmt.Errorf("offset and length combination invalid, max byte is at index %d", file.Size()-1)
+	if p.Offset < 0 || p.Offset+p.Length > entry.Size() {
+		return nil, fmt.Errorf("offset and length combination invalid, max byte is at index %d", entry.Size()-1)
 	}
 
 	// Instantiate the correct downloadWriter implementation.
@@ -309,7 +308,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		dw = newDownloadDestinationWriteCloserFromWriter(p.Httpwriter)
 		destinationType = "http stream"
 	} else {
-		osFile, err := os.OpenFile(p.Destination, os.O_CREATE|os.O_WRONLY, file.Mode())
+		osFile, err := os.OpenFile(p.Destination, os.O_CREATE|os.O_WRONLY, entry.Mode())
 		if err != nil {
 			return nil, err
 		}
@@ -331,7 +330,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		destination:       dw,
 		destinationType:   destinationType,
 		destinationString: p.Destination,
-		file:              file,
+		file:              entry.SiaFile,
 
 		latencyTarget: 25e3 * time.Millisecond, // TODO: high default until full latency support is added.
 		length:        p.Length,

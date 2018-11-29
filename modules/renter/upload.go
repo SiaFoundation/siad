@@ -66,17 +66,9 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if up.Force {
-		if err := r.DeleteFile(up.SiaPath); err != nil && err != ErrUnknownPath {
+		if err := r.DeleteFile(up.SiaPath); err != nil && err != siafile.ErrUnknownPath {
 			return err
 		}
-	}
-
-	// Check for a nickname conflict.
-	lockID := r.mu.RLock()
-	_, exists := r.files[up.SiaPath]
-	r.mu.RUnlock(lockID)
-	if exists {
-		return ErrPathOverload
 	}
 
 	// Fill in any missing upload params with sensible defaults.
@@ -108,25 +100,17 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		}
 	}
 
-	// Create file object.
-	siaFilePath := filepath.Join(r.filesDir, up.SiaPath+ShareExtension)
-	cipherType := crypto.TypeDefaultRenter
-
-	// Create the Siafile.
-	f, err := siafile.New(siaFilePath, up.SiaPath, up.Source, r.wal, up.ErasureCode, crypto.GenerateSiaKey(cipherType), uint64(fileInfo.Size()), fileInfo.Mode())
+	// Create the Siafile and add to renter
+	entry, err := r.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fileInfo.Size()), fileInfo.Mode())
 	if err != nil {
 		return err
 	}
-
-	// Add file to renter.
-	lockID = r.mu.Lock()
-	r.files[up.SiaPath] = f
-	r.mu.Unlock(lockID)
+	defer entry.Close()
 
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
 	id := r.mu.Lock()
-	unfinishedChunks := r.buildUnfinishedChunks(f, hosts)
+	unfinishedChunks := r.buildUnfinishedChunks(entry.ChunkEntrys(), hosts)
 	r.mu.Unlock(id)
 	for i := 0; i < len(unfinishedChunks); i++ {
 		r.uploadHeap.managedPush(unfinishedChunks[i])

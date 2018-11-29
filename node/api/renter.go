@@ -796,42 +796,6 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	return dp, nil
 }
 
-// renterShareHandler handles the API call to create a '.sia' file that
-// shares a set of file.
-func (api *API) renterShareHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	destination, err := url.QueryUnescape(req.FormValue("destination"))
-	if err != nil {
-		WriteError(w, Error{"failed to unescape the destination path"}, http.StatusBadRequest)
-		return
-	}
-	// Check that the destination path is absolute.
-	if !filepath.IsAbs(destination) {
-		WriteError(w, Error{"destination must be an absolute path"}, http.StatusBadRequest)
-		return
-	}
-
-	err = api.renter.ShareFiles(strings.Split(req.FormValue("siapaths"), ","), destination)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
-	}
-
-	WriteSuccess(w)
-}
-
-// renterShareAsciiHandler handles the API call to return a '.sia' file
-// in ascii form.
-func (api *API) renterShareASCIIHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	ascii, err := api.renter.ShareFilesASCII(strings.Split(req.FormValue("siapaths"), ","))
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
-	}
-	WriteJSON(w, RenterShareASCII{
-		ASCIIsia: ascii,
-	})
-}
-
 // renterStreamHandler handles downloads from the /renter/stream endpoint
 func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	siaPath := strings.TrimPrefix(ps.ByName("siapath"), "/")

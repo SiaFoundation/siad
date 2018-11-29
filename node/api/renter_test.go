@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -362,8 +363,8 @@ func TestRenterDownloadAsyncNonexistentFile(t *testing.T) {
 
 	downpath := filepath.Join(st.dir, "testfile")
 	err = st.getAPI(fmt.Sprintf("/renter/downloadasync/doesntexist?destination=%v", downpath), nil)
-	if err == nil || err.Error() != fmt.Sprintf("download failed: no file with that path: doesntexist") {
-		t.Fatal("downloadasync did not return error on nonexistent file")
+	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
+		t.Error("Expected error to contain 'no such file or directory':", err)
 	}
 }
 
@@ -571,9 +572,9 @@ func TestRenterConflicts(t *testing.T) {
 
 	// Upload using the same nickname.
 	err = st.stdPostAPI("/renter/upload/foo/bar.sia/test", uploadValues)
-	expectedErr := Error{"upload failed: " + renter.ErrPathOverload.Error()}
+	expectedErr := Error{"upload failed: " + siafile.ErrPathOverload.Error()}
 	if err != expectedErr {
-		t.Fatalf("expected %v, got %v", Error{"upload failed: " + renter.ErrPathOverload.Error()}, err)
+		t.Fatalf("expected %v, got %v", Error{"upload failed: " + siafile.ErrPathOverload.Error()}, err)
 	}
 
 	// Upload using nickname that conflicts with folder.
@@ -802,9 +803,8 @@ func TestRenterLoadNonexistent(t *testing.T) {
 	// Try downloading a nonexistent file.
 	downpath := filepath.Join(st.dir, "dnedown.dat")
 	err = st.stdGetAPI("/renter/download/dne?destination=" + downpath)
-	hasPrefix := strings.HasPrefix(err.Error(), "download failed: no file with that path")
-	if err == nil || !hasPrefix {
-		t.Errorf("expected error to be 'download failed: no file with that path'; got %v instead", err)
+	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
+		t.Error("Expected error to contain 'no such file or directory':", err)
 	}
 
 	// The renter's downloads queue should be empty.
@@ -845,8 +845,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	renameValues := url.Values{}
 	renameValues.Set("newsiapath", "newdne")
 	err = st.stdPostAPI("/renter/rename/dne", renameValues)
-	if err == nil || err.Error() != renter.ErrUnknownPath.Error() {
-		t.Errorf("expected error to be %v; got %v", renter.ErrUnknownPath, err)
+	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
 	// Set an allowance for the renter, allowing a contract to be formed.
@@ -927,8 +927,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to a name that's already taken.
 	renameValues.Set("newsiapath", "newtest1")
 	err = st.stdPostAPI("/renter/rename/test2", renameValues)
-	if err == nil || err.Error() != renter.ErrPathOverload.Error() {
-		t.Errorf("expected error to be %v; got %v", renter.ErrPathOverload, err)
+	if err == nil || err.Error() != siafile.ErrPathOverload.Error() {
+		t.Errorf("expected error to be %v; got %v", siafile.ErrPathOverload, err)
 	}
 }
 
@@ -996,8 +996,8 @@ func TestRenterHandlerDelete(t *testing.T) {
 
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
-	if err == nil || err.Error() != renter.ErrUnknownPath.Error() {
-		t.Errorf("expected error to be %v, got %v", renter.ErrUnknownPath, err)
+	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 }
 

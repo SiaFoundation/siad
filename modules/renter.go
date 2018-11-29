@@ -529,12 +529,6 @@ type Renter interface {
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath, newPath string) error
 
-	// ShareFiles creates a '.sia' file that can be shared with others.
-	ShareFiles(paths []string, shareDest string) error
-
-	// ShareFilesAscii creates an ASCII-encoded '.sia' file.
-	ShareFilesASCII(paths []string) (asciiSia string, err error)
-
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed
 	// resource.
