@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 var (
@@ -36,6 +37,7 @@ func (s invalidVersionError) Error() string {
 
 type peer struct {
 	modules.Peer
+	rl   *ratelimit.RateLimit
 	sess streamSession
 }
 
@@ -53,6 +55,7 @@ func (p *peer) open() (modules.PeerConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	conn = ratelimit.NewRLConn(conn, p.rl, nil)
 	return &peerConn{conn, p.NetAddress}, nil
 }
 
@@ -193,6 +196,7 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 		UniqueID:   g.staticId,
 		NetAddress: g.myAddr,
 	}
+	rl := g.rl
 	g.mu.RUnlock()
 
 	remoteHeader, err := exchangeRemoteHeader(conn, ourHeader)
@@ -222,6 +226,7 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 			NetAddress: remoteAddr,
 			Version:    remoteVersion,
 		},
+		rl:   rl,
 		sess: newServerStream(conn, remoteVersion),
 	}
 	g.mu.Lock()
@@ -458,6 +463,7 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 			NetAddress: addr,
 			Version:    remoteVersion,
 		},
+		rl:   g.rl,
 		sess: newClientStream(conn, remoteVersion),
 	})
 	g.addNode(addr)
