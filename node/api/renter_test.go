@@ -968,8 +968,7 @@ func TestRenterHandlerDelete(t *testing.T) {
 	}
 
 	// Create a file.
-	siapath := "test.dat"
-	path := filepath.Join(st.dir, siapath)
+	path := filepath.Join(st.dir, "test.dat")
 	if err = createRandFile(path, 1024); err != nil {
 		t.Fatal(err)
 	}
@@ -981,7 +980,7 @@ func TestRenterHandlerDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Delete the file.""
+	// Delete the file.
 	if err = st.stdPostAPI("/renter/delete/test", url.Values{}); err != nil {
 		t.Fatal(err)
 	}

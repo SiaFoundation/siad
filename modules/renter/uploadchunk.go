@@ -375,7 +375,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	// If required, remove the chunk from the set of active chunks.
 	if chunkComplete && !released {
-		err := uc.fileEntry.Close(uc.threadUID)
+		err := uc.fileEntry.Close()
 		if err != nil {
 			r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", uc.fileEntry.SiaPath(), err)
 		}

@@ -266,11 +266,11 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters) error {
 // setup was successful.
 func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
 	// Lookup the file associated with the nickname.
-	entry, threadUID, err := r.staticFileSet.Open(p.SiaPath)
+	entry, err := r.staticFileSet.Open(p.SiaPath)
 	if err != nil {
 		return nil, err
 	}
-	defer entry.Close(threadUID)
+	defer entry.Close()
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil

@@ -12,7 +12,7 @@ import (
 
 // newTestSiaFileSetWithFile creates a new SiaFileSet and SiaFile and makes sure
 // that they are linked
-func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, int) {
+func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 	// Create new SiaFile params
 	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
 	dir := filepath.Join(os.TempDir(), "siafiles")
@@ -24,22 +24,28 @@ func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, int) {
 		SiaPath:     siaPath,
 		ErasureCode: rc,
 	}
-	entry, threadUID, err := sfs.NewSiaFile(up, sk, fileSize, fileMode)
+	entry, err := sfs.NewSiaFile(up, sk, fileSize, fileMode)
 	if err != nil {
-		return nil, nil, 0
+		return nil, nil, err
 	}
-	return entry, sfs, threadUID
+	return entry, sfs, nil
 }
 
 // TestSiaFileSetOpenClose tests that the threadCount of the siafile is
 // incremented and decremented properly when Open() and Close() are called
 func TestSiaFileSetOpenClose(t *testing.T) {
 	// Create SiaFileSet with SiaFile
-	entry, sfs, threadUID := newTestSiaFileSetWithFile()
+	entry, sfs, err := newTestSiaFileSetWithFile()
+	if err != nil {
+		t.Fatal(err)
+	}
 	siaPath := entry.SiaPath()
-	entry, ok := sfs.siaFileMap[siaPath]
-	if !ok {
+	exists, err := sfs.Exists(siaPath)
+	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
+	}
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Confirm file is in memory
@@ -53,7 +59,7 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 	}
 
 	// Close SiaFileSetEntry
-	entry.Close(threadUID)
+	entry.Close()
 
 	// Confirm that threadCount was decremented
 	if len(entry.threadMap) != 0 {
@@ -66,7 +72,7 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 	}
 
 	// Open siafile again and confirm threadCount was incremented
-	entry, _, err := sfs.Open(siaPath)
+	entry, err = sfs.Open(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,18 +85,24 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 // as expected when files are in use and not in use
 func TestFilesInMemory(t *testing.T) {
 	// Create SiaFileSet with SiaFile
-	entry, sfs, threadUID := newTestSiaFileSetWithFile()
+	entry, sfs, err := newTestSiaFileSetWithFile()
+	if err != nil {
+		t.Fatal(err)
+	}
 	siaPath := entry.SiaPath()
-	entry, ok := sfs.siaFileMap[siaPath]
-	if !ok {
+	exists, err := sfs.Exists(siaPath)
+	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
+	}
+	if err != nil {
+		t.Fatal(err)
 	}
 	// Confirm there is 1 file in memory
 	if len(sfs.siaFileMap) != 1 {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
 	}
 	// Close File
-	err := entry.Close(threadUID)
+	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +114,7 @@ func TestFilesInMemory(t *testing.T) {
 	// Test accessing the same file from two separate threads
 	//
 	// Open file
-	entry1, threadUID1, err := sfs.Open(siaPath)
+	entry1, err := sfs.Open(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +123,7 @@ func TestFilesInMemory(t *testing.T) {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
 	}
 	// Access the file again
-	entry2, threadUID2, err := sfs.Open(siaPath)
+	entry2, err := sfs.Open(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +132,7 @@ func TestFilesInMemory(t *testing.T) {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
 	}
 	// Close one of the file instances
-	err = entry1.Close(threadUID1)
+	err = entry1.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +144,7 @@ func TestFilesInMemory(t *testing.T) {
 	// Confirm closing out remaining files removes all files from memory
 	//
 	// Close last instance of the first file
-	err = entry2.Close(threadUID2)
+	err = entry2.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,11 +158,17 @@ func TestFilesInMemory(t *testing.T) {
 // will continue to have access to the file even it another thread renames it
 func TestRenameFileInMemory(t *testing.T) {
 	// Create SiaFileSet with SiaFile
-	entry, sfs, threadUID := newTestSiaFileSetWithFile()
+	entry, sfs, err := newTestSiaFileSetWithFile()
+	if err != nil {
+		t.Fatal(err)
+	}
 	siaPath := entry.SiaPath()
-	entry, ok := sfs.siaFileMap[siaPath]
-	if !ok {
+	exists, err := sfs.Exists(siaPath)
+	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
+	}
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Confirm there is 1 file in memory
@@ -161,7 +179,7 @@ func TestRenameFileInMemory(t *testing.T) {
 	// Test renaming an instance of a file
 	//
 	// Access file with another instance
-	entry2, threadUID2, err := sfs.Open(siaPath)
+	entry2, err := sfs.Open(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +199,7 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal("Expected 1 files in memory, got:", len(sfs.siaFileMap))
 	}
 	// Close instance of renamed file
-	err = entry2.Close(threadUID2)
+	err = entry2.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +208,7 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal("Expected 1 files in memory, got:", len(sfs.siaFileMap))
 	}
 	// Close other instance of second file
-	err = entry.Close(threadUID)
+	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,11 +222,17 @@ func TestRenameFileInMemory(t *testing.T) {
 // will continue to have access to the file even it another thread deletes it
 func TestDeleteFileInMemory(t *testing.T) {
 	// Create SiaFileSet with SiaFile
-	entry, sfs, threadUID := newTestSiaFileSetWithFile()
+	entry, sfs, err := newTestSiaFileSetWithFile()
+	if err != nil {
+		t.Fatal(err)
+	}
 	siaPath := entry.SiaPath()
-	entry, ok := sfs.siaFileMap[siaPath]
-	if !ok {
+	exists, err := sfs.Exists(siaPath)
+	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
+	}
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Confirm there is 1 file in memory
@@ -219,7 +243,7 @@ func TestDeleteFileInMemory(t *testing.T) {
 	// Test deleting an instance of a file
 	//
 	// Access the file again
-	entry2, threadUID2, err := sfs.Open(siaPath)
+	entry2, err := sfs.Open(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +255,7 @@ func TestDeleteFileInMemory(t *testing.T) {
 	if err := sfs.Delete(siaPath); err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Close(threadUID2)
+	err = entry2.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +271,7 @@ func TestDeleteFileInMemory(t *testing.T) {
 	// Confirm closing out remaining files removes all files from memory
 	//
 	// Close last instance of the first file
-	err = entry.Close(threadUID)
+	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
 	}

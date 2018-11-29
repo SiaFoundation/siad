@@ -67,7 +67,7 @@ func (r *Renter) DeleteFile(nickname string) error {
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() []modules.FileInfo {
 	// Get all the renter files
-	entries, err := r.staticFileSet.All()
+	entrys, err := r.staticFileSet.All()
 	if err != nil {
 		return []modules.FileInfo{}
 	}
@@ -75,7 +75,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 	// Save host keys in map. We can't do that under the same lock since we
 	// need to call a public method on the file.
 	pks := make(map[string]types.SiaPublicKey)
-	for _, entry := range entries {
+	for _, entry := range entrys {
 		for _, pk := range entry.HostPublicKeys() {
 			pks[string(pk.Key)] = pk
 		}
@@ -98,7 +98,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 
 	// Build the list of FileInfos.
 	fileList := []modules.FileInfo{}
-	for threadUID, entry := range entries {
+	for _, entry := range entrys {
 		localPath := entry.LocalPath()
 		_, err := os.Stat(localPath)
 		onDisk := !os.IsNotExist(err)
@@ -121,7 +121,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 			UploadedBytes:  entry.UploadedBytes(),
 			UploadProgress: entry.UploadProgress(),
 		})
-		err = entry.Close(threadUID)
+		err = entry.Close()
 		if err != nil {
 			r.log.Debugln("WARN: Could not close thread:", err)
 		}
@@ -133,11 +133,11 @@ func (r *Renter) FileList() []modules.FileInfo {
 // Update based on FileList
 func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	// Get the file and its contracts
-	entry, threadUID, err := r.staticFileSet.Open(siaPath)
+	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
-	defer entry.Close(threadUID)
+	defer entry.Close()
 	pks := entry.HostPublicKeys()
 
 	// Build 2 maps that map every contract id to its offline and goodForRenew
@@ -199,7 +199,7 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
-func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFileSetEntry, int, error) {
+func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFileSetEntry, error) {
 	fileData := siafile.FileData{
 		Name:        f.name,
 		FileSize:    f.size,

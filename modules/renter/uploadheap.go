@@ -103,7 +103,10 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 // TODO / NOTE: This code can be substantially simplified once the files store
 // the HostPubKey instead of the FileContractID, and can be simplified even
 // further once the layout is per-chunk instead of per-filecontract.
-func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, threadUIDs []int, hosts map[string]struct{}) []*unfinishedUploadChunk {
+func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}) []*unfinishedUploadChunk {
+	// Grab a copy of the SiaFileSetEntry, all the entrys in the slice are the
+	// same
+	entry := entrys[0]
 	// If we don't have enough workers for the file, don't repair it right now.
 	minWorkers := 0
 	for i := uint64(0); i < entry.NumChunks(); i++ {
@@ -125,8 +128,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, threadUID
 	newUnfinishedChunks := make([]*unfinishedUploadChunk, chunkCount)
 	for i := uint64(0); i < chunkCount; i++ {
 		newUnfinishedChunks[i] = &unfinishedUploadChunk{
-			fileEntry: entry,
-			threadUID: threadUIDs[i],
+			fileEntry: entrys[i],
 
 			id: uploadChunkID{
 				fileUID: entry.UID(),
@@ -234,7 +236,7 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	// Get all the files holding the readlock.
 	//
 	// TODO - update to just read from disk
-	entries, err := r.staticFileSet.All()
+	entrys, err := r.staticFileSet.All()
 	if err != nil {
 		return
 	}
@@ -244,7 +246,7 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	pks := make(map[string]types.SiaPublicKey)
 	goodForRenew := make(map[string]bool)
 	offline := make(map[string]bool)
-	for _, e := range entries {
+	for _, e := range entrys {
 		for _, pk := range e.HostPublicKeys() {
 			pks[string(pk.Key)] = pk
 		}
@@ -263,21 +265,21 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 
 	// Loop through the whole set of files and get a list of chunks to add to
 	// the heap.
-	for _, entry := range entries {
+	for _, entry := range entrys {
 		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(entry, entry.ChunkThreads(), hosts)
+		unfinishedUploadChunks := r.buildUnfinishedChunks(entry.ChunkEntrys(), hosts)
 		r.mu.Unlock(id)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
 		}
 	}
-	for threadUID, entry := range entries {
+	for _, entry := range entrys {
 		// Check if local file is missing and redundancy is less than 1
 		// log warning to renter log
 		if _, err := os.Stat(entry.LocalPath()); os.IsNotExist(err) && entry.Redundancy(offline, goodForRenew) < 1 {
 			r.log.Println("File not found on disk and possibly unrecoverable:", entry.LocalPath())
 		}
-		err := entry.Close(threadUID)
+		err := entry.Close()
 		if err != nil {
 			r.log.Debugln("WARN: Could not close thread:", err)
 		}
