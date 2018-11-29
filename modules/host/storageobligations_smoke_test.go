@@ -717,36 +717,21 @@ func TestAutoRevisionSubmission(t *testing.T) {
 	// Unlike the other tests, this test does not submit the file contract
 	// revision to the transaction pool for the host, the host is expected to
 	// do it automatically.
-
-	// Mine until the host submits a storage proof.
-	for i := types.BlockHeight(0); i <= revisionSubmissionBuffer+2+resubmissionTimeout; i++ {
-		_, err := ht.miner.AddBlock()
-		if err != nil {
-			t.Fatal(err)
+	count := 0
+	err = build.Retry(500, 100*time.Millisecond, func() error {
+		// Mine another block every 10 iterations, to get the storage proof from
+		// the transaction pool into the blockchain.
+		if count%10 == 0 {
+			_, err = ht.miner.AddBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = ht.host.tg.Flush()
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
-		err = ht.host.tg.Flush()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	// Flush the host - flush will block until the host has submitted the
-	// storage proof to the transaction pool.
-	err = ht.host.tg.Flush()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Mine another block, to get the storage proof from the transaction pool
-	// into the blockchain.
-	_, err = ht.miner.AddBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = ht.host.tg.Flush()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = build.Retry(50, 250*time.Millisecond, func() error {
+		count++
 		err = ht.host.db.View(func(tx *bolt.Tx) error {
 			so, err = getStorageObligation(tx, so.id())
 			if err != nil {
