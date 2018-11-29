@@ -215,16 +215,16 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// Get the updates for the header.
 	if tableChanged {
 		// If the table changed we update the whole header.
-		updates, err = sf.saveHeader()
+		updates, err = sf.saveHeaderUpdates()
 	} else {
 		// Otherwise just the metadata.
-		updates, err = sf.saveMetadata()
+		updates, err = sf.saveMetadataUpdate()
 	}
 	if err != nil {
 		return err
 	}
 	// Save the changed chunk to disk.
-	chunkUpdate, err := sf.saveChunk(int(chunkIndex))
+	chunkUpdate, err := sf.saveChunkUpdate(int(chunkIndex))
 	if err != nil {
 		return err
 	}
@@ -488,13 +488,13 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 		pruned = true
 	}
 	// Save the header to disk.
-	updates, err := sf.saveHeader()
+	updates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return err
 	}
 	// If we pruned the hosts we also need to save the body.
 	if pruned {
-		chunkUpdates, err := sf.saveChunks()
+		chunkUpdates, err := sf.saveChunksUpdates()
 		if err != nil {
 			return err
 		}
