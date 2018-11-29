@@ -369,7 +369,7 @@ func (r *Renter) initPersist() error {
 			}
 		}
 		// If every update of the txn is a SiaFileUpdate (which should be the
-		// case since it's either nonce of them or all) we consider the
+		// case since it's either none of them or all) we consider the
 		// transaction applied.
 		if applyTxn {
 			if err := txn.SignalUpdatesApplied(); err != nil {

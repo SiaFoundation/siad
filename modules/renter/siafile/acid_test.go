@@ -25,7 +25,7 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	}
 
 	// Create the dependency.
-	fdd := newFaultyDiskDependency(100) // Fails after 100 writes.
+	fdd := newFaultyDiskDependency(1000) // Fails after 1000 writes.
 	fdd.disable()
 
 	// Create a new blank siafile.
@@ -41,11 +41,12 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	}
 
 	// The outer loop is responsible for simulating a restart of siad by
-	// reloading the wal, applying transactions, loading the sf from disk again
-	// and
+	// reloading the wal, applying transactions and loading the sf from disk
+	// again.
 	fdd.enable()
 	testDone := time.After(testTimeout)
 	numRecoveries := 0
+	numSuccessfulIterations := 0
 OUTER:
 	for {
 		select {
@@ -81,6 +82,7 @@ OUTER:
 					t.Fatal(err)
 				}
 			}
+			numSuccessfulIterations++
 		}
 
 		// 20% chance that drive is repaired.
@@ -137,4 +139,5 @@ OUTER:
 
 	}
 	t.Logf("Recovered from %v disk failures", numRecoveries)
+	t.Logf("Inner loop %v iterations without failures", numSuccessfulIterations)
 }
