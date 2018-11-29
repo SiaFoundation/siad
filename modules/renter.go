@@ -131,20 +131,12 @@ type ErasureCoder interface {
 	// sharded input.
 	EncodeShards(data [][]byte, pieceSize uint64) ([][]byte, error)
 
-	// EncodeSubShards encodes data in a way that every 64 bytes of the encoded
-	// data can be decoded independently.
-	EncodeSubShards(pieces [][]byte, pieceSize, segmentSize uint64) ([][]byte, error)
-
 	// Recover recovers the original data from pieces and writes it to w.
 	// pieces should be identical to the slice returned by Encode (length and
 	// order must be preserved), but with missing elements set to nil. n is
 	// the number of bytes to be written to w; this is necessary because
 	// pieces may have been padded with zeros during encoding.
 	Recover(pieces [][]byte, n uint64, w io.Writer) error
-
-	// RecoverSegment accepts encoded pieces and decodes the segment at
-	// segmentIndex.
-	RecoverSegment(pieces [][]byte, segmentIndex int, pieceSize, segmentSize uint64, w io.Writer) error
 }
 
 // An Allowance dictates how much the Renter is allowed to spend in a given

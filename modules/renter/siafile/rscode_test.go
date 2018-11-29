@@ -82,7 +82,7 @@ func TestPartialEncodeRecover(t *testing.T) {
 		pieces[i] = buf.Next(pieceSize)
 	}
 	// Encode the pieces.
-	encodedPieces, err := rsc.EncodeSubShards(pieces, uint64(pieceSize), uint64(segmentSize))
+	encodedPieces, err := EncodeSubShards(rsc, pieces, uint64(pieceSize), uint64(segmentSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestPartialEncodeRecover(t *testing.T) {
 	// Recover every segment individually.
 	for i := 0; i < pieceSize/segmentSize; i++ {
 		buf := new(bytes.Buffer)
-		err = rsc.RecoverSegment(encodedPieces, i, uint64(pieceSize), uint64(segmentSize), buf)
+		err = RecoverSegment(rsc, encodedPieces, i, uint64(pieceSize), uint64(segmentSize), buf)
 		if err != nil {
 			t.Fatal(err)
 		}

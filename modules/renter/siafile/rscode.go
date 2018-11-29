@@ -45,8 +45,8 @@ func (rs *RSCode) Encode(data []byte) ([][]byte, error) {
 // EncodeShards creates the parity shards for an already sharded input.
 func (rs *RSCode) EncodeShards(pieces [][]byte, pieceSize uint64) ([][]byte, error) {
 	// Check that the caller provided the minimum amount of pieces.
-	if len(pieces) != rs.MinPieces() {
-		return nil, fmt.Errorf("invalid number of pieces given %v %v", len(pieces), rs.MinPieces())
+	if len(pieces) < rs.MinPieces() {
+		return nil, fmt.Errorf("invalid number of pieces given %v < %v", len(pieces), rs.MinPieces())
 	}
 	// Add the parity shards to pieces.
 	for len(pieces) < rs.NumPieces() {
@@ -61,7 +61,7 @@ func (rs *RSCode) EncodeShards(pieces [][]byte, pieceSize uint64) ([][]byte, err
 
 // EncodeSubShards encodes data in a way that every 64 bytes of the encoded
 // data can be decoded independently.
-func (rs *RSCode) EncodeSubShards(pieces [][]byte, pieceSize, segmentSize uint64) ([][]byte, error) {
+func EncodeSubShards(rs modules.ErasureCoder, pieces [][]byte, pieceSize, segmentSize uint64) ([][]byte, error) {
 	// pieceSize must be divisible by segmentSize
 	if pieceSize%segmentSize != 0 {
 		return nil, errors.New("pieceSize not divisible by segmentSize")
@@ -112,9 +112,11 @@ func (rs *RSCode) EncodeSubShards(pieces [][]byte, pieceSize, segmentSize uint64
 	}
 	// Encode the segments.
 	for i := range segments {
-		if err := rs.enc.Encode(segments[i]); err != nil {
+		encodedSegment, err := rs.EncodeShards(segments[i], pieceSize)
+		if err != nil {
 			return nil, err
 		}
+		segments[i] = encodedSegment
 	}
 	return pieces, nil
 }
@@ -132,7 +134,7 @@ func (rs *RSCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 
 // RecoverSegment accepts encoded pieces and decodes the segment at
 // segmentIndex. The size of the decoded data is segmentSize * dataPieces.
-func (rs *RSCode) RecoverSegment(pieces [][]byte, segmentIndex int, pieceSize, segmentSize uint64, w io.Writer) error {
+func RecoverSegment(rs modules.ErasureCoder, pieces [][]byte, segmentIndex int, pieceSize, segmentSize uint64, w io.Writer) error {
 	// pieceSize must be divisible by segmentSize
 	if pieceSize%segmentSize != 0 {
 		return errors.New("pieceSize not divisible by segmentSize")
@@ -153,11 +155,7 @@ func (rs *RSCode) RecoverSegment(pieces [][]byte, segmentIndex int, pieceSize, s
 		}
 	}
 	// Reconstruct the segment.
-	err := rs.enc.ReconstructData(segment)
-	if err != nil {
-		return err
-	}
-	return rs.enc.Join(w, segment, int(segmentSize)*rs.MinPieces())
+	return rs.Recover(segment, segmentSize*uint64(rs.MinPieces()), w)
 }
 
 // NewRSCode creates a new Reed-Solomon encoder/decoder using the supplied
