@@ -193,7 +193,7 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 	g.mu.RLock()
 	ourHeader := sessionHeader{
 		GenesisID:  types.GenesisID,
-		UniqueID:   g.staticId,
+		UniqueID:   g.staticID,
 		NetAddress: g.myAddr,
 	}
 	rl := g.rl
@@ -391,7 +391,7 @@ func (g *Gateway) managedConnectPeer(conn net.Conn, remoteVersion string, remote
 	g.mu.RLock()
 	ourHeader := sessionHeader{
 		GenesisID:  types.GenesisID,
-		UniqueID:   g.staticId,
+		UniqueID:   g.staticID,
 		NetAddress: g.myAddr,
 	}
 	g.mu.RUnlock()

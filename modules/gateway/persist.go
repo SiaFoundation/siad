@@ -39,9 +39,8 @@ type (
 		RouterURL string
 
 		// rate limit settings
-		readBPS    int64
-		writeBPS   int64
-		packetSize uint64
+		maxDownloadSpeed int64
+		maxUploadSpeed   int64
 	}
 )
 
