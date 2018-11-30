@@ -160,9 +160,11 @@ func (e *Encoder) encode(val reflect.Value) error {
 		if err := e.Encode(!val.IsNil()); err != nil {
 			return err
 		}
-		if !val.IsNil() {
-			return e.encode(val.Elem())
+		if val.IsNil() {
+			return nil // nothing to encode
 		}
+		// write dereferenced value
+		return e.encode(val.Elem())
 	case reflect.Bool:
 		return e.WriteBool(val.Bool())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:

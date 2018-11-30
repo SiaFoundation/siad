@@ -48,6 +48,8 @@ type (
 	test6 struct {
 		s string
 	}
+	// nil pointer
+	test7 struct{}
 )
 
 func (t test5) MarshalSia(w io.Writer) error {
@@ -79,6 +81,7 @@ var testStructs = []interface{}{
 	test4{&test1{[]int32{1, 2, 3}, []byte("foo"), [3]string{"foo", "bar", "baz"}, [3]byte{'f', 'o', 'o'}}},
 	test5{"foo"},
 	&test6{"foo"},
+	(*test7)(nil),
 }
 
 var testEncodings = [][]byte{
@@ -93,6 +96,7 @@ var testEncodings = [][]byte{
 		0, 0, 0, 0, 0, 0, 0, 'b', 'a', 'r', 3, 0, 0, 0, 0, 0, 0, 0, 'b', 'a', 'z', 'f', 'o', 'o'},
 	{3, 0, 0, 0, 0, 0, 0, 0, 'f', 'o', 'o'},
 	{3, 0, 0, 0, 0, 0, 0, 0, 'f', 'o', 'o'},
+	{0},
 }
 
 // TestEncode tests the Encode function.
@@ -120,7 +124,7 @@ func TestDecode(t *testing.T) {
 		t.SkipNow()
 	}
 	// use Unmarshal for convenience
-	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}}
+	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}, &test7{}}
 	for i := range testEncodings {
 		err := Unmarshal(testEncodings[i], emptyStructs[i])
 		if err != nil {
@@ -183,7 +187,7 @@ func TestDecode(t *testing.T) {
 // TestMarshalUnmarshal tests the Marshal and Unmarshal functions, which are
 // inverses of each other.
 func TestMarshalUnmarshal(t *testing.T) {
-	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}}
+	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}, &test7{}}
 	for i := range testStructs {
 		b := Marshal(testStructs[i])
 		err := Unmarshal(b, emptyStructs[i])
@@ -196,7 +200,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 // TestEncodeDecode tests the Encode and Decode functions, which are inverses
 // of each other.
 func TestEncodeDecode(t *testing.T) {
-	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}}
+	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}, &test7{}}
 	b := new(bytes.Buffer)
 	enc := NewEncoder(b)
 	dec := NewDecoder(b)
@@ -241,7 +245,7 @@ func TestDecodeAll(t *testing.T) {
 	b := new(bytes.Buffer)
 	NewEncoder(b).EncodeAll(testStructs...)
 
-	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}}
+	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}, &test7{}}
 	err := NewDecoder(b).DecodeAll(emptyStructs...)
 	if err != nil {
 		t.Error(err)
@@ -298,7 +302,7 @@ func TestMarshalAll(t *testing.T) {
 func TestUnmarshalAll(t *testing.T) {
 	b := MarshalAll(testStructs...)
 
-	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}}
+	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}, &test7{}}
 	err := UnmarshalAll(b, emptyStructs...)
 	if err != nil {
 		t.Error(err)
@@ -375,7 +379,7 @@ func BenchmarkEncode(b *testing.B) {
 // i5-4670K, 9a90f86: 26 MB/s
 func BenchmarkDecode(b *testing.B) {
 	b.ReportAllocs()
-	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}}
+	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}, &test7{}}
 	var numBytes int64
 	for i := 0; i < b.N; i++ {
 		numBytes = 0
@@ -402,7 +406,7 @@ func BenchmarkMarshalAll(b *testing.B) {
 // i5-4670K, 2059112: 36 MB/s
 func BenchmarkUnmarshalAll(b *testing.B) {
 	b.ReportAllocs()
-	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}}
+	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}, &test7{}}
 	structBytes := bytes.Join(testEncodings, nil)
 	for i := 0; i < b.N; i++ {
 		err := UnmarshalAll(structBytes, emptyStructs...)

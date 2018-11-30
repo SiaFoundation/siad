@@ -25,8 +25,6 @@ const (
 	logFile = modules.RenterDir + ".log"
 	// PersistFilename is the filename to be used when persisting renter information to a JSON file
 	PersistFilename = "renter.json"
-	// ShareExtension is the extension to be used
-	ShareExtension = ".sia"
 	// SiaDirMetadata is the name of the metadata file for the sia directory
 	SiaDirMetadata = ".siadir"
 	// walFile is the filename of the renter's writeaheadlog's file.
@@ -41,7 +39,7 @@ var (
 	// ErrNoNicknames is an error when no nickname is given
 	ErrNoNicknames = errors.New("at least one nickname must be supplied")
 	// ErrNonShareSuffix is an error when the suffix of a file does not match the defined share extension
-	ErrNonShareSuffix = errors.New("suffix of file must be " + ShareExtension)
+	ErrNonShareSuffix = errors.New("suffix of file must be " + siafile.ShareExtension)
 
 	settingsMetadata = persist.Metadata{
 		Header:  "Renter Persistence",
@@ -232,36 +230,6 @@ func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
 }
 
-// loadSiaFiles walks through the directory searching for siafiles and loading
-// them into memory.
-func (r *Renter) loadSiaFiles() error {
-	// Recursively load all files found in renter directory. Errors
-	// encountered during loading are logged, but are not considered fatal.
-	return filepath.Walk(r.filesDir, func(path string, info os.FileInfo, err error) error {
-		// This error is non-nil if filepath.Walk couldn't stat a file or
-		// folder.
-		if err != nil {
-			r.log.Println("WARN: could not stat file or folder during walk:", err)
-			return nil
-		}
-
-		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != ShareExtension {
-			return nil
-		}
-
-		// Load the Siafile.
-		sf, err := siafile.LoadSiaFile(path, r.wal)
-		if err != nil {
-			// TODO try loading the file with the legacy format.
-			r.log.Println("ERROR: could not open .sia file:", err)
-			return nil
-		}
-		r.files[sf.SiaPath()] = sf
-		return nil
-	})
-}
-
 // load fetches the saved renter data from disk.
 func (r *Renter) loadSettings() error {
 	r.persist = persistence{}
@@ -333,8 +301,8 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		dupCount := 0
 		origName := files[i].name
 		for {
-			_, exists := r.files[files[i].name]
-			if !exists {
+			_, err := r.staticFileSet.Exists(files[i].name)
+			if os.IsNotExist(err) {
 				break
 			}
 			dupCount++
@@ -345,21 +313,24 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 	// Add files to renter.
 	names := make([]string, numFiles)
 	for i, f := range files {
-		sf, err := r.fileToSiaFile(f, repairPath)
+		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
+		// be returned here
+		siafilePath := filepath.Join(r.filesDir, f.name)
+		entry, err := r.fileToSiaFile(f, siafilePath)
 		if err != nil {
 			return nil, err
 		}
-		r.files[f.name] = sf
 		names[i] = f.name
+		err = errors.Compose(err, entry.Close())
 	}
 	// TODO Save the file in the new format.
-	return names, nil
+	return names, err
 }
 
 // initPersist handles all of the persistence initialization, such as creating
 // the persistence directory and starting the logger.
 func (r *Renter) initPersist() error {
-	// Create the perist and files directories if they do not yet exist.
+	// Create the persist and files directories if they do not yet exist.
 	err := os.MkdirAll(r.filesDir, 0700)
 	if err != nil {
 		return err
@@ -383,6 +354,7 @@ func (r *Renter) initPersist() error {
 		return err
 	}
 	r.wal = wal
+	r.staticFileSet = siafile.NewSiaFileSet(r.filesDir, wal)
 
 	// Apply unapplied wal txns.
 	for _, txn := range txns {
@@ -395,8 +367,7 @@ func (r *Renter) initPersist() error {
 		}
 	}
 
-	// Load the siafiles into memory.
-	return r.loadSiaFiles()
+	return nil
 }
 
 // LoadSharedFiles loads a .sia file into the renter. It returns the nicknames
@@ -421,16 +392,6 @@ func (r *Renter) LoadSharedFilesASCII(asciiSia string) ([]string, error) {
 
 	dec := base64.NewDecoder(base64.URLEncoding, bytes.NewBufferString(asciiSia))
 	return r.loadSharedFiles(dec, "")
-}
-
-// ShareFiles writes an .sia file to disk to be shared with others.
-func (r *Renter) ShareFiles(paths []string, shareDest string) error {
-	return errors.New("Not implemented for new format yet")
-}
-
-// ShareFilesASCII creates an ASCII-encoded '.sia' file.
-func (r *Renter) ShareFilesASCII(paths []string) (asciiSia string, err error) {
-	return "", errors.New("Not implemented for new format yet")
 }
 
 // convertPersistVersionFrom040to133 upgrades a legacy persist file to the next
