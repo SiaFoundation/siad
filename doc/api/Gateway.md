@@ -24,11 +24,12 @@ Index
 
 | Route                                                                              | HTTP verb | Examples                                                |
 | ---------------------------------------------------------------------------------- | --------- | ------------------------------------------------------- |
-| [/gateway](#gateway-get-example)                                                   | GET       | [Gateway info](#gateway-info)                           |
+| [/gateway](#gateway-get-example)                                                   | GET       | [Gateway info](#gateway-get-info)                       |
+| [/gateway](#gateway-post-example)                                                  | POST      | [Gateway info](#gateway-post-info)                      |
 | [/gateway/connect/___:netaddress___](#gatewayconnectnetaddress-post-example)       | POST      | [Connecting to a peer](#connecting-to-a-peer)           |
 | [/gateway/disconnect/___:netaddress___](#gatewaydisconnectnetaddress-post-example) | POST      | [Disconnecting from a peer](#disconnecting-from-a-peer) |
 
-#### /gateway [GET] [(example)](#gateway-info)
+#### /gateway [GET] [(example)](#gateway-get-info)
 
 returns information about the gateway, including the list of connected peers.
 
@@ -61,6 +62,21 @@ returns information about the gateway, including the list of connected peers.
     }
 }
 ```
+
+#### /gateway [POST] [(example)](#gateway-get-info)
+
+modify settings that control the gateway's behavior.
+
+###### Query String Parameters
+// Max download speed permitted, speed provide in bytes per second
+maxdownloadspeed
+
+// Max upload speed permitted, speed provide in bytes per second
+maxuploadspeed
+
+###### Response
+standard success or error response. See
+[API.md#standard-responses](/doc/API.md#standard-responses).
 
 #### /gateway/connect/{netaddress} [POST] [(example)](#connecting-to-a-peer)
 
