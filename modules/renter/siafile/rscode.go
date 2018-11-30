@@ -145,13 +145,13 @@ func RecoverSegment(rs modules.ErasureCoder, pieces [][]byte, segmentIndex int, 
 			rs.NumPieces(), len(pieces))
 	}
 	// Extract the segment from the pieces.
-	// NOTE not in-place
-	var segment [][]byte
-	for _, piece := range pieces {
-		if uint64(len(piece)) <= uint64(segmentIndex)*segmentSize {
-			segment = append(segment, []byte{})
+	segment := make([][]byte, uint64(rs.NumPieces()))
+	for i, piece := range pieces {
+		off := uint64(segmentIndex) * segmentSize
+		if uint64(len(piece)) > off {
+			segment[i] = piece[off : off+segmentSize]
 		} else {
-			segment = append(segment, piece[uint64(segmentIndex)*segmentSize:][:segmentSize])
+			segment[i] = nil
 		}
 	}
 	// Reconstruct the segment.
