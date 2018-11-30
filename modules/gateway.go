@@ -156,6 +156,13 @@ type (
 		// supply the given RPC ID.
 		RegisterRPC(string, RPCFunc)
 
+		// RateLimits returns the currently set bandwidth limits of the gateway.
+		RateLimits() (int64, int64)
+
+		// SetRateLimits changes the rate limits for the peer-connections of the
+		// gateway.
+		SetRateLimits(downloadSpeed, uploadSpeed int64) error
+
 		// UnregisterRPC unregisters an RPC and removes all references to the RPCFunc
 		// supplied in the corresponding RegisterRPC call. References to RPCFuncs
 		// registered with RegisterConnectCall are not removed and should be removed

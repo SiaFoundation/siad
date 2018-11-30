@@ -16,6 +16,18 @@ var (
 		CreateTransactionPool: true,
 		CreateWallet:          true,
 	}
+	// GatewayTemplate is a template for a Sia node that has a functioning
+	// Gateway. The node has a Gateway but no other modules.
+	GatewayTemplate = NodeParams{
+		CreateConsensusSet:    false,
+		CreateExplorer:        false,
+		CreateGateway:         true,
+		CreateHost:            false,
+		CreateMiner:           false,
+		CreateRenter:          false,
+		CreateTransactionPool: false,
+		CreateWallet:          false,
+	}
 	// HostTemplate is a template for a Sia node that has a functioning host.
 	// The node has a host and all dependencies, but no other modules.
 	HostTemplate = NodeParams{
@@ -59,6 +71,13 @@ var (
 // AllModules returns an AllModulesTemplate filled out with the provided dir.
 func AllModules(dir string) NodeParams {
 	template := AllModulesTemplate
+	template.Dir = dir
+	return template
+}
+
+// Gateway returns a GatewayTemplate filled out with the provided dir.
+func Gateway(dir string) NodeParams {
+	template := GatewayTemplate
 	template.Dir = dir
 	return template
 }

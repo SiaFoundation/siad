@@ -221,18 +221,25 @@ func (g *Gateway) ForwardPort(port string) error {
 	return g.managedForwardPort(port)
 }
 
+// RateLimits returns the currently set bandwidth limits of the gateway.
+func (g *Gateway) RateLimits() (int64, int64) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed
+}
+
 // SetRateLimits changes the rate limits for the peer-connections of the
 // gateway.
 func (g *Gateway) SetRateLimits(downloadSpeed, uploadSpeed int64) error {
 	g.mu.Lock()
-	defer g.mu.RUnlock()
+	defer g.mu.Unlock()
 	// Set the limit in memory.
 	if err := g.setRateLimits(downloadSpeed, uploadSpeed); err != nil {
 		return err
 	}
 	// Update the persistence struct.
-	g.persist.maxDownloadSpeed = downloadSpeed
-	g.persist.maxUploadSpeed = uploadSpeed
+	g.persist.MaxDownloadSpeed = downloadSpeed
+	g.persist.MaxUploadSpeed = uploadSpeed
 	return g.saveSync()
 }
 
@@ -303,7 +310,7 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	}
 	// Create the ratelimiter and set it to the persisted limits.
 	g.rl = ratelimit.NewRateLimit(0, 0, 0)
-	if err := g.setRateLimits(g.persist.maxDownloadSpeed, g.persist.maxUploadSpeed); err != nil {
+	if err := g.setRateLimits(g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed); err != nil {
 		return nil, err
 	}
 	// Spawn the thread to periodically save the gateway.

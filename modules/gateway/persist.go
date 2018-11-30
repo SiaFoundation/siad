@@ -39,8 +39,8 @@ type (
 		RouterURL string
 
 		// rate limit settings
-		maxDownloadSpeed int64
-		maxUploadSpeed   int64
+		MaxDownloadSpeed int64
+		MaxUploadSpeed   int64
 	}
 )
 
