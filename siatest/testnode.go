@@ -122,7 +122,7 @@ func (tn *TestNode) StartNode() error {
 	}
 	tn.Server = s
 	tn.Client.Address = s.APIAddress()
-	if !tn.params.CreateWallet || tn.params.Wallet == nil {
+	if !tn.params.CreateWallet && tn.params.Wallet == nil {
 		return nil
 	}
 	return tn.WalletUnlockPost(tn.primarySeed)
