@@ -3,6 +3,7 @@ package proto
 import (
 	"net"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -15,6 +16,14 @@ import (
 // submits the new contract transaction to tpool. The new contract is added to
 // the ContractSet and its metadata is returned.
 func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
+	// use the new renter-host protocol for hosts v1.4.0 or above
+	if build.VersionCmp(params.Host.Version, "1.4.0") >= 0 {
+		return cs.oldRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
+	}
+	return cs.newRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
+}
+
+func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
 	// for convenience
 	contract := oldContract.header
 
@@ -247,6 +256,262 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		return modules.RenterContract{}, errors.New("couldn't read the host's revision signature: " + err.Error())
 	}
 	revisionTxn.TransactionSignatures = append(revisionTxn.TransactionSignatures, hostRevisionSig)
+
+	// Construct the final transaction.
+	txn, parentTxns = txnBuilder.View()
+	txnSet = append(parentTxns, txn)
+
+	// Submit to blockchain.
+	err = tpool.AcceptTransactionSet(txnSet)
+	if err == modules.ErrDuplicateTransactionSet {
+		// as long as it made it into the transaction pool, we're good
+		err = nil
+	}
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+
+	// Construct contract header.
+	header := contractHeader{
+		Transaction:     revisionTxn,
+		SecretKey:       ourSK,
+		StartHeight:     startHeight,
+		TotalCost:       funding,
+		ContractFee:     host.ContractPrice,
+		TxnFee:          txnFee,
+		SiafundFee:      types.Tax(startHeight, fc.Payout),
+		StorageSpending: basePrice,
+		Utility: modules.ContractUtility{
+			GoodForUpload: true,
+			GoodForRenew:  true,
+		},
+	}
+
+	// Get old roots
+	oldRoots, err := oldContract.merkleRoots.merkleRoots()
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+
+	// Add contract to set.
+	meta, err := cs.managedInsertContract(header, oldRoots)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	return meta, nil
+}
+
+func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
+	// for convenience
+	contract := oldContract.header
+
+	// Extract vars from params, for convenience.
+	allowance, host, funding, startHeight, endHeight, refundAddress := params.Allowance, params.Host, params.Funding, params.StartHeight, params.EndHeight, params.RefundAddress
+	ourSK := contract.SecretKey
+	lastRev := contract.LastRevision()
+
+	// Calculate additional basePrice and baseCollateral. If the contract height
+	// did not increase, basePrice and baseCollateral are zero.
+	var basePrice, baseCollateral types.Currency
+	if endHeight+host.WindowSize > lastRev.NewWindowEnd {
+		timeExtension := uint64((endHeight + host.WindowSize) - lastRev.NewWindowEnd)
+		basePrice = host.StoragePrice.Mul64(lastRev.NewFileSize).Mul64(timeExtension)    // cost of already uploaded data that needs to be covered by the renewed contract.
+		baseCollateral = host.Collateral.Mul64(lastRev.NewFileSize).Mul64(timeExtension) // same as basePrice.
+	}
+
+	// Calculate the anticipated transaction fee.
+	_, maxFee := tpool.FeeEstimation()
+	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
+
+	// Calculate the payouts for the renter, host, and whole contract.
+	period := endHeight - startHeight
+	renterPayout, hostPayout, hostCollateral, err := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, allowance.ExpectedStorage/allowance.Hosts)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	totalPayout := renterPayout.Add(hostPayout)
+
+	// check for negative currency
+	if hostCollateral.Cmp(baseCollateral) < 0 {
+		baseCollateral = hostCollateral
+	}
+	if types.PostTax(startHeight, totalPayout).Cmp(hostPayout) < 0 {
+		return modules.RenterContract{}, errors.New("insufficient funds to pay both siafund fee and also host payout")
+	}
+
+	// create file contract
+	fc := types.FileContract{
+		FileSize:       lastRev.NewFileSize,
+		FileMerkleRoot: lastRev.NewFileMerkleRoot,
+		WindowStart:    endHeight,
+		WindowEnd:      endHeight + host.WindowSize,
+		Payout:         totalPayout,
+		UnlockHash:     lastRev.NewUnlockHash,
+		RevisionNumber: 0,
+		ValidProofOutputs: []types.SiacoinOutput{
+			// renter
+			{Value: types.PostTax(startHeight, totalPayout).Sub(hostPayout), UnlockHash: refundAddress},
+			// host
+			{Value: hostPayout, UnlockHash: host.UnlockHash},
+		},
+		MissedProofOutputs: []types.SiacoinOutput{
+			// renter
+			{Value: types.PostTax(startHeight, totalPayout).Sub(hostPayout), UnlockHash: refundAddress},
+			// host gets its unused collateral back, plus the contract price
+			{Value: hostCollateral.Sub(baseCollateral).Add(host.ContractPrice), UnlockHash: host.UnlockHash},
+			// void gets the spent storage fees, plus the collateral being risked
+			{Value: basePrice.Add(baseCollateral), UnlockHash: types.UnlockHash{}},
+		},
+	}
+
+	// build transaction containing fc
+	err = txnBuilder.FundSiacoins(funding)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	txnBuilder.AddFileContract(fc)
+	// add miner fee
+	txnBuilder.AddMinerFee(txnFee)
+
+	// Create initial transaction set.
+	txn, parentTxns := txnBuilder.View()
+	unconfirmedParents, err := txnBuilder.UnconfirmedParents()
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
+
+	// Increase Successful/Failed interactions accordingly
+	defer func() {
+		// A revision mismatch might not be the host's fault.
+		if err != nil && !IsRevisionMismatch(err) {
+			hdb.IncrementFailedInteractions(contract.HostPublicKey())
+			err = errors.Extend(err, modules.ErrHostFault)
+		} else if err == nil {
+			hdb.IncrementSuccessfulInteractions(contract.HostPublicKey())
+		}
+	}()
+
+	// initiate connection
+	dialer := &net.Dialer{
+		Cancel:  cancel,
+		Timeout: connTimeout,
+	}
+	conn, err := dialer.Dial("tcp", string(host.NetAddress))
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	defer func() { _ = conn.Close() }()
+	extendDeadline(conn, modules.NegotiateFileContractTime)
+
+	// Perform initial handshake,
+	if err := encoding.WriteObject(conn, modules.RPCLoopEnter); err != nil {
+		return modules.RenterContract{}, err
+	}
+	handshakeReq := modules.LoopHandshakeRequest{
+		Version:    1,
+		Ciphers:    []types.Specifier{modules.CipherPlaintext},
+		KeyData:    nil,
+		ContractID: oldContract.Metadata().ID,
+	}
+	if err := encoding.NewEncoder(conn).Encode(handshakeReq); err != nil {
+		return modules.RenterContract{}, err
+	}
+	var handshakeResp modules.LoopHandshakeResponse
+	if err := modules.ReadRPCResponse(conn, &handshakeResp); err != nil {
+		return modules.RenterContract{}, err
+	}
+	if handshakeResp.Cipher != modules.CipherPlaintext {
+		return modules.RenterContract{}, errors.New("host selected unsupported cipher")
+	}
+
+	// Send the challenge response and RenewContract request.
+	hash := crypto.HashAll(modules.RPCChallengePrefix, handshakeResp.Challenge)
+	challengeSig := crypto.SignHash(hash, contract.SecretKey)
+	cresp := modules.LoopChallengeResponse{
+		Signature: challengeSig[:],
+	}
+	req := modules.LoopRenewContractRequest{
+		Transactions: txnSet,
+	}
+	if err := encoding.NewEncoder(conn).EncodeAll(cresp, modules.RPCLoopRenewContract, req); err != nil {
+		return modules.RenterContract{}, err
+	}
+
+	// Read the host's response.
+	var resp modules.LoopContractAdditions
+	if err := modules.ReadRPCResponse(conn, &resp); err != nil {
+		return modules.RenterContract{}, err
+	}
+
+	// Incorporate host's modifications.
+	txnBuilder.AddParents(resp.Parents)
+	for _, input := range resp.Inputs {
+		txnBuilder.AddSiacoinInput(input)
+	}
+	for _, output := range resp.Outputs {
+		txnBuilder.AddSiacoinOutput(output)
+	}
+
+	// sign the txn
+	signedTxnSet, err := txnBuilder.Sign(true)
+	if err != nil {
+		return modules.RenterContract{}, modules.WriteNegotiationRejection(conn, errors.New("failed to sign transaction: "+err.Error()))
+	}
+
+	// calculate signatures added by the transaction builder
+	var addedSignatures []types.TransactionSignature
+	_, _, _, addedSignatureIndices := txnBuilder.ViewAdded()
+	for _, i := range addedSignatureIndices {
+		addedSignatures = append(addedSignatures, signedTxnSet[len(signedTxnSet)-1].TransactionSignatures[i])
+	}
+
+	// create initial (no-op) revision, transaction, and signature
+	initRevision := types.FileContractRevision{
+		ParentID:          signedTxnSet[len(signedTxnSet)-1].FileContractID(0),
+		UnlockConditions:  lastRev.UnlockConditions,
+		NewRevisionNumber: 1,
+
+		NewFileSize:           fc.FileSize,
+		NewFileMerkleRoot:     fc.FileMerkleRoot,
+		NewWindowStart:        fc.WindowStart,
+		NewWindowEnd:          fc.WindowEnd,
+		NewValidProofOutputs:  fc.ValidProofOutputs,
+		NewMissedProofOutputs: fc.MissedProofOutputs,
+		NewUnlockHash:         fc.UnlockHash,
+	}
+	renterRevisionSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(initRevision.ParentID),
+		PublicKeyIndex: 0,
+		CoveredFields: types.CoveredFields{
+			FileContractRevisions: []uint64{0},
+		},
+	}
+	revisionTxn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{initRevision},
+		TransactionSignatures: []types.TransactionSignature{renterRevisionSig},
+	}
+	encodedSig := crypto.SignHash(revisionTxn.SigHash(0, startHeight), ourSK)
+	revisionTxn.TransactionSignatures[0].Signature = encodedSig[:]
+
+	// Send acceptance and signatures
+	renterSigs := modules.LoopContractSignatures{
+		ContractSignatures: addedSignatures,
+		RevisionSignature:  revisionTxn.TransactionSignatures[0],
+	}
+	if err := encoding.NewEncoder(conn).Encode(renterSigs); err != nil {
+		return modules.RenterContract{}, err
+	}
+
+	// Read the host acceptance and signatures.
+	var hostSigs modules.LoopContractSignatures
+	if err := modules.ReadRPCResponse(conn, &hostSigs); err != nil {
+		return modules.RenterContract{}, err
+	}
+	for _, sig := range hostSigs.ContractSignatures {
+		txnBuilder.AddTransactionSignature(sig)
+	}
+	revisionTxn.TransactionSignatures = append(revisionTxn.TransactionSignatures, hostSigs.RevisionSignature)
 
 	// Construct the final transaction.
 	txn, parentTxns = txnBuilder.View()

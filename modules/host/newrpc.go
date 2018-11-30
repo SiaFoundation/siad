@@ -282,7 +282,6 @@ func (h *Host) managedRPCLoopDownload(conn net.Conn, so *storageObligation) erro
 // managedRPCLoopFormContract handles the contract formation RPC.
 func (h *Host) managedRPCLoopFormContract(conn net.Conn, so *storageObligation) error {
 	// NOTE: this RPC contains two request/response exchanges.
-
 	conn.SetDeadline(time.Now().Add(modules.NegotiateFileContractTime))
 
 	// Read the contract request.
@@ -316,7 +315,7 @@ func (h *Host) managedRPCLoopFormContract(conn net.Conn, so *storageObligation) 
 		return err
 	}
 	// Send any new inputs and outputs that were added to the transaction.
-	resp := modules.LoopFormContractResponse{
+	resp := modules.LoopContractAdditions{
 		Parents: newParents,
 		Inputs:  newInputs,
 		Outputs: newOutputs,
@@ -363,6 +362,88 @@ func (h *Host) managedRPCLoopFormContract(conn net.Conn, so *storageObligation) 
 		return err
 	})
 	h.mu.RUnlock()
+
+	return nil
+}
+
+// managedRPCLoopRenewContract handles the LoopRenewContract RPC.
+func (h *Host) managedRPCLoopRenewContract(conn net.Conn, so *storageObligation) error {
+	// NOTE: this RPC contains two request/response exchanges.
+	conn.SetDeadline(time.Now().Add(modules.NegotiateRenewContractTime))
+
+	// Read the renewal request.
+	var req modules.LoopRenewContractRequest
+	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+
+	h.mu.Lock()
+	settings := h.externalSettings()
+	h.mu.Unlock()
+	// TODO: this wasn't in the old renewal code.
+	if !settings.AcceptingContracts {
+		modules.WriteRPCResponse(conn, nil, errors.New("host is not accepting new contracts"))
+		return nil
+	}
+
+	// Verify that the transaction coming over the wire is a proper renewal.
+	renterSPK := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0].UnlockConditions.PublicKeys[0]
+	var renterPK crypto.PublicKey
+	copy(renterPK[:], renterSPK.Key)
+	err := h.managedVerifyRenewedContract(*so, req.Transactions, renterPK)
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("verification of renewal failed: ", err)
+	}
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(*so, settings, req.Transactions)
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("failed to add collateral: ", err)
+	}
+	// Send any new inputs and outputs that were added to the transaction.
+	resp := modules.LoopContractAdditions{
+		Parents: newParents,
+		Inputs:  newInputs,
+		Outputs: newOutputs,
+	}
+	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
+		return err
+	}
+
+	// The renter will now send transaction signatures for the file contract
+	// transaction and a signature for the implicit no-op file contract
+	// revision.
+	var renterSigs modules.LoopContractSignatures
+	if err := encoding.NewDecoder(conn).Decode(&renterSigs); err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return err
+	}
+
+	// The host adds the renter transaction signatures, then signs the
+	// transaction and submits it to the blockchain, creating a storage
+	// obligation in the process.
+	h.mu.RLock()
+	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
+	renewCollateral := renewContractCollateral(*so, settings, fc)
+	renewRevenue := renewBasePrice(*so, settings, fc)
+	renewRisk := renewBaseCollateral(*so, settings, fc)
+	h.mu.RUnlock()
+	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, renterPK, renterSigs.ContractSignatures, renterSigs.RevisionSignature, so.SectorRoots, renewCollateral, renewRevenue, renewRisk, settings)
+	if err != nil {
+		modules.WriteRPCResponse(conn, nil, err)
+		return extendErr("failed to finalize contract: ", err)
+	}
+	defer h.managedUnlockStorageObligation(newSOID)
+
+	// Send our signatures for the contract transaction and initial revision.
+	hostSigs := modules.LoopContractSignatures{
+		ContractSignatures: hostTxnSignatures,
+		RevisionSignature:  hostRevisionSignature,
+	}
+	if err := modules.WriteRPCResponse(conn, hostSigs, nil); err != nil {
+		return err
+	}
 
 	return nil
 }

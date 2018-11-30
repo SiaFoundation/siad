@@ -411,7 +411,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	}
 
 	// Read the host's response.
-	var resp modules.LoopFormContractResponse
+	var resp modules.LoopContractAdditions
 	if err := modules.ReadRPCResponse(conn, &resp); err != nil {
 		return modules.RenterContract{}, err
 	}
