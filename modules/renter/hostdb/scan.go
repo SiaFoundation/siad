@@ -42,24 +42,8 @@ func equalIPNets(ipNetsA, ipNetsB []string) bool {
 // feeChangeSignificant determines if the difference between two transaction
 // fees is significant enough to warrant rebuilding the hosttree.
 func feeChangeSignificant(oldTxnFees, newTxnFees types.Currency) bool {
-	// Determine the difference between the old and new fees.
-	var difference types.Currency
-	if newTxnFees.Cmp(oldTxnFees) > 0 {
-		difference = newTxnFees.Sub(oldTxnFees)
-	} else {
-		difference = oldTxnFees.Sub(newTxnFees)
-	}
-	// Compute the percentage of change.
-	if oldTxnFees.Cmp(types.ZeroCurrency) == 0 {
-		// Avoid division by zero.
-		oldTxnFees = types.NewCurrency64(1)
-	}
-	differenceF64, _ := difference.Float64()
-	oldTxnFeesF64, _ := oldTxnFees.Float64()
-	ratio := differenceF64 / oldTxnFeesF64
-	// If the ratio is >= txnFeesUpdateRatio we consider the change to be
-	// significant.
-	return ratio >= txnFeesUpdateRatio
+	maxChange := oldTxnFees.MulFloat(txnFeesUpdateRatio)
+	return newTxnFees.Cmp(oldTxnFees.Sub(maxChange)) <= 0 || newTxnFees.Cmp(oldTxnFees.Add(maxChange)) >= 0
 }
 
 // managedUpdateTxnFees checks if the txnFees have changed significantly since
