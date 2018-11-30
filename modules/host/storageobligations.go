@@ -557,40 +557,60 @@ func (h *Host) PruneStaleStorageObligations() error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	// Initialize new values for the host financial metrics
-	fm := modules.HostFinancialMetrics{}
-
-	err := h.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(bucketStorageObligations)
-		c := b.Cursor()
+	// Get all txids and their negotiation heights from database.
+	txids := make(map[types.TransactionID]string)
+	negoheights := make(map[types.TransactionID]types.BlockHeight)
+	err := h.db.View(func(tx *bolt.Tx) error {
+		c := tx.Bucket(bucketStorageObligations).Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			var so storageObligation
-			err := json.Unmarshal(v, &so)
-			if err != nil {
+			if err := json.Unmarshal(v, &so); err != nil {
 				return build.ExtendErr("unable to unmarshal storage obligation:", err)
 			}
-			final := len(so.OriginTransactionSet) - 1
-			txid := so.OriginTransactionSet[final].ID()
-			conf, err := h.tpool.TransactionConfirmed(txid)
-			if err != nil {
-				return build.ExtendErr("unable to get transaction id:", err)
-			}
-			if !conf {
-				// If the transaction id was not confirmed the obligation
-				// is removed from the database. But only if the transaction is at
-				// least RespendTimeout blocks old.
-				if h.blockHeight > so.NegotiationHeight+wallet.RespendTimeout {
-					err = b.Delete(k)
-					if err != nil {
-						return build.ExtendErr("unable to remove storage obligation from database:", err)
-					}
-					continue
-				}
-			}
+			txid := so.OriginTransactionSet[len(so.OriginTransactionSet)-1].ID()
+			txids[txid] = string(k)
+			negoheights[txid] = so.NegotiationHeight
+		}
+		return nil
+	})
+	if err != nil {
+		h.log.Println(build.ExtendErr("database failed to provide storage obligations:", err))
+		return err
+	}
 
+	// Filter out confirmed (and to be confirmed) txids.
+	for txid := range txids {
+		conf, err := h.tpool.TransactionConfirmed(txid)
+		if err != nil {
+			return build.ExtendErr("unable to get transaction id:", err)
+		}
+		// Txids are treated as valid if they are confirmed or if they are at max RespendTimout blocks old.
+		if conf || (h.blockHeight <= negoheights[txid]+wallet.RespendTimeout) {
+			delete(txids, txid)
+		}
+	}
+
+	// Initialize new values for the host financial metrics.
+	fm := modules.HostFinancialMetrics{}
+	// Delete stale obligations from the database and update the financial metrics of the host.
+	err = h.db.Update(func(tx *bolt.Tx) error {
+		// Delete stale obligations.
+		b := tx.Bucket(bucketStorageObligations)
+		for _, k := range txids {
+			err = b.Delete([]byte(k))
+			if err != nil {
+				return build.ExtendErr("unable to delete transaction id:", err)
+			}
+		}
+		// Use remaining (valid) obligations to reset the financial metrics.
+		c := tx.Bucket(bucketStorageObligations).Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var so storageObligation
+			if err := json.Unmarshal(v, &so); err != nil {
+				return build.ExtendErr("unable to unmarshal storage obligation:", err)
+			}
 			// Transaction fees are always added.
 			fm.TransactionFeeExpenses = fm.TransactionFeeExpenses.Add(so.TransactionFeesAdded)
-
 			// Update the other financial values based on the obligation status.
 			if so.ObligationStatus == obligationUnresolved {
 				fm.ContractCount++
@@ -618,11 +638,12 @@ func (h *Host) PruneStaleStorageObligations() error {
 					fm.LostStorageCollateral = fm.LostStorageCollateral.Add(so.RiskedCollateral)
 				}
 			}
+
 		}
 		return nil
 	})
 	if err != nil {
-		h.log.Println(build.ExtendErr("database failed to provide storage obligations:", err))
+		h.log.Println(build.ExtendErr("database failed to delete storage obligations:", err))
 		return err
 	}
 
