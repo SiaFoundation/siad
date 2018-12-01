@@ -251,7 +251,7 @@ func (api *API) explorerHashHandler(w http.ResponseWriter, req *http.Request, ps
 	// address.
 	hash, err := scanHash(ps.ByName("hash"))
 	if err != nil {
-		addr, err := types.ScanAddress(ps.ByName("hash"))
+		addr, err := scanAddress(ps.ByName("hash"))
 		if err != nil {
 			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return

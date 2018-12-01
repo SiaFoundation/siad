@@ -1026,11 +1026,13 @@ func ScanAddress(addrStr string) (addr UnlockHash, err error) {
 	return addr, nil
 }
 
-// UnlockHashFromAddrStr convert string address to UnlockHash
-func UnlockHashFromAddrStr(addrStr string) (addr UnlockHash) {
-	dest, err := ScanAddress(addrStr)
+// UnlockHashFromString convert string address to UnlockHash
+// WARNING: You should never call that function on untrusted input
+func UnlockHashFromString(addrStr string) (addr UnlockHash) {
+	var err error
+	err = addr.LoadString(addrStr)
 	if err != nil {
 		return UnlockHash{}
 	}
-	return dest
+	return addr
 }
