@@ -3187,7 +3187,7 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err = r.DownloadToDisk(rf, false)
+		_, err := r.DownloadToDisk(rf, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3196,7 +3196,7 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err = r.Stream(rf)
+		_, err := r.Stream(rf)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3207,6 +3207,7 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 		defer wg.Done()
 		// Wait to ensure download and stream have started
 		time.Sleep(time.Second)
+		var err error
 		rf, err = r.Rename(rf, "1")
 		if err != nil {
 			t.Fatal(err)
@@ -3220,7 +3221,7 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err = r.DownloadToDisk(rf, false)
+		_, err := r.DownloadToDisk(rf, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3229,7 +3230,7 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err = r.Stream(rf)
+		_, err := r.Stream(rf)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3240,7 +3241,7 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 		// Wait to ensure download and stream have started
 		time.Sleep(time.Second)
 
-		err = r.RenterDeletePost(rf.SiaPath())
+		err := r.RenterDeletePost(rf.SiaPath())
 		if err != nil {
 			t.Error(err)
 		}
