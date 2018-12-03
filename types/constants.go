@@ -380,194 +380,53 @@ func init() {
 		OakMaxDrop = big.NewRat(1e3, 1004)
 
 		GenesisSiafundAllocation = []SiafundOutput{
-			{
-				Value:      NewCurrency64(2),
-				UnlockHash: UnlockHash{4, 57, 229, 188, 127, 20, 204, 245, 211, 167, 232, 130, 208, 64, 146, 62, 69, 98, 81, 102, 221, 7, 123, 100, 70, 107, 199, 113, 121, 26, 198, 252},
-			},
-			{
-				Value:      NewCurrency64(6),
-				UnlockHash: UnlockHash{4, 158, 29, 42, 105, 119, 43, 5, 138, 72, 190, 190, 101, 114, 79, 243, 189, 248, 208, 151, 30, 187, 233, 148, 225, 233, 28, 159, 19, 232, 75, 244},
-			},
-			{
-				Value:      NewCurrency64(7),
-				UnlockHash: UnlockHash{8, 7, 66, 250, 25, 74, 247, 108, 162, 79, 220, 151, 202, 228, 241, 11, 130, 138, 13, 248, 193, 167, 136, 197, 65, 63, 234, 174, 205, 216, 71, 230},
-			},
-			{
-				Value:      NewCurrency64(8),
-				UnlockHash: UnlockHash{44, 106, 239, 51, 138, 102, 242, 19, 204, 197, 248, 178, 219, 122, 152, 251, 19, 20, 52, 32, 175, 32, 4, 156, 73, 33, 163, 165, 222, 184, 217, 218},
-			},
-			{
-				Value:      NewCurrency64(3),
-				UnlockHash: UnlockHash{44, 163, 31, 233, 74, 103, 55, 132, 230, 159, 97, 78, 149, 147, 65, 110, 164, 211, 105, 173, 158, 29, 202, 43, 85, 217, 85, 75, 83, 37, 205, 223},
-			},
-			{
-				Value:      NewCurrency64(1),
-				UnlockHash: UnlockHash{51, 151, 146, 84, 199, 7, 59, 89, 111, 172, 227, 200, 62, 55, 165, 253, 238, 186, 28, 145, 47, 137, 200, 15, 70, 199, 187, 125, 243, 104, 179, 240},
-			},
-			{
-				Value:      NewCurrency64(10),
-				UnlockHash: UnlockHash{53, 118, 253, 229, 254, 229, 28, 131, 233, 156, 108, 58, 197, 152, 17, 160, 74, 252, 11, 49, 112, 240, 66, 119, 40, 98, 114, 251, 5, 86, 233, 117},
-			},
-			{
-				Value:      NewCurrency64(50),
-				UnlockHash: UnlockHash{56, 219, 3, 50, 28, 3, 166, 95, 141, 163, 202, 35, 60, 199, 219, 10, 151, 176, 228, 97, 176, 133, 189, 33, 211, 202, 83, 197, 31, 208, 254, 193},
-			},
-			{
-				Value:      NewCurrency64(75),
-				UnlockHash: UnlockHash{68, 190, 140, 87, 96, 232, 150, 32, 161, 177, 204, 65, 228, 223, 87, 217, 134, 90, 25, 56, 51, 45, 72, 107, 129, 12, 29, 202, 6, 7, 50, 13},
-			},
-			{
-				Value:      NewCurrency64(10),
-				UnlockHash: UnlockHash{69, 14, 201, 200, 90, 73, 245, 45, 154, 94, 161, 19, 199, 241, 203, 56, 13, 63, 5, 220, 121, 245, 247, 52, 194, 181, 252, 76, 130, 6, 114, 36},
-			},
-			{
-				Value:      NewCurrency64(10),
-				UnlockHash: UnlockHash{72, 128, 253, 207, 169, 48, 1, 26, 237, 205, 169, 102, 196, 224, 42, 186, 95, 151, 59, 226, 203, 136, 251, 223, 165, 38, 88, 110, 47, 213, 121, 224},
-			},
-			{
-				Value:      NewCurrency64(50),
-				UnlockHash: UnlockHash{72, 130, 164, 227, 218, 28, 60, 15, 56, 151, 212, 242, 77, 131, 232, 131, 42, 57, 132, 173, 113, 118, 66, 183, 38, 79, 96, 178, 105, 108, 26, 247},
-			},
-			{
-				Value:      NewCurrency64(10),
-				UnlockHash: UnlockHash{74, 210, 58, 228, 111, 69, 253, 120, 53, 195, 110, 26, 115, 76, 211, 202, 199, 159, 204, 14, 78, 92, 14, 131, 250, 22, 141, 236, 154, 44, 39, 135},
-			},
-			{
-				Value:      NewCurrency64(15),
-				UnlockHash: UnlockHash{85, 198, 154, 41, 196, 116, 226, 114, 202, 94, 214, 147, 87, 84, 247, 164, 195, 79, 58, 123, 26, 33, 68, 65, 116, 79, 181, 241, 241, 208, 215, 184},
-			},
-			{
-				Value:      NewCurrency64(121),
-				UnlockHash: UnlockHash{87, 239, 83, 125, 152, 14, 19, 22, 203, 136, 46, 192, 203, 87, 224, 190, 77, 236, 125, 18, 142, 223, 146, 70, 16, 23, 252, 19, 100, 69, 91, 111},
-			},
-			{
-				Value:      NewCurrency64(222),
-				UnlockHash: UnlockHash{91, 201, 101, 11, 188, 40, 35, 111, 236, 133, 31, 124, 97, 246, 140, 136, 143, 245, 152, 174, 111, 245, 188, 124, 21, 125, 187, 192, 203, 92, 253, 57},
-			},
-			{
-				Value:      NewCurrency64(10),
-				UnlockHash: UnlockHash{110, 240, 238, 173, 78, 138, 185, 138, 179, 227, 135, 153, 54, 132, 46, 62, 226, 206, 204, 35, 174, 107, 156, 15, 142, 2, 93, 132, 163, 60, 50, 89},
-			},
-			{
-				Value:      NewCurrency64(3),
-				UnlockHash: UnlockHash{114, 58, 147, 44, 64, 69, 72, 184, 65, 178, 213, 94, 157, 44, 88, 106, 92, 31, 145, 193, 215, 200, 215, 233, 99, 116, 36, 197, 160, 70, 79, 153},
-			},
-			{
-				Value:      NewCurrency64(1),
-				UnlockHash: UnlockHash{123, 106, 229, 101, 220, 252, 50, 203, 38, 183, 133, 152, 250, 167, 210, 155, 252, 102, 150, 29, 187, 3, 178, 53, 11, 145, 143, 33, 166, 115, 250, 40},
-			},
-			{
-				Value:      NewCurrency64(5),
-				UnlockHash: UnlockHash{124, 101, 207, 175, 50, 119, 207, 26, 62, 15, 247, 141, 150, 174, 73, 247, 238, 28, 77, 255, 222, 104, 166, 244, 112, 86, 227, 80, 215, 45, 69, 143},
-			},
-			{
-				Value:      NewCurrency64(10),
-				UnlockHash: UnlockHash{130, 184, 72, 15, 227, 79, 217, 205, 120, 254, 67, 69, 10, 49, 76, 194, 222, 30, 242, 62, 88, 179, 51, 117, 27, 166, 140, 6, 7, 22, 222, 185},
-			},
-			{
-				Value:      NewCurrency64(25),
-				UnlockHash: UnlockHash{134, 137, 198, 172, 96, 54, 45, 10, 100, 128, 91, 225, 226, 134, 143, 108, 31, 70, 187, 228, 54, 212, 70, 229, 149, 57, 64, 166, 153, 123, 238, 180},
-			},
-			{
-				Value:      NewCurrency64(1),
-				UnlockHash: UnlockHash{143, 253, 118, 229, 109, 181, 141, 224, 91, 144, 123, 160, 203, 221, 119, 104, 172, 13, 105, 77, 171, 185, 122, 54, 229, 168, 6, 130, 160, 130, 182, 151},
-			},
-			{
-				Value:      NewCurrency64(8),
-				UnlockHash: UnlockHash{147, 108, 249, 16, 36, 249, 108, 184, 196, 212, 241, 120, 219, 63, 45, 184, 86, 53, 96, 207, 130, 96, 210, 251, 136, 9, 193, 160, 131, 198, 221, 185},
-			},
-			{
-				Value:      NewCurrency64(58),
-				UnlockHash: UnlockHash{155, 79, 89, 28, 69, 71, 239, 198, 246, 2, 198, 254, 92, 59, 192, 205, 229, 152, 36, 186, 110, 122, 233, 221, 76, 143, 3, 238, 89, 231, 192, 23},
-			},
-			{
-				Value:      NewCurrency64(2),
-				UnlockHash: UnlockHash{156, 32, 76, 105, 213, 46, 66, 50, 27, 85, 56, 9, 106, 193, 80, 145, 19, 101, 84, 177, 145, 4, 125, 28, 79, 252, 43, 83, 118, 110, 206, 247},
-			},
-			{
-				Value:      NewCurrency64(23),
-				UnlockHash: UnlockHash{157, 169, 134, 24, 254, 22, 58, 188, 119, 87, 201, 238, 55, 168, 194, 131, 88, 18, 39, 168, 37, 2, 198, 194, 93, 202, 116, 146, 189, 17, 108, 44},
-			},
-			{
-				Value:      NewCurrency64(10),
-				UnlockHash: UnlockHash{158, 51, 104, 36, 242, 114, 67, 16, 168, 230, 4, 111, 241, 72, 5, 14, 182, 102, 169, 156, 144, 220, 103, 117, 223, 8, 58, 187, 124, 102, 80, 44},
-			},
-			{
-				Value:      NewCurrency64(1),
-				UnlockHash: UnlockHash{160, 175, 59, 33, 223, 30, 82, 60, 34, 110, 28, 203, 249, 93, 3, 16, 218, 12, 250, 206, 138, 231, 85, 67, 69, 191, 68, 198, 160, 87, 154, 68},
-			},
-			{
-				Value:      NewCurrency64(75),
-				UnlockHash: UnlockHash{163, 94, 51, 220, 14, 144, 83, 112, 62, 10, 0, 173, 161, 234, 211, 176, 186, 84, 9, 189, 250, 111, 33, 231, 114, 87, 100, 75, 72, 217, 11, 26},
-			},
-			{
-				Value:      NewCurrency64(3),
-				UnlockHash: UnlockHash{170, 7, 138, 116, 205, 20, 132, 197, 166, 251, 75, 93, 69, 6, 109, 244, 212, 119, 173, 114, 34, 18, 25, 21, 111, 203, 203, 253, 138, 104, 27, 36},
-			},
-			{
-				Value:      NewCurrency64(90),
-				UnlockHash: UnlockHash{173, 120, 128, 104, 186, 86, 151, 140, 191, 23, 231, 193, 77, 245, 243, 104, 196, 55, 155, 243, 111, 15, 84, 139, 148, 187, 173, 47, 104, 69, 141, 39},
-			},
-			{
-				Value:      NewCurrency64(20),
-				UnlockHash: UnlockHash{179, 185, 228, 166, 139, 94, 13, 193, 255, 227, 174, 99, 120, 105, 109, 221, 247, 4, 155, 243, 229, 37, 26, 98, 222, 12, 91, 80, 223, 33, 61, 56},
-			},
-			{
-				Value:      NewCurrency64(5),
-				UnlockHash: UnlockHash{193, 49, 103, 20, 170, 135, 182, 85, 149, 18, 159, 194, 152, 120, 162, 208, 49, 158, 220, 188, 114, 79, 1, 131, 62, 27, 86, 57, 244, 46, 64, 66},
-			},
-			{
-				Value:      NewCurrency64(1),
-				UnlockHash: UnlockHash{196, 71, 45, 222, 0, 21, 12, 121, 197, 224, 101, 65, 40, 57, 19, 119, 112, 205, 166, 23, 2, 91, 75, 231, 69, 143, 221, 68, 245, 75, 7, 52},
-			},
-			{
-				Value:      NewCurrency64(44),
-				UnlockHash: UnlockHash{196, 214, 236, 211, 227, 216, 152, 127, 164, 2, 235, 14, 235, 46, 142, 231, 83, 38, 7, 131, 208, 29, 179, 189, 62, 88, 129, 180, 119, 158, 214, 97},
-			},
-			{
-				Value:      NewCurrency64(23),
-				UnlockHash: UnlockHash{206, 58, 114, 148, 131, 49, 87, 197, 86, 18, 216, 26, 62, 79, 152, 175, 33, 4, 132, 160, 108, 231, 53, 200, 48, 76, 125, 94, 156, 85, 32, 130},
-			},
-			{
-				Value:      NewCurrency64(80),
-				UnlockHash: UnlockHash{200, 103, 135, 126, 197, 2, 203, 63, 241, 6, 245, 195, 220, 102, 27, 74, 232, 249, 201, 86, 207, 34, 51, 26, 180, 151, 136, 108, 112, 56, 132, 72},
-			},
-			{
-				Value:      NewCurrency64(2),
-				UnlockHash: UnlockHash{200, 249, 245, 218, 58, 253, 76, 250, 88, 114, 70, 239, 14, 2, 250, 123, 10, 192, 198, 61, 187, 155, 247, 152, 165, 174, 198, 24, 142, 39, 177, 119},
-			},
-			{
-				Value:      NewCurrency64(1),
-				UnlockHash: UnlockHash{209, 1, 199, 184, 186, 57, 21, 137, 33, 252, 219, 184, 130, 38, 32, 98, 63, 252, 250, 79, 70, 146, 169, 78, 180, 161, 29, 93, 38, 45, 175, 176},
-			},
-			{
-				Value:      NewCurrency64(2),
-				UnlockHash: UnlockHash{212, 107, 233, 43, 185, 138, 79, 253, 12, 237, 214, 17, 219, 198, 151, 92, 81, 129, 17, 120, 139, 58, 66, 119, 126, 220, 132, 136, 3, 108, 57, 58},
-			},
-			{
-				Value:      NewCurrency64(3),
-				UnlockHash: UnlockHash{214, 244, 146, 173, 173, 80, 33, 185, 29, 133, 77, 167, 185, 1, 38, 23, 111, 179, 104, 150, 105, 162, 120, 26, 245, 63, 114, 119, 52, 1, 44, 222},
-			},
-			{
-				Value:      NewCurrency64(1),
-				UnlockHash: UnlockHash{217, 218, 172, 16, 53, 134, 160, 226, 44, 138, 93, 53, 181, 62, 4, 209, 190, 27, 0, 93, 105, 17, 169, 61, 98, 145, 131, 112, 121, 55, 97, 184},
-			},
-			{
-				Value:      NewCurrency64(1),
-				UnlockHash: UnlockHash{223, 162, 172, 55, 54, 193, 37, 142, 200, 213, 230, 48, 186, 145, 184, 206, 15, 225, 167, 19, 37, 70, 38, 48, 135, 87, 205, 81, 187, 237, 181, 180},
-			},
-			{
-				Value:      NewCurrency64(1),
-				UnlockHash: UnlockHash{241, 46, 139, 41, 40, 63, 47, 169, 131, 173, 124, 246, 228, 213, 102, 44, 100, 217, 62, 237, 133, 154, 248, 69, 228, 2, 36, 206, 47, 250, 249, 170},
-			},
-			{
-				Value:      NewCurrency64(50),
-				UnlockHash: UnlockHash{241, 50, 229, 211, 66, 32, 115, 241, 117, 87, 180, 239, 76, 246, 14, 129, 105, 181, 153, 105, 105, 203, 229, 237, 23, 130, 193, 170, 100, 201, 38, 71},
-			},
-			{
-				Value:      NewCurrency64(8841),
-				UnlockHash: UnlockHash{125, 12, 68, 247, 102, 78, 45, 52, 229, 62, 253, 224, 102, 26, 111, 98, 142, 201, 38, 71, 133, 174, 142, 60, 215, 201, 115, 232, 209, 144, 195, 201},
-			},
+			{Value: NewCurrency64(2), UnlockHash: UnlockHashFromString("0439e5bc7f14ccf5d3a7e882d040923e45625166dd077b64466bc771791ac6fcec1c01394436")},
+			{Value: NewCurrency64(6), UnlockHash: UnlockHashFromString("049e1d2a69772b058a48bebe65724ff3bdf8d0971ebbe994e1e91c9f13e84bf4cbfe00accf31")},
+			{Value: NewCurrency64(7), UnlockHash: UnlockHashFromString("080742fa194af76ca24fdc97cae4f10b828a0df8c1a788c5413feaaecdd847e60a82a3240411")},
+			{Value: NewCurrency64(8), UnlockHash: UnlockHashFromString("2c6aef338a66f213ccc5f8b2db7a98fb13143420af20049c4921a3a5deb8d9dad0132f50b83e")},
+			{Value: NewCurrency64(3), UnlockHash: UnlockHashFromString("2ca31fe94a673784e69f614e9593416ea4d369ad9e1dca2b55d9554b5325cddf0a9dce86b3ed")},
+			{Value: NewCurrency64(1), UnlockHash: UnlockHashFromString("33979254c7073b596face3c83e37a5fdeeba1c912f89c80f46c7bb7df368b3f0b3558938b515")},
+			{Value: NewCurrency64(10), UnlockHash: UnlockHashFromString("3576fde5fee51c83e99c6c3ac59811a04afc0b3170f04277286272fb0556e975db9d7c89f72a")},
+			{Value: NewCurrency64(50), UnlockHash: UnlockHashFromString("38db03321c03a65f8da3ca233cc7db0a97b0e461b085bd21d3ca53c51fd0fec1f15547ae6827")},
+			{Value: NewCurrency64(75), UnlockHash: UnlockHashFromString("44be8c5760e89620a1b1cc41e4df57d9865a1938332d486b810c1dca0607320d17e8d839d6dd")},
+			{Value: NewCurrency64(10), UnlockHash: UnlockHashFromString("450ec9c85a49f52d9a5ea113c7f1cb380d3f05dc79f5f734c2b5fc4c82067224b122c5e76e6b")},
+			{Value: NewCurrency64(10), UnlockHash: UnlockHashFromString("4880fdcfa930011aedcda966c4e02aba5f973be2cb88fbdfa526586e2fd579e07734971fb805")},
+			{Value: NewCurrency64(50), UnlockHash: UnlockHashFromString("4882a4e3da1c3c0f3897d4f24d83e8832a3984ad717642b7264f60b2696c1af78e4a9a422fee")},
+			{Value: NewCurrency64(10), UnlockHash: UnlockHashFromString("4ad23ae46f45fd7835c36e1a734cd3cac79fcc0e4e5c0e83fa168dec9a2c278716b8262bc763")},
+			{Value: NewCurrency64(15), UnlockHash: UnlockHashFromString("55c69a29c474e272ca5ed6935754f7a4c34f3a7b1a214441744fb5f1f1d0d7b84a9dc9c8570f")},
+			{Value: NewCurrency64(121), UnlockHash: UnlockHashFromString("57ef537d980e1316cb882ec0cb57e0be4dec7d128edf92461017fc1364455b6f51b1fa676f01")},
+			{Value: NewCurrency64(222), UnlockHash: UnlockHashFromString("5bc9650bbc28236fec851f7c61f68c888ff598ae6ff5bc7c157dbbc0cb5cfd392840fc664354")},
+			{Value: NewCurrency64(10), UnlockHash: UnlockHashFromString("6ef0eead4e8ab98ab3e3879936842e3ee2cecc23ae6b9c0f8e025d84a33c3259d13856c1e0dd")},
+			{Value: NewCurrency64(3), UnlockHash: UnlockHashFromString("723a932c404548b841b2d55e9d2c586a5c1f91c1d7c8d7e9637424c5a0464f99e3239e72af2b")},
+			{Value: NewCurrency64(1), UnlockHash: UnlockHashFromString("7b6ae565dcfc32cb26b78598faa7d29bfc66961dbb03b2350b918f21a673fa28af705f308973")},
+			{Value: NewCurrency64(5), UnlockHash: UnlockHashFromString("7c65cfaf3277cf1a3e0ff78d96ae49f7ee1c4dffde68a6f47056e350d72d458fb56774b79ac5")},
+			{Value: NewCurrency64(10), UnlockHash: UnlockHashFromString("82b8480fe34fd9cd78fe43450a314cc2de1ef23e58b333751ba68c060716deb9a9e0b6e57bff")},
+			{Value: NewCurrency64(25), UnlockHash: UnlockHashFromString("8689c6ac60362d0a64805be1e2868f6c1f46bbe436d446e5953940a6997beeb41ade41874fd4")},
+			{Value: NewCurrency64(1), UnlockHash: UnlockHashFromString("8ffd76e56db58de05b907ba0cbdd7768ac0d694dabb97a36e5a80682a082b6970c6f75ba9fe1")},
+			{Value: NewCurrency64(8), UnlockHash: UnlockHashFromString("936cf91024f96cb8c4d4f178db3f2db8563560cf8260d2fb8809c1a083c6ddb95ff49f2dcc2b")},
+			{Value: NewCurrency64(58), UnlockHash: UnlockHashFromString("9b4f591c4547efc6f602c6fe5c3bc0cde59824ba6e7ae9dd4c8f03ee59e7c0170f50b34bd466")},
+			{Value: NewCurrency64(2), UnlockHash: UnlockHashFromString("9c204c69d52e42321b5538096ac15091136554b191047d1c4ffc2b53766ecef779841cccf546")},
+			{Value: NewCurrency64(23), UnlockHash: UnlockHashFromString("9da98618fe163abc7757c9ee37a8c283581227a82502c6c25dca7492bd116c2c2e5a86444683")},
+			{Value: NewCurrency64(10), UnlockHash: UnlockHashFromString("9e336824f2724310a8e6046ff148050eb666a99c90dc6775df083abb7c66502c56b50ade1bbe")},
+			{Value: NewCurrency64(1), UnlockHash: UnlockHashFromString("a0af3b21df1e523c226e1ccbf95d0310da0cface8ae7554345bf44c6a0579a449147262278ed")},
+			{Value: NewCurrency64(75), UnlockHash: UnlockHashFromString("a35e33dc0e9053703e0a00ada1ead3b0ba5409bdfa6f21e77257644b48d90b1ae624efa81a35")},
+			{Value: NewCurrency64(3), UnlockHash: UnlockHashFromString("aa078a74cd1484c5a6fb4b5d45066df4d477ad72221219156fcbcbfd8a681b2401feb5794149")},
+			{Value: NewCurrency64(90), UnlockHash: UnlockHashFromString("ad788068ba56978cbf17e7c14df5f368c4379bf36f0f548b94bbad2f68458d2737e27e3ab0f1")},
+			{Value: NewCurrency64(20), UnlockHash: UnlockHashFromString("b3b9e4a68b5e0dc1ffe3ae6378696dddf7049bf3e5251a62de0c5b50df213d386b6c17b6b3d1")},
+			{Value: NewCurrency64(5), UnlockHash: UnlockHashFromString("c1316714aa87b65595129fc29878a2d0319edcbc724f01833e1b5639f42e40423fad6b983ec8")},
+			{Value: NewCurrency64(1), UnlockHash: UnlockHashFromString("c4472dde00150c79c5e065412839137770cda617025b4be7458fdd44f54b0734caecae6c80eb")},
+			{Value: NewCurrency64(44), UnlockHash: UnlockHashFromString("c4d6ecd3e3d8987fa402eb0eeb2e8ee753260783d01db3bd3e5881b4779ed661845aa2af4e21")},
+			{Value: NewCurrency64(23), UnlockHash: UnlockHashFromString("ce3a7294833157c55612d81a3e4f98af210484a06ce735c8304c7d5e9c552082ac1f789b0e3c")},
+			{Value: NewCurrency64(80), UnlockHash: UnlockHashFromString("c867877ec502cb3ff106f5c3dc661b4ae8f9c956cf22331ab497886c7038844822ada408c0a1")},
+			{Value: NewCurrency64(2), UnlockHash: UnlockHashFromString("c8f9f5da3afd4cfa587246ef0e02fa7b0ac0c63dbb9bf798a5aec6188e27b177f3bb2c91f98b")},
+			{Value: NewCurrency64(1), UnlockHash: UnlockHashFromString("d101c7b8ba39158921fcdbb8822620623ffcfa4f4692a94eb4a11d5d262dafb015701c1f3ad2")},
+			{Value: NewCurrency64(2), UnlockHash: UnlockHashFromString("d46be92bb98a4ffd0cedd611dbc6975c518111788b3a42777edc8488036c393a84e5e9d47013")},
+			{Value: NewCurrency64(3), UnlockHash: UnlockHashFromString("d6f492adad5021b91d854da7b90126176fb3689669a2781af53f727734012cdeb00112f1695a")},
+			{Value: NewCurrency64(1), UnlockHash: UnlockHashFromString("d9daac103586a0e22c8a5d35b53e04d1be1b005d6911a93d62918370793761b8ef4e7df47eb8")},
+			{Value: NewCurrency64(1), UnlockHash: UnlockHashFromString("dfa2ac3736c1258ec8d5e630ba91b8ce0fe1a713254626308757cd51bbedb5b4e0474feb510f")},
+			{Value: NewCurrency64(1), UnlockHash: UnlockHashFromString("f12e8b29283f2fa983ad7cf6e4d5662c64d93eed859af845e40224ce2ffaf9aacfea794fb954")},
+			{Value: NewCurrency64(50), UnlockHash: UnlockHashFromString("f132e5d3422073f17557b4ef4cf60e8169b5996969cbe5ed1782c1aa64c9264785a9b56481f6")},
+			{Value: NewCurrency64(8841), UnlockHash: UnlockHashFromString("7d0c44f7664e2d34e53efde0661a6f628ec9264785ae8e3cd7c973e8d190c3c97b5e3ecbc567")},
 		}
 	}
 
