@@ -22,7 +22,7 @@ func (plainTextCipherKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 }
 
 // DecryptBytesInPlace is a no-op for the plainTextCipherKey.
-func (plainTextCipherKey) DecryptBytesInPlace(ct Ciphertext) ([]byte, error) {
+func (plainTextCipherKey) DecryptBytesInPlace(ct Ciphertext, _ uint64) ([]byte, error) {
 	return ct[:], nil
 }
 

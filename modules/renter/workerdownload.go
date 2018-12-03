@@ -52,7 +52,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	// is usually a lot more scarce than CPU processing power.
 	pieceIndex := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].index
 	key := udc.masterKey.Derive(udc.staticChunkIndex, pieceIndex)
-	decryptedPiece, err := key.DecryptBytesInPlace(pieceData)
+	decryptedPiece, err := key.DecryptBytesInPlace(pieceData, 0)
 	if err != nil {
 		w.renter.log.Debugln("worker failed to decrypt piece:", err)
 		udc.managedUnregisterWorker(w)

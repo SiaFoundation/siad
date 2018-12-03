@@ -55,7 +55,7 @@ type (
 		// DecryptBytesInPlace decrypts the given ciphertext and returns the
 		// plaintext. It will reuse the memory of the ciphertext which means
 		// that it's not save to use it after calling DecryptBytesInPlace.
-		DecryptBytesInPlace(Ciphertext) ([]byte, error)
+		DecryptBytesInPlace(Ciphertext, uint64) ([]byte, error)
 
 		// Derive derives a child cipherkey given a provided chunk index and
 		// piece index.

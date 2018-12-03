@@ -43,7 +43,7 @@ func TestThreefishEncryptDecrypt(t *testing.T) {
 	}
 
 	// Decrypt again in-place.
-	plain, err = key.DecryptBytesInPlace(ciphertext)
+	plain, err = key.DecryptBytesInPlace(ciphertext, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,5 +57,42 @@ func TestThreefishEncryptDecrypt(t *testing.T) {
 	ct := []byte(ciphertext[:])
 	if &plain[cap(plain)-1] != &ct[cap(ct)-1] {
 		t.Fatal("Decryption wasn't in-place")
+	}
+}
+
+// TestThreefishDecryptSubslice check that we can decrypt any subslice of a
+// threefish ciphertext as long as its length is a multiple of
+// threefish.BlockSize.
+func TestThreefishDecryptAtOffset(t *testing.T) {
+	// Get a new key.
+	key := generateThreefishKey()
+
+	// Get random data to encrypt.
+	numBlocks := 100
+	data := fastrand.Bytes(100 * threefish.BlockSize)
+
+	// Encrypt the data.
+	ciphertext := key.EncryptBytes(data)
+
+	// Test decrypting 100 random sub slices of the ciphertext.
+	for i := 0; i < 100; i++ {
+		// Get two random indices which define the subslice of the ciphertext
+		// we use for testing.
+		fromBlock := fastrand.Intn(numBlocks)
+		toBlock := fastrand.Intn(numBlocks-fromBlock) + fromBlock
+		from := fromBlock * threefish.BlockSize
+		to := toBlock * threefish.BlockSize
+		// Create subslice of the ciphertext.
+		c := make(Ciphertext, to-from)
+		copy(c, ciphertext[from:to])
+		// Decrypt the subslice.
+		d, err := key.DecryptBytesInPlace(c, uint64(fromBlock))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Compare it to the same subslice of the original data.
+		if !bytes.Equal(d, data[from:to]) {
+			t.Fatal("Decrypted data doesn't match original data")
+		}
 	}
 }
