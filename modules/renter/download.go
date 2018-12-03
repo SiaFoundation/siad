@@ -125,6 +125,7 @@ package renter
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -132,6 +133,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -151,6 +153,10 @@ type (
 		chunksRemaining uint64        // Number of chunks whose downloads are incomplete.
 		completeChan    chan struct{} // Closed once the download is complete.
 		err             error         // Only set if there was an error which prevented the download from completing.
+
+		// downloadCompleteFunc is a slice of functions which are called when
+		// completeChan is closed.
+		downloadCompleteFuncs []downloadCompleteFunc
 
 		// Timestamp information.
 		endTime         time.Time // Set immediately before closing 'completeChan'.
@@ -189,6 +195,11 @@ type (
 		overdrive     int           // How many extra pieces to download to prevent slow hosts from being a bottleneck.
 		priority      uint64        // Files with a higher priority will be downloaded first.
 	}
+
+	// downloadCompleteFunc is a function called upon completion of the
+	// download. It accepts an error as an argument and returns an error. That
+	// way it's possible to add custom behavior for failing downloads.
+	downloadCompleteFunc func(error) error
 )
 
 // managedFail will mark the download as complete, but with the provided error.
@@ -209,14 +220,36 @@ func (d *download) managedFail(err error) {
 
 	// Mark the download as complete and set the error.
 	d.err = err
-	close(d.completeChan)
-	if d.destination != nil {
-		err = d.destination.Close()
-		d.destination = nil
+	d.markComplete()
+}
+
+// markComplete is a helper method which closes the completeChan and and
+// executes the downloadCompleteFuncs. The completeChan should always be closed
+// using this method.
+func (d *download) markComplete() {
+	// Avoid calling markComplete multiple times. In a production build
+	// build.Critical won't panic which is fine since we set
+	// downloadCompleteFunc to nil after executing them. We still don't want to
+	// close the completeChan again though to avoid a crash.
+	if d.staticComplete() {
+		build.Critical("Can't call markComplete multiple times")
+	} else {
+		defer close(d.completeChan)
 	}
+	// Execute the downloadCompleteFuncs before closing the channel. This gives
+	// the initiator of the download the nice guarantee that waiting for the
+	// completeChan to be closed also means that the downloadCompleteFuncs are
+	// done.
+	var err error
+	for _, f := range d.downloadCompleteFuncs {
+		err = errors.Compose(err, f(d.err))
+	}
+	// Log potential errors.
 	if err != nil {
-		d.log.Println("unable to close download destination:", err)
+		d.log.Println("Failed to execute at least one downloadCompleteFunc", err)
 	}
+	// Set downloadCompleteFuncs to nil to avoid executing them multiple times.
+	d.downloadCompleteFuncs = nil
 }
 
 // staticComplete is a helper function to indicate whether or not the download
@@ -236,6 +269,22 @@ func (d *download) Err() (err error) {
 	err = d.err
 	d.mu.Unlock()
 	return err
+}
+
+// OnComplete registers a function to be called when the download is completed.
+// This can either mean that the download succeeded or failed. The registered
+// functions are executed in the same order as they are registered and waiting
+// for the download's completeChan to be closed implies that the registered
+// functions were executed.
+func (d *download) OnComplete(f downloadCompleteFunc) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	select {
+	case <-d.completeChan:
+		build.Critical("Can't call OnComplete after download is completed")
+	default:
+	}
+	d.downloadCompleteFuncs = append(d.downloadCompleteFuncs, f)
 }
 
 // Download performs a file download using the passed parameters and blocks
@@ -305,7 +354,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	var dw downloadDestination
 	var destinationType string
 	if isHTTPResp {
-		dw = newDownloadDestinationWriteCloserFromWriter(p.Httpwriter)
+		dw = newDownloadDestinationWriter(p.Httpwriter)
 		destinationType = "http stream"
 	} else {
 		osFile, err := os.OpenFile(p.Destination, os.O_CREATE|os.O_WRONLY, entry.Mode())
@@ -339,8 +388,18 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		overdrive:     3, // TODO: moderate default until full overdrive support is added.
 		priority:      5, // TODO: moderate default until full priority support is added.
 	})
-	if err != nil {
+	if closer, ok := dw.(io.Closer); err != nil && ok {
+		// If the destination can be closed we do so.
+		return nil, errors.Compose(err, closer.Close())
+	} else if err != nil {
 		return nil, err
+	}
+
+	// Once the download is done we close the file if we downloaded to disk.
+	if closer, ok := dw.(io.Closer); ok {
+		d.OnComplete(func(_ error) error {
+			return closer.Close()
+		})
 	}
 
 	// Add the download object to the download queue.
