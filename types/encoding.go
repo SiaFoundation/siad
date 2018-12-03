@@ -1017,22 +1017,16 @@ func (uh *UnlockHash) Scan(s fmt.ScanState, ch rune) error {
 	return uh.LoadString(string(tok))
 }
 
-// ScanAddress scans a types.UnlockHash from a string.
-func ScanAddress(addrStr string) (addr UnlockHash, err error) {
-	err = addr.LoadString(addrStr)
-	if err != nil {
-		return UnlockHash{}, err
-	}
-	return addr, nil
-}
-
-// UnlockHashFromString convert string address to UnlockHash
-// WARNING: You should never call that function on untrusted input
+// UnlockHashFromString parses an address string to an UnlockHash, panicking
+// if parsing fails.
+//
+// UnlockHashFromString should never be called on untrusted input; it is
+// provided only for convenience when working with address strings that are
+// known to be valid, such as the addresses in GenesisSiafundAllocation. To
+// parse untrusted address strings, use the LoadString method of UnlockHash.
 func UnlockHashFromString(addrStr string) (addr UnlockHash) {
-	var err error
-	err = addr.LoadString(addrStr)
-	if err != nil {
-		return UnlockHash{}
+	if err := addr.LoadString(addrStr); err != nil {
+		panic(err)
 	}
-	return addr
+	return
 }
