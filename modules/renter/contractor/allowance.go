@@ -150,9 +150,13 @@ func (c *Contractor) managedCancelAllowance() error {
 	for _, id := range ids {
 		c.mu.RLock()
 		e, eok := c.editors[id]
+		s, sok := c.sessions[id]
 		c.mu.RUnlock()
 		if eok {
 			e.invalidate()
+		}
+		if sok {
+			s.invalidate()
 		}
 	}
 

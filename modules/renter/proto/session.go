@@ -20,6 +20,7 @@ type Session struct {
 	conn        net.Conn
 	contractID  types.FileContractID
 	contractSet *ContractSet
+	deps        modules.Dependencies
 	hdb         hostDB
 	height      types.BlockHeight
 	host        modules.HostDBEntry
@@ -198,6 +199,11 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 		extendDeadline(s.conn, time.Hour)
 	}()
 
+	// Disrupt here before sending the signed revision to the host.
+	if s.deps.Disrupt("InterruptUploadBeforeSendingRevision") {
+		return modules.RenterContract{}, crypto.Hash{}, errors.New("InterruptUploadBeforeSendingRevision disrupt")
+	}
+
 	// send upload RPC request
 	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
 	err = s.writeRequest(modules.RPCLoopUpload, req)
@@ -210,6 +216,11 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	err = modules.ReadRPCResponse(s.conn, &resp)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
+	}
+
+	// Disrupt here before updating the contract.
+	if s.deps.Disrupt("InterruptUploadAfterSendingRevision") {
+		return modules.RenterContract{}, crypto.Hash{}, errors.New("InterruptUploadAfterSendingRevision disrupt")
 	}
 
 	// add host signature
@@ -307,6 +318,11 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 		}
 	}()
 
+	// Disrupt before sending the signed revision to the host.
+	if s.deps.Disrupt("InterruptDownloadBeforeSendingRevision") {
+		return modules.RenterContract{}, nil, errors.New("InterruptDownloadBeforeSendingRevision disrupt")
+	}
+
 	// send download RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	err = s.writeRequest(modules.RPCLoopDownload, req)
@@ -331,6 +347,11 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 		}
 	} else if crypto.MerkleRoot(resp.Data) != req.MerkleRoot {
 		return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data")
+	}
+
+	// Disrupt after sending the signed revision to the host.
+	if s.deps.Disrupt("InterruptDownloadAfterSendingRevision") {
+		return modules.RenterContract{}, nil, errors.New("InterruptDownloadAfterSendingRevision disrupt")
 	}
 
 	// add host signature
@@ -542,6 +563,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		conn:        conn,
 		contractID:  id,
 		contractSet: cs,
+		deps:        cs.deps,
 		hdb:         hdb,
 		height:      currentHeight,
 		host:        host,
