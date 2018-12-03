@@ -289,6 +289,8 @@ var (
 	RPCLoopSettings       = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
 	RPCLoopRecentRevision = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'c', 'e', 'n', 't', 'R', 'e', 'v'}
 	RPCLoopDownload       = types.Specifier{'L', 'o', 'o', 'p', 'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd'}
+	RPCLoopFormContract   = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
+	RPCLoopRenewContract  = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
 	RPCLoopSectorRoots    = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
 	RPCLoopUpload         = types.Specifier{'L', 'o', 'o', 'p', 'U', 'p', 'l', 'o', 'a', 'd'}
 )
@@ -388,6 +390,33 @@ type (
 		Signature   []byte
 		SectorRoots []crypto.Hash
 		MerkleProof []crypto.Hash
+	}
+
+	// LoopFormContractRequest contains the request parameters for RPCLoopFormContract.
+	LoopFormContractRequest struct {
+		Transactions []types.Transaction
+		RenterKey    types.SiaPublicKey
+	}
+
+	// LoopContractAdditions contains the parent transaction, inputs, and
+	// outputs added by the host when negotiating a file contract.
+	LoopContractAdditions struct {
+		Parents []types.Transaction
+		Inputs  []types.SiacoinInput
+		Outputs []types.SiacoinOutput
+	}
+
+	// LoopContractSignatures contains the signatures for a contract
+	// transaction and initial revision. These signatures are sent by both the
+	// renter and host during contract formation and renewal.
+	LoopContractSignatures struct {
+		ContractSignatures []types.TransactionSignature
+		RevisionSignature  types.TransactionSignature
+	}
+
+	// LoopRenewContractRequest contains the request parameters for RPCLoopRenewContract.
+	LoopRenewContractRequest struct {
+		Transactions []types.Transaction
 	}
 
 	// LoopRecentRevisionResponse contains the response data for RPCLoopRecentRevisionResponse.
