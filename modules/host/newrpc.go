@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/coreos/bbolt"
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -451,8 +450,6 @@ func (h *Host) managedRPCLoopRenewContract(conn net.Conn, so *storageObligation)
 // managedRPCLoopSectorRoots writes an RPC response containing the requested
 // contract roots (along with signatures and a Merkle proof).
 func (h *Host) managedRPCLoopSectorRoots(conn net.Conn, so *storageObligation) error {
-	build.Critical("Merkle proofs not implemented")
-
 	conn.SetDeadline(time.Now().Add(modules.NegotiateDownloadTime))
 
 	// Read the request.
@@ -541,11 +538,16 @@ func (h *Host) managedRPCLoopSectorRoots(conn net.Conn, so *storageObligation) e
 		return extendErr("failed to modify storage obligation: ", err)
 	}
 
+	// Construct the Merkle proof
+	proofStart := int(req.RootOffset)
+	proofEnd := int(req.RootOffset + req.NumRoots)
+	proof := crypto.MerkleSectorRangeProof(so.SectorRoots, proofStart, proofEnd)
+
 	// send the response
 	resp := modules.LoopSectorRootsResponse{
 		Signature:   txn.TransactionSignatures[1].Signature,
 		SectorRoots: contractRoots,
-		MerkleProof: nil,
+		MerkleProof: proof,
 	}
 	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
 		return err

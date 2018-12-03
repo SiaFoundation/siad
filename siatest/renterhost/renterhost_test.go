@@ -81,7 +81,6 @@ func TestSession(t *testing.T) {
 	}
 
 	// download the sector root
-	t.Skip("Merkle proofs not implemented for LoopSectorRoots")
 	_, droots, err := s.SectorRoots(modules.LoopSectorRootsRequest{
 		RootOffset: 0,
 		NumRoots:   1,
