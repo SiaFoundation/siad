@@ -473,13 +473,13 @@ func TestRenterFileList(t *testing.T) {
 
 	// Get the file list of an empty renter.
 	if len(rt.renter.FileList()) != 0 {
-		t.Error("FileList has non-zero length for empty renter?")
+		t.Fatal("FileList has non-zero length for empty renter?")
 	}
 
 	// Put a file in the renter.
 	entry1, _ := rt.renter.newRenterTestFile()
 	if len(rt.renter.FileList()) != 1 {
-		t.Error("FileList is not returning the only file in the renter")
+		t.Fatal("FileList is not returning the only file in the renter")
 	}
 	if rt.renter.FileList()[0].SiaPath != entry1.SiaPath() {
 		t.Error("FileList is not returning the correct filename for the only file")
@@ -488,7 +488,7 @@ func TestRenterFileList(t *testing.T) {
 	// Put multiple files in the renter.
 	entry2, _ := rt.renter.newRenterTestFile()
 	if len(rt.renter.FileList()) != 2 {
-		t.Error("FileList is not returning both files in the renter")
+		t.Fatalf("Expected %v files, got %v", 2, len(rt.renter.FileList()))
 	}
 	files := rt.renter.FileList()
 	if !((files[0].SiaPath == entry1.SiaPath() || files[0].SiaPath == entry2.SiaPath()) &&
