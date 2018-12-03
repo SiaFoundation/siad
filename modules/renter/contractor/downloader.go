@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
@@ -105,6 +106,7 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 	c.mu.RLock()
 	id, gotID := c.pubKeysToContractID[string(pk.Key)]
 	cachedDownloader, haveDownloader := c.downloaders[id]
+	cachedSession, haveSession := c.sessions[id]
 	height := c.blockHeight
 	renewing := c.renewing[id]
 	c.mu.RUnlock()
@@ -119,6 +121,11 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 		cachedDownloader.clients++
 		cachedDownloader.mu.Unlock()
 		return cachedDownloader, nil
+	} else if haveSession {
+		cachedSession.mu.Lock()
+		cachedSession.clients++
+		cachedSession.mu.Unlock()
+		return cachedSession, nil
 	}
 
 	// Fetch the contract and host.
@@ -133,6 +140,11 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 		return nil, errors.New("no record of that host")
 	} else if host.DownloadBandwidthPrice.Cmp(maxDownloadPrice) > 0 {
 		return nil, errTooExpensive
+	}
+
+	// If host is >= 1.4.0, use the new renter-host protocol.
+	if build.VersionCmp(host.Version, "1.4.0") >= 0 {
+		return c.Session(pk, cancel)
 	}
 
 	// create downloader

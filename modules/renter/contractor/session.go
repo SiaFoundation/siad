@@ -28,6 +28,7 @@ type Session interface {
 
 	// Download requests the specified sector data.
 	Download(req modules.LoopDownloadRequest) ([]byte, error)
+	Sector(root crypto.Hash) ([]byte, error)
 
 	// EndHeight returns the height at which the contract ends.
 	EndHeight() types.BlockHeight
@@ -119,6 +120,15 @@ func (hs *hostSession) Download(req modules.LoopDownloadRequest) ([]byte, error)
 		return nil, err
 	}
 	return data, nil
+}
+
+func (hs *hostSession) Sector(root crypto.Hash) ([]byte, error) {
+	return hs.Download(modules.LoopDownloadRequest{
+		MerkleRoot:  root,
+		Offset:      0,
+		Length:      uint32(modules.SectorSize),
+		MerkleProof: true,
+	})
 }
 
 // EndHeight returns the height at which the host is no longer obligated to
