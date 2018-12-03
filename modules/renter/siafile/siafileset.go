@@ -295,6 +295,7 @@ func (sfs *SiaFileSet) NewFromFileData(fd FileData) (*SiaFileSetEntry, error) {
 			SiaPath:                 fd.Name,
 		},
 		deleted:        fd.Deleted,
+		deps:           modules.ProdDependencies,
 		siaFilePath:    fd.RepairPath,
 		staticUniqueID: fd.UID,
 		wal:            sfs.wal,
