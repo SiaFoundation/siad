@@ -18,9 +18,9 @@ import (
 func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
 	// use the new renter-host protocol for hosts v1.4.0 or above
 	if build.VersionCmp(params.Host.Version, "1.4.0") >= 0 {
-		return cs.oldRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
+		return cs.newRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
 	}
-	return cs.newRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
+	return cs.oldRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
 }
 
 func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
