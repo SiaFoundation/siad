@@ -17,7 +17,8 @@ func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
 	dir := filepath.Join(os.TempDir(), "siafiles")
 	// Create SiaFileSet
-	sfs := NewSiaFileSet(dir, newTestWAL())
+	wal, _ := newTestWAL()
+	sfs := NewSiaFileSet(dir, wal)
 	// Create SiaFile
 	up := modules.FileUploadParams{
 		Source:      source,

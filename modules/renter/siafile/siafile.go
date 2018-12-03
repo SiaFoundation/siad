@@ -56,6 +56,7 @@ type (
 
 		// utility fields. These are not persisted.
 		deleted        bool
+		deps           modules.Dependencies
 		mu             sync.RWMutex
 		staticUniqueID string
 		wal            *writeaheadlog.WAL // the wal that is used for SiaFiles
@@ -143,6 +144,7 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
 			SiaPath:                 siaPath,
 		},
+		deps:           modules.ProdDependencies,
 		siaFilePath:    siaFilePath,
 		staticUniqueID: hex.EncodeToString(fastrand.Bytes(20)),
 		wal:            wal,

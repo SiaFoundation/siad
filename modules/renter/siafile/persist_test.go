@@ -96,13 +96,20 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 	}
 }
 
-// newBlankTestFile is a helper method to create a SiaFile for testing without
-// any hosts or uploaded pieces.
-func newBlankTestFile() *SiaFile {
+// newBlankTestFileAndWAL creates an empty SiaFile for testing and also returns
+// the WAL used in the creation and the path of the WAL.
+func newBlankTestFileAndWAL() (*SiaFile, *writeaheadlog.WAL, string) {
 	// Get new file params
 	siaFilePath, siaPath, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams()
+
+	// Create the path to the file.
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		panic(err)
+	}
 	// Create the file.
-	sf, err := New(siaFilePath, siaPath, source, newTestWAL(), rc, sk, fileSize, fileMode)
+	wal, walPath := newTestWAL()
+	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		panic(err)
 	}
@@ -110,6 +117,13 @@ func newBlankTestFile() *SiaFile {
 	if len(sf.staticChunks) != numChunks {
 		panic("newTestFile didn't create the expected number of chunks")
 	}
+	return sf, wal, walPath
+}
+
+// newBlankTestFile is a helper method to create a SiaFile for testing without
+// any hosts or uploaded pieces.
+func newBlankTestFile() *SiaFile {
+	sf, _, _ := newBlankTestFileAndWAL()
 	return sf
 }
 
@@ -160,7 +174,7 @@ func newTestFileParams() (string, string, string, modules.ErasureCoder, crypto.C
 }
 
 // newTestWal is a helper method to create a WAL for testing.
-func newTestWAL() *writeaheadlog.WAL {
+func newTestWAL() (*writeaheadlog.WAL, string) {
 	// Create the wal.
 	walsDir := filepath.Join(os.TempDir(), "wals")
 	if err := os.MkdirAll(walsDir, 0700); err != nil {
@@ -171,7 +185,7 @@ func newTestWAL() *writeaheadlog.WAL {
 	if err != nil {
 		panic(err)
 	}
-	return wal
+	return wal, walFilePath
 }
 
 // TestNewFile tests that a new file has the correct contents and size and that

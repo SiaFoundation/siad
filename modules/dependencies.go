@@ -72,7 +72,10 @@ type (
 		// with large volumes of persistent data.
 		OpenDatabase(persist.Metadata, string) (*persist.BoltDatabase, error)
 
-		// OpenFile opens a file for the host.
+		// Open opens a file readonly.
+		Open(string) (File, error)
+
+		// OpenFile opens a file with the specified mode.
 		OpenFile(string, int, os.FileMode) (File, error)
 
 		// Resolver returns a Resolver which can resolve hostnames to IPs.
@@ -109,6 +112,7 @@ type (
 		io.ReadWriteCloser
 		Name() string
 		ReadAt([]byte, int64) (int, error)
+		Seek(int64, int) (int64, error)
 		Sync() error
 		Truncate(int64) error
 		WriteAt([]byte, int64) (int, error)
@@ -266,7 +270,12 @@ func (*ProductionDependencies) OpenDatabase(m persist.Metadata, s string) (*pers
 	return persist.OpenDatabase(m, s)
 }
 
-// OpenFile opens a file for the contract manager.
+// Open opens a file readonly.
+func (pd *ProductionDependencies) Open(s string) (File, error) {
+	return pd.OpenFile(s, os.O_RDONLY, 0)
+}
+
+// OpenFile opens a file with the specified mode and permissions.
 func (pd *ProductionDependencies) OpenFile(s string, i int, fm os.FileMode) (File, error) {
 	if !build.DEBUG {
 		return os.OpenFile(s, i, fm)

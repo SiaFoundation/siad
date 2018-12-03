@@ -358,11 +358,22 @@ func (r *Renter) initPersist() error {
 
 	// Apply unapplied wal txns.
 	for _, txn := range txns {
+		applyTxn := true
 		for _, update := range txn.Updates {
 			if siafile.IsSiaFileUpdate(update) {
 				if err := siafile.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaFile update")
 				}
+			} else {
+				applyTxn = false
+			}
+		}
+		// If every update of the txn is a SiaFileUpdate (which should be the
+		// case since it's either none of them or all) we consider the
+		// transaction applied.
+		if applyTxn {
+			if err := txn.SignalUpdatesApplied(); err != nil {
+				return err
 			}
 		}
 	}
