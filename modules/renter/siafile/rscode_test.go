@@ -57,62 +57,6 @@ func TestRSEncode(t *testing.T) {
 	}
 }
 
-func TestPartialEncodeRecover(t *testing.T) {
-	segmentSize := 64
-	pieceSize := 4096
-	dataPieces := 10
-	parityPieces := 20
-	data := fastrand.Bytes(pieceSize * dataPieces)
-	// Create the erasure coder.
-	rsc, err := NewRSCode(dataPieces, parityPieces)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Allocate space for the pieces.
-	pieces := make([][]byte, dataPieces)
-	for i := range pieces {
-		pieces[i] = make([]byte, pieceSize)
-	}
-	// Write the data to the pieces.
-	buf := bytes.NewBuffer(data)
-	for i := range pieces {
-		if buf.Len() < pieceSize {
-			t.Fatal("Buffer is empty")
-		}
-		pieces[i] = buf.Next(pieceSize)
-	}
-	// Encode the pieces.
-	encodedPieces, err := EncodeSubShards(rsc, pieces, uint64(pieceSize), uint64(segmentSize))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Check that the parity shards have been created.
-	if len(encodedPieces) != rsc.NumPieces() {
-		t.Fatalf("encodedPieces should've length %v but was %v", rsc.NumPieces(), len(encodedPieces))
-	}
-	// Every piece should have pieceSize.
-	for _, piece := range encodedPieces {
-		if len(piece) != pieceSize {
-			t.Fatalf("expecte len(piece) to be %v but was %v", pieceSize, len(piece))
-		}
-	}
-	// Delete as many random pieces as possible.
-	for _, i := range fastrand.Perm(len(encodedPieces))[:parityPieces] {
-		encodedPieces[i] = nil
-	}
-	// Recover every segment individually.
-	for i := 0; i < pieceSize/segmentSize; i++ {
-		buf := new(bytes.Buffer)
-		err = RecoverSegment(rsc, encodedPieces, i, uint64(pieceSize), uint64(segmentSize), buf)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(buf.Bytes(), data[i*segmentSize*dataPieces:][:segmentSize*dataPieces]) {
-			t.Fatal("decoded bytes don't equal original segment")
-		}
-	}
-}
-
 func BenchmarkRSEncode(b *testing.B) {
 	rsc, err := NewRSCode(80, 20)
 	if err != nil {

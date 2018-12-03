@@ -1,13 +1,11 @@
 package siafile
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 
 	"github.com/klauspost/reedsolomon"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // RSCode is a Reed-Solomon encoder/decoder. It implements the
@@ -33,21 +31,18 @@ func (rs *RSCode) Encode(data []byte) ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// err should not be possible if Encode is called on the result of Split,
-	// but no harm in checking anyway.
-	err = rs.enc.Encode(pieces)
-	if err != nil {
-		return nil, err
-	}
-	return pieces, nil
+	return rs.EncodeShards(pieces)
 }
 
 // EncodeShards creates the parity shards for an already sharded input.
-func (rs *RSCode) EncodeShards(pieces [][]byte, pieceSize uint64) ([][]byte, error) {
+func (rs *RSCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	// Check that the caller provided the minimum amount of pieces.
 	if len(pieces) < rs.MinPieces() {
 		return nil, fmt.Errorf("invalid number of pieces given %v < %v", len(pieces), rs.MinPieces())
 	}
+	// Since all the pieces should have the same length, get the pieceSize from
+	// the first one.
+	pieceSize := len(pieces[0])
 	// Add the parity shards to pieces.
 	for len(pieces) < rs.NumPieces() {
 		pieces = append(pieces, make([]byte, pieceSize))
@@ -55,68 +50,6 @@ func (rs *RSCode) EncodeShards(pieces [][]byte, pieceSize uint64) ([][]byte, err
 	err := rs.enc.Encode(pieces)
 	if err != nil {
 		return nil, err
-	}
-	return pieces, nil
-}
-
-// EncodeSubShards encodes data in a way that every 64 bytes of the encoded
-// data can be decoded independently.
-func EncodeSubShards(rs modules.ErasureCoder, pieces [][]byte, pieceSize, segmentSize uint64) ([][]byte, error) {
-	// pieceSize must be divisible by segmentSize
-	if pieceSize%segmentSize != 0 {
-		return nil, errors.New("pieceSize not divisible by segmentSize")
-	}
-	// Check that there are enough pieces.
-	if len(pieces) != rs.MinPieces() {
-		return nil, fmt.Errorf("not enough segments expected %v but was %v",
-			rs.MinPieces(), len(pieces))
-	}
-	// Each piece should've pieceSize bytes.
-	for _, piece := range pieces {
-		if uint64(len(piece)) != pieceSize {
-			return nil, fmt.Errorf("pieces don't have right size expected %v but was %v",
-				pieceSize, len(piece))
-		}
-	}
-	// Convert pieces.
-	tmpPieces := make([][]byte, len(pieces))
-	i := 0
-	for _, piece := range pieces {
-		for buf := bytes.NewBuffer(piece); buf.Len() > 0; {
-			segment := buf.Next(int(segmentSize))
-			pieceIndex := i % len(pieces)
-			segmentIndex := i / len(pieces)
-			if tmpPieces[pieceIndex] == nil {
-				tmpPieces[pieceIndex] = make([]byte, pieceSize)
-			}
-			copy(tmpPieces[pieceIndex][uint64(segmentIndex)*segmentSize:][:segmentSize], segment)
-			i++
-		}
-	}
-	pieces = tmpPieces
-	// Add the parity shards to pieces.
-	for len(pieces) < rs.NumPieces() {
-		pieces = append(pieces, make([]byte, pieceSize))
-	}
-	// Convert the pieces to segments.
-	segments := make([][][]byte, pieceSize/segmentSize)
-	for pieceIndex, piece := range pieces {
-		for segmentIndex := uint64(0); segmentIndex < pieceSize/segmentSize; segmentIndex++ {
-			// Allocate space for segments as needed.
-			if segments[segmentIndex] == nil {
-				segments[segmentIndex] = make([][]byte, rs.NumPieces())
-			}
-			segment := piece[segmentIndex*segmentSize:][:segmentSize]
-			segments[segmentIndex][pieceIndex] = segment
-		}
-	}
-	// Encode the segments.
-	for i := range segments {
-		encodedSegment, err := rs.EncodeShards(segments[i], pieceSize)
-		if err != nil {
-			return nil, err
-		}
-		segments[i] = encodedSegment
 	}
 	return pieces, nil
 }
@@ -132,35 +65,20 @@ func (rs *RSCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 	return rs.enc.Join(w, pieces, int(n))
 }
 
-// RecoverSegment accepts encoded pieces and decodes the segment at
-// segmentIndex. The size of the decoded data is segmentSize * dataPieces.
-func RecoverSegment(rs modules.ErasureCoder, pieces [][]byte, segmentIndex int, pieceSize, segmentSize uint64, w io.Writer) error {
-	// pieceSize must be divisible by segmentSize
-	if pieceSize%segmentSize != 0 {
-		return errors.New("pieceSize not divisible by segmentSize")
-	}
-	// Check the length of pieces.
-	if len(pieces) != rs.NumPieces() {
-		return fmt.Errorf("expected pieces to have len %v but was %v",
-			rs.NumPieces(), len(pieces))
-	}
-	// Extract the segment from the pieces.
-	segment := make([][]byte, uint64(rs.NumPieces()))
-	for i, piece := range pieces {
-		off := uint64(segmentIndex) * segmentSize
-		if uint64(len(piece)) > off {
-			segment[i] = piece[off : off+segmentSize]
-		} else {
-			segment[i] = nil
-		}
-	}
-	// Reconstruct the segment.
-	return rs.Recover(segment, segmentSize*uint64(rs.MinPieces()), w)
+// Type returns the erasure coders type identifier.
+func (rs *RSCode) Type() modules.ErasureCoderType {
+	return ecReedSolomon
 }
 
 // NewRSCode creates a new Reed-Solomon encoder/decoder using the supplied
 // parameters.
 func NewRSCode(nData, nParity int) (modules.ErasureCoder, error) {
+	return newRSCode(nData, nParity)
+}
+
+// newRSCode creates a new Reed-Solomon encoder/decoder using the supplied
+// parameters.
+func newRSCode(nData, nParity int) (*RSCode, error) {
 	enc, err := reedsolomon.New(nData, nParity)
 	if err != nil {
 		return nil, err
