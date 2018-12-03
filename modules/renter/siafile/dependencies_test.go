@@ -92,7 +92,7 @@ func (d *dependencyFaultyDisk) tryFail() bool {
 		return true
 	}
 
-	d.failDenominator += fastrand.Intn(13)
+	d.failDenominator += fastrand.Intn(8)
 	fail := fastrand.Intn(int(d.failDenominator+1)) == 0 // +1 to prevent 0 from being passed in.
 	if fail || d.failDenominator >= d.writeLimit {
 		d.failed = true

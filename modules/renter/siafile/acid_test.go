@@ -25,7 +25,7 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	}
 
 	// Create the dependency.
-	fdd := newFaultyDiskDependency(1000) // Fails after 1000 writes.
+	fdd := newFaultyDiskDependency(10000) // Fails after 10000 writes.
 	fdd.disable()
 
 	// Create a new blank siafile.
