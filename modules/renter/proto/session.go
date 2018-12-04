@@ -96,10 +96,20 @@ func (s *Session) RecentRevision() (types.FileContractRevision, []types.Transact
 		return types.FileContractRevision{}, nil, err
 	}
 
-	// if necessary, update our contract to match the host's.
-	if resp.Revision.NewRevisionNumber != sc.header.LastRevision().NewRevisionNumber {
+	// Check that the unlock hashes match; if they do not, something is
+	// seriously wrong. Otherwise, check that the revision numbers match.
+	ourRev := sc.header.LastRevision()
+	if resp.Revision.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
+		return types.FileContractRevision{}, nil, errors.New("unlock conditions do not match")
+	} else if resp.Revision.NewRevisionNumber != ourRev.NewRevisionNumber {
+		// If the revision number doesn't match try to commit potential
+		// unapplied transactions and check again.
 		if err := sc.commitTxns(); err != nil {
 			return types.FileContractRevision{}, nil, errors.AddContext(err, "failed to commit transactions")
+		}
+		ourRev = sc.header.LastRevision()
+		if resp.Revision.NewRevisionNumber != ourRev.NewRevisionNumber {
+			return types.FileContractRevision{}, nil, &recentRevisionError{ourRev.NewRevisionNumber, resp.Revision.NewRevisionNumber}
 		}
 	}
 
