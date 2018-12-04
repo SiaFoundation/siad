@@ -50,7 +50,7 @@ var (
 const (
 	// persistVersion defines the Sia version that the persistence was
 	// last updated
-	persistVersion = "1.3.3"
+	persistVersion = "1.4.0"
 
 	// defaultFilePerm defines the default permissions used for a new file if no
 	// permissions are supplied.

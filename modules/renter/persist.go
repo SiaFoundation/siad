@@ -1,13 +1,9 @@
 package renter
 
 import (
-	"bytes"
-	"compress/gzip"
-	"encoding/base64"
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -58,6 +54,7 @@ var (
 	// Persist Version Numbers
 	persistVersion040 = "0.4"
 	persistVersion133 = "1.3.3"
+	persistVersion140 = "1.4.0"
 )
 
 type (
@@ -227,9 +224,16 @@ func (r *Renter) loadSettings() error {
 		// Outdated version, try the 040 to 133 upgrade.
 		err = convertPersistVersionFrom040To133(filepath.Join(r.persistDir, PersistFilename))
 		if err != nil {
+			r.log.Println("WARNING: 040 to 133 renter upgrade failed, trying 133 to 140 next", err)
+		}
+		// Then upgrade from 133 to 140.
+		err = r.convertPersistVersionFrom133To140(filepath.Join(r.persistDir, PersistFilename))
+		if err != nil {
+			r.log.Println("WARNING: 133 to 140 renter upgrade failed", err)
 			// Nothing left to try.
 			return err
 		}
+		r.log.Println("Renter upgrade successful")
 		// Re-load the settings now that the file has been upgraded.
 		return r.loadSettings()
 	} else if err != nil {
@@ -239,75 +243,6 @@ func (r *Renter) loadSettings() error {
 	// Set the bandwidth limits on the contractor, which was already initialized
 	// without bandwidth limits.
 	return r.setBandwidthLimits(r.persist.MaxDownloadSpeed, r.persist.MaxUploadSpeed)
-}
-
-// loadSharedFiles reads .sia data from reader and registers the contained
-// files in the renter. It returns the nicknames of the loaded files.
-func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string, error) {
-	// read header
-	var header [15]byte
-	var version string
-	var numFiles uint64
-	err := encoding.NewDecoder(reader).DecodeAll(
-		&header,
-		&version,
-		&numFiles,
-	)
-	if err != nil {
-		return nil, err
-	} else if header != shareHeader {
-		return nil, ErrBadFile
-	} else if version != shareVersion {
-		return nil, ErrIncompatible
-	}
-
-	// Create decompressor.
-	unzip, err := gzip.NewReader(reader)
-	if err != nil {
-		return nil, err
-	}
-	dec := encoding.NewDecoder(unzip)
-
-	// Read each file.
-	files := make([]*file, numFiles)
-	for i := range files {
-		files[i] = new(file)
-		err := dec.Decode(files[i])
-		if err != nil {
-			return nil, err
-		}
-
-		// Make sure the file's name does not conflict with existing files.
-		dupCount := 0
-		origName := files[i].name
-		for {
-			exists, err := r.staticFileSet.Exists(files[i].name)
-			if err != nil {
-				return nil, err
-			}
-			if !exists {
-				break
-			}
-			dupCount++
-			files[i].name = origName + "_" + strconv.Itoa(dupCount)
-		}
-	}
-
-	// Add files to renter.
-	names := make([]string, numFiles)
-	for i, f := range files {
-		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
-		// be returned here
-		siafilePath := filepath.Join(r.filesDir, f.name)
-		entry, err := r.fileToSiaFile(f, siafilePath)
-		if err != nil {
-			return nil, err
-		}
-		names[i] = f.name
-		err = errors.Compose(err, entry.Close())
-	}
-	// TODO Save the file in the new format.
-	return names, err
 }
 
 // initPersist handles all of the persistence initialization, such as creating
@@ -331,24 +266,9 @@ func (r *Renter) initPersist() error {
 		return err
 	}
 
-	// Load the prior persistence structures.
-	err = r.loadSettings()
-	if err != nil {
-		return err
-	}
-
 	// Initialize the writeaheadlog.
 	txns, wal, err := writeaheadlog.New(filepath.Join(r.persistDir, walFile))
 	if err != nil {
-		return err
-	}
-	r.wal = wal
-
-	// Initialize the staticFileSet and the staticDirSet. With the staticDirSet
-	// finish the initialization of the files directory
-	r.staticFileSet = siafile.NewSiaFileSet(r.filesDir, wal)
-	r.staticDirSet = siadir.NewSiaDirSet(r.filesDir, wal)
-	if err = r.staticDirSet.InitRootDir(); err != nil {
 		return err
 	}
 
@@ -375,49 +295,28 @@ func (r *Renter) initPersist() error {
 		}
 	}
 
-	return nil
+	// Load the prior persistence structures.
+	err = r.loadSettings()
+	if err != nil {
+		return err
+	}
+
+	// Initialize the wal, staticFileSet and the staticDirSet. With the
+	// staticDirSet finish the initialization of the files directory
+	r.wal = wal
+	r.staticFileSet = siafile.NewSiaFileSet(r.filesDir, wal)
+	r.staticDirSet = siadir.NewSiaDirSet(r.filesDir, wal)
+	return r.staticDirSet.InitRootDir()
 }
 
 // LoadSharedFiles loads a .sia file into the renter. It returns the nicknames
 // of the loaded files.
 func (r *Renter) LoadSharedFiles(filename string) ([]string, error) {
-	lockID := r.mu.Lock()
-	defer r.mu.Unlock(lockID)
-
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	return r.loadSharedFiles(file, filename)
+	return nil, errors.New("TODO Can we remove LoadSharedFiles?")
 }
 
 // LoadSharedFilesASCII loads an ASCII-encoded .sia file into the renter. It
 // returns the nicknames of the loaded files.
 func (r *Renter) LoadSharedFilesASCII(asciiSia string) ([]string, error) {
-	lockID := r.mu.Lock()
-	defer r.mu.Unlock(lockID)
-
-	dec := base64.NewDecoder(base64.URLEncoding, bytes.NewBufferString(asciiSia))
-	return r.loadSharedFiles(dec, "")
-}
-
-// convertPersistVersionFrom040to133 upgrades a legacy persist file to the next
-// version, adding new fields with their default values.
-func convertPersistVersionFrom040To133(path string) error {
-	metadata := persist.Metadata{
-		Header:  settingsMetadata.Header,
-		Version: persistVersion040,
-	}
-	p := persistence{}
-
-	err := persist.LoadJSON(metadata, &p, path)
-	if err != nil {
-		return err
-	}
-	metadata.Version = persistVersion133
-	p.MaxDownloadSpeed = DefaultMaxDownloadSpeed
-	p.MaxUploadSpeed = DefaultMaxUploadSpeed
-	p.StreamCacheSize = DefaultStreamCacheSize
-	return persist.SaveJSON(metadata, p, path)
+	return nil, errors.New("TODO Can we remove LoadSharedFilesASCII?")
 }
