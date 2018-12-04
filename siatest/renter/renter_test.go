@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -3168,7 +3169,23 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	parityPieces := uint64(1)
 	chunkSize := int64(siatest.ChunkSize(dataPieces, crypto.TypeDefaultRenter))
 	fileSize := 3 * int(chunkSize)
-	_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	_, rf1, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf2, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf3, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf4, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf5, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3181,72 +3198,116 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	// Create Wait group
 	wg := new(sync.WaitGroup)
 
-	// Test Renaming while Downloading and Streaming
-	//
-	// Download the file
+	// Test Renaming while Downloading and Streaming on 5 files.
 	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_, err := r.DownloadToDisk(rf, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
-	// Stream the File
+	go renameDuringDownloadAndStream(r, rf1, t, wg, time.Second)
 	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_, err := r.Stream(rf)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
-	// Rename the file
+	go renameDuringDownloadAndStream(r, rf2, t, wg, time.Second)
 	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		// Wait to ensure download and stream have started
-		time.Sleep(time.Second)
-		var err error
-		rf, err = r.Rename(rf, "1")
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+	go renameDuringDownloadAndStream(r, rf3, t, wg, time.Second)
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf4, t, wg, time.Second)
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf5, t, wg, time.Second)
 	wg.Wait()
 
 	// Test Deleting while Downloading and Streaming
 	//
 	// Download the file
 	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf1, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf2, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf3, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf4, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf5, t, wg, time.Second)
+
+	wg.Wait()
+}
+
+// deleteDuringDownloadAndStream will download and stream a file in parallel, it
+// will then sleep to ensure the download and stream have downloaded some data,
+// then it will delete the file
+func deleteDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, t *testing.T, wg *sync.WaitGroup, sleep time.Duration) {
+	defer wg.Done()
+	wgDelete := new(sync.WaitGroup)
+	// Download the file
+	wgDelete.Add(1)
 	go func() {
-		defer wg.Done()
+		defer wgDelete.Done()
 		_, err := r.DownloadToDisk(rf, false)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
 	// Stream the File
-	wg.Add(1)
+	wgDelete.Add(1)
 	go func() {
-		defer wg.Done()
+		defer wgDelete.Done()
 		_, err := r.Stream(rf)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
-	wg.Add(1)
+	// Delete the file
+	wgDelete.Add(1)
 	go func() {
-		defer wg.Done()
+		defer wgDelete.Done()
 		// Wait to ensure download and stream have started
-		time.Sleep(time.Second)
-
+		time.Sleep(sleep)
 		err := r.RenterDeletePost(rf.SiaPath())
 		if err != nil {
 			t.Error(err)
 		}
 	}()
-	wg.Wait()
+
+	// Wait for the method's go routines to finish
+	wgDelete.Wait()
+
+}
+
+// renameDuringDownloadAndStream will download and stream a file in parallel, it
+// will then sleep to ensure the download and stream have downloaded some data,
+// then it will rename the file
+func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, t *testing.T, wg *sync.WaitGroup, sleep time.Duration) {
+	defer wg.Done()
+	wgRename := new(sync.WaitGroup)
+	// Download the file
+	wgRename.Add(1)
+	go func() {
+		defer wgRename.Done()
+		_, err := r.DownloadToDisk(rf, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Stream the File
+	wgRename.Add(1)
+	go func() {
+		defer wgRename.Done()
+		_, err := r.Stream(rf)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Rename the file
+	wgRename.Add(1)
+	go func() {
+		defer wgRename.Done()
+		// Wait to ensure download and stream have started
+		time.Sleep(sleep)
+		var err error
+		rf, err = r.Rename(rf, hex.EncodeToString(fastrand.Bytes(4)))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Wait for the method's go routines to finish
+	wgRename.Wait()
 }
 
 // The following are helper functions for the renter tests
