@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -17,10 +16,9 @@ var errInvalidDownloader = errors.New("downloader has been invalidated because i
 // a time, and revises the file contract to transfer money to the host
 // proportional to the data retrieved.
 type Downloader interface {
-	// Sector retrieves the sector with the specified Merkle root, and revises
-	// the underlying contract to pay the host proportionally to the data
-	// retrieve.
-	Sector(root crypto.Hash) ([]byte, error)
+	// Download retrieves the requested sector data and revises the underlying
+	// contract to pay the host proportionally to the data retrieved.
+	Download(req modules.LoopDownloadRequest) ([]byte, error)
 
 	// Close terminates the connection to the host.
 	Close() error
@@ -82,22 +80,19 @@ func (hd *hostDownloader) HostSettings() modules.HostExternalSettings {
 	return hd.hostSettings
 }
 
-// Sector retrieves the sector with the specified Merkle root, and revises
-// the underlying contract to pay the host proportionally to the data
-// retrieve.
-func (hd *hostDownloader) Sector(root crypto.Hash) ([]byte, error) {
+// Download retrieves the requested sector data and revises the underlying
+// contract to pay the host proportionally to the data retrieved.
+func (hd *hostDownloader) Download(req modules.LoopDownloadRequest) ([]byte, error) {
 	hd.mu.Lock()
 	defer hd.mu.Unlock()
 	if hd.invalid {
 		return nil, errInvalidDownloader
 	}
-
-	// Download the sector.
-	_, sector, err := hd.downloader.Sector(root)
+	_, data, err := hd.downloader.Download(req)
 	if err != nil {
 		return nil, err
 	}
-	return sector, nil
+	return data, nil
 }
 
 // Downloader returns a Downloader object that can be used to download sectors
