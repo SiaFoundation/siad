@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -16,9 +17,8 @@ var errInvalidDownloader = errors.New("downloader has been invalidated because i
 // a time, and revises the file contract to transfer money to the host
 // proportional to the data retrieved.
 type Downloader interface {
-	// Download retrieves the requested sector data and revises the underlying
-	// contract to pay the host proportionally to the data retrieved.
-	Download(req modules.LoopDownloadRequest) ([]byte, error)
+	// Download requests the specified sector data.
+	Download(root crypto.Hash, offset, length uint32) ([]byte, error)
 
 	// Close terminates the connection to the host.
 	Close() error
@@ -82,13 +82,13 @@ func (hd *hostDownloader) HostSettings() modules.HostExternalSettings {
 
 // Download retrieves the requested sector data and revises the underlying
 // contract to pay the host proportionally to the data retrieved.
-func (hd *hostDownloader) Download(req modules.LoopDownloadRequest) ([]byte, error) {
+func (hd *hostDownloader) Download(root crypto.Hash, offset, length uint32) ([]byte, error) {
 	hd.mu.Lock()
 	defer hd.mu.Unlock()
 	if hd.invalid {
 		return nil, errInvalidDownloader
 	}
-	_, data, err := hd.downloader.Download(req)
+	_, data, err := hd.downloader.Download(root, offset, length)
 	if err != nil {
 		return nil, err
 	}

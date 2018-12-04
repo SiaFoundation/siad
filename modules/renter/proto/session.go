@@ -245,20 +245,15 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	return sc.Metadata(), sectorRoot, nil
 }
 
-// Download calls the download RPC and returns the requested data. The
-// Revision and Signature fields of req are filled in automatically. If a
-// Merkle proof is requested, it is verified.
-func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterContract, _ []byte, err error) {
+// Download calls the download RPC and returns the requested data. A Merkle
+// proof is always requested.
+func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.RenterContract, _ []byte, err error) {
 	// Reset deadline when finished.
 	defer extendDeadline(s.conn, time.Hour)
 
 	// Sanity-check the request.
-	if req.MerkleProof {
-		if req.Offset%crypto.SegmentSize != 0 || req.Length%crypto.SegmentSize != 0 {
-			return modules.RenterContract{}, nil, errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
-		}
-	} else if uint64(req.Length) != modules.SectorSize {
-		return modules.RenterContract{}, nil, errors.New("must request Merkle proof when downloading less than a full sector")
+	if offset%crypto.SegmentSize != 0 || length%crypto.SegmentSize != 0 {
+		return modules.RenterContract{}, nil, errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
 	}
 
 	// Acquire the contract.
@@ -270,7 +265,7 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	contract := sc.header // for convenience
 
 	// calculate price
-	price := s.host.DownloadBandwidthPrice.Mul64(uint64(req.Length))
+	price := s.host.DownloadBandwidthPrice.Mul64(uint64(length))
 	if contract.RenterFunds().Cmp(price) < 0 {
 		return modules.RenterContract{}, nil, errors.New("contract has insufficient funds to support download")
 	}
@@ -299,7 +294,13 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	sig := crypto.SignHash(txn.SigHash(0, s.height), contract.SecretKey)
 	txn.TransactionSignatures[0].Signature = sig[:]
 
-	// fill in the missing request fields
+	// create the request object
+	req := modules.LoopDownloadRequest{
+		MerkleRoot:  root,
+		Offset:      offset,
+		Length:      length,
+		MerkleProof: true,
+	}
 	req.NewRevisionNumber = rev.NewRevisionNumber
 	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
 	for i, o := range rev.NewValidProofOutputs {

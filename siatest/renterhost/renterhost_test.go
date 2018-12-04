@@ -63,10 +63,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// download the sector
-	_, dsector, err := s.Download(modules.LoopDownloadRequest{
-		MerkleRoot: root,
-		Length:     uint32(len(sector)),
-	})
+	_, dsector, err := s.Download(root, 0, uint32(len(sector)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,12 +72,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// download less than a full sector
-	_, partialSector, err := s.Download(modules.LoopDownloadRequest{
-		MerkleRoot:  root,
-		Offset:      crypto.SegmentSize * 5,
-		Length:      crypto.SegmentSize * 12,
-		MerkleProof: true,
-	})
+	_, partialSector, err := s.Download(root, crypto.SegmentSize*5, crypto.SegmentSize*12)
 	if err != nil {
 		t.Fatal(err)
 	}

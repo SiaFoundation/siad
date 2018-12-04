@@ -321,12 +321,7 @@ func TestIntegrationUploadDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	retrieved, err := downloader.Download(modules.LoopDownloadRequest{
-		MerkleRoot:  root,
-		Offset:      0,
-		Length:      uint32(modules.SectorSize),
-		MerkleProof: true,
-	})
+	retrieved, err := downloader.Download(root, 0, uint32(modules.SectorSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,12 +408,7 @@ func TestIntegrationRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	retrieved, err := downloader.Download(modules.LoopDownloadRequest{
-		MerkleRoot:  root,
-		Offset:      0,
-		Length:      uint32(modules.SectorSize),
-		MerkleProof: true,
-	})
+	retrieved, err := downloader.Download(root, 0, uint32(modules.SectorSize))
 	if err != nil {
 		t.Fatal(err)
 	}

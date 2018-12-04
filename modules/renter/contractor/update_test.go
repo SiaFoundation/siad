@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
@@ -187,7 +188,7 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 		// wait for goroutine in ProcessConsensusChange to finish
 		c.maintenanceLock.Lock()
 		c.maintenanceLock.Unlock()
-		_, err2 := downloader.Download(modules.LoopDownloadRequest{})
+		_, err2 := downloader.Download(crypto.Hash{}, 0, 0)
 		if err2 != errInvalidDownloader && err2 != errInvalidSession {
 			return errors.AddContext(err, "expected invalid downloader error")
 		}

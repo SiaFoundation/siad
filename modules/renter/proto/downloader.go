@@ -30,7 +30,7 @@ type Downloader struct {
 
 // Download retrieves the requested sector data and revises the underlying
 // contract to pay the host proportionally to the data retrieved.
-func (hd *Downloader) Download(req modules.LoopDownloadRequest) (_ modules.RenterContract, _ []byte, err error) {
+func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ modules.RenterContract, _ []byte, err error) {
 	// Reset deadline when finished.
 	defer extendDeadline(hd.conn, time.Hour) // TODO: Constant.
 
@@ -72,7 +72,7 @@ func (hd *Downloader) Download(req modules.LoopDownloadRequest) (_ modules.Rente
 	// send download action
 	extendDeadline(hd.conn, 2*time.Minute) // TODO: Constant.
 	err = encoding.WriteObject(hd.conn, []modules.DownloadAction{{
-		MerkleRoot: req.MerkleRoot,
+		MerkleRoot: root,
 		Offset:     0,
 		Length:     modules.SectorSize,
 	}})
@@ -125,7 +125,7 @@ func (hd *Downloader) Download(req modules.LoopDownloadRequest) (_ modules.Rente
 	sector := sectors[0]
 	if uint64(len(sector)) != modules.SectorSize {
 		return modules.RenterContract{}, nil, errors.New("host did not send enough sector data")
-	} else if crypto.MerkleRoot(sector) != req.MerkleRoot {
+	} else if crypto.MerkleRoot(sector) != root {
 		return modules.RenterContract{}, nil, errors.New("host sent bad sector data")
 	}
 
@@ -135,7 +135,7 @@ func (hd *Downloader) Download(req modules.LoopDownloadRequest) (_ modules.Rente
 	}
 
 	// return the subset of requested data
-	return sc.Metadata(), sector[req.Offset:][:req.Length], nil
+	return sc.Metadata(), sector[offset:][:length], nil
 }
 
 // shutdown terminates the revision loop and signals the goroutine spawned in

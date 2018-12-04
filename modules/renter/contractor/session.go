@@ -27,21 +27,10 @@ type Session interface {
 	ContractID() types.FileContractID
 
 	// Download requests the specified sector data.
-	Download(req modules.LoopDownloadRequest) ([]byte, error)
-	Sector(root crypto.Hash) ([]byte, error)
+	Download(root crypto.Hash, offset, length uint32) ([]byte, error)
 
 	// EndHeight returns the height at which the contract ends.
 	EndHeight() types.BlockHeight
-
-	// RecentRevision requests the most recent revision from the host. Note
-	// that the host may lie and return an older revision.
-	//RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error)
-
-	// SectorRoots requests the specified sector roots of the contract.
-	//SectorRoots(req modules.LoopSectorRootsRequest) ([]crypto.Hash, error)
-
-	// Settings requests the host's settings.
-	//Settings() (modules.HostExternalSettings, error)
 
 	// Upload revises the underlying contract to store the new data. It
 	// returns the Merkle root of the data.
@@ -107,7 +96,7 @@ func (hs *hostSession) ContractID() types.FileContractID { return hs.id }
 // Download retrieves the sector with the specified Merkle root, and revises
 // the underlying contract to pay the host proportionally to the data
 // retrieved.
-func (hs *hostSession) Download(req modules.LoopDownloadRequest) ([]byte, error) {
+func (hs *hostSession) Download(root crypto.Hash, offset, length uint32) ([]byte, error) {
 	hs.mu.Lock()
 	defer hs.mu.Unlock()
 	if hs.invalid {
@@ -115,20 +104,11 @@ func (hs *hostSession) Download(req modules.LoopDownloadRequest) ([]byte, error)
 	}
 
 	// Download the data.
-	_, data, err := hs.session.Download(req)
+	_, data, err := hs.session.Download(root, offset, length)
 	if err != nil {
 		return nil, err
 	}
 	return data, nil
-}
-
-func (hs *hostSession) Sector(root crypto.Hash) ([]byte, error) {
-	return hs.Download(modules.LoopDownloadRequest{
-		MerkleRoot:  root,
-		Offset:      0,
-		Length:      uint32(modules.SectorSize),
-		MerkleProof: true,
-	})
 }
 
 // EndHeight returns the height at which the host is no longer obligated to

@@ -36,12 +36,8 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 		return
 	}
 	defer d.Close()
-	pieceData, err := d.Download(modules.LoopDownloadRequest{
-		MerkleRoot:  udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].root,
-		Offset:      0,
-		Length:      uint32(modules.SectorSize),
-		MerkleProof: true,
-	})
+	root := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].root
+	pieceData, err := d.Download(root, 0, uint32(modules.SectorSize))
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)
