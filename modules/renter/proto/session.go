@@ -252,7 +252,9 @@ func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.R
 	defer extendDeadline(s.conn, time.Hour)
 
 	// Sanity-check the request.
-	if offset%crypto.SegmentSize != 0 || length%crypto.SegmentSize != 0 {
+	if uint64(offset)+uint64(length) > modules.SectorSize {
+		return modules.RenterContract{}, nil, errors.New("illegal offset and/or length")
+	} else if offset%crypto.SegmentSize != 0 || length%crypto.SegmentSize != 0 {
 		return modules.RenterContract{}, nil, errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
 	}
 

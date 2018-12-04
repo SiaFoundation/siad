@@ -34,6 +34,10 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ modul
 	// Reset deadline when finished.
 	defer extendDeadline(hd.conn, time.Hour) // TODO: Constant.
 
+	if uint64(offset)+uint64(length) > modules.SectorSize {
+		return modules.RenterContract{}, nil, errors.New("illegal offset and/or length")
+	}
+
 	// Acquire the contract.
 	// TODO: why not just lock the SafeContract directly?
 	sc, haveContract := hd.contractSet.Acquire(hd.contractID)
