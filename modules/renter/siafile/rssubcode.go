@@ -14,7 +14,6 @@ import (
 // modules.ErasureCoder interface in a way that every crypto.SegmentSize bytes
 // of encoded data can be recovered separately.
 type RSSubCode struct {
-	staticSegmentSize uint64
 	RSCode
 }
 
@@ -39,12 +38,12 @@ func (rs *RSSubCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	// Since all the pieces should have the same length, get the pieceSize from
 	// the first one.
 	pieceSize := uint64(len(pieces[0]))
-	segmentSize := rs.staticSegmentSize
+	segmentSize := uint64(crypto.SegmentSize)
 	// pieceSize must be divisible by segmentSize
 	if pieceSize%segmentSize != 0 {
 		return nil, errors.New("pieceSize not divisible by segmentSize")
 	}
-	// Each piece should've pieceSize bytes.
+	// Each piece should have pieceSize bytes.
 	for _, piece := range pieces {
 		if uint64(len(piece)) != pieceSize {
 			return nil, fmt.Errorf("pieces don't have right size expected %v but was %v",
@@ -73,14 +72,11 @@ func (rs *RSSubCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	}
 	// Convert the pieces to segments.
 	segments := make([][][]byte, pieceSize/segmentSize)
-	for pieceIndex, piece := range pieces {
-		for segmentIndex := uint64(0); segmentIndex < pieceSize/segmentSize; segmentIndex++ {
-			// Allocate space for segments as needed.
-			if segments[segmentIndex] == nil {
-				segments[segmentIndex] = make([][]byte, rs.NumPieces())
-			}
-			segment := piece[segmentIndex*segmentSize:][:segmentSize]
-			segments[segmentIndex][pieceIndex] = segment
+	for segmentIndex := 0; uint64(segmentIndex) < pieceSize/segmentSize; segmentIndex++ {
+		segment := ExtractSegment(pieces, segmentIndex)
+		segments[segmentIndex] = make([][]byte, rs.NumPieces())
+		for pieceIndex := range segment {
+			segments[segmentIndex][pieceIndex] = segment[pieceIndex]
 		}
 	}
 	// Encode the segments.
@@ -111,7 +107,7 @@ func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 			break
 		}
 	}
-	segmentSize := rs.staticSegmentSize
+	segmentSize := uint64(crypto.SegmentSize)
 
 	// pieceSize must be divisible by segmentSize
 	if pieceSize%segmentSize != 0 {
@@ -119,16 +115,9 @@ func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 	}
 
 	// Extract the segment from the pieces.
-	segment := make([][]byte, uint64(rs.NumPieces()))
 	decodedSegmentSize := segmentSize * uint64(rs.MinPieces())
-	for off := uint64(0); off < pieceSize && n > 0; off += segmentSize {
-		for i, piece := range pieces {
-			if uint64(len(piece)) > off {
-				segment[i] = piece[off : off+segmentSize]
-			} else {
-				segment[i] = nil
-			}
-		}
+	for segmentIndex := 0; uint64(segmentIndex) < pieceSize/segmentSize && n > 0; segmentIndex++ {
+		segment := ExtractSegment(pieces, segmentIndex)
 		// Reconstruct the segment.
 		if n < decodedSegmentSize {
 			decodedSegmentSize = n
@@ -151,9 +140,12 @@ func (rs *RSSubCode) Type() modules.ErasureCoderType {
 func ExtractSegment(pieces [][]byte, segmentIndex int) [][]byte {
 	segment := make([][]byte, len(pieces))
 	off := segmentIndex * crypto.SegmentSize
-	for i := 0; i < len(pieces); i++ {
-		if len(pieces[i]) > 0 {
-			segment[i] = pieces[i][off : off+crypto.SegmentSize]
+	segmentSize := crypto.SegmentSize
+	for i, piece := range pieces {
+		if len(piece) >= off+segmentSize {
+			segment[i] = piece[off : off+segmentSize]
+		} else {
+			segment[i] = nil
 		}
 	}
 	return segment
@@ -167,7 +159,6 @@ func NewRSSubCode(nData, nParity int) (modules.ErasureCoder, error) {
 		return nil, err
 	}
 	return &RSSubCode{
-		crypto.SegmentSize,
 		*rs,
 	}, nil
 }
