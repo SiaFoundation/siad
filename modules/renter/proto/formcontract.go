@@ -18,9 +18,9 @@ import (
 func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
 	// use the new renter-host protocol for hosts v1.4.0 or above
 	if build.VersionCmp(params.Host.Version, "1.4.0") >= 0 {
-		return cs.oldFormContract(params, txnBuilder, tpool, hdb, cancel)
+		return cs.newFormContract(params, txnBuilder, tpool, hdb, cancel)
 	}
-	return cs.newFormContract(params, txnBuilder, tpool, hdb, cancel)
+	return cs.oldFormContract(params, txnBuilder, tpool, hdb, cancel)
 }
 
 func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {

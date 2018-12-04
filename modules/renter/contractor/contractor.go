@@ -50,6 +50,7 @@ type Contractor struct {
 
 	downloaders         map[types.FileContractID]*hostDownloader
 	editors             map[types.FileContractID]*hostEditor
+	sessions            map[types.FileContractID]*hostSession
 	numFailedRenews     map[types.FileContractID]types.BlockHeight
 	pubKeysToContractID map[string]types.FileContractID
 	contractIDToPubKey  map[types.FileContractID]types.SiaPublicKey
@@ -217,6 +218,7 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		staticContracts:     contractSet,
 		downloaders:         make(map[types.FileContractID]*hostDownloader),
 		editors:             make(map[types.FileContractID]*hostEditor),
+		sessions:            make(map[types.FileContractID]*hostSession),
 		oldContracts:        make(map[types.FileContractID]modules.RenterContract),
 		contractIDToPubKey:  make(map[types.FileContractID]types.SiaPublicKey),
 		pubKeysToContractID: make(map[string]types.FileContractID),

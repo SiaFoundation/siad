@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
@@ -16,10 +17,8 @@ var errInvalidDownloader = errors.New("downloader has been invalidated because i
 // a time, and revises the file contract to transfer money to the host
 // proportional to the data retrieved.
 type Downloader interface {
-	// Sector retrieves the sector with the specified Merkle root, and revises
-	// the underlying contract to pay the host proportionally to the data
-	// retrieve.
-	Sector(root crypto.Hash) ([]byte, error)
+	// Download requests the specified sector data.
+	Download(root crypto.Hash, offset, length uint32) ([]byte, error)
 
 	// Close terminates the connection to the host.
 	Close() error
@@ -81,22 +80,19 @@ func (hd *hostDownloader) HostSettings() modules.HostExternalSettings {
 	return hd.hostSettings
 }
 
-// Sector retrieves the sector with the specified Merkle root, and revises
-// the underlying contract to pay the host proportionally to the data
-// retrieve.
-func (hd *hostDownloader) Sector(root crypto.Hash) ([]byte, error) {
+// Download retrieves the requested sector data and revises the underlying
+// contract to pay the host proportionally to the data retrieved.
+func (hd *hostDownloader) Download(root crypto.Hash, offset, length uint32) ([]byte, error) {
 	hd.mu.Lock()
 	defer hd.mu.Unlock()
 	if hd.invalid {
 		return nil, errInvalidDownloader
 	}
-
-	// Download the sector.
-	_, sector, err := hd.downloader.Sector(root)
+	_, data, err := hd.downloader.Download(root, offset, length)
 	if err != nil {
 		return nil, err
 	}
-	return sector, nil
+	return data, nil
 }
 
 // Downloader returns a Downloader object that can be used to download sectors
@@ -105,6 +101,7 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 	c.mu.RLock()
 	id, gotID := c.pubKeysToContractID[string(pk.Key)]
 	cachedDownloader, haveDownloader := c.downloaders[id]
+	cachedSession, haveSession := c.sessions[id]
 	height := c.blockHeight
 	renewing := c.renewing[id]
 	c.mu.RUnlock()
@@ -119,6 +116,11 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 		cachedDownloader.clients++
 		cachedDownloader.mu.Unlock()
 		return cachedDownloader, nil
+	} else if haveSession {
+		cachedSession.mu.Lock()
+		cachedSession.clients++
+		cachedSession.mu.Unlock()
+		return cachedSession, nil
 	}
 
 	// Fetch the contract and host.
@@ -133,6 +135,11 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 		return nil, errors.New("no record of that host")
 	} else if host.DownloadBandwidthPrice.Cmp(maxDownloadPrice) > 0 {
 		return nil, errTooExpensive
+	}
+
+	// If host is >= 1.4.0, use the new renter-host protocol.
+	if build.VersionCmp(host.Version, "1.4.0") >= 0 {
+		return c.Session(pk, cancel)
 	}
 
 	// create downloader

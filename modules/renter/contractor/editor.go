@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
@@ -117,6 +118,7 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	c.mu.RLock()
 	id, gotID := c.pubKeysToContractID[string(pk.Key)]
 	cachedEditor, haveEditor := c.editors[id]
+	cachedSession, haveSession := c.sessions[id]
 	height := c.blockHeight
 	renewing := c.renewing[id]
 	c.mu.RUnlock()
@@ -133,6 +135,12 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 		cachedEditor.clients++
 		cachedEditor.mu.Unlock()
 		return cachedEditor, nil
+	} else if haveSession {
+		// This session already exists.
+		cachedSession.mu.Lock()
+		cachedSession.clients++
+		cachedSession.mu.Unlock()
+		return cachedSession, nil
 	}
 
 	// Check that the contract and host are both available, and run some brief
@@ -152,6 +160,11 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 		return nil, errTooExpensive
 	} else if host.UploadBandwidthPrice.Cmp(maxUploadPrice) > 0 {
 		return nil, errTooExpensive
+	}
+
+	// If host is >= 1.4.0, use the new renter-host protocol.
+	if build.VersionCmp(host.Version, "1.4.0") >= 0 {
+		return c.Session(pk, cancel)
 	}
 
 	// Create the editor.

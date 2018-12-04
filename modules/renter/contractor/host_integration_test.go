@@ -321,7 +321,7 @@ func TestIntegrationUploadDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	retrieved, err := downloader.Sector(root)
+	retrieved, err := downloader.Download(root, 0, uint32(modules.SectorSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +408,7 @@ func TestIntegrationRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	retrieved, err := downloader.Sector(root)
+	retrieved, err := downloader.Download(root, 0, uint32(modules.SectorSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,8 +509,9 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 
 	c.mu.RLock()
 	_, ok = c.downloaders[contract.ID]
+	_, sok := c.sessions[contract.ID]
 	c.mu.RUnlock()
-	if !ok {
+	if !ok && !sok {
 		t.Fatal("expected downloader to still be present")
 	}
 
@@ -531,8 +532,9 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 
 	c.mu.RLock()
 	_, ok = c.downloaders[contract.ID]
+	_, sok = c.sessions[contract.ID]
 	c.mu.RUnlock()
-	if ok {
+	if ok || sok {
 		t.Fatal("did not expect downloader to still be present")
 	}
 
@@ -606,8 +608,9 @@ func TestIntegrationEditorCaching(t *testing.T) {
 
 	c.mu.RLock()
 	_, ok = c.editors[contract.ID]
+	_, sok := c.sessions[contract.ID]
 	c.mu.RUnlock()
-	if !ok {
+	if !ok && !sok {
 		t.Fatal("expected editor to still be present")
 	}
 
@@ -628,8 +631,9 @@ func TestIntegrationEditorCaching(t *testing.T) {
 
 	c.mu.RLock()
 	_, ok = c.editors[contract.ID]
+	_, sok = c.sessions[contract.ID]
 	c.mu.RUnlock()
-	if ok {
+	if ok || sok {
 		t.Fatal("did not expect editor to still be present")
 	}
 

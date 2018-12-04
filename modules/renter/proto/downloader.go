@@ -28,12 +28,15 @@ type Downloader struct {
 	height types.BlockHeight
 }
 
-// Sector retrieves the sector with the specified Merkle root, and revises
-// the underlying contract to pay the host proportionally to the data
-// retrieve.
-func (hd *Downloader) Sector(root crypto.Hash) (_ modules.RenterContract, _ []byte, err error) {
+// Download retrieves the requested sector data and revises the underlying
+// contract to pay the host proportionally to the data retrieved.
+func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ modules.RenterContract, _ []byte, err error) {
 	// Reset deadline when finished.
 	defer extendDeadline(hd.conn, time.Hour) // TODO: Constant.
+
+	if uint64(offset)+uint64(length) > modules.SectorSize {
+		return modules.RenterContract{}, nil, errors.New("illegal offset and/or length")
+	}
 
 	// Acquire the contract.
 	// TODO: why not just lock the SafeContract directly?
@@ -135,7 +138,8 @@ func (hd *Downloader) Sector(root crypto.Hash) (_ modules.RenterContract, _ []by
 		return modules.RenterContract{}, nil, err
 	}
 
-	return sc.Metadata(), sector, nil
+	// return the subset of requested data
+	return sc.Metadata(), sector[offset:][:length], nil
 }
 
 // shutdown terminates the revision loop and signals the goroutine spawned in

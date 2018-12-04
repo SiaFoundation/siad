@@ -20,6 +20,7 @@ type Session struct {
 	conn        net.Conn
 	contractID  types.FileContractID
 	contractSet *ContractSet
+	deps        modules.Dependencies
 	hdb         hostDB
 	height      types.BlockHeight
 	host        modules.HostDBEntry
@@ -95,10 +96,20 @@ func (s *Session) RecentRevision() (types.FileContractRevision, []types.Transact
 		return types.FileContractRevision{}, nil, err
 	}
 
-	// if necessary, update our contract to match the host's.
-	if resp.Revision.NewRevisionNumber != sc.header.LastRevision().NewRevisionNumber {
+	// Check that the unlock hashes match; if they do not, something is
+	// seriously wrong. Otherwise, check that the revision numbers match.
+	ourRev := sc.header.LastRevision()
+	if resp.Revision.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
+		return types.FileContractRevision{}, nil, errors.New("unlock conditions do not match")
+	} else if resp.Revision.NewRevisionNumber != ourRev.NewRevisionNumber {
+		// If the revision number doesn't match try to commit potential
+		// unapplied transactions and check again.
 		if err := sc.commitTxns(); err != nil {
 			return types.FileContractRevision{}, nil, errors.AddContext(err, "failed to commit transactions")
+		}
+		ourRev = sc.header.LastRevision()
+		if resp.Revision.NewRevisionNumber != ourRev.NewRevisionNumber {
+			return types.FileContractRevision{}, nil, &recentRevisionError{ourRev.NewRevisionNumber, resp.Revision.NewRevisionNumber}
 		}
 	}
 
@@ -198,6 +209,11 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 		extendDeadline(s.conn, time.Hour)
 	}()
 
+	// Disrupt here before sending the signed revision to the host.
+	if s.deps.Disrupt("InterruptUploadBeforeSendingRevision") {
+		return modules.RenterContract{}, crypto.Hash{}, errors.New("InterruptUploadBeforeSendingRevision disrupt")
+	}
+
 	// send upload RPC request
 	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
 	err = s.writeRequest(modules.RPCLoopUpload, req)
@@ -212,6 +228,11 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}
 
+	// Disrupt here before updating the contract.
+	if s.deps.Disrupt("InterruptUploadAfterSendingRevision") {
+		return modules.RenterContract{}, crypto.Hash{}, errors.New("InterruptUploadAfterSendingRevision disrupt")
+	}
+
 	// add host signature
 	txn.TransactionSignatures[1].Signature = resp.Signature
 
@@ -224,20 +245,17 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	return sc.Metadata(), sectorRoot, nil
 }
 
-// Download calls the download RPC and returns the requested data. The
-// Revision and Signature fields of req are filled in automatically. If a
-// Merkle proof is requested, it is verified.
-func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterContract, _ []byte, err error) {
+// Download calls the download RPC and returns the requested data. A Merkle
+// proof is always requested.
+func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.RenterContract, _ []byte, err error) {
 	// Reset deadline when finished.
 	defer extendDeadline(s.conn, time.Hour)
 
 	// Sanity-check the request.
-	if req.MerkleProof {
-		if req.Offset%crypto.SegmentSize != 0 || req.Length%crypto.SegmentSize != 0 {
-			return modules.RenterContract{}, nil, errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
-		}
-	} else if uint64(req.Length) != modules.SectorSize {
-		return modules.RenterContract{}, nil, errors.New("must request Merkle proof when downloading less than a full sector")
+	if uint64(offset)+uint64(length) > modules.SectorSize {
+		return modules.RenterContract{}, nil, errors.New("illegal offset and/or length")
+	} else if offset%crypto.SegmentSize != 0 || length%crypto.SegmentSize != 0 {
+		return modules.RenterContract{}, nil, errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
 	}
 
 	// Acquire the contract.
@@ -249,7 +267,7 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	contract := sc.header // for convenience
 
 	// calculate price
-	price := s.host.DownloadBandwidthPrice.Mul64(uint64(req.Length))
+	price := s.host.DownloadBandwidthPrice.Mul64(uint64(length))
 	if contract.RenterFunds().Cmp(price) < 0 {
 		return modules.RenterContract{}, nil, errors.New("contract has insufficient funds to support download")
 	}
@@ -278,7 +296,13 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 	sig := crypto.SignHash(txn.SigHash(0, s.height), contract.SecretKey)
 	txn.TransactionSignatures[0].Signature = sig[:]
 
-	// fill in the missing request fields
+	// create the request object
+	req := modules.LoopDownloadRequest{
+		MerkleRoot:  root,
+		Offset:      offset,
+		Length:      length,
+		MerkleProof: true,
+	}
 	req.NewRevisionNumber = rev.NewRevisionNumber
 	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
 	for i, o := range rev.NewValidProofOutputs {
@@ -307,6 +331,11 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 		}
 	}()
 
+	// Disrupt before sending the signed revision to the host.
+	if s.deps.Disrupt("InterruptDownloadBeforeSendingRevision") {
+		return modules.RenterContract{}, nil, errors.New("InterruptDownloadBeforeSendingRevision disrupt")
+	}
+
 	// send download RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	err = s.writeRequest(modules.RPCLoopDownload, req)
@@ -331,6 +360,11 @@ func (s *Session) Download(req modules.LoopDownloadRequest) (_ modules.RenterCon
 		}
 	} else if crypto.MerkleRoot(resp.Data) != req.MerkleRoot {
 		return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data")
+	}
+
+	// Disrupt after sending the signed revision to the host.
+	if s.deps.Disrupt("InterruptDownloadAfterSendingRevision") {
+		return modules.RenterContract{}, nil, errors.New("InterruptDownloadAfterSendingRevision disrupt")
 	}
 
 	// add host signature
@@ -542,6 +576,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		conn:        conn,
 		contractID:  id,
 		contractSet: cs,
+		deps:        cs.deps,
 		hdb:         hdb,
 		height:      currentHeight,
 		host:        host,

@@ -7,6 +7,8 @@ package renter
 import (
 	"sync/atomic"
 	"time"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // managedDownload will perform some download work.
@@ -34,7 +36,8 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 		return
 	}
 	defer d.Close()
-	pieceData, err := d.Sector(udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].root)
+	root := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].root
+	pieceData, err := d.Download(root, 0, uint32(modules.SectorSize))
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)

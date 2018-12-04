@@ -514,17 +514,21 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		c.mu.Unlock()
 	}()
 
-	// Wait for any active editors and downloaders to finish for this
+	// Wait for any active editors/downloaders/sessions to finish for this
 	// contract, and then grab the latest revision.
 	c.mu.RLock()
 	e, eok := c.editors[id]
 	d, dok := c.downloaders[id]
+	s, sok := c.sessions[id]
 	c.mu.RUnlock()
 	if eok {
 		e.invalidate()
 	}
 	if dok {
 		d.invalidate()
+	}
+	if sok {
+		s.invalidate()
 	}
 
 	// Fetch the contract that we are renewing.
