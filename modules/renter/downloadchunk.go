@@ -236,7 +236,8 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 	}
 
 	// Write the bytes to the requested output.
-	start, end := recoveredDataOffsetAndLength(uint32(udc.staticFetchOffset), uint32(udc.staticFetchLength), udc.erasureCode)
+	start := recoveredDataOffset(udc.staticFetchOffset, udc.erasureCode)
+	end := start + udc.staticFetchLength
 	_, err = udc.destination.WriteAt(recoveredData[start:end], udc.staticWriteOffset)
 	if err != nil {
 		udc.mu.Lock()
@@ -287,18 +288,18 @@ func bytesToRecover(chunkFetchOffset, chunkFetchLength, chunkSize uint64, rs mod
 
 }
 
-// recoveredDataOffsetAndLength translates the fetch offset and length of the
-// chunk into the offset and length of the recovered data.
-func recoveredDataOffsetAndLength(chunkFetchOffset, chunkFetchLength uint32, rs modules.ErasureCoder) (uint32, uint32) {
+// recoveredDataOffset translates the fetch offset of the chunk into the offset
+// within the recovered data.
+func recoveredDataOffset(chunkFetchOffset uint64, rs modules.ErasureCoder) uint64 {
 	// If partialDecoding is not available we downloaded the whole sector and
 	// recovered the whole chunk which means the offset and length are actually
 	// equal to the chunkFetchOffset and chunkFetchLength.
 	// TODO Set partialDecoding correctly.
 	partialDecoding := true
 	if !partialDecoding {
-		return chunkFetchOffset, chunkFetchOffset + chunkFetchLength
+		return chunkFetchOffset
 	}
 	// Else we need to adjust the offset a bit.
-	recoveredSegmentSize := uint32(rs.MinPieces() * crypto.SegmentSize)
-	return chunkFetchOffset % recoveredSegmentSize, chunkFetchOffset + chunkFetchLength
+	recoveredSegmentSize := uint64(rs.MinPieces() * crypto.SegmentSize)
+	return chunkFetchOffset % recoveredSegmentSize
 }
