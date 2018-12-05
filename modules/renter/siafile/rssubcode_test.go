@@ -68,4 +68,13 @@ func TestPartialEncodeRecover(t *testing.T) {
 		}
 		dataOffset += decodedSegmentSize
 	}
+	// Recover all segments at once.
+	buf = new(bytes.Buffer)
+	err = rsc.Recover(encodedPieces, uint64(len(data)), buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buf.Bytes(), data) {
+		t.Fatal("decoded bytes don't equal original data")
+	}
 }
