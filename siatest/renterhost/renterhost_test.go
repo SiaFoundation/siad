@@ -26,7 +26,7 @@ func TestSession(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(siatest.TestDir(t.Name()), gp)
+	tg, err := siatest.NewGroupFromTemplate(renterHostTestDir(t.Name()), gp)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,11 +50,21 @@ var (
 		ExpectedDownload:   modules.SectorSize / 50,
 		ExpectedRedundancy: 5.0,
 	}
+
+	// testGroupBuffer is a buffer channel to control the number of testgroups
+	// and nodes created at once
+	testGroupBuffer = NewGroupBuffer(NumberOfParallelGroups)
 )
 
 // NewGroup creates a group of TestNodes from node params. All the nodes will
 // be connected, synced and funded. Hosts nodes are also announced.
 func NewGroup(groupDir string, nodeParams ...node.NodeParams) (*TestGroup, error) {
+	// Wait until there is an available buffer
+	<-testGroupBuffer
+	defer func() {
+		testGroupBuffer <- struct{}{}
+	}()
+
 	// Create and init group
 	tg := &TestGroup{
 		nodes:   make(map[*TestNode]struct{}),
@@ -102,6 +112,15 @@ func NewGroup(groupDir string, nodeParams ...node.NodeParams) (*TestGroup, error
 	}
 	// Fully connect nodes
 	return tg, tg.setupNodes(tg.hosts, tg.nodes, tg.renters)
+}
+
+// NewGroupBuffer creates a new buffer channel and fills it
+func NewGroupBuffer(size int) chan struct{} {
+	buffer := make(chan struct{}, size)
+	for i := 0; i < size; i++ {
+		buffer <- struct{}{}
+	}
+	return buffer
 }
 
 // NewGroupFromTemplate will create hosts, renters and miners according to the
