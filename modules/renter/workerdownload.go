@@ -8,8 +8,40 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
+
+// segmentsForRecovery calculates the first segment and how many segments we
+// need in total to recover the requested data.
+func segmentsForRecovery(chunkFetchOffset, chunkFetchLength uint64, rs modules.ErasureCoder) (uint64, uint64) {
+	// If partialDecoding is not available we need to download the whole
+	// sector.
+	// TODO Set partialDecoding correctly.
+	partialDecoding := true
+	if !partialDecoding {
+		return 0, uint64(modules.SectorSize) / crypto.SegmentSize
+	}
+	// Else we need to figure out what segments of the piece we need to
+	// download for the recovered data to contain the data we want.
+	recoveredSegmentSize := uint64(rs.MinPieces() * crypto.SegmentSize)
+	// Calculate the offset of the download.
+	startSegment := chunkFetchOffset / recoveredSegmentSize
+	// Calculate the length of the download.
+	endSegment := (chunkFetchOffset + chunkFetchLength) / recoveredSegmentSize
+	if (chunkFetchOffset+chunkFetchLength)%recoveredSegmentSize != 0 {
+		endSegment++
+	}
+	return startSegment, endSegment - startSegment
+}
+
+// sectorOffsetAndLength translates the fetch offset and length of the chunk
+// into the offset and length of the sector we need to download for a
+// successful recovery of the requested data.
+func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs modules.ErasureCoder) (uint64, uint64) {
+	segmentIndex, numSegments := segmentsForRecovery(chunkFetchOffset, chunkFetchLength, rs)
+	return uint64(segmentIndex * crypto.SegmentSize), uint64(numSegments * crypto.SegmentSize)
+}
 
 // managedDownload will perform some download work.
 func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
@@ -36,8 +68,9 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 		return
 	}
 	defer d.Close()
+	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].root
-	pieceData, err := d.Download(root, 0, uint32(modules.SectorSize))
+	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)
@@ -55,7 +88,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	// is usually a lot more scarce than CPU processing power.
 	pieceIndex := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].index
 	key := udc.masterKey.Derive(udc.staticChunkIndex, pieceIndex)
-	decryptedPiece, err := key.DecryptBytesInPlace(pieceData, 0)
+	decryptedPiece, err := key.DecryptBytesInPlace(pieceData, uint64(fetchOffset/crypto.SegmentSize))
 	if err != nil {
 		w.renter.log.Debugln("worker failed to decrypt piece:", err)
 		udc.managedUnregisterWorker(w)
