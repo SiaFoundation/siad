@@ -290,7 +290,7 @@ func (sfs *SiaFileSet) NewFromFileData(fd FileData) (*SiaFileSetEntry, error) {
 		},
 		deleted:        fd.Deleted,
 		deps:           modules.ProdDependencies,
-		siaFilePath:    fd.RepairPath,
+		siaFilePath:    filepath.Join(sfs.siaFileDir, fd.Name+ShareExtension),
 		staticUniqueID: fd.UID,
 		wal:            sfs.wal,
 	}

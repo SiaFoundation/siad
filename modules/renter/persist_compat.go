@@ -34,18 +34,20 @@ func (r *Renter) compatV137ConvertSiaFiles() error {
 		// Open the file.
 		file, err := os.Open(path)
 		if err != nil {
-			r.log.Println("ERROR: could not open .sia file:", err)
-			return nil
+			return err
 		}
-		defer file.Close()
 
 		// Load the file contents into the renter.
 		_, err = r.compatV137loadSiaFilesFromReader(file, path)
 		if err != nil {
-			r.log.Println("ERROR: could not load .sia file:", err)
-			return nil
+			return errors.Compose(err, file.Close())
 		}
-		return nil
+
+		// Close the file and delete it since it was converted.
+		if err := file.Close(); err != nil {
+			return err
+		}
+		return os.Remove(path)
 	})
 }
 
