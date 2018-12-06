@@ -5,12 +5,24 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestRecoveredDataOffset tests the recoveredDataOffset helper function.
 func TestRecoveredDataOffset(t *testing.T) {
+	// Test the legacy erasure coder first.
+	rscOld, err := siafile.NewRSCode(10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset := fastrand.Intn(100)
+	rdo := recoveredDataOffset(uint64(offset), rscOld)
+	if rdo != uint64(offset) {
+		t.Fatal("recoveredDataOffset failed for legacy erasure coder")
+	}
+
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSCode(10, 20)
+	rsc, err := siafile.NewRSSubCode(10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,8 +63,21 @@ func TestRecoveredDataOffset(t *testing.T) {
 
 // TestBytesToRecover tests the bytesToRecover helper function.
 func TestBytesToRecover(t *testing.T) {
+	// Test the legacy erasure coder first.
+	rscOld, err := siafile.NewRSCode(10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset := fastrand.Intn(100)
+	length := fastrand.Intn(100)
+	chunkSize := fastrand.Intn(100)
+	btr := bytesToRecover(uint64(offset), uint64(length), uint64(chunkSize), rscOld)
+	if btr != uint64(chunkSize) {
+		t.Fatal("bytesToRecover failed for legacy erasure coder")
+	}
+
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSCode(10, 20)
+	rsc, err := siafile.NewRSSubCode(10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}

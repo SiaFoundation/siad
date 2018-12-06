@@ -3,13 +3,28 @@ package renter
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestSegmentsForRecovery tests the segmentsForRecovery helper function.
 func TestSegmentsForRecovery(t *testing.T) {
+	// Test the legacy erasure coder first.
+	rscOld, err := siafile.NewRSCode(10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset := fastrand.Intn(100)
+	length := fastrand.Intn(100)
+	startSeg, numSeg := segmentsForRecovery(uint64(offset), uint64(length), rscOld)
+	if startSeg != 0 || numSeg != modules.SectorSize/crypto.SegmentSize {
+		t.Fatal("segmentsForRecovery failed for legacy erasure coder")
+	}
+
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSCode(10, 20)
+	rsc, err := siafile.NewRSSubCode(10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,8 +68,20 @@ func TestSegmentsForRecovery(t *testing.T) {
 
 // TestSectorOffsetAndLength tests the sectorOffsetAndLength helper function.
 func TestSectorOffsetAndLength(t *testing.T) {
+	// Test the legacy erasure coder first.
+	rscOld, err := siafile.NewRSCode(10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset := fastrand.Intn(100)
+	length := fastrand.Intn(100)
+	startSeg, numSeg := sectorOffsetAndLength(uint64(offset), uint64(length), rscOld)
+	if startSeg != 0 || numSeg != modules.SectorSize {
+		t.Fatal("sectorOffsetAndLength failed for legacy erasure coder")
+	}
+
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSCode(10, 20)
+	rsc, err := siafile.NewRSSubCode(10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
