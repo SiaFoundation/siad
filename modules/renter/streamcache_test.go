@@ -10,6 +10,8 @@ import (
 
 // TestHeapImplementation tests that the streamCache heap functions properly
 func TestHeapImplementation(t *testing.T) {
+	t.Skip("Caching is broken due to partial downloads")
+
 	// Initializing minimum variables
 	streamHeap := make(streamHeap, 0, DefaultStreamCacheSize)
 	heap.Init(&streamHeap)
@@ -70,6 +72,8 @@ func TestHeapImplementation(t *testing.T) {
 // TestPruneCache tests to make sure that pruneCache always prunes the cache
 // to the given size
 func TestPruneCache(t *testing.T) {
+	t.Skip("Caching is broken due to partial downloads")
+
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -119,6 +123,8 @@ func TestPruneCache(t *testing.T) {
 // SetStreamingCacheSize() is tested through the API endpoint tests in the
 // siatest packages
 func TestStreamCache(t *testing.T) {
+	t.Skip("Caching is broken due to partial downloads")
+
 	if testing.Short() {
 		t.SkipNow()
 	}

@@ -71,28 +71,28 @@ func (sh *streamHeap) update(cd *chunkData, id string, data []byte, lastAccess t
 
 // Add adds the chunk to the cache if the download is a streaming
 // endpoint download.
-// TODO this won't be necessary anymore once we have partial downloads.
 func (sc *streamCache) Add(cacheID string, data []byte) {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-
-	// Check to make sure chuck has not already been added
-	if _, ok := sc.streamMap[cacheID]; ok {
-		return
-	}
-
-	// pruning cache to cacheSize - 1 to make room to add the new chunk
-	sc.pruneCache(sc.cacheSize - 1)
-
-	// Add chunk to Map and Heap
-	cd := &chunkData{
-		id:         cacheID,
-		data:       data,
-		lastAccess: time.Now(),
-	}
-	sc.streamMap[cacheID] = cd
-	heap.Push(&sc.streamHeap, cd)
-	sc.streamHeap.update(cd, cd.id, cd.data, cd.lastAccess)
+	return
+	//	sc.mu.Lock()
+	//	defer sc.mu.Unlock()
+	//
+	//	// Check to make sure chuck has not already been added
+	//	if _, ok := sc.streamMap[cacheID]; ok {
+	//		return
+	//	}
+	//
+	//	// pruning cache to cacheSize - 1 to make room to add the new chunk
+	//	sc.pruneCache(sc.cacheSize - 1)
+	//
+	//	// Add chunk to Map and Heap
+	//	cd := &chunkData{
+	//		id:         cacheID,
+	//		data:       data,
+	//		lastAccess: time.Now(),
+	//	}
+	//	sc.streamMap[cacheID] = cd
+	//	heap.Push(&sc.streamHeap, cd)
+	//	sc.streamHeap.update(cd, cd.id, cd.data, cd.lastAccess)
 }
 
 // pruneCache prunes the cache until it is the length of size
@@ -124,38 +124,39 @@ func (sc *streamCache) pruneCache(size uint64) {
 // TODO: in the future we might need cache invalidation. At the
 // moment this doesn't worry us since our files are static.
 func (sc *streamCache) Retrieve(udc *unfinishedDownloadChunk) bool {
-	udc.mu.Lock()
-	defer udc.mu.Unlock()
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
+	return false
+	//udc.mu.Lock()
+	//defer udc.mu.Unlock()
+	//sc.mu.Lock()
+	//defer sc.mu.Unlock()
 
-	cd, cached := sc.streamMap[udc.staticCacheID]
-	if !cached {
-		return false
-	}
+	//cd, cached := sc.streamMap[udc.staticCacheID]
+	//if !cached {
+	//	return false
+	//}
 
-	// chunk exists, updating lastAccess and reinserting into map, updating heap
-	cd.lastAccess = time.Now()
-	sc.streamMap[udc.staticCacheID] = cd
-	sc.streamHeap.update(cd, cd.id, cd.data, cd.lastAccess)
+	//// chunk exists, updating lastAccess and reinserting into map, updating heap
+	//cd.lastAccess = time.Now()
+	//sc.streamMap[udc.staticCacheID] = cd
+	//sc.streamHeap.update(cd, cd.id, cd.data, cd.lastAccess)
 
-	start := udc.staticFetchOffset
-	end := start + udc.staticFetchLength
-	_, err := udc.destination.WriteAt(cd.data[start:end], udc.staticWriteOffset)
-	if err != nil {
-		udc.fail(errors.AddContext(err, "failed to write cached chunk to destination"))
-		return true
-	}
+	//start := udc.staticFetchOffset
+	//end := start + udc.staticFetchLength
+	//_, err := udc.destination.WriteAt(cd.data[start:end], udc.staticWriteOffset)
+	//if err != nil {
+	//	udc.fail(errors.AddContext(err, "failed to write cached chunk to destination"))
+	//	return true
+	//}
 
-	// Check if the download is complete now.
-	udc.download.mu.Lock()
-	defer udc.download.mu.Unlock()
+	//// Check if the download is complete now.
+	//udc.download.mu.Lock()
+	//defer udc.download.mu.Unlock()
 
-	udc.download.chunksRemaining--
-	if udc.download.chunksRemaining == 0 {
-		udc.download.markComplete()
-	}
-	return true
+	//udc.download.chunksRemaining--
+	//if udc.download.chunksRemaining == 0 {
+	//	udc.download.markComplete()
+	//}
+	//return true
 }
 
 // SetStreamingCacheSize sets the cache size.  When calling, add check

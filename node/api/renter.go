@@ -866,7 +866,7 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		}
 
 		// Create the erasure coder.
-		ec, err = siafile.NewRSSubCode(dataPieces, parityPieces)
+		ec, err = siafile.NewRSSubCode(dataPieces, parityPieces, 64)
 		if err != nil {
 			WriteError(w, Error{"unable to encode file using the provided parameters: " + err.Error()}, http.StatusBadRequest)
 			return

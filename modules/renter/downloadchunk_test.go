@@ -3,6 +3,7 @@ package renter
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -22,7 +23,7 @@ func TestRecoveredDataOffset(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSSubCode(10, 20)
+	rsc, err := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestBytesToRecover(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSSubCode(10, 20)
+	rsc, err := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)
 	}
