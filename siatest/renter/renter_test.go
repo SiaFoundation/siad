@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -150,7 +151,7 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	afterUploadTime := time.Now()
 
 	// Get the timestamps using the API.
-	fi, err := r.FileInfo(rf)
+	fi, err := r.File(rf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +195,7 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	afterDownloadTime := time.Now()
 
 	// Get the timestamps using the API.
-	fi2, err := r.FileInfo(rf)
+	fi2, err := r.File(rf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +230,7 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	afterRenameTime := time.Now()
 
 	// Get the timestamps using the API.
-	fi3, err := r.FileInfo(rf)
+	fi3, err := r.File(rf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,7 +674,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Get the file info of the fully uploaded file. Tha way we can compare the
 	// redundancies later.
-	fi, err := renter.FileInfo(remoteFile)
+	fi, err := renter.File(remoteFile)
 	if err != nil {
 		t.Fatal("failed to get file info", err)
 	}
@@ -727,7 +728,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Get the file info of the fully uploaded file. Tha way we can compare the
 	// redundancieslater.
-	fi, err := r.FileInfo(remoteFile)
+	fi, err := r.File(remoteFile)
 	if err != nil {
 		t.Fatal("failed to get file info", err)
 	}
@@ -2149,7 +2150,10 @@ func TestRenterLosingHosts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
+	//
+	// too many open files error when running locally.  Tests do not run in
+	// parallel on current GitLab CI so no impact to online run time
 
 	// Create a testgroup without a renter so renter can be added with custom
 	// allowance
@@ -2553,6 +2557,9 @@ func TestRenterPersistData(t *testing.T) {
 		t.SkipNow()
 	}
 	// t.Parallel()
+	//
+	// too many open files error when running locally.  Tests do not run in
+	// parallel on current GitLab CI so no impact to online run time
 
 	// Get test directory
 	testDir := renterTestDir(t.Name())
@@ -3126,6 +3133,181 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestRenterFileChangeDuringDownload confirms that a download will continue and
+// succeed if the file is renamed or deleted after the download has started
+func TestRenterFileChangeDuringDownload(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// t.Parallel()
+	//
+	// too many open files error when running locally.  Tests do not run in
+	// parallel on current GitLab CI so no impact to online run time
+
+	// Create a testgroup,
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Renters: 1,
+		Miners:  1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Grab Renter and upload file
+	r := tg.Renters()[0]
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	chunkSize := int64(siatest.ChunkSize(dataPieces, crypto.TypeDefaultRenter))
+	fileSize := 3 * int(chunkSize)
+	_, rf1, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf2, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf3, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf4, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf5, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the bandwidth limit to 1 chunk per second.
+	if err := r.RenterPostRateLimit(chunkSize, chunkSize); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create Wait group
+	wg := new(sync.WaitGroup)
+
+	// Test Renaming while Downloading and Streaming on 5 files.
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf1, t, wg, time.Second)
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf2, t, wg, time.Second)
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf3, t, wg, time.Second)
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf4, t, wg, time.Second)
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf5, t, wg, time.Second)
+	wg.Wait()
+
+	// Test Deleting while Downloading and Streaming
+	//
+	// Download the file
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf1, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf2, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf3, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf4, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf5, t, wg, time.Second)
+
+	wg.Wait()
+}
+
+// deleteDuringDownloadAndStream will download and stream a file in parallel, it
+// will then sleep to ensure the download and stream have downloaded some data,
+// then it will delete the file
+func deleteDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, t *testing.T, wg *sync.WaitGroup, sleep time.Duration) {
+	defer wg.Done()
+	wgDelete := new(sync.WaitGroup)
+	// Download the file
+	wgDelete.Add(1)
+	go func() {
+		defer wgDelete.Done()
+		_, err := r.DownloadToDisk(rf, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Stream the File
+	wgDelete.Add(1)
+	go func() {
+		defer wgDelete.Done()
+		_, err := r.Stream(rf)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Delete the file
+	wgDelete.Add(1)
+	go func() {
+		defer wgDelete.Done()
+		// Wait to ensure download and stream have started
+		time.Sleep(sleep)
+		err := r.RenterDeletePost(rf.SiaPath())
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// Wait for the method's go routines to finish
+	wgDelete.Wait()
+
+}
+
+// renameDuringDownloadAndStream will download and stream a file in parallel, it
+// will then sleep to ensure the download and stream have downloaded some data,
+// then it will rename the file
+func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, t *testing.T, wg *sync.WaitGroup, sleep time.Duration) {
+	defer wg.Done()
+	wgRename := new(sync.WaitGroup)
+	// Download the file
+	wgRename.Add(1)
+	go func() {
+		defer wgRename.Done()
+		_, err := r.DownloadToDisk(rf, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Stream the File
+	wgRename.Add(1)
+	go func() {
+		defer wgRename.Done()
+		_, err := r.Stream(rf)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Rename the file
+	wgRename.Add(1)
+	go func() {
+		defer wgRename.Done()
+		// Wait to ensure download and stream have started
+		time.Sleep(sleep)
+		var err error
+		rf, err = r.Rename(rf, hex.EncodeToString(fastrand.Bytes(4)))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Wait for the method's go routines to finish
+	wgRename.Wait()
 }
 
 // The following are helper functions for the renter tests

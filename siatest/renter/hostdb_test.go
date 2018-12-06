@@ -101,6 +101,9 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		t.SkipNow()
 	}
 	// t.Parallel()
+	//
+	// too many open files error when running locally.  Tests do not run in
+	// parallel on current GitLab CI so no impact to online run time
 
 	// Get the testDir for this test.
 	testDir := renterTestDir(t.Name())
@@ -302,6 +305,9 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 		t.SkipNow()
 	}
 	// t.Parallel()
+	//
+	// too many open files error when running locally.  Tests do not run in
+	// parallel on current GitLab CI so no impact to online run time
 
 	// Get the testDir for this test.
 	testDir := renterTestDir(t.Name())
@@ -456,6 +462,9 @@ func TestDisableIPViolationCheck(t *testing.T) {
 		t.SkipNow()
 	}
 	// t.Parallel()
+	//
+	// too many open files error when running locally.  Tests do not run in
+	// parallel on current GitLab CI so no impact to online run time
 
 	// Get the testDir for this test.
 	testDir := renterTestDir(t.Name())
@@ -612,6 +621,9 @@ func TestFilterMode(t *testing.T) {
 		t.SkipNow()
 	}
 	// t.Parallel()
+	//
+	// too many open files error when running locally.  Tests do not run in
+	// parallel on current GitLab CI so no impact to online run time
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
