@@ -19,7 +19,6 @@ func TestRecoveredDataOffset(t *testing.T) {
 	assert := func(offset, length, expectedOffset uint64) {
 		o := recoveredDataOffset(offset, rsc)
 		if o != expectedOffset {
-			t.Log(offset, expectedOffset)
 			t.Fatalf("wrong offset: expected %v but was %v", expectedOffset, o)
 		}
 	}
@@ -62,7 +61,6 @@ func TestBytesToRecover(t *testing.T) {
 	assert := func(offset, length, expectedNumBytes uint64) {
 		numBytes := bytesToRecover(offset, length, uint64(rsc.MinPieces())*modules.SectorSize, rsc)
 		if numBytes != expectedNumBytes {
-			t.Log(offset, length, expectedNumBytes)
 			t.Fatalf("wrong numBytes: expected %v but was %v", expectedNumBytes, numBytes)
 		}
 	}

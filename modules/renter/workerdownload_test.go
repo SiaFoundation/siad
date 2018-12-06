@@ -18,11 +18,9 @@ func TestSegmentsForRecovery(t *testing.T) {
 	assert := func(offset, length, expectedStartSeg, expectedNumSeg uint64) {
 		startSeg, numSeg := segmentsForRecovery(offset, length, rsc)
 		if startSeg != expectedStartSeg {
-			t.Log(offset, length, expectedStartSeg, expectedNumSeg)
 			t.Fatalf("wrong startSeg: expected %v but was %v", expectedStartSeg, startSeg)
 		}
 		if numSeg != expectedNumSeg {
-			t.Log(offset, length, expectedStartSeg, expectedNumSeg)
 			t.Fatalf("wrong numSeg: expected %v but was %v", expectedNumSeg, numSeg)
 		}
 	}
@@ -65,11 +63,9 @@ func TestSectorOffsetAndLength(t *testing.T) {
 	assert := func(offset, length, expectedOffset, expectedLength uint64) {
 		o, l := sectorOffsetAndLength(offset, length, rsc)
 		if o != expectedOffset {
-			t.Log(offset, length, expectedOffset, expectedLength)
 			t.Fatalf("wrong offset: expected %v but was %v", expectedOffset, o)
 		}
 		if l != expectedLength {
-			t.Log(offset, length, expectedOffset, expectedLength)
 			t.Fatalf("wrong length: expected %v but was %v", expectedLength, l)
 		}
 	}
