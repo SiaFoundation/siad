@@ -187,7 +187,6 @@ type (
 		destinationType   string              // "file", "buffer", "http stream", etc.
 		destinationString string              // The string to report to the user for the destination.
 		file              *siafile.Snapshot   // The file to download.
-		f                 *siafile.SiaFile
 
 		latencyTarget time.Duration // Workers above this latency will be automatically put on standby initially.
 		length        uint64        // Length of download. Cannot be 0.
@@ -404,15 +403,18 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		return nil, err
 	}
 
-	// Once the download is done we close the file if we downloaded to disk.
-	if closer, ok := dw.(io.Closer); ok {
-		d.OnComplete(func(_ error) error {
-			err1 := entry.SiaFile.UpdateAccessTime()
-			err2 := entry.Close()
-			err3 := closer.Close()
-			return errors.Compose(err1, err2, err3)
-		})
-	}
+	// Register some cleanup for when the download is done.
+	d.OnComplete(func(_ error) error {
+		// Update the access time.
+		err := entry.SiaFile.UpdateAccessTime()
+		// Close the fileEntry.
+		err = errors.Compose(err, entry.Close())
+		// close the destination if possible.
+		if closer, ok := dw.(io.Closer); ok {
+			err = errors.Compose(err, closer.Close())
+		}
+		return err
+	})
 
 	// Add the download object to the download queue.
 	r.downloadHistoryMu.Lock()

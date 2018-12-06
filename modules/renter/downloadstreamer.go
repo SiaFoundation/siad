@@ -15,10 +15,10 @@ type (
 	// streamer is a modules.Streamer that can be used to stream downloads from
 	// the sia network.
 	streamer struct {
-		file   *siafile.Snapshot
-		entry  *siafile.SiaFileSetEntry
-		offset int64
-		r      *Renter
+		staticFile      *siafile.Snapshot
+		staticFileEntry *siafile.SiaFileSetEntry
+		offset          int64
+		r               *Renter
 	}
 )
 
@@ -43,9 +43,9 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 	}
 	// Create the streamer
 	s := &streamer{
-		file:  entry.Snapshot(),
-		entry: entry,
-		r:     r,
+		staticFile:      entry.Snapshot(),
+		staticFileEntry: entry,
+		r:               r,
 	}
 	return entry.SiaPath(), s, nil
 }
@@ -53,8 +53,8 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 // Close closes the streamer and let's the fileSet know that the SiaFile is no
 // longer in use.
 func (s *streamer) Close() error {
-	err1 := s.entry.SiaFile.UpdateAccessTime()
-	err2 := s.entry.Close()
+	err1 := s.staticFileEntry.SiaFile.UpdateAccessTime()
+	err2 := s.staticFileEntry.Close()
 	return errors.Compose(err1, err2)
 }
 
@@ -64,7 +64,7 @@ func (s *streamer) Close() error {
 // only request a single chunk at once.
 func (s *streamer) Read(p []byte) (n int, err error) {
 	// Get the file's size
-	fileSize := int64(s.file.Size())
+	fileSize := int64(s.staticFile.Size())
 
 	// Make sure we haven't reached the EOF yet.
 	if s.offset >= fileSize {
@@ -72,13 +72,13 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 	}
 
 	// Calculate how much we can download. We never download more than a single chunk.
-	chunkIndex, chunkOffset := s.file.ChunkIndexByOffset(uint64(s.offset))
-	if chunkIndex == s.file.NumChunks() {
+	chunkIndex, chunkOffset := s.staticFile.ChunkIndexByOffset(uint64(s.offset))
+	if chunkIndex == s.staticFile.NumChunks() {
 		return 0, io.EOF
 	}
 	remainingData := uint64(fileSize - s.offset)
 	requestedData := uint64(len(p))
-	remainingChunk := s.file.ChunkSize() - chunkOffset
+	remainingChunk := s.staticFile.ChunkSize() - chunkOffset
 	length := min(remainingData, requestedData, remainingChunk)
 
 	// Download data
@@ -87,7 +87,7 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 		destination:       newDownloadDestinationWriter(buffer),
 		destinationType:   destinationTypeSeekStream,
 		destinationString: "httpresponse",
-		file:              s.file,
+		file:              s.staticFile,
 
 		latencyTarget: 50 * time.Millisecond, // TODO low default until full latency suport is added.
 		length:        length,
@@ -137,7 +137,7 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		newOffset = s.offset
 	case io.SeekEnd:
-		newOffset = int64(s.file.Size())
+		newOffset = int64(s.staticFile.Size())
 	}
 	newOffset += offset
 
