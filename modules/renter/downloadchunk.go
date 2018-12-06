@@ -276,9 +276,7 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 func bytesToRecover(chunkFetchOffset, chunkFetchLength, chunkSize uint64, rs modules.ErasureCoder) uint64 {
 	// If partialDecoding is not available we downloaded the whole sector and
 	// recovered the whole chunk.
-	// TODO Set partialDecoding correctly.
-	partialDecoding := true
-	if !partialDecoding {
+	if !rs.SupportsPartialEncoding() {
 		return chunkSize
 	}
 	// Else we need to calculate how much data we need to recover.
@@ -294,9 +292,7 @@ func recoveredDataOffset(chunkFetchOffset uint64, rs modules.ErasureCoder) uint6
 	// If partialDecoding is not available we downloaded the whole sector and
 	// recovered the whole chunk which means the offset and length are actually
 	// equal to the chunkFetchOffset and chunkFetchLength.
-	// TODO Set partialDecoding correctly.
-	partialDecoding := true
-	if !partialDecoding {
+	if !rs.SupportsPartialEncoding() {
 		return chunkFetchOffset
 	}
 	// Else we need to adjust the offset a bit.
