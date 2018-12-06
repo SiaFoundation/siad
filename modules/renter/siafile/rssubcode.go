@@ -50,42 +50,36 @@ func (rs *RSSubCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 				pieceSize, len(piece))
 		}
 	}
-	// Convert pieces.
-	tmpPieces := make([][]byte, len(pieces))
-	i := 0
-	for _, piece := range pieces {
-		for buf := bytes.NewBuffer(piece); buf.Len() > 0; {
-			segment := buf.Next(int(segmentSize))
-			pieceIndex := i % len(pieces)
-			segmentIndex := i / len(pieces)
-			if tmpPieces[pieceIndex] == nil {
-				tmpPieces[pieceIndex] = make([]byte, pieceSize)
-			}
-			copy(tmpPieces[pieceIndex][uint64(segmentIndex)*segmentSize:][:segmentSize], segment)
-			i++
-		}
+	// Flatten the pieces into a byte slice.
+	data := make([]byte, uint64(len(pieces))*pieceSize)
+	for i, piece := range pieces {
+		copy(data[uint64(i)*pieceSize:], piece)
+		pieces[i] = pieces[i][:0]
 	}
-	pieces = tmpPieces
-	// Add the parity shards to pieces.
-	for len(pieces) < rs.NumPieces() {
-		pieces = append(pieces, make([]byte, pieceSize))
-	}
-	// Convert the pieces to segments.
-	segments := make([][][]byte, pieceSize/segmentSize)
-	for segmentIndex := 0; uint64(segmentIndex) < pieceSize/segmentSize; segmentIndex++ {
-		segment := ExtractSegment(pieces, segmentIndex)
-		segments[segmentIndex] = make([][]byte, rs.NumPieces())
-		for pieceIndex := range segment {
-			segments[segmentIndex][pieceIndex] = segment[pieceIndex]
-		}
-	}
-	// Encode the segments.
-	for i := range segments {
-		encodedSegment, err := rs.RSCode.EncodeShards(segments[i])
+	// Add parity shards to pieces.
+	parityShards := make([][]byte, rs.NumPieces()-len(pieces))
+	pieces = append(pieces, parityShards...)
+	// Encode the pieces.
+	segmentOffset := uint64(0)
+	for buf := bytes.NewBuffer(data); buf.Len() > 0; {
+		// Get the next segments to encode.
+		s := buf.Next(int(segmentSize) * rs.MinPieces())
+
+		// Create a copy of it.
+		segments := make([]byte, len(s))
+		copy(segments, s)
+
+		// Encode the segment
+		encodedSegments, err := rs.RSCode.Encode(segments)
 		if err != nil {
 			return nil, err
 		}
-		segments[i] = encodedSegment
+
+		// Write the encoded segments back to pieces.
+		for i, segment := range encodedSegments {
+			pieces[i] = append(pieces[i], segment...)
+		}
+		segmentOffset += segmentSize
 	}
 	return pieces, nil
 }

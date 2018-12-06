@@ -11,11 +11,12 @@ import (
 // TestPartialEncodeRecover checks that individual segments of an encoded piece
 // can be recovered.
 func TestPartialEncodeRecover(t *testing.T) {
-	segmentSize := crypto.SegmentSize
 	pieceSize := 4096
 	dataPieces := 10
 	parityPieces := 20
 	data := fastrand.Bytes(pieceSize * dataPieces)
+	originalData := make([]byte, len(data))
+	copy(originalData, data)
 	// Create the erasure coder.
 	rsc, err := NewRSSubCode(dataPieces, parityPieces)
 	if err != nil {
@@ -32,7 +33,8 @@ func TestPartialEncodeRecover(t *testing.T) {
 		if buf.Len() < pieceSize {
 			t.Fatal("Buffer is empty")
 		}
-		pieces[i] = buf.Next(pieceSize)
+		pieces[i] = make([]byte, pieceSize)
+		copy(pieces[i], buf.Next(pieceSize))
 	}
 	// Encode the pieces.
 	encodedPieces, err := rsc.EncodeShards(pieces)
@@ -55,6 +57,7 @@ func TestPartialEncodeRecover(t *testing.T) {
 	}
 	// Recover every segment individually.
 	dataOffset := 0
+	segmentSize := crypto.SegmentSize
 	decodedSegmentSize := segmentSize * dataPieces
 	for segmentIndex := 0; segmentIndex < pieceSize/segmentSize; segmentIndex++ {
 		buf := new(bytes.Buffer)
@@ -63,7 +66,7 @@ func TestPartialEncodeRecover(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Equal(buf.Bytes(), data[dataOffset:dataOffset+decodedSegmentSize]) {
+		if !bytes.Equal(buf.Bytes(), originalData[dataOffset:dataOffset+decodedSegmentSize]) {
 			t.Fatal("decoded bytes don't equal original segment")
 		}
 		dataOffset += decodedSegmentSize
@@ -74,7 +77,7 @@ func TestPartialEncodeRecover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(buf.Bytes(), data) {
+	if !bytes.Equal(buf.Bytes(), originalData) {
 		t.Fatal("decoded bytes don't equal original data")
 	}
 }
