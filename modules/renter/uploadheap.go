@@ -233,35 +233,13 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
 func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
-	// Get all the files holding the readlock.
-	//
-	// TODO - update to just read from disk
+	// Get all the SiaFileSetEntrys
 	entrys, err := r.staticFileSet.All()
 	if err != nil {
 		return
 	}
 
-	// Save host keys in map. We can't do that under the same lock since we
-	// need to call a public method on the file.
-	pks := make(map[string]types.SiaPublicKey)
-	goodForRenew := make(map[string]bool)
-	offline := make(map[string]bool)
-	for _, e := range entrys {
-		for _, pk := range e.HostPublicKeys() {
-			pks[string(pk.Key)] = pk
-		}
-	}
-
-	// Build 2 maps that map every pubkey to its offline and goodForRenew
-	// status.
-	for _, pk := range pks {
-		cu, ok := r.hostContractor.ContractUtility(pk)
-		if !ok {
-			continue
-		}
-		goodForRenew[string(pk.Key)] = ok && cu.GoodForRenew
-		offline[string(pk.Key)] = r.hostContractor.IsOffline(pk)
-	}
+	offline, goodForRenew := r.managedFileUtilities(entrys)
 
 	// Loop through the whole set of files and get a list of chunks to add to
 	// the heap.

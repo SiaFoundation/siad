@@ -7,9 +7,9 @@ func (r *Renter) CreateDir(siaPath string) error {
 		return err
 	}
 	defer r.tg.Done()
-	lockID := r.mu.Lock()
-	defer r.mu.Unlock(lockID)
-	return r.createDir(siaPath)
+	siaDir, err := r.staticDirSet.NewSiaDir(siaPath)
+	defer siaDir.Close()
+	return err
 }
 
 // DeleteDir removes a directory from the renter and deletes all its sub
