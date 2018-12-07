@@ -6,6 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 const (
@@ -29,6 +30,14 @@ var (
 		Standard: 2 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
+
+	// ephemeralSeedInterval is the amount of blocks after which we use a new
+	// renter seed for creating file contracts.
+	ephemeralSeedInterval = build.Select(build.Var{
+		Dev:      types.BlockHeight(100),
+		Standard: types.BlockHeight(1000),
+		Testing:  types.BlockHeight(10),
+	}).(types.BlockHeight)
 
 	// hostPriceLeeway is the amount of flexibility we give to hosts when
 	// choosing how much to pay for file uploads. If the host does not have the
