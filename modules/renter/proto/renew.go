@@ -94,6 +94,13 @@ func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams
 	txnBuilder.AddFileContract(fc)
 	// add miner fee
 	txnBuilder.AddMinerFee(txnFee)
+	// Add FileContract identifier.
+	fcTxn, _ := txnBuilder.View()
+	si, err := prefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	if err != nil {
+		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
+	}
+	_ = txnBuilder.AddArbitraryData(si[:])
 
 	// Create initial transaction set.
 	txn, parentTxns := txnBuilder.View()
@@ -186,14 +193,6 @@ func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams
 	for _, output := range newOutputs {
 		txnBuilder.AddSiacoinOutput(output)
 	}
-
-	// Add FileContract identifier.
-	txn, _ = txnBuilder.View()
-	si, err := signedIdentifier(params.RenterSeed, txn.SiacoinInputs[0])
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
-	}
-	_ = txnBuilder.AddArbitraryData(si[:])
 
 	// sign the txn
 	signedTxnSet, err := txnBuilder.Sign(true)
@@ -380,6 +379,13 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	txnBuilder.AddFileContract(fc)
 	// add miner fee
 	txnBuilder.AddMinerFee(txnFee)
+	// Add FileContract identifier.
+	fcTxn, _ := txnBuilder.View()
+	si, err := prefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	if err != nil {
+		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
+	}
+	_ = txnBuilder.AddArbitraryData(si[:])
 
 	// Create initial transaction set.
 	txn, parentTxns := txnBuilder.View()
@@ -460,14 +466,6 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	for _, output := range resp.Outputs {
 		txnBuilder.AddSiacoinOutput(output)
 	}
-
-	// Add FileContract identifier.
-	txn, _ = txnBuilder.View()
-	si, err := signedIdentifier(params.RenterSeed, txn.SiacoinInputs[0])
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
-	}
-	_ = txnBuilder.AddArbitraryData(si[:])
 
 	// sign the txn
 	signedTxnSet, err := txnBuilder.Sign(true)

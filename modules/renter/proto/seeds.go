@@ -26,7 +26,7 @@ type (
 	contractIdentifier           [32]byte
 	contractIdentifierSigningKey [32]byte
 	contractSecretKey            [32]byte
-	contractSignedIdentifier     [64]byte
+	contractSignedIdentifier     [80]byte // 32 bytes identifier, 32 bytes signature, 16 bytes prefix
 )
 
 // contractIdentifierSeed derives a contractIdentifierSeed from a renterSeed.
@@ -84,21 +84,23 @@ func EphemeralRenterSeed(walletSeed modules.Seed, blockheight types.BlockHeight)
 	return renterSeed
 }
 
-// signedIdentifier is a helper function that creates a signed identifier using
-// a renter key and siacoin input.
-func signedIdentifier(renterSeed RenterSeed, sci types.SiacoinInput) (contractSignedIdentifier, error) {
+// prefixedSignedIdentifier is a helper function that creates a prefixed and
+// signed identifier using a renter key and siacoin input.
+func prefixedSignedIdentifier(renterSeed RenterSeed, sci types.SiacoinInput) (contractSignedIdentifier, error) {
 	// Get identifier and signing key.
 	identifier := renterSeed.contractIdentifierSeed().identifier(sci)
 	signingKey := renterSeed.contractIdentifierSigningSeed().identifierSigningKey(sci)
-	sk, err := crypto.NewSiaKey(crypto.TypeThreefish, signingKey[:])
+	// Pad the signing key since threefish requires 64 bytes of entropy.
+	sk, err := crypto.NewSiaKey(crypto.TypeThreefish, append(signingKey[:], make([]byte, 32)...))
 	if err != nil {
 		return contractSignedIdentifier{}, err
 	}
-	// Sign the identifier.
-	signature := sk.EncryptBytes(identifier[:])
+	// Pad the identifier and sign it.
+	signature := sk.EncryptBytes(append(identifier[:], make([]byte, 32)...))
 	// Create the signed identifer object.
 	var csi contractSignedIdentifier
-	copy(csi[:32], identifier[:])
-	copy(csi[32:], signature[:])
+	copy(csi[:16], modules.PrefixFileContractIdentifier[:])
+	copy(csi[16:48], identifier[:])
+	copy(csi[48:], signature[:])
 	return csi, nil
 }
