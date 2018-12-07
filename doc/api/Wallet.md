@@ -713,6 +713,11 @@ gets the transaction associated with a specific transaction id.
         // Claim outputs cannot be spent until they have had 144 confirmations,
         // thus the maturity height of a claim output will always be 144 larger
         // than the confirmation height of the transaction.
+        //
+        // For file contracts, the maturity height is the contract's WindowEnd
+        // plus the 144-block maturity delay. However, if a valid storage
+        // proof is submitted for the contract, the true maturity height is
+        // 144 blocks after the block that the proof appears in.
         "maturityheight": 50000,
 
         // true if the address is owned by the wallet.
