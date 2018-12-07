@@ -37,7 +37,6 @@ func marshalChunk(chunk chunk) []byte {
 
 // marshalErasureCoder marshals an erasure coder into its type and params.
 func marshalErasureCoder(ec modules.ErasureCoder) ([4]byte, [8]byte) {
-	// Since we only support one type we assume it is ReedSolomon for now.
 	ecType := [4]byte(ec.Type())
 	// Read params from ec.
 	ecParams := [8]byte{}

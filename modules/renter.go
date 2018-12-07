@@ -115,6 +115,10 @@ const (
 )
 
 type (
+	// ErasureCoderType is an identifier for the individual types of erasure
+	// coders.
+	ErasureCoderType [4]byte
+
 	// An ErasureCoder is an error-correcting encoder and decoder.
 	ErasureCoder interface {
 		// NumPieces is the number of pieces returned by Encode.
@@ -142,9 +146,6 @@ type (
 		// Type returns the type identifier of the ErasureCoder.
 		Type() ErasureCoderType
 	}
-	// ErasureCoderType is an identifier for the individual types of erasure
-	// coders.
-	ErasureCoderType [4]byte
 )
 
 // An Allowance dictates how much the Renter is allowed to spend in a given
