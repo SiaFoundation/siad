@@ -69,10 +69,15 @@ type (
 	chunk struct {
 		// ExtensionInfo is some reserved space for each chunk that allows us
 		// to indicate if a chunk is special.
-		ExtensionInfo [16]byte `json:"extensioninfo"`
+		ExtensionInfo [16]byte
 
 		// Pieces are the Pieces of the file the chunk consists of.
-		Pieces [][]piece `json:"pieces"`
+		Pieces [][]piece
+	}
+
+	// Chunk is an exported chunk. It contains exported pieces.
+	Chunk struct {
+		Pieces [][]Piece
 	}
 
 	// piece represents a single piece of a chunk on disk
@@ -84,8 +89,8 @@ type (
 	// Piece is an exported piece. It contains a resolved public key instead of
 	// the table offset.
 	Piece struct {
-		HostPubKey types.SiaPublicKey `json:"hostpubkey"` // public key of the host
-		MerkleRoot crypto.Hash        `json:"merkleroot"` // merkle root of the piece
+		HostPubKey types.SiaPublicKey // public key of the host
+		MerkleRoot crypto.Hash        // merkle root of the piece
 	}
 
 	// HostPublicKey is an entry in the HostPubKey table.
@@ -270,15 +275,6 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 		}
 	}
 	return true
-}
-
-// ChunkIndexByOffset will return the chunkIndex that contains the provided
-// offset of a file and also the relative offset within the chunk. If the
-// offset is out of bounds, chunkIndex will be equal to NumChunk().
-func (sf *SiaFile) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64) {
-	chunkIndex = offset / sf.staticChunkSize()
-	off = offset % sf.staticChunkSize()
-	return
 }
 
 // Delete removes the file from disk and marks it as deleted. Once the file is

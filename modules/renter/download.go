@@ -186,7 +186,7 @@ type (
 		destination       downloadDestination // The place to write the downloaded data.
 		destinationType   string              // "file", "buffer", "http stream", etc.
 		destinationString string              // The string to report to the user for the destination.
-		file              *siafile.SiaFile    // The file to download.
+		file              *siafile.Snapshot   // The file to download.
 
 		latencyTarget time.Duration // Workers above this latency will be automatically put on standby initially.
 		length        uint64        // Length of download. Cannot be 0.
@@ -252,6 +252,20 @@ func (d *download) markComplete() {
 	d.downloadCompleteFuncs = nil
 }
 
+// onComplete registers a function to be called when the download is completed.
+// This can either mean that the download succeeded or failed. The registered
+// functions are executed in the same order as they are registered and waiting
+// for the download's completeChan to be closed implies that the registered
+// functions were executed.
+func (d *download) onComplete(f downloadCompleteFunc) {
+	select {
+	case <-d.completeChan:
+		build.Critical("Can't call OnComplete after download is completed")
+	default:
+	}
+	d.downloadCompleteFuncs = append(d.downloadCompleteFuncs, f)
+}
+
 // staticComplete is a helper function to indicate whether or not the download
 // has completed.
 func (d *download) staticComplete() bool {
@@ -279,12 +293,7 @@ func (d *download) Err() (err error) {
 func (d *download) OnComplete(f downloadCompleteFunc) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	select {
-	case <-d.completeChan:
-		build.Critical("Can't call OnComplete after download is completed")
-	default:
-	}
-	d.downloadCompleteFuncs = append(d.downloadCompleteFuncs, f)
+	d.onComplete(f)
 }
 
 // Download performs a file download using the passed parameters and blocks
@@ -319,7 +328,6 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	if err != nil {
 		return nil, err
 	}
-	defer entry.Close()
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil
@@ -379,7 +387,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		destination:       dw,
 		destinationType:   destinationType,
 		destinationString: p.Destination,
-		file:              entry.SiaFile,
+		file:              entry.SiaFile.Snapshot(),
 
 		latencyTarget: 25e3 * time.Millisecond, // TODO: high default until full latency support is added.
 		length:        p.Length,
@@ -395,12 +403,18 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		return nil, err
 	}
 
-	// Once the download is done we close the file if we downloaded to disk.
-	if closer, ok := dw.(io.Closer); ok {
-		d.OnComplete(func(_ error) error {
-			return closer.Close()
-		})
-	}
+	// Register some cleanup for when the download is done.
+	d.OnComplete(func(_ error) error {
+		// Update the access time.
+		err := entry.SiaFile.UpdateAccessTime()
+		// Close the fileEntry.
+		err = errors.Compose(err, entry.Close())
+		// close the destination if possible.
+		if closer, ok := dw.(io.Closer); ok {
+			err = errors.Compose(err, closer.Close())
+		}
+		return err
+	})
 
 	// Add the download object to the download queue.
 	r.downloadHistoryMu.Lock()
@@ -447,6 +461,12 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		log:           r.log,
 		memoryManager: r.memoryManager,
 	}
+
+	// Update the endTime of the download when it's done.
+	d.onComplete(func(_ error) error {
+		d.endTime = time.Now()
+		return nil
+	})
 
 	// Determine which chunks to download.
 	minChunk, minChunkOffset := params.file.ChunkIndexByOffset(params.offset)

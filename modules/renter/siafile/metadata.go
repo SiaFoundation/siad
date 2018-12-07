@@ -229,7 +229,7 @@ func (sf *SiaFile) UpdateAccessTime() error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
-// ChunkSize returns the size of a single chunk of the file.
+// staticChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) staticChunkSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize * uint64(sf.staticMetadata.staticErasureCode.MinPieces())
 }

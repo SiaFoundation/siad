@@ -70,7 +70,7 @@ OUTER:
 			if fastrand.Intn(100) < 80 {
 				spk := hostkeys[fastrand.Intn(len(hostkeys))]
 				offset := uint64(fastrand.Intn(int(sf.staticMetadata.StaticFileSize)))
-				chunkIndex, _ := sf.ChunkIndexByOffset(offset)
+				chunkIndex, _ := sf.Snapshot().ChunkIndexByOffset(offset)
 				pieceIndex := uint64(fastrand.Intn(sf.staticMetadata.staticErasureCode.NumPieces()))
 				if err := sf.AddPiece(spk, chunkIndex, pieceIndex, crypto.Hash{}); err != nil {
 					if errors.Contains(err, errDiskFault) {

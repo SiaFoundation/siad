@@ -76,7 +76,7 @@ type unfinishedDownloadChunk struct {
 	mu       sync.Mutex
 
 	// The SiaFile from which data is being downloaded.
-	renterFile *siafile.SiaFile
+	renterFile *siafile.Snapshot
 
 	// Caching related fields
 	staticStreamCache *streamCache
@@ -257,8 +257,6 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 	udc.download.chunksRemaining--
 	if udc.download.chunksRemaining == 0 {
 		// Download is complete, send out a notification.
-		udc.download.endTime = time.Now()
-		err := udc.renterFile.UpdateAccessTime()
 		udc.download.markComplete()
 		return err
 	}
