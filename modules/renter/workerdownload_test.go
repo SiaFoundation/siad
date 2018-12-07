@@ -24,7 +24,7 @@ func TestSegmentsForRecovery(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
+	rsc, err := siafile.NewRSSubCode(10, 20, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestSectorOffsetAndLength(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
+	rsc, err := siafile.NewRSSubCode(10, 20, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
