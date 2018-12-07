@@ -30,6 +30,10 @@ const (
 	// byte length prefix for the pieces.
 	marshaledChunkOverhead = 16 + 2
 
+	// pubKeyTablePruneThreshold is the number of unused hosts a SiaFile can
+	// store in its host key table before it is pruned.
+	pubKeyTablePruneThreshold = 50
+
 	// threadDepth is how deep the ThreadType will track calling files and
 	// calling lines
 	threadDepth = 3

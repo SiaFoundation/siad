@@ -423,7 +423,7 @@ func TestSaveSmallHeader(t *testing.T) {
 	sf.addRandomHostKeys(10)
 
 	// Save the header.
-	updates, err := sf.saveHeader()
+	updates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		t.Fatal("Failed to create updates to save header", err)
 	}
@@ -495,7 +495,7 @@ func TestSaveLargeHeader(t *testing.T) {
 	}
 
 	// Save the header.
-	updates, err := sf.saveHeader()
+	updates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		t.Fatal("Failed to create updates to save header", err)
 	}
@@ -576,7 +576,7 @@ func TestUpdateUsedHosts(t *testing.T) {
 	}
 	t.Parallel()
 
-	sf := newTestFile()
+	sf := newBlankTestFile()
 	sf.addRandomHostKeys(10)
 
 	// All the host keys should be used.
@@ -673,7 +673,7 @@ func TestSaveChunk(t *testing.T) {
 	sf.staticChunks[chunkIndex] = chunk
 
 	// Write the chunk to disk using saveChunk.
-	update, err := sf.saveChunk(chunkIndex)
+	update, err := sf.saveChunkUpdate(chunkIndex)
 	if err != nil {
 		t.Fatal(err)
 	}

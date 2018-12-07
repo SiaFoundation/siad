@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -35,6 +36,63 @@ func randomPiece() piece {
 	piece.HostTableOffset = uint32(fastrand.Intn(100))
 	fastrand.Read(piece.MerkleRoot[:])
 	return piece
+}
+
+func TestPruneHosts(t *testing.T) {
+	sf := newBlankTestFile()
+
+	// Add 3 random hostkeys to the file.
+	sf.addRandomHostKeys(3)
+
+	// Save changes to disk.
+	if err := sf.saveFile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add one piece for every host to every pieceSet of the SiaFile.
+	for _, hk := range sf.HostPublicKeys() {
+		for chunkIndex, chunk := range sf.staticChunks {
+			for pieceIndex := range chunk.Pieces {
+				if err := sf.AddPiece(hk, uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+
+	// Mark hostkeys 0 and 2 as unused.
+	sf.pubKeyTable[0].Used = false
+	sf.pubKeyTable[2].Used = false
+	remainingKey := sf.pubKeyTable[1]
+
+	// Prune the file.
+	sf.pruneHosts()
+
+	// Check that there is only a single key left.
+	if len(sf.pubKeyTable) != 1 {
+		t.Fatalf("There should only be 1 key left but was %v", len(sf.pubKeyTable))
+	}
+	// The last key should be the correct one.
+	if !reflect.DeepEqual(remainingKey, sf.pubKeyTable[0]) {
+		t.Fatal("Remaining key doesn't match")
+	}
+	// Loop over all the pieces and make sure that the pieces with missing
+	// hosts were pruned and that the remaining pieces have the correct offset
+	// now.
+	for chunkIndex := range sf.staticChunks {
+		for _, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+			if len(pieceSet) != 1 {
+				t.Fatalf("Expected 1 piece in the set but was %v", len(pieceSet))
+			}
+			// The HostTableOffset should always be 0 since the keys at index 0
+			// and 2 were pruned which means that index 1 is now index 0.
+			for _, piece := range pieceSet {
+				if piece.HostTableOffset != 0 {
+					t.Fatalf("HostTableOffset should be 0 but was %v", piece.HostTableOffset)
+				}
+			}
+		}
+	}
 }
 
 // TestNumPieces tests the chunk's numPieces method.

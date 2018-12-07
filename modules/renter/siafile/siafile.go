@@ -230,16 +230,16 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// Get the updates for the header.
 	if tableChanged {
 		// If the table changed we update the whole header.
-		updates, err = sf.saveHeader()
+		updates, err = sf.saveHeaderUpdates()
 	} else {
 		// Otherwise just the metadata.
-		updates, err = sf.saveMetadata()
+		updates, err = sf.saveMetadataUpdate()
 	}
 	if err != nil {
 		return err
 	}
 	// Save the changed chunk to disk.
-	chunkUpdate, err := sf.saveChunk(int(chunkIndex))
+	chunkUpdate, err := sf.saveChunkUpdate(int(chunkIndex))
 	if err != nil {
 		return err
 	}
@@ -488,16 +488,34 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	}
 	// Mark the entries in the table. If the entry exists 'Used' is true.
 	// Otherwise it's 'false'.
+	var unusedHosts uint
 	for i, entry := range sf.pubKeyTable {
-		_, exists := usedMap[string(entry.PublicKey.Key)]
-		sf.pubKeyTable[i].Used = exists
+		_, used := usedMap[string(entry.PublicKey.Key)]
+		sf.pubKeyTable[i].Used = used
+		if !used {
+			unusedHosts++
+		}
+	}
+	// Prune the pubKeyTable if necessary.
+	pruned := false
+	if unusedHosts > pubKeyTablePruneThreshold {
+		sf.pruneHosts()
+		pruned = true
 	}
 	// Save the header to disk.
-	update, err := sf.saveHeader()
+	updates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return err
 	}
-	return sf.createAndApplyTransaction(update...)
+	// If we pruned the hosts we also need to save the body.
+	if pruned {
+		chunkUpdates, err := sf.saveChunksUpdates()
+		if err != nil {
+			return err
+		}
+		updates = append(updates, chunkUpdates...)
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // UploadProgress indicates what percentage of the file (plus redundancy) has
@@ -534,5 +552,38 @@ func (sf *SiaFile) defragChunk(chunk *chunk) {
 			}
 		}
 		chunk.Pieces[i] = newPieceSet
+	}
+}
+
+// pruneHosts prunes the unused hostkeys from the file, updates the
+// HostTableOffset of the pieces and removes pieces which do no longer have a
+// host.
+func (sf *SiaFile) pruneHosts() {
+	var prunedTable []HostPublicKey
+	// Create a map to track how the indices of the hostkeys changed when being
+	// pruned.
+	offsetMap := make(map[uint32]uint32)
+	for i := uint32(0); i < uint32(len(sf.pubKeyTable)); i++ {
+		if sf.pubKeyTable[i].Used {
+			prunedTable = append(prunedTable, sf.pubKeyTable[i])
+			offsetMap[i] = uint32(len(prunedTable) - 1)
+		}
+	}
+	sf.pubKeyTable = prunedTable
+	// With this map we loop over all the chunks and pieces and update the ones
+	// who got a new offset and remove the ones that no longer have one.
+	for chunkIndex := range sf.staticChunks {
+		for pieceIndex, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+			var newPieceSet []piece
+			for i, piece := range pieceSet {
+				newOffset, exists := offsetMap[piece.HostTableOffset]
+				if exists {
+					pieceSet[i].HostTableOffset = newOffset
+					newPieceSet = append(newPieceSet, pieceSet[i])
+
+				}
+			}
+			sf.staticChunks[chunkIndex].Pieces[pieceIndex] = newPieceSet
+		}
 	}
 }

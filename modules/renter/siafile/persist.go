@@ -309,32 +309,32 @@ func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Up
 
 // saveFile saves the whole SiaFile atomically.
 func (sf *SiaFile) saveFile() error {
-	headerUpdates, err := sf.saveHeader()
+	headerUpdates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return err
 	}
-	chunksUpdates, err := sf.saveChunks()
+	chunksUpdates, err := sf.saveChunksUpdates()
 	if err != nil {
 		return err
 	}
 	return sf.createAndApplyTransaction(append(headerUpdates, chunksUpdates...)...)
 }
 
-// saveChunk creates a writeaheadlog update that saves a single marshaled chunk
+// saveChunkUpdate creates a writeaheadlog update that saves a single marshaled chunk
 // to disk when applied.
-func (sf *SiaFile) saveChunk(chunkIndex int) (writeaheadlog.Update, error) {
+func (sf *SiaFile) saveChunkUpdate(chunkIndex int) (writeaheadlog.Update, error) {
 	offset := sf.chunkOffset(chunkIndex)
 	chunkBytes := marshalChunk(sf.staticChunks[chunkIndex])
 	return sf.createInsertUpdate(offset, chunkBytes), nil
 }
 
-// saveChunks creates a writeaheadlog update that saves the marshaled chunks of
+// saveChunksUpdates creates writeaheadlog updates which save the marshaled chunks of
 // the SiaFile to disk when applied.
-func (sf *SiaFile) saveChunks() ([]writeaheadlog.Update, error) {
+func (sf *SiaFile) saveChunksUpdates() ([]writeaheadlog.Update, error) {
 	// Marshal all the chunks and create updates for them.
 	updates := make([]writeaheadlog.Update, 0, len(sf.staticChunks))
 	for chunkIndex := range sf.staticChunks {
-		update, err := sf.saveChunk(chunkIndex)
+		update, err := sf.saveChunkUpdate(chunkIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -343,11 +343,11 @@ func (sf *SiaFile) saveChunks() ([]writeaheadlog.Update, error) {
 	return updates, nil
 }
 
-// saveHeader creates writeaheadlog updates to saves the metadata and
+// saveHeaderUpdates creates writeaheadlog updates to saves the metadata and
 // pubKeyTable of the SiaFile to disk using the writeaheadlog. If the metadata
 // and overlap due to growing too large and would therefore corrupt if they
 // were written to disk, a new page is allocated.
-func (sf *SiaFile) saveHeader() ([]writeaheadlog.Update, error) {
+func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
 	// Create a list of updates which need to be applied to save the metadata.
 	var updates []writeaheadlog.Update
 
@@ -393,13 +393,13 @@ func (sf *SiaFile) saveHeader() ([]writeaheadlog.Update, error) {
 	return updates, nil
 }
 
-// saveMetadata saves the metadata of the SiaFile but not the publicKeyTable.
+// saveMetadataUpdate saves the metadata of the SiaFile but not the publicKeyTable.
 // Most of the time updates are only made to the metadata and not to the
 // publicKeyTable and the metadata fits within a single disk sector on the
-// harddrive. This means that using saveMetadata instead of saveHeader is
+// harddrive. This means that using saveMetadataUpdate instead of saveHeader is
 // potentially faster for SiaFiles with a header that can not be marshaled
 // within a single page.
-func (sf *SiaFile) saveMetadata() ([]writeaheadlog.Update, error) {
+func (sf *SiaFile) saveMetadataUpdate() ([]writeaheadlog.Update, error) {
 	// Marshal the pubKeyTable.
 	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
 	if err != nil {
@@ -410,7 +410,7 @@ func (sf *SiaFile) saveMetadata() ([]writeaheadlog.Update, error) {
 	// changed as well as it might lead to corruptions.
 	if sf.staticMetadata.PubKeyTableOffset+int64(len(pubKeyTable)) != sf.staticMetadata.ChunkOffset {
 		build.Critical("never call saveMetadata if the pubKeyTable changed, call saveHeader instead")
-		return sf.saveHeader()
+		return sf.saveHeaderUpdates()
 	}
 	// Marshal the metadata.
 	metadata, err := marshalMetadata(sf.staticMetadata)
@@ -422,7 +422,7 @@ func (sf *SiaFile) saveMetadata() ([]writeaheadlog.Update, error) {
 	// needs to be moved as well and saveHeader is already handling that
 	// edgecase.
 	if int64(len(metadata)) > sf.staticMetadata.PubKeyTableOffset {
-		return sf.saveHeader()
+		return sf.saveHeaderUpdates()
 	}
 	// Otherwise we can create and return the updates.
 	return []writeaheadlog.Update{sf.createInsertUpdate(0, metadata)}, nil
