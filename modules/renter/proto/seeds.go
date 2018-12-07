@@ -23,10 +23,20 @@ type (
 )
 
 type (
-	contractIdentifier           [32]byte
+	// contractIdentifier is an identifer which is stored in the arbitrary data
+	// section of each contract.
+	contractIdentifier [32]byte
+	// contractIdentifierSigningKey is the key used to sign a
+	// contractIdentifier to verify that the identifier was created by the
+	// renter.
 	contractIdentifierSigningKey [32]byte
-	contractSecretKey            [32]byte
-	contractSignedIdentifier     [80]byte // 32 bytes identifier, 32 bytes signature, 16 bytes prefix
+	// contractSecretKey is a secret key used for revising contracts.
+	// TODO not in use yet.
+	contractSecretKey [32]byte
+	// ContractSignedIdentifier is an identifer with a prefix and appended
+	// signature, ready to be stored in the arbitrary data section of a
+	// transaction.
+	ContractSignedIdentifier [80]byte // 32 bytes identifier, 32 bytes signature, 16 bytes prefix
 )
 
 // contractIdentifierSeed derives a contractIdentifierSeed from a renterSeed.
@@ -84,21 +94,21 @@ func EphemeralRenterSeed(walletSeed modules.Seed, blockheight types.BlockHeight)
 	return renterSeed
 }
 
-// prefixedSignedIdentifier is a helper function that creates a prefixed and
+// PrefixedSignedIdentifier is a helper function that creates a prefixed and
 // signed identifier using a renter key and siacoin input.
-func prefixedSignedIdentifier(renterSeed RenterSeed, sci types.SiacoinInput) (contractSignedIdentifier, error) {
+func PrefixedSignedIdentifier(renterSeed RenterSeed, sci types.SiacoinInput) (ContractSignedIdentifier, error) {
 	// Get identifier and signing key.
 	identifier := renterSeed.contractIdentifierSeed().identifier(sci)
 	signingKey := renterSeed.contractIdentifierSigningSeed().identifierSigningKey(sci)
 	// Pad the signing key since threefish requires 64 bytes of entropy.
 	sk, err := crypto.NewSiaKey(crypto.TypeThreefish, append(signingKey[:], make([]byte, 32)...))
 	if err != nil {
-		return contractSignedIdentifier{}, err
+		return ContractSignedIdentifier{}, err
 	}
 	// Pad the identifier and sign it.
 	signature := sk.EncryptBytes(append(identifier[:], make([]byte, 32)...))
 	// Create the signed identifer object.
-	var csi contractSignedIdentifier
+	var csi ContractSignedIdentifier
 	copy(csi[:16], modules.PrefixFileContractIdentifier[:])
 	copy(csi[16:48], identifier[:])
 	copy(csi[48:], signature[:])

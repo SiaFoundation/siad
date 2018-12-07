@@ -90,7 +90,7 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 	txnBuilder.AddMinerFee(txnFee)
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, err := prefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
 	}
@@ -358,7 +358,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	txnBuilder.AddMinerFee(txnFee)
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, err := prefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
 	}
