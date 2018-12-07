@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -36,6 +37,45 @@ func equalIPNets(ipNetsA, ipNetsB []string) bool {
 		}
 	}
 	return true
+}
+
+// feeChangeSignificant determines if the difference between two transaction
+// fees is significant enough to warrant rebuilding the hosttree.
+func feeChangeSignificant(oldTxnFees, newTxnFees types.Currency) bool {
+	maxChange := oldTxnFees.MulFloat(txnFeesUpdateRatio)
+	return newTxnFees.Cmp(oldTxnFees.Sub(maxChange)) <= 0 || newTxnFees.Cmp(oldTxnFees.Add(maxChange)) >= 0
+}
+
+// managedUpdateTxnFees checks if the txnFees have changed significantly since
+// the last time they were updated and updates them if necessary.
+func (hdb *HostDB) managedUpdateTxnFees() {
+	// Get the old txnFees from the hostdb.
+	hdb.mu.RLock()
+	allowance := hdb.allowance
+	oldTxnFees := hdb.txnFees
+	hdb.mu.RUnlock()
+
+	// Get the new fees from the tpool.
+	_, newTxnFees := hdb.tpool.FeeEstimation()
+
+	// If the change is not significant we are done.
+	if !feeChangeSignificant(oldTxnFees, newTxnFees) {
+		hdb.log.Debugf("No need to update txnFees oldFees %v newFees %v",
+			oldTxnFees.HumanString(), newTxnFees.HumanString())
+		return
+	}
+	// Update the txnFees.
+	hdb.mu.Lock()
+	hdb.txnFees = newTxnFees
+	hdb.mu.Unlock()
+	// Recompute the host weight function.
+	hwf := hdb.managedCalculateHostWeightFn(allowance)
+	// Set the weight funtion.
+	if err := hdb.managedSetWeightFunction(hwf); err != nil {
+		// This shouldn't happen.
+		build.Critical("Failed to set the new weight function", err)
+	}
+	hdb.log.Println("Updated the hostdb txnFees to", newTxnFees.HumanString())
 }
 
 // queueScan will add a host to the queue to be scanned. The host will be added
@@ -510,6 +550,10 @@ func (hdb *HostDB) threadedScan() {
 	hdb.mu.Unlock()
 
 	for {
+		// Before we start a new iteration of the scanloop we check if the
+		// txnFees need to be updated.
+		hdb.managedUpdateTxnFees()
+
 		// Set up a scan for the hostCheckupQuantity most valuable hosts in the
 		// hostdb. Hosts that fail their scans will be docked significantly,
 		// pushing them further back in the hierarchy, ensuring that for the

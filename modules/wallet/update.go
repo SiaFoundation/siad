@@ -289,6 +289,22 @@ func (w *Wallet) computeProcessedTransactionsFromBlock(tx *bolt.Tx, block types.
 		for _, sfo := range txn.SiafundOutputs {
 			relevant = relevant || w.isWalletAddress(sfo.UnlockHash)
 		}
+		for _, fc := range txn.FileContracts {
+			for _, o := range fc.ValidProofOutputs {
+				relevant = relevant || w.isWalletAddress(o.UnlockHash)
+			}
+			for _, o := range fc.MissedProofOutputs {
+				relevant = relevant || w.isWalletAddress(o.UnlockHash)
+			}
+		}
+		for _, fc := range txn.FileContractRevisions {
+			for _, o := range fc.NewValidProofOutputs {
+				relevant = relevant || w.isWalletAddress(o.UnlockHash)
+			}
+			for _, o := range fc.NewMissedProofOutputs {
+				relevant = relevant || w.isWalletAddress(o.UnlockHash)
+			}
+		}
 
 		// Only create a ProcessedTransaction if transaction is relevant.
 		if !relevant {
@@ -395,6 +411,73 @@ func (w *Wallet) computeProcessedTransactionsFromBlock(tx *bolt.Tx, block types.
 				Value:          fee,
 			})
 		}
+
+		for i, fc := range txn.FileContracts {
+			for j, o := range fc.ValidProofOutputs {
+				po := modules.ProcessedOutput{
+					ID:             types.OutputID(txn.FileContractID(uint64(i)).StorageProofOutputID(types.ProofValid, uint64(j))),
+					FundType:       types.SpecifierSiacoinOutput,
+					MaturityHeight: fc.WindowEnd + types.MaturityDelay,
+					WalletAddress:  w.isWalletAddress(o.UnlockHash),
+					RelatedAddress: o.UnlockHash,
+					Value:          o.Value,
+				}
+				pt.Outputs = append(pt.Outputs, po)
+				// Log any wallet-relevant outputs.
+				if po.WalletAddress {
+					w.log.Println("\tFile Contract Valid Output:", po.ID, "::", po.Value.HumanString())
+				}
+			}
+			for j, o := range fc.MissedProofOutputs {
+				po := modules.ProcessedOutput{
+					ID:             types.OutputID(txn.FileContractID(uint64(i)).StorageProofOutputID(types.ProofMissed, uint64(j))),
+					FundType:       types.SpecifierSiacoinOutput,
+					MaturityHeight: fc.WindowEnd + types.MaturityDelay,
+					WalletAddress:  w.isWalletAddress(o.UnlockHash),
+					RelatedAddress: o.UnlockHash,
+					Value:          o.Value,
+				}
+				pt.Outputs = append(pt.Outputs, po)
+				// Log any wallet-relevant outputs.
+				if po.WalletAddress {
+					w.log.Println("\tFile Contract Missed Output:", po.ID, "::", po.Value.HumanString())
+				}
+			}
+		}
+
+		for _, fcr := range txn.FileContractRevisions {
+			for j, o := range fcr.NewValidProofOutputs {
+				po := modules.ProcessedOutput{
+					ID:             types.OutputID(fcr.ParentID.StorageProofOutputID(types.ProofValid, uint64(j))),
+					FundType:       types.SpecifierSiacoinOutput,
+					MaturityHeight: fcr.NewWindowEnd + types.MaturityDelay,
+					WalletAddress:  w.isWalletAddress(o.UnlockHash),
+					RelatedAddress: o.UnlockHash,
+					Value:          o.Value,
+				}
+				pt.Outputs = append(pt.Outputs, po)
+				// Log any wallet-relevant outputs.
+				if po.WalletAddress {
+					w.log.Println("\tFile Contract Revision Valid Output:", po.ID, "::", po.Value.HumanString())
+				}
+			}
+			for j, o := range fcr.NewMissedProofOutputs {
+				po := modules.ProcessedOutput{
+					ID:             types.OutputID(fcr.ParentID.StorageProofOutputID(types.ProofMissed, uint64(j))),
+					FundType:       types.SpecifierSiacoinOutput,
+					MaturityHeight: fcr.NewWindowEnd + types.MaturityDelay,
+					WalletAddress:  w.isWalletAddress(o.UnlockHash),
+					RelatedAddress: o.UnlockHash,
+					Value:          o.Value,
+				}
+				pt.Outputs = append(pt.Outputs, po)
+				// Log any wallet-relevant outputs.
+				if po.WalletAddress {
+					w.log.Println("\tFile Contract Revision Missed Output:", po.ID, "::", po.Value.HumanString())
+				}
+			}
+		}
+
 		pts = append(pts, pt)
 	}
 	return pts

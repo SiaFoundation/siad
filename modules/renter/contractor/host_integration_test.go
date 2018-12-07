@@ -104,7 +104,7 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 	if err != nil {
 		return nil, err
 	}
-	hdb, err := hostdb.New(g, cs, filepath.Join(testdir, "hostdb"))
+	hdb, err := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
 	if err != nil {
 		return nil, err
 	}
