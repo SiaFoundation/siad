@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -15,6 +14,8 @@ import (
 // of encoded data can be recovered separately.
 type RSSubCode struct {
 	RSCode
+	staticSegmentSize uint64
+	staticType        modules.ErasureCoderType
 }
 
 // Encode splits data into equal-length pieces, some containing the original
@@ -38,9 +39,8 @@ func (rs *RSSubCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	// Since all the pieces should have the same length, get the pieceSize from
 	// the first one.
 	pieceSize := uint64(len(pieces[0]))
-	segmentSize := uint64(crypto.SegmentSize)
 	// pieceSize must be divisible by segmentSize
-	if pieceSize%segmentSize != 0 {
+	if pieceSize%rs.staticSegmentSize != 0 {
 		return nil, errors.New("pieceSize not divisible by segmentSize")
 	}
 	// Each piece should have pieceSize bytes.
@@ -63,7 +63,7 @@ func (rs *RSSubCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	segmentOffset := uint64(0)
 	for buf := bytes.NewBuffer(data); buf.Len() > 0; {
 		// Get the next segments to encode.
-		s := buf.Next(int(segmentSize) * rs.MinPieces())
+		s := buf.Next(int(rs.staticSegmentSize) * rs.MinPieces())
 
 		// Create a copy of it.
 		segments := make([]byte, len(s))
@@ -79,7 +79,7 @@ func (rs *RSSubCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 		for i, segment := range encodedSegments {
 			pieces[i] = append(pieces[i], segment...)
 		}
-		segmentOffset += segmentSize
+		segmentOffset += rs.staticSegmentSize
 	}
 	return pieces, nil
 }
@@ -101,17 +101,16 @@ func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 			break
 		}
 	}
-	segmentSize := uint64(crypto.SegmentSize)
 
 	// pieceSize must be divisible by segmentSize
-	if pieceSize%segmentSize != 0 {
+	if pieceSize%rs.staticSegmentSize != 0 {
 		return errors.New("pieceSize not divisible by segmentSize")
 	}
 
 	// Extract the segment from the pieces.
-	decodedSegmentSize := segmentSize * uint64(rs.MinPieces())
-	for segmentIndex := 0; uint64(segmentIndex) < pieceSize/segmentSize && n > 0; segmentIndex++ {
-		segment := ExtractSegment(pieces, segmentIndex)
+	decodedSegmentSize := rs.staticSegmentSize * uint64(rs.MinPieces())
+	for segmentIndex := 0; uint64(segmentIndex) < pieceSize/rs.staticSegmentSize && n > 0; segmentIndex++ {
+		segment := ExtractSegment(pieces, segmentIndex, rs.staticSegmentSize)
 		// Reconstruct the segment.
 		if n < decodedSegmentSize {
 			decodedSegmentSize = n
@@ -126,17 +125,16 @@ func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 
 // Type returns the erasure coders type identifier.
 func (rs *RSSubCode) Type() modules.ErasureCoderType {
-	return ecReedSolomonSubShards
+	return rs.staticType
 }
 
 // ExtractSegment is a convenience method that extracts the data of the segment
 // at segmentIndex from pieces.
-func ExtractSegment(pieces [][]byte, segmentIndex int) [][]byte {
+func ExtractSegment(pieces [][]byte, segmentIndex int, segmentSize uint64) [][]byte {
 	segment := make([][]byte, len(pieces))
-	off := segmentIndex * crypto.SegmentSize
-	segmentSize := crypto.SegmentSize
+	off := uint64(segmentIndex) * segmentSize
 	for i, piece := range pieces {
-		if len(piece) >= off+segmentSize {
+		if uint64(len(piece)) >= off+segmentSize {
 			segment[i] = piece[off : off+segmentSize]
 		} else {
 			segment[i] = nil
@@ -147,12 +145,23 @@ func ExtractSegment(pieces [][]byte, segmentIndex int) [][]byte {
 
 // NewRSSubCode creates a new Reed-Solomon encoder/decoder using the supplied
 // parameters.
-func NewRSSubCode(nData, nParity int) (modules.ErasureCoder, error) {
+func NewRSSubCode(nData, nParity int, segmentSize uint64) (modules.ErasureCoder, error) {
 	rs, err := newRSCode(nData, nParity)
 	if err != nil {
 		return nil, err
 	}
+	// Get the correct type from the segmentSize.
+	var t modules.ErasureCoderType
+	switch segmentSize {
+	case 64:
+		t = ecReedSolomonSubShards64
+	default:
+		return nil, errors.New("unsupported segmentSize")
+	}
+	// Create the encoder.
 	return &RSSubCode{
 		*rs,
+		segmentSize,
+		t,
 	}, nil
 }

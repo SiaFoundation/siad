@@ -133,8 +133,8 @@ func unmarshalErasureCoder(ecType [4]byte, ecParams [8]byte) (modules.ErasureCod
 	switch ecType {
 	case ecReedSolomon:
 		return NewRSCode(dataPieces, parityPieces)
-	case ecReedSolomonSubShards:
-		return NewRSSubCode(dataPieces, parityPieces)
+	case ecReedSolomonSubShards64:
+		return NewRSSubCode(dataPieces, parityPieces, 64)
 	default:
 		return nil, errors.New("unknown erasure code type")
 	}

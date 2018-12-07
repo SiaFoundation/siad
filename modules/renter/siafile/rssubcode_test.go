@@ -11,6 +11,7 @@ import (
 // TestPartialEncodeRecover checks that individual segments of an encoded piece
 // can be recovered.
 func TestPartialEncodeRecover(t *testing.T) {
+	segmentSize := crypto.SegmentSize
 	pieceSize := 4096
 	dataPieces := 10
 	parityPieces := 20
@@ -18,7 +19,7 @@ func TestPartialEncodeRecover(t *testing.T) {
 	originalData := make([]byte, len(data))
 	copy(originalData, data)
 	// Create the erasure coder.
-	rsc, err := NewRSSubCode(dataPieces, parityPieces)
+	rsc, err := NewRSSubCode(dataPieces, parityPieces, uint64(segmentSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,11 +58,10 @@ func TestPartialEncodeRecover(t *testing.T) {
 	}
 	// Recover every segment individually.
 	dataOffset := 0
-	segmentSize := crypto.SegmentSize
 	decodedSegmentSize := segmentSize * dataPieces
 	for segmentIndex := 0; segmentIndex < pieceSize/segmentSize; segmentIndex++ {
 		buf := new(bytes.Buffer)
-		segment := ExtractSegment(encodedPieces, segmentIndex)
+		segment := ExtractSegment(encodedPieces, segmentIndex, uint64(segmentSize))
 		err = rsc.Recover(segment, uint64(segmentSize*rsc.MinPieces()), buf)
 		if err != nil {
 			t.Fatal(err)

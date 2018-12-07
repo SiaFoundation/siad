@@ -40,10 +40,10 @@ var (
 	// ecReedSolomon is the marshaled type of the reed solomon coder.
 	ecReedSolomon = modules.ErasureCoderType{0, 0, 0, 1}
 
-	// ecReedSolomonSubShards is the marshaled type of the reed solomon coder
+	// ecReedSolomonSubShards64 is the marshaled type of the reed solomon coder
 	// for files where every 64 bytes of an encoded piece can be decoded
 	// separately.
-	ecReedSolomonSubShards = modules.ErasureCoderType{0, 0, 0, 2}
+	ecReedSolomonSubShards64 = modules.ErasureCoderType{0, 0, 0, 2}
 )
 
 // marshaledChunkSize is a helper method that returns the size of a chunk on
