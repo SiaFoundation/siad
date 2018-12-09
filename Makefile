@@ -46,8 +46,8 @@ run = .
 pkgs = ./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer \
        ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor       \
        ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/miner ./modules/wallet   \
-       ./modules/transactionpool ./node ./node/api ./persist ./siatest ./siatest/consensus ./siatest/renter               \
-       ./siatest/wallet ./node/api/server ./sync ./types
+       ./modules/transactionpool ./node ./node/api ./persist ./siatest ./siatest/consensus ./siatest/gateway              \
+       ./siatest/renter ./siatest/wallet ./node/api/server ./sync ./types
 
 # fmt calls go fmt on all packages.
 fmt:

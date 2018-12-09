@@ -70,7 +70,7 @@ func (g *Gateway) staticPingNode(addr modules.NetAddress) error {
 	// inaccurate NetAddress.
 	ourHeader := sessionHeader{
 		GenesisID:  types.GenesisID,
-		UniqueID:   g.staticId,
+		UniqueID:   g.staticID,
 		NetAddress: modules.NetAddress(conn.LocalAddr().String()),
 	}
 	if err := exchangeOurHeader(conn, ourHeader); err != nil {

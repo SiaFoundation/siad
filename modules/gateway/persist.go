@@ -37,6 +37,10 @@ type (
 	// persist contains all of the persistent gateway data.
 	persistence struct {
 		RouterURL string
+
+		// rate limit settings
+		MaxDownloadSpeed int64
+		MaxUploadSpeed   int64
 	}
 )
 

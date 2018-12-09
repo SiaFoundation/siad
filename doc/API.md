@@ -313,13 +313,14 @@ Gateway
 | Route                                                                              | HTTP verb |
 | ---------------------------------------------------------------------------------- | --------- |
 | [/gateway](#gateway-get-example)                                                   | GET       |
+| [/gateway](#gateway-post-example)                                                  | POST      |
 | [/gateway/connect/:___netaddress___](#gatewayconnectnetaddress-post-example)       | POST      |
 | [/gateway/disconnect/:___netaddress___](#gatewaydisconnectnetaddress-post-example) | POST      |
 
 For examples and detailed descriptions of request and response parameters,
 refer to [Gateway.md](/doc/api/Gateway.md).
 
-#### /gateway [GET] [(example)](/doc/api/Gateway.md#gateway-info)
+#### /gateway [GET] [(example)](/doc/api/Gateway.md#gateway-get-info)
 
 returns information about the gateway, including the list of connected peers.
 
@@ -334,6 +335,19 @@ returns information about the gateway, including the list of connected peers.
     }
 }
 ```
+
+#### /gateway [POST] [(example)](/doc/api/Gateway.md#gateway-post-info)
+
+modify settings that control the gateway's behavior.
+
+###### Query String Parameters
+maxdownloadspeed // bytes per second
+maxuploadspeed // bytes per second
+
+###### Response
+standard success or error response. See
+[API.md#standard-responses](/doc/API.md#standard-responses).
+
 
 #### /gateway/connect/:___netaddress___ [POST] [(example)](/doc/api/Gateway.md#connecting-to-a-peer)
 

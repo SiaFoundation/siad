@@ -5,10 +5,6 @@
 // mined or about transactions that you have created.
 package gateway
 
-import (
-	"time"
-)
-
 // For the user to be securely connected to the network, the user must be
 // connected to at least one node which will send them all of the blocks. An
 // attacker can trick the user into thinking that a different blockchain is the
@@ -101,9 +97,12 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/ratelimit"
+
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -119,6 +118,7 @@ type Gateway struct {
 	listener net.Listener
 	myAddr   modules.NetAddress
 	port     string
+	rl       *ratelimit.RateLimit
 
 	// handlers are the RPCs that the Gateway can handle.
 	//
@@ -153,7 +153,7 @@ type Gateway struct {
 	threads    siasync.ThreadGroup
 
 	// Unique ID
-	staticId gatewayID
+	staticID gatewayID
 }
 
 type gatewayID [8]byte
@@ -168,6 +168,22 @@ func (g *Gateway) managedSleep(t time.Duration) (completed bool) {
 	case <-g.threads.StopChan():
 		return false
 	}
+}
+
+// setRateLimits sets the ratelimit of the gateway after performing input
+// validation without persisting them.
+func (g *Gateway) setRateLimits(downloadSpeed, uploadSpeed int64) error {
+	// Input validation.
+	if downloadSpeed < 0 || uploadSpeed < 0 {
+		return errors.New("download/upload rate can't be below 0")
+	}
+	// Check for sentinel "no limits" value.
+	if downloadSpeed == 0 && uploadSpeed == 0 {
+		g.rl.SetLimits(0, 0, 0)
+	} else {
+		g.rl.SetLimits(downloadSpeed, uploadSpeed, 4*4096)
+	}
+	return nil
 }
 
 // Address returns the NetAddress of the Gateway.
@@ -205,6 +221,28 @@ func (g *Gateway) ForwardPort(port string) error {
 	return g.managedForwardPort(port)
 }
 
+// RateLimits returns the currently set bandwidth limits of the gateway.
+func (g *Gateway) RateLimits() (int64, int64) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed
+}
+
+// SetRateLimits changes the rate limits for the peer-connections of the
+// gateway.
+func (g *Gateway) SetRateLimits(downloadSpeed, uploadSpeed int64) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	// Set the limit in memory.
+	if err := g.setRateLimits(downloadSpeed, uploadSpeed); err != nil {
+		return err
+	}
+	// Update the persistence struct.
+	g.persist.MaxDownloadSpeed = downloadSpeed
+	g.persist.MaxUploadSpeed = uploadSpeed
+	return g.saveSync()
+}
+
 // New returns an initialized Gateway.
 func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	// Create the directory if it doesn't exist.
@@ -224,7 +262,7 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	}
 
 	// Set Unique GatewayID
-	fastrand.Read(g.staticId[:])
+	fastrand.Read(g.staticID[:])
 
 	// Create the logger.
 	g.log, err = persist.NewFileLogger(filepath.Join(g.persistDir, logFile))
@@ -269,6 +307,11 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	}
 	if loadErr := g.loadNodes(); loadErr != nil && !os.IsNotExist(loadErr) {
 		return nil, loadErr
+	}
+	// Create the ratelimiter and set it to the persisted limits.
+	g.rl = ratelimit.NewRateLimit(0, 0, 0)
+	if err := g.setRateLimits(g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed); err != nil {
+		return nil, err
 	}
 	// Spawn the thread to periodically save the gateway.
 	go g.threadedSaveLoop()
