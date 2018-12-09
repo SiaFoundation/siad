@@ -31,21 +31,18 @@ func (rs *RSCode) Encode(data []byte) ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// err should not be possible if Encode is called on the result of Split,
-	// but no harm in checking anyway.
-	err = rs.enc.Encode(pieces)
-	if err != nil {
-		return nil, err
-	}
-	return pieces, nil
+	return rs.EncodeShards(pieces)
 }
 
 // EncodeShards creates the parity shards for an already sharded input.
-func (rs *RSCode) EncodeShards(pieces [][]byte, pieceSize uint64) ([][]byte, error) {
+func (rs *RSCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	// Check that the caller provided the minimum amount of pieces.
-	if len(pieces) != rs.MinPieces() {
-		return nil, fmt.Errorf("invalid number of pieces given %v %v", len(pieces), rs.MinPieces())
+	if len(pieces) < rs.MinPieces() {
+		return nil, fmt.Errorf("invalid number of pieces given %v < %v", len(pieces), rs.MinPieces())
 	}
+	// Since all the pieces should have the same length, get the pieceSize from
+	// the first one.
+	pieceSize := len(pieces[0])
 	// Add the parity shards to pieces.
 	for len(pieces) < rs.NumPieces() {
 		pieces = append(pieces, make([]byte, pieceSize))
@@ -68,9 +65,20 @@ func (rs *RSCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 	return rs.enc.Join(w, pieces, int(n))
 }
 
+// Type returns the erasure coders type identifier.
+func (rs *RSCode) Type() modules.ErasureCoderType {
+	return ecReedSolomon
+}
+
 // NewRSCode creates a new Reed-Solomon encoder/decoder using the supplied
 // parameters.
 func NewRSCode(nData, nParity int) (modules.ErasureCoder, error) {
+	return newRSCode(nData, nParity)
+}
+
+// newRSCode creates a new Reed-Solomon encoder/decoder using the supplied
+// parameters.
+func newRSCode(nData, nParity int) (*RSCode, error) {
 	enc, err := reedsolomon.New(nData, nParity)
 	if err != nil {
 		return nil, err

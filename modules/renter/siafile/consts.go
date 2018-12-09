@@ -2,6 +2,7 @@ package siafile
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -41,7 +42,12 @@ const (
 
 var (
 	// ecReedSolomon is the marshaled type of the reed solomon coder.
-	ecReedSolomon = [4]byte{0, 0, 0, 1}
+	ecReedSolomon = modules.ErasureCoderType{0, 0, 0, 1}
+
+	// ecReedSolomonSubShards64 is the marshaled type of the reed solomon coder
+	// for files where every 64 bytes of an encoded piece can be decoded
+	// separately.
+	ecReedSolomonSubShards64 = modules.ErasureCoderType{0, 0, 0, 2}
 )
 
 // marshaledChunkSize is a helper method that returns the size of a chunk on

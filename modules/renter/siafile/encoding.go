@@ -37,8 +37,7 @@ func marshalChunk(chunk chunk) []byte {
 
 // marshalErasureCoder marshals an erasure coder into its type and params.
 func marshalErasureCoder(ec modules.ErasureCoder) ([4]byte, [8]byte) {
-	// Since we only support one type we assume it is ReedSolomon for now.
-	ecType := ecReedSolomon
+	ecType := [4]byte(ec.Type())
 	// Read params from ec.
 	ecParams := [8]byte{}
 	binary.LittleEndian.PutUint32(ecParams[:4], uint32(ec.MinPieces()))
@@ -128,12 +127,17 @@ func unmarshalChunk(numPieces uint32, raw []byte) (chunk chunk, err error) {
 
 // unmarshalErasureCoder unmarshals an ErasureCoder from the given params.
 func unmarshalErasureCoder(ecType [4]byte, ecParams [8]byte) (modules.ErasureCoder, error) {
-	if ecType != ecReedSolomon {
-		return nil, errors.New("unknown erasure code type")
-	}
 	dataPieces := int(binary.LittleEndian.Uint32(ecParams[:4]))
 	parityPieces := int(binary.LittleEndian.Uint32(ecParams[4:]))
-	return NewRSCode(dataPieces, parityPieces)
+	// Create correct erasure coder.
+	switch ecType {
+	case ecReedSolomon:
+		return NewRSCode(dataPieces, parityPieces)
+	case ecReedSolomonSubShards64:
+		return NewRSSubCode(dataPieces, parityPieces, 64)
+	default:
+		return nil, errors.New("unknown erasure code type")
+	}
 }
 
 // unmarshalMetadata unmarshals the json encoded metadata of the SiaFile.
