@@ -152,6 +152,12 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		return err
 	}
 
+	// Register some cleanup for when the download is done.
+	d.OnComplete(func(_ error) error {
+		// Update the access time when the download is done.
+		return chunk.fileEntry.SiaFile.UpdateAccessTime()
+	})
+
 	// Set the in-memory buffer to nil just to be safe in case of a memory
 	// leak.
 	defer func() {
