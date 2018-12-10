@@ -18,7 +18,7 @@ func TestEphemeralRenterSeed(t *testing.T) {
 
 	// Test for blockheights 0 to ephemeralSeedInterval-1
 	for bh := types.BlockHeight(0); bh < ephemeralSeedInterval; bh++ {
-		expectedSeed := crypto.HashAll(walletSeed, "renter", 0)
+		expectedSeed := crypto.HashAll(walletSeed, renterSeedSpecifier, 0)
 		seed := EphemeralRenterSeed(walletSeed, bh)
 		if !bytes.Equal(expectedSeed[:], seed[:]) {
 			t.Fatal("Seeds don't match for blockheight", bh)
@@ -26,7 +26,7 @@ func TestEphemeralRenterSeed(t *testing.T) {
 	}
 	// Test for blockheights ephemeralSeedInterval to 2*ephemeralSeedInterval-1
 	for bh := ephemeralSeedInterval; bh < 2*ephemeralSeedInterval; bh++ {
-		expectedSeed := crypto.HashAll(walletSeed, "renter", 1)
+		expectedSeed := crypto.HashAll(walletSeed, renterSeedSpecifier, 1)
 		seed := EphemeralRenterSeed(walletSeed, bh)
 		if !bytes.Equal(expectedSeed[:], seed[:]) {
 			t.Fatal("Seeds don't match for blockheight", bh)
