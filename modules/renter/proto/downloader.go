@@ -2,6 +2,7 @@ package proto
 
 import (
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,10 +84,12 @@ func (hd *Downloader) Sector(root crypto.Hash) (_ modules.RenterContract, _ []by
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
-		if err != nil {
+		// Ignore ErrStopResponse and closed network connecton errors since
+		// they are not considered a failed interaction with the host.
+		if err != nil && err != modules.ErrStopResponse && !strings.Contains(err.Error(), "use of closed network connection") {
 			hd.hdb.IncrementFailedInteractions(contract.HostPublicKey())
 			err = errors.Extend(err, modules.ErrHostFault)
-		} else if err == nil {
+		} else {
 			hd.hdb.IncrementSuccessfulInteractions(contract.HostPublicKey())
 		}
 	}()
@@ -101,9 +104,9 @@ func (hd *Downloader) Sector(root crypto.Hash) (_ modules.RenterContract, _ []by
 	extendDeadline(hd.conn, connTimeout)
 	signedTxn, err := negotiateRevision(hd.conn, rev, contract.SecretKey, hd.height)
 	if err == modules.ErrStopResponse {
-		// if host gracefully closed, close our connection as well; this will
-		// cause the next download to fail. However, we must delay closing
-		// until we've finished downloading the sector.
+		// If the host wants to stop communicating after this iteration, close
+		// our connection; this will cause the next download to fail. However,
+		// we must delay closing until we've finished downloading the sector.
 		defer hd.conn.Close()
 	} else if err != nil {
 		return modules.RenterContract{}, nil, err

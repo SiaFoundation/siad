@@ -34,6 +34,17 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 		return
 	}
 	defer d.Close()
+
+	// If the download of the chunk is marked as done or if we are shutting
+	// down, we close the downloader early to interrupt the download.
+	go func() {
+		select {
+		case <-w.renter.tg.StopChan():
+		case <-udc.download.completeChan:
+		}
+		d.Close()
+	}()
+
 	pieceData, err := d.Sector(udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].root)
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
@@ -171,7 +182,7 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	// worker and return nil. Worker only needs to be removed if worker is being
 	// dropped.
 	udc.mu.Lock()
-	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces()
+	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces() || udc.download.staticComplete()
 	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
 	pieceData, workerHasPiece := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)]
 	pieceCompleted := udc.completedPieces[pieceData.index]

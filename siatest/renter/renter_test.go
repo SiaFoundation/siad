@@ -146,6 +146,7 @@ func TestRenterThree(t *testing.T) {
 	// Specify subtests to run
 	subTests := []test{
 		{"TestAllowanceDefaultSet", testAllowanceDefaultSet},
+		{"TestStreamLargeFile", testStreamLargeFile},
 	}
 
 	// Run tests
@@ -745,7 +746,7 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := 100 + siatest.Fuzz()
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
 	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -814,6 +815,30 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
 	if err == nil {
 		t.Fatal("File overwritten without specifying 'force=true'")
+	}
+}
+
+// testStreamLargeFile tests that using the streaming endpoint to download
+// multiple chunks works.
+func testStreamLargeFile(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(10 * siatest.ChunkSize(dataPieces))
+	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Stream the file partially a few times. At least 1 byte is streamed.
+	for i := 0; i < 5; i++ {
+		from := fastrand.Intn(fileSize - 1)             // [0..fileSize-2]
+		to := from + 1 + fastrand.Intn(fileSize-from-1) // [from+1..fileSize-1]
+		_, err = renter.StreamPartial(remoteFile, localFile, uint64(from), uint64(to))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
