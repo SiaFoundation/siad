@@ -124,13 +124,11 @@ func (sc *streamCache) pruneCache(size uint64) {
 // TODO: in the future we might need cache invalidation. At the
 // moment this doesn't worry us since our files are static.
 func (sc *streamCache) Retrieve(udc *unfinishedDownloadChunk) bool {
-	udc.mu.Lock()
-	defer udc.mu.Unlock()
 	sc.mu.Lock()
-	defer sc.mu.Unlock()
 
 	cd, cached := sc.streamMap[udc.staticCacheID]
 	if !cached {
+		sc.mu.Unlock()
 		return false
 	}
 
@@ -138,6 +136,10 @@ func (sc *streamCache) Retrieve(udc *unfinishedDownloadChunk) bool {
 	cd.lastAccess = time.Now()
 	sc.streamMap[udc.staticCacheID] = cd
 	sc.streamHeap.update(cd, cd.id, cd.data, cd.lastAccess)
+	sc.mu.Unlock()
+
+	udc.mu.Lock()
+	defer udc.mu.Unlock()
 
 	start := udc.staticFetchOffset
 	end := start + udc.staticFetchLength
