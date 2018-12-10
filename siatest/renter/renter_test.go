@@ -820,7 +820,7 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 // TestRenterInterrupt executes a number of subtests using the same TestGroup to
 // save time on initialization
 func TestRenterInterrupt(t *testing.T) {
-	if testing.Short() {
+	if !build.VLONG {
 		t.SkipNow()
 	}
 	t.Parallel()
