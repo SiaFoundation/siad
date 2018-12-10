@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -310,6 +311,7 @@ func (r *Renter) initPersist() error {
 	}
 	r.wal = wal
 	r.staticFileSet = siafile.NewSiaFileSet(r.filesDir, wal)
+	r.staticDirSet = siadir.NewSiaDirSet(r.filesDir, wal)
 
 	// Apply unapplied wal txns.
 	for _, txn := range txns {
@@ -318,6 +320,10 @@ func (r *Renter) initPersist() error {
 			if siafile.IsSiaFileUpdate(update) {
 				if err := siafile.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaFile update")
+				}
+			} else if siadir.IsSiaDirUpdate(update) {
+				if err := siadir.ApplyUpdates(update); err != nil {
+					return errors.AddContext(err, "failed to apply SiaDir update")
 				}
 			} else {
 				applyTxn = false

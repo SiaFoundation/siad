@@ -13,12 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
-const (
-	// threadDepth is how deep the ThreadType will track calling files and
-	// calling lines
-	threadDepth = 3
-)
-
 type (
 	// SiaDirSet handles the thread management for the SiaDirs on disk and in memory
 	SiaDirSet struct {
@@ -76,10 +70,11 @@ func randomThreadUID() uint64 {
 }
 
 // NewSiaDirSet initializes and returns a SiaDirSet
-func NewSiaDirSet(rootDir string) *SiaDirSet {
+func NewSiaDirSet(rootDir string, wal *writeaheadlog.WAL) *SiaDirSet {
 	return &SiaDirSet{
 		rootDir:   rootDir,
 		siaDirMap: make(map[string]*siaDirSetEntry),
+		wal:       wal,
 	}
 }
 
@@ -133,7 +128,7 @@ func (sds *SiaDirSet) open(siaPath string) (*SiaDirSetEntry, error) {
 	entry, exists := sds.siaDirMap[siaPath]
 	if !exists {
 		// Try and Load File from disk
-		sd, err := LoadSiaDir(sds.rootDir, siaPath)
+		sd, err := LoadSiaDir(sds.rootDir, siaPath, sds.wal)
 		if err != nil {
 			return nil, err
 		}
@@ -161,6 +156,34 @@ func (entry *SiaDirSetEntry) Close() error {
 	return entry.close()
 }
 
+// Delete deletes the SiaDir that belongs to the siaPath
+func (sds *SiaDirSet) Delete(siaPath string) error {
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	// Check if SiaDir exists
+	exists, err := sds.exists(siaPath)
+	if !exists && os.IsNotExist(err) {
+		return ErrUnknownPath
+	}
+	if err != nil {
+		return err
+	}
+	// Grab entry
+	entry, err := sds.open(siaPath)
+	if err != nil {
+		return err
+	}
+	// Defer close entry
+	entry.threadMapMu.Lock()
+	defer entry.threadMapMu.Unlock()
+	defer entry.close()
+	// Delete SiaDir
+	if err := entry.Delete(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Exists checks to see if a file with the provided siaPath already exists in
 // the renter
 func (sds *SiaDirSet) Exists(siaPath string) (bool, error) {
@@ -182,7 +205,7 @@ func (sds *SiaDirSet) NewSiaDir(siaPath string) (*SiaDirSetEntry, error) {
 	if !os.IsNotExist(err) && err != nil {
 		return nil, err
 	}
-	sd, err := New(siaPath, sds.rootDir)
+	sd, err := New(siaPath, sds.rootDir, sds.wal)
 	if err != nil {
 		return nil, err
 	}
@@ -222,5 +245,5 @@ func (sds *SiaDirSet) UpdateHealth(siaPath string, health, stuckHealth float64, 
 		return err
 	}
 	defer entry.close()
-	return entry.SiaDir.UpdateHealth(health, stuckHealth, lastCheck, filepath.Join(sds.rootDir, entry.SiaDir.staticMetadata.SiaPath))
+	return entry.SiaDir.UpdateHealth(health, stuckHealth, lastCheck)
 }
