@@ -381,7 +381,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	extendDeadline(conn, modules.NegotiateFileContractTime)
 
 	// Perform initial handshake,
-	if err := encoding.WriteObject(conn, modules.RPCLoopEnter); err != nil {
+	if err := encoding.NewEncoder(conn).Encode(modules.RPCLoopEnter); err != nil {
 		return modules.RenterContract{}, err
 	}
 	handshakeReq := modules.LoopHandshakeRequest{

@@ -15,6 +15,7 @@ package host
 // have to keep all the files following a renew in order to get the money.
 
 import (
+	"io"
 	"net"
 	"sync/atomic"
 	"time"
@@ -261,12 +262,23 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 		return
 	}
 
-	// Read a specifier indicating which action is being called.
+	// Read the first 16 bytes. If those bytes are RPCLoopEnter, then the
+	// renter is attempting to use the new protocol; otherweise, assume the
+	// renter is using the old protocol, and that the following 8 bytes
+	// complete the renter's intended RPC ID.
 	var id types.Specifier
-	if err := encoding.ReadObject(conn, &id, 16); err != nil {
+	if err := encoding.NewDecoder(conn).Decode(&id); err != nil {
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		h.log.Debugf("WARN: incoming conn %v was malformed: %v", conn.RemoteAddr(), err)
-		return
+	}
+	if id != modules.RPCLoopEnter {
+		// shift down 8 bytes, then read next 8
+		copy(id[:8], id[8:])
+		if _, err := io.ReadFull(conn, id[8:]); err != nil {
+			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			h.log.Debugf("WARN: incoming conn %v was malformed: %v", conn.RemoteAddr(), err)
+			return
+		}
 	}
 
 	switch id {
