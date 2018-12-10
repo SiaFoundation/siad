@@ -83,8 +83,9 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 
 	// Download data
 	buffer := bytes.NewBuffer([]byte{})
+	ddw := newDownloadDestinationWriter(buffer)
 	d, err := s.r.managedNewDownload(downloadParams{
-		destination:       newDownloadDestinationWriter(buffer),
+		destination:       ddw,
 		destinationType:   destinationTypeSeekStream,
 		destinationString: "httpresponse",
 		file:              s.staticFile,
@@ -97,8 +98,15 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 		priority:      1000, // TODO: high default until full priority support is added.
 	})
 	if err != nil {
+		err = errors.Compose(err, ddw.Close())
 		return 0, errors.AddContext(err, "failed to create new download")
 	}
+
+	// Register some cleanup for when the download is done.
+	d.OnComplete(func(_ error) error {
+		// close the destination buffer to avoid deadlocks.
+		return ddw.Close()
+	})
 
 	// Set the in-memory buffer to nil just to be safe in case of a memory
 	// leak.

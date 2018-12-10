@@ -129,7 +129,7 @@ var (
 
 // newDownloadDestinationWriter takes an io.Writer and converts it
 // into a downloadDestination.
-func newDownloadDestinationWriter(w io.Writer) downloadDestination {
+func newDownloadDestinationWriter(w io.Writer) *downloadDestinationWriter {
 	return &downloadDestinationWriter{Writer: w}
 }
 
