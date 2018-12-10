@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -346,6 +347,9 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	}
 	c.mu.RUnlock()
 
+	// wipe the renter seed once we are done using it.
+	defer fastrand.Read(params.RenterSeed[:])
+
 	// create transaction builder and trigger contract formation.
 	txnBuilder, err := c.wallet.StartTransaction()
 	if err != nil {
@@ -487,6 +491,9 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 		RenterSeed:    proto.EphemeralRenterSeed(seed, c.blockHeight),
 	}
 	c.mu.RUnlock()
+
+	// wipe the renter seed once we are done using it.
+	defer fastrand.Read(params.RenterSeed[:])
 
 	// execute negotiation protocol
 	txnBuilder, err := c.wallet.StartTransaction()
