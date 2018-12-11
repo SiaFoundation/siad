@@ -196,3 +196,43 @@ func TestUpdateSiaDirSetHealth(t *testing.T) {
 		t.Fatalf("lastHealthCheckTime not updated, got %v expected %v", lastCheck, checkTime)
 	}
 }
+
+// TestOpenAndCloseWithLock probes the OpenAndLockSiaDir and
+// CloseAndUnlockSiaDir methods
+func TestOpenAndCloseWithLock(t *testing.T) {
+	// Create SiaDirSet with SiaDir
+	entry, sds, err := newTestSiaDirSetWithDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Remember siapath
+	siaPath := entry.SiaPath()
+
+	// Close entry to start with nothing in memory
+	if err = entry.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Open the siadir and hold the siadir lock
+	entry, err = sds.OpenAndLockSiaDir(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Open another instance of the entry
+	entry2, err := sds.Open(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Close the second entry
+	if err = entry2.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Close and unlock locked entry
+	if err = entry.CloseAndUnlockSiaDir(); err != nil {
+		t.Fatal(err)
+	}
+}

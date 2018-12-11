@@ -170,12 +170,16 @@ func (sd *SiaDir) SiaPath() string {
 	return sd.staticMetadata.SiaPath
 }
 
-// UpdateHealth updates the SiaDir metadata on disk with the new Health value
-func (sd *SiaDir) UpdateHealth(health, stuckHealth float64, lastCheck time.Time) error {
-	sd.mu.Lock()
-	defer sd.mu.Unlock()
+// updateHealth updates the SiaDir metadata on disk with the new Health value
+func (sd *SiaDir) updateHealth(health, stuckHealth float64, lastCheck time.Time) error {
 	sd.staticMetadata.Health = health
 	sd.staticMetadata.StuckHealth = stuckHealth
 	sd.staticMetadata.LastHealthCheckTime = lastCheck
 	return sd.saveDir()
+}
+
+// UpdateHealth is a helper wrapper for calling updateHealth when the SiaDir
+// lock is held outside the siadir package
+func (sd *SiaDir) UpdateHealth(health, stuckHealth float64, lastCheck time.Time) error {
+	return sd.updateHealth(health, stuckHealth, lastCheck)
 }

@@ -37,7 +37,6 @@ type (
 	siaFileSetEntry struct {
 		*SiaFile
 		siaFileSet *SiaFileSet
-		// siaPath    string // This is the siaPath used to open the file
 
 		threadMap   map[uint64]threadInfo
 		threadMapMu sync.Mutex

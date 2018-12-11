@@ -154,6 +154,21 @@ func (entry *SiaDirSetEntry) Close() error {
 	return entry.close()
 }
 
+// CloseAndUnlockSiaDir unlocks the SiaDir and then removes the thread from the
+// threadMap. If the length of threadMap count is 0 then it will remove the
+// SiaDirSetEntry from the SiaDirSet map, which will remove it from memory
+func (entry *SiaDirSetEntry) CloseAndUnlockSiaDir() error {
+	entry.siaDirSet.mu.Lock()
+	defer entry.siaDirSet.mu.Unlock()
+
+	// Unlock siadir
+	entry.mu.Unlock()
+
+	entry.threadMapMu.Lock()
+	defer entry.threadMapMu.Unlock()
+	return entry.close()
+}
+
 // Delete deletes the SiaDir that belongs to the siaPath
 func (sds *SiaDirSet) Delete(siaPath string) error {
 	sds.mu.Lock()
@@ -217,13 +232,28 @@ func (sds *SiaDirSet) NewSiaDir(siaPath string) (*SiaDirSetEntry, error) {
 	}, nil
 }
 
-// Open returns the siafile from the SiaDirSet for the corresponding key and
-// adds the thread to the entry's threadMap. If the siafile is not in memory it
+// Open returns the siadir from the SiaDirSet for the corresponding key and
+// adds the thread to the entry's threadMap. If the siadir is not in memory it
 // will load it from disk
 func (sds *SiaDirSet) Open(siaPath string) (*SiaDirSetEntry, error) {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	return sds.open(siaPath)
+}
+
+// OpenAndLockSiaDir returns the siadir from the SiaDirSet for the corresponding
+// key and adds the thread to the entry's threadMap. If the siadir is not in
+// memory it will load it from disk. Before returning the siadir will be locked
+// so that other threads can not access the siadir until it is closed
+//
+// NOTE: sidirs opened with this method should then be closed with
+// CloseAndUnlockSiaDir
+func (sds *SiaDirSet) OpenAndLockSiaDir(siaPath string) (*SiaDirSetEntry, error) {
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	entry, err := sds.open(siaPath)
+	entry.mu.Lock()
+	return entry, err
 }
 
 // UpdateHealth will update the health of the SiaDirSetEntry in memory and on disk
@@ -243,5 +273,7 @@ func (sds *SiaDirSet) UpdateHealth(siaPath string, health, stuckHealth float64, 
 		return err
 	}
 	defer entry.close()
-	return entry.SiaDir.UpdateHealth(health, stuckHealth, lastCheck)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	return entry.SiaDir.updateHealth(health, stuckHealth, lastCheck)
 }

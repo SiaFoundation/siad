@@ -33,6 +33,10 @@ type (
 		AccessTime time.Time `json:"accesstime"` // time of last access
 		CreateTime time.Time `json:"createtime"` // time of file creation
 
+		// Repair loop fields
+		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+		NumStuckChunks      uint64    `json:"numstuckchunks"`
+
 		// File ownership/permission fields.
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
 		UserID  int         `json:"userid"`  // id of the user who owns the file

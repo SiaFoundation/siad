@@ -38,15 +38,20 @@ func equalFiles(sf, sf2 *SiaFile) error {
 	if sf.staticMetadata.ModTime.Unix() != sf2.staticMetadata.ModTime.Unix() {
 		return errors.New("ModTime's don't match")
 	}
+	if sf.staticMetadata.LastHealthCheckTime.Unix() != sf2.staticMetadata.LastHealthCheckTime.Unix() {
+		return errors.New("LastHealthCheckTime's don't match")
+	}
 	// Set the timestamps to zero for DeepEqual.
 	sf.staticMetadata.AccessTime = time.Time{}
 	sf.staticMetadata.ChangeTime = time.Time{}
 	sf.staticMetadata.CreateTime = time.Time{}
 	sf.staticMetadata.ModTime = time.Time{}
+	sf.staticMetadata.LastHealthCheckTime = time.Time{}
 	sf2.staticMetadata.AccessTime = time.Time{}
 	sf2.staticMetadata.ChangeTime = time.Time{}
 	sf2.staticMetadata.CreateTime = time.Time{}
 	sf2.staticMetadata.ModTime = time.Time{}
+	sf2.staticMetadata.LastHealthCheckTime = time.Time{}
 	// Compare the rest of sf and sf2.
 	if !reflect.DeepEqual(sf.staticMetadata, sf2.staticMetadata) {
 		fmt.Println(sf.staticMetadata)

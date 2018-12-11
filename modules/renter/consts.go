@@ -85,6 +85,10 @@ const (
 	// PriceEstimationSafetyFactor is the factor of safety used in the price
 	// estimation to account for any missed costs
 	PriceEstimationSafetyFactor = 1.2
+
+	// updateBubbleHealthName is the name of a renter wal update that calculates and
+	// bubbles up the health of a siadir
+	updateBubbleHealthName = "Renter-Bubble-Health"
 )
 
 var (
