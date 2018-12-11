@@ -540,7 +540,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 	}()
 
 	extendDeadline(conn, modules.NegotiateSettingsTime)
-	if err := encoding.WriteObject(conn, modules.RPCLoopEnter); err != nil {
+	if err := encoding.NewEncoder(conn).Encode(modules.RPCLoopEnter); err != nil {
 		return nil, err
 	}
 
