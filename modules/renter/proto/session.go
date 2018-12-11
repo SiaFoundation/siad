@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -382,8 +381,6 @@ func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.R
 // Revision and Signature fields of req are filled in automatically. If a
 // Merkle proof is requested, it is verified.
 func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.RenterContract, _ []crypto.Hash, err error) {
-	build.Critical("Merkle proofs not implemented")
-
 	// Reset deadline when finished.
 	defer extendDeadline(s.conn, time.Hour)
 
@@ -468,9 +465,13 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
-
+	// verify the response
 	if len(resp.SectorRoots) != int(req.NumRoots) {
 		return modules.RenterContract{}, nil, errors.New("host did not send the requested number of sector roots")
+	}
+	proofStart, proofEnd := int(req.RootOffset), int(req.RootOffset+req.NumRoots)
+	if !crypto.VerifySectorRangeProof(resp.SectorRoots, resp.MerkleProof, proofStart, proofEnd, rev.NewFileMerkleRoot) {
+		return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data or Merkle proof")
 	}
 
 	// add host signature

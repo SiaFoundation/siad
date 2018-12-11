@@ -182,3 +182,33 @@ func VerifyRangeProof(segments []byte, proof []Hash, start, end int, root Hash) 
 	result, _ := merkletree.VerifyRangeProof(merkletree.NewReaderLeafHasher(bytes.NewReader(segments), NewHash(), SegmentSize), NewHash(), start, end, proofBytes, root[:])
 	return result
 }
+
+// MerkleSectorRangeProof builds a Merkle proof for the sector range [start,end).
+func MerkleSectorRangeProof(roots []Hash, start, end int) []Hash {
+	leafHashes := make([][]byte, len(roots))
+	for i := range leafHashes {
+		leafHashes[i] = roots[i][:]
+	}
+	sh := merkletree.NewCachedSubtreeHasher(leafHashes, NewHash())
+	proof, _ := merkletree.BuildRangeProof(start, end, sh)
+	proofHashes := make([]Hash, len(proof))
+	for i := range proofHashes {
+		copy(proofHashes[i][:], proof[i])
+	}
+	return proofHashes
+}
+
+// VerifySectorRangeProof verifies a proof produced by MerkleSectorRangeProof.
+func VerifySectorRangeProof(roots []Hash, proof []Hash, start, end int, root Hash) bool {
+	leafHashes := make([][]byte, len(roots))
+	for i := range leafHashes {
+		leafHashes[i] = roots[i][:]
+	}
+	lh := merkletree.NewCachedLeafHasher(leafHashes)
+	proofBytes := make([][]byte, len(proof))
+	for i := range proof {
+		proofBytes[i] = proof[i][:]
+	}
+	result, _ := merkletree.VerifyRangeProof(lh, NewHash(), start, end, proofBytes, root[:])
+	return result
+}
