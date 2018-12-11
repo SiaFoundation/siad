@@ -115,6 +115,13 @@ type (
 		ExpiredContracts  []RenterContract `json:"expiredcontracts"`
 	}
 
+	// RenterDirectory lists the files and directories contained in the queried
+	// directory
+	RenterDirectory struct {
+		Directories []modules.DirectoryInfo `json:"directories"`
+		Files       []modules.FileInfo      `json:"files"`
+	}
+
 	// RenterDownloadQueue contains the renter's download queue.
 	RenterDownloadQueue struct {
 		Downloads []DownloadInfo `json:"downloads"`
@@ -885,6 +892,20 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		return
 	}
 	WriteSuccess(w)
+}
+
+// renterDirHandlerGET handles the API call to create a directory
+func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	directories, files, err := api.renter.DirList(strings.TrimPrefix(ps.ByName("siapath"), "/"))
+	if err != nil {
+		WriteError(w, Error{"failed to get directory contents:" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteJSON(w, RenterDirectory{
+		Directories: directories,
+		Files:       files,
+	})
+	return
 }
 
 // renterDirHandlerPOST handles the API call to create a directory

@@ -69,6 +69,12 @@ func randomThreadUID() uint64 {
 	return fastrand.Uint64n(math.MaxUint64)
 }
 
+// trimSlashes is a helper to make sure there are no leading or trailing slashes
+// on the siapath
+func trimSlashes(siaPath string) string {
+	return strings.TrimPrefix(strings.TrimSuffix(siaPath, "/"), "/")
+}
+
 // NewSiaDirSet initializes and returns a SiaDirSet
 func NewSiaDirSet(rootDir string, wal *writeaheadlog.WAL) *SiaDirSet {
 	return &SiaDirSet{
@@ -95,9 +101,8 @@ func (entry *SiaDirSetEntry) close() error {
 // exists checks to see if a SiaDir with the provided siaPath already exists in
 // the renter
 func (sds *SiaDirSet) exists(siaPath string) (bool, error) {
-	// Make sure there are no leading slashes
-	siaPath = strings.TrimPrefix(siaPath, "/")
 	// Check for SiaDir in Memory
+	siaPath = trimSlashes(siaPath)
 	_, exists := sds.siaDirMap[siaPath]
 	if exists {
 		return exists, nil
@@ -122,9 +127,8 @@ func (sds *SiaDirSet) newSiaDirSetEntry(sd *SiaDir) *siaDirSetEntry {
 
 // open will return the siaDirSetEntry in memory or load it from disk
 func (sds *SiaDirSet) open(siaPath string) (*SiaDirSetEntry, error) {
-	// Make sure there are no leading slashes
-	siaPath = strings.TrimPrefix(siaPath, "/")
 	var entry *siaDirSetEntry
+	siaPath = trimSlashes(siaPath)
 	entry, exists := sds.siaDirMap[siaPath]
 	if !exists {
 		// Try and Load File from disk
@@ -196,8 +200,8 @@ func (sds *SiaDirSet) Exists(siaPath string) (bool, error) {
 func (sds *SiaDirSet) NewSiaDir(siaPath string) (*SiaDirSetEntry, error) {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
-	siaPath = strings.TrimPrefix(siaPath, "/")
 	// Check is SiaDir already exists
+	siaPath = trimSlashes(siaPath)
 	exists, err := sds.exists(siaPath)
 	if exists {
 		return nil, ErrPathOverload
@@ -232,7 +236,7 @@ func (sds *SiaDirSet) Open(siaPath string) (*SiaDirSetEntry, error) {
 func (sds *SiaDirSet) UpdateHealth(siaPath string, health, stuckHealth float64, lastCheck time.Time) error {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
-	siaPath = strings.TrimPrefix(siaPath, "/")
+	siaPath = trimSlashes(siaPath)
 	exists, err := sds.exists(siaPath)
 	if !exists && os.IsNotExist(err) {
 		return ErrUnknownPath
