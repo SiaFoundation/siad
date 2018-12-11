@@ -270,8 +270,15 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	if err := encoding.NewDecoder(conn).Decode(&id); err != nil {
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		h.log.Debugf("WARN: incoming conn %v was malformed: %v", conn.RemoteAddr(), err)
+		return
 	}
 	if id != modules.RPCLoopEnter {
+		// first 8 bytes should be a length prefix of 16
+		if lp := encoding.DecUint64(id[:8]); lp != 16 {
+			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			h.log.Debugf("WARN: incoming conn %v was malformed: invalid length prefix %v", conn.RemoteAddr(), lp)
+			return
+		}
 		// shift down 8 bytes, then read next 8
 		copy(id[:8], id[8:])
 		if _, err := io.ReadFull(conn, id[8:]); err != nil {
