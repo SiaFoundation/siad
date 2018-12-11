@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -3728,5 +3730,155 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if err := renter.SetFileRepairPath(remoteFile, smallFile); err == nil {
 		t.Fatal("Changing repair path to a nonexistent file shouldn't work")
+	}
+}
+
+// TestRenterFileContractIdentifier checks that the file contract's identifier
+// is set correctly when forming a contract and after renewing it.
+func TestRenterFileContractIdentifier(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup, creating without renter so the renter's
+	// contract transactions can easily be obtained.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a Renter node
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	rcg, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Get the endheight of the contracts.
+	eh := rcg.ActiveContracts[0].EndHeight
+
+	// Get the blockheight.
+	cg, err := tg.Hosts()[0].ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bh := cg.Height
+
+	// Mine blocks until we reach the endheight
+	m := tg.Miners()[0]
+	for i := 0; i < int(eh-bh); i++ {
+		if err := m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Confirm that the contracts got renewed.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Mine a block.
+		if err := m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		// Get the contracts from the renter.
+		rcg, err := r.RenterExpiredContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// We should have one contract for each host.
+		if len(rcg.ActiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v active contracts but got %v",
+				len(tg.Hosts()), rcg.ActiveContracts)
+		}
+		// We should have one expired contract for each host.
+		if len(rcg.ExpiredContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v expired contracts but got %v",
+				len(tg.Hosts()), len(rcg.ExpiredContracts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the transaction which are related to the renter since we started the
+	// renter.
+	txns, err := r.WalletTransactionsGet(0, ^types.BlockHeight(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Filter out transactions without file contracts.
+	var fcTxns []modules.ProcessedTransaction
+	for _, txn := range txns.ConfirmedTransactions {
+		if len(txn.Transaction.FileContracts) > 0 {
+			fcTxns = append(fcTxns, txn)
+		}
+	}
+	// There should be twice as many transactions with contracts as there are hosts.
+	if len(fcTxns) != 2*len(tg.Hosts()) {
+		t.Fatalf("Expected %v txns but got %v", 2*len(tg.Hosts()), len(fcTxns))
+	}
+
+	// Get the wallet seed of the renter.
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed, err := modules.StringToSeed(wsg.PrimarySeed, "english")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Map contract IDs to startHeights.
+	// Check the arbitrary data of the active contracts again to confirm that
+	// the renewal code also sets it correctly.
+	rcg, err = r.RenterExpiredContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	startHeightMap := make(map[types.FileContractID]types.BlockHeight)
+	for _, c := range rcg.ActiveContracts {
+		startHeightMap[c.ID] = c.StartHeight
+	}
+	for _, c := range rcg.ExpiredContracts {
+		startHeightMap[c.ID] = c.StartHeight
+	}
+
+	// Check the arbitrary data of each transaction and contract.
+	for _, fcTxn := range fcTxns {
+		txn := fcTxn.Transaction
+		for i := range txn.FileContracts {
+			fcid := txn.FileContractID(uint64(i))
+			startHeight, exists := startHeightMap[fcid]
+			if !exists {
+				t.Fatal("startHeight doesn't exist for fcid", fcid.String())
+			}
+			// Calculate the renter seed given the startheight of the contract.
+			rs := proto.EphemeralRenterSeed(seed, startHeight)
+			// Calculate the prefixed and signed identifier we expect in that
+			// contract.
+			psi, err := proto.PrefixedSignedIdentifier(rs, txn.SiacoinInputs[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Compare it to the arbitrary data.
+			if !bytes.Equal(psi[:], txn.ArbitraryData[0]) {
+				t.Fatal("Arbitrary data of transaction doesn't match expected value")
+			}
+		}
 	}
 }

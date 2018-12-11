@@ -151,6 +151,11 @@ var (
 	// announcement will follow this prefix.
 	PrefixHostAnnouncement = types.Specifier{'H', 'o', 's', 't', 'A', 'n', 'n', 'o', 'u', 'n', 'c', 'e', 'm', 'e', 'n', 't'}
 
+	// PrefixFileContractIdentifier is used to indicate that a transaction's
+	// Arbitrary Data field contains a file contract identifier. The identifier
+	// and its signature will follow this prefix.
+	PrefixFileContractIdentifier = types.Specifier{'F', 'C', 'I', 'd', 'e', 'n', 't', 'i', 'f', 'i', 'e', 'r'}
+
 	// RPCDownload is the specifier for downloading a file from a host.
 	RPCDownload = types.Specifier{'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 2}
 

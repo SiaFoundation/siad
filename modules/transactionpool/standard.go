@@ -105,7 +105,8 @@ func isStandardTransaction(t types.Transaction) (uint64, error) {
 		// Check for a whilelisted prefix.
 		copy(prefix[:], arb)
 		if prefix == modules.PrefixHostAnnouncement ||
-			prefix == modules.PrefixNonSia {
+			prefix == modules.PrefixNonSia ||
+			prefix == modules.PrefixFileContractIdentifier {
 			continue
 		}
 

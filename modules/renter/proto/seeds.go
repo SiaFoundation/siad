@@ -1,0 +1,122 @@
+package proto
+
+import (
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
+)
+
+// Declaration of individual seed types for additional type safety.
+type (
+	// identifierSeed is the seed used to derive identifiers for file contracts.
+	identifierSeed modules.Seed
+	// identifierSigningSeed is the seed used to derive a signing key for the
+	// identifier.
+	identifierSigningSeed modules.Seed
+	// secretKeySeed is the seed used to derive the secret key for file
+	// contracts.
+	secretKeySeed modules.Seed
+	// RenterSeed is the master seed of the renter which is used to derive
+	// other seeds.
+	RenterSeed modules.Seed
+)
+
+type (
+	// contractIdentifier is an identifer which is stored in the arbitrary data
+	// section of each contract.
+	contractIdentifier [32]byte
+	// contractIdentifierSigningKey is the key used to sign a
+	// contractIdentifier to verify that the identifier was created by the
+	// renter.
+	contractIdentifierSigningKey [32]byte
+	// ContractSignedIdentifier is an identifer with a prefix and appended
+	// signature, ready to be stored in the arbitrary data section of a
+	// transaction.
+	ContractSignedIdentifier [80]byte // 32 bytes identifier, 32 bytes signature, 16 bytes prefix
+)
+
+// contractIdentifierSeed derives a contractIdentifierSeed from a renterSeed.
+func (rs RenterSeed) contractIdentifierSeed() (seed identifierSeed) {
+	s := crypto.HashAll(rs, identifierSeedSpecifier)
+	copy(seed[:], s[:])
+	return
+}
+
+// contractSecretKeySeed derives a secretKeySeed from a renterSeed.
+func (rs RenterSeed) contractSecretKeySeed() (seed secretKeySeed) {
+	s := crypto.HashAll(rs, secretKeySeedSpecifier)
+	copy(seed[:], s[:])
+	return
+}
+
+// contractIdentifierSigningSeed derives an identifierSigningSeed from a renterSeed.
+func (rs RenterSeed) contractIdentifierSigningSeed() (seed identifierSigningSeed) {
+	s := crypto.HashAll(rs, signingKeySeedSpecifier)
+	copy(seed[:], s[:])
+	return
+}
+
+// identifier derives an identifier from the identifierSeed.
+func (is identifierSeed) identifier(sci types.SiacoinInput) (ci contractIdentifier) {
+	s := crypto.HashAll(is, sci)
+	copy(ci[:], s[:])
+	return
+}
+
+// identifierSigningKey derives a signing key from the identifierSigningSeed.
+func (iss identifierSigningSeed) identifierSigningKey(sci types.SiacoinInput) (cisk contractIdentifierSigningKey) {
+	s := crypto.HashAll(iss, sci)
+	copy(cisk[:], s[:])
+	return
+}
+
+// EphemeralRenterSeed creates a renterSeed for creating file contracts.
+// NOTE: The seed returned by this function should be wiped once it's no longer
+// in use.
+func EphemeralRenterSeed(walletSeed modules.Seed, blockheight types.BlockHeight) RenterSeed {
+	var renterSeed RenterSeed
+	rs := crypto.HashAll(walletSeed, renterSeedSpecifier, blockheight/ephemeralSeedInterval)
+	copy(renterSeed[:], rs[:])
+
+	// Sanity check seed length.
+	if len(renterSeed) != len(rs) {
+		build.Critical("sanity check failed: renterSeed != rs")
+	}
+	return renterSeed
+}
+
+// PrefixedSignedIdentifier is a helper function that creates a prefixed and
+// signed identifier using a renter key and siacoin input.
+// NOTE: Always use PrefixedSignedIdentifier when creating identifiers for
+// filecontracts. It wipes all the secrets required for creating the identifier
+// from memory safely.
+func PrefixedSignedIdentifier(renterSeed RenterSeed, sci types.SiacoinInput) (ContractSignedIdentifier, error) {
+	// Get the seeds and wipe them after we are done using them.
+	cis := renterSeed.contractIdentifierSeed()
+	defer fastrand.Read(cis[:])
+	ciss := renterSeed.contractIdentifierSigningSeed()
+	defer fastrand.Read(ciss[:])
+	// Get identifier and signing key. Wipe the signing key after we are done
+	// using it. The identifier is public anyway.
+	identifier := cis.identifier(sci)
+	signingKey := ciss.identifierSigningKey(sci)
+	defer fastrand.Read(signingKey[:])
+	// Pad the signing key since threefish requires 64 bytes of entropy.
+	paddedSigningKey := append(signingKey[:], make([]byte, 32)...)
+	defer fastrand.Read(paddedSigningKey[:])
+	// Create the cipher for signing the identifier.
+	sk, err := crypto.NewSiaKey(crypto.TypeThreefish, paddedSigningKey)
+	if err != nil {
+		return ContractSignedIdentifier{}, err
+	}
+	// Pad the identifier and sign it.
+	signature := sk.EncryptBytes(append(identifier[:], make([]byte, 32)...))
+	// Create the signed identifer object.
+	var csi ContractSignedIdentifier
+	copy(csi[:16], modules.PrefixFileContractIdentifier[:])
+	copy(csi[16:48], identifier[:])
+	copy(csi[48:], signature[:])
+	return csi, nil
+}
