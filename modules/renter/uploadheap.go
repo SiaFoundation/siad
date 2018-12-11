@@ -239,7 +239,7 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 		return
 	}
 
-	offline, goodForRenew := r.managedFileUtilities(entrys)
+	offline, goodForRenew := r.managedContractUtilities(entrys)
 
 	// Loop through the whole set of files and get a list of chunks to add to
 	// the heap.

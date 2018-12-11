@@ -48,15 +48,15 @@ type (
 
 	// siaDirMetadata is the metadata that is saved to disk as a .siadir file
 	siaDirMetadata struct {
-		// Health is the health of the most in need file in the directory of any
-		// of the sub directories that is not stuck
+		// Health is the health of the most in need file in the directory or any
+		// of the sub directories that are not stuck
 		Health float64 `json:"health"`
-		// Health is the health of the most in need file in the directory of any
-		// of the sub directories, stuck or not stuck
+		// StuckHealth is the health of the most in need file in the directory
+		// or any of the sub directories, stuck or not stuck
 		StuckHealth float64 `json:"stuckhealth"`
 
 		// LastHealthCheckTime is the oldest LastHealthCheckTime of any of the
-		// siafiles in the siadir
+		// siafiles in the siadir or any of the sub directories
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 
 		// SiaPath is the path to the siadir on the sia network
@@ -104,10 +104,11 @@ func createDirMetadata(siaPath, fullPath string) (siaDirMetadata, error) {
 		return siaDirMetadata{}, err
 	}
 
-	// Initialize metadata, set MinHealth to MaxInt64 so empty directories
-	// won't be viewed as being the most in need
+	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
+	// empty directories won't be viewed as being the most in need
 	md := siaDirMetadata{
 		Health:              DefaultDirHealth,
+		StuckHealth:         DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
 		SiaPath:             siaPath,
 	}
@@ -129,12 +130,6 @@ func LoadSiaDir(rootDir, siaPath string) (*SiaDir, error) {
 	var md siaDirMetadata
 	path := filepath.Join(rootDir, siaPath)
 	err := persist.LoadJSON(siaDirMetadataHeader, &md, filepath.Join(path, SiaDirExtension))
-	if os.IsNotExist(err) {
-		md, err = createDirMetadata(siaPath, path)
-		if err != nil {
-			return nil, err
-		}
-	}
 	return &SiaDir{
 		staticMetadata: md,
 	}, err
@@ -159,7 +154,8 @@ func (sd *SiaDir) SiaPath() string {
 	return sd.staticMetadata.SiaPath
 }
 
-// UpdateHealth updates the SiaDir metadata on disk with the new Health value
+// UpdateHealth updates the SiaDir metadata on disk with the new metadata health
+// values
 func (sd *SiaDir) UpdateHealth(health, stuckHealth float64, lastCheck time.Time, path string) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()

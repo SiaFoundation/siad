@@ -416,10 +416,12 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	return est, allowance, nil
 }
 
-// managedFileUtilities returns the offline and goodforrenew maps needed for
-// calculating redundancy and other file metrics. It takes a slice of
-// SiaFileSetEntrys
-func (r *Renter) managedFileUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool) {
+// managedContractUtilities grabs the pubkeys of the hosts that the file(s) have
+// been uploaded to and then generates maps of the contract's utilities showing
+// which hosts are GoodForRenew and which hosts are Offline.  The offline and
+// goodforrenew maps are needed for calculating redundancy and other file
+// metrics.
+func (r *Renter) managedContractUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool) {
 	// Save host keys in map.
 	pks := make(map[string]types.SiaPublicKey)
 	goodForRenew = make(map[string]bool)
