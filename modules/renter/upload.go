@@ -94,10 +94,18 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	// only files not in top level directory need to have directories created
 	dir, _ := filepath.Split(up.SiaPath)
 	dirSiaPath := strings.TrimSuffix(dir, "/")
-	if dirSiaPath != "" {
-		if err := r.createDir(dirSiaPath); err != nil {
+	// Check if directory exists already
+	exists, err := r.staticDirSet.Exists(dirSiaPath)
+	if !os.IsNotExist(err) && err != nil {
+		return err
+	}
+	if !exists {
+		// Create directory
+		siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
+		if err != nil {
 			return err
 		}
+		siaDirEntry.Close()
 	}
 
 	// Create the Siafile and add to renter

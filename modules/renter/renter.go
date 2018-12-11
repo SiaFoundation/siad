@@ -32,6 +32,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
@@ -179,6 +180,10 @@ type Renter struct {
 	// File management.
 	//
 	staticFileSet *siafile.SiaFileSet
+
+	// Directory Management
+	//
+	staticDirSet *siadir.SiaDirSet
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -409,6 +414,40 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	r.mu.Unlock(id)
 
 	return est, allowance, nil
+}
+
+// managedContractUtilities grabs the pubkeys of the hosts that the file(s) have
+// been uploaded to and then generates maps of the contract's utilities showing
+// which hosts are GoodForRenew and which hosts are Offline.  The offline and
+// goodforrenew maps are needed for calculating redundancy and other file
+// metrics.
+func (r *Renter) managedContractUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool) {
+	// Save host keys in map.
+	pks := make(map[string]types.SiaPublicKey)
+	goodForRenew = make(map[string]bool)
+	offline = make(map[string]bool)
+	for _, e := range entrys {
+		var used []types.SiaPublicKey
+		for _, pk := range e.HostPublicKeys() {
+			pks[string(pk.Key)] = pk
+			used = append(used, pk)
+		}
+		if err := e.UpdateUsedHosts(used); err != nil {
+			r.log.Debugln("WARN: Could not update used hosts:", err)
+		}
+	}
+
+	// Build 2 maps that map every pubkey to its offline and goodForRenew
+	// status.
+	for _, pk := range pks {
+		cu, ok := r.ContractUtility(pk)
+		if !ok {
+			continue
+		}
+		goodForRenew[string(pk.Key)] = cu.GoodForRenew
+		offline[string(pk.Key)] = r.hostContractor.IsOffline(pk)
+	}
+	return offline, goodForRenew
 }
 
 // setBandwidthLimits will change the bandwidth limits of the renter based on
@@ -688,6 +727,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		tpool:          tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.staticDirSet = siadir.NewSiaDirSet(r.filesDir)
 
 	// Load all saved data.
 	if err := r.initPersist(); err != nil {

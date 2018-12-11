@@ -22,7 +22,7 @@ const (
 var (
 	// ErrBadFilenameSuffix indicates that SaveJSON or LoadJSON was called using
 	// a filename that has a bad suffix. This prevents users from trying to use
-	// this package to manage the temp files - this packaage will manage them
+	// this package to manage the temp files - this package will manage them
 	// automatically.
 	ErrBadFilenameSuffix = errors.New("filename suffix not allowed")
 

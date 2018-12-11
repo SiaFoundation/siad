@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -23,7 +22,8 @@ import (
 
 const (
 	logFile = modules.RenterDir + ".log"
-	// PersistFilename is the filename to be used when persisting renter information to a JSON file
+	// PersistFilename is the filename to be used when persisting renter
+	// information to a JSON file
 	PersistFilename = "renter.json"
 	// SiaDirMetadata is the name of the metadata file for the sia directory
 	SiaDirMetadata = ".siadir"
@@ -34,11 +34,13 @@ const (
 var (
 	//ErrBadFile is an error when a file does not qualify as .sia file
 	ErrBadFile = errors.New("not a .sia file")
-	// ErrIncompatible is an error when file is not compatible with current version
+	// ErrIncompatible is an error when file is not compatible with current
+	// version
 	ErrIncompatible = errors.New("file is not compatible with current version")
 	// ErrNoNicknames is an error when no nickname is given
 	ErrNoNicknames = errors.New("at least one nickname must be supplied")
-	// ErrNonShareSuffix is an error when the suffix of a file does not match the defined share extension
+	// ErrNonShareSuffix is an error when the suffix of a file does not match
+	// the defined share extension
 	ErrNonShareSuffix = errors.New("suffix of file must be " + siafile.ShareExtension)
 
 	settingsMetadata = persist.Metadata{
@@ -115,7 +117,7 @@ func (f *file) MarshalSia(w io.Writer) error {
 	return nil
 }
 
-// UnmarshalSia implements the encoding.SiaUnmarshaller interface,
+// UnmarshalSia implements the encoding.SiaUnmarshaler interface,
 // reconstructing a file from the encoded bytes read from r.
 func (f *file) UnmarshalSia(r io.Reader) error {
 	dec := encoding.NewDecoder(r)
@@ -176,53 +178,6 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 		f.contracts[contract.ID] = contract
 	}
 	return nil
-}
-
-// createDir creates directory in the renter directory
-func (r *Renter) createDir(siapath string) error {
-	// Enforce nickname rules.
-	if err := validateSiapath(siapath); err != nil {
-		return err
-	}
-
-	// Create direcotry
-	path := filepath.Join(r.filesDir, siapath)
-	if err := os.MkdirAll(path, 0700); err != nil {
-		return err
-	}
-
-	// Make sure all parent directories have metadata files
-	for path != filepath.Dir(r.filesDir) {
-		if err := createDirMetadata(path); err != nil {
-			return err
-		}
-		path = filepath.Dir(path)
-	}
-	return nil
-}
-
-// createDirMetadata makes sure there is a metadata file in the directory and
-// updates or creates one as needed
-func createDirMetadata(path string) error {
-	fullPath := filepath.Join(path, SiaDirMetadata)
-	// Check if metadata file exists
-	if _, err := os.Stat(fullPath); err == nil {
-		// TODO: update metadata file
-		return nil
-	}
-
-	// TODO: update to get actual min redundancy
-	data := struct {
-		LastUpdate    int64
-		MinRedundancy float64
-	}{time.Now().UnixNano(), float64(0)}
-
-	metadataHeader := persist.Metadata{
-		Header:  "Sia Directory Metadata",
-		Version: persistVersion,
-	}
-
-	return persist.SaveJSON(metadataHeader, data, fullPath)
 }
 
 // saveSync stores the current renter data to disk and then syncs to disk.
