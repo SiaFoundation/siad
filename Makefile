@@ -19,6 +19,7 @@ dependencies:
 	go get -u gitlab.com/NebulousLabs/bolt
 	go get -u golang.org/x/crypto/blake2b
 	go get -u golang.org/x/crypto/ed25519
+	go get -u golang.org/x/crypto/curve25519
 	# Module + Daemon Dependencies
 	go get -u gitlab.com/NebulousLabs/entropy-mnemonics
 	go get -u gitlab.com/NebulousLabs/errors
