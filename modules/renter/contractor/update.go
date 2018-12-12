@@ -74,7 +74,11 @@ func (c *Contractor) managedArchiveContracts() {
 // recoverContract recovers a FileContract from the host that it was formed
 // with.
 func (c *Contractor) recoverContract(fc types.FileContract) {
-	panic("not implemented")
+	// Get the host.
+	//	c.hdb.Host(fc.
+	//	panic("not implemented")
+	//	var sk crypto.SecretKey
+	//	s, err := c.staticContracts.NewSessionWithSecret(
 }
 
 // recoverContracts recovers previously formed, contracts from a block.
