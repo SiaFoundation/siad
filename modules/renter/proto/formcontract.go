@@ -51,13 +51,13 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 	}
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
 	}
 	_ = txnBuilder.AddArbitraryData(si[:])
 	// Create our key.
-	ourSK, ourPK := GenerateKeyPair(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	ourSK, ourPK := GenerateKeyPair(params.RenterSeed, fcTxn)
 	// Create unlock conditions.
 	uc := types.UnlockConditions{
 		PublicKeys: []types.SiaPublicKey{
@@ -320,13 +320,13 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	}
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
 	}
 	_ = txnBuilder.AddArbitraryData(si[:])
 	// Create our key.
-	ourSK, ourPK := GenerateKeyPair(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	ourSK, ourPK := GenerateKeyPair(params.RenterSeed, fcTxn)
 	// Create unlock conditions.
 	uc := types.UnlockConditions{
 		PublicKeys: []types.SiaPublicKey{

@@ -3871,7 +3871,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			rs := proto.EphemeralRenterSeed(seed, startHeight)
 			// Calculate the prefixed and signed identifier we expect in that
 			// contract.
-			psi, err := proto.PrefixedSignedIdentifier(rs, txn.SiacoinInputs[0])
+			psi, err := proto.PrefixedSignedIdentifier(rs, txn)
 			if err != nil {
 				t.Fatal(err)
 			}

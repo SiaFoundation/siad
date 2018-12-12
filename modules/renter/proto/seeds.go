@@ -59,29 +59,29 @@ func (rs RenterSeed) contractIdentifierSigningSeed() (seed identifierSigningSeed
 }
 
 // identifier derives an identifier from the identifierSeed.
-func (is identifierSeed) identifier(sci types.SiacoinInput) (ci contractIdentifier) {
-	s := crypto.HashAll(is, sci)
+func (is identifierSeed) identifier(txn types.Transaction) (ci contractIdentifier) {
+	s := crypto.HashAll(is, txn.SiacoinInputs[0].ParentID)
 	copy(ci[:], s[:])
 	return
 }
 
 // identifierSigningKey derives a signing key from the identifierSigningSeed.
-func (iss identifierSigningSeed) identifierSigningKey(sci types.SiacoinInput) (cisk contractIdentifierSigningKey) {
-	s := crypto.HashAll(iss, sci)
+func (iss identifierSigningSeed) identifierSigningKey(txn types.Transaction) (cisk contractIdentifierSigningKey) {
+	s := crypto.HashAll(iss, txn.SiacoinInputs[0].ParentID)
 	copy(cisk[:], s[:])
 	return
 }
 
 // GenerateKeyPair generates a secret and a public key for a contract to be used
 // in its unlock conditions.
-func GenerateKeyPair(renterSeed RenterSeed, sci types.SiacoinInput) (sk crypto.SecretKey, pk crypto.PublicKey) {
+func GenerateKeyPair(renterSeed RenterSeed, txn types.Transaction) (sk crypto.SecretKey, pk crypto.PublicKey) {
 	// Get the secret key seed and wipe it afterwards.
 	csks := renterSeed.contractSecretKeySeed()
 	defer fastrand.Read(csks[:])
 
-	// Combine the seed with the SiacoinInput to create unique entropy for a
+	// Combine the seed with the first SiacoinInput's parentID to create unique entropy for a
 	// txn.
-	entropy := crypto.HashAll(csks, sci)
+	entropy := crypto.HashAll(csks, txn.SiacoinInputs[0].ParentID)
 	defer fastrand.Read(entropy[:])
 
 	// Use the enropy to generate the keypair.
@@ -104,11 +104,11 @@ func EphemeralRenterSeed(walletSeed modules.Seed, blockheight types.BlockHeight)
 }
 
 // PrefixedSignedIdentifier is a helper function that creates a prefixed and
-// signed identifier using a renter key and siacoin input.
+// signed identifier using a renter key and siacoin input's parent.
 // NOTE: Always use PrefixedSignedIdentifier when creating identifiers for
 // filecontracts. It wipes all the secrets required for creating the identifier
 // from memory safely.
-func PrefixedSignedIdentifier(renterSeed RenterSeed, sci types.SiacoinInput) (ContractSignedIdentifier, error) {
+func PrefixedSignedIdentifier(renterSeed RenterSeed, txn types.Transaction) (ContractSignedIdentifier, error) {
 	// Get the seeds and wipe them after we are done using them.
 	cis := renterSeed.contractIdentifierSeed()
 	defer fastrand.Read(cis[:])
@@ -116,8 +116,8 @@ func PrefixedSignedIdentifier(renterSeed RenterSeed, sci types.SiacoinInput) (Co
 	defer fastrand.Read(ciss[:])
 	// Get identifier and signing key. Wipe the signing key after we are done
 	// using it. The identifier is public anyway.
-	identifier := cis.identifier(sci)
-	signingKey := ciss.identifierSigningKey(sci)
+	identifier := cis.identifier(txn)
+	signingKey := ciss.identifierSigningKey(txn)
 	defer fastrand.Read(signingKey[:])
 	// Pad the signing key since threefish requires 64 bytes of entropy.
 	paddedSigningKey := append(signingKey[:], make([]byte, 32)...)
