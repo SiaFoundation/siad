@@ -6,6 +6,7 @@ package host
 // correctly.
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -13,11 +14,36 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"github.com/coreos/bbolt"
 )
+
+var (
+	errTxFail = errors.New("transaction set was not accepted")
+)
+
+// stubTPool is a minimal implementation of a transaction pool that will not accept new transaction sets.
+type stubTPool struct{}
+
+func (stubTPool) AcceptTransactionSet(ts []types.Transaction) error {
+	return errTxFail
+}
+func (stubTPool) FeeEstimation() (min, max types.Currency)           { return types.Currency{}, types.Currency{} }
+func (stubTPool) TransactionSet(oid crypto.Hash) []types.Transaction { return nil }
+func (stubTPool) Broadcast(ts []types.Transaction)                   {}
+func (stubTPool) Close() error                                       { return nil }
+func (stubTPool) TransactionList() []types.Transaction               { return nil }
+func (stubTPool) Transaction(id types.TransactionID) (types.Transaction, []types.Transaction, bool) {
+	return types.Transaction{}, nil, false
+}
+func (stubTPool) ProcessConsensusChange(cc modules.ConsensusChange)                     {}
+func (stubTPool) PurgeTransactionPool()                                                 {}
+func (stubTPool) TransactionPoolSubscribe(subscriber modules.TransactionPoolSubscriber) {}
+func (stubTPool) Unsubscribe(subscriber modules.TransactionPoolSubscriber)              {}
+func (stubTPool) TransactionConfirmed(id types.TransactionID) (bool, error)             { return true, nil }
 
 // randSector creates a random sector, returning the sector along with the
 // Merkle root of the sector.
@@ -181,6 +207,315 @@ func TestBlankStorageObligation(t *testing.T) {
 	fm = ht.host.FinancialMetrics()
 	if fm.ContractCount != 0 {
 		t.Error("host should have 0 contracts, the contracts were all completed:", fm.ContractCount)
+	}
+}
+
+// TestPruneStaleStorageObligations checks that the host is able to remove stale
+// storage obligations from the database and correct the financial metrics. Stale
+// obligations are obligations that are in the host database whos file contract
+// never made it on the blockchain. To check if a obligation is stale, we check
+// if the obligation is accepted by the transactionpool. If the obligation is not
+// in the transactionpool, we check if NegotiationHeight is at least maxTxnAge
+// blocks behind the current block. If this is the case, we can be certain that
+// the file contract will never make it to the blockchain and that it is safe
+// to remove the obligation from the database.
+func TestPruneStaleStorageObligations(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	ht, err := newHostTester("TestPruneStaleStorageObligations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	// The number of contracts and locked storage collateral reported
+	// by the host should be zero.
+	fm := ht.host.FinancialMetrics()
+	if fm.ContractCount != 0 {
+		t.Error("host does not start with a ContractCount of 0:", fm.ContractCount)
+	}
+	if !fm.LockedStorageCollateral.IsZero() {
+		t.Error("host does not start with 0 LockedStorageCollateral:", fm.LockedStorageCollateral)
+	}
+	if !fm.PotentialContractCompensation.IsZero() {
+		t.Error("host does not start with 0 PotentialContractCompensation:", fm.PotentialContractCompensation.HumanString())
+	}
+
+	// During counting of obligations in the host database, variables i, j and k are used to count
+	// the number of 'total', 'good' and 'stale' storage obligations.
+	var i, j, k int = 0, 0, 0
+
+	// The following error is returned whenever we don't find the expected number
+	// of obligations in the host database.
+	errCountErr := errors.New("Host database does not contain the expected obligations.")
+
+	// Define values for ContractCost (1SC) and LockedCollateral (1KS), create
+	// 3 new storage obligations and add them to the host
+	var contractCost types.Currency = types.NewCurrency64(1).Mul(types.SiacoinPrecision)
+	var lockedCollateral types.Currency = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
+	for i := 0; i < 3; i++ {
+		so, err := ht.newTesterStorageObligation()
+		if err != nil {
+			t.Fatal(err)
+		}
+		so.ContractCost = contractCost
+		so.LockedCollateral = lockedCollateral
+		ht.host.managedLockStorageObligation(so.id())
+		err = ht.host.managedAddStorageObligation(so)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ht.host.managedUnlockStorageObligation(so.id())
+		_, err = ht.miner.AddBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ht.host.tg.Flush()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The number of contracts reported by the host should be 3 and
+	// all financial metrics should be updated accordingly.
+	fm = ht.host.FinancialMetrics()
+	if fm.ContractCount != 3 {
+		t.Error("host does not have 3 contracts:", fm.ContractCount)
+	}
+	if fm.LockedStorageCollateral.Cmp(lockedCollateral.Mul64(3)) != 0 {
+		t.Error("LockedStorageCollateral should be 3KS:", fm.LockedStorageCollateral.HumanString())
+	}
+	if fm.PotentialContractCompensation.Cmp(contractCost.Mul64(3)) != 0 {
+		t.Error("PotentialContractCompensation should be 3SC:", fm.PotentialContractCompensation.HumanString())
+	}
+
+	// Replace transaction pool with a (failing) stub.
+	tp := ht.host.tpool
+	ht.host.tpool = stubTPool{}
+
+	// Try to add 2 more storage obligations to host. This operation should fail, the file contracts
+	// of these storage obligations will not make it on the blockchain.
+	for i := 0; i < 2; i++ {
+		so, err := ht.newTesterStorageObligation()
+		if err != nil {
+			t.Fatal(err)
+		}
+		so.ContractCost = contractCost
+		so.LockedCollateral = lockedCollateral
+		ht.host.managedLockStorageObligation(so.id())
+		err = ht.host.managedAddStorageObligation(so)
+		if err != errTxFail {
+			t.Error("Wrong error:", err)
+		}
+		ht.host.managedUnlockStorageObligation(so.id())
+		_, err = ht.miner.AddBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ht.host.tg.Flush()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Due to a bug in managedAddStorageObligation, the contract count equals 5
+	// and all lock storage collateral. In the host database we should find 5
+	// storage obligations.
+	fm = ht.host.FinancialMetrics()
+	if fm.ContractCount != 5 {
+		t.Error("Host should now have 5 contracts:", fm.ContractCount)
+	}
+	if fm.LockedStorageCollateral.Cmp(lockedCollateral.Mul64(5)) != 0 {
+		t.Error("LockedStorageCollateral should be 5KS:", fm.LockedStorageCollateral.HumanString())
+	}
+	// Check that the host reports the potential contract compensation for the 5 obligations.
+	if fm.PotentialContractCompensation.Cmp(contractCost.Mul64(5)) != 0 {
+		t.Error("PotentialContractCompensation should be 5SC:", fm.PotentialContractCompensation.HumanString())
+	}
+	// Reset counter and count total number of obligations in the database.
+	i = 0
+	err = ht.host.db.View(func(tx *bolt.Tx) error {
+		cursor := tx.Bucket(bucketStorageObligations).Cursor()
+		for key, v := cursor.First(); key != nil; key, v = cursor.Next() {
+			var so storageObligation
+			err := json.Unmarshal(v, &so)
+			if err != nil {
+				t.Fatal(err)
+			}
+			i++
+		}
+		if i != 5 {
+			t.Logf("There should be a total of 5 obligations in the database. Found %v.", i)
+			return errCountErr
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Reset the transaction pool
+	ht.host.tpool = tp
+
+	// Mine enough blocks so that all active storage obligations succeed and we
+	// know for sure the other obligations are stale, i.e. not in the transaction pool
+	// and with a NegotiationHeight, RespendTimeout blocks behind the currrent block.
+	endblock := ht.host.blockHeight + revisionSubmissionBuffer + defaultWindowSize + 2 + wallet.RespendTimeout + 1
+	for cb := ht.host.blockHeight; cb <= endblock; cb++ {
+		_, err := ht.miner.AddBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ht.host.tg.Flush()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	fm = ht.host.FinancialMetrics()
+	// Check that the host reports the contract compensation for the 3 succeeded obligations.
+	if fm.ContractCompensation.Cmp(contractCost.Mul64(3)) != 0 {
+		t.Error("ContractCompensation should be 3SC:", fm.ContractCompensation.HumanString())
+	}
+	// 3 Out of 5 obligations succeeded. Since 2 obligations are stale, the contract
+	// count will equal 2 and not 0. They both lock storage collateral.
+	if fm.ContractCount != 2 {
+		t.Error("Host should report 2 active contracts:", fm.ContractCount)
+	}
+	if fm.LockedStorageCollateral.Cmp(lockedCollateral.Mul64(2)) != 0 {
+		t.Error("LockedStorageCollateral should be 2KS:", fm.LockedStorageCollateral.HumanString())
+	}
+	if fm.PotentialContractCompensation.Cmp(contractCost.Mul64(2)) != 0 {
+		t.Error("PotentialContractCompensation should be 2SC:", fm.PotentialContractCompensation.HumanString())
+	}
+	// Proof that the host has stale storage obligations in the database.
+	i = 0
+	j = 0
+	k = 0
+	err = ht.host.db.View(func(tx *bolt.Tx) error {
+		cursor := tx.Bucket(bucketStorageObligations).Cursor()
+		for key, v := cursor.First(); key != nil; key, v = cursor.Next() {
+			var so storageObligation
+			err := json.Unmarshal(v, &so)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			i++
+			if so.ObligationStatus == obligationSucceeded {
+				j++
+			}
+			if so.ObligationStatus == obligationUnresolved {
+				// Check if the obligation transaction is confirmed
+				final := len(so.OriginTransactionSet) - 1
+				txid := so.OriginTransactionSet[final].ID()
+				found, err := ht.host.tpool.TransactionConfirmed(txid)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if found {
+					t.Log("Found unresolved obligation that was accepted by the transaction pool.")
+					return errCountErr
+				}
+				// Transaction was not found on the transaction pool. Double check if
+				// this obligation is in the process of being accepted.
+				if so.NegotiationHeight+wallet.RespendTimeout < ht.host.blockHeight {
+					// This obligation was created too far in the past and it is safe
+					// to assume this is a stale obligation.
+					k++
+				}
+			}
+		}
+		if i != (j + k) {
+			t.Logf("There should be in total 5 obligations in the database. Found %v.", i)
+			return errCountErr
+		}
+		if j != 3 {
+			t.Logf("There should be 3 succeeded obligations in the database. Found %v.", j)
+			return errCountErr
+		}
+		if k != 2 {
+			t.Logf("There should be 2 unresolved obligations in the database. Found %v.", k)
+			return errCountErr
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	// These 2 stale contracts will forever lock storage collateral. Use the
+	// PruneStaleStorgageObligations method to remove them.
+	ht.host.PruneStaleStorageObligations()
+
+	// Check the financials.
+	fm = ht.host.FinancialMetrics()
+	if fm.ContractCount != 0 {
+		t.Error("Host should report 0 active contracts:", fm.ContractCount)
+	}
+	if !fm.LockedStorageCollateral.IsZero() {
+		t.Error("Locked collateral should be 0:", fm.LockedStorageCollateral.HumanString())
+	}
+	// Check that the host still reports the contract compensation for the 3 succeeded obligations.
+	if fm.ContractCompensation.Cmp(contractCost.Mul64(3)) != 0 {
+		t.Error("ContractCompensation should be 3SC:", fm.ContractCompensation.HumanString())
+	}
+	// Finally we check the database so see if all stale obligations were successfully removed.
+	// We also need to check if the ones that succeeded are still in the database and that the
+	// total number of obligations equals the number of obligations that succeeded.
+	i = 0
+	j = 0
+	k = 0
+	err = ht.host.db.View(func(tx *bolt.Tx) error {
+		cursor := tx.Bucket(bucketStorageObligations).Cursor()
+		for key, v := cursor.First(); key != nil; key, v = cursor.Next() {
+			var so storageObligation
+			err := json.Unmarshal(v, &so)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			i++
+			if so.ObligationStatus == obligationSucceeded {
+				j++
+			}
+			if so.ObligationStatus == obligationUnresolved {
+				// Check if the obligation transaction is confirmed
+				final := len(so.OriginTransactionSet) - 1
+				txid := so.OriginTransactionSet[final].ID()
+				found, err := ht.host.tpool.TransactionConfirmed(txid)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if found {
+					t.Log("Found unresolved obligation that was accepted by the transaction pool.")
+					return errCountErr
+				}
+				// Transaction was not found on the transaction pool. Double check if
+				// this obligation is in the process of being accepted.
+				if so.NegotiationHeight+wallet.RespendTimeout < ht.host.blockHeight {
+					// This obligation was created too far in the past and it is safe
+					// to assume this is a stale obligation.
+					k++
+				}
+			}
+		}
+		if i != (j + k) {
+			t.Logf("There should be a total of 3 obligations in the database. Found %v.", i)
+			return errCountErr
+
+		}
+		if j != 3 {
+			t.Logf("There should be 3 succeeded obligations in the database. Found %v.", j)
+			return errCountErr
+		}
+		if k != 0 {
+			t.Logf("There should not be any stale obligations in the database. Found %v.", k)
+			return errCountErr
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
 	}
 }
 

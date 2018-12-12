@@ -121,6 +121,7 @@ type (
 		RiskedCollateral         types.Currency       `json:"riskedcollateral"`
 		SectorRootsCount         uint64               `json:"sectorrootscount"`
 		TransactionFeesAdded     types.Currency       `json:"transactionfeesadded"`
+		TransactionId            types.TransactionID  `json:"transactionid"`
 
 		// The negotiation height specifies the block height at which the file
 		// contract was negotiated. The expiration height and the proof deadline
@@ -172,6 +173,12 @@ type (
 		// NetworkMetrics returns information on the types of RPC calls that
 		// have been made to the host.
 		NetworkMetrics() HostNetworkMetrics
+
+		// PruneStaleStorageObligations will delete storage obligations from the host
+		// that, for whatever reason, did not make it on the block chain.
+		// As these stale storage obligations have an impact on the host financial metrics,
+		// this method updates the host financial metrics to show the correct values.
+		PruneStaleStorageObligations() error
 
 		// PublicKey returns the public key of the host.
 		PublicKey() types.SiaPublicKey
