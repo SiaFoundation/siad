@@ -29,3 +29,25 @@ func IsSiaDirUpdate(update writeaheadlog.Update) bool {
 		return false
 	}
 }
+
+// isDeleteUpdate is a helper method that makes sure that a wal update is a
+// delete update
+func isDeleteUpdate(update writeaheadlog.Update) bool {
+	switch update.Name {
+	case updateDeleteName:
+		return true
+	default:
+		return false
+	}
+}
+
+// isMetadataUpdate is a helper method that makes sure that a wal update is a
+// metadata update
+func isMetadataUpdate(update writeaheadlog.Update) bool {
+	switch update.Name {
+	case updateMetadataName:
+		return true
+	default:
+		return false
+	}
+}

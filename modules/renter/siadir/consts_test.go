@@ -14,7 +14,7 @@ func TestIsSiaDirUpdate(t *testing.T) {
 	}
 	metadataUpdate := createMetadataUpdate([]byte{})
 	deleteUpdate := sd.createDeleteUpdate()
-	randomUpdate := writeaheadlog.Update{}
+	emptyUpdate := writeaheadlog.Update{}
 
 	if !IsSiaDirUpdate(metadataUpdate) {
 		t.Error("metadataUpdate should be a SiaDirUpdate but wasn't")
@@ -22,7 +22,7 @@ func TestIsSiaDirUpdate(t *testing.T) {
 	if !IsSiaDirUpdate(deleteUpdate) {
 		t.Error("deleteUpdate should be a SiaDirUpdate but wasn't")
 	}
-	if IsSiaDirUpdate(randomUpdate) {
-		t.Error("randomUpdate shouldn't be a SiaDirUpdate but was one")
+	if IsSiaDirUpdate(emptyUpdate) {
+		t.Error("emptyUpdate shouldn't be a SiaDirUpdate but was one")
 	}
 }

@@ -174,9 +174,9 @@ func (sds *SiaDirSet) Delete(siaPath string) error {
 		return err
 	}
 	// Defer close entry
+	defer entry.close()
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
-	defer entry.close()
 	// Delete SiaDir
 	if err := entry.Delete(); err != nil {
 		return err

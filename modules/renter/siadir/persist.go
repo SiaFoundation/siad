@@ -2,6 +2,7 @@ package siadir
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -18,27 +19,7 @@ import (
 func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	// Apply updates.
 	for _, u := range updates {
-		err := func() error {
-			// Check if it is a delete update.
-			if u.Name == updateDeleteName {
-				err := os.RemoveAll(readDeleteUpdate(u))
-				if os.IsNotExist(err) {
-					return nil
-				}
-				return err
-			}
-			// Decode update.
-			metadata, err := readMetadataUpdate(u)
-			if err != nil {
-				return err
-			}
-
-			// Write data.
-			if err := metadata.save(); err != nil {
-				return err
-			}
-			return nil
-		}()
+		err := applyUpdate(u)
 		if err != nil {
 			return errors.AddContext(err, "failed to apply update")
 		}
@@ -46,11 +27,37 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	return nil
 }
 
+// applyUpdate applies the wal update
+func applyUpdate(update writeaheadlog.Update) error {
+	switch update.Name {
+	case updateDeleteName:
+		// Delete from disk
+		err := os.RemoveAll(readDeleteUpdate(update))
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	case updateMetadataName:
+		// Decode update.
+		metadata, err := readMetadataUpdate(update)
+		if err != nil {
+			return err
+		}
+		// Write data.
+		if err := metadata.save(); err != nil {
+			return err
+		}
+		return nil
+	default:
+		return fmt.Errorf("Update not recognized: %v", update.Name)
+	}
+}
+
 // readDeleteUpdate unmarshals the update's instructions and returns the
 // encoded path.
 func readDeleteUpdate(update writeaheadlog.Update) string {
-	if !IsSiaDirUpdate(update) {
-		err := errors.New("readUpdate can't read non-SiaDir update")
+	if !isDeleteUpdate(update) {
+		err := errors.New("readDeleteUpdate can't read non-delete updates")
 		build.Critical(err)
 		return ""
 	}
@@ -97,8 +104,8 @@ func createMetadataUpdate(data []byte) writeaheadlog.Update {
 // readMetadataUpdate unmarshals the update's instructions and returns the
 // metadata encoded in the instructions.
 func readMetadataUpdate(update writeaheadlog.Update) (metadata siaDirMetadata, err error) {
-	if !IsSiaDirUpdate(update) {
-		err = errors.New("readUpdate can't read non-SiaDir update")
+	if !isMetadataUpdate(update) {
+		err = errors.New("readMetadataUpdate can't read non-metadata updates")
 		build.Critical(err)
 		return
 	}
@@ -126,29 +133,7 @@ func saveMetadataUpdate(md siaDirMetadata) ([]writeaheadlog.Update, error) {
 func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// Apply updates.
 	for _, u := range updates {
-		err := func() error {
-			// Check if it is a delete update.
-			if u.Name == updateDeleteName {
-				// TODO - this should be updated to call wal delete txns on all
-				// of the directories contents
-				err := os.RemoveAll(readDeleteUpdate(u))
-				if os.IsNotExist(err) {
-					return nil
-				}
-				return err
-			}
-			// Decode update.
-			metadata, err := readMetadataUpdate(u)
-			if err != nil {
-				return err
-			}
-
-			// Write data.
-			if err := metadata.save(); err != nil {
-				return err
-			}
-			return nil
-		}()
+		err := applyUpdate(u)
 		if err != nil {
 			return errors.AddContext(err, "failed to apply update")
 		}
