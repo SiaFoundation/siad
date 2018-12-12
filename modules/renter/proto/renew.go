@@ -96,10 +96,7 @@ func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams
 	txnBuilder.AddMinerFee(txnFee)
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
-	}
+	si := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
 	_ = txnBuilder.AddArbitraryData(si[:])
 
 	// Create initial transaction set.
@@ -381,10 +378,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	txnBuilder.AddMinerFee(txnFee)
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
-	}
+	si := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
 	_ = txnBuilder.AddArbitraryData(si[:])
 
 	// Create initial transaction set.

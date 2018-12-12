@@ -51,10 +51,7 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 	}
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
-	}
+	si := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
 	_ = txnBuilder.AddArbitraryData(si[:])
 	// Create our key.
 	ourSK, ourPK := GenerateKeyPair(params.RenterSeed, fcTxn)
@@ -320,10 +317,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	}
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
-	}
+	si := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
 	_ = txnBuilder.AddArbitraryData(si[:])
 	// Create our key.
 	ourSK, ourPK := GenerateKeyPair(params.RenterSeed, fcTxn)

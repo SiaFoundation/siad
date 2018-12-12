@@ -3885,38 +3885,22 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Map contract IDs to startHeights.
 	// Check the arbitrary data of the active contracts again to confirm that
 	// the renewal code also sets it correctly.
 	rcg, err = r.RenterExpiredContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	startHeightMap := make(map[types.FileContractID]types.BlockHeight)
-	for _, c := range rcg.ActiveContracts {
-		startHeightMap[c.ID] = c.StartHeight
-	}
-	for _, c := range rcg.ExpiredContracts {
-		startHeightMap[c.ID] = c.StartHeight
-	}
 
 	// Check the arbitrary data of each transaction and contract.
 	for _, fcTxn := range fcTxns {
 		txn := fcTxn.Transaction
-		for i := range txn.FileContracts {
-			fcid := txn.FileContractID(uint64(i))
-			startHeight, exists := startHeightMap[fcid]
-			if !exists {
-				t.Fatal("startHeight doesn't exist for fcid", fcid.String())
-			}
-			// Calculate the renter seed given the startheight of the contract.
-			rs := proto.EphemeralRenterSeed(seed, startHeight)
+		for _, fc := range txn.FileContracts {
+			// Calculate the renter seed given the WindowStart of the contract.
+			rs := proto.EphemeralRenterSeed(seed, fc.WindowStart)
 			// Calculate the prefixed and signed identifier we expect in that
 			// contract.
-			psi, err := proto.PrefixedSignedIdentifier(rs, txn)
-			if err != nil {
-				t.Fatal(err)
-			}
+			psi := proto.PrefixedSignedIdentifier(rs, txn)
 			// Compare it to the arbitrary data.
 			if !bytes.Equal(psi[:], txn.ArbitraryData[0]) {
 				t.Fatal("Arbitrary data of transaction doesn't match expected value")

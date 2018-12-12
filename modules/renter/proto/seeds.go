@@ -1,11 +1,18 @@
 package proto
 
 import (
+	"bytes"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
+)
+
+const (
+	// FCSignedIdentiferSize is the size of a ContractSignedIdentifier
+	FCSignedIdentiferSize = 80 // 32 bytes identifier, 32 bytes signature, 16 bytes prefix
 )
 
 // Declaration of individual seed types for additional type safety.
@@ -34,7 +41,7 @@ type (
 	// ContractSignedIdentifier is an identifer with a prefix and appended
 	// signature, ready to be stored in the arbitrary data section of a
 	// transaction.
-	ContractSignedIdentifier [80]byte // 32 bytes identifier, 32 bytes signature, 16 bytes prefix
+	ContractSignedIdentifier [FCSignedIdentiferSize]byte
 )
 
 // contractIdentifierSeed derives a contractIdentifierSeed from a renterSeed.
@@ -93,9 +100,9 @@ func GenerateKeyPair(renterSeed RenterSeed, txn types.Transaction) (sk crypto.Se
 // EphemeralRenterSeed creates a renterSeed for creating file contracts.
 // NOTE: The seed returned by this function should be wiped once it's no longer
 // in use.
-func EphemeralRenterSeed(walletSeed modules.Seed, blockheight types.BlockHeight) RenterSeed {
+func EphemeralRenterSeed(walletSeed modules.Seed, windowStart types.BlockHeight) RenterSeed {
 	var renterSeed RenterSeed
-	rs := crypto.HashAll(walletSeed, renterSeedSpecifier, blockheight/ephemeralSeedInterval)
+	rs := crypto.HashAll(walletSeed, renterSeedSpecifier, windowStart/ephemeralSeedInterval)
 	copy(renterSeed[:], rs[:])
 
 	// Sanity check seed length.
@@ -106,11 +113,12 @@ func EphemeralRenterSeed(walletSeed modules.Seed, blockheight types.BlockHeight)
 }
 
 // PrefixedSignedIdentifier is a helper function that creates a prefixed and
-// signed identifier using a renter key and siacoin input's parent.
+// signed identifier using a renter key and the first siacoin input of a
+// transaction.
 // NOTE: Always use PrefixedSignedIdentifier when creating identifiers for
 // filecontracts. It wipes all the secrets required for creating the identifier
 // from memory safely.
-func PrefixedSignedIdentifier(renterSeed RenterSeed, txn types.Transaction) (ContractSignedIdentifier, error) {
+func PrefixedSignedIdentifier(renterSeed RenterSeed, txn types.Transaction) ContractSignedIdentifier {
 	// Get the seeds and wipe them after we are done using them.
 	cis := renterSeed.contractIdentifierSeed()
 	defer fastrand.Read(cis[:])
@@ -124,7 +132,7 @@ func PrefixedSignedIdentifier(renterSeed RenterSeed, txn types.Transaction) (Con
 	// Create the cipher for signing the identifier.
 	sk, err := crypto.NewSiaKey(crypto.TypeThreefish, signingKey[:])
 	if err != nil {
-		return ContractSignedIdentifier{}, err
+		panic("This should never happen")
 	}
 	// Pad the identifier and sign it.
 	signature := sk.EncryptBytes(append(identifier[:], make([]byte, 32)...))
@@ -136,5 +144,12 @@ func PrefixedSignedIdentifier(renterSeed RenterSeed, txn types.Transaction) (Con
 	copy(csi[:16], modules.PrefixNonSia[:])
 	copy(csi[16:48], identifier[:])
 	copy(csi[48:], signature[:])
-	return csi, nil
+	return csi
+}
+
+// IsValid checks the signature against a seed and contract to determine if it
+// was created using the specified seed.
+func (csi ContractSignedIdentifier) IsValid(renterSeed RenterSeed, txn types.Transaction) bool {
+	psi := PrefixedSignedIdentifier(renterSeed, txn)
+	return bytes.Equal(csi[:], psi[:])
 }
