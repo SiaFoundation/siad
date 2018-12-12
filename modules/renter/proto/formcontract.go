@@ -27,17 +27,6 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 	// Extract vars from params, for convenience.
 	allowance, host, funding, startHeight, endHeight, refundAddress := params.Allowance, params.Host, params.Funding, params.StartHeight, params.EndHeight, params.RefundAddress
 
-	// Create our key.
-	ourSK, ourPK := crypto.GenerateKeyPair()
-	// Create unlock conditions.
-	uc := types.UnlockConditions{
-		PublicKeys: []types.SiaPublicKey{
-			types.Ed25519PublicKey(ourPK),
-			host.PublicKey,
-		},
-		SignaturesRequired: 2,
-	}
-
 	// Calculate the anticipated transaction fee.
 	_, maxFee := tpool.FeeEstimation()
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
@@ -55,6 +44,29 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 	if types.PostTax(startHeight, totalPayout).Cmp(hostPayout) < 0 {
 		return modules.RenterContract{}, errors.New("not enough money to pay both siafund fee and also host payout")
 	}
+	// Fund the transaction.
+	err = txnBuilder.FundSiacoins(funding)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	// Add FileContract identifier.
+	fcTxn, _ := txnBuilder.View()
+	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	if err != nil {
+		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
+	}
+	_ = txnBuilder.AddArbitraryData(si[:])
+	// Create our key.
+	ourSK, ourPK := GenerateKeyPair(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	// Create unlock conditions.
+	uc := types.UnlockConditions{
+		PublicKeys: []types.SiaPublicKey{
+			types.Ed25519PublicKey(ourPK),
+			host.PublicKey,
+		},
+		SignaturesRequired: 2,
+	}
+
 	// Create file contract.
 	fc := types.FileContract{
 		FileSize:       0,
@@ -80,21 +92,10 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 		},
 	}
 
-	// Build transaction containing fc, e.g. the File Contract.
-	err = txnBuilder.FundSiacoins(funding)
-	if err != nil {
-		return modules.RenterContract{}, err
-	}
+	// Add file contract.
 	txnBuilder.AddFileContract(fc)
 	// Add miner fee.
 	txnBuilder.AddMinerFee(txnFee)
-	// Add FileContract identifier.
-	fcTxn, _ := txnBuilder.View()
-	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
-	}
-	_ = txnBuilder.AddArbitraryData(si[:])
 
 	// Create initial transaction set.
 	txn, parentTxns := txnBuilder.View()
@@ -295,17 +296,6 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	// Extract vars from params, for convenience.
 	allowance, host, funding, startHeight, endHeight, refundAddress := params.Allowance, params.Host, params.Funding, params.StartHeight, params.EndHeight, params.RefundAddress
 
-	// Create our key.
-	ourSK, ourPK := crypto.GenerateKeyPair()
-	// Create unlock conditions.
-	uc := types.UnlockConditions{
-		PublicKeys: []types.SiaPublicKey{
-			types.Ed25519PublicKey(ourPK),
-			host.PublicKey,
-		},
-		SignaturesRequired: 2,
-	}
-
 	// Calculate the anticipated transaction fee.
 	_, maxFee := tpool.FeeEstimation()
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
@@ -322,6 +312,28 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	// Check for negative currency.
 	if types.PostTax(startHeight, totalPayout).Cmp(hostPayout) < 0 {
 		return modules.RenterContract{}, errors.New("not enough money to pay both siafund fee and also host payout")
+	}
+	// Fund the transaction.
+	err = txnBuilder.FundSiacoins(funding)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	// Add FileContract identifier.
+	fcTxn, _ := txnBuilder.View()
+	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	if err != nil {
+		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
+	}
+	_ = txnBuilder.AddArbitraryData(si[:])
+	// Create our key.
+	ourSK, ourPK := GenerateKeyPair(params.RenterSeed, fcTxn.SiacoinInputs[0])
+	// Create unlock conditions.
+	uc := types.UnlockConditions{
+		PublicKeys: []types.SiaPublicKey{
+			types.Ed25519PublicKey(ourPK),
+			host.PublicKey,
+		},
+		SignaturesRequired: 2,
 	}
 	// Create file contract.
 	fc := types.FileContract{
@@ -348,21 +360,10 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 		},
 	}
 
-	// Build transaction containing fc, e.g. the File Contract.
-	err = txnBuilder.FundSiacoins(funding)
-	if err != nil {
-		return modules.RenterContract{}, err
-	}
+	// Add file contract.
 	txnBuilder.AddFileContract(fc)
 	// Add miner fee.
 	txnBuilder.AddMinerFee(txnFee)
-	// Add FileContract identifier.
-	fcTxn, _ := txnBuilder.View()
-	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn.SiacoinInputs[0])
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
-	}
-	_ = txnBuilder.AddArbitraryData(si[:])
 
 	// Create initial transaction set.
 	txn, parentTxns := txnBuilder.View()
