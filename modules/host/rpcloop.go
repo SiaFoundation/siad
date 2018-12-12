@@ -44,11 +44,20 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 		return err
 	}
 
+	// generate a session key, sign it, and derive the shared secret
+	xsk, xpk := crypto.GenerateX25519KeyPair()
+	handshakeSig := crypto.SignHash(crypto.HashAll(req.PublicKey, xpk), h.secretKey)
+	cipherKey := crypto.DeriveSharedSecret(xsk, req.PublicKey)
+	// TODO: use cipherKey to initialize an AEAD cipher
+	_ = cipherKey
+
 	// send handshake response
 	var challenge [16]byte
 	fastrand.Read(challenge[:])
 	resp := modules.LoopHandshakeResponse{
 		Cipher:    modules.CipherPlaintext,
+		PublicKey: xpk,
+		Signature: handshakeSig[:],
 		Challenge: challenge,
 	}
 	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
