@@ -30,7 +30,7 @@ type (
 	// contractIdentifierSigningKey is the key used to sign a
 	// contractIdentifier to verify that the identifier was created by the
 	// renter.
-	contractIdentifierSigningKey [32]byte
+	contractIdentifierSigningKey [64]byte
 	// ContractSignedIdentifier is an identifer with a prefix and appended
 	// signature, ready to be stored in the arbitrary data section of a
 	// transaction.
@@ -67,8 +67,10 @@ func (is identifierSeed) identifier(txn types.Transaction) (ci contractIdentifie
 
 // identifierSigningKey derives a signing key from the identifierSigningSeed.
 func (iss identifierSigningSeed) identifierSigningKey(txn types.Transaction) (cisk contractIdentifierSigningKey) {
-	s := crypto.HashAll(iss, txn.SiacoinInputs[0].ParentID)
-	copy(cisk[:], s[:])
+	s1 := crypto.HashAll(iss, txn.SiacoinInputs[0].ParentID, 0)
+	s2 := crypto.HashAll(iss, txn.SiacoinInputs[0].ParentID, 1)
+	copy(cisk[:32], s1[:])
+	copy(cisk[32:], s2[:])
 	return
 }
 
@@ -119,11 +121,8 @@ func PrefixedSignedIdentifier(renterSeed RenterSeed, txn types.Transaction) (Con
 	identifier := cis.identifier(txn)
 	signingKey := ciss.identifierSigningKey(txn)
 	defer fastrand.Read(signingKey[:])
-	// Pad the signing key since threefish requires 64 bytes of entropy.
-	paddedSigningKey := append(signingKey[:], make([]byte, 32)...)
-	defer fastrand.Read(paddedSigningKey[:])
 	// Create the cipher for signing the identifier.
-	sk, err := crypto.NewSiaKey(crypto.TypeThreefish, paddedSigningKey)
+	sk, err := crypto.NewSiaKey(crypto.TypeThreefish, signingKey[:])
 	if err != nil {
 		return ContractSignedIdentifier{}, err
 	}
@@ -131,7 +130,10 @@ func PrefixedSignedIdentifier(renterSeed RenterSeed, txn types.Transaction) (Con
 	signature := sk.EncryptBytes(append(identifier[:], make([]byte, 32)...))
 	// Create the signed identifer object.
 	var csi ContractSignedIdentifier
-	copy(csi[:16], modules.PrefixFileContractIdentifier[:])
+	// TODO change this to use the PrefixFileContractIdentifier in the future
+	// once 1.4.0 has been released for long enough that nodes should support
+	// it.
+	copy(csi[:16], modules.PrefixNonSia[:])
 	copy(csi[16:48], identifier[:])
 	copy(csi[48:], signature[:])
 	return csi, nil
