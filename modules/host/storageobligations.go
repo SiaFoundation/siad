@@ -296,7 +296,9 @@ func (so storageObligation) proofDeadline() types.BlockHeight {
 	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].WindowEnd
 }
 
-func (so storageObligation) transactionId() types.TransactionID {
+// transactionID returns the ID of the transaction containing the file
+// contract.
+func (so storageObligation) transactionID() types.TransactionID {
 	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].ID()
 }
 
@@ -582,27 +584,22 @@ func (h *Host) modifyStorageObligation(so storageObligation, sectorsRemoved []cr
 // As these stale storage obligations have an impact on the host financial metrics,
 // this method updates the host financial metrics to show the correct values.
 func (h *Host) PruneStaleStorageObligations() error {
-	// Get meta info about storage obligations from the database.
+	// Filter the stale obligations from the set of all obligations.
 	sos := h.StorageObligations()
-
-	// Create a slice with the obligation id's of stale storage obligations.
-	// Stale obligations are obligations that are not confirmed and will not be confirmed.
-	soids := []types.FileContractID{}
+	var stale []types.FileContractID
 	for _, so := range sos {
-		conf, err := h.tpool.TransactionConfirmed(so.TransactionId)
+		conf, err := h.tpool.TransactionConfirmed(so.TransactionID)
 		if err != nil {
-			return build.ExtendErr("unable to get transaction id:", err)
+			return build.ExtendErr("unable to get transaction ID:", err)
 		}
-		// Check if the obligation is confirmed or if the obligation is at max RespendTimout blocks old.
-		if conf || (h.blockHeight <= so.NegotiationHeight+wallet.RespendTimeout) {
-			continue
+		// An obligation is considered stale if it has not been confirmed
+		// within RespendTimeout blocks after negotiation.
+		if (h.blockHeight > so.NegotiationHeight+wallet.RespendTimeout) && !conf {
+			stale = append(stale, so.ObligationId)
 		}
-		// If the obligation is not confirmend and the obligation is older than RespendTimeout,
-		// the obligation is added to the slice with stale obligations.
-		soids = append(soids, so.ObligationId)
 	}
 	// Delete stale obligations from the database.
-	err := h.deleteStorageObligations(soids)
+	err := h.deleteStorageObligations(stale)
 	if err != nil {
 		return build.ExtendErr("unable to delete stale storage ids:", err)
 	}
@@ -1057,7 +1054,7 @@ func (h *Host) StorageObligations() (sos []modules.StorageObligation) {
 				RiskedCollateral:         so.RiskedCollateral,
 				SectorRootsCount:         uint64(len(so.SectorRoots)),
 				TransactionFeesAdded:     so.TransactionFeesAdded,
-				TransactionId:            so.transactionId(),
+				TransactionID:            so.transactionID(),
 
 				ExpirationHeight:  so.expiration(),
 				NegotiationHeight: so.NegotiationHeight,

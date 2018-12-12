@@ -121,7 +121,7 @@ type (
 		RiskedCollateral         types.Currency       `json:"riskedcollateral"`
 		SectorRootsCount         uint64               `json:"sectorrootscount"`
 		TransactionFeesAdded     types.Currency       `json:"transactionfeesadded"`
-		TransactionId            types.TransactionID  `json:"transactionid"`
+		TransactionID            types.TransactionID  `json:"transactionid"`
 
 		// The negotiation height specifies the block height at which the file
 		// contract was negotiated. The expiration height and the proof deadline
