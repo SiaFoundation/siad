@@ -194,11 +194,19 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 	}
 
 	// Init wallet
-	wip, err := tn.WalletInitPost("", false)
-	if err != nil {
-		return nil, err
+	if nodeParams.PrimarySeed != "" {
+		err := tn.WalletInitSeedPost(nodeParams.PrimarySeed, "", false)
+		if err != nil {
+			return nil, err
+		}
+		tn.primarySeed = nodeParams.PrimarySeed
+	} else {
+		wip, err := tn.WalletInitPost("", false)
+		if err != nil {
+			return nil, err
+		}
+		tn.primarySeed = wip.PrimarySeed
 	}
-	tn.primarySeed = wip.PrimarySeed
 
 	// Unlock wallet
 	if err := tn.WalletUnlockPost(tn.primarySeed); err != nil {

@@ -3924,3 +3924,93 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		}
 	}
 }
+
+// TestRenterContractRecovery tests that recovering a node from a seed that has
+// contracts associated with it will recover those contracts.
+func TestRenterContractRecovery(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup, creating without renter so the renter's
+	// contract transactions can easily be obtained.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get the renter node and its seed.
+	r := tg.Renters()[0]
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := wsg.PrimarySeed
+
+	// Remember the contracts the renter formed with the hosts.
+	oldContracts := make(map[types.FileContractID]api.RenterContract)
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range rc.ActiveContracts {
+		oldContracts[c.ID] = c
+	}
+
+	// Stop the renter.
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start a new renter with the same seed.
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.PrimarySeed = seed
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenter := nodes[0]
+
+	// Make sure that the new renter actually uses the same primary seed.
+	wsg, err = newRenter.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenterSeed := wsg.PrimarySeed
+	if seed != newRenterSeed {
+		t.Log("old seed", seed)
+		t.Log("new seed", newRenterSeed)
+		t.Fatal("Seeds of new and old renters don't match")
+	}
+
+	// The new renter should have the same active contracts as the old one.
+	rc, err = newRenter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) != len(oldContracts) {
+		t.Fatalf("Didn't recover the right number of contracts, expected %v but was %v",
+			len(oldContracts), len(rc.ActiveContracts))
+	}
+	for _, c := range rc.ActiveContracts {
+		contract, exists := oldContracts[c.ID]
+		if !exists {
+			t.Fatal("Recovered unknown contract", c.ID)
+		}
+		if !reflect.DeepEqual(c, contract) {
+			t.Fatal("Recovered contract doesn't match expected contract")
+		}
+	}
+}
