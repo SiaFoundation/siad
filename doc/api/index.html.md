@@ -14,6 +14,17 @@ search: true
 # Introduction
 
 ## Welcome to the Sia Storage Platform API!
+> Example GET curl call 
+
+```go
+curl -A "Sia-Agent" "localhost:9980/wallet/transactions?startheight=1&endheight=250"
+```
+
+> Example POST curl call
+
+```go
+curl -A "Sia-Agent" --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
+```
 
 Sia uses semantic versioning and is backwards compatible to version v1.0.0.
 
@@ -27,16 +38,6 @@ There may be functional API calls which are not documented. These are not guaran
 - By default, siad listens on "localhost:9980". This can be changed using the `--api-addr` flag when running siad.
 - **Do not bind or expose the API to a non-loopback address unless you are aware of the possible dangers.**
 
- > Example GET curl call:
-```go
-curl -A "Sia-Agent" "localhost:9980/wallet/transactions?startheight=1&endheight=250"
-```
-
- > Example POST curl call:
-```go
-curl -A "Sia-Agent" --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
-```
-
 ## Documentation Standards
 
 The following details the documentation standards for the API endpoints.
@@ -44,7 +45,8 @@ The following details the documentation standards for the API endpoints.
     - Parameters
     - Response
  - Each endpoint should have a corresponding curl example
- - All non-standard responses should have a JSON Response example with units
+ - All non-standard responses should have a JSON Response example
+  with units
  - There should be detailed descriptions of all JSON response fields
  - There should be detailed descriptions of all query string parameters
  - Query String Parameters should be separated into **REQUIRED** and **OPTIONAL** sections
@@ -104,7 +106,8 @@ The consensus set manages everything related to consensus and keeps the blockcha
 Returns information about the consensus set, such as the current block height.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+
 ```go
 {
   "synced":       true, // boolean
@@ -144,7 +147,8 @@ BlockID of the requested block.
 BlockHeight of the requested block.  
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+
 ```go
 {
     "height": 20032, 
@@ -245,7 +249,8 @@ The daemon is responsible for starting and stopping the modules which make up th
 Returns the set of constants in use.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "blockfrequency":         600,        // seconds per block
@@ -334,7 +339,8 @@ standard success or error response. See [standard responses](#standard-responses
 Returns the version of the Sia daemon currently running. 
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
 "version": "1.3.7" // string
@@ -352,7 +358,8 @@ The gateway maintains a peer to peer connection to the network and provides a me
 returns information about the gateway, including the list of connected peers.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
     "netaddress":"333.333.333.333:9981",  // string
@@ -447,7 +454,8 @@ The host provides storage from local disks to the network. The host negotiates f
 fetches status information about the host.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "externalsettings": {
@@ -769,7 +777,8 @@ standard success or error response. See [standard responses](#Standard-Responses
 Get contract information from the host database. This call will return all storage obligations on the host. Its up to the caller to filter the contracts based on their needs.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "contracts": [
@@ -863,7 +872,8 @@ Revision constructed indicates whether there was a file contract revision constr
 Gets a list of folders tracked by the host's storage manager.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "folders": [
@@ -963,7 +973,7 @@ Returns the estimated HostDB score of the host using its current settings, combi
 
 ### Query String Parameters
 #### OPTIONAL
-See [host internal settings](####internalsettings)
+See [host internal settings](#internalsettings)
  - acceptingcontracts   
  - maxdownloadbatchsize 
  - maxduration          
@@ -979,7 +989,8 @@ See [host internal settings](####internalsettings)
  - minuploadbandwidthprice    
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
 	"estimatedscore": "123456786786786786786786786742133",  // big int
@@ -1001,7 +1012,8 @@ The hostdb maintains a database of all hosts known to the network. The database 
 Shows some general information about the state of the hostdb.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
     "initialscancomplete": false  // boolean
@@ -1020,7 +1032,8 @@ lists all of the active hosts known to the renter, sorted by preference.
 Number of hosts to return. The actual number of hosts returned may be less if there are insufficient active hosts. Optional, the default is all active hosts.  
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "hosts": [
@@ -1205,7 +1218,8 @@ The public key of the host. Each public key identifies a single host.
 Example Pubkey: ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef  
 
 ### JSON Response 
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "entry": {
@@ -1287,7 +1301,8 @@ The miner provides endpoints for getting headers for work and submitting solved 
 returns the status of the miner.
 
 ### JSON Response 
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "blocksmined":      9001,   // int
@@ -1374,7 +1389,8 @@ The renter manages the user's files on the network. The renter's API endpoints e
 Returns the current settings along with metrics on the renter's spending.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "settings": {
@@ -1495,7 +1511,8 @@ flag indicating if inactive contracts should be returned.
 flag indicating if expired contracts should be returned.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "activecontracts": [
@@ -1584,7 +1601,8 @@ Signals if contract is good for a renewal.
 Lists all files in the download queue.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "downloads": [
@@ -1663,7 +1681,8 @@ Lists the estimated prices of performing various storage and data operations. An
 Allowance settings, see the fields [here](#allowance)
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "downloadterabyte":      "1234",  // hastings
@@ -1695,7 +1714,8 @@ The allowance settings used for the estimation are also returned, see the fields
 lists the status of all files.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "files": [
@@ -1907,7 +1927,8 @@ returns whether the requested transaction has been seen on the blockchain. Note,
 id of the transaction being queried
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "confirmed": true // boolean
@@ -1921,7 +1942,8 @@ indicates if a transaction is confirmed on the blockchain
 returns the minimum and maximum estimated fees expected by the transaction pool.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "minimum": "1234", // hastings / byte
@@ -1944,7 +1966,8 @@ returns the ID for the requested transaction and its raw encoded parents and tra
 id of the transaction being queried
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
 	// id of the transaction
@@ -1984,7 +2007,8 @@ standard success or error response. See [standard responses](#standard-responses
 Returns basic information about the wallet, such as whether the wallet is locked or unlocked.
 
 ### JSON Response
- > JSON Response
+> JSON Response Example
+
 ```go
 {
   "encrypted":  true,   // boolean
@@ -2049,7 +2073,8 @@ standard success or error response. See [standard responses](#standard-responses
 Gets a new address from the wallet generated by the primary seed. An error will be returned if the wallet is locked.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "address": "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab"
@@ -2063,7 +2088,8 @@ Wallet address that can receive siacoins or siafunds. Addresses are 76 character
 Fetches the list of addresses from the wallet. If the wallet has not been created or unlocked, no addresses will be returned. After the wallet is unlocked, this call will continue to return its addresses even after the wallet is locked again.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "addresses": [
@@ -2121,7 +2147,8 @@ Name of the dictionary that should be used when encoding the seed. 'english' is 
 When set to true /wallet/init will Reset the wallet if one exists instead of returning an error. This allows API callers to reinitialize a new wallet.
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "primaryseed": "hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello"
@@ -2171,7 +2198,8 @@ Returns the list of seeds in use by the wallet. The primary seed is the only see
 Name of the dictionary that should be used when encoding the seed. 'english' is the most common choice when picking a dictionary.  
 
 ### JSON Response
- > JSON Repsonse Example
+> JSON Response Example
+
 ```go
 {
   "primaryseed":        "hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello",
@@ -2213,7 +2241,8 @@ Address that is receiving the coins.
 JSON array of outputs. The structure of each output is: {"unlockhash": "<destination>", "value": "<amount>"}  
 
 ### JSON Response
-> JSON Response
+> JSON Response Example
+
 ```go
 {
   "transactionids": [
@@ -2239,7 +2268,8 @@ Number of siafunds being sent.
 Address that is receiving the funds.  
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   "transactionids": [
@@ -2273,7 +2303,8 @@ standard success or error response. See [standard responses](#standard-responses
 Signs a transaction. The wallet will attempt to sign each input specified. The transaction's TransactionSignatures should be complete except for the Signature field. If `tosign` is provided, the wallet will attempt to fill in signatures for each TransactionSignature specified. If `tosign` is not provided, the wallet will add signatures for every TransactionSignature that it has keys for.
 
 ### Request Body
- > Request Body Example
+> Request Body Example
+
 ```go
 {
   // Unsigned transaction
@@ -2316,7 +2347,8 @@ Signs a transaction. The wallet will attempt to sign each input specified. The t
 ```
 
 ### JSON Response
- > JSON Response Example
+> JSON Response Example
+ 
 ```go
 {
   // signed transaction
@@ -2401,6 +2433,7 @@ ID of the transaction being requested.
 
 ### JSON Response
 > JSON Response Example
+
 ```go
 {
   "transaction": {
@@ -2503,6 +2536,7 @@ Height of of the block where the transaction history should end. If 'endheight' 
 
 ### JSON Response
 > JSON Response Example
+
 ```go
 {
   "confirmedtransactions": [
@@ -2538,6 +2572,7 @@ Unlock hash (i.e. wallet address) whose transactions are being requested.
 
 ### JSON Response
 > JSON Response Example
+
 ```go
 {
   "transactions": [
@@ -2576,6 +2611,7 @@ Unlock hash (i.e. wallet address) whose transactions are being requested.
 
 ### JSON Response
 > JSON Response Example
+
 ```go
 {
   "unlockconditions": {
@@ -2603,6 +2639,7 @@ Returns a list of outputs that the wallet can spend.
 
 ### JSON Response
 > JSON Response Example
+
 ```go
 {
   "outputs": [
@@ -2649,6 +2686,7 @@ Unlock hash (i.e. wallet address) whose transactions are being requested.
 
 ### JSON Response
 > JSON Response Example
+
 ```go
 {
 	"valid": true
@@ -2663,6 +2701,7 @@ Returns the set of addresses that the wallet is watching. This set only includes
 
 ### JSON Response
 > JSON Response Example
+
 ```go
 {
   "addresses": [
@@ -2677,7 +2716,8 @@ The addresses currently watched by the wallet.
 ## /wallet/watch [POST]
 
 ### Request Body
- > Request Body Example
+> Request Body Example
+
 ```go
 {
   // The addresses to add or remove from the current set.
