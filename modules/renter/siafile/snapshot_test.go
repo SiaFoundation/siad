@@ -24,12 +24,12 @@ func TestSnapshot(t *testing.T) {
 	snap := sf.Snapshot()
 
 	// Make sure the snapshot has the same fields as the SiaFile.
-	if len(sf.staticChunks) != len(snap.staticChunks) {
-		t.Errorf("expected %v chunks but got %v", len(sf.staticChunks), len(snap.staticChunks))
+	if len(sf.chunks) != len(snap.staticChunks) {
+		t.Errorf("expected %v chunks but got %v", len(sf.chunks), len(snap.staticChunks))
 	}
-	if sf.staticMetadata.StaticFileSize != snap.staticFileSize {
+	if sf.staticMetadata.FileSize != snap.staticFileSize {
 		t.Errorf("staticFileSize was %v but should be %v",
-			snap.staticFileSize, sf.staticMetadata.StaticFileSize)
+			snap.staticFileSize, sf.staticMetadata.FileSize)
 	}
 	if sf.staticMetadata.StaticPieceSize != snap.staticPieceSize {
 		t.Errorf("staticPieceSize was %v but should be %v",
@@ -61,7 +61,7 @@ func TestSnapshot(t *testing.T) {
 	}
 	sf.siaFileSet.mu.Unlock()
 	// Compare the pieces.
-	for i := range sf.staticChunks {
+	for i := range sf.chunks {
 		sfPieces, err1 := sf.Pieces(uint64(i))
 		snapPieces, err2 := snap.Pieces(uint64(i))
 		if err := errors.Compose(err1, err2); err != nil {
@@ -125,7 +125,7 @@ func benchmarkSnapshot(b *testing.B, fileSize uint64) {
 	// Add numPieces to each chunks.
 	for i := uint64(0); i < sf.NumChunks(); i++ {
 		for j := uint64(0); j < uint64(rc.NumPieces()); j++ {
-			sf.staticChunks[i].Pieces[j] = append(sf.staticChunks[i].Pieces[j], piece{})
+			sf.chunks[i].Pieces[j] = append(sf.chunks[i].Pieces[j], piece{})
 		}
 	}
 	// Save the file to disk.

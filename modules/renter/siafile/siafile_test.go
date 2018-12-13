@@ -75,7 +75,7 @@ func TestPruneHosts(t *testing.T) {
 
 	// Add one piece for every host to every pieceSet of the SiaFile.
 	for _, hk := range sf.HostPublicKeys() {
-		for chunkIndex, chunk := range sf.staticChunks {
+		for chunkIndex, chunk := range sf.chunks {
 			for pieceIndex := range chunk.Pieces {
 				if err := sf.AddPiece(hk, uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
 					t.Fatal(err)
@@ -103,8 +103,8 @@ func TestPruneHosts(t *testing.T) {
 	// Loop over all the pieces and make sure that the pieces with missing
 	// hosts were pruned and that the remaining pieces have the correct offset
 	// now.
-	for chunkIndex := range sf.staticChunks {
-		for _, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+	for chunkIndex := range sf.chunks {
+		for _, pieceSet := range sf.chunks[chunkIndex].Pieces {
 			if len(pieceSet) != 1 {
 				t.Fatalf("Expected 1 piece in the set but was %v", len(pieceSet))
 			}
@@ -147,7 +147,7 @@ func TestDefragChunk(t *testing.T) {
 	sf := newBlankTestFile()
 
 	// Use the first chunk of the file for testing.
-	chunk := &sf.staticChunks[0]
+	chunk := &sf.chunks[0]
 
 	// Add 100 pieces to each set of pieces, all belonging to the same unused
 	// host.
@@ -223,7 +223,7 @@ func TestDefragChunk(t *testing.T) {
 	var duration time.Duration
 	for i := 0; i < 50; i++ {
 		pk := sf.pubKeyTable[fastrand.Intn(len(sf.pubKeyTable))].PublicKey
-		pieceIndex := fastrand.Intn(len(sf.staticChunks[0].Pieces))
+		pieceIndex := fastrand.Intn(len(sf.chunks[0].Pieces))
 		before := time.Now()
 		if err := sf.AddPiece(pk, 0, uint64(pieceIndex), crypto.Hash{}); err != nil {
 			t.Fatal(err)
@@ -266,7 +266,7 @@ func TestChunkHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check that the number of chunks in the file is correct.
-	if len(sf.staticChunks) != numChunks {
+	if len(sf.chunks) != numChunks {
 		t.Fatal("newTestFile didn't create the expected number of chunks")
 	}
 
@@ -283,7 +283,7 @@ func TestChunkHealth(t *testing.T) {
 
 	// Since we are using a pre set offlineMap, all the chunks should have the
 	// same health as the file
-	for i := range sf.staticChunks {
+	for i := range sf.chunks {
 		chunkHealth := sf.chunkHealth(i, offlineMap, goodForRenewMap)
 		if chunkHealth != fileHealth {
 			t.Log("ChunkHealth:", chunkHealth)
@@ -330,7 +330,7 @@ func TestChunkHealth(t *testing.T) {
 
 	// Mark Chunk at index 1 as stuck and confirm that doesn't impact the result
 	// of chunkHealth
-	sf.staticChunks[1].Stuck = true
+	sf.chunks[1].Stuck = true
 	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != newHealth {
 		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
 	}
@@ -361,7 +361,7 @@ func TestMarkHealthyChunksAsUnstuck(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check that the number of chunks in the file is correct.
-	if len(sf.staticChunks) != numChunks {
+	if len(sf.chunks) != numChunks {
 		t.Fatal("newTestFile didn't create the expected number of chunks")
 	}
 
@@ -389,7 +389,7 @@ func TestMarkHealthyChunksAsUnstuck(t *testing.T) {
 	}
 
 	// Add good pieces to first chunk
-	for pieceIndex := range sf.staticChunks[0].Pieces {
+	for pieceIndex := range sf.chunks[0].Pieces {
 		host := fmt.Sprintln("host", 0, pieceIndex)
 		spk := types.SiaPublicKey{}
 		spk.LoadString(host)
@@ -416,7 +416,7 @@ func TestMarkHealthyChunksAsUnstuck(t *testing.T) {
 	goodForRenewMap = make(map[string]bool)
 
 	// Add good pieces to all chunks
-	for chunkIndex, chunk := range sf.staticChunks {
+	for chunkIndex, chunk := range sf.chunks {
 		for pieceIndex := range chunk.Pieces {
 			host := fmt.Sprintln("host", chunkIndex, pieceIndex)
 			spk := types.SiaPublicKey{}
@@ -465,7 +465,7 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check that the number of chunks in the file is correct.
-	if len(sf.staticChunks) != numChunks {
+	if len(sf.chunks) != numChunks {
 		t.Fatal("newTestFile didn't create the expected number of chunks")
 	}
 
@@ -485,14 +485,14 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	}
 
 	// Reset chunk stuck status
-	for chunkIndex := range sf.staticChunks {
+	for chunkIndex := range sf.chunks {
 		if err := sf.SetStuck(uint64(chunkIndex), false); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Add good pieces to first chunk
-	for pieceIndex := range sf.staticChunks[0].Pieces {
+	for pieceIndex := range sf.chunks[0].Pieces {
 		host := fmt.Sprintln("host", 0, pieceIndex)
 		spk := types.SiaPublicKey{}
 		spk.LoadString(host)
@@ -515,7 +515,7 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	}
 
 	// Reset chunk stuck status
-	for chunkIndex := range sf.staticChunks {
+	for chunkIndex := range sf.chunks {
 		if err := sf.SetStuck(uint64(chunkIndex), false); err != nil {
 			t.Fatal(err)
 		}
@@ -526,7 +526,7 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	goodForRenewMap = make(map[string]bool)
 
 	// Add good pieces to all chunks
-	for chunkIndex, chunk := range sf.staticChunks {
+	for chunkIndex, chunk := range sf.chunks {
 		for pieceIndex := range chunk.Pieces {
 			host := fmt.Sprintln("host", chunkIndex, pieceIndex)
 			spk := types.SiaPublicKey{}
@@ -567,7 +567,7 @@ func TestStuckChunks(t *testing.T) {
 
 	// Mark every other chunk as stuck
 	expectedStuckChunks := 0
-	for i := range sf.staticChunks {
+	for i := range sf.chunks {
 		if (i % 2) != 0 {
 			continue
 		}
@@ -612,7 +612,7 @@ func TestStuckChunks(t *testing.T) {
 	}
 
 	// Check chunks and Stuck Chunk Table
-	for i, chunk := range sf.staticChunks {
+	for i, chunk := range sf.chunks {
 		if i%2 != 0 {
 			if chunk.Stuck {
 				t.Fatal("Found stuck chunk when un-stuck chunk was expected")

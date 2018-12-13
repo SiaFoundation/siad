@@ -119,7 +119,7 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		if err != nil {
 			return nil, err
 		}
-		sf.staticChunks = append(sf.staticChunks, chunk)
+		sf.chunks = append(sf.chunks, chunk)
 	}
 	return sf, nil
 }
@@ -393,7 +393,7 @@ func (sf *SiaFile) saveFile() error {
 // to disk when applied.
 func (sf *SiaFile) saveChunkUpdate(chunkIndex int) (writeaheadlog.Update, error) {
 	offset := sf.chunkOffset(chunkIndex)
-	chunkBytes := marshalChunk(sf.staticChunks[chunkIndex])
+	chunkBytes := marshalChunk(sf.chunks[chunkIndex])
 	return sf.createInsertUpdate(offset, chunkBytes), nil
 }
 
@@ -401,8 +401,8 @@ func (sf *SiaFile) saveChunkUpdate(chunkIndex int) (writeaheadlog.Update, error)
 // the SiaFile to disk when applied.
 func (sf *SiaFile) saveChunksUpdates() ([]writeaheadlog.Update, error) {
 	// Marshal all the chunks and create updates for them.
-	updates := make([]writeaheadlog.Update, 0, len(sf.staticChunks))
-	for chunkIndex := range sf.staticChunks {
+	updates := make([]writeaheadlog.Update, 0, len(sf.chunks))
+	for chunkIndex := range sf.chunks {
 		update, err := sf.saveChunkUpdate(chunkIndex)
 		if err != nil {
 			return nil, err
