@@ -1,6 +1,9 @@
 package contractor
 
 import (
+	"fmt"
+
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -10,25 +13,30 @@ import (
 // hasFCIdentifier checks the transaction for a ContractSignedIdentifier and
 // returns the first one it finds with a bool indicating if an identifier was
 // found.
-func hasFCIdentifier(txn types.Transaction) (csi proto.ContractSignedIdentifier, b bool) {
-	var prefix types.Specifier
-	for _, arb := range txn.ArbitraryData {
-		// Verify the length first.
-		if len(arb) != proto.FCSignedIdentiferSize {
-			continue
-		}
-		copy(prefix[:], arb)
-		// Verify the prefix.
-		// TODO In the future we can remove checking for PrefixNonSia.
-		if prefix != modules.PrefixNonSia &&
-			prefix != modules.PrefixFileContractIdentifier {
-			continue
-		}
-		// We found an identifier.
-		copy(csi[:], arb)
-		return csi, true
+func hasFCIdentifier(txn types.Transaction) (proto.ContractSignedIdentifier, crypto.Ciphertext, bool) {
+	// The length of the arbitrary data should be 2. One slice for the
+	// identifier and one for the host's public key.
+	if len(txn.ArbitraryData) != 2 {
+		return proto.ContractSignedIdentifier{}, nil, false
 	}
-	return
+	identifier := txn.ArbitraryData[0]
+	hostKey := txn.ArbitraryData[1]
+	// Verify the length of the identifier.
+	if len(identifier) != proto.FCSignedIdentiferSize {
+		return proto.ContractSignedIdentifier{}, nil, false
+	}
+	// Verify the prefix.
+	// TODO In the future we can remove checking for PrefixNonSia.
+	var prefix types.Specifier
+	copy(prefix[:], identifier)
+	if prefix != modules.PrefixNonSia &&
+		prefix != modules.PrefixFileContractIdentifier {
+		return proto.ContractSignedIdentifier{}, nil, false
+	}
+	// We found an identifier.
+	var csi proto.ContractSignedIdentifier
+	copy(csi[:], identifier)
+	return csi, hostKey, true
 }
 
 // managedArchiveContracts will figure out which contracts are no longer needed
@@ -73,7 +81,8 @@ func (c *Contractor) managedArchiveContracts() {
 
 // recoverContract recovers a FileContract from the host that it was formed
 // with.
-func (c *Contractor) recoverContract(fc types.FileContract) {
+func (c *Contractor) recoverContract(fc types.FileContract, hostKey types.SiaPublicKey) {
+	fmt.Println("recovering contract", hostKey.String())
 	// Get the host.
 	//	c.hdb.Host(fc.
 	//	panic("not implemented")
@@ -85,7 +94,7 @@ func (c *Contractor) recoverContract(fc types.FileContract) {
 func (c *Contractor) recoverContracts(walletSeed modules.Seed, b types.Block) {
 	for _, txn := range b.Transactions {
 		// Check if the arbitrary data starts with the correct prefix.
-		csi, hasIdentifier := hasFCIdentifier(txn)
+		csi, encryptedHostKey, hasIdentifier := hasFCIdentifier(txn)
 		if !hasIdentifier {
 			continue
 		}
@@ -95,7 +104,8 @@ func (c *Contractor) recoverContracts(walletSeed modules.Seed, b types.Block) {
 			rs := proto.EphemeralRenterSeed(walletSeed, fc.WindowStart)
 			defer fastrand.Read(rs[:])
 			// Validate it.
-			if !csi.IsValid(rs, txn) {
+			hostKey, valid := csi.IsValid(rs, txn, encryptedHostKey)
+			if !valid {
 				continue
 			}
 			// The contract shouldn't be expired.
@@ -108,7 +118,7 @@ func (c *Contractor) recoverContracts(walletSeed modules.Seed, b types.Block) {
 				continue
 			}
 			// Recover the contract.
-			c.recoverContract(fc)
+			c.recoverContract(fc, hostKey)
 		}
 	}
 }

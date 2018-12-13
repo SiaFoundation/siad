@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -3885,25 +3884,28 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check the arbitrary data of the active contracts again to confirm that
-	// the renewal code also sets it correctly.
-	rcg, err = r.RenterExpiredContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Check the arbitrary data of each transaction and contract.
 	for _, fcTxn := range fcTxns {
 		txn := fcTxn.Transaction
 		for _, fc := range txn.FileContracts {
+			// Check that the arbitrary data has correct length.
+			if len(txn.ArbitraryData) != 1 {
+				t.Fatal("arbitrary data has wrong length")
+			}
+			csi := proto.ContractSignedIdentifier{}
+			n := copy(csi[:], txn.ArbitraryData[0])
+			encryptedHostKey := txn.ArbitraryData[0][n:]
 			// Calculate the renter seed given the WindowStart of the contract.
 			rs := proto.EphemeralRenterSeed(seed, fc.WindowStart)
-			// Calculate the prefixed and signed identifier we expect in that
-			// contract.
-			psi := proto.PrefixedSignedIdentifier(rs, txn)
-			// Compare it to the arbitrary data.
-			if !bytes.Equal(psi[:], txn.ArbitraryData[0]) {
-				t.Fatal("Arbitrary data of transaction doesn't match expected value")
+			// Check if the identifier is valid.
+			spk, valid := csi.IsValid(rs, txn, encryptedHostKey)
+			if !valid {
+				t.Fatal("identifier is invalid")
+			}
+			// Check that the host's key is a valid key from the hostb.
+			_, err := r.HostDbHostsGet(spk)
+			if err != nil {
+				t.Fatal("hostKey is invalid", err)
 			}
 		}
 	}
