@@ -57,6 +57,7 @@ func randomPiece() piece {
 	return piece
 }
 
+// TestPruneHosts is a unit test for the pruneHosts method.
 func TestPruneHosts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()

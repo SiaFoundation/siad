@@ -639,6 +639,12 @@ type Streamer interface {
 	io.Closer
 }
 
+// UploadStreamer is the interface implemented by the renter's uploadStreamer
+// type which allows for upload streaming to the Sia network.
+type UploadStreamer interface {
+	io.WriteCloser
+}
+
 // RenterDownloadParameters defines the parameters passed to the Renter's
 // Download method.
 type RenterDownloadParameters struct {

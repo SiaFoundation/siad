@@ -171,8 +171,17 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 	return file, file.saveFile()
 }
 
-func (sf *SiaFile) AddChunk() {
-	return
+// AddChunk adds an empty chunk to the SiaFile and returns its chunkIndex for
+// convenience. To avoid unnecessary writes to disk, AddChunk doesn't write the
+// chunk to disk immediately since it's empty anyway. It will be persisted the
+// next time a call either persists the whole file or the newly added chunk.
+func (sf *SiaFile) AddChunk() uint64 {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.chunks = append(sf.chunks, chunk{
+		Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces()),
+	})
+	return uint64(len(sf.chunks) - 1)
 }
 
 // AddPiece adds an uploaded piece to the file. It also updates the host table
