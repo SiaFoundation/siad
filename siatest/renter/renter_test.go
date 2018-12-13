@@ -3981,22 +3981,53 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal("Seeds of new and old renters don't match")
 	}
 
-	// The new renter should have the same active contracts as the old one.
-	rc, err = newRenter.RenterContractsGet()
+	// The new renter should know about the contracts being recoverable. TODO
+	// once we have recovery this might not work. We probably need a dependency
+	// then to prevent recovery.
+	rc, err = newRenter.RenterRecoverableContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rc.ActiveContracts) != len(oldContracts) {
-		t.Fatalf("Didn't recover the right number of contracts, expected %v but was %v",
-			len(oldContracts), len(rc.ActiveContracts))
+	if len(rc.RecoverableContracts) != len(oldContracts) {
+		t.Fatalf("Wrong number of recoverable contracts, expected %v but was %v",
+			len(oldContracts), len(rc.RecoverableContracts))
 	}
-	for _, c := range rc.ActiveContracts {
-		contract, exists := oldContracts[c.ID]
+	for _, c := range rc.RecoverableContracts {
+		_, exists := oldContracts[c.ID]
 		if !exists {
-			t.Fatal("Recovered unknown contract", c.ID)
-		}
-		if !reflect.DeepEqual(c, contract) {
-			t.Fatal("Recovered contract doesn't match expected contract")
+			t.Fatal("Unknown recoverable contract", c.ID)
 		}
 	}
+
+	// Restart node to see if the contracts are persisted correctly.
+	if err := tg.RestartNode(newRenter); err != nil {
+		t.Fatal(err)
+	}
+	rc2, err := newRenter.RenterRecoverableContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rc.RecoverableContracts, rc2.RecoverableContracts) {
+		t.Fatal("contracts after restart are not the same as before")
+	}
+
+	// TODO the following code won't work before recovery is fully implemented.
+	// The new renter should have the same active contracts as the old one.
+	//rc, err = newRenter.RenterContractsGet()
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+	//if len(rc.ActiveContracts) != len(oldContracts) {
+	//	t.Fatalf("Didn't recover the right number of contracts, expected %v but was %v",
+	//		len(oldContracts), len(rc.ActiveContracts))
+	//}
+	//for _, c := range rc.ActiveContracts {
+	//	contract, exists := oldContracts[c.ID]
+	//	if !exists {
+	//		t.Fatal("Recovered unknown contract", c.ID)
+	//	}
+	//	if !reflect.DeepEqual(c, contract) {
+	//		t.Fatal("Recovered contract doesn't match expected contract")
+	//	}
+	//}
 }

@@ -58,6 +58,17 @@ func (c *Contractor) Contracts() []modules.RenterContract {
 	return c.staticContracts.ViewAll()
 }
 
+// ContractUtility returns the utility fields for the given contract.
+func (c *Contractor) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility, bool) {
+	c.mu.RLock()
+	id, ok := c.pubKeysToContractID[string(pk.Key)]
+	c.mu.RUnlock()
+	if !ok {
+		return modules.ContractUtility{}, false
+	}
+	return c.managedContractUtility(id)
+}
+
 // OldContracts returns the contracts formed by the contractor that have
 // expired
 func (c *Contractor) OldContracts() []modules.RenterContract {
@@ -70,15 +81,16 @@ func (c *Contractor) OldContracts() []modules.RenterContract {
 	return contracts
 }
 
-// ContractUtility returns the utility fields for the given contract.
-func (c *Contractor) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility, bool) {
-	c.mu.RLock()
-	id, ok := c.pubKeysToContractID[string(pk.Key)]
-	c.mu.RUnlock()
-	if !ok {
-		return modules.ContractUtility{}, false
-	}
-	return c.managedContractUtility(id)
+// RecoverableContracts returns the contracts that the contractor deems
+// recoverable. That means they are not expired yet and also not part of the
+// active contracts. Usually this should return an empty slice unless the host
+// isn't available for recovery or something went wrong.
+func (c *Contractor) RecoverableContracts() []modules.RecoverableContract {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	contracts := make([]modules.RecoverableContract, len(c.recoverableContracts))
+	copy(contracts, c.recoverableContracts)
+	return contracts
 }
 
 // ResolveIDToPubKey returns the ID of the most recent renewal of id.

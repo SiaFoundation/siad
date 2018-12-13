@@ -372,6 +372,21 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// RecoverableContract is a types.FileContract as it appears on the blockchain
+// with additional fields which contain the information required to recover its
+// latest revision from a host.
+type RecoverableContract struct {
+	types.FileContract
+	// ID is the FileContract's ID.
+	ID types.FileContractID `json:"id"`
+	// HostPublicKey is the public key of the host we formed this contract
+	// with.
+	HostPublicKey types.SiaPublicKey `json:"hostpublickey"`
+	// InputParentID is the ParentID of the first SiacoinInput of the
+	// transaction that contains this contract.
+	InputParentID types.SiacoinOutputID `json:"inputparentid"`
+}
+
 // A RenterContract contains metadata about a file contract. It is read-only;
 // modifying a RenterContract does not modify the actual file contract.
 type RenterContract struct {
@@ -482,6 +497,12 @@ type Renter interface {
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
 	PeriodSpending() ContractorSpending
+
+	// RecoverableContracts returns the contracts that the contractor deems
+	// recoverable. That means they are not expired yet and also not part of the
+	// active contracts. Usually this should return an empty slice unless the host
+	// isn't available for recovery or something went wrong.
+	RecoverableContracts() []RecoverableContract
 
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(path string) error

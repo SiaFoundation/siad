@@ -58,10 +58,11 @@ type Contractor struct {
 
 	// renewedFrom links the new contract's ID to the old contract's ID
 	// renewedTo links the old contract's ID to the new contract's ID
-	staticContracts *proto.ContractSet
-	oldContracts    map[types.FileContractID]modules.RenterContract
-	renewedFrom     map[types.FileContractID]types.FileContractID
-	renewedTo       map[types.FileContractID]types.FileContractID
+	staticContracts      *proto.ContractSet
+	oldContracts         map[types.FileContractID]modules.RenterContract
+	recoverableContracts []modules.RecoverableContract
+	renewedFrom          map[types.FileContractID]types.FileContractID
+	renewedTo            map[types.FileContractID]types.FileContractID
 }
 
 // Allowance returns the current allowance.

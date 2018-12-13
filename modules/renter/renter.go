@@ -126,9 +126,6 @@ type hostContractor interface {
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []modules.RenterContract
 
-	// OldContracts returns the oldContracts of the renter's hostContractor.
-	OldContracts() []modules.RenterContract
-
 	// ContractByPublicKey returns the contract associated with the host key.
 	ContractByPublicKey(types.SiaPublicKey) (modules.RenterContract, bool)
 
@@ -144,6 +141,9 @@ type hostContractor interface {
 	// billing period.
 	PeriodSpending() modules.ContractorSpending
 
+	// OldContracts returns the oldContracts of the renter's hostContractor.
+	OldContracts() []modules.RenterContract
+
 	// Editor creates an Editor from the specified contract ID, allowing the
 	// insertion, deletion, and modification of sectors.
 	Editor(types.SiaPublicKey, <-chan struct{}) (contractor.Editor, error)
@@ -154,6 +154,12 @@ type hostContractor interface {
 	// Downloader creates a Downloader from the specified contract ID,
 	// allowing the retrieval of sectors.
 	Downloader(types.SiaPublicKey, <-chan struct{}) (contractor.Downloader, error)
+
+	// RecoverableContracts returns the contracts that the contractor deems
+	// recoverable. That means they are not expired yet and also not part of the
+	// active contracts. Usually this should return an empty slice unless the host
+	// isn't available for recovery or something went wrong.
+	RecoverableContracts() []modules.RecoverableContract
 
 	// ResolveIDToPubKey returns the public key of a host given a contract id.
 	ResolveIDToPubKey(types.FileContractID) types.SiaPublicKey
@@ -601,11 +607,6 @@ func (r *Renter) CancelContract(id types.FileContractID) error {
 // Contracts returns an array of host contractor's staticContracts
 func (r *Renter) Contracts() []modules.RenterContract { return r.hostContractor.Contracts() }
 
-// OldContracts returns an array of host contractor's oldContracts
-func (r *Renter) OldContracts() []modules.RenterContract {
-	return r.hostContractor.OldContracts()
-}
-
 // CurrentPeriod returns the host contractor's current period
 func (r *Renter) CurrentPeriod() types.BlockHeight { return r.hostContractor.CurrentPeriod() }
 
@@ -615,8 +616,18 @@ func (r *Renter) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility
 	return r.hostContractor.ContractUtility(pk)
 }
 
+// OldContracts returns an array of host contractor's oldContracts
+func (r *Renter) OldContracts() []modules.RenterContract {
+	return r.hostContractor.OldContracts()
+}
+
 // PeriodSpending returns the host contractor's period spending
 func (r *Renter) PeriodSpending() modules.ContractorSpending { return r.hostContractor.PeriodSpending() }
+
+// recoverableContracts returns the host contractor's recoverable contracts.
+func (r *Renter) RecoverableContracts() []modules.RecoverableContract {
+	return r.hostContractor.RecoverableContracts()
+}
 
 // Settings returns the renter's allowance
 func (r *Renter) Settings() modules.RenterSettings {

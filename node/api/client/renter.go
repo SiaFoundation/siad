@@ -139,6 +139,15 @@ func (c *Client) RenterExpiredContractsGet() (rc api.RenterContracts, err error)
 	return
 }
 
+// RenterRecoverableContractsGet requests the /renter/contracts resource with the
+// recoverable flag set to true
+func (c *Client) RenterRecoverableContractsGet() (rc api.RenterContracts, err error) {
+	values := url.Values{}
+	values.Set("recoverable", fmt.Sprint(true))
+	err = c.get("/renter/contracts?"+values.Encode(), &rc)
+	return
+}
+
 // RenterDeletePost uses the /renter/delete endpoint to delete a file.
 func (c *Client) RenterDeletePost(siaPath string) (err error) {
 	siaPath = escapeSiaPath(trimSiaPath(siaPath))

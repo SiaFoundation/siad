@@ -109,10 +109,11 @@ type (
 
 	// RenterContracts contains the renter's contracts.
 	RenterContracts struct {
-		Contracts         []RenterContract `json:"contracts"`
-		ActiveContracts   []RenterContract `json:"activecontracts"`
-		InactiveContracts []RenterContract `json:"inactivecontracts"`
-		ExpiredContracts  []RenterContract `json:"expiredcontracts"`
+		Contracts            []RenterContract              `json:"contracts"`
+		ActiveContracts      []RenterContract              `json:"activecontracts"`
+		InactiveContracts    []RenterContract              `json:"inactivecontracts"`
+		ExpiredContracts     []RenterContract              `json:"expiredcontracts"`
+		RecoverableContracts []modules.RecoverableContract `json:"recoverablecontracts"`
 	}
 
 	// RenterDirectory lists the files and directories contained in the queried
@@ -364,15 +365,28 @@ func (api *API) renterContractCancelHandler(w http.ResponseWriter, req *http.Req
 // Expired contracts are contracts who's endheights are in the past
 func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse flags
-	inactive, err := scanBool(req.FormValue("inactive"))
-	if err != nil {
-		WriteError(w, Error{"unable to parse inactive:" + err.Error()}, http.StatusBadRequest)
-		return
+	var inactive, expired, recoverable bool
+	var err error
+	if s := req.FormValue("inactive"); s != "" {
+		inactive, err = scanBool(s)
+		if err != nil {
+			WriteError(w, Error{"unable to parse inactive:" + err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
-	expired, err := scanBool(req.FormValue("expired"))
-	if err != nil {
-		WriteError(w, Error{"unable to parse expired:" + err.Error()}, http.StatusBadRequest)
-		return
+	if s := req.FormValue("expired"); s != "" {
+		expired, err = scanBool(s)
+		if err != nil {
+			WriteError(w, Error{"unable to parse expired:" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	if s := req.FormValue("recoverable"); s != "" {
+		recoverable, err = scanBool(s)
+		if err != nil {
+			WriteError(w, Error{"unable to parse recoverable:" + err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Get current block height for reference
@@ -464,11 +478,17 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 		}
 	}
 
+	var recoverableContracts []modules.RecoverableContract
+	if recoverable {
+		recoverableContracts = api.renter.RecoverableContracts()
+	}
+
 	WriteJSON(w, RenterContracts{
-		Contracts:         contracts,
-		ActiveContracts:   activeContracts,
-		InactiveContracts: inactiveContracts,
-		ExpiredContracts:  expiredContracts,
+		Contracts:            contracts,
+		ActiveContracts:      activeContracts,
+		InactiveContracts:    inactiveContracts,
+		ExpiredContracts:     expiredContracts,
+		RecoverableContracts: recoverableContracts,
 	})
 }
 
