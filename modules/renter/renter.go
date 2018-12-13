@@ -624,7 +624,7 @@ func (r *Renter) OldContracts() []modules.RenterContract {
 // PeriodSpending returns the host contractor's period spending
 func (r *Renter) PeriodSpending() modules.ContractorSpending { return r.hostContractor.PeriodSpending() }
 
-// recoverableContracts returns the host contractor's recoverable contracts.
+// RecoverableContracts returns the host contractor's recoverable contracts.
 func (r *Renter) RecoverableContracts() []modules.RecoverableContract {
 	return r.hostContractor.RecoverableContracts()
 }
