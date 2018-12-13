@@ -173,16 +173,15 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 }
 
+// compareDirectoryInfoAndMetadata is a helper that compares the information in
+// a DirectoryInfo struct and a SiaDirSetEntry struct
 func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.SiaDirSetEntry) error {
-	health, stuckHealth, lastHealthCheckTime := siaDir.Health()
+	_, stuckHealth, lastHealthCheckTime := siaDir.Health()
 	if di.SiaPath != siaDir.SiaPath() {
 		return fmt.Errorf("SiaPaths not equal %v and %v", di.SiaPath, siaDir.SiaPath())
 	}
-	if di.Health != health {
-		return fmt.Errorf("Healths not equal %v and %v", di.SiaPath, health)
-	}
-	if di.StuckHealth != stuckHealth {
-		return fmt.Errorf("StuckHealths not equal %v and %v", di.StuckHealth, stuckHealth)
+	if di.Health != stuckHealth {
+		return fmt.Errorf("Healths not equal %v and %v", di.SiaPath, stuckHealth)
 	}
 	if di.LastHealthCheckTime != lastHealthCheckTime {
 		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v", di.LastHealthCheckTime, lastHealthCheckTime)

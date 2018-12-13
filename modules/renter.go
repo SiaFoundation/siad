@@ -189,7 +189,6 @@ type DirectoryInfo struct {
 	Health              float64   `json:"health"`
 	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 	SiaPath             string    `json:"siapath"`
-	StuckHealth         float64   `json:"stuckhealth"`
 }
 
 // DownloadInfo provides information about a file that has been requested for

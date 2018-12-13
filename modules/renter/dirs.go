@@ -37,13 +37,14 @@ func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
 	}
 	defer entry.Close()
 
-	// Grab the health information and return the Directory Info
-	health, stuckHealth, lastHealthCheckTime := entry.Health()
+	// Grab the health information and return the Directory Info, stuckHealth is
+	// the true health of the directory so that it what is returned as the
+	// health
+	_, stuckHealth, lastHealthCheckTime := entry.Health()
 	return modules.DirectoryInfo{
-		Health:              health,
+		Health:              stuckHealth,
 		LastHealthCheckTime: lastHealthCheckTime,
 		SiaPath:             siaPath,
-		StuckHealth:         stuckHealth,
 	}, nil
 }
 
