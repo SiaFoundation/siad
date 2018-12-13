@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -56,7 +56,7 @@ func applyUpdate(update writeaheadlog.Update) error {
 // readDeleteUpdate unmarshals the update's instructions and returns the
 // encoded path.
 func readDeleteUpdate(update writeaheadlog.Update) string {
-	if !isDeleteUpdate(update) {
+	if update.Name != updateDeleteName {
 		err := errors.New("readDeleteUpdate can't read non-delete updates")
 		build.Critical(err)
 		return ""
@@ -64,9 +64,9 @@ func readDeleteUpdate(update writeaheadlog.Update) string {
 	return string(update.Instructions)
 }
 
-// createAndSaveAllMetadataUpdates creates a path on disk to the provided
-// siaPath and make sure that all the parent directories have metadata files.
-func createAndSaveAllMetadataUpdates(siaPath, rootDir string) ([]writeaheadlog.Update, error) {
+// createDirMetadataAll creates a path on disk to the provided siaPath and make
+// sure that all the parent directories have metadata files.
+func createDirMetadataAll(siaPath, rootDir string) ([]writeaheadlog.Update, error) {
 	// Create path to directory
 	if err := os.MkdirAll(filepath.Join(rootDir, siaPath), 0700); err != nil {
 		return nil, err
@@ -83,7 +83,9 @@ func createAndSaveAllMetadataUpdates(siaPath, rootDir string) ([]writeaheadlog.U
 		if err != nil {
 			return nil, err
 		}
-		updates = append(updates, update...)
+		if !reflect.DeepEqual(update, writeaheadlog.Update{}) {
+			updates = append(updates, update)
+		}
 		if siaPath == "" {
 			break
 		}
@@ -93,52 +95,30 @@ func createAndSaveAllMetadataUpdates(siaPath, rootDir string) ([]writeaheadlog.U
 
 // createMetadataUpdate is a helper method which creates a writeaheadlog update for
 // updating the siaDir metadata
-func createMetadataUpdate(data []byte) writeaheadlog.Update {
+func createMetadataUpdate(metadata siaDirMetadata) (writeaheadlog.Update, error) {
+	// Marshal the metadata.
+	instructions, err := json.Marshal(metadata)
+	if err != nil {
+		return writeaheadlog.Update{}, err
+	}
+
 	// Create update
 	return writeaheadlog.Update{
 		Name:         updateMetadataName,
-		Instructions: encoding.MarshalAll(data),
-	}
+		Instructions: instructions,
+	}, nil
 }
 
 // readMetadataUpdate unmarshals the update's instructions and returns the
 // metadata encoded in the instructions.
 func readMetadataUpdate(update writeaheadlog.Update) (metadata siaDirMetadata, err error) {
-	if !isMetadataUpdate(update) {
+	if update.Name != updateMetadataName {
 		err = errors.New("readMetadataUpdate can't read non-metadata updates")
 		build.Critical(err)
 		return
 	}
-	var data []byte
-	err = encoding.UnmarshalAll(update.Instructions, &data)
-	if err != nil {
-		return siaDirMetadata{}, err
-	}
-	err = json.Unmarshal(data, &metadata)
+	err = json.Unmarshal(update.Instructions, &metadata)
 	return
-}
-
-// saveMetadataUpdate save the metadata
-func saveMetadataUpdate(md siaDirMetadata) ([]writeaheadlog.Update, error) {
-	// Marshal the metadata.
-	metadata, err := json.Marshal(md)
-	if err != nil {
-		return nil, err
-	}
-	// Otherwise we can create and return the updates.
-	return []writeaheadlog.Update{createMetadataUpdate(metadata)}, nil
-}
-
-// applyUpdates applies updates to the SiaDir.
-func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) (err error) {
-	// Apply updates.
-	for _, u := range updates {
-		err := applyUpdate(u)
-		if err != nil {
-			return errors.AddContext(err, "failed to apply update")
-		}
-	}
-	return nil
 }
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
@@ -158,7 +138,7 @@ func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) err
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
 	// Apply the updates.
-	if err := sd.applyUpdates(updates...); err != nil {
+	if err := ApplyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
@@ -183,10 +163,10 @@ func (sd *SiaDir) saveDir() error {
 	if err != nil {
 		return err
 	}
-	return sd.createAndApplyTransaction(metadataUpdates...)
+	return sd.createAndApplyTransaction(metadataUpdates)
 }
 
 // saveMetadataUpdate saves the metadata of the SiaDir
-func (sd *SiaDir) saveMetadataUpdate() ([]writeaheadlog.Update, error) {
-	return saveMetadataUpdate(sd.staticMetadata)
+func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
+	return createMetadataUpdate(sd.staticMetadata)
 }

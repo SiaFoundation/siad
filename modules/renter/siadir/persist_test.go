@@ -2,7 +2,6 @@ package siadir
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,9 +33,13 @@ func equalMetadatas(md, md2 siaDirMetadata) error {
 	return nil
 }
 
-// newTestDir creates a new SiaDir for testing
-func newTestDir() (*SiaDir, error) {
-	rootPath := filepath.Join(os.TempDir(), "siadirs")
+// newTestDir creates a new SiaDir for testing, the test Name should be passed
+// in as the rootDir
+func newTestDir(rootDir string) (*SiaDir, error) {
+	rootPath := filepath.Join(os.TempDir(), "siadirs", rootDir)
+	if err := os.RemoveAll(rootPath); err != nil {
+		return nil, err
+	}
 	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
 	wal, _ := newTestWAL()
 	return New(siaPath, rootPath, wal)
@@ -65,16 +68,15 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 	}
 	t.Parallel()
 
-	sd, err := newTestDir()
+	sd, err := newTestDir(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Create metadata update
-	data, err := json.Marshal(sd.staticMetadata)
+	update, err := createMetadataUpdate(sd.staticMetadata)
 	if err != nil {
 		t.Fatal(err)
 	}
-	update := createMetadataUpdate(data)
 
 	// Read metadata update
 	metadata, err := readMetadataUpdate(update)
@@ -97,7 +99,7 @@ func TestCreateReadDeleteUpdate(t *testing.T) {
 	}
 	t.Parallel()
 
-	sd, err := newTestDir()
+	sd, err := newTestDir(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,21 +122,14 @@ func TestApplyUpdates(t *testing.T) {
 	t.Parallel()
 
 	t.Run("TestApplyUpdates", func(t *testing.T) {
-		siadir, err := newTestDir()
+		siadir, err := newTestDir(t.Name())
 		if err != nil {
 			t.Fatal(err)
 		}
 		testApply(t, siadir, ApplyUpdates)
 	})
-	t.Run("TestSiaFileApplyUpdates", func(t *testing.T) {
-		siadir, err := newTestDir()
-		if err != nil {
-			t.Fatal(err)
-		}
-		testApply(t, siadir, siadir.applyUpdates)
-	})
 	t.Run("TestCreateAndApplyTransaction", func(t *testing.T) {
-		siadir, err := newTestDir()
+		siadir, err := newTestDir(t.Name())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -147,11 +142,10 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 	// Create an update to the metadata
 	metadata := siadir.staticMetadata
 	metadata.Health = 1.0
-	data, err := json.Marshal(metadata)
+	update, err := createMetadataUpdate(metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
-	update := createMetadataUpdate(data)
 
 	// Apply update.
 	if err := apply(update); err != nil {

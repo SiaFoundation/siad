@@ -8,11 +8,14 @@ import (
 
 // TestIsSiaDirUpdate tests the IsSiaDirUpdate method.
 func TestIsSiaDirUpdate(t *testing.T) {
-	sd, err := newTestDir()
+	sd, err := newTestDir(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadataUpdate := createMetadataUpdate([]byte{})
+	metadataUpdate, err := createMetadataUpdate(siaDirMetadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	deleteUpdate := sd.createDeleteUpdate()
 	emptyUpdate := writeaheadlog.Update{}
 

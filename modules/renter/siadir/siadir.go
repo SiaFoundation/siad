@@ -79,7 +79,7 @@ type (
 // directory that matches the siaPath provided
 func New(siaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	// Create path to direcotry and ensure path contains all metadata
-	updates, err := createAndSaveAllMetadataUpdates(siaPath, rootDir)
+	updates, err := createDirMetadataAll(siaPath, rootDir)
 	if err != nil {
 		return nil, err
 	}
@@ -95,16 +95,17 @@ func New(siaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 		staticMetadata: md,
 		wal:            wal,
 	}
-	return sd, sd.createAndApplyTransaction(append(updates, update...)...)
+
+	return sd, sd.createAndApplyTransaction(append(updates, update)...)
 }
 
 // createDirMetadata makes sure there is a metadata file in the directory and
 // creates one as needed
-func createDirMetadata(siaPath, rootDir string) (siaDirMetadata, []writeaheadlog.Update, error) {
+func createDirMetadata(siaPath, rootDir string) (siaDirMetadata, writeaheadlog.Update, error) {
 	// Check if metadata file exists
 	_, err := os.Stat(filepath.Join(rootDir, siaPath, SiaDirExtension))
 	if err == nil || !os.IsNotExist(err) {
-		return siaDirMetadata{}, []writeaheadlog.Update{}, err
+		return siaDirMetadata{}, writeaheadlog.Update{}, err
 	}
 
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
@@ -116,8 +117,8 @@ func createDirMetadata(siaPath, rootDir string) (siaDirMetadata, []writeaheadlog
 		RootDir:             rootDir,
 		SiaPath:             siaPath,
 	}
-	updates, err := saveMetadataUpdate(md)
-	return md, updates, err
+	update, err := createMetadataUpdate(md)
+	return md, update, err
 }
 
 // LoadSiaDir loads the directory metadata from disk
