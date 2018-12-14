@@ -373,10 +373,13 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	h.mu.Lock()
 	settings := h.externalSettings()
 	h.mu.Unlock()
-	// TODO: this wasn't in the old renewal code.
 	if !settings.AcceptingContracts {
 		s.writeError(errors.New("host is not accepting new contracts"))
 		return nil
+	} else if len(s.so.RevisionTransactionSet) == 0 {
+		err := errors.New("no such contract")
+		s.writeError(err)
+		return err
 	}
 
 	// Verify that the transaction coming over the wire is a proper renewal.
