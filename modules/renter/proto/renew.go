@@ -390,7 +390,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
 
 	// Initiate protocol.
-	s, err := cs.NewSessionWithSecret(host, types.FileContractID{}, startHeight, hdb, crypto.SecretKey{}, cancel)
+	s, err := cs.NewSessionWithSecret(host, contract.ID(), startHeight, hdb, crypto.SecretKey{}, cancel)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
