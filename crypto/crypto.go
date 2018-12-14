@@ -1,6 +1,7 @@
 package crypto
 
 import (
+	"crypto/cipher"
 	"errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -163,4 +164,19 @@ func IsValidCipherType(ct CipherType) bool {
 func RandomCipherType() CipherType {
 	types := []CipherType{TypePlain, TypeTwofish}
 	return types[fastrand.Intn(len(types))]
+}
+
+// EncryptWithNonce encrypts plaintext with aead and prepends a random nonce.
+func EncryptWithNonce(plaintext []byte, aead cipher.AEAD) []byte {
+	nonce := fastrand.Bytes(aead.NonceSize())
+	return aead.Seal(nonce, nonce, plaintext, nil)
+}
+
+// DecryptWithNonce decrypts ciphertext with aead, using a prepended nonce.
+func DecryptWithNonce(ciphertext []byte, aead cipher.AEAD) ([]byte, error) {
+	if len(ciphertext) < aead.NonceSize() {
+		return nil, ErrInsufficientLen
+	}
+	nonce, ciphertext := ciphertext[:aead.NonceSize()], ciphertext[aead.NonceSize():]
+	return aead.Open(nil, nonce, ciphertext, nil)
 }
