@@ -60,6 +60,16 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 	// Get the most recent workers.
 	hosts := r.managedRefreshHostsAndWorkers()
 
+	// Check if we currently have enough workers for the specified redundancy.
+	minWorkers := entry.ErasureCode().MinPieces()
+	id := r.mu.RLock()
+	availableWorkers := len(r.workerPool)
+	r.mu.RUnlock(id)
+	if availableWorkers < minWorkers {
+		return fmt.Errorf("Need at least %v workers for upload but got only %v",
+			minWorkers, availableWorkers)
+	}
+
 	// Read the chunks we want to upload one by one from the input stream using
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
