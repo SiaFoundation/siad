@@ -235,10 +235,7 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	}
 	updates = append(updates, headerUpdate...)
 	// Write the chunks to the new location.
-	chunksUpdates, err := sf.saveChunksUpdates()
-	if err != nil {
-		return err
-	}
+	chunksUpdates := sf.saveChunksUpdates()
 	updates = append(updates, chunksUpdates...)
 	// Apply updates.
 	return sf.createAndApplyTransaction(updates...)

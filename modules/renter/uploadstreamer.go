@@ -64,24 +64,36 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
 	for chunkIndex := uint64(0); ; chunkIndex++ {
-		// Create a new shard.
-		ss := NewStreamShard(reader)
+		// Grow the SiaFile to the right size. Otherwise buildUnfinishedChunk
+		// won't realize that there are pieces which haven't been repaired yet.
+		if err := entry.SiaFile.GrowNumChunks(chunkIndex + 1); err != nil {
+			return err
+		}
 
 		// Start the chunk upload.
 		id := r.mu.Lock()
 		uuc := r.buildUnfinishedChunk(entry, chunkIndex, hosts, pks)
 		r.mu.Unlock(id)
 
-		// Set the chunks source reader.
+		// Create a new shard set it to be the source reader of the chunk.
+		ss := NewStreamShard(reader)
 		uuc.sourceReader = ss
 
-		// Add the chunk to the upload heap.
-		r.uploadHeap.managedPush(uuc)
-
-		// Notify the upload loop.
-		select {
-		case r.uploadHeap.newUploads <- struct{}{}:
-		default:
+		// Check if the chunk needs any work or if we can skip it.
+		if uuc.piecesCompleted < uuc.piecesNeeded {
+			// Add the chunk to the upload heap.
+			r.uploadHeap.managedPush(uuc)
+			// Notify the upload loop.
+			select {
+			case r.uploadHeap.newUploads <- struct{}{}:
+			default:
+			}
+		} else {
+			// The chunk doesn't need any work. We still need to read a chunk
+			// from the shard though. Otherwise we will upload the wrong chunk
+			// for the next chunkIndex. We don't need to check the error though
+			// since we check that anyway at the end of the loop.
+			_, _ = ss.Read(make([]byte, entry.ChunkSize()))
 		}
 
 		// Wait for the shard to be read.

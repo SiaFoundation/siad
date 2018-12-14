@@ -171,17 +171,19 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 	return file, file.saveFile()
 }
 
-// AddChunk adds an empty chunk to the SiaFile and returns its chunkIndex for
-// convenience. To avoid unnecessary writes to disk, AddChunk doesn't write the
-// chunk to disk immediately since it's empty anyway. It will be persisted the
-// next time a call either persists the whole file or the newly added chunk.
-func (sf *SiaFile) AddChunk() uint64 {
+// GrowNumChunks increases the number of chunks in the SiaFile to numChunks. If
+// the file already contains >= numChunks chunks then GrowNumChunks is a no-op.
+func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.chunks = append(sf.chunks, chunk{
-		Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces()),
-	})
-	return uint64(len(sf.chunks) - 1)
+	var updates []writeaheadlog.Update
+	for uint64(len(sf.chunks)) < numChunks {
+		sf.chunks = append(sf.chunks, chunk{
+			Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces()),
+		})
+		updates = append(updates, sf.saveChunkUpdate(len(sf.chunks)-1))
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // AddPiece adds an uploaded piece to the file. It also updates the host table
@@ -261,10 +263,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		return err
 	}
 	// Save the changed chunk to disk.
-	chunkUpdate, err := sf.saveChunkUpdate(int(chunkIndex))
-	if err != nil {
-		return err
-	}
+	chunkUpdate := sf.saveChunkUpdate(int(chunkIndex))
 	return sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
 }
 
@@ -504,10 +503,7 @@ func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodFo
 		sf.chunks[chunkIndex].Stuck = false
 		sf.staticMetadata.NumStuckChunks--
 		// Create chunk update
-		update, err := sf.saveChunkUpdate(chunkIndex)
-		if err != nil {
-			return err
-		}
+		update := sf.saveChunkUpdate(chunkIndex)
 		updates = append(updates, update)
 	}
 	// Create metadata update and apply updates on disk
@@ -552,10 +548,7 @@ func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodFo
 		sf.chunks[chunkIndex].Stuck = true
 		sf.staticMetadata.NumStuckChunks++
 		// Create chunk update
-		update, err := sf.saveChunkUpdate(chunkIndex)
-		if err != nil {
-			return err
-		}
+		update := sf.saveChunkUpdate(chunkIndex)
 		updates = append(updates, update)
 	}
 	// Create metadata update and apply updates on disk
@@ -704,10 +697,7 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	if err != nil {
 		return err
 	}
-	update, err := sf.saveChunkUpdate(int(index))
-	if err != nil {
-		return err
-	}
+	update := sf.saveChunkUpdate(int(index))
 	updates = append(updates, update)
 	return sf.createAndApplyTransaction(updates...)
 }
@@ -774,10 +764,7 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	}
 	// If we pruned the hosts we also need to save the body.
 	if pruned {
-		chunkUpdates, err := sf.saveChunksUpdates()
-		if err != nil {
-			return err
-		}
+		chunkUpdates := sf.saveChunksUpdates()
 		updates = append(updates, chunkUpdates...)
 	}
 	return sf.createAndApplyTransaction(updates...)

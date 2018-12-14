@@ -702,10 +702,7 @@ func TestSaveChunk(t *testing.T) {
 	sf.chunks[chunkIndex] = chunk
 
 	// Write the chunk to disk using saveChunk.
-	update, err := sf.saveChunkUpdate(chunkIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
+	update := sf.saveChunkUpdate(chunkIndex)
 	if err := sf.createAndApplyTransaction(update); err != nil {
 		t.Fatal(err)
 	}

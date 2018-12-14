@@ -297,6 +297,9 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	if sf.deleted {
 		return errors.New("can't call createAndApplyTransaction on deleted file")
 	}
+	if len(updates) == 0 {
+		return nil
+	}
 	// This should never be called on a deleted file.
 	if sf.deleted {
 		return errors.New("shouldn't apply updates on deleted file")
@@ -381,35 +384,29 @@ func (sf *SiaFile) saveFile() error {
 	if err != nil {
 		return errors.AddContext(err, "failed to to create save header updates")
 	}
-	chunksUpdates, err := sf.saveChunksUpdates()
-	if err != nil {
-		return errors.AddContext(err, "failed to create save chunks updates")
-	}
+	chunksUpdates := sf.saveChunksUpdates()
 	err = sf.createAndApplyTransaction(append(headerUpdates, chunksUpdates...)...)
 	return errors.AddContext(err, "failed to apply saveFile updates")
 }
 
 // saveChunkUpdate creates a writeaheadlog update that saves a single marshaled chunk
 // to disk when applied.
-func (sf *SiaFile) saveChunkUpdate(chunkIndex int) (writeaheadlog.Update, error) {
+func (sf *SiaFile) saveChunkUpdate(chunkIndex int) writeaheadlog.Update {
 	offset := sf.chunkOffset(chunkIndex)
 	chunkBytes := marshalChunk(sf.chunks[chunkIndex])
-	return sf.createInsertUpdate(offset, chunkBytes), nil
+	return sf.createInsertUpdate(offset, chunkBytes)
 }
 
 // saveChunksUpdates creates writeaheadlog updates which save the marshaled chunks of
 // the SiaFile to disk when applied.
-func (sf *SiaFile) saveChunksUpdates() ([]writeaheadlog.Update, error) {
+func (sf *SiaFile) saveChunksUpdates() []writeaheadlog.Update {
 	// Marshal all the chunks and create updates for them.
 	updates := make([]writeaheadlog.Update, 0, len(sf.chunks))
 	for chunkIndex := range sf.chunks {
-		update, err := sf.saveChunkUpdate(chunkIndex)
-		if err != nil {
-			return nil, err
-		}
+		update := sf.saveChunkUpdate(chunkIndex)
 		updates = append(updates, update)
 	}
-	return updates, nil
+	return updates
 }
 
 // saveHeaderUpdates creates writeaheadlog updates to saves the metadata and
