@@ -410,7 +410,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	// transaction and a signature for the implicit no-op file contract
 	// revision.
 	var renterSigs modules.LoopContractSignatures
-	if err := s.readRequest(&renterSigs); err != nil {
+	if err := s.readResponse(&renterSigs); err != nil {
 		s.writeError(err)
 		return err
 	}
