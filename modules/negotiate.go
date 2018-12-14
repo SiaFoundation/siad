@@ -330,9 +330,8 @@ type (
 		// Ciphers that the renter supports.
 		Ciphers []types.Specifier
 
-		// Entropy used to construct the session key (construction
-		// depends on the cipher selected).
-		KeyData []byte
+		// The renter's ephemeral X25519 public key.
+		PublicKey crypto.X25519PublicKey
 
 		// The contract being modified; may be blank if the renter
 		// does not intend to modify a contract (e.g. when forming
@@ -346,6 +345,13 @@ type (
 		// Cipher selected by the host. Must be one of the ciphers offered in
 		// the handshake request.
 		Cipher types.Specifier
+
+		// The host's ephemeral X25519 public key.
+		PublicKey crypto.X25519PublicKey
+
+		// A signature of the renter and host's public keys, using the same
+		// signature algorithm previously announced by the host.
+		Signature []byte
 
 		// Entropy signed by the renter to prove that it can sign contract
 		// revisions. The actual data signed should be:

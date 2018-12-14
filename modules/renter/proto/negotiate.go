@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"crypto/cipher"
 	"net"
 	"time"
 
@@ -237,4 +238,61 @@ func newModifyRevision(current types.FileContractRevision, merkleRoot crypto.Has
 	rev := newRevision(current, uploadCost)
 	rev.NewFileMerkleRoot = merkleRoot
 	return rev
+}
+
+// performSessionHandshake conducts the initial handshake exchange of the
+// renter-host protocol, including the challenge/response. During the
+// handshake, a shared secret is established, which is used to initialize an
+// AEAD cipher. This cipher must be used to encrypt subsequent RPCs.
+func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey, id types.FileContractID, contractSK crypto.SecretKey) (cipher.AEAD, error) {
+	// generate a session key
+	xsk, xpk := crypto.GenerateX25519KeyPair()
+
+	// send RPC ID and handshake request
+	req := modules.LoopHandshakeRequest{
+		Version:    1,
+		Ciphers:    []types.Specifier{modules.CipherPlaintext},
+		PublicKey:  xpk,
+		ContractID: id,
+	}
+	extendDeadline(conn, modules.NegotiateSettingsTime)
+	if err := encoding.NewEncoder(conn).EncodeAll(modules.RPCLoopEnter, req); err != nil {
+		return nil, err
+	}
+	// read host response
+	var resp modules.LoopHandshakeResponse
+	if err := modules.ReadRPCResponse(conn, &resp); err != nil {
+		return nil, err
+	}
+	// validate the signature before doing anything else; don't want to punish
+	// the "host" if we're talking to an imposter
+	var hpk crypto.PublicKey
+	copy(hpk[:], hostPublicKey.Key)
+	var sig crypto.Signature
+	copy(sig[:], resp.Signature)
+	if err := crypto.VerifyHash(crypto.HashAll(req.PublicKey, resp.PublicKey), hpk, sig); err != nil {
+		return nil, err
+	}
+	// check for compatible cipher
+	if resp.Cipher != modules.CipherPlaintext {
+		return nil, errors.New("host selected unsupported cipher")
+	}
+	// derive shared secret, which we'll use as an encryption key
+	cipherKey := crypto.DeriveSharedSecret(xsk, resp.PublicKey)
+
+	// TODO: use cipherKey to initialize an AEAD cipher
+	_ = cipherKey
+
+	// if a non-empty ContractID was specified, reply to the host's challenge
+	var challengeResp modules.LoopChallengeResponse
+	if id != (types.FileContractID{}) {
+		sig := crypto.SignHash(crypto.HashAll(modules.RPCChallengePrefix, resp.Challenge), contractSK)
+		challengeResp.Signature = sig[:]
+	}
+	if err := encoding.NewEncoder(conn).Encode(challengeResp); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+
 }

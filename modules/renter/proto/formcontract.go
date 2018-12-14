@@ -396,32 +396,17 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	extendDeadline(conn, modules.NegotiateFileContractTime)
 
 	// Perform initial handshake,
-	if err := encoding.NewEncoder(conn).Encode(modules.RPCLoopEnter); err != nil {
+	_, err = performSessionHandshake(conn, host.PublicKey, types.FileContractID{}, crypto.SecretKey{})
+	if err != nil {
 		return modules.RenterContract{}, err
-	}
-	handshakeReq := modules.LoopHandshakeRequest{
-		Version:    1,
-		Ciphers:    []types.Specifier{modules.CipherPlaintext},
-		KeyData:    nil,
-		ContractID: types.FileContractID{},
-	}
-	if err := encoding.NewEncoder(conn).Encode(handshakeReq); err != nil {
-		return modules.RenterContract{}, err
-	}
-	var handshakeResp modules.LoopHandshakeResponse
-	if err := modules.ReadRPCResponse(conn, &handshakeResp); err != nil {
-		return modules.RenterContract{}, err
-	}
-	if handshakeResp.Cipher != modules.CipherPlaintext {
-		return modules.RenterContract{}, errors.New("host selected unsupported cipher")
 	}
 
-	// Send the challenge response and FormContract request.
+	// Send the FormContract request.
 	req := modules.LoopFormContractRequest{
 		Transactions: txnSet,
 		RenterKey:    uc.PublicKeys[0],
 	}
-	if err := encoding.NewEncoder(conn).EncodeAll(modules.LoopChallengeResponse{}, modules.RPCLoopFormContract, req); err != nil {
+	if err := encoding.NewEncoder(conn).EncodeAll(modules.RPCLoopFormContract, req); err != nil {
 		return modules.RenterContract{}, err
 	}
 

@@ -539,35 +539,8 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		}
 	}()
 
-	extendDeadline(conn, modules.NegotiateSettingsTime)
-	if err := encoding.NewEncoder(conn).Encode(modules.RPCLoopEnter); err != nil {
-		return nil, err
-	}
-
-	// perform initial handshake
-	req := modules.LoopHandshakeRequest{
-		Version:    1,
-		Ciphers:    []types.Specifier{modules.CipherPlaintext},
-		KeyData:    nil,
-		ContractID: id,
-	}
-	if err := encoding.NewEncoder(conn).Encode(req); err != nil {
-		return nil, err
-	}
-	var resp modules.LoopHandshakeResponse
-	if err := modules.ReadRPCResponse(conn, &resp); err != nil {
-		return nil, err
-	}
-	if resp.Cipher != modules.CipherPlaintext {
-		return nil, errors.New("host selected unsupported cipher")
-	}
-	// respond to challenge
-	hash := crypto.HashAll(modules.RPCChallengePrefix, resp.Challenge)
-	sig := crypto.SignHash(hash, contract.SecretKey)
-	cresp := modules.LoopChallengeResponse{
-		Signature: sig[:],
-	}
-	if err := encoding.NewEncoder(conn).Encode(cresp); err != nil {
+	_, err = performSessionHandshake(conn, contract.HostPublicKey(), id, contract.SecretKey)
+	if err != nil {
 		return nil, err
 	}
 

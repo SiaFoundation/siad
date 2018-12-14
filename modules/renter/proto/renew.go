@@ -419,36 +419,16 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	extendDeadline(conn, modules.NegotiateFileContractTime)
 
 	// Perform initial handshake,
-	if err := encoding.NewEncoder(conn).Encode(modules.RPCLoopEnter); err != nil {
+	_, err = performSessionHandshake(conn, contract.HostPublicKey(), contract.ID(), contract.SecretKey)
+	if err != nil {
 		return modules.RenterContract{}, err
-	}
-	handshakeReq := modules.LoopHandshakeRequest{
-		Version:    1,
-		Ciphers:    []types.Specifier{modules.CipherPlaintext},
-		KeyData:    nil,
-		ContractID: oldContract.Metadata().ID,
-	}
-	if err := encoding.NewEncoder(conn).Encode(handshakeReq); err != nil {
-		return modules.RenterContract{}, err
-	}
-	var handshakeResp modules.LoopHandshakeResponse
-	if err := modules.ReadRPCResponse(conn, &handshakeResp); err != nil {
-		return modules.RenterContract{}, err
-	}
-	if handshakeResp.Cipher != modules.CipherPlaintext {
-		return modules.RenterContract{}, errors.New("host selected unsupported cipher")
 	}
 
-	// Send the challenge response and RenewContract request.
-	hash := crypto.HashAll(modules.RPCChallengePrefix, handshakeResp.Challenge)
-	challengeSig := crypto.SignHash(hash, contract.SecretKey)
-	cresp := modules.LoopChallengeResponse{
-		Signature: challengeSig[:],
-	}
+	// Send the RenewContract request.
 	req := modules.LoopRenewContractRequest{
 		Transactions: txnSet,
 	}
-	if err := encoding.NewEncoder(conn).EncodeAll(cresp, modules.RPCLoopRenewContract, req); err != nil {
+	if err := encoding.NewEncoder(conn).EncodeAll(modules.RPCLoopRenewContract, req); err != nil {
 		return modules.RenterContract{}, err
 	}
 
