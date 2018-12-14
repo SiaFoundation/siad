@@ -184,6 +184,13 @@ type ContractUtility struct {
 	Locked        bool // Locked utilities can only be set to false.
 }
 
+// DirectoryInfo provides information about a siadir
+type DirectoryInfo struct {
+	Health              float64   `json:"health"`
+	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+	SiaPath             string    `json:"siapath"`
+}
+
 // DownloadInfo provides information about a file that has been requested for
 // download.
 type DownloadInfo struct {
@@ -556,6 +563,9 @@ type Renter interface {
 
 	// DeleteDir deletes a directory from the renter
 	DeleteDir(siaPath string) error
+
+	// DirList lists the directories and the files stored in a siadir
+	DirList(siaPath string) ([]DirectoryInfo, []FileInfo, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

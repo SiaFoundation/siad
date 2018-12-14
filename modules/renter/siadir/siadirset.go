@@ -95,9 +95,8 @@ func (entry *SiaDirSetEntry) close() error {
 // exists checks to see if a SiaDir with the provided siaPath already exists in
 // the renter
 func (sds *SiaDirSet) exists(siaPath string) (bool, error) {
-	// Make sure there are no leading slashes
-	siaPath = strings.TrimPrefix(siaPath, "/")
 	// Check for SiaDir in Memory
+	siaPath = strings.Trim(siaPath, "/")
 	_, exists := sds.siaDirMap[siaPath]
 	if exists {
 		return exists, nil
@@ -122,9 +121,8 @@ func (sds *SiaDirSet) newSiaDirSetEntry(sd *SiaDir) *siaDirSetEntry {
 
 // open will return the siaDirSetEntry in memory or load it from disk
 func (sds *SiaDirSet) open(siaPath string) (*SiaDirSetEntry, error) {
-	// Make sure there are no leading slashes
-	siaPath = strings.TrimPrefix(siaPath, "/")
 	var entry *siaDirSetEntry
+	siaPath = strings.Trim(siaPath, "/")
 	entry, exists := sds.siaDirMap[siaPath]
 	if !exists {
 		// Try and Load File from disk
@@ -196,8 +194,8 @@ func (sds *SiaDirSet) Exists(siaPath string) (bool, error) {
 func (sds *SiaDirSet) NewSiaDir(siaPath string) (*SiaDirSetEntry, error) {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
-	siaPath = strings.TrimPrefix(siaPath, "/")
 	// Check is SiaDir already exists
+	siaPath = strings.Trim(siaPath, "/")
 	exists, err := sds.exists(siaPath)
 	if exists {
 		return nil, ErrPathOverload
@@ -232,7 +230,7 @@ func (sds *SiaDirSet) Open(siaPath string) (*SiaDirSetEntry, error) {
 func (sds *SiaDirSet) UpdateHealth(siaPath string, health, stuckHealth float64, lastCheck time.Time) error {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
-	siaPath = strings.TrimPrefix(siaPath, "/")
+	siaPath = strings.Trim(siaPath, "/")
 	exists, err := sds.exists(siaPath)
 	if !exists && os.IsNotExist(err) {
 		return ErrUnknownPath

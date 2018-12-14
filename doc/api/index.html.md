@@ -1596,6 +1596,68 @@ Signals if contract is good for uploading data.
 **goodforrenew** | boolean  
 Signals if contract is good for a renewal.  
 
+## /renter/dir/*siapath [GET]
+
+retrieves the contents of a directory on the sia network
+
+### Path Parameters
+#### REQUIRED
+**siapath** | string
+Path to the directory on the sia netork  
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "directories": [
+    {
+      "heatlh":             1.0,                                    // float64
+      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00"   // unix timestamp
+      "siapath":            "foo/bar"                               // string
+    }
+  ],
+  "files": []
+}
+```
+**directories**
+An array of sia directories
+
+**health** | float64
+This is the worst health of any of the files or subdirectories. Health is the percent of parity pieces missing.
+ - health = 0 is full redundancy
+ - health <= 1 is recoverable
+ - health > 1 needs to be repaired from disk
+
+**lasthealthchecktime** | unix timestampe
+The oldest time that the health of the directory or any of its files or sub directories' health was checked.
+
+**siapath** | string
+The path to the directory on the sia network
+
+**files**
+Same response as [files](#files)
+
+## /renter/dir/*siapath [POST]
+
+performs various functions on the renter's directories
+
+### Path Parameters
+#### REQUIRED
+**siapath** | string
+Location where the directory will reside in the renter on the network. The path must be non-empty, may not include any path traversal strings ("./", "../"), and may not begin with a forward-slash character.  
+
+### Query String Parameters
+#### REQUIRED
+**action** | string
+Action can be either `create` or `delete`.
+ - `create` will create an empty directory on the sia network
+ - `delete` will remove a directory and its contents from the sia network
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
 ## /renter/downloads [GET]
 
 Lists all files in the download queue.
