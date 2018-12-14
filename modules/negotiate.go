@@ -494,8 +494,7 @@ func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error
 	var unencryptedResp []byte
 	if err == nil {
 		unencryptedResp = encoding.MarshalAll((*RPCError)(nil), resp)
-	}
-	if err != nil {
+	} else {
 		re, ok := err.(*RPCError)
 		if !ok {
 			re = &RPCError{Description: err.Error()}
