@@ -143,6 +143,11 @@ type (
 		// pieces may have been padded with zeros during encoding.
 		Recover(pieces [][]byte, n uint64, w io.Writer) error
 
+		// SupportsPartialEncoding returns true if the ErasureCoder can be used
+		// to encode/decode any crypto.SegmentSize bytes of an encoded piece or
+		// false otherwise.
+		SupportsPartialEncoding() bool
+
 		// Type returns the type identifier of the ErasureCoder.
 		Type() ErasureCoderType
 	}

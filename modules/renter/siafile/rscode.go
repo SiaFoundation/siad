@@ -65,6 +65,11 @@ func (rs *RSCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 	return rs.enc.Join(w, pieces, int(n))
 }
 
+// SupportsPartialEncoding returns false for the basic reed-solomon encoder.
+func (rs *RSCode) SupportsPartialEncoding() bool {
+	return false
+}
+
 // Type returns the erasure coders type identifier.
 func (rs *RSCode) Type() modules.ErasureCoderType {
 	return ecReedSolomon
