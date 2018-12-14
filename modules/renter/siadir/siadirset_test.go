@@ -15,9 +15,10 @@ import (
 func newTestSiaDirSetWithDir() (*SiaDirSetEntry, *SiaDirSet, error) {
 	// Create params
 	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
-	dir := filepath.Join(os.TempDir(), "siafiles")
+	dir := filepath.Join(os.TempDir(), "siadirs")
 	// Create SiaDirSet and SiaDirSetEntry
-	sds := NewSiaDirSet(dir)
+	wal, _ := newTestWAL()
+	sds := NewSiaDirSet(dir, wal)
 	entry, err := sds.NewSiaDir(siaPath)
 	if err != nil {
 		return nil, nil, err

@@ -553,6 +553,9 @@ type Renter interface {
 
 	// CreateDir creates a directory for the renter
 	CreateDir(siaPath string) error
+
+	// DeleteDir deletes a directory from the renter
+	DeleteDir(siaPath string) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

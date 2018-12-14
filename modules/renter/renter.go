@@ -727,7 +727,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		tpool:          tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
-	r.staticDirSet = siadir.NewSiaDirSet(r.filesDir)
 
 	// Load all saved data.
 	if err := r.initPersist(); err != nil {

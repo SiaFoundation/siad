@@ -1,13 +1,14 @@
 package siadir
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 const (
@@ -43,7 +44,11 @@ type (
 	// SiaDir contains the metadata information about a renter directory
 	SiaDir struct {
 		staticMetadata siaDirMetadata
-		mu             sync.Mutex
+
+		// Utility fields
+		deleted bool
+		mu      sync.Mutex
+		wal     *writeaheadlog.WAL
 	}
 
 	// siaDirMetadata is the metadata that is saved to disk as a .siadir file
@@ -59,6 +64,9 @@ type (
 		// siafiles in the siadir or any of the sub directories
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 
+		// RootDir is the path to the root directory on disk
+		RootDir string `json:"rootdir"`
+
 		// SiaPath is the path to the siadir on the sia network
 		SiaPath string `json:"siapath"`
 	}
@@ -69,39 +77,35 @@ type (
 // also make sure that all the parent directories are created and have metadata
 // files as well and will return the SiaDir containing the information for the
 // directory that matches the siaPath provided
-func New(siaPath, rootDir string) (*SiaDir, error) {
-	// Create direcotry
-	siaDirFilePath := filepath.Join(rootDir, siaPath)
-	if err := os.MkdirAll(siaDirFilePath, 0700); err != nil {
-		return nil, err
-	}
-
-	// Create metadata for directory
-	md, err := createDirMetadata(siaPath, siaDirFilePath)
+func New(siaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
+	// Create path to direcotry and ensure path contains all metadata
+	updates, err := createDirMetadataAll(siaPath, rootDir)
 	if err != nil {
 		return nil, err
 	}
 
-	// Make sure all parent directories have metadata files
-	siaPath, path := pathDirs(siaPath, siaDirFilePath)
-	for path != filepath.Dir(rootDir) {
-		if _, err := createDirMetadata(siaPath, path); err != nil {
-			return nil, err
-		}
-		siaPath, path = pathDirs(siaPath, path)
+	// Create metadata for directory
+	md, update, err := createDirMetadata(siaPath, rootDir)
+	if err != nil {
+		return nil, err
 	}
-	return &SiaDir{
+
+	// Create SiaDir
+	sd := &SiaDir{
 		staticMetadata: md,
-	}, nil
+		wal:            wal,
+	}
+
+	return sd, sd.createAndApplyTransaction(append(updates, update)...)
 }
 
 // createDirMetadata makes sure there is a metadata file in the directory and
 // creates one as needed
-func createDirMetadata(siaPath, fullPath string) (siaDirMetadata, error) {
+func createDirMetadata(siaPath, rootDir string) (siaDirMetadata, writeaheadlog.Update, error) {
 	// Check if metadata file exists
-	_, err := os.Stat(filepath.Join(fullPath, SiaDirExtension))
+	_, err := os.Stat(filepath.Join(rootDir, siaPath, SiaDirExtension))
 	if err == nil || !os.IsNotExist(err) {
-		return siaDirMetadata{}, err
+		return siaDirMetadata{}, writeaheadlog.Update{}, err
 	}
 
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
@@ -110,34 +114,46 @@ func createDirMetadata(siaPath, fullPath string) (siaDirMetadata, error) {
 		Health:              DefaultDirHealth,
 		StuckHealth:         DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
+		RootDir:             rootDir,
 		SiaPath:             siaPath,
 	}
-	return md, md.save(fullPath)
-}
-
-// pathDirs returns the directories for the input paths
-func pathDirs(siaPath, path string) (string, string) {
-	siaPath = filepath.Dir(siaPath)
-	if siaPath == "." {
-		siaPath = ""
-	}
-	path = filepath.Dir(path)
-	return siaPath, path
+	update, err := createMetadataUpdate(md)
+	return md, update, err
 }
 
 // LoadSiaDir loads the directory metadata from disk
-func LoadSiaDir(rootDir, siaPath string) (*SiaDir, error) {
+func LoadSiaDir(rootDir, siaPath string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	var md siaDirMetadata
 	path := filepath.Join(rootDir, siaPath)
 	err := persist.LoadJSON(siaDirMetadataHeader, &md, filepath.Join(path, SiaDirExtension))
 	return &SiaDir{
 		staticMetadata: md,
+		wal:            wal,
 	}, err
 }
 
 // save saves the directory metadata to disk
-func (md siaDirMetadata) save(path string) error {
-	return persist.SaveJSON(siaDirMetadataHeader, md, filepath.Join(path, SiaDirExtension))
+func (md siaDirMetadata) save() error {
+	path := filepath.Join(md.RootDir, md.SiaPath, SiaDirExtension)
+	return persist.SaveJSON(siaDirMetadataHeader, md, path)
+}
+
+// Delete removes the directory from disk and marks it as deleted. Once the directory is
+// deleted, attempting to access the directory will return an error.
+func (sd *SiaDir) Delete() error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	update := sd.createDeleteUpdate()
+	err := sd.createAndApplyTransaction(update)
+	sd.deleted = true
+	return err
+}
+
+// Deleted returns the deleted field of the siaDir
+func (sd *SiaDir) Deleted() bool {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	return sd.deleted
 }
 
 // Health returns the health metadata of the SiaDir
@@ -154,13 +170,12 @@ func (sd *SiaDir) SiaPath() string {
 	return sd.staticMetadata.SiaPath
 }
 
-// UpdateHealth updates the SiaDir metadata on disk with the new metadata health
-// values
-func (sd *SiaDir) UpdateHealth(health, stuckHealth float64, lastCheck time.Time, path string) error {
+// UpdateHealth updates the SiaDir metadata on disk with the new Health value
+func (sd *SiaDir) UpdateHealth(health, stuckHealth float64, lastCheck time.Time) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
 	sd.staticMetadata.Health = health
 	sd.staticMetadata.StuckHealth = stuckHealth
 	sd.staticMetadata.LastHealthCheckTime = lastCheck
-	return sd.staticMetadata.save(path)
+	return sd.saveDir()
 }

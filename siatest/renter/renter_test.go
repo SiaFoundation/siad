@@ -567,6 +567,17 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 		assertFileExists(path, metadata, t)
 		path = filepath.Dir(path)
 	}
+
+	// Test deleting directory
+	if err = r.RenterDirDeletePost(rd.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that siadir was deleted from disk
+	_, err = os.Stat(filepath.Join(r.RenterFilesDir(), rd.SiaPath()))
+	if !os.IsNotExist(err) {
+		t.Fatal("Expected IsNotExist err, but got err:", err)
+	}
 }
 
 // testDownloadAfterRenew makes sure that we can still download a file

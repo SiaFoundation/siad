@@ -13,12 +13,10 @@ func (r *Renter) CreateDir(siaPath string) error {
 }
 
 // DeleteDir removes a directory from the renter and deletes all its sub
-// directories and files from the hosts it is stored on.
-//
-// TODO: Implement
-// func (r *Renter) DeleteDir(nickname string) error {
-// 	return nil
-// }
+// directories and files
+func (r *Renter) DeleteDir(siaPath string) error {
+	return r.staticDirSet.Delete(siaPath)
+}
 
 // DirList returns directories and files stored in the directory located at `path`
 //
