@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -250,6 +251,53 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 	WriteSuccess(w)
+}
+
+// parseErasureCodingParameters parses the supplied string values and creates
+// an erasure coder. If values haven't been supplied it will fill in sane
+// defaults.
+func parseErasureCodingParameters(strDataPieces, strParityPieces string) (modules.ErasureCoder, error) {
+	// Check whether the erasure coding parameters have been supplied.
+	var ec modules.ErasureCoder
+	if strDataPieces != "" || strParityPieces != "" {
+		// Check that both values have been supplied.
+		if strDataPieces == "" || strParityPieces == "" {
+			err := errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
+			return nil, err
+		}
+
+		// Parse the erasure coding parameters.
+		var dataPieces, parityPieces int
+		_, err := fmt.Sscan(strDataPieces, &dataPieces)
+		if err != nil {
+			err = errors.AddContext(err, "unable to read parameter 'datapieces'")
+			return nil, err
+		}
+		_, err = fmt.Sscan(strParityPieces, &parityPieces)
+		if err != nil {
+			err = errors.AddContext(err, "unable to read parameter 'paritypieces'")
+			return nil, err
+		}
+
+		// Verify that sane values for parityPieces and redundancy are being
+		// supplied.
+		if parityPieces < requiredParityPieces {
+			err := fmt.Errorf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)
+			return nil, err
+		}
+		redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
+		if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
+			err := fmt.Errorf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)
+			return nil, err
+		}
+
+		// Create the erasure coder.
+		ec, err = siafile.NewRSCode(dataPieces, parityPieces)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ec, nil
 }
 
 // renterHandlerGET handles the API call to /renter.
@@ -931,13 +979,34 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 
 // renterUploadHandler handles the API call to upload a file.
 func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	source := req.FormValue("source")
-	if !filepath.IsAbs(source) {
+	// Get the source path.
+	source, err := url.QueryUnescape(req.FormValue("source"))
+	if err != nil {
+		WriteError(w, Error{"failed to unescape the source path"}, http.StatusBadRequest)
+		return
+	}
+	// Check whether the file will be streamed or not.
+	stream := false
+	if f := req.FormValue("stream"); f != "" {
+		stream, err = strconv.ParseBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'stream' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	// Make sure that either the source is specified or stream.
+	// NOTE the renter would actually support both but there is probably no
+	// use-case for that right now.
+	if stream && source != "" {
+		WriteError(w, Error{"can't set stream=true and a source"}, http.StatusBadRequest)
+		return
+	}
+	// Source must be absolute path.
+	if !stream && !filepath.IsAbs(source) {
 		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
 	// Check whether existing file should be overwritten
-	var err error
 	force := false
 	if f := req.FormValue("force"); f != "" {
 		force, err = strconv.ParseBool(f)
@@ -946,47 +1015,11 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 			return
 		}
 	}
-
-	// Check whether the erasure coding parameters have been supplied.
-	var ec modules.ErasureCoder
-	if req.FormValue("datapieces") != "" || req.FormValue("paritypieces") != "" {
-		// Check that both values have been supplied.
-		if req.FormValue("datapieces") == "" || req.FormValue("paritypieces") == "" {
-			WriteError(w, Error{"must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters"}, http.StatusBadRequest)
-			return
-		}
-
-		// Parse the erasure coding parameters.
-		var dataPieces, parityPieces int
-		_, err := fmt.Sscan(req.FormValue("datapieces"), &dataPieces)
-		if err != nil {
-			WriteError(w, Error{"unable to read parameter 'datapieces': " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(req.FormValue("paritypieces"), &parityPieces)
-		if err != nil {
-			WriteError(w, Error{"unable to read parameter 'paritypieces': " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-
-		// Verify that sane values for parityPieces and redundancy are being
-		// supplied.
-		if parityPieces < requiredParityPieces {
-			WriteError(w, Error{fmt.Sprintf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)}, http.StatusBadRequest)
-			return
-		}
-		redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
-		if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
-			WriteError(w, Error{fmt.Sprintf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)}, http.StatusBadRequest)
-			return
-		}
-
-		// Create the erasure coder.
-		ec, err = siafile.NewRSSubCode(dataPieces, parityPieces, 64)
-		if err != nil {
-			WriteError(w, Error{"unable to encode file using the provided parameters: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
+	// Parse the erasure coder.
+	ec, err := parseErasureCodingParameters(req.FormValue("datapieces"), req.FormValue("paritypieces"))
+	if err != nil {
+		WriteError(w, Error{"unable to parse erasure code settings" + err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Call the renter to upload the file.
@@ -995,12 +1028,17 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	err = api.renter.Upload(modules.FileUploadParams{
+	up := modules.FileUploadParams{
 		Source:      source,
 		SiaPath:     siaPath,
 		ErasureCode: ec,
 		Force:       force,
-	})
+	}
+	if stream {
+		err = api.renter.UploadStreamFromReader(up, req.Body)
+	} else {
+		err = api.renter.Upload(up)
+	}
 	if err != nil {
 		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)
 		return

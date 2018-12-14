@@ -262,6 +262,7 @@ func TestRenterThree(t *testing.T) {
 		{"TestAllowanceDefaultSet", testAllowanceDefaultSet},
 		{"TestFileAvailableAndRecoverable", testFileAvailableAndRecoverable},
 		{"TestSetFileStuck", testSetFileStuck},
+		{"TestUploadStreaming", testUploadStreaming},
 		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
 
@@ -291,6 +292,35 @@ func testAllowanceDefaultSet(t *testing.T, tg *siatest.TestGroup) {
 		t.Log("Expected", string(expected))
 		t.Log("Was", string(was))
 		t.Fatal("Renter's allowance doesn't match siatest.DefaultAllowance")
+	}
+}
+
+// testUploadStreaming uploads random data using the upload streaming API.
+func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Renters()) == 0 {
+		t.Fatal("Test requires at least 1 renter")
+	}
+	// Create some random data to write.
+	d := fastrand.Bytes(100)
+
+	// Prepare the stream.
+	r := tg.Renters()[0]
+	w, errChan := r.RenterUploadStreamPost("/foo", 1, uint64(len(tg.Hosts())-1), false)
+
+	// Upload the data.
+	_, err := w.Write(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Close the stream to finish upload.
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the error response.
+	if err := <-errChan; err != nil {
+		t.Fatal(err)
 	}
 }
 

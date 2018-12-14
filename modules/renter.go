@@ -622,6 +622,10 @@ type Renter interface {
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
 
+	// UploadStreamFromReader reads from the provided reader until io.EOF is reached and
+	// upload the data to the Sia network.
+	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
+
 	// CreateDir creates a directory for the renter
 	CreateDir(siaPath SiaPath) error
 

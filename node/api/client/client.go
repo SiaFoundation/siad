@@ -155,8 +155,8 @@ func (c *Client) get(resource string, obj interface{}) error {
 
 // postRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
-func (c *Client) postRawResponse(resource string, data string) ([]byte, error) {
-	req, err := c.NewRequest("POST", resource, strings.NewReader(data))
+func (c *Client) postRawResponse(resource string, body io.Reader) ([]byte, error) {
+	req, err := c.NewRequest("POST", resource, body)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ func (c *Client) postRawResponse(resource string, data string) ([]byte, error) {
 // request body. The response, if provided, will be decoded into `obj`.
 func (c *Client) post(resource string, data string, obj interface{}) error {
 	// Request resource
-	body, err := c.postRawResponse(resource, data)
+	body, err := c.postRawResponse(resource, strings.NewReader(data))
 	if err != nil {
 		return err
 	}

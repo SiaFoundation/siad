@@ -92,7 +92,11 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
 			// Add the chunk to the upload heap.
-			r.uploadHeap.managedPush(uuc)
+			select {
+			case <-r.tg.StopChan():
+				return errors.New("interrupted by shutdown")
+			case r.uploadHeap.priorityUpload <- uuc:
+			}
 			// Notify the upload loop.
 			select {
 			case r.uploadHeap.newUploads <- struct{}{}:
