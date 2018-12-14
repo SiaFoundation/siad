@@ -134,7 +134,10 @@ func PrefixedSignedIdentifier(renterSeed RenterSeed, txn types.Transaction, host
 	// Create the cipher for signing the identifier.
 	sk, err := crypto.NewSiaKey(crypto.TypeThreefish, signingKey[:])
 	if err != nil {
-		panic("This should never happen")
+		// This should never happen. If it happens the contract won't be
+		// recoverable.
+		build.Critical("failed to create threefish key, this should never happen")
+		return ContractSignedIdentifier{}, crypto.Ciphertext{}
 	}
 	// Pad the identifier and sign it but then only use 32 bytes of the
 	// signature.

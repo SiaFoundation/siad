@@ -20,7 +20,7 @@ func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.B
 		}
 		// Check if any contract should be recovered.
 		for i, fc := range txn.FileContracts {
-			// Create the RenterSeed for this contract.
+			// Create the RenterSeed for this contract and wipe it afterwards.
 			rs := proto.EphemeralRenterSeed(walletSeed, fc.WindowStart)
 			defer fastrand.Read(rs[:])
 			// Validate it.
