@@ -2,46 +2,108 @@ package renter
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
-type (
-	uploadStreamer struct {
-		staticFileEntry *siafile.SiaFileSetEntry
-		r               *Renter
+// StreamShard is a helper type that allows us to split an io.Reader up into
+// multiple readers, wait for the shard to finish reading and then check the
+// error for that Read.
+// NOTE each shard should only be used for a single call to Read.
+type StreamShard struct {
+	err        error
+	r          io.Reader
+	signalChan chan struct{}
+}
+
+// NewStreamShard creates a new stream shard from a reader and an optional
+// waitForChan.
+func NewStreamShard(r io.Reader) *StreamShard {
+	return &StreamShard{
+		r:          r,
+		signalChan: make(chan struct{}),
 	}
-)
-
-func (us *uploadStreamer) Close() error {
-	// TODO don't forget flushing the buffer.
-	panic("not implemented yet")
-}
-func (us *uploadStreamer) Write(b []byte) (n int, err error) {
-	panic("not implemented yet")
-
-	//	// Send the upload to the repair loop.
-	//	hosts := r.managedRefreshHostsAndWorkers()
-	//	id := r.mu.Lock()
-	//	unfinishedChunks := r.buildUnfinishedChunks(entry.ChunkEntrys(), hosts)
-	//	r.mu.Unlock(id)
-	//	for i := 0; i < len(unfinishedChunks); i++ {
-	//		r.uploadHeap.managedPush(unfinishedChunks[i])
-	//	}
-	//	select {
-	//	case r.uploadHeap.newUploads <- struct{}{}:
-	//	default:
-	//	}
-	//	return nil, nil
 }
 
-// UploadStreamer creates a streamer that can be used to upload a file to Sia
-// using a stream.
-func (r *Renter) UploadStreamer(up modules.FileUploadParams) (modules.UploadStreamer, error) {
+// Read implements the io.Reader interface. It closes signalChan after Read
+// returns.
+func (ss *StreamShard) Read(b []byte) (int, error) {
+	n, err := ss.Read(b)
+	close(ss.signalChan)
+	ss.err = err
+	return n, err
+}
+
+// UploadStreamFromReader reads from the provided reader until io.EOF is reached and
+// upload the data to the Sia network.
+func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.Reader) error {
+	// Check the upload params first.
+	entry, err := r.managedInitUploadStream(up)
+	if err != nil {
+		return err
+	}
+	defer entry.Close()
+
+	// Build a map of host public keys.
+	pks := make(map[string]types.SiaPublicKey)
+	for _, pk := range entry.HostPublicKeys() {
+		pks[string(pk.Key)] = pk
+	}
+
+	// Get the most recent workers.
+	hosts := r.managedRefreshHostsAndWorkers()
+
+	// Read the chunks we want to upload one by one from the input stream using
+	// shards. A shard will signal completion after reading the input but
+	// before the upload is done.
+	for chunkIndex := uint64(0); ; chunkIndex++ {
+		// Create a new shard.
+		ss := NewStreamShard(reader)
+
+		// Start the chunk upload.
+		id := r.mu.Lock()
+		uuc := r.buildUnfinishedChunk(entry, chunkIndex, hosts, pks)
+		r.mu.Unlock(id)
+
+		// Set the chunks source reader.
+		uuc.sourceReader = ss
+
+		// Add the chunk to the upload heap.
+		r.uploadHeap.managedPush(uuc)
+
+		// Notify the upload loop.
+		select {
+		case r.uploadHeap.newUploads <- struct{}{}:
+		default:
+		}
+
+		// Wait for the shard to be read.
+		select {
+		case <-r.tg.StopChan():
+			return errors.New("interrupted by shutdown")
+		case <-ss.signalChan:
+		}
+
+		// If an io.EOF error occurred we are done. Otherwise we report the
+		// error.
+		if ss.err == io.EOF {
+			return nil
+		} else if ss.err != nil {
+			return ss.err
+		}
+	}
+}
+
+// managedInitUploadStream  verifies hte upload parameters and prepares an empty
+// SiaFile for the upload.
+func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.SiaFileSetEntry, error) {
 	siaPath, ec, force := up.SiaPath, up.ErasureCode, up.Force
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
@@ -79,14 +141,12 @@ func (r *Renter) UploadStreamer(up modules.FileUploadParams) (modules.UploadStre
 		siaDirEntry.Close()
 	}
 	// Create the Siafile and add to renter
-	entry, err := r.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 0, 0700)
+	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
+	entry, err := r.staticFileSet.NewSiaFile(up, sk, 0, 0700)
 	if err != nil {
 		return nil, err
 	}
 	defer entry.Close()
 
-	return &uploadStreamer{
-		staticFileEntry: entry,
-		r:               r,
-	}, nil
+	return entry, nil
 }

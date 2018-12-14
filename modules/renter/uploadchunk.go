@@ -49,6 +49,10 @@ type unfinishedUploadChunk struct {
 	logicalChunkData  [][]byte
 	physicalChunkData [][]byte
 
+	// sourceReader is an optional source for the logical chunk data. If
+	// available it will be tried before the repair path or remote repair.
+	sourceReader io.Reader
+
 	// Worker synchronization fields. The mutex only protects these fields.
 	//
 	// When a worker passes over a piece for upload to go on standby:

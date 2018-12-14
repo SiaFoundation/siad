@@ -80,6 +80,10 @@ type uploadHeap struct {
 	stuckChunkFound   chan struct{}
 	stuckChunkSuccess chan modules.SiaPath
 
+	// priorityUpload is a channel for uploads which have to be started as soon
+	// as possible. They skip the hierarchy in the heap.
+	priorityUpload chan *unfinishedUploadChunk
+
 	mu sync.Mutex
 }
 
@@ -124,6 +128,11 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 
 // managedPop will pull a chunk off of the upload heap and return it.
 func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
+	select {
+	case uc = <-uh.priorityUpload:
+		return uc
+	default:
+	}
 	uh.mu.Lock()
 	if len(uh.heap) > 0 {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
