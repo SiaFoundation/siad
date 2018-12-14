@@ -34,7 +34,8 @@ func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword strin
 
 	// Gateway API Calls
 	if api.gateway != nil {
-		router.GET("/gateway", api.gatewayHandler)
+		router.GET("/gateway", api.gatewayHandlerGET)
+		router.POST("/gateway", api.gatewayHandlerPOST)
 		router.POST("/gateway/connect/:netaddress", RequirePassword(api.gatewayConnectHandler, requiredPassword))
 		router.POST("/gateway/disconnect/:netaddress", RequirePassword(api.gatewayDisconnectHandler, requiredPassword))
 	}

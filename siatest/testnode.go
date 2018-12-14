@@ -129,6 +129,9 @@ func (tn *TestNode) StartNode() error {
 	}
 	tn.Server = s
 	tn.Client.Address = s.APIAddress()
+	if !tn.params.CreateWallet && tn.params.Wallet == nil {
+		return nil
+	}
 	return tn.WalletUnlockPost(tn.primarySeed)
 }
 
@@ -183,6 +186,11 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 	}
 	if err = tn.initRootDirs(); err != nil {
 		return nil, errors.AddContext(err, "failed to create root directories")
+	}
+
+	// If there is no wallet we are done.
+	if !nodeParams.CreateWallet && nodeParams.Wallet == nil {
+		return tn, nil
 	}
 
 	// Init wallet

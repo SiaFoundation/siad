@@ -40,6 +40,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"github.com/coreos/bbolt"
@@ -295,9 +296,39 @@ func (so storageObligation) proofDeadline() types.BlockHeight {
 	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].WindowEnd
 }
 
+// transactionID returns the ID of the transaction containing the file
+// contract.
+func (so storageObligation) transactionID() types.TransactionID {
+	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].ID()
+}
+
 // value returns the value of fulfilling the storage obligation to the host.
 func (so storageObligation) value() types.Currency {
 	return so.ContractCost.Add(so.PotentialDownloadRevenue).Add(so.PotentialStorageRevenue).Add(so.PotentialUploadRevenue).Add(so.RiskedCollateral)
+}
+
+// deleteStorageObligations deletes obligations from the database.
+// It is assumed the deleted obligations don't belong in the database in the first place,
+// so no financial metrics are updated.
+func (h *Host) deleteStorageObligations(soids []types.FileContractID) error {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	err := h.db.Update(func(tx *bolt.Tx) error {
+		// Delete obligations.
+		b := tx.Bucket(bucketStorageObligations)
+		for _, soid := range soids {
+			err := b.Delete([]byte(soid[:]))
+			if err != nil {
+				return build.ExtendErr("unable to delete transaction id:", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		h.log.Println(build.ExtendErr("database failed to delete storage obligations:", err))
+		return err
+	}
+	return nil
 }
 
 // queueActionItem adds an action item to the host at the input height so that
@@ -548,6 +579,39 @@ func (h *Host) modifyStorageObligation(so storageObligation, sectorsRemoved []cr
 	return nil
 }
 
+// PruneStaleStorageObligations will delete storage obligations from the host
+// that, for whatever reason, did not make it on the block chain.
+// As these stale storage obligations have an impact on the host financial metrics,
+// this method updates the host financial metrics to show the correct values.
+func (h *Host) PruneStaleStorageObligations() error {
+	// Filter the stale obligations from the set of all obligations.
+	sos := h.StorageObligations()
+	var stale []types.FileContractID
+	for _, so := range sos {
+		conf, err := h.tpool.TransactionConfirmed(so.TransactionID)
+		if err != nil {
+			return build.ExtendErr("unable to get transaction ID:", err)
+		}
+		// An obligation is considered stale if it has not been confirmed
+		// within RespendTimeout blocks after negotiation.
+		if (h.blockHeight > so.NegotiationHeight+wallet.RespendTimeout) && !conf {
+			stale = append(stale, so.ObligationId)
+		}
+	}
+	// Delete stale obligations from the database.
+	err := h.deleteStorageObligations(stale)
+	if err != nil {
+		return build.ExtendErr("unable to delete stale storage ids:", err)
+	}
+	// Update the financial metrics of the host.
+	err = h.resetFinancialMetrics()
+	if err != nil {
+		h.log.Println(build.ExtendErr("unable to reset host financial metrics:", err))
+		return err
+	}
+	return nil
+}
+
 // removeStorageObligation will remove a storage obligation from the host,
 // either due to failure or success.
 func (h *Host) removeStorageObligation(so storageObligation, sos storageObligationStatus) error {
@@ -622,6 +686,59 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 	return h.db.Update(func(tx *bolt.Tx) error {
 		return putStorageObligation(tx, so)
 	})
+}
+
+func (h *Host) resetFinancialMetrics() error {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	// Initialize new values for the host financial metrics.
+	fm := modules.HostFinancialMetrics{}
+	err := h.db.View(func(tx *bolt.Tx) error {
+		c := tx.Bucket(bucketStorageObligations).Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var so storageObligation
+			if err := json.Unmarshal(v, &so); err != nil {
+				return build.ExtendErr("unable to unmarshal storage obligation:", err)
+			}
+			// Transaction fees are always added.
+			fm.TransactionFeeExpenses = fm.TransactionFeeExpenses.Add(so.TransactionFeesAdded)
+			// Update the other financial values based on the obligation status.
+			if so.ObligationStatus == obligationUnresolved {
+				fm.ContractCount++
+				fm.PotentialContractCompensation = fm.PotentialContractCompensation.Add(so.ContractCost)
+				fm.LockedStorageCollateral = fm.LockedStorageCollateral.Add(so.LockedCollateral)
+				fm.PotentialStorageRevenue = fm.PotentialStorageRevenue.Add(so.PotentialStorageRevenue)
+				fm.RiskedStorageCollateral = fm.RiskedStorageCollateral.Add(so.RiskedCollateral)
+				fm.PotentialDownloadBandwidthRevenue = fm.PotentialDownloadBandwidthRevenue.Add(so.PotentialDownloadRevenue)
+				fm.PotentialUploadBandwidthRevenue = fm.PotentialUploadBandwidthRevenue.Add(so.PotentialUploadRevenue)
+			}
+			if so.ObligationStatus == obligationSucceeded {
+				fm.ContractCompensation = fm.ContractCompensation.Add(so.ContractCost)
+				fm.StorageRevenue = fm.StorageRevenue.Add(so.PotentialStorageRevenue)
+				fm.DownloadBandwidthRevenue = fm.DownloadBandwidthRevenue.Add(so.PotentialDownloadRevenue)
+				fm.UploadBandwidthRevenue = fm.UploadBandwidthRevenue.Add(so.PotentialUploadRevenue)
+			}
+			if so.ObligationStatus == obligationFailed {
+				// If there was no risked collateral for the failed obligation, we don't
+				// update anything since no revenues were lost. Only the contract compensation
+				// and transaction fees are added.
+				fm.ContractCompensation = fm.ContractCompensation.Add(so.ContractCost)
+				if !so.RiskedCollateral.IsZero() {
+					// Storage obligation failed with risked collateral.
+					fm.LostRevenue = fm.LostRevenue.Add(so.PotentialStorageRevenue).Add(so.PotentialDownloadRevenue).Add(so.PotentialUploadRevenue)
+					fm.LostStorageCollateral = fm.LostStorageCollateral.Add(so.RiskedCollateral)
+				}
+			}
+
+		}
+		return nil
+	})
+	if err != nil {
+		h.log.Println(build.ExtendErr("unable to reset host financial metrics:", err))
+		return err
+	}
+	h.financialMetrics = fm
+	return nil
 }
 
 // threadedHandleActionItem will look at a storage obligation and determine
@@ -937,6 +1054,7 @@ func (h *Host) StorageObligations() (sos []modules.StorageObligation) {
 				RiskedCollateral:         so.RiskedCollateral,
 				SectorRootsCount:         uint64(len(so.SectorRoots)),
 				TransactionFeesAdded:     so.TransactionFeesAdded,
+				TransactionID:            so.transactionID(),
 
 				ExpirationHeight:  so.expiration(),
 				NegotiationHeight: so.NegotiationHeight,

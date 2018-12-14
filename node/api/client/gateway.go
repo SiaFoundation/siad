@@ -1,6 +1,9 @@
 package client
 
 import (
+	"net/url"
+	"strconv"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/errors"
@@ -33,5 +36,16 @@ func (c *Client) GatewayDisconnectPost(address modules.NetAddress) (err error) {
 // GatewayGet requests the /gateway api resource
 func (c *Client) GatewayGet() (gwg api.GatewayGET, err error) {
 	err = c.get("/gateway", &gwg)
+	return
+}
+
+// GatewayRateLimitPost uses the /gateway endpoint to change the gateway's
+// bandwidth rate limit. downloadSpeed and uploadSpeed are interpreted as
+// bytes/second.
+func (c *Client) GatewayRateLimitPost(downloadSpeed, uploadSpeed int64) (err error) {
+	values := url.Values{}
+	values.Set("maxdownloadspeed", strconv.FormatInt(downloadSpeed, 10))
+	values.Set("maxuploadspeed", strconv.FormatInt(uploadSpeed, 10))
+	err = c.post("/gateway", values.Encode(), nil)
 	return
 }

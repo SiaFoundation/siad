@@ -81,7 +81,7 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 	remainingChunk := s.staticFile.ChunkSize() - chunkOffset
 	length := min(remainingData, requestedData, remainingChunk)
 
-	// Download data
+	// Download data.
 	buffer := bytes.NewBuffer([]byte{})
 	ddw := newDownloadDestinationWriter(buffer)
 	d, err := s.r.managedNewDownload(downloadParams{
