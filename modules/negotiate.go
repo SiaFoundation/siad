@@ -322,7 +322,7 @@ type (
 		Description string // human-readable error string
 	}
 
-	// KeyExchangeRequest is the first object sent when initializing the
+	// LoopKeyExchangeRequest is the first object sent when initializing the
 	// renter-host protocol.
 	LoopKeyExchangeRequest struct {
 		// The renter's ephemeral X25519 public key.
@@ -332,7 +332,7 @@ type (
 		Ciphers []types.Specifier
 	}
 
-	// KeyExchangeResponse contains the host's response to the
+	// LoopKeyExchangeResponse contains the host's response to the
 	// KeyExchangeRequest.
 	LoopKeyExchangeResponse struct {
 		// The host's ephemeral X25519 public key.
@@ -347,7 +347,7 @@ type (
 		Cipher types.Specifier
 	}
 
-	// ChallengeRequest contains a challenge for the renter to prove their
+	// LoopChallengeRequest contains a challenge for the renter to prove their
 	// identity. It is the host's first encrypted message, and immediately
 	// follows KeyExchangeResponse.
 	LoopChallengeRequest struct {
@@ -358,9 +358,9 @@ type (
 		Challenge [16]byte
 	}
 
-	// ChallengeResponse is the renter's response to ChallengeRequest, also
-	// containing the desired protocol version and contract to modify. It is
-	// the renter's first encrypted message, and is immediately followed by
+	// LoopChallengeResponse is the renter's response to ChallengeRequest,
+	// also containing the desired protocol version and contract to modify. It
+	// is the renter's first encrypted message, and is immediately followed by
 	// the renter's first RPC request.
 	LoopChallengeResponse struct {
 		// The version of the renter-host protocol that the renter intends to use.
