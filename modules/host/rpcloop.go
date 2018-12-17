@@ -1,145 +1,198 @@
 package host
 
 import (
+	"crypto/cipher"
 	"errors"
-	"io"
 	"net"
 	"time"
 
 	"github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
+	"golang.org/x/crypto/chacha20poly1305"
 )
+
+// An rpcSession contains the state of an RPC session with a renter.
+type rpcSession struct {
+	conn net.Conn
+	aead cipher.AEAD
+	so   storageObligation
+}
+
+// extendDeadline extends the read/write deadline on the underlying connection
+// by d.
+func (s *rpcSession) extendDeadline(d time.Duration) {
+	s.conn.SetDeadline(time.Now().Add(d))
+}
+
+// readRequest reads an encrypted RPC request from the renter.
+func (s *rpcSession) readRequest(resp interface{}) error {
+	return modules.ReadRPCRequest(s.conn, s.aead, resp, 1e6)
+}
+
+// readResponse reads an encrypted RPC response from the renter.
+func (s *rpcSession) readResponse(resp interface{}) error {
+	return modules.ReadRPCResponse(s.conn, s.aead, resp, 1e6)
+}
+
+// writeResponse sends an encrypted RPC response to the renter.
+func (s *rpcSession) writeResponse(resp interface{}) error {
+	return modules.WriteRPCResponse(s.conn, s.aead, resp, nil)
+}
+
+// writeError sends an encrypted RPC error to the renter.
+func (s *rpcSession) writeError(err error) error {
+	return modules.WriteRPCResponse(s.conn, s.aead, nil, err)
+}
 
 // managedRPCLoop reads new RPCs from the renter, each consisting of a single
 // request and response. The loop terminates when the an RPC encounters an
 // error or the renter sends modules.RPCLoopExit.
 func (h *Host) managedRPCLoop(conn net.Conn) error {
-	// perform initial handshake
+	// read renter's half of key exchange
 	conn.SetDeadline(time.Now().Add(rpcRequestInterval))
-	var req modules.LoopHandshakeRequest
+	var req modules.LoopKeyExchangeRequest
 	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
-		modules.WriteRPCResponse(conn, nil, err)
 		return err
 	}
 
-	// check handshake version and ciphers
-	if req.Version != 1 {
-		err := errors.New("protocol version not supported")
-		modules.WriteRPCResponse(conn, nil, err)
-		return err
-	}
-	var supportsPlaintext bool
+	// check for a supported cipher
+	var supportsChaCha bool
 	for _, c := range req.Ciphers {
-		if c == modules.CipherPlaintext {
-			supportsPlaintext = true
+		if c == modules.CipherChaCha20Poly1305 {
+			supportsChaCha = true
 		}
 	}
-	if !supportsPlaintext {
-		err := errors.New("no supported ciphers")
-		modules.WriteRPCResponse(conn, nil, err)
-		return err
+	if !supportsChaCha {
+		encoding.NewEncoder(conn).Encode(modules.LoopKeyExchangeResponse{
+			Cipher: modules.CipherNoOverlap,
+		})
+		return errors.New("no supported ciphers")
 	}
 
 	// generate a session key, sign it, and derive the shared secret
 	xsk, xpk := crypto.GenerateX25519KeyPair()
-	handshakeSig := crypto.SignHash(crypto.HashAll(req.PublicKey, xpk), h.secretKey)
+	pubkeySig := crypto.SignHash(crypto.HashAll(req.PublicKey, xpk), h.secretKey)
 	cipherKey := crypto.DeriveSharedSecret(xsk, req.PublicKey)
-	// TODO: use cipherKey to initialize an AEAD cipher
-	_ = cipherKey
 
-	// send handshake response
-	var challenge [16]byte
-	fastrand.Read(challenge[:])
-	resp := modules.LoopHandshakeResponse{
-		Cipher:    modules.CipherPlaintext,
+	// send our half of the key exchange
+	resp := modules.LoopKeyExchangeResponse{
+		Cipher:    modules.CipherChaCha20Poly1305,
 		PublicKey: xpk,
-		Signature: handshakeSig[:],
-		Challenge: challenge,
+		Signature: pubkeySig[:],
 	}
-	if err := modules.WriteRPCResponse(conn, resp, nil); err != nil {
+	if err := encoding.NewEncoder(conn).Encode(resp); err != nil {
 		return err
 	}
 
-	// read challenge response
-	var cresp modules.LoopChallengeResponse
-	if err := encoding.NewDecoder(conn).Decode(&cresp); err != nil {
-		modules.WriteRPCResponse(conn, nil, err)
+	// use cipherKey to initialize an AEAD cipher
+	aead, err := chacha20poly1305.New(cipherKey[:])
+	if err != nil {
+		build.Critical("could not create cipher")
+		return err
+	}
+	// create the session object
+	s := &rpcSession{
+		conn: conn,
+		aead: aead,
+	}
+
+	// send encrypted challenge
+	var challenge [16]byte
+	fastrand.Read(challenge[:])
+	challengeReq := modules.LoopChallengeRequest{
+		Challenge: challenge,
+	}
+	if err := s.writeResponse(challengeReq); err != nil {
+		return err
+	}
+
+	// read encrypted version, contract ID, and challenge response
+	//
+	// NOTE: if we encounter an error before reading the renter's first RPC,
+	// we send it to the renter and close the connection immediately. From the
+	// renter's perspective, this error may arrive either before or after
+	// sending their first RPC request.
+	var challengeResp modules.LoopChallengeResponse
+	if err := s.readResponse(&challengeResp); err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// check handshake version and ciphers
+	if challengeResp.Version != 1 {
+		err := errors.New("protocol version not supported")
+		s.writeError(err)
 		return err
 	}
 
 	// if a contract was supplied, look it up, verify the challenge response,
 	// and lock the storage obligation
-	var so storageObligation
-	if req.ContractID != (types.FileContractID{}) {
-		// NOTE: if we encounter an error here, we send it to the renter and
-		// close the connection immediately. From the renter's perspective,
-		// this error may arrive either before or after sending their first
-		// RPC request.
-
+	if fcid := challengeResp.ContractID; fcid != (types.FileContractID{}) {
 		// look up the renter's public key
 		var err error
 		h.mu.RLock()
 		err = h.db.View(func(tx *bolt.Tx) error {
-			so, err = getStorageObligation(tx, req.ContractID)
+			s.so, err = getStorageObligation(tx, fcid)
 			return err
 		})
 		h.mu.RUnlock()
 		if err != nil {
-			modules.WriteRPCResponse(conn, nil, errors.New("no record of that contract"))
-			return extendErr("could not lock contract "+req.ContractID.String()+": ", err)
+			s.writeError(errors.New("no record of that contract"))
+			return extendErr("could not lock contract "+fcid.String()+": ", err)
 		}
 
 		// verify the challenge response
-		rev := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
+		rev := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 		hash := crypto.HashAll(modules.RPCChallengePrefix, challenge)
 		var renterPK crypto.PublicKey
 		var renterSig crypto.Signature
 		copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
-		copy(renterSig[:], cresp.Signature)
+		copy(renterSig[:], challengeResp.Signature)
 		if crypto.VerifyHash(hash, renterPK, renterSig) != nil {
 			err := errors.New("challenge signature is invalid")
-			modules.WriteRPCResponse(conn, nil, err)
+			s.writeError(err)
 			return err
 		}
 
 		// lock the storage obligation until the end of the RPC loop
-		if err := h.managedTryLockStorageObligation(req.ContractID); err != nil {
-			modules.WriteRPCResponse(conn, nil, err)
-			return extendErr("could not lock contract "+req.ContractID.String()+": ", err)
+		if err := h.managedTryLockStorageObligation(fcid); err != nil {
+			s.writeError(err)
+			return extendErr("could not lock contract "+fcid.String()+": ", err)
 		}
-		defer h.managedUnlockStorageObligation(req.ContractID)
+		defer h.managedUnlockStorageObligation(fcid)
 	}
 
 	// enter RPC loop
 	for {
 		conn.SetDeadline(time.Now().Add(rpcRequestInterval))
 
-		var id types.Specifier
-		if _, err := io.ReadFull(conn, id[:]); err != nil {
-			h.log.Debugf("WARN: renter sent invalid RPC ID: %v", id)
-			return errors.New("invalid RPC ID " + id.String())
+		id, err := modules.ReadRPCID(conn, aead)
+		if err != nil {
+			h.log.Debugf("WARN: could not read RPC ID: %v", err)
+			s.writeError(err) // try to write, even though this is probably due to a faulty connection
+			return err
 		}
 
-		var err error
 		switch id {
 		case modules.RPCLoopSettings:
-			err = extendErr("incoming RPCLoopSettings failed: ", h.managedRPCLoopSettings(conn))
+			err = extendErr("incoming RPCLoopSettings failed: ", h.managedRPCLoopSettings(s))
 		case modules.RPCLoopFormContract:
-			err = extendErr("incoming RPCLoopFormContract failed: ", h.managedRPCLoopFormContract(conn, &so))
+			err = extendErr("incoming RPCLoopFormContract failed: ", h.managedRPCLoopFormContract(s))
 		case modules.RPCLoopRenewContract:
-			err = extendErr("incoming RPCLoopRenewContract failed: ", h.managedRPCLoopRenewContract(conn, &so))
+			err = extendErr("incoming RPCLoopRenewContract failed: ", h.managedRPCLoopRenewContract(s))
 		case modules.RPCLoopRecentRevision:
-			err = extendErr("incoming RPCLoopRecentRevision failed: ", h.managedRPCLoopRecentRevision(conn, &so, challenge))
+			err = extendErr("incoming RPCLoopRecentRevision failed: ", h.managedRPCLoopRecentRevision(s))
 		case modules.RPCLoopUpload:
-			err = extendErr("incoming RPCLoopUpload failed: ", h.managedRPCLoopUpload(conn, &so))
+			err = extendErr("incoming RPCLoopUpload failed: ", h.managedRPCLoopUpload(s))
 		case modules.RPCLoopDownload:
-			err = extendErr("incoming RPCLoopDownload failed: ", h.managedRPCLoopDownload(conn, &so))
+			err = extendErr("incoming RPCLoopDownload failed: ", h.managedRPCLoopDownload(s))
 		case modules.RPCLoopSectorRoots:
-			err = extendErr("incoming RPCLoopSectorRoots failed: ", h.managedRPCLoopSectorRoots(conn, &so))
+			err = extendErr("incoming RPCLoopSectorRoots failed: ", h.managedRPCLoopSectorRoots(s))
 		case modules.RPCLoopExit:
 			return nil
 		default:

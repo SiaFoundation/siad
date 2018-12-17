@@ -378,36 +378,25 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 		}
 	}()
 
-	// Initiate connection.
-	dialer := &net.Dialer{
-		Cancel:  cancel,
-		Timeout: connTimeout,
-	}
-	conn, err := dialer.Dial("tcp", string(host.NetAddress))
+	// Initiate protocol.
+	s, err := cs.NewSessionWithSecret(host, types.FileContractID{}, startHeight, hdb, crypto.SecretKey{}, cancel)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	defer conn.Close()
-	extendDeadline(conn, modules.NegotiateFileContractTime)
-
-	// Perform initial handshake,
-	_, err = performSessionHandshake(conn, host.PublicKey, types.FileContractID{}, crypto.SecretKey{})
-	if err != nil {
-		return modules.RenterContract{}, err
-	}
+	defer s.Close()
 
 	// Send the FormContract request.
 	req := modules.LoopFormContractRequest{
 		Transactions: txnSet,
 		RenterKey:    uc.PublicKeys[0],
 	}
-	if err := encoding.NewEncoder(conn).EncodeAll(modules.RPCLoopFormContract, req); err != nil {
+	if err := s.writeRequest(modules.RPCLoopFormContract, req); err != nil {
 		return modules.RenterContract{}, err
 	}
 
 	// Read the host's response.
 	var resp modules.LoopContractAdditions
-	if err := modules.ReadRPCResponse(conn, &resp); err != nil {
+	if err := s.readResponse(&resp); err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -423,7 +412,9 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	// Sign the txn.
 	signedTxnSet, err := txnBuilder.Sign(true)
 	if err != nil {
-		return modules.RenterContract{}, modules.WriteNegotiationRejection(conn, errors.New("failed to sign transaction: "+err.Error()))
+		err = errors.New("failed to sign transaction: " + err.Error())
+		modules.WriteRPCResponse(s.conn, s.aead, nil, err)
+		return modules.RenterContract{}, err
 	}
 
 	// Calculate signatures added by the transaction builder.
@@ -466,13 +457,13 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 		ContractSignatures: addedSignatures,
 		RevisionSignature:  revisionTxn.TransactionSignatures[0],
 	}
-	if err := encoding.NewEncoder(conn).Encode(renterSigs); err != nil {
+	if err := modules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
 		return modules.RenterContract{}, err
 	}
 
 	// Read the host acceptance and signatures.
 	var hostSigs modules.LoopContractSignatures
-	if err := modules.ReadRPCResponse(conn, &hostSigs); err != nil {
+	if err := s.readResponse(&hostSigs); err != nil {
 		return modules.RenterContract{}, err
 	}
 	for _, sig := range hostSigs.ContractSignatures {

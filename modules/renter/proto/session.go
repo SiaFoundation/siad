@@ -1,12 +1,12 @@
 package proto
 
 import (
+	"crypto/cipher"
 	"net"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -15,6 +15,7 @@ import (
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
 type Session struct {
+	aead        cipher.AEAD
 	closeChan   chan struct{}
 	conn        net.Conn
 	contractID  types.FileContractID
@@ -26,17 +27,14 @@ type Session struct {
 	once        sync.Once
 }
 
-// writeRequest sends an RPC request to the host.
+// writeRequest sends an encrypted RPC request to the host.
 func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
-	if req == nil {
-		req = struct{}{}
-	}
-	err := encoding.NewEncoder(s.conn).EncodeAll(rpcID, req)
+	err := modules.WriteRPCRequest(s.conn, s.aead, rpcID, req)
 	if err != nil {
 		// The write may have failed because the host rejected our challenge
 		// signature and closed the connection. Attempt to read the rejection
 		// error and return it instead of the write failure.
-		readErr := modules.ReadRPCResponse(s.conn, nil)
+		readErr := s.readResponse(nil)
 		if _, ok := readErr.(*modules.RPCError); ok {
 			err = readErr
 		}
@@ -44,31 +42,26 @@ func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
 	return err
 }
 
+// readResponse reads an encrypted RPC response from the host.
+func (s *Session) readResponse(resp interface{}) error {
+	return modules.ReadRPCResponse(s.conn, s.aead, resp, 1e6)
+}
+
+// call is a helper method that calls writeRequest followed by readResponse.
+func (s *Session) call(rpcID types.Specifier, req, resp interface{}) error {
+	if err := s.writeRequest(rpcID, req); err != nil {
+		return err
+	}
+	return s.readResponse(resp)
+}
+
 // Settings calls the Settings RPC, returning the host's reported settings.
 func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	extendDeadline(s.conn, modules.NegotiateSettingsTime)
-
-	// send Settings RPC request
-	if err := s.writeRequest(modules.RPCLoopSettings, nil); err != nil {
-		return modules.HostExternalSettings{}, err
-	}
-
-	// read the response
 	var resp modules.LoopSettingsResponse
-	if err := modules.ReadRPCResponse(s.conn, &resp); err != nil {
+	if err := s.call(modules.RPCLoopSettings, nil, &resp); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
-
-	// verify signature
-	hash := crypto.HashObject(resp.Settings)
-	var pk crypto.PublicKey
-	copy(pk[:], s.host.PublicKey.Key)
-	var sig crypto.Signature
-	copy(sig[:], resp.Signature)
-	if crypto.VerifyHash(hash, pk, sig) != nil {
-		return modules.HostExternalSettings{}, errors.New("host sent invalid signature")
-	}
-
 	s.host.HostExternalSettings = resp.Settings
 	return resp.Settings, nil
 }
@@ -83,15 +76,9 @@ func (s *Session) RecentRevision() (types.FileContractRevision, []types.Transact
 	}
 	defer s.contractSet.Return(sc)
 
-	// send RecentRevision RPC request
 	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
-	if err := s.writeRequest(modules.RPCLoopRecentRevision, nil); err != nil {
-		return types.FileContractRevision{}, nil, err
-	}
-
-	// read the response
 	var resp modules.LoopRecentRevisionResponse
-	if err := modules.ReadRPCResponse(s.conn, &resp); err != nil {
+	if err := s.call(modules.RPCLoopRecentRevision, nil, &resp); err != nil {
 		return types.FileContractRevision{}, nil, err
 	}
 
@@ -215,14 +202,8 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 
 	// send upload RPC request
 	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
-	err = s.writeRequest(modules.RPCLoopUpload, req)
-	if err != nil {
-		return modules.RenterContract{}, crypto.Hash{}, err
-	}
-
-	// read the response
 	var resp modules.LoopUploadResponse
-	err = modules.ReadRPCResponse(s.conn, &resp)
+	err = s.call(modules.RPCLoopUpload, req, &resp)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}
@@ -337,14 +318,8 @@ func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.R
 
 	// send download RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
-	err = s.writeRequest(modules.RPCLoopDownload, req)
-	if err != nil {
-		return modules.RenterContract{}, nil, err
-	}
-
-	// read the response
 	var resp modules.LoopDownloadResponse
-	err = modules.ReadRPCResponse(s.conn, &resp)
+	err = s.call(modules.RPCLoopDownload, req, &resp)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -454,14 +429,8 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 
 	// send SectorRoots RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
-	err = encoding.NewEncoder(s.conn).EncodeAll(modules.RPCLoopSectorRoots, req)
-	if err != nil {
-		return modules.RenterContract{}, nil, err
-	}
-
-	// read the response
 	var resp modules.LoopSectorRootsResponse
-	err = modules.ReadRPCResponse(s.conn, &resp)
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -513,7 +482,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 }
 
 // NewSessionWithSecret creates a new session using a contract's secret key
-// instead of fetching it from the set of known contracts.
+// directly instead of fetching it from the set of known contracts.
 func (cs *ContractSet) NewSessionWithSecret(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, sk crypto.SecretKey, cancel <-chan struct{}) (_ *Session, err error) {
 	return cs.managedNewSession(host, id, currentHeight, hdb, sk, cancel)
 }
@@ -548,13 +517,14 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, id types.File
 		}
 	}()
 
-	_, err = performSessionHandshake(conn, host.PublicKey, id, sk)
+	aead, err := performSessionHandshake(conn, host.PublicKey, id, sk)
 	if err != nil {
 		return nil, err
 	}
 
 	// the host is now ready to accept revisions
 	return &Session{
+		aead:        aead,
 		closeChan:   closeChan,
 		conn:        conn,
 		contractID:  id,

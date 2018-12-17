@@ -400,35 +400,24 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 		}
 	}()
 
-	// initiate connection
-	dialer := &net.Dialer{
-		Cancel:  cancel,
-		Timeout: connTimeout,
-	}
-	conn, err := dialer.Dial("tcp", string(host.NetAddress))
+	// Initiate protocol.
+	s, err := cs.NewSessionWithSecret(host, contract.ID(), startHeight, hdb, contract.SecretKey, cancel)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	defer func() { _ = conn.Close() }()
-	extendDeadline(conn, modules.NegotiateFileContractTime)
-
-	// Perform initial handshake,
-	_, err = performSessionHandshake(conn, contract.HostPublicKey(), contract.ID(), contract.SecretKey)
-	if err != nil {
-		return modules.RenterContract{}, err
-	}
+	defer s.Close()
 
 	// Send the RenewContract request.
 	req := modules.LoopRenewContractRequest{
 		Transactions: txnSet,
 	}
-	if err := encoding.NewEncoder(conn).EncodeAll(modules.RPCLoopRenewContract, req); err != nil {
+	if err := s.writeRequest(modules.RPCLoopRenewContract, req); err != nil {
 		return modules.RenterContract{}, err
 	}
 
 	// Read the host's response.
 	var resp modules.LoopContractAdditions
-	if err := modules.ReadRPCResponse(conn, &resp); err != nil {
+	if err := s.readResponse(&resp); err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -444,7 +433,9 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	// sign the txn
 	signedTxnSet, err := txnBuilder.Sign(true)
 	if err != nil {
-		return modules.RenterContract{}, modules.WriteNegotiationRejection(conn, errors.New("failed to sign transaction: "+err.Error()))
+		err = errors.New("failed to sign transaction: " + err.Error())
+		modules.WriteRPCResponse(s.conn, s.aead, nil, err)
+		return modules.RenterContract{}, err
 	}
 
 	// calculate signatures added by the transaction builder
@@ -487,13 +478,13 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 		ContractSignatures: addedSignatures,
 		RevisionSignature:  revisionTxn.TransactionSignatures[0],
 	}
-	if err := encoding.NewEncoder(conn).Encode(renterSigs); err != nil {
+	if err := modules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
 		return modules.RenterContract{}, err
 	}
 
 	// Read the host acceptance and signatures.
 	var hostSigs modules.LoopContractSignatures
-	if err := modules.ReadRPCResponse(conn, &hostSigs); err != nil {
+	if err := s.readResponse(&hostSigs); err != nil {
 		return modules.RenterContract{}, err
 	}
 	for _, sig := range hostSigs.ContractSignatures {

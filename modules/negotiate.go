@@ -2,6 +2,7 @@ package modules
 
 import (
 	"bytes"
+	"crypto/cipher"
 	"errors"
 	"io"
 	"time"
@@ -302,7 +303,8 @@ var (
 
 // RPC ciphers
 var (
-	CipherPlaintext = types.Specifier{'p', 'l', 'a', 'i', 'n', 't', 'e', 'x', 't'}
+	CipherChaCha20Poly1305 = types.Specifier{'C', 'h', 'a', 'C', 'h', 'a', '2', '0', 'P', 'o', 'l', 'y', '1', '3', '0', '5'}
+	CipherNoOverlap        = types.Specifier{'N', 'o', 'O', 'v', 'e', 'r', 'l', 'a', 'p'}
 )
 
 var (
@@ -320,48 +322,56 @@ type (
 		Description string // human-readable error string
 	}
 
-	// LoopHandshakeRequest contains the information sent by the renter during
-	// the initial RPC handshake.
-	LoopHandshakeRequest struct {
-		// The version of the renter-host protocol that the renter
-		// intends to use.
-		Version byte
-
-		// Ciphers that the renter supports.
-		Ciphers []types.Specifier
-
+	// LoopKeyExchangeRequest is the first object sent when initializing the
+	// renter-host protocol.
+	LoopKeyExchangeRequest struct {
 		// The renter's ephemeral X25519 public key.
 		PublicKey crypto.X25519PublicKey
 
-		// The contract being modified; may be blank if the renter
-		// does not intend to modify a contract (e.g. when forming
-		// a contract).
-		ContractID types.FileContractID
+		// Encryption ciphers that the renter supports.
+		Ciphers []types.Specifier
 	}
 
-	// LoopHandshakeResponse contains the information sent by the host in
-	// response to the renter's handshake request.
-	LoopHandshakeResponse struct {
-		// Cipher selected by the host. Must be one of the ciphers offered in
-		// the handshake request.
-		Cipher types.Specifier
-
+	// LoopKeyExchangeResponse contains the host's response to the
+	// KeyExchangeRequest.
+	LoopKeyExchangeResponse struct {
 		// The host's ephemeral X25519 public key.
 		PublicKey crypto.X25519PublicKey
 
-		// A signature of the renter and host's public keys, using the same
-		// signature algorithm previously announced by the host.
+		// Signature of (Host's Public Key | Renter's Public Key). Note that this
+		// also serves to authenticate the host.
 		Signature []byte
 
-		// Entropy signed by the renter to prove that it can sign contract
-		// revisions. The actual data signed should be:
+		// Cipher selected by the host. Must be one of the ciphers offered in
+		// the key exchange request.
+		Cipher types.Specifier
+	}
+
+	// LoopChallengeRequest contains a challenge for the renter to prove their
+	// identity. It is the host's first encrypted message, and immediately
+	// follows KeyExchangeResponse.
+	LoopChallengeRequest struct {
+		// Entropy signed by the renter to prove that it controls the secret key
+		// used to sign contract revisions. The actual data signed should be:
 		//
 		//    blake2b(RPCChallengePrefix | Challenge)
 		Challenge [16]byte
 	}
 
-	// LoopChallengeResponse contains the response to the host's challenge.
+	// LoopChallengeResponse is the renter's response to ChallengeRequest,
+	// also containing the desired protocol version and contract to modify. It
+	// is the renter's first encrypted message, and is immediately followed by
+	// the renter's first RPC request.
 	LoopChallengeResponse struct {
+		// The version of the renter-host protocol that the renter intends to use.
+		Version byte
+
+		// The contract being referenced by subsequent RPCs; may be blank if the
+		// renter does not need to reference a contract (e.g. when forming a new
+		// contract, or when querying the host's settings).
+		ContractID types.FileContractID
+
+		// The signed challenge. Should be nil if ContractID is blank.
 		Signature []byte
 	}
 
@@ -438,8 +448,7 @@ type (
 
 	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
 	LoopSettingsResponse struct {
-		Settings  HostExternalSettings
-		Signature []byte
+		Settings HostExternalSettings
 	}
 
 	// LoopUploadRequest contains the request parameters for RPCLoopUpload.
@@ -463,24 +472,76 @@ func (e *RPCError) Error() string {
 	return e.Description
 }
 
+// WriteRPCRequest writes an encrypted RPC request using the new loop
+// protocol.
+func WriteRPCRequest(w io.Writer, aead cipher.AEAD, rpcID types.Specifier, req interface{}) error {
+	encryptedID := crypto.EncryptWithNonce(encoding.Marshal(rpcID), aead)
+	if err := encoding.WritePrefixedBytes(w, encryptedID); err != nil {
+		return err
+	}
+	if req != nil {
+		encryptedReq := crypto.EncryptWithNonce(encoding.Marshal(req), aead)
+		return encoding.WritePrefixedBytes(w, encryptedReq)
+	}
+	return nil
+}
+
 // WriteRPCResponse writes an RPC response or error using the new loop
 // protocol. Either resp or err must be nil. If err is an *RPCError, it is
 // sent directly; otherwise, a generic RPCError is created from err's Error
 // string.
-func WriteRPCResponse(w io.Writer, resp interface{}, err error) error {
-	if err != nil {
+func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error) error {
+	var unencryptedResp []byte
+	if err == nil {
+		unencryptedResp = encoding.MarshalAll((*RPCError)(nil), resp)
+	} else {
 		re, ok := err.(*RPCError)
 		if !ok {
 			re = &RPCError{Description: err.Error()}
 		}
-		return encoding.NewEncoder(w).Encode(re)
+		unencryptedResp = encoding.Marshal(re)
 	}
-	return encoding.NewEncoder(w).EncodeAll((*RPCError)(nil), resp)
+	return encoding.WritePrefixedBytes(w, crypto.EncryptWithNonce(unencryptedResp, aead))
+}
+
+// ReadRPCID reads an RPC request ID using the new loop protocol.
+func ReadRPCID(r io.Reader, aead cipher.AEAD) (rpcID types.Specifier, err error) {
+	encryptedID, err := encoding.ReadPrefixedBytes(r, 1024)
+	if err != nil {
+		return
+	}
+	decryptedID, err := crypto.DecryptWithNonce(encryptedID, aead)
+	if err != nil {
+		return
+	}
+	err = encoding.Unmarshal(decryptedID, &rpcID)
+	return
+}
+
+// ReadRPCRequest reads an RPC request using the new loop protocol.
+func ReadRPCRequest(r io.Reader, aead cipher.AEAD, req interface{}, maxLen uint64) error {
+	encryptedReq, err := encoding.ReadPrefixedBytes(r, maxLen)
+	if err != nil {
+		return err
+	}
+	decryptedReq, err := crypto.DecryptWithNonce(encryptedReq, aead)
+	if err != nil {
+		return err
+	}
+	return encoding.Unmarshal(decryptedReq, req)
 }
 
 // ReadRPCResponse reads an RPC response using the new loop protocol.
-func ReadRPCResponse(r io.Reader, resp interface{}) error {
-	dec := encoding.NewDecoder(r)
+func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uint64) error {
+	encryptedResp, err := encoding.ReadPrefixedBytes(r, maxLen)
+	if err != nil {
+		return err
+	}
+	decryptedResp, err := crypto.DecryptWithNonce(encryptedResp, aead)
+	if err != nil {
+		return err
+	}
+	dec := encoding.NewDecoder(bytes.NewReader(decryptedResp))
 	var rpcErr *RPCError
 	if err := dec.Decode(&rpcErr); err != nil {
 		return err

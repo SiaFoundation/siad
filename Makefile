@@ -19,7 +19,6 @@ dependencies:
 	go get -u gitlab.com/NebulousLabs/bolt
 	go get -u golang.org/x/crypto/blake2b
 	go get -u golang.org/x/crypto/ed25519
-	go get -u golang.org/x/crypto/curve25519
 	# Module + Daemon Dependencies
 	go get -u gitlab.com/NebulousLabs/entropy-mnemonics
 	go get -u gitlab.com/NebulousLabs/errors
@@ -33,6 +32,8 @@ dependencies:
 	go get -u github.com/kardianos/osext
 	go get -u github.com/inconshreveable/mousetrap
 	go get -u github.com/dchest/threefish
+	go get -u golang.org/x/crypto/curve25519
+	go get -u golang.org/x/crypto/chacha20poly1305
 	# Frontend Dependencies
 	go get -u golang.org/x/crypto/ssh/terminal
 	go get -u github.com/spf13/cobra/doc

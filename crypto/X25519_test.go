@@ -12,4 +12,7 @@ func TestDeriveSharedSecret(t *testing.T) {
 	if DeriveSharedSecret(sk1, pk2) != DeriveSharedSecret(sk2, pk1) {
 		t.Fatal("shared secret does not match")
 	}
+	if DeriveSharedSecret(sk1, pk1) == DeriveSharedSecret(sk2, pk2) {
+		t.Fatal("shared secret should not match")
+	}
 }

@@ -5,6 +5,8 @@ import (
 	"net"
 	"time"
 
+	"golang.org/x/crypto/chacha20poly1305"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -248,20 +250,18 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey, id
 	// generate a session key
 	xsk, xpk := crypto.GenerateX25519KeyPair()
 
-	// send RPC ID and handshake request
-	req := modules.LoopHandshakeRequest{
-		Version:    1,
-		Ciphers:    []types.Specifier{modules.CipherPlaintext},
-		PublicKey:  xpk,
-		ContractID: id,
+	// send our half of the key exchange
+	req := modules.LoopKeyExchangeRequest{
+		PublicKey: xpk,
+		Ciphers:   []types.Specifier{modules.CipherChaCha20Poly1305},
 	}
 	extendDeadline(conn, modules.NegotiateSettingsTime)
 	if err := encoding.NewEncoder(conn).EncodeAll(modules.RPCLoopEnter, req); err != nil {
 		return nil, err
 	}
-	// read host response
-	var resp modules.LoopHandshakeResponse
-	if err := modules.ReadRPCResponse(conn, &resp); err != nil {
+	// read host's half of the key exchange
+	var resp modules.LoopKeyExchangeResponse
+	if err := encoding.NewDecoder(conn).Decode(&resp); err != nil {
 		return nil, err
 	}
 	// validate the signature before doing anything else; don't want to punish
@@ -274,25 +274,37 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey, id
 		return nil, err
 	}
 	// check for compatible cipher
-	if resp.Cipher != modules.CipherPlaintext {
+	if resp.Cipher != modules.CipherChaCha20Poly1305 {
 		return nil, errors.New("host selected unsupported cipher")
 	}
 	// derive shared secret, which we'll use as an encryption key
 	cipherKey := crypto.DeriveSharedSecret(xsk, resp.PublicKey)
 
-	// TODO: use cipherKey to initialize an AEAD cipher
-	_ = cipherKey
-
-	// if a non-empty ContractID was specified, reply to the host's challenge
-	var challengeResp modules.LoopChallengeResponse
-	if id != (types.FileContractID{}) {
-		sig := crypto.SignHash(crypto.HashAll(modules.RPCChallengePrefix, resp.Challenge), contractSK)
-		challengeResp.Signature = sig[:]
-	}
-	if err := encoding.NewEncoder(conn).Encode(challengeResp); err != nil {
+	// use cipherKey to initialize an AEAD cipher
+	aead, err := chacha20poly1305.New(cipherKey[:])
+	if err != nil {
+		build.Critical("could not create cipher")
 		return nil, err
 	}
 
-	return nil, nil
+	// read host's challenge
+	var challengeReq modules.LoopChallengeRequest
+	if err := modules.ReadRPCResponse(conn, aead, &challengeReq, 1024); err != nil {
+		return nil, err
+	}
 
+	// reply to the challenge
+	challengeResp := modules.LoopChallengeResponse{
+		Version:    1,
+		ContractID: id,
+	}
+	if id != (types.FileContractID{}) {
+		sig := crypto.SignHash(crypto.HashAll(modules.RPCChallengePrefix, challengeReq.Challenge), contractSK)
+		challengeResp.Signature = sig[:]
+	}
+	if err := modules.WriteRPCResponse(conn, aead, challengeResp, nil); err != nil {
+		return nil, err
+	}
+
+	return aead, nil
 }

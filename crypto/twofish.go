@@ -62,16 +62,7 @@ func (key twofishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 	if err != nil {
 		return nil, errors.AddContext(err, "NewGCM should only return an error if twofishCipher.BlockSize != 16")
 	}
-
-	// Check for a nonce.
-	if len(ct) < aead.NonceSize() {
-		return nil, ErrInsufficientLen
-	}
-
-	// Decrypt the data.
-	nonce := ct[:aead.NonceSize()]
-	ciphertext := ct[aead.NonceSize():]
-	return aead.Open(nil, nonce, ciphertext, nil)
+	return DecryptWithNonce(ct, aead)
 }
 
 // DecryptBytesInPlace decrypts the ciphertext created by EncryptBytes. The
@@ -118,13 +109,7 @@ func (key twofishKey) EncryptBytes(piece []byte) Ciphertext {
 	if err != nil {
 		panic("NewGCM only returns an error if twofishCipher.BlockSize != 16")
 	}
-
-	// Create the nonce.
-	nonce := fastrand.Bytes(aead.NonceSize())
-
-	// Encrypt the data. No authenticated data is provided, as EncryptBytes is
-	// meant for file encryption.
-	return aead.Seal(nonce, nonce, piece, nil)
+	return EncryptWithNonce(piece, aead)
 }
 
 // Key returns the twofish key.
