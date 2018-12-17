@@ -96,11 +96,8 @@ func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams
 	txnBuilder.AddMinerFee(txnFee)
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
-	}
-	_ = txnBuilder.AddArbitraryData(si[:])
+	si, hk := PrefixedSignedIdentifier(params.RenterSeed, fcTxn, host.PublicKey)
+	_ = txnBuilder.AddArbitraryData(append(si[:], hk[:]...))
 
 	// Create initial transaction set.
 	txn, parentTxns := txnBuilder.View()
@@ -381,11 +378,8 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	txnBuilder.AddMinerFee(txnFee)
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, err := PrefixedSignedIdentifier(params.RenterSeed, fcTxn)
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "failed to create signed identifier")
-	}
-	_ = txnBuilder.AddArbitraryData(si[:])
+	si, hk := PrefixedSignedIdentifier(params.RenterSeed, fcTxn, host.PublicKey)
+	_ = txnBuilder.AddArbitraryData(append(si[:], hk[:]...))
 
 	// Create initial transaction set.
 	txn, parentTxns := txnBuilder.View()

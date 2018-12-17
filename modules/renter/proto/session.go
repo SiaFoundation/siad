@@ -509,15 +509,24 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		return nil, errors.New("invalid contract")
 	}
 	defer cs.Return(sc)
-	contract := sc.header
+	return cs.managedNewSession(host, id, currentHeight, hdb, sc.header.SecretKey, cancel)
+}
 
+// NewSessionWithSecret creates a new session using a contract's secret key
+// instead of fetching it from the set of known contracts.
+func (cs *ContractSet) NewSessionWithSecret(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, sk crypto.SecretKey, cancel <-chan struct{}) (_ *Session, err error) {
+	return cs.managedNewSession(host, id, currentHeight, hdb, sk, cancel)
+}
+
+// managedNewSession initiates the RPC loop with a host and returns a Session.
+func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, sk crypto.SecretKey, cancel <-chan struct{}) (_ *Session, err error) {
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
 		if err != nil {
-			hdb.IncrementFailedInteractions(contract.HostPublicKey())
+			hdb.IncrementFailedInteractions(host.PublicKey)
 			err = errors.Extend(err, modules.ErrHostFault)
 		} else {
-			hdb.IncrementSuccessfulInteractions(contract.HostPublicKey())
+			hdb.IncrementSuccessfulInteractions(host.PublicKey)
 		}
 	}()
 
@@ -539,7 +548,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		}
 	}()
 
-	_, err = performSessionHandshake(conn, contract.HostPublicKey(), id, contract.SecretKey)
+	_, err = performSessionHandshake(conn, host.PublicKey, id, sk)
 	if err != nil {
 		return nil, err
 	}

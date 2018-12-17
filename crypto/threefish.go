@@ -53,7 +53,7 @@ func newThreefishKey(entropy []byte) (key threefishKey, err error) {
 func (key threefishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 	// Check if input has correct length.
 	if len(ct)%threefish.BlockSize != 0 {
-		return nil, fmt.Errorf("supplied ciphertext is not a multiple of %v", len(ct))
+		return nil, fmt.Errorf("supplied ciphertext is not a multiple of %v", threefish.BlockSize)
 	}
 
 	// Create the cipher
@@ -87,7 +87,7 @@ func (key threefishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 func (key threefishKey) DecryptBytesInPlace(ct Ciphertext, blockIndex uint64) ([]byte, error) {
 	// Check if input has correct length.
 	if len(ct)%threefish.BlockSize != 0 {
-		return nil, fmt.Errorf("supplied ciphertext is not a multiple of %v", len(ct))
+		return nil, fmt.Errorf("supplied ciphertext is not a multiple of %v", threefish.BlockSize)
 	}
 
 	// Create the cipher

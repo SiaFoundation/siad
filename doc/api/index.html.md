@@ -1500,7 +1500,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/contracts [GET]
 
-Returns the renter's contracts.  Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default. Inactive contracts are contracts that are in the current period but are marked as not good for renew, these contracts have the potential to become active again but currently are not storing data.  Expired contracts are contracts not in the current period, where not more data is being stored and excess funds have been released to the renter.  
+Returns the renter's contracts.  Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default. Inactive contracts are contracts that are in the current period but are marked as not good for renew, these contracts have the potential to become active again but currently are not storing data.  Expired contracts are contracts not in the current period, where not more data is being stored and excess funds have been released to the renter. Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
 
 ### Query String Parameters
 #### OPTIONAL
@@ -1509,6 +1509,9 @@ flag indicating if inactive contracts should be returned.
 
 **expired** | boolean
 flag indicating if expired contracts should be returned.
+
+**recoverable** | boolean
+flag indicating if recoverable contracts should be returned.
 
 ### JSON Response
 > JSON Response Example
@@ -1540,6 +1543,7 @@ flag indicating if expired contracts should be returned.
   ],
   "inactivecontracts": [],
   "expiredcontracts": [],
+  "recoverablecontracts": [],
 }
 ```
 **downloadspending** | hastings  
