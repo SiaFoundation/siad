@@ -368,6 +368,16 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	}
 	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
 
+	// Increase Successful/Failed interactions accordingly
+	defer func() {
+		if err != nil {
+			hdb.IncrementFailedInteractions(host.PublicKey)
+			err = errors.Extend(err, modules.ErrHostFault)
+		} else {
+			hdb.IncrementSuccessfulInteractions(host.PublicKey)
+		}
+	}()
+
 	// Initiate protocol.
 	s, err := cs.NewSessionWithSecret(host, types.FileContractID{}, startHeight, hdb, crypto.SecretKey{}, cancel)
 	if err != nil {

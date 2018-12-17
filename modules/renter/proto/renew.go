@@ -389,6 +389,17 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	}
 	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
 
+	// Increase Successful/Failed interactions accordingly
+	defer func() {
+		// A revision mismatch might not be the host's fault.
+		if err != nil && !IsRevisionMismatch(err) {
+			hdb.IncrementFailedInteractions(contract.HostPublicKey())
+			err = errors.Extend(err, modules.ErrHostFault)
+		} else if err == nil {
+			hdb.IncrementSuccessfulInteractions(contract.HostPublicKey())
+		}
+	}()
+
 	// Initiate protocol.
 	s, err := cs.NewSessionWithSecret(host, contract.ID(), startHeight, hdb, contract.SecretKey, cancel)
 	if err != nil {
