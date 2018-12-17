@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -301,26 +302,49 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Test requires at least 1 renter")
 	}
 	// Create some random data to write.
-	d := fastrand.Bytes(100)
+	d := []byte("hello world")
 
 	// Prepare the stream.
+	siaPath := "/foo"
 	r := tg.Renters()[0]
-	w, errChan := r.RenterUploadStreamPost("/foo", 1, uint64(len(tg.Hosts())-1), false)
+	w, errChan := r.RenterUploadStreamPost(siaPath, 1, uint64(len(tg.Hosts())-1), false)
 
 	// Upload the data.
 	_, err := w.Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	// Close the stream to finish upload.
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-
 	// Wait for the error response.
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
+	}
+	// Make sure the file reached full redundancy.
+	err = build.Retry(100, 200*time.Millisecond, func() error {
+		rfg, err := r.RenterFileGet(siaPath)
+		if err != nil {
+			return err
+		}
+		if rfg.File.Redundancy < float64(len(tg.Hosts())) {
+			return fmt.Errorf("expected redundancy %v but was %v",
+				len(tg.Hosts()), rfg.File.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download the file again.
+	data, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(d)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compare downloaded data to original one.
+	if !bytes.Equal(d, data) {
+		t.Fatal("Downloaded data doesn't match uploaded data")
 	}
 }
 

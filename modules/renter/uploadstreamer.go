@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -18,8 +19,12 @@ import (
 // error for that Read.
 // NOTE each shard should only be used for a single call to Read.
 type StreamShard struct {
-	err        error
-	r          io.Reader
+	n   int
+	err error
+
+	r io.Reader
+
+	mu         sync.Mutex
 	signalChan chan struct{}
 }
 
@@ -32,12 +37,22 @@ func NewStreamShard(r io.Reader) *StreamShard {
 	}
 }
 
+// Result returns the returned values of calling Read on the shard.
+func (ss *StreamShard) Result() (int, error) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	return ss.n, ss.err
+}
+
 // Read implements the io.Reader interface. It closes signalChan after Read
 // returns.
 func (ss *StreamShard) Read(b []byte) (int, error) {
-	n, err := ss.Read(b)
-	close(ss.signalChan)
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	n, err := ss.r.Read(b)
+	ss.n = n
 	ss.err = err
+	close(ss.signalChan)
 	return n, err
 }
 
@@ -109,7 +124,6 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 			// since we check that anyway at the end of the loop.
 			_, _ = ss.Read(make([]byte, entry.ChunkSize()))
 		}
-
 		// Wait for the shard to be read.
 		select {
 		case <-r.tg.StopChan():
@@ -117,9 +131,9 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 		case <-ss.signalChan:
 		}
 
-		// If an io.EOF error occurred we are done. Otherwise we report the
-		// error.
-		if ss.err == io.EOF {
+		// If an io.EOF error occurred or less than chunkSize was read, we are
+		// done. Otherwise we report the error.
+		if n, err := ss.Result(); uint64(n) < entry.ChunkSize() || err == io.EOF {
 			return nil
 		} else if ss.err != nil {
 			return ss.err

@@ -176,6 +176,7 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Update the chunks.
 	var updates []writeaheadlog.Update
 	for uint64(len(sf.chunks)) < numChunks {
 		sf.chunks = append(sf.chunks, chunk{
@@ -183,6 +184,13 @@ func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 		})
 		updates = append(updates, sf.saveChunkUpdate(len(sf.chunks)-1))
 	}
+	// Update the filesize in the metadata.
+	sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(len(sf.chunks)))
+	mdu, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	updates = append(updates, mdu...)
 	return sf.createAndApplyTransaction(updates...)
 }
 

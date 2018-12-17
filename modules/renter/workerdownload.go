@@ -210,6 +210,7 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	pieceData, workerHasPiece := udc.staticChunkMap[w.contract.HostPublicKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
 	if chunkComplete || chunkFailed || w.ownedOnDownloadCooldown() || !workerHasPiece || pieceCompleted {
+
 		udc.mu.Unlock()
 		udc.managedRemoveWorker()
 		return nil

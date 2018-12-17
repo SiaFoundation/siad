@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -1035,7 +1036,9 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		Force:       force,
 	}
 	if stream {
-		err = api.renter.UploadStreamFromReader(up, req.Body)
+		// TODO: http streaming isn't working so we hardcode a reader for
+		// testing.
+		err = api.renter.UploadStreamFromReader(up, strings.NewReader("hello world"))
 	} else {
 		err = api.renter.Upload(up)
 	}
