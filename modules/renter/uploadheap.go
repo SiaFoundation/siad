@@ -104,6 +104,11 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 // the HostPubKey instead of the FileContractID, and can be simplified even
 // further once the layout is per-chunk instead of per-filecontract.
 func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}) []*unfinishedUploadChunk {
+	// Sanity check that there are entries
+	if len(entrys) == 0 {
+		return nil
+	}
+
 	// Grab a copy of the SiaFileSetEntry, all the entrys in the slice are the
 	// same
 	entry := entrys[0]

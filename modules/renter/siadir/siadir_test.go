@@ -1,12 +1,15 @@
 package siadir
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // newRootDir creates a root directory for the test and removes old test files
@@ -44,16 +47,9 @@ func TestNewSiaDir(t *testing.T) {
 	// Check Sub Dir
 	//
 	// Check that the Health was initialized properly
-	health, stuckHealth, lastCheck := siaDir.Health()
-	if health != DefaultDirHealth {
-		t.Fatalf("SiaDir health not set properly: got %v expected %v", health, DefaultDirHealth)
-	}
-	if lastCheck.IsZero() {
-		t.Fatal("lastHealthCheckTime not initialized")
-	}
-	// Check that the StuckHealth was initialized properly
-	if stuckHealth != DefaultDirHealth {
-		t.Fatalf("SiaDir stuck health not set properly: got %v expected %v", stuckHealth, DefaultDirHealth)
+	health := siaDir.Health()
+	if err = checkHealthInit(health); err != nil {
+		t.Fatal(err)
 	}
 	// Check that the SiaPath was initialized properly
 	if siaDir.SiaPath() != siaPath {
@@ -83,20 +79,13 @@ func TestNewSiaDir(t *testing.T) {
 	// Get SiaDir
 	subDir, err := LoadSiaDir(rootDir, siaPathDir, modules.ProdDependencies, wal)
 	// Check that the Health was initialized properly
-	health, stuckHealth, lastCheck = subDir.Health()
-	if health != DefaultDirHealth {
-		t.Fatalf("SiaDir health not set properly: got %v expected %v", health, DefaultDirHealth)
-	}
-	if lastCheck.IsZero() {
-		t.Fatal("lastHealthCheckTime not initialized")
-	}
-	// Check that the StuckHealth was initialized properly
-	if stuckHealth != DefaultDirHealth {
-		t.Fatalf("SiaDir stuck health not set properly: got %v expected %v", stuckHealth, DefaultDirHealth)
+	health = subDir.Health()
+	if err = checkHealthInit(health); err != nil {
+		t.Fatal(err)
 	}
 	// Check that the SiaPath was initialized properly
-	if subDir.SiaPath() != siaPathDir {
-		t.Fatalf("SiaDir SiaPath not set properly: got %v expected %v", subDir.SiaPath(), siaPathDir)
+	if siaDir.SiaPath() != siaPath {
+		t.Fatalf("SiaDir SiaPath not set properly: got %v expected %v", siaDir.SiaPath(), siaPath)
 	}
 
 	// Check Root Directory
@@ -104,20 +93,13 @@ func TestNewSiaDir(t *testing.T) {
 	// Get SiaDir
 	rootSiaDir, err := LoadSiaDir(rootDir, "", modules.ProdDependencies, wal)
 	// Check that the Health was initialized properly
-	health, stuckHealth, lastCheck = rootSiaDir.Health()
-	if health != DefaultDirHealth {
-		t.Fatalf("SiaDir health not set properly: got %v expected %v", health, DefaultDirHealth)
-	}
-	if lastCheck.IsZero() {
-		t.Fatal("lastHealthCheckTime not initialized")
-	}
-	// Check that the StuckHealth was initialized properly
-	if stuckHealth != DefaultDirHealth {
-		t.Fatalf("SiaDir stuck health not set properly: got %v expected %v", stuckHealth, DefaultDirHealth)
+	health = rootSiaDir.Health()
+	if err = checkHealthInit(health); err != nil {
+		t.Fatal(err)
 	}
 	// Check that the SiaPath was initialized properly
-	if rootSiaDir.SiaPath() != "" {
-		t.Fatalf("SiaDir SiaPath not set properly: got %v expected %v", rootSiaDir.SiaPath(), "")
+	if siaDir.SiaPath() != siaPath {
+		t.Fatalf("SiaDir SiaPath not set properly: got %v expected %v", siaDir.SiaPath(), siaPath)
 	}
 	// Check that the directory and .siadir file were created on disk
 	_, err = os.Stat(rootDir)
@@ -128,6 +110,24 @@ func TestNewSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// checkHealthInit is a helper that verifies that the health was initialized
+// properly
+func checkHealthInit(health SiaDirHealth) error {
+	if health.Health != DefaultDirHealth {
+		return fmt.Errorf("SiaDir health not set properly: got %v expected %v", health.Health, DefaultDirHealth)
+	}
+	if health.LastHealthCheckTime.IsZero() {
+		return errors.New("lastHealthCheckTime not initialized")
+	}
+	if health.StuckHealth != DefaultDirHealth {
+		return fmt.Errorf("SiaDir stuck health not set properly: got %v expected %v", health.StuckHealth, DefaultDirHealth)
+	}
+	if health.NumStuckChunks != 0 {
+		return fmt.Errorf("SiaDir NumStuckChunks not initialized properly, expected 0, got %v", health.NumStuckChunks)
+	}
+	return nil
 }
 
 // Test Update Health
@@ -150,62 +150,54 @@ func TestUpdateSiaDirHealth(t *testing.T) {
 	}
 
 	// Check Health was initialized properly in memory and on disk
-	health, stuckHealth, lastCheck := siaDir.Health()
-	if health != DefaultDirHealth {
-		t.Fatalf("SiaDir health not set properly: got %v expected %v", health, DefaultDirHealth)
-	}
-	if stuckHealth != DefaultDirHealth {
-		t.Fatalf("SiaDir stuckHealth not set properly: got %v expected %v", stuckHealth, DefaultDirHealth)
-	}
-	if lastCheck.IsZero() {
-		t.Fatal("lastHealthCheckTime not initialized")
+	health := siaDir.Health()
+	if err = checkHealthInit(health); err != nil {
+		t.Fatal(err)
 	}
 	siaDir, err = LoadSiaDir(rootDir, siaPath, modules.ProdDependencies, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
-	health, stuckHealth, lastCheck = siaDir.Health()
-	if health != DefaultDirHealth {
-		t.Fatalf("SiaDir health not set properly: got %v expected %v", health, DefaultDirHealth)
-	}
-	if stuckHealth != DefaultDirHealth {
-		t.Fatalf("SiaDir stuckHealth not set properly: got %v expected %v", stuckHealth, DefaultDirHealth)
-	}
-	if lastCheck.IsZero() {
-		t.Fatal("lastHealthCheckTime not initialized")
+	health = siaDir.Health()
+	if err = checkHealthInit(health); err != nil {
+		t.Fatal(err)
 	}
 
 	// Set the health
 	checkTime := time.Now()
-	err = siaDir.UpdateHealth(4, 2, checkTime)
+	healthUpdate := SiaDirHealth{
+		Health:              4,
+		StuckHealth:         2,
+		LastHealthCheckTime: checkTime,
+		NumStuckChunks:      5,
+	}
+	err = siaDir.UpdateHealth(healthUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Check Health was updated properly in memory and on disk
-	health, stuckHealth, lastCheck = siaDir.Health()
-	if health != 4 {
-		t.Fatalf("SiaDir health not set properly: got %v expected %v", health, 4)
-	}
-	if stuckHealth != 2 {
-		t.Fatalf("SiaDir stuckHealth not set properly: got %v expected %v", stuckHealth, 2)
-	}
-	if !lastCheck.Equal(checkTime) {
-		t.Fatalf("lastHealthCheckTime not save correctly, expected %v got %v", checkTime, lastCheck)
+	health = siaDir.Health()
+	if !reflect.DeepEqual(health, healthUpdate) {
+		t.Log("Health", health)
+		t.Log("Health Update", healthUpdate)
+		t.Fatal("health not updated correctly")
 	}
 	siaDir, err = LoadSiaDir(rootDir, siaPath, modules.ProdDependencies, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
-	health, stuckHealth, lastCheck = siaDir.Health()
-	if health != 4 {
-		t.Fatalf("SiaDir health not set properly: got %v expected %v", health, 4)
+	health = siaDir.Health()
+	// Check Time separately due to how the time is persisted
+	if !health.LastHealthCheckTime.Equal(healthUpdate.LastHealthCheckTime) {
+		t.Fatalf("Times not equal, got %v expected %v", health.LastHealthCheckTime, healthUpdate.LastHealthCheckTime)
 	}
-	if stuckHealth != 2 {
-		t.Fatalf("SiaDir stuckHealth not set properly: got %v expected %v", stuckHealth, 2)
-	}
-	if !lastCheck.Equal(checkTime) {
-		t.Fatalf("lastHealthCheckTime not save correctly, expected %v got %v", checkTime, lastCheck)
+	healthUpdate.LastHealthCheckTime = health.LastHealthCheckTime
+	// Check the rest of the metadata
+	if !reflect.DeepEqual(health, healthUpdate) {
+		t.Log("Health", health)
+		t.Log("Health Update", healthUpdate)
+		t.Fatal("health not updated correctly")
 	}
 }
 

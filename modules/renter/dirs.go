@@ -41,10 +41,10 @@ func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
 	// Grab the health information and return the Directory Info, the worst
 	// health will be returned. Depending on the directory and its contents that
 	// could either be health or stuckHealth
-	health, stuckHealth, lastHealthCheckTime := entry.Health()
+	health := entry.Health()
 	return modules.DirectoryInfo{
-		Health:              math.Max(health, stuckHealth),
-		LastHealthCheckTime: lastHealthCheckTime,
+		Health:              math.Max(health.Health, health.StuckHealth),
+		LastHealthCheckTime: health.LastHealthCheckTime,
 		SiaPath:             siaPath,
 	}, nil
 }

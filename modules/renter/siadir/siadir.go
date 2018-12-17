@@ -45,6 +45,15 @@ type (
 		wal     *writeaheadlog.WAL
 	}
 
+	// SiaDirHealth is an exported struct containing the health information of
+	// the SiaDir
+	SiaDirHealth struct {
+		Health              float64
+		StuckHealth         float64
+		LastHealthCheckTime time.Time
+		NumStuckChunks      uint64
+	}
+
 	// siaDirMetadata is the metadata that is saved to disk as a .siadir file
 	siaDirMetadata struct {
 		// Health is the health of the most in need file in the directory or any
@@ -57,6 +66,10 @@ type (
 		// LastHealthCheckTime is the oldest LastHealthCheckTime of any of the
 		// siafiles in the siadir or any of the sub directories
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+
+		// NumStuckChunks is the sum of all the Stuck Chunks of any of the
+		// siafiles in the siadir or any of the sub directories
+		NumStuckChunks uint64 `json:"numstuckchunks"`
 
 		// RootDir is the path to the root directory on disk
 		RootDir string `json:"rootdir"`
@@ -161,10 +174,15 @@ func (sd *SiaDir) Deleted() bool {
 }
 
 // Health returns the health metadata of the SiaDir
-func (sd *SiaDir) Health() (float64, float64, time.Time) {
+func (sd *SiaDir) Health() SiaDirHealth {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
-	return sd.staticMetadata.Health, sd.staticMetadata.StuckHealth, sd.staticMetadata.LastHealthCheckTime
+	return SiaDirHealth{
+		Health:              sd.staticMetadata.Health,
+		StuckHealth:         sd.staticMetadata.StuckHealth,
+		LastHealthCheckTime: sd.staticMetadata.LastHealthCheckTime,
+		NumStuckChunks:      sd.staticMetadata.NumStuckChunks,
+	}
 }
 
 // SiaPath returns the SiaPath of the SiaDir
@@ -175,16 +193,17 @@ func (sd *SiaDir) SiaPath() string {
 }
 
 // updateHealth updates the SiaDir metadata on disk with the new Health value
-func (sd *SiaDir) updateHealth(health, stuckHealth float64, lastCheck time.Time) error {
-	sd.staticMetadata.Health = health
-	sd.staticMetadata.StuckHealth = stuckHealth
-	sd.staticMetadata.LastHealthCheckTime = lastCheck
+func (sd *SiaDir) updateHealth(health SiaDirHealth) error {
+	sd.staticMetadata.Health = health.Health
+	sd.staticMetadata.StuckHealth = health.StuckHealth
+	sd.staticMetadata.LastHealthCheckTime = health.LastHealthCheckTime
+	sd.staticMetadata.NumStuckChunks = health.NumStuckChunks
 	return sd.saveDir()
 }
 
 // UpdateHealth is a helper wrapper for calling updateHealth
-func (sd *SiaDir) UpdateHealth(health, stuckHealth float64, lastCheck time.Time) error {
+func (sd *SiaDir) UpdateHealth(health SiaDirHealth) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
-	return sd.updateHealth(health, stuckHealth, lastCheck)
+	return sd.updateHealth(health)
 }
