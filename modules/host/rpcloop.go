@@ -16,12 +16,15 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
+// An rpcSession contains the state of an RPC session with a renter.
 type rpcSession struct {
 	conn net.Conn
 	aead cipher.AEAD
 	so   storageObligation
 }
 
+// extendDeadline extends the read/write deadline on the underlying connection
+// by d.
 func (s *rpcSession) extendDeadline(d time.Duration) {
 	s.conn.SetDeadline(time.Now().Add(d))
 }
