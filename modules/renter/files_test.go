@@ -295,7 +295,7 @@ func TestFileRedundancy(t *testing.T) {
 
 // TestFileHealth tests that the health of the file is correctly calculated.
 //
-// Health is equal to 1 - # parity pieces / target parity pieces
+// Health is equal to (targetParityPieces - actualParityPieces)/targetParityPieces
 func TestFileHealth(t *testing.T) {
 	// Create File with 1 chunk
 	rsc, _ := siafile.NewRSCode(10, 20)

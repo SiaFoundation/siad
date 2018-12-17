@@ -285,7 +285,7 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 // of parity pieces remaining.
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
-// to be repaired from disk
+// to be repaired from disk or repair by upload streaming
 func (sf *SiaFile) chunkHealth(chunkIndex int, offline map[string]bool) float64 {
 	// The max number of good pieces that a chunk can have is NumPieces()
 	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()

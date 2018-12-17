@@ -157,6 +157,12 @@ func (entry *SiaDirSetEntry) Close() error {
 // CloseAndUnlockSiaDir unlocks the SiaDir and then removes the thread from the
 // threadMap. If the length of threadMap count is 0 then it will remove the
 // SiaDirSetEntry from the SiaDirSet map, which will remove it from memory
+//
+// NOTE: To avoid deadlocks this method should only ever be called after calling
+// OpenAndLockSiaDir. These methods are used when the siadir needs to be locked
+// for the duration of an action/function, such as calculating the health of
+// siadir before updating the health, so that another action/function does not
+// interfere
 func (entry *SiaDirSetEntry) CloseAndUnlockSiaDir() error {
 	entry.siaDirSet.mu.Lock()
 	defer entry.siaDirSet.mu.Unlock()
@@ -247,7 +253,10 @@ func (sds *SiaDirSet) Open(siaPath string) (*SiaDirSetEntry, error) {
 // so that other threads can not access the siadir until it is closed
 //
 // NOTE: sidirs opened with this method should then be closed with
-// CloseAndUnlockSiaDir
+// CloseAndUnlockSiaDir.  To avoid deadlocks, the only methods that should be
+// called when acquiring the siadir with OpenAndLockSiaDir are
+// CloseAndUnlockSiaDir and SiaDir.UpdateHealth.  All other methods should use
+// Open to acquire the siadir
 func (sds *SiaDirSet) OpenAndLockSiaDir(siaPath string) (*SiaDirSetEntry, error) {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
