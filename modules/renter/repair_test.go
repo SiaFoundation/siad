@@ -22,6 +22,9 @@ import (
 // correctly when a file is stuck. Code to mark files/chunks as stuck is still
 // needed
 func TestBubbleHealth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	// Create a test directory with the following healths
 	//
 	// root/ 1
@@ -115,6 +118,67 @@ func TestBubbleHealth(t *testing.T) {
 		}
 		if health != 2 {
 			return fmt.Errorf("Expected health to be %v, got %v", 2, health)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestOldestHealthCheckTime probes managedOldestHealthCheckTime to verify that
+// the directory with the oldest LastHealthCheckTime is returned
+func TestOldestHealthCheckTime(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a test directory with sub folders
+	//
+	// root/ 1
+	// root/SubDir1/
+	// root/SubDir1/SubDir2/
+	// root/SubDir2/
+
+	// Create test renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create directory tree
+	subDir1 := "SubDir1"
+	subDir2 := "SubDir2"
+	if err := rt.renter.CreateDir(subDir1); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(subDir2); err != nil {
+		t.Fatal(err)
+	}
+	siaPath := filepath.Join(subDir1, subDir2)
+	if err := rt.renter.CreateDir(siaPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the LastHealthCheckTime of SubDir1/SubDir2 to be the oldest
+	oldestCheckTime := time.Now().AddDate(0, 0, -1)
+	if err := rt.renter.staticDirSet.UpdateHealth(siaPath, 1, 0, oldestCheckTime); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bubble the health of SubDir1 so that the oldest LastHealthCheckTime of
+	// SubDir1/SubDir2 gets bubbled up
+	go rt.renter.threadedBubbleHealth(subDir1)
+	// Find the oldest directory, should be SubDir1/SubDir2
+	build.Retry(100, 100*time.Millisecond, func() error {
+		dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
+		if err != nil {
+			return err
+		}
+		if dir != siaPath {
+			return fmt.Errorf("Expected to find %v but found %v", siaPath, dir)
+		}
+		if !lastCheck.Equal(oldestCheckTime) {
+			return fmt.Errorf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck)
 		}
 		return nil
 	})

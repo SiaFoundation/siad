@@ -2,6 +2,7 @@ package renter
 
 import (
 	"io/ioutil"
+	"math"
 	"path/filepath"
 	"strings"
 
@@ -37,12 +38,12 @@ func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
 	}
 	defer entry.Close()
 
-	// Grab the health information and return the Directory Info, stuckHealth is
-	// the true health of the directory so that it what is returned as the
-	// health
-	_, stuckHealth, lastHealthCheckTime := entry.Health()
+	// Grab the health information and return the Directory Info, the worst
+	// health will be returned. Depending on the directory and its contents that
+	// could either be health or stuckHealth
+	health, stuckHealth, lastHealthCheckTime := entry.Health()
 	return modules.DirectoryInfo{
-		Health:              stuckHealth,
+		Health:              math.Max(health, stuckHealth),
 		LastHealthCheckTime: lastHealthCheckTime,
 		SiaPath:             siaPath,
 	}, nil
