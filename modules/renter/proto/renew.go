@@ -394,6 +394,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
+	defer s.Close()
 
 	// Send the RenewContract request.
 	req := modules.LoopRenewContractRequest{

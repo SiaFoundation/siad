@@ -170,9 +170,8 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 
 		id, err := modules.ReadRPCID(conn, aead)
 		if err != nil {
-			h.log.Debugf("WARN: renter sent invalid RPC ID: %v", id)
-			err = errors.New("invalid RPC ID " + id.String())
-			s.writeError(err)
+			h.log.Debugf("WARN: could not read RPC ID: %v", err)
+			s.writeError(err) // try to write, even though this is probably due to a faulty connection
 			return err
 		}
 

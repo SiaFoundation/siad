@@ -373,6 +373,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
+	defer s.Close()
 
 	// Send the FormContract request.
 	req := modules.LoopFormContractRequest{
