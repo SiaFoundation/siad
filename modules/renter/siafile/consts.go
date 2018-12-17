@@ -16,11 +16,11 @@ const (
 	defaultReservedMDPages = 1
 
 	// updateInsertName is the name of a siaFile update that inserts data at a specific index.
-	updateInsertName = "SiaFile-Insert"
+	updateInsertName = "SiaFileInsert"
 
 	// updateDeleteName is the name of a siaFile update that deletes the
 	// specified file.
-	updateDeleteName = "SiaFile-Delete"
+	updateDeleteName = "SiaFileDelete"
 
 	// marshaledPieceSize is the size of a piece on disk. It consists of a 4
 	// byte pieceIndex, a 4 byte table offset and a hash.
