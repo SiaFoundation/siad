@@ -88,7 +88,7 @@ const (
 
 	// updateBubbleHealthName is the name of a renter wal update that calculates and
 	// bubbles up the health of a siadir
-	updateBubbleHealthName = "Renter-Bubble-Health"
+	updateBubbleHealthName = "RenterBubbleHealth"
 )
 
 var (
