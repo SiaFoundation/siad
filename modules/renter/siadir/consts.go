@@ -8,11 +8,11 @@ const (
 
 	// updateMetadataName is the name of a siaDir update that inserts new
 	// information into the metadata file
-	updateMetadataName = "SiaDir-Metadata"
+	updateMetadataName = "SiaDirMetadata"
 
 	// updateDeleteName is the name of a siaDir update that deletes the
 	// specified metadata file.
-	updateDeleteName = "SiaDir-Delete"
+	updateDeleteName = "SiaDirDelete"
 
 	// threadDepth is how deep the ThreadType will track calling files and
 	// calling lines
