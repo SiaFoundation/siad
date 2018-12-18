@@ -1,12 +1,15 @@
 package siadir
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -79,14 +82,30 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 	}
 
 	// Read metadata update
-	metadata, err := readMetadataUpdate(update)
+	data, path, err := readMetadataUpdate(update)
 	if err != nil {
 		t.Fatal("Failed to read update", err)
 	}
 
-	// Compare metadata
-	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
+	// Check path
+	strings1 := strings.Split(path, "/")
+	path = filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
+	strings2 := strings.Split(path, "/")
+	for i, s := range strings1 {
+		if s != strings2[i] {
+			t.Log("update path", strings1)
+			t.Log("siadir path", strings1)
+			t.Fatal("path not correct in update")
+		}
+	}
+
+	// Check data
+	metadata, err := encodeMetadata(sd.staticMetadata)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if bytes.Compare(data, metadata) != 0 {
+		t.Fatal("data not correct in update")
 	}
 }
 
@@ -128,6 +147,13 @@ func TestApplyUpdates(t *testing.T) {
 		}
 		testApply(t, siadir, ApplyUpdates)
 	})
+	t.Run("TestSiaDirApplyUpdates", func(t *testing.T) {
+		siadir, err := newTestDir(t.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		testApply(t, siadir, siadir.ApplyUpdates)
+	})
 	t.Run("TestCreateAndApplyTransaction", func(t *testing.T) {
 		siadir, err := newTestDir(t.Name())
 		if err != nil {
@@ -152,7 +178,7 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 		t.Fatal("Failed to apply update", err)
 	}
 	// Open file.
-	sd, err := LoadSiaDir(metadata.RootDir, metadata.SiaPath, siadir.wal)
+	sd, err := LoadSiaDir(metadata.RootDir, metadata.SiaPath, modules.ProdDependencies, siadir.wal)
 	if err != nil {
 		t.Fatal("Failed to load siadir", err)
 	}

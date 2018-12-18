@@ -1,11 +1,15 @@
 package siadir
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -47,6 +51,7 @@ type (
 
 		// Utility fields
 		deleted bool
+		deps    modules.Dependencies
 		mu      sync.Mutex
 		wal     *writeaheadlog.WAL
 	}
@@ -93,6 +98,7 @@ func New(siaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	// Create SiaDir
 	sd := &SiaDir{
 		staticMetadata: md,
+		deps:           modules.ProdDependencies,
 		wal:            wal,
 	}
 
@@ -122,20 +128,61 @@ func createDirMetadata(siaPath, rootDir string) (siaDirMetadata, writeaheadlog.U
 }
 
 // LoadSiaDir loads the directory metadata from disk
-func LoadSiaDir(rootDir, siaPath string, wal *writeaheadlog.WAL) (*SiaDir, error) {
-	var md siaDirMetadata
+func LoadSiaDir(rootDir, siaPath string, deps modules.Dependencies, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	path := filepath.Join(rootDir, siaPath)
-	err := persist.LoadJSON(siaDirMetadataHeader, &md, filepath.Join(path, SiaDirExtension))
-	return &SiaDir{
-		staticMetadata: md,
-		wal:            wal,
-	}, err
-}
+	sd := &SiaDir{
+		deps: deps,
+		wal:  wal,
+	}
+	// Open the file.
+	file, err := sd.deps.Open(filepath.Join(path, SiaDirExtension))
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to open file")
+	}
+	defer file.Close()
 
-// save saves the directory metadata to disk
-func (md siaDirMetadata) save() error {
-	path := filepath.Join(md.RootDir, md.SiaPath, SiaDirExtension)
-	return persist.SaveJSON(siaDirMetadataHeader, md, path)
+	// Read the metadata header and version from the file.
+	var header, version string
+	dec := json.NewDecoder(file)
+	if err := dec.Decode(&header); err != nil {
+		return nil, errors.AddContext(err, "unable to decode header")
+	}
+	if header != siaDirMetadataHeader.Header {
+		return nil, errors.New("header does not match siaDir metadata header")
+	}
+	if err := dec.Decode(&version); err != nil {
+		return nil, errors.AddContext(err, "unable to decode version")
+	}
+	if version != siaDirMetadataHeader.Version {
+		return nil, errors.New("version does not match siaDir metadata version")
+	}
+
+	// Read everything else.
+	remainingBytes, err := ioutil.ReadAll(dec.Buffered())
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to read persisted data")
+	}
+	// The buffer may or may not have read the rest of the file, read the rest
+	// of the file to be certain.
+	remainingBytesExtra, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to read persisted data")
+	}
+	remainingBytes = append(remainingBytes, remainingBytesExtra...)
+
+	// Verify and remove checksum
+	var checksum crypto.Hash
+	err = json.Unmarshal(remainingBytes[:67], &checksum)
+	if err == nil && checksum != crypto.HashBytes(remainingBytes[68:]) {
+		return nil, errors.New("loading a file with a bad checksum")
+	} else if err == nil {
+		remainingBytes = remainingBytes[68:]
+	}
+
+	// Parse the json object.
+	err = json.Unmarshal(remainingBytes, &sd.staticMetadata)
+
+	return sd, err
 }
 
 // Delete removes the directory from disk and marks it as deleted. Once the directory is
