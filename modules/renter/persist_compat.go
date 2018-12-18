@@ -13,9 +13,24 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// v137Persistence is the persistence struct of a renter that doesn't use the
+// new SiaFile format yet.
+type v137Persistence struct {
+	MaxDownloadSpeed int64
+	MaxUploadSpeed   int64
+	StreamCacheSize  uint64
+	Tracking         map[string]v137TrackedFile
+}
+
+// v137TrackedFile is the tracking information stored about a file on a legacy
+// renter.
+type v137TrackedFile struct {
+	RepairPath string
+}
+
 // loadSiaFiles walks through the directory searching for siafiles and loading
 // them into memory.
-func (r *Renter) compatV137ConvertSiaFiles() error {
+func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile) error {
 	// Recursively load all files found in renter directory. Errors
 	// encountered during loading are logged, but are not considered fatal.
 	return filepath.Walk(r.persistDir, func(path string, info os.FileInfo, err error) error {
@@ -44,7 +59,7 @@ func (r *Renter) compatV137ConvertSiaFiles() error {
 		}
 
 		// Load the file contents into the renter.
-		_, err = r.compatV137loadSiaFilesFromReader(file, path)
+		_, err = r.compatV137loadSiaFilesFromReader(file, tracking)
 		if err != nil {
 			return errors.Compose(err, file.Close())
 		}
@@ -60,7 +75,7 @@ func (r *Renter) compatV137ConvertSiaFiles() error {
 // compatV137LoadSiaFilesFromReader reads .sia data from reader and registers
 // the contained files in the renter. It returns the nicknames of the loaded
 // files.
-func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, repairPath string) ([]string, error) {
+func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map[string]v137TrackedFile) ([]string, error) {
 	// read header
 	var header [15]byte
 	var version string
@@ -110,6 +125,12 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, repairPath s
 	// Add files to renter.
 	names := make([]string, numFiles)
 	for i, f := range files {
+		// Figure out the repair path.
+		var repairPath string
+		tf, ok := tracking[f.name]
+		if ok {
+			repairPath = tf.RepairPath
+		}
 		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
 		// be returned here
 		entry, err := r.fileToSiaFile(f, repairPath)
@@ -130,7 +151,9 @@ func (r *Renter) convertPersistVersionFrom133To140(path string) error {
 		Header:  settingsMetadata.Header,
 		Version: persistVersion133,
 	}
-	p := persistence{}
+	p := v137Persistence{
+		Tracking: make(map[string]v137TrackedFile),
+	}
 
 	err := persist.LoadJSON(metadata, &p, path)
 	if err != nil {
@@ -138,7 +161,7 @@ func (r *Renter) convertPersistVersionFrom133To140(path string) error {
 	}
 	metadata.Version = persistVersion140
 	// Load potential legacy SiaFiles.
-	if err := r.compatV137ConvertSiaFiles(); err != nil {
+	if err := r.compatV137ConvertSiaFiles(p.Tracking); err != nil {
 		return err
 	}
 	return persist.SaveJSON(metadata, p, path)

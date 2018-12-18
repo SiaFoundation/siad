@@ -248,7 +248,7 @@ func TestSiafileCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	names, err := rt.renter.compatV137loadSiaFilesFromReader(f, "")
+	names, err := rt.renter.compatV137loadSiaFilesFromReader(f, make(map[string]v137TrackedFile))
 	if err != nil {
 		t.Fatal(err)
 	}
