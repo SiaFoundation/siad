@@ -31,6 +31,12 @@ func (r *Renter) compatV137ConvertSiaFiles() error {
 			return nil
 		}
 
+		// Check if file was already converted.
+		_, err = siafile.LoadSiaFile(path, r.wal)
+		if err == nil {
+			return nil
+		}
+
 		// Open the file.
 		file, err := os.Open(path)
 		if err != nil {

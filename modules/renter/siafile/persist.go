@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -196,6 +197,10 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// Sanity check that file hasn't been deleted.
 	if sf.deleted {
 		return errors.New("can't call applyUpdates on deleted file")
+	}
+	// Create the path if it doesn't exist yet.
+	if err = os.MkdirAll(filepath.Dir(sf.siaFilePath), 0700); err != nil {
+		return err
 	}
 	// Open the file.
 	f, err := sf.deps.OpenFile(sf.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)

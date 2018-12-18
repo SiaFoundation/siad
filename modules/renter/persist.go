@@ -296,18 +296,16 @@ func (r *Renter) initPersist() error {
 		}
 	}
 
-	// Load the prior persistence structures.
-	err = r.loadSettings()
-	if err != nil {
-		return err
-	}
-
 	// Initialize the wal, staticFileSet and the staticDirSet. With the
 	// staticDirSet finish the initialization of the files directory
 	r.wal = wal
 	r.staticFileSet = siafile.NewSiaFileSet(r.filesDir, wal)
 	r.staticDirSet = siadir.NewSiaDirSet(r.filesDir, wal)
-	return r.staticDirSet.InitRootDir()
+	if err := r.staticDirSet.InitRootDir(); err != nil {
+		return err
+	}
+	// Load the prior persistence structures.
+	return r.loadSettings()
 }
 
 // LoadSharedFiles loads a .sia file into the renter. It returns the nicknames
