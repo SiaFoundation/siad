@@ -2,6 +2,8 @@ package renter
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -65,68 +67,31 @@ func (r *Renter) DeleteFile(nickname string) error {
 }
 
 // FileList returns all of the files that the renter has.
-func (r *Renter) FileList() []modules.FileInfo {
-	// Get all the renter files
-	entrys, err := r.staticFileSet.All()
-	if err != nil {
-		return []modules.FileInfo{}
-	}
-
-	// Save host keys in map. We can't do that under the same lock since we
-	// need to call a public method on the file.
-	pks := make(map[string]types.SiaPublicKey)
-	for _, entry := range entrys {
-		for _, pk := range entry.HostPublicKeys() {
-			pks[pk.String()] = pk
-		}
-	}
-
-	// Build 2 maps that map every pubkey to its offline and goodForRenew
-	// status.
-	goodForRenew := make(map[string]bool)
-	offline := make(map[string]bool)
-	contracts := make(map[string]modules.RenterContract)
-	for _, pk := range pks {
-		contract, ok := r.hostContractor.ContractByPublicKey(pk)
-		if !ok {
-			continue
-		}
-		goodForRenew[pk.String()] = ok && contract.Utility.GoodForRenew
-		offline[pk.String()] = r.hostContractor.IsOffline(pk)
-		contracts[pk.String()] = contract
-	}
-
-	// Build the list of FileInfos.
+func (r *Renter) FileList() ([]modules.FileInfo, error) {
 	fileList := []modules.FileInfo{}
-	for _, entry := range entrys {
-		localPath := entry.LocalPath()
-		_, err := os.Stat(localPath)
-		onDisk := !os.IsNotExist(err)
-		redundancy := entry.Redundancy(offline, goodForRenew)
-		fileList = append(fileList, modules.FileInfo{
-			AccessTime:     entry.AccessTime(),
-			Available:      entry.Available(offline),
-			ChangeTime:     entry.ChangeTime(),
-			CipherType:     entry.MasterKey().Type().String(),
-			CreateTime:     entry.CreateTime(),
-			Expiration:     entry.Expiration(contracts),
-			Filesize:       entry.Size(),
-			LocalPath:      localPath,
-			ModTime:        entry.ModTime(),
-			OnDisk:         onDisk,
-			Recoverable:    onDisk || redundancy >= 1,
-			Redundancy:     redundancy,
-			Renewing:       true,
-			SiaPath:        entry.SiaPath(),
-			UploadedBytes:  entry.UploadedBytes(),
-			UploadProgress: entry.UploadProgress(),
-		})
-		err = entry.Close()
+	err := filepath.Walk(r.filesDir, func(path string, info os.FileInfo, err error) error {
+		// This error is non-nil if filepath.Walk couldn't stat a file or
+		// folder.
 		if err != nil {
-			r.log.Debugln("WARN: Could not close thread:", err)
+			return err
 		}
-	}
-	return fileList
+
+		// Skip folders and non-sia files.
+		if info.IsDir() || filepath.Ext(path) != siafile.ShareExtension {
+			return nil
+		}
+
+		// Load the Siafile.
+		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.filesDir), siafile.ShareExtension)
+		file, err := r.File(siaPath)
+		if err != nil {
+			return err
+		}
+		fileList = append(fileList, file)
+		return nil
+	})
+
+	return fileList, err
 }
 
 // File returns file from siaPath queried by user.
@@ -138,22 +103,8 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		return modules.FileInfo{}, err
 	}
 	defer entry.Close()
-	pks := entry.HostPublicKeys()
 
-	// Build 2 maps that map every contract id to its offline and goodForRenew
-	// status.
-	goodForRenew := make(map[string]bool)
-	offline := make(map[string]bool)
-	contracts := make(map[string]modules.RenterContract)
-	for _, pk := range pks {
-		contract, ok := r.hostContractor.ContractByPublicKey(pk)
-		if !ok {
-			continue
-		}
-		goodForRenew[pk.String()] = ok && contract.Utility.GoodForRenew
-		offline[pk.String()] = r.hostContractor.IsOffline(pk)
-		contracts[pk.String()] = contract
-	}
+	offline, goodForRenew, contracts := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{entry})
 
 	// Build the FileInfo
 	renewing := true

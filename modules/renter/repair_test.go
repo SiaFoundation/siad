@@ -97,7 +97,7 @@ func TestBubbleHealth(t *testing.T) {
 	// meaning the health of the file should be the worst case health. Now the
 	// health that is bubbled up should be the health of the file added to
 	// subDir1/subDir2
-	offline, _ := rt.renter.managedContractUtilities([]*siafile.SiaFileSetEntry{f})
+	offline, _, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{f})
 	health, _ = f.Health(offline)
 	if health != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", health)

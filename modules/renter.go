@@ -526,7 +526,7 @@ type Renter interface {
 	File(siaPath string) (FileInfo, error)
 
 	// FileList returns information on all of the files stored by the renter.
-	FileList() []FileInfo
+	FileList() ([]FileInfo, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
 	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error

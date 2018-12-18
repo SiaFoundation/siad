@@ -422,12 +422,13 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	return est, allowance, nil
 }
 
-// managedContractUtilities grabs the pubkeys of the hosts that the file(s) have
-// been uploaded to and then generates maps of the contract's utilities showing
-// which hosts are GoodForRenew and which hosts are Offline.  The offline and
-// goodforrenew maps are needed for calculating redundancy and other file
-// metrics.
-func (r *Renter) managedContractUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool) {
+// managedRenterContractsAndUtilities grabs the pubkeys of the hosts that the
+// file(s) have been uploaded to and then generates maps of the contract's
+// utilities showing which hosts are GoodForRenew and which hosts are Offline.
+// Additionally a map of host pubkeys to renter contract is returned.  The
+// offline and goodforrenew maps are needed for calculating redundancy and other
+// file metrics.
+func (r *Renter) managedRenterContractsAndUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
 	// Save host keys in map.
 	pks := make(map[string]types.SiaPublicKey)
 	goodForRenew = make(map[string]bool)
@@ -445,15 +446,21 @@ func (r *Renter) managedContractUtilities(entrys []*siafile.SiaFileSetEntry) (of
 
 	// Build 2 maps that map every pubkey to its offline and goodForRenew
 	// status.
+	contracts = make(map[string]modules.RenterContract)
 	for _, pk := range pks {
 		cu, ok := r.ContractUtility(pk)
 		if !ok {
 			continue
 		}
+		contract, ok := r.hostContractor.ContractByPublicKey(pk)
+		if !ok {
+			continue
+		}
 		goodForRenew[pk.String()] = cu.GoodForRenew
 		offline[pk.String()] = r.hostContractor.IsOffline(pk)
+		contracts[pk.String()] = contract
 	}
-	return offline, goodForRenew
+	return offline, goodForRenew, contracts
 }
 
 // setBandwidthLimits will change the bandwidth limits of the renter based on
