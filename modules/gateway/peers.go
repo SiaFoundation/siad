@@ -37,9 +37,8 @@ func (s invalidVersionError) Error() string {
 
 type peer struct {
 	modules.Peer
-	rl       *ratelimit.RateLimit
-	globalRL *ratelimit.RateLimit
-	sess     streamSession
+	rl   *ratelimit.RateLimit
+	sess streamSession
 }
 
 // sessionHeader is sent after the initial version exchange. It prevents peers
@@ -59,7 +58,7 @@ func (p *peer) open() (modules.PeerConn, error) {
 	// Apply the local ratelimit.
 	conn = ratelimit.NewRLConn(conn, p.rl, nil)
 	// Apply the global ratelimit.
-	conn = ratelimit.NewRLConn(conn, p.globalRL, nil)
+	conn = ratelimit.NewRLConn(conn, modules.GlobalRateLimits, nil)
 	return &peerConn{conn, p.NetAddress}, nil
 }
 
@@ -209,7 +208,6 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 		NetAddress: g.myAddr,
 	}
 	rl := g.rl
-	globalRL := g.globalRL
 	g.mu.RUnlock()
 
 	remoteHeader, err := exchangeRemoteHeader(conn, ourHeader)
@@ -239,9 +237,8 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 			NetAddress: remoteAddr,
 			Version:    remoteVersion,
 		},
-		rl:       rl,
-		globalRL: globalRL,
-		sess:     newServerStream(conn, remoteVersion),
+		rl:   rl,
+		sess: newServerStream(conn, remoteVersion),
 	}
 	g.mu.Lock()
 	g.acceptPeer(peer)
@@ -480,9 +477,8 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 			NetAddress: addr,
 			Version:    remoteVersion,
 		},
-		rl:       g.rl,
-		globalRL: g.globalRL,
-		sess:     newClientStream(conn, remoteVersion),
+		rl:   g.rl,
+		sess: newClientStream(conn, remoteVersion),
 	})
 	g.addNode(addr)
 	g.nodes[addr].WasOutboundPeer = true

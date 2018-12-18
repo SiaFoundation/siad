@@ -23,8 +23,8 @@ type GatewayGET struct {
 // gatewayHandlerGET handles the API call asking for the gatway status.
 func (api *API) gatewayHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	peers := api.gateway.Peers()
-	mds, mus, _ := api.gateway.RateLimits().Limits()
-	gmds, gmus, _ := api.gateway.GlobalRateLimits().Limits()
+	mds, mus := api.gateway.RateLimits()
+	gmds, gmus, _ := modules.GlobalRateLimits.Limits()
 	// nil slices are marshalled as 'null' in JSON, whereas 0-length slices are
 	// marshalled as '[]'. The latter is preferred, indicating that the value
 	// exists but contains no elements.
@@ -36,8 +36,8 @@ func (api *API) gatewayHandlerGET(w http.ResponseWriter, req *http.Request, _ ht
 
 // gatewayHandlerPOST handles the API call changing gateway specific settings.
 func (api *API) gatewayHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	maxDownloadSpeed, maxUploadSpeed, _ := api.gateway.RateLimits().Limits()
-	maxGlobalDownloadSpeed, maxGlobalUploadSpeed, _ := api.gateway.GlobalRateLimits().Limits()
+	maxDownloadSpeed, maxUploadSpeed := api.gateway.RateLimits()
+	maxGlobalDownloadSpeed, maxGlobalUploadSpeed, _ := modules.GlobalRateLimits.Limits()
 	// Scan the download speed limit. (optional parameter)
 	if d := req.FormValue("maxdownloadspeed"); d != "" {
 		var downloadSpeed int64

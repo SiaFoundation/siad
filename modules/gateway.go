@@ -14,6 +14,12 @@ const (
 )
 
 var (
+	// GlobalRateLimits is the global object for regulating ratelimits
+	// throughout siad. It is set using the gateway module.
+	GlobalRateLimits *ratelimit.RateLimit
+)
+
+var (
 	// BootstrapPeers is a list of peers that can be used to find other peers -
 	// when a client first connects to the network, the only options for
 	// finding peers are either manual entry of peers or to use a hardcoded
@@ -163,15 +169,11 @@ type (
 		// supply the given RPC ID.
 		RegisterRPC(string, RPCFunc)
 
-		// GlobalRateLimits returns the currently set global rate limits of
-		// siad.
-		GlobalRateLimits() *ratelimit.RateLimit
-
 		// SetGlobalRateLimits changes the global rate limits for siad.
 		SetGlobalRateLimits(downloadSpeed, uploadSpeed int64) error
 
 		// RateLimits returns the currently set bandwidth limits of the gateway.
-		RateLimits() *ratelimit.RateLimit
+		RateLimits() (int64, int64)
 
 		// SetRateLimits changes the rate limits for the peer-connections of the
 		// gateway.
