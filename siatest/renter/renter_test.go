@@ -31,15 +31,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// Test Limitations
-//
-// Timeouts - when possible test should be run in parallel to improve runtime
-//
-// panic: too many open files - There is a limit to how many tests can be run in
-// parallel (~10).  When too many test groups are trying to be created at the
-// same time the test package panics because to many files have been created and
-// it can't support any more tests
-
 // test is a helper struct for running subtests when tests can use the same test
 // group
 type test struct {
@@ -50,7 +41,7 @@ type test struct {
 // runRenterTests is a helper function to run the subtests when tests can use
 // the same test group
 func runRenterTests(t *testing.T, gp siatest.GroupParams, tests []test) error {
-	tg, err := siatest.NewGroupFromTemplate(siatest.TestDir(t.Name()), gp)
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
 	if err != nil {
 		return errors.AddContext(err, "failed to create group")
 	}
@@ -256,7 +247,7 @@ func TestRenterThree(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// t.Parallel()
+	t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -1454,7 +1445,7 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	// Add a renter with a custom allowance to give it plenty of time to renew
 	// the contract later.
-	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
+	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 1)
 	renterParams.Allowance.Period = 100
@@ -1592,7 +1583,7 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 // allowance after the allowance was cancelled will trigger the correct contract
 // formation.
 func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
-	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
+	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -1816,7 +1807,7 @@ func TestRenterContracts(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
-	testDir := siatest.TestDir(t.Name())
+	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
@@ -2211,10 +2202,7 @@ func TestRenterLosingHosts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// t.Parallel()
-	//
-	// too many open files error when running locally.  Tests do not run in
-	// parallel on current GitLab CI so no impact to online run time
+	t.Parallel()
 
 	// Create a testgroup without a renter so renter can be added with custom
 	// allowance
@@ -2327,6 +2315,9 @@ func TestRenterLosingHosts(t *testing.T) {
 		files, err := r.RenterFilesGet()
 		if err != nil {
 			return err
+		}
+		if len(files.Files) == 0 {
+			return errors.New("renter has no files")
 		}
 		if files.Files[0].Redundancy != 1.5 {
 			return fmt.Errorf("Expected redundancy to be 1.5 but was %v", files.Files[0].Redundancy)
@@ -2617,10 +2608,7 @@ func TestRenterPersistData(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// t.Parallel()
-	//
-	// too many open files error when running locally.  Tests do not run in
-	// parallel on current GitLab CI so no impact to online run time
+	t.Parallel()
 
 	// Get test directory
 	testDir := renterTestDir(t.Name())
@@ -3202,10 +3190,7 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// t.Parallel()
-	//
-	// too many open files error when running locally.  Tests do not run in
-	// parallel on current GitLab CI so no impact to online run time
+	t.Parallel()
 
 	// Create a testgroup,
 	groupParams := siatest.GroupParams{

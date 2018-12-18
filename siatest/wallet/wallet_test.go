@@ -120,7 +120,7 @@ func TestSignTransaction(t *testing.T) {
 	}
 
 	// Create a new server
-	testNode, err := siatest.NewNode(node.AllModules(siatest.TestDir(t.Name())))
+	testNode, err := siatest.NewNode(node.AllModules(walletTestDir(t.Name())))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestWatchOnly(t *testing.T) {
 	}
 
 	// Create a new server
-	testNode, err := siatest.NewNode(node.AllModules(siatest.TestDir(t.Name())))
+	testNode, err := siatest.NewNode(node.AllModules(walletTestDir(t.Name())))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +340,7 @@ func TestUnspentOutputs(t *testing.T) {
 	}
 
 	// Create a new server
-	testNode, err := siatest.NewNode(node.AllModules(siatest.TestDir(t.Name())))
+	testNode, err := siatest.NewNode(node.AllModules(walletTestDir(t.Name())))
 	if err != nil {
 		t.Fatal(err)
 	}
