@@ -328,7 +328,6 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	if err := setRateLimits(g.rl, g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed); err != nil {
 		return nil, err
 	}
-	modules.GlobalRateLimits = ratelimit.NewRateLimit(0, 0, 0)
 	if err := setRateLimits(modules.GlobalRateLimits, g.persist.GlobalMaxDownloadSpeed, g.persist.GlobalMaxUploadSpeed); err != nil {
 		return nil, err
 	}

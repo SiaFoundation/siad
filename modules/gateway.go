@@ -16,7 +16,7 @@ const (
 var (
 	// GlobalRateLimits is the global object for regulating ratelimits
 	// throughout siad. It is set using the gateway module.
-	GlobalRateLimits *ratelimit.RateLimit
+	GlobalRateLimits = ratelimit.NewRateLimit(0, 0, 0)
 )
 
 var (
