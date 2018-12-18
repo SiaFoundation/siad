@@ -4,6 +4,7 @@ import (
 	"net"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 const (
@@ -162,8 +163,15 @@ type (
 		// supply the given RPC ID.
 		RegisterRPC(string, RPCFunc)
 
+		// GlobalRateLimits returns the currently set global rate limits of
+		// siad.
+		GlobalRateLimits() *ratelimit.RateLimit
+
+		// SetGlobalRateLimits changes the global rate limits for siad.
+		SetGlobalRateLimits(downloadSpeed, uploadSpeed int64) error
+
 		// RateLimits returns the currently set bandwidth limits of the gateway.
-		RateLimits() (int64, int64)
+		RateLimits() *ratelimit.RateLimit
 
 		// SetRateLimits changes the rate limits for the peer-connections of the
 		// gateway.

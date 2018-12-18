@@ -25,7 +25,7 @@ func TestGatewayRatelimit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	// Get the current ratelimit.
+	// Get the current ratelimits.
 	gg, err := testNode.GatewayGet()
 	if err != nil {
 		t.Fatal(err)
@@ -34,10 +34,18 @@ func TestGatewayRatelimit(t *testing.T) {
 	if gg.MaxDownloadSpeed != 0 || gg.MaxUploadSpeed != 0 {
 		t.Fatalf("Limits should be 0 but were %v and %v", gg.MaxDownloadSpeed, gg.MaxUploadSpeed)
 	}
+	if gg.MaxGlobalDownloadSpeed != 0 || gg.MaxGlobalUploadSpeed != 0 {
+		t.Fatalf("Limits should be 0 but were %v and %v", gg.MaxGlobalDownloadSpeed, gg.MaxGlobalUploadSpeed)
+	}
 	// Change the limits.
 	ds := int64(100)
 	us := int64(200)
 	if err := testNode.GatewayRateLimitPost(ds, us); err != nil {
+		t.Fatal(err)
+	}
+	gds := int64(300)
+	gus := int64(400)
+	if err := testNode.GatewayGlobalRateLimitPost(gds, gus); err != nil {
 		t.Fatal(err)
 	}
 	// Get the ratelimit again.
@@ -49,6 +57,10 @@ func TestGatewayRatelimit(t *testing.T) {
 	if gg.MaxDownloadSpeed != ds || gg.MaxUploadSpeed != us {
 		t.Fatalf("Limits should be %v/%v but are %v/%v",
 			ds, us, gg.MaxDownloadSpeed, gg.MaxUploadSpeed)
+	}
+	if gg.MaxGlobalDownloadSpeed != gds || gg.MaxGlobalUploadSpeed != gus {
+		t.Fatalf("Limits should be %v/%v but are %v/%v",
+			gds, gus, gg.MaxGlobalDownloadSpeed, gg.MaxGlobalUploadSpeed)
 	}
 	// Restart the node.
 	if err := testNode.RestartNode(); err != nil {
@@ -63,5 +75,9 @@ func TestGatewayRatelimit(t *testing.T) {
 	if gg.MaxDownloadSpeed != ds || gg.MaxUploadSpeed != us {
 		t.Fatalf("Limits should be %v/%v but are %v/%v",
 			ds, us, gg.MaxDownloadSpeed, gg.MaxUploadSpeed)
+	}
+	if gg.MaxGlobalDownloadSpeed != gds || gg.MaxGlobalUploadSpeed != gus {
+		t.Fatalf("Limits should be %v/%v but are %v/%v",
+			gds, gus, gg.MaxGlobalDownloadSpeed, gg.MaxGlobalUploadSpeed)
 	}
 }
