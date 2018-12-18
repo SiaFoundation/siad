@@ -1038,7 +1038,7 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 	if stream {
 		// TODO: http streaming isn't working so we hardcode a reader for
 		// testing.
-		err = api.renter.UploadStreamFromReader(up, strings.NewReader("hello world"))
+		err = api.renter.UploadStreamFromReader(up, req.Body)
 	} else {
 		err = api.renter.Upload(up)
 	}

@@ -345,7 +345,10 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	if chunk.sourceReader != nil {
 		// Read up to chunk.length bytes from the stream.
 		byteBuf := make([]byte, chunk.length)
-		_, err := chunk.sourceReader.Read(byteBuf)
+		n, err := chunk.sourceReader.Read(byteBuf)
+		if n == 0 {
+			return errors.New("no data read from sourceReader")
+		}
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 			return errors.AddContext(err, "failed to read chunk from sourceReader")
 		}

@@ -302,26 +302,18 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Test requires at least 1 renter")
 	}
 	// Create some random data to write.
-	d := []byte("hello world")
-
-	// Prepare the stream.
-	siaPath := "/foo"
-	r := tg.Renters()[0]
-	w, errChan := r.RenterUploadStreamPost(siaPath, 1, uint64(len(tg.Hosts())-1), false)
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	data := fastrand.Bytes(fileSize)
+	d := bytes.NewReader(data)
 
 	// Upload the data.
-	_, err := w.Write(d)
+	siaPath := "/foo"
+	r := tg.Renters()[0]
+	err := r.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Close the stream to finish upload.
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
-	// Wait for the error response.
-	if err := <-errChan; err != nil {
-		t.Fatal(err)
-	}
+
 	// Make sure the file reached full redundancy.
 	err = build.Retry(100, 200*time.Millisecond, func() error {
 		rfg, err := r.RenterFileGet(siaPath)
@@ -332,18 +324,24 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 			return fmt.Errorf("expected redundancy %v but was %v",
 				len(tg.Hosts()), rfg.File.Redundancy)
 		}
+		if rfg.File.Filesize < uint64(len(data)) {
+			return fmt.Errorf("expected uploaded file to have a size greater %v but was %v",
+				len(data), rfg.File.Filesize)
+		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Download the file again.
-	data, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(d)))
+	downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Compare downloaded data to original one.
-	if !bytes.Equal(d, data) {
+	if !bytes.Equal([]byte(data), downloadedData) {
+		t.Log("originalData:", data)
+		t.Log("downloadedData:", downloadedData)
 		t.Fatal("Downloaded data doesn't match uploaded data")
 	}
 }

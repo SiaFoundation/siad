@@ -413,22 +413,15 @@ func (c *Client) RenterUploadDefaultPost(path, siaPath string) (err error) {
 // RenterUploadStreamPost uploads data using a stream. It will return a
 // io.WriteCloser that can be used to write the data to the request body. The
 // writer needs to be closed when done for the whole file to be uploaded.
-func (c *Client) RenterUploadStreamPost(siaPath string, dataPieces, parityPieces uint64, force bool) (io.WriteCloser, chan error) {
-	pipeReader, pipeWriter := io.Pipe()
+func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath string, dataPieces, parityPieces uint64, force bool) error {
 	siaPath = escapeSiaPath(trimSiaPath(siaPath))
-	// Encode the arguments.
 	values := url.Values{}
 	values.Set("datapieces", strconv.FormatUint(dataPieces, 10))
 	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
 	values.Set("force", strconv.FormatBool(force))
 	values.Set("stream", strconv.FormatBool(true))
-	// Return the error in a channel.
-	errChan := make(chan error)
-	go func() {
-		_, err := c.postRawResponse(fmt.Sprintf("/renter/upload/%s?%s", siaPath, values.Encode()), pipeReader)
-		errChan <- err
-	}()
-	return pipeWriter, errChan
+	_, err := c.postRawResponse(fmt.Sprintf("/renter/upload/%s?%s", siaPath, values.Encode()), r)
+	return err
 }
 
 // RenterDirCreatePost uses the /renter/dir/ endpoint to create a directory for the
