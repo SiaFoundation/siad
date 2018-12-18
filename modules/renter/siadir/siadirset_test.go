@@ -197,8 +197,8 @@ func TestUpdateSiaDirSetHealth(t *testing.T) {
 	}
 }
 
-// TestOpenAndCloseWithLock probes the OpenAndLockSiaDir and
-// CloseAndUnlockSiaDir methods
+// TestOpenAndCloseWithLock probes the OpenLockedSiaDirSetEntry and
+// CloseLockedSiaDirSetEntry methods
 func TestOpenAndCloseWithLock(t *testing.T) {
 	// Create SiaDirSet with SiaDir
 	entry, sds, err := newTestSiaDirSetWithDir()
@@ -215,24 +215,24 @@ func TestOpenAndCloseWithLock(t *testing.T) {
 	}
 
 	// Open the siadir and hold the siadir lock
-	entry, err = sds.OpenAndLockSiaDir(siaPath)
+	lockedEntry, err := sds.OpenLockedSiaDirSetEntry(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Open another instance of the entry
-	entry2, err := sds.Open(siaPath)
+	entry, err = sds.Open(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Close the second entry
-	if err = entry2.Close(); err != nil {
+	if err = entry.Close(); err != nil {
 		t.Fatal(err)
 	}
 
 	// Close and unlock locked entry
-	if err = entry.CloseAndUnlockSiaDir(); err != nil {
+	if err = lockedEntry.CloseLockedSiaDirSetEntry(); err != nil {
 		t.Fatal(err)
 	}
 }

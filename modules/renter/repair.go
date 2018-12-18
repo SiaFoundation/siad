@@ -19,16 +19,16 @@ func (r *Renter) managedDirectoryHealth(siaPath string) (float64, float64, time.
 	// Check for bad paths and files
 	fi, err := os.Stat(filepath.Join(r.filesDir, siaPath))
 	if err != nil {
-		return 0, siadir.DefaultDirHealth, time.Time{}, err
+		return 0, 0, time.Time{}, err
 	}
 	if !fi.IsDir() {
-		return 0, siadir.DefaultDirHealth, time.Time{}, fmt.Errorf("%v is not a directory", siaPath)
+		return 0, 0, time.Time{}, fmt.Errorf("%v is not a directory", siaPath)
 	}
 
 	//  Open SiaDir
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
-		return 0, siadir.DefaultDirHealth, time.Time{}, err
+		return 0, 0, time.Time{}, err
 	}
 	defer siaDir.Close()
 
@@ -46,7 +46,7 @@ func (r *Renter) managedFileHealth(siaPath string) (float64, bool, error) {
 	// Load the Siafile.
 	sf, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
-		return siadir.DefaultDirHealth, false, err
+		return 0, false, err
 	}
 	defer sf.Close()
 
@@ -64,7 +64,7 @@ func (r *Renter) managedFileHealth(siaPath string) (float64, bool, error) {
 func (r *Renter) BubbleHealth(siaPath string) error {
 	for {
 		// Grab the siadir and lock it
-		siaDir, err := r.staticDirSet.OpenAndLockSiaDir(siaPath)
+		siaDir, err := r.staticDirSet.OpenLockedSiaDirSetEntry(siaPath)
 		if err != nil {
 			return err
 		}
@@ -83,7 +83,7 @@ func (r *Renter) BubbleHealth(siaPath string) error {
 		}
 
 		// Close and release the lock on the siadir
-		if err = siaDir.CloseAndUnlockSiaDir(); err != nil {
+		if err = siaDir.CloseLockedSiaDirSetEntry(); err != nil {
 			return err
 		}
 

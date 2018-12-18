@@ -178,8 +178,9 @@ func (sd *SiaDir) updateHealth(health, stuckHealth float64, lastCheck time.Time)
 	return sd.saveDir()
 }
 
-// UpdateHealth is a helper wrapper for calling updateHealth when the SiaDir
-// lock is held outside the siadir package
+// UpdateHealth is a helper wrapper for calling updateHealth
 func (sd *SiaDir) UpdateHealth(health, stuckHealth float64, lastCheck time.Time) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
 	return sd.updateHealth(health, stuckHealth, lastCheck)
 }
