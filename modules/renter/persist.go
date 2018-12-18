@@ -272,7 +272,8 @@ func (r *Renter) initPersist() error {
 		return err
 	}
 
-	// Apply unapplied wal txns.
+	// Apply unapplied wal txns before loading the persistence structure to
+	// avoid loading potentially corrupted files.
 	for _, txn := range txns {
 		applyTxn := true
 		for _, update := range txn.Updates {
