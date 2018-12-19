@@ -1533,7 +1533,6 @@ flag indicating if recoverable contracts should be returned.
       "renterfunds":      "1234",           // hastings
       "size":             8192,             // bytes
       "startheight":      50000,            // block height
-      "StorageSpending":  "1234",           // hastings
       "storagespending":  "1234",           // hastings
       "totalcost":        "1234",           // hastings
       "uploadspending":   "1234"            // hastings
@@ -1581,9 +1580,6 @@ Size of the file contract, which is typically equal to the number of bytes that 
 
 **startheight** | block height  
 Block height that the file contract began on.  
-
-**StorageSpending** | hastings
-DEPRECATED: This is the exact same value as StorageSpending, but it has incorrect capitalization. This was fixed in 1.3.2, but this field is kept to preserve backwards compatibility on clients who depend on the incorrect capitalization. This field will be removed in the future, so clients should switch to the StorageSpending field (above) with the correct lowercase name.  
 
 **storagespending** | hastings  
 Amount of contract funds that have been spent on storage.  
