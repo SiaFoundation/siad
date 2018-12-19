@@ -201,7 +201,7 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	sf.staticMetadata.FileSize = int64(fileSize)
-	updates, err := sf.saveMetadataUpdate()
+	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
 	}
