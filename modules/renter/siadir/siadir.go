@@ -8,18 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 const (
-	// persistVersion defines the Sia version that the persistence was last
-	// updated
-	persistVersion = "1.4.0"
-
 	// SiaDirExtension is the name of the metadata file for the sia directory
 	SiaDirExtension = ".siadir"
 
@@ -37,11 +31,6 @@ var (
 	// ErrUnknownThread is an error when a siadir is trying to be closed by a
 	// thread that is not in the threadMap
 	ErrUnknownThread = errors.New("thread should not be calling Close(), does not have control of the siadir")
-
-	siaDirMetadataHeader = persist.Metadata{
-		Header:  "Sia Directory Metadata",
-		Version: persistVersion,
-	}
 )
 
 type (
@@ -141,46 +130,14 @@ func LoadSiaDir(rootDir, siaPath string, deps modules.Dependencies, wal *writeah
 	}
 	defer file.Close()
 
-	// Read the metadata header and version from the file.
-	var header, version string
-	dec := json.NewDecoder(file)
-	if err := dec.Decode(&header); err != nil {
-		return nil, errors.AddContext(err, "unable to decode header")
-	}
-	if header != siaDirMetadataHeader.Header {
-		return nil, errors.New("header does not match siaDir metadata header")
-	}
-	if err := dec.Decode(&version); err != nil {
-		return nil, errors.AddContext(err, "unable to decode version")
-	}
-	if version != siaDirMetadataHeader.Version {
-		return nil, errors.New("version does not match siaDir metadata version")
-	}
-
-	// Read everything else.
-	remainingBytes, err := ioutil.ReadAll(dec.Buffered())
+	// Read the file
+	bytes, err := ioutil.ReadAll(file)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to read persisted data")
-	}
-	// The buffer may or may not have read the rest of the file, read the rest
-	// of the file to be certain.
-	remainingBytesExtra, err := ioutil.ReadAll(file)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to read persisted data")
-	}
-	remainingBytes = append(remainingBytes, remainingBytesExtra...)
-
-	// Verify and remove checksum
-	var checksum crypto.Hash
-	err = json.Unmarshal(remainingBytes[:67], &checksum)
-	if err == nil && checksum != crypto.HashBytes(remainingBytes[68:]) {
-		return nil, errors.New("loading a file with a bad checksum")
-	} else if err == nil {
-		remainingBytes = remainingBytes[68:]
 	}
 
 	// Parse the json object.
-	err = json.Unmarshal(remainingBytes, &sd.staticMetadata)
+	err = json.Unmarshal(bytes, &sd.staticMetadata)
 
 	return sd, err
 }

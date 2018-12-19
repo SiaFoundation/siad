@@ -1,7 +1,6 @@
 package siadir
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,7 +8,6 @@ import (
 	"reflect"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
@@ -112,7 +110,7 @@ func createDirMetadataAll(siaPath, rootDir string) ([]writeaheadlog.Update, erro
 // updating the siaDir metadata
 func createMetadataUpdate(metadata siaDirMetadata) (writeaheadlog.Update, error) {
 	// Encode metadata
-	data, err := encodeMetadata(metadata)
+	data, err := json.Marshal(metadata)
 	if err != nil {
 		return writeaheadlog.Update{}, err
 	}
@@ -123,33 +121,6 @@ func createMetadataUpdate(metadata siaDirMetadata) (writeaheadlog.Update, error)
 		Name:         updateMetadataName,
 		Instructions: encoding.MarshalAll(data, path),
 	}, nil
-}
-
-// encodeMetadata encodes the metadata, header, and version and returns the
-// combined byte slice
-func encodeMetadata(metadata siaDirMetadata) ([]byte, error) {
-	// Write the metadata header and version to the buffer.
-	buf := new(bytes.Buffer)
-	enc := json.NewEncoder(buf)
-	if err := enc.Encode(siaDirMetadataHeader.Header); err != nil {
-		return []byte{}, errors.AddContext(err, "unable to encode metadata header")
-	}
-	if err := enc.Encode(siaDirMetadataHeader.Version); err != nil {
-		return []byte{}, errors.AddContext(err, "unable to encode metadata version")
-	}
-
-	// Marshal the metadata into json and write the checksum + result to the
-	// buffer.
-	objBytes, err := json.MarshalIndent(metadata, "", "\t")
-	if err != nil {
-		return []byte{}, errors.AddContext(err, "unable to marshal the provided metadata")
-	}
-	checksum := crypto.HashBytes(objBytes)
-	if err := enc.Encode(checksum); err != nil {
-		return []byte{}, errors.AddContext(err, "unable to encode checksum")
-	}
-	buf.Write(objBytes)
-	return buf.Bytes(), nil
 }
 
 // readMetadataUpdate unmarshals the update's instructions and returns the
@@ -164,9 +135,9 @@ func readMetadataUpdate(update writeaheadlog.Update) (data []byte, path string, 
 	return
 }
 
-// ApplyUpdates  applies a number of writeaheadlog updates to the corresponding
+// applyUpdates  applies a number of writeaheadlog updates to the corresponding
 // SiaDir.
-func (sd *SiaDir) ApplyUpdates(updates ...writeaheadlog.Update) error {
+func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 	// Apply updates.
 	for _, u := range updates {
 		err := applyUpdate(sd.deps, u)
@@ -194,7 +165,7 @@ func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) err
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
 	// Apply the updates.
-	if err := sd.ApplyUpdates(updates...); err != nil {
+	if err := sd.applyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.

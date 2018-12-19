@@ -1,12 +1,11 @@
 package siadir
 
 import (
-	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -88,24 +87,19 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 	}
 
 	// Check path
-	strings1 := strings.Split(path, "/")
-	path = filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
-	strings2 := strings.Split(path, "/")
-	for i, s := range strings1 {
-		if s != strings2[i] {
-			t.Log("update path", strings1)
-			t.Log("siadir path", strings1)
-			t.Fatal("path not correct in update")
-		}
+	path2 := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
+	if path != path2 {
+		t.Fatalf("Path not correct: expected %v got %v", path2, path)
 	}
 
 	// Check data
-	metadata, err := encodeMetadata(sd.staticMetadata)
+	var metadata siaDirMetadata
+	err = json.Unmarshal(data, &metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Compare(data, metadata) != 0 {
-		t.Fatal("data not correct in update")
+	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -152,7 +146,7 @@ func TestApplyUpdates(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		testApply(t, siadir, siadir.ApplyUpdates)
+		testApply(t, siadir, siadir.applyUpdates)
 	})
 	t.Run("TestCreateAndApplyTransaction", func(t *testing.T) {
 		siadir, err := newTestDir(t.Name())
