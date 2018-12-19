@@ -37,6 +37,12 @@ func NewStreamShard(r io.Reader) *StreamShard {
 	}
 }
 
+// Close closes the underlying channel of the shard.
+func (ss *StreamShard) Close() error {
+	close(ss.signalChan)
+	return nil
+}
+
 // Result returns the returned values of calling Read on the shard.
 func (ss *StreamShard) Result() (int, error) {
 	ss.mu.Lock()
@@ -50,9 +56,8 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	n, err := ss.r.Read(b)
-	ss.n = n
+	ss.n += n
 	ss.err = err
-	close(ss.signalChan)
 	return n, err
 }
 
@@ -122,7 +127,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 			// from the shard though. Otherwise we will upload the wrong chunk
 			// for the next chunkIndex. We don't need to check the error though
 			// since we check that anyway at the end of the loop.
-			_, _ = ss.Read(make([]byte, entry.ChunkSize()))
+			_, _ = io.ReadFull(ss, make([]byte, entry.ChunkSize()))
 		}
 		// Wait for the shard to be read.
 		select {
@@ -133,7 +138,8 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 
 		// If an io.EOF error occurred or less than chunkSize was read, we are
 		// done. Otherwise we report the error.
-		if n, err := ss.Result(); uint64(n) < entry.ChunkSize() || err == io.EOF {
+		if _, err := ss.Result(); err == io.EOF {
+			// Adjust the fileSize
 			return nil
 		} else if ss.err != nil {
 			return ss.err
@@ -186,7 +192,5 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.
 	if err != nil {
 		return nil, err
 	}
-	defer entry.Close()
-
 	return entry, nil
 }

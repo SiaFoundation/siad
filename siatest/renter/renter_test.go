@@ -302,7 +302,8 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Test requires at least 1 renter")
 	}
 	// Create some random data to write.
-	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	//fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	fileSize := 6383
 	data := fastrand.Bytes(fileSize)
 	d := bytes.NewReader(data)
 
@@ -324,8 +325,8 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 			return fmt.Errorf("expected redundancy %v but was %v",
 				len(tg.Hosts()), rfg.File.Redundancy)
 		}
-		if rfg.File.Filesize < uint64(len(data)) {
-			return fmt.Errorf("expected uploaded file to have a size greater %v but was %v",
+		if rfg.File.Filesize != uint64(len(data)) {
+			return fmt.Errorf("expected uploaded file to have size %v but was %v",
 				len(data), rfg.File.Filesize)
 		}
 		return nil

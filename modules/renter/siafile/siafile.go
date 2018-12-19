@@ -184,13 +184,27 @@ func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 		})
 		updates = append(updates, sf.saveChunkUpdate(len(sf.chunks)-1))
 	}
-	// Update the filesize in the metadata.
+	// Update the fileSize.
 	sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(len(sf.chunks)))
 	mdu, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
 	}
 	updates = append(updates, mdu...)
+	//return sf.createAndApplyTransaction(updates...)
+	// Update the filesize in the metadata.
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// SetFileSize changes the fileSize of the SiaFile.
+func (sf *SiaFile) SetFileSize(fileSize uint64) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.FileSize = int64(fileSize)
+	updates, err := sf.saveMetadataUpdate()
+	if err != nil {
+		return err
+	}
 	return sf.createAndApplyTransaction(updates...)
 }
 

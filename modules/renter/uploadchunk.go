@@ -52,7 +52,7 @@ type unfinishedUploadChunk struct {
 
 	// sourceReader is an optional source for the logical chunk data. If
 	// available it will be tried before the repair path or remote repair.
-	sourceReader io.Reader
+	sourceReader io.ReadCloser
 
 	// Worker synchronization fields. The mutex only protects these fields.
 	//
@@ -345,9 +345,15 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	if chunk.sourceReader != nil {
 		// Read up to chunk.length bytes from the stream.
 		byteBuf := make([]byte, chunk.length)
-		n, err := chunk.sourceReader.Read(byteBuf)
-		if n == 0 {
-			return errors.New("no data read from sourceReader")
+		n, err := io.ReadFull(chunk.sourceReader, byteBuf)
+		defer chunk.sourceReader.Close()
+		// Adjust the fileSize. Since we don't know the length of the stream
+		// beforehand we simply assume that a whole chunk will be added to the
+		// file. That's why we subtract the difference between the size of a
+		// chunk and n here.
+		adjustedSize := chunk.fileEntry.Size() - chunk.length + uint64(n)
+		if errSize := chunk.fileEntry.SetFileSize(adjustedSize); errSize != nil {
+			return errors.AddContext(errSize, "failed to adjust FileSize")
 		}
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 			return errors.AddContext(err, "failed to read chunk from sourceReader")
