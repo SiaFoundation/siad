@@ -72,6 +72,11 @@ The standard response indicating the request was successfully processed is HTTP 
 The standard error response indicating the request failed for any reason, is a 4xx or 5xx HTTP status code with an error JSON object describing the error.
 
 # Authentication
+> Example POST curl call with Authentication
+
+```go
+curl -A "Sia-Agent" --user "":"foobar" --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
+```
 
 API authentication is enabled by default, using a password stored in a flat file. The location of this file is:
 
@@ -88,6 +93,10 @@ Authentication is HTTP Basic Authentication as described in [RFC 2617](https://t
 For example, if the API password is "foobar" the request header should include
 
 `Authorization: Basic OmZvb2Jhcg==`
+
+And for a curl call the following would be included
+
+`--user "":"foobar"`
 
 Authentication can be disabled by passing the `--authenticate-api=false` flag to siad. You can change the password by modifying the password file, setting the `SIA_API_PASSWORD` environment variable, or passing the `--temp-password` flag to siad.
 
@@ -1008,6 +1017,10 @@ conversionrate is the likelihood given the settings passed to estimatescore that
 The hostdb maintains a database of all hosts known to the network. The database identifies hosts by their public key and keeps track of metrics such as price.
 
 ## /hostdb [GET]
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/hostdb"
+```
 
 Shows some general information about the state of the hostdb.
 
@@ -1027,6 +1040,10 @@ indicates if all known hosts have been scanned at least once.
 lists all of the active hosts known to the renter, sorted by preference.
 
 ### Query String Parameters
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/hostdb/active"
+```
 #### OPTIONAL
 **numhosts** | int  
 Number of hosts to return. The actual number of hosts returned may be less if there are insufficient active hosts. Optional, the default is all active hosts.  
@@ -1200,6 +1217,10 @@ The string representation of the full public key, used when calling /hostdb/host
 Indicates if the host is currently being filtered from the HostDB
 
 ## /hostdb/all [GET]
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/hostdb/all"
+```
 
 Lists all of the hosts known to the renter. Hosts are not guaranteed to be in any particular order, and the order may change in subsequent calls.
 
@@ -1211,6 +1232,10 @@ Repsonse is the same as [`/hostdb/active`](#hosts)
 fetches detailed information about a particular host, including metrics regarding the score of the host within the database. It should be noted that each renter uses different metrics for selecting hosts, and that a good score on in one hostdb does not mean that the host will be successful on the network overall.
 
 ### Path Parameters
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/hostdb/hosts/<pubkey>"
+```
 #### REQUIRED
 **pubkey**  
 The public key of the host. Each public key identifies a single host.  
@@ -1281,6 +1306,12 @@ Lets you enable and disable a filter mode for the hostdb. Currenlty the two mode
 **NOTE:** Enabling and disabling a filter mode can result in changes with your current contracts with can result in an increase in contract fee spending. For example, if `blacklist` mode is enabled, any hosts that you currently have contracts with that are also on the provide list of `hosts` will have their contracts replaced with non-blacklisted hosts. When `whitelist` mode is enabled, contracts will be replaced until there are only contracts with whitelisted hosts. Even disabling a filter mode can result in a change in contracts if there are better scoring hosts in your hostdb that were previously being filtered out.  
 
 ### Query String Parameters
+> curl example
+```go
+curl -A "Sia-Agent" --user "":"foobar" --data '{"filtermode" : "whitelist","hosts" : ["ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef","ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef","ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]}' "localhost:9980/hostdb/filtermode"
+
+curl -A "Sia-Agent" --user "":"foobar" --data '{"filtermode" : "disable"}' "localhost:9980/hostdb/filtermode"
+```
 #### REQUIRED
 **filtermode** | string  
 Can be either whitelist, blacklist, or disable.  
