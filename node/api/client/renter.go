@@ -420,7 +420,7 @@ func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath string, dataPieces,
 	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
 	values.Set("force", strconv.FormatBool(force))
 	values.Set("stream", strconv.FormatBool(true))
-	_, err := c.postRawResponse(fmt.Sprintf("/renter/upload/%s?%s", siaPath, values.Encode()), r)
+	_, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", siaPath, values.Encode()), r)
 	return err
 }
 

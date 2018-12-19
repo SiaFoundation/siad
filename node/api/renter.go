@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -986,24 +985,8 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{"failed to unescape the source path"}, http.StatusBadRequest)
 		return
 	}
-	// Check whether the file will be streamed or not.
-	stream := false
-	if f := req.FormValue("stream"); f != "" {
-		stream, err = strconv.ParseBool(f)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'stream' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-	// Make sure that either the source is specified or stream.
-	// NOTE the renter would actually support both but there is probably no
-	// use-case for that right now.
-	if stream && source != "" {
-		WriteError(w, Error{"can't set stream=true and a source"}, http.StatusBadRequest)
-		return
-	}
 	// Source must be absolute path.
-	if !stream && !filepath.IsAbs(source) {
+	if !filepath.IsAbs(source) {
 		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
@@ -1029,19 +1012,56 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	up := modules.FileUploadParams{
+	err = api.renter.Upload(modules.FileUploadParams{
 		Source:      source,
 		SiaPath:     siaPath,
 		ErasureCode: ec,
 		Force:       force,
+	})
+	if err != nil {
+		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)
+		return
 	}
-	if stream {
-		// TODO: http streaming isn't working so we hardcode a reader for
-		// testing.
-		err = api.renter.UploadStreamFromReader(up, req.Body)
-	} else {
-		err = api.renter.Upload(up)
+	WriteSuccess(w)
+}
+
+// renterUploadStreamHandler handles the API call to upload a file using a
+// stream.
+func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
 	}
+	// Check whether existing file should be overwritten
+	force := false
+	if f := queryForm.Get("force"); f != "" {
+		force, err = strconv.ParseBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	// Parse the erasure coder.
+	ec, err := parseErasureCodingParameters(queryForm.Get("datapieces"), queryForm.Get("paritypieces"))
+	if err != nil {
+		WriteError(w, Error{"unable to parse erasure code settings" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Call the renter to upload the file.
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	up := modules.FileUploadParams{
+		SiaPath:     siaPath,
+		ErasureCode: ec,
+		Force:       force,
+	}
+	err = api.renter.UploadStreamFromReader(up, req.Body)
 	if err != nil {
 		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)
 		return
