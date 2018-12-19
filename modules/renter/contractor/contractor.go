@@ -60,7 +60,7 @@ type Contractor struct {
 	// renewedTo links the old contract's ID to the new contract's ID
 	staticContracts      *proto.ContractSet
 	oldContracts         map[types.FileContractID]modules.RenterContract
-	recoverableContracts []modules.RecoverableContract
+	recoverableContracts map[types.FileContractID]modules.RecoverableContract
 	renewedFrom          map[types.FileContractID]types.FileContractID
 	renewedTo            map[types.FileContractID]types.FileContractID
 }
@@ -216,16 +216,17 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 
 		interruptMaintenance: make(chan struct{}),
 
-		staticContracts:     contractSet,
-		downloaders:         make(map[types.FileContractID]*hostDownloader),
-		editors:             make(map[types.FileContractID]*hostEditor),
-		sessions:            make(map[types.FileContractID]*hostSession),
-		oldContracts:        make(map[types.FileContractID]modules.RenterContract),
-		contractIDToPubKey:  make(map[types.FileContractID]types.SiaPublicKey),
-		pubKeysToContractID: make(map[string]types.FileContractID),
-		renewing:            make(map[types.FileContractID]bool),
-		renewedFrom:         make(map[types.FileContractID]types.FileContractID),
-		renewedTo:           make(map[types.FileContractID]types.FileContractID),
+		staticContracts:      contractSet,
+		downloaders:          make(map[types.FileContractID]*hostDownloader),
+		editors:              make(map[types.FileContractID]*hostEditor),
+		sessions:             make(map[types.FileContractID]*hostSession),
+		oldContracts:         make(map[types.FileContractID]modules.RenterContract),
+		recoverableContracts: make(map[types.FileContractID]modules.RecoverableContract),
+		contractIDToPubKey:   make(map[types.FileContractID]types.SiaPublicKey),
+		pubKeysToContractID:  make(map[string]types.FileContractID),
+		renewing:             make(map[types.FileContractID]bool),
+		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
+		renewedTo:            make(map[types.FileContractID]types.FileContractID),
 	}
 
 	// Close the contract set and logger upon shutdown.

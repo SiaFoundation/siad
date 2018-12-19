@@ -34,13 +34,19 @@ func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.B
 			if known {
 				continue
 			}
+			// Make sure we don't track that contract already as recoverable.
+			_, known = c.recoverableContracts[fcid]
+			if known {
+				continue
+			}
+
 			// Mark the contract for recovery.
-			c.recoverableContracts = append(c.recoverableContracts, modules.RecoverableContract{
+			c.recoverableContracts[fcid] = modules.RecoverableContract{
 				FileContract:  fc,
 				ID:            fcid,
 				HostPublicKey: hostKey,
 				InputParentID: txn.SiacoinInputs[0].ParentID,
-			})
+			}
 		}
 	}
 }

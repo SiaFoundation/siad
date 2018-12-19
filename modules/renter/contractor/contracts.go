@@ -88,8 +88,10 @@ func (c *Contractor) OldContracts() []modules.RenterContract {
 func (c *Contractor) RecoverableContracts() []modules.RecoverableContract {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	contracts := make([]modules.RecoverableContract, len(c.recoverableContracts))
-	copy(contracts, c.recoverableContracts)
+	contracts := make([]modules.RecoverableContract, 0, len(c.recoverableContracts))
+	for _, c := range c.recoverableContracts {
+		contracts = append(contracts, c)
+	}
 	return contracts
 }
 
