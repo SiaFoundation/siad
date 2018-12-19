@@ -22,6 +22,19 @@ func (c *Contractor) managedCancelContract(cid types.FileContractID) error {
 	})
 }
 
+// managedContractByPublicKey returns the contract with the key specified, if
+// it exists. The contract will be resolved if possible to the most recent
+// child contract.
+func (c *Contractor) managedContractByPublicKey(pk types.SiaPublicKey) (modules.RenterContract, bool) {
+	c.mu.RLock()
+	id, ok := c.pubKeysToContractID[string(pk.Key)]
+	c.mu.RUnlock()
+	if !ok {
+		return modules.RenterContract{}, false
+	}
+	return c.staticContracts.View(id)
+}
+
 // managedContractUtility returns the ContractUtility for a contract with a given id.
 func (c *Contractor) managedContractUtility(id types.FileContractID) (modules.ContractUtility, bool) {
 	rc, exists := c.staticContracts.View(id)
@@ -35,13 +48,7 @@ func (c *Contractor) managedContractUtility(id types.FileContractID) (modules.Co
 // exists. The contract will be resolved if possible to the most recent child
 // contract.
 func (c *Contractor) ContractByPublicKey(pk types.SiaPublicKey) (modules.RenterContract, bool) {
-	c.mu.RLock()
-	id, ok := c.pubKeysToContractID[pk.String()]
-	c.mu.RUnlock()
-	if !ok {
-		return modules.RenterContract{}, false
-	}
-	return c.staticContracts.View(id)
+	return c.managedContractByPublicKey(pk)
 }
 
 // CancelContract cancels the Contractor's contract by marking it !GoodForRenew

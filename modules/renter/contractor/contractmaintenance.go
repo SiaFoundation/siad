@@ -669,6 +669,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	defer c.tg.Done()
 
+	// Recover unknown contracts found on the blockchain.
+	c.managedRecoverContracts()
+
 	// Archive contracts that need to be archived before doing additional
 	// maintenance, check for any duplicates caused by interruption, and then
 	// prune the pubkey map.
