@@ -3996,23 +3996,33 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal("contracts after restart are not the same as before")
 	}
 
-	// TODO the following code won't work before recovery is fully implemented.
+	// Mine a block to trigger the recovery.
+	if err := tg.Miners()[0].MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
 	// The new renter should have the same active contracts as the old one.
-	//rc, err = newRenter.RenterContractsGet()
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//if len(rc.ActiveContracts) != len(oldContracts) {
-	//	t.Fatalf("Didn't recover the right number of contracts, expected %v but was %v",
-	//		len(oldContracts), len(rc.ActiveContracts))
-	//}
-	//for _, c := range rc.ActiveContracts {
-	//	contract, exists := oldContracts[c.ID]
-	//	if !exists {
-	//		t.Fatal("Recovered unknown contract", c.ID)
-	//	}
-	//	if !reflect.DeepEqual(c, contract) {
-	//		t.Fatal("Recovered contract doesn't match expected contract")
-	//	}
-	//}
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		rc, err = newRenter.RenterContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rc.ActiveContracts) != len(oldContracts) {
+			return fmt.Errorf("Didn't recover the right number of contracts, expected %v but was %v",
+				len(oldContracts), len(rc.ActiveContracts))
+		}
+		for _, c := range rc.ActiveContracts {
+			contract, exists := oldContracts[c.ID]
+			if !exists {
+				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
+			}
+			if !reflect.DeepEqual(c, contract) {
+				return errors.New("Recovered contract doesn't match expected contract")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
