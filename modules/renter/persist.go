@@ -357,7 +357,7 @@ func (r *Renter) initPersist() error {
 					return errors.AddContext(err, "failed to apply SiaDir update")
 				}
 			} else if isBubbleHealthUpdate(update) {
-				if err := r.ApplyBubbleUpdate(update); err != nil {
+				if err := r.managedApplyBubbleUpdate(update); err != nil {
 					return errors.AddContext(err, "failed to apply bubble update")
 				}
 			} else {
@@ -418,8 +418,8 @@ func convertPersistVersionFrom040To133(path string) error {
 	return persist.SaveJSON(metadata, p, path)
 }
 
-// ApplyBubbleUpdate applies the Bubble Health wal updates
-func (r *Renter) ApplyBubbleUpdate(update writeaheadlog.Update) error {
+// managedApplyBubbleUpdate applies the Bubble Health wal updates
+func (r *Renter) managedApplyBubbleUpdate(update writeaheadlog.Update) error {
 	// Read update
 	siaPath := readBubbleHealthUpdate(update)
 

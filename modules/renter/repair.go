@@ -146,7 +146,7 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (float64, float
 			}
 			lastCheck = time.Now()
 		} else {
-			// Directory is found, read the directort metadata file
+			// Directory is found, read the directory metadata file
 			health, stuckHealth, lastCheck, err = r.managedDirectoryHealth(filepath.Join(siaPath, fi.Name()))
 			if err != nil {
 				return 0, 0, time.Time{}, err

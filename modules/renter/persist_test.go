@@ -316,7 +316,7 @@ func TestApplyBubbleUpdate(t *testing.T) {
 	update := createBubbleHealthUpdate(subDir1)
 
 	// Apply update.
-	if err := r.ApplyBubbleUpdate(update); err != nil {
+	if err := r.managedApplyBubbleUpdate(update); err != nil {
 		t.Fatal("Failed to apply update", err)
 	}
 
