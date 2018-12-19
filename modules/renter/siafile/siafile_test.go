@@ -1,11 +1,16 @@
 package siafile
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -214,5 +219,107 @@ func TestDefragChunk(t *testing.T) {
 	// Compare the files.
 	if err := equalFiles(sf, sf2); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestChunkHealth probes the chunkHealth method
+func TestChunkHealth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Get a blank siafile.
+	// Get new file params, ensure at least 2 chunks
+	siaFilePath, siaPath, source, rc, sk, _, numChunks, fileMode := newTestFileParams()
+	numChunks++
+	pieceSize := modules.SectorSize - sk.Type().Overhead()
+	fileSize := pieceSize * uint64(rc.MinPieces()) * uint64(numChunks)
+	// Create the path to the file.
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Create the file.
+	wal, _ := newTestWAL()
+	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that the number of chunks in the file is correct.
+	if len(sf.staticChunks) != numChunks {
+		t.Fatal("newTestFile didn't create the expected number of chunks")
+	}
+
+	// Create offline map
+	offlineMap := make(map[string]bool)
+
+	// Check and Record file health of initialized file
+	fileHealth := sf.Health(offlineMap)
+	initHealth := float64(1) - (float64(0-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
+	if fileHealth != initHealth {
+		t.Fatalf("Expected file to be %v, got %v", initHealth, fileHealth)
+	}
+
+	// Since we are using a pre set offlineMap, all the chunks should have the
+	// same health as the file
+	for i := range sf.staticChunks {
+		chunkHealth := sf.chunkHealth(i, offlineMap)
+		if chunkHealth != fileHealth {
+			t.Log("ChunkHealth:", chunkHealth)
+			t.Log("FileHealth:", fileHealth)
+			t.Fatal("Expected file and chunk to have same health")
+		}
+	}
+
+	// Add good piece to first chunk
+	host := fmt.Sprintln("host_0")
+	spk := types.SiaPublicKey{}
+	spk.LoadString(host)
+	offlineMap[string(spk.Key)] = false
+	if err := sf.AddPiece(spk, 0, 0, crypto.Hash{}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Chunk at index 0 should now have a health of 1 higher than before
+	newHealth := float64(1) - (float64(1-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
+	if sf.chunkHealth(0, offlineMap) != newHealth {
+		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(0, offlineMap))
+	}
+
+	// Chunk at index 1 should still have lower health
+	if sf.chunkHealth(1, offlineMap) != fileHealth {
+		t.Fatalf("Expected file to be %v, got %v", fileHealth, sf.chunkHealth(1, offlineMap))
+	}
+
+	// Add good piece to second chunk
+	host = fmt.Sprintln("host_1")
+	spk = types.SiaPublicKey{}
+	spk.LoadString(host)
+	offlineMap[string(spk.Key)] = false
+	if err := sf.AddPiece(spk, 1, 0, crypto.Hash{}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Chunk at index 1 should now have a health of 1 higher than before
+	if sf.chunkHealth(1, offlineMap) != newHealth {
+		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap))
+	}
+}
+
+// TestIsStuck probes the IsStuck method of the siafile
+func TestIsStuck(t *testing.T) {
+	// Create new file
+	sf := newBlankTestFile()
+
+	// File should not be stuck
+	if sf.IsStuck() {
+		t.Fatal("File should not be stuck")
+	}
+
+	// Set on of the chunks to be stuck
+	sf.staticChunks[0].Stuck = true
+
+	// File should now be stuck
+	if !sf.IsStuck() {
+		t.Fatal("File should be stuck")
 	}
 }

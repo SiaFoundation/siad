@@ -73,6 +73,10 @@ type (
 
 		// Pieces are the Pieces of the file the chunk consists of.
 		Pieces [][]piece
+
+		// Stuck indicates if the chunk was not repaired as expected by the
+		// repair loop
+		Stuck bool
 	}
 
 	// Chunk is an exported chunk. It contains exported pieces.
@@ -277,6 +281,48 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 	return true
 }
 
+// chunkHealth returns the health of the chunk which is defined as the percent
+// of parity pieces remaining.
+//
+// health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
+// to be repaired from disk or repair by upload streaming
+func (sf *SiaFile) chunkHealth(chunkIndex int, offline map[string]bool) float64 {
+	// The max number of good pieces that a chunk can have is NumPieces()
+	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
+	minPieces := sf.staticMetadata.staticErasureCode.MinPieces()
+	targetPieces := float64(numPieces - minPieces)
+	// Iterate over each pieceSet
+	var goodPieces int
+	for _, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+		// Iterate over each pieceSet and count all the unique
+		// goodPieces
+		for _, piece := range pieceSet {
+			if !offline[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)] {
+				// Once a good piece is found, break out since all pieces in
+				// pieceSet are the same
+				goodPieces++
+				break
+			}
+		}
+	}
+
+	// Sanity Check, if something went wrong, default to minimum health
+	if goodPieces > numPieces || goodPieces < 0 {
+		build.Critical("unexpected number of goodPieces for chunkHealth")
+		goodPieces = 0
+	}
+	return 1 - (float64(goodPieces-minPieces) / targetPieces)
+}
+
+// ChunkIndexByOffset will return the chunkIndex that contains the provided
+// offset of a file and also the relative offset within the chunk. If the
+// offset is out of bounds, chunkIndex will be equal to NumChunk().
+func (sf *SiaFile) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64) {
+	chunkIndex = offset / sf.staticChunkSize()
+	off = offset % sf.staticChunkSize()
+	return
+}
+
 // Delete removes the file from disk and marks it as deleted. Once the file is
 // deleted, certain methods should return an error.
 func (sf *SiaFile) Delete() error {
@@ -322,6 +368,36 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 	return lowest
 }
 
+// Health calculates the health of the file to be used in determining repair
+// priority. Health of the file is the lowest health of any of the chunks and is
+// defined as the percent of parity pieces remaining.
+//
+// health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
+// to be repaired from disk
+func (sf *SiaFile) Health(offline map[string]bool) float64 {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	numPieces := float64(sf.staticMetadata.staticErasureCode.NumPieces())
+	minPieces := float64(sf.staticMetadata.staticErasureCode.MinPieces())
+	worstHealth := 1 - ((0 - minPieces) / (numPieces - minPieces))
+	health := float64(0)
+	for chunkIndex := range sf.staticChunks {
+		chunkHealth := sf.chunkHealth(chunkIndex, offline)
+		if chunkHealth > health {
+			health = chunkHealth
+		}
+	}
+
+	// Sanity check, if something went wrong default to worst health
+	if health > worstHealth {
+		if build.DEBUG {
+			build.Critical("WARN: health out of bounds. Max value, Min value, health found", worstHealth, 0, health)
+		}
+		health = worstHealth
+	}
+	return health
+}
+
 // HostPublicKeys returns all the public keys of hosts the file has ever been
 // uploaded to. That means some of those hosts might no longer be in use.
 func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
@@ -333,6 +409,21 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 		keys = append(keys, key.PublicKey)
 	}
 	return keys
+}
+
+// IsStuck checks if a siafile is stuck. A siafile is stuck if it has any stuck
+// chunks
+func (sf *SiaFile) IsStuck() bool {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	numStuckChunks := uint64(0)
+	for _, chunk := range sf.staticChunks {
+		if chunk.Stuck {
+			numStuckChunks++
+		}
+	}
+	sf.staticMetadata.NumStuckChunks = numStuckChunks
+	return sf.staticMetadata.NumStuckChunks > 0
 }
 
 // NumChunks returns the number of chunks the file consists of. This will

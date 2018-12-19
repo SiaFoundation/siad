@@ -66,6 +66,37 @@ type (
 	}
 )
 
+// createBubbleHealthUpdate is a helper method that creates a writeaheadlog for
+// bubbling up the health of a directory.
+func createBubbleHealthUpdate(siaPath string) writeaheadlog.Update {
+	return writeaheadlog.Update{
+		Name:         updateBubbleHealthName,
+		Instructions: []byte(siaPath),
+	}
+}
+
+// isBubbleHealthUpdate is a helper method that makes sure that a wal update is
+// a renter bubble health update
+func isBubbleHealthUpdate(update writeaheadlog.Update) bool {
+	switch update.Name {
+	case updateBubbleHealthName:
+		return true
+	default:
+		return false
+	}
+}
+
+// readBubbleHealthUpdate unmarshals the update's instructions and returns the
+// encoded path. Errors will be considered developer errors
+func readBubbleHealthUpdate(update writeaheadlog.Update) string {
+	if !isBubbleHealthUpdate(update) {
+		err := errors.New("update is not bubble health update")
+		build.Critical(err)
+		return ""
+	}
+	return string(update.Instructions)
+}
+
 // MarshalSia implements the encoding.SiaMarshaller interface, writing the
 // file data to w.
 func (f *file) MarshalSia(w io.Writer) error {
@@ -325,13 +356,14 @@ func (r *Renter) initPersist() error {
 				if err := siadir.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaDir update")
 				}
+			} else if isBubbleHealthUpdate(update) {
+				if err := r.managedApplyBubbleUpdate(update); err != nil {
+					return errors.AddContext(err, "failed to apply bubble update")
+				}
 			} else {
 				applyTxn = false
 			}
 		}
-		// If every update of the txn is a SiaFileUpdate (which should be the
-		// case since it's either none of them or all) we consider the
-		// transaction applied.
 		if applyTxn {
 			if err := txn.SignalUpdatesApplied(); err != nil {
 				return err
@@ -384,4 +416,13 @@ func convertPersistVersionFrom040To133(path string) error {
 	p.MaxUploadSpeed = DefaultMaxUploadSpeed
 	p.StreamCacheSize = DefaultStreamCacheSize
 	return persist.SaveJSON(metadata, p, path)
+}
+
+// managedApplyBubbleUpdate applies the Bubble Health wal updates
+func (r *Renter) managedApplyBubbleUpdate(update writeaheadlog.Update) error {
+	// Read update
+	siaPath := readBubbleHealthUpdate(update)
+
+	// Bubble Health
+	return r.BubbleHealth(siaPath)
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -250,5 +251,84 @@ func TestSiafileCompatibility(t *testing.T) {
 	}
 	if len(names) != 1 || names[0] != "testfile-183" {
 		t.Fatal("nickname not loaded properly:", names)
+	}
+}
+
+// TestBubbleUpdateHelpers probes the helper methods such as read and create for
+// the Bubble Update
+func TestBubbleUpdateHelpers(t *testing.T) {
+	// Test createBubbleHealthUpdate
+	siaPath := "test"
+	update := createBubbleHealthUpdate(siaPath)
+	if update.Name != updateBubbleHealthName {
+		t.Fatalf("Expected update name to be %v but got %v", updateBubbleHealthName, update.Name)
+	}
+	if bytes.Compare(update.Instructions, []byte(siaPath)) != 0 {
+		t.Fatal("Update instructions not as expected")
+	}
+
+	// Test readBubbleHealthUpdate
+	if readBubbleHealthUpdate(update) != siaPath {
+		t.Fatalf("SiaPath not read correctly from update, got %v expected %v", readBubbleHealthUpdate(update), siaPath)
+	}
+
+	// Test isBubbleHealthUpdate
+	if !isBubbleHealthUpdate(update) {
+		t.Fatal("Expected update to be recognized as a Bubble Health Update")
+	}
+}
+
+// TestApplyBubbleUpdate tests that ApplyBubbleUpdate applies the wal update
+// correctly
+func TestApplyBubbleUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := rt.renter
+	// Create Directory tree
+	subDir1 := "SubDir1"
+	subDir2 := "SubDir2"
+	if err := r.CreateDir(subDir1); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.CreateDir(subDir2); err != nil {
+		t.Fatal(err)
+	}
+	siaPath := filepath.Join(subDir1, subDir2)
+	if err := r.CreateDir(siaPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set SubDir1/SubDir2 to have the oldest LastHealthCheckTime and worst Health
+	oldestCheckTime := time.Now().AddDate(0, 0, -1)
+	worstHealth := 5.0
+	if err := r.staticDirSet.UpdateHealth(siaPath, worstHealth, 0, oldestCheckTime); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a bubble update for parent directory so that health and
+	// LastHealthCheckTime are not overwritten
+	update := createBubbleHealthUpdate(subDir1)
+
+	// Apply update.
+	if err := r.managedApplyBubbleUpdate(update); err != nil {
+		t.Fatal("Failed to apply update", err)
+	}
+
+	// Verify information was bubbled to the top level renter directory
+	health, _, lastCheck, err := r.managedDirectoryHealth(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !lastCheck.Equal(oldestCheckTime) {
+		t.Fatalf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck)
+	}
+	if health != worstHealth {
+		t.Fatalf("Expected to find health of %v but found %v", worstHealth, health)
 	}
 }
