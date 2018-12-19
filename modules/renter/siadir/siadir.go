@@ -91,7 +91,7 @@ func New(siaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 		wal:            wal,
 	}
 
-	return sd, sd.createAndApplyTransaction(append(updates, update)...)
+	return sd, managedCreateAndApplyTransaction(wal, append(updates, update)...)
 }
 
 // createDirMetadata makes sure there is a metadata file in the directory and

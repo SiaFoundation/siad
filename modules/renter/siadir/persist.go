@@ -77,6 +77,29 @@ func readDeleteUpdate(update writeaheadlog.Update) string {
 	return string(update.Instructions)
 }
 
+// managedCreateAndApplyTransaction is a helper method that creates a writeaheadlog
+// transaction and applies it.
+func managedCreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) error {
+	// Create the writeaheadlog transaction.
+	txn, err := wal.NewTransaction(updates)
+	if err != nil {
+		return errors.AddContext(err, "failed to create wal txn")
+	}
+	// No extra setup is required. Signal that it is done.
+	if err := <-txn.SignalSetupComplete(); err != nil {
+		return errors.AddContext(err, "failed to signal setup completion")
+	}
+	// Apply the updates.
+	if err := ApplyUpdates(updates...); err != nil {
+		return errors.AddContext(err, "failed to apply updates")
+	}
+	// Updates are applied. Let the writeaheadlog know.
+	if err := txn.SignalUpdatesApplied(); err != nil {
+		return errors.AddContext(err, "failed to signal that updates are applied")
+	}
+	return nil
+}
+
 // createDirMetadataAll creates a path on disk to the provided siaPath and make
 // sure that all the parent directories have metadata files.
 func createDirMetadataAll(siaPath, rootDir string) ([]writeaheadlog.Update, error) {
@@ -138,9 +161,56 @@ func readMetadataUpdate(update writeaheadlog.Update) (data []byte, path string, 
 // applyUpdates  applies a number of writeaheadlog updates to the corresponding
 // SiaDir.
 func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
+	// Open the file
+	siaDirPath := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
+	file, err := sd.deps.OpenFile(siaDirPath, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err == nil {
+			// If no error occurred we sync and close the file.
+			err = errors.Compose(file.Sync(), file.Close())
+		} else {
+			// Otherwise we still need to close the file.
+			err = errors.Compose(err, file.Close())
+		}
+	}()
+
 	// Apply updates.
 	for _, u := range updates {
-		err := applyUpdate(sd.deps, u)
+		err := func() error {
+			switch u.Name {
+			case updateDeleteName:
+				// Delete from disk
+				err := os.RemoveAll(readDeleteUpdate(u))
+				if os.IsNotExist(err) {
+					return nil
+				}
+				return err
+			case updateMetadataName:
+				// Decode update.
+				data, path, err := readMetadataUpdate(u)
+				if err != nil {
+					return err
+				}
+
+				// Sanity check path belongs to siadir
+				if path != siaDirPath {
+					build.Critical(fmt.Sprintf("can't apply update for file %s to SiaDir %s", path, siaDirPath))
+					return nil
+				}
+
+				// Write and sync.
+				_, err = file.Write(data)
+				if err != nil {
+					return err
+				}
+				return nil
+			default:
+				return fmt.Errorf("Update not recognized: %v", u.Name)
+			}
+		}()
 		if err != nil {
 			return errors.AddContext(err, "failed to apply update")
 		}
@@ -186,11 +256,11 @@ func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
 
 // saveDir saves the whole SiaDir atomically.
 func (sd *SiaDir) saveDir() error {
-	metadataUpdates, err := sd.saveMetadataUpdate()
+	metadataUpdate, err := sd.saveMetadataUpdate()
 	if err != nil {
 		return err
 	}
-	return sd.createAndApplyTransaction(metadataUpdates)
+	return sd.createAndApplyTransaction(metadataUpdate)
 }
 
 // saveMetadataUpdate saves the metadata of the SiaDir

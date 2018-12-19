@@ -181,3 +181,33 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 		t.Fatal(err)
 	}
 }
+
+// TestManagedCreateAndApplyTransactions tests if
+// managedCreateAndApplyTransactions applies a set of updates correctly.
+func TestManagedCreateAndApplyTransactions(t *testing.T) {
+	siadir, err := newTestDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create an update to the metadata
+	metadata := siadir.staticMetadata
+	metadata.Health = 1.0
+	update, err := createMetadataUpdate(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Apply update.
+	if err := managedCreateAndApplyTransaction(siadir.wal, update); err != nil {
+		t.Fatal("Failed to apply update", err)
+	}
+	// Open file.
+	sd, err := LoadSiaDir(metadata.RootDir, metadata.SiaPath, modules.ProdDependencies, siadir.wal)
+	if err != nil {
+		t.Fatal("Failed to load siadir", err)
+	}
+	// Check if correct data was written.
+	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
+		t.Fatal(err)
+	}
+}
