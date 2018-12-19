@@ -1,6 +1,7 @@
 package api
 
 import (
+<<<<<<< HEAD
 	"archive/zip"
 	"bytes"
 	"encoding/json"
@@ -307,4 +308,46 @@ func (api *API) daemonStopHandler(w http.ResponseWriter, _ *http.Request, _ http
 	if err := api.Shutdown(); err != nil {
 		build.Critical(err)
 	}
+}
+
+// DaemonSettingsGet contains information about global daemon settings.
+type DaemonSettingsGet struct {
+	MaxDownloadSpeed int64 `json:"maxdownloadspeed"`
+	MaxUploadSpeed   int64 `json:"maxuploadspeed"`
+}
+
+// gatewayHandlerGET handles the API call asking for the gatway status.
+func (api *API) daemonSettingsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	gmds, gmus, _ := modules.GlobalRateLimits.Limits()
+	WriteJSON(w, DaemonSettingsGet{gmds, gmus})
+}
+
+// gatewayHandlerPOST handles the API call changing gateway specific settings.
+func (api *API) daemonSettingsHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	maxDownloadSpeed, maxUploadSpeed, _ := modules.GlobalRateLimits.Limits()
+	// Scan the download speed limit. (optional parameter)
+	if d := req.FormValue("maxdownloadspeed"); d != "" {
+		var downloadSpeed int64
+		if _, err := fmt.Sscan(d, &downloadSpeed); err != nil {
+			WriteError(w, Error{"unable to parse downloadspeed: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		maxDownloadSpeed = downloadSpeed
+	}
+	// Scan the upload speed limit. (optional parameter)
+	if u := req.FormValue("maxuploadspeed"); u != "" {
+		var uploadSpeed int64
+		if _, err := fmt.Sscan(u, &uploadSpeed); err != nil {
+			WriteError(w, Error{"unable to parse uploadspeed: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		maxUploadSpeed = uploadSpeed
+	}
+	// Try to set the new limits.
+	err := api.gateway.SetGlobalRateLimits(maxDownloadSpeed, maxUploadSpeed)
+	if err != nil {
+		WriteError(w, Error{"failed to set new global rate limit: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
 }

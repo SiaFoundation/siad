@@ -49,14 +49,3 @@ func (c *Client) GatewayRateLimitPost(downloadSpeed, uploadSpeed int64) (err err
 	err = c.post("/gateway", values.Encode(), nil)
 	return
 }
-
-// GatewayGlobalRateLimitPost uses the /gateway endpoint to change the siad's
-// bandwidth rate limit. downloadSpeed and uploadSpeed are interpreted as
-// bytes/second.
-func (c *Client) GatewayGlobalRateLimitPost(downloadSpeed, uploadSpeed int64) (err error) {
-	values := url.Values{}
-	values.Set("maxglobaldownloadspeed", strconv.FormatInt(downloadSpeed, 10))
-	values.Set("maxglobaluploadspeed", strconv.FormatInt(uploadSpeed, 10))
-	err = c.post("/gateway", values.Encode(), nil)
-	return
-}

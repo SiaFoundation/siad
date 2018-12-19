@@ -14,24 +14,21 @@ type GatewayGET struct {
 	NetAddress modules.NetAddress `json:"netaddress"`
 	Peers      []modules.Peer     `json:"peers"`
 
-	MaxDownloadSpeed       int64 `json:"maxdownloadspeed"`
-	MaxUploadSpeed         int64 `json:"maxuploadspeed"`
-	MaxGlobalDownloadSpeed int64 `json:"maxglobaldownloadspeed"`
-	MaxGlobalUploadSpeed   int64 `json:"maxglobaluploadspeed"`
+	MaxDownloadSpeed int64 `json:"maxdownloadspeed"`
+	MaxUploadSpeed   int64 `json:"maxuploadspeed"`
 }
 
 // gatewayHandlerGET handles the API call asking for the gatway status.
 func (api *API) gatewayHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	peers := api.gateway.Peers()
 	mds, mus := api.gateway.RateLimits()
-	gmds, gmus, _ := modules.GlobalRateLimits.Limits()
 	// nil slices are marshalled as 'null' in JSON, whereas 0-length slices are
 	// marshalled as '[]'. The latter is preferred, indicating that the value
 	// exists but contains no elements.
 	if peers == nil {
 		peers = make([]modules.Peer, 0)
 	}
-	WriteJSON(w, GatewayGET{api.gateway.Address(), peers, mds, mus, gmds, gmus})
+	WriteJSON(w, GatewayGET{api.gateway.Address(), peers, mds, mus})
 }
 
 // gatewayHandlerPOST handles the API call changing gateway specific settings.

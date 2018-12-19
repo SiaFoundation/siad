@@ -1,4 +1,4 @@
-package gateway
+package daemon
 
 import (
 	"testing"
@@ -7,13 +7,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest"
 )
 
-// TestGatewayRatelimit makes sure that we can set the gateway's ratelimits
-// using the API and that they are persisted correctly.
-func TestGatewayRatelimit(t *testing.T) {
+// TestDaemonRatelimit makes sure that we can set the daemon's global
+// ratelimits using the API and that they are persisted correctly.
+func TestDaemonRatelimit(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	testDir := gatewayTestDir(t.Name())
+	testDir := daemonTestDir(t.Name())
 
 	// Create a new server
 	testNode, err := siatest.NewCleanNode(node.Gateway(testDir))
@@ -26,42 +26,42 @@ func TestGatewayRatelimit(t *testing.T) {
 		}
 	}()
 	// Get the current ratelimits.
-	gg, err := testNode.GatewayGet()
+	dsg, err := testNode.DaemonSettingsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Speeds should be 0 which means it's not being rate limited.
-	if gg.MaxDownloadSpeed != 0 || gg.MaxUploadSpeed != 0 {
-		t.Fatalf("Limits should be 0 but were %v and %v", gg.MaxDownloadSpeed, gg.MaxUploadSpeed)
+	if dsg.MaxDownloadSpeed != 0 || dsg.MaxUploadSpeed != 0 {
+		t.Fatalf("Limits should be 0 but were %v and %v", dsg.MaxDownloadSpeed, dsg.MaxUploadSpeed)
 	}
 	// Change the limits.
 	ds := int64(100)
 	us := int64(200)
-	if err := testNode.GatewayRateLimitPost(ds, us); err != nil {
+	if err := testNode.DaemonGlobalRateLimitPost(ds, us); err != nil {
 		t.Fatal(err)
 	}
 	// Get the ratelimit again.
-	gg, err = testNode.GatewayGet()
+	dsg, err = testNode.DaemonSettingsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Limit should be set correctly.
-	if gg.MaxDownloadSpeed != ds || gg.MaxUploadSpeed != us {
+	if dsg.MaxDownloadSpeed != ds || dsg.MaxUploadSpeed != us {
 		t.Fatalf("Limits should be %v/%v but are %v/%v",
-			ds, us, gg.MaxDownloadSpeed, gg.MaxUploadSpeed)
+			ds, us, dsg.MaxDownloadSpeed, dsg.MaxUploadSpeed)
 	}
 	// Restart the node.
 	if err := testNode.RestartNode(); err != nil {
 		t.Fatal(err)
 	}
 	// Get the ratelimit again.
-	gg, err = testNode.GatewayGet()
+	dsg, err = testNode.DaemonSettingsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Limit should've been persisted correctly.
-	if gg.MaxDownloadSpeed != ds || gg.MaxUploadSpeed != us {
+	if dsg.MaxDownloadSpeed != ds || dsg.MaxUploadSpeed != us {
 		t.Fatalf("Limits should be %v/%v but are %v/%v",
-			ds, us, gg.MaxDownloadSpeed, gg.MaxUploadSpeed)
+			ds, us, dsg.MaxDownloadSpeed, dsg.MaxUploadSpeed)
 	}
 }
