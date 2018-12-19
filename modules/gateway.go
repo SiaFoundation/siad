@@ -169,9 +169,6 @@ type (
 		// supply the given RPC ID.
 		RegisterRPC(string, RPCFunc)
 
-		// SetGlobalRateLimits changes the global rate limits for siad.
-		SetGlobalRateLimits(downloadSpeed, uploadSpeed int64) error
-
 		// RateLimits returns the currently set bandwidth limits of the gateway.
 		RateLimits() (int64, int64)
 

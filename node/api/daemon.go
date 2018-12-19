@@ -1,7 +1,6 @@
 package api
 
 import (
-<<<<<<< HEAD
 	"archive/zip"
 	"bytes"
 	"encoding/json"
@@ -19,7 +18,9 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 const (
@@ -343,11 +344,27 @@ func (api *API) daemonSettingsHandlerPOST(w http.ResponseWriter, req *http.Reque
 		}
 		maxUploadSpeed = uploadSpeed
 	}
-	// Try to set the new limits.
-	err := api.gateway.SetGlobalRateLimits(maxDownloadSpeed, maxUploadSpeed)
-	if err != nil {
-		WriteError(w, Error{"failed to set new global rate limit: " + err.Error()}, http.StatusBadRequest)
+	// Set the limit.
+	if err := setRateLimits(modules.GlobalRateLimits, maxDownloadSpeed, maxUploadSpeed); err != nil {
+		WriteError(w, Error{"unable to set limits: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
+}
+
+// setRateLimits sets the specified ratelimit after performing input
+// validation without persisting them.
+func setRateLimits(rl *ratelimit.RateLimit, downloadSpeed, uploadSpeed int64) error {
+	// Input validation.
+	if downloadSpeed < 0 || uploadSpeed < 0 {
+		return errors.New("download/upload rate can't be below 0")
+	}
+	// Check for sentinel "no limits" value.
+	if downloadSpeed == 0 && uploadSpeed == 0 {
+		rl.SetLimits(0, 0, 0)
+	} else {
+		rl.SetLimits(downloadSpeed, uploadSpeed, 4*4096)
+	}
+	// TODO persist settings.
+	return nil
 }

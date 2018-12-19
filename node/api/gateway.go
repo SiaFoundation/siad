@@ -34,7 +34,6 @@ func (api *API) gatewayHandlerGET(w http.ResponseWriter, req *http.Request, _ ht
 // gatewayHandlerPOST handles the API call changing gateway specific settings.
 func (api *API) gatewayHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	maxDownloadSpeed, maxUploadSpeed := api.gateway.RateLimits()
-	maxGlobalDownloadSpeed, maxGlobalUploadSpeed, _ := modules.GlobalRateLimits.Limits()
 	// Scan the download speed limit. (optional parameter)
 	if d := req.FormValue("maxdownloadspeed"); d != "" {
 		var downloadSpeed int64
@@ -53,33 +52,10 @@ func (api *API) gatewayHandlerPOST(w http.ResponseWriter, req *http.Request, _ h
 		}
 		maxUploadSpeed = uploadSpeed
 	}
-	// Scan the download speed limit. (optional parameter)
-	if d := req.FormValue("maxglobaldownloadspeed"); d != "" {
-		var downloadSpeed int64
-		if _, err := fmt.Sscan(d, &downloadSpeed); err != nil {
-			WriteError(w, Error{"unable to parse downloadspeed: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		maxGlobalDownloadSpeed = downloadSpeed
-	}
-	// Scan the upload speed limit. (optional parameter)
-	if u := req.FormValue("maxglobaluploadspeed"); u != "" {
-		var uploadSpeed int64
-		if _, err := fmt.Sscan(u, &uploadSpeed); err != nil {
-			WriteError(w, Error{"unable to parse uploadspeed: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		maxGlobalUploadSpeed = uploadSpeed
-	}
 	// Try to set the limits.
 	err := api.gateway.SetRateLimits(maxDownloadSpeed, maxUploadSpeed)
 	if err != nil {
 		WriteError(w, Error{"failed to set new rate limit: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	err = api.gateway.SetGlobalRateLimits(maxGlobalDownloadSpeed, maxGlobalUploadSpeed)
-	if err != nil {
-		WriteError(w, Error{"failed to set new global rate limit: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
