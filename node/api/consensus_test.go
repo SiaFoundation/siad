@@ -34,6 +34,16 @@ func TestIntegrationConsensusGET(t *testing.T) {
 	if cg.Target != expectedTarget {
 		t.Error("wrong target returned in consensus GET call")
 	}
+
+	if cg.BlockFrequency != types.BlockFrequency {
+		t.Error("constant mismatch")
+	}
+	if cg.SiafundCount != types.SiafundCount {
+		t.Error("constant mismatch")
+	}
+	if cg.InitialCoinbase != types.InitialCoinbase {
+		t.Error("constant mismatch")
+	}
 }
 
 // TestConsensusValidateTransactionSet probes the POST call to

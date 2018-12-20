@@ -15,11 +15,35 @@ import (
 // ConsensusGET contains general information about the consensus set, with tags
 // to support idiomatic json encodings.
 type ConsensusGET struct {
+	// Consensus status values.
 	Synced       bool              `json:"synced"`
 	Height       types.BlockHeight `json:"height"`
 	CurrentBlock types.BlockID     `json:"currentblock"`
 	Target       types.Target      `json:"target"`
 	Difficulty   types.Currency    `json:"difficulty"`
+
+	// Consensus code constants.
+	BlockFrequency         types.BlockHeight `json:"blockfrequency"`
+	BlockSizeLimit         uint64            `json:"blocksizelimit"`
+	ExtremeFutureThreshold types.Timestamp   `json:"extremefuturethreshold"`
+	FutureThreshold        types.Timestamp   `json:"futurethreshold"`
+	GenesisTimestamp       types.Timestamp   `json:"genesistimestamp"`
+	MaturityDelay          types.BlockHeight `json:"maturitydelay"`
+	MedianTimestampWindow  uint64            `json:"mediantimestampwindow"`
+	SiafundCount           types.Currency    `json:"siafundcount"`
+	SiafundPortion         *big.Rat          `json:"siafundportion"`
+	TargetWindow           types.BlockHeight `json:"targetwindow"`
+
+	InitialCoinbase uint64 `json:"initialcoinbase"`
+	MinimumCoinbase uint64 `json:"minimumcoinbase"`
+
+	RootTarget types.Target `json:"roottarget"`
+	RootDepth  types.Target `json:"rootdepth"`
+
+	MaxTargetAdjustmentUp   *big.Rat `json:"maxtargetadjustmentup"`
+	MaxTargetAdjustmentDown *big.Rat `json:"maxtargetadjustmentdown"`
+
+	SiacoinPrecision types.Currency `json:"siacoinprecision"`
 }
 
 // ConsensusHeadersGET contains information from a blocks header.
@@ -84,31 +108,6 @@ type ConsensusBlocksGetSiafundOutput struct {
 	ID         types.SiafundOutputID `json:"id"`
 	Value      types.Currency        `json:"value"`
 	UnlockHash types.UnlockHash      `json:"unlockhash"`
-}
-
-// SiaConstants is a struct listing all of the constants in use.
-type ConsensusConstants struct {
-	BlockFrequency         types.BlockHeight `json:"blockfrequency"`
-	BlockSizeLimit         uint64            `json:"blocksizelimit"`
-	ExtremeFutureThreshold types.Timestamp   `json:"extremefuturethreshold"`
-	FutureThreshold        types.Timestamp   `json:"futurethreshold"`
-	GenesisTimestamp       types.Timestamp   `json:"genesistimestamp"`
-	MaturityDelay          types.BlockHeight `json:"maturitydelay"`
-	MedianTimestampWindow  uint64            `json:"mediantimestampwindow"`
-	SiafundCount           types.Currency    `json:"siafundcount"`
-	SiafundPortion         *big.Rat          `json:"siafundportion"`
-	TargetWindow           types.BlockHeight `json:"targetwindow"`
-
-	InitialCoinbase uint64 `json:"initialcoinbase"`
-	MinimumCoinbase uint64 `json:"minimumcoinbase"`
-
-	RootTarget types.Target `json:"roottarget"`
-	RootDepth  types.Target `json:"rootdepth"`
-
-	MaxTargetAdjustmentUp   *big.Rat `json:"maxtargetadjustmentup"`
-	MaxTargetAdjustmentDown *big.Rat `json:"maxtargetadjustmentdown"`
-
-	SiacoinPrecision types.Currency `json:"siacoinprecision"`
 }
 
 // ConsensusBlocksGetFromBlock is a helper method that uses a types.Block and
@@ -204,6 +203,28 @@ func (api *API) consensusHandler(w http.ResponseWriter, req *http.Request, _ htt
 		CurrentBlock: cbid,
 		Target:       currentTarget,
 		Difficulty:   currentTarget.Difficulty(),
+
+		BlockFrequency:         types.BlockFrequency,
+		BlockSizeLimit:         types.BlockSizeLimit,
+		ExtremeFutureThreshold: types.ExtremeFutureThreshold,
+		FutureThreshold:        types.FutureThreshold,
+		GenesisTimestamp:       types.GenesisTimestamp,
+		MaturityDelay:          types.MaturityDelay,
+		MedianTimestampWindow:  types.MedianTimestampWindow,
+		SiafundCount:           types.SiafundCount,
+		SiafundPortion:         types.SiafundPortion,
+		TargetWindow:           types.TargetWindow,
+
+		InitialCoinbase: types.InitialCoinbase,
+		MinimumCoinbase: types.MinimumCoinbase,
+
+		RootTarget: types.RootTarget,
+		RootDepth:  types.RootDepth,
+
+		MaxTargetAdjustmentUp:   types.MaxTargetAdjustmentUp,
+		MaxTargetAdjustmentDown: types.MaxTargetAdjustmentDown,
+
+		SiacoinPrecision: types.SiacoinPrecision,
 	})
 }
 
@@ -247,34 +268,6 @@ func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request,
 	}
 	// Write response
 	WriteJSON(w, consensusBlocksGetFromBlock(b, h))
-}
-
-// consensusConstatnsHandler returns the list of constants that are driving the
-// consensus code.
-func (api *API) consensusConstantsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	WriteJSON(w, ConsensusConstants{
-		BlockFrequency:         types.BlockFrequency,
-		BlockSizeLimit:         types.BlockSizeLimit,
-		ExtremeFutureThreshold: types.ExtremeFutureThreshold,
-		FutureThreshold:        types.FutureThreshold,
-		GenesisTimestamp:       types.GenesisTimestamp,
-		MaturityDelay:          types.MaturityDelay,
-		MedianTimestampWindow:  types.MedianTimestampWindow,
-		SiafundCount:           types.SiafundCount,
-		SiafundPortion:         types.SiafundPortion,
-		TargetWindow:           types.TargetWindow,
-
-		InitialCoinbase: types.InitialCoinbase,
-		MinimumCoinbase: types.MinimumCoinbase,
-
-		RootTarget: types.RootTarget,
-		RootDepth:  types.RootDepth,
-
-		MaxTargetAdjustmentUp:   types.MaxTargetAdjustmentUp,
-		MaxTargetAdjustmentDown: types.MaxTargetAdjustmentDown,
-
-		SiacoinPrecision: types.SiacoinPrecision,
-	})
 }
 
 // consensusValidateTransactionsetHandler handles the API calls to
