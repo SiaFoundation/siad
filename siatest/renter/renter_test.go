@@ -3932,6 +3932,15 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 	seed := wsg.PrimarySeed
 
+	// Upload a file to the renter.
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(10 * modules.SectorSize)
+	_, _, err = r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
 	// Remember the contracts the renter formed with the hosts.
 	oldContracts := make(map[types.FileContractID]api.RenterContract)
 	rc, err := r.RenterContractsGet()
@@ -3985,9 +3994,6 @@ func TestRenterContractRecovery(t *testing.T) {
 			}
 			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
 				return errors.New("public keys don't match")
-			}
-			if !reflect.DeepEqual(contract.LastTransaction, c.LastTransaction) {
-				return errors.New("last txns don't match")
 			}
 			if contract.EndHeight != c.EndHeight {
 				return errors.New("endheights don't match")
