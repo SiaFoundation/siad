@@ -76,6 +76,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 		return err
 	}
 	// Get the merkle roots.
+	// TODO Followup: take host max download batch size into account.
 	newRevTxn, roots, err := s.RecoverSectorRoots(rev, sk)
 	if err != nil {
 		return err
