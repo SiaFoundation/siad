@@ -35,6 +35,11 @@ func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 // TestSiaFileSetOpenClose tests that the threadCount of the siafile is
 // incremented and decremented properly when Open() and Close() are called
 func TestSiaFileSetOpenClose(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create SiaFileSet with SiaFile
 	entry, sfs, err := newTestSiaFileSetWithFile()
 	if err != nil {
@@ -85,6 +90,11 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 // TestFilesInMemory confirms that files are added and removed from memory
 // as expected when files are in use and not in use
 func TestFilesInMemory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create SiaFileSet with SiaFile
 	entry, sfs, err := newTestSiaFileSetWithFile()
 	if err != nil {
@@ -158,6 +168,11 @@ func TestFilesInMemory(t *testing.T) {
 // TestRenameFileInMemory confirms that threads that have access to a file
 // will continue to have access to the file even it another thread renames it
 func TestRenameFileInMemory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create SiaFileSet with SiaFile
 	entry, sfs, err := newTestSiaFileSetWithFile()
 	if err != nil {
@@ -222,6 +237,11 @@ func TestRenameFileInMemory(t *testing.T) {
 // TestDeleteFileInMemory confirms that threads that have access to a file
 // will continue to have access to the file even it another thread deletes it
 func TestDeleteFileInMemory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create SiaFileSet with SiaFile
 	entry, sfs, err := newTestSiaFileSetWithFile()
 	if err != nil {

@@ -29,6 +29,11 @@ func newTestSiaDirSetWithDir() (*SiaDirSetEntry, *SiaDirSet, error) {
 // TestSiaDirSetOpenClose tests that the threadCount of the siadir is
 // incremented and decremented properly when Open() and Close() are called
 func TestSiaDirSetOpenClose(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create SiaDirSet with SiaDir
 	entry, sds, err := newTestSiaDirSetWithDir()
 	if err != nil {
@@ -79,6 +84,11 @@ func TestSiaDirSetOpenClose(t *testing.T) {
 // TestDirsInMemory confirms that files are added and removed from memory
 // as expected when files are in use and not in use
 func TestDirsInMemory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create SiaDirSet with SiaDir
 	entry, sds, err := newTestSiaDirSetWithDir()
 	if err != nil {
@@ -151,6 +161,11 @@ func TestDirsInMemory(t *testing.T) {
 
 // TestUpdateSiaDirSetHealth probes the UpdateHealth method of the SiaDirSet
 func TestUpdateSiaDirSetHealth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create SiaDirSet with SiaDir
 	entry, sds, err := newTestSiaDirSetWithDir()
 	if err != nil {
@@ -200,6 +215,11 @@ func TestUpdateSiaDirSetHealth(t *testing.T) {
 // TestOpenAndCloseWithLock probes the OpenLockedSiaDirSetEntry and
 // CloseLockedSiaDirSetEntry methods
 func TestOpenAndCloseWithLock(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create SiaDirSet with SiaDir
 	entry, sds, err := newTestSiaDirSetWithDir()
 	if err != nil {

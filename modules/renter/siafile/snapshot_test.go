@@ -10,6 +10,9 @@ import (
 
 // TestSnapshot tests if a snapshot is created correctly from a SiaFile.
 func TestSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	// Create a random file for testing and create a snapshot from it.

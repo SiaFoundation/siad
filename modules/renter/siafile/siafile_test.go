@@ -44,6 +44,11 @@ func randomPiece() piece {
 }
 
 func TestPruneHosts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	sf := newBlankTestFile()
 
 	// Add 3 random hostkeys to the file.
@@ -123,6 +128,7 @@ func TestDefragChunk(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Get a blank siafile.
 	sf := newBlankTestFile()
 
@@ -227,6 +233,7 @@ func TestChunkHealth(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Get a blank siafile.
 	// Get new file params, ensure at least 2 chunks
 	siaFilePath, siaPath, source, rc, sk, _, numChunks, fileMode := newTestFileParams()
@@ -307,6 +314,11 @@ func TestChunkHealth(t *testing.T) {
 
 // TestIsStuck probes the IsStuck method of the siafile
 func TestIsStuck(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create new file
 	sf := newBlankTestFile()
 
