@@ -22,6 +22,7 @@ func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword strin
 	if api.cs != nil {
 		router.GET("/consensus", api.consensusHandler)
 		router.GET("/consensus/blocks", api.consensusBlocksHandler)
+		router.GET("/consensus/constants", api.consensusConstantsHandler)
 		router.POST("/consensus/validate/transactionset", api.consensusValidateTransactionsetHandler)
 	}
 
