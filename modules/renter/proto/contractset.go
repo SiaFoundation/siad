@@ -63,7 +63,7 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 		return
 	}
 	delete(cs.contracts, c.header.ID())
-	delete(cs.pubKeys, string(c.header.HostPublicKey().Key))
+	delete(cs.pubKeys, c.header.HostPublicKey().String())
 	cs.mu.Unlock()
 	c.mu.Unlock()
 	// delete contract file

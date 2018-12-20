@@ -434,6 +434,10 @@ func TestUnspentOutputs(t *testing.T) {
 // TestFileContractUnspentOutputs tests that outputs created from file
 // contracts are properly handled by the wallet.
 func TestFileContractUnspentOutputs(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	gp := siatest.GroupParams{
 		Hosts:   1,
 		Renters: 1,

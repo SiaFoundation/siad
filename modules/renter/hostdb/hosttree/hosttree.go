@@ -216,12 +216,12 @@ func (ht *HostTree) Remove(pk types.SiaPublicKey) error {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
-	node, exists := ht.hosts[string(pk.Key)]
+	node, exists := ht.hosts[pk.String()]
 	if !exists {
 		return ErrNoSuchHost
 	}
 	node.remove()
-	delete(ht.hosts, string(pk.Key))
+	delete(ht.hosts, pk.String())
 
 	return nil
 }
@@ -232,7 +232,7 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
-	node, exists := ht.hosts[string(hdbe.PublicKey.Key)]
+	node, exists := ht.hosts[hdbe.PublicKey.String()]
 	if !exists {
 		return ErrNoSuchHost
 	}
@@ -246,7 +246,7 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 
 	_, node = ht.root.recursiveInsert(entry)
 
-	ht.hosts[string(entry.PublicKey.Key)] = node
+	ht.hosts[entry.PublicKey.String()] = node
 	return nil
 }
 
@@ -285,7 +285,7 @@ func (ht *HostTree) Select(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
-	node, exists := ht.hosts[string(spk.Key)]
+	node, exists := ht.hosts[spk.String()]
 	if !exists {
 		return modules.HostDBEntry{}, false
 	}
@@ -312,7 +312,7 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 
 	// Add the hosts from the addressBlacklist to the filter.
 	for _, pubkey := range addressBlacklist {
-		node, exists := ht.hosts[string(pubkey.Key)]
+		node, exists := ht.hosts[pubkey.String()]
 		if !exists {
 			continue
 		}
@@ -322,13 +322,13 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 	// Remove hosts we want to blacklist from the tree but remember them to make
 	// sure we can insert them later.
 	for _, pubkey := range blacklist {
-		node, exists := ht.hosts[string(pubkey.Key)]
+		node, exists := ht.hosts[pubkey.String()]
 		if !exists {
 			continue
 		}
 		// Remove the host from the tree.
 		node.remove()
-		delete(ht.hosts, string(pubkey.Key))
+		delete(ht.hosts, pubkey.String())
 
 		// Remember the host to insert it again later.
 		removedEntries = append(removedEntries, node.entry)
@@ -355,12 +355,12 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 
 		removedEntries = append(removedEntries, node.entry)
 		node.remove()
-		delete(ht.hosts, string(node.entry.PublicKey.Key))
+		delete(ht.hosts, node.entry.PublicKey.String())
 	}
 
 	for _, entry := range removedEntries {
 		_, node := ht.root.recursiveInsert(entry)
-		ht.hosts[string(entry.PublicKey.Key)] = node
+		ht.hosts[entry.PublicKey.String()] = node
 	}
 
 	return hosts
@@ -389,12 +389,12 @@ func (ht *HostTree) insert(hdbe modules.HostDBEntry) error {
 		weight:      ht.weightFn(hdbe).Score(),
 	}
 
-	if _, exists := ht.hosts[string(entry.PublicKey.Key)]; exists {
+	if _, exists := ht.hosts[entry.PublicKey.String()]; exists {
 		return ErrHostExists
 	}
 
 	_, node := ht.root.recursiveInsert(entry)
 
-	ht.hosts[string(entry.PublicKey.Key)] = node
+	ht.hosts[entry.PublicKey.String()] = node
 	return nil
 }

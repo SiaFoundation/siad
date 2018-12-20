@@ -408,11 +408,11 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 			if piece.Chunk >= minChunk && piece.Chunk <= maxChunk {
 				// Sanity check - the same worker should not have two pieces for
 				// the same chunk.
-				_, exists := chunkMaps[piece.Chunk-minChunk][string(resolvedKey.Key)]
+				_, exists := chunkMaps[piece.Chunk-minChunk][resolvedKey.String()]
 				if exists {
 					r.log.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.")
 				}
-				chunkMaps[piece.Chunk-minChunk][string(resolvedKey.Key)] = downloadPieceInfo{
+				chunkMaps[piece.Chunk-minChunk][resolvedKey.String()] = downloadPieceInfo{
 					index: piece.Piece,
 					root:  piece.MerkleRoot,
 				}
