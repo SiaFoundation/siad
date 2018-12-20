@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (
@@ -61,5 +61,5 @@ Progress (estimated): %.1f%%
 func estimatedHeightAt(t time.Time, cg api.ConsensusGET) types.BlockHeight {
 	gt := cg.GenesisTimestamp
 	bf := cg.BlockFrequency
-	return types.BlockHeight(types.Timestamp(t.Unix()) - gt) / bf
+	return types.BlockHeight(types.Timestamp(t.Unix())-gt) / bf
 }
