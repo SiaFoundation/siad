@@ -86,13 +86,19 @@ func (iss identifierSigningSeed) identifierSigningKey(txn types.Transaction) (ci
 // GenerateKeyPair generates a secret and a public key for a contract to be used
 // in its unlock conditions.
 func GenerateKeyPair(renterSeed RenterSeed, txn types.Transaction) (sk crypto.SecretKey, pk crypto.PublicKey) {
+	return GenerateKeyPairWithOutputID(renterSeed, txn.SiacoinInputs[0].ParentID)
+}
+
+// GenerateKeyPairWithOutputID generates a secret and a public key for a
+// contract to be used in its unlock conditions.
+func GenerateKeyPairWithOutputID(renterSeed RenterSeed, inputParentID types.SiacoinOutputID) (sk crypto.SecretKey, pk crypto.PublicKey) {
 	// Get the secret key seed and wipe it afterwards.
 	csks := renterSeed.contractSecretKeySeed()
 	defer fastrand.Read(csks[:])
 
 	// Combine the seed with the first SiacoinInput's parentID to create unique entropy for a
 	// txn.
-	entropy := crypto.HashAll(csks, txn.SiacoinInputs[0].ParentID)
+	entropy := crypto.HashAll(csks, inputParentID)
 	defer fastrand.Read(entropy[:])
 
 	// Use the enropy to generate the keypair.

@@ -200,6 +200,13 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
 func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFileSetEntry, error) {
+	// Create a mapping of contract ids to host keys.
+	contracts := r.hostContractor.Contracts()
+	idToPk := make(map[types.FileContractID]types.SiaPublicKey)
+	for _, c := range contracts {
+		idToPk[c.ID] = c.HostPublicKey
+	}
+
 	fileData := siafile.FileData{
 		Name:        f.name,
 		FileSize:    f.size,
@@ -216,7 +223,8 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFileSetE
 		chunks[i].Pieces = make([][]siafile.Piece, f.erasureCode.NumPieces())
 	}
 	for _, contract := range f.contracts {
-		pk := r.hostContractor.ResolveIDToPubKey(contract.ID)
+		pk := idToPk[contract.ID]
+
 		for _, piece := range contract.Pieces {
 			chunks[piece.Chunk].Pieces[piece.Piece] = append(chunks[piece.Chunk].Pieces[piece.Piece], siafile.Piece{
 				HostPubKey: pk,

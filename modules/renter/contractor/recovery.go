@@ -1,6 +1,10 @@
 package contractor
 
 import (
+	"errors"
+
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -53,12 +57,60 @@ func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.B
 
 // managedRecoverContract recovers a single contract by contacting the host it
 // was formed with and retrieving the latest revision and sector roots.
-func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract) error {
-	panic("not implemented yet")
+func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs proto.RenterSeed, blockHeight types.BlockHeight) error {
+	// Get the corresponding host.
+	host, ok := c.hdb.Host(rc.HostPublicKey)
+	if !ok {
+		return errors.New("Can't recover contract with unknown host")
+	}
+	// Generate the secrety key for the handshake and wipe it after using it.
+	sk, _ := proto.GenerateKeyPairWithOutputID(rs, rc.InputParentID)
+	defer fastrand.Read(sk[:])
+	// Start a new RPC sessoin.
+	s, err := c.staticContracts.NewSessionWithSecret(host, rc.ID, blockHeight, c.hdb, sk, c.tg.StopChan())
+	if err != nil {
+		return err
+	}
+	// Get the most recent revision.
+	rev, sigs, err := s.RecentRevision()
+	if err != nil {
+		return err
+	}
+	// Create the revision transaction.
+	revTxn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{rev},
+		TransactionSignatures: sigs,
+	}
+	// Get the merkle roots.
+	// TODO this is not necessary if we stop storing the roots locally.
+	// Insert the contract into the set.
+	contract, err := c.staticContracts.InsertContract(revTxn, []crypto.Hash{}, sk)
+	if err != nil {
+		return err
+	}
+	// Add a mapping from the contract's id to the public key of the host.
+	c.mu.Lock()
+	_, exists := c.pubKeysToContractID[contract.HostPublicKey.String()]
+	if exists {
+		// Sanity check here since we already checked for that in
+		// managedRecoverContract.
+		build.Critical("Shouldn't recover contract with host that we already have a contract with")
+		return errors.New("can't recover contract with a host that we already have a contract with")
+	}
+	c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
+	c.mu.Unlock()
+
+	return nil
 }
 
 // managedRecoverContracts recovers known recoverable contracts.
 func (c *Contractor) managedRecoverContracts() {
+	// Get the wallet seed.
+	ws, _, err := c.wallet.PrimarySeed()
+	if err != nil {
+		c.log.Debugln("Can't recover contracts", err)
+		return
+	}
 	// Copy necessary fields to avoid having to hold the lock for too long.
 	c.mu.RLock()
 	blockHeight := c.blockHeight
@@ -91,8 +143,12 @@ func (c *Contractor) managedRecoverContracts() {
 			deletedContracts = append(deletedContracts, rc.ID)
 			continue
 		}
+		// Get renter seed and wipe it after using it.
+		ers := proto.EphemeralRenterSeed(ws, rc.WindowStart)
+		defer fastrand.Read(ers[:])
 		// Recover contract.
-		if err := c.managedRecoverContract(rc); err != nil {
+		err := c.managedRecoverContract(rc, ers, blockHeight)
+		if err != nil {
 			c.log.Debugln("Failed to recover contract", rc.ID, err)
 		}
 		// Recovery was successful.
@@ -105,7 +161,7 @@ func (c *Contractor) managedRecoverContracts() {
 	for _, fcid := range deletedContracts {
 		delete(c.recoverableContracts, fcid)
 	}
-	err := c.save()
+	err = c.save()
 	if err != nil {
 		c.log.Println("Unable to save while recovering contracts:", err)
 	}

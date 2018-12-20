@@ -161,9 +161,6 @@ type hostContractor interface {
 	// isn't available for recovery or something went wrong.
 	RecoverableContracts() []modules.RecoverableContract
 
-	// ResolveIDToPubKey returns the public key of a host given a contract id.
-	ResolveIDToPubKey(types.FileContractID) types.SiaPublicKey
-
 	// RateLimits Gets the bandwidth limits for connections created by the
 	// contractor and its submodules.
 	RateLimits() (readBPS int64, writeBPS int64, packetSize uint64)

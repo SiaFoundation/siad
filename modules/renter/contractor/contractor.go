@@ -53,7 +53,6 @@ type Contractor struct {
 	sessions            map[types.FileContractID]*hostSession
 	numFailedRenews     map[types.FileContractID]types.BlockHeight
 	pubKeysToContractID map[string]types.FileContractID
-	contractIDToPubKey  map[types.FileContractID]types.SiaPublicKey
 	renewing            map[types.FileContractID]bool // prevent revising during renewal
 
 	// renewedFrom links the new contract's ID to the old contract's ID
@@ -222,7 +221,6 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		sessions:             make(map[types.FileContractID]*hostSession),
 		oldContracts:         make(map[types.FileContractID]modules.RenterContract),
 		recoverableContracts: make(map[types.FileContractID]modules.RecoverableContract),
-		contractIDToPubKey:   make(map[types.FileContractID]types.SiaPublicKey),
 		pubKeysToContractID:  make(map[string]types.FileContractID),
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
@@ -272,11 +270,9 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 
 	// Initialize the contractIDToPubKey map
 	for _, contract := range c.oldContracts {
-		c.contractIDToPubKey[contract.ID] = contract.HostPublicKey
 		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	}
 	for _, contract := range c.staticContracts.ViewAll() {
-		c.contractIDToPubKey[contract.ID] = contract.HostPublicKey
 		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	}
 

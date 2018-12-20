@@ -66,9 +66,16 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	return resp.Settings, nil
 }
 
-// RecentRevision calls the RecentRevision RPC, returning (what the host
-// claims is) the most recent revision of the contract.
-func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
+// VerifyRecentRevision calls the RecentRevision RPC, returning the most recent
+// revision known to the host if it matches the one we have stored locally.
+// Otherwise an error is returned.
+func (s *Session) VerifyRecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
+	// Get the recent revision from the host.
+	rev, sigs, err := s.RecentRevision()
+	if err != nil {
+		return types.FileContractRevision{}, nil, err
+	}
+
 	// Acquire the contract.
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
@@ -76,27 +83,33 @@ func (s *Session) RecentRevision() (types.FileContractRevision, []types.Transact
 	}
 	defer s.contractSet.Return(sc)
 
-	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
-	var resp modules.LoopRecentRevisionResponse
-	if err := s.call(modules.RPCLoopRecentRevision, nil, &resp); err != nil {
-		return types.FileContractRevision{}, nil, err
-	}
-
 	// Check that the unlock hashes match; if they do not, something is
 	// seriously wrong. Otherwise, check that the revision numbers match.
 	ourRev := sc.header.LastRevision()
-	if resp.Revision.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
+	if rev.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
 		return types.FileContractRevision{}, nil, errors.New("unlock conditions do not match")
-	} else if resp.Revision.NewRevisionNumber != ourRev.NewRevisionNumber {
+	} else if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
 		// If the revision number doesn't match try to commit potential
 		// unapplied transactions and check again.
 		if err := sc.commitTxns(); err != nil {
 			return types.FileContractRevision{}, nil, errors.AddContext(err, "failed to commit transactions")
 		}
 		ourRev = sc.header.LastRevision()
-		if resp.Revision.NewRevisionNumber != ourRev.NewRevisionNumber {
-			return types.FileContractRevision{}, nil, &recentRevisionError{ourRev.NewRevisionNumber, resp.Revision.NewRevisionNumber}
+		if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
+			return types.FileContractRevision{}, nil, &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
 		}
+	}
+
+	return rev, sigs, nil
+}
+
+// RecentRevision calls the RecentRevision RPC, returning (what the host
+// claims is) the most recent revision of the contract.
+func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
+	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
+	var resp modules.LoopRecentRevisionResponse
+	if err := s.call(modules.RPCLoopRecentRevision, nil, &resp); err != nil {
+		return types.FileContractRevision{}, nil, err
 	}
 
 	return resp.Revision, resp.Signatures, nil

@@ -3966,41 +3966,6 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal("Seeds of new and old renters don't match")
 	}
 
-	// The new renter should know about the contracts being recoverable. TODO
-	// once we have recovery this might not work. We probably need a dependency
-	// then to prevent recovery.
-	rc, err = newRenter.RenterRecoverableContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rc.RecoverableContracts) != len(oldContracts) {
-		t.Fatalf("Wrong number of recoverable contracts, expected %v but was %v",
-			len(oldContracts), len(rc.RecoverableContracts))
-	}
-	for _, c := range rc.RecoverableContracts {
-		_, exists := oldContracts[c.ID]
-		if !exists {
-			t.Fatal("Unknown recoverable contract", c.ID)
-		}
-	}
-
-	// Restart node to see if the contracts are persisted correctly.
-	if err := tg.RestartNode(newRenter); err != nil {
-		t.Fatal(err)
-	}
-	rc2, err := newRenter.RenterRecoverableContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(rc.RecoverableContracts, rc2.RecoverableContracts) {
-		t.Fatal("contracts after restart are not the same as before")
-	}
-
-	// Mine a block to trigger the recovery.
-	if err := tg.Miners()[0].MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-
 	// The new renter should have the same active contracts as the old one.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		rc, err = newRenter.RenterContractsGet()
@@ -4016,9 +3981,26 @@ func TestRenterContractRecovery(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if !reflect.DeepEqual(c, contract) {
-				return errors.New("Recovered contract doesn't match expected contract")
+			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+				return errors.New("public keys don't match")
 			}
+			if !reflect.DeepEqual(contract.LastTransaction, c.LastTransaction) {
+				return errors.New("last txns don't match")
+			}
+			if contract.EndHeight != c.EndHeight {
+				return errors.New("endheights don't match")
+			}
+			if contract.GoodForRenew != c.GoodForRenew {
+				return errors.New("GoodForRenew doesn't match")
+			}
+			if contract.GoodForUpload != c.GoodForUpload {
+				return errors.New("GoodForRenew doesn't match")
+			}
+			// TODO we can't check if the contracts are 100% equal because we
+			// don't know the exact spending values.
+			//if !reflect.DeepEqual(c, contract) {
+			//	return errors.New("Recovered contract doesn't match expected contract")
+			//}
 		}
 		return nil
 	})

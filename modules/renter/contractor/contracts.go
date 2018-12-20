@@ -27,7 +27,7 @@ func (c *Contractor) managedCancelContract(cid types.FileContractID) error {
 // child contract.
 func (c *Contractor) managedContractByPublicKey(pk types.SiaPublicKey) (modules.RenterContract, bool) {
 	c.mu.RLock()
-	id, ok := c.pubKeysToContractID[string(pk.Key)]
+	id, ok := c.pubKeysToContractID[pk.String()]
 	c.mu.RUnlock()
 	if !ok {
 		return modules.RenterContract{}, false
@@ -100,15 +100,4 @@ func (c *Contractor) RecoverableContracts() []modules.RecoverableContract {
 		contracts = append(contracts, c)
 	}
 	return contracts
-}
-
-// ResolveIDToPubKey returns the ID of the most recent renewal of id.
-func (c *Contractor) ResolveIDToPubKey(id types.FileContractID) types.SiaPublicKey {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	pk, exists := c.contractIDToPubKey[id]
-	if !exists {
-		panic("renewed should never miss an id")
-	}
-	return pk
 }

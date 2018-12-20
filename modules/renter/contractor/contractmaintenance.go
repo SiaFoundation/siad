@@ -363,7 +363,6 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 
 	// Add a mapping from the contract's id to the public key of the host.
 	c.mu.Lock()
-	c.contractIDToPubKey[contract.ID] = contract.HostPublicKey
 	_, exists := c.pubKeysToContractID[contract.HostPublicKey.String()]
 	if exists {
 		c.mu.Unlock()
@@ -510,7 +509,6 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// will destroy the previous mapping from pubKey to contract id but other
 	// modules are only interested in the most recent contract anyway.
 	c.mu.Lock()
-	c.contractIDToPubKey[newContract.ID] = newContract.HostPublicKey
 	c.pubKeysToContractID[newContract.HostPublicKey.String()] = newContract.ID
 	c.mu.Unlock()
 
