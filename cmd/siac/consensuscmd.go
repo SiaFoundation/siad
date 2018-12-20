@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/node/api"
 )
 
 var (
@@ -33,10 +34,10 @@ Target:     %v
 Difficulty: %v
 `, yesNo(cg.Synced), cg.CurrentBlock, cg.Height, cg.Target, cg.Difficulty)
 	} else {
-		estimatedHeight := estimatedHeightAt(time.Now())
+		estimatedHeight := estimatedHeightAt(time.Now(), cg)
 		estimatedProgress := float64(cg.Height) / float64(estimatedHeight) * 100
 		if estimatedProgress > 100 {
-			estimatedProgress = 100
+			estimatedProgress = 99.9
 		}
 		fmt.Printf(`Synced: %v
 Height: %v
@@ -48,10 +49,8 @@ Progress (estimated): %.1f%%
 // estimatedHeightAt returns the estimated block height for the given time.
 // Block height is estimated by calculating the minutes since a known block in
 // the past and dividing by 10 minutes (the block time).
-func estimatedHeightAt(t time.Time) types.BlockHeight {
-	block100kTimestamp := time.Date(2017, time.April, 13, 23, 29, 49, 0, time.UTC)
-	blockTime := float64(9) // overestimate block time for better UX
-	diff := t.Sub(block100kTimestamp)
-	estimatedHeight := 100e3 + (diff.Minutes() / blockTime)
-	return types.BlockHeight(estimatedHeight + 0.5) // round to the nearest block
+func estimatedHeightAt(t time.Time, cg api.ConsensusGET) types.BlockHeight {
+	gt := cg.GenesisTimestamp
+	bf := cg.BlockFrequency
+	return types.BlockHeight(types.Timestamp(t.Unix()) - gt) / bf
 }
