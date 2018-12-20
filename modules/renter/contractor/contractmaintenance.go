@@ -65,6 +65,8 @@ func (c *Contractor) managedCheckForDuplicates() {
 			c.renewedTo[oldContract.ID] = newContract.ID
 			// Store the contract in the record of historic contracts.
 			c.oldContracts[oldContract.ID] = oldSC.Metadata()
+			// Point the newContract's public key to its ID.
+			c.pubKeysToContractID[string(newContract.HostPublicKey.Key)] = newContract.ID
 			// Save the contractor.
 			err := c.saveSync()
 			if err != nil {

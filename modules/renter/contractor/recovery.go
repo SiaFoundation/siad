@@ -2,8 +2,8 @@ package contractor
 
 import (
 	"errors"
+	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
@@ -90,16 +90,16 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	}
 	// Add a mapping from the contract's id to the public key of the host.
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	_, exists := c.pubKeysToContractID[contract.HostPublicKey.String()]
 	if exists {
-		// Sanity check here since we already checked for that in
-		// managedRecoverContract.
-		build.Critical("Shouldn't recover contract with host that we already have a contract with")
+		// NOTE There is a chance that this happens if
+		// c.recoverableContracts contains multiple recoverable contracts for a
+		// single host. In that case we don't update the mapping and let
+		// managedCheckForDuplicates handle that later.
 		return errors.New("can't recover contract with a host that we already have a contract with")
 	}
 	c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	c.mu.Unlock()
-
 	return nil
 }
 
@@ -121,45 +121,54 @@ func (c *Contractor) managedRecoverContracts() {
 	c.mu.RUnlock()
 
 	// Remember the deleted contracts.
-	var deletedContracts []types.FileContractID
+	deleteContract := make([]bool, len(recoverableContracts))
 
-	// Try to recover one contract after another.
-	// TODO this loop can probably be multithreaded to speed things up a
-	// little.
-	for _, rc := range recoverableContracts {
-		if blockHeight >= rc.WindowEnd {
-			// No need to recover a contract if we are beyond the WindowEnd.
-			deletedContracts = append(deletedContracts, rc.ID)
-			continue
-		}
-		// Check if we already have an active contract with the host.
-		_, exists := c.managedContractByPublicKey(rc.HostPublicKey)
-		if exists {
-			// TODO this is tricky. For now we probably want to ignore a
-			// contract if we already have an active contract with the same
-			// host but there could still be files which are only accessible
-			// using one contract and not the other. We might need to somehow
-			// merge them.
-			deletedContracts = append(deletedContracts, rc.ID)
-			continue
-		}
-		// Get renter seed and wipe it after using it.
-		ers := proto.EphemeralRenterSeed(ws, rc.WindowStart)
-		defer fastrand.Read(ers[:])
-		// Recover contract.
-		err := c.managedRecoverContract(rc, ers, blockHeight)
-		if err != nil {
-			c.log.Debugln("Failed to recover contract", rc.ID, err)
-		}
-		// Recovery was successful.
-		deletedContracts = append(deletedContracts, rc.ID)
-		c.log.Debugln("Successfully recovered contract", rc.ID)
+	// Try to recover the contracts in parallel.
+	var wg sync.WaitGroup
+	for i, recoverableContract := range recoverableContracts {
+		wg.Add(1)
+		go func(j int, rc modules.RecoverableContract) {
+			defer wg.Done()
+			if blockHeight >= rc.WindowEnd {
+				// No need to recover a contract if we are beyond the WindowEnd.
+				deleteContract[j] = true
+				return
+			}
+			// Check if we already have an active contract with the host.
+			_, exists := c.managedContractByPublicKey(rc.HostPublicKey)
+			if exists {
+				// TODO this is tricky. For now we probably want to ignore a
+				// contract if we already have an active contract with the same
+				// host but there could still be files which are only accessible
+				// using one contract and not the other. We might need to somehow
+				// merge them.
+				// For now we ignore that contract and don't delete it. We
+				// might want to recover it later.
+				return
+			}
+			// Get renter seed and wipe it after using it.
+			ers := proto.EphemeralRenterSeed(ws, rc.WindowStart)
+			defer fastrand.Read(ers[:])
+			// Recover contract.
+			err := c.managedRecoverContract(rc, ers, blockHeight)
+			if err != nil {
+				c.log.Debugln("Failed to recover contract", rc.ID, err)
+			}
+			// Recovery was successful.
+			deleteContract[j] = true
+			c.log.Debugln("Successfully recovered contract", rc.ID)
+		}(i, recoverableContract)
 	}
+
+	// Wait for the recovery to be done.
+	wg.Wait()
 
 	// Delete the contracts.
 	c.mu.Lock()
-	for _, fcid := range deletedContracts {
-		delete(c.recoverableContracts, fcid)
+	for i, rc := range recoverableContracts {
+		if deleteContract[i] {
+			delete(c.recoverableContracts, rc.ID)
+		}
 	}
 	err = c.save()
 	if err != nil {
