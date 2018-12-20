@@ -32,16 +32,12 @@ type ConsensusGET struct {
 	MedianTimestampWindow  uint64            `json:"mediantimestampwindow"`
 	SiafundCount           types.Currency    `json:"siafundcount"`
 	SiafundPortion         *big.Rat          `json:"siafundportion"`
-	TargetWindow           types.BlockHeight `json:"targetwindow"`
 
 	InitialCoinbase uint64 `json:"initialcoinbase"`
 	MinimumCoinbase uint64 `json:"minimumcoinbase"`
 
 	RootTarget types.Target `json:"roottarget"`
 	RootDepth  types.Target `json:"rootdepth"`
-
-	MaxTargetAdjustmentUp   *big.Rat `json:"maxtargetadjustmentup"`
-	MaxTargetAdjustmentDown *big.Rat `json:"maxtargetadjustmentdown"`
 
 	SiacoinPrecision types.Currency `json:"siacoinprecision"`
 }
@@ -213,16 +209,12 @@ func (api *API) consensusHandler(w http.ResponseWriter, req *http.Request, _ htt
 		MedianTimestampWindow:  types.MedianTimestampWindow,
 		SiafundCount:           types.SiafundCount,
 		SiafundPortion:         types.SiafundPortion,
-		TargetWindow:           types.TargetWindow,
 
 		InitialCoinbase: types.InitialCoinbase,
 		MinimumCoinbase: types.MinimumCoinbase,
 
 		RootTarget: types.RootTarget,
 		RootDepth:  types.RootDepth,
-
-		MaxTargetAdjustmentUp:   types.MaxTargetAdjustmentUp,
-		MaxTargetAdjustmentDown: types.MaxTargetAdjustmentDown,
 
 		SiacoinPrecision: types.SiacoinPrecision,
 	})

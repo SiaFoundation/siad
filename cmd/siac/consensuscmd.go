@@ -17,6 +17,8 @@ var (
 		Long:  "Print the current state of consensus such as current block, block height, and target.",
 		Run:   wrap(consensuscmd),
 	}
+
+	consensusCmdVerbose bool
 )
 
 // consensuscmd is the handler for the command `siac consensus`.
@@ -43,6 +45,13 @@ Difficulty: %v
 Height: %v
 Progress (estimated): %.1f%%
 `, yesNo(cg.Synced), cg.Height, estimatedProgress)
+	}
+	if consensusCmdVerbose {
+		fmt.Println()
+		fmt.Println("Block Frequency:", cg.BlockFrequency)
+		fmt.Println("Block Size Limit:", cg.BlockSizeLimit)
+		fmt.Println("Maturity Delay:", cg.MaturityDelay)
+		fmt.Println("Genesis Timestamp:", time.Unix(int64(cg.GenesisTimestamp), 0))
 	}
 }
 

@@ -126,16 +126,12 @@ Also returns the set of constants in use in the consensus code.
   "mediantimestampwindow":  11,         // blocks
   "siafundcount":           "10000",    // siafund
   "siafundportion":         "39/1000",  // fraction
-  "targetwindow":           1000,       // blocks
 
   "initialcoinbase": 300000, // Siacoins (see note in Daemon.md)
   "minimumcoinbase": 30000,  // Siacoins (see note in Daemon.md)
 
   "roottarget": [0,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], // hash
   "rootdepth":  [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],  // hash
-
-  "maxtargetadjustmentup":   "5/2", // fraction
-  "maxtargetadjustmentdown": "2/5", // fraction
 
   "siacoinprecision": "1000000000000000000000000" // hastings per siacoin
 }
@@ -182,9 +178,6 @@ Total number of siafunds.
 **siafundportion** | fraction
 Fraction of each file contract payout given to siafund holders.  
 
-**targetwindow** | number of blocks
-Height of the window used to adjust the difficulty.  
-
 **initialcoinbase** | siacoin
 Number of coins given to the miner of the first block. Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
 
@@ -196,12 +189,6 @@ Initial target.
 
 **rootdepth** | hash
 Initial depth.  
-
-**maxtargetadjustmentup** | fraction
-Largest allowed ratio between the old difficulty and the new difficulty.  
-
-**maxtargetadjustmentdown** | fraction
-Smallest allowed ratio between the old difficulty and the new difficulty.  
 
 **siacoinprecision** | hastings per siacoin
 Number of Hastings in one Siacoin.  
