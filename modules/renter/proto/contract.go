@@ -424,7 +424,7 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 	}
 	cs.mu.Lock()
 	cs.contracts[sc.header.ID()] = sc
-	cs.pubKeys[string(h.HostPublicKey().Key)] = sc.header.ID()
+	cs.pubKeys[h.HostPublicKey().String()] = sc.header.ID()
 	cs.mu.Unlock()
 	return sc.Metadata(), nil
 }
@@ -495,7 +495,7 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 		}
 	}
 	cs.contracts[sc.header.ID()] = sc
-	cs.pubKeys[string(header.HostPublicKey().Key)] = sc.header.ID()
+	cs.pubKeys[header.HostPublicKey().String()] = sc.header.ID()
 	return nil
 }
 

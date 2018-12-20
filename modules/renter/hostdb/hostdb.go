@@ -88,7 +88,7 @@ type HostDB struct {
 // insert inserts the HostDBEntry into both hosttrees
 func (hdb *HostDB) insert(host modules.HostDBEntry) error {
 	err := hdb.hostTree.Insert(host)
-	_, ok := hdb.filteredHosts[string(host.PublicKey.Key)]
+	_, ok := hdb.filteredHosts[host.PublicKey.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
 		errF := hdb.filteredTree.Insert(host)
@@ -102,7 +102,7 @@ func (hdb *HostDB) insert(host modules.HostDBEntry) error {
 // modify modifies the HostDBEntry in both hosttrees
 func (hdb *HostDB) modify(host modules.HostDBEntry) error {
 	err := hdb.hostTree.Modify(host)
-	_, ok := hdb.filteredHosts[string(host.PublicKey.Key)]
+	_, ok := hdb.filteredHosts[host.PublicKey.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
 		err = errors.Compose(err, hdb.filteredTree.Modify(host))
@@ -113,7 +113,7 @@ func (hdb *HostDB) modify(host modules.HostDBEntry) error {
 // remove removes the HostDBEntry from both hosttrees
 func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
 	err := hdb.hostTree.Remove(pk)
-	_, ok := hdb.filteredHosts[string(pk.Key)]
+	_, ok := hdb.filteredHosts[pk.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
 		errF := hdb.filteredTree.Remove(pk)
@@ -374,7 +374,7 @@ func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 	if !exists {
 		return host, exists
 	}
-	_, ok := filteredHosts[string(spk.Key)]
+	_, ok := filteredHosts[spk.String()]
 	host.Filtered = whitelist != ok
 	hdb.mu.RLock()
 	updateHostHistoricInteractions(&host, hdb.blockHeight)
@@ -422,16 +422,16 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	// Create filteredHosts map
 	filteredHosts := make(map[string]types.SiaPublicKey)
 	for _, h := range hosts {
-		if _, ok := filteredHosts[string(h.Key)]; ok {
+		if _, ok := filteredHosts[h.String()]; ok {
 			continue
 		}
-		filteredHosts[string(h.Key)] = h
+		filteredHosts[h.String()] = h
 	}
 	var allErrs error
 	allHosts := hdb.hostTree.All()
 	for _, host := range allHosts {
 		// Add hosts to filtered tree
-		_, ok := filteredHosts[string(host.PublicKey.Key)]
+		_, ok := filteredHosts[host.PublicKey.String()]
 		if isWhitelist != ok {
 			continue
 		}
@@ -514,7 +514,7 @@ func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist [
 	isWhitelist := filterType == modules.HostDBActiveWhitelist
 	for _, host := range allHosts {
 		// Filter out listed hosts
-		_, ok := filteredHosts[string(host.PublicKey.Key)]
+		_, ok := filteredHosts[host.PublicKey.String()]
 		if isWhitelist != ok {
 			continue
 		}
