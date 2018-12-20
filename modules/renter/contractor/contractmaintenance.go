@@ -353,7 +353,7 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	// Add a mapping from the contract's id to the public key of the host.
 	c.mu.Lock()
 	c.contractIDToPubKey[contract.ID] = contract.HostPublicKey
-	_, exists := c.pubKeysToContractID[string(contract.HostPublicKey.Key)]
+	_, exists := c.pubKeysToContractID[contract.HostPublicKey.String()]
 	if exists {
 		c.mu.Unlock()
 		txnBuilder.Drop()
@@ -362,7 +362,7 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 		c.log.Println("WARN: Attempted to form a new contract with a host that we already have a contrat with.")
 		return contractFunding, modules.RenterContract{}, fmt.Errorf("We already have a contract with host %v", contract.HostPublicKey)
 	}
-	c.pubKeysToContractID[string(contract.HostPublicKey.Key)] = contract.ID
+	c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	c.mu.Unlock()
 
 	contractValue := contract.RenterFunds
@@ -376,7 +376,7 @@ func (c *Contractor) managedPrunePubkeyMap() {
 	allContracts := c.staticContracts.ViewAll()
 	pks := make(map[string]struct{})
 	for _, c := range allContracts {
-		pks[string(c.HostPublicKey.Key)] = struct{}{}
+		pks[c.HostPublicKey.String()] = struct{}{}
 	}
 	c.mu.Lock()
 	for pk := range c.pubKeysToContractID {
@@ -490,7 +490,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// modules are only interested in the most recent contract anyway.
 	c.mu.Lock()
 	c.contractIDToPubKey[newContract.ID] = newContract.HostPublicKey
-	c.pubKeysToContractID[string(newContract.HostPublicKey.Key)] = newContract.ID
+	c.pubKeysToContractID[newContract.HostPublicKey.String()] = newContract.ID
 	c.mu.Unlock()
 
 	return newContract, nil

@@ -45,7 +45,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 		d.Close()
 	}()
 
-	pieceData, err := d.Sector(udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].root)
+	pieceData, err := d.Sector(udc.staticChunkMap[w.contract.HostPublicKey.String()].root)
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)
@@ -61,7 +61,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	// Decrypt the piece. This might introduce some overhead for downloads with
 	// a large overdrive. It shouldn't be a bottleneck though since bandwidth
 	// is usually a lot more scarce than CPU processing power.
-	pieceIndex := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].index
+	pieceIndex := udc.staticChunkMap[w.contract.HostPublicKey.String()].index
 	key := deriveKey(udc.masterKey, udc.staticChunkIndex, pieceIndex)
 	decryptedPiece, err := key.DecryptBytesInPlace(pieceData)
 	if err != nil {
@@ -157,7 +157,7 @@ func (w *worker) managedQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 func (udc *unfinishedDownloadChunk) managedUnregisterWorker(w *worker) {
 	udc.mu.Lock()
 	udc.piecesRegistered--
-	udc.pieceUsage[udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].index] = false
+	udc.pieceUsage[udc.staticChunkMap[w.contract.HostPublicKey.String()].index] = false
 	udc.mu.Unlock()
 }
 
@@ -184,7 +184,7 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	udc.mu.Lock()
 	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces() || udc.download.staticComplete()
 	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
-	pieceData, workerHasPiece := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)]
+	pieceData, workerHasPiece := udc.staticChunkMap[w.contract.HostPublicKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
 	if chunkComplete || chunkFailed || w.ownedOnDownloadCooldown() || !workerHasPiece || pieceCompleted {
 		udc.mu.Unlock()
