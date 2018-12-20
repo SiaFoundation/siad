@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -14,11 +15,31 @@ import (
 // ConsensusGET contains general information about the consensus set, with tags
 // to support idiomatic json encodings.
 type ConsensusGET struct {
+	// Consensus status values.
 	Synced       bool              `json:"synced"`
 	Height       types.BlockHeight `json:"height"`
 	CurrentBlock types.BlockID     `json:"currentblock"`
 	Target       types.Target      `json:"target"`
 	Difficulty   types.Currency    `json:"difficulty"`
+
+	// Consensus code constants.
+	BlockFrequency         types.BlockHeight `json:"blockfrequency"`
+	BlockSizeLimit         uint64            `json:"blocksizelimit"`
+	ExtremeFutureThreshold types.Timestamp   `json:"extremefuturethreshold"`
+	FutureThreshold        types.Timestamp   `json:"futurethreshold"`
+	GenesisTimestamp       types.Timestamp   `json:"genesistimestamp"`
+	MaturityDelay          types.BlockHeight `json:"maturitydelay"`
+	MedianTimestampWindow  uint64            `json:"mediantimestampwindow"`
+	SiafundCount           types.Currency    `json:"siafundcount"`
+	SiafundPortion         *big.Rat          `json:"siafundportion"`
+
+	InitialCoinbase uint64 `json:"initialcoinbase"`
+	MinimumCoinbase uint64 `json:"minimumcoinbase"`
+
+	RootTarget types.Target `json:"roottarget"`
+	RootDepth  types.Target `json:"rootdepth"`
+
+	SiacoinPrecision types.Currency `json:"siacoinprecision"`
 }
 
 // ConsensusHeadersGET contains information from a blocks header.
@@ -178,6 +199,24 @@ func (api *API) consensusHandler(w http.ResponseWriter, req *http.Request, _ htt
 		CurrentBlock: cbid,
 		Target:       currentTarget,
 		Difficulty:   currentTarget.Difficulty(),
+
+		BlockFrequency:         types.BlockFrequency,
+		BlockSizeLimit:         types.BlockSizeLimit,
+		ExtremeFutureThreshold: types.ExtremeFutureThreshold,
+		FutureThreshold:        types.FutureThreshold,
+		GenesisTimestamp:       types.GenesisTimestamp,
+		MaturityDelay:          types.MaturityDelay,
+		MedianTimestampWindow:  types.MedianTimestampWindow,
+		SiafundCount:           types.SiafundCount,
+		SiafundPortion:         types.SiafundPortion,
+
+		InitialCoinbase: types.InitialCoinbase,
+		MinimumCoinbase: types.MinimumCoinbase,
+
+		RootTarget: types.RootTarget,
+		RootDepth:  types.RootDepth,
+
+		SiacoinPrecision: types.SiacoinPrecision,
 	})
 }
 
