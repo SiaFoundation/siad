@@ -113,6 +113,7 @@ The consensus set manages everything related to consensus and keeps the blockcha
 ## /consensus [GET]
 
 Returns information about the consensus set, such as the current block height.
+Also returns the set of constants in use in the consensus code.
 
 ### JSON Response
 > JSON Response Example
@@ -124,6 +125,24 @@ Returns information about the consensus set, such as the current block height.
   "currentblock": "00000000000008a84884ba827bdc868a17ba9c14011de33ff763bd95779a9cf1", // hash
   "target":       [0,0,0,0,0,0,11,48,125,79,116,89,136,74,42,27,5,14,10,31,23,53,226,238,202,219,5,204,38,32,59,165], // hash
   "difficulty":   "1234" // arbitrary-precision integer
+
+  "blockfrequency":         600,        // seconds per block
+  "blocksizelimit":         2000000,    // bytes
+  "extremefuturethreshold": 10800,      // seconds
+  "futurethreshold":        10800,      // seconds
+  "genesistimestamp":       1257894000, // Unix time
+  "maturitydelay":          144,        // blocks
+  "mediantimestampwindow":  11,         // blocks
+  "siafundcount":           "10000",    // siafund
+  "siafundportion":         "39/1000",  // fraction
+
+  "initialcoinbase": 300000, // Siacoins (see note in Daemon.md)
+  "minimumcoinbase": 30000,  // Siacoins (see note in Daemon.md)
+
+  "roottarget": [0,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], // hash
+  "rootdepth":  [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],  // hash
+
+  "siacoinprecision": "1000000000000000000000000" // hastings per siacoin
 }
 ```
 **synced** | boolean
@@ -140,6 +159,48 @@ An immediate child block of this block must have a hash less than this target fo
 
 **difficulty** | arbitrary-precision integer
 The difficulty of the current block target.  
+
+**blockfrequency** | blocks / second
+Target for how frequently new blocks should be mined.  
+
+**blocksizelimit** | bytes
+Maximum size, in bytes, of a block. Blocks larger than this will be rejected by peers.  
+
+**extremefuturethreshold** | seconds
+Farthest a block's timestamp can be in the future before the block is rejected outright.  
+
+**futurethreshold** | seconds
+How far in the future a block can be without being rejected. A block further into the future will not be accepted immediately, but the daemon will attempt to accept the block as soon as it is valid.  
+
+**genesistimestamp** | unix timestamp
+Timestamp of the genesis block.  
+
+**maturitydelay** | number of blocks
+Number of children a block must have before it is considered "mature."  
+
+**mediantimestampwindow** | number of blocks
+Duration of the window used to adjust the difficulty.  
+
+**siafundcount** | siafunds
+Total number of siafunds.  
+
+**siafundportion** | fraction
+Fraction of each file contract payout given to siafund holders.  
+
+**initialcoinbase** | siacoin
+Number of coins given to the miner of the first block. Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
+
+**minimumcoinbase** | siacoin
+Minimum number of coins paid out to the miner of a block (the coinbase decreases with each block). Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
+
+**roottarget** | hash
+Initial target.  
+
+**rootdepth** | hash
+Initial depth.  
+
+**siacoinprecision** | hastings per siacoin
+Number of Hastings in one Siacoin.  
 
 ## /consensus/blocks [GET]
 
@@ -251,90 +312,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 # Daemon
 
-The daemon is responsible for starting and stopping the modules which make up the rest of Sia. It also provides endpoints for viewing build constants.
-
-## /daemon/constants [GET]
-
-Returns the set of constants in use.
-
-### JSON Response
-> JSON Response Example
- 
-```go
-{
-  "blockfrequency":         600,        // seconds per block
-  "blocksizelimit":         2000000,    // bytes
-  "extremefuturethreshold": 10800,      // seconds
-  "futurethreshold":        10800,      // seconds
-  "genesistimestamp":       1257894000, // Unix time
-  "maturitydelay":          144,        // blocks
-  "mediantimestampwindow":  11,         // blocks
-  "siafundcount":           "10000",    // siafund
-  "siafundportion":         "39/1000",  // fraction
-  "targetwindow":           1000,       // blocks
-
-  "initialcoinbase": 300000, // Siacoins (see note in Daemon.md)
-  "minimumcoinbase": 30000,  // Siacoins (see note in Daemon.md)
-
-  "roottarget": [0,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], // hash
-  "rootdepth":  [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],  // hash
-
-  "maxtargetadjustmentup":   "5/2", // fraction
-  "maxtargetadjustmentdown": "2/5", // fraction
-
-  "siacoinprecision": "1000000000000000000000000" // hastings per siacoin
-}
-```
-**blockfrequency** | blocks / second
-Target for how frequently new blocks should be mined.  
-
-**blocksizelimit** | bytes
-Maximum size, in bytes, of a block. Blocks larger than this will be rejected by peers.  
-
-**extremefuturethreshold** | seconds
-Farthest a block's timestamp can be in the future before the block is rejected outright.  
-
-**futurethreshold** | seconds
-How far in the future a block can be without being rejected. A block further into the future will not be accepted immediately, but the daemon will attempt to accept the block as soon as it is valid.  
-
-**genesistimestamp** | unix timestamp
-Timestamp of the genesis block.  
-
-**maturitydelay** | number of blocks
-Number of children a block must have before it is considered "mature."  
-
-**mediantimestampwindow** | number of blocks
-Duration of the window used to adjust the difficulty.  
-
-**siafundcount** | siafunds
-Total number of siafunds.  
-
-**siafundportion** | fraction
-Fraction of each file contract payout given to siafund holders.  
-
-**targetwindow** | number of blocks
-Height of the window used to adjust the difficulty.  
-
-**initialcoinbase** | siacoin
-Number of coins given to the miner of the first block. Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
-
-**minimumcoinbase** | siacoin
-Minimum number of coins paid out to the miner of a block (the coinbase decreases with each block). Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
-
-**roottarget** | hash
-Initial target.  
-
-**rootdepth** | hash
-Initial depth.  
-
-**maxtargetadjustmentup** | fraction
-Largest allowed ratio between the old difficulty and the new difficulty.  
-
-**maxtargetadjustmentdown** | fraction
-Smallest allowed ratio between the old difficulty and the new difficulty.  
-
-**siacoinprecision** | hastings per siacoin
-Number of Hastings in one Siacoin.  
+The daemon is responsible for starting and stopping the modules which make up the rest of Sia.
 
 ## /daemon/stop [GET]
 
