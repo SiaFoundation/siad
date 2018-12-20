@@ -211,7 +211,7 @@ func TestRandomHosts(t *testing.T) {
 	nEntries := int(1e3)
 	for i := 0; i < nEntries; i++ {
 		entry := makeHostDBEntry()
-		entries[string(entry.PublicKey.Key)] = entry
+		entries[entry.PublicKey.String()] = entry
 		err := hdbt.hdb.filteredTree.Insert(entry)
 		if err != nil {
 			t.Error(err)
@@ -229,15 +229,15 @@ func TestRandomHosts(t *testing.T) {
 		}
 		dupCheck := make(map[string]modules.HostDBEntry)
 		for _, host := range hosts {
-			_, exists := entries[string(host.PublicKey.Key)]
+			_, exists := entries[host.PublicKey.String()]
 			if !exists {
 				t.Error("hostdb returning host that doesn't exist.")
 			}
-			_, exists = dupCheck[string(host.PublicKey.Key)]
+			_, exists = dupCheck[host.PublicKey.String()]
 			if exists {
 				t.Error("RandomHosts returning duplicates")
 			}
-			dupCheck[string(host.PublicKey.Key)] = host
+			dupCheck[host.PublicKey.String()] = host
 		}
 	}
 
@@ -251,15 +251,15 @@ func TestRandomHosts(t *testing.T) {
 		t.Fatalf("RandomHosts returned few entries. got %v wanted %v\n", len(hosts), nEntries/2)
 	}
 	for _, host := range hosts {
-		_, exists := entries[string(host.PublicKey.Key)]
+		_, exists := entries[host.PublicKey.String()]
 		if !exists {
 			t.Error("hostdb returning host that doesn't exist.")
 		}
-		_, exists = dupCheck1[string(host.PublicKey.Key)]
+		_, exists = dupCheck1[host.PublicKey.String()]
 		if exists {
 			t.Error("RandomHosts returning duplicates")
 		}
-		dupCheck1[string(host.PublicKey.Key)] = host
+		dupCheck1[host.PublicKey.String()] = host
 	}
 
 	// Iterative case. Check that every time you query for random hosts, you
@@ -275,21 +275,21 @@ func TestRandomHosts(t *testing.T) {
 			t.Fatalf("RandomHosts returned few entries. got %v wanted %v\n", len(hosts), nEntries/2)
 		}
 		for _, host := range hosts {
-			_, exists := entries[string(host.PublicKey.Key)]
+			_, exists := entries[host.PublicKey.String()]
 			if !exists {
 				t.Error("hostdb returning host that doesn't exist.")
 			}
-			_, exists = dupCheck2[string(host.PublicKey.Key)]
+			_, exists = dupCheck2[host.PublicKey.String()]
 			if exists {
 				t.Error("RandomHosts returning duplicates")
 			}
-			_, exists = dupCheck1[string(host.PublicKey.Key)]
+			_, exists = dupCheck1[host.PublicKey.String()]
 			if exists {
 				overlap = true
 			} else {
 				disjoint = true
 			}
-			dupCheck2[string(host.PublicKey.Key)] = host
+			dupCheck2[host.PublicKey.String()] = host
 
 		}
 		if !overlap || !disjoint {
@@ -316,7 +316,7 @@ func TestRandomHosts(t *testing.T) {
 		if len(rand) != 1 {
 			t.Fatal("wrong number of hosts returned")
 		}
-		if string(rand[0].PublicKey.Key) != string(hosts[0].PublicKey.Key) {
+		if rand[0].PublicKey.String() != hosts[0].PublicKey.String() {
 			t.Error("exclude list seems to be excluding the wrong hosts.")
 		}
 
@@ -328,7 +328,7 @@ func TestRandomHosts(t *testing.T) {
 		if len(rand) != 1 {
 			t.Fatal("wrong number of hosts returned")
 		}
-		if string(rand[0].PublicKey.Key) != string(hosts[0].PublicKey.Key) {
+		if rand[0].PublicKey.String() != hosts[0].PublicKey.String() {
 			t.Error("exclude list seems to be excluding the wrong hosts.")
 		}
 
@@ -337,7 +337,7 @@ func TestRandomHosts(t *testing.T) {
 		// map.
 		includeMap := make(map[string]struct{})
 		for j := 0; j < 50; j++ {
-			includeMap[string(hosts[j].PublicKey.Key)] = struct{}{}
+			includeMap[hosts[j].PublicKey.String()] = struct{}{}
 		}
 		exclude = exclude[49:]
 
@@ -351,12 +351,12 @@ func TestRandomHosts(t *testing.T) {
 			t.Error("random hosts is returning the wrong number of hosts")
 		}
 		for _, host := range rand {
-			_, exists := dupCheck[string(host.PublicKey.Key)]
+			_, exists := dupCheck[host.PublicKey.String()]
 			if exists {
 				t.Error("RandomHosts is selecting duplicates")
 			}
-			dupCheck[string(host.PublicKey.Key)] = struct{}{}
-			_, exists = includeMap[string(host.PublicKey.Key)]
+			dupCheck[host.PublicKey.String()] = struct{}{}
+			_, exists = includeMap[host.PublicKey.String()]
 			if !exists {
 				t.Error("RandomHosts returning excluded hosts")
 			}
@@ -372,12 +372,12 @@ func TestRandomHosts(t *testing.T) {
 			t.Error("random hosts is returning the wrong number of hosts")
 		}
 		for _, host := range rand {
-			_, exists := dupCheck[string(host.PublicKey.Key)]
+			_, exists := dupCheck[host.PublicKey.String()]
 			if exists {
 				t.Error("RandomHosts is selecting duplicates")
 			}
-			dupCheck[string(host.PublicKey.Key)] = struct{}{}
-			_, exists = includeMap[string(host.PublicKey.Key)]
+			dupCheck[host.PublicKey.String()] = struct{}{}
+			_, exists = includeMap[host.PublicKey.String()]
 			if !exists {
 				t.Error("RandomHosts returning excluded hosts")
 			}
@@ -393,12 +393,12 @@ func TestRandomHosts(t *testing.T) {
 			t.Error("random hosts is returning the wrong number of hosts")
 		}
 		for _, host := range rand {
-			_, exists := dupCheck[string(host.PublicKey.Key)]
+			_, exists := dupCheck[host.PublicKey.String()]
 			if exists {
 				t.Error("RandomHosts is selecting duplicates")
 			}
-			dupCheck[string(host.PublicKey.Key)] = struct{}{}
-			_, exists = includeMap[string(host.PublicKey.Key)]
+			dupCheck[host.PublicKey.String()] = struct{}{}
+			_, exists = includeMap[host.PublicKey.String()]
 			if !exists {
 				t.Error("RandomHosts returning excluded hosts")
 			}

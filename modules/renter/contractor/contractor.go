@@ -272,11 +272,11 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	// Initialize the contractIDToPubKey map
 	for _, contract := range c.oldContracts {
 		c.contractIDToPubKey[contract.ID] = contract.HostPublicKey
-		c.pubKeysToContractID[string(contract.HostPublicKey.Key)] = contract.ID
+		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	}
 	for _, contract := range c.staticContracts.ViewAll() {
 		c.contractIDToPubKey[contract.ID] = contract.HostPublicKey
-		c.pubKeysToContractID[string(contract.HostPublicKey.Key)] = contract.ID
+		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	}
 
 	// Update the allowance in the hostdb with the one that was loaded from

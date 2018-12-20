@@ -99,7 +99,7 @@ func (hd *hostDownloader) Download(root crypto.Hash, offset, length uint32) ([]b
 // from a host.
 func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Downloader, err error) {
 	c.mu.RLock()
-	id, gotID := c.pubKeysToContractID[string(pk.Key)]
+	id, gotID := c.pubKeysToContractID[pk.String()]
 	cachedDownloader, haveDownloader := c.downloaders[id]
 	cachedSession, haveSession := c.sessions[id]
 	height := c.blockHeight

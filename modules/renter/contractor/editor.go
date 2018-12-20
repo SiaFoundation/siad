@@ -116,7 +116,7 @@ func (he *hostEditor) Upload(data []byte) (_ crypto.Hash, err error) {
 // delete sectors on a host.
 func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Editor, err error) {
 	c.mu.RLock()
-	id, gotID := c.pubKeysToContractID[string(pk.Key)]
+	id, gotID := c.pubKeysToContractID[pk.String()]
 	cachedEditor, haveEditor := c.editors[id]
 	cachedSession, haveSession := c.sessions[id]
 	height := c.blockHeight

@@ -36,7 +36,7 @@ func (c *Contractor) managedContractUtility(id types.FileContractID) (modules.Co
 // contract.
 func (c *Contractor) ContractByPublicKey(pk types.SiaPublicKey) (modules.RenterContract, bool) {
 	c.mu.RLock()
-	id, ok := c.pubKeysToContractID[string(pk.Key)]
+	id, ok := c.pubKeysToContractID[pk.String()]
 	c.mu.RUnlock()
 	if !ok {
 		return modules.RenterContract{}, false

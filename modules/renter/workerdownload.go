@@ -180,7 +180,7 @@ func (w *worker) managedQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 func (udc *unfinishedDownloadChunk) managedUnregisterWorker(w *worker) {
 	udc.mu.Lock()
 	udc.piecesRegistered--
-	udc.pieceUsage[udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].index] = false
+	udc.pieceUsage[udc.staticChunkMap[w.contract.HostPublicKey.String()].index] = false
 	udc.mu.Unlock()
 }
 
@@ -207,7 +207,7 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	udc.mu.Lock()
 	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces() || udc.download.staticComplete()
 	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
-	pieceData, workerHasPiece := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)]
+	pieceData, workerHasPiece := udc.staticChunkMap[w.contract.HostPublicKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
 	if chunkComplete || chunkFailed || w.ownedOnDownloadCooldown() || !workerHasPiece || pieceCompleted {
 		udc.mu.Unlock()
