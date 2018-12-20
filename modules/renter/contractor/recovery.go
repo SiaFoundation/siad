@@ -4,7 +4,6 @@ import (
 	"errors"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -72,19 +71,17 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 		return err
 	}
 	// Get the most recent revision.
-	rev, sigs, err := s.RecentRevision()
+	rev, _, err := s.RecentRevision()
 	if err != nil {
 		return err
 	}
-	// Create the revision transaction.
-	revTxn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{rev},
-		TransactionSignatures: sigs,
-	}
 	// Get the merkle roots.
-	// TODO this is not necessary if we stop storing the roots locally.
+	newRevTxn, roots, err := s.RecoverSectorRoots(rev, sk)
+	if err != nil {
+		return err
+	}
 	// Insert the contract into the set.
-	contract, err := c.staticContracts.InsertContract(revTxn, []crypto.Hash{}, sk)
+	contract, err := c.staticContracts.InsertContract(newRevTxn, roots, sk)
 	if err != nil {
 		return err
 	}

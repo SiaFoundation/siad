@@ -3898,6 +3898,8 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 
 // TestRenterContractRecovery tests that recovering a node from a seed that has
 // contracts associated with it will recover those contracts.
+// TODO add uploading and downloading to confirm that the sector roots are
+// recovered correctly.
 func TestRenterContractRecovery(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -3996,11 +3998,6 @@ func TestRenterContractRecovery(t *testing.T) {
 			if contract.GoodForUpload != c.GoodForUpload {
 				return errors.New("GoodForRenew doesn't match")
 			}
-			// TODO we can't check if the contracts are 100% equal because we
-			// don't know the exact spending values.
-			//if !reflect.DeepEqual(c, contract) {
-			//	return errors.New("Recovered contract doesn't match expected contract")
-			//}
 		}
 		return nil
 	})

@@ -97,6 +97,29 @@ type (
 	ProofStatus bool
 )
 
+// ID returns the contract's ID.
+func (fcr FileContractRevision) ID() FileContractID {
+	return fcr.ParentID
+}
+
+// HostPublicKey returns the public key of the host we formed the contract
+// with.
+func (fcr FileContractRevision) HostPublicKey() SiaPublicKey {
+	return fcr.UnlockConditions.PublicKeys[1]
+}
+
+// RenterFunds returns the remaining funds the renter has locked away in the
+// contract.
+func (fcr FileContractRevision) RenterFunds() Currency {
+	return fcr.NewValidProofOutputs[0].Value
+}
+
+// EndHeight returns the endHeight of the contract which is the height at which
+// the proof window starts.
+func (fcr FileContractRevision) EndHeight() BlockHeight {
+	return fcr.NewWindowStart
+}
+
 // StorageProofOutputID returns the ID of an output created by a file
 // contract, given the status of the storage proof. The ID is calculating by
 // hashing the concatenation of the StorageProofOutput Specifier, the ID of
