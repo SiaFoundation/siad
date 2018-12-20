@@ -20,6 +20,11 @@ func newRootDir(t *testing.T) (string, error) {
 // TestNewSiaDir tests that siadirs are created on disk properly. It uses
 // LoadSiaDir to read the metadata from disk
 func TestNewSiaDir(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create New SiaDir that is two levels deep
 	rootDir, err := newRootDir(t)
 	if err != nil {
@@ -125,6 +130,11 @@ func TestNewSiaDir(t *testing.T) {
 
 // Test Update Health
 func TestUpdateSiaDirHealth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create new siaDir
 	rootDir, err := newRootDir(t)
 	if err != nil {

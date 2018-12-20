@@ -14,6 +14,11 @@ import (
 
 // TestSiaFileFaultyDisk simulates interacting with a SiaFile on a faulty disk.
 func TestSiaFileFaultyDisk(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Determine a reasonable timeout for the test.
 	var testTimeout time.Duration
 	if testing.Short() {

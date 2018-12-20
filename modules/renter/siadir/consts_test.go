@@ -8,6 +8,11 @@ import (
 
 // TestIsSiaDirUpdate tests the IsSiaDirUpdate method.
 func TestIsSiaDirUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	sd, err := newTestDir(t.Name())
 	if err != nil {
 		t.Fatal(err)

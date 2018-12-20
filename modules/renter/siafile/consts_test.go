@@ -22,6 +22,11 @@ func TestMarshalChunkSize(t *testing.T) {
 
 // TestIsSiaFileUpdate tests the IsSiaFileUpdate method.
 func TestIsSiaFileUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	sf := newTestFile()
 	insertUpdate := sf.createInsertUpdate(0, []byte{})
 	deleteUpdate := sf.createDeleteUpdate()

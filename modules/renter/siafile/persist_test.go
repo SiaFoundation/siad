@@ -643,6 +643,11 @@ func TestUpdateUsedHosts(t *testing.T) {
 
 // TestChunkOffset tests the chunkOffset method.
 func TestChunkOffset(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	sf := newTestFile()
 
 	// Set the static pages per chunk to a random value.
@@ -670,6 +675,11 @@ func TestChunkOffset(t *testing.T) {
 // TestSaveChunk checks that saveChunk creates an updated which if applied
 // writes the correct data to disk.
 func TestSaveChunk(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	sf := newTestFile()
 
 	// Choose a random chunk from the file and replace it.
