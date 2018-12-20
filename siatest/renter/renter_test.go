@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
@@ -21,6 +22,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -3898,8 +3900,6 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 
 // TestRenterContractRecovery tests that recovering a node from a seed that has
 // contracts associated with it will recover those contracts.
-// TODO add uploading and downloading to confirm that the sector roots are
-// recovered correctly.
 func TestRenterContractRecovery(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -3936,7 +3936,7 @@ func TestRenterContractRecovery(t *testing.T) {
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := int(10 * modules.SectorSize)
-	_, _, err = r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
@@ -3956,8 +3956,23 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Copy the siafile to the new location.
+	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+siafile.ShareExtension)
+	siaFile, err := ioutil.ReadFile(oldPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenterDir := filepath.Join(testDir, "renter")
+	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+siafile.ShareExtension)
+	if err := os.MkdirAll(filepath.Dir(newPath), 0777); err != nil {
+		t.Fatal(err)
+	}
+	if err := ioutil.WriteFile(newPath, siaFile, 0777); err != nil {
+		t.Fatal(err)
+	}
+
 	// Start a new renter with the same seed.
-	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams := node.Renter(newRenterDir)
 	renterParams.PrimarySeed = seed
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
@@ -4007,6 +4022,11 @@ func TestRenterContractRecovery(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download the whole file again to see if all roots were recovered.
+	_, err = newRenter.DownloadByStream(rf)
 	if err != nil {
 		t.Fatal(err)
 	}
