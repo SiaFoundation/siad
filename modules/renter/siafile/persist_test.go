@@ -605,12 +605,12 @@ func TestUpdateUsedHosts(t *testing.T) {
 	// Create a map of the used keys for faster lookups.
 	usedMap := make(map[string]struct{})
 	for _, key := range used {
-		usedMap[string(key.Key)] = struct{}{}
+		usedMap[key.String()] = struct{}{}
 	}
 
 	// Check that the flag was set correctly.
 	for _, entry := range sf.pubKeyTable {
-		_, exists := usedMap[string(entry.PublicKey.Key)]
+		_, exists := usedMap[entry.PublicKey.String()]
 		if entry.Used != exists {
 			t.Errorf("expected flag to be %v but was %v", exists, entry.Used)
 		}
@@ -625,7 +625,7 @@ func TestUpdateUsedHosts(t *testing.T) {
 
 	// Check that the flags are still set correctly.
 	for _, entry := range sf.pubKeyTable {
-		_, exists := usedMap[string(entry.PublicKey.Key)]
+		_, exists := usedMap[entry.PublicKey.String()]
 		if entry.Used != exists {
 			t.Errorf("expected flag to be %v but was %v", exists, entry.Used)
 		}
