@@ -77,7 +77,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return err
 	}
 	if up.ErasureCode == nil {
-		up.ErasureCode, _ = siafile.NewRSCode(defaultDataPieces, defaultParityPieces)
+		up.ErasureCode, _ = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, 64)
 	}
 
 	// Check that we have contracts to upload to. We need at least data +
