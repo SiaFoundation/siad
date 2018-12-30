@@ -60,6 +60,14 @@ const (
 	// worker has experienced a download failure.
 	downloadFailureCooldown = time.Second * 3
 
+	// initialStreamerCacheSize is the size of the cache that is initially used
+	// for each streamer.
+	initialStreamerCacheSize = 1 << 21 // 256 KiB
+
+	// maxStreamerCacheSize is the maximum size that the cache is allowed to get
+	// before it will stop growing due to backpressure.
+	maxStreamerCacheSize =  1 << 29 // 64 MiB
+
 	// memoryPriorityLow is used to request low priority memory
 	memoryPriorityLow = false
 
