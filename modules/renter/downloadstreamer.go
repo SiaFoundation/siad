@@ -3,7 +3,6 @@ package renter
 import (
 	"bytes"
 	"io"
-	"math"
 	"sync"
 	"time"
 
@@ -202,7 +201,7 @@ func (s *streamer) threadedFillCache() {
 		chunkIndex, _ := s.staticFile.ChunkIndexByOffset(uint64(streamOffset))
 		fetchOffset = int64(chunkIndex * chunkSize)
 		fetchLen = int64(chunkSize)
-	} else if streamOffset < cacheOffset || streamOffset >= cacheOffest+cacheLen {
+	} else if streamOffset < cacheOffset || streamOffset >= cacheOffset+cacheLen {
 		// Grab enough data to fill the cache entirely starting from the current
 		// stream offset.
 		fetchOffset = streamOffset
@@ -251,7 +250,7 @@ func (s *streamer) threadedFillCache() {
 	if err != nil {
 		closeErr := ddw.Close()
 		s.cacheMu.Lock()
-		s.cacheErr = errors.Compose(err, closeErr)
+		s.readErr = errors.Compose(err, closeErr)
 		s.cacheMu.Unlock()
 		return
 	}
@@ -260,8 +259,8 @@ func (s *streamer) threadedFillCache() {
 		// close the destination buffer to avoid deadlocks.
 		err := ddw.Close()
 		s.cacheMu.Lock()
-		if s.cacheErr == nil && err != nil {
-			s.cacheErr = err
+		if s.readErr == nil && err != nil {
+			s.readErr = err
 		}
 		s.cacheMu.Unlock()
 		return err
@@ -277,12 +276,12 @@ func (s *streamer) threadedFillCache() {
 		err := d.Err()
 		if err != nil {
 			s.cacheMu.Lock()
-			s.cacheErr = errors.AddContext(err, "download failed")
+			s.readErr = errors.AddContext(err, "download failed")
 			s.cacheMu.Unlock()
 		}
 	case <-s.r.tg.StopChan():
 		s.cacheMu.Lock()
-		s.cacheErr = errors.New("download interrupted by shutdown")
+		s.readErr = errors.New("download interrupted by shutdown")
 		s.cacheMu.Unlock()
 	}
 
@@ -345,8 +344,8 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 		s.cacheMu.Lock()
 		// If there is a cache error, drop the lock and return. This check
 		// should happen before anything else.
-		if s.cacheErr != nil {
-			err := s.cacheErr
+		if s.readErr != nil {
+			err := s.readErr
 			s.cacheMu.Unlock()
 			return 0, err
 		}
@@ -399,7 +398,7 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 	copy(p, s.cache[dataStart:dataEnd])
 	s.offset += dataEnd - dataStart
 	go s.threadedFillCache() // Now that some data is consumed, fetch more data.
-	return dataEnd - dataStart, nil
+	return int(dataEnd - dataStart), nil
 }
 
 // Seek sets the offset for the next Read to offset, interpreted
