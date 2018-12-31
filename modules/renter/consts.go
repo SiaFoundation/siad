@@ -66,7 +66,7 @@ const (
 
 	// maxStreamerCacheSize is the maximum size that the cache is allowed to get
 	// before it will stop growing due to backpressure.
-	maxStreamerCacheSize =  1 << 29 // 64 MiB
+	maxStreamerCacheSize = 1 << 29 // 64 MiB
 
 	// memoryPriorityLow is used to request low priority memory
 	memoryPriorityLow = false
