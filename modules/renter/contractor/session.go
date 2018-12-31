@@ -135,7 +135,7 @@ func (hs *hostSession) Upload(data []byte) (crypto.Hash, error) {
 // delete sectors on a host.
 func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Session, err error) {
 	c.mu.RLock()
-	id, gotID := c.pubKeysToContractID[string(pk.Key)]
+	id, gotID := c.pubKeysToContractID[pk.String()]
 	cachedSession, haveSession := c.sessions[id]
 	height := c.blockHeight
 	renewing := c.renewing[id]

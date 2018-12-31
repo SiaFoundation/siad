@@ -67,7 +67,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	}
 	defer d.Close()
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
-	root := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].root
+	root := udc.staticChunkMap[w.contract.HostPublicKey.String()].root
 	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
@@ -84,7 +84,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	// Decrypt the piece. This might introduce some overhead for downloads with
 	// a large overdrive. It shouldn't be a bottleneck though since bandwidth
 	// is usually a lot more scarce than CPU processing power.
-	pieceIndex := udc.staticChunkMap[string(w.contract.HostPublicKey.Key)].index
+	pieceIndex := udc.staticChunkMap[w.contract.HostPublicKey.String()].index
 	key := udc.masterKey.Derive(udc.staticChunkIndex, pieceIndex)
 	decryptedPiece, err := key.DecryptBytesInPlace(pieceData, uint64(fetchOffset/crypto.SegmentSize))
 	if err != nil {

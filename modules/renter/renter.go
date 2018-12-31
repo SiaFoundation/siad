@@ -435,7 +435,7 @@ func (r *Renter) managedContractUtilities(entrys []*siafile.SiaFileSetEntry) (of
 	for _, e := range entrys {
 		var used []types.SiaPublicKey
 		for _, pk := range e.HostPublicKeys() {
-			pks[string(pk.Key)] = pk
+			pks[pk.String()] = pk
 			used = append(used, pk)
 		}
 		if err := e.UpdateUsedHosts(used); err != nil {
@@ -450,8 +450,8 @@ func (r *Renter) managedContractUtilities(entrys []*siafile.SiaFileSetEntry) (of
 		if !ok {
 			continue
 		}
-		goodForRenew[string(pk.Key)] = cu.GoodForRenew
-		offline[string(pk.Key)] = r.hostContractor.IsOffline(pk)
+		goodForRenew[pk.String()] = cu.GoodForRenew
+		offline[pk.String()] = r.hostContractor.IsOffline(pk)
 	}
 	return offline, goodForRenew
 }

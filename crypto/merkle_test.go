@@ -77,18 +77,17 @@ func TestNonMultipleLeafSizeStorageProof(t *testing.T) {
 
 // TestRangeProof tests all possible range proofs for a small tree.
 func TestRangeProof(t *testing.T) {
-	// Generate proof data.
-	numSegments := 9
-	data := fastrand.Bytes(numSegments * SegmentSize)
-	root := MerkleRoot(data)
-
 	// Create and verify proofs for all possible ranges.
-	for start := 0; start < numSegments; start++ {
-		for end := start + 1; end < numSegments+1; end++ {
-			proofData := data[start*SegmentSize : end*SegmentSize]
-			proof := MerkleRangeProof(data, start, end)
-			if !VerifyRangeProof(proofData, proof, start, end, root) {
-				t.Errorf("Proof %v-%v did not pass verification", start, end)
+	for numSegments := 0; numSegments < 34; numSegments++ {
+		data := fastrand.Bytes(numSegments * SegmentSize)
+		root := MerkleRoot(data)
+		for start := 0; start < numSegments; start++ {
+			for end := start + 1; end < numSegments+1; end++ {
+				proofData := data[start*SegmentSize : end*SegmentSize]
+				proof := MerkleRangeProof(data, start, end)
+				if !VerifyRangeProof(proofData, proof, start, end, root) {
+					t.Errorf("Proof %v-%v did not pass verification", start, end)
+				}
 			}
 		}
 	}
