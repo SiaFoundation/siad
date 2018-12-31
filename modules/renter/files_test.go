@@ -206,8 +206,9 @@ func TestFileRedundancy(t *testing.T) {
 	neverOffline := make(map[string]bool)
 	goodForRenew := make(map[string]bool)
 	for i := 0; i < 6; i++ {
-		neverOffline[string([]byte{byte(i)})] = false
-		goodForRenew[string([]byte{byte(i)})] = true
+		pk := types.SiaPublicKey{Key: []byte{byte(i)}}
+		neverOffline[pk.String()] = false
+		goodForRenew[pk.String()] = true
 	}
 
 	for _, nData := range nDatas {
