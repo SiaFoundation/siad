@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -20,6 +19,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
+
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -120,16 +121,18 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 	// Read the section to be downloaded from the original file.
 	uf, err := os.Open(path) // Uploaded file.
 	if err != nil {
-		return err
+		// TODO: what is uf? - bad name
+		return errors.AddContext(err, "unable to open the uf")
 	}
 	var originalBytes bytes.Buffer
 	_, err = uf.Seek(offset, 0)
 	if err != nil {
-		return err
+		// TODO: what is uf? - bad name
+		return errors.AddContext(err, "error when seeking in the uf")
 	}
 	_, err = io.CopyN(&originalBytes, uf, length)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "error when copying in the uf")
 	}
 
 	// Download the original file from the passed offsets.
@@ -146,26 +149,28 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 		// Make request.
 		resp, err := HttpGET("http://" + st.server.listener.Addr().String() + dlURL)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to make an http request")
 		}
 		defer resp.Body.Close()
 
 		_, err = io.Copy(&downbytes, resp.Body)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to make a copy after the http request")
 		}
 	} else {
 		dlURL += "&destination=" + downpath
 		err := st.getAPI(dlURL, nil)
 		if err != nil {
-			return err
+			// TODO: Not really sure what's happening here, so the context is a
+			// bit nonsense.
+			return errors.AddContext(err, "unable to getAPI the dlURL")
 		}
 		// wait for the download to complete
 		err = build.Retry(30, time.Second, func() error {
 			var rdq RenterDownloadQueue
 			err = st.getAPI("/renter/downloads", &rdq)
 			if err != nil {
-				return err
+				return errors.AddContext(err, "unable to view the download queue")
 			}
 			for _, download := range rdq.Downloads {
 				if download.Received == download.Filesize && download.SiaPath == ulSiaPath {
@@ -175,7 +180,7 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 			return errors.New("file not downloaded")
 		})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatal(errors.AddContext(err, "download does not appear to have completed"))
 		}
 
 		// open the downloaded file

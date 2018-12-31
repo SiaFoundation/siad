@@ -323,6 +323,7 @@ func (s *streamer) Close() error {
 // without error. If the data is not there, Read will issue a call to fill the
 // cache and then block until the data is at least partially available.
 func (s *streamer) Read(p []byte) (n int, err error) {
+	println("call to Read", len(p))
 	// Wait in a loop until the requested data is available, or until an error
 	// is recovered. The loop needs to release the lock between iterations, but
 	// the lock that it grabs needs to be held after the loops termination if
@@ -407,6 +408,7 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 // to the end. Seek returns the new offset relative to the start of the file
 // and an error, if any.
 func (s *streamer) Seek(offset int64, whence int) (int64, error) {
+	println("a call to seek", offset, whence)
 	var newOffset int64
 	switch whence {
 	case io.SeekStart:
@@ -434,6 +436,7 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 // TODO: Why do we return entry.SiaPath() as a part of the call that opens the
 // stream?
 func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
+	println("calling streamer")
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
