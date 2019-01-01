@@ -1,5 +1,9 @@
 package renter
 
+// TODO: Currently the access time is only updated when a file is closed, is
+// that correct behavior? Should the access time be updated upon openeing the
+// file? Upon each read?
+
 import (
 	"bytes"
 	"io"
@@ -22,11 +26,8 @@ type (
 		// updated. Having this snapshot also isolates the reader from events
 		// such as name changes and deletions.
 		//
-		// We also keep the full static file entry as it allows us to update
-		// metadata items in the file such as the access time.
-		//
-		// TODO: Should we be updating the access times upon every call to Read
-		// and Seek, instead of just when we close the file?
+		// We also keep the full file entry as it allows us to update metadata
+		// items in the file such as the access time.
 		staticFile      *siafile.Snapshot
 		staticFileEntry *siafile.SiaFileSetEntry
 		offset          int64
@@ -55,10 +56,11 @@ type (
 		// channel. This allows any number of Read threads to simultaneously
 		// block while waiting for cacheReady to be closed, and once cacheReady
 		// is closed they know to check the cache again.
-		cache       []byte
-		cacheOffset int64
-		cacheReady  chan struct{}
-		readErr     error
+		cache           []byte
+		cacheOffset     int64
+		cacheReady      chan struct{}
+		readErr         error
+		targetCacheSize int64
 
 		// cacheMu governs updates to the cache, cacheOffset, readErr, and
 		// cacheReady variables. Any thread holding cacheMu can safely read or
@@ -97,27 +99,36 @@ func (s *streamer) threadedFillCache() {
 	cacheOffset := int64(s.cacheOffset)
 	streamOffset := s.offset
 	cacheLen := int64(len(s.cache))
+	streamReadErr := s.readErr
+	fileSize := int64(s.staticFile.Size())
 	s.cacheMu.Unlock()
-	if partialDownloadsSupported && cacheOffset == streamOffset && cacheLen > 0 {
-		// If partial downloads are supported, the cache offset should start at
-		// the same place as the current stream offset. If the current stream
-		// offset is not the same as the cacheOffset, it means that data has
-		// been read from the cache and therefore the cache needs to be
-		// refilled.
-		//
-		// An extra check that there is any data in the cache needs to be made
-		// so that the cache fill function runs immediately after
-		// initialization.
+	// If there has been a read error in the stream, abort.
+	if streamReadErr != nil {
 		return
 	}
+	// Check whether the cache has reached the end of the file and also the
+	// streamOffset is contained within the cache. If so, no updates are needed.
+	if cacheOffset <= streamOffset && cacheOffset+cacheLen == fileSize {
+		return
+	}
+	// If partial downloads are supported, the cache offset should start at the
+	// same place as the current stream offset. If the current stream offset is
+	// not the same as the cacheOffset, it means that data has been read from
+	// the cache and therefore the cache needs to be refilled.
+	//
+	// An extra check that there is any data in the cache needs to be made so
+	// that the cache fill function runs immediately after initialization.
+	if partialDownloadsSupported && cacheOffset == streamOffset && cacheLen > 0 {
+		return
+	}
+	// If partial downloads are not supported, the full chunk containing the
+	// current offset should be the cache. If the cache is the full chunk that
+	// contains current offset, then nothing needs to be done as the cache is
+	// already prepared.
+	//
+	// This should be functionally nearly identical to the previous cache that
+	// we were using which has since been disabled.
 	if !partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < cacheOffset+cacheLen && cacheLen > 0 {
-		// If partial downloads are not supported, the full chunk containing the
-		// current offset should be the cache. If the cache is the full chunk
-		// that contains current offset, then nothing needs to be done as the
-		// cache is already prepared.
-		//
-		// This should be functionally nearly identical to the previous cache
-		// that we were using which has since been disabled.
 		return
 	}
 
@@ -132,28 +143,36 @@ func (s *streamer) threadedFillCache() {
 	default:
 		return
 	}
-	// NOTE: The ordering here is delicate. When the function returns, the
-	// first thing that happens is that the function returns the object to
-	// the cacheActive channel, which allows another thread to extend the
-	// cache. After this has been done, threadedFillCache is called again to
-	// check whether more of the cache has been drained and whether the
-	// cache needs to be topped up again.
+	// NOTE: The ordering here is delicate. After the function returns, the
+	// first thing that happens is that the cacheReady channel is rotated, so
+	// any Read calls blocking for a cache update know to check the cache for
+	// the data they want.
+	//
+	// After the Read channels are unfrozen, the cacheActive object needs to be
+	// returned so that the next fillCache thread is able to grab the object.
+	//
+	// Once the blocking read calls have been unstuck and the cacheActive object
+	// has been returned, then we issue another call to threadedFillCache to add
+	// more data to the cache if necessary. This has to go last so that when it
+	// requests the cacheActive object, it is guaranteed that either some other
+	// fillCache thread grabbed the object, or the object is there. This is
+	// because fillCache threads won't block until the object is available, if
+	// the object is not available they will terminate immediately.
+	//
+	// Because defer statements are a stack, the defers are set up in the
+	// reverse order than how the functions need to be activated.
 	defer func() {
 		go s.threadedFillCache()
 	}()
 	defer func() {
 		s.cacheActive <- struct{}{}
 	}()
-
-	// If the offset is one byte beyond the current cache size, then the stream
-	// data is being read faster than the cacheing has been able to supply data,
-	// which means that the cache size needs to be increased. The cache size
-	// should not be increased if it is already greater than or equal to the max
-	// cache size.
-	increaseCacheSize := false
-	if streamOffset == cacheOffset+cacheLen && cacheLen < maxStreamerCacheSize && cacheLen > 0 {
-		increaseCacheSize = true
-	}
+	defer func() {
+		s.cacheMu.Lock()
+		close(s.cacheReady)
+		s.cacheReady = make(chan struct{})
+		s.cacheMu.Unlock()
+	}()
 
 	// Re-fetch the variables important to gathering cache, in case they have
 	// changed since the initial check.
@@ -163,16 +182,41 @@ func (s *streamer) threadedFillCache() {
 	cacheOffset = int64(s.cacheOffset)
 	streamOffset = s.offset
 	cacheLen = int64(len(s.cache))
+	targetCacheSize := s.targetCacheSize
+	streamReadErr = s.readErr
+	fileSize = int64(s.staticFile.Size())
 	s.cacheMu.Unlock()
 
 	// Check one more time for the conditions that indicate no cache update is
 	// necessary, given that we have released and re-grabbed the lock since the
 	// previous check.
-	if !partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < cacheOffset+cacheLen && cacheLen > 0 {
+	//
+	// An extra check is needed to see if there is any data in the cache. If
+	// there is no data in the cache, this is the first call to fillCache since
+	// initialization.
+	if streamReadErr != nil {
+		return
+	}
+	if cacheOffset <= streamOffset && cacheOffset+cacheLen == fileSize {
 		return
 	}
 	if partialDownloadsSupported && cacheOffset == streamOffset && cacheLen > 0 {
 		return
+	}
+	if !partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < cacheOffset+cacheLen && cacheLen > 0 {
+		return
+	}
+
+	// Check if the cache size needs to be increased. The cache size should be
+	// increased if the streamer was able to get to the end of the cache data
+	// before the cache could be refilled. We can tell that this happened if the
+	// streamOffset is one byte beyond the end of the current cache.
+	//
+	// The targetCacheSize is only a relevent variable if partial downloads are
+	// supported, otherwise there will always be exactly one full chunk being
+	// fetched as the cache.
+	if partialDownloadsSupported && streamOffset == cacheOffset+cacheLen && cacheLen < maxStreamerCacheSize && cacheLen > 0 {
+		targetCacheSize *= 2
 	}
 
 	// Determine what data needs to be fetched.
@@ -205,30 +249,25 @@ func (s *streamer) threadedFillCache() {
 		// Grab enough data to fill the cache entirely starting from the current
 		// stream offset.
 		fetchOffset = streamOffset
-		fetchLen = cacheLen
-
-		// If there is no cache yet, the cache should be initialized to the
-		// default cache size. If a previous check indicated that the cache
-		// should be grown, double the size of the cache by adding the exiting
-		// cache size to the fetch length.
-		if fetchLen == 0 {
-			fetchLen = initialStreamerCacheSize
-		}
-		if increaseCacheSize {
-			fetchLen += cacheLen
-		}
+		fetchLen = targetCacheSize
 	} else {
 		// Set the fetch offset to the end of the current cache, and set the
 		// length equal to the number of bytes that the streamOffset has already
 		// consumed, so that the cache remains the same size after we drop all
 		// of the consumed bytes and extend the cache with new data.
 		fetchOffset = cacheOffset + cacheLen
-		fetchLen = cacheLen - (streamOffset - cacheOffset)
+		fetchLen = targetCacheSize - (streamOffset - cacheOffset)
+	}
 
-		// If there is a request to increase the cache size,
-		if increaseCacheSize {
-			fetchLen += cacheLen
-		}
+	// Finally, check if the fetchOffset and fetchLen goes beyond the boundaries
+	// of the file. If so, the fetchLen will be truncated so that the cache only
+	// goes up to the end of the file.
+	//
+	// TODO: Is there an edge case here where the stream offset is set to the
+	// last byte of the file? I'm pretty sure this code handles that edge case
+	// correctly, but need to write a test for it.
+	if fetchOffset+fetchLen > fileSize {
+		fetchLen = fileSize - fetchOffset
 	}
 
 	// Perform the actual download.
@@ -240,7 +279,7 @@ func (s *streamer) threadedFillCache() {
 		destinationString: "httpresponse",
 		file:              s.staticFile,
 
-		latencyTarget: 50 * time.Millisecond, // TODO low default until full latency suport is added.
+		latencyTarget: 50 * time.Millisecond, // TODO: low default until full latency suport is added.
 		length:        uint64(fetchLen),
 		needsMemory:   true,
 		offset:        uint64(fetchOffset),
@@ -250,20 +289,14 @@ func (s *streamer) threadedFillCache() {
 	if err != nil {
 		closeErr := ddw.Close()
 		s.cacheMu.Lock()
-		s.readErr = errors.Compose(err, closeErr)
+		s.readErr = errors.Compose(s.readErr, err, closeErr)
 		s.cacheMu.Unlock()
 		return
 	}
 	// Register some cleanup for when the download is done.
 	d.OnComplete(func(_ error) error {
 		// close the destination buffer to avoid deadlocks.
-		err := ddw.Close()
-		s.cacheMu.Lock()
-		if s.readErr == nil && err != nil {
-			s.readErr = err
-		}
-		s.cacheMu.Unlock()
-		return err
+		return ddw.Close()
 	})
 	// Set the in-memory buffer to nil just to be safe in case of a memory
 	// leak.
@@ -275,13 +308,15 @@ func (s *streamer) threadedFillCache() {
 	case <-d.completeChan:
 		err := d.Err()
 		if err != nil {
+			completeErr := errors.AddContext(err, "download failed")
 			s.cacheMu.Lock()
-			s.readErr = errors.AddContext(err, "download failed")
+			s.readErr = errors.Compose(s.readErr, completeErr)
 			s.cacheMu.Unlock()
 		}
 	case <-s.r.tg.StopChan():
+		stopErr := errors.New("download interrupted by shutdown")
 		s.cacheMu.Lock()
-		s.readErr = errors.New("download interrupted by shutdown")
+		s.readErr = errors.Compose(s.readErr, stopErr)
 		s.cacheMu.Unlock()
 	}
 
@@ -449,8 +484,9 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 		staticFileEntry: entry,
 		r:               r,
 
-		cacheActive: make(chan struct{}, 1),
-		cacheReady:  make(chan struct{}),
+		cacheActive:     make(chan struct{}, 1),
+		cacheReady:      make(chan struct{}),
+		targetCacheSize: initialStreamerCacheSize,
 	}
 
 	// Put an object into the cacheActive to indicate that there is no cache
