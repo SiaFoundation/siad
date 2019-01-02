@@ -77,7 +77,7 @@ func (r *Renter) FileList() []modules.FileInfo {
 	pks := make(map[string]types.SiaPublicKey)
 	for _, entry := range entrys {
 		for _, pk := range entry.HostPublicKeys() {
-			pks[string(pk.Key)] = pk
+			pks[pk.String()] = pk
 		}
 	}
 
@@ -91,9 +91,9 @@ func (r *Renter) FileList() []modules.FileInfo {
 		if !ok {
 			continue
 		}
-		goodForRenew[string(pk.Key)] = ok && contract.Utility.GoodForRenew
-		offline[string(pk.Key)] = r.hostContractor.IsOffline(pk)
-		contracts[string(pk.Key)] = contract
+		goodForRenew[pk.String()] = ok && contract.Utility.GoodForRenew
+		offline[pk.String()] = r.hostContractor.IsOffline(pk)
+		contracts[pk.String()] = contract
 	}
 
 	// Build the list of FileInfos.
@@ -150,9 +150,9 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		if !ok {
 			continue
 		}
-		goodForRenew[string(pk.Key)] = ok && contract.Utility.GoodForRenew
-		offline[string(pk.Key)] = r.hostContractor.IsOffline(pk)
-		contracts[string(pk.Key)] = contract
+		goodForRenew[pk.String()] = ok && contract.Utility.GoodForRenew
+		offline[pk.String()] = r.hostContractor.IsOffline(pk)
+		contracts[pk.String()] = contract
 	}
 
 	// Build the FileInfo

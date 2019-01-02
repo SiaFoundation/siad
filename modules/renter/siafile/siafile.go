@@ -265,7 +265,7 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 		piecesForChunk := 0
 		for _, pieceSet := range chunk.Pieces {
 			for _, piece := range pieceSet {
-				if !offline[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)] {
+				if !offline[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()] {
 					piecesForChunk++
 					break // break out since we only count unique pieces
 				}
@@ -297,7 +297,7 @@ func (sf *SiaFile) chunkHealth(chunkIndex int, offline map[string]bool) float64 
 		// Iterate over each pieceSet and count all the unique
 		// goodPieces
 		for _, piece := range pieceSet {
-			if !offline[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)] {
+			if !offline[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()] {
 				// Once a good piece is found, break out since all pieces in
 				// pieceSet are the same
 				goodPieces++
@@ -357,7 +357,7 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 
 	lowest := ^types.BlockHeight(0)
 	for _, pk := range sf.pubKeyTable {
-		contract, exists := contracts[string(pk.PublicKey.Key)]
+		contract, exists := contracts[pk.PublicKey.String()]
 		if !exists {
 			continue
 		}
@@ -490,8 +490,8 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 			foundGoodForRenew := false
 			foundOnline := false
 			for _, piece := range pieceSet {
-				offline, exists1 := offlineMap[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)]
-				goodForRenew, exists2 := goodForRenewMap[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)]
+				offline, exists1 := offlineMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
+				goodForRenew, exists2 := goodForRenewMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
 				if exists1 != exists2 {
 					build.Critical("contract can't be in one map but not in the other")
 				}
@@ -571,13 +571,13 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	// Create a map of the used keys for faster lookups.
 	usedMap := make(map[string]struct{})
 	for _, key := range used {
-		usedMap[string(key.Key)] = struct{}{}
+		usedMap[key.String()] = struct{}{}
 	}
 	// Mark the entries in the table. If the entry exists 'Used' is true.
 	// Otherwise it's 'false'.
 	var unusedHosts uint
 	for i, entry := range sf.pubKeyTable {
-		_, used := usedMap[string(entry.PublicKey.Key)]
+		_, used := usedMap[entry.PublicKey.String()]
 		sf.pubKeyTable[i].Used = used
 		if !used {
 			unusedHosts++

@@ -153,7 +153,7 @@ func TestFileAvailable(t *testing.T) {
 	}
 
 	specificOffline := make(map[string]bool)
-	specificOffline[string(types.SiaPublicKey{}.Key)] = true
+	specificOffline[types.SiaPublicKey{}.String()] = true
 	if f.Available(specificOffline) {
 		t.Error("file should not be available")
 	}
@@ -206,8 +206,9 @@ func TestFileRedundancy(t *testing.T) {
 	neverOffline := make(map[string]bool)
 	goodForRenew := make(map[string]bool)
 	for i := 0; i < 6; i++ {
-		neverOffline[string([]byte{byte(i)})] = false
-		goodForRenew[string([]byte{byte(i)})] = true
+		pk := types.SiaPublicKey{Key: []byte{byte(i)}}
+		neverOffline[pk.String()] = false
+		goodForRenew[pk.String()] = true
 	}
 
 	for _, nData := range nDatas {
@@ -321,7 +322,7 @@ func TestFileHealth(t *testing.T) {
 		host := fmt.Sprintln("host", i)
 		spk := types.SiaPublicKey{}
 		spk.LoadString(host)
-		offlineMap[string(spk.Key)] = false
+		offlineMap[spk.String()] = false
 		if err := f.AddPiece(spk, 0, 0, crypto.Hash{}); err != nil {
 			t.Fatal(err)
 		}
@@ -339,7 +340,7 @@ func TestFileHealth(t *testing.T) {
 	host := fmt.Sprintln("host", 0)
 	spk := types.SiaPublicKey{}
 	spk.LoadString(host)
-	offlineMap[string(spk.Key)] = false
+	offlineMap[spk.String()] = false
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +352,7 @@ func TestFileHealth(t *testing.T) {
 	host = fmt.Sprintln("host", 1)
 	spk = types.SiaPublicKey{}
 	spk.LoadString(host)
-	offlineMap[string(spk.Key)] = false
+	offlineMap[spk.String()] = false
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +380,7 @@ func TestFileHealth(t *testing.T) {
 		host := fmt.Sprintln("host", i)
 		spk := types.SiaPublicKey{}
 		spk.LoadString(host)
-		offlineMap[string(spk.Key)] = false
+		offlineMap[spk.String()] = false
 		if err := f.AddPiece(spk, 0, uint64(i%2), crypto.Hash{}); err != nil {
 			t.Fatal(err)
 		}
@@ -397,7 +398,7 @@ func TestFileHealth(t *testing.T) {
 		host := fmt.Sprintln("host", i)
 		spk := types.SiaPublicKey{}
 		spk.LoadString(host)
-		offlineMap[string(spk.Key)] = false
+		offlineMap[spk.String()] = false
 		if err := f.AddPiece(spk, 1, uint64(i%2), crypto.Hash{}); err != nil {
 			t.Fatal(err)
 		}
@@ -437,21 +438,21 @@ func TestFileExpiration(t *testing.T) {
 	// Add a contract.
 	fc := modules.RenterContract{}
 	fc.EndHeight = 100
-	contracts[string(pk1.Key)] = fc
+	contracts[pk1.String()] = fc
 	if f.Expiration(contracts) != 100 {
 		t.Error("file did not report lowest WindowStart")
 	}
 
 	// Add a contract with a lower WindowStart.
 	fc.EndHeight = 50
-	contracts[string(pk2.Key)] = fc
+	contracts[pk2.String()] = fc
 	if f.Expiration(contracts) != 50 {
 		t.Error("file did not report lowest WindowStart")
 	}
 
 	// Add a contract with a higher WindowStart.
 	fc.EndHeight = 75
-	contracts[string(pk3.Key)] = fc
+	contracts[pk3.String()] = fc
 	if f.Expiration(contracts) != 50 {
 		t.Error("file did not report lowest WindowStart")
 	}
