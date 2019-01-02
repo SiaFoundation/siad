@@ -121,18 +121,16 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 	// Read the section to be downloaded from the original file.
 	uf, err := os.Open(path) // Uploaded file.
 	if err != nil {
-		// TODO: what is uf? - bad name
-		return errors.AddContext(err, "unable to open the uf")
+		return errors.AddContext(err, "unable to open the uploaded file locally")
 	}
 	var originalBytes bytes.Buffer
 	_, err = uf.Seek(offset, 0)
 	if err != nil {
-		// TODO: what is uf? - bad name
-		return errors.AddContext(err, "error when seeking in the uf")
+		return errors.AddContext(err, "error when seeking through the local uploaded file")
 	}
 	_, err = io.CopyN(&originalBytes, uf, length)
 	if err != nil {
-		return errors.AddContext(err, "error when copying in the uf")
+		return errors.AddContext(err, "error when copying from the local uploaded file")
 	}
 
 	// Download the original file from the passed offsets.
@@ -161,9 +159,7 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 		dlURL += "&destination=" + downpath
 		err := st.getAPI(dlURL, nil)
 		if err != nil {
-			// TODO: Not really sure what's happening here, so the context is a
-			// bit nonsense.
-			return errors.AddContext(err, "unable to getAPI the dlURL")
+			return errors.AddContext(err, "download request failed")
 		}
 		// wait for the download to complete
 		err = build.Retry(30, time.Second, func() error {
