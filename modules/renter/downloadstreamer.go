@@ -37,9 +37,7 @@ type (
 		// 'cacheOffset' indicates the starting location of the cache within the
 		// file, and all of the data in the []byte will be the actual file data
 		// that follows that offset. If the cache is empty, the length will be
-		// 0. We use cacheMu to make atomic updates to the cache and
-		// cacheOffset, meaning that any Read call can safely use the cache so
-		// long as it is holding the cacheMu mutex.
+		// 0.
 		//
 		// Because the cache gets filled asynchronously, errors need to be
 		// recorded and then delivered to the user later. The errors get stored
@@ -47,33 +45,30 @@ type (
 		//
 		// cacheReady is a rotating channel which is used to signal to threads
 		// that the cache has been updated. When a Read call is made, the first
-		// action required is to grab a lock on cacheMu and then check if the
-		// cache has the requested data. If not, while still holding the cacheMu
-		// lock the Read thread will grab a copy of cacheReady, and then release
-		// the cacheMu lock. When the threadedFillCache thread has finished
-		// updating the cache, the thread will grab the cacheMu lock and then
-		// the cacheReady channel will be closed and replaced with a new
-		// channel. This allows any number of Read threads to simultaneously
-		// block while waiting for cacheReady to be closed, and once cacheReady
-		// is closed they know to check the cache again.
-		cache           []byte
-		cacheOffset     int64
-		cacheReady      chan struct{}
-		readErr         error
-		targetCacheSize int64
-
-		// cacheMu governs updates to the cache, cacheOffset, readErr, and
-		// cacheReady variables. Any thread holding cacheMu can safely read or
-		// modify these values without needing to worry about the other control
-		// structures.
+		// action required is to grab a lock and then check if the cache has the
+		// requested data. If not, while still holding the lock the Read thread
+		// will grab a copy of cacheReady, and then release the lock. When the
+		// threadedFillCache thread has finished updating the cache, the thread
+		// will grab the lock and then the cacheReady channel will be closed and
+		// replaced with a new channel. This allows any number of Read threads
+		// to simultaneously block while waiting for cacheReady to be closed,
+		// and once cacheReady is closed they know to check the cache again.
 		//
 		// Multiple asyncrhonous calls to fill the cache may be sent out at
 		// once. To prevent race conditions, the 'cacheActive' channel is used
 		// to ensure that only one instance of 'threadedFillCache' is running at
 		// a time. If another instance of 'threadedFillCache' is active, the new
 		// call will immediately return.
+		cache           []byte
 		cacheActive chan struct{}
-		cacheMu     sync.Mutex
+		cacheOffset     int64
+		cacheReady      chan struct{}
+		readErr         error
+		targetCacheSize int64
+
+		// Mutex to protect the offset variable, and all of the cacheing
+		// variables.
+		mu     sync.Mutex
 	}
 )
 
@@ -93,7 +88,7 @@ func (s *streamer) threadedFillCache() {
 	// cacheActive because threadedFillCache recursively calls itself after
 	// grabbing the cacheActive object, so some base case is needed to guarantee
 	// termination.
-	s.cacheMu.Lock()
+	s.mu.Lock()
 	partialDownloadsSupported := s.staticFile.ErasureCode().SupportsPartialEncoding()
 	chunkSize := s.staticFile.ChunkSize()
 	cacheOffset := int64(s.cacheOffset)
@@ -101,7 +96,7 @@ func (s *streamer) threadedFillCache() {
 	cacheLen := int64(len(s.cache))
 	streamReadErr := s.readErr
 	fileSize := int64(s.staticFile.Size())
-	s.cacheMu.Unlock()
+	s.mu.Unlock()
 	// If there has been a read error in the stream, abort.
 	if streamReadErr != nil {
 		return
@@ -168,15 +163,15 @@ func (s *streamer) threadedFillCache() {
 		s.cacheActive <- struct{}{}
 	}()
 	defer func() {
-		s.cacheMu.Lock()
+		s.mu.Lock()
 		close(s.cacheReady)
 		s.cacheReady = make(chan struct{})
-		s.cacheMu.Unlock()
+		s.mu.Unlock()
 	}()
 
 	// Re-fetch the variables important to gathering cache, in case they have
 	// changed since the initial check.
-	s.cacheMu.Lock()
+	s.mu.Lock()
 	partialDownloadsSupported = s.staticFile.ErasureCode().SupportsPartialEncoding()
 	chunkSize = s.staticFile.ChunkSize()
 	cacheOffset = int64(s.cacheOffset)
@@ -185,7 +180,7 @@ func (s *streamer) threadedFillCache() {
 	targetCacheSize := s.targetCacheSize
 	streamReadErr = s.readErr
 	fileSize = int64(s.staticFile.Size())
-	s.cacheMu.Unlock()
+	s.mu.Unlock()
 
 	// Check one more time for the conditions that indicate no cache update is
 	// necessary, given that we have released and re-grabbed the lock since the
@@ -288,9 +283,9 @@ func (s *streamer) threadedFillCache() {
 	})
 	if err != nil {
 		closeErr := ddw.Close()
-		s.cacheMu.Lock()
+		s.mu.Lock()
 		s.readErr = errors.Compose(s.readErr, err, closeErr)
-		s.cacheMu.Unlock()
+		s.mu.Unlock()
 		return
 	}
 	// Register some cleanup for when the download is done.
@@ -309,20 +304,20 @@ func (s *streamer) threadedFillCache() {
 		err := d.Err()
 		if err != nil {
 			completeErr := errors.AddContext(err, "download failed")
-			s.cacheMu.Lock()
+			s.mu.Lock()
 			s.readErr = errors.Compose(s.readErr, completeErr)
-			s.cacheMu.Unlock()
+			s.mu.Unlock()
 		}
 	case <-s.r.tg.StopChan():
 		stopErr := errors.New("download interrupted by shutdown")
-		s.cacheMu.Lock()
+		s.mu.Lock()
 		s.readErr = errors.Compose(s.readErr, stopErr)
-		s.cacheMu.Unlock()
+		s.mu.Unlock()
 	}
 
 	// Update the cache.
-	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// Sanity check to verify that some other thread didn't adjust the
 	// cacheOffset.
@@ -358,31 +353,31 @@ func (s *streamer) Close() error {
 // without error. If the data is not there, Read will issue a call to fill the
 // cache and then block until the data is at least partially available.
 func (s *streamer) Read(p []byte) (n int, err error) {
-	println("call to Read", len(p))
 	// Wait in a loop until the requested data is available, or until an error
 	// is recovered. The loop needs to release the lock between iterations, but
 	// the lock that it grabs needs to be held after the loops termination if
 	// the right conditions are met, resulting in an ugly/complex locking
 	// strategy.
 	for {
-		// Get the file's size and check for EOF.
-		fileSize := int64(s.staticFile.Size())
-		if s.offset >= fileSize {
-			return 0, io.EOF
-		}
-
 		// Grab the lock and check that the cache has data which we want. If the
 		// cache does have data that we want, we will keep the lock and exit the
 		// loop. If there's an error, we will drop the lock and return the
 		// error. If the cache does not have the data we want but there is no
 		// error, we will drop the lock and spin up a thread to fill the cache,
 		// and then block until the cache has been updated.
-		s.cacheMu.Lock()
+		s.mu.Lock()
+		// Get the file's size and check for EOF.
+		fileSize := int64(s.staticFile.Size())
+		if s.offset >= fileSize {
+			s.mu.Unlock()
+			return 0, io.EOF
+		}
+
 		// If there is a cache error, drop the lock and return. This check
 		// should happen before anything else.
 		if s.readErr != nil {
 			err := s.readErr
-			s.cacheMu.Unlock()
+			s.mu.Unlock()
 			return 0, err
 		}
 
@@ -413,7 +408,7 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 		// cache fill thread will spin up another cache fill thread when it
 		// finishes specifically to cover this case.
 		cacheReady := s.cacheReady
-		s.cacheMu.Unlock()
+		s.mu.Unlock()
 		<-cacheReady
 
 		// Upon iterating, the lock is not held, so the call to grab the lock at
@@ -421,7 +416,7 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 	}
 	// This code should only be reachable if the lock is still being held and
 	// there is also data in the cache for us. Defer releasing the lock.
-	defer s.cacheMu.Unlock()
+	defer s.mu.Unlock()
 
 	dataStart := s.offset - s.cacheOffset
 	dataEnd := dataStart + int64(len(p))
@@ -443,7 +438,9 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 // to the end. Seek returns the new offset relative to the start of the file
 // and an error, if any.
 func (s *streamer) Seek(offset int64, whence int) (int64, error) {
-	println("a call to seek", offset, whence)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	var newOffset int64
 	switch whence {
 	case io.SeekStart:
@@ -462,7 +459,7 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 	// the cache.
 	s.offset = newOffset
 	go s.threadedFillCache()
-	return s.offset, nil
+	return newOffset, nil
 }
 
 // Streamer creates a modules.Streamer that can be used to stream downloads from
@@ -471,7 +468,6 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 // TODO: Why do we return entry.SiaPath() as a part of the call that opens the
 // stream?
 func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
-	println("calling streamer")
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
