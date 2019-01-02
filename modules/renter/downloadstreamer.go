@@ -420,18 +420,17 @@ func (s *streamer) Read(p []byte) (int, error) {
 	// there is also data in the cache for us. Defer releasing the lock.
 	defer s.mu.Unlock()
 
-	dataStart := s.offset - s.cacheOffset
-	dataEnd := dataStart + int64(len(p))
+	dataStart := int(s.offset - s.cacheOffset)
+	dataEnd := dataStart + len(p)
 	// If the read request extends beyond the cache, truncate it to include
 	// only up to where the cache ends.
-	cacheEnd := s.cacheOffset + int64(len(s.cache))
-	if dataEnd > cacheEnd {
-		dataEnd = cacheEnd
+	if dataEnd > len(s.cache) {
+		dataEnd = len(s.cache)
 	}
 	copy(p, s.cache[dataStart:dataEnd])
-	s.offset += dataEnd - dataStart
+	s.offset += int64(dataEnd - dataStart)
 	go s.threadedFillCache() // Now that some data is consumed, fetch more data.
-	return int(dataEnd - dataStart), nil
+	return dataEnd - dataStart, nil
 }
 
 // Seek sets the offset for the next Read to offset, interpreted
