@@ -27,11 +27,7 @@ type (
 // error if the bytes are not a perfect match, or if there is an error reading
 // the local file data.
 func (lf *LocalFile) Compare(data []byte) error {
-	f, err := os.Open(lf.path)
-	if err != nil {
-		return errors.AddContext(err, "unable to open the local file")
-	}
-	localData, err := ioutil.ReadAll(f)
+	localData, err := ioutil.ReadFile(lf.path)
 	if err != nil {
 		return errors.AddContext(err, "unable to read local file data")
 	}
