@@ -60,7 +60,7 @@ type (
 		// a time. If another instance of 'threadedFillCache' is active, the new
 		// call will immediately return.
 		cache           []byte
-		cacheActive chan struct{}
+		cacheActive     chan struct{}
 		cacheOffset     int64
 		cacheReady      chan struct{}
 		readErr         error
@@ -68,7 +68,7 @@ type (
 
 		// Mutex to protect the offset variable, and all of the cacheing
 		// variables.
-		mu     sync.Mutex
+		mu sync.Mutex
 	}
 )
 
