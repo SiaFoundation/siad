@@ -166,7 +166,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	// Build a map of host public keys.
 	pks := make(map[string]types.SiaPublicKey)
 	for _, pk := range entry.HostPublicKeys() {
-		pks[string(pk.Key)] = pk
+		pks[pk.String()] = pk
 	}
 
 	// Iterate through the pieces of all chunks of the file and mark which
@@ -181,7 +181,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		for pieceIndex, pieceSet := range pieces {
 			for _, piece := range pieceSet {
 				// Get the contract for the piece.
-				pk, exists := pks[string(piece.HostPubKey.Key)]
+				pk, exists := pks[piece.HostPubKey.String()]
 				if !exists {
 					build.Critical("Couldn't find public key in map. This should never happen")
 				}

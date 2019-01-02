@@ -75,10 +75,10 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 		for pieceIndex, pieceSet := range chunk.Pieces {
 			for _, p := range pieceSet {
 				// Check if we already added that public key.
-				tableOffset, exists := pubKeyMap[string(p.HostPubKey.Key)]
+				tableOffset, exists := pubKeyMap[p.HostPubKey.String()]
 				if !exists {
 					tableOffset = uint32(len(file.pubKeyTable))
-					pubKeyMap[string(p.HostPubKey.Key)] = tableOffset
+					pubKeyMap[p.HostPubKey.String()] = tableOffset
 					file.pubKeyTable = append(file.pubKeyTable, HostPublicKey{
 						PublicKey: p.HostPubKey,
 						Used:      true,
