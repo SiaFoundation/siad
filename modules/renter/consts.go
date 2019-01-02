@@ -62,7 +62,7 @@ const (
 
 	// initialStreamerCacheSize is the size of the cache that is initially used
 	// for each streamer.
-	initialStreamerCacheSize = 1 << 21 // 256 KiB
+	initialStreamerCacheSize = 1 << 18 // 256 KiB
 
 	// maxStreamerCacheSize is the maximum size that the cache is allowed to get
 	// before it will stop growing due to backpressure.
