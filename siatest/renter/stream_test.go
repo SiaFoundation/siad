@@ -80,7 +80,6 @@ func TestRenterDownloadStreamCache(t *testing.T) {
 		// Get random values for 'from' and 'to'.
 		from := 0
 		to := fastrand.Intn(fileSize - from)
-		to += from
 		if to == from {
 			continue
 		}
@@ -101,7 +100,6 @@ func TestRenterDownloadStreamCache(t *testing.T) {
 			// Get random values for 'from' and 'to'.
 			from := 0 + j
 			to := 8190 + i
-			to += from
 			if to == from {
 				continue
 			}
@@ -121,7 +119,6 @@ func TestRenterDownloadStreamCache(t *testing.T) {
 			// Get random values for 'from' and 'to'.
 			from := 8190 + j
 			to := 16382 + i
-			to += from
 			if to == from {
 				continue
 			}
@@ -140,7 +137,6 @@ func TestRenterDownloadStreamCache(t *testing.T) {
 		// Get random values for 'from' and 'to'.
 		from := fileSize - i
 		to := fileSize
-		to += from
 		if to == from {
 			continue
 		}
@@ -148,7 +144,7 @@ func TestRenterDownloadStreamCache(t *testing.T) {
 		// Stream some data.
 		streamedPartialData, err := renter.StreamPartial(remoteFile, localFile, uint64(from), uint64(to))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatal(err, from, to)
 		}
 		if bytes.Compare(streamedPartialData, downloadedData[from:to]) != 0 {
 			t.Error("Read range returned the wrong data")
