@@ -45,6 +45,30 @@ var (
 		}
 		panic("undefined defaultParityPieces")
 	}()
+
+	initialStreamerCacheSize = func() int64 {
+		switch build.Release {
+		case "dev":
+			return 1 << 14 // 16 KiB
+		case "standard":
+			return 1 << 16 // 64 KiB
+		case "testing":
+			return 1 << 10 // 1 KiB
+		}
+		panic("undefined defaultParityPieces")
+	}()
+
+	maxStreamerCacheSize = func() int64 {
+		switch build.Release {
+		case "dev":
+			return 1 << 20 // 1 MiB
+		case "standard":
+			return 1 << 26 // 64 MiB
+		case "testing":
+			return 1 << 13 // 8 KiB
+		}
+		panic("undefined defaultParityPieces")
+	}()
 )
 
 const (
@@ -59,14 +83,6 @@ const (
 	// downloadFailureCooldown defines how long to wait for a worker after a
 	// worker has experienced a download failure.
 	downloadFailureCooldown = time.Second * 3
-
-	// initialStreamerCacheSize is the size of the cache that is initially used
-	// for each streamer.
-	initialStreamerCacheSize = 1 << 18 // 256 KiB
-
-	// maxStreamerCacheSize is the maximum size that the cache is allowed to get
-	// before it will stop growing due to backpressure.
-	maxStreamerCacheSize = 1 << 29 // 64 MiB
 
 	// memoryPriorityLow is used to request low priority memory
 	memoryPriorityLow = false
