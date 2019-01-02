@@ -210,7 +210,7 @@ func (s *streamer) threadedFillCache() {
 	// The targetCacheSize is only a relevent variable if partial downloads are
 	// supported, otherwise there will always be exactly one full chunk being
 	// fetched as the cache.
-	if partialDownloadsSupported && streamOffset == cacheOffset+cacheLen && cacheLen < maxStreamerCacheSize && cacheLen > 0 {
+	if partialDownloadsSupported && streamOffset == cacheOffset+cacheLen && targetCacheSize < maxStreamerCacheSize && cacheLen > 0 {
 		targetCacheSize *= 2
 	}
 
@@ -307,6 +307,7 @@ func (s *streamer) threadedFillCache() {
 			s.mu.Lock()
 			s.readErr = errors.Compose(s.readErr, completeErr)
 			s.mu.Unlock()
+			return
 		}
 	case <-s.r.tg.StopChan():
 		stopErr := errors.New("download interrupted by shutdown")
@@ -330,6 +331,7 @@ func (s *streamer) threadedFillCache() {
 	// needs to be replaced in the even that partial downloads are not
 	// supported, and also in the event that the stream offset is complete
 	// outside the previous cache.
+	s.targetCacheSize = targetCacheSize
 	if !partialDownloadsSupported || streamOffset >= cacheOffset+cacheLen || streamOffset < cacheOffset {
 		s.cache = buffer.Bytes()
 		s.cacheOffset = fetchOffset
@@ -352,7 +354,7 @@ func (s *streamer) Close() error {
 // data is fully or partially there, Read will return what data is available
 // without error. If the data is not there, Read will issue a call to fill the
 // cache and then block until the data is at least partially available.
-func (s *streamer) Read(p []byte) (n int, err error) {
+func (s *streamer) Read(p []byte) (int, error) {
 	// Wait in a loop until the requested data is available, or until an error
 	// is recovered. The loop needs to release the lock between iterations, but
 	// the lock that it grabs needs to be held after the loops termination if
