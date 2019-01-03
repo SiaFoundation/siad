@@ -51,7 +51,7 @@ var (
 		case "dev":
 			return 1 << 14 // 16 KiB
 		case "standard":
-			return 1 << 16 // 64 KiB
+			return 1 << 18 // 256 KiB
 		case "testing":
 			return 1 << 10 // 1 KiB
 		}

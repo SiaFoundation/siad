@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
@@ -106,14 +105,12 @@ func (s *streamer) threadedFillCache() {
 	if cacheOffset <= streamOffset && cacheOffset+cacheLen == fileSize {
 		return
 	}
-	// If partial downloads are supported, the cache offset should start at the
-	// same place as the current stream offset. If the current stream offset is
-	// not the same as the cacheOffset, it means that data has been read from
-	// the cache and therefore the cache needs to be refilled.
+	// If partial downloads are supported and the stream offset is in the first
+	// half of the cache, then no fetching is required.
 	//
 	// An extra check that there is any data in the cache needs to be made so
 	// that the cache fill function runs immediately after initialization.
-	if partialDownloadsSupported && cacheOffset == streamOffset && cacheLen > 0 {
+	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen / 2 {
 		return
 	}
 	// If partial downloads are not supported, the full chunk containing the
@@ -195,23 +192,11 @@ func (s *streamer) threadedFillCache() {
 	if cacheOffset <= streamOffset && cacheOffset+cacheLen == fileSize {
 		return
 	}
-	if partialDownloadsSupported && cacheOffset == streamOffset && cacheLen > 0 {
+	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen / 2 {
 		return
 	}
 	if !partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < cacheOffset+cacheLen && cacheLen > 0 {
 		return
-	}
-
-	// Check if the cache size needs to be increased. The cache size should be
-	// increased if the streamer was able to get to the end of the cache data
-	// before the cache could be refilled. We can tell that this happened if the
-	// streamOffset is one byte beyond the end of the current cache.
-	//
-	// The targetCacheSize is only a relevent variable if partial downloads are
-	// supported, otherwise there will always be exactly one full chunk being
-	// fetched as the cache.
-	if partialDownloadsSupported && streamOffset == cacheOffset+cacheLen && targetCacheSize < maxStreamerCacheSize && cacheLen > 0 {
-		targetCacheSize *= 2
 	}
 
 	// Determine what data needs to be fetched.
@@ -257,10 +242,6 @@ func (s *streamer) threadedFillCache() {
 	// Finally, check if the fetchOffset and fetchLen goes beyond the boundaries
 	// of the file. If so, the fetchLen will be truncated so that the cache only
 	// goes up to the end of the file.
-	//
-	// TODO: Is there an edge case here where the stream offset is set to the
-	// last byte of the file? I'm pretty sure this code handles that edge case
-	// correctly, but need to write a test for it.
 	if fetchOffset+fetchLen > fileSize {
 		fetchLen = fileSize - fetchOffset
 	}
@@ -320,10 +301,28 @@ func (s *streamer) threadedFillCache() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Sanity check to verify that some other thread didn't adjust the
-	// cacheOffset.
-	if s.cacheOffset != cacheOffset {
-		build.Critical("The stream cache offset changed while new cache data was being fetched")
+	// Before updating the cache, check if the stream has caught up in the
+	// current cache. If the stream has caught up, the cache is not filling fast
+	// enough and the target cache size should be increased.
+	//
+	// streamOffsetInTail checks if the stream offset is in the final quarter of
+	// the cache. If it is, we consider the cache to be not filling fast enough,
+	// and we extend the size of the cache.
+	//
+	// A final check for cacheExists is performed, because if there currently is
+	// no cache at all, this must be the first fetch, and there is no reason to
+	// extend the cache size.
+	cacheLen = int64(len(s.cache))
+	streamOffsetInCache := s.cacheOffset <= s.offset && s.offset <= s.cacheOffset+cacheLen // NOTE: it's '<=' so that we also count being 1 byte beyond the cache
+	streamOffsetInTail := streamOffsetInCache && s.offset >= s.cacheOffset + (cacheLen / 4) + (cacheLen / 2)
+	targetCacheUnderLimit := s.targetCacheSize < maxStreamerCacheSize
+	cacheExists := cacheLen > 0
+	if cacheExists && partialDownloadsSupported && targetCacheUnderLimit && streamOffsetInTail {
+		if s.targetCacheSize * 2 > maxStreamerCacheSize {
+			s.targetCacheSize = maxStreamerCacheSize
+		} else {
+			s.targetCacheSize *= 2
+		}
 	}
 
 	// Update the cache based on whether the entire cache needs to be replaced
@@ -331,7 +330,6 @@ func (s *streamer) threadedFillCache() {
 	// needs to be replaced in the even that partial downloads are not
 	// supported, and also in the event that the stream offset is complete
 	// outside the previous cache.
-	s.targetCacheSize = targetCacheSize
 	if !partialDownloadsSupported || streamOffset >= cacheOffset+cacheLen || streamOffset < cacheOffset {
 		s.cache = buffer.Bytes()
 		s.cacheOffset = fetchOffset
@@ -381,6 +379,18 @@ func (s *streamer) Read(p []byte) (int, error) {
 			err := s.readErr
 			s.mu.Unlock()
 			return 0, err
+		}
+
+		// Do a check that the cache size is at least twice as large as the read
+		// size, to ensure that data is being fetched sufficiently far in
+		// advance.
+		twiceReadLen := int64(len(p)*2)
+		if s.targetCacheSize < twiceReadLen {
+			if twiceReadLen > maxStreamerCacheSize {
+				s.targetCacheSize = maxStreamerCacheSize
+			} else {
+				s.targetCacheSize = twiceReadLen
+			}
 		}
 
 		// Check if the cache continas data that we are interested in. If so,
@@ -474,6 +484,7 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	defer entry.Close()
 
 	// Create the streamer
 	s := &streamer{
