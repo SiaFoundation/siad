@@ -34,8 +34,18 @@ type (
 		CreateTime time.Time `json:"createtime"` // time of file creation
 
 		// Repair loop fields
+		//
+		// LastHealthCheckTime is the timestamp of the last time the SiaFile's
+		// health was checked by Health()
+		//
+		// NumStuckChunks is the number of all the SiaFile's chunks that have
+		// been marked as stuck by the repair loop
+		//
+		// StuckChunkTable is a []bool that indicates if the chunk at the
+		// corresponding chunk index of the siafile is stuck or not
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
+		StuckChunkTable     []bool    `json:"stuckchunktable"`
 
 		// File ownership/permission fields.
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
@@ -236,4 +246,13 @@ func (sf *SiaFile) UpdateAccessTime() error {
 // staticChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) staticChunkSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize * uint64(sf.staticMetadata.staticErasureCode.MinPieces())
+}
+
+// updateStuckChunkTable updates the Stuck Chunk Table in the SiaFile's Metadata
+func (sf *SiaFile) updateStuckChunkTable() {
+	var stuckChunkTable []bool
+	for _, chunk := range sf.staticChunks {
+		stuckChunkTable = append(stuckChunkTable, chunk.Stuck)
+	}
+	sf.staticMetadata.StuckChunkTable = stuckChunkTable
 }
