@@ -100,16 +100,13 @@ func (entry *SiaFileSetEntry) close() error {
 	return nil
 }
 
-// ChunkEntrys returns an array for SiaFileSetEntrys to be used for the chunks when
-// doing chunk operations
-//
-// TODO - UPDATE
-func (entry *SiaFileSetEntry) ChunkEntrys() []*SiaFileSetEntry {
+// CopyEntry copies the SiaFileSetEntry n times and returns an array of
+// SiaFileSetEntrys
+func (entry *SiaFileSetEntry) CopyEntry(n int) []*SiaFileSetEntry {
 	var entrys []*SiaFileSetEntry
-	chunkCount := int(entry.NumChunks())
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
-	for i := 0; i < chunkCount; i++ {
+	for i := 0; i < n; i++ {
 		threadUID := randomThreadUID()
 		entrys = append(entrys, &SiaFileSetEntry{
 			siaFileSetEntry: entry.siaFileSetEntry,
@@ -194,6 +191,8 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, error) {
 //
 // Note: This is currently only needed for the Files endpoint. This is an
 // expensive call so it should be avoided unless absolutely necessary
+//
+// TODO - Delete once !3378 is merged
 func (sfs *SiaFileSet) All() ([]*SiaFileSetEntry, error) {
 	var entrys []*SiaFileSetEntry
 	sfs.mu.Lock()
