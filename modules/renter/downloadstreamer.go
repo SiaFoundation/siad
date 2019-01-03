@@ -110,7 +110,7 @@ func (s *streamer) threadedFillCache() {
 	//
 	// An extra check that there is any data in the cache needs to be made so
 	// that the cache fill function runs immediately after initialization.
-	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen / 2 {
+	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen/2 {
 		return
 	}
 	// If partial downloads are not supported, the full chunk containing the
@@ -192,7 +192,7 @@ func (s *streamer) threadedFillCache() {
 	if cacheOffset <= streamOffset && cacheOffset+cacheLen == fileSize {
 		return
 	}
-	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen / 2 {
+	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen/2 {
 		return
 	}
 	if !partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < cacheOffset+cacheLen && cacheLen > 0 {
@@ -314,11 +314,11 @@ func (s *streamer) threadedFillCache() {
 	// extend the cache size.
 	cacheLen = int64(len(s.cache))
 	streamOffsetInCache := s.cacheOffset <= s.offset && s.offset <= s.cacheOffset+cacheLen // NOTE: it's '<=' so that we also count being 1 byte beyond the cache
-	streamOffsetInTail := streamOffsetInCache && s.offset >= s.cacheOffset + (cacheLen / 4) + (cacheLen / 2)
+	streamOffsetInTail := streamOffsetInCache && s.offset >= s.cacheOffset+(cacheLen/4)+(cacheLen/2)
 	targetCacheUnderLimit := s.targetCacheSize < maxStreamerCacheSize
 	cacheExists := cacheLen > 0
 	if cacheExists && partialDownloadsSupported && targetCacheUnderLimit && streamOffsetInTail {
-		if s.targetCacheSize * 2 > maxStreamerCacheSize {
+		if s.targetCacheSize*2 > maxStreamerCacheSize {
 			s.targetCacheSize = maxStreamerCacheSize
 		} else {
 			s.targetCacheSize *= 2
@@ -384,7 +384,7 @@ func (s *streamer) Read(p []byte) (int, error) {
 		// Do a check that the cache size is at least twice as large as the read
 		// size, to ensure that data is being fetched sufficiently far in
 		// advance.
-		twiceReadLen := int64(len(p)*2)
+		twiceReadLen := int64(len(p) * 2)
 		if s.targetCacheSize < twiceReadLen {
 			if twiceReadLen > maxStreamerCacheSize {
 				s.targetCacheSize = maxStreamerCacheSize
