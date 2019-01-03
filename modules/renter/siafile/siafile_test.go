@@ -260,7 +260,7 @@ func TestChunkHealth(t *testing.T) {
 	offlineMap := make(map[string]bool)
 
 	// Check and Record file health of initialized file
-	fileHealth := sf.Health(offlineMap)
+	fileHealth, _ := sf.Health(offlineMap)
 	initHealth := float64(1) - (float64(0-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
 	if fileHealth != initHealth {
 		t.Fatalf("Expected file to be %v, got %v", initHealth, fileHealth)
@@ -309,29 +309,5 @@ func TestChunkHealth(t *testing.T) {
 	// Chunk at index 1 should now have a health of 1 higher than before
 	if sf.chunkHealth(1, offlineMap) != newHealth {
 		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap))
-	}
-}
-
-// TestIsStuck probes the IsStuck method of the siafile
-func TestIsStuck(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create new file
-	sf := newBlankTestFile()
-
-	// File should not be stuck
-	if sf.IsStuck() {
-		t.Fatal("File should not be stuck")
-	}
-
-	// Set on of the chunks to be stuck
-	sf.staticChunks[0].Stuck = true
-
-	// File should now be stuck
-	if !sf.IsStuck() {
-		t.Fatal("File should be stuck")
 	}
 }
