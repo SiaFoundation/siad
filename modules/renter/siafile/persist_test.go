@@ -732,16 +732,14 @@ func TestStuckChunk(t *testing.T) {
 		if i%2 != 0 {
 			continue
 		}
-		sf.SetStuck(uint64(i), true)
+		err := sf.SetStuck(uint64(i), true)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	// Update Stuck Chunk Table
-	sf.mu.Lock()
-	sf.updateStuckChunkTable()
-	sf.mu.Unlock()
-
 	// Save the header.
-	updates, err := sf.saveHeaderUpdates()
+	updates, err := sf.saveChunksUpdates()
 	if err != nil {
 		t.Fatal("Failed to create updates to save header", err)
 	}
@@ -758,12 +756,12 @@ func TestStuckChunk(t *testing.T) {
 	// Check chunks and Stuck Chunk Table
 	for i, chunk := range sf2.staticChunks {
 		if i%2 != 0 {
-			if chunk.Stuck || sf2.staticMetadata.StuckChunkTable[i] {
+			if chunk.Stuck {
 				t.Fatal("Found stuck chunk when un-stuck chunk was expected")
 			}
 			continue
 		}
-		if !chunk.Stuck || !sf2.staticMetadata.StuckChunkTable[i] {
+		if !chunk.Stuck {
 			t.Fatal("Found un-stuck chunk when stuck chunk was expected")
 		}
 	}

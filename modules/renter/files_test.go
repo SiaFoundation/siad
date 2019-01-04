@@ -416,7 +416,10 @@ func TestFileHealth(t *testing.T) {
 
 	// Test marking chunks as stuck
 	// Mark second chunk as stuck
-	f.SetStuck(1, true)
+	err = f.SetStuck(1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Check health, verify there is 1 stuck chunk
 	_, numStuckChunks := f.Health(offlineMap)

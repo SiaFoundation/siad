@@ -395,8 +395,12 @@ func (sf *SiaFile) Health(offline map[string]bool) (float64, uint64) {
 			health = chunkHealth
 		}
 	}
-	// Update NumStuckChunks
-	sf.staticMetadata.NumStuckChunks = numStuckChunks
+	// Verify NumStuckChunks in metadata matches numStuckChunks, return a
+	// developer error if there is an inconsistency
+	if sf.staticMetadata.NumStuckChunks != numStuckChunks {
+		err := fmt.Sprintf("Number of stuck chunks is not correct, have %v expected %v", sf.staticMetadata.NumStuckChunks, numStuckChunks)
+		build.Critical(err)
+	}
 
 	// Sanity check, if something went wrong default to worst health
 	if health > worstHealth {
@@ -405,7 +409,7 @@ func (sf *SiaFile) Health(offline map[string]bool) (float64, uint64) {
 		}
 		health = worstHealth
 	}
-	return health, numStuckChunks
+	return health, sf.staticMetadata.NumStuckChunks
 }
 
 // HostPublicKeys returns all the public keys of hosts the file has ever been
@@ -534,10 +538,31 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 }
 
 // SetStuck sets the Stuck field of the chunk at the given index
-func (sf *SiaFile) SetStuck(index uint64, stuck bool) {
+func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Check for change
+	if stuck == sf.staticChunks[index].Stuck {
+		return nil
+	}
+	// Update NumStuckChunks in siafile metadata
+	if stuck {
+		sf.staticMetadata.NumStuckChunks++
+	} else {
+		sf.staticMetadata.NumStuckChunks--
+	}
+	// Update chunk and metadata
+	updates, err := sf.saveMetadataUpdate()
+	if err != nil {
+		return err
+	}
+	update, err := sf.saveChunkUpdate(int(index))
+	if err != nil {
+		return err
+	}
+	updates = append(updates, update)
 	sf.staticChunks[index].Stuck = stuck
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // UID returns a unique identifier for this file.

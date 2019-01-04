@@ -122,7 +122,6 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 	}
 	// Load the chunks.
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
-	chunkIndex := 0
 	for {
 		n, err := f.Read(chunkBytes)
 		if n == 0 && err == io.EOF {
@@ -134,9 +133,7 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		if err != nil {
 			return nil, err
 		}
-		chunk.Stuck = sf.staticMetadata.StuckChunkTable[chunkIndex]
 		sf.staticChunks = append(sf.staticChunks, chunk)
-		chunkIndex++
 	}
 	return sf, nil
 }
@@ -365,8 +362,6 @@ func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
 	// metadata and the pubKeyTable overlap.
 	sf.staticMetadata.PubKeyTableOffset = sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
 
-	// update stuck chunk table
-	sf.updateStuckChunkTable()
 	// Marshal the metadata.
 	metadata, err := marshalMetadata(sf.staticMetadata)
 	if err != nil {
