@@ -55,7 +55,7 @@ var (
 		case "testing":
 			return 1 << 10 // 1 KiB
 		}
-		panic("undefined defaultParityPieces")
+		panic("undefined initialStreamCacheSize")
 	}()
 
 	maxStreamerCacheSize = func() int64 {
@@ -67,7 +67,7 @@ var (
 		case "testing":
 			return 1 << 13 // 8 KiB
 		}
-		panic("undefined defaultParityPieces")
+		panic("undefined maxStreamerCacheSize")
 	}()
 )
 
