@@ -1,9 +1,5 @@
 package renter
 
-// TODO: Currently the access time is only updated when a file is closed, is
-// that correct behavior? Should the access time be updated upon openeing the
-// file? Upon each read?
-
 import (
 	"bytes"
 	"io"
@@ -77,10 +73,6 @@ type (
 // drain the cache and require additional filling. To ensure that the cache is
 // always being filled if there is a need, threadedFillCache will finish by
 // calling itself in a new goroutine if it updated the cache at all.
-//
-// TODO: This current code will potentially fetch more than one chunk at a time,
-// and will potentially fetch a small amount of data that crosses chunk
-// boundaries. Is that fine?
 func (s *streamer) threadedFillCache() {
 	// Before grabbing the cacheActive object, check whether this thread is
 	// required to exist. This check needs to be made before checking the
@@ -475,16 +467,31 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 
 // Streamer creates a modules.Streamer that can be used to stream downloads from
 // the sia network.
-//
-// TODO: Why do we return entry.SiaPath() as a part of the call that opens the
-// stream?
 func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
-	defer entry.Close()
+
+	// Defer a call to entry.Close, but give the access time update room to
+	// complete before calling close.
+	accessTimeUpdateComplete := make(chan struct{})
+	defer func() {
+		go func() {
+			<-accessTimeUpdateComplete
+			entry.Close()
+		}()
+	}()
+	// Update the access time in a goroutine, so that it does not block the
+	// streamer from being returned to the user.
+	go func() {
+		err := entry.SiaFile.UpdateAccessTime()
+		close(accessTimeUpdateComplete)
+		if err != nil {
+			r.log.Debugln("Unable to update the access time:", err)
+		}
+	}()
 
 	// Create the streamer
 	s := &streamer{
