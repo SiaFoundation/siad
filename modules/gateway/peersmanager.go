@@ -120,7 +120,7 @@ func (g *Gateway) permanentPeerManager(closedChan chan struct{}) {
 			// Sleep briefly to prevent the gateway from hogging the CPU if all
 			// peers are local.
 			if numOutboundPeers >= maxLocalOutboundPeers && addr.IsLocal() && build.Release != "testing" {
-				g.log.Debugln("[PPM] Ignorning selected peer; this peer is local and we already have multiple outbound peers:", addr)
+				g.log.Debugln("[PPM] Ignoring selected peer; this peer is local and we already have multiple outbound peers:", addr)
 				if !g.managedSleep(unwantedLocalPeerDelay) {
 					return
 				}
