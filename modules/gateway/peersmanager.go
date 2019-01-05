@@ -7,13 +7,13 @@ import (
 )
 
 // managedPeerManagerConnect is a blocking function which tries to connect to
-// the input addreess as a peer.
+// the input address as a peer.
 func (g *Gateway) managedPeerManagerConnect(addr modules.NetAddress) {
 	g.log.Debugf("[PMC] [%v] Attempting connection", addr)
 	err := g.managedConnect(addr)
 	if err == errPeerExists {
 		// This peer is already connected to us. Safety around the
-		// oubound peers relates to the fact that we have picked out
+		// outbound peers relates to the fact that we have picked out
 		// the outbound peers instead of allow the attacker to pick out
 		// the peers for us. Because we have made the selection, it is
 		// okay to set the peer as an outbound peer.
