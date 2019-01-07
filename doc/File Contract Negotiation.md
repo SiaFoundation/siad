@@ -48,7 +48,7 @@ communications.
 
 All communications attempt to support slow connections and Tor connections. Any
 connection with a throughput below 100kbps may struggle to perform the uploads
-and downloads, and any connection with a rountrip latency greater than 2
+and downloads, and any connection with a roundtrip latency greater than 2
 minutes may struggle to complete the protocols.
 
 Settings Request
@@ -153,8 +153,8 @@ File Contract Revision
    contract.
 
 4. The host will verify the challenge signature, then send an acceptance or
-   rejection. If accetped, the host will send the most recent file contract
-   revision for the file contract along with the transaction signagtures that
+   rejection. If accepted, the host will send the most recent file contract
+   revision for the file contract along with the transaction signatures that
    validate the revision. The host will lock the file contract, meaning no
    other changes can be made to the revision file contract until this
    connection has closed.
@@ -211,8 +211,8 @@ File Contract Renewal
    contract.
 
 4. The host will verify the challenge signature, then send an acceptance or
-   rejection. If accetped, the host will send the most recent file contract
-   revision for the file contract along with the transaction signagtures that
+   rejection. If accepted, the host will send the most recent file contract
+   revision for the file contract along with the transaction signatures that
    validate the revision. The host will lock the file contract, meaning no
    other changes can be made to the revision file contract until this
    connection has closed. The host sends the most recent revision of the host
@@ -258,7 +258,7 @@ Data Request
 
 4. The host will verify the challenge signature, and then send an acceptance or
    rejection. If accepted, the host will send the most recent file contract
-   revision followed by the signautres that validate the revision. The host
+   revision followed by the signatures that validate the revision. The host
    will lock the file contract, preventing other connections from making
    changes to the underlying storage obligation.
 

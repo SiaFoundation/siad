@@ -227,7 +227,7 @@ func TestParseFilesize(t *testing.T) {
 }
 ```
 
-<a name="siatest">
+<a name="siatest"></a>
 ### Siatest Package
 When deciding what tests to write for Sia, you should consider whether the best
 test is a unit test or a siatest. Ideally both a unit test and a siatest is
