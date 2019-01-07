@@ -70,13 +70,12 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(fd.ErasureCode.NumPieces()),
 			StaticPieceSize:         fd.PieceSize,
-			SiaPath:                 siaPath,
+			StaticUniqueID:          fd.UID,
 		},
-		deleted:        fd.Deleted,
-		deps:           modules.ProdDependencies,
-		siaFilePath:    siaPath.SiaFileSysPath(sfs.siaFileDir),
-		staticUniqueID: fd.UID,
-		wal:            sfs.wal,
+		siaFilePath: siaPath.SiaFileSysPath(sfs.siaFileDir),
+		deps:        modules.ProdDependencies,
+		deleted:     fd.Deleted,
+		wal:         sfs.wal,
 	}
 	file.staticChunks = make([]chunk, len(fd.Chunks))
 	for i := range file.staticChunks {

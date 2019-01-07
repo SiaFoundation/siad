@@ -788,7 +788,6 @@ func (sf *SiaFile) pruneHosts() {
 				if exists {
 					pieceSet[i].HostTableOffset = newOffset
 					newPieceSet = append(newPieceSet, pieceSet[i])
-
 				}
 			}
 			sf.staticChunks[chunkIndex].Pieces[pieceIndex] = newPieceSet
