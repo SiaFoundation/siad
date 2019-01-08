@@ -332,12 +332,9 @@ func (s *streamer) threadedFillCache() {
 	}
 }
 
-// Close closes the streamer and let's the fileSet know that the SiaFile is no
-// longer in use.
+// Close will close the underlying siafile.
 func (s *streamer) Close() error {
-	err1 := s.staticFileEntry.SiaFile.UpdateAccessTime()
-	err2 := s.staticFileEntry.Close()
-	return errors.Compose(err1, err2)
+	return s.staticFileEntry.Close()
 }
 
 // Read will check the stream cache for the data that is being requested. If the
@@ -473,25 +470,7 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 	if err != nil {
 		return "", nil, err
 	}
-
-	// Defer a call to entry.Close, but give the access time update room to
-	// complete before calling close.
-	accessTimeUpdateComplete := make(chan struct{})
-	defer func() {
-		go func() {
-			<-accessTimeUpdateComplete
-			entry.Close()
-		}()
-	}()
-	// Update the access time in a goroutine, so that it does not block the
-	// streamer from being returned to the user.
-	go func() {
-		err := entry.SiaFile.UpdateAccessTime()
-		close(accessTimeUpdateComplete)
-		if err != nil {
-			r.log.Debugln("Unable to update the access time:", err)
-		}
-	}()
+	defer entry.Close()
 
 	// Create the streamer
 	s := &streamer{
