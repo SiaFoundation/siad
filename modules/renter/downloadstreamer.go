@@ -403,7 +403,7 @@ func (s *streamer) Read(p []byte) (int, error) {
 	s.offset += int64(dataEnd - dataStart)
 
 	// Now that data has been consumed, request more data.
-	select{
+	select {
 	case s.activateCache <- struct{}{}:
 	default:
 	}
@@ -439,7 +439,7 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 	s.offset = newOffset
 
 	// Now that data has been consumed, request more data.
-	select{
+	select {
 	case s.activateCache <- struct{}{}:
 	default:
 	}
@@ -463,7 +463,7 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 		staticFileEntry: entry,
 		r:               r,
 
-		activateCache:     make(chan struct{}),
+		activateCache:   make(chan struct{}),
 		cacheReady:      make(chan struct{}),
 		targetCacheSize: initialStreamerCacheSize,
 	}
