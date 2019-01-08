@@ -187,8 +187,8 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 			err = extendErr("incoming RPCLoopRenewContract failed: ", h.managedRPCLoopRenewContract(s))
 		case modules.RPCLoopRecentRevision:
 			err = extendErr("incoming RPCLoopRecentRevision failed: ", h.managedRPCLoopRecentRevision(s))
-		case modules.RPCLoopUpload:
-			err = extendErr("incoming RPCLoopUpload failed: ", h.managedRPCLoopUpload(s))
+		case modules.RPCLoopWrite:
+			err = extendErr("incoming RPCLoopWrite failed: ", h.managedRPCLoopWrite(s))
 		case modules.RPCLoopRead:
 			err = extendErr("incoming RPCLoopRead failed: ", h.managedRPCLoopRead(s))
 		case modules.RPCLoopSectorRoots:

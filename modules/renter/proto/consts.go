@@ -23,15 +23,15 @@ const (
 
 	// Size limits for various RPCs.
 	challengeReqMaxLen           = 16
-	readRespMaxLen               = 2048 // does not include sector data
+	contractAdditionsRespMaxLen  = 4096
+	contractSignaturesRespMaxLen = 1024
 	keyExchangeMaxLen            = 256
+	readRespMaxLen               = 2048 // does not include sector data
 	recentRevRespMaxLen          = 2048
 	rpcErrorMaxLen               = 1024
 	sectorRootsRespMaxLen        = 2048 // does not include root data
 	settingsRespMaxLen           = 2048
-	uploadRespMaxLen             = 256
-	contractAdditionsRespMaxLen  = 4096
-	contractSignaturesRespMaxLen = 1024
+	writeRespMaxLen              = 256
 )
 
 var (

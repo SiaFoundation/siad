@@ -292,13 +292,13 @@ type (
 var (
 	RPCLoopEnter          = types.Specifier{'L', 'o', 'o', 'p', 'E', 'n', 't', 'e', 'r'}
 	RPCLoopExit           = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
-	RPCLoopSettings       = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
-	RPCLoopRecentRevision = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'c', 'e', 'n', 't', 'R', 'e', 'v'}
-	RPCLoopRead           = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
 	RPCLoopFormContract   = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
+	RPCLoopRead           = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
+	RPCLoopRecentRevision = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'c', 'e', 'n', 't', 'R', 'e', 'v'}
 	RPCLoopRenewContract  = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
 	RPCLoopSectorRoots    = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
-	RPCLoopUpload         = types.Specifier{'L', 'o', 'o', 'p', 'U', 'p', 'l', 'o', 'a', 'd'}
+	RPCLoopSettings       = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
+	RPCLoopWrite          = types.Specifier{'L', 'o', 'o', 'p', 'W', 'r', 'i', 't', 'e'}
 )
 
 // RPC ciphers
@@ -451,8 +451,8 @@ type (
 		Settings HostExternalSettings
 	}
 
-	// LoopUploadRequest contains the request parameters for RPCLoopUpload.
-	LoopUploadRequest struct {
+	// LoopWriteRequest contains the request parameters for RPCLoopWrite.
+	LoopWriteRequest struct {
 		Data []byte
 
 		NewRevisionNumber    uint64
@@ -461,8 +461,8 @@ type (
 		Signature            []byte
 	}
 
-	// LoopUploadResponse contains the response data for RPCLoopUploadResponse.
-	LoopUploadResponse struct {
+	// LoopWriteResponse contains the response data for RPCLoopWriteResponse.
+	LoopWriteResponse struct {
 		Signature []byte
 	}
 )

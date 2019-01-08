@@ -124,7 +124,7 @@ func (hs *hostSession) Upload(data []byte) (crypto.Hash, error) {
 	}
 
 	// Perform the upload.
-	_, sectorRoot, err := hs.session.Upload(data)
+	_, sectorRoot, err := hs.session.Write(data)
 	if err != nil {
 		return crypto.Hash{}, err
 	}

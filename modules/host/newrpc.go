@@ -55,12 +55,12 @@ func (h *Host) managedRPCLoopRecentRevision(s *rpcSession) error {
 	return nil
 }
 
-// managedRPCLoopUpload reads an upload request and responds with a signature
+// managedRPCLoopWrite reads an upload request and responds with a signature
 // for the new revision.
-func (h *Host) managedRPCLoopUpload(s *rpcSession) error {
+func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	s.extendDeadline(modules.NegotiateFileContractRevisionTime)
 	// Read the request.
-	var req modules.LoopUploadRequest
+	var req modules.LoopWriteRequest
 	if err := s.readRequest(&req, uploadReqMaxLen); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
@@ -143,7 +143,7 @@ func (h *Host) managedRPCLoopUpload(s *rpcSession) error {
 	}
 
 	// Send the response.
-	resp := modules.LoopUploadResponse{
+	resp := modules.LoopWriteResponse{
 		Signature: txn.TransactionSignatures[1].Signature,
 	}
 	if err := s.writeResponse(resp); err != nil {

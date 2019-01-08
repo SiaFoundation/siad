@@ -138,9 +138,9 @@ func (s *Session) RecentRevision() (types.FileContractRevision, []types.Transact
 	return resp.Revision, resp.Signatures, nil
 }
 
-// Upload calls the Upload RPC and transfers the supplied data, returning the
+// Write calls the Write RPC and transfers the supplied data, returning the
 // updated contract and the Merkle root of the sector.
-func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
+func (s *Session) Write(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
 	// Acquire the contract.
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
@@ -197,7 +197,7 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// create the request
-	req := modules.LoopUploadRequest{
+	req := modules.LoopWriteRequest{
 		Data:              data,
 		NewRevisionNumber: rev.NewRevisionNumber,
 		Signature:         sig[:],
@@ -238,8 +238,8 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 
 	// send upload RPC request
 	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
-	var resp modules.LoopUploadResponse
-	err = s.call(modules.RPCLoopUpload, req, &resp, uploadRespMaxLen)
+	var resp modules.LoopWriteResponse
+	err = s.call(modules.RPCLoopWrite, req, &resp, writeRespMaxLen)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}

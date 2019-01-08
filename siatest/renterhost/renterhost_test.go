@@ -57,7 +57,7 @@ func TestSession(t *testing.T) {
 
 	// upload a sector
 	sector := fastrand.Bytes(int(modules.SectorSize))
-	_, root, err := s.Upload(sector)
+	_, root, err := s.Write(sector)
 	if err != nil {
 		t.Fatal(err)
 	}
