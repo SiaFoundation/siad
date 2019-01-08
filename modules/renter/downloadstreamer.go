@@ -55,7 +55,7 @@ type (
 		// a time. If another instance of 'threadedFillCache' is active, the new
 		// call will immediately return.
 		cache           []byte
-		cacheActive     chan struct{}
+		activateCache   chan struct{}
 		cacheOffset     int64
 		cacheReady      chan struct{}
 		readErr         error
@@ -67,13 +67,9 @@ type (
 	}
 )
 
-// threadedFillCache is a method to fill or refill the cache for the streamer.
-// The function will self-enforce that only one thread is running at a time.
-// While the thread is running, multiple calls to 'Read' may happen, which will
-// drain the cache and require additional filling. To ensure that the cache is
-// always being filled if there is a need, threadedFillCache will finish by
-// calling itself in a new goroutine if it updated the cache at all.
-func (s *streamer) threadedFillCache() {
+// managedFillCache will determine whether or not the cache of the streamer
+// needs to be filled, and if it does it will add data to the streamer.
+func (s *streamer) managedFillCache() bool {
 	// Before grabbing the cacheActive object, check whether this thread is
 	// required to exist. This check needs to be made before checking the
 	// cacheActive because threadedFillCache recursively calls itself after
@@ -87,15 +83,16 @@ func (s *streamer) threadedFillCache() {
 	cacheLen := int64(len(s.cache))
 	streamReadErr := s.readErr
 	fileSize := int64(s.staticFile.Size())
+	targetCacheSize := s.targetCacheSize
 	s.mu.Unlock()
 	// If there has been a read error in the stream, abort.
 	if streamReadErr != nil {
-		return
+		return false
 	}
 	// Check whether the cache has reached the end of the file and also the
 	// streamOffset is contained within the cache. If so, no updates are needed.
 	if cacheOffset <= streamOffset && cacheOffset+cacheLen == fileSize {
-		return
+		return false
 	}
 	// If partial downloads are supported and the stream offset is in the first
 	// half of the cache, then no fetching is required.
@@ -103,7 +100,7 @@ func (s *streamer) threadedFillCache() {
 	// An extra check that there is any data in the cache needs to be made so
 	// that the cache fill function runs immediately after initialization.
 	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen/2 {
-		return
+		return false
 	}
 	// If partial downloads are not supported, the full chunk containing the
 	// current offset should be the cache. If the cache is the full chunk that
@@ -113,83 +110,17 @@ func (s *streamer) threadedFillCache() {
 	// This should be functionally nearly identical to the previous cache that
 	// we were using which has since been disabled.
 	if !partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < cacheOffset+cacheLen && cacheLen > 0 {
-		return
+		return false
 	}
 
-	// Check cacheActive for an object. If no object exists, another
-	// threadedFillCache thread is running, so this thread should terminate
-	// immediately. The other thread is guaranteed to call 'threadedFillCache'
-	// again upon termination (due the defer statement immediately following the
-	// acquisition of the cacheActive object), meaning that any new need to
-	// update the cache will eventually be satisfied.
-	select {
-	case <-s.cacheActive:
-	default:
-		return
-	}
-	// NOTE: The ordering here is delicate. After the function returns, the
-	// first thing that happens is that the cacheReady channel is rotated, so
-	// any Read calls blocking for a cache update know to check the cache for
-	// the data they want.
-	//
-	// After the Read channels are unfrozen, the cacheActive object needs to be
-	// returned so that the next fillCache thread is able to grab the object.
-	//
-	// Once the blocking read calls have been unstuck and the cacheActive object
-	// has been returned, then we issue another call to threadedFillCache to add
-	// more data to the cache if necessary. This has to go last so that when it
-	// requests the cacheActive object, it is guaranteed that either some other
-	// fillCache thread grabbed the object, or the object is there. This is
-	// because fillCache threads won't block until the object is available, if
-	// the object is not available they will terminate immediately.
-	//
-	// Because defer statements are a stack, the defers are set up in the
-	// reverse order than how the functions need to be activated.
-	defer func() {
-		go s.threadedFillCache()
-	}()
-	defer func() {
-		s.cacheActive <- struct{}{}
-	}()
+	// Defer a function to rotate out the cacheReady channel, to notify all
+	// calls blocking for more cache that more data is now available.
 	defer func() {
 		s.mu.Lock()
 		close(s.cacheReady)
 		s.cacheReady = make(chan struct{})
 		s.mu.Unlock()
 	}()
-
-	// Re-fetch the variables important to gathering cache, in case they have
-	// changed since the initial check.
-	s.mu.Lock()
-	partialDownloadsSupported = s.staticFile.ErasureCode().SupportsPartialEncoding()
-	chunkSize = s.staticFile.ChunkSize()
-	cacheOffset = int64(s.cacheOffset)
-	streamOffset = s.offset
-	cacheLen = int64(len(s.cache))
-	targetCacheSize := s.targetCacheSize
-	streamReadErr = s.readErr
-	fileSize = int64(s.staticFile.Size())
-	s.mu.Unlock()
-
-	// Check one more time for the conditions that indicate no cache update is
-	// necessary, given that we have released and re-grabbed the lock since the
-	// previous check.
-	//
-	// An extra check is needed to see if there is any data in the cache. If
-	// there is no data in the cache, this is the first call to fillCache since
-	// initialization.
-	if streamReadErr != nil {
-		return
-	}
-	if cacheOffset <= streamOffset && cacheOffset+cacheLen == fileSize {
-		return
-	}
-	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen/2 {
-		return
-	}
-	if !partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < cacheOffset+cacheLen && cacheLen > 0 {
-		return
-	}
 
 	// Determine what data needs to be fetched.
 	//
@@ -259,7 +190,7 @@ func (s *streamer) threadedFillCache() {
 		s.mu.Lock()
 		s.readErr = errors.Compose(s.readErr, err, closeErr)
 		s.mu.Unlock()
-		return
+		return false
 	}
 	// Register some cleanup for when the download is done.
 	d.OnComplete(func(_ error) error {
@@ -280,13 +211,14 @@ func (s *streamer) threadedFillCache() {
 			s.mu.Lock()
 			s.readErr = errors.Compose(s.readErr, completeErr)
 			s.mu.Unlock()
-			return
+			return false
 		}
 	case <-s.r.tg.StopChan():
 		stopErr := errors.New("download interrupted by shutdown")
 		s.mu.Lock()
 		s.readErr = errors.Compose(s.readErr, stopErr)
 		s.mu.Unlock()
+		return false
 	}
 
 	// Update the cache.
@@ -329,6 +261,47 @@ func (s *streamer) threadedFillCache() {
 		s.cache = s.cache[streamOffset-cacheOffset:]
 		s.cache = append(s.cache, buffer.Bytes()...)
 		s.cacheOffset = streamOffset
+	}
+
+	// Return true, indicaating that this function should be called agian,
+	// because there may be more cache that has been requested or used since the
+	// previous request.
+	return true
+}
+
+// threadedFillCache is a method to fill or refill the cache for the streamer.
+// The function will self-enforce that only one thread is running at a time.
+// While the thread is running, multiple calls to 'Read' may happen, which will
+// drain the cache and require additional filling. To ensure that the cache is
+// always being filled if there is a need, threadedFillCache will finish by
+// calling itself in a new goroutine if it updated the cache at all.
+func (s *streamer) threadedFillCache() {
+	// Add this thread to the renter's threadgroup.
+	err := s.r.tg.Add()
+	if err != nil {
+		s.r.log.Debugln("threadedFillCache terminating early because renter has stopped")
+	}
+	defer s.r.tg.Done()
+
+	// Kick things off by filling the cache for the first time.
+	s.managedFillCache()
+
+	for {
+		// Block until receiving notice that the cache needs to be updated,
+		// shutting down if a shutdown signal is received.
+		select {
+		case <-s.activateCache:
+		case <-s.r.tg.StopChan():
+			return
+		}
+
+		// Update the cache. Sometimes the cache will know that it is already
+		// out of date by the time it is returning, in those cases call the
+		// funciton again.
+		fetchMore := s.managedFillCache()
+		for fetchMore {
+			fetchMore = s.managedFillCache()
+		}
 	}
 }
 
@@ -428,7 +401,13 @@ func (s *streamer) Read(p []byte) (int, error) {
 	}
 	copy(p, s.cache[dataStart:dataEnd])
 	s.offset += int64(dataEnd - dataStart)
-	go s.threadedFillCache() // Now that some data is consumed, fetch more data.
+
+	// Now that data has been consumed, request more data.
+	select{
+	case s.activateCache <- struct{}{}:
+	default:
+	}
+
 	return dataEnd - dataStart, nil
 }
 
@@ -458,7 +437,13 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 	// Update the offset of the stream and immediately send a thread to update
 	// the cache.
 	s.offset = newOffset
-	go s.threadedFillCache()
+
+	// Now that data has been consumed, request more data.
+	select{
+	case s.activateCache <- struct{}{}:
+	default:
+	}
+
 	return newOffset, nil
 }
 
@@ -478,16 +463,11 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 		staticFileEntry: entry,
 		r:               r,
 
-		cacheActive:     make(chan struct{}, 1),
+		activateCache:     make(chan struct{}),
 		cacheReady:      make(chan struct{}),
 		targetCacheSize: initialStreamerCacheSize,
 	}
 
-	// Put an object into the cacheActive to indicate that there is no cache
-	// thread running at the moment, and then spin up a cache thread to fill the
-	// cache (the cache thread will consume the cacheActive object itself).
-	s.cacheActive <- struct{}{}
 	go s.threadedFillCache()
-
 	return entry.SiaPath(), s, nil
 }
