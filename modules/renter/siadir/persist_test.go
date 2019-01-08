@@ -2,11 +2,13 @@ package siadir
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -79,12 +81,23 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 	}
 
 	// Read metadata update
-	metadata, err := readMetadataUpdate(update)
+	data, path, err := readMetadataUpdate(update)
 	if err != nil {
 		t.Fatal("Failed to read update", err)
 	}
 
-	// Compare metadata
+	// Check path
+	path2 := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
+	if path != path2 {
+		t.Fatalf("Path not correct: expected %v got %v", path2, path)
+	}
+
+	// Check data
+	var metadata siaDirMetadata
+	err = json.Unmarshal(data, &metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +141,13 @@ func TestApplyUpdates(t *testing.T) {
 		}
 		testApply(t, siadir, ApplyUpdates)
 	})
+	t.Run("TestSiaDirApplyUpdates", func(t *testing.T) {
+		siadir, err := newTestDir(t.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		testApply(t, siadir, siadir.applyUpdates)
+	})
 	t.Run("TestCreateAndApplyTransaction", func(t *testing.T) {
 		siadir, err := newTestDir(t.Name())
 		if err != nil {
@@ -152,7 +172,37 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 		t.Fatal("Failed to apply update", err)
 	}
 	// Open file.
-	sd, err := LoadSiaDir(metadata.RootDir, metadata.SiaPath, siadir.wal)
+	sd, err := LoadSiaDir(metadata.RootDir, metadata.SiaPath, modules.ProdDependencies, siadir.wal)
+	if err != nil {
+		t.Fatal("Failed to load siadir", err)
+	}
+	// Check if correct data was written.
+	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestManagedCreateAndApplyTransactions tests if
+// managedCreateAndApplyTransactions applies a set of updates correctly.
+func TestManagedCreateAndApplyTransactions(t *testing.T) {
+	siadir, err := newTestDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create an update to the metadata
+	metadata := siadir.staticMetadata
+	metadata.Health = 1.0
+	update, err := createMetadataUpdate(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Apply update.
+	if err := managedCreateAndApplyTransaction(siadir.wal, update); err != nil {
+		t.Fatal("Failed to apply update", err)
+	}
+	// Open file.
+	sd, err := LoadSiaDir(metadata.RootDir, metadata.SiaPath, modules.ProdDependencies, siadir.wal)
 	if err != nil {
 		t.Fatal("Failed to load siadir", err)
 	}

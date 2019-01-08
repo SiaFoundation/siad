@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -133,7 +134,7 @@ func (sds *SiaDirSet) open(siaPath string) (*SiaDirSetEntry, error) {
 	entry, exists := sds.siaDirMap[siaPath]
 	if !exists {
 		// Try and Load File from disk
-		sd, err := LoadSiaDir(sds.rootDir, siaPath, sds.wal)
+		sd, err := LoadSiaDir(sds.rootDir, siaPath, modules.ProdDependencies, sds.wal)
 		if err != nil {
 			return nil, err
 		}
