@@ -10,7 +10,7 @@ import (
 // This guarantees that we can't accidentally change any constants without
 // noticing.
 func TestMarshalChunkSize(t *testing.T) {
-	chunkOverhead := 16 + 2
+	chunkOverhead := 16 + 2 + 1
 	pieceSize := 4 + 4 + 32
 	for i := 0; i < 100; i++ {
 		if marshaledChunkSize(i) != int64(chunkOverhead+i*pieceSize) {

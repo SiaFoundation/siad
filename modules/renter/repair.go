@@ -42,17 +42,18 @@ func (r *Renter) managedDirectoryHealth(siaPath string) (float64, float64, time.
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk or repair by upload streaming
-func (r *Renter) managedFileHealth(siaPath string) (float64, bool, error) {
+func (r *Renter) managedFileHealth(siaPath string) (float64, uint64, error) {
 	// Load the Siafile.
 	sf, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
-		return 0, false, err
+		return 0, 0, err
 	}
 	defer sf.Close()
 
 	// Calculate file health
 	hostOfflineMap, _ := r.managedContractUtilities([]*siafile.SiaFileSetEntry{sf})
-	return sf.Health(hostOfflineMap), sf.IsStuck(), nil
+	fileHealth, numStuckChunks := sf.Health(hostOfflineMap)
+	return fileHealth, numStuckChunks, nil
 }
 
 // BubbleHealth calculates the health of a directory and updates the siadir
@@ -128,7 +129,7 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (float64, float
 		}
 
 		var health, stuckHealth float64
-		var stuck bool
+		var numStuckChunks uint64
 		lastCheck := time.Now()
 		ext := filepath.Ext(fi.Name())
 		if ext == siadir.SiaDirExtension || ext == siadir.SiaDirExtension+"_temp" {
@@ -137,11 +138,11 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (float64, float
 		} else if ext == siafile.ShareExtension {
 			fName := strings.TrimSuffix(fi.Name(), siafile.ShareExtension)
 			// calculate the health of the siafile
-			health, stuck, err = r.managedFileHealth(filepath.Join(siaPath, fName))
+			health, numStuckChunks, err = r.managedFileHealth(filepath.Join(siaPath, fName))
 			if err != nil {
 				return 0, 0, time.Time{}, err
 			}
-			if stuck && health > worstStuckHealth {
+			if numStuckChunks > 0 && health > worstStuckHealth {
 				worstStuckHealth = health
 			}
 			lastCheck = time.Now()

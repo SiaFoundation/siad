@@ -21,6 +21,14 @@ func marshalChunk(chunk chunk) []byte {
 	ei := buf.Next(len(chunk.ExtensionInfo))
 	copy(ei, chunk.ExtensionInfo[:])
 
+	// Write Stuck bool
+	stuck := buf.Next(1)
+	if chunk.Stuck {
+		copy(stuck, []byte{1})
+	} else {
+		copy(stuck, []byte{0})
+	}
+
 	// Write the pieces length prefix.
 	np := buf.Next(2)
 	binary.LittleEndian.PutUint16(np[:], uint16(chunk.numPieces()))
@@ -100,6 +108,10 @@ func unmarshalChunk(numPieces uint32, raw []byte) (chunk chunk, err error) {
 	if _, err = io.ReadFull(buf, chunk.ExtensionInfo[:]); err != nil {
 		return chunk, errors.AddContext(err, "failed to unmarshal ExtensionInfo")
 	}
+
+	// read Stuck byte
+	stuckBytes := buf.Next(1)
+	chunk.Stuck = stuckBytes[0] == byte(1)
 
 	// read the pieces length prefix.
 	prefixLen := 2
