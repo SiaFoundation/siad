@@ -4000,7 +4000,7 @@ func TestRenterContractRecovery(t *testing.T) {
 	// The new renter should have the same active contracts as the old one.
 	miner := tg.Miners()[0]
 	numRetries := 0
-	err = build.Retry(200, 100*time.Millisecond, func() error {
+	err = build.Retry(400, 200*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
 			if err := miner.MineBlock(); err != nil {
 				return err
@@ -4012,7 +4012,6 @@ func TestRenterContractRecovery(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(rc.ActiveContracts) != len(oldContracts) {
-			t.Log("Contracts in total:", len(rc.Contracts))
 			return fmt.Errorf("Didn't recover the right number of contracts, expected %v but was %v",
 				len(oldContracts), len(rc.ActiveContracts))
 		}
@@ -4037,6 +4036,8 @@ func TestRenterContractRecovery(t *testing.T) {
 		return nil
 	})
 	if err != nil {
+		rc, _ = newRenter.RenterContractsGet()
+		t.Log("Contracts in total:", len(rc.Contracts))
 		t.Fatal(err)
 	}
 	// Download the whole file again to see if all roots were recovered.
