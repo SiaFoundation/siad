@@ -40,30 +40,37 @@ func applyUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
 		}
 		return err
 	case updateMetadataName:
-		// Decode update.
-		data, path, err := readMetadataUpdate(update)
-		if err != nil {
-			return err
-		}
-
-		// Write out the data to the real file, with a sync.
-		file, err := deps.OpenFile(path, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			err = errors.Compose(err, file.Close())
-		}()
-
-		// Write and sync.
-		_, err = file.Write(data)
-		if err != nil {
-			return err
-		}
-		return file.Sync()
+		return readAndApplyMetadataUpdate(deps, update)
 	default:
 		return fmt.Errorf("Update not recognized: %v", update.Name)
 	}
+}
+
+// readAndApplyMetadataUpdate reads the metadata update and then applies it.
+// This helper assumes that the file is not currently open and so should only be
+// called on startup before any siadir is loaded from disk
+func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
+	// Decode update.
+	data, path, err := readMetadataUpdate(update)
+	if err != nil {
+		return err
+	}
+
+	// Write out the data to the real file, with a sync.
+	file, err := deps.OpenFile(path, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
+
+	// Write and sync.
+	_, err = file.Write(data)
+	if err != nil {
+		return err
+	}
+	return file.Sync()
 }
 
 // readDeleteUpdate unmarshals the update's instructions and returns the
@@ -189,24 +196,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 				}
 				return err
 			case updateMetadataName:
-				// Decode update.
-				data, path, err := readMetadataUpdate(u)
-				if err != nil {
-					return err
-				}
-
-				// Sanity check path belongs to siadir
-				if path != siaDirPath {
-					build.Critical(fmt.Sprintf("can't apply update for file %s to SiaDir %s", path, siaDirPath))
-					return nil
-				}
-
-				// Write and sync.
-				_, err = file.Write(data)
-				if err != nil {
-					return err
-				}
-				return nil
+				return sd.readAndApplyMetadataUpdate(file, u)
 			default:
 				return fmt.Errorf("Update not recognized: %v", u.Name)
 			}
@@ -266,4 +256,28 @@ func (sd *SiaDir) saveDir() error {
 // saveMetadataUpdate saves the metadata of the SiaDir
 func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
 	return createMetadataUpdate(sd.staticMetadata)
+}
+
+// readAndApplyMetadataUpdate reads the metadata update for a file and then
+// applies it.
+func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeaheadlog.Update) error {
+	// Decode update.
+	data, path, err := readMetadataUpdate(update)
+	if err != nil {
+		return err
+	}
+
+	// Sanity check path belongs to siadir
+	siaDirPath := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
+	if path != siaDirPath {
+		build.Critical(fmt.Sprintf("can't apply update for file %s to SiaDir %s", path, siaDirPath))
+		return nil
+	}
+
+	// Write and sync.
+	_, err = file.Write(data)
+	if err != nil {
+		return err
+	}
+	return nil
 }
