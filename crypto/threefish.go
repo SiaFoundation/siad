@@ -80,8 +80,12 @@ func (key threefishKey) DecryptBytes(ct Ciphertext) ([]byte, error) {
 	return plaintext, nil
 }
 
-// DecryptBytesInPlace decrypts a ciphertext created by EncryptPiece. The tweak is
-// expected to be incremented by 1 for every 64 bytes of data.
+// DecryptBytesInPlace decrypts a ciphertext created by EncryptPiece. The
+// blockIndex is expected to be incremented by 1 for every 64 bytes of data as
+// it represents the offset within a larger piece of data, allowing for partial
+// decryption. e.g. If the provided ciphertext starts at offset 64 of the
+// original ciphertext produced by EncryptPiece, it can be decrypted by setting
+// blockIndex to 1.
 // DecryptBytesInPlace reuses the memory of ct to be able to operate in-place.
 // This means that ct can't be reused after calling DecryptBytesInPlace.
 func (key threefishKey) DecryptBytesInPlace(ct Ciphertext, blockIndex uint64) ([]byte, error) {
