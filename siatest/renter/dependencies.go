@@ -13,6 +13,12 @@ type dependencyBlockScan struct {
 	c      chan struct{}
 }
 
+// dependencyDisableFormContract blocks the formation of new contracts during
+// threadedContractMaintenance.
+type dependencyDisableFormContract struct {
+	modules.ProductionDependencies
+}
+
 // Disrupt will block the scan progress of the hostdb. The scan can be started
 // by calling Scan on the dependency.
 func (d *dependencyBlockScan) Disrupt(s string) bool {
@@ -23,6 +29,11 @@ func (d *dependencyBlockScan) Disrupt(s string) bool {
 		<-d.c
 	}
 	return false
+}
+
+// Disrupt will block contract formation in threadedContractMaintenance.
+func (d *dependencyDisableFormContract) Disrupt(s string) bool {
+	return s == "disableFormContract"
 }
 
 // Scan resumes the blocked scan.

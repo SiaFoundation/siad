@@ -16,6 +16,10 @@ import (
 // since many of them could already be expired. Recovery happens periodically
 // in threadedContractMaintenance.
 func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.Block) {
+	// Get the master renter seed and wipe it once we are done with it.
+	renterSeed := proto.DeriveRenterSeed(walletSeed)
+	fastrand.Read(renterSeed[:])
+
 	for _, txn := range b.Transactions {
 		// Check if the arbitrary data starts with the correct prefix.
 		csi, encryptedHostKey, hasIdentifier := hasFCIdentifier(txn)
@@ -24,8 +28,9 @@ func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.B
 		}
 		// Check if any contract should be recovered.
 		for i, fc := range txn.FileContracts {
-			// Create the RenterSeed for this contract and wipe it afterwards.
-			rs := proto.EphemeralRenterSeed(walletSeed, fc.WindowStart)
+			// Create the EphemeralRenterSeed for this contract and wipe it
+			// afterwards.
+			rs := renterSeed.EphemeralRenterSeed(fc.WindowStart)
 			defer fastrand.Read(rs[:])
 			// Validate it.
 			hostKey, valid := csi.IsValid(rs, txn, encryptedHostKey)
@@ -38,7 +43,7 @@ func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.B
 			if known {
 				continue
 			}
-			// Make sure we don't track that contract already as recoverable.
+			// Make sure we don't already track that contract as recoverable.
 			_, known = c.recoverableContracts[fcid]
 			if known {
 				continue
@@ -57,7 +62,7 @@ func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.B
 
 // managedRecoverContract recovers a single contract by contacting the host it
 // was formed with and retrieving the latest revision and sector roots.
-func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs proto.RenterSeed, blockHeight types.BlockHeight) error {
+func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs proto.EphemeralRenterSeed, blockHeight types.BlockHeight) error {
 	// Get the corresponding host.
 	host, ok := c.hdb.Host(rc.HostPublicKey)
 	if !ok {
@@ -119,6 +124,9 @@ func (c *Contractor) managedRecoverContracts() {
 		c.log.Debugln("Can't recover contracts", err)
 		return
 	}
+	// Get the renter seed and wipe it once we are done with it.
+	renterSeed := proto.DeriveRenterSeed(ws)
+	fastrand.Read(renterSeed[:])
 	// Copy necessary fields to avoid having to hold the lock for too long.
 	c.mu.RLock()
 	blockHeight := c.blockHeight
@@ -154,8 +162,8 @@ func (c *Contractor) managedRecoverContracts() {
 				// might want to recover it later.
 				return
 			}
-			// Get renter seed and wipe it after using it.
-			ers := proto.EphemeralRenterSeed(ws, rc.WindowStart)
+			// Get the ephemeral renter seed and wipe it after using it.
+			ers := renterSeed.EphemeralRenterSeed(rc.WindowStart)
 			defer fastrand.Read(ers[:])
 			// Recover contract.
 			err := c.managedRecoverContract(rc, ers, blockHeight)

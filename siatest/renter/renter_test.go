@@ -3870,6 +3870,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	renterSeed := proto.DeriveRenterSeed(seed)
 
 	// Check the arbitrary data of each transaction and contract.
 	for _, fcTxn := range fcTxns {
@@ -3883,7 +3884,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			n := copy(csi[:], txn.ArbitraryData[0])
 			encryptedHostKey := txn.ArbitraryData[0][n:]
 			// Calculate the renter seed given the WindowStart of the contract.
-			rs := proto.EphemeralRenterSeed(seed, fc.WindowStart)
+			rs := renterSeed.EphemeralRenterSeed(fc.WindowStart)
 			// Check if the identifier is valid.
 			spk, valid := csi.IsValid(rs, txn, encryptedHostKey)
 			if !valid {
@@ -3974,6 +3975,7 @@ func TestRenterContractRecovery(t *testing.T) {
 	// Start a new renter with the same seed.
 	renterParams := node.Renter(newRenterDir)
 	renterParams.PrimarySeed = seed
+	renterParams.ContractorDeps = &dependencyDisableFormContract{}
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)

@@ -330,11 +330,14 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
 
-	// get the wallet seed
+	// get the wallet seed.
 	seed, _, err := c.wallet.PrimarySeed()
 	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
+	// derive the renter seed and wipe it once we are done with it.
+	renterSeed := proto.DeriveRenterSeed(seed)
+	defer fastrand.Read(renterSeed[:])
 
 	// create contract params
 	c.mu.RLock()
@@ -345,7 +348,7 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 		StartHeight:   c.blockHeight,
 		EndHeight:     endHeight,
 		RefundAddress: uc.UnlockHash(),
-		RenterSeed:    proto.EphemeralRenterSeed(seed, endHeight),
+		RenterSeed:    renterSeed.EphemeralRenterSeed(endHeight),
 	}
 	c.mu.RUnlock()
 
@@ -479,6 +482,9 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
+	// derive the renter seed and wipe it after we are done with it.
+	renterSeed := proto.DeriveRenterSeed(seed)
+	defer fastrand.Read(renterSeed[:])
 
 	// create contract params
 	c.mu.RLock()
@@ -489,7 +495,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 		StartHeight:   c.blockHeight,
 		EndHeight:     newEndHeight,
 		RefundAddress: uc.UnlockHash(),
-		RenterSeed:    proto.EphemeralRenterSeed(seed, newEndHeight),
+		RenterSeed:    renterSeed.EphemeralRenterSeed(newEndHeight),
 	}
 	c.mu.RUnlock()
 
@@ -908,6 +914,11 @@ func (c *Contractor) threadedContractMaintenance() {
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)
 		return
+	}
+
+	// Disrupt contract formation.
+	if c.staticDeps.Disrupt("disableFormContract") {
+		hosts = nil
 	}
 
 	// Form contracts with the hosts one at a time, until we have enough

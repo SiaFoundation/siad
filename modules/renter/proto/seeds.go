@@ -30,6 +30,9 @@ type (
 	// RenterSeed is the master seed of the renter which is used to derive
 	// other seeds.
 	RenterSeed modules.Seed
+	// EphemeralRenterSeed is a renter seed derived from the master renter
+	// seed. The master seed should never be used directly.
+	EphemeralRenterSeed RenterSeed
 )
 
 type (
@@ -47,21 +50,21 @@ type (
 )
 
 // contractIdentifierSeed derives a contractIdentifierSeed from a renterSeed.
-func (rs RenterSeed) contractIdentifierSeed() (seed identifierSeed) {
+func (rs EphemeralRenterSeed) contractIdentifierSeed() (seed identifierSeed) {
 	s := crypto.HashAll(rs, identifierSeedSpecifier)
 	copy(seed[:], s[:])
 	return
 }
 
 // contractSecretKeySeed derives a secretKeySeed from a renterSeed.
-func (rs RenterSeed) contractSecretKeySeed() (seed secretKeySeed) {
+func (rs EphemeralRenterSeed) contractSecretKeySeed() (seed secretKeySeed) {
 	s := crypto.HashAll(rs, secretKeySeedSpecifier)
 	copy(seed[:], s[:])
 	return
 }
 
 // contractIdentifierSigningSeed derives an identifierSigningSeed from a renterSeed.
-func (rs RenterSeed) contractIdentifierSigningSeed() (seed identifierSigningSeed) {
+func (rs EphemeralRenterSeed) contractIdentifierSigningSeed() (seed identifierSigningSeed) {
 	s := crypto.HashAll(rs, signingKeySeedSpecifier)
 	copy(seed[:], s[:])
 	return
@@ -83,15 +86,30 @@ func (iss identifierSigningSeed) identifierSigningKey(txn types.Transaction) (ci
 	return
 }
 
+// EphemeralRenterSeed creates a renterSeed for creating file contracts.
+// NOTE: The seed returned by this function should be wiped once it's no longer
+// in use.
+func (rs RenterSeed) EphemeralRenterSeed(windowStart types.BlockHeight) EphemeralRenterSeed {
+	var ephemeralSeed EphemeralRenterSeed
+	ers := crypto.HashAll(rs, windowStart/ephemeralSeedInterval)
+	copy(ephemeralSeed[:], ers[:])
+
+	// Sanity check seed length.
+	if len(ephemeralSeed) != len(rs) {
+		build.Critical("sanity check failed: ephemeralSeed != rs")
+	}
+	return ephemeralSeed
+}
+
 // GenerateKeyPair generates a secret and a public key for a contract to be used
 // in its unlock conditions.
-func GenerateKeyPair(renterSeed RenterSeed, txn types.Transaction) (sk crypto.SecretKey, pk crypto.PublicKey) {
+func GenerateKeyPair(renterSeed EphemeralRenterSeed, txn types.Transaction) (sk crypto.SecretKey, pk crypto.PublicKey) {
 	return GenerateKeyPairWithOutputID(renterSeed, txn.SiacoinInputs[0].ParentID)
 }
 
 // GenerateKeyPairWithOutputID generates a secret and a public key for a
 // contract to be used in its unlock conditions.
-func GenerateKeyPairWithOutputID(renterSeed RenterSeed, inputParentID types.SiacoinOutputID) (sk crypto.SecretKey, pk crypto.PublicKey) {
+func GenerateKeyPairWithOutputID(renterSeed EphemeralRenterSeed, inputParentID types.SiacoinOutputID) (sk crypto.SecretKey, pk crypto.PublicKey) {
 	// Get the secret key seed and wipe it afterwards.
 	csks := renterSeed.contractSecretKeySeed()
 	defer fastrand.Read(csks[:])
@@ -105,12 +123,12 @@ func GenerateKeyPairWithOutputID(renterSeed RenterSeed, inputParentID types.Siac
 	return crypto.GenerateKeyPairDeterministic([crypto.EntropySize]byte(entropy))
 }
 
-// EphemeralRenterSeed creates a renterSeed for creating file contracts.
+// DeriveRenterSeed creates a renterSeed for creating file contracts.
 // NOTE: The seed returned by this function should be wiped once it's no longer
 // in use.
-func EphemeralRenterSeed(walletSeed modules.Seed, windowStart types.BlockHeight) RenterSeed {
+func DeriveRenterSeed(walletSeed modules.Seed) RenterSeed {
 	var renterSeed RenterSeed
-	rs := crypto.HashAll(walletSeed, renterSeedSpecifier, windowStart/ephemeralSeedInterval)
+	rs := crypto.HashAll(walletSeed, renterSeedSpecifier)
 	copy(renterSeed[:], rs[:])
 
 	// Sanity check seed length.
@@ -126,7 +144,7 @@ func EphemeralRenterSeed(walletSeed modules.Seed, windowStart types.BlockHeight)
 // NOTE: Always use PrefixedSignedIdentifier when creating identifiers for
 // filecontracts. It wipes all the secrets required for creating the identifier
 // from memory safely.
-func PrefixedSignedIdentifier(renterSeed RenterSeed, txn types.Transaction, hostKey types.SiaPublicKey) (ContractSignedIdentifier, crypto.Ciphertext) {
+func PrefixedSignedIdentifier(renterSeed EphemeralRenterSeed, txn types.Transaction, hostKey types.SiaPublicKey) (ContractSignedIdentifier, crypto.Ciphertext) {
 	// Get the seeds and wipe them after we are done using them.
 	cis := renterSeed.contractIdentifierSeed()
 	defer fastrand.Read(cis[:])
@@ -165,7 +183,7 @@ func PrefixedSignedIdentifier(renterSeed RenterSeed, txn types.Transaction, host
 
 // IsValid checks the signature against a seed and contract to determine if it
 // was created using the specified seed.
-func (csi ContractSignedIdentifier) IsValid(renterSeed RenterSeed, txn types.Transaction, hostKey crypto.Ciphertext) (types.SiaPublicKey, bool) {
+func (csi ContractSignedIdentifier) IsValid(renterSeed EphemeralRenterSeed, txn types.Transaction, hostKey crypto.Ciphertext) (types.SiaPublicKey, bool) {
 	// Get the seeds and wipe them after we are done using them.
 	cis := renterSeed.contractIdentifierSeed()
 	defer fastrand.Read(cis[:])
