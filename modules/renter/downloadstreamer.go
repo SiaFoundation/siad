@@ -49,7 +49,7 @@ type (
 		// to simultaneously block while waiting for cacheReady to be closed,
 		// and once cacheReady is closed they know to check the cache again.
 		//
-		// Multiple asyncrhonous calls to fill the cache may be sent out at
+		// Multiple asynchronous calls to fill the cache may be sent out at
 		// once. To prevent race conditions, the 'cacheActive' channel is used
 		// to ensure that only one instance of 'threadedFillCache' is running at
 		// a time. If another instance of 'threadedFillCache' is active, the new
@@ -355,7 +355,7 @@ func (s *streamer) Read(p []byte) (int, error) {
 			}
 		}
 
-		// Check if the cache continas data that we are interested in. If so,
+		// Check if the cache contains data that we are interested in. If so,
 		// break out of the cache-fetch loop while still holding the lock.
 		if s.cacheOffset <= s.offset && s.offset < s.cacheOffset+int64(len(s.cache)) {
 			break

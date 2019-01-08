@@ -23,10 +23,10 @@ type (
 	}
 )
 
-// Compare will compare the input to the bytes of the local file, returning an
+// Equal will compare the input to the bytes of the local file, returning an
 // error if the bytes are not a perfect match, or if there is an error reading
 // the local file data.
-func (lf *LocalFile) Compare(data []byte) error {
+func (lf *LocalFile) Equal(data []byte) error {
 	localData, err := ioutil.ReadFile(lf.path)
 	if err != nil {
 		return errors.AddContext(err, "unable to read local file data")
