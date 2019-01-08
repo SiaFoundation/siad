@@ -152,14 +152,14 @@ func (h *Host) managedRPCLoopUpload(s *rpcSession) error {
 	return nil
 }
 
-// managedRPCLoopDownload writes an RPC response containing the requested data
+// managedRPCLoopRead writes an RPC response containing the requested data
 // (along with signatures and an optional Merkle proof).
-func (h *Host) managedRPCLoopDownload(s *rpcSession) error {
+func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	s.extendDeadline(modules.NegotiateDownloadTime)
 
 	// Read the request.
-	var req modules.LoopDownloadRequest
-	if err := s.readRequest(&req, downloadReqMaxLen); err != nil {
+	var req modules.LoopReadRequest
+	if err := s.readRequest(&req, readReqMaxLen); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
 		s.writeError(err)
@@ -259,7 +259,7 @@ func (h *Host) managedRPCLoopDownload(s *rpcSession) error {
 	}
 
 	// send the response
-	resp := modules.LoopDownloadResponse{
+	resp := modules.LoopReadResponse{
 		Signature:   txn.TransactionSignatures[1].Signature,
 		Data:        data,
 		MerkleProof: proof,

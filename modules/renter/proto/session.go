@@ -261,9 +261,9 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	return sc.Metadata(), sectorRoot, nil
 }
 
-// Download calls the download RPC and returns the requested data. A Merkle
-// proof is always requested.
-func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.RenterContract, _ []byte, err error) {
+// Read calls the Read RPC and returns the requested data. A Merkle proof is
+// always requested.
+func (s *Session) Read(root crypto.Hash, offset, length uint32) (_ modules.RenterContract, _ []byte, err error) {
 	// Reset deadline when finished.
 	defer extendDeadline(s.conn, time.Hour)
 
@@ -313,7 +313,7 @@ func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.R
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// create the request object
-	req := modules.LoopDownloadRequest{
+	req := modules.LoopReadRequest{
 		MerkleRoot:  root,
 		Offset:      offset,
 		Length:      length,
@@ -354,8 +354,8 @@ func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.R
 
 	// send download RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
-	var resp modules.LoopDownloadResponse
-	err = s.call(modules.RPCLoopDownload, req, &resp, downloadRespMaxLen+uint64(req.Length))
+	var resp modules.LoopReadResponse
+	err = s.call(modules.RPCLoopRead, req, &resp, readRespMaxLen+uint64(req.Length))
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}

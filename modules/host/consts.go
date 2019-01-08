@@ -40,7 +40,7 @@ const (
 	// Size limits for various RPCs.
 	challengeRespMaxLen    = 256
 	contractSigsRespMaxLen = 1024
-	downloadReqMaxLen      = 1024
+	readReqMaxLen          = 1024
 	formContractReqMaxLen  = 4096
 	keyExchangeMaxLen      = 256
 	renewContractReqMaxLen = 4096

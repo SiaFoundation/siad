@@ -63,7 +63,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// download the sector
-	_, dsector, err := s.Download(root, 0, uint32(len(sector)))
+	_, dsector, err := s.Read(root, 0, uint32(len(sector)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// download less than a full sector
-	_, partialSector, err := s.Download(root, crypto.SegmentSize*5, crypto.SegmentSize*12)
+	_, partialSector, err := s.Read(root, crypto.SegmentSize*5, crypto.SegmentSize*12)
 	if err != nil {
 		t.Fatal(err)
 	}

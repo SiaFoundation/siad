@@ -294,7 +294,7 @@ var (
 	RPCLoopExit           = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
 	RPCLoopSettings       = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
 	RPCLoopRecentRevision = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'c', 'e', 'n', 't', 'R', 'e', 'v'}
-	RPCLoopDownload       = types.Specifier{'L', 'o', 'o', 'p', 'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd'}
+	RPCLoopRead           = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
 	RPCLoopFormContract   = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
 	RPCLoopRenewContract  = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
 	RPCLoopSectorRoots    = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
@@ -375,8 +375,8 @@ type (
 		Signature []byte
 	}
 
-	// LoopDownloadRequest contains the request parameters for RPCLoopDownload.
-	LoopDownloadRequest struct {
+	// LoopReadRequest contains the request parameters for RPCLoopRead.
+	LoopReadRequest struct {
 		MerkleRoot  crypto.Hash
 		Offset      uint32
 		Length      uint32
@@ -388,8 +388,8 @@ type (
 		Signature            []byte
 	}
 
-	// LoopDownloadResponse contains the response data for RPCLoopDownload.
-	LoopDownloadResponse struct {
+	// LoopReadResponse contains the response data for RPCLoopRead.
+	LoopReadResponse struct {
 		Signature   []byte
 		Data        []byte
 		MerkleProof []crypto.Hash
