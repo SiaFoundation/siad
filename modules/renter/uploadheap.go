@@ -245,7 +245,7 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 	// the heap.
 	for _, entry := range entrys {
 		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(entry.ChunkEntrys(), hosts)
+		unfinishedUploadChunks := r.buildUnfinishedChunks(entry.CopyEntry(int(entry.NumChunks())), hosts)
 		r.mu.Unlock(id)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
