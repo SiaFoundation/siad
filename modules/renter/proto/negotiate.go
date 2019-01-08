@@ -2,6 +2,7 @@ package proto
 
 import (
 	"crypto/cipher"
+	"io"
 	"net"
 	"time"
 
@@ -261,7 +262,7 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey, id
 	}
 	// read host's half of the key exchange
 	var resp modules.LoopKeyExchangeResponse
-	if err := encoding.NewDecoder(conn).Decode(&resp); err != nil {
+	if err := encoding.NewDecoder(io.LimitReader(conn, keyExchangeMaxLen)).Decode(&resp); err != nil {
 		return nil, err
 	}
 	// validate the signature before doing anything else; don't want to punish
@@ -289,7 +290,7 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey, id
 
 	// read host's challenge
 	var challengeReq modules.LoopChallengeRequest
-	if err := modules.ReadRPCResponse(conn, aead, &challengeReq, 1024); err != nil {
+	if err := modules.ReadRPCResponse(conn, aead, &challengeReq, challengeReqMaxLen); err != nil {
 		return nil, err
 	}
 

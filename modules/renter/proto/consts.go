@@ -20,6 +20,18 @@ const (
 	// remainingFile is a constant used to indicate that a fileSection can access
 	// the whole remaining file instead of being bound to a certain end offset.
 	remainingFile = -1
+
+	// Size limits for various RPCs.
+	challengeReqMaxLen           = 16
+	downloadRespMaxLen           = 2048 // does not include sector data
+	keyExchangeMaxLen            = 256
+	recentRevRespMaxLen          = 2048
+	rpcErrorMaxLen               = 1024
+	sectorRootsRespMaxLen        = 2048 // does not include root data
+	settingsRespMaxLen           = 2048
+	uploadRespMaxLen             = 256
+	contractAdditionsRespMaxLen  = 4096
+	contractSignaturesRespMaxLen = 1024
 )
 
 var (

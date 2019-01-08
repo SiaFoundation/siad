@@ -34,7 +34,7 @@ func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
 		// The write may have failed because the host rejected our challenge
 		// signature and closed the connection. Attempt to read the rejection
 		// error and return it instead of the write failure.
-		readErr := s.readResponse(nil)
+		readErr := s.readResponse(nil, rpcErrorMaxLen)
 		if _, ok := readErr.(*modules.RPCError); ok {
 			err = readErr
 		}
@@ -43,23 +43,23 @@ func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
 }
 
 // readResponse reads an encrypted RPC response from the host.
-func (s *Session) readResponse(resp interface{}) error {
-	return modules.ReadRPCResponse(s.conn, s.aead, resp, 1e6)
+func (s *Session) readResponse(resp interface{}, maxLen uint64) error {
+	return modules.ReadRPCResponse(s.conn, s.aead, resp, maxLen)
 }
 
 // call is a helper method that calls writeRequest followed by readResponse.
-func (s *Session) call(rpcID types.Specifier, req, resp interface{}) error {
+func (s *Session) call(rpcID types.Specifier, req, resp interface{}, maxLen uint64) error {
 	if err := s.writeRequest(rpcID, req); err != nil {
 		return err
 	}
-	return s.readResponse(resp)
+	return s.readResponse(resp, maxLen)
 }
 
 // Settings calls the Settings RPC, returning the host's reported settings.
 func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	extendDeadline(s.conn, modules.NegotiateSettingsTime)
 	var resp modules.LoopSettingsResponse
-	if err := s.call(modules.RPCLoopSettings, nil, &resp); err != nil {
+	if err := s.call(modules.RPCLoopSettings, nil, &resp, settingsRespMaxLen); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
 	s.host.HostExternalSettings = resp.Settings
@@ -82,6 +82,12 @@ func (s *Session) VerifyRecentRevision() (types.FileContractRevision, []types.Tr
 		return types.FileContractRevision{}, nil, errors.New("contract not present in contract set")
 	}
 	defer s.contractSet.Return(sc)
+
+	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
+	var resp modules.LoopRecentRevisionResponse
+	if err := s.call(modules.RPCLoopRecentRevision, nil, &resp, recentRevRespMaxLen); err != nil {
+		return types.FileContractRevision{}, nil, err
+	}
 
 	// Check that the unlock hashes match; if they do not, something is
 	// seriously wrong. Otherwise, check that the revision numbers match.
@@ -233,7 +239,7 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	// send upload RPC request
 	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
 	var resp modules.LoopUploadResponse
-	err = s.call(modules.RPCLoopUpload, req, &resp)
+	err = s.call(modules.RPCLoopUpload, req, &resp, uploadRespMaxLen)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}
@@ -349,7 +355,7 @@ func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.R
 	// send download RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopDownloadResponse
-	err = s.call(modules.RPCLoopDownload, req, &resp)
+	err = s.call(modules.RPCLoopDownload, req, &resp, downloadRespMaxLen+uint64(req.Length))
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -460,7 +466,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	// send SectorRoots RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopSectorRootsResponse
-	err = s.call(modules.RPCLoopSectorRoots, req, &resp)
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp, sectorRootsRespMaxLen+(req.NumRoots*32))
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}

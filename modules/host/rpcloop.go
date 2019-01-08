@@ -3,6 +3,7 @@ package host
 import (
 	"crypto/cipher"
 	"errors"
+	"io"
 	"net"
 	"time"
 
@@ -30,13 +31,13 @@ func (s *rpcSession) extendDeadline(d time.Duration) {
 }
 
 // readRequest reads an encrypted RPC request from the renter.
-func (s *rpcSession) readRequest(resp interface{}) error {
-	return modules.ReadRPCRequest(s.conn, s.aead, resp, 1e6)
+func (s *rpcSession) readRequest(resp interface{}, maxLen uint64) error {
+	return modules.ReadRPCRequest(s.conn, s.aead, resp, maxLen)
 }
 
 // readResponse reads an encrypted RPC response from the renter.
-func (s *rpcSession) readResponse(resp interface{}) error {
-	return modules.ReadRPCResponse(s.conn, s.aead, resp, 1e6)
+func (s *rpcSession) readResponse(resp interface{}, maxLen uint64) error {
+	return modules.ReadRPCResponse(s.conn, s.aead, resp, maxLen)
 }
 
 // writeResponse sends an encrypted RPC response to the renter.
@@ -56,7 +57,7 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 	// read renter's half of key exchange
 	conn.SetDeadline(time.Now().Add(rpcRequestInterval))
 	var req modules.LoopKeyExchangeRequest
-	if err := encoding.NewDecoder(conn).Decode(&req); err != nil {
+	if err := encoding.NewDecoder(io.LimitReader(conn, keyExchangeMaxLen)).Decode(&req); err != nil {
 		return err
 	}
 
@@ -118,7 +119,7 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 	// renter's perspective, this error may arrive either before or after
 	// sending their first RPC request.
 	var challengeResp modules.LoopChallengeResponse
-	if err := s.readResponse(&challengeResp); err != nil {
+	if err := s.readResponse(&challengeResp, challengeRespMaxLen); err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -170,7 +171,6 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 	// enter RPC loop
 	for {
 		conn.SetDeadline(time.Now().Add(rpcRequestInterval))
-
 		id, err := modules.ReadRPCID(conn, aead)
 		if err != nil {
 			h.log.Debugf("WARN: could not read RPC ID: %v", err)

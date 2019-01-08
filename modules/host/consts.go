@@ -36,6 +36,16 @@ const (
 	// the next RPC ID in the new RPC loop. (More time is alloted for sending
 	// the actual RPC request object.)
 	rpcRequestInterval = 2 * time.Minute
+
+	// Size limits for various RPCs.
+	challengeRespMaxLen    = 256
+	contractSigsRespMaxLen = 1024
+	downloadReqMaxLen      = 1024
+	formContractReqMaxLen  = 4096
+	keyExchangeMaxLen      = 256
+	renewContractReqMaxLen = 4096
+	sectorRootsReqMaxLen   = 1024
+	uploadReqMaxLen        = 17 * (1 << 20) // 4 sectors plus extra metadata
 )
 
 var (

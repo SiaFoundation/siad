@@ -506,7 +506,7 @@ func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error
 
 // ReadRPCID reads an RPC request ID using the new loop protocol.
 func ReadRPCID(r io.Reader, aead cipher.AEAD) (rpcID types.Specifier, err error) {
-	encryptedID, err := encoding.ReadPrefixedBytes(r, 1024)
+	encryptedID, err := encoding.ReadPrefixedBytes(r, 256)
 	if err != nil {
 		return
 	}
@@ -533,6 +533,12 @@ func ReadRPCRequest(r io.Reader, aead cipher.AEAD, req interface{}, maxLen uint6
 
 // ReadRPCResponse reads an RPC response using the new loop protocol.
 func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uint64) error {
+	// maxLen must be large enough to receive an error
+	const errorMaxLen = 1024
+	if maxLen < errorMaxLen {
+		maxLen = errorMaxLen
+	}
+	maxLen += uint64(aead.NonceSize() + aead.Overhead() + 1) // account for nonce, MAC, and leading bool
 	encryptedResp, err := encoding.ReadPrefixedBytes(r, maxLen)
 	if err != nil {
 		return err

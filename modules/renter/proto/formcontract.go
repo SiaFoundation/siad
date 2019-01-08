@@ -396,7 +396,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 
 	// Read the host's response.
 	var resp modules.LoopContractAdditions
-	if err := s.readResponse(&resp); err != nil {
+	if err := s.readResponse(&resp, contractAdditionsRespMaxLen); err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -463,7 +463,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 
 	// Read the host acceptance and signatures.
 	var hostSigs modules.LoopContractSignatures
-	if err := s.readResponse(&hostSigs); err != nil {
+	if err := s.readResponse(&hostSigs, contractSignaturesRespMaxLen); err != nil {
 		return modules.RenterContract{}, err
 	}
 	for _, sig := range hostSigs.ContractSignatures {
