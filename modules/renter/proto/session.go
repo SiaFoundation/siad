@@ -313,10 +313,13 @@ func (s *Session) Read(root crypto.Hash, offset, length uint32) (_ modules.Rente
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// create the request object
+	sec := modules.LoopReadRequestSection{
+		MerkleRoot: root,
+		Offset:     offset,
+		Length:     length,
+	}
 	req := modules.LoopReadRequest{
-		MerkleRoot:  root,
-		Offset:      offset,
-		Length:      length,
+		Sections:    []modules.LoopReadRequestSection{sec},
 		MerkleProof: true,
 	}
 	req.NewRevisionNumber = rev.NewRevisionNumber
@@ -355,20 +358,20 @@ func (s *Session) Read(root crypto.Hash, offset, length uint32) (_ modules.Rente
 	// send download RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopReadResponse
-	err = s.call(modules.RPCLoopRead, req, &resp, readRespMaxLen+uint64(req.Length))
+	err = s.call(modules.RPCLoopRead, req, &resp, readRespMaxLen+uint64(sec.Length))
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
 
-	if len(resp.Data) != int(req.Length) {
+	if len(resp.Data) != int(sec.Length) {
 		return modules.RenterContract{}, nil, errors.New("host did not send enough sector data")
 	} else if req.MerkleProof {
-		proofStart := int(req.Offset) / crypto.SegmentSize
-		proofEnd := int(req.Offset+req.Length) / crypto.SegmentSize
-		if !crypto.VerifyRangeProof(resp.Data, resp.MerkleProof, proofStart, proofEnd, req.MerkleRoot) {
+		proofStart := int(sec.Offset) / crypto.SegmentSize
+		proofEnd := int(sec.Offset+sec.Length) / crypto.SegmentSize
+		if !crypto.VerifyRangeProof(resp.Data, resp.MerkleProof, proofStart, proofEnd, sec.MerkleRoot) {
 			return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data or Merkle proof")
 		}
-	} else if crypto.MerkleRoot(resp.Data) != req.MerkleRoot {
+	} else if crypto.MerkleRoot(resp.Data) != sec.MerkleRoot {
 		return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data")
 	}
 

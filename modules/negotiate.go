@@ -375,11 +375,16 @@ type (
 		Signature []byte
 	}
 
+	// LoopReadRequestSection is a section requested in LoopReadRequest.
+	LoopReadRequestSection struct {
+		MerkleRoot [32]byte
+		Offset     uint32
+		Length     uint32
+	}
+
 	// LoopReadRequest contains the request parameters for RPCLoopRead.
 	LoopReadRequest struct {
-		MerkleRoot  crypto.Hash
-		Offset      uint32
-		Length      uint32
+		Sections    []LoopReadRequestSection
 		MerkleProof bool
 
 		NewRevisionNumber    uint64

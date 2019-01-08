@@ -175,12 +175,18 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Validate the request.
+	if len(req.Sections) != 1 {
+		err := errors.New("invalid number of sections")
+		s.writeError(err)
+		return err
+	}
+	sec := req.Sections[0]
 	var err error
-	if uint64(req.Offset)+uint64(req.Length) > modules.SectorSize {
+	if uint64(sec.Offset)+uint64(sec.Length) > modules.SectorSize {
 		err = errRequestOutOfBounds
-	} else if req.Length == 0 {
+	} else if sec.Length == 0 {
 		err = errors.New("length cannot be zero")
-	} else if req.MerkleProof && (req.Offset%crypto.SegmentSize != 0 || req.Length%crypto.SegmentSize != 0) {
+	} else if req.MerkleProof && (sec.Offset%crypto.SegmentSize != 0 || sec.Length%crypto.SegmentSize != 0) {
 		err = errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
 	} else if len(req.NewValidProofValues) != len(currentRevision.NewValidProofOutputs) {
 		err = errors.New("wrong number of valid proof values")
@@ -210,7 +216,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 		}
 	}
 
-	expectedTransfer := settings.DownloadBandwidthPrice.Mul64(uint64(req.Length))
+	expectedTransfer := settings.DownloadBandwidthPrice.Mul64(uint64(sec.Length))
 	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, expectedTransfer)
 	if err != nil {
 		s.writeError(err)
@@ -218,18 +224,18 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	}
 
 	// Fetch the requested data.
-	sectorData, err := h.ReadSector(req.MerkleRoot)
+	sectorData, err := h.ReadSector(sec.MerkleRoot)
 	if err != nil {
 		s.writeError(err)
 		return err
 	}
-	data := sectorData[req.Offset : req.Offset+req.Length]
+	data := sectorData[sec.Offset : sec.Offset+sec.Length]
 
 	// Construct the Merkle proof, if requested.
 	var proof []crypto.Hash
 	if req.MerkleProof {
-		proofStart := int(req.Offset) / crypto.SegmentSize
-		proofEnd := int(req.Offset+req.Length) / crypto.SegmentSize
+		proofStart := int(sec.Offset) / crypto.SegmentSize
+		proofEnd := int(sec.Offset+sec.Length) / crypto.SegmentSize
 		proof = crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
 	}
 
