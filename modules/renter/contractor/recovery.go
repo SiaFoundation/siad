@@ -32,9 +32,23 @@ func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.B
 			// afterwards.
 			rs := renterSeed.EphemeralRenterSeed(fc.WindowStart)
 			defer fastrand.Read(rs[:])
-			// Validate it.
+			// Validate the identifier.
 			hostKey, valid := csi.IsValid(rs, txn, encryptedHostKey)
 			if !valid {
+				continue
+			}
+			// Make sure the contract belongs to us by comparing the unlock
+			// hash to what we would expect.
+			ourSK, ourPK := proto.GenerateKeyPair(rs, txn)
+			defer fastrand.Read(ourSK[:])
+			uc := types.UnlockConditions{
+				PublicKeys: []types.SiaPublicKey{
+					types.Ed25519PublicKey(ourPK),
+					hostKey,
+				},
+				SignaturesRequired: 2,
+			}
+			if fc.UnlockHash != uc.UnlockHash() {
 				continue
 			}
 			// Make sure we don't know about that contract already.
