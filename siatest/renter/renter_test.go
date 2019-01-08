@@ -3871,6 +3871,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		t.Fatal(err)
 	}
 	renterSeed := proto.DeriveRenterSeed(seed)
+	defer fastrand.Read(renterSeed[:])
 
 	// Check the arbitrary data of each transaction and contract.
 	for _, fcTxn := range fcTxns {
@@ -3972,10 +3973,12 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Start a new renter with the same seed.
+	// Start a new renter with the same seed but skipt setting the allowance.
+	// This will prevent new contracts from being formed while already formed
+	// contracts will still be recovered.
 	renterParams := node.Renter(newRenterDir)
 	renterParams.PrimarySeed = seed
-	renterParams.ContractorDeps = &dependencyDisableFormContract{}
+	renterParams.SkipSetAllowance = true
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)

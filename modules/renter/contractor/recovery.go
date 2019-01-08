@@ -18,7 +18,7 @@ import (
 func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.Block) {
 	// Get the master renter seed and wipe it once we are done with it.
 	renterSeed := proto.DeriveRenterSeed(walletSeed)
-	fastrand.Read(renterSeed[:])
+	defer fastrand.Read(renterSeed[:])
 
 	for _, txn := range b.Transactions {
 		// Check if the arbitrary data starts with the correct prefix.
@@ -126,7 +126,7 @@ func (c *Contractor) managedRecoverContracts() {
 	}
 	// Get the renter seed and wipe it once we are done with it.
 	renterSeed := proto.DeriveRenterSeed(ws)
-	fastrand.Read(renterSeed[:])
+	defer fastrand.Read(renterSeed[:])
 	// Copy necessary fields to avoid having to hold the lock for too long.
 	c.mu.RLock()
 	blockHeight := c.blockHeight

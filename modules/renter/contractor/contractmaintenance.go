@@ -688,7 +688,14 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Deduplicate contracts which share the same subnet.
 	c.managedPrunedRedundantAddressRange()
 
-	// Nothing to do if there are no hosts.
+	// Update the utility fields for the contracts based on the most recent
+	// hostdb.
+	if err := c.managedMarkContractsUtility(); err != nil {
+		c.log.Println("WARNING: wasn't able to mark contracts", err)
+		return
+	}
+
+	// Nothing left to do if there are no hosts.
 	c.mu.RLock()
 	wantedHosts := c.allowance.Hosts
 	c.mu.RUnlock()
@@ -707,13 +714,6 @@ func (c *Contractor) threadedContractMaintenance() {
 		return
 	}
 	defer c.maintenanceLock.Unlock()
-
-	// Update the utility fields for this contract based on the most recent
-	// hostdb.
-	if err := c.managedMarkContractsUtility(); err != nil {
-		c.log.Println("WARNING: wasn't able to mark contracts", err)
-		return
-	}
 
 	// The rest of this function needs to know a few of the stateful variables
 	// from the contractor, build those up under a lock so that the rest of the
@@ -914,11 +914,6 @@ func (c *Contractor) threadedContractMaintenance() {
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)
 		return
-	}
-
-	// Disrupt contract formation.
-	if c.staticDeps.Disrupt("disableFormContract") {
-		hosts = nil
 	}
 
 	// Form contracts with the hosts one at a time, until we have enough
