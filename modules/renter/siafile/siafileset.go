@@ -140,10 +140,10 @@ func (sfs *SiaFileSet) exists(siaPath string) (bool, error) {
 	}
 	// Check for file on disk
 	_, err := os.Stat(filepath.Join(sfs.siaFileDir, siaPath+ShareExtension))
-	if err == nil {
-		return true, nil
+	if !os.IsNotExist(err) {
+		return true, err
 	}
-	return false, err
+	return false, nil
 }
 
 // newSiaFileSetEntry initializes and returns a siaFileSetEntry
