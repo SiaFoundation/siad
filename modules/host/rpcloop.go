@@ -169,6 +169,15 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 	}
 
 	// enter RPC loop
+	rpcs := map[types.Specifier]func(*rpcSession) error{
+		modules.RPCLoopSettings:       h.managedRPCLoopSettings,
+		modules.RPCLoopFormContract:   h.managedRPCLoopFormContract,
+		modules.RPCLoopRenewContract:  h.managedRPCLoopRenewContract,
+		modules.RPCLoopRecentRevision: h.managedRPCLoopRecentRevision,
+		modules.RPCLoopWrite:          h.managedRPCLoopWrite,
+		modules.RPCLoopRead:           h.managedRPCLoopRead,
+		modules.RPCLoopSectorRoots:    h.managedRPCLoopSectorRoots,
+	}
 	for {
 		conn.SetDeadline(time.Now().Add(rpcRequestInterval))
 		id, err := modules.ReadRPCID(conn, aead)
@@ -176,30 +185,13 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 			h.log.Debugf("WARN: could not read RPC ID: %v", err)
 			s.writeError(err) // try to write, even though this is probably due to a faulty connection
 			return err
-		}
-
-		switch id {
-		case modules.RPCLoopSettings:
-			err = extendErr("incoming RPCLoopSettings failed: ", h.managedRPCLoopSettings(s))
-		case modules.RPCLoopFormContract:
-			err = extendErr("incoming RPCLoopFormContract failed: ", h.managedRPCLoopFormContract(s))
-		case modules.RPCLoopRenewContract:
-			err = extendErr("incoming RPCLoopRenewContract failed: ", h.managedRPCLoopRenewContract(s))
-		case modules.RPCLoopRecentRevision:
-			err = extendErr("incoming RPCLoopRecentRevision failed: ", h.managedRPCLoopRecentRevision(s))
-		case modules.RPCLoopWrite:
-			err = extendErr("incoming RPCLoopWrite failed: ", h.managedRPCLoopWrite(s))
-		case modules.RPCLoopRead:
-			err = extendErr("incoming RPCLoopRead failed: ", h.managedRPCLoopRead(s))
-		case modules.RPCLoopSectorRoots:
-			err = extendErr("incoming RPCLoopSectorRoots failed: ", h.managedRPCLoopSectorRoots(s))
-		case modules.RPCLoopExit:
+		} else if id == modules.RPCLoopExit {
 			return nil
-		default:
-			return errors.New("invalid or unknown RPC ID: " + id.String())
 		}
-		if err != nil {
-			return err
+		if rpcFn, ok := rpcs[id]; !ok {
+			return errors.New("invalid or unknown RPC ID: " + id.String())
+		} else if err := rpcFn(s); err != nil {
+			return extendErr("incoming RPC"+id.String()+" failed: ", err)
 		}
 	}
 }
