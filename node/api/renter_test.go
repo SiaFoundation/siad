@@ -1514,9 +1514,9 @@ func TestContractorHostRemoval(t *testing.T) {
 	}
 
 	// Verify that st and stH1 are dropped in favor of the newer, better hosts.
-	rc = RenterContracts{}
-	err = build.Retry(100, time.Millisecond*100, func() error {
+	err = build.Retry(600, time.Millisecond*100, func() error {
 		var newContracts int
+		var rc RenterContracts
 		err = st.getAPI("/renter/contracts", &rc)
 		if err != nil {
 			return errors.New("couldn't get renter stats")
@@ -1552,17 +1552,28 @@ func TestContractorHostRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Block until data has been uploaded ot new contracts.
+	err = build.Retry(120, 250*time.Millisecond, func() error {
+		err = st.getAPI("/renter/contracts", &rc)
+		if err != nil {
+			return err
+		}
+		for _, contract := range rc.ActiveContracts {
+			if contract.Size != modules.SectorSize {
+				return fmt.Errorf("Each contrat should have 1 sector: %v - %v", contract.Size, contract.ID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Grab the current contracts, then mine blocks to trigger a renew, and then
 	// wait until the renew is complete.
 	err = st.getAPI("/renter/contracts", &rc)
 	if err != nil {
 		t.Fatal(err)
-	}
-	// Check the amount of data in each contract.
-	for _, contract := range rc.ActiveContracts {
-		if contract.Size != modules.SectorSize {
-			t.Error("Each contrat should have 1 sector:", contract.Size, contract.ID)
-		}
 	}
 	// Mine blocks to force a contract renewal.
 	for i := 0; i < 11; i++ {
@@ -1673,6 +1684,11 @@ func TestContractorHostRemoval(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc = RenterContracts{}
+	err = st.getAPI("/renter/contracts", &rc)
 	if err != nil {
 		t.Fatal(err)
 	}
