@@ -229,11 +229,11 @@ func (sfs *SiaFileSet) Delete(siaPath string) error {
 	defer sfs.mu.Unlock()
 	// Check if SiaFile exists
 	exists, err := sfs.exists(siaPath)
-	if !exists && os.IsNotExist(err) {
-		return ErrUnknownPath
-	}
 	if err != nil {
 		return err
+	}
+	if !exists {
+		return ErrUnknownPath
 	}
 	// Grab entry
 	entry, err := sfs.open(siaPath)
@@ -390,11 +390,11 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath string) error {
 	newSiaPath = strings.TrimPrefix(newSiaPath, "/")
 	// Check if SiaFile Exists
 	exists, err := sfs.exists(siaPath)
-	if !exists && os.IsNotExist(err) {
-		return ErrUnknownPath
-	}
 	if err != nil {
 		return err
+	}
+	if !exists {
+		return ErrUnknownPath
 	}
 	// Check for Conflict
 	exists, err = sfs.exists(newSiaPath)

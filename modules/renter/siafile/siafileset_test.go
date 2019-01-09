@@ -67,6 +67,10 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 		if err := sfs.Delete(entry.SiaPath()); err != nil {
 			t.Fatal(err)
 		}
+		// The set should be empty.
+		if len(sfs.siaFileMap) != 0 {
+			t.Fatal("SiaFileMap should be empty")
+		}
 		// Append the entry to make sure we can close it later.
 		entries = append(entries, entry)
 	}
