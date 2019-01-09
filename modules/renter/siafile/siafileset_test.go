@@ -280,9 +280,9 @@ func TestDeleteFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is still only has 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	// There should be no more file in the set after deleting it.
+	if len(sfs.siaFileMap) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
 	}
 	// confirm other instance is still in memory by calling methods on it
 	if !entry.Deleted() {

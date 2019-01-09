@@ -193,6 +193,10 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 // avoid corruption.  applyUpdates also syncs the SiaFile for convenience since
 // it already has an open file handle.
 func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
+	// Sanity check that file hasn't been deleted.
+	if sf.deleted {
+		return errors.New("can't call applyUpdates on deleted file")
+	}
 	// Open the file.
 	f, err := sf.deps.OpenFile(sf.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
@@ -257,6 +261,10 @@ func (sf *SiaFile) chunkOffset(chunkIndex int) int64 {
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
 func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
+	// Sanity check that file hasn't been deleted.
+	if sf.deleted {
+		return errors.New("can't call createAndApplyTransaction on deleted file")
+	}
 	// This should never be called on a deleted file.
 	if sf.deleted {
 		return errors.New("shouldn't apply updates on deleted file")
@@ -309,6 +317,10 @@ func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Up
 
 // saveFile saves the whole SiaFile atomically.
 func (sf *SiaFile) saveFile() error {
+	// Sanity check that file hasn't been deleted.
+	if sf.deleted {
+		return errors.New("can't call saveFile on deleted file")
+	}
 	headerUpdates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return err

@@ -248,6 +248,8 @@ func (sfs *SiaFileSet) Delete(siaPath string) error {
 	if err := entry.Delete(); err != nil {
 		return err
 	}
+	// Delete entry from set.
+	delete(sfs.siaFileMap, entry.SiaPath())
 	return nil
 }
 
