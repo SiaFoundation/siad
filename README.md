@@ -1,4 +1,4 @@
-# [![Sia Logo](http://sia.tech/img/svg/sia-green-logo.svg)](http://sia.tech) v1.3.7 (Capricorn)
+# [![Sia Logo](http://sia.tech/img/svg/sia-green-logo.svg)](http://sia.tech) v1.4.0 (Draco)
 
 [![Build Status](https://gitlab.com/NebulousLabs/Sia/badges/master/build.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
 [![Coverage Report](https://gitlab.com/NebulousLabs/Sia/badges/master/coverage.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
