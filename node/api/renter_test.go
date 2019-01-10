@@ -1787,7 +1787,11 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !st.renter.FileList()[0].Available {
+		files, err := st.renter.FileList()
+		if err != nil {
+			return err
+		}
+		if !files[0].Available {
 			return errors.New("file did not complete uploading")
 		}
 		return nil

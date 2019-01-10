@@ -495,7 +495,10 @@ func TestRenterFileListLocalPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt.renter.mu.Unlock(id)
-	files := rt.renter.FileList()
+	files, err := rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(files) != 1 {
 		t.Fatal("wrong number of files, got", len(files), "wanted one")
 	}
@@ -541,7 +544,11 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if len(rt.renter.FileList()) != 0 {
+	files, err := rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
 		t.Error("file was deleted, but is still reported in FileList")
 	}
 	// Confirm that file was removed from SiaFileSet
@@ -607,25 +614,40 @@ func TestRenterFileList(t *testing.T) {
 	defer rt.Close()
 
 	// Get the file list of an empty renter.
-	if len(rt.renter.FileList()) != 0 {
+	files, err := rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
 		t.Fatal("FileList has non-zero length for empty renter?")
 	}
 
 	// Put a file in the renter.
 	entry1, _ := rt.renter.newRenterTestFile()
-	if len(rt.renter.FileList()) != 1 {
+	files, err = rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 {
 		t.Fatal("FileList is not returning the only file in the renter")
 	}
-	if rt.renter.FileList()[0].SiaPath != entry1.SiaPath() {
+	if files[0].SiaPath != entry1.SiaPath() {
 		t.Error("FileList is not returning the correct filename for the only file")
 	}
 
 	// Put multiple files in the renter.
 	entry2, _ := rt.renter.newRenterTestFile()
-	if len(rt.renter.FileList()) != 2 {
-		t.Fatalf("Expected %v files, got %v", 2, len(rt.renter.FileList()))
+	files, err = rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
 	}
-	files := rt.renter.FileList()
+	if len(files) != 2 {
+		t.Fatalf("Expected %v files, got %v", 2, len(files))
+	}
+	files, err = rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !((files[0].SiaPath == entry1.SiaPath() || files[0].SiaPath == entry2.SiaPath()) &&
 		(files[1].SiaPath == entry1.SiaPath() || files[1].SiaPath == entry2.SiaPath()) &&
 		(files[0].SiaPath != files[1].SiaPath)) {
@@ -665,7 +687,10 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files := rt.renter.FileList()
+	files, err := rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(files) != 1 {
 		t.Fatal("FileList has unexpected number of files:", len(files))
 	}
