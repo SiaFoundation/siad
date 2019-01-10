@@ -65,6 +65,33 @@ func generateKeys(seed modules.Seed, start, n uint64) []spendableKey {
 	return keys
 }
 
+// generateKeysReverse generates n keys from seed, starting from index start
+// and moving towards index 0. If n is too big and would result in a negative
+// index, it will return fewer than n spendable keys without throwing an error.
+func generateKeysReverse(seed modules.Seed, start, n uint64) []spendableKey {
+	// Make sure that we don't generate below index 0.
+	if n > start+1 {
+		n = start + 1
+	}
+	// generate in parallel, one goroutine per core.
+	keys := make([]spendableKey, n)
+	var wg sync.WaitGroup
+	wg.Add(runtime.NumCPU())
+	for cpu := 0; cpu < runtime.NumCPU(); cpu++ {
+		go func(offset uint64) {
+			defer wg.Done()
+			for i := offset; i < n; i += uint64(runtime.NumCPU()) {
+				// NOTE: don't bother trying to optimize generateSpendableKey;
+				// profiling shows that ed25519 key generation consumes far
+				// more CPU time than encoding or hashing.
+				keys[i] = generateSpendableKey(seed, start-i)
+			}
+		}(uint64(cpu))
+	}
+	wg.Wait()
+	return keys
+}
+
 // createSeedFile creates and encrypts a seedFile.
 func createSeedFile(masterKey crypto.TwofishKey, seed modules.Seed) seedFile {
 	var sf seedFile
