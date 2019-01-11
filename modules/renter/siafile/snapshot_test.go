@@ -2,9 +2,13 @@ package siafile
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -64,5 +68,37 @@ func TestSnapshot(t *testing.T) {
 		if !reflect.DeepEqual(sfPieces, snapPieces) {
 			t.Error("Pieces don't match")
 		}
+	}
+}
+
+// BenchmarkSnapshot10GB benchmarks the creation of snapshots for Siafiles
+// which hold the metadata of a 10 GB file.
+func BenchmarkSnapshot10GB(b *testing.B) {
+	// Setup the file.
+	siaFilePath, siaPath, source, rc, sk, _, _, fileMode := newTestFileParams()
+
+	// Create the path to the file.
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		b.Fatal(err)
+	}
+	// Create the file.
+	fileSize := uint64(1e10) // 10 GB
+	chunkSize := (modules.SectorSize - crypto.TypeDefaultRenter.Overhead()) * uint64(rc.MinPieces())
+	numChunks := fileSize / chunkSize
+	if fileSize%chunkSize != 0 {
+		numChunks++
+	}
+	wal, _ := newTestWAL()
+	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	if err != nil {
+		b.Fatal(err)
+	}
+	// Reset the timer.
+	b.ResetTimer()
+
+	// Create snapshots as fast as possible.
+	for i := 0; i < b.N; i++ {
+		_ = sf.Snapshot()
 	}
 }
