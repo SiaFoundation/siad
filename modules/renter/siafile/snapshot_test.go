@@ -94,6 +94,20 @@ func BenchmarkSnapshot10GB(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	// Add a host key to the table.
+	sf.addRandomHostKeys(1)
+	// Add numPieces to each chunks.
+	mb := uint64(0)
+	for i := uint64(0); i < sf.NumChunks(); i++ {
+		for j := uint64(0); j < uint64(rc.NumPieces()); j++ {
+			sf.staticChunks[i].Pieces[j] = append(sf.staticChunks[i].Pieces[j], piece{})
+		}
+		mb += chunkSize
+	}
+	// Save the file to disk.
+	if err := sf.saveFile(); err != nil {
+		b.Fatal(err)
+	}
 	// Reset the timer.
 	b.ResetTimer()
 
