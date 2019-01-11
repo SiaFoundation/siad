@@ -140,7 +140,6 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		names[i] = f.name
 		err = errors.Compose(err, entry.Close())
 	}
-	// TODO Save the file in the new format.
 	return names, err
 }
 
