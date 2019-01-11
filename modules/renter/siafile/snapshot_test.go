@@ -71,9 +71,33 @@ func TestSnapshot(t *testing.T) {
 	}
 }
 
+// BenchmarkSnapshot10MB benchmarks the creation of snapshots for Siafiles
+// which hold the metadata of a 10 MB file.
+func BenchmarkSnapshot10MB(b *testing.B) {
+	benchmarkSnapshot(b, uint64(1e7))
+}
+
+// BenchmarkSnapshot100MB benchmarks the creation of snapshots for Siafiles
+// which hold the metadata of a 100 MB file.
+func BenchmarkSnapshot100MB(b *testing.B) {
+	benchmarkSnapshot(b, uint64(1e8))
+}
+
+// BenchmarkSnapshot1GB benchmarks the creation of snapshots for Siafiles
+// which hold the metadata of a 1 GB file.
+func BenchmarkSnapshot1GB(b *testing.B) {
+	benchmarkSnapshot(b, uint64(1e9))
+}
+
 // BenchmarkSnapshot10GB benchmarks the creation of snapshots for Siafiles
 // which hold the metadata of a 10 GB file.
 func BenchmarkSnapshot10GB(b *testing.B) {
+	benchmarkSnapshot(b, uint64(1e10))
+}
+
+// benchmarkSnapshot is a helper function for benchmarking the creation of
+// snapshots of Siafiles with different sizes.
+func benchmarkSnapshot(b *testing.B, fileSize uint64) {
 	// Setup the file.
 	siaFilePath, siaPath, source, rc, sk, _, _, fileMode := newTestFileParams()
 
@@ -83,7 +107,6 @@ func BenchmarkSnapshot10GB(b *testing.B) {
 		b.Fatal(err)
 	}
 	// Create the file.
-	fileSize := uint64(1e10) // 10 GB
 	chunkSize := (modules.SectorSize - crypto.TypeDefaultRenter.Overhead()) * uint64(rc.MinPieces())
 	numChunks := fileSize / chunkSize
 	if fileSize%chunkSize != 0 {
@@ -97,12 +120,10 @@ func BenchmarkSnapshot10GB(b *testing.B) {
 	// Add a host key to the table.
 	sf.addRandomHostKeys(1)
 	// Add numPieces to each chunks.
-	mb := uint64(0)
 	for i := uint64(0); i < sf.NumChunks(); i++ {
 		for j := uint64(0); j < uint64(rc.NumPieces()); j++ {
 			sf.staticChunks[i].Pieces[j] = append(sf.staticChunks[i].Pieces[j], piece{})
 		}
-		mb += chunkSize
 	}
 	// Save the file to disk.
 	if err := sf.saveFile(); err != nil {
