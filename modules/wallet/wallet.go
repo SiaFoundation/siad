@@ -158,7 +158,7 @@ func (w *Wallet) LastAddresses(n uint64) ([]types.UnlockHash, error) {
 		return []types.UnlockHash{}, err
 	}
 	// Generate the keys.
-	keys := generateKeysReverse(w.primarySeed, seedProgress-1, n)
+	keys := generateKeys(w.primarySeed, seedProgress-1, n, true)
 	uhs := make([]types.UnlockHash, len(keys))
 	for i := range keys {
 		uhs[i] = keys[i].UnlockConditions.UnlockHash()

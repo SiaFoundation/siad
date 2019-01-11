@@ -46,7 +46,7 @@ func (w *Wallet) advanceSeedLookahead(index uint64) (bool, error) {
 	newProgress := index + 1
 
 	// Add spendable keys and remove them from lookahead
-	spendableKeys := generateKeys(w.primarySeed, progress, newProgress-progress)
+	spendableKeys := generateKeys(w.primarySeed, progress, newProgress-progress, false)
 	for _, key := range spendableKeys {
 		w.keys[key.UnlockConditions.UnlockHash()] = key
 		delete(w.lookahead, key.UnlockConditions.UnlockHash())

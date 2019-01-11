@@ -201,7 +201,7 @@ func SignTransaction(txn *types.Transaction, seed modules.Seed, toSign []crypto.
 	var keyIndex uint64
 	const keysPerBatch = 1000
 	for len(keys) < 1e6 {
-		for _, sk := range generateKeys(seed, keyIndex, keyIndex+keysPerBatch) {
+		for _, sk := range generateKeys(seed, keyIndex, keyIndex+keysPerBatch, false) {
 			keys[sk.UnlockConditions.UnlockHash()] = sk
 		}
 		keyIndex += keysPerBatch

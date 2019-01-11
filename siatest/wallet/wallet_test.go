@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"errors"
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -531,7 +532,21 @@ func TestWalletLastAddresses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Make sure the returned addresses
+	// Make sure the returned addresses are the same and have the reversed
+	// order of the created ones.
+	for i := range wag.Addresses {
+		if addresses[i] != wlag.Addresses[len(wlag.Addresses)-1-i] {
+			t.Fatal("addresses don't match for i =", i)
+		}
+	}
+	// Get MaxUint64 addresses in reverse order. This should still only return
+	// n addresses.
+	wlag, err = testNode.WalletLastAddressesGet(math.MaxUint64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the returned addresses are the same and have the reversed
+	// order of the created ones.
 	for i := range wag.Addresses {
 		if addresses[i] != wlag.Addresses[len(wlag.Addresses)-1-i] {
 			t.Fatal("addresses don't match for i =", i)

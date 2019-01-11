@@ -511,8 +511,8 @@ func TestSweepSeedCoinsAndFunds(t *testing.T) {
 // TestGenerateKeys tests that the generateKeys function correctly generates a
 // key for every index specified.
 func TestGenerateKeys(t *testing.T) {
-	keys := generateKeys(modules.Seed{}, 1000, 4000)
-	keysReverse := generateKeysReverse(modules.Seed{}, 4999, 4000)
+	keys := generateKeys(modules.Seed{}, 1000, 4000, false)
+	keysReverse := generateKeys(modules.Seed{}, 4999, 4000, true)
 	for i, k := range keys {
 		if len(k.UnlockConditions.PublicKeys) == 0 {
 			t.Errorf("index %v was skipped", i)
@@ -521,8 +521,13 @@ func TestGenerateKeys(t *testing.T) {
 			t.Fatal("keys are not equal")
 		}
 	}
-	// This should only return 1 key.
-	if keys := generateKeysReverse(modules.Seed{}, 0, 2); len(keys) != 1 {
+	// This should only return 1 key. The one at index 0.
+	keys = generateKeys(modules.Seed{}, 0, 2, true)
+	if len(keys) != 1 {
 		t.Fatalf("should've returned 1 key but was %v", len(keys))
+	}
+	expectedKey := generateKeys(modules.Seed{}, 0, 1, false)[0]
+	if keys[0].UnlockConditions.UnlockHash() != expectedKey.UnlockConditions.UnlockHash() {
+		t.Fatalf("key should be the one generated at index 0")
 	}
 }
