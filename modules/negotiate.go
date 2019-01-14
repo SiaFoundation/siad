@@ -477,16 +477,32 @@ func (e *RPCError) Error() string {
 	return e.Description
 }
 
+// WriteRPCMessage writes an encrypted RPC message.
+func WriteRPCMessage(w io.Writer, aead cipher.AEAD, obj interface{}) error {
+	return encoding.WritePrefixedBytes(w, crypto.EncryptWithNonce(encoding.Marshal(obj), aead))
+}
+
+// ReadRPCMessage reads an encrypted RPC message.
+func ReadRPCMessage(r io.Reader, aead cipher.AEAD, obj interface{}, maxLen uint64) error {
+	ciphertext, err := encoding.ReadPrefixedBytes(r, maxLen)
+	if err != nil {
+		return err
+	}
+	plaintext, err := crypto.DecryptWithNonce(ciphertext, aead)
+	if err != nil {
+		return err
+	}
+	return encoding.Unmarshal(plaintext, obj)
+}
+
 // WriteRPCRequest writes an encrypted RPC request using the new loop
 // protocol.
 func WriteRPCRequest(w io.Writer, aead cipher.AEAD, rpcID types.Specifier, req interface{}) error {
-	encryptedID := crypto.EncryptWithNonce(encoding.Marshal(rpcID), aead)
-	if err := encoding.WritePrefixedBytes(w, encryptedID); err != nil {
+	if err := WriteRPCMessage(w, aead, rpcID); err != nil {
 		return err
 	}
 	if req != nil {
-		encryptedReq := crypto.EncryptWithNonce(encoding.Marshal(req), aead)
-		return encoding.WritePrefixedBytes(w, encryptedReq)
+		return WriteRPCMessage(w, aead, req)
 	}
 	return nil
 }
@@ -511,29 +527,13 @@ func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error
 
 // ReadRPCID reads an RPC request ID using the new loop protocol.
 func ReadRPCID(r io.Reader, aead cipher.AEAD) (rpcID types.Specifier, err error) {
-	encryptedID, err := encoding.ReadPrefixedBytes(r, 256)
-	if err != nil {
-		return
-	}
-	decryptedID, err := crypto.DecryptWithNonce(encryptedID, aead)
-	if err != nil {
-		return
-	}
-	err = encoding.Unmarshal(decryptedID, &rpcID)
+	err = ReadRPCMessage(r, aead, &rpcID, 256)
 	return
 }
 
 // ReadRPCRequest reads an RPC request using the new loop protocol.
 func ReadRPCRequest(r io.Reader, aead cipher.AEAD, req interface{}, maxLen uint64) error {
-	encryptedReq, err := encoding.ReadPrefixedBytes(r, maxLen)
-	if err != nil {
-		return err
-	}
-	decryptedReq, err := crypto.DecryptWithNonce(encryptedReq, aead)
-	if err != nil {
-		return err
-	}
-	return encoding.Unmarshal(decryptedReq, req)
+	return ReadRPCMessage(r, aead, req, maxLen)
 }
 
 // ReadRPCResponse reads an RPC response using the new loop protocol.

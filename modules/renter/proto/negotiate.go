@@ -290,7 +290,7 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey, id
 
 	// read host's challenge
 	var challengeReq modules.LoopChallengeRequest
-	if err := modules.ReadRPCRequest(conn, aead, &challengeReq, challengeReqMaxLen); err != nil {
+	if err := modules.ReadRPCMessage(conn, aead, &challengeReq, challengeReqMaxLen); err != nil {
 		return nil, err
 	}
 
