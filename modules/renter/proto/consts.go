@@ -26,8 +26,8 @@ const (
 	contractAdditionsRespMaxLen  = 4096
 	contractSignaturesRespMaxLen = 1024
 	keyExchangeMaxLen            = 256
+	lockRespMaxLen               = 2048
 	readRespMaxLen               = 2048 // does not include sector data
-	recentRevRespMaxLen          = 2048
 	rpcErrorMaxLen               = 1024
 	sectorRootsRespMaxLen        = 2048 // does not include root data
 	settingsRespMaxLen           = 2048

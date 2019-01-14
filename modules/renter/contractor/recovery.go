@@ -103,7 +103,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	}
 	defer s.Close()
 	// Get the most recent revision.
-	rev, sigs, err := s.RecentRevision()
+	rev, sigs, err := s.Lock(rc.ID)
 	if err != nil {
 		return err
 	}

@@ -290,15 +290,16 @@ type (
 
 // New RPC IDs
 var (
-	RPCLoopEnter          = types.Specifier{'L', 'o', 'o', 'p', 'E', 'n', 't', 'e', 'r'}
-	RPCLoopExit           = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
-	RPCLoopFormContract   = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
-	RPCLoopRead           = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
-	RPCLoopRecentRevision = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'c', 'e', 'n', 't', 'R', 'e', 'v'}
-	RPCLoopRenewContract  = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
-	RPCLoopSectorRoots    = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
-	RPCLoopSettings       = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
-	RPCLoopWrite          = types.Specifier{'L', 'o', 'o', 'p', 'W', 'r', 'i', 't', 'e'}
+	RPCLoopEnter         = types.Specifier{'L', 'o', 'o', 'p', 'E', 'n', 't', 'e', 'r'}
+	RPCLoopExit          = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
+	RPCLoopFormContract  = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
+	RPCLoopLock          = types.Specifier{'L', 'o', 'o', 'p', 'L', 'o', 'c', 'k'}
+	RPCLoopRead          = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
+	RPCLoopRenewContract = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
+	RPCLoopSectorRoots   = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
+	RPCLoopSettings      = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
+	RPCLoopUnlock        = types.Specifier{'L', 'o', 'o', 'p', 'U', 'n', 'l', 'o', 'c', 'k'}
+	RPCLoopWrite         = types.Specifier{'L', 'o', 'o', 'p', 'W', 'r', 'i', 't', 'e'}
 )
 
 // RPC ciphers
@@ -358,21 +359,24 @@ type (
 		Challenge [16]byte
 	}
 
-	// LoopChallengeResponse is the renter's response to ChallengeRequest,
-	// also containing the desired protocol version and contract to modify. It
-	// is the renter's first encrypted message, and is immediately followed by
-	// the renter's first RPC request.
-	LoopChallengeResponse struct {
-		// The version of the renter-host protocol that the renter intends to use.
-		Version byte
-
-		// The contract being referenced by subsequent RPCs; may be blank if the
-		// renter does not need to reference a contract (e.g. when forming a new
-		// contract, or when querying the host's settings).
+	// LoopLockRequest contains the request parameters for RPCLoopLock.
+	LoopLockRequest struct {
+		// The contract to lock; implicitly referenced by subsequent RPCs.
 		ContractID types.FileContractID
 
-		// The signed challenge. Should be nil if ContractID is blank.
+		// The host's challenge, signed by the renter's contract key.
 		Signature []byte
+
+		// Lock timeout, in milliseconds.
+		Timeout uint64
+	}
+
+	// LoopLockResponse contains the response data for RPCLoopLock.
+	LoopLockResponse struct {
+		Acquired     bool
+		NewChallenge [16]byte
+		Revision     types.FileContractRevision
+		Signatures   []types.TransactionSignature
 	}
 
 	// LoopReadRequestSection is a section requested in LoopReadRequest.
@@ -443,12 +447,6 @@ type (
 	// LoopRenewContractRequest contains the request parameters for RPCLoopRenewContract.
 	LoopRenewContractRequest struct {
 		Transactions []types.Transaction
-	}
-
-	// LoopRecentRevisionResponse contains the response data for RPCLoopRecentRevisionResponse.
-	LoopRecentRevisionResponse struct {
-		Revision   types.FileContractRevision
-		Signatures []types.TransactionSignature
 	}
 
 	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.

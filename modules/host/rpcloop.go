@@ -7,7 +7,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -19,9 +18,10 @@ import (
 
 // An rpcSession contains the state of an RPC session with a renter.
 type rpcSession struct {
-	conn net.Conn
-	aead cipher.AEAD
-	so   storageObligation
+	conn      net.Conn
+	aead      cipher.AEAD
+	so        storageObligation
+	challenge [16]byte
 }
 
 // extendDeadline extends the read/write deadline on the underlying connection
@@ -101,82 +101,33 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 		conn: conn,
 		aead: aead,
 	}
+	fastrand.Read(s.challenge[:])
 
 	// send encrypted challenge
-	var challenge [16]byte
-	fastrand.Read(challenge[:])
 	challengeReq := modules.LoopChallengeRequest{
-		Challenge: challenge,
+		Challenge: s.challenge,
 	}
 	if err := modules.WriteRPCMessage(conn, aead, challengeReq); err != nil {
 		return err
 	}
 
-	// read encrypted version, contract ID, and challenge response
-	//
-	// NOTE: if we encounter an error before reading the renter's first RPC,
-	// we send it to the renter and close the connection immediately. From the
-	// renter's perspective, this error may arrive either before or after
-	// sending their first RPC request.
-	var challengeResp modules.LoopChallengeResponse
-	if err := s.readResponse(&challengeResp, challengeRespMaxLen); err != nil {
-		s.writeError(err)
-		return err
-	}
-
-	// check handshake version and ciphers
-	if challengeResp.Version != 1 {
-		err := errors.New("protocol version not supported")
-		s.writeError(err)
-		return err
-	}
-
-	// if a contract was supplied, look it up, verify the challenge response,
-	// and lock the storage obligation
-	if fcid := challengeResp.ContractID; fcid != (types.FileContractID{}) {
-		// look up the renter's public key
-		var err error
-		h.mu.RLock()
-		err = h.db.View(func(tx *bolt.Tx) error {
-			s.so, err = getStorageObligation(tx, fcid)
-			return err
-		})
-		h.mu.RUnlock()
-		if err != nil {
-			s.writeError(errors.New("no record of that contract"))
-			return extendErr("could not lock contract "+fcid.String()+": ", err)
+	// ensure we unlock any locked contracts when protocol ends
+	defer func() {
+		if s.so.id() != (types.FileContractID{}) {
+			h.managedUnlockStorageObligation(s.so.id())
 		}
-
-		// verify the challenge response
-		rev := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
-		hash := crypto.HashAll(modules.RPCChallengePrefix, challenge)
-		var renterPK crypto.PublicKey
-		var renterSig crypto.Signature
-		copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
-		copy(renterSig[:], challengeResp.Signature)
-		if crypto.VerifyHash(hash, renterPK, renterSig) != nil {
-			err := errors.New("challenge signature is invalid")
-			s.writeError(err)
-			return err
-		}
-
-		// lock the storage obligation until the end of the RPC loop
-		if err := h.managedTryLockStorageObligation(fcid); err != nil {
-			s.writeError(err)
-			return extendErr("could not lock contract "+fcid.String()+": ", err)
-		}
-		defer h.managedUnlockStorageObligation(fcid)
-	}
+	}()
 
 	// enter RPC loop
 	rpcs := map[types.Specifier]func(*rpcSession) error{
-		modules.RPCLoopSettings:       h.managedRPCLoopSettings,
-		modules.RPCLoopFormContract:   h.managedRPCLoopFormContract,
-		modules.RPCLoopRenewContract:  h.managedRPCLoopRenewContract,
-		modules.RPCLoopRecentRevision: h.managedRPCLoopRecentRevision,
-		modules.RPCLoopWrite:          h.managedRPCLoopWrite,
-		modules.RPCLoopRead:           h.managedRPCLoopRead,
-		modules.RPCLoopSectorRoots:    h.managedRPCLoopSectorRoots,
+		modules.RPCLoopLock:          h.managedRPCLoopLock,
+		modules.RPCLoopUnlock:        h.managedRPCLoopUnlock,
+		modules.RPCLoopSettings:      h.managedRPCLoopSettings,
+		modules.RPCLoopFormContract:  h.managedRPCLoopFormContract,
+		modules.RPCLoopRenewContract: h.managedRPCLoopRenewContract,
+		modules.RPCLoopWrite:         h.managedRPCLoopWrite,
+		modules.RPCLoopRead:          h.managedRPCLoopRead,
+		modules.RPCLoopSectorRoots:   h.managedRPCLoopSectorRoots,
 	}
 	for {
 		conn.SetDeadline(time.Now().Add(rpcRequestInterval))

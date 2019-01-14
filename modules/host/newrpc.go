@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // managedRPCLoopSettings writes an RPC response containing the host's
@@ -27,13 +28,40 @@ func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
 	return nil
 }
 
-// managedRPCLoopRecentRevision writes an RPC response containing the most
-// recent revision of the requested contract.
-func (h *Host) managedRPCLoopRecentRevision(s *rpcSession) error {
+// managedRPCLoopLock handles the LoopLock RPC.
+func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	s.extendDeadline(modules.NegotiateRecentRevisionTime)
 
-	// Fetch the revision and signatures.
-	txn := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1]
+	// Read the request.
+	var req modules.LoopLockRequest
+	if err := s.readRequest(&req, lockReqMaxLen); err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// Another contract may already be locked; locking multiple contracts is
+	// not allowed.
+	if s.so.id() != (types.FileContractID{}) {
+		err := errors.New("another contract is already locked")
+		s.writeError(err)
+		return err
+	}
+
+	var newSO storageObligation
+	h.mu.RLock()
+	err := h.db.View(func(tx *bolt.Tx) error {
+		var err error
+		newSO, err = getStorageObligation(tx, req.ContractID)
+		return err
+	})
+	h.mu.RUnlock()
+	if err != nil {
+		s.writeError(errors.New("no record of that contract"))
+		return extendErr("could get storage obligation "+req.ContractID.String()+": ", err)
+	}
+
+	// get the revision and signatures
+	txn := newSO.RevisionTransactionSet[len(newSO.RevisionTransactionSet)-1]
 	rev := txn.FileContractRevisions[0]
 	var sigs []types.TransactionSignature
 	for _, sig := range txn.TransactionSignatures {
@@ -44,13 +72,46 @@ func (h *Host) managedRPCLoopRecentRevision(s *rpcSession) error {
 		}
 	}
 
+	// verify the challenge response
+	hash := crypto.HashAll(modules.RPCChallengePrefix, s.challenge)
+	var renterPK crypto.PublicKey
+	var renterSig crypto.Signature
+	copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
+	copy(renterSig[:], req.Signature)
+	if crypto.VerifyHash(hash, renterPK, renterSig) != nil {
+		err := errors.New("challenge signature is invalid")
+		s.writeError(err)
+		return err
+	}
+
+	// attempt to lock the storage obligation
+	// TODO: respect req.Timeout
+	lockErr := h.managedTryLockStorageObligation(req.ContractID)
+	if lockErr == nil {
+		s.so = newSO
+	}
+
+	// Generate a new challenge.
+	fastrand.Read(s.challenge[:])
+
 	// Write the response.
-	resp := modules.LoopRecentRevisionResponse{
-		Revision:   rev,
-		Signatures: sigs,
+	resp := modules.LoopLockResponse{
+		Acquired:     lockErr == nil,
+		NewChallenge: s.challenge,
+		Revision:     rev,
+		Signatures:   sigs,
 	}
 	if err := s.writeResponse(resp); err != nil {
 		return err
+	}
+	return nil
+}
+
+// managedRPCLoopUnlock handles the LoopUnlock RPC. No response is sent.
+func (h *Host) managedRPCLoopUnlock(s *rpcSession) error {
+	s.extendDeadline(modules.NegotiateSettingsTime)
+	if s.so.id() != (types.FileContractID{}) {
+		h.managedUnlockStorageObligation(s.so.id())
 	}
 	return nil
 }

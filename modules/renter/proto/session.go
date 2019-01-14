@@ -16,6 +16,7 @@ import (
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
 type Session struct {
 	aead        cipher.AEAD
+	challenge   [16]byte
 	closeChan   chan struct{}
 	conn        net.Conn
 	contractID  types.FileContractID
@@ -29,17 +30,7 @@ type Session struct {
 
 // writeRequest sends an encrypted RPC request to the host.
 func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
-	err := modules.WriteRPCRequest(s.conn, s.aead, rpcID, req)
-	if err != nil {
-		// The write may have failed because the host rejected our challenge
-		// signature and closed the connection. Attempt to read the rejection
-		// error and return it instead of the write failure.
-		readErr := s.readResponse(nil, rpcErrorMaxLen)
-		if _, ok := readErr.(*modules.RPCError); ok {
-			err = readErr
-		}
-	}
-	return err
+	return modules.WriteRPCRequest(s.conn, s.aead, rpcID, req)
 }
 
 // readResponse reads an encrypted RPC response from the host.
@@ -55,6 +46,45 @@ func (s *Session) call(rpcID types.Specifier, req, resp interface{}, maxLen uint
 	return s.readResponse(resp, maxLen)
 }
 
+// Lock calls the Lock RPC, locking the supplied contract and returning its
+// most recent revision.
+func (s *Session) Lock(id types.FileContractID) (types.FileContractRevision, []types.TransactionSignature, error) {
+	// Acquire the contract.
+	sc, haveContract := s.contractSet.Acquire(id)
+	if !haveContract {
+		return types.FileContractRevision{}, nil, errors.New("contract not present in contract set")
+	}
+	defer s.contractSet.Return(sc)
+
+	// Sign the most recent host challenge using the contract's secret key.
+	sig := crypto.SignHash(crypto.HashAll(modules.RPCChallengePrefix, s.challenge), sc.header.SecretKey)
+	req := modules.LoopLockRequest{
+		ContractID: id,
+		Signature:  sig[:],
+	}
+
+	extendDeadline(s.conn, modules.NegotiateSettingsTime) // TODO: should account for lock time
+	var resp modules.LoopLockResponse
+	if err := s.call(modules.RPCLoopLock, req, &resp, lockRespMaxLen); err != nil {
+		return types.FileContractRevision{}, nil, err
+	}
+
+	// Set the Session contract and update the challenge.
+	s.contractID = id
+	s.challenge = resp.NewChallenge
+
+	return resp.Revision, resp.Signatures, nil
+}
+
+// Unlock calls the Unlock RPC, unlocking the currently-locked contract.
+func (s *Session) Unlock() error {
+	if s.contractID == (types.FileContractID{}) {
+		return errors.New("no contract locked")
+	}
+	extendDeadline(s.conn, modules.NegotiateSettingsTime)
+	return s.writeRequest(modules.RPCLoopUnlock, nil)
+}
+
 // Settings calls the Settings RPC, returning the host's reported settings.
 func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	extendDeadline(s.conn, modules.NegotiateSettingsTime)
@@ -64,78 +94,6 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	}
 	s.host.HostExternalSettings = resp.Settings
 	return resp.Settings, nil
-}
-
-// VerifyRecentRevision calls the RecentRevision RPC, returning the most recent
-// revision known to the host if it matches the one we have stored locally.
-// Otherwise an error is returned.
-func (s *Session) VerifyRecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
-	// Get the recent revision from the host.
-	rev, sigs, err := s.RecentRevision()
-	if err != nil {
-		return types.FileContractRevision{}, nil, err
-	}
-
-	// Acquire the contract.
-	sc, haveContract := s.contractSet.Acquire(s.contractID)
-	if !haveContract {
-		return types.FileContractRevision{}, nil, errors.New("contract not present in contract set")
-	}
-	defer s.contractSet.Return(sc)
-
-	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
-	var resp modules.LoopRecentRevisionResponse
-	if err := s.call(modules.RPCLoopRecentRevision, nil, &resp, recentRevRespMaxLen); err != nil {
-		return types.FileContractRevision{}, nil, err
-	}
-
-	// Check that the unlock hashes match; if they do not, something is
-	// seriously wrong. Otherwise, check that the revision numbers match.
-	ourRev := sc.header.LastRevision()
-	if rev.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
-		return types.FileContractRevision{}, nil, errors.New("unlock conditions do not match")
-	} else if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
-		// If the revision number doesn't match try to commit potential
-		// unapplied transactions and check again.
-		if err := sc.commitTxns(); err != nil {
-			return types.FileContractRevision{}, nil, errors.AddContext(err, "failed to commit transactions")
-		}
-		ourRev = sc.header.LastRevision()
-		if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
-			return types.FileContractRevision{}, nil, &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
-		}
-	}
-
-	return rev, sigs, nil
-}
-
-// RecentRevision calls the RecentRevision RPC, returning (what the host
-// claims is) the most recent revision of the contract.
-func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
-	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
-	var resp modules.LoopRecentRevisionResponse
-	if err := s.call(modules.RPCLoopRecentRevision, nil, &resp); err != nil {
-		return types.FileContractRevision{}, nil, err
-	}
-	// Create the revision transaction.
-	revTxn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{resp.Revision},
-		TransactionSignatures: resp.Signatures,
-	}
-	// Verify the signature on the revision before we use it to recover the
-	// roots.
-	var hpk crypto.PublicKey
-	var sig crypto.Signature
-	for i, signature := range revTxn.TransactionSignatures {
-		copy(hpk[:], resp.Revision.UnlockConditions.PublicKeys[i].Key)
-		copy(sig[:], signature.Signature)
-		err := crypto.VerifyHash(revTxn.SigHash(i, s.height), hpk, sig)
-		if err != nil {
-			return types.FileContractRevision{}, nil, err
-		}
-	}
-
-	return resp.Revision, resp.Signatures, nil
 }
 
 // Write calls the Write RPC and transfers the supplied data, returning the
@@ -565,7 +523,7 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	// send SectorRoots RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopSectorRootsResponse
-	err = s.call(modules.RPCLoopSectorRoots, req, &resp)
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp, sectorRootsRespMaxLen+(req.NumRoots*32))
 	if err != nil {
 		return types.Transaction{}, nil, err
 	}
@@ -646,14 +604,14 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, id types.File
 		}
 	}()
 
-	aead, err := performSessionHandshake(conn, host.PublicKey, id, sk)
+	// Perform the handshake and create the session object.
+	aead, challenge, err := performSessionHandshake(conn, host.PublicKey)
 	if err != nil {
 		return nil, err
 	}
-
-	// the host is now ready to accept revisions
-	return &Session{
+	s := &Session{
 		aead:        aead,
+		challenge:   challenge.Challenge,
 		closeChan:   closeChan,
 		conn:        conn,
 		contractID:  id,
@@ -662,5 +620,16 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, id types.File
 		hdb:         hdb,
 		height:      currentHeight,
 		host:        host,
-	}, nil
+	}
+
+	// If a contract ID was supplied, lock the contract.
+	if id != (types.FileContractID{}) {
+		_, _, err := s.Lock(id)
+		if err != nil {
+			s.Close()
+			return nil, err
+		}
+	}
+
+	return s, nil
 }
