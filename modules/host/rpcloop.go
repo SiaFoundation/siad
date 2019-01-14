@@ -113,7 +113,7 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 
 	// ensure we unlock any locked contracts when protocol ends
 	defer func() {
-		if s.so.id() != (types.FileContractID{}) {
+		if len(s.so.OriginTransactionSet) != 0 {
 			h.managedUnlockStorageObligation(s.so.id())
 		}
 	}()

@@ -41,7 +41,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 
 	// Another contract may already be locked; locking multiple contracts is
 	// not allowed.
-	if s.so.id() != (types.FileContractID{}) {
+	if len(s.so.OriginTransactionSet) != 0 {
 		err := errors.New("another contract is already locked")
 		s.writeError(err)
 		return err
@@ -110,8 +110,9 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 // managedRPCLoopUnlock handles the LoopUnlock RPC. No response is sent.
 func (h *Host) managedRPCLoopUnlock(s *rpcSession) error {
 	s.extendDeadline(modules.NegotiateSettingsTime)
-	if s.so.id() != (types.FileContractID{}) {
+	if len(s.so.OriginTransactionSet) != 0 {
 		h.managedUnlockStorageObligation(s.so.id())
+		s.so = storageObligation{}
 	}
 	return nil
 }
@@ -412,14 +413,6 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	if err := s.writeResponse(hostSigs); err != nil {
 		return err
 	}
-
-	// Set the storageObligation so that subsequent RPCs can use it.
-	h.mu.RLock()
-	err = h.db.View(func(tx *bolt.Tx) error {
-		s.so, err = getStorageObligation(tx, newSOID)
-		return err
-	})
-	h.mu.RUnlock()
 
 	return nil
 }
