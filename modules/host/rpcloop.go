@@ -108,7 +108,8 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 	challengeReq := modules.LoopChallengeRequest{
 		Challenge: challenge,
 	}
-	if err := s.writeResponse(challengeReq); err != nil {
+	encryptedChallenge := crypto.EncryptWithNonce(encoding.Marshal(challengeReq), aead)
+	if err := encoding.WritePrefixedBytes(conn, encryptedChallenge); err != nil {
 		return err
 	}
 
