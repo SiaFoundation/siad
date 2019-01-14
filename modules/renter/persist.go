@@ -30,6 +30,8 @@ const (
 	SiaDirMetadata = ".siadir"
 	// walFile is the filename of the renter's writeaheadlog's file.
 	walFile = modules.RenterDir + ".wal"
+	// bubbleFilename is the filename to be used when persisting bubble updates
+	bubbleFilename = "bubble.json"
 )
 
 var (
@@ -65,37 +67,6 @@ type (
 		StreamCacheSize  uint64
 	}
 )
-
-// createBubbleHealthUpdate is a helper method that creates a writeaheadlog for
-// bubbling up the health of a directory.
-func createBubbleHealthUpdate(siaPath string) writeaheadlog.Update {
-	return writeaheadlog.Update{
-		Name:         updateBubbleHealthName,
-		Instructions: []byte(siaPath),
-	}
-}
-
-// isBubbleHealthUpdate is a helper method that makes sure that a wal update is
-// a renter bubble health update
-func isBubbleHealthUpdate(update writeaheadlog.Update) bool {
-	switch update.Name {
-	case updateBubbleHealthName:
-		return true
-	default:
-		return false
-	}
-}
-
-// readBubbleHealthUpdate unmarshals the update's instructions and returns the
-// encoded path. Errors will be considered developer errors
-func readBubbleHealthUpdate(update writeaheadlog.Update) string {
-	if !isBubbleHealthUpdate(update) {
-		err := errors.New("update is not bubble health update")
-		build.Critical(err)
-		return ""
-	}
-	return string(update.Instructions)
-}
 
 // MarshalSia implements the encoding.SiaMarshaller interface, writing the
 // file data to w.
@@ -212,9 +183,29 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 	return nil
 }
 
+// saveBubbleUpdates stores the current bubble updates to disk and then syncs to disk.
+func (r *Renter) saveBubbleUpdates() error {
+	return persist.SaveJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, bubbleFilename))
+}
+
 // saveSync stores the current renter data to disk and then syncs to disk.
 func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
+}
+
+// loadAndExecuteBubbleUpdates
+func (r *Renter) loadAndExecuteBubbleUpdates() error {
+	err := persist.LoadJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, bubbleFilename))
+	if os.IsNotExist(err) {
+		err = r.saveBubbleUpdates()
+	}
+	if err != nil {
+		return err
+	}
+	for dir := range r.bubbleUpdates {
+		go r.threadedBubbleHealth(dir)
+	}
+	return nil
 }
 
 // load fetches the saved renter data from disk.
@@ -356,10 +347,6 @@ func (r *Renter) initPersist() error {
 				if err := siadir.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaDir update")
 				}
-			} else if isBubbleHealthUpdate(update) {
-				if err := r.managedApplyBubbleUpdate(update); err != nil {
-					return errors.AddContext(err, "failed to apply bubble update")
-				}
 			} else {
 				applyTxn = false
 			}
@@ -416,13 +403,4 @@ func convertPersistVersionFrom040To133(path string) error {
 	p.MaxUploadSpeed = DefaultMaxUploadSpeed
 	p.StreamCacheSize = DefaultStreamCacheSize
 	return persist.SaveJSON(metadata, p, path)
-}
-
-// managedApplyBubbleUpdate applies the Bubble Health wal updates
-func (r *Renter) managedApplyBubbleUpdate(update writeaheadlog.Update) error {
-	// Read update
-	siaPath := readBubbleHealthUpdate(update)
-
-	// Bubble Health
-	return r.BubbleHealth(siaPath)
 }
