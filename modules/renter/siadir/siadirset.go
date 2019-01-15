@@ -42,13 +42,6 @@ type (
 		threadUID uint64
 	}
 
-	// LockedSiaDirSetEntry is a SiaDirSetEntry that is returned with the Mutex
-	// of the SiaDir locked. This is used when an external package needs to
-	// perform a function that requires the SiaDir to be locked throughout.
-	LockedSiaDirSetEntry struct {
-		entry *SiaDirSetEntry
-	}
-
 	// threadInfo contains useful information about the thread accessing the
 	// SiaDirSetEntry
 	threadInfo struct {
@@ -162,33 +155,6 @@ func (entry *SiaDirSetEntry) Close() error {
 	return entry.close()
 }
 
-// CloseLockedSiaDirSetEntry unlocks the SiaDir and then removes the thread from
-// the threadMap. If the length of threadMap count is 0 then it will remove the
-// siaDirSetEntry from the SiaDirSet map, which will remove it from memory
-//
-// NOTE: To avoid deadlocks this method should only ever be called after calling
-// OpenAndLockSiaDir. These methods are used when the siadir needs to be locked
-// for the duration of an action/function, such as calculating the health of
-// siadir before updating the health, so that another action/function does not
-// interfere
-func (lsdse *LockedSiaDirSetEntry) CloseLockedSiaDirSetEntry() error {
-	lsdse.entry.siaDirSet.mu.Lock()
-	defer lsdse.entry.siaDirSet.mu.Unlock()
-
-	// Unlock siadir
-	lsdse.entry.mu.Unlock()
-
-	lsdse.entry.threadMapMu.Lock()
-	defer lsdse.entry.threadMapMu.Unlock()
-
-	return lsdse.entry.close()
-}
-
-// UpdateHealth will update the health of the SiaDir in memory and on disk
-func (lsdse *LockedSiaDirSetEntry) UpdateHealth(health, stuckHealth float64, lastCheck time.Time) error {
-	return lsdse.entry.updateHealth(health, stuckHealth, lastCheck)
-}
-
 // Delete deletes the SiaDir that belongs to the siaPath
 func (sds *SiaDirSet) Delete(siaPath string) error {
 	sds.mu.Lock()
@@ -259,26 +225,6 @@ func (sds *SiaDirSet) Open(siaPath string) (*SiaDirSetEntry, error) {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	return sds.open(siaPath)
-}
-
-// OpenLockedSiaDirSetEntry returns the siadir from the SiaDirSet for the
-// corresponding key and adds the thread to the entry's threadMap. If the siadir
-// is not in memory it will load it from disk. Before returning the siadir will
-// be locked so that other threads can not access the siadir until it is closed
-//
-// NOTE: sidirs opened with this method should then be closed with
-// CloseLockedSiaDirSetEntry. To avoid deadlocks, the only methods that should be
-// called when acquiring the siadir with OpenLockedSiaDirSetEntry are
-// CloseLockedSiaDirSetEntry and LockedSiaDirSetEntry methods.  All other methods
-// should use Open to acquire the siadir
-func (sds *SiaDirSet) OpenLockedSiaDirSetEntry(siaPath string) (*LockedSiaDirSetEntry, error) {
-	sds.mu.Lock()
-	defer sds.mu.Unlock()
-	entry, err := sds.open(siaPath)
-	entry.mu.Lock()
-	return &LockedSiaDirSetEntry{
-		entry: entry,
-	}, err
 }
 
 // UpdateHealth will update the health of the SiaDir in memory and on disk

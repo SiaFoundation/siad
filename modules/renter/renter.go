@@ -215,6 +215,12 @@ type Renter struct {
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
 
+	// bubbleUpdates are active and pending bubbles that need to be executed on
+	// directories in order to keep the renter's directory tree metadata up to
+	// date
+	bubbleUpdates   map[string]bubbleStatus
+	bubbleUpdatesMu sync.Mutex
+
 	// Utilities.
 	staticStreamCache *streamCache
 	cs                modules.ConsensusSet
@@ -734,6 +740,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 
 		workerPool: make(map[types.FileContractID]*worker),
 
+		bubbleUpdates: make(map[string]bubbleStatus),
+
 		cs:             cs,
 		deps:           deps,
 		g:              g,
@@ -751,13 +759,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil, err
 	}
 
-	// Set the bandwidth limits, since the contractor doesn't persist them.
-	//
-	// TODO: Reconsider the way that the bandwidth limits are allocated to the
-	// renter module, because really it seems they only impact the contractor.
-	// The renter itself doesn't actually do any uploading or downloading.
-	err := r.setBandwidthLimits(r.persist.MaxDownloadSpeed, r.persist.MaxUploadSpeed)
-	if err != nil {
+	// Load and execute bubble updates
+	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
 		return nil, err
 	}
 
@@ -765,7 +768,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	r.staticStreamCache = newStreamCache(r.persist.StreamCacheSize)
 
 	// Subscribe to the consensus set.
-	err = cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
+	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
 	if err != nil {
 		return nil, err
 	}

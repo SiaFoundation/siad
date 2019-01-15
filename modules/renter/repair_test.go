@@ -1,10 +1,12 @@
 package renter
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -67,16 +69,19 @@ func TestBubbleHealth(t *testing.T) {
 	// subDir1/subDir1 since subDir1/subDir2 is empty meaning it's calculated
 	// health will return to the default health, even through we set the health
 	// to be the worst health
-	err = rt.renter.BubbleHealth(siaPath)
+	go rt.renter.threadedBubbleHealth(siaPath)
+	build.Retry(100, 100*time.Millisecond, func() error {
+		health, _, _, err := rt.renter.managedDirectoryHealth("")
+		if err != nil {
+			return err
+		}
+		if health != 1 {
+			return fmt.Errorf("Expected health to be %v, got %v", 1, health)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	health, _, _, err := rt.renter.managedDirectoryHealth("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if health != 1 {
-		t.Fatalf("Expected health to be %v, got %v", 1, health)
 	}
 
 	// Add a file to the lowest level
@@ -98,19 +103,22 @@ func TestBubbleHealth(t *testing.T) {
 	// health that is bubbled up should be the health of the file added to
 	// subDir1/subDir2
 	offline, _, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{f})
-	health, _ = f.Health(offline)
+	health, _ := f.Health(offline)
 	if health != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", health)
 	}
-	err = rt.renter.BubbleHealth(siaPath)
+	go rt.renter.threadedBubbleHealth(siaPath)
+	build.Retry(100, 100*time.Millisecond, func() error {
+		health, _, _, err := rt.renter.managedDirectoryHealth("")
+		if err != nil {
+			return err
+		}
+		if health != 2 {
+			return fmt.Errorf("Expected health to be %v, got %v", 2, health)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	health, _, _, err = rt.renter.managedDirectoryHealth("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if health != 2 {
-		t.Fatalf("Expected health to be 2, got %v", health)
 	}
 }
