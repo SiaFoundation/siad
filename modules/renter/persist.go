@@ -30,8 +30,9 @@ const (
 	SiaDirMetadata = ".siadir"
 	// walFile is the filename of the renter's writeaheadlog's file.
 	walFile = modules.RenterDir + ".wal"
-	// bubbleFilename is the filename to be used when persisting bubble updates
-	bubbleFilename = "bubble.json"
+	// repairLoopFilename is the filename to be used when persisting bubble
+	// updates that are called from the repair loop
+	repairLoopFilename = "repairloop.json"
 )
 
 var (
@@ -185,7 +186,7 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 
 // saveBubbleUpdates stores the current bubble updates to disk and then syncs to disk.
 func (r *Renter) saveBubbleUpdates() error {
-	return persist.SaveJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, bubbleFilename))
+	return persist.SaveJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, repairLoopFilename))
 }
 
 // saveSync stores the current renter data to disk and then syncs to disk.
@@ -193,9 +194,10 @@ func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
 }
 
-// loadAndExecuteBubbleUpdates
+// loadAndExecuteBubbleUpdates loads any bubble updates from disk and calls each
+// update in its own thread
 func (r *Renter) loadAndExecuteBubbleUpdates() error {
-	err := persist.LoadJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, bubbleFilename))
+	err := persist.LoadJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, repairLoopFilename))
 	if os.IsNotExist(err) {
 		err = r.saveBubbleUpdates()
 	}

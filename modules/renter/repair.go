@@ -6,202 +6,53 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/errors"
 )
 
-// bubbleError, bubbleActive, bubblePending, and bubbleDone are the constants
-// used to depending the status of a bubble being executed on a directory
+// bubbleStatus indicates the status of a bubble being executed on a
+// directory
+type bubbleStatus int
+
+// bubbleError, bubbleInit, bubbleActive, and bubblePending are the constants
+// used to determine the status of a bubble being executed on a directory
 const (
 	bubbleError bubbleStatus = iota
 	bubbleInit
 	bubbleActive
 	bubblePending
-	bubbleDone
 )
 
-type (
-	// bubble is a helper struct to track the status of a bubble being executed
-	// on a directory
-	bubble struct {
-		// status is the status of the bubble
-		status bubbleStatus
-		// statusMu is the mu for updating the status
-		statusMu sync.Mutex
-		// updateMu controls the bubble updates executing concurrently
-		updateMu sync.Mutex
-	}
-
-	// bubbleStatus indicates the status of a bubble being executed on a
-	// directory
-	bubbleStatus int
-)
-
-func (b *bubble) decrementStatus() {
-	switch b.status {
-	case bubbleActive:
-		b.status = bubbleDone
-	case bubblePending:
-		b.status = bubbleActive
-	default:
-		b.status = bubbleError
-	}
-}
-func (b *bubble) incrementStatus() {
-	switch b.status {
-	case bubbleInit:
-		b.status = bubbleActive
-	case bubbleActive:
-		b.status = bubblePending
-	case bubblePending:
-		b.status = bubbleDone
-	default:
-		b.status = bubbleError
-	}
-}
-
-// managedDirectoryHealth reads the directory metadata and returns the health,
-// the DefaultDirHealth will be returned in the event of an error or if a path
-// to a file is past in
-func (r *Renter) managedDirectoryHealth(siaPath string) (float64, float64, time.Time, error) {
-	// Check for bad paths and files
-	fi, err := os.Stat(filepath.Join(r.filesDir, siaPath))
-	if err != nil {
-		return 0, 0, time.Time{}, err
-	}
-	if !fi.IsDir() {
-		return 0, 0, time.Time{}, fmt.Errorf("%v is not a directory", siaPath)
-	}
-
-	//  Open SiaDir
-	siaDir, err := r.staticDirSet.Open(siaPath)
-	if err != nil {
-		return 0, 0, time.Time{}, err
-	}
-	defer siaDir.Close()
-
-	// Return the siadir health
-	health, stuckHealth, lastHealthChecktime := siaDir.Health()
-	return health, stuckHealth, lastHealthChecktime, nil
-}
-
-// managedFileHealth calculates the health of a siafile. Health is defined as
-// the percent of parity pieces remaining.
-//
-// health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
-// to be repaired from disk or repair by upload streaming
-func (r *Renter) managedFileHealth(siaPath string) (float64, uint64, error) {
-	// Load the Siafile.
-	sf, err := r.staticFileSet.Open(siaPath)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer sf.Close()
-
-	// Calculate file health
-	hostOfflineMap, _, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
-	fileHealth, numStuckChunks := sf.Health(hostOfflineMap)
-	return fileHealth, numStuckChunks, nil
-}
-
-// threadedBubbleHealth calculates the health of a directory and updates the
-// siadir metadata on disk then calls threadedBubbleHealth on the parent
-// directory
-//
-// Note: health = 0 is full redundancy, health <= 1 is recoverable, health > 1
-// cannot be immediately repaired using only the online hosts.
-func (r *Renter) threadedBubbleHealth(siaPath string) {
-	if err := r.tg.Add(); err != nil {
-		return
-	}
-	defer r.tg.Done()
-
-	// Add to bubble to renter bubbleUpdates
+// managedBubbleNeeded checks if a bubble is needed for a directory, updates the
+// renter's bubbleUpdates map and returns a bool
+func (r *Renter) managedBubbleNeeded(siaPath string) (bool, error) {
 	r.bubbleUpdatesMu.Lock()
-	b, ok := r.bubbleUpdates[siaPath]
+	defer r.bubbleUpdatesMu.Unlock()
+
+	// Check for bubble in bubbleUpdate map
+	status, ok := r.bubbleUpdates[siaPath]
 	if !ok {
-		b = &bubble{
-			status: bubbleInit,
-		}
-		r.bubbleUpdates[siaPath] = b
-	}
-	r.bubbleUpdatesMu.Unlock()
-
-	// Increment the status of the bubble
-	b.statusMu.Lock()
-	b.incrementStatus()
-	if b.status == bubbleDone {
-		// This means there is already a bubble pending for this directory
-		// so there does not need to be another
-		b.statusMu.Unlock()
-		return
-	}
-	if b.status == bubbleError {
-		r.log.Print("WARN: Could not update bubble status")
-		b.statusMu.Unlock()
-		return
-	}
-	b.statusMu.Unlock()
-
-	// Acquire the lock of the bubble to prevent concurrent threads from
-	// executing a bubble on this directory
-	b.updateMu.Lock()
-	defer b.updateMu.Unlock()
-
-	// Calculate the health of the directory
-	worstHealth, worstStuckHealth, lastHealthCheckTime, err := r.managedCalculateDirectoryHealth(siaPath)
-	if err != nil {
-		r.log.Printf("WARN: Could not calculate the health of directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
-		return
-	}
-
-	// Update directory metadata with the health information
-	siaDir, err := r.staticDirSet.Open(siaPath)
-	if err != nil {
-		r.log.Printf("WARN: Could not open directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
-		return
-	}
-	err = siaDir.UpdateHealth(worstHealth, worstStuckHealth, lastHealthCheckTime)
-	if err != nil {
-		r.log.Printf("WARN: Could not update the health of the directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
-		return
+		status = bubbleInit
+		r.bubbleUpdates[siaPath] = status
 	}
 
 	// Update the bubble status
-	b.statusMu.Lock()
-	defer b.statusMu.Unlock()
-	b.decrementStatus()
-	if b.status == bubbleError {
-		r.log.Print("WARN: Could not update bubble status")
-		return
+	var err error
+	switch status {
+	case bubblePending:
+	case bubbleActive:
+		r.bubbleUpdates[siaPath] = bubblePending
+	case bubbleInit:
+		r.bubbleUpdates[siaPath] = bubbleActive
+		return true, nil
+	default:
+		err = errors.New("WARN: invalid bubble status")
 	}
-
-	// Update bubbleUpdates and persist
-	r.bubbleUpdatesMu.Lock()
-	defer r.bubbleUpdatesMu.Unlock()
-	if b.status == bubbleDone {
-		delete(r.bubbleUpdates, siaPath)
-	}
-	if err = r.saveBubbleUpdates(); err != nil {
-		r.log.Print("WARN: Could not save bubble updates to disk", err)
-		return
-	}
-
-	// If siaPath is equal to "" then return as we are in the root files
-	// directory of the renter
-	if siaPath == "" {
-		return
-	}
-	// Move to parent directory
-	siaPath = filepath.Dir(siaPath)
-	if siaPath == "." {
-		siaPath = ""
-	}
-	go r.threadedBubbleHealth(siaPath)
-	return
+	return false, err
 }
 
 // managedCalculateDirectoryHealth calculates the health of all the siafiles in
@@ -268,4 +119,139 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (float64, float
 	}
 
 	return worstHealth, worstStuckHealth, lastHealthCheckTime, nil
+}
+
+// managedCompleteBubbleUpdate completes the bubble update and updates and/or
+// removes it from the renter's bubbleUpdates.
+func (r *Renter) managedCompleteBubbleUpdate(siaPath string) error {
+	r.bubbleUpdatesMu.Lock()
+	defer r.bubbleUpdatesMu.Unlock()
+
+	// Check current status
+	status, ok := r.bubbleUpdates[siaPath]
+	if !ok {
+		// Bubble not found in map, treat as developer error as this should not happen
+		build.Critical("bubble status not found in bubble update map")
+	}
+
+	// Update status and call new bubble or remove from bubbleUpdates and save
+	switch status {
+	case bubblePending:
+		r.bubbleUpdates[siaPath] = bubbleInit
+		defer func() {
+			go r.threadedBubbleHealth(siaPath)
+		}()
+	case bubbleActive:
+		delete(r.bubbleUpdates, siaPath)
+	default:
+		return errors.New("WARN: invalid bubble status")
+	}
+
+	return r.saveBubbleUpdates()
+}
+
+// managedDirectoryHealth reads the directory metadata and returns the health,
+// the DefaultDirHealth will be returned in the event of an error or if a path
+// to a file is past in
+func (r *Renter) managedDirectoryHealth(siaPath string) (float64, float64, time.Time, error) {
+	// Check for bad paths and files
+	fi, err := os.Stat(filepath.Join(r.filesDir, siaPath))
+	if err != nil {
+		return 0, 0, time.Time{}, err
+	}
+	if !fi.IsDir() {
+		return 0, 0, time.Time{}, fmt.Errorf("%v is not a directory", siaPath)
+	}
+
+	//  Open SiaDir
+	siaDir, err := r.staticDirSet.Open(siaPath)
+	if err != nil {
+		return 0, 0, time.Time{}, err
+	}
+	defer siaDir.Close()
+
+	// Return the siadir health
+	health, stuckHealth, lastHealthChecktime := siaDir.Health()
+	return health, stuckHealth, lastHealthChecktime, nil
+}
+
+// managedFileHealth calculates the health of a siafile. Health is defined as
+// the percent of parity pieces remaining.
+//
+// health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
+// to be repaired from disk or repair by upload streaming
+func (r *Renter) managedFileHealth(siaPath string) (float64, uint64, error) {
+	// Load the Siafile.
+	sf, err := r.staticFileSet.Open(siaPath)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer sf.Close()
+
+	// Calculate file health
+	hostOfflineMap, _, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	fileHealth, numStuckChunks := sf.Health(hostOfflineMap)
+	return fileHealth, numStuckChunks, nil
+}
+
+// threadedBubbleHealth calculates the health of a directory and updates the
+// siadir metadata on disk then calls threadedBubbleHealth on the parent
+// directory
+//
+// Note: health = 0 is full redundancy, health <= 1 is recoverable, health > 1
+// cannot be immediately repaired using only the online hosts.
+func (r *Renter) threadedBubbleHealth(siaPath string) {
+	if err := r.tg.Add(); err != nil {
+		return
+	}
+	defer r.tg.Done()
+
+	// Check if bubble is needed
+	needed, err := r.managedBubbleNeeded(siaPath)
+	if err != nil {
+		r.log.Println("WARN: error in checking if bubble is needed:", err)
+		return
+	}
+	if !needed {
+		return
+	}
+
+	// Calculate the health of the directory
+	worstHealth, worstStuckHealth, lastHealthCheckTime, err := r.managedCalculateDirectoryHealth(siaPath)
+	if err != nil {
+		r.log.Printf("WARN: Could not calculate the health of directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
+		return
+	}
+
+	// Update directory metadata with the health information
+	siaDir, err := r.staticDirSet.Open(siaPath)
+	if err != nil {
+		r.log.Printf("WARN: Could not open directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
+		return
+	}
+	err = siaDir.UpdateHealth(worstHealth, worstStuckHealth, lastHealthCheckTime)
+	if err != nil {
+		r.log.Printf("WARN: Could not update the health of the directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
+		return
+	}
+
+	// Complete bubble
+	err = r.managedCompleteBubbleUpdate(siaPath)
+	if err != nil {
+		r.log.Println("WARN: error in completing bubble:", err)
+		return
+	}
+
+	// If siaPath is equal to "" then return as we are in the root files
+	// directory of the renter
+	if siaPath == "" {
+		return
+	}
+	// Move to parent directory
+	siaPath = filepath.Dir(siaPath)
+	if siaPath == "." {
+		siaPath = ""
+	}
+	go r.threadedBubbleHealth(siaPath)
+	return
 }

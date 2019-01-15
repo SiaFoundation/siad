@@ -218,7 +218,7 @@ type Renter struct {
 	// bubbleUpdates are active and pending bubbles that need to be executed on
 	// directories in order to keep the renter's directory tree metadata up to
 	// date
-	bubbleUpdates   map[string]*bubble
+	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
@@ -740,7 +740,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 
 		workerPool: make(map[types.FileContractID]*worker),
 
-		bubbleUpdates: make(map[string]*bubble),
+		bubbleUpdates: make(map[string]bubbleStatus),
 
 		cs:             cs,
 		deps:           deps,
