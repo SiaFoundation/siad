@@ -22,7 +22,7 @@ const (
 	remainingFile = -1
 
 	// Size limits for various RPCs.
-	challengeReqMaxLen           = 16
+	challengeReqMaxLen           = 256
 	contractAdditionsRespMaxLen  = 4096
 	contractSignaturesRespMaxLen = 1024
 	keyExchangeMaxLen            = 256

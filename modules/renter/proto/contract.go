@@ -391,6 +391,27 @@ func (c *SafeContract) unappliedHeader() (h contractHeader) {
 	return
 }
 
+// syncRevision checks whether rev accords with the SafeContract's most recent
+// revision; if it does not, syncRevision attempts to synchronize with rev by
+// committing any uncommitted WAL transactions.
+func (c *SafeContract) syncRevision(rev types.FileContractRevision) error {
+	ourRev := c.header.LastRevision()
+	if rev.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
+		return errors.New("unlock conditions do not match")
+	} else if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
+		// If the revision number doesn't match, try to commit potential
+		// unapplied transactions and check again.
+		if err := c.commitTxns(); err != nil {
+			return errors.AddContext(err, "failed to commit transactions")
+		}
+		ourRev = c.header.LastRevision()
+		if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
+			return &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
+		}
+	}
+	return nil
+}
+
 func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Hash) (modules.RenterContract, error) {
 	if err := h.validate(); err != nil {
 		return modules.RenterContract{}, err

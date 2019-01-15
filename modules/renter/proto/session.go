@@ -48,16 +48,8 @@ func (s *Session) call(rpcID types.Specifier, req, resp interface{}, maxLen uint
 
 // Lock calls the Lock RPC, locking the supplied contract and returning its
 // most recent revision.
-func (s *Session) Lock(id types.FileContractID) (types.FileContractRevision, []types.TransactionSignature, error) {
-	// Acquire the contract.
-	sc, haveContract := s.contractSet.Acquire(id)
-	if !haveContract {
-		return types.FileContractRevision{}, nil, errors.New("contract not present in contract set")
-	}
-	defer s.contractSet.Return(sc)
-
-	// Sign the most recent host challenge using the contract's secret key.
-	sig := crypto.SignHash(crypto.HashAll(modules.RPCChallengePrefix, s.challenge), sc.header.SecretKey)
+func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (types.FileContractRevision, []types.TransactionSignature, error) {
+	sig := crypto.SignHash(crypto.HashAll(modules.RPCChallengePrefix, s.challenge), secretKey)
 	req := modules.LoopLockRequest{
 		ContractID: id,
 		Signature:  sig[:],
@@ -565,17 +557,29 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		return nil, errors.New("invalid contract")
 	}
 	defer cs.Return(sc)
-	return cs.managedNewSession(host, id, currentHeight, hdb, sc.header.SecretKey, cancel)
+	s, err := cs.managedNewSession(host, currentHeight, hdb, cancel)
+	if err != nil {
+		return nil, err
+	}
+	// Lock the contract and resynchronize if necessary
+	rev, _, err := s.Lock(id, sc.header.SecretKey)
+	if err != nil {
+		s.Close()
+		return nil, err
+	} else if err := sc.syncRevision(rev); err != nil {
+		s.Close()
+		return nil, err
+	}
+	return s, nil
 }
 
-// NewSessionWithSecret creates a new session using a contract's secret key
-// directly instead of fetching it from the set of known contracts.
-func (cs *ContractSet) NewSessionWithSecret(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, sk crypto.SecretKey, cancel <-chan struct{}) (_ *Session, err error) {
-	return cs.managedNewSession(host, id, currentHeight, hdb, sk, cancel)
+// NewRawSession creates a new session unassociated with any contract.
+func (cs *ContractSet) NewRawSession(host modules.HostDBEntry, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
+	return cs.managedNewSession(host, currentHeight, hdb, cancel)
 }
 
 // managedNewSession initiates the RPC loop with a host and returns a Session.
-func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, sk crypto.SecretKey, cancel <-chan struct{}) (_ *Session, err error) {
+func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
 		if err != nil {
@@ -614,21 +618,11 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, id types.File
 		challenge:   challenge.Challenge,
 		closeChan:   closeChan,
 		conn:        conn,
-		contractID:  id,
 		contractSet: cs,
 		deps:        cs.deps,
 		hdb:         hdb,
 		height:      currentHeight,
 		host:        host,
-	}
-
-	// If a contract ID was supplied, lock the contract.
-	if id != (types.FileContractID{}) {
-		_, _, err := s.Lock(id)
-		if err != nil {
-			s.Close()
-			return nil, err
-		}
 	}
 
 	return s, nil

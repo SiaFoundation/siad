@@ -379,7 +379,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	}()
 
 	// Initiate protocol.
-	s, err := cs.NewSessionWithSecret(host, types.FileContractID{}, startHeight, hdb, crypto.SecretKey{}, cancel)
+	s, err := cs.NewRawSession(host, startHeight, hdb, cancel)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}

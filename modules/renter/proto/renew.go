@@ -401,11 +401,18 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	}()
 
 	// Initiate protocol.
-	s, err := cs.NewSessionWithSecret(host, contract.ID(), startHeight, hdb, contract.SecretKey, cancel)
+	s, err := cs.NewRawSession(host, startHeight, hdb, cancel)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
 	defer s.Close()
+	// Lock the contract and resynchronize if necessary
+	rev, _, err := s.Lock(contract.ID(), contract.SecretKey)
+	if err != nil {
+		return modules.RenterContract{}, err
+	} else if err := oldContract.syncRevision(rev); err != nil {
+		return modules.RenterContract{}, err
+	}
 
 	// Send the RenewContract request.
 	req := modules.LoopRenewContractRequest{
