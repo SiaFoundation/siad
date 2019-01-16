@@ -278,7 +278,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	}
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
 	// does not need to bottleneck the repair loop.
-	go r.managedFetchAndRepairChunk(uuc)
+	go r.threadedFetchAndRepairChunk(uuc)
 }
 
 // managedRefreshHostsAndWorkers will reset the set of hosts and the set of
