@@ -577,13 +577,14 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
 	if stuck == sf.staticChunks[index].Stuck {
 		return nil
 	}
-	// Update NumStuckChunks in siafile metadata
+	// Update chunk and NumStuckChunks in siafile metadata
+	sf.staticChunks[index].Stuck = stuck
 	if stuck {
 		sf.staticMetadata.NumStuckChunks++
 	} else {
 		sf.staticMetadata.NumStuckChunks--
 	}
-	// Update chunk and metadata
+	// Update chunk and metadata on disk
 	updates, err := sf.saveMetadataUpdate()
 	if err != nil {
 		return err
@@ -593,7 +594,6 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
 		return err
 	}
 	updates = append(updates, update)
-	sf.staticChunks[index].Stuck = stuck
 	return sf.createAndApplyTransaction(updates...)
 }
 
