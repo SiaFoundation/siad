@@ -777,6 +777,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
 	go r.threadedUploadLoop()
+	go r.threadedUpdateRenterHealth()
 
 	// Kill workers on shutdown.
 	r.tg.OnStop(func() error {

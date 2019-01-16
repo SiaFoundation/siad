@@ -191,6 +191,23 @@ func (sds *SiaDirSet) Exists(siaPath string) (bool, error) {
 	return sds.exists(siaPath)
 }
 
+// InitRootDir initializes the root directory SiaDir on disk. The root directory
+// is not added in memory or returned.
+func (sds *SiaDirSet) InitRootDir() error {
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	// Check is SiaDir already exists
+	exists, err := sds.exists("")
+	if exists {
+		return nil
+	}
+	if !os.IsNotExist(err) && err != nil {
+		return err
+	}
+	_, err = New("", sds.rootDir, sds.wal)
+	return err
+}
+
 // NewSiaDir creates a new SiaDir and returns a SiaDirSetEntry
 func (sds *SiaDirSet) NewSiaDir(siaPath string) (*SiaDirSetEntry, error) {
 	sds.mu.Lock()

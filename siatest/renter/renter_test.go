@@ -3187,7 +3187,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 // TestRenterFileChangeDuringDownload confirms that a download will continue and
 // succeed if the file is renamed or deleted after the download has started
 func TestRenterFileChangeDuringDownload(t *testing.T) {
-	if testing.Short() {
+	if !build.VLONG {
 		t.SkipNow()
 	}
 	t.Parallel()

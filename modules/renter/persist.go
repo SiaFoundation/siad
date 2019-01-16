@@ -311,6 +311,12 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 // the persistence directory and starting the logger.
 func (r *Renter) initPersist() error {
 	// Create the persist and files directories if they do not yet exist.
+	//
+	// Note: the os package needs to be used here instead of the renter's
+	// CreateDir method because the staticDirSet has not been initialized yet.
+	// The directory is needed before the staticDirSet can be initialized
+	// because the wal needs the directory to be created and the staticDirSet
+	// needs the wal.
 	err := os.MkdirAll(r.filesDir, 0700)
 	if err != nil {
 		return err
@@ -334,8 +340,14 @@ func (r *Renter) initPersist() error {
 		return err
 	}
 	r.wal = wal
+
+	// Initialize the staticFileSet and the staticDirSet. With the staticDirSet
+	// finish the initialization of the files directory
 	r.staticFileSet = siafile.NewSiaFileSet(r.filesDir, wal)
 	r.staticDirSet = siadir.NewSiaDirSet(r.filesDir, wal)
+	if err = r.staticDirSet.InitRootDir(); err != nil {
+		return err
+	}
 
 	// Apply unapplied wal txns.
 	for _, txn := range txns {

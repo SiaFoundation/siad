@@ -194,6 +194,77 @@ func (r *Renter) managedFileHealth(siaPath string) (float64, uint64, error) {
 	return fileHealth, numStuckChunks, nil
 }
 
+// managedOldestHealthCheckTime finds the lowest level directory that has a
+// LastHealthCheckTime that is outside the healthCheckInterval
+func (r *Renter) managedOldestHealthCheckTime() (string, time.Time, error) {
+	// Check the siadir metadata for the root files directory
+	siaPath := ""
+	_, _, lastHealthCheckTime, err := r.managedDirectoryHealth(siaPath)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	// Find the lowest level directory that has a LastHealthCheckTime outside
+	// the healthCheckInterval
+	for time.Since(lastHealthCheckTime) > healthCheckInterval {
+		// Check to make sure renter hasn't been shutdown
+		select {
+		case <-r.tg.StopChan():
+			return "", time.Time{}, err
+		default:
+		}
+
+		// Check for sub directories
+		subDirSiaPaths, err := r.managedSubDirectories(siaPath)
+		if err != nil {
+			return "", time.Time{}, err
+		}
+		// If there are no sub directories, return
+		if len(subDirSiaPaths) == 0 {
+			return siaPath, lastHealthCheckTime, nil
+		}
+
+		// Find the oldest LastHealthCheckTime of the sub directories
+		for _, subDirPath := range subDirSiaPaths {
+			// Check lastHealthCheckTime of sub directory
+			_, _, lastCheck, err := r.managedDirectoryHealth(subDirPath)
+			if err != nil {
+				return "", time.Time{}, err
+			}
+
+			// If lastCheck is after current lastHealthCheckTime continue since
+			// we are already in a directory with an older timestamp
+			if lastCheck.After(lastHealthCheckTime) {
+				continue
+			}
+
+			// Update lastHealthCheckTime and follow older path
+			lastHealthCheckTime = lastCheck
+			siaPath = subDirPath
+		}
+	}
+
+	return siaPath, lastHealthCheckTime, nil
+}
+
+// managedSubDirectories reads a directory and returns a slice of all the sub
+// directory SiaPaths
+func (r *Renter) managedSubDirectories(siaPath string) ([]string, error) {
+	// Read directory
+	fileinfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, siaPath))
+	if err != nil {
+		return []string{}, err
+	}
+	// Find all sub directory SiaPaths
+	folders := make([]string, 0, len(fileinfos))
+	for _, fi := range fileinfos {
+		if fi.IsDir() {
+			folders = append(folders, filepath.Join(siaPath, fi.Name()))
+		}
+	}
+	return folders, nil
+}
+
 // threadedBubbleHealth calculates the health of a directory and updates the
 // siadir metadata on disk then calls threadedBubbleHealth on the parent
 // directory
@@ -254,4 +325,41 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 	}
 	go r.threadedBubbleHealth(siaPath)
 	return
+}
+
+// threadedUpdateRenterHealth reads all the siafiles in the renter, calculates
+// the health of each file and updates the folder metadata
+func (r *Renter) threadedUpdateRenterHealth() {
+	err := r.tg.Add()
+	if err != nil {
+		return
+	}
+	defer r.tg.Done()
+	// Loop until the renter has shutdown or until the renter's top level files
+	// directory has a LasHealthCheckTime within the healthCheckInterval
+	for {
+		select {
+		// Check to make sure renter hasn't been shutdown
+		case <-r.tg.StopChan():
+			return
+		default:
+		}
+		// Follow path of oldest time, return directory and timestamp
+		siaPath, lastHealthCheckTime, err := r.managedOldestHealthCheckTime()
+		if err != nil {
+			r.log.Debug("WARN: Could not find oldest health check time:", err)
+			continue
+		}
+
+		// If lastHealthCheckTime is within the healthCheckInterval block
+		// until it is time to check again
+		healthCheckSignal := time.After(healthCheckInterval - time.Since(lastHealthCheckTime))
+		select {
+		case <-r.tg.StopChan():
+			return
+		case <-healthCheckSignal:
+			// Bubble directory
+			go r.threadedBubbleHealth(siaPath)
+		}
+	}
 }
