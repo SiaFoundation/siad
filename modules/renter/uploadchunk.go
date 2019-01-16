@@ -373,6 +373,9 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	totalMemoryReleased := uc.memoryReleased
 	uc.mu.Unlock()
 
+	// Update chunk stuck status
+	uc.fileEntry.SetStuck(uc.id.index, !chunkComplete)
+
 	// If there are pieces available, add the standby workers to collect them.
 	// Standby workers are only added to the chunk when piecesAvailable is equal
 	// to zero, meaning this code will only trigger if the number of pieces

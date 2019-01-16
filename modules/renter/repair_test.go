@@ -22,6 +22,7 @@ func TestBubbleHealth(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Create test renter
 	rt, err := newRenterTester(t.Name())
@@ -301,6 +302,156 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestWorstHealthDirectory verifies that managedWorstHealthDirectory returns
+// the correct directory
+func TestWorstHealthDirectory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a test directory with sub folders
+	//
+	// root/ 1
+	// root/SubDir1/
+	// root/SubDir1/SubDir2/
+	// root/SubDir2/
+
+	// Create test renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create directory tree
+	subDir1 := "SubDir1"
+	subDir2 := "SubDir2"
+	if err := rt.renter.CreateDir(subDir1); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(subDir2); err != nil {
+		t.Fatal(err)
+	}
+	siaPath := filepath.Join(subDir1, subDir2)
+	if err := rt.renter.CreateDir(siaPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm worst health directory is the top level directory since all
+	// directories should be at the default health which is 0 or full health
+	go rt.renter.threadedBubbleHealth(subDir1)
+	build.Retry(100, 100*time.Millisecond, func() error {
+		dir, health, err := rt.renter.managedWorstHealthDirectory()
+		if err != nil {
+			return err
+		}
+		if dir != "" {
+			return fmt.Errorf("Expected to find top level directory but found %v", dir)
+		}
+		if health != 0 {
+			return fmt.Errorf("Expected to find health of %v but found %v", 0, health)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the Health of SubDir1/SubDir2 to be the worst
+	worstHealth := float64(10)
+	worstHealthUpdate := siadir.SiaDirHealth{
+		Health:              worstHealth,
+		StuckHealth:         0,
+		LastHealthCheckTime: time.Now(),
+		NumStuckChunks:      5,
+	}
+	if err := rt.renter.staticDirSet.UpdateHealth(siaPath, worstHealthUpdate); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bubble the health of SubDir1 so that the worst health of
+	// SubDir1/SubDir2 gets bubbled up
+	go rt.renter.threadedBubbleHealth(subDir1)
+
+	// Find the worst health directory, should be SubDir1/SubDir2
+	build.Retry(100, 100*time.Millisecond, func() error {
+		dir, health, err := rt.renter.managedWorstHealthDirectory()
+		if err != nil {
+			return err
+		}
+		if dir != siaPath {
+			return fmt.Errorf("Expected to find %v but found %v", siaPath, dir)
+		}
+		if health != worstHealth {
+			return fmt.Errorf("Expected to find health of %v but found %v", worstHealth, health)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestWorstSubDirectoryHealth probes the managedWorstSubDirectoryHealth method
+func TestWorstSubDirectoryHealth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for worst health directory should return no sub directories error
+	_, _, err = rt.renter.managedWorstSubDirectoryHealth("")
+	if err != errNoSubDirectories {
+		t.Fatal(err)
+	}
+
+	// Create a test directory with sub folders
+	//
+	// root/
+	// root/SubDir1/
+	// root/SubDir2/
+
+	// Create directory tree
+	subDir1 := "SubDir1"
+	subDir2 := "SubDir2"
+	if err := rt.renter.CreateDir(subDir1); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(subDir2); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set health of subDir2 to be the worst
+	worstHealth := float64(1)
+	health := siadir.SiaDirHealth{
+		Health:              worstHealth,
+		StuckHealth:         worstHealth,
+		LastHealthCheckTime: time.Now(),
+		NumStuckChunks:      0,
+	}
+	if err := rt.renter.staticDirSet.UpdateHealth(subDir2, health); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for worst health directory should return subDir2
+	subSiaPath, subHealth, err := rt.renter.managedWorstSubDirectoryHealth("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subSiaPath != subDir2 {
+		t.Fatalf("Expected siaPath to be %v but got %v", subDir2, subSiaPath)
+	}
+	if subHealth != worstHealth {
+		t.Fatalf("Expected health to be %v but got %v", worstHealth, subHealth)
 	}
 }
 

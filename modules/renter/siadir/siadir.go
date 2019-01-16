@@ -139,14 +139,14 @@ func LoadSiaDir(rootDir, siaPath string, deps modules.Dependencies, wal *writeah
 	// Open the file.
 	file, err := sd.deps.Open(filepath.Join(path, SiaDirExtension))
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to open file")
+		return nil, err
 	}
 	defer file.Close()
 
 	// Read the file
 	bytes, err := ioutil.ReadAll(file)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to read persisted data")
+		return nil, err
 	}
 
 	// Parse the json object.
