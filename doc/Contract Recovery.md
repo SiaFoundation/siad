@@ -1,4 +1,6 @@
-This documente lays out the design for file contract recovery using file
+# File Contract Recovery
+
+This document lays out the design for file contract recovery using file
 contract identifiers. These identifiers are used to identify ones contracts on
 the blockchain and to figure out what host the contract was formed with. So renters
 can recognize a contract as their own simply by knowing their own wallet seed.
