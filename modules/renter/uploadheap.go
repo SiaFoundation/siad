@@ -334,6 +334,13 @@ func (r *Renter) threadedUploadLoop() {
 	defer r.tg.Done()
 
 	for {
+		select {
+		case <-r.tg.StopChan():
+			// Return if the renter has shut down.
+			return
+		default:
+		}
+
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.

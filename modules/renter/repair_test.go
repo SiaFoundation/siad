@@ -114,8 +114,12 @@ func TestBubbleHealth(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		// Check Health
-		if err = equalHealthsAndChunks(health, healthUpdate); err != nil {
+		// Compare to health of subDir1/subDir1
+		expectedHealth, err := rt.renter.managedDirectoryHealth(filepath.Join(subDir1, subDir1))
+		if err != nil {
+			return err
+		}
+		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -157,18 +161,20 @@ func TestBubbleHealth(t *testing.T) {
 	// that the health is the health of subDir1/subDir1 which was set to 1 again
 	// and the stuck health will be the health of the stuck file
 	go rt.renter.threadedBubbleHealth(siaPath)
-
-	// Reset healthUpdate with expected values
-	healthUpdate.StuckHealth = 2
-	healthUpdate.NumStuckChunks++
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryHealth("")
 		if err != nil {
 			return err
 		}
-		// Check Health
-		if err = equalHealthsAndChunks(health, healthUpdate); err != nil {
+		// Compare to health of subDir1/subDir1
+		expectedHealth, err := rt.renter.managedDirectoryHealth(filepath.Join(subDir1, subDir1))
+		if err != nil {
+			return err
+		}
+		expectedHealth.StuckHealth = 2
+		expectedHealth.NumStuckChunks++
+		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -183,11 +189,11 @@ func TestBubbleHealth(t *testing.T) {
 	// Now if we bubble the health and check for the worst health we should see
 	// that the health is the health of the file
 	go rt.renter.threadedBubbleHealth(siaPath)
-
-	// Reset healthUpdate with expected values
-	healthUpdate.Health = 2
-	healthUpdate.StuckHealth = 0
-	healthUpdate.NumStuckChunks--
+	expectedHealth := siadir.SiaDirHealth{
+		Health:         2,
+		StuckHealth:    0,
+		NumStuckChunks: 5,
+	}
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryHealth("")
@@ -195,7 +201,7 @@ func TestBubbleHealth(t *testing.T) {
 			return err
 		}
 		// Check Health
-		if err = equalHealthsAndChunks(health, healthUpdate); err != nil {
+		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -213,8 +219,13 @@ func TestBubbleHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reset healthUpdate with expected values
-	healthUpdate.Health = 4
-	if err := rt.renter.staticDirSet.UpdateHealth(filepath.Join(siaPath, subDir1), healthUpdate); err != nil {
+	expectedHealth = siadir.SiaDirHealth{
+		Health:              4,
+		StuckHealth:         0,
+		LastHealthCheckTime: time.Now(),
+		NumStuckChunks:      5,
+	}
+	if err := rt.renter.staticDirSet.UpdateHealth(filepath.Join(siaPath, subDir1), expectedHealth); err != nil {
 		t.Fatal(err)
 	}
 	go rt.renter.threadedBubbleHealth(siaPath)
@@ -225,7 +236,7 @@ func TestBubbleHealth(t *testing.T) {
 			return err
 		}
 		// Check Health
-		if err = equalHealthsAndChunks(health, healthUpdate); err != nil {
+		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -392,66 +403,6 @@ func TestWorstHealthDirectory(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-// TestWorstSubDirectoryHealth probes the managedWorstSubDirectoryHealth method
-func TestWorstSubDirectoryHealth(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create test renter
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check for worst health directory should return no sub directories error
-	_, _, err = rt.renter.managedWorstSubDirectoryHealth("")
-	if err != errNoSubDirectories {
-		t.Fatal(err)
-	}
-
-	// Create a test directory with sub folders
-	//
-	// root/
-	// root/SubDir1/
-	// root/SubDir2/
-
-	// Create directory tree
-	subDir1 := "SubDir1"
-	subDir2 := "SubDir2"
-	if err := rt.renter.CreateDir(subDir1); err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.renter.CreateDir(subDir2); err != nil {
-		t.Fatal(err)
-	}
-
-	// Set health of subDir2 to be the worst
-	worstHealth := float64(1)
-	health := siadir.SiaDirHealth{
-		Health:              worstHealth,
-		StuckHealth:         worstHealth,
-		LastHealthCheckTime: time.Now(),
-		NumStuckChunks:      0,
-	}
-	if err := rt.renter.staticDirSet.UpdateHealth(subDir2, health); err != nil {
-		t.Fatal(err)
-	}
-
-	// Check for worst health directory should return subDir2
-	subSiaPath, subHealth, err := rt.renter.managedWorstSubDirectoryHealth("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if subSiaPath != subDir2 {
-		t.Fatalf("Expected siaPath to be %v but got %v", subDir2, subSiaPath)
-	}
-	if subHealth != worstHealth {
-		t.Fatalf("Expected health to be %v but got %v", worstHealth, subHealth)
 	}
 }
 

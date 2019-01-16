@@ -27,11 +27,6 @@ const (
 	bubblePending
 )
 
-var (
-	// errNoSubDirectories is return when there are no sub directories found
-	errNoSubDirectories = errors.New("no sub directories found")
-)
-
 // managedBubbleNeeded checks if a bubble is needed for a directory, updates the
 // renter's bubbleUpdates map and returns a bool
 func (r *Renter) managedBubbleNeeded(siaPath string) (bool, error) {
@@ -236,6 +231,7 @@ func (r *Renter) managedOldestHealthCheckTime() (string, time.Time, error) {
 		}
 
 		// Find the oldest LastHealthCheckTime of the sub directories
+		updated := false
 		for _, subDirPath := range subDirSiaPaths {
 			// Check lastHealthCheckTime of sub directory
 			subHealth, err := r.managedDirectoryHealth(subDirPath)
@@ -250,8 +246,15 @@ func (r *Renter) managedOldestHealthCheckTime() (string, time.Time, error) {
 			}
 
 			// Update lastHealthCheckTime and follow older path
+			updated = true
 			health.LastHealthCheckTime = subHealth.LastHealthCheckTime
 			siaPath = subDirPath
+		}
+
+		// If the values were never updated with any of the sub directory values
+		// then return as we are in the directory we are looking for
+		if !updated {
+			return siaPath, health.LastHealthCheckTime, nil
 		}
 	}
 
@@ -274,6 +277,67 @@ func (r *Renter) managedSubDirectories(siaPath string) ([]string, error) {
 		}
 	}
 	return folders, nil
+}
+
+// managedWorstHealthDirectory finds the lowest level directory that has the
+// worst health
+func (r *Renter) managedWorstHealthDirectory() (string, float64, error) {
+	// Check the health of the root files directory
+	siaPath := ""
+	health, err := r.managedDirectoryHealth(siaPath)
+	if err != nil {
+		return "", 0, err
+	}
+
+	// Find the lowest level directory that has the worst health. If the health
+	// is 0, meaning full health, then we break and return the previous
+	// directory
+	for health.Health != 0 {
+		// Check to make sure renter hasn't been shutdown
+		select {
+		case <-r.tg.StopChan():
+			return "", 0, err
+		default:
+		}
+		// Check for subdirectories
+		subDirSiaPaths, err := r.managedSubDirectories(siaPath)
+		if err != nil {
+			return "", 0, err
+		}
+		// If there are no sub directories, return
+		if len(subDirSiaPaths) == 0 {
+			return siaPath, health.Health, nil
+		}
+
+		// Check sub directory healths to find the worst health
+		updated := false
+		for _, subDirPath := range subDirSiaPaths {
+			// Check health of sub directory
+			subHealth, err := r.managedDirectoryHealth(subDirPath)
+			if err != nil {
+				return "", 0, err
+			}
+
+			// If the health of the sub directory is better than the current
+			// worst health continue
+			if subHealth.Health < health.Health {
+				continue
+			}
+
+			// Update Health and worst health path
+			updated = true
+			health.Health = subHealth.Health
+			siaPath = subDirPath
+		}
+
+		// If the values were never updated with any of the sub directory values
+		// then return as we are in the directory we are looking for
+		if !updated {
+			return siaPath, health.Health, nil
+		}
+	}
+
+	return siaPath, health.Health, nil
 }
 
 // threadedBubbleHealth calculates the health of a directory and updates the
@@ -336,93 +400,6 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 	}
 	go r.threadedBubbleHealth(siaPath)
 	return
-}
-
-// managedWorstHealthDirectory finds the lowest level directory that has the
-// worst health
-func (r *Renter) managedWorstHealthDirectory() (string, float64, error) {
-	// Check the health of the root files directory
-	siaPath := ""
-	health, err := r.managedDirectoryHealth(siaPath)
-	if err != nil {
-		return "", 0, err
-	}
-	// If Health is 0 then file system is at full health
-	if health.Health == float64(0) {
-		return "", health.Health, nil
-	}
-
-	// Find the lowest level directory that has the worst health. If the health
-	// is 0, meaning full health, then we break and return the previous
-	// directory
-	worstHealth := health.Health
-	worstSiaPath := siaPath
-	for worstHealth != 0 {
-		// Check to make sure renter hasn't been shutdown
-		select {
-		case <-r.tg.StopChan():
-			return "", 0, err
-		default:
-		}
-		// Check sub directories, if there are no sub directories then break out
-		// of loop
-		subSiaPath, subHealth, err := r.managedWorstSubDirectoryHealth(worstSiaPath)
-		if err == errNoSubDirectories {
-			break
-		}
-		if err != nil {
-			return "", 0, err
-		}
-		// Check if sub directory health was worst than current directory
-		// health. If current directory has the worst health then break out of loop
-		if worstHealth > subHealth {
-			break
-		}
-
-		// Update values as worst health is greater than or equal to
-		// health of current directory, moving into sub directory via
-		// worstSiaPath
-		worstHealth = subHealth
-		worstSiaPath = subSiaPath
-	}
-
-	return worstSiaPath, worstHealth, nil
-}
-
-// managedWorstSubDirectoryHealth reads the sub directories and returns the
-// siapath and the health of the worst health sub directory
-func (r *Renter) managedWorstSubDirectoryHealth(siaPath string) (string, float64, error) {
-	// Check for subdirectories
-	subDirSiaPaths, err := r.managedSubDirectories(siaPath)
-	if err != nil {
-		return "", 0, err
-	}
-	// If there are no sub directories then return no sub directory error
-	if len(subDirSiaPaths) == 0 {
-		return "", 0, errNoSubDirectories
-	}
-
-	// Check sub directory healths to find the worst health
-	var worstHealth float64
-	var worstSiaPath string
-	for _, subDirPath := range subDirSiaPaths {
-		// Check health of sub directory
-		subHealth, err := r.managedDirectoryHealth(subDirPath)
-		if err != nil {
-			return "", 0, err
-		}
-
-		// If the health of the sub directory is better than the current
-		// worst health continue
-		if subHealth.Health < worstHealth {
-			continue
-		}
-
-		// Update Health and worst health path
-		worstHealth = subHealth.Health
-		worstSiaPath = subDirPath
-	}
-	return worstSiaPath, worstHealth, nil
 }
 
 // threadedUpdateRenterHealth reads all the siafiles in the renter, calculates
