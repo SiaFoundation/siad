@@ -1924,13 +1924,19 @@ func TestHealthLoop(t *testing.T) {
 	// Verify folder metadata is update, directory health should be 0 and
 	// LastHealthCheckTime stamp should be within the health check interval
 	// which is currently set to 5s
-	var rd RenterDirectory
-	st1.getAPI("/renter/dir/", &rd)
-	if rd.Directories[0].Health != 0 {
-		t.Fatalf("Directory health should be 0 but was %v", rd.Directories[0].Health)
-	}
-	if time.Since(rd.Directories[0].LastHealthCheckTime) > 5*time.Second {
-		t.Fatal("LastHealthCheckTime is too far in the past")
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		var rd RenterDirectory
+		st1.getAPI("/renter/dir/", &rd)
+		if rd.Directories[0].Health != 0 {
+			return fmt.Errorf("Directory health should be 0 but was %v", rd.Directories[0].Health)
+		}
+		if time.Since(rd.Directories[0].LastHealthCheckTime) > 5*time.Second {
+			return fmt.Errorf("LastHealthCheckTime is too far in the past")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Take Down a host
@@ -1948,9 +1954,6 @@ func TestHealthLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Wait length of health check interval
-	time.Sleep(5 * time.Second)
 
 	// Check the metadata, lasthealthchecktime should have been updated and
 	// health in metadata should have been updated
