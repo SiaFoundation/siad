@@ -218,6 +218,10 @@ type Renter struct {
 	// bubbleUpdates are active and pending bubbles that need to be executed on
 	// directories in order to keep the renter's directory tree metadata up to
 	// date
+	//
+	// A bubble is the process of updating a directory's metadata and then
+	// moving on to its parent directory so that any changes in metadata are
+	// properly reflected throughout the filesystem.
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
