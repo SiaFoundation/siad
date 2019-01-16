@@ -254,30 +254,33 @@ func (api *API) walletAddressHandler(w http.ResponseWriter, req *http.Request, _
 	})
 }
 
-// walletAddressHandler handles API calls to /wallet/addresses.
-func (api *API) walletAddressesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// If count is specified we return the last count addresses.
+// walletSeedAddressesHandler handles the requests to /wallet/seedaddrs.
+func (api *API) walletSeedAddressesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse the count argument. If it isn't specified we return as many
+	// addresses as possible.
+	count := uint64(math.MaxUint64)
 	c := req.FormValue("count")
 	if c != "" {
-		var count uint64
 		_, err := fmt.Sscan(c, &count)
 		if err != nil {
 			WriteError(w, Error{"Failed to parse count: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
-		// Get the last count addresses.
-		addresses, err := api.wallet.LastAddresses(count)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("Error when calling /wallet/addresses: %v", err)}, http.StatusBadRequest)
-			return
-		}
-		// Send the response.
-		WriteJSON(w, WalletAddressesGET{
-			Addresses: addresses,
-		})
 	}
+	// Get the last count addresses.
+	addresses, err := api.wallet.LastAddresses(count)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("Error when calling /wallet/addresses: %v", err)}, http.StatusBadRequest)
+		return
+	}
+	// Send the response.
+	WriteJSON(w, WalletAddressesGET{
+		Addresses: addresses,
+	})
+}
 
-	// If count wasn't specified we return all addresses sorted alphabetically.
+// walletAddressHandler handles API calls to /wallet/addresses.
+func (api *API) walletAddressesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	addresses, err := api.wallet.AllAddresses()
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("Error when calling /wallet/addresses: %v", err)}, http.StatusBadRequest)

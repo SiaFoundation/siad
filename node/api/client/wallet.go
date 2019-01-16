@@ -65,7 +65,7 @@ func (c *Client) WalletGet() (wg api.WalletGET, err error) {
 // wallet in reverse order. That means the last generated address will be the
 // first one in the slice.
 func (c *Client) WalletLastAddressesGet(count uint64) (wag api.WalletAddressesGET, err error) {
-	err = c.get(fmt.Sprintf("/wallet/addresses?count=%v", count), &wag)
+	err = c.get(fmt.Sprintf("/wallet/seedaddrs?count=%v", count), &wag)
 	return
 }
 
