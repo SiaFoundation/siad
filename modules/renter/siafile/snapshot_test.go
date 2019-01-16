@@ -2,9 +2,13 @@ package siafile
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -64,5 +68,72 @@ func TestSnapshot(t *testing.T) {
 		if !reflect.DeepEqual(sfPieces, snapPieces) {
 			t.Error("Pieces don't match")
 		}
+	}
+}
+
+// BenchmarkSnapshot10MB benchmarks the creation of snapshots for Siafiles
+// which hold the metadata of a 10 MB file.
+func BenchmarkSnapshot10MB(b *testing.B) {
+	benchmarkSnapshot(b, uint64(1e7))
+}
+
+// BenchmarkSnapshot100MB benchmarks the creation of snapshots for Siafiles
+// which hold the metadata of a 100 MB file.
+func BenchmarkSnapshot100MB(b *testing.B) {
+	benchmarkSnapshot(b, uint64(1e8))
+}
+
+// BenchmarkSnapshot1GB benchmarks the creation of snapshots for Siafiles
+// which hold the metadata of a 1 GB file.
+func BenchmarkSnapshot1GB(b *testing.B) {
+	benchmarkSnapshot(b, uint64(1e9))
+}
+
+// BenchmarkSnapshot10GB benchmarks the creation of snapshots for Siafiles
+// which hold the metadata of a 10 GB file.
+func BenchmarkSnapshot10GB(b *testing.B) {
+	benchmarkSnapshot(b, uint64(1e10))
+}
+
+// benchmarkSnapshot is a helper function for benchmarking the creation of
+// snapshots of Siafiles with different sizes.
+func benchmarkSnapshot(b *testing.B, fileSize uint64) {
+	// Setup the file.
+	siaFilePath, siaPath, source, rc, sk, _, _, fileMode := newTestFileParams()
+
+	// Create the path to the file.
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		b.Fatal(err)
+	}
+	// Create the file.
+	chunkSize := (modules.SectorSize - crypto.TypeDefaultRenter.Overhead()) * uint64(rc.MinPieces())
+	numChunks := fileSize / chunkSize
+	if fileSize%chunkSize != 0 {
+		numChunks++
+	}
+	wal, _ := newTestWAL()
+	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	if err != nil {
+		b.Fatal(err)
+	}
+	// Add a host key to the table.
+	sf.addRandomHostKeys(1)
+	// Add numPieces to each chunks.
+	for i := uint64(0); i < sf.NumChunks(); i++ {
+		for j := uint64(0); j < uint64(rc.NumPieces()); j++ {
+			sf.staticChunks[i].Pieces[j] = append(sf.staticChunks[i].Pieces[j], piece{})
+		}
+	}
+	// Save the file to disk.
+	if err := sf.saveFile(); err != nil {
+		b.Fatal(err)
+	}
+	// Reset the timer.
+	b.ResetTimer()
+
+	// Create snapshots as fast as possible.
+	for i := 0; i < b.N; i++ {
+		_ = sf.Snapshot()
 	}
 }
