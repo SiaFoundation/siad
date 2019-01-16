@@ -25,18 +25,35 @@ func TestBubbleHealth(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// Create a test directory with the following healths
-	//
-	// root/ 1
-	// root/SubDir1/ 1
-	// root/SubDir1/SubDir1/ 1
-	// root/SubDir1/SubDir2/ 4
 
 	// Create test renter
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Check to make sure bubble doesn't error on an empty directory
+	go rt.renter.threadedBubbleHealth("")
+	build.Retry(100, 100*time.Millisecond, func() error {
+		health, _, _, err := rt.renter.managedDirectoryHealth("")
+		if err != nil {
+			return err
+		}
+		if health != 0 {
+			return fmt.Errorf("Expected health to be %v, got %v", 0, health)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a test directory with the following healths
+	//
+	// root/ 1
+	// root/SubDir1/ 1
+	// root/SubDir1/SubDir1/ 1
+	// root/SubDir1/SubDir2/ 4
 
 	// Create directory tree
 	subDir1 := "SubDir1"
@@ -72,6 +89,10 @@ func TestBubbleHealth(t *testing.T) {
 	// subDir1/subDir1 since subDir1/subDir2 is empty meaning it's calculated
 	// health will return to the default health, even through we set the health
 	// to be the worst health
+	//
+	// Note: this tests the edge case of bubbling an empty directory and
+	// directories with no files but do have sub directories since bubble will
+	// execute on all the parent directories
 	go rt.renter.threadedBubbleHealth(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		health, _, _, err := rt.renter.managedDirectoryHealth("")
@@ -105,6 +126,9 @@ func TestBubbleHealth(t *testing.T) {
 	// meaning the health of the file should be the worst case health. Now the
 	// health that is bubbled up should be the health of the file added to
 	// subDir1/subDir2
+	//
+	// Note: this tests the edge case of bubbling a directory with a file
+	// but no sub directories
 	offline, _, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{f})
 	health, _ := f.Health(offline)
 	if health != 2 {
@@ -118,6 +142,32 @@ func TestBubbleHealth(t *testing.T) {
 		}
 		if health != 2 {
 			return fmt.Errorf("Expected health to be %v, got %v", 2, health)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a sub directory to the directory that contains the file that has a
+	// worst health than the file and confirm that health gets bubbled up.
+	//
+	// Note: this tests the edge case of bubbling a directory that has both a
+	// file and a sub directory
+	if err := rt.renter.CreateDir(filepath.Join(siaPath, subDir1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.staticDirSet.UpdateHealth(filepath.Join(siaPath, subDir1), 4, 0, checkTime); err != nil {
+		t.Fatal(err)
+	}
+	go rt.renter.threadedBubbleHealth(siaPath)
+	build.Retry(100, 100*time.Millisecond, func() error {
+		health, _, _, err := rt.renter.managedDirectoryHealth("")
+		if err != nil {
+			return err
+		}
+		if health != 4 {
+			return fmt.Errorf("Expected health to be %v, got %v", 4, health)
 		}
 		return nil
 	})

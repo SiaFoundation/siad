@@ -350,11 +350,13 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			r.log.Debug("WARN: Could not find oldest health check time:", err)
 			continue
 		}
-		healthCheckSignal := time.After(healthCheckInterval - time.Since(lastHealthCheckTime))
 
 		// If lastHealthCheckTime is within the healthCheckInterval block
 		// until it is time to check again
+		healthCheckSignal := time.After(healthCheckInterval - time.Since(lastHealthCheckTime))
 		select {
+		case <-r.tg.StopChan():
+			return
 		case <-healthCheckSignal:
 			// Bubble directory
 			go r.threadedBubbleHealth(siaPath)
