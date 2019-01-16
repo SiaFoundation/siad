@@ -298,6 +298,11 @@ func TestFileRedundancy(t *testing.T) {
 //
 // Health is equal to (targetParityPieces - actualParityPieces)/targetParityPieces
 func TestFileHealth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create File with 1 chunk
 	rsc, _ := siafile.NewRSCode(10, 20)
 	f, err := newFileTesting(t.Name(), newTestingWal(), rsc, 100, 0777, "")
@@ -310,12 +315,16 @@ func TestFileHealth(t *testing.T) {
 
 	// Check file health, since there are no pieces in the chunk yet no good
 	// pieces will be found resulting in a health of 1.5 with the erasure code
-	// settings of 10/30
+	// settings of 10/30. Since there are no stuck chunks the stuckHealth of the
+	// file should be 0
 	//
 	// 1 - ((0 - 10) / 20)
-	health, _ := f.Health(offlineMap)
+	health, stuckHealth, _ := f.Health(offlineMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
+	}
+	if stuckHealth != float64(0) {
+		t.Fatalf("Stuck Health of file not as expected, got %v expected 0", stuckHealth)
 	}
 
 	// Add good pieces to first Piece Set
@@ -333,7 +342,7 @@ func TestFileHealth(t *testing.T) {
 	// since the two good pieces were added to the same pieceSet
 	//
 	// 1 - ((1 - 10) / 20)
-	health, _ = f.Health(offlineMap)
+	health, _, _ = f.Health(offlineMap)
 	if health != 1.45 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.45", health)
 	}
@@ -346,7 +355,7 @@ func TestFileHealth(t *testing.T) {
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
-	health, _ = f.Health(offlineMap)
+	health, _, _ = f.Health(offlineMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
@@ -359,9 +368,28 @@ func TestFileHealth(t *testing.T) {
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
-	health, _ = f.Health(offlineMap)
+	health, _, _ = f.Health(offlineMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
+	}
+
+	// Mark chunk as stuck
+	err = f.SetStuck(0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	health, stuckHealth, numStuckChunks := f.Health(offlineMap)
+	// Health should now be 0 since there are no unstuck chunks
+	if health != 0 {
+		t.Fatalf("Health of file not as expected, got %v expected 0", health)
+	}
+	// Stuck Health should now be 1.4
+	if stuckHealth != 1.40 {
+		t.Fatalf("Stuck Health of file not as expected, got %v expected 1.40", stuckHealth)
+	}
+	// There should be 1 stuck chunk
+	if numStuckChunks != 1 {
+		t.Fatalf("Expected 1 stuck chunk but found %v", numStuckChunks)
 	}
 
 	// Create File with 2 chunks
@@ -375,7 +403,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Check file health, since there are no pieces in the chunk yet no good
 	// pieces will be found resulting in a health of 1.5
-	health, _ = f.Health(offlineMap)
+	health, _, _ = f.Health(offlineMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -393,7 +421,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Check health, should still be 1.5 because other chunk doesn't have any
 	// good pieces
-	health, _ = f.Health(offlineMap)
+	health, stuckHealth, _ = f.Health(offlineMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -409,20 +437,25 @@ func TestFileHealth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	health, _ = f.Health(offlineMap)
+	health, _, _ = f.Health(offlineMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
 
-	// Test marking chunks as stuck
 	// Mark second chunk as stuck
 	err = f.SetStuck(1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	health, stuckHealth, numStuckChunks = f.Health(offlineMap)
+	// Since both chunks have the same health, the file health and the file stuck health should be the same
+	if health != 1.40 {
+		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
+	}
+	if stuckHealth != 1.40 {
+		t.Fatalf("Stuck Health of file not as expected, got %v expected 1.4", stuckHealth)
+	}
 	// Check health, verify there is 1 stuck chunk
-	_, numStuckChunks := f.Health(offlineMap)
 	if numStuckChunks != 1 {
 		t.Fatalf("Expected 1 stuck chunk but found %v", numStuckChunks)
 	}

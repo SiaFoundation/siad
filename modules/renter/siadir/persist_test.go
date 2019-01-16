@@ -185,6 +185,11 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 // TestManagedCreateAndApplyTransactions tests if
 // managedCreateAndApplyTransactions applies a set of updates correctly.
 func TestManagedCreateAndApplyTransactions(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	siadir, err := newTestDir(t.Name())
 	if err != nil {
 		t.Fatal(err)

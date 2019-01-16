@@ -260,7 +260,7 @@ func TestChunkHealth(t *testing.T) {
 	offlineMap := make(map[string]bool)
 
 	// Check and Record file health of initialized file
-	fileHealth, _ := sf.Health(offlineMap)
+	fileHealth, _, _ := sf.Health(offlineMap)
 	initHealth := float64(1) - (float64(0-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
 	if fileHealth != initHealth {
 		t.Fatalf("Expected file to be %v, got %v", initHealth, fileHealth)
@@ -307,6 +307,13 @@ func TestChunkHealth(t *testing.T) {
 	}
 
 	// Chunk at index 1 should now have a health of 1 higher than before
+	if sf.chunkHealth(1, offlineMap) != newHealth {
+		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap))
+	}
+
+	// Mark Chunk at index 1 as stuck and confirm that doesn't impact the result
+	// of chunkHealth
+	sf.staticChunks[1].Stuck = true
 	if sf.chunkHealth(1, offlineMap) != newHealth {
 		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap))
 	}

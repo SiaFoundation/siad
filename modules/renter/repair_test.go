@@ -144,7 +144,7 @@ func TestBubbleHealth(t *testing.T) {
 	// Note: this tests the edge case of bubbling a directory with a file
 	// but no sub directories
 	offline, _, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{f})
-	fileHealth, _ := f.Health(offline)
+	fileHealth, _, _ := f.Health(offline)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
 	}
