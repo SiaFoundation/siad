@@ -230,6 +230,133 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	return incompleteChunks
 }
 
+// buildUnfinishedStuckChunks will pull all of the unfinished stuck chunks out of a file.
+func (r *Renter) buildUnfinishedStuckChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}) []*unfinishedUploadChunk {
+	// Sanity check that there are entries
+	if len(entrys) == 0 {
+		return nil
+	}
+
+	// If we don't have enough workers for the file, don't repair it right now.
+	if len(r.workerPool) < entrys[0].ErasureCode().MinPieces() {
+		return nil
+	}
+
+	// Assemble the set of stuck chunks
+	stuckChunkIndexes := entrys[0].StuckChunkIndexes()
+	newUnfinishedChunks := make([]*unfinishedUploadChunk, len(stuckChunkIndexes))
+	// Sanity check
+	if len(stuckChunkIndexes) != len(entrys) {
+		build.Critical("Length of stuck chunk index slice should match length of entry")
+	}
+	for i, index := range stuckChunkIndexes {
+
+		newUnfinishedChunks[i] = &unfinishedUploadChunk{
+			fileEntry: entrys[i],
+
+			id: uploadChunkID{
+				fileUID: entrys[i].UID(),
+				index:   uint64(index),
+			},
+
+			index:  uint64(index),
+			length: entrys[i].ChunkSize(),
+			offset: int64(uint64(i) * entrys[i].ChunkSize()),
+
+			// memoryNeeded has to also include the logical data, and also
+			// include the overhead for encryption.
+			//
+			// TODO / NOTE: If we adjust the file to have a flexible encryption
+			// scheme, we'll need to adjust the overhead stuff too.
+			//
+			// TODO: Currently we request memory for all of the pieces as well
+			// as the minimum pieces, but we perhaps don't need to request all
+			// of that.
+			memoryNeeded:  entrys[i].PieceSize()*uint64(entrys[i].ErasureCode().NumPieces()+entrys[i].ErasureCode().MinPieces()) + uint64(entrys[i].ErasureCode().NumPieces())*entrys[i].MasterKey().Type().Overhead(),
+			minimumPieces: entrys[i].ErasureCode().MinPieces(),
+			piecesNeeded:  entrys[i].ErasureCode().NumPieces(),
+
+			physicalChunkData: make([][]byte, entrys[i].ErasureCode().NumPieces()),
+
+			pieceUsage:  make([]bool, entrys[i].ErasureCode().NumPieces()),
+			unusedHosts: make(map[string]struct{}),
+		}
+		// Every chunk can have a different set of unused hosts.
+		for host := range hosts {
+			newUnfinishedChunks[i].unusedHosts[host] = struct{}{}
+		}
+	}
+
+	// Build a map of host public keys.
+	pks := make(map[string]types.SiaPublicKey)
+	for _, pk := range entrys[0].HostPublicKeys() {
+		pks[pk.String()] = pk
+	}
+
+	// Iterate through the pieces of all chunks of the file and mark which hosts
+	// are already in use for a particular chunk. As you delete hosts from the
+	// 'unusedHosts' map, also increment the 'piecesCompleted' value.
+	for i, index := range stuckChunkIndexes {
+		pieces, err := entrys[0].Pieces(uint64(index))
+		if err != nil {
+			r.log.Println("failed to get pieces for building incomplete chunks")
+			return nil
+		}
+		for pieceIndex, pieceSet := range pieces {
+			for _, piece := range pieceSet {
+				// Get the contract for the piece.
+				pk, exists := pks[piece.HostPubKey.String()]
+				if !exists {
+					build.Critical("Couldn't find public key in map. This should never happen")
+				}
+				contractUtility, exists := r.hostContractor.ContractUtility(pk)
+				if !exists {
+					// File contract does not seem to be part of the host anymore.
+					continue
+				}
+				if !contractUtility.GoodForRenew {
+					// We are no longer renewing with this contract, so it does not
+					// count for redundancy.
+					continue
+				}
+
+				// Mark the chunk set based on the pieces in this contract.
+				_, exists = newUnfinishedChunks[i].unusedHosts[pk.String()]
+				redundantPiece := newUnfinishedChunks[i].pieceUsage[pieceIndex]
+				if exists && !redundantPiece {
+					newUnfinishedChunks[i].pieceUsage[pieceIndex] = true
+					newUnfinishedChunks[i].piecesCompleted++
+					delete(newUnfinishedChunks[i].unusedHosts, pk.String())
+				} else if exists {
+					// This host has a piece, but it is the same piece another
+					// host has. We should still remove the host from the
+					// unusedHosts since one host having multiple pieces of a
+					// chunk might lead to unexpected issues. e.g. if a host
+					// has multiple pieces and another host with redundant
+					// pieces goes offline, we end up with false redundancy
+					// reporting.
+					delete(newUnfinishedChunks[i].unusedHosts, pk.String())
+				}
+			}
+		}
+	}
+
+	// Iterate through the set of newUnfinishedChunks and remove any that are
+	// completed.
+	//
+	// THIS WOULD BE A GOOD SANITY CHECK. NO CHUNKS SHOULD BE REMOVED BECAUSE
+	// ALL THE STUCK CHUNKS SHOULD BE INCOMPLETE
+	incompleteChunks := newUnfinishedChunks[:0]
+	for i := 0; i < len(newUnfinishedChunks); i++ {
+		if newUnfinishedChunks[i].piecesCompleted < newUnfinishedChunks[i].piecesNeeded {
+			incompleteChunks = append(incompleteChunks, newUnfinishedChunks[i])
+		}
+	}
+	// TODO: Don't return chunks that can't be downloaded, uploaded or otherwise
+	// helped by the upload process.
+	return incompleteChunks
+}
+
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
 func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}) {
@@ -272,6 +399,54 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		// log warning to renter log
 		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
 			r.log.Debugln("File not found on disk and possibly unrecoverable:", file.LocalPath())
+		}
+		err := file.Close()
+		if err != nil {
+			r.log.Debugln("WARN: Could not close thread:", err)
+		}
+	}
+}
+
+// managedBuildStuckChunkHeap will iterate through the provided directory and
+// add the stuck chunks to the heap
+func (r *Renter) managedBuildStuckChunkHeap(dirSiaPath string, hosts map[string]struct{}) {
+	// Get all the Stuck SiaFileSetEntrys
+	var files []*siafile.SiaFileSetEntry
+	_, fileinfos, err := r.DirList(dirSiaPath)
+	if err != nil {
+		return
+	}
+	for _, fi := range fileinfos {
+		// skip non stuck files
+		if fi.NumStuckChunks == 0 {
+			continue
+		}
+
+		// Open SiaFile
+		file, err := r.staticFileSet.Open(fi.SiaPath)
+		if err != nil {
+			return
+		}
+		files = append(files, file)
+	}
+
+	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities(files)
+
+	// Loop through the whole set of files and get a list of chunks to add to
+	// the heap.
+	for _, file := range files {
+		id := r.mu.Lock()
+		unfinishedUploadChunks := r.buildUnfinishedStuckChunks(file.CopyEntry(int(file.NumStuckChunks())), hosts)
+		r.mu.Unlock(id)
+		for i := 0; i < len(unfinishedUploadChunks); i++ {
+			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
+		}
+	}
+	for _, file := range files {
+		// Check if local file is missing and redundancy is less than 1
+		// log warning to renter log
+		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
+			r.log.Println("File not found on disk and possibly unrecoverable:", file.LocalPath())
 		}
 		err := file.Close()
 		if err != nil {

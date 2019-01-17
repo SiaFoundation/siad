@@ -15,6 +15,22 @@ import (
 
 // TODO - Adding testing for interruptions
 
+// equalHealthsAndChunks is a helper that checks the Health, StuckHealth, and
+// NumStuckChunks fields of two SiaDirHealths for equality. It does not look at
+// the LastHealthCheckTime field
+func equalHealthsAndChunks(health1, health2 siadir.SiaDirHealth) error {
+	if health1.Health != health2.Health {
+		return fmt.Errorf("Healths not equal, %v and %v", health1.Health, health2.Health)
+	}
+	if health1.StuckHealth != health2.StuckHealth {
+		return fmt.Errorf("StuckHealths not equal, %v and %v", health1.StuckHealth, health2.StuckHealth)
+	}
+	if health1.NumStuckChunks != health2.NumStuckChunks {
+		return fmt.Errorf("NumStuckChunks not equal, %v and %v", health1.NumStuckChunks, health2.NumStuckChunks)
+	}
+	return nil
+}
+
 // TestBubbleHealth tests to make sure that the health of the most in need file
 // in a directory is bubbled up to the right levels and probes the supporting
 // functions as well
@@ -406,18 +422,109 @@ func TestWorstHealthDirectory(t *testing.T) {
 	}
 }
 
-// equalHealthsAndChunks is a helper that checks the Health, StuckHealth, and
-// NumStuckChunks fields of two SiaDirHealths for equality. It does not look at
-// the LastHealthCheckTime field
-func equalHealthsAndChunks(health1, health2 siadir.SiaDirHealth) error {
-	if health1.Health != health2.Health {
-		return fmt.Errorf("Healths not equal, %v and %v", health1.Health, health2.Health)
+func TestRandomStuckDirectory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
 	}
-	if health1.StuckHealth != health2.StuckHealth {
-		return fmt.Errorf("StuckHealths not equal, %v and %v", health1.StuckHealth, health2.StuckHealth)
+	t.Parallel()
+
+	// Create test renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if health1.NumStuckChunks != health2.NumStuckChunks {
-		return fmt.Errorf("NumStuckChunks not equal, %v and %v", health1.NumStuckChunks, health2.NumStuckChunks)
+
+	// Create a test directory with sub folders
+	//
+	// root/
+	// root/SubDir1/
+	// root/SubDir1/SubDir2/
+	// root/SubDir2/
+	subDir1 := "SubDir1"
+	subDir2 := "SubDir2"
+	if err := rt.renter.CreateDir(subDir1); err != nil {
+		t.Fatal(err)
 	}
-	return nil
+	if err := rt.renter.CreateDir(subDir2); err != nil {
+		t.Fatal(err)
+	}
+	siaPath := filepath.Join(subDir1, subDir2)
+	if err := rt.renter.CreateDir(siaPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a file to root and SubDir1/SubDir2 and mark the first chunk as stuck
+	// in each file
+	//
+	// This will test the edge case of continuing to find stuck files when a
+	// directory has no files only directories
+	rsc, _ := siafile.NewRSCode(1, 1)
+	up := modules.FileUploadParams{
+		Source:      "",
+		SiaPath:     "rootFile",
+		ErasureCode: rsc,
+	}
+	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.SetStuck(uint64(0), true); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	up.SiaPath = filepath.Join(siaPath, "subDir_1_subdir_2_file")
+	f, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.SetStuck(uint64(0), true); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bubble directory information so NumStuckChunks is updated
+	rt.renter.threadedBubbleHealth(siaPath)
+	build.Retry(100, 100*time.Millisecond, func() error {
+		// Get Root Directory Health
+		health, err := rt.renter.managedDirectoryHealth("")
+		if err != nil {
+			return err
+		}
+		// Check Health
+		if health.NumStuckChunks != uint64(3) {
+			return fmt.Errorf("Incorrect number of stuck chunks, got %v expected 3", health.NumStuckChunks)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create map of stuck directories
+	stuckDirectories := make(map[string]struct{})
+	stuckDirectories[""] = struct{}{}
+	stuckDirectories[subDir1] = struct{}{}
+	stuckDirectories[siaPath] = struct{}{}
+
+	// Find random directory several times, confirm that it finds a stuck
+	// directory and there it finds unique directories
+	var unique bool
+	for i := 0; i < 10; i++ {
+		dir, err := rt.renter.managedStuckDirectory()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, ok := stuckDirectories[dir]
+		if !ok {
+			t.Fatal("Found non stuck directory:", dir)
+		}
+		unique = true
+	}
+	if !unique {
+		t.Fatal("No unique directories found")
+	}
 }
