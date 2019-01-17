@@ -307,15 +307,3 @@ func (r *Renter) initPersist() error {
 	// Load the prior persistence structures.
 	return r.loadSettings()
 }
-
-// LoadSharedFiles loads a .sia file into the renter. It returns the nicknames
-// of the loaded files.
-func (r *Renter) LoadSharedFiles(filename string) ([]string, error) {
-	return nil, errors.New("TODO Can we remove LoadSharedFiles?")
-}
-
-// LoadSharedFilesASCII loads an ASCII-encoded .sia file into the renter. It
-// returns the nicknames of the loaded files.
-func (r *Renter) LoadSharedFilesASCII(asciiSia string) ([]string, error) {
-	return nil, errors.New("TODO Can we remove LoadSharedFilesASCII?")
-}
