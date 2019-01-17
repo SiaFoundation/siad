@@ -102,20 +102,20 @@ func (fcr FileContractRevision) ID() FileContractID {
 	return fcr.ParentID
 }
 
-// HostPublicKey returns the public key of the host we formed the contract
-// with.
+// HostPublicKey returns the public key of the contract's host. This method
+// will panic if called on an incomplete revision.
 func (fcr FileContractRevision) HostPublicKey() SiaPublicKey {
 	return fcr.UnlockConditions.PublicKeys[1]
 }
 
-// RenterFunds returns the remaining funds the renter has locked away in the
-// contract.
+// RenterFunds returns the amount of funds in the contract's renter payout.
+// This method will panic on an incomplete revision.
 func (fcr FileContractRevision) RenterFunds() Currency {
 	return fcr.NewValidProofOutputs[0].Value
 }
 
-// EndHeight returns the endHeight of the contract which is the height at which
-// the proof window starts.
+// EndHeight returns the height at which the host is no longer obligated to
+// store the contract data.
 func (fcr FileContractRevision) EndHeight() BlockHeight {
 	return fcr.NewWindowStart
 }
