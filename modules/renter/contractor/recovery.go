@@ -11,6 +11,17 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// TODO If we already have an active contract with a host for
+// which we also have a recoverable contract, we might want to
+// handle that somehow. For now we probably want to ignore a
+// contract if we already have an active contract with the same
+// host but there could still be files which are only
+// accessible using one contract and not the other. We might
+// need to somehow merge them or download all the sectors from
+// the old one and upload them to the newer contract.  For now
+// we ignore that contract and don't delete it. We might want
+// to recover it later.
+
 // findRecoverableContracts scans the block for contracts that could
 // potentially be recovered. We are not going to recover them right away though
 // since many of them could already be expired. Recovery happens periodically
@@ -135,7 +146,7 @@ func (c *Contractor) managedRecoverContracts() {
 	// Get the wallet seed.
 	ws, _, err := c.wallet.PrimarySeed()
 	if err != nil {
-		c.log.Debugln("Can't recover contracts", err)
+		c.log.Println("Can't recover contracts", err)
 		return
 	}
 	// Get the renter seed and wipe it once we are done with it.
@@ -162,6 +173,8 @@ func (c *Contractor) managedRecoverContracts() {
 			if blockHeight >= rc.WindowEnd {
 				// No need to recover a contract if we are beyond the WindowEnd.
 				deleteContract[j] = true
+				c.log.Printf("Not recovering contract since the current blockheight %v is >= the WindowEnd %v:",
+					blockHeight, rc.WindowEnd, rc.ID)
 				return
 			}
 			// Check if we already have an active contract with the host.
@@ -174,6 +187,8 @@ func (c *Contractor) managedRecoverContracts() {
 				// merge them.
 				// For now we ignore that contract and don't delete it. We
 				// might want to recover it later.
+				c.log.Println("Not recovering contract since we already have a contract with that host",
+					rc.ID, rc.HostPublicKey.String())
 				return
 			}
 			// Get the ephemeral renter seed and wipe it after using it.
@@ -182,11 +197,11 @@ func (c *Contractor) managedRecoverContracts() {
 			// Recover contract.
 			err := c.managedRecoverContract(rc, ers, blockHeight)
 			if err != nil {
-				c.log.Debugln("Failed to recover contract", rc.ID, err)
+				c.log.Println("Failed to recover contract", rc.ID, err)
 			}
 			// Recovery was successful.
 			deleteContract[j] = true
-			c.log.Debugln("Successfully recovered contract", rc.ID)
+			c.log.Println("Successfully recovered contract", rc.ID)
 		}(i, recoverableContract)
 	}
 
@@ -198,6 +213,7 @@ func (c *Contractor) managedRecoverContracts() {
 	for i, rc := range recoverableContracts {
 		if deleteContract[i] {
 			delete(c.recoverableContracts, rc.ID)
+			c.log.Println("Deleted contract from recoverable contracts:", rc.ID)
 		}
 	}
 	err = c.save()

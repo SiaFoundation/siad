@@ -571,19 +571,6 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 
 	// add host signature
 	txn.TransactionSignatures[1].Signature = resp.Signature
-
-	// Verify the signatures on the revision txn before we use it to recover
-	// the roots.
-	var vHpk crypto.PublicKey
-	var vSig crypto.Signature
-	for i, signature := range txn.TransactionSignatures {
-		copy(vHpk[:], rev.UnlockConditions.PublicKeys[i].Key)
-		copy(vSig[:], signature.Signature)
-		err := crypto.VerifyHash(txn.SigHash(i, s.height), vHpk, vSig)
-		if err != nil {
-			return types.Transaction{}, []crypto.Hash{}, err
-		}
-	}
 	return txn, resp.SectorRoots, nil
 }
 
