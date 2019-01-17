@@ -27,6 +27,12 @@ const (
 	bubblePending
 )
 
+const (
+	// repairHealthThreshold is the minimum health that a file or directory
+	// needs to have in order for it to be repaired. This is to save resources
+	repairHealthThreshold = float64(0.25)
+)
+
 // managedBubbleNeeded checks if a bubble is needed for a directory, updates the
 // renter's bubbleUpdates map and returns a bool
 func (r *Renter) managedBubbleNeeded(siaPath string) (bool, error) {
@@ -279,8 +285,8 @@ func (r *Renter) managedSubDirectories(siaPath string) ([]string, error) {
 	return folders, nil
 }
 
-// managedWorstHealthDirectory finds the lowest level directory that has the
-// worst health
+// managedWorstHealthDirectory follows the path of worst health to the lowest
+// level possible
 func (r *Renter) managedWorstHealthDirectory() (string, float64, error) {
 	// Check the health of the root files directory
 	siaPath := ""
@@ -289,14 +295,14 @@ func (r *Renter) managedWorstHealthDirectory() (string, float64, error) {
 		return "", 0, err
 	}
 
-	// Find the lowest level directory that has the worst health. If the health
-	// is 0, meaning full health, then we break and return the previous
-	// directory
-	for health.Health != 0 {
+	// Follow the path of worst health to the lowest level. We only want to find
+	// directories with a health worse than the repairHealthThreshold to save
+	// resources
+	for health.Health >= repairHealthThreshold {
 		// Check to make sure renter hasn't been shutdown
 		select {
 		case <-r.tg.StopChan():
-			return "", 0, err
+			return "", 0, errors.New("could not find worst health directory due to shutdown")
 		default:
 		}
 		// Check for subdirectories

@@ -115,15 +115,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	// Grab a copy of the SiaFileSetEntry, all the entrys in the slice are the
 	// same
 	entry := entrys[0]
-	// If we don't have enough workers for the file, don't repair it right now.
-	minWorkers := 0
-	for i := uint64(0); i < entry.NumChunks(); i++ {
-		minPieces := entry.ErasureCode().MinPieces()
-		if minPieces > minWorkers {
-			minWorkers = minPieces
-		}
-	}
-	if len(r.workerPool) < minWorkers {
+	if len(r.workerPool) < entry.ErasureCode().MinPieces() {
 		return nil
 	}
 
@@ -279,7 +271,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		// Check if local file is missing and redundancy is less than 1
 		// log warning to renter log
 		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
-			r.log.Println("File not found on disk and possibly unrecoverable:", file.LocalPath())
+			r.log.Debugln("File not found on disk and possibly unrecoverable:", file.LocalPath())
 		}
 		err := file.Close()
 		if err != nil {
@@ -354,8 +346,23 @@ func (r *Renter) threadedUploadLoop() {
 			return
 		}
 
-		// Check if directory is at full health
-		if dirHealth == 0 {
+		// Initial rebuild signal
+		rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
+
+		// Check if directory requires repairing. We only want to repair
+		// directories with a health worse than the repairHealthThreshold to
+		// save resources
+		if dirHealth < repairHealthThreshold {
+			// Block until new work is required.
+			select {
+			case <-r.uploadHeap.newUploads:
+				// User has uploaded a new file.
+			case <-rebuildHeapSignal:
+				// Time to check the filesystem health again.
+			case <-r.tg.StopChan():
+				// The renter has shut down.
+				return
+			}
 			continue
 		}
 
@@ -375,7 +382,6 @@ func (r *Renter) threadedUploadLoop() {
 		// files in a loop and then process those. When the rebuild signal is
 		// received, we start over with the outer loop that rebuilds the heap
 		// and re-checks the health of all the files.
-		rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
 		for {
 			select {
 			case <-r.tg.StopChan():
@@ -418,17 +424,6 @@ func (r *Renter) threadedUploadLoop() {
 		}
 
 		// Bubble the directory to update the renter's directory
-		go r.threadedBubbleHealth(dirSiaPath)
-
-		// Block until new work is required.
-		select {
-		case <-r.uploadHeap.newUploads:
-			// User has uploaded a new file.
-		case <-rebuildHeapSignal:
-			// Time to check the filesystem health again.
-		case <-r.tg.StopChan():
-			// The renter has shut down.
-			return
-		}
+		r.threadedBubbleHealth(dirSiaPath)
 	}
 }
