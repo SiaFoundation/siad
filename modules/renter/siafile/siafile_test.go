@@ -318,3 +318,49 @@ func TestChunkHealth(t *testing.T) {
 		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap))
 	}
 }
+
+// TestStuckChunks checks to make sure the NumStuckChunks and StuckChunkIndexes
+// return the expected values
+func TestStuckChunks(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create siafile
+	sf := newBlankTestFile()
+
+	// Mark every other chunk as stuck
+	expectedStuckChunks := 0
+	for i := range sf.staticChunks {
+		if (i % 2) != 0 {
+			continue
+		}
+		if err := sf.SetStuck(uint64(i), true); err != nil {
+			t.Fatal(err)
+		}
+		expectedStuckChunks++
+	}
+
+	// Sanity Check
+	if expectedStuckChunks == 0 {
+		t.Fatal("No chunks were set to stuck")
+	}
+
+	// Check that the total number of stuck chunks is consistent
+	stuckChunkIndexes := sf.StuckChunkIndexes()
+	if len(stuckChunkIndexes) != expectedStuckChunks {
+		t.Fatalf("Wrong number of stuck chunks, got %v expected %v", len(stuckChunkIndexes), expectedStuckChunks)
+	}
+	numStuckChunks := sf.NumStuckChunks()
+	if numStuckChunks != uint64(expectedStuckChunks) {
+		t.Fatalf("Wrong number of stuck chunks, got %v expected %v", numStuckChunks, expectedStuckChunks)
+	}
+
+	// Check stuck chunk indexes
+	for _, index := range stuckChunkIndexes {
+		if (index % 2) != 0 {
+			t.Fatal("Unexpected index")
+		}
+	}
+}
