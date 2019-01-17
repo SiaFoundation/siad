@@ -4092,10 +4092,13 @@ func TestSiafileCompatCode(t *testing.T) {
 	// Get test directory
 	testDir := renterTestDir(t.Name())
 
+	// The siapath stored in the legacy file.
+	expectedSiaPath := "sub1/sub2/testfile"
+
 	// Copying legacy file to test directory
 	renterDir := filepath.Join(testDir, "renter")
 	source := filepath.Join("..", "..", "compatibility", "siafile_v1.3.7.sia")
-	destination := filepath.Join(renterDir, "sub1", "sub2", "siafile_v1.3.7.sia")
+	destination := filepath.Join(renterDir, "sub1", "sub2", "testfile.sia")
 	if err := copyFile(source, destination); err != nil {
 		t.Fatal(err)
 	}
@@ -4129,7 +4132,7 @@ func TestSiafileCompatCode(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	// Check that exactly 1 siafile exists.
+	// Check that exactly 1 siafile exists and that it's the correct one.
 	fis, err := r.Files()
 	if err != nil {
 		t.Fatal(err)
@@ -4137,7 +4140,6 @@ func TestSiafileCompatCode(t *testing.T) {
 	if len(fis) != 1 {
 		t.Fatal("Expected 1 file but got", len(fis))
 	}
-	expectedSiaPath := "sub1/sub2/4096bytes 55dc7e8d"
 	if fis[0].SiaPath != expectedSiaPath {
 		t.Fatalf("Siapath should be '%v' but was '%v'",
 			expectedSiaPath, fis[0].SiaPath)
@@ -4147,8 +4149,55 @@ func TestSiafileCompatCode(t *testing.T) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the siafile is exactly where we would expect it.
-	expectedLocation := filepath.Join(renterDir, "siafiles", "sub1", "sub2", "siafile_v1.3.7.sia")
+	expectedLocation := filepath.Join(renterDir, "siafiles", "sub1", "sub2", "testfile.sia")
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
+	}
+	// Check the other fields of the file.
+	sf := fis[0]
+	if sf.AccessTime.IsZero() {
+		t.Fatal("AccessTime wasn't set correctly")
+	}
+	if sf.ChangeTime.IsZero() {
+		t.Fatal("ChangeTime wasn't set correctly")
+	}
+	if sf.CreateTime.IsZero() {
+		t.Fatal("CreateTime wasn't set correctly")
+	}
+	if sf.ModTime.IsZero() {
+		t.Fatal("ModTime wasn't set correctly")
+	}
+	if sf.Available {
+		t.Fatal("File shouldn't be available since we don't know the hosts")
+	}
+	if sf.CipherType != crypto.TypeTwofish.String() {
+		t.Fatal("CipherType should be twofish but was", sf.CipherType)
+	}
+	if sf.Filesize != 4096 {
+		t.Fatal("Filesize should be 4096 but was", sf.Filesize)
+	}
+	if sf.Expiration != 91 {
+		t.Fatal("Expiration should be 91 but was", sf.Expiration)
+	}
+	if sf.LocalPath != "/tmp/SiaTesting/siatest/TestRenterTwo/gctwr-EKYAZSVOZ6U2T4HZYIAQ/files/4096bytes 16951a61" {
+		t.Fatal("LocalPath doesn't match")
+	}
+	if sf.Redundancy != 0 {
+		t.Fatal("Redundancy should be 0 since we don't know the hosts")
+	}
+	if sf.UploadProgress != 100 {
+		t.Fatal("File was uploaded before so the progress should be 100")
+	}
+	if sf.UploadedBytes != 40960 {
+		t.Fatal("Redundancy should be 10/20 so 10x the Filesize = 40960 bytes should be uploaded")
+	}
+	if sf.OnDisk {
+		t.Fatal("OnDisk should be false but was true")
+	}
+	if sf.Recoverable {
+		t.Fatal("Recoverable should be false but was true")
+	}
+	if !sf.Renewing {
+		t.Fatal("Renewing should be true but wasn't")
 	}
 }
