@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -475,9 +476,20 @@ func (e *RPCError) Error() string {
 	return e.Description
 }
 
+// RPCMinLen is the minimum size of an RPC message. If an encoded message
+// would be smaller than RPCMinLen, it is padded with random data.
+const RPCMinLen = 4096
+
 // WriteRPCMessage writes an encrypted RPC message.
 func WriteRPCMessage(w io.Writer, aead cipher.AEAD, obj interface{}) error {
-	return encoding.WritePrefixedBytes(w, crypto.EncryptWithNonce(encoding.Marshal(obj), aead))
+	payload := encoding.Marshal(obj)
+	// pad the payload to RPCMinLen bytes to prevent eavesdroppers from
+	// identifying RPCs by their size.
+	minLen := RPCMinLen - aead.Overhead() - aead.NonceSize()
+	if len(payload) < minLen {
+		payload = append(payload, fastrand.Bytes(minLen-len(payload))...)
+	}
+	return encoding.WritePrefixedBytes(w, crypto.EncryptWithNonce(payload, aead))
 }
 
 // ReadRPCMessage reads an encrypted RPC message.
@@ -490,7 +502,8 @@ func ReadRPCMessage(r io.Reader, aead cipher.AEAD, obj interface{}, maxLen uint6
 	if err != nil {
 		return err
 	}
-	return encoding.Unmarshal(plaintext, obj)
+	// plaintext may contain padding, so use Decoder instead of Unmarshal
+	return encoding.NewDecoder(bytes.NewReader(plaintext)).Decode(obj)
 }
 
 // WriteRPCRequest writes an encrypted RPC request using the new loop
@@ -525,7 +538,7 @@ func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error
 
 // ReadRPCID reads an RPC request ID using the new loop protocol.
 func ReadRPCID(r io.Reader, aead cipher.AEAD) (rpcID types.Specifier, err error) {
-	err = ReadRPCMessage(r, aead, &rpcID, 256)
+	err = ReadRPCMessage(r, aead, &rpcID, RPCMinLen)
 	return
 }
 
@@ -536,12 +549,10 @@ func ReadRPCRequest(r io.Reader, aead cipher.AEAD, req interface{}, maxLen uint6
 
 // ReadRPCResponse reads an RPC response using the new loop protocol.
 func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uint64) error {
-	// maxLen must be large enough to receive an error
-	const errorMaxLen = 1024
-	if maxLen < errorMaxLen {
-		maxLen = errorMaxLen
+	if maxLen < RPCMinLen {
+		build.Critical("maxLen must be at least RPCMinLen")
+		maxLen = RPCMinLen
 	}
-	maxLen += uint64(aead.NonceSize() + aead.Overhead() + 1) // account for nonce, MAC, and leading bool
 	encryptedResp, err := encoding.ReadPrefixedBytes(r, maxLen)
 	if err != nil {
 		return err

@@ -37,16 +37,9 @@ const (
 	// the actual RPC request object.)
 	rpcRequestInterval = 2 * time.Minute
 
-	// Size limits for various RPCs.
-	challengeRespMaxLen    = 256
-	contractSigsRespMaxLen = 1024
-	readReqMaxLen          = 1024
-	lockReqMaxLen          = 256
-	formContractReqMaxLen  = 4096
-	keyExchangeMaxLen      = 256
-	renewContractReqMaxLen = 4096
-	sectorRootsReqMaxLen   = 1024
-	uploadReqMaxLen        = 17 * (1 << 20) // 4 sectors plus extra metadata
+	// keyExchangeMaxLen is the maximum number of bytes the host will read
+	// from the renter during the RPC key exchange.
+	keyExchangeMaxLen = 256
 )
 
 var (

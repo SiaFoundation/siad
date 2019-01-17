@@ -21,17 +21,9 @@ const (
 	// the whole remaining file instead of being bound to a certain end offset.
 	remainingFile = -1
 
-	// Size limits for various RPCs.
-	challengeReqMaxLen           = 256
-	contractAdditionsRespMaxLen  = 4096
-	contractSignaturesRespMaxLen = 1024
-	keyExchangeMaxLen            = 256
-	lockRespMaxLen               = 2048
-	readRespMaxLen               = 2048 // does not include sector data
-	rpcErrorMaxLen               = 1024
-	sectorRootsRespMaxLen        = 2048 // does not include root data
-	settingsRespMaxLen           = 2048
-	writeRespMaxLen              = 256
+	// keyExchangeMaxLen is the maximum number of bytes the renter will read
+	// from the host during the RPC key exchange.
+	keyExchangeMaxLen = 256
 )
 
 var (

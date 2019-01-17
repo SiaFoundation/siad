@@ -57,7 +57,7 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 
 	extendDeadline(s.conn, modules.NegotiateSettingsTime) // TODO: should account for lock time
 	var resp modules.LoopLockResponse
-	if err := s.call(modules.RPCLoopLock, req, &resp, lockRespMaxLen); err != nil {
+	if err := s.call(modules.RPCLoopLock, req, &resp, modules.RPCMinLen); err != nil {
 		return types.FileContractRevision{}, nil, err
 	}
 
@@ -81,7 +81,7 @@ func (s *Session) Unlock() error {
 func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	extendDeadline(s.conn, modules.NegotiateSettingsTime)
 	var resp modules.LoopSettingsResponse
-	if err := s.call(modules.RPCLoopSettings, nil, &resp, settingsRespMaxLen); err != nil {
+	if err := s.call(modules.RPCLoopSettings, nil, &resp, modules.RPCMinLen); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
 	s.host.HostExternalSettings = resp.Settings
@@ -189,7 +189,7 @@ func (s *Session) Write(data []byte) (_ modules.RenterContract, _ crypto.Hash, e
 	// send upload RPC request
 	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
 	var resp modules.LoopWriteResponse
-	err = s.call(modules.RPCLoopWrite, req, &resp, writeRespMaxLen)
+	err = s.call(modules.RPCLoopWrite, req, &resp, modules.RPCMinLen)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}
@@ -308,7 +308,7 @@ func (s *Session) Read(root crypto.Hash, offset, length uint32) (_ modules.Rente
 	// send download RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopReadResponse
-	err = s.call(modules.RPCLoopRead, req, &resp, readRespMaxLen+uint64(sec.Length))
+	err = s.call(modules.RPCLoopRead, req, &resp, modules.RPCMinLen+uint64(sec.Length))
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -419,7 +419,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	// send SectorRoots RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopSectorRootsResponse
-	err = s.call(modules.RPCLoopSectorRoots, req, &resp, sectorRootsRespMaxLen+(req.NumRoots*32))
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp, modules.RPCMinLen+(req.NumRoots*crypto.HashSize))
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
