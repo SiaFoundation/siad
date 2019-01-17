@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
@@ -4093,16 +4094,29 @@ func TestSiafileCompatCode(t *testing.T) {
 
 	// Copying legacy file to test directory
 	renterDir := filepath.Join(testDir, "renter")
-	source := filepath.Join("..", "..", "compatibility", "siafile_v0.4.8.sia")
-	destination := filepath.Join(renterDir, "siafile_v0.4.8.sia")
+	source := filepath.Join("..", "..", "compatibility", "siafile_v1.3.7.sia")
+	destination := filepath.Join(renterDir, "sub1", "sub2", "siafile_v1.3.7.sia")
 	if err := copyFile(source, destination); err != nil {
 		t.Fatal(err)
 	}
 	// Copy the legacy settings file to the test directory.
-	source2 := "../../compatibility/renter_v04.json"
+	source2 := "../../compatibility/renter_v137.json"
 	destination2 := filepath.Join(renterDir, "renter.json")
 	if err := copyFile(source2, destination2); err != nil {
 		t.Fatal(err)
+	}
+	// Copy the legacy contracts into the test directory.
+	contractsSource := "../../compatibility/contracts_v137"
+	contracts, err := ioutil.ReadDir(contractsSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fi := range contracts {
+		contractDst := filepath.Join(contractsSource, fi.Name())
+		err := copyFile(contractDst, filepath.Join(renterDir, "contracts", fi.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Create new node with legacy sia file.
@@ -4123,8 +4137,18 @@ func TestSiafileCompatCode(t *testing.T) {
 	if len(fis) != 1 {
 		t.Fatal("Expected 1 file but got", len(fis))
 	}
+	expectedSiaPath := "sub1/sub2/4096bytes 55dc7e8d"
+	if fis[0].SiaPath != expectedSiaPath {
+		t.Fatalf("Siapath should be '%v' but was '%v'",
+			expectedSiaPath, fis[0].SiaPath)
+	}
 	// Make sure the legacy file was deleted.
 	if _, err := os.Stat(destination); !os.IsNotExist(err) {
 		t.Fatal("Error should be ErrNotExist but was", err)
+	}
+	// Make sure the siafile is exactly where we would expect it.
+	expectedLocation := filepath.Join(renterDir, "siafiles", "sub1", "sub2", "siafile_v1.3.7.sia")
+	if _, err := os.Stat(expectedLocation); err != nil {
+		t.Fatal(err)
 	}
 }

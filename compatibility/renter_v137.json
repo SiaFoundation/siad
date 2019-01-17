@@ -1,0 +1,37 @@
+"Renter Persistence"
+"1.3.3"
+"44f781d3c91fac5c56df4368a63b0b3f1de0af9a7697b984b13aca77cf043b16"
+{
+	"MaxDownloadSpeed": 0,
+	"MaxUploadSpeed": 0,
+	"StreamCacheSize": 2,
+	"Tracking": {
+		"100bytes aa0db5fc": {
+			"RepairPath": "/tmp/SiaTesting/siatest/TestRenter/gctwr-F7HG7WDEBKUAQ2244SRU/files/100bytes aa0db5fc"
+		},
+		"40959bytes 1c83a944": {
+			"RepairPath": "/tmp/SiaTesting/siatest/TestRenter/gctwr-F7HG7WDEBKUAQ2244SRU/files/40959bytes 1c83a944"
+		},
+		"40959bytes 2d79fb5d": {
+			"RepairPath": "/tmp/SiaTesting/siatest/TestRenter/gctwr-F7HG7WDEBKUAQ2244SRU/files/40959bytes 2d79fb5d"
+		},
+		"40959bytes 57fd3226": {
+			"RepairPath": "/tmp/SiaTesting/siatest/TestRenter/gctwr-F7HG7WDEBKUAQ2244SRU/files/40959bytes 57fd3226"
+		},
+		"40959bytes a3f07143": {
+			"RepairPath": "/tmp/SiaTesting/siatest/TestRenter/gctwr-F7HG7WDEBKUAQ2244SRU/files/40959bytes a3f07143"
+		},
+		"40959bytes f5039639": {
+			"RepairPath": "/tmp/SiaTesting/siatest/TestRenter/gctwr-F7HG7WDEBKUAQ2244SRU/files/40959bytes f5039639"
+		},
+		"4096bytes 55dc7e8d": {
+			"RepairPath": "/tmp/SiaTesting/siatest/TestRenter/gctwr-F7HG7WDEBKUAQ2244SRU/files/4096bytes 55dc7e8d"
+		},
+		"4096bytes f915b961": {
+			"RepairPath": "/tmp/SiaTesting/siatest/TestRenter/gctwr-F7HG7WDEBKUAQ2244SRU/files/4096bytes-6fe164b1"
+		},
+		"99bytes e83ec56f": {
+			"RepairPath": "/tmp/SiaTesting/siatest/TestRenter/gctwr-F7HG7WDEBKUAQ2244SRU/files/99bytes e83ec56f"
+		}
+	}
+}
