@@ -281,8 +281,11 @@ func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string,
 		dupCount := 0
 		origName := files[i].name
 		for {
-			_, err := r.staticFileSet.Exists(files[i].name)
-			if os.IsNotExist(err) {
+			exists, err := r.staticFileSet.Exists(files[i].name)
+			if err != nil {
+				return nil, err
+			}
+			if !exists {
 				break
 			}
 			dupCount++

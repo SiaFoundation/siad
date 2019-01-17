@@ -328,6 +328,10 @@ func (sf *SiaFile) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uin
 func (sf *SiaFile) Delete() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// We can't delete a file multiple times.
+	if sf.deleted {
+		return errors.New("can't delete file more than once")
+	}
 	update := sf.createDeleteUpdate()
 	err := sf.createAndApplyTransaction(update)
 	sf.deleted = true
@@ -541,6 +545,10 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// If the file has been deleted we can't mark a chunk as stuck.
+	if sf.deleted {
+		return errors.New("can't call SetStuck on deleted file")
+	}
 	// Check for change
 	if stuck == sf.staticChunks[index].Stuck {
 		return nil
@@ -595,6 +603,10 @@ func (sf *SiaFile) UploadedBytes() uint64 {
 func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Can't update used hosts on deleted file.
+	if sf.deleted {
+		return errors.New("can't call UpdateUsedHosts on deleted file")
+	}
 	// Create a map of the used keys for faster lookups.
 	usedMap := make(map[string]struct{})
 	for _, key := range used {

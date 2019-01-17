@@ -140,10 +140,10 @@ func (sfs *SiaFileSet) exists(siaPath string) (bool, error) {
 	}
 	// Check for file on disk
 	_, err := os.Stat(filepath.Join(sfs.siaFileDir, siaPath+ShareExtension))
-	if err == nil {
-		return true, nil
+	if !os.IsNotExist(err) {
+		return true, err
 	}
-	return false, err
+	return false, nil
 }
 
 // newSiaFileSetEntry initializes and returns a siaFileSetEntry
@@ -229,11 +229,11 @@ func (sfs *SiaFileSet) Delete(siaPath string) error {
 	defer sfs.mu.Unlock()
 	// Check if SiaFile exists
 	exists, err := sfs.exists(siaPath)
-	if !exists && os.IsNotExist(err) {
-		return ErrUnknownPath
-	}
 	if err != nil {
 		return err
+	}
+	if !exists {
+		return ErrUnknownPath
 	}
 	// Grab entry
 	entry, err := sfs.open(siaPath)
@@ -248,6 +248,8 @@ func (sfs *SiaFileSet) Delete(siaPath string) error {
 	if err := entry.Delete(); err != nil {
 		return err
 	}
+	// Delete entry from set.
+	delete(sfs.siaFileMap, entry.SiaPath())
 	return nil
 }
 
@@ -388,11 +390,11 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath string) error {
 	newSiaPath = strings.TrimPrefix(newSiaPath, "/")
 	// Check if SiaFile Exists
 	exists, err := sfs.exists(siaPath)
-	if !exists && os.IsNotExist(err) {
-		return ErrUnknownPath
-	}
 	if err != nil {
 		return err
+	}
+	if !exists {
+		return ErrUnknownPath
 	}
 	// Check for Conflict
 	exists, err = sfs.exists(newSiaPath)

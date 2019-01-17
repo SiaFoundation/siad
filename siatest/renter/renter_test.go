@@ -3896,6 +3896,61 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	}
 }
 
+// TestUploadAfterDelete tests that rapidly uploading a file to the same
+// siapath as a previously deleted file works.
+func TestUploadAfterDelete(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a Renter node
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencyDisableCloseUploadEntry{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(modules.SectorSize)
+	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Repeatedly upload and delete a file with the same SiaPath without
+	// closing the entry. That shouldn't cause issues.
+	for i := 0; i < 5; i++ {
+		// Delete the file.
+		if err := renter.RenterDeletePost(remoteFile.SiaPath()); err != nil {
+			t.Fatal(err)
+		}
+		// Upload the file again right after deleting it.
+		if _, err := renter.UploadBlocking(localFile, dataPieces, parityPieces, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // TestRenterContractRecovery tests that recovering a node from a seed that has
 // contracts associated with it will recover those contracts.
 func TestRenterContractRecovery(t *testing.T) {
