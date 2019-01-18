@@ -88,8 +88,6 @@ func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.B
 // managedRecoverContract recovers a single contract by contacting the host it
 // was formed with and retrieving the latest revision and sector roots.
 func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs proto.EphemeralRenterSeed, blockHeight types.BlockHeight) error {
-	println("managedRecoverContract start")
-	defer println("managedRecoverContract end")
 	// Get the corresponding host.
 	host, ok := c.hdb.Host(rc.HostPublicKey)
 	if !ok {

@@ -4012,7 +4012,6 @@ func TestRenterContractRecovery(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(rc.ActiveContracts) != len(oldContracts) {
-			println(numRetries, ":ActiveContracts", len(rc.ActiveContracts))
 			return fmt.Errorf("Didn't recover the right number of contracts, expected %v but was %v",
 				len(oldContracts), len(rc.ActiveContracts))
 		}
