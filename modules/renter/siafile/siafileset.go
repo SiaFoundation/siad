@@ -130,20 +130,17 @@ func (entry *SiaFileSetEntry) Close() error {
 
 // exists checks to see if a file with the provided siaPath already exists in
 // the renter
-func (sfs *SiaFileSet) exists(siaPath string) (bool, error) {
+func (sfs *SiaFileSet) exists(siaPath string) bool {
 	// Make sure there are no leading slashes
 	siaPath = strings.TrimPrefix(siaPath, "/")
 	// Check for file in Memory
 	_, exists := sfs.siaFileMap[siaPath]
 	if exists {
-		return exists, nil
+		return exists
 	}
 	// Check for file on disk
 	_, err := os.Stat(filepath.Join(sfs.siaFileDir, siaPath+ShareExtension))
-	if !os.IsNotExist(err) {
-		return true, err
-	}
-	return false, nil
+	return !os.IsNotExist(err)
 }
 
 // newSiaFileSetEntry initializes and returns a siaFileSetEntry
@@ -228,10 +225,7 @@ func (sfs *SiaFileSet) Delete(siaPath string) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	// Check if SiaFile exists
-	exists, err := sfs.exists(siaPath)
-	if err != nil {
-		return err
-	}
+	exists := sfs.exists(siaPath)
 	if !exists {
 		return ErrUnknownPath
 	}
@@ -255,7 +249,7 @@ func (sfs *SiaFileSet) Delete(siaPath string) error {
 
 // Exists checks to see if a file with the provided siaPath already exists in
 // the renter
-func (sfs *SiaFileSet) Exists(siaPath string) (bool, error) {
+func (sfs *SiaFileSet) Exists(siaPath string) bool {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.exists(siaPath)
@@ -296,7 +290,7 @@ func (sfs *SiaFileSet) NewFromFileData(fd FileData) (*SiaFileSetEntry, error) {
 		},
 		deleted:        fd.Deleted,
 		deps:           modules.ProdDependencies,
-		siaFilePath:    fd.RepairPath,
+		siaFilePath:    filepath.Join(sfs.siaFileDir, fd.Name+ShareExtension),
 		staticUniqueID: fd.UID,
 		wal:            sfs.wal,
 	}
@@ -348,12 +342,9 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 	defer sfs.mu.Unlock()
 	siaPath := strings.TrimPrefix(up.SiaPath, "/")
 	// Check is SiaFile already exists
-	exists, err := sfs.exists(siaPath)
+	exists := sfs.exists(siaPath)
 	if exists && !up.Force {
 		return nil, ErrPathOverload
-	}
-	if !os.IsNotExist(err) && err != nil {
-		return nil, err
 	}
 	// Make sure there are no leading slashes
 	siaFilePath := filepath.Join(sfs.siaFileDir, siaPath+ShareExtension)
@@ -389,15 +380,12 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath string) error {
 	siaPath = strings.TrimPrefix(siaPath, "/")
 	newSiaPath = strings.TrimPrefix(newSiaPath, "/")
 	// Check if SiaFile Exists
-	exists, err := sfs.exists(siaPath)
-	if err != nil {
-		return err
-	}
+	exists := sfs.exists(siaPath)
 	if !exists {
 		return ErrUnknownPath
 	}
 	// Check for Conflict
-	exists, err = sfs.exists(newSiaPath)
+	exists = sfs.exists(newSiaPath)
 	if exists {
 		return ErrPathOverload
 	}

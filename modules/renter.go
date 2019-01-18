@@ -538,14 +538,6 @@ type Renter interface {
 	// hostdb is completed.
 	InitialScanComplete() (bool, error)
 
-	// LoadSharedFiles loads a '.sia' file into the renter. A .sia file may
-	// contain multiple files. The paths of the added files are returned.
-	LoadSharedFiles(source string) ([]string, error)
-
-	// LoadSharedFilesASCII loads an ASCII-encoded '.sia' file into the
-	// renter.
-	LoadSharedFilesASCII(asciiSia string) ([]string, error)
-
 	// PriceEstimation estimates the cost in siacoins of performing various
 	// storage and data operations.
 	PriceEstimation(allowance Allowance) (RenterPriceEstimation, Allowance, error)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
@@ -2603,6 +2604,33 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	}
 }
 
+// copyFile is a helper function to copy a file to a destination.
+func copyFile(fromPath, toPath string) error {
+	err := os.MkdirAll(filepath.Dir(toPath), 0700)
+	if err != nil {
+		return err
+	}
+	from, err := os.Open(fromPath)
+	if err != nil {
+		return err
+	}
+	to, err := os.OpenFile(toPath, os.O_RDWR|os.O_CREATE, 0700)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(to, from)
+	if err != nil {
+		return err
+	}
+	if err = from.Close(); err != nil {
+		return err
+	}
+	if err = to.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // TestRenterPersistData checks if the RenterSettings are persisted
 func TestRenterPersistData(t *testing.T) {
 	if testing.Short() {
@@ -2614,28 +2642,9 @@ func TestRenterPersistData(t *testing.T) {
 	testDir := renterTestDir(t.Name())
 
 	// Copying legacy file to test directory
-	renterDir := filepath.Join(testDir, "renter")
-	destination := filepath.Join(renterDir, "renter.json")
-	err := os.MkdirAll(renterDir, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-	from, err := os.Open("../../compatibility/renter_v04.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	to, err := os.OpenFile(destination, os.O_RDWR|os.O_CREATE, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = io.Copy(to, from)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = from.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err = to.Close(); err != nil {
+	source := "../../compatibility/renter_v04.json"
+	destination := filepath.Join(testDir, "renter", "renter.json")
+	if err := copyFile(source, destination); err != nil {
 		t.Fatal(err)
 	}
 
@@ -4070,4 +4079,125 @@ func TestRenterContractRecovery(t *testing.T) {
 	//		t.Fatal("Recovered contract doesn't match expected contract")
 	//	}
 	//}
+}
+
+// TestSiafileCompatCode checks that legacy renters can upgrade to the latest
+// siafile format.
+func TestSiafileCompatCode(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Get test directory
+	testDir := renterTestDir(t.Name())
+
+	// The siapath stored in the legacy file.
+	expectedSiaPath := "sub1/sub2/testfile"
+
+	// Copying legacy file to test directory
+	renterDir := filepath.Join(testDir, "renter")
+	source := filepath.Join("..", "..", "compatibility", "siafile_v1.3.7.sia")
+	destination := filepath.Join(renterDir, "sub1", "sub2", "testfile.sia")
+	if err := copyFile(source, destination); err != nil {
+		t.Fatal(err)
+	}
+	// Copy the legacy settings file to the test directory.
+	source2 := "../../compatibility/renter_v137.json"
+	destination2 := filepath.Join(renterDir, "renter.json")
+	if err := copyFile(source2, destination2); err != nil {
+		t.Fatal(err)
+	}
+	// Copy the legacy contracts into the test directory.
+	contractsSource := "../../compatibility/contracts_v137"
+	contracts, err := ioutil.ReadDir(contractsSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fi := range contracts {
+		contractDst := filepath.Join(contractsSource, fi.Name())
+		err := copyFile(contractDst, filepath.Join(renterDir, "contracts", fi.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create new node with legacy sia file.
+	r, err := siatest.NewNode(node.AllModules(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err = r.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Check that exactly 1 siafile exists and that it's the correct one.
+	fis, err := r.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fis) != 1 {
+		t.Fatal("Expected 1 file but got", len(fis))
+	}
+	if fis[0].SiaPath != expectedSiaPath {
+		t.Fatalf("Siapath should be '%v' but was '%v'",
+			expectedSiaPath, fis[0].SiaPath)
+	}
+	// Make sure the legacy file was deleted.
+	if _, err := os.Stat(destination); !os.IsNotExist(err) {
+		t.Fatal("Error should be ErrNotExist but was", err)
+	}
+	// Make sure the siafile is exactly where we would expect it.
+	expectedLocation := filepath.Join(renterDir, "siafiles", "sub1", "sub2", "testfile.sia")
+	if _, err := os.Stat(expectedLocation); err != nil {
+		t.Fatal(err)
+	}
+	// Check the other fields of the file.
+	sf := fis[0]
+	if sf.AccessTime.IsZero() {
+		t.Fatal("AccessTime wasn't set correctly")
+	}
+	if sf.ChangeTime.IsZero() {
+		t.Fatal("ChangeTime wasn't set correctly")
+	}
+	if sf.CreateTime.IsZero() {
+		t.Fatal("CreateTime wasn't set correctly")
+	}
+	if sf.ModTime.IsZero() {
+		t.Fatal("ModTime wasn't set correctly")
+	}
+	if sf.Available {
+		t.Fatal("File shouldn't be available since we don't know the hosts")
+	}
+	if sf.CipherType != crypto.TypeTwofish.String() {
+		t.Fatal("CipherType should be twofish but was", sf.CipherType)
+	}
+	if sf.Filesize != 4096 {
+		t.Fatal("Filesize should be 4096 but was", sf.Filesize)
+	}
+	if sf.Expiration != 91 {
+		t.Fatal("Expiration should be 91 but was", sf.Expiration)
+	}
+	if sf.LocalPath != "/tmp/SiaTesting/siatest/TestRenterTwo/gctwr-EKYAZSVOZ6U2T4HZYIAQ/files/4096bytes 16951a61" {
+		t.Fatal("LocalPath doesn't match")
+	}
+	if sf.Redundancy != 0 {
+		t.Fatal("Redundancy should be 0 since we don't know the hosts")
+	}
+	if sf.UploadProgress != 100 {
+		t.Fatal("File was uploaded before so the progress should be 100")
+	}
+	if sf.UploadedBytes != 40960 {
+		t.Fatal("Redundancy should be 10/20 so 10x the Filesize = 40960 bytes should be uploaded")
+	}
+	if sf.OnDisk {
+		t.Fatal("OnDisk should be false but was true")
+	}
+	if sf.Recoverable {
+		t.Fatal("Recoverable should be false but was true")
+	}
+	if !sf.Renewing {
+		t.Fatal("Renewing should be true but wasn't")
+	}
 }

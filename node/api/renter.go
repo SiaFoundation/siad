@@ -548,39 +548,6 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 	})
 }
 
-// renterLoadHandler handles the API call to load a '.sia' file.
-func (api *API) renterLoadHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	source, err := url.QueryUnescape(req.FormValue("source"))
-	if err != nil {
-		WriteError(w, Error{"failed to unescape the source path"}, http.StatusBadRequest)
-		return
-	}
-	if !filepath.IsAbs(source) {
-		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
-		return
-	}
-
-	files, err := api.renter.LoadSharedFiles(source)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
-	}
-
-	WriteJSON(w, RenterLoad{FilesAdded: files})
-}
-
-// renterLoadAsciiHandler handles the API call to load a '.sia' file
-// in ASCII form.
-func (api *API) renterLoadASCIIHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	files, err := api.renter.LoadSharedFilesASCII(req.FormValue("asciisia"))
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
-	}
-
-	WriteJSON(w, RenterLoad{FilesAdded: files})
-}
-
 // renterRenameHandler handles the API call to rename a file entry in the
 // renter.
 func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {

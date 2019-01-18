@@ -244,11 +244,20 @@ func TestSiafileCompatibility(t *testing.T) {
 
 	// Load the compatibility file into the renter.
 	path := filepath.Join("..", "..", "compatibility", "siafile_v0.4.8.sia")
-	names, err := rt.renter.LoadSharedFiles(path)
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names, err := rt.renter.compatV137loadSiaFilesFromReader(f, make(map[string]v137TrackedFile))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(names) != 1 || names[0] != "testfile-183" {
 		t.Fatal("nickname not loaded properly:", names)
+	}
+	// Make sure that we can open the file afterwards.
+	_, err = rt.renter.staticFileSet.Open(names[0])
+	if err != nil {
+		t.Fatal(err)
 	}
 }
