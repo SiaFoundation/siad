@@ -4000,7 +4000,7 @@ func TestRenterContractRecovery(t *testing.T) {
 	// The new renter should have the same active contracts as the old one.
 	miner := tg.Miners()[0]
 	numRetries := 0
-	err = build.Retry(120, time.Second, func() error {
+	err = build.Retry(60, time.Second, func() error {
 		if numRetries%10 == 0 {
 			if err := miner.MineBlock(); err != nil {
 				return err
@@ -4012,6 +4012,7 @@ func TestRenterContractRecovery(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(rc.ActiveContracts) != len(oldContracts) {
+			println(numRetries, ":ActiveContracts", len(rc.ActiveContracts))
 			return fmt.Errorf("Didn't recover the right number of contracts, expected %v but was %v",
 				len(oldContracts), len(rc.ActiveContracts))
 		}
