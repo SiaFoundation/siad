@@ -106,132 +106,7 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 // TODO / NOTE: This code can be substantially simplified once the files store
 // the HostPubKey instead of the FileContractID, and can be simplified even
 // further once the layout is per-chunk instead of per-filecontract.
-func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}) []*unfinishedUploadChunk {
-	// Sanity check that there are entries
-	if len(entrys) == 0 {
-		return nil
-	}
-
-	// Grab a copy of the SiaFileSetEntry, all the entrys in the slice are the
-	// same
-	entry := entrys[0]
-	if len(r.workerPool) < entry.ErasureCode().MinPieces() {
-		return nil
-	}
-
-	// Assemble the set of chunks.
-	//
-	// TODO / NOTE: Future files may have a different method for determining the
-	// number of chunks. Changes will be made due to things like sparse files,
-	// and the fact that chunks are going to be different sizes.
-	chunkCount := entry.NumChunks()
-	newUnfinishedChunks := make([]*unfinishedUploadChunk, chunkCount)
-	for i := uint64(0); i < chunkCount; i++ {
-		newUnfinishedChunks[i] = &unfinishedUploadChunk{
-			fileEntry: entrys[i],
-
-			id: uploadChunkID{
-				fileUID: entry.UID(),
-				index:   i,
-			},
-
-			index:  i,
-			length: entry.ChunkSize(),
-			offset: int64(i * entry.ChunkSize()),
-
-			// memoryNeeded has to also include the logical data, and also
-			// include the overhead for encryption.
-			//
-			// TODO / NOTE: If we adjust the file to have a flexible encryption
-			// scheme, we'll need to adjust the overhead stuff too.
-			//
-			// TODO: Currently we request memory for all of the pieces as well
-			// as the minimum pieces, but we perhaps don't need to request all
-			// of that.
-			memoryNeeded:  entry.PieceSize()*uint64(entry.ErasureCode().NumPieces()+entry.ErasureCode().MinPieces()) + uint64(entry.ErasureCode().NumPieces())*entry.MasterKey().Type().Overhead(),
-			minimumPieces: entry.ErasureCode().MinPieces(),
-			piecesNeeded:  entry.ErasureCode().NumPieces(),
-
-			physicalChunkData: make([][]byte, entry.ErasureCode().NumPieces()),
-
-			pieceUsage:  make([]bool, entry.ErasureCode().NumPieces()),
-			unusedHosts: make(map[string]struct{}),
-		}
-		// Every chunk can have a different set of unused hosts.
-		for host := range hosts {
-			newUnfinishedChunks[i].unusedHosts[host] = struct{}{}
-		}
-	}
-
-	// Build a map of host public keys.
-	pks := make(map[string]types.SiaPublicKey)
-	for _, pk := range entry.HostPublicKeys() {
-		pks[pk.String()] = pk
-	}
-
-	// Iterate through the pieces of all chunks of the file and mark which
-	// hosts are already in use for a particular chunk. As you delete hosts
-	// from the 'unusedHosts' map, also increment the 'piecesCompleted' value.
-	for chunkIndex := uint64(0); chunkIndex < entry.NumChunks(); chunkIndex++ {
-		pieces, err := entry.Pieces(chunkIndex)
-		if err != nil {
-			r.log.Println("failed to get pieces for building incomplete chunks")
-			return nil
-		}
-		for pieceIndex, pieceSet := range pieces {
-			for _, piece := range pieceSet {
-				// Get the contract for the piece.
-				pk, exists := pks[piece.HostPubKey.String()]
-				if !exists {
-					build.Critical("Couldn't find public key in map. This should never happen")
-				}
-				contractUtility, exists := r.hostContractor.ContractUtility(pk)
-				if !exists {
-					// File contract does not seem to be part of the host anymore.
-					continue
-				}
-				if !contractUtility.GoodForRenew {
-					// We are no longer renewing with this contract, so it does not
-					// count for redundancy.
-					continue
-				}
-
-				// Mark the chunk set based on the pieces in this contract.
-				_, exists = newUnfinishedChunks[chunkIndex].unusedHosts[pk.String()]
-				redundantPiece := newUnfinishedChunks[chunkIndex].pieceUsage[pieceIndex]
-				if exists && !redundantPiece {
-					newUnfinishedChunks[chunkIndex].pieceUsage[pieceIndex] = true
-					newUnfinishedChunks[chunkIndex].piecesCompleted++
-					delete(newUnfinishedChunks[chunkIndex].unusedHosts, pk.String())
-				} else if exists {
-					// This host has a piece, but it is the same piece another
-					// host has. We should still remove the host from the
-					// unusedHosts since one host having multiple pieces of a
-					// chunk might lead to unexpected issues. e.g. if a host
-					// has multiple pieces and another host with redundant
-					// pieces goes offline, we end up with false redundancy
-					// reporting.
-					delete(newUnfinishedChunks[chunkIndex].unusedHosts, pk.String())
-				}
-			}
-		}
-	}
-
-	// Iterate through the set of newUnfinishedChunks and remove any that are
-	// completed.
-	incompleteChunks := newUnfinishedChunks[:0]
-	for i := 0; i < len(newUnfinishedChunks); i++ {
-		if newUnfinishedChunks[i].piecesCompleted < newUnfinishedChunks[i].piecesNeeded {
-			incompleteChunks = append(incompleteChunks, newUnfinishedChunks[i])
-		}
-	}
-	// TODO: Don't return chunks that can't be downloaded, uploaded or otherwise
-	// helped by the upload process.
-	return incompleteChunks
-}
-
-// buildUnfinishedStuckChunks will pull all of the unfinished stuck chunks out of a file.
-func (r *Renter) buildUnfinishedStuckChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}) []*unfinishedUploadChunk {
+func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}, stuckLoop bool) []*unfinishedUploadChunk {
 	// Sanity check that there are entries
 	if len(entrys) == 0 {
 		return nil
@@ -242,15 +117,25 @@ func (r *Renter) buildUnfinishedStuckChunks(entrys []*siafile.SiaFileSetEntry, h
 		return nil
 	}
 
-	// Assemble the set of stuck chunks
-	stuckChunkIndexes := entrys[0].StuckChunkIndexes()
-	newUnfinishedChunks := make([]*unfinishedUploadChunk, len(stuckChunkIndexes))
+	// Assemble the set of chunks.
+	//
+	// TODO / NOTE: Future files may have a different method for determining the
+	// number of chunks. Changes will be made due to things like sparse files,
+	// and the fact that chunks are going to be different sizes.
+	var chunkIndexes []int
+	if stuckLoop {
+		chunkIndexes = entrys[0].StuckChunkIndexes()
+	} else {
+		for i := range entrys {
+			chunkIndexes = append(chunkIndexes, i)
+		}
+	}
 	// Sanity check
-	if len(stuckChunkIndexes) != len(entrys) {
+	if len(chunkIndexes) != len(entrys) {
 		build.Critical("Length of stuck chunk index slice should match length of entry")
 	}
-	for i, index := range stuckChunkIndexes {
-
+	newUnfinishedChunks := make([]*unfinishedUploadChunk, len(chunkIndexes))
+	for i, index := range chunkIndexes {
 		newUnfinishedChunks[i] = &unfinishedUploadChunk{
 			fileEntry: entrys[i],
 
@@ -293,10 +178,10 @@ func (r *Renter) buildUnfinishedStuckChunks(entrys []*siafile.SiaFileSetEntry, h
 		pks[pk.String()] = pk
 	}
 
-	// Iterate through the pieces of all chunks of the file and mark which hosts
-	// are already in use for a particular chunk. As you delete hosts from the
-	// 'unusedHosts' map, also increment the 'piecesCompleted' value.
-	for i, index := range stuckChunkIndexes {
+	// Iterate through the pieces of all chunks of the file and mark which
+	// hosts are already in use for a particular chunk. As you delete hosts
+	// from the 'unusedHosts' map, also increment the 'piecesCompleted' value.
+	for i, index := range chunkIndexes {
 		pieces, err := entrys[0].Pieces(uint64(index))
 		if err != nil {
 			r.log.Println("failed to get pieces for building incomplete chunks")
@@ -343,9 +228,6 @@ func (r *Renter) buildUnfinishedStuckChunks(entrys []*siafile.SiaFileSetEntry, h
 
 	// Iterate through the set of newUnfinishedChunks and remove any that are
 	// completed.
-	//
-	// THIS WOULD BE A GOOD SANITY CHECK. NO CHUNKS SHOULD BE REMOVED BECAUSE
-	// ALL THE STUCK CHUNKS SHOULD BE INCOMPLETE
 	incompleteChunks := newUnfinishedChunks[:0]
 	for i := 0; i < len(newUnfinishedChunks); i++ {
 		if newUnfinishedChunks[i].piecesCompleted < newUnfinishedChunks[i].piecesNeeded {
@@ -398,12 +280,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 	// the heap.
 	for _, file := range files {
 		id := r.mu.Lock()
-		var unfinishedUploadChunks []*unfinishedUploadChunk
-		if stuckLoop {
-			unfinishedUploadChunks = r.buildUnfinishedStuckChunks(file.CopyEntry(int(file.NumChunks())), hosts)
-		} else {
-			unfinishedUploadChunks = r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts)
-		}
+		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, stuckLoop)
 		r.mu.Unlock(id)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
