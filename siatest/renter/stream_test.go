@@ -49,7 +49,7 @@ func TestRenterDownloadStreamCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = localFile.Compare(downloadedData)
+	err = localFile.Equal(downloadedData)
 	if err != nil {
 		t.Fatal(err)
 	}
