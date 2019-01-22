@@ -12,7 +12,7 @@ import (
 
 // TestRenterDownloadStreamCache checks that the download stream caching is
 // functioning correctly - that there are no rough edges around weirdly sized
-// files or alignements, and that the cache serves data correctly.
+// files or alignments, and that the cache serves data correctly.
 func TestRenterDownloadStreamCache(t *testing.T) {
 	if testing.Short() || !build.VLONG {
 		t.SkipNow()

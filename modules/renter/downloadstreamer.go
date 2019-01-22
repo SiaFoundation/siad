@@ -24,7 +24,6 @@ type (
 		// We also keep the full file entry as it allows us to update metadata
 		// items in the file such as the access time.
 		staticFile      *siafile.Snapshot
-		staticFileEntry *siafile.SiaFileSetEntry
 		offset          int64
 		r               *Renter
 
@@ -70,11 +69,9 @@ type (
 // managedFillCache will determine whether or not the cache of the streamer
 // needs to be filled, and if it does it will add data to the streamer.
 func (s *streamer) managedFillCache() bool {
-	// Before grabbing the cacheActive object, check whether this thread is
-	// required to exist. This check needs to be made before checking the
-	// cacheActive because threadedFillCache recursively calls itself after
-	// grabbing the cacheActive object, so some base case is needed to guarantee
-	// termination.
+	// Before creating a download request to fill out the cache, check whether
+	// the cache is actually in need of being filled. The cache will only fill
+	// if the current reader approaching the point of running out of data.
 	s.mu.Lock()
 	partialDownloadsSupported := s.staticFile.ErasureCode().SupportsPartialEncoding()
 	chunkSize := s.staticFile.ChunkSize()
@@ -188,8 +185,10 @@ func (s *streamer) managedFillCache() bool {
 	if err != nil {
 		closeErr := ddw.Close()
 		s.mu.Lock()
-		s.readErr = errors.Compose(s.readErr, err, closeErr)
+		readErr := errors.Compose(s.readErr, err, closeErr)
+		s.readErr = readErr
 		s.mu.Unlock()
+		s.r.log.Println("Error downloading for stream file:", readErr)
 		return false
 	}
 	// Register some cleanup for when the download is done.
@@ -209,15 +208,19 @@ func (s *streamer) managedFillCache() bool {
 		if err != nil {
 			completeErr := errors.AddContext(err, "download failed")
 			s.mu.Lock()
-			s.readErr = errors.Compose(s.readErr, completeErr)
+			readErr := errors.Compose(s.readErr, completeErr)
+			s.readErr = readErr
 			s.mu.Unlock()
+			s.r.log.Println("Error during stream download:", readErr)
 			return false
 		}
 	case <-s.r.tg.StopChan():
 		stopErr := errors.New("download interrupted by shutdown")
 		s.mu.Lock()
-		s.readErr = errors.Compose(s.readErr, stopErr)
+		readErr := errors.Compose(s.readErr, stopErr)
+		s.readErr = readErr
 		s.mu.Unlock()
+		s.r.log.Debugln(stopErr)
 		return false
 	}
 
@@ -263,18 +266,18 @@ func (s *streamer) managedFillCache() bool {
 		s.cacheOffset = streamOffset
 	}
 
-	// Return true, indicaating that this function should be called agian,
+	// Return true, indicating that this function should be called agian,
 	// because there may be more cache that has been requested or used since the
 	// previous request.
 	return true
 }
 
-// threadedFillCache is a method to fill or refill the cache for the streamer.
-// The function will self-enforce that only one thread is running at a time.
-// While the thread is running, multiple calls to 'Read' may happen, which will
-// drain the cache and require additional filling. To ensure that the cache is
-// always being filled if there is a need, threadedFillCache will finish by
-// calling itself in a new goroutine if it updated the cache at all.
+// threadedFillCache is a background thread that keeps the cache full as data is
+// read out of the cache. The Read and Seek functions have access to a channel
+// that they can use to signal that the cache should be refilled. To ensure that
+// the cache is always being filled, 'managedFillCache' will return a value
+// indicating whether it should be called again after completion based on
+// whether the cache was emptied further since the previous call.
 func (s *streamer) threadedFillCache() {
 	// Add this thread to the renter's threadgroup.
 	err := s.r.tg.Add()
@@ -284,7 +287,10 @@ func (s *streamer) threadedFillCache() {
 	defer s.r.tg.Done()
 
 	// Kick things off by filling the cache for the first time.
-	s.managedFillCache()
+	fetchMore := s.managedFillCache()
+	for fetchMore {
+		fetchMore = s.managedFillCache()
+	}
 
 	for {
 		// Block until receiving notice that the cache needs to be updated,
@@ -297,8 +303,8 @@ func (s *streamer) threadedFillCache() {
 
 		// Update the cache. Sometimes the cache will know that it is already
 		// out of date by the time it is returning, in those cases call the
-		// funciton again.
-		fetchMore := s.managedFillCache()
+		// function again.
+		fetchMore = s.managedFillCache()
 		for fetchMore {
 			fetchMore = s.managedFillCache()
 		}
@@ -307,7 +313,7 @@ func (s *streamer) threadedFillCache() {
 
 // Close will close the underlying siafile.
 func (s *streamer) Close() error {
-	return s.staticFileEntry.Close()
+	return nil
 }
 
 // Read will check the stream cache for the data that is being requested. If the
@@ -460,7 +466,6 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 	// Create the streamer
 	s := &streamer{
 		staticFile:      entry.Snapshot(),
-		staticFileEntry: entry,
 		r:               r,
 
 		activateCache:   make(chan struct{}),
