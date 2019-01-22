@@ -131,7 +131,20 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	}
 
 	// Perform some basic input validation.
-	if uint64(len(req.Data)) != modules.SectorSize {
+	if len(req.Actions) != 1 {
+		err := errors.New("host only supports one action at a time")
+		s.writeError(err)
+		return err
+	} else if req.Actions[0].Type != modules.WriteActionAppend {
+		err := errors.New("host only supports ActionAppend")
+		s.writeError(err)
+		return err
+	} else if req.MerkleProof {
+		err := errors.New("host does not support Merkle proofs")
+		s.writeError(err)
+		return err
+	}
+	if uint64(len(req.Actions[0].Data)) != modules.SectorSize {
 		s.writeError(errBadSectorSize)
 		return errBadSectorSize
 	}
@@ -169,7 +182,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	bandwidthRevenue := settings.UploadBandwidthPrice.Mul64(modules.SectorSize)
 	storageRevenue := settings.StoragePrice.Mul(blockBytesCurrency)
 	newCollateral := settings.Collateral.Mul(blockBytesCurrency)
-	newRoot := crypto.MerkleRoot(req.Data)
+	newRoot := crypto.MerkleRoot(req.Actions[0].Data)
 	s.so.SectorRoots = append(s.so.SectorRoots, newRoot)
 	newRevision.NewFileMerkleRoot = cachedMerkleRoot(s.so.SectorRoots)
 	newRevenue := storageRevenue.Add(bandwidthRevenue)
@@ -197,7 +210,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	s.so.PotentialUploadRevenue = s.so.PotentialUploadRevenue.Add(bandwidthRevenue)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
 	h.mu.Lock()
-	err = h.modifyStorageObligation(s.so, nil, []crypto.Hash{newRoot}, [][]byte{req.Data})
+	err = h.modifyStorageObligation(s.so, nil, []crypto.Hash{newRoot}, [][]byte{req.Actions[0].Data})
 	h.mu.Unlock()
 	if err != nil {
 		s.writeError(err)

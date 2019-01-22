@@ -91,9 +91,9 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	return resp.Settings, nil
 }
 
-// Write calls the Write RPC and transfers the supplied data, returning the
-// updated contract and the Merkle root of the sector.
-func (s *Session) Write(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
+// Append calls the Write RPC with a single Append action, returning the
+// updated contract and the Merkle root of the appended sector.
+func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
 	// Acquire the contract.
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
@@ -151,7 +151,10 @@ func (s *Session) Write(data []byte) (_ modules.RenterContract, _ crypto.Hash, e
 
 	// create the request
 	req := modules.LoopWriteRequest{
-		Data:              data,
+		Actions: []modules.LoopWriteAction{{
+			Type: modules.WriteActionAppend,
+			Data: data,
+		}},
 		NewRevisionNumber: rev.NewRevisionNumber,
 		Signature:         sig[:],
 	}
