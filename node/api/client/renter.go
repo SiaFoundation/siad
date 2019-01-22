@@ -130,6 +130,13 @@ func (c *Client) RenterInactiveContractsGet() (rc api.RenterContracts, err error
 	return
 }
 
+// RenterInitContractRecoveryScanPost initializes a contract recovery scan
+// using the /renter/recoveryscan endpoint.
+func (c *Client) RenterInitContractRecoveryScanPost() (err error) {
+	err = c.post("/renter/recoveryscan", "", nil)
+	return
+}
+
 // RenterExpiredContractsGet requests the /renter/contracts resource with the
 // expired flag set to true
 func (c *Client) RenterExpiredContractsGet() (rc api.RenterContracts, err error) {
