@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -223,33 +224,29 @@ func TestUpdateSiaDirSetHealth(t *testing.T) {
 	}
 
 	// Confirm Health is set properly
-	health, stuckHealth, lastCheck := entry.Health()
-	if health != DefaultDirHealth {
-		t.Fatalf("Health not initialized properly, got %v expected %v", health, DefaultDirHealth)
-	}
-	if stuckHealth != DefaultDirHealth {
-		t.Fatalf("StuckHealth not initialized properly, got %v expected %v", stuckHealth, DefaultDirHealth)
-	}
-	if lastCheck.IsZero() {
-		t.Fatal("lastHealtCheckTime was not initialized properly")
+	health := entry.Health()
+	if err = checkHealthInit(health); err != nil {
+		t.Fatal(err)
 	}
 
 	// Update the health of the entry
 	checkTime := time.Now()
-	err = sds.UpdateHealth(siaPath, 4, 2, checkTime)
+	healthUpdate := SiaDirHealth{
+		Health:              4,
+		StuckHealth:         2,
+		LastHealthCheckTime: checkTime,
+		NumStuckChunks:      5,
+	}
+	err = sds.UpdateHealth(siaPath, healthUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Confirm other instance of entry is updated
-	health, stuckHealth, lastCheck = entry.Health()
-	if health != 4 {
-		t.Fatalf("Health not initialized properly, got %v expected %v", health, 4)
-	}
-	if stuckHealth != 2 {
-		t.Fatalf("StuckHealth not initialized properly, got %v expected %v", stuckHealth, 2)
-	}
-	if !lastCheck.Equal(checkTime) {
-		t.Fatalf("lastHealthCheckTime not updated, got %v expected %v", lastCheck, checkTime)
+	// Check Health was updated properly in memory and on disk
+	health = entry.Health()
+	if !reflect.DeepEqual(health, healthUpdate) {
+		t.Log("Health", health)
+		t.Log("Health Update", healthUpdate)
+		t.Fatal("health not updated correctly")
 	}
 }
