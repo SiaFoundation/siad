@@ -60,11 +60,14 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	if err := s.call(modules.RPCLoopLock, req, &resp, modules.RPCMinLen); err != nil {
 		return types.FileContractRevision{}, nil, err
 	}
-
-	// Set the Session contract and update the challenge.
-	s.contractID = id
+	// Unconditionally update the challenge.
 	s.challenge = resp.NewChallenge
 
+	if !resp.Acquired {
+		return resp.Revision, resp.Signatures, errors.New("contract is locked by another party")
+	}
+	// Set the new Session contract.
+	s.contractID = id
 	return resp.Revision, resp.Signatures, nil
 }
 
