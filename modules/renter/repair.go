@@ -524,8 +524,6 @@ func (r *Renter) threadedStuckLoop() {
 		if err == errNoStuckFiles {
 			// Block until new work is required.
 			select {
-			case <-r.uploadHeap.newUploads:
-				// User has uploaded a new file.
 			case <-rebuildHeapSignal:
 				// Time to check the filesystem health again.
 			case <-r.tg.StopChan():
@@ -546,46 +544,7 @@ func (r *Renter) threadedStuckLoop() {
 		// files in a loop and then process those. When the rebuild signal is
 		// received, we start over with the outer loop that rebuilds the heap
 		// and re-checks the health of all the files.
-		for {
-			select {
-			case <-r.tg.StopChan():
-				// Return if the renter has shut down.
-				return
-			case <-rebuildHeapSignal:
-				// Break to the outer loop if workers/heap need to be
-				// refreshed.
-				break
-			default:
-			}
-
-			// Break to the outer loop if not online.
-			if !r.g.Online() {
-				break
-			}
-
-			// Check if there is work by trying to pop of the next chunk from
-			// the heap.
-			nextChunk := r.uploadHeap.managedPop()
-			if nextChunk == nil {
-				break
-			}
-
-			// Make sure we have enough workers for this chunk to reach minimum
-			// redundancy. Otherwise we ignore this chunk for now and try again
-			// the next time we rebuild the heap and refresh the workers.
-			id := r.mu.RLock()
-			availableWorkers := len(r.workerPool)
-			r.mu.RUnlock(id)
-			if availableWorkers < nextChunk.minimumPieces {
-				continue
-			}
-
-			// Perform the work. managedPrepareNextChunk will block until
-			// enough memory is available to perform the work, slowing this
-			// thread down to using only the resources that are available.
-			r.managedPrepareNextChunk(nextChunk, hosts)
-			continue
-		}
+		r.managedRepairLoop(hosts, rebuildHeapSignal)
 
 		r.threadedBubbleHealth(siaPath)
 	}

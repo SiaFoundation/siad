@@ -491,6 +491,51 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 	return hosts
 }
 
+// managedRepairLoop works through the upload heap repairing chunks. The repair
+// loop will continue until the renter stops, there are no more chunks, or
+// enough time has passed indicated by the rebuildHeapSignal
+func (r *Renter) managedRepairLoop(hosts map[string]struct{}, rebuildHeapSignal <-chan time.Time) {
+	for {
+		select {
+		case <-r.tg.StopChan():
+			// Return if the renter has shut down.
+			return
+		case <-rebuildHeapSignal:
+			// Break to the outer loop if workers/heap need to be
+			// refreshed.
+			return
+		default:
+		}
+
+		// Break to the outer loop if not online.
+		if !r.g.Online() {
+			return
+		}
+
+		// Check if there is work by trying to pop of the next chunk from
+		// the heap.
+		nextChunk := r.uploadHeap.managedPop()
+		if nextChunk == nil {
+			return
+		}
+
+		// Make sure we have enough workers for this chunk to reach minimum
+		// redundancy. Otherwise we ignore this chunk for now and try again
+		// the next time we rebuild the heap and refresh the workers.
+		id := r.mu.RLock()
+		availableWorkers := len(r.workerPool)
+		r.mu.RUnlock(id)
+		if availableWorkers < nextChunk.minimumPieces {
+			continue
+		}
+
+		// Perform the work. managedPrepareNextChunk will block until
+		// enough memory is available to perform the work, slowing this
+		// thread down to using only the resources that are available.
+		r.managedPrepareNextChunk(nextChunk, hosts)
+	}
+}
+
 // threadedUploadLoop is a background thread that checks on the health of files,
 // tracking the least healthy files and queuing the worst ones for repair.
 func (r *Renter) threadedUploadLoop() {
@@ -557,46 +602,7 @@ func (r *Renter) threadedUploadLoop() {
 		// files in a loop and then process those. When the rebuild signal is
 		// received, we start over with the outer loop that rebuilds the heap
 		// and re-checks the health of all the files.
-		for {
-			select {
-			case <-r.tg.StopChan():
-				// Return if the renter has shut down.
-				return
-			case <-rebuildHeapSignal:
-				// Break to the outer loop if workers/heap need to be
-				// refreshed.
-				break
-			default:
-			}
-
-			// Break to the outer loop if not online.
-			if !r.g.Online() {
-				break
-			}
-
-			// Check if there is work by trying to pop of the next chunk from
-			// the heap.
-			nextChunk := r.uploadHeap.managedPop()
-			if nextChunk == nil {
-				break
-			}
-
-			// Make sure we have enough workers for this chunk to reach minimum
-			// redundancy. Otherwise we ignore this chunk for now and try again
-			// the next time we rebuild the heap and refresh the workers.
-			id := r.mu.RLock()
-			availableWorkers := len(r.workerPool)
-			r.mu.RUnlock(id)
-			if availableWorkers < nextChunk.minimumPieces {
-				continue
-			}
-
-			// Perform the work. managedPrepareNextChunk will block until
-			// enough memory is available to perform the work, slowing this
-			// thread down to using only the resources that are available.
-			r.managedPrepareNextChunk(nextChunk, hosts)
-			continue
-		}
+		r.managedRepairLoop(hosts, rebuildHeapSignal)
 
 		// Bubble the directory to update the renter's directory
 		r.threadedBubbleHealth(dirSiaPath)
