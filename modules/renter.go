@@ -526,7 +526,7 @@ type Renter interface {
 	File(siaPath string) (FileInfo, error)
 
 	// FileList returns information on all of the files stored by the renter.
-	FileList() []FileInfo
+	FileList() ([]FileInfo, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
 	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error
@@ -537,14 +537,6 @@ type Renter interface {
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
 	InitialScanComplete() (bool, error)
-
-	// LoadSharedFiles loads a '.sia' file into the renter. A .sia file may
-	// contain multiple files. The paths of the added files are returned.
-	LoadSharedFiles(source string) ([]string, error)
-
-	// LoadSharedFilesASCII loads an ASCII-encoded '.sia' file into the
-	// renter.
-	LoadSharedFilesASCII(asciiSia string) ([]string, error)
 
 	// PriceEstimation estimates the cost in siacoins of performing various
 	// storage and data operations.

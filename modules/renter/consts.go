@@ -69,7 +69,7 @@ var (
 const (
 	// persistVersion defines the Sia version that the persistence was
 	// last updated
-	persistVersion = "1.3.3"
+	persistVersion = "1.4.0"
 
 	// defaultFilePerm defines the default permissions used for a new file if no
 	// permissions are supplied.
@@ -118,6 +118,14 @@ var (
 		Dev:      15 * time.Minute,
 		Standard: 15 * time.Minute,
 		Testing:  1 * time.Minute,
+	}).(time.Duration)
+
+	// healthCheckInterval defines the maximum amount of time that should pass
+	// in between checking the health of a file or directory
+	healthCheckInterval = build.Select(build.Var{
+		Dev:      15 * time.Minute,
+		Standard: 1 * time.Hour,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 
 	// maxConsecutivePenalty determines how many times the timeout/cooldown for

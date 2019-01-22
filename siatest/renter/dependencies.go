@@ -13,6 +13,12 @@ type dependencyBlockScan struct {
 	c      chan struct{}
 }
 
+// dependencyDisableCloseUploadEntry prevents SiaFileEntries in the upload code
+// from being closed.
+type dependencyDisableCloseUploadEntry struct {
+	modules.ProductionDependencies
+}
+
 // Disrupt will block the scan progress of the hostdb. The scan can be started
 // by calling Scan on the dependency.
 func (d *dependencyBlockScan) Disrupt(s string) bool {
@@ -23,6 +29,11 @@ func (d *dependencyBlockScan) Disrupt(s string) bool {
 		<-d.c
 	}
 	return false
+}
+
+// Disrupt prevents SiafileEntries in the upload code from being closed.
+func (d *dependencyDisableCloseUploadEntry) Disrupt(s string) bool {
+	return s == "disableCloseUploadEntry"
 }
 
 // Scan resumes the blocked scan.

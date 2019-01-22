@@ -34,6 +34,13 @@ type (
 		CreateTime time.Time `json:"createtime"` // time of file creation
 
 		// Repair loop fields
+		//
+		// LastHealthCheckTime is the timestamp of the last time the SiaFile's
+		// health was checked by Health()
+		//
+		// NumStuckChunks is the number of all the SiaFile's chunks that have
+		// been marked as stuck by the repair loop
+		//
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
 

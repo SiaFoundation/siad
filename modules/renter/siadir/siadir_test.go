@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // newRootDir creates a root directory for the test and removes old test files
@@ -79,7 +81,7 @@ func TestNewSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Get SiaDir
-	subDir, err := LoadSiaDir(rootDir, siaPathDir, wal)
+	subDir, err := LoadSiaDir(rootDir, siaPathDir, modules.ProdDependencies, wal)
 	// Check that the Health was initialized properly
 	health, stuckHealth, lastCheck = subDir.Health()
 	if health != DefaultDirHealth {
@@ -100,7 +102,7 @@ func TestNewSiaDir(t *testing.T) {
 	// Check Root Directory
 	//
 	// Get SiaDir
-	rootSiaDir, err := LoadSiaDir(rootDir, "", wal)
+	rootSiaDir, err := LoadSiaDir(rootDir, "", modules.ProdDependencies, wal)
 	// Check that the Health was initialized properly
 	health, stuckHealth, lastCheck = rootSiaDir.Health()
 	if health != DefaultDirHealth {
@@ -158,7 +160,7 @@ func TestUpdateSiaDirHealth(t *testing.T) {
 	if lastCheck.IsZero() {
 		t.Fatal("lastHealthCheckTime not initialized")
 	}
-	siaDir, err = LoadSiaDir(rootDir, siaPath, wal)
+	siaDir, err = LoadSiaDir(rootDir, siaPath, modules.ProdDependencies, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +193,7 @@ func TestUpdateSiaDirHealth(t *testing.T) {
 	if !lastCheck.Equal(checkTime) {
 		t.Fatalf("lastHealthCheckTime not save correctly, expected %v got %v", checkTime, lastCheck)
 	}
-	siaDir, err = LoadSiaDir(rootDir, siaPath, wal)
+	siaDir, err = LoadSiaDir(rootDir, siaPath, modules.ProdDependencies, wal)
 	if err != nil {
 		t.Fatal(err)
 	}

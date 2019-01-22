@@ -1,13 +1,9 @@
 package renter
 
 import (
-	"bytes"
-	"compress/gzip"
-	"encoding/base64"
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -30,6 +26,9 @@ const (
 	SiaDirMetadata = ".siadir"
 	// walFile is the filename of the renter's writeaheadlog's file.
 	walFile = modules.RenterDir + ".wal"
+	// repairLoopFilename is the filename to be used when persisting bubble
+	// updates that are called from the repair loop
+	repairLoopFilename = "repairloop.json"
 )
 
 var (
@@ -55,6 +54,7 @@ var (
 	// Persist Version Numbers
 	persistVersion040 = "0.4"
 	persistVersion133 = "1.3.3"
+	persistVersion140 = "1.4.0"
 )
 
 type (
@@ -65,37 +65,6 @@ type (
 		StreamCacheSize  uint64
 	}
 )
-
-// createBubbleHealthUpdate is a helper method that creates a writeaheadlog for
-// bubbling up the health of a directory.
-func createBubbleHealthUpdate(siaPath string) writeaheadlog.Update {
-	return writeaheadlog.Update{
-		Name:         updateBubbleHealthName,
-		Instructions: []byte(siaPath),
-	}
-}
-
-// isBubbleHealthUpdate is a helper method that makes sure that a wal update is
-// a renter bubble health update
-func isBubbleHealthUpdate(update writeaheadlog.Update) bool {
-	switch update.Name {
-	case updateBubbleHealthName:
-		return true
-	default:
-		return false
-	}
-}
-
-// readBubbleHealthUpdate unmarshals the update's instructions and returns the
-// encoded path. Errors will be considered developer errors
-func readBubbleHealthUpdate(update writeaheadlog.Update) string {
-	if !isBubbleHealthUpdate(update) {
-		err := errors.New("update is not bubble health update")
-		build.Critical(err)
-		return ""
-	}
-	return string(update.Instructions)
-}
 
 // MarshalSia implements the encoding.SiaMarshaller interface, writing the
 // file data to w.
@@ -212,9 +181,30 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 	return nil
 }
 
+// saveBubbleUpdates stores the current bubble updates to disk and then syncs to disk.
+func (r *Renter) saveBubbleUpdates() error {
+	return persist.SaveJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, repairLoopFilename))
+}
+
 // saveSync stores the current renter data to disk and then syncs to disk.
 func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
+}
+
+// loadAndExecuteBubbleUpdates loads any bubble updates from disk and calls each
+// update in its own thread
+func (r *Renter) loadAndExecuteBubbleUpdates() error {
+	err := persist.LoadJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, repairLoopFilename))
+	if os.IsNotExist(err) {
+		err = r.saveBubbleUpdates()
+	}
+	if err != nil {
+		return err
+	}
+	for dir := range r.bubbleUpdates {
+		go r.threadedBubbleHealth(dir)
+	}
+	return nil
 }
 
 // load fetches the saved renter data from disk.
@@ -234,9 +224,16 @@ func (r *Renter) loadSettings() error {
 		// Outdated version, try the 040 to 133 upgrade.
 		err = convertPersistVersionFrom040To133(filepath.Join(r.persistDir, PersistFilename))
 		if err != nil {
+			r.log.Println("WARNING: 040 to 133 renter upgrade failed, trying 133 to 140 next", err)
+		}
+		// Then upgrade from 133 to 140.
+		err = r.convertPersistVersionFrom133To140(filepath.Join(r.persistDir, PersistFilename))
+		if err != nil {
+			r.log.Println("WARNING: 133 to 140 renter upgrade failed", err)
 			// Nothing left to try.
 			return err
 		}
+		r.log.Println("Renter upgrade successful")
 		// Re-load the settings now that the file has been upgraded.
 		return r.loadSettings()
 	} else if err != nil {
@@ -248,76 +245,16 @@ func (r *Renter) loadSettings() error {
 	return r.setBandwidthLimits(r.persist.MaxDownloadSpeed, r.persist.MaxUploadSpeed)
 }
 
-// loadSharedFiles reads .sia data from reader and registers the contained
-// files in the renter. It returns the nicknames of the loaded files.
-func (r *Renter) loadSharedFiles(reader io.Reader, repairPath string) ([]string, error) {
-	// read header
-	var header [15]byte
-	var version string
-	var numFiles uint64
-	err := encoding.NewDecoder(reader).DecodeAll(
-		&header,
-		&version,
-		&numFiles,
-	)
-	if err != nil {
-		return nil, err
-	} else if header != shareHeader {
-		return nil, ErrBadFile
-	} else if version != shareVersion {
-		return nil, ErrIncompatible
-	}
-
-	// Create decompressor.
-	unzip, err := gzip.NewReader(reader)
-	if err != nil {
-		return nil, err
-	}
-	dec := encoding.NewDecoder(unzip)
-
-	// Read each file.
-	files := make([]*file, numFiles)
-	for i := range files {
-		files[i] = new(file)
-		err := dec.Decode(files[i])
-		if err != nil {
-			return nil, err
-		}
-
-		// Make sure the file's name does not conflict with existing files.
-		dupCount := 0
-		origName := files[i].name
-		for {
-			_, err := r.staticFileSet.Exists(files[i].name)
-			if os.IsNotExist(err) {
-				break
-			}
-			dupCount++
-			files[i].name = origName + "_" + strconv.Itoa(dupCount)
-		}
-	}
-
-	// Add files to renter.
-	names := make([]string, numFiles)
-	for i, f := range files {
-		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
-		// be returned here
-		siafilePath := filepath.Join(r.filesDir, f.name)
-		entry, err := r.fileToSiaFile(f, siafilePath)
-		if err != nil {
-			return nil, err
-		}
-		names[i] = f.name
-		err = errors.Compose(err, entry.Close())
-	}
-	// TODO Save the file in the new format.
-	return names, err
-}
-
 // initPersist handles all of the persistence initialization, such as creating
 // the persistence directory and starting the logger.
 func (r *Renter) initPersist() error {
 	// Create the persist and files directories if they do not yet exist.
+	//
+	// Note: the os package needs to be used here instead of the renter's
+	// CreateDir method because the staticDirSet has not been initialized yet.
+	// The directory is needed before the staticDirSet can be initialized
+	// because the wal needs the directory to be created and the staticDirSet
+	// needs the wal.
 	err := os.MkdirAll(r.filesDir, 0700)
 	if err != nil {
 		return err
@@ -329,22 +266,14 @@ func (r *Renter) initPersist() error {
 		return err
 	}
 
-	// Load the prior persistence structures.
-	err = r.loadSettings()
-	if err != nil {
-		return err
-	}
-
 	// Initialize the writeaheadlog.
 	txns, wal, err := writeaheadlog.New(filepath.Join(r.persistDir, walFile))
 	if err != nil {
 		return err
 	}
-	r.wal = wal
-	r.staticFileSet = siafile.NewSiaFileSet(r.filesDir, wal)
-	r.staticDirSet = siadir.NewSiaDirSet(r.filesDir, wal)
 
-	// Apply unapplied wal txns.
+	// Apply unapplied wal txns before loading the persistence structure to
+	// avoid loading potentially corrupted files.
 	for _, txn := range txns {
 		applyTxn := true
 		for _, update := range txn.Updates {
@@ -355,10 +284,6 @@ func (r *Renter) initPersist() error {
 			} else if siadir.IsSiaDirUpdate(update) {
 				if err := siadir.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaDir update")
-				}
-			} else if isBubbleHealthUpdate(update) {
-				if err := r.managedApplyBubbleUpdate(update); err != nil {
-					return errors.AddContext(err, "failed to apply bubble update")
 				}
 			} else {
 				applyTxn = false
@@ -371,58 +296,14 @@ func (r *Renter) initPersist() error {
 		}
 	}
 
-	return nil
-}
-
-// LoadSharedFiles loads a .sia file into the renter. It returns the nicknames
-// of the loaded files.
-func (r *Renter) LoadSharedFiles(filename string) ([]string, error) {
-	lockID := r.mu.Lock()
-	defer r.mu.Unlock(lockID)
-
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	return r.loadSharedFiles(file, filename)
-}
-
-// LoadSharedFilesASCII loads an ASCII-encoded .sia file into the renter. It
-// returns the nicknames of the loaded files.
-func (r *Renter) LoadSharedFilesASCII(asciiSia string) ([]string, error) {
-	lockID := r.mu.Lock()
-	defer r.mu.Unlock(lockID)
-
-	dec := base64.NewDecoder(base64.URLEncoding, bytes.NewBufferString(asciiSia))
-	return r.loadSharedFiles(dec, "")
-}
-
-// convertPersistVersionFrom040to133 upgrades a legacy persist file to the next
-// version, adding new fields with their default values.
-func convertPersistVersionFrom040To133(path string) error {
-	metadata := persist.Metadata{
-		Header:  settingsMetadata.Header,
-		Version: persistVersion040,
-	}
-	p := persistence{}
-
-	err := persist.LoadJSON(metadata, &p, path)
-	if err != nil {
+	// Initialize the wal, staticFileSet and the staticDirSet. With the
+	// staticDirSet finish the initialization of the files directory
+	r.wal = wal
+	r.staticFileSet = siafile.NewSiaFileSet(r.filesDir, wal)
+	r.staticDirSet = siadir.NewSiaDirSet(r.filesDir, wal)
+	if err := r.staticDirSet.InitRootDir(); err != nil {
 		return err
 	}
-	metadata.Version = persistVersion133
-	p.MaxDownloadSpeed = DefaultMaxDownloadSpeed
-	p.MaxUploadSpeed = DefaultMaxUploadSpeed
-	p.StreamCacheSize = DefaultStreamCacheSize
-	return persist.SaveJSON(metadata, p, path)
-}
-
-// managedApplyBubbleUpdate applies the Bubble Health wal updates
-func (r *Renter) managedApplyBubbleUpdate(update writeaheadlog.Update) error {
-	// Read update
-	siaPath := readBubbleHealthUpdate(update)
-
-	// Bubble Health
-	return r.BubbleHealth(siaPath)
+	// Load the prior persistence structures.
+	return r.loadSettings()
 }

@@ -181,7 +181,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	}
 
 	// Call RecentRevision to synchronize our revision with the host's.
-	if _, _, err := s.RecentRevision(); err != nil {
+	if _, _, err := s.VerifyRecentRevision(); err != nil {
 		return nil, err
 	}
 

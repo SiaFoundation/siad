@@ -44,7 +44,7 @@ type ContractParams struct {
 	StartHeight   types.BlockHeight
 	EndHeight     types.BlockHeight
 	RefundAddress types.UnlockHash
-	RenterSeed    RenterSeed
+	RenterSeed    EphemeralRenterSeed
 	// TODO: add optional keypair
 }
 

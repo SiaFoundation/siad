@@ -32,6 +32,61 @@ func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 	return entry, sfs, nil
 }
 
+// TestSiaFileSetDeleteOpen checks that deleting an entry from the set followed
+// by creating a Siafile with the same name without closing the deleted entry
+// works as expected.
+func TestSiaFileSetDeleteOpen(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create new SiaFile params
+	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+	// Create SiaFileSet
+	wal, _ := newTestWAL()
+	dir := filepath.Join(os.TempDir(), "siafiles")
+	sfs := NewSiaFileSet(dir, wal)
+
+	// Repeatedly create a SiaFile and delete it while still keeping the entry
+	// around. That should only be possible without errors if the correctly
+	// delete the entry from the set.
+	var entries []*SiaFileSetEntry
+	for i := 0; i < 10; i++ {
+		// Create SiaFile
+		up := modules.FileUploadParams{
+			Source:      source,
+			SiaPath:     siaPath,
+			ErasureCode: rc,
+		}
+		entry, err := sfs.NewSiaFile(up, sk, fileSize, fileMode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Delete SiaFile
+		if err := sfs.Delete(entry.SiaPath()); err != nil {
+			t.Fatal(err)
+		}
+		// The set should be empty.
+		if len(sfs.siaFileMap) != 0 {
+			t.Fatal("SiaFileMap should be empty")
+		}
+		// Append the entry to make sure we can close it later.
+		entries = append(entries, entry)
+	}
+	// The SiaFile shouldn't exist anymore.
+	exists := sfs.Exists(siaPath)
+	if exists {
+		t.Fatal("SiaFile shouldn't exist anymore")
+	}
+	// Close the entries.
+	for _, entry := range entries {
+		if err := entry.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // TestSiaFileSetOpenClose tests that the threadCount of the siafile is
 // incremented and decremented properly when Open() and Close() are called
 func TestSiaFileSetOpenClose(t *testing.T) {
@@ -46,7 +101,7 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaPath := entry.SiaPath()
-	exists, err := sfs.Exists(siaPath)
+	exists := sfs.Exists(siaPath)
 	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
 	}
@@ -101,7 +156,7 @@ func TestFilesInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaPath := entry.SiaPath()
-	exists, err := sfs.Exists(siaPath)
+	exists := sfs.Exists(siaPath)
 	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
 	}
@@ -179,7 +234,7 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaPath := entry.SiaPath()
-	exists, err := sfs.Exists(siaPath)
+	exists := sfs.Exists(siaPath)
 	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
 	}
@@ -248,7 +303,7 @@ func TestDeleteFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaPath := entry.SiaPath()
-	exists, err := sfs.Exists(siaPath)
+	exists := sfs.Exists(siaPath)
 	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
 	}
@@ -280,9 +335,9 @@ func TestDeleteFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is still only has 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	// There should be no more file in the set after deleting it.
+	if len(sfs.siaFileMap) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
 	}
 	// confirm other instance is still in memory by calling methods on it
 	if !entry.Deleted() {

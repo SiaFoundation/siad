@@ -313,8 +313,9 @@ func TestFileHealth(t *testing.T) {
 	// settings of 10/30
 	//
 	// 1 - ((0 - 10) / 20)
-	if f.Health(offlineMap) != 1.5 {
-		t.Fatalf("Health of file not as expected, got %v expected 1.5", f.Health(offlineMap))
+	health, _ := f.Health(offlineMap)
+	if health != 1.5 {
+		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
 
 	// Add good pieces to first Piece Set
@@ -332,8 +333,9 @@ func TestFileHealth(t *testing.T) {
 	// since the two good pieces were added to the same pieceSet
 	//
 	// 1 - ((1 - 10) / 20)
-	if f.Health(offlineMap) != 1.45 {
-		t.Fatalf("Health of file not as expected, got %v expected 1.45", f.Health(offlineMap))
+	health, _ = f.Health(offlineMap)
+	if health != 1.45 {
+		t.Fatalf("Health of file not as expected, got %v expected 1.45", health)
 	}
 
 	// Add one good pieces to second piece set, confirm health is now 1.40.
@@ -344,8 +346,9 @@ func TestFileHealth(t *testing.T) {
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
-	if f.Health(offlineMap) != 1.40 {
-		t.Fatalf("Health of file not as expected, got %v expected 1.40", f.Health(offlineMap))
+	health, _ = f.Health(offlineMap)
+	if health != 1.40 {
+		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
 
 	// Add another good pieces to second piece set, confirm health is still 1.40.
@@ -356,8 +359,9 @@ func TestFileHealth(t *testing.T) {
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
-	if f.Health(offlineMap) != 1.40 {
-		t.Fatalf("Health of file not as expected, got %v expected 1.40", f.Health(offlineMap))
+	health, _ = f.Health(offlineMap)
+	if health != 1.40 {
+		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
 
 	// Create File with 2 chunks
@@ -371,8 +375,9 @@ func TestFileHealth(t *testing.T) {
 
 	// Check file health, since there are no pieces in the chunk yet no good
 	// pieces will be found resulting in a health of 1.5
-	if f.Health(offlineMap) != 1.5 {
-		t.Fatalf("Health of file not as expected, got %v expected 1.5", f.Health(offlineMap))
+	health, _ = f.Health(offlineMap)
+	if health != 1.5 {
+		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
 
 	// Add good pieces to the first chunk
@@ -388,8 +393,9 @@ func TestFileHealth(t *testing.T) {
 
 	// Check health, should still be 1.5 because other chunk doesn't have any
 	// good pieces
-	if f.Health(offlineMap) != 1.5 {
-		t.Fatalf("Health of file not as expected, got %v expected 1.5", f.Health(offlineMap))
+	health, _ = f.Health(offlineMap)
+	if health != 1.5 {
+		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
 
 	// Add good pieces to second chunk, confirm health is 1.40 since both chunks
@@ -403,8 +409,22 @@ func TestFileHealth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if f.Health(offlineMap) != 1.40 {
-		t.Fatalf("Health of file not as expected, got %v expected 1.40", f.Health(offlineMap))
+	health, _ = f.Health(offlineMap)
+	if health != 1.40 {
+		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
+	}
+
+	// Test marking chunks as stuck
+	// Mark second chunk as stuck
+	err = f.SetStuck(1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check health, verify there is 1 stuck chunk
+	_, numStuckChunks := f.Health(offlineMap)
+	if numStuckChunks != 1 {
+		t.Fatalf("Expected 1 stuck chunk but found %v", numStuckChunks)
 	}
 }
 
@@ -475,7 +495,10 @@ func TestRenterFileListLocalPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt.renter.mu.Unlock(id)
-	files := rt.renter.FileList()
+	files, err := rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(files) != 1 {
 		t.Fatal("wrong number of files, got", len(files), "wanted one")
 	}
@@ -521,7 +544,11 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if len(rt.renter.FileList()) != 0 {
+	files, err := rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
 		t.Error("file was deleted, but is still reported in FileList")
 	}
 	// Confirm that file was removed from SiaFileSet
@@ -587,25 +614,40 @@ func TestRenterFileList(t *testing.T) {
 	defer rt.Close()
 
 	// Get the file list of an empty renter.
-	if len(rt.renter.FileList()) != 0 {
+	files, err := rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
 		t.Fatal("FileList has non-zero length for empty renter?")
 	}
 
 	// Put a file in the renter.
 	entry1, _ := rt.renter.newRenterTestFile()
-	if len(rt.renter.FileList()) != 1 {
+	files, err = rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 {
 		t.Fatal("FileList is not returning the only file in the renter")
 	}
-	if rt.renter.FileList()[0].SiaPath != entry1.SiaPath() {
+	if files[0].SiaPath != entry1.SiaPath() {
 		t.Error("FileList is not returning the correct filename for the only file")
 	}
 
 	// Put multiple files in the renter.
 	entry2, _ := rt.renter.newRenterTestFile()
-	if len(rt.renter.FileList()) != 2 {
-		t.Fatalf("Expected %v files, got %v", 2, len(rt.renter.FileList()))
+	files, err = rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
 	}
-	files := rt.renter.FileList()
+	if len(files) != 2 {
+		t.Fatalf("Expected %v files, got %v", 2, len(files))
+	}
+	files, err = rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !((files[0].SiaPath == entry1.SiaPath() || files[0].SiaPath == entry2.SiaPath()) &&
 		(files[1].SiaPath == entry1.SiaPath() || files[1].SiaPath == entry2.SiaPath()) &&
 		(files[0].SiaPath != files[1].SiaPath)) {
@@ -645,7 +687,10 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files := rt.renter.FileList()
+	files, err := rt.renter.FileList()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(files) != 1 {
 		t.Fatal("FileList has unexpected number of files:", len(files))
 	}

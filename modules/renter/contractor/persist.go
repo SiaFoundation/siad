@@ -28,13 +28,12 @@ type contractorPersist struct {
 // persistData returns the data in the Contractor that will be saved to disk.
 func (c *Contractor) persistData() contractorPersist {
 	data := contractorPersist{
-		Allowance:            c.allowance,
-		BlockHeight:          c.blockHeight,
-		CurrentPeriod:        c.currentPeriod,
-		LastChange:           c.lastChange,
-		RecoverableContracts: c.recoverableContracts,
-		RenewedFrom:          make(map[string]types.FileContractID),
-		RenewedTo:            make(map[string]types.FileContractID),
+		Allowance:     c.allowance,
+		BlockHeight:   c.blockHeight,
+		CurrentPeriod: c.currentPeriod,
+		LastChange:    c.lastChange,
+		RenewedFrom:   make(map[string]types.FileContractID),
+		RenewedTo:     make(map[string]types.FileContractID),
 	}
 	for k, v := range c.renewedFrom {
 		data.RenewedFrom[k.String()] = v
@@ -44,6 +43,9 @@ func (c *Contractor) persistData() contractorPersist {
 	}
 	for _, contract := range c.oldContracts {
 		data.OldContracts = append(data.OldContracts, contract)
+	}
+	for _, contract := range c.recoverableContracts {
+		data.RecoverableContracts = append(data.RecoverableContracts, contract)
 	}
 	return data
 }
@@ -73,7 +75,6 @@ func (c *Contractor) load() error {
 	c.blockHeight = data.BlockHeight
 	c.currentPeriod = data.CurrentPeriod
 	c.lastChange = data.LastChange
-	c.recoverableContracts = data.RecoverableContracts
 	var fcid types.FileContractID
 	for k, v := range data.RenewedFrom {
 		if err := fcid.LoadString(k); err != nil {
@@ -89,6 +90,9 @@ func (c *Contractor) load() error {
 	}
 	for _, contract := range data.OldContracts {
 		c.oldContracts[contract.ID] = contract
+	}
+	for _, contract := range data.RecoverableContracts {
+		c.recoverableContracts[contract.ID] = contract
 	}
 
 	return nil

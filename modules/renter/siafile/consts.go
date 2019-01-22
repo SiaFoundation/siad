@@ -26,10 +26,10 @@ const (
 	// byte pieceIndex, a 4 byte table offset and a hash.
 	marshaledPieceSize = 4 + 4 + crypto.HashSize
 
-	// marshaledChunkOverhead is the size of a marshaled chunk on disk minus
-	// the encoded pieces. It consists of the 16 byte extension info and a 2
-	// byte length prefix for the pieces.
-	marshaledChunkOverhead = 16 + 2
+	// marshaledChunkOverhead is the size of a marshaled chunk on disk minus the
+	// encoded pieces. It consists of the 16 byte extension info, a 2 byte
+	// length prefix for the pieces, and a 1 byte length for the Stuck field.
+	marshaledChunkOverhead = 16 + 2 + 1
 
 	// pubKeyTablePruneThreshold is the number of unused hosts a SiaFile can
 	// store in its host key table before it is pruned.

@@ -1515,9 +1515,9 @@ func TestContractorHostRemoval(t *testing.T) {
 	}
 
 	// Verify that st and stH1 are dropped in favor of the newer, better hosts.
-	rc = RenterContracts{}
-	err = build.Retry(100, time.Millisecond*100, func() error {
+	err = build.Retry(600, time.Millisecond*100, func() error {
 		var newContracts int
+		var rc RenterContracts
 		err = st.getAPI("/renter/contracts", &rc)
 		if err != nil {
 			return errors.New("couldn't get renter stats")
@@ -1553,17 +1553,28 @@ func TestContractorHostRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Block until data has been uploaded ot new contracts.
+	err = build.Retry(120, 250*time.Millisecond, func() error {
+		err = st.getAPI("/renter/contracts", &rc)
+		if err != nil {
+			return err
+		}
+		for _, contract := range rc.ActiveContracts {
+			if contract.Size != modules.SectorSize {
+				return fmt.Errorf("Each contrat should have 1 sector: %v - %v", contract.Size, contract.ID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Grab the current contracts, then mine blocks to trigger a renew, and then
 	// wait until the renew is complete.
 	err = st.getAPI("/renter/contracts", &rc)
 	if err != nil {
 		t.Fatal(err)
-	}
-	// Check the amount of data in each contract.
-	for _, contract := range rc.ActiveContracts {
-		if contract.Size != modules.SectorSize {
-			t.Error("Each contrat should have 1 sector:", contract.Size, contract.ID)
-		}
 	}
 	// Mine blocks to force a contract renewal.
 	for i := 0; i < 11; i++ {
@@ -1674,6 +1685,11 @@ func TestContractorHostRemoval(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc = RenterContracts{}
+	err = st.getAPI("/renter/contracts", &rc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1788,7 +1804,11 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !st.renter.FileList()[0].Available {
+		files, err := st.renter.FileList()
+		if err != nil {
+			return err
+		}
+		if !files[0].Available {
 			return errors.New("file did not complete uploading")
 		}
 		return nil
@@ -1815,5 +1835,157 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 			t.Fatal("changing host price caused renew")
 		}
 		time.Sleep(time.Millisecond * 100)
+	}
+}
+
+// TestHealthLoop probes the code involved with threadedUpdateRenterHealth to
+// verify the health information stored in the siadir metadata is getting
+// updated as the health of the files changes
+func TestHealthLoop(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create renter and hosts
+	st1, err := createServerTester(t.Name() + "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st1.server.panicClose()
+	if err = st1.announceHost(); err != nil {
+		t.Fatal(err)
+	}
+	st2, err := createServerTester(t.Name() + "2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Connect the testers to eachother so that they are all on the same
+	// blockchain.
+	testGroup := []*serverTester{st1, st2}
+	err = fullyConnectNodes(testGroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure that every wallet has money in it.
+	err = fundAllNodes(testGroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add storage to every host.
+	err = addStorageToAllHosts(testGroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Announce the hosts.
+	err = announceAllHosts(testGroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set an allowance for the renter, allowing a contract to be formed.
+	allowanceValues := url.Values{}
+	allowanceValues.Set("funds", testFunds)
+	allowanceValues.Set("period", testPeriod)
+	allowanceValues.Set("renewwindow", testRenewWindow)
+	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	if err = st1.stdPostAPI("/renter", allowanceValues); err != nil {
+		t.Fatal(err)
+	}
+
+	// Block until the allowance has finished forming contracts.
+	err = build.Retry(50, time.Millisecond*250, func() error {
+		var rc RenterContracts
+		err = st1.getAPI("/renter/contracts", &rc)
+		if err != nil {
+			return errors.New("couldn't get renter stats")
+		}
+		if len(rc.Contracts) != 2 {
+			return errors.New("no contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal("allowance setting failed")
+	}
+
+	// Create and upload files
+	path := filepath.Join(st1.dir, "test.dat")
+	if err = createRandFile(path, 1024); err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload to host.
+	uploadValues := url.Values{}
+	uploadValues.Set("source", path)
+	uploadValues.Set("datapieces", "1")
+	uploadValues.Set("paritypieces", "1")
+	if err = st1.stdPostAPI("/renter/upload/test", uploadValues); err != nil {
+		t.Fatal(err)
+	}
+
+	// redundancy should reach 2
+	err = build.Retry(120, 250*time.Millisecond, func() error {
+		var rf RenterFiles
+		st1.getAPI("/renter/files", &rf)
+		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
+			return nil
+		}
+		return errors.New("file not uploaded")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify folder metadata is update, directory health should be 0 and
+	// LastHealthCheckTime stamp should be within the health check interval
+	// which is currently set to 5s
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		var rd RenterDirectory
+		st1.getAPI("/renter/dir/", &rd)
+		if rd.Directories[0].Health != 0 {
+			return fmt.Errorf("Directory health should be 0 but was %v", rd.Directories[0].Health)
+		}
+		if time.Since(rd.Directories[0].LastHealthCheckTime) > 5*time.Second {
+			return fmt.Errorf("LastHealthCheckTime is too far in the past")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Take Down a host
+	st2.server.panicClose()
+
+	// redundancy should drop
+	err = build.Retry(120, 250*time.Millisecond, func() error {
+		var rf RenterFiles
+		st1.getAPI("/renter/files", &rf)
+		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
+			return errors.New("file redundancy still 2")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the metadata, lasthealthchecktime should have been updated and
+	// health in metadata should have been updated
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		var rd RenterDirectory
+		st1.getAPI("/renter/dir/", &rd)
+		if rd.Directories[0].Health == 0 {
+			return fmt.Errorf("Directory health should have dropped below 0 but was %v", rd.Directories[0].Health)
+		}
+		if time.Since(rd.Directories[0].LastHealthCheckTime) > 5*time.Second {
+			return fmt.Errorf("LastHealthCheckTime is too far in the past")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

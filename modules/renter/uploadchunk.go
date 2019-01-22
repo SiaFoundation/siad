@@ -178,9 +178,15 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	return nil
 }
 
-// managedFetchAndRepairChunk will fetch the logical data for a chunk, create
+// threadedFetchAndRepairChunk will fetch the logical data for a chunk, create
 // the physical pieces for the chunk, and then distribute them.
-func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
+func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
+	err := r.tg.Add()
+	if err != nil {
+		return
+	}
+	defer r.tg.Done()
+
 	// Calculate the amount of memory needed for erasure coding. This will need
 	// to be released if there's an error before erasure coding is complete.
 	erasureCodingMemory := chunk.fileEntry.PieceSize() * uint64(chunk.fileEntry.ErasureCode().MinPieces())
@@ -206,7 +212,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	defer r.managedCleanUpUploadChunk(chunk)
 
 	// Fetch the logical data for the chunk.
-	err := r.managedFetchLogicalChunkData(chunk)
+	err = r.managedFetchLogicalChunkData(chunk)
 	if err != nil {
 		// Logical data is not available, cannot upload. Chunk will not be
 		// distributed to workers, therefore set workersRemaining equal to zero.
@@ -381,9 +387,12 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	// If required, remove the chunk from the set of active chunks.
 	if chunkComplete && !released {
-		err := uc.fileEntry.Close()
-		if err != nil {
-			r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", uc.fileEntry.SiaPath(), err)
+		// Close the file entry unless disrupted.
+		if !r.deps.Disrupt("disableCloseUploadEntry") {
+			err := uc.fileEntry.Close()
+			if err != nil {
+				r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", uc.fileEntry.SiaPath(), err)
+			}
 		}
 		r.uploadHeap.mu.Lock()
 		delete(r.uploadHeap.activeChunks, uc.id)

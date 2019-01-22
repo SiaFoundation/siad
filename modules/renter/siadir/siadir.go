@@ -1,21 +1,19 @@
 package siadir
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 const (
-	// persistVersion defines the Sia version that the persistence was last
-	// updated
-	persistVersion = "1.4.0"
-
 	// SiaDirExtension is the name of the metadata file for the sia directory
 	SiaDirExtension = ".siadir"
 
@@ -33,11 +31,6 @@ var (
 	// ErrUnknownThread is an error when a siadir is trying to be closed by a
 	// thread that is not in the threadMap
 	ErrUnknownThread = errors.New("thread should not be calling Close(), does not have control of the siadir")
-
-	siaDirMetadataHeader = persist.Metadata{
-		Header:  "Sia Directory Metadata",
-		Version: persistVersion,
-	}
 )
 
 type (
@@ -47,6 +40,7 @@ type (
 
 		// Utility fields
 		deleted bool
+		deps    modules.Dependencies
 		mu      sync.Mutex
 		wal     *writeaheadlog.WAL
 	}
@@ -93,10 +87,11 @@ func New(siaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	// Create SiaDir
 	sd := &SiaDir{
 		staticMetadata: md,
+		deps:           modules.ProdDependencies,
 		wal:            wal,
 	}
 
-	return sd, sd.createAndApplyTransaction(append(updates, update)...)
+	return sd, managedCreateAndApplyTransaction(wal, append(updates, update)...)
 }
 
 // createDirMetadata makes sure there is a metadata file in the directory and
@@ -122,20 +117,29 @@ func createDirMetadata(siaPath, rootDir string) (siaDirMetadata, writeaheadlog.U
 }
 
 // LoadSiaDir loads the directory metadata from disk
-func LoadSiaDir(rootDir, siaPath string, wal *writeaheadlog.WAL) (*SiaDir, error) {
-	var md siaDirMetadata
+func LoadSiaDir(rootDir, siaPath string, deps modules.Dependencies, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	path := filepath.Join(rootDir, siaPath)
-	err := persist.LoadJSON(siaDirMetadataHeader, &md, filepath.Join(path, SiaDirExtension))
-	return &SiaDir{
-		staticMetadata: md,
-		wal:            wal,
-	}, err
-}
+	sd := &SiaDir{
+		deps: deps,
+		wal:  wal,
+	}
+	// Open the file.
+	file, err := sd.deps.Open(filepath.Join(path, SiaDirExtension))
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to open file")
+	}
+	defer file.Close()
 
-// save saves the directory metadata to disk
-func (md siaDirMetadata) save() error {
-	path := filepath.Join(md.RootDir, md.SiaPath, SiaDirExtension)
-	return persist.SaveJSON(siaDirMetadataHeader, md, path)
+	// Read the file
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to read persisted data")
+	}
+
+	// Parse the json object.
+	err = json.Unmarshal(bytes, &sd.staticMetadata)
+
+	return sd, err
 }
 
 // Delete removes the directory from disk and marks it as deleted. Once the directory is

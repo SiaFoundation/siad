@@ -22,6 +22,19 @@ func (c *Contractor) managedCancelContract(cid types.FileContractID) error {
 	})
 }
 
+// managedContractByPublicKey returns the contract with the key specified, if
+// it exists. The contract will be resolved if possible to the most recent
+// child contract.
+func (c *Contractor) managedContractByPublicKey(pk types.SiaPublicKey) (modules.RenterContract, bool) {
+	c.mu.RLock()
+	id, ok := c.pubKeysToContractID[pk.String()]
+	c.mu.RUnlock()
+	if !ok {
+		return modules.RenterContract{}, false
+	}
+	return c.staticContracts.View(id)
+}
+
 // managedContractUtility returns the ContractUtility for a contract with a given id.
 func (c *Contractor) managedContractUtility(id types.FileContractID) (modules.ContractUtility, bool) {
 	rc, exists := c.staticContracts.View(id)
@@ -35,13 +48,7 @@ func (c *Contractor) managedContractUtility(id types.FileContractID) (modules.Co
 // exists. The contract will be resolved if possible to the most recent child
 // contract.
 func (c *Contractor) ContractByPublicKey(pk types.SiaPublicKey) (modules.RenterContract, bool) {
-	c.mu.RLock()
-	id, ok := c.pubKeysToContractID[pk.String()]
-	c.mu.RUnlock()
-	if !ok {
-		return modules.RenterContract{}, false
-	}
-	return c.staticContracts.View(id)
+	return c.managedContractByPublicKey(pk)
 }
 
 // CancelContract cancels the Contractor's contract by marking it !GoodForRenew
@@ -88,18 +95,9 @@ func (c *Contractor) OldContracts() []modules.RenterContract {
 func (c *Contractor) RecoverableContracts() []modules.RecoverableContract {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	contracts := make([]modules.RecoverableContract, len(c.recoverableContracts))
-	copy(contracts, c.recoverableContracts)
-	return contracts
-}
-
-// ResolveIDToPubKey returns the ID of the most recent renewal of id.
-func (c *Contractor) ResolveIDToPubKey(id types.FileContractID) types.SiaPublicKey {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	pk, exists := c.contractIDToPubKey[id]
-	if !exists {
-		panic("renewed should never miss an id")
+	contracts := make([]modules.RecoverableContract, 0, len(c.recoverableContracts))
+	for _, c := range c.recoverableContracts {
+		contracts = append(contracts, c)
 	}
-	return pk
+	return contracts
 }

@@ -161,9 +161,6 @@ type hostContractor interface {
 	// isn't available for recovery or something went wrong.
 	RecoverableContracts() []modules.RecoverableContract
 
-	// ResolveIDToPubKey returns the public key of a host given a contract id.
-	ResolveIDToPubKey(types.FileContractID) types.SiaPublicKey
-
 	// RateLimits Gets the bandwidth limits for connections created by the
 	// contractor and its submodules.
 	RateLimits() (readBPS int64, writeBPS int64, packetSize uint64)
@@ -214,6 +211,16 @@ type Renter struct {
 
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
+
+	// bubbleUpdates are active and pending bubbles that need to be executed on
+	// directories in order to keep the renter's directory tree metadata up to
+	// date
+	//
+	// A bubble is the process of updating a directory's metadata and then
+	// moving on to its parent directory so that any changes in metadata are
+	// properly reflected throughout the filesystem.
+	bubbleUpdates   map[string]bubbleStatus
+	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
 	staticStreamCache *streamCache
@@ -422,12 +429,13 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	return est, allowance, nil
 }
 
-// managedContractUtilities grabs the pubkeys of the hosts that the file(s) have
-// been uploaded to and then generates maps of the contract's utilities showing
-// which hosts are GoodForRenew and which hosts are Offline.  The offline and
-// goodforrenew maps are needed for calculating redundancy and other file
-// metrics.
-func (r *Renter) managedContractUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool) {
+// managedRenterContractsAndUtilities grabs the pubkeys of the hosts that the
+// file(s) have been uploaded to and then generates maps of the contract's
+// utilities showing which hosts are GoodForRenew and which hosts are Offline.
+// Additionally a map of host pubkeys to renter contract is returned.  The
+// offline and goodforrenew maps are needed for calculating redundancy and other
+// file metrics.
+func (r *Renter) managedRenterContractsAndUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
 	// Save host keys in map.
 	pks := make(map[string]types.SiaPublicKey)
 	goodForRenew = make(map[string]bool)
@@ -445,15 +453,21 @@ func (r *Renter) managedContractUtilities(entrys []*siafile.SiaFileSetEntry) (of
 
 	// Build 2 maps that map every pubkey to its offline and goodForRenew
 	// status.
+	contracts = make(map[string]modules.RenterContract)
 	for _, pk := range pks {
 		cu, ok := r.ContractUtility(pk)
 		if !ok {
 			continue
 		}
+		contract, ok := r.hostContractor.ContractByPublicKey(pk)
+		if !ok {
+			continue
+		}
 		goodForRenew[pk.String()] = cu.GoodForRenew
 		offline[pk.String()] = r.hostContractor.IsOffline(pk)
+		contracts[pk.String()] = contract
 	}
-	return offline, goodForRenew
+	return offline, goodForRenew, contracts
 }
 
 // setBandwidthLimits will change the bandwidth limits of the renter based on
@@ -727,6 +741,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 
 		workerPool: make(map[types.FileContractID]*worker),
 
+		bubbleUpdates: make(map[string]bubbleStatus),
+
 		cs:             cs,
 		deps:           deps,
 		g:              g,
@@ -744,13 +760,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil, err
 	}
 
-	// Set the bandwidth limits, since the contractor doesn't persist them.
-	//
-	// TODO: Reconsider the way that the bandwidth limits are allocated to the
-	// renter module, because really it seems they only impact the contractor.
-	// The renter itself doesn't actually do any uploading or downloading.
-	err := r.setBandwidthLimits(r.persist.MaxDownloadSpeed, r.persist.MaxUploadSpeed)
-	if err != nil {
+	// Load and execute bubble updates
+	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
 		return nil, err
 	}
 
@@ -758,7 +769,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	r.staticStreamCache = newStreamCache(r.persist.StreamCacheSize)
 
 	// Subscribe to the consensus set.
-	err = cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
+	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
 	if err != nil {
 		return nil, err
 	}
@@ -767,6 +778,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
 	go r.threadedUploadLoop()
+	go r.threadedUpdateRenterHealth()
 
 	// Kill workers on shutdown.
 	r.tg.OnStop(func() error {

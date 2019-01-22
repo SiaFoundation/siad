@@ -239,13 +239,13 @@ func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
 		return
 	}
 
-	offline, goodForRenew := r.managedContractUtilities(entrys)
+	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities(entrys)
 
 	// Loop through the whole set of files and get a list of chunks to add to
 	// the heap.
 	for _, entry := range entrys {
 		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(entry.ChunkEntrys(), hosts)
+		unfinishedUploadChunks := r.buildUnfinishedChunks(entry.CopyEntry(int(entry.NumChunks())), hosts)
 		r.mu.Unlock(id)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
@@ -278,7 +278,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	}
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
 	// does not need to bottleneck the repair loop.
-	go r.managedFetchAndRepairChunk(uuc)
+	go r.threadedFetchAndRepairChunk(uuc)
 }
 
 // managedRefreshHostsAndWorkers will reset the set of hosts and the set of

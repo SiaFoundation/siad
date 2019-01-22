@@ -77,7 +77,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return err
 	}
 	if up.ErasureCode == nil {
-		up.ErasureCode, _ = siafile.NewRSCode(defaultDataPieces, defaultParityPieces)
+		up.ErasureCode, _ = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, 64)
 	}
 
 	// Check that we have contracts to upload to. We need at least data +
@@ -118,7 +118,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
 	id := r.mu.Lock()
-	unfinishedChunks := r.buildUnfinishedChunks(entry.ChunkEntrys(), hosts)
+	unfinishedChunks := r.buildUnfinishedChunks(entry.CopyEntry(int(entry.NumChunks())), hosts)
 	r.mu.Unlock(id)
 	for i := 0; i < len(unfinishedChunks); i++ {
 		r.uploadHeap.managedPush(unfinishedChunks[i])

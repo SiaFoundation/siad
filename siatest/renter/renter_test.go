@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
@@ -21,6 +22,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -2603,6 +2605,33 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	}
 }
 
+// copyFile is a helper function to copy a file to a destination.
+func copyFile(fromPath, toPath string) error {
+	err := os.MkdirAll(filepath.Dir(toPath), 0700)
+	if err != nil {
+		return err
+	}
+	from, err := os.Open(fromPath)
+	if err != nil {
+		return err
+	}
+	to, err := os.OpenFile(toPath, os.O_RDWR|os.O_CREATE, 0700)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(to, from)
+	if err != nil {
+		return err
+	}
+	if err = from.Close(); err != nil {
+		return err
+	}
+	if err = to.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // TestRenterPersistData checks if the RenterSettings are persisted
 func TestRenterPersistData(t *testing.T) {
 	if testing.Short() {
@@ -2614,28 +2643,9 @@ func TestRenterPersistData(t *testing.T) {
 	testDir := renterTestDir(t.Name())
 
 	// Copying legacy file to test directory
-	renterDir := filepath.Join(testDir, "renter")
-	destination := filepath.Join(renterDir, "renter.json")
-	err := os.MkdirAll(renterDir, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-	from, err := os.Open("../../compatibility/renter_v04.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	to, err := os.OpenFile(destination, os.O_RDWR|os.O_CREATE, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = io.Copy(to, from)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = from.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err = to.Close(); err != nil {
+	source := "../../compatibility/renter_v04.json"
+	destination := filepath.Join(testDir, "renter", "renter.json")
+	if err := copyFile(source, destination); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3187,7 +3197,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 // TestRenterFileChangeDuringDownload confirms that a download will continue and
 // succeed if the file is renamed or deleted after the download has started
 func TestRenterFileChangeDuringDownload(t *testing.T) {
-	if testing.Short() {
+	if !build.VLONG {
 		t.SkipNow()
 	}
 	t.Parallel()
@@ -3868,6 +3878,8 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	renterSeed := proto.DeriveRenterSeed(seed)
+	defer fastrand.Read(renterSeed[:])
 
 	// Check the arbitrary data of each transaction and contract.
 	for _, fcTxn := range fcTxns {
@@ -3881,7 +3893,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			n := copy(csi[:], txn.ArbitraryData[0])
 			encryptedHostKey := txn.ArbitraryData[0][n:]
 			// Calculate the renter seed given the WindowStart of the contract.
-			rs := proto.EphemeralRenterSeed(seed, fc.WindowStart)
+			rs := renterSeed.EphemeralRenterSeed(fc.WindowStart)
 			// Check if the identifier is valid.
 			spk, valid := csi.IsValid(rs, txn, encryptedHostKey)
 			if !valid {
@@ -3892,6 +3904,61 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			if err != nil {
 				t.Fatal("hostKey is invalid", err)
 			}
+		}
+	}
+}
+
+// TestUploadAfterDelete tests that rapidly uploading a file to the same
+// siapath as a previously deleted file works.
+func TestUploadAfterDelete(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a Renter node
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencyDisableCloseUploadEntry{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(modules.SectorSize)
+	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Repeatedly upload and delete a file with the same SiaPath without
+	// closing the entry. That shouldn't cause issues.
+	for i := 0; i < 5; i++ {
+		// Delete the file.
+		if err := renter.RenterDeletePost(remoteFile.SiaPath()); err != nil {
+			t.Fatal(err)
+		}
+		// Upload the file again right after deleting it.
+		if _, err := renter.UploadBlocking(localFile, dataPieces, parityPieces, false); err != nil {
+			t.Fatal(err)
 		}
 	}
 }
@@ -3930,6 +3997,15 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 	seed := wsg.PrimarySeed
 
+	// Upload a file to the renter.
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(10 * modules.SectorSize)
+	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
 	// Remember the contracts the renter formed with the hosts.
 	oldContracts := make(map[types.FileContractID]api.RenterContract)
 	rc, err := r.RenterContractsGet()
@@ -3945,9 +4021,27 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Start a new renter with the same seed.
-	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	// Copy the siafile to the new location.
+	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+siafile.ShareExtension)
+	siaFile, err := ioutil.ReadFile(oldPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenterDir := filepath.Join(testDir, "renter")
+	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+siafile.ShareExtension)
+	if err := os.MkdirAll(filepath.Dir(newPath), 0777); err != nil {
+		t.Fatal(err)
+	}
+	if err := ioutil.WriteFile(newPath, siaFile, 0777); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start a new renter with the same seed but skipt setting the allowance.
+	// This will prevent new contracts from being formed while already formed
+	// contracts will still be recovered.
+	renterParams := node.Renter(newRenterDir)
 	renterParams.PrimarySeed = seed
+	renterParams.SkipSetAllowance = true
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -3966,53 +4060,173 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal("Seeds of new and old renters don't match")
 	}
 
-	// The new renter should know about the contracts being recoverable. TODO
-	// once we have recovery this might not work. We probably need a dependency
-	// then to prevent recovery.
-	rc, err = newRenter.RenterRecoverableContractsGet()
+	// The new renter should have the same active contracts as the old one.
+	miner := tg.Miners()[0]
+	numRetries := 0
+	err = build.Retry(60, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
+		rc, err = newRenter.RenterContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rc.ActiveContracts) != len(oldContracts) {
+			return fmt.Errorf("Didn't recover the right number of contracts, expected %v but was %v",
+				len(oldContracts), len(rc.ActiveContracts))
+		}
+		for _, c := range rc.ActiveContracts {
+			contract, exists := oldContracts[c.ID]
+			if !exists {
+				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
+			}
+			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+				return errors.New("public keys don't match")
+			}
+			if contract.EndHeight != c.EndHeight {
+				return errors.New("endheights don't match")
+			}
+			if contract.GoodForRenew != c.GoodForRenew {
+				return errors.New("GoodForRenew doesn't match")
+			}
+			if contract.GoodForUpload != c.GoodForUpload {
+				return errors.New("GoodForRenew doesn't match")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		rc, _ = newRenter.RenterContractsGet()
+		t.Log("Contracts in total:", len(rc.Contracts))
+		t.Fatal(err)
+	}
+	// Download the whole file again to see if all roots were recovered.
+	_, err = newRenter.DownloadByStream(rf)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rc.RecoverableContracts) != len(oldContracts) {
-		t.Fatalf("Wrong number of recoverable contracts, expected %v but was %v",
-			len(oldContracts), len(rc.RecoverableContracts))
+}
+
+// TestSiafileCompatCode checks that legacy renters can upgrade to the latest
+// siafile format.
+func TestSiafileCompatCode(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
 	}
-	for _, c := range rc.RecoverableContracts {
-		_, exists := oldContracts[c.ID]
-		if !exists {
-			t.Fatal("Unknown recoverable contract", c.ID)
+	t.Parallel()
+
+	// Get test directory
+	testDir := renterTestDir(t.Name())
+
+	// The siapath stored in the legacy file.
+	expectedSiaPath := "sub1/sub2/testfile"
+
+	// Copying legacy file to test directory
+	renterDir := filepath.Join(testDir, "renter")
+	source := filepath.Join("..", "..", "compatibility", "siafile_v1.3.7.sia")
+	destination := filepath.Join(renterDir, "sub1", "sub2", "testfile.sia")
+	if err := copyFile(source, destination); err != nil {
+		t.Fatal(err)
+	}
+	// Copy the legacy settings file to the test directory.
+	source2 := "../../compatibility/renter_v137.json"
+	destination2 := filepath.Join(renterDir, "renter.json")
+	if err := copyFile(source2, destination2); err != nil {
+		t.Fatal(err)
+	}
+	// Copy the legacy contracts into the test directory.
+	contractsSource := "../../compatibility/contracts_v137"
+	contracts, err := ioutil.ReadDir(contractsSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fi := range contracts {
+		contractDst := filepath.Join(contractsSource, fi.Name())
+		err := copyFile(contractDst, filepath.Join(renterDir, "contracts", fi.Name()))
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 
-	// Restart node to see if the contracts are persisted correctly.
-	if err := tg.RestartNode(newRenter); err != nil {
-		t.Fatal(err)
-	}
-	rc2, err := newRenter.RenterRecoverableContractsGet()
+	// Create new node with legacy sia file.
+	r, err := siatest.NewNode(node.AllModules(testDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(rc.RecoverableContracts, rc2.RecoverableContracts) {
-		t.Fatal("contracts after restart are not the same as before")
+	defer func() {
+		if err = r.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Check that exactly 1 siafile exists and that it's the correct one.
+	fis, err := r.Files()
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// TODO the following code won't work before recovery is fully implemented.
-	// The new renter should have the same active contracts as the old one.
-	//rc, err = newRenter.RenterContractsGet()
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//if len(rc.ActiveContracts) != len(oldContracts) {
-	//	t.Fatalf("Didn't recover the right number of contracts, expected %v but was %v",
-	//		len(oldContracts), len(rc.ActiveContracts))
-	//}
-	//for _, c := range rc.ActiveContracts {
-	//	contract, exists := oldContracts[c.ID]
-	//	if !exists {
-	//		t.Fatal("Recovered unknown contract", c.ID)
-	//	}
-	//	if !reflect.DeepEqual(c, contract) {
-	//		t.Fatal("Recovered contract doesn't match expected contract")
-	//	}
-	//}
+	if len(fis) != 1 {
+		t.Fatal("Expected 1 file but got", len(fis))
+	}
+	if fis[0].SiaPath != expectedSiaPath {
+		t.Fatalf("Siapath should be '%v' but was '%v'",
+			expectedSiaPath, fis[0].SiaPath)
+	}
+	// Make sure the legacy file was deleted.
+	if _, err := os.Stat(destination); !os.IsNotExist(err) {
+		t.Fatal("Error should be ErrNotExist but was", err)
+	}
+	// Make sure the siafile is exactly where we would expect it.
+	expectedLocation := filepath.Join(renterDir, "siafiles", "sub1", "sub2", "testfile.sia")
+	if _, err := os.Stat(expectedLocation); err != nil {
+		t.Fatal(err)
+	}
+	// Check the other fields of the file.
+	sf := fis[0]
+	if sf.AccessTime.IsZero() {
+		t.Fatal("AccessTime wasn't set correctly")
+	}
+	if sf.ChangeTime.IsZero() {
+		t.Fatal("ChangeTime wasn't set correctly")
+	}
+	if sf.CreateTime.IsZero() {
+		t.Fatal("CreateTime wasn't set correctly")
+	}
+	if sf.ModTime.IsZero() {
+		t.Fatal("ModTime wasn't set correctly")
+	}
+	if sf.Available {
+		t.Fatal("File shouldn't be available since we don't know the hosts")
+	}
+	if sf.CipherType != crypto.TypeTwofish.String() {
+		t.Fatal("CipherType should be twofish but was", sf.CipherType)
+	}
+	if sf.Filesize != 4096 {
+		t.Fatal("Filesize should be 4096 but was", sf.Filesize)
+	}
+	if sf.Expiration != 91 {
+		t.Fatal("Expiration should be 91 but was", sf.Expiration)
+	}
+	if sf.LocalPath != "/tmp/SiaTesting/siatest/TestRenterTwo/gctwr-EKYAZSVOZ6U2T4HZYIAQ/files/4096bytes 16951a61" {
+		t.Fatal("LocalPath doesn't match")
+	}
+	if sf.Redundancy != 0 {
+		t.Fatal("Redundancy should be 0 since we don't know the hosts")
+	}
+	if sf.UploadProgress != 100 {
+		t.Fatal("File was uploaded before so the progress should be 100")
+	}
+	if sf.UploadedBytes != 40960 {
+		t.Fatal("Redundancy should be 10/20 so 10x the Filesize = 40960 bytes should be uploaded")
+	}
+	if sf.OnDisk {
+		t.Fatal("OnDisk should be false but was true")
+	}
+	if sf.Recoverable {
+		t.Fatal("Recoverable should be false but was true")
+	}
+	if !sf.Renewing {
+		t.Fatal("Renewing should be true but wasn't")
+	}
 }
