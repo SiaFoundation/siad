@@ -66,9 +66,16 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	return resp.Settings, nil
 }
 
-// RecentRevision calls the RecentRevision RPC, returning (what the host
-// claims is) the most recent revision of the contract.
-func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
+// VerifyRecentRevision calls the RecentRevision RPC, returning the most recent
+// revision known to the host if it matches the one we have stored locally.
+// Otherwise an error is returned.
+func (s *Session) VerifyRecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
+	// Get the recent revision from the host.
+	rev, sigs, err := s.RecentRevision()
+	if err != nil {
+		return types.FileContractRevision{}, nil, err
+	}
+
 	// Acquire the contract.
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
@@ -76,26 +83,49 @@ func (s *Session) RecentRevision() (types.FileContractRevision, []types.Transact
 	}
 	defer s.contractSet.Return(sc)
 
-	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
-	var resp modules.LoopRecentRevisionResponse
-	if err := s.call(modules.RPCLoopRecentRevision, nil, &resp); err != nil {
-		return types.FileContractRevision{}, nil, err
-	}
-
 	// Check that the unlock hashes match; if they do not, something is
 	// seriously wrong. Otherwise, check that the revision numbers match.
 	ourRev := sc.header.LastRevision()
-	if resp.Revision.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
+	if rev.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
 		return types.FileContractRevision{}, nil, errors.New("unlock conditions do not match")
-	} else if resp.Revision.NewRevisionNumber != ourRev.NewRevisionNumber {
+	} else if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
 		// If the revision number doesn't match try to commit potential
 		// unapplied transactions and check again.
 		if err := sc.commitTxns(); err != nil {
 			return types.FileContractRevision{}, nil, errors.AddContext(err, "failed to commit transactions")
 		}
 		ourRev = sc.header.LastRevision()
-		if resp.Revision.NewRevisionNumber != ourRev.NewRevisionNumber {
-			return types.FileContractRevision{}, nil, &recentRevisionError{ourRev.NewRevisionNumber, resp.Revision.NewRevisionNumber}
+		if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
+			return types.FileContractRevision{}, nil, &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
+		}
+	}
+
+	return rev, sigs, nil
+}
+
+// RecentRevision calls the RecentRevision RPC, returning (what the host
+// claims is) the most recent revision of the contract.
+func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
+	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
+	var resp modules.LoopRecentRevisionResponse
+	if err := s.call(modules.RPCLoopRecentRevision, nil, &resp); err != nil {
+		return types.FileContractRevision{}, nil, err
+	}
+	// Create the revision transaction.
+	revTxn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{resp.Revision},
+		TransactionSignatures: resp.Signatures,
+	}
+	// Verify the signature on the revision before we use it to recover the
+	// roots.
+	var hpk crypto.PublicKey
+	var sig crypto.Signature
+	for i, signature := range revTxn.TransactionSignatures {
+		copy(hpk[:], resp.Revision.UnlockConditions.PublicKeys[i].Key)
+		copy(sig[:], signature.Signature)
+		err := crypto.VerifyHash(revTxn.SigHash(i, s.height), hpk, sig)
+		if err != nil {
+			return types.FileContractRevision{}, nil, err
 		}
 	}
 
@@ -452,6 +482,96 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	}
 
 	return sc.Metadata(), resp.SectorRoots, nil
+}
+
+// RecoverSectorRoots calls the contract roots download RPC and returns the requested sector roots. The
+// Revision and Signature fields of req are filled in automatically. If a
+// Merkle proof is requested, it is verified.
+func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk crypto.SecretKey) (_ types.Transaction, _ []crypto.Hash, err error) {
+	// Calculate total roots we need to fetch.
+	numRoots := lastRev.NewFileSize / modules.SectorSize
+	if lastRev.NewFileSize%modules.SectorSize != 0 {
+		numRoots++
+	}
+	// Create the request.
+	req := modules.LoopSectorRootsRequest{
+		RootOffset: 0,
+		NumRoots:   numRoots,
+	}
+	// Reset deadline when finished.
+	defer extendDeadline(s.conn, time.Hour)
+
+	// calculate price
+	paidBytes := uint64(req.NumRoots) * crypto.HashSize
+	price := s.host.DownloadBandwidthPrice.Mul64(paidBytes)
+	if lastRev.RenterFunds().Cmp(price) < 0 {
+		return types.Transaction{}, nil, errors.New("contract has insufficient funds to support sector roots download")
+	}
+	// To mitigate small errors (e.g. differing block heights), fudge the
+	// price and collateral by 0.2%.
+	price = price.MulFloat(1 + hostPriceLeeway)
+
+	// create the download revision and sign it
+	rev := newDownloadRevision(lastRev, price)
+	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{rev},
+		TransactionSignatures: []types.TransactionSignature{
+			{
+				ParentID:       crypto.Hash(rev.ParentID),
+				CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+				PublicKeyIndex: 0, // renter key is always first -- see formContract
+			},
+			{
+				ParentID:       crypto.Hash(rev.ParentID),
+				PublicKeyIndex: 1,
+				CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+				Signature:      nil, // to be provided by host
+			},
+		},
+	}
+	sig := crypto.SignHash(txn.SigHash(0, s.height), sk)
+	txn.TransactionSignatures[0].Signature = sig[:]
+
+	// fill in the missing request fields
+	req.NewRevisionNumber = rev.NewRevisionNumber
+	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
+	for i, o := range rev.NewValidProofOutputs {
+		req.NewValidProofValues[i] = o.Value
+	}
+	req.NewMissedProofValues = make([]types.Currency, len(rev.NewMissedProofOutputs))
+	for i, o := range rev.NewMissedProofOutputs {
+		req.NewMissedProofValues[i] = o.Value
+	}
+	req.Signature = sig[:]
+
+	// Increase Successful/Failed interactions accordingly
+	defer func() {
+		if err != nil {
+			s.hdb.IncrementFailedInteractions(s.host.PublicKey)
+		} else {
+			s.hdb.IncrementSuccessfulInteractions(s.host.PublicKey)
+		}
+	}()
+
+	// send SectorRoots RPC request
+	extendDeadline(s.conn, modules.NegotiateDownloadTime)
+	var resp modules.LoopSectorRootsResponse
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp)
+	if err != nil {
+		return types.Transaction{}, nil, err
+	}
+	// verify the response
+	if len(resp.SectorRoots) != int(req.NumRoots) {
+		return types.Transaction{}, nil, errors.New("host did not send the requested number of sector roots")
+	}
+	proofStart, proofEnd := int(req.RootOffset), int(req.RootOffset+req.NumRoots)
+	if !crypto.VerifySectorRangeProof(resp.SectorRoots, resp.MerkleProof, proofStart, proofEnd, rev.NewFileMerkleRoot) {
+		return types.Transaction{}, nil, errors.New("host provided incorrect sector data or Merkle proof")
+	}
+
+	// add host signature
+	txn.TransactionSignatures[1].Signature = resp.Signature
+	return txn, resp.SectorRoots, nil
 }
 
 // shutdown terminates the revision loop and signals the goroutine spawned in

@@ -65,6 +65,8 @@ func (c *Contractor) managedCheckForDuplicates() {
 			c.renewedTo[oldContract.ID] = newContract.ID
 			// Store the contract in the record of historic contracts.
 			c.oldContracts[oldContract.ID] = oldSC.Metadata()
+			// Point the newContract's public key to its ID.
+			c.pubKeysToContractID[string(newContract.HostPublicKey.Key)] = newContract.ID
 			// Save the contractor.
 			err := c.saveSync()
 			if err != nil {
@@ -328,11 +330,14 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
 
-	// get the wallet seed
+	// get the wallet seed.
 	seed, _, err := c.wallet.PrimarySeed()
 	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
+	// derive the renter seed and wipe it once we are done with it.
+	renterSeed := proto.DeriveRenterSeed(seed)
+	defer fastrand.Read(renterSeed[:])
 
 	// create contract params
 	c.mu.RLock()
@@ -343,7 +348,7 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 		StartHeight:   c.blockHeight,
 		EndHeight:     endHeight,
 		RefundAddress: uc.UnlockHash(),
-		RenterSeed:    proto.EphemeralRenterSeed(seed, endHeight),
+		RenterSeed:    renterSeed.EphemeralRenterSeed(endHeight),
 	}
 	c.mu.RUnlock()
 
@@ -363,7 +368,6 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 
 	// Add a mapping from the contract's id to the public key of the host.
 	c.mu.Lock()
-	c.contractIDToPubKey[contract.ID] = contract.HostPublicKey
 	_, exists := c.pubKeysToContractID[contract.HostPublicKey.String()]
 	if exists {
 		c.mu.Unlock()
@@ -478,6 +482,9 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
+	// derive the renter seed and wipe it after we are done with it.
+	renterSeed := proto.DeriveRenterSeed(seed)
+	defer fastrand.Read(renterSeed[:])
 
 	// create contract params
 	c.mu.RLock()
@@ -488,7 +495,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 		StartHeight:   c.blockHeight,
 		EndHeight:     newEndHeight,
 		RefundAddress: uc.UnlockHash(),
-		RenterSeed:    proto.EphemeralRenterSeed(seed, newEndHeight),
+		RenterSeed:    renterSeed.EphemeralRenterSeed(newEndHeight),
 	}
 	c.mu.RUnlock()
 
@@ -510,7 +517,6 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// will destroy the previous mapping from pubKey to contract id but other
 	// modules are only interested in the most recent contract anyway.
 	c.mu.Lock()
-	c.contractIDToPubKey[newContract.ID] = newContract.HostPublicKey
 	c.pubKeysToContractID[newContract.HostPublicKey.String()] = newContract.ID
 	c.mu.Unlock()
 
@@ -669,6 +675,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	defer c.tg.Done()
 
+	// Recover unknown contracts found on the blockchain.
+	c.managedRecoverContracts()
+
 	// Archive contracts that need to be archived before doing additional
 	// maintenance, check for any duplicates caused by interruption, and then
 	// prune the pubkey map.
@@ -679,7 +688,14 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Deduplicate contracts which share the same subnet.
 	c.managedPrunedRedundantAddressRange()
 
-	// Nothing to do if there are no hosts.
+	// Update the utility fields for the contracts based on the most recent
+	// hostdb.
+	if err := c.managedMarkContractsUtility(); err != nil {
+		c.log.Println("WARNING: wasn't able to mark contracts", err)
+		return
+	}
+
+	// Nothing left to do if there are no hosts.
 	c.mu.RLock()
 	wantedHosts := c.allowance.Hosts
 	c.mu.RUnlock()
@@ -698,13 +714,6 @@ func (c *Contractor) threadedContractMaintenance() {
 		return
 	}
 	defer c.maintenanceLock.Unlock()
-
-	// Update the utility fields for this contract based on the most recent
-	// hostdb.
-	if err := c.managedMarkContractsUtility(); err != nil {
-		c.log.Println("WARNING: wasn't able to mark contracts", err)
-		return
-	}
 
 	// The rest of this function needs to know a few of the stateful variables
 	// from the contractor, build those up under a lock so that the rest of the

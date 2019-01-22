@@ -105,19 +105,19 @@ func (h *contractHeader) LastRevision() types.FileContractRevision {
 }
 
 func (h *contractHeader) ID() types.FileContractID {
-	return h.LastRevision().ParentID
+	return h.LastRevision().ID()
 }
 
 func (h *contractHeader) HostPublicKey() types.SiaPublicKey {
-	return h.LastRevision().UnlockConditions.PublicKeys[1]
+	return h.LastRevision().HostPublicKey()
 }
 
 func (h *contractHeader) RenterFunds() types.Currency {
-	return h.LastRevision().NewValidProofOutputs[0].Value
+	return h.LastRevision().RenterFunds()
 }
 
 func (h *contractHeader) EndHeight() types.BlockHeight {
-	return h.LastRevision().NewWindowStart
+	return h.LastRevision().EndHeight()
 }
 
 // A SafeContract contains the most recent revision transaction negotiated

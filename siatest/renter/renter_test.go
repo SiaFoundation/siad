@@ -22,6 +22,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -3877,6 +3878,8 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	renterSeed := proto.DeriveRenterSeed(seed)
+	defer fastrand.Read(renterSeed[:])
 
 	// Check the arbitrary data of each transaction and contract.
 	for _, fcTxn := range fcTxns {
@@ -3890,7 +3893,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			n := copy(csi[:], txn.ArbitraryData[0])
 			encryptedHostKey := txn.ArbitraryData[0][n:]
 			// Calculate the renter seed given the WindowStart of the contract.
-			rs := proto.EphemeralRenterSeed(seed, fc.WindowStart)
+			rs := renterSeed.EphemeralRenterSeed(fc.WindowStart)
 			// Check if the identifier is valid.
 			spk, valid := csi.IsValid(rs, txn, encryptedHostKey)
 			if !valid {
@@ -3994,6 +3997,15 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 	seed := wsg.PrimarySeed
 
+	// Upload a file to the renter.
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(10 * modules.SectorSize)
+	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
 	// Remember the contracts the renter formed with the hosts.
 	oldContracts := make(map[types.FileContractID]api.RenterContract)
 	rc, err := r.RenterContractsGet()
@@ -4009,9 +4021,27 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Start a new renter with the same seed.
-	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	// Copy the siafile to the new location.
+	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+siafile.ShareExtension)
+	siaFile, err := ioutil.ReadFile(oldPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenterDir := filepath.Join(testDir, "renter")
+	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+siafile.ShareExtension)
+	if err := os.MkdirAll(filepath.Dir(newPath), 0777); err != nil {
+		t.Fatal(err)
+	}
+	if err := ioutil.WriteFile(newPath, siaFile, 0777); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start a new renter with the same seed but skipt setting the allowance.
+	// This will prevent new contracts from being formed while already formed
+	// contracts will still be recovered.
+	renterParams := node.Renter(newRenterDir)
 	renterParams.PrimarySeed = seed
+	renterParams.SkipSetAllowance = true
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -4030,55 +4060,54 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal("Seeds of new and old renters don't match")
 	}
 
-	// The new renter should know about the contracts being recoverable. TODO
-	// once we have recovery this might not work. We probably need a dependency
-	// then to prevent recovery.
-	rc, err = newRenter.RenterRecoverableContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rc.RecoverableContracts) != len(oldContracts) {
-		t.Fatalf("Wrong number of recoverable contracts, expected %v but was %v",
-			len(oldContracts), len(rc.RecoverableContracts))
-	}
-	for _, c := range rc.RecoverableContracts {
-		_, exists := oldContracts[c.ID]
-		if !exists {
-			t.Fatal("Unknown recoverable contract", c.ID)
-		}
-	}
-
-	// Restart node to see if the contracts are persisted correctly.
-	if err := tg.RestartNode(newRenter); err != nil {
-		t.Fatal(err)
-	}
-	rc2, err := newRenter.RenterRecoverableContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(rc.RecoverableContracts, rc2.RecoverableContracts) {
-		t.Fatal("contracts after restart are not the same as before")
-	}
-
-	// TODO the following code won't work before recovery is fully implemented.
 	// The new renter should have the same active contracts as the old one.
-	//rc, err = newRenter.RenterContractsGet()
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//if len(rc.ActiveContracts) != len(oldContracts) {
-	//	t.Fatalf("Didn't recover the right number of contracts, expected %v but was %v",
-	//		len(oldContracts), len(rc.ActiveContracts))
-	//}
-	//for _, c := range rc.ActiveContracts {
-	//	contract, exists := oldContracts[c.ID]
-	//	if !exists {
-	//		t.Fatal("Recovered unknown contract", c.ID)
-	//	}
-	//	if !reflect.DeepEqual(c, contract) {
-	//		t.Fatal("Recovered contract doesn't match expected contract")
-	//	}
-	//}
+	miner := tg.Miners()[0]
+	numRetries := 0
+	err = build.Retry(60, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
+		rc, err = newRenter.RenterContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rc.ActiveContracts) != len(oldContracts) {
+			return fmt.Errorf("Didn't recover the right number of contracts, expected %v but was %v",
+				len(oldContracts), len(rc.ActiveContracts))
+		}
+		for _, c := range rc.ActiveContracts {
+			contract, exists := oldContracts[c.ID]
+			if !exists {
+				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
+			}
+			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+				return errors.New("public keys don't match")
+			}
+			if contract.EndHeight != c.EndHeight {
+				return errors.New("endheights don't match")
+			}
+			if contract.GoodForRenew != c.GoodForRenew {
+				return errors.New("GoodForRenew doesn't match")
+			}
+			if contract.GoodForUpload != c.GoodForUpload {
+				return errors.New("GoodForRenew doesn't match")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		rc, _ = newRenter.RenterContractsGet()
+		t.Log("Contracts in total:", len(rc.Contracts))
+		t.Fatal(err)
+	}
+	// Download the whole file again to see if all roots were recovered.
+	_, err = newRenter.DownloadByStream(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestSiafileCompatCode checks that legacy renters can upgrade to the latest
