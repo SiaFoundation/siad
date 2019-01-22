@@ -96,14 +96,14 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	// Generate the secrety key for the handshake and wipe it after using it.
 	sk, _ := proto.GenerateKeyPairWithOutputID(rs, rc.InputParentID)
 	defer fastrand.Read(sk[:])
-	// Start a new RPC sessoin.
-	s, err := c.staticContracts.NewSessionWithSecret(host, rc.ID, blockHeight, c.hdb, sk, c.tg.StopChan())
+	// Start a new RPC session.
+	s, err := c.staticContracts.NewRawSession(host, blockHeight, c.hdb, c.tg.StopChan())
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 	// Get the most recent revision.
-	rev, sigs, err := s.Lock(rc.ID)
+	rev, sigs, err := s.Lock(rc.ID, sk)
 	if err != nil {
 		return err
 	}

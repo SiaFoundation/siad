@@ -518,7 +518,7 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	// send SectorRoots RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopSectorRootsResponse
-	err = s.call(modules.RPCLoopSectorRoots, req, &resp, sectorRootsRespMaxLen+(req.NumRoots*32))
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp, modules.RPCMinLen+(req.NumRoots*crypto.HashSize))
 	if err != nil {
 		return types.Transaction{}, nil, err
 	}
