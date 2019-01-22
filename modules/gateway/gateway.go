@@ -377,7 +377,7 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	})
 	go g.permanentPeerManager(peerManagerClosedChan)
 
-	// Spawn the node manager and provide tools for ensuring clean shudown.
+	// Spawn the node manager and provide tools for ensuring clean shutdown.
 	nodeManagerClosedChan := make(chan struct{})
 	g.threads.OnStop(func() {
 		<-nodeManagerClosedChan

@@ -7,13 +7,13 @@ import (
 )
 
 // managedPeerManagerConnect is a blocking function which tries to connect to
-// the input addreess as a peer.
+// the input address as a peer.
 func (g *Gateway) managedPeerManagerConnect(addr modules.NetAddress) {
 	g.log.Debugf("[PMC] [%v] Attempting connection", addr)
 	err := g.managedConnect(addr)
 	if err == errPeerExists {
 		// This peer is already connected to us. Safety around the
-		// oubound peers relates to the fact that we have picked out
+		// outbound peers relates to the fact that we have picked out
 		// the outbound peers instead of allow the attacker to pick out
 		// the peers for us. Because we have made the selection, it is
 		// okay to set the peer as an outbound peer.
@@ -120,7 +120,7 @@ func (g *Gateway) permanentPeerManager(closedChan chan struct{}) {
 			// Sleep briefly to prevent the gateway from hogging the CPU if all
 			// peers are local.
 			if numOutboundPeers >= maxLocalOutboundPeers && addr.IsLocal() && build.Release != "testing" {
-				g.log.Debugln("[PPM] Ignorning selected peer; this peer is local and we already have multiple outbound peers:", addr)
+				g.log.Debugln("[PPM] Ignoring selected peer; this peer is local and we already have multiple outbound peers:", addr)
 				if !g.managedSleep(unwantedLocalPeerDelay) {
 					return
 				}
