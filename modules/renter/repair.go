@@ -533,7 +533,7 @@ func (r *Renter) threadedStuckLoop() {
 		}
 
 		// Build a min-heap of chunks organized by upload progress.
-		r.managedBuildStuckChunkHeap(siaPath, hosts)
+		r.managedBuildChunkHeap(siaPath, hosts, true)
 		r.uploadHeap.mu.Lock()
 		heapLen := r.uploadHeap.heap.Len()
 		r.uploadHeap.mu.Unlock()

@@ -359,7 +359,7 @@ func (r *Renter) buildUnfinishedStuckChunks(entrys []*siafile.SiaFileSetEntry, h
 
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
-func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}) {
+func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}, stuckLoop bool) {
 	// Get Directory files
 	var files []*siafile.SiaFileSetEntry
 	fileinfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, dirSiaPath))
@@ -379,54 +379,16 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		if err != nil {
 			return
 		}
-		files = append(files, file)
-	}
 
-	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities(files)
-
-	// Loop through the whole set of files and get a list of chunks to add to
-	// the heap.
-	for _, file := range files {
-		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts)
-		r.mu.Unlock(id)
-		for i := 0; i < len(unfinishedUploadChunks); i++ {
-			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
-		}
-	}
-	for _, file := range files {
-		// Check if local file is missing and redundancy is less than 1
-		// log warning to renter log
-		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
-			r.log.Debugln("File not found on disk and possibly unrecoverable:", file.LocalPath())
-		}
-		err := file.Close()
-		if err != nil {
-			r.log.Debugln("WARN: Could not close thread:", err)
-		}
-	}
-}
-
-// managedBuildStuckChunkHeap will iterate through the provided directory and
-// add the stuck chunks to the heap
-func (r *Renter) managedBuildStuckChunkHeap(dirSiaPath string, hosts map[string]struct{}) {
-	// Get all the Stuck SiaFileSetEntrys
-	var files []*siafile.SiaFileSetEntry
-	_, fileinfos, err := r.DirList(dirSiaPath)
-	if err != nil {
-		return
-	}
-	for _, fi := range fileinfos {
-		// skip non stuck files
-		if fi.NumStuckChunks == 0 {
+		// Add file to files
+		if stuckLoop && file.NumStuckChunks() == 0 {
+			// Close unneeded files
+			err := file.Close()
+			if err != nil {
+				r.log.Debugln("WARN: Could not close file:", err)
+			}
 			continue
 		}
-
-		// Open SiaFile
-		file, err := r.staticFileSet.Open(fi.SiaPath)
-		if err != nil {
-			return
-		}
 		files = append(files, file)
 	}
 
@@ -436,7 +398,12 @@ func (r *Renter) managedBuildStuckChunkHeap(dirSiaPath string, hosts map[string]
 	// the heap.
 	for _, file := range files {
 		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedStuckChunks(file.CopyEntry(int(file.NumStuckChunks())), hosts)
+		var unfinishedUploadChunks []*unfinishedUploadChunk
+		if stuckLoop {
+			unfinishedUploadChunks = r.buildUnfinishedStuckChunks(file.CopyEntry(int(file.NumChunks())), hosts)
+		} else {
+			unfinishedUploadChunks = r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts)
+		}
 		r.mu.Unlock(id)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
@@ -450,7 +417,7 @@ func (r *Renter) managedBuildStuckChunkHeap(dirSiaPath string, hosts map[string]
 		}
 		err := file.Close()
 		if err != nil {
-			r.log.Debugln("WARN: Could not close thread:", err)
+			r.log.Debugln("WARN: Could not close file:", err)
 		}
 	}
 }
@@ -591,7 +558,7 @@ func (r *Renter) threadedUploadLoop() {
 		hosts := r.managedRefreshHostsAndWorkers()
 
 		// Build a min-heap of chunks organized by upload progress.
-		r.managedBuildChunkHeap(dirSiaPath, hosts)
+		r.managedBuildChunkHeap(dirSiaPath, hosts, false)
 		r.uploadHeap.mu.Lock()
 		heapLen := r.uploadHeap.heap.Len()
 		r.uploadHeap.mu.Unlock()
