@@ -20,6 +20,10 @@ const (
 	// remainingFile is a constant used to indicate that a fileSection can access
 	// the whole remaining file instead of being bound to a certain end offset.
 	remainingFile = -1
+
+	// keyExchangeMaxLen is the maximum number of bytes the renter will read
+	// from the host during the RPC key exchange.
+	keyExchangeMaxLen = 256
 )
 
 var (

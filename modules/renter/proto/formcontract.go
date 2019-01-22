@@ -379,7 +379,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	}()
 
 	// Initiate protocol.
-	s, err := cs.NewSessionWithSecret(host, types.FileContractID{}, startHeight, hdb, crypto.SecretKey{}, cancel)
+	s, err := cs.NewRawSession(host, startHeight, hdb, cancel)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -396,7 +396,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 
 	// Read the host's response.
 	var resp modules.LoopContractAdditions
-	if err := s.readResponse(&resp); err != nil {
+	if err := s.readResponse(&resp, modules.RPCMinLen); err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -463,7 +463,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 
 	// Read the host acceptance and signatures.
 	var hostSigs modules.LoopContractSignatures
-	if err := s.readResponse(&hostSigs); err != nil {
+	if err := s.readResponse(&hostSigs, modules.RPCMinLen); err != nil {
 		return modules.RenterContract{}, err
 	}
 	for _, sig := range hostSigs.ContractSignatures {

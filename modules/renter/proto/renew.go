@@ -401,11 +401,18 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	}()
 
 	// Initiate protocol.
-	s, err := cs.NewSessionWithSecret(host, contract.ID(), startHeight, hdb, contract.SecretKey, cancel)
+	s, err := cs.NewRawSession(host, startHeight, hdb, cancel)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
 	defer s.Close()
+	// Lock the contract and resynchronize if necessary
+	rev, _, err := s.Lock(contract.ID(), contract.SecretKey)
+	if err != nil {
+		return modules.RenterContract{}, err
+	} else if err := oldContract.syncRevision(rev); err != nil {
+		return modules.RenterContract{}, err
+	}
 
 	// Send the RenewContract request.
 	req := modules.LoopRenewContractRequest{
@@ -417,7 +424,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 
 	// Read the host's response.
 	var resp modules.LoopContractAdditions
-	if err := s.readResponse(&resp); err != nil {
+	if err := s.readResponse(&resp, modules.RPCMinLen); err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -484,7 +491,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 
 	// Read the host acceptance and signatures.
 	var hostSigs modules.LoopContractSignatures
-	if err := s.readResponse(&hostSigs); err != nil {
+	if err := s.readResponse(&hostSigs, modules.RPCMinLen); err != nil {
 		return modules.RenterContract{}, err
 	}
 	for _, sig := range hostSigs.ContractSignatures {

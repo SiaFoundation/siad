@@ -104,7 +104,7 @@ func (hs *hostSession) Download(root crypto.Hash, offset, length uint32) ([]byte
 	}
 
 	// Download the data.
-	_, data, err := hs.session.Download(root, offset, length)
+	_, data, err := hs.session.Read(root, offset, length)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func (hs *hostSession) Upload(data []byte) (crypto.Hash, error) {
 	}
 
 	// Perform the upload.
-	_, sectorRoot, err := hs.session.Upload(data)
+	_, sectorRoot, err := hs.session.Write(data)
 	if err != nil {
 		return crypto.Hash{}, err
 	}
@@ -177,11 +177,6 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	// Create the session.
 	s, err := c.staticContracts.NewSession(host, id, height, c.hdb, cancel)
 	if err != nil {
-		return nil, err
-	}
-
-	// Call RecentRevision to synchronize our revision with the host's.
-	if _, _, err := s.VerifyRecentRevision(); err != nil {
 		return nil, err
 	}
 
