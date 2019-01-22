@@ -23,9 +23,9 @@ type (
 		//
 		// We also keep the full file entry as it allows us to update metadata
 		// items in the file such as the access time.
-		staticFile      *siafile.Snapshot
-		offset          int64
-		r               *Renter
+		staticFile *siafile.Snapshot
+		offset     int64
+		r          *Renter
 
 		// The cache itself is a []byte that is managed by threadedFillCache. The
 		// 'cacheOffset' indicates the starting location of the cache within the
@@ -465,8 +465,8 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 
 	// Create the streamer
 	s := &streamer{
-		staticFile:      entry.Snapshot(),
-		r:               r,
+		staticFile: entry.Snapshot(),
+		r:          r,
 
 		activateCache:   make(chan struct{}),
 		cacheReady:      make(chan struct{}),
