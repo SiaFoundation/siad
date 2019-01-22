@@ -243,6 +243,14 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		return nil, err
 	}
 
+	// Initialize the contractIDToPubKey map
+	for _, contract := range c.oldContracts {
+		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
+	}
+	for _, contract := range c.staticContracts.ViewAll() {
+		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
+	}
+
 	// Subscribe to the consensus set.
 	err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
 	if err == modules.ErrInvalidConsensusChangeID {
@@ -266,14 +274,6 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	c.mu.Unlock()
 	if err != nil {
 		return nil, err
-	}
-
-	// Initialize the contractIDToPubKey map
-	for _, contract := range c.oldContracts {
-		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	}
-	for _, contract := range c.staticContracts.ViewAll() {
-		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	}
 
 	// Update the allowance in the hostdb with the one that was loaded from
