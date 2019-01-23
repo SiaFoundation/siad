@@ -4239,9 +4239,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-
-	// Create a testgroup, creating without renter so the renter's
-	// contract transactions can easily be obtained.
+	// Create a testgroup.
 	groupParams := siatest.GroupParams{
 		Hosts:   2,
 		Miners:  1,
@@ -4257,7 +4255,6 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-
 	// Get the renter node.
 	r := tg.Renters()[0]
 
@@ -4360,6 +4357,55 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	}
 	// Download the whole file again to see if all roots were recovered.
 	_, err = r.DownloadByStream(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCreateBackup tests that creating a backup with the /renter/backup
+// endpoint works as expected.
+func TestCreateBackup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(len(tg.Hosts()) - 1)
+	parityPieces := uint64(1)
+	_, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Create a backup.
+	err = r.RenterCreateBackupPost(filepath.Join(r.FilesDir().Path(), "test.backup"))
 	if err != nil {
 		t.Fatal(err)
 	}

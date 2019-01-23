@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,20 +27,25 @@ func (r *Renter) CreateBackup(dst string, secret []byte) error {
 		if err != nil {
 			return err
 		}
-
 		// Skip folders and non-sia files.
 		if info.IsDir() || filepath.Ext(path) != siafile.ShareExtension {
 			return nil
 		}
-
 		// Copy the Siafile. The location within the temporary directory should
 		// be relative to the file's location within the 'siafile' directory.
 		relPath := strings.TrimPrefix(path, r.filesDir)
-		newPath := filepath.Join(tmpDir, relPath)
-		fmt.Println(relPath)
-		fmt.Println(newPath)
-		// TODO copy SiaFile
-		return nil
+		dst := filepath.Join(tmpDir, relPath)
+		entry, err := r.staticFileSet.Open(strings.TrimSuffix(relPath, siafile.ShareExtension))
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
+			return err
+		}
+		if err := entry.Copy(dst); err != nil {
+			return err
+		}
+		return entry.Close()
 	})
 	if err != nil {
 		return err

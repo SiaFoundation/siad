@@ -158,19 +158,28 @@ func readInsertUpdate(update writeaheadlog.Update) (path string, index int64, da
 }
 
 // Copy copies the on-disk SiaFile to a new location.
-func (sf *SiaFile) Copy(dst string) error {
-	// Read the file from disk.
+func (sf *SiaFile) Copy(dstPath string) error {
+	// Check if file was deleted.
 	sf.mu.RLock()
+	defer sf.mu.RUnlock()
 	if sf.deleted {
 		return errors.New("can't copy deleted SiaFile")
 	}
-	data, err := ioutil.ReadFile(sf.siaFilePath)
-	sf.mu.RUnlock()
+	// Open source and destination files.
+	src, err := os.Open(sf.siaFilePath)
 	if err != nil {
 		return err
 	}
-	// Write it to the new location.
-	return ioutil.WriteFile(dst, data, 0700)
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	// Close them once we are done.
+	defer src.Close()
+	defer dst.Close()
+	// Copy the contents from the source to the destination.
+	_, err = io.Copy(dst, src)
+	return err
 }
 
 // allocateHeaderPage allocates a new page for the metadata and publicKeyTable.
