@@ -486,7 +486,11 @@ type Renter interface {
 
 	// CreateBackup creates a backup of the renter's siafiles by first copying them
 	// into a temporary directory and then zipping that directory.
-	CreateBackup(dst string, secret []byte) error
+	CreateBackup(dst string) error
+
+	// LoadBackup loads the siafiles of a previously created backup into the
+	// renter.
+	LoadBackup(src string) error
 
 	// InitRecoveryScan starts scanning the whole blockchain for recoverable
 	// contracts within a separate thread.

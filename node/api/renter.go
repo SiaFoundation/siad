@@ -187,16 +187,30 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{"destination must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
-	// Get the wallet seed to encrypt the backup.
-	// TODO add support for custom passwords in a follow-up.
-	s, _, err := api.wallet.PrimarySeed()
-	if err != nil {
-		WriteError(w, Error{"failed to get wallet seed to encrypt the backup" + err.Error()}, http.StatusBadRequest)
+	// Create the backup.
+	if err := api.renter.CreateBackup(dst); err != nil {
+		WriteError(w, Error{"failed to create backup" + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	// Create the backup.
-	if err := api.renter.CreateBackup(dst, s[:]); err != nil {
-		WriteError(w, Error{"failed to create backup" + err.Error()}, http.StatusBadRequest)
+	WriteSuccess(w)
+}
+
+// renterBackupHandlerPOST handles the API calls to /renter/recoverbackup
+func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Check that source was specified.
+	src := req.FormValue("source")
+	if src == "" {
+		WriteError(w, Error{"source not specified"}, http.StatusBadRequest)
+		return
+	}
+	// The source needs to be an absolute path.
+	if !filepath.IsAbs(src) {
+		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
+		return
+	}
+	// Load the backup.
+	if err := api.renter.LoadBackup(src); err != nil {
+		WriteError(w, Error{"failed to load backup" + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)

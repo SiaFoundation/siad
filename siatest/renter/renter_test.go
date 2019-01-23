@@ -4400,7 +4400,7 @@ func TestCreateBackup(t *testing.T) {
 	// Upload the file.
 	dataPieces := uint64(len(tg.Hosts()) - 1)
 	parityPieces := uint64(1)
-	_, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
@@ -4410,8 +4410,20 @@ func TestCreateBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Make sure that the backup exists at the specified location.
-	if _, err := os.Stat(backupPath); err != nil {
+	// Delete the file.
+	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
+	// The file should no longer be downloadable.
+	if _, err := r.DownloadByStream(rf); err == nil {
+		t.Fatal("File shouldn't be downloadable after being deleted")
+	}
+	// Recover the backup.
+	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	// The file should be available and ready for download again.
+	if _, err := r.DownloadByStream(rf); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -15,7 +15,7 @@ import (
 // CreateBackup creates a backup of the renter's siafiles by first copying them
 // into a temporary directory and then zipping that directory.
 // TODO add encryption support (follow-up)
-func (r *Renter) CreateBackup(dst string, secret []byte) error {
+func (r *Renter) CreateBackup(dst string) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (r *Renter) CreateBackup(dst string, secret []byte) error {
 // LoadBackup loads the siafiles of a previously created backup into the
 // renter.
 // TODO add decryption support (follow-up)
-func (r *Renter) LoadBackup(src string, secret []byte) error {
+func (r *Renter) LoadBackup(src string) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func unzipDir(zipPath, dstFolder string) error {
 		dst := filepath.Join(dstFolder, f.Name)
 
 		// Search for zipslip.
-		if !strings.HasPrefix(dst, filepath.Clean(dst)+string(os.PathSeparator)) {
+		if !strings.HasPrefix(dst, filepath.Clean(dstFolder)+string(os.PathSeparator)) {
 			return fmt.Errorf("%s: illegal file path", dst)
 		}
 		// Check for folder.

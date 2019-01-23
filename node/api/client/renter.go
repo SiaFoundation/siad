@@ -175,11 +175,19 @@ func (c *Client) RenterDownloadGet(siaPath, destination string, offset, length u
 	return
 }
 
-// RenterCreateBackupPost creates a backup of the SiaFiles of the renter
+// RenterCreateBackupPost creates a backup of the SiaFiles of the renter.
 func (c *Client) RenterCreateBackupPost(dst string) (err error) {
 	values := url.Values{}
 	values.Set("destination", dst)
 	err = c.post("/renter/backup", values.Encode(), nil)
+	return
+}
+
+// RenterRecoverBackupPost loads a backup of the SiaFiles of the renter.
+func (c *Client) RenterRecoverBackupPost(src string) (err error) {
+	values := url.Values{}
+	values.Set("source", src)
+	err = c.post("/renter/recoverbackup", values.Encode(), nil)
 	return
 }
 
