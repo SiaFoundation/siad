@@ -4405,8 +4405,13 @@ func TestCreateBackup(t *testing.T) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	// Create a backup.
-	err = r.RenterCreateBackupPost(filepath.Join(r.FilesDir().Path(), "test.backup"))
+	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
+	err = r.RenterCreateBackupPost(backupPath)
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure that the backup exists at the specified location.
+	if _, err := os.Stat(backupPath); err != nil {
 		t.Fatal(err)
 	}
 }
