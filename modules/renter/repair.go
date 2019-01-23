@@ -310,12 +310,13 @@ func (r *Renter) managedStuckDirectory() (string, error) {
 			}
 			return siaPath, errNoStuckFiles
 		}
+		// Check if we have reached a directory with only files
+		if len(directories) == 1 {
+			return siaPath, nil
+		}
 
 		// Get random int
 		rand := fastrand.Intn(int(directories[0].NumStuckChunks))
-		if rand == 0 {
-			return siaPath, nil
-		}
 
 		// Use rand to decide which directory to go into. Work backwards over
 		// the slice of directories. Since the first element is the current
@@ -328,19 +329,24 @@ func (r *Renter) managedStuckDirectory() (string, error) {
 			if directories[i].NumStuckChunks == uint64(0) {
 				continue
 			}
+			// If we make it to the last iteration double check that the current
+			// directory has files
+			if i == 0 && len(files) == 0 {
+				break
+			}
 
-			// If we make it to the last iterate we use the current direcotry
+			// If we are on the last iteration then return the current directory
 			if i == 0 {
-				return directories[i].SiaPath, nil
+				return siaPath, nil
 			}
 
 			rand = rand - int(directories[i].NumStuckChunks)
-			if rand > 0 {
-				continue
-			}
-
 			siaPath = directories[i].SiaPath
-			break
+			// If rand is less than 0 break out of the loop and continue into
+			// that directory
+			if rand <= 0 {
+				break
+			}
 		}
 	}
 }
@@ -530,6 +536,7 @@ func (r *Renter) threadedStuckLoop() {
 				// The renter has shut down.
 				return
 			}
+			continue
 		}
 
 		// Build a min-heap of chunks organized by upload progress.

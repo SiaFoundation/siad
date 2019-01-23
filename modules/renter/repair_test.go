@@ -422,6 +422,8 @@ func TestWorstHealthDirectory(t *testing.T) {
 	}
 }
 
+// TestRandomStuckDirectory probes managedStuckDirectory to make sure it
+// randomly picks a correct directory
 func TestRandomStuckDirectory(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -504,10 +506,10 @@ func TestRandomStuckDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create map of stuck directories
+	// Create map of stuck directories that contain files. These are the only
+	// directories that should be returned.
 	stuckDirectories := make(map[string]struct{})
 	stuckDirectories[""] = struct{}{}
-	stuckDirectories[subDir1] = struct{}{}
 	stuckDirectories[siaPath] = struct{}{}
 
 	// Find random directory several times, confirm that it finds a stuck

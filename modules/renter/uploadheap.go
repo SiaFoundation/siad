@@ -56,6 +56,21 @@ type uploadChunkHeap []*unfinishedUploadChunk
 // Implementation of heap.Interface for uploadChunkHeap.
 func (uch uploadChunkHeap) Len() int { return len(uch) }
 func (uch uploadChunkHeap) Less(i, j int) bool {
+	// If both chunks are stuck, check which chunk has lower completion
+	// percentage
+	if uch[i].stuck && uch[j].stuck {
+		return float64(uch[i].piecesCompleted)/float64(uch[i].piecesNeeded) < float64(uch[j].piecesCompleted)/float64(uch[j].piecesNeeded)
+	}
+	// If chunk i is stuck return true to prioritize it
+	if uch[i].stuck {
+		return true
+	}
+	// If chunk j is stuck return false to prioritize it
+	if uch[j].stuck {
+		return false
+	}
+	// If neither chunk is stuck, check which chunk has lower completion
+	// percentage
 	return float64(uch[i].piecesCompleted)/float64(uch[i].piecesNeeded) < float64(uch[j].piecesCompleted)/float64(uch[j].piecesNeeded)
 }
 func (uch uploadChunkHeap) Swap(i, j int)       { uch[i], uch[j] = uch[j], uch[i] }
@@ -160,6 +175,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 			memoryNeeded:  entrys[i].PieceSize()*uint64(entrys[i].ErasureCode().NumPieces()+entrys[i].ErasureCode().MinPieces()) + uint64(entrys[i].ErasureCode().NumPieces())*entrys[i].MasterKey().Type().Overhead(),
 			minimumPieces: entrys[i].ErasureCode().MinPieces(),
 			piecesNeeded:  entrys[i].ErasureCode().NumPieces(),
+			stuck:         entrys[i].StuckChunkByIndex(uint64(index)),
 
 			physicalChunkData: make([][]byte, entrys[i].ErasureCode().NumPieces()),
 
