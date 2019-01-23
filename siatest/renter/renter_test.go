@@ -4362,9 +4362,10 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	}
 }
 
-// TestCreateBackup tests that creating a backup with the /renter/backup
-// endpoint works as expected.
-func TestCreateBackup(t *testing.T) {
+// TestCreateLoadBackup tests that creating a backup with the /renter/backup
+// endpoint works as expected and that it can be loaded with the
+// /renter/recoverbackup endpoint.
+func TestCreateLoadBackup(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
