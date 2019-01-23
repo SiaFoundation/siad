@@ -156,7 +156,6 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 			Data: data,
 		}},
 		NewRevisionNumber: rev.NewRevisionNumber,
-		Signature:         sig[:],
 	}
 	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
 	for i, o := range rev.NewValidProofOutputs {
@@ -192,11 +191,21 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 		return modules.RenterContract{}, crypto.Hash{}, errors.New("InterruptUploadBeforeSendingRevision disrupt")
 	}
 
-	// send upload RPC request
+	// send Write RPC request
 	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
-	var resp modules.LoopWriteResponse
-	err = s.call(modules.RPCLoopWrite, req, &resp, modules.RPCMinLen)
-	if err != nil {
+	if err := s.writeRequest(modules.RPCLoopWrite, req); err != nil {
+		return modules.RenterContract{}, crypto.Hash{}, err
+	}
+	// send our signature immediately, since we did not request a Merkle proof.
+	renterSig := modules.LoopWriteResponse{
+		Signature: sig[:],
+	}
+	if err := modules.WriteRPCResponse(s.conn, s.aead, renterSig, nil); err != nil {
+		return modules.RenterContract{}, crypto.Hash{}, err
+	}
+	// read the host's signature
+	var hostSig modules.LoopWriteResponse
+	if err := modules.ReadRPCResponse(s.conn, s.aead, &hostSig, modules.RPCMinLen); err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}
 
@@ -206,7 +215,7 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	}
 
 	// add host signature
-	txn.TransactionSignatures[1].Signature = resp.Signature
+	txn.TransactionSignatures[1].Signature = hostSig.Signature
 
 	// update contract
 	err = sc.commitUpload(walTxn, txn, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)

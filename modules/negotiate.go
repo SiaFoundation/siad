@@ -312,6 +312,9 @@ var (
 // Write actions
 var (
 	WriteActionAppend = types.Specifier{'A', 'p', 'p', 'e', 'n', 'd'}
+	WriteActionTrim   = types.Specifier{'T', 'r', 'i', 'm'}
+	WriteActionSwap   = types.Specifier{'S', 'w', 'a', 'p'}
+	WriteActionUpdate = types.Specifier{'U', 'p', 'd', 'a', 't', 'e'}
 )
 
 var (
@@ -469,7 +472,6 @@ type (
 		NewRevisionNumber    uint64
 		NewValidProofValues  []types.Currency
 		NewMissedProofValues []types.Currency
-		Signature            []byte
 	}
 
 	// LoopWriteAction is a generic Write action. The meaning of each field

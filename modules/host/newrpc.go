@@ -129,24 +129,24 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 		s.writeError(err)
 		return err
 	}
-
-	// Perform some basic input validation.
-	if len(req.Actions) != 1 {
-		err := errors.New("host only supports one action at a time")
-		s.writeError(err)
-		return err
-	} else if req.Actions[0].Type != modules.WriteActionAppend {
-		err := errors.New("host only supports ActionAppend")
-		s.writeError(err)
-		return err
-	} else if req.MerkleProof {
+	if req.MerkleProof {
 		err := errors.New("host does not support Merkle proofs")
 		s.writeError(err)
 		return err
 	}
-	if uint64(len(req.Actions[0].Data)) != modules.SectorSize {
-		s.writeError(errBadSectorSize)
-		return errBadSectorSize
+
+	// Since no Merkle proof was requested, the renter's signature should be
+	// sent immediately.
+	var sigResponse modules.LoopWriteResponse
+	if err := s.readResponse(&sigResponse, modules.RPCMinLen); err != nil {
+		return err
+	}
+
+	// Check that a contract is locked.
+	if len(s.so.OriginTransactionSet) == 0 {
+		err := errors.New("no contract locked")
+		s.writeError(err)
+		return err
 	}
 
 	// Read some internal fields for later.
@@ -157,10 +157,99 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	h.mu.RUnlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
+	// Process each action.
+	newRoots := append([]crypto.Hash(nil), s.so.SectorRoots...)
+	var bandwidthRevenue types.Currency
+	var storageRevenue types.Currency
+	var newCollateral types.Currency
+	var sectorsRemoved []crypto.Hash
+	var sectorsGained []crypto.Hash
+	var gainedSectorData [][]byte
+	for _, action := range req.Actions {
+		switch action.Type {
+		case modules.WriteActionAppend:
+			if uint64(len(action.Data)) != modules.SectorSize {
+				s.writeError(errBadSectorSize)
+				return errBadSectorSize
+			}
+			// Update sector roots.
+			newRoot := crypto.MerkleRoot(action.Data)
+			newRoots = append(newRoots, newRoot)
+			sectorsGained = append(sectorsGained, newRoot)
+			gainedSectorData = append(gainedSectorData, action.Data)
+
+			// Update finances.
+			blocksRemaining := s.so.proofDeadline() - blockHeight
+			blockBytesCurrency := types.NewCurrency64(uint64(blocksRemaining)).Mul64(modules.SectorSize)
+			bandwidthRevenue = bandwidthRevenue.Add(settings.UploadBandwidthPrice.Mul64(modules.SectorSize))
+			storageRevenue = storageRevenue.Add(settings.StoragePrice.Mul(blockBytesCurrency))
+			newCollateral = newCollateral.Add(settings.Collateral.Mul(blockBytesCurrency))
+
+		case modules.WriteActionTrim:
+			numSectors := action.A
+			if uint64(len(newRoots)) < numSectors {
+				err := errors.New("trim size exceeds number of sectors")
+				s.writeError(err)
+				return err
+			}
+			// Update sector roots.
+			sectorsRemoved = append(sectorsRemoved, newRoots[uint64(len(newRoots))-numSectors:]...)
+			newRoots = newRoots[:uint64(len(newRoots))-numSectors]
+
+		case modules.WriteActionSwap:
+			i, j := action.A, action.B
+			if i >= uint64(len(newRoots)) || j >= uint64(len(newRoots)) {
+				err := errors.New("illegal sector index")
+				s.writeError(err)
+				return err
+			}
+			// Update sector roots.
+			newRoots[i], newRoots[j] = newRoots[j], newRoots[i]
+
+		case modules.WriteActionUpdate:
+			sectorIndex, offset := action.A, action.B
+			if sectorIndex >= uint64(len(newRoots)) {
+				err := errors.New("illegal sector index or offset")
+				s.writeError(err)
+				return err
+			} else if offset+uint64(len(action.Data)) > modules.SectorSize {
+				s.writeError(errIllegalOffsetAndLength)
+				return errIllegalOffsetAndLength
+			}
+			// Update sector roots.
+			sector, err := h.ReadSector(newRoots[sectorIndex])
+			if err != nil {
+				s.writeError(err)
+				return err
+			}
+			copy(sector[offset:], action.Data)
+			newRoot := crypto.MerkleRoot(sector)
+			sectorsRemoved = append(sectorsRemoved, newRoots[sectorIndex])
+			sectorsGained = append(sectorsGained, newRoot)
+			gainedSectorData = append(gainedSectorData, sector)
+			newRoots[sectorIndex] = newRoot
+
+			// Update finances.
+			bandwidthRevenue = bandwidthRevenue.Add(settings.UploadBandwidthPrice.Mul64(uint64(len(action.Data))))
+
+		default:
+			err := errors.New("unknown action type " + action.Type.String())
+			s.writeError(err)
+			return err
+		}
+	}
+
 	// construct the new revision
 	newRevision := currentRevision
 	newRevision.NewRevisionNumber = req.NewRevisionNumber
-	newRevision.NewFileSize += modules.SectorSize
+	for _, action := range req.Actions {
+		if action.Type == modules.WriteActionAppend {
+			newRevision.NewFileSize += modules.SectorSize
+		} else if action.Type == modules.WriteActionTrim {
+			newRevision.NewFileSize -= modules.SectorSize * action.A
+		}
+	}
+	newRevision.NewFileMerkleRoot = cachedMerkleRoot(newRoots)
 	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
 	for i := range newRevision.NewValidProofOutputs {
 		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
@@ -176,17 +265,12 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 		}
 	}
 
-	// verify the revision and calculate the root of the sector
-	blocksRemaining := s.so.proofDeadline() - blockHeight
-	blockBytesCurrency := types.NewCurrency64(uint64(blocksRemaining)).Mul64(modules.SectorSize)
-	bandwidthRevenue := settings.UploadBandwidthPrice.Mul64(modules.SectorSize)
-	storageRevenue := settings.StoragePrice.Mul(blockBytesCurrency)
-	newCollateral := settings.Collateral.Mul(blockBytesCurrency)
-	newRoot := crypto.MerkleRoot(req.Actions[0].Data)
-	s.so.SectorRoots = append(s.so.SectorRoots, newRoot)
-	newRevision.NewFileMerkleRoot = cachedMerkleRoot(s.so.SectorRoots)
+	// verify the new revision
 	newRevenue := storageRevenue.Add(bandwidthRevenue)
-	if err := verifyRevision(s.so, newRevision, blockHeight, newRevenue, newCollateral); err != nil {
+	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots // verifyRevision assumes new roots
+	err := verifyRevision(s.so, newRevision, blockHeight, newRevenue, newCollateral)
+	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots
+	if err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -196,7 +280,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 		ParentID:       crypto.Hash(newRevision.ParentID),
 		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
 		PublicKeyIndex: 0,
-		Signature:      req.Signature,
+		Signature:      sigResponse.Signature,
 	}
 	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
 	if err != nil {
@@ -205,14 +289,12 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	}
 
 	// Update the storage obligation.
+	s.so.SectorRoots = newRoots
 	s.so.PotentialStorageRevenue = s.so.PotentialStorageRevenue.Add(storageRevenue)
 	s.so.RiskedCollateral = s.so.RiskedCollateral.Add(newCollateral)
 	s.so.PotentialUploadRevenue = s.so.PotentialUploadRevenue.Add(bandwidthRevenue)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	h.mu.Lock()
-	err = h.modifyStorageObligation(s.so, nil, []crypto.Hash{newRoot}, [][]byte{req.Actions[0].Data})
-	h.mu.Unlock()
-	if err != nil {
+	if err := h.modifyStorageObligation(s.so, sectorsRemoved, sectorsGained, gainedSectorData); err != nil {
 		s.writeError(err)
 		return err
 	}
