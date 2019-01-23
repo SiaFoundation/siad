@@ -61,7 +61,7 @@ func (r *Renter) DirList(siaPath string) ([]modules.DirectoryInfo, []modules.Fil
 	}
 	dirs = append(dirs, di)
 	// Read Directory
-	fileInfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, siaPath))
+	fileInfos, err := ioutil.ReadDir(filepath.Join(r.staticFilesDir, siaPath))
 	if err != nil {
 		return nil, nil, err
 	}

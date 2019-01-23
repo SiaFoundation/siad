@@ -57,7 +57,7 @@ func (r *Renter) newRenterTestFile() (*siafile.SiaFileSetEntry, error) {
 	// Generate name and erasure coding
 	name, rsc := testingFileParams()
 	// create the renter/files dir if it doesn't exist
-	siaFilePath := filepath.Join(r.filesDir, name+siafile.ShareExtension)
+	siaFilePath := filepath.Join(r.staticFilesDir, name+siafile.ShareExtension)
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
@@ -595,7 +595,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+siafile.ShareExtension)) // set name to "1"
+	err = entry2.Rename("1", filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension)) // set name to "1"
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,10 +621,10 @@ func TestRenterDeleteFile(t *testing.T) {
 
 	// Check that all .sia files have been deleted.
 	var walkStr string
-	filepath.Walk(rt.renter.filesDir, func(path string, _ os.FileInfo, _ error) error {
+	filepath.Walk(rt.renter.staticFilesDir, func(path string, _ os.FileInfo, _ error) error {
 		// capture only .sia files
 		if filepath.Ext(path) == ".sia" {
-			rel, _ := filepath.Rel(rt.renter.filesDir, path) // strip testdir prefix
+			rel, _ := filepath.Rel(rt.renter.staticFilesDir, path) // strip testdir prefix
 			walkStr += rel
 		}
 		return nil
@@ -711,7 +711,7 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file that does exist.
 	entry, _ := rt.renter.newRenterTestFile()
-	err = entry.Rename("1", filepath.Join(rt.renter.filesDir, "1"+siafile.ShareExtension))
+	err = entry.Rename("1", filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -745,7 +745,7 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+siafile.ShareExtension))
+	err = entry2.Rename("1", filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension))
 	if err != nil {
 		t.Fatal(err)
 	}
