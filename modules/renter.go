@@ -484,6 +484,10 @@ type Renter interface {
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []RenterContract
 
+	// CreateBackup creates a backup of the renter's siafiles by first copying them
+	// into a temporary directory and then zipping that directory.
+	CreateBackup(dst string, secret []byte) error
+
 	// InitRecoveryScan starts scanning the whole blockchain for recoverable
 	// contracts within a separate thread.
 	InitRecoveryScan() error

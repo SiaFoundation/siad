@@ -174,6 +174,34 @@ type (
 	}
 )
 
+// renterBackupHandlerPOST handles the API calls to /renter/backup
+func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Check that destination was specified.
+	dst := req.FormValue("destination")
+	if dst == "" {
+		WriteError(w, Error{"destination not specified"}, http.StatusBadRequest)
+		return
+	}
+	// The destination needs to be an absolute path.
+	if !filepath.IsAbs(dst) {
+		WriteError(w, Error{"destination must be an absolute path"}, http.StatusBadRequest)
+		return
+	}
+	// Get the wallet seed to encrypt the backup.
+	// TODO add support for custom passwords in a follow-up.
+	s, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet seed to encrypt the backup" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Create the backup.
+	if err := api.renter.CreateBackup(dst, s[:]); err != nil {
+		WriteError(w, Error{"failed to create backup" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
 // renterHandlerGET handles the API call to /renter.
 func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	settings := api.renter.Settings()

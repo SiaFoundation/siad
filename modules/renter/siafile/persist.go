@@ -157,6 +157,22 @@ func readInsertUpdate(update writeaheadlog.Update) (path string, index int64, da
 	return
 }
 
+// Copy copies the on-disk SiaFile to a new location.
+func (sf *SiaFile) Copy(dst string) error {
+	// Read the file from disk.
+	sf.mu.RLock()
+	if sf.deleted {
+		return errors.New("can't copy deleted SiaFile")
+	}
+	data, err := ioutil.ReadFile(sf.siaFilePath)
+	sf.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	// Write it to the new location.
+	return ioutil.WriteFile(dst, data, 0700)
+}
+
 // allocateHeaderPage allocates a new page for the metadata and publicKeyTable.
 // It returns an update that moves the chunkData back by one pageSize if
 // applied and also updates the ChunkOffset of the metadata.
