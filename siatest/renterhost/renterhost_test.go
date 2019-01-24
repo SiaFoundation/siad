@@ -88,7 +88,29 @@ func TestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(droots[0][:], root[:]) {
+	if droots[0] != root {
 		t.Fatal("downloaded sector root does not match")
+	}
+
+	// perform a more complex write: append+swap+trim
+	sector2 := fastrand.Bytes(int(modules.SectorSize))
+	_, err = s.TestWrite([]modules.LoopWriteAction{
+		{Type: modules.WriteActionAppend, Data: sector2},
+		{Type: modules.WriteActionSwap, A: 0, B: 1},
+		{Type: modules.WriteActionTrim, A: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// check that the write was applied correctly
+	_, droots, err = s.SectorRoots(modules.LoopSectorRootsRequest{
+		RootOffset: 0,
+		NumRoots:   1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if droots[0] != crypto.MerkleRoot(sector2) {
+		t.Fatal("updated sector root does not match")
 	}
 }
