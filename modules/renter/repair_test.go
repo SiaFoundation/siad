@@ -88,13 +88,15 @@ func TestBubbleHealth(t *testing.T) {
 	}
 
 	// Set Healths of all the directories so they are not the defaults
+	//
+	// NOTE: You cannot set the NumStuckChunks to a non zero number without a
+	// file in the directory as this will create a developer error
 	siaPath := ""
 	checkTime := time.Now()
 	healthUpdate := siadir.SiaDirHealth{
 		Health:              1,
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
-		NumStuckChunks:      5,
 	}
 	if err := rt.renter.staticDirSet.UpdateHealth(siaPath, healthUpdate); err != nil {
 		t.Fatal(err)
@@ -206,9 +208,8 @@ func TestBubbleHealth(t *testing.T) {
 	// that the health is the health of the file
 	go rt.renter.threadedBubbleHealth(siaPath)
 	expectedHealth := siadir.SiaDirHealth{
-		Health:         2,
-		StuckHealth:    0,
-		NumStuckChunks: 5,
+		Health:      2,
+		StuckHealth: 0,
 	}
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
@@ -239,7 +240,6 @@ func TestBubbleHealth(t *testing.T) {
 		Health:              4,
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
-		NumStuckChunks:      5,
 	}
 	if err := rt.renter.staticDirSet.UpdateHealth(filepath.Join(siaPath, subDir1), expectedHealth); err != nil {
 		t.Fatal(err)
@@ -303,7 +303,6 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		Health:              1,
 		StuckHealth:         0,
 		LastHealthCheckTime: oldestCheckTime,
-		NumStuckChunks:      5,
 	}
 	if err := rt.renter.staticDirSet.UpdateHealth(siaPath, oldestHealthCheckUpdate); err != nil {
 		t.Fatal(err)
@@ -393,7 +392,6 @@ func TestWorstHealthDirectory(t *testing.T) {
 		Health:              worstHealth,
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
-		NumStuckChunks:      5,
 	}
 	if err := rt.renter.staticDirSet.UpdateHealth(siaPath, worstHealthUpdate); err != nil {
 		t.Fatal(err)

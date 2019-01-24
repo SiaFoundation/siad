@@ -132,26 +132,24 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		return nil
 	}
 
+	// Assemble chunk indexes, stuck Loop should only be adding stuck chunks and
+	// the repair loop should only be adding unstuck chunks
+	var chunkIndexes []int
+	for i := range entrys {
+		if stuckLoop != entrys[i].StuckChunkByIndex(uint64(i)) {
+			continue
+		}
+		chunkIndexes = append(chunkIndexes, i)
+	}
+
 	// Assemble the set of chunks.
 	//
 	// TODO / NOTE: Future files may have a different method for determining the
 	// number of chunks. Changes will be made due to things like sparse files,
 	// and the fact that chunks are going to be different sizes.
-	var chunkIndexes []int
-	if stuckLoop {
-		chunkIndexes = entrys[0].StuckChunkIndexes()
-	} else {
-		for i := range entrys {
-			chunkIndexes = append(chunkIndexes, i)
-		}
-	}
-	// Sanity check
-	if len(chunkIndexes) != len(entrys) {
-		build.Critical("Length of stuck chunk index slice should match length of entry")
-	}
-	newUnfinishedChunks := make([]*unfinishedUploadChunk, len(chunkIndexes))
+	var newUnfinishedChunks []*unfinishedUploadChunk
 	for i, index := range chunkIndexes {
-		newUnfinishedChunks[i] = &unfinishedUploadChunk{
+		newUnfinishedChunk := &unfinishedUploadChunk{
 			fileEntry: entrys[i],
 
 			id: uploadChunkID{
@@ -184,8 +182,9 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		}
 		// Every chunk can have a different set of unused hosts.
 		for host := range hosts {
-			newUnfinishedChunks[i].unusedHosts[host] = struct{}{}
+			newUnfinishedChunk.unusedHosts[host] = struct{}{}
 		}
+		newUnfinishedChunks = append(newUnfinishedChunks, newUnfinishedChunk)
 	}
 
 	// Build a map of host public keys.
@@ -290,8 +289,6 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		files = append(files, file)
 	}
 
-	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities(files)
-
 	// Loop through the whole set of files and get a list of chunks to add to
 	// the heap.
 	for _, file := range files {
@@ -302,9 +299,11 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
 		}
 	}
+
+	// Check if local file is missing and redundancy is less than 1
+	// log warning to renter log
+	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities(files)
 	for _, file := range files {
-		// Check if local file is missing and redundancy is less than 1
-		// log warning to renter log
 		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
 			r.log.Println("File not found on disk and possibly unrecoverable:", file.LocalPath())
 		}
