@@ -18,7 +18,10 @@ package renter
 
 import (
 	"container/heap"
+	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -112,15 +115,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	// Grab a copy of the SiaFileSetEntry, all the entrys in the slice are the
 	// same
 	entry := entrys[0]
-	// If we don't have enough workers for the file, don't repair it right now.
-	minWorkers := 0
-	for i := uint64(0); i < entry.NumChunks(); i++ {
-		minPieces := entry.ErasureCode().MinPieces()
-		if minPieces > minWorkers {
-			minWorkers = minPieces
-		}
-	}
-	if len(r.workerPool) < minWorkers {
+	if len(r.workerPool) < entry.ErasureCode().MinPieces() {
 		return nil
 	}
 
@@ -237,32 +232,48 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
-func (r *Renter) managedBuildChunkHeap(hosts map[string]struct{}) {
-	// Get all the SiaFileSetEntrys
-	entrys, err := r.staticFileSet.All()
+func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}) {
+	// Get Directory files
+	var files []*siafile.SiaFileSetEntry
+	fileinfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, dirSiaPath))
 	if err != nil {
 		return
 	}
+	for _, fi := range fileinfos {
+		// skip sub directories and non siafiles
+		ext := filepath.Ext(fi.Name())
+		if fi.IsDir() || ext != siafile.ShareExtension {
+			continue
+		}
 
-	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities(entrys)
+		// Open SiaFile
+		siaPath := filepath.Join(dirSiaPath, strings.TrimSuffix(fi.Name(), ext))
+		file, err := r.staticFileSet.Open(siaPath)
+		if err != nil {
+			return
+		}
+		files = append(files, file)
+	}
+
+	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities(files)
 
 	// Loop through the whole set of files and get a list of chunks to add to
 	// the heap.
-	for _, entry := range entrys {
+	for _, file := range files {
 		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(entry.CopyEntry(int(entry.NumChunks())), hosts)
+		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts)
 		r.mu.Unlock(id)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
 		}
 	}
-	for _, entry := range entrys {
+	for _, file := range files {
 		// Check if local file is missing and redundancy is less than 1
 		// log warning to renter log
-		if _, err := os.Stat(entry.LocalPath()); os.IsNotExist(err) && entry.Redundancy(offline, goodForRenew) < 1 {
-			r.log.Println("File not found on disk and possibly unrecoverable:", entry.LocalPath())
+		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
+			r.log.Debugln("File not found on disk and possibly unrecoverable:", file.LocalPath())
 		}
-		err := entry.Close()
+		err := file.Close()
 		if err != nil {
 			r.log.Debugln("WARN: Could not close thread:", err)
 		}
@@ -315,10 +326,44 @@ func (r *Renter) threadedUploadLoop() {
 	defer r.tg.Done()
 
 	for {
+		select {
+		case <-r.tg.StopChan():
+			// Return if the renter has shut down.
+			return
+		default:
+		}
+
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.
 			return
+		}
+
+		// Find Directory that needs to be repaired
+		dirSiaPath, dirHealth, err := r.managedWorstHealthDirectory()
+		if err != nil {
+			r.log.Debugln("WARN: getting worst health directory:", err)
+			return
+		}
+
+		// Initial rebuild signal
+		rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
+
+		// Check if directory requires repairing. We only want to repair
+		// directories with a health worse than the repairHealthThreshold to
+		// save resources
+		if dirHealth < repairHealthThreshold {
+			// Block until new work is required.
+			select {
+			case <-r.uploadHeap.newUploads:
+				// User has uploaded a new file.
+			case <-rebuildHeapSignal:
+				// Time to check the filesystem health again.
+			case <-r.tg.StopChan():
+				// The renter has shut down.
+				return
+			}
+			continue
 		}
 
 		// Refresh the worker pool and get the set of hosts that are currently
@@ -326,11 +371,7 @@ func (r *Renter) threadedUploadLoop() {
 		hosts := r.managedRefreshHostsAndWorkers()
 
 		// Build a min-heap of chunks organized by upload progress.
-		//
-		// TODO: After replacing the filesystem to resemble a tree, we'll be
-		// able to go through the filesystem piecewise instead of doing
-		// everything all at once.
-		r.managedBuildChunkHeap(hosts)
+		r.managedBuildChunkHeap(dirSiaPath, hosts)
 		r.uploadHeap.mu.Lock()
 		heapLen := r.uploadHeap.heap.Len()
 		r.uploadHeap.mu.Unlock()
@@ -341,7 +382,6 @@ func (r *Renter) threadedUploadLoop() {
 		// files in a loop and then process those. When the rebuild signal is
 		// received, we start over with the outer loop that rebuilds the heap
 		// and re-checks the health of all the files.
-		rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
 		for {
 			select {
 			case <-r.tg.StopChan():
@@ -383,15 +423,7 @@ func (r *Renter) threadedUploadLoop() {
 			continue
 		}
 
-		// Block until new work is required.
-		select {
-		case <-r.uploadHeap.newUploads:
-			// User has uploaded a new file.
-		case <-rebuildHeapSignal:
-			// Time to check the filesystem health again.
-		case <-r.tg.StopChan():
-			// The renter has shut down.
-			return
-		}
+		// Bubble the directory to update the renter's directory
+		r.threadedBubbleHealth(dirSiaPath)
 	}
 }
