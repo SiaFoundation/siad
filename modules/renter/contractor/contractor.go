@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
@@ -45,7 +46,8 @@ type Contractor struct {
 
 	// Only one thread should be scanning the blockchain for recoverable
 	// contracts at a time.
-	scanInProgress bool
+	scanInProgress           bool
+	atomicRecoveryScanHeight int64
 
 	allowance     modules.Allowance
 	blockHeight   types.BlockHeight
@@ -96,6 +98,8 @@ func (c *Contractor) InitRecoveryScan() error {
 	}
 	// Get the renter seed and wipe it once done.
 	rs := proto.DeriveRenterSeed(s)
+	// Reset the scan progress before starting the scan.
+	atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
 	// Create the scanner.
 	scanner := c.newRecoveryScanner(rs)
 	// Start the scan.
@@ -106,6 +110,8 @@ func (c *Contractor) InitRecoveryScan() error {
 		c.mu.Lock()
 		c.scanInProgress = false
 		c.mu.Unlock()
+		// Reset the scan progress after the scan.
+		atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
 	}()
 	return nil
 }
@@ -188,6 +194,16 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 // contractSet.
 func (c *Contractor) RateLimits() (readBPW int64, writeBPS int64, packetSize uint64) {
 	return c.staticContracts.RateLimits()
+}
+
+// RecoveryScanStatus returns a bool indicating if a scan for recoverable
+// contracts is in progress and if it is, the current progress of the scan.
+func (c *Contractor) RecoveryScanStatus() (bool, types.BlockHeight) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	bh := types.BlockHeight(atomic.LoadInt64(&c.atomicRecoveryScanHeight))
+	return c.scanInProgress, bh
 }
 
 // SetRateLimits sets the bandwidth limits for connections created by the

@@ -149,7 +149,12 @@ type (
 		modules.RenterPriceEstimation
 		modules.Allowance
 	}
-
+	// RenterRecoveryStatusGET returns information about potential contract
+	// recovery scans.
+	RenterRecoveryStatusGET struct {
+		ScanInProgress bool              `json:"scaninprogress"`
+		ScannedHeight  types.BlockHeight `json:"scannedheight"`
+	}
 	// RenterShareASCII contains an ASCII-encoded .sia file.
 	RenterShareASCII struct {
 		ASCIIsia string `json:"asciisia"`
@@ -548,13 +553,22 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 	})
 }
 
-// renterRecoveryScanHandler handles the API call to /renter/recoveryscan.
-func (api *API) renterRecoveryScanHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// renterRecoveryScanHandlerPOST handles the API call to /renter/recoveryscan.
+func (api *API) renterRecoveryScanHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	if err := api.renter.InitRecoveryScan(); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
+}
+
+// renterRecoveryScanHandlerGET handles the API call to /renter/recoveryscan.
+func (api *API) renterRecoveryScanHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	scanInProgress, height := api.renter.RecoveryScanStatus()
+	WriteJSON(w, RenterRecoveryStatusGET{
+		ScanInProgress: scanInProgress,
+		ScannedHeight:  height,
+	})
 }
 
 // renterRenameHandler handles the API call to rename a file entry in the
