@@ -107,10 +107,13 @@ func (c *Contractor) InitRecoveryScan() error {
 		if err := scanner.threadedScan(c.cs, c.tg.StopChan()); err != nil {
 			c.log.Println("Scan failed", err)
 		}
+		if c.staticDeps.Disrupt("disableRecoveryStatusReset") {
+			return
+		}
+		// Reset the scan related fields.
 		c.mu.Lock()
 		c.scanInProgress = false
 		c.mu.Unlock()
-		// Reset the scan progress after the scan.
 		atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
 	}()
 	return nil

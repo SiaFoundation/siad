@@ -4243,9 +4243,8 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	// Create a testgroup, creating without renter so the renter's
 	// contract transactions can easily be obtained.
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
-		Miners:  1,
-		Renters: 1,
+		Hosts:  2,
+		Miners: 1,
 	}
 	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
@@ -4258,7 +4257,13 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		}
 	}()
 
-	// Get the renter node.
+	// Add a Renter node
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.ContractorDeps = &dependencyDisableRecoveryStatusReset{}
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
 	r := tg.Renters()[0]
 
 	// Upload a file to the renter.
@@ -4360,6 +4365,21 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	}
 	// Download the whole file again to see if all roots were recovered.
 	_, err = r.DownloadByStream(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that the RecoveryScanStatus was set.
+	rrs, err := r.RenterContractRecoveryProgressPost()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Check the recovery progress endpoint.
+		if !rrs.ScanInProgress || rrs.ScannedHeight == 0 {
+			return fmt.Errorf("ScanInProgress and/or ScannedHeight weren't set correctly: %v", rrs)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
