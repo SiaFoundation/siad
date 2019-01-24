@@ -147,9 +147,9 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	// TODO / NOTE: Future files may have a different method for determining the
 	// number of chunks. Changes will be made due to things like sparse files,
 	// and the fact that chunks are going to be different sizes.
-	var newUnfinishedChunks []*unfinishedUploadChunk
+	newUnfinishedChunks := make([]*unfinishedUploadChunk, len(chunkIndexes))
 	for i, index := range chunkIndexes {
-		newUnfinishedChunk := &unfinishedUploadChunk{
+		newUnfinishedChunks[i] = &unfinishedUploadChunk{
 			fileEntry: entrys[i],
 
 			id: uploadChunkID{
@@ -182,9 +182,8 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		}
 		// Every chunk can have a different set of unused hosts.
 		for host := range hosts {
-			newUnfinishedChunk.unusedHosts[host] = struct{}{}
+			newUnfinishedChunks[i].unusedHosts[host] = struct{}{}
 		}
-		newUnfinishedChunks = append(newUnfinishedChunks, newUnfinishedChunk)
 	}
 
 	// Build a map of host public keys.
@@ -431,7 +430,7 @@ func (r *Renter) threadedUploadLoop() {
 		// Check if directory requires repairing. We only want to repair
 		// directories with a health worse than the repairHealthThreshold to
 		// save resources
-		if dirHealth < repairHealthThreshold {
+		if dirHealth < RemoteRepairDownloadThreshold {
 			// Block until new work is required.
 			select {
 			case <-r.uploadHeap.newUploads:

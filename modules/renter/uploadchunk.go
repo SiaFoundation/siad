@@ -375,7 +375,19 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	uc.mu.Unlock()
 
 	// Update chunk stuck status
-	uc.fileEntry.SetStuck(uc.id.index, !chunkComplete)
+	var stuck bool
+	if _, err := os.Stat(uc.fileEntry.LocalPath()); os.IsNotExist(err) {
+		// If file is not on disk, then chunk is only stuck if it cannot get
+		// above the RemoteRepairDownloadThreshold
+		stuck = (1-RemoteRepairDownloadThreshold)*float64(uc.piecesNeeded) > float64(uc.piecesCompleted)
+
+	} else {
+		stuck = uc.piecesNeeded > uc.piecesCompleted
+
+	}
+	if err := uc.fileEntry.SetStuck(uc.id.index, stuck); err != nil {
+		r.log.Printf("WARN: could not mark chunk as stuck for file %v: %v", uc.fileEntry.SiaPath(), err)
+	}
 
 	// If there are pieces available, add the standby workers to collect them.
 	// Standby workers are only added to the chunk when piecesAvailable is equal

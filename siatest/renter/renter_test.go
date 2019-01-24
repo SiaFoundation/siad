@@ -715,6 +715,25 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
+	// Mine a block to trigger the repair loop so the chunk is marked as stuck
+	m := tg.Miners()[0]
+	if err := m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+	// Check to see if a chunk got marked as stuck
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fi2, err := renter.File(remoteFile)
+		if err != nil {
+			return err
+		}
+		if fi2.NumStuckChunks == 0 {
+			return errors.New("no stuck chunks found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	// We should still be able to download
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
@@ -726,6 +745,20 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if err := renter.WaitForUploadRedundancy(remoteFile, fi.Redundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
+	}
+	// Check to see if a chunk got marked as unstuck
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fi2, err := renter.File(remoteFile)
+		if err != nil {
+			return err
+		}
+		if fi2.NumStuckChunks != 0 {
+			return fmt.Errorf("%v stuck chunks found, expected 0", fi2.NumStuckChunks)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	// We should be able to download
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
@@ -776,6 +809,25 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := r.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
+	// Mine a block to trigger the repair loop so the chunk is marked as stuck
+	m := tg.Miners()[0]
+	if err := m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+	// Check to see if a chunk got marked as stuck
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fi2, err := r.File(remoteFile)
+		if err != nil {
+			return err
+		}
+		if fi2.NumStuckChunks == 0 {
+			return errors.New("no stuck chunks found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	// We should still be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {
 		t.Error("Failed to download file", err)
@@ -789,6 +841,20 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	expectedRedundancy = (1.0 - renter.RemoteRepairDownloadThreshold) * fi.Redundancy
 	if err := r.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
+	}
+	// Check to see if a chunk got marked as unstuck
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fi2, err := r.File(remoteFile)
+		if err != nil {
+			return err
+		}
+		if fi2.NumStuckChunks != 0 {
+			return fmt.Errorf("%v stuck chunks found, expected 0", fi2.NumStuckChunks)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	// We should be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {

@@ -604,21 +604,6 @@ func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
 	return sf.staticChunks[index].Stuck
 }
 
-// StuckChunkIndexes returns a slice of all the indexes of the SiaFile's stuck
-// chunks
-func (sf *SiaFile) StuckChunkIndexes() []int {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	var indexes []int
-	for index, chunk := range sf.staticChunks {
-		if !chunk.Stuck {
-			continue
-		}
-		indexes = append(indexes, index)
-	}
-	return indexes
-}
-
 // UID returns a unique identifier for this file.
 func (sf *SiaFile) UID() string {
 	return sf.staticUniqueID

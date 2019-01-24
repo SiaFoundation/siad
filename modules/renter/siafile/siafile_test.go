@@ -348,19 +348,8 @@ func TestStuckChunks(t *testing.T) {
 	}
 
 	// Check that the total number of stuck chunks is consistent
-	stuckChunkIndexes := sf.StuckChunkIndexes()
-	if len(stuckChunkIndexes) != expectedStuckChunks {
-		t.Fatalf("Wrong number of stuck chunks, got %v expected %v", len(stuckChunkIndexes), expectedStuckChunks)
-	}
 	numStuckChunks := sf.NumStuckChunks()
 	if numStuckChunks != uint64(expectedStuckChunks) {
 		t.Fatalf("Wrong number of stuck chunks, got %v expected %v", numStuckChunks, expectedStuckChunks)
-	}
-
-	// Check stuck chunk indexes
-	for _, index := range stuckChunkIndexes {
-		if (index % 2) != 0 {
-			t.Fatal("Unexpected index")
-		}
 	}
 }
