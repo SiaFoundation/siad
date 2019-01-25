@@ -122,7 +122,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
 	id := r.mu.Lock()
-	unfinishedChunks := r.buildUnfinishedChunks(entry.CopyEntry(int(entry.NumChunks())), hosts, false)
+	unfinishedChunks := r.buildUnfinishedChunks(entry.CopyEntry(int(entry.NumChunks())), hosts, targetUnstuckChunks)
 	r.mu.Unlock(id)
 	for i := 0; i < len(unfinishedChunks); i++ {
 		r.uploadHeap.managedPush(unfinishedChunks[i])

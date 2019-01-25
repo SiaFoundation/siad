@@ -31,6 +31,18 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// repairTarget is a helper type for telling the repair heap what type of
+// files/chunks to target for repair
+type repairTarget int
+
+// targetStuckChunks tells the repair loop to target stuck chunks for repair and
+// targetUnstuckChunks tells the repair loop to target unstuck chunks for repair
+const (
+	targetError repairTarget = iota
+	targetStuckChunks
+	targetUnstuckChunks
+)
+
 // uploadHeap contains a priority-sorted heap of all the chunks being uploaded
 // to the renter, along with some metadata.
 type uploadHeap struct {
@@ -121,7 +133,7 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 // TODO / NOTE: This code can be substantially simplified once the files store
 // the HostPubKey instead of the FileContractID, and can be simplified even
 // further once the layout is per-chunk instead of per-filecontract.
-func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}, stuckLoop bool) []*unfinishedUploadChunk {
+func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) []*unfinishedUploadChunk {
 	// Sanity check that there are entries
 	if len(entrys) == 0 {
 		return nil
@@ -136,7 +148,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	// the repair loop should only be adding unstuck chunks
 	var chunkIndexes []int
 	for i := range entrys {
-		if stuckLoop != entrys[i].StuckChunkByIndex(uint64(i)) {
+		if (target == targetStuckChunks) != entrys[i].StuckChunkByIndex(uint64(i)) {
 			continue
 		}
 		chunkIndexes = append(chunkIndexes, i)
@@ -255,7 +267,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
-func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}, stuckLoop bool) {
+func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}, target repairTarget) {
 	// Get Directory files
 	var files []*siafile.SiaFileSetEntry
 	fileinfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, dirSiaPath))
@@ -276,8 +288,8 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 			return
 		}
 
-		// Add file to files
-		if stuckLoop && file.NumStuckChunks() == 0 {
+		// Decide if file is being targeted for repair
+		if target == targetStuckChunks && file.NumStuckChunks() == 0 {
 			// Close unneeded files
 			err := file.Close()
 			if err != nil {
@@ -292,7 +304,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 	// the heap.
 	for _, file := range files {
 		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, stuckLoop)
+		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
 		r.mu.Unlock(id)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
@@ -300,7 +312,6 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 	}
 
 	// Check if local file is missing and redundancy is less than 1
-	// log warning to renter log
 	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities(files)
 	for _, file := range files {
 		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
@@ -449,7 +460,7 @@ func (r *Renter) threadedUploadLoop() {
 		hosts := r.managedRefreshHostsAndWorkers()
 
 		// Build a min-heap of chunks organized by upload progress.
-		r.managedBuildChunkHeap(dirSiaPath, hosts, false)
+		r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
 		r.uploadHeap.mu.Lock()
 		heapLen := r.uploadHeap.heap.Len()
 		r.uploadHeap.mu.Unlock()

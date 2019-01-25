@@ -487,9 +487,9 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 	return
 }
 
-// threadedStuckLoop go through the renter directory and finds the stuck chunks
-// and tries to repair them
-func (r *Renter) threadedStuckLoop() {
+// threadedStuckFileLoop go through the renter directory and finds the stuck
+// chunks and tries to repair them
+func (r *Renter) threadedStuckFileLoop() {
 	err := r.tg.Add()
 	if err != nil {
 		return
@@ -535,11 +535,11 @@ func (r *Renter) threadedStuckLoop() {
 		}
 
 		// Build a min-heap of chunks organized by upload progress.
-		r.managedBuildChunkHeap(siaPath, hosts, true)
+		r.managedBuildChunkHeap(siaPath, hosts, targetStuckChunks)
 		r.uploadHeap.mu.Lock()
 		heapLen := r.uploadHeap.heap.Len()
 		r.uploadHeap.mu.Unlock()
-		r.log.Println("Repairing", heapLen, "chunks")
+		r.log.Println("Attempting to repair", heapLen, "stuck chunks")
 
 		// Work through the heap. Chunks will be processed one at a time until
 		// the heap is whittled down. When the heap is empty, we wait for new

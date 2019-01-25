@@ -52,7 +52,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	}
 
 	// Call buildUnfinishedChunks as not stuck loop, all un stuck chunks should be returned
-	uucs := rt.renter.buildUnfinishedChunks(f.CopyEntry(int(f.NumChunks())), hosts, false)
+	uucs := rt.renter.buildUnfinishedChunks(f.CopyEntry(int(f.NumChunks())), hosts, targetUnstuckChunks)
 	if len(uucs) != int(f.NumChunks())-1 {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", int(f.NumChunks())-1, len(uucs))
 	}
@@ -63,7 +63,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	}
 
 	// Call buildUnfinishedChunks as stuck loop, all stuck chunks should be returned
-	uucs = rt.renter.buildUnfinishedChunks(f.CopyEntry(int(f.NumChunks())), hosts, true)
+	uucs = rt.renter.buildUnfinishedChunks(f.CopyEntry(int(f.NumChunks())), hosts, targetStuckChunks)
 	if len(uucs) != 1 {
 		t.Fatalf("Incorrect number of chunks returned, expected 1 got %v", len(uucs))
 	}

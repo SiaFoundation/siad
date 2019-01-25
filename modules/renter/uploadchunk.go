@@ -372,7 +372,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased
-	uc.mu.Unlock()
 
 	// Update chunk stuck status
 	var stuck bool
@@ -388,6 +387,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if err := uc.fileEntry.SetStuck(uc.id.index, stuck); err != nil {
 		r.log.Printf("WARN: could not mark chunk as stuck for file %v: %v", uc.fileEntry.SiaPath(), err)
 	}
+	uc.mu.Unlock()
 
 	// If there are pieces available, add the standby workers to collect them.
 	// Standby workers are only added to the chunk when piecesAvailable is equal

@@ -789,7 +789,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	go r.threadedDownloadLoop()
 	go r.threadedUploadLoop()
 	go r.threadedUpdateRenterHealth()
-	go r.threadedStuckLoop()
+	go r.threadedStuckFileLoop()
 
 	// Kill workers on shutdown.
 	r.tg.OnStop(func() error {
