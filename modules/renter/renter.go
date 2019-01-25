@@ -137,6 +137,10 @@ type hostContractor interface {
 	// began.
 	CurrentPeriod() types.BlockHeight
 
+	// InitRecoveryScan starts scanning the whole blockchain for recoverable
+	// contracts within a separate thread.
+	InitRecoveryScan() error
+
 	// PeriodSpending returns the amount spent on contracts during the current
 	// billing period.
 	PeriodSpending() modules.ContractorSpending
@@ -628,6 +632,12 @@ func (r *Renter) CurrentPeriod() types.BlockHeight { return r.hostContractor.Cur
 // with a bool indicating if it exists.
 func (r *Renter) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility, bool) {
 	return r.hostContractor.ContractUtility(pk)
+}
+
+// InitRecoveryScan starts scanning the whole blockchain for recoverable
+// contracts within a separate thread.
+func (r *Renter) InitRecoveryScan() error {
+	return r.hostContractor.InitRecoveryScan()
 }
 
 // OldContracts returns an array of host contractor's oldContracts

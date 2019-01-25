@@ -548,6 +548,15 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 	})
 }
 
+// renterRecoveryScanHandler handles the API call to /renter/recoveryscan.
+func (api *API) renterRecoveryScanHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	if err := api.renter.InitRecoveryScan(); err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
 // renterRenameHandler handles the API call to rename a file entry in the
 // renter.
 func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {

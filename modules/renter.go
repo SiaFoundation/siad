@@ -484,6 +484,10 @@ type Renter interface {
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []RenterContract
 
+	// InitRecoveryScan starts scanning the whole blockchain for recoverable
+	// contracts within a separate thread.
+	InitRecoveryScan() error
+
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []RenterContract
 
