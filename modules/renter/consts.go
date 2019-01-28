@@ -150,6 +150,14 @@ var (
 		Testing:  0.25,
 	}).(float64)
 
+	// repairStuckChunkInterval defines how long the renter sleeps between
+	// trying to repair a stuck chunk.
+	repairStuckChunkInterval = build.Select(build.Var{
+		Dev:      90 * time.Second,
+		Standard: 10 * time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
+
 	// Prime to avoid intersecting with regular events.
 	uploadFailureCooldown = build.Select(build.Var{
 		Dev:      time.Second * 7,

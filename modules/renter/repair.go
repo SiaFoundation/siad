@@ -301,7 +301,7 @@ func (r *Renter) managedStuckDirectory() (string, error) {
 		if directories[0].NumStuckChunks == 0 {
 			// Sanity check that we are at the root directory
 			if siaPath != "" {
-				build.Critical("ended up in directory with no stuck chunks that is not root directory")
+				build.Critical("ended up in directory with no stuck chunks that is not root directory:", siaPath)
 			}
 			return siaPath, errNoStuckFiles
 		}
@@ -497,16 +497,10 @@ func (r *Renter) threadedStuckFileLoop() {
 	defer r.tg.Done()
 	// Loop until the renter has shutdown or until there are no stuck chunks
 	for {
-		select {
-		// Check to make sure renter hasn't been shutdown
-		case <-r.tg.StopChan():
-			return
-		default:
-		}
-
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.
+			fmt.Println("renter shutdown before internet connection")
 			return
 		}
 
@@ -517,15 +511,15 @@ func (r *Renter) threadedStuckFileLoop() {
 		// Randomly get directory with stuck files
 		siaPath, err := r.managedStuckDirectory()
 		if err != nil && err != errNoStuckFiles {
-			r.log.Println("WARN: error getting random stuck directory:", err)
+			r.log.Debugln("WARN: error getting random stuck directory:", err)
 			continue
 		}
 		// Initiate rebuild signal
-		rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
+		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
 		if err == errNoStuckFiles {
 			// Block until new work is required.
 			select {
-			case <-rebuildHeapSignal:
+			case <-rebuildStuckHeapSignal:
 				// Time to check the filesystem health again.
 			case <-r.tg.StopChan():
 				// The renter has shut down.
@@ -546,9 +540,18 @@ func (r *Renter) threadedStuckFileLoop() {
 		// files in a loop and then process those. When the rebuild signal is
 		// received, we start over with the outer loop that rebuilds the heap
 		// and re-checks the health of all the files.
-		r.managedRepairLoop(hosts, rebuildHeapSignal)
+		r.managedRepairLoop(hosts, rebuildStuckHeapSignal)
 
 		r.threadedBubbleHealth(siaPath)
+
+		// Sleep until it is time to try and repair another stuck chunk
+		select {
+		// Check to make sure renter hasn't been shutdown
+		case <-r.tg.StopChan():
+			return
+			// Time to find another random chunk
+		case <-rebuildStuckHeapSignal:
+		}
 	}
 }
 

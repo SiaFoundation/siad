@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -265,6 +266,42 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	return incompleteChunks
 }
 
+// managedBuildAndPushStuckChunks randomly selects a file and builds the
+// unfinished stuck chunks, then randomly adds one chunk to the upload heap
+func (r *Renter) managedBuildAndPushStuckChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) {
+	// Grab a random file
+	if len(files) == 0 {
+		return
+	}
+	randFile := fastrand.Intn(len(files))
+	file := files[randFile]
+	id := r.mu.Lock()
+	// Build the unfinished stuck chunks from the file
+	unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
+	r.mu.Unlock(id)
+	// Add a random stuck chunk to the upload heap
+	if len(unfinishedUploadChunks) == 0 {
+		return
+	}
+	randChunk := fastrand.Intn(len(unfinishedUploadChunks))
+	r.uploadHeap.managedPush(unfinishedUploadChunks[randChunk])
+}
+
+// managedBuildAndPushUnstuckChunks builds the unfinished upload chunks and adds
+// them to the upload heap
+func (r *Renter) managedBuildAndPushUnstuckChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) {
+	// Loop through the whole set of files and get a list of chunks to add to
+	// the heap.
+	for _, file := range files {
+		id := r.mu.Lock()
+		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
+		r.mu.Unlock(id)
+		for i := 0; i < len(unfinishedUploadChunks); i++ {
+			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
+		}
+	}
+}
+
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
 func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}, target repairTarget) {
@@ -300,22 +337,21 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		files = append(files, file)
 	}
 
-	// Loop through the whole set of files and get a list of chunks to add to
-	// the heap.
-	for _, file := range files {
-		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
-		r.mu.Unlock(id)
-		for i := 0; i < len(unfinishedUploadChunks); i++ {
-			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
-		}
+	// Build the unfinished upload chunks and add them to the upload heap
+	switch target {
+	case targetStuckChunks:
+		r.managedBuildAndPushStuckChunks(files, hosts, target)
+	case targetUnstuckChunks:
+		r.managedBuildAndPushUnstuckChunks(files, hosts, target)
+	default:
+		r.log.Debugln("WARN: repair target not recognized", target)
 	}
 
 	// Check if local file is missing and redundancy is less than 1
 	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities(files)
 	for _, file := range files {
 		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
-			r.log.Println("File not found on disk and possibly unrecoverable:", file.LocalPath())
+			r.log.Debugln("File not found on disk and possibly unrecoverable:", file.LocalPath())
 		}
 		err := file.Close()
 		if err != nil {
