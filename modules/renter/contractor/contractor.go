@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -46,7 +47,7 @@ type Contractor struct {
 
 	// Only one thread should be scanning the blockchain for recoverable
 	// contracts at a time.
-	scanInProgress           bool
+	atomicScanInProgress     uint32
 	atomicRecoveryScanHeight int64
 
 	allowance     modules.Allowance
@@ -84,13 +85,10 @@ func (c *Contractor) InitRecoveryScan() error {
 		return err
 	}
 	defer c.tg.Done()
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	// Check if we are already scanning the blockchain.
-	if c.scanInProgress {
+	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
 		return errors.New("scan for recoverable contracts is already in progress")
 	}
-	c.scanInProgress = true
 	// Get the wallet seed.
 	s, _, err := c.wallet.PrimarySeed()
 	if err != nil {
@@ -111,9 +109,9 @@ func (c *Contractor) InitRecoveryScan() error {
 			return
 		}
 		// Reset the scan related fields.
-		c.mu.Lock()
-		c.scanInProgress = false
-		c.mu.Unlock()
+		if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 1, 0) {
+			build.Critical("finished recovery scan but scanInProgress was already set to 0")
+		}
 		atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
 	}()
 	return nil
@@ -206,7 +204,8 @@ func (c *Contractor) RecoveryScanStatus() (bool, types.BlockHeight) {
 	defer c.mu.RUnlock()
 
 	bh := types.BlockHeight(atomic.LoadInt64(&c.atomicRecoveryScanHeight))
-	return c.scanInProgress, bh
+	sip := atomic.LoadUint32(&c.atomicScanInProgress)
+	return sip == 1, bh
 }
 
 // SetRateLimits sets the bandwidth limits for connections created by the
