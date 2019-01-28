@@ -67,7 +67,7 @@ func TestRenter(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -78,12 +78,12 @@ func TestRenter(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		{"TestClearDownloadHistory", testClearDownloadHistory},
-		{"TestDirectories", testDirectories},
-		{"TestSetFileTrackingPath", testSetFileTrackingPath},
-		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
+		{"TestClearDownloadHistory", testClearDownloadHistory},
+		{"TestSetFileTrackingPath", testSetFileTrackingPath},
+		{"TestDownloadAfterRenew", testDownloadAfterRenew},
+		{"TestDirectories", testDirectories},
 	}
 
 	// Run tests
@@ -721,16 +721,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Check to see if a chunk got marked as stuck
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		fi2, err := renter.File(remoteFile)
-		if err != nil {
-			return err
-		}
-		if fi2.NumStuckChunks == 0 {
-			return errors.New("no stuck chunks found")
-		}
-		return nil
-	})
+	err = renter.WaitForStuckChunksToBubble()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -746,17 +737,8 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.WaitForUploadRedundancy(remoteFile, fi.Redundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
-	// Check to see if a chunk got marked as unstuck
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		fi2, err := renter.File(remoteFile)
-		if err != nil {
-			return err
-		}
-		if fi2.NumStuckChunks != 0 {
-			return fmt.Errorf("%v stuck chunks found, expected 0", fi2.NumStuckChunks)
-		}
-		return nil
-	})
+	// Check to see if a chunk got repaired and marked as unstuck
+	err = renter.WaitForStuckChunksToRepair()
 	if err != nil {
 		t.Fatal(err)
 	}

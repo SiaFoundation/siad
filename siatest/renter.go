@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
@@ -411,6 +412,38 @@ func (tn *TestNode) WaitForDecreasingRedundancy(rf *RemoteFile, redundancy float
 		}
 		if file.Redundancy > redundancy {
 			return fmt.Errorf("redundancy should be %v but was %v", redundancy, file.Redundancy)
+		}
+		return nil
+	})
+}
+
+// WaitForStuckChunksToBubble waits until the stuck chunks have been bubbled to
+// the root directory metadata
+func (tn *TestNode) WaitForStuckChunksToBubble() error {
+	// Wait until the root directory no long reports no stuck chunks
+	return build.Retry(1000, 100*time.Millisecond, func() error {
+		rd, err := tn.RenterGetDir("")
+		if err != nil {
+			return err
+		}
+		if rd.Directories[0].NumStuckChunks == 0 {
+			return errors.New("no stuck chunks found")
+		}
+		return nil
+	})
+}
+
+// WaitForStuckChunksToRepair waits until the stuck chunks have been repaired
+// and bubbled to the root directory metadata
+func (tn *TestNode) WaitForStuckChunksToRepair() error {
+	// Wait until the root directory no long reports no stuck chunks
+	return build.Retry(1000, 100*time.Millisecond, func() error {
+		rd, err := tn.RenterGetDir("")
+		if err != nil {
+			return err
+		}
+		if rd.Directories[0].NumStuckChunks != 0 {
+			return fmt.Errorf("%v stuck chunks found, expected 0", rd.Directories[0].NumStuckChunks)
 		}
 		return nil
 	})
