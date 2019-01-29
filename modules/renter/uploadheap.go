@@ -235,7 +235,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}) {
 	// Get Directory files
 	var files []*siafile.SiaFileSetEntry
-	fileinfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, dirSiaPath))
+	fileinfos, err := ioutil.ReadDir(filepath.Join(r.staticFilesDir, dirSiaPath))
 	if err != nil {
 		return
 	}
