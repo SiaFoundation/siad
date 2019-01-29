@@ -3,11 +3,13 @@ package renter
 import (
 	"compress/gzip"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
@@ -31,9 +33,8 @@ type v137TrackedFile struct {
 // loadSiaFiles walks through the directory searching for siafiles and loading
 // them into memory.
 func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile) error {
-	// Recursively load all files found in renter directory. Errors
-	// encountered during loading are logged, but are not considered fatal.
-	return filepath.Walk(r.persistDir, func(path string, info os.FileInfo, err error) error {
+	// Recursively convert all files found in renter directory.
+	err := filepath.Walk(r.persistDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
@@ -70,6 +71,29 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile) 
 		}
 		return os.Remove(path)
 	})
+	if err != nil {
+		return err
+	}
+	// Cleanup folders in the renter subdir.
+	fis, err := ioutil.ReadDir(r.persistDir)
+	if err != nil {
+		return err
+	}
+	for _, fi := range fis {
+		// Ignore files.
+		if !fi.IsDir() {
+			continue
+		}
+		// Skip siafiles and contracts folders.
+		if fi.Name() == modules.SiapathRoot || fi.Name() == "contracts" {
+			continue
+		}
+		// Delete the folder.
+		if err := os.RemoveAll(filepath.Join(r.persistDir, fi.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // compatV137LoadSiaFilesFromReader reads .sia data from reader and registers

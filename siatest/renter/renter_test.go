@@ -4173,8 +4173,8 @@ func TestSiafileCompatCode(t *testing.T) {
 		t.Fatalf("Siapath should be '%v' but was '%v'",
 			expectedSiaPath, fis[0].SiaPath)
 	}
-	// Make sure the legacy file was deleted.
-	if _, err := os.Stat(destination); !os.IsNotExist(err) {
+	// Make sure the folder containing the legacy file was deleted.
+	if _, err := os.Stat(filepath.Join(renterDir, "sub1")); !os.IsNotExist(err) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the siafile is exactly where we would expect it.
