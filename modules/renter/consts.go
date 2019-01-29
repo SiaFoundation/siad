@@ -151,7 +151,10 @@ var (
 	}).(float64)
 
 	// repairStuckChunkInterval defines how long the renter sleeps between
-	// trying to repair a stuck chunk.
+	// trying to repair a stuck chunk. The uploadHeap prioritizes stuck chunks
+	// so this interval is to allow time for unstuck chunks to be repaired.
+	// Ideally the uploadHeap is spending 95% of its time repairing unstuck
+	// chunks.
 	repairStuckChunkInterval = build.Select(build.Var{
 		Dev:      90 * time.Second,
 		Standard: 10 * time.Minute,

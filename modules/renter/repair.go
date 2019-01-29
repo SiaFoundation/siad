@@ -319,20 +319,21 @@ func (r *Renter) managedStuckDirectory() (string, error) {
 		// directories.  We can chose a directory by subtracting the number of
 		// stuck chunks a directory has from rand and if rand gets to 0 or less
 		// we choose that direcotry
-		for i := len(directories) - 1; i > 0; i-- {
+		for i := len(directories) - 1; i >= 0; i-- {
+			// If we are on the last iteration then return the current directory
+			if i == 0 {
+				return siaPath, nil
+			}
+
 			// Skip directories with no stuck chunks
 			if directories[i].NumStuckChunks == uint64(0) {
 				continue
 			}
+
 			// If we make it to the last iteration double check that the current
 			// directory has files
 			if i == 0 && len(files) == 0 {
 				break
-			}
-
-			// If we are on the last iteration then return the current directory
-			if i == 0 {
-				return siaPath, nil
 			}
 
 			rand = rand - int(directories[i].NumStuckChunks)
@@ -520,7 +521,7 @@ func (r *Renter) threadedStuckFileLoop() {
 			// Block until new work is required.
 			select {
 			case <-rebuildStuckHeapSignal:
-				// Time to check the filesystem health again.
+				// Time to check for stuck chunks again.
 			case <-r.tg.StopChan():
 				// The renter has shut down.
 				return
@@ -528,29 +529,21 @@ func (r *Renter) threadedStuckFileLoop() {
 			continue
 		}
 
-		// Build a min-heap of chunks organized by upload progress.
+		// Add stuck chunk to upload heap
 		r.managedBuildChunkHeap(siaPath, hosts, targetStuckChunks)
-		r.uploadHeap.mu.Lock()
-		heapLen := r.uploadHeap.heap.Len()
-		r.uploadHeap.mu.Unlock()
-		r.log.Println("Attempting to repair", heapLen, "stuck chunks")
 
-		// Work through the heap. Chunks will be processed one at a time until
-		// the heap is whittled down. When the heap is empty, we wait for new
-		// files in a loop and then process those. When the rebuild signal is
-		// received, we start over with the outer loop that rebuilds the heap
-		// and re-checks the health of all the files.
+		// Try and repair stuck chunk. Since the heap prioritizes stuck chunks
+		// the first chunk popped off will be the stuck chunk.
+		r.log.Println("Attempting to repair stuck chunks")
 		r.managedRepairLoop(hosts, rebuildStuckHeapSignal)
-
-		r.threadedBubbleHealth(siaPath)
 
 		// Sleep until it is time to try and repair another stuck chunk
 		select {
-		// Check to make sure renter hasn't been shutdown
 		case <-r.tg.StopChan():
+			// Return if the return has been shutdown
 			return
-			// Time to find another random chunk
 		case <-rebuildStuckHeapSignal:
+			// Time to find another random chunk
 		}
 	}
 }

@@ -3,6 +3,7 @@ package renter
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -187,6 +188,16 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		return
 	}
 	defer r.tg.Done()
+
+	// Once the chunk is repaired we will want to call bubble on that directory
+	// to ensure the directory metadata is updated.
+	defer func() {
+		siaPath := filepath.Dir(chunk.fileEntry.SiaPath())
+		if siaPath == "." {
+			siaPath = ""
+		}
+		r.threadedBubbleHealth(siaPath)
+	}()
 
 	// Calculate the amount of memory needed for erasure coding. This will need
 	// to be released if there's an error before erasure coding is complete.

@@ -406,13 +406,12 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}, rebuildHeapSignal 
 			// Return if the renter has shut down.
 			return
 		case <-rebuildHeapSignal:
-			// Break to the outer loop if workers/heap need to be
-			// refreshed.
+			// Return if workers/heap need to be refreshed.
 			return
 		default:
 		}
 
-		// Break to the outer loop if not online.
+		// Return if not online.
 		if !r.g.Online() {
 			return
 		}
@@ -502,14 +501,7 @@ func (r *Renter) threadedUploadLoop() {
 		r.uploadHeap.mu.Unlock()
 		r.log.Println("Repairing", heapLen, "chunks")
 
-		// Work through the heap. Chunks will be processed one at a time until
-		// the heap is whittled down. When the heap is empty, we wait for new
-		// files in a loop and then process those. When the rebuild signal is
-		// received, we start over with the outer loop that rebuilds the heap
-		// and re-checks the health of all the files.
+		// Work through the heap and repair files
 		r.managedRepairLoop(hosts, rebuildHeapSignal)
-
-		// Bubble the directory to update the renter's directory
-		r.threadedBubbleHealth(dirSiaPath)
 	}
 }
