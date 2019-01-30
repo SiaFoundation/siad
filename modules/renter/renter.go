@@ -745,8 +745,11 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		downloadHeap: new(downloadChunkHeap),
 
 		uploadHeap: uploadHeap{
-			activeChunks: make(map[uploadChunkID]struct{}),
-			newUploads:   make(chan struct{}, 1),
+			activeChunks:      make(map[uploadChunkID]struct{}),
+			newUploads:        make(chan struct{}, 1),
+			repairNeeded:      make(chan struct{}, 1),
+			stuckChunkFound:   make(chan struct{}, 1),
+			stuckChunkSuccess: make(chan struct{}, 1),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),

@@ -52,10 +52,13 @@ type uploadHeap struct {
 	// of the workers. A chunk is added to the activeChunks map as soon as it is
 	// added to the uploadHeap, and it is removed from the map as soon as the
 	// last worker completes work on the chunk.
-	activeChunks map[uploadChunkID]struct{}
-	heap         uploadChunkHeap
-	newUploads   chan struct{}
-	mu           sync.Mutex
+	activeChunks      map[uploadChunkID]struct{}
+	heap              uploadChunkHeap
+	newUploads        chan struct{}
+	repairNeeded      chan struct{}
+	stuckChunkFound   chan struct{}
+	stuckChunkSuccess chan struct{}
+	mu                sync.Mutex
 }
 
 // uploadChunkHeap is a bunch of priority-sorted chunks that need to be either
@@ -399,7 +402,8 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // managedRepairLoop works through the upload heap repairing chunks. The repair
 // loop will continue until the renter stops, there are no more chunks, or
 // enough time has passed indicated by the rebuildHeapSignal
-func (r *Renter) managedRepairLoop(hosts map[string]struct{}, rebuildHeapSignal <-chan time.Time) {
+func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
+	rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
 	for {
 		select {
 		case <-r.tg.StopChan():
@@ -470,9 +474,6 @@ func (r *Renter) threadedUploadLoop() {
 			return
 		}
 
-		// Initial rebuild signal
-		rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
-
 		// Check if directory requires repairing. We only want to repair
 		// directories with a health worse than the repairHealthThreshold to
 		// save resources
@@ -481,8 +482,8 @@ func (r *Renter) threadedUploadLoop() {
 			select {
 			case <-r.uploadHeap.newUploads:
 				// User has uploaded a new file.
-			case <-rebuildHeapSignal:
-				// Time to check the filesystem health again.
+			case <-r.uploadHeap.repairNeeded:
+				// Health loop found a file in need of repair
 			case <-r.tg.StopChan():
 				// The renter has shut down.
 				return
@@ -502,6 +503,6 @@ func (r *Renter) threadedUploadLoop() {
 		r.log.Println("Repairing", heapLen, "chunks")
 
 		// Work through the heap and repair files
-		r.managedRepairLoop(hosts, rebuildHeapSignal)
+		r.managedRepairLoop(hosts)
 	}
 }

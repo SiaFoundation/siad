@@ -384,7 +384,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased
 
-	// Update chunk stuck status
+	// Determine if chunk is stuck
 	var stuck bool
 	if _, err := os.Stat(uc.fileEntry.LocalPath()); os.IsNotExist(err) {
 		// If file is not on disk, then chunk is only stuck if it cannot get
@@ -395,6 +395,15 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		stuck = uc.piecesNeeded > uc.piecesCompleted
 
 	}
+	// Check to see if the chunk was stuck and now is successfully repaired
+	if uc.fileEntry.StuckChunkByIndex(uc.id.index) && !stuck {
+		// Signal the stuck loop that the chunk was successfully repaired
+		select {
+		case r.uploadHeap.stuckChunkSuccess <- struct{}{}:
+		default:
+		}
+	}
+	// Update chunk stuck status
 	if err := uc.fileEntry.SetStuck(uc.id.index, stuck); err != nil {
 		r.log.Printf("WARN: could not mark chunk as stuck for file %v: %v", uc.fileEntry.SiaPath(), err)
 	}

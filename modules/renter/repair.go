@@ -455,6 +455,21 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 		return
 	}
 
+	// Check for files in need of repair or stuck chunks and trigger the
+	// appropriate repair loop
+	if health.Health >= RemoteRepairDownloadThreshold {
+		select {
+		case r.uploadHeap.repairNeeded <- struct{}{}:
+		default:
+		}
+	}
+	if health.NumStuckChunks > 0 {
+		select {
+		case r.uploadHeap.stuckChunkFound <- struct{}{}:
+		default:
+		}
+	}
+
 	// Update directory metadata with the health information
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
@@ -515,13 +530,11 @@ func (r *Renter) threadedStuckFileLoop() {
 			r.log.Debugln("WARN: error getting random stuck directory:", err)
 			continue
 		}
-		// Initiate rebuild signal
-		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
 		if err == errNoStuckFiles {
 			// Block until new work is required.
 			select {
-			case <-rebuildStuckHeapSignal:
-				// Time to check for stuck chunks again.
+			case <-r.uploadHeap.stuckChunkFound:
+				// Health Loop found stuck chunk
 			case <-r.tg.StopChan():
 				// The renter has shut down.
 				return
@@ -535,15 +548,19 @@ func (r *Renter) threadedStuckFileLoop() {
 		// Try and repair stuck chunk. Since the heap prioritizes stuck chunks
 		// the first chunk popped off will be the stuck chunk.
 		r.log.Println("Attempting to repair stuck chunks")
-		r.managedRepairLoop(hosts, rebuildStuckHeapSignal)
+		r.managedRepairLoop(hosts)
 
 		// Sleep until it is time to try and repair another stuck chunk
+		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
 		select {
 		case <-r.tg.StopChan():
 			// Return if the return has been shutdown
 			return
 		case <-rebuildStuckHeapSignal:
 			// Time to find another random chunk
+		case <-r.uploadHeap.stuckChunkSuccess:
+			// Stuck chunk was successfully repaired, continue to repair stuck
+			// chunks
 		}
 	}
 }
