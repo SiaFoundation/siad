@@ -1,18 +1,5 @@
 package renter
 
-// TODO / NOTE: Once the filesystem is tree-based, instead of continually
-// looping through the whole filesystem we can add values to the file metadata
-// for each folder + file, where the folder scan time is the least recent time
-// of any file in the folder, and the folder health is the lowest health of any
-// file in the folder. This will allow us to go one folder at a time and focus
-// on problem areas instead of doing everything all at once every iteration.
-// This should boost scalability.
-
-// TODO / NOTE: We need to upgrade the contractor before we can do this, but we
-// need to be checking for every piece within a contract, and checking that the
-// piece is still available in the contract that we have, that the host did not
-// lose or nullify the piece.
-
 // TODO: Renter will try to download to repair a piece even if there are not
 // enough workers to make any progress on the repair.  This should be fixed.
 
