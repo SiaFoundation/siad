@@ -286,32 +286,19 @@ func (sf *SiaFile) Available(offline map[string]bool) bool {
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk or repair by upload streaming
-func (sf *SiaFile) chunkHealth(chunkIndex int, offline map[string]bool) float64 {
+func (sf *SiaFile) chunkHealth(chunkIndex int, offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
 	// The max number of good pieces that a chunk can have is NumPieces()
 	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
 	minPieces := sf.staticMetadata.staticErasureCode.MinPieces()
 	targetPieces := float64(numPieces - minPieces)
-	// Iterate over each pieceSet
-	var goodPieces int
-	for _, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
-		// Iterate over each pieceSet and count all the unique
-		// goodPieces
-		for _, piece := range pieceSet {
-			if !offline[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()] {
-				// Once a good piece is found, break out since all pieces in
-				// pieceSet are the same
-				goodPieces++
-				break
-			}
-		}
-	}
-
+	// Find the good pieces that are good for renew
+	goodPieces, _ := sf.goodPieces(chunkIndex, offlineMap, goodForRenewMap)
 	// Sanity Check, if something went wrong, default to minimum health
-	if goodPieces > numPieces || goodPieces < 0 {
+	if int(goodPieces) > numPieces || goodPieces < 0 {
 		build.Critical("unexpected number of goodPieces for chunkHealth")
 		goodPieces = 0
 	}
-	return 1 - (float64(goodPieces-minPieces) / targetPieces)
+	return 1 - (float64(int(goodPieces)-minPieces) / targetPieces)
 }
 
 // ChunkIndexByOffset will return the chunkIndex that contains the provided
@@ -379,7 +366,7 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
-func (sf *SiaFile) Health(offline map[string]bool) (float64, float64, uint64) {
+func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (float64, float64, uint64) {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	numPieces := float64(sf.staticMetadata.staticErasureCode.NumPieces())
@@ -393,7 +380,7 @@ func (sf *SiaFile) Health(offline map[string]bool) (float64, float64, uint64) {
 			// Record stuck chunk
 			numStuckChunks++
 			// Check current health of chunk
-			chunkHealth := sf.chunkHealth(chunkIndex, offline)
+			chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
 			// Track worst stuck chunk health
 			if chunkHealth > stuckHealth {
 				stuckHealth = chunkHealth
@@ -402,7 +389,7 @@ func (sf *SiaFile) Health(offline map[string]bool) (float64, float64, uint64) {
 		}
 
 		// Check current health of chunk
-		chunkHealth := sf.chunkHealth(chunkIndex, offline)
+		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
 		// Track the worst chunk health
 		if chunkHealth > health {
 			health = chunkHealth
@@ -506,42 +493,10 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 
 	minRedundancy := math.MaxFloat64
 	minRedundancyNoRenew := math.MaxFloat64
-	for _, chunk := range sf.staticChunks {
+	for chunkIndex := range sf.staticChunks {
 		// Loop over chunks and remember how many unique pieces of the chunk
 		// were goodForRenew and how many were not.
-		numPiecesRenew := uint64(0)
-		numPiecesNoRenew := uint64(0)
-		for _, pieceSet := range chunk.Pieces {
-			// Remember if we encountered a goodForRenew piece or a
-			// !goodForRenew piece that was at least online.
-			foundGoodForRenew := false
-			foundOnline := false
-			for _, piece := range pieceSet {
-				offline, exists1 := offlineMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
-				goodForRenew, exists2 := goodForRenewMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
-				if exists1 != exists2 {
-					build.Critical("contract can't be in one map but not in the other")
-				}
-				if !exists1 || offline {
-					continue
-				}
-				// If we found a goodForRenew piece we can stop.
-				if goodForRenew {
-					foundGoodForRenew = true
-					break
-				}
-				// Otherwise we continue since there might be other hosts with
-				// the same piece that are goodForRenew. We still remember that
-				// we found an online piece though.
-				foundOnline = true
-			}
-			if foundGoodForRenew {
-				numPiecesRenew++
-				numPiecesNoRenew++
-			} else if foundOnline {
-				numPiecesNoRenew++
-			}
-		}
+		numPiecesRenew, numPiecesNoRenew := sf.goodPieces(chunkIndex, offlineMap, goodForRenewMap)
 		redundancy := float64(numPiecesRenew) / float64(sf.staticMetadata.staticErasureCode.MinPieces())
 		if redundancy < minRedundancy {
 			minRedundancy = redundancy
@@ -743,4 +698,45 @@ func (sf *SiaFile) pruneHosts() {
 			sf.staticChunks[chunkIndex].Pieces[pieceIndex] = newPieceSet
 		}
 	}
+}
+
+// goodPieces loops over the pieces of a chunk and tracks the number of unique
+// pieces that are good for upload, meaning the host is online, and the number
+// of unique pieces that are good for renew, meaning the contract is set to
+// renew.
+func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (uint64, uint64) {
+	numPiecesGoodForRenew := uint64(0)
+	numPiecesGoorForUpload := uint64(0)
+	for _, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+		// Remember if we encountered a goodForRenew piece or a
+		// !goodForRenew piece that was at least online.
+		foundGoodForRenew := false
+		foundOnline := false
+		for _, piece := range pieceSet {
+			offline, exists1 := offlineMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
+			goodForRenew, exists2 := goodForRenewMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
+			if exists1 != exists2 {
+				build.Critical("contract can't be in one map but not in the other")
+			}
+			if !exists1 || offline {
+				continue
+			}
+			// If we found a goodForRenew piece we can stop.
+			if goodForRenew {
+				foundGoodForRenew = true
+				break
+			}
+			// Otherwise we continue since there might be other hosts with
+			// the same piece that are goodForRenew. We still remember that
+			// we found an online piece though.
+			foundOnline = true
+		}
+		if foundGoodForRenew {
+			numPiecesGoodForRenew++
+			numPiecesGoorForUpload++
+		} else if foundOnline {
+			numPiecesGoorForUpload++
+		}
+	}
+	return numPiecesGoodForRenew, numPiecesGoorForUpload
 }

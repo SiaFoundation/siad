@@ -255,8 +255,8 @@ func (r *Renter) managedFileHealth(siaPath string) (float64, float64, uint64, er
 	defer sf.Close()
 
 	// Calculate file health
-	hostOfflineMap, _, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
-	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap)
+	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 	return health, stuckHealth, numStuckChunks, nil
 }
 
