@@ -315,8 +315,18 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 			return
 		}
 
-		// Decide if file is being targeted for repair
+		// For stuck chunk repairs, check to see if file has stuck chunks
 		if target == targetStuckChunks && file.NumStuckChunks() == 0 {
+			// Close unneeded files
+			err := file.Close()
+			if err != nil {
+				r.log.Debugln("WARN: Could not close file:", err)
+			}
+			continue
+		}
+
+		// For normal repairs, ignore files that have been recently repaired
+		if target == targetUnstuckChunks && time.Since(file.RecentRepairTime()) < rebuildChunkHeapInterval {
 			// Close unneeded files
 			err := file.Close()
 			if err != nil {
@@ -491,5 +501,9 @@ func (r *Renter) threadedUploadLoop() {
 
 		// Work through the heap and repair files
 		r.managedRepairLoop(hosts)
+
+		// Once we have worked through the heap, call bubble to update the
+		// directory metadata
+		r.threadedBubbleHealth(dirSiaPath)
 	}
 }

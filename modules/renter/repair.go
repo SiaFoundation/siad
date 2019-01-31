@@ -74,6 +74,17 @@ var (
 	errNoStuckFiles = errors.New("no stuck files")
 )
 
+type (
+	// fileHealth is a helper struct that contains health metadata information
+	// about a SiaFile
+	fileHealth struct {
+		health           float64
+		stuckHealth      float64
+		numStuckChunks   uint64
+		recentRepairTime time.Time
+	}
+)
+
 // bubbleStatus indicates the status of a bubble being executed on a
 // directory
 type bubbleStatus int
@@ -151,10 +162,17 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (siadir.SiaDirH
 		if ext == siafile.ShareExtension {
 			// SiaFile found, calculate the health of the siafile
 			fName := strings.TrimSuffix(fi.Name(), siafile.ShareExtension)
-			health, stuckHealth, numStuckChunks, err = r.managedFileHealth(filepath.Join(siaPath, fName))
+			fileHealth, err := r.managedFileHealth(filepath.Join(siaPath, fName))
 			if err != nil {
 				return siadir.SiaDirHealth{}, err
 			}
+			if time.Since(fileHealth.recentRepairTime) >= rebuildChunkHeapInterval {
+				// If the file has not recently been repaired then consider the
+				// health of the file
+				health = fileHealth.health
+			}
+			stuckHealth = fileHealth.stuckHealth
+			numStuckChunks = fileHealth.numStuckChunks
 		} else if fi.IsDir() {
 			// Directory is found, read the directory metadata file
 			dirHealth, err := r.managedDirectoryHealth(filepath.Join(siaPath, fi.Name()))
@@ -259,18 +277,23 @@ func (r *Renter) managedDirectoryHealth(siaPath string) (siadir.SiaDirHealth, er
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk or repair by upload streaming
-func (r *Renter) managedFileHealth(siaPath string) (float64, float64, uint64, error) {
+func (r *Renter) managedFileHealth(siaPath string) (fileHealth, error) {
 	// Load the Siafile.
 	sf, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
-		return 0, 0, 0, err
+		return fileHealth{}, err
 	}
 	defer sf.Close()
 
 	// Calculate file health
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
-	return health, stuckHealth, numStuckChunks, nil
+	return fileHealth{
+		health:           health,
+		stuckHealth:      stuckHealth,
+		numStuckChunks:   numStuckChunks,
+		recentRepairTime: sf.RecentRepairTime(),
+	}, nil
 }
 
 // managedOldestHealthCheckTime finds the lowest level directory that has a

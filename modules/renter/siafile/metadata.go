@@ -41,8 +41,11 @@ type (
 		// NumStuckChunks is the number of all the SiaFile's chunks that have
 		// been marked as stuck by the repair loop
 		//
+		// RecentRepairTime is the timestamp of the last time the file was added
+		// to the repair heap for repair
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
+		RecentRepairTime    time.Time `json:"recentrepairtime"`
 
 		// File ownership/permission fields.
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
@@ -157,6 +160,13 @@ func (sf *SiaFile) PieceSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize
 }
 
+// RecentRepairTime returns  the RecentRepairTime timestamp of the file
+func (sf *SiaFile) RecentRepairTime() time.Time {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.staticMetadata.RecentRepairTime
+}
+
 // Rename changes the name of the file to a new one.
 func (sf *SiaFile) Rename(newSiaPath, newSiaFilePath string) error {
 	sf.mu.Lock()
@@ -239,6 +249,21 @@ func (sf *SiaFile) UpdateAccessTime() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	sf.staticMetadata.AccessTime = time.Now()
+
+	// Save changes to metadata to disk.
+	updates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// UpdateRecentRepairTime updates the RecentRepairTime timestamp to the current
+// time.
+func (sf *SiaFile) UpdateRecentRepairTime() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.RecentRepairTime = time.Now()
 
 	// Save changes to metadata to disk.
 	updates, err := sf.saveHeaderUpdates()
