@@ -53,7 +53,7 @@ func (ld *LocalDir) CreateDir(name string) (*LocalDir, error) {
 
 // newDir creates a new LocalDir in the current LocalDir
 func (ld *LocalDir) newDir() (*LocalDir, error) {
-	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4))))
+	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(8))))
 	return &LocalDir{path: path}, os.MkdirAll(path, 0777)
 }
 

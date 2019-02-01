@@ -403,6 +403,26 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		default:
 		}
 	}
+	// Check if renter is shutting down
+	var renterError bool
+	select {
+	case <-r.tg.StopChan():
+		renterError = true
+	default:
+		// Check that the renter is still online
+		if !r.g.Online() {
+			renterError = true
+		}
+	}
+	// Check if chunk is flagged as stuck and if there is an error with the
+	// renter. We don't want to mark chunks as stuck due to the renter being
+	// offline or due to the renter shutting down
+	if stuck && renterError {
+		// Set stuck to the current chunk stuck status. We do this as to not
+		// incorrectly mark a stuck chunk as unstuck just because there was an
+		// error with the renter
+		stuck = uc.fileEntry.StuckChunkByIndex(uc.id.index)
+	}
 	// Update chunk stuck status
 	if err := uc.fileEntry.SetStuck(uc.id.index, stuck); err != nil {
 		r.log.Printf("WARN: could not mark chunk as stuck for file %v: %v", uc.fileEntry.SiaPath(), err)
