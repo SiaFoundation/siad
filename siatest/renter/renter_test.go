@@ -4369,7 +4369,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check that the RecoveryScanStatus was set.
-	rrs, err := r.RenterContractRecoveryProgressPost()
+	rrs, err := r.RenterContractRecoveryProgressGet()
 	if err != nil {
 		t.Fatal(err)
 	}

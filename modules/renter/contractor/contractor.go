@@ -200,9 +200,6 @@ func (c *Contractor) RateLimits() (readBPW int64, writeBPS int64, packetSize uin
 // RecoveryScanStatus returns a bool indicating if a scan for recoverable
 // contracts is in progress and if it is, the current progress of the scan.
 func (c *Contractor) RecoveryScanStatus() (bool, types.BlockHeight) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	bh := types.BlockHeight(atomic.LoadInt64(&c.atomicRecoveryScanHeight))
 	sip := atomic.LoadUint32(&c.atomicScanInProgress)
 	return sip == 1, bh

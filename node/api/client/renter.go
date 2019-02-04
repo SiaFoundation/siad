@@ -137,9 +137,9 @@ func (c *Client) RenterInitContractRecoveryScanPost() (err error) {
 	return
 }
 
-// RenterContractRecoveryProgressPost returns information about potentially
+// RenterContractRecoveryProgressGet returns information about potentially
 // ongoing contract recovery scans.
-func (c *Client) RenterContractRecoveryProgressPost() (rrs api.RenterRecoveryStatusGET, err error) {
+func (c *Client) RenterContractRecoveryProgressGet() (rrs api.RenterRecoveryStatusGET, err error) {
 	err = c.get("/renter/recoveryscan", &rrs)
 	return
 }
