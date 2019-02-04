@@ -4411,14 +4411,23 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Delete the file.
-	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+	// Get the renter's seed.
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
 		t.Fatal(err)
 	}
-	// The file should no longer be downloadable.
-	if _, err := r.DownloadByStream(rf); err == nil {
-		t.Fatal("File shouldn't be downloadable after being deleted")
+	// Shut down the renter.
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
 	}
+	// Start a new renter from the same seed.
+	rt := node.RenterTemplate
+	rt.PrimarySeed = wsg.PrimarySeed
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
 	// Recover the backup.
 	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
 		t.Fatal(err)
