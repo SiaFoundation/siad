@@ -30,7 +30,7 @@ func (r *Renter) CreateBackup(dst string) error {
 	zw := zip.NewWriter(zipFile)
 	defer zw.Close()
 
-	// Walk over all the siafiles and copy them to the temporary directory.
+	// Walk over all the siafiles and add them to the archive.
 	return filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
@@ -122,9 +122,14 @@ func unzipDir(zipPath, dstFolder string) error {
 		if f.FileInfo().IsDir() {
 			continue
 		}
+		// Add a suffix to the dst path if the file already exists.
+		dst = uniqueFilename(dst)
 		// Copy File.
 		if err = os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
 			return err
+		}
+		if _, err := os.Stat(dst); !os.IsNotExist(err) {
+			continue
 		}
 		f, err := os.Create(dst)
 		if err != nil {
@@ -140,4 +145,24 @@ func unzipDir(zipPath, dstFolder string) error {
 		}
 	}
 	return nil
+}
+
+// uniqueFilename checks if a file exists at a certain destination. If it does
+// it will append a suffix of the form _[num] and increment [num] until it can
+// find a suffix that isn't in use yet.
+func uniqueFilename(dst string) string {
+	suffix := ""
+	counter := 1
+	extension := filepath.Ext(dst)
+	nameNoExt := strings.TrimSuffix(dst, extension)
+	for {
+		path := nameNoExt + suffix + extension
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			// File doesn't exist. We are done.
+			return path
+		}
+		// Duplicate detected. Increment suffix and counter.
+		suffix = fmt.Sprintf("_%v", counter)
+		counter++
+	}
 }

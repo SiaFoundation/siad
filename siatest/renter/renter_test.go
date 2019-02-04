@@ -4427,4 +4427,13 @@ func TestCreateLoadBackup(t *testing.T) {
 	if _, err := r.DownloadByStream(rf); err != nil {
 		t.Fatal(err)
 	}
+	// Recover the backup again. Now there should be another file with a suffix
+	// at the end.
+	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileGet(rf.SiaPath() + "_1")
+	if err != nil {
+		t.Fatal(err)
+	}
 }
