@@ -400,6 +400,7 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // loop will continue until the renter stops, there are no more chunks, or
 // enough time has passed indicated by the rebuildHeapSignal
 func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
+	var chunksRepairing int
 	rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
 	for {
 		select {
@@ -423,6 +424,13 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		if nextChunk == nil {
 			return
 		}
+		chunksRepairing++
+
+		// Update the recent repair time for the file
+		err := nextChunk.fileEntry.UpdateRecentRepairTime()
+		if err != nil {
+			r.log.Debugf("WARN: unable to update the recent repair time of %v : %v", nextChunk.fileEntry.SiaPath(), err)
+		}
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy. Otherwise we ignore this chunk for now and try again
@@ -432,6 +440,15 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		r.mu.RUnlock(id)
 		if availableWorkers < nextChunk.minimumPieces {
 			continue
+		}
+
+		// Check if enough chunks are currently beeing repaired
+		if chunksRepairing >= maxParallelChunkRepairs {
+			// zero out heap and return
+			lockID := r.mu.Lock()
+			r.uploadHeap.heap = uploadChunkHeap{}
+			r.mu.Unlock(lockID)
+			return
 		}
 
 		// Perform the work. managedPrepareNextChunk will block until

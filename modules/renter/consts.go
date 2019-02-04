@@ -60,6 +60,10 @@ const (
 	// worker has experienced a download failure.
 	downloadFailureCooldown = time.Second * 3
 
+	// maxParallelChunkRepairs is the maximum number of chunks we want to pop of
+	// the repair heap before rebuilding the heap
+	maxParallelChunkRepairs = int(100)
+
 	// memoryPriorityLow is used to request low priority memory
 	memoryPriorityLow = false
 

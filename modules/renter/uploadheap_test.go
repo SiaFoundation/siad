@@ -1,7 +1,7 @@
 package renter
 
 import (
-	"strconv"
+	"encoding/hex"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -94,14 +94,14 @@ func TestBuildChunkHeap(t *testing.T) {
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
-		SiaPath:     "testfile-" + strconv.Itoa(int(fastrand.Bytes(8)[0])),
+		SiaPath:     "testfile-" + hex.EncodeToString(fastrand.Bytes(8)),
 		ErasureCode: rsc,
 	}
 	f1, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
 	if err != nil {
 		t.Fatal(err)
 	}
-	up.SiaPath = "testfile-" + strconv.Itoa(int(fastrand.Bytes(8)[0]))
+	up.SiaPath = "testfile-" + hex.EncodeToString(fastrand.Bytes(8))
 	f2, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
 	if err != nil {
 		t.Fatal(err)

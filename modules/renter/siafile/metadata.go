@@ -266,7 +266,7 @@ func (sf *SiaFile) UpdateRecentRepairTime() error {
 	sf.staticMetadata.RecentRepairTime = time.Now()
 
 	// Save changes to metadata to disk.
-	updates, err := sf.saveHeaderUpdates()
+	updates, err := sf.saveMetadataUpdate()
 	if err != nil {
 		return err
 	}
