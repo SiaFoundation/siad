@@ -482,7 +482,14 @@ type (
 		Data []byte
 	}
 
-	// LoopWriteResponse contains the response data for RPCLoopWriteResponse.
+	// LoopWriteMerkleProof contains the optional Merkle proof for response data
+	// for RPCLoopWrite.
+	LoopWriteMerkleProof struct {
+		OldSubtreeHashes []crypto.Hash
+		NewMerkleRoot    crypto.Hash
+	}
+
+	// LoopWriteResponse contains the response data for RPCLoopWrite.
 	LoopWriteResponse struct {
 		Signature []byte
 	}

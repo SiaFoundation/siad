@@ -129,17 +129,13 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 		s.writeError(err)
 		return err
 	}
-	if req.MerkleProof {
-		err := errors.New("host does not support Merkle proofs")
-		s.writeError(err)
-		return err
-	}
-
-	// Since no Merkle proof was requested, the renter's signature should be
+	// If no Merkle proof was requested, the renter's signature should be
 	// sent immediately.
 	var sigResponse modules.LoopWriteResponse
-	if err := s.readResponse(&sigResponse, modules.RPCMinLen); err != nil {
-		return err
+	if !req.MerkleProof {
+		if err := s.readResponse(&sigResponse, modules.RPCMinLen); err != nil {
+			return err
+		}
 	}
 
 	// Check that a contract is locked.
@@ -159,6 +155,8 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 
 	// Process each action.
 	newRoots := append([]crypto.Hash(nil), s.so.SectorRoots...)
+	var proofRanges []crypto.ProofRange // TODO: use this
+	var updatedSectors [][]byte         // TODO: use this
 	var bandwidthRevenue types.Currency
 	var storageRevenue types.Currency
 	var newCollateral types.Currency
@@ -273,6 +271,20 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	if err != nil {
 		s.writeError(err)
 		return err
+	}
+
+	// If a Merkle proof was requested, send it and wait for the renter's signature.
+	if req.MerkleProof {
+		numLeaves := currentRevision.NewFileSize / modules.SectorSize
+		merkleResp := modules.LoopWriteMerkleProof{
+			OldSubtreeHashes: crypto.MerkleDiffProof(proofRanges, numLeaves, updatedSectors, s.so.SectorRoots),
+			NewMerkleRoot:    newRevision.NewFileMerkleRoot,
+		}
+		if err := s.writeResponse(merkleResp); err != nil {
+			return err
+		} else if err := s.readResponse(&sigResponse, modules.RPCMinLen); err != nil {
+			return err
+		}
 	}
 
 	// Sign the new revision.
