@@ -147,35 +147,6 @@ func TestBadBlock(t *testing.T) {
 	}
 }
 
-// TestTooLargeDecoder tests that the decoder catches allocations that are too
-// large.
-func TestTooLargeDecoder(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	enc := encoding.Marshal(Block{})
-	// change number of transactions to large number
-	copy(enc[len(enc)-8:], encoding.EncUint64(^uint64(0)))
-	var block Block
-	err := encoding.Unmarshal(enc, &block)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-
-	var arb [][]byte
-	for i := 0; i < 4; i++ {
-		arb = append(arb, make([]byte, encoding.MaxSliceSize-1))
-	}
-	block.Transactions = []Transaction{{
-		ArbitraryData: arb,
-	}}
-	enc = encoding.Marshal(block)
-	err = encoding.Unmarshal(enc, &block)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
 // TestCurrencyMarshalJSON probes the MarshalJSON and UnmarshalJSON functions
 // of the currency type.
 func TestCurrencyMarshalJSON(t *testing.T) {
