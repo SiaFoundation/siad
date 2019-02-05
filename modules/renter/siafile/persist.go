@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -161,7 +160,7 @@ func readInsertUpdate(update writeaheadlog.Update) (path string, index int64, da
 // allocateHeaderPage allocates a new page for the metadata and publicKeyTable.
 // It returns an update that moves the chunkData back by one pageSize if
 // applied and also updates the ChunkOffset of the metadata.
-func (sf *SiaFile) allocateHeaderPage() ([]writeaheadlog.Update, error) {
+func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 	// Sanity check the chunk offset.
 	if sf.staticMetadata.ChunkOffset%pageSize != 0 {
 		build.Critical("the chunk offset is not page aligned")
@@ -169,33 +168,24 @@ func (sf *SiaFile) allocateHeaderPage() ([]writeaheadlog.Update, error) {
 	// Open the file.
 	f, err := sf.deps.Open(sf.siaFilePath)
 	if err != nil {
-		return nil, err
+		return writeaheadlog.Update{}, err
 	}
 	defer f.Close()
 	// Seek the chunk offset.
 	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
 	if err != nil {
-		return nil, err
+		return writeaheadlog.Update{}, err
 	}
 	// Read all the chunk data.
 	chunkData, err := ioutil.ReadAll(f)
 	if err != nil {
-		return nil, err
+		return writeaheadlog.Update{}, err
 	}
 	// Move the offset back by a pageSize.
 	sf.staticMetadata.ChunkOffset += pageSize
 
-	// Create multiple updates for the chunk data since it might be greater
-	// than MaxSliceSize.
-	var updates []writeaheadlog.Update
-	var off int64
-	buf := bytes.NewBuffer(chunkData)
-	for b := buf.Next(encoding.MaxSliceSize); len(b) > 0; b = buf.Next(encoding.MaxSliceSize) {
-		u := sf.createInsertUpdate(sf.staticMetadata.ChunkOffset+off, b)
-		updates = append(updates, u)
-		off += int64(len(b))
-	}
-	return updates, nil
+	// Create and return update.
+	return sf.createInsertUpdate(sf.staticMetadata.ChunkOffset, chunkData), nil
 }
 
 // applyUpdates applies updates to the SiaFile. Only updates that belong to the
@@ -404,7 +394,7 @@ func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
 		if err != nil {
 			return nil, err
 		}
-		updates = append(updates, chunkUpdate...)
+		updates = append(updates, chunkUpdate)
 		// Update the PubKeyTableOffset.
 		sf.staticMetadata.PubKeyTableOffset = sf.staticMetadata.ChunkOffset - int64(len(pubKeyTable))
 		// Marshal the metadata again.
