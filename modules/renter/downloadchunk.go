@@ -205,14 +205,12 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 
 	// Calculate the number of bytes we need to recover. This doesn't
 	// necessarily equal the staticFetchLength
-	bytesToRecover := bytesToRecover(udc.staticFetchOffset, udc.staticFetchLength, udc.staticChunkSize, udc.erasureCode)
+	btr := bytesToRecover(udc.staticFetchOffset, udc.staticFetchLength, udc.staticChunkSize, udc.erasureCode)
 
 	// Recover the pieces into the logical chunk data.
 	//
-	// TODO: Might be some way to recover into the downloadDestination instead
-	// of creating a buffer and then writing that.
 	recoverWriter := new(bytes.Buffer)
-	err := udc.erasureCode.Recover(udc.physicalChunkData, bytesToRecover, recoverWriter)
+	err := udc.erasureCode.Recover(udc.physicalChunkData, btr, recoverWriter)
 	if err != nil {
 		udc.mu.Lock()
 		udc.fail(err)
