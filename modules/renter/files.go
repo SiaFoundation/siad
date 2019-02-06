@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -115,6 +116,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	}
 	onDisk := !os.IsNotExist(err)
 	redundancy := entry.Redundancy(offline, goodForRenew)
+	health, stuckHealth, numStuckChunks := entry.Health(offline)
 	fileInfo := modules.FileInfo{
 		AccessTime:     entry.AccessTime(),
 		Available:      entry.Available(offline),
@@ -123,8 +125,10 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		CreateTime:     entry.CreateTime(),
 		Expiration:     entry.Expiration(contracts),
 		Filesize:       entry.Size(),
+		Health:         math.Max(health, stuckHealth),
 		LocalPath:      localPath,
 		ModTime:        entry.ModTime(),
+		NumStuckChunks: numStuckChunks,
 		OnDisk:         onDisk,
 		Recoverable:    onDisk || redundancy >= 1,
 		Redundancy:     redundancy,

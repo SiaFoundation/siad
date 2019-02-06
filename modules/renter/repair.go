@@ -12,6 +12,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+)
+
+var (
+	// errNoStuckFiles is a helper to indicate that there are no stuck files in
+	// the renter's directory
+	errNoStuckFiles = errors.New("no stuck files")
 )
 
 // bubbleStatus indicates the status of a bubble being executed on a
@@ -25,12 +32,6 @@ const (
 	bubbleInit
 	bubbleActive
 	bubblePending
-)
-
-const (
-	// repairHealthThreshold is the minimum health that a file or directory
-	// needs to have in order for it to be repaired. This is to save resources
-	repairHealthThreshold = float64(0.25)
 )
 
 // managedBubbleNeeded checks if a bubble is needed for a directory, updates the
@@ -267,6 +268,85 @@ func (r *Renter) managedOldestHealthCheckTime() (string, time.Time, error) {
 	return siaPath, health.LastHealthCheckTime, nil
 }
 
+// managedStuckDirectory randomly finds a directory that contains stuck chunks
+func (r *Renter) managedStuckDirectory() (string, error) {
+	// Iterating of the renter direcotry until randomly ending up in a
+	// directory, break and return that directory
+	siaPath := ""
+	for {
+		select {
+		// Check to make sure renter hasn't been shutdown
+		case <-r.tg.StopChan():
+			return "", nil
+		default:
+		}
+
+		directories, files, err := r.DirList(siaPath)
+		if err != nil {
+			return "", err
+		}
+		// Sanity check that there is at least the current directory
+		if len(directories) == 0 {
+			build.Critical("No directories returned from DirList")
+		}
+		// Sanity check that we didn't end up in an empty directory with stuck
+		// chunks. The expection is the root files directory as this is the case
+		// for new renters until a file is uploaded
+		emptyDir := len(directories) == 1 && len(files) == 0
+		if emptyDir && directories[0].NumStuckChunks != 0 && siaPath != "" {
+			build.Critical("Empty directory found with stuck chunks:", siaPath)
+		}
+		// Sanity check if there are stuck chunks in this directory, this is the
+		// case when it is a healthy renter's directory
+		if directories[0].NumStuckChunks == 0 {
+			// Sanity check that we are at the root directory
+			if siaPath != "" {
+				build.Critical("ended up in directory with no stuck chunks that is not root directory:", siaPath)
+			}
+			return siaPath, errNoStuckFiles
+		}
+		// Check if we have reached a directory with only files
+		if len(directories) == 1 {
+			return siaPath, nil
+		}
+
+		// Get random int
+		rand := fastrand.Intn(int(directories[0].NumStuckChunks))
+
+		// Use rand to decide which directory to go into. Work backwards over
+		// the slice of directories. Since the first element is the current
+		// directory that means that it is the sum of all the files and
+		// directories.  We can chose a directory by subtracting the number of
+		// stuck chunks a directory has from rand and if rand gets to 0 or less
+		// we choose that direcotry
+		for i := len(directories) - 1; i >= 0; i-- {
+			// If we are on the last iteration then return the current directory
+			if i == 0 {
+				return siaPath, nil
+			}
+
+			// Skip directories with no stuck chunks
+			if directories[i].NumStuckChunks == uint64(0) {
+				continue
+			}
+
+			// If we make it to the last iteration double check that the current
+			// directory has files
+			if i == 0 && len(files) == 0 {
+				break
+			}
+
+			rand = rand - int(directories[i].NumStuckChunks)
+			siaPath = directories[i].SiaPath
+			// If rand is less than 0 break out of the loop and continue into
+			// that directory
+			if rand <= 0 {
+				break
+			}
+		}
+	}
+}
+
 // managedSubDirectories reads a directory and returns a slice of all the sub
 // directory SiaPaths
 func (r *Renter) managedSubDirectories(siaPath string) ([]string, error) {
@@ -298,7 +378,7 @@ func (r *Renter) managedWorstHealthDirectory() (string, float64, error) {
 	// Follow the path of worst health to the lowest level. We only want to find
 	// directories with a health worse than the repairHealthThreshold to save
 	// resources
-	for health.Health >= repairHealthThreshold {
+	for health.Health >= RemoteRepairDownloadThreshold {
 		// Check to make sure renter hasn't been shutdown
 		select {
 		case <-r.tg.StopChan():
@@ -406,6 +486,66 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 	}
 	go r.threadedBubbleHealth(siaPath)
 	return
+}
+
+// threadedStuckFileLoop go through the renter directory and finds the stuck
+// chunks and tries to repair them
+func (r *Renter) threadedStuckFileLoop() {
+	err := r.tg.Add()
+	if err != nil {
+		return
+	}
+	defer r.tg.Done()
+	// Loop until the renter has shutdown or until there are no stuck chunks
+	for {
+		// Wait until the renter is online to proceed.
+		if !r.managedBlockUntilOnline() {
+			// The renter shut down before the internet connection was restored.
+			fmt.Println("renter shutdown before internet connection")
+			return
+		}
+
+		// Refresh the worker pool and get the set of hosts that are currently
+		// useful for uploading.
+		hosts := r.managedRefreshHostsAndWorkers()
+
+		// Randomly get directory with stuck files
+		siaPath, err := r.managedStuckDirectory()
+		if err != nil && err != errNoStuckFiles {
+			r.log.Debugln("WARN: error getting random stuck directory:", err)
+			continue
+		}
+		// Initiate rebuild signal
+		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
+		if err == errNoStuckFiles {
+			// Block until new work is required.
+			select {
+			case <-rebuildStuckHeapSignal:
+				// Time to check for stuck chunks again.
+			case <-r.tg.StopChan():
+				// The renter has shut down.
+				return
+			}
+			continue
+		}
+
+		// Add stuck chunk to upload heap
+		r.managedBuildChunkHeap(siaPath, hosts, targetStuckChunks)
+
+		// Try and repair stuck chunk. Since the heap prioritizes stuck chunks
+		// the first chunk popped off will be the stuck chunk.
+		r.log.Println("Attempting to repair stuck chunks")
+		r.managedRepairLoop(hosts, rebuildStuckHeapSignal)
+
+		// Sleep until it is time to try and repair another stuck chunk
+		select {
+		case <-r.tg.StopChan():
+			// Return if the return has been shutdown
+			return
+		case <-rebuildStuckHeapSignal:
+			// Time to find another random chunk
+		}
+	}
 }
 
 // threadedUpdateRenterHealth reads all the siafiles in the renter, calculates

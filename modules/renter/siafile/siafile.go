@@ -597,6 +597,13 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
+// StuckChunkByIndex returns if the chunk at the index is marked as Stuck or not
+func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.staticChunks[index].Stuck
+}
+
 // UID returns a unique identifier for this file.
 func (sf *SiaFile) UID() string {
 	return sf.staticUniqueID

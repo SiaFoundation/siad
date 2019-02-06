@@ -188,6 +188,7 @@ type ContractUtility struct {
 type DirectoryInfo struct {
 	Health              float64   `json:"health"`
 	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+	NumStuckChunks      uint64    `json:"numstuckchunks"`
 	SiaPath             string    `json:"siapath"`
 }
 
@@ -227,8 +228,10 @@ type FileInfo struct {
 	CreateTime     time.Time         `json:"createtime"`
 	Expiration     types.BlockHeight `json:"expiration"`
 	Filesize       uint64            `json:"filesize"`
+	Health         float64           `json:"health"`
 	LocalPath      string            `json:"localpath"`
 	ModTime        time.Time         `json:"modtime"`
+	NumStuckChunks uint64            `json:"numstuckchunks"`
 	OnDisk         bool              `json:"ondisk"`
 	Recoverable    bool              `json:"recoverable"`
 	Redundancy     float64           `json:"redundancy"`
