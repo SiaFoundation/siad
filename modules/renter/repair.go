@@ -1,5 +1,58 @@
 package renter
 
+// The following describes the work flow of how Sia repairs files
+//
+// There are 3 main functions that work together to make up Sia's file repair
+// mechanism, threadedUpdateRenterHealth, threadedUploadLoop, and
+// threadedStuckFileLoop. These 3 functions will be referred to as the health
+// loop, the repair loop, and the stuck loop respectively.
+//
+// The health loop is responsible for ensuring that the health of the renter's
+// file directory is updated periodically. The health information for a
+// directory is stored in the .siadir metadata file and is the worst values for
+// any of the files and sub directories. This is true for all directories which
+// means the health of top level directory of the renter is the health of the
+// worst file in the renter. For health and stuck health the worst value is the
+// highest value, for timestamp values the oldest timestamp is the worst value,
+// and for aggregate values (ie NumStuckChunks) it will be the sum of all the
+// files and sub directories.  The health loop keeps the renter file directory
+// updated by following the path of oldest LastHealthCheckTime and then calling
+// threadedBubbleHealth, to be referred to as bubble, on that directory. When a
+// directory is bubbled, the health information is recalculated and saved to
+// disk and then bubble is called on the parent directory until the top level
+// directory is reached. If during a bubble a file is found that meets the
+// threshold health for repair, then a signal is sent to the repair loop. If a
+// stuck chunk is found then a signal is sent to the stuck loop. Once the entire
+// renter's directory has been updated within the healthCheckInterval the health
+// loop sleeps until the time interval has passed.
+//
+// The repair loop is responsible for repairing the renter's files, this
+// includes uploads. The repair loop follows the path of worst health and then
+// adds the files from the directory with the worst health to the repair heap
+// and begins repairing. If no directories are unhealthy enough to require
+// repair the repair loop sleeps until a new upload triggers it to start or it
+// is triggered by a bubble finding a file that requires repair. While there are
+// files to repair, the repair loop will continue to work through the renter's
+// directory finding the worst health directories and adding them to the repair
+// heap. The rebuildChunkHeapInterval is used to make sure the repair heap
+// doesn't get stuck on repairing a set of chunks for too long. Once the
+// rebuildChunkheapInterval passes, the repair loop will continue in it's search
+// for files that need repair. As chunks are repaired, they will call bubble on
+// their directory to ensure that the renter directory gets updated.
+//
+// The stuck loop is responsible for targeting chunks that didn't get repaired
+// properly. The stuck loop randomly finds a directory containing stuck chunks
+// and adds those to the repair heap. The repair heap will randomly add one
+// stuck chunk to the heap at a time. Stuck chunks are priority in the heap, so
+// limiting it to 1 stuck chunk at a time prevents the heap from being saturated
+// with stuck chunks that potentially cannot be repaired which would cause no
+// other files to be repaired. If the repair of a stuck chunk is successful, a
+// signal is sent to the stuck loop and another stuck chunk is added to the
+// heap. If the repair wasn't successful, the stuck loop will wait for the
+// repairStuckChunkInterval to pass and then try another random stuck chunk. If
+// the stuck loop doesn't find any stuck chunks, it will sleep until a bubble
+// triggers it by finding a stuck chunk.
+
 import (
 	"fmt"
 	"io/ioutil"
@@ -455,6 +508,21 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 		return
 	}
 
+	// Check for files in need of repair or stuck chunks and trigger the
+	// appropriate repair loop
+	if health.Health >= RemoteRepairDownloadThreshold {
+		select {
+		case r.uploadHeap.repairNeeded <- struct{}{}:
+		default:
+		}
+	}
+	if health.NumStuckChunks > 0 {
+		select {
+		case r.uploadHeap.stuckChunkFound <- struct{}{}:
+		default:
+		}
+	}
+
 	// Update directory metadata with the health information
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
@@ -515,13 +583,11 @@ func (r *Renter) threadedStuckFileLoop() {
 			r.log.Debugln("WARN: error getting random stuck directory:", err)
 			continue
 		}
-		// Initiate rebuild signal
-		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
 		if err == errNoStuckFiles {
 			// Block until new work is required.
 			select {
-			case <-rebuildStuckHeapSignal:
-				// Time to check for stuck chunks again.
+			case <-r.uploadHeap.stuckChunkFound:
+				// Health Loop found stuck chunk
 			case <-r.tg.StopChan():
 				// The renter has shut down.
 				return
@@ -535,15 +601,19 @@ func (r *Renter) threadedStuckFileLoop() {
 		// Try and repair stuck chunk. Since the heap prioritizes stuck chunks
 		// the first chunk popped off will be the stuck chunk.
 		r.log.Println("Attempting to repair stuck chunks")
-		r.managedRepairLoop(hosts, rebuildStuckHeapSignal)
+		r.managedRepairLoop(hosts)
 
 		// Sleep until it is time to try and repair another stuck chunk
+		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
 		select {
 		case <-r.tg.StopChan():
 			// Return if the return has been shutdown
 			return
 		case <-rebuildStuckHeapSignal:
 			// Time to find another random chunk
+		case <-r.uploadHeap.stuckChunkSuccess:
+			// Stuck chunk was successfully repaired, continue to repair stuck
+			// chunks
 		}
 	}
 }
