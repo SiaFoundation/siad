@@ -89,7 +89,8 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 		if block.ID() != types.GenesisID {
 			c.blockHeight--
 		}
-		// TODO: Should we delete contracts that got reverted?
+		// Remove recoverable contracts found in reverted block.
+		c.removeRecoverableContracts(block)
 	}
 	for _, block := range cc.AppliedBlocks {
 		if block.ID() != types.GenesisID {
