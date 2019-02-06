@@ -155,11 +155,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 
 	// Process each action.
 	newRoots := append([]crypto.Hash(nil), s.so.SectorRoots...)
-	var proofRanges []crypto.ProofRange // TODO: use this
-	var updatedSectors [][]byte         // TODO: use this
 	var bandwidthRevenue types.Currency
-	var storageRevenue types.Currency
-	var newCollateral types.Currency
 	var sectorsRemoved []crypto.Hash
 	var sectorsGained []crypto.Hash
 	var gainedSectorData [][]byte
@@ -176,12 +172,8 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			sectorsGained = append(sectorsGained, newRoot)
 			gainedSectorData = append(gainedSectorData, action.Data)
 
-			// Update finances.
-			blocksRemaining := s.so.proofDeadline() - blockHeight
-			blockBytesCurrency := types.NewCurrency64(uint64(blocksRemaining)).Mul64(modules.SectorSize)
+			// Update finances
 			bandwidthRevenue = bandwidthRevenue.Add(settings.UploadBandwidthPrice.Mul64(modules.SectorSize))
-			storageRevenue = storageRevenue.Add(settings.StoragePrice.Mul(blockBytesCurrency))
-			newCollateral = newCollateral.Add(settings.Collateral.Mul(blockBytesCurrency))
 
 		case modules.WriteActionTrim:
 			numSectors := action.A
@@ -237,6 +229,16 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 		}
 	}
 
+	// Update finances.
+	var storageRevenue, newCollateral types.Currency
+	if len(newRoots) > len(s.so.SectorRoots) {
+		bytesAdded := modules.SectorSize * uint64(len(newRoots)-len(s.so.SectorRoots))
+		blocksRemaining := s.so.proofDeadline() - blockHeight
+		blockBytesCurrency := types.NewCurrency64(uint64(blocksRemaining)).Mul64(bytesAdded)
+		storageRevenue = settings.StoragePrice.Mul(blockBytesCurrency)
+		newCollateral = newCollateral.Add(settings.Collateral.Mul(blockBytesCurrency))
+	}
+
 	// construct the new revision
 	newRevision := currentRevision
 	newRevision.NewRevisionNumber = req.NewRevisionNumber
@@ -275,11 +277,26 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 
 	// If a Merkle proof was requested, send it and wait for the renter's signature.
 	if req.MerkleProof {
+		// Calculate which sectors changed.
+		var proofRanges []crypto.ProofRange
+		var leafHashes []crypto.Hash
+		for i, oldRoot := range s.so.SectorRoots {
+			if oldRoot != newRoots[i] {
+				proofRanges = append(proofRanges, crypto.ProofRange{
+					Start: uint64(i),
+					End:   uint64(i + 1),
+				})
+				leafHashes = append(leafHashes, oldRoot)
+			}
+		}
+		// Construct the Merkle proof.
 		numLeaves := currentRevision.NewFileSize / modules.SectorSize
 		merkleResp := modules.LoopWriteMerkleProof{
-			OldSubtreeHashes: crypto.MerkleDiffProof(proofRanges, numLeaves, updatedSectors, s.so.SectorRoots),
+			OldSubtreeHashes: crypto.MerkleDiffProof(proofRanges, numLeaves, nil, s.so.SectorRoots),
+			OldLeafHashes:    leafHashes,
 			NewMerkleRoot:    newRevision.NewFileMerkleRoot,
 		}
+		// Send the proof.
 		if err := s.writeResponse(merkleResp); err != nil {
 			return err
 		} else if err := s.readResponse(&sigResponse, modules.RPCMinLen); err != nil {

@@ -3,9 +3,11 @@ package proto
 import (
 	"crypto/cipher"
 	"net"
+	"sort"
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -31,6 +33,11 @@ type Session struct {
 // writeRequest sends an encrypted RPC request to the host.
 func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
 	return modules.WriteRPCRequest(s.conn, s.aead, rpcID, req)
+}
+
+// writeResponse writes an encrypted RPC response to the host.
+func (s *Session) writeResponse(resp interface{}, err error) error {
+	return modules.WriteRPCResponse(s.conn, s.aead, resp, err)
 }
 
 // readResponse reads an encrypted RPC response from the host.
@@ -94,45 +101,77 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 // Append calls the Write RPC with a single Append action, returning the
 // updated contract and the Merkle root of the appended sector.
 func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
+	rc, err := s.Write([]modules.LoopWriteAction{{Type: modules.WriteActionAppend, Data: data}})
+	return rc, crypto.MerkleRoot(data), err
+}
+
+// Write implements the Write RPC, except for ActionUpdate. A Merkle proof is
+// always requested.
+func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterContract, err error) {
 	// Acquire the contract.
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
-		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract not present in contract set")
+		return modules.RenterContract{}, errors.New("contract not present in contract set")
 	}
 	defer s.contractSet.Return(sc)
 	contract := sc.header // for convenience
 
-	// calculate price
-	// TODO: height is never updated, so we'll wind up overpaying on long-running uploads
+	// calculate price per sector
 	blockBytes := types.NewCurrency64(modules.SectorSize * uint64(contract.LastRevision().NewWindowEnd-s.height))
-	sectorStoragePrice := s.host.StoragePrice.Mul(blockBytes)
 	sectorBandwidthPrice := s.host.UploadBandwidthPrice.Mul64(modules.SectorSize)
+	sectorStoragePrice := s.host.StoragePrice.Mul(blockBytes)
 	sectorCollateral := s.host.Collateral.Mul(blockBytes)
+
+	// calculate the new Merkle root set and total cost/collateral
+	var bandwidthPrice, storagePrice, collateral types.Currency
+	newFileSize := contract.LastRevision().NewFileSize
+	for _, action := range actions {
+		switch action.Type {
+		case modules.WriteActionAppend:
+			bandwidthPrice = bandwidthPrice.Add(sectorBandwidthPrice)
+			newFileSize += modules.SectorSize
+
+		case modules.WriteActionTrim:
+			newFileSize -= modules.SectorSize * action.A
+
+		case modules.WriteActionSwap:
+
+		case modules.WriteActionUpdate:
+			return modules.RenterContract{}, errors.New("update not supported")
+
+		default:
+			build.Critical("unknown action type", action.Type)
+		}
+	}
+
+	if newFileSize > contract.LastRevision().NewFileSize {
+		addedSectors := (newFileSize - contract.LastRevision().NewFileSize) / modules.SectorSize
+		storagePrice = sectorStoragePrice.Mul64(addedSectors)
+		collateral = sectorCollateral.Mul64(addedSectors)
+	}
 
 	// to mitigate small errors (e.g. differing block heights), fudge the
 	// price and collateral by 0.2%.
-	sectorStoragePrice = sectorStoragePrice.MulFloat(1 + hostPriceLeeway)
-	sectorBandwidthPrice = sectorBandwidthPrice.MulFloat(1 + hostPriceLeeway)
-	sectorCollateral = sectorCollateral.MulFloat(1 - hostPriceLeeway)
+	cost := bandwidthPrice.Add(storagePrice).MulFloat(1 + hostPriceLeeway)
+	collateral = collateral.MulFloat(1 - hostPriceLeeway)
 
 	// check that enough funds are available
-	sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
-	if contract.RenterFunds().Cmp(sectorPrice) < 0 {
-		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract has insufficient funds to support upload")
+	if contract.RenterFunds().Cmp(cost) < 0 {
+		return modules.RenterContract{}, errors.New("contract has insufficient funds to support upload")
 	}
-	if contract.LastRevision().NewMissedProofOutputs[1].Value.Cmp(sectorCollateral) < 0 {
-		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract has insufficient collateral to support upload")
+	if contract.LastRevision().NewMissedProofOutputs[1].Value.Cmp(collateral) < 0 {
+		return modules.RenterContract{}, errors.New("contract has insufficient collateral to support upload")
 	}
 
-	// create the new revision; we'll fix the Merkle root later
-	rev := newUploadRevision(contract.LastRevision(), crypto.Hash{}, sectorPrice, sectorCollateral)
+	// create the revision; we will update the Merkle root later
+	rev := newRevision(contract.LastRevision(), cost)
+	rev.NewMissedProofOutputs[1].Value = rev.NewMissedProofOutputs[1].Value.Sub(collateral)
+	rev.NewMissedProofOutputs[2].Value = rev.NewMissedProofOutputs[2].Value.Add(collateral)
+	rev.NewFileSize = newFileSize
 
 	// create the request
 	req := modules.LoopWriteRequest{
-		Actions: []modules.LoopWriteAction{{
-			Type: modules.WriteActionAppend,
-			Data: data,
-		}},
+		Actions:           actions,
 		MerkleProof:       true,
 		NewRevisionNumber: rev.NewRevisionNumber,
 	}
@@ -149,11 +188,10 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
 	//
-	// TODO: maybe unnecessary?
-	sectorRoot := crypto.MerkleRoot(data)
-	walTxn, err := sc.recordUploadIntent(rev, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
+	// TODO: update this for non-local root storage
+	walTxn, err := sc.recordUploadIntent(rev, crypto.Hash{}, storagePrice, bandwidthPrice)
 	if err != nil {
-		return modules.RenterContract{}, crypto.Hash{}, err
+		return modules.RenterContract{}, err
 	}
 
 	defer func() {
@@ -170,37 +208,37 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 
 	// Disrupt here before sending the signed revision to the host.
 	if s.deps.Disrupt("InterruptUploadBeforeSendingRevision") {
-		return modules.RenterContract{}, crypto.Hash{}, errors.New("InterruptUploadBeforeSendingRevision disrupt")
+		return modules.RenterContract{}, errors.New("InterruptUploadBeforeSendingRevision disrupt")
 	}
 
 	// send Write RPC request
 	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
 	if err := s.writeRequest(modules.RPCLoopWrite, req); err != nil {
-		return modules.RenterContract{}, crypto.Hash{}, err
+		return modules.RenterContract{}, err
 	}
 
 	// read Merkle proof from host
 	var merkleResp modules.LoopWriteMerkleProof
-	if err := modules.ReadRPCResponse(s.conn, s.aead, &merkleResp, modules.RPCMinLen); err != nil {
-		return modules.RenterContract{}, crypto.Hash{}, err
+	if err := s.readResponse(&merkleResp, modules.RPCMinLen); err != nil {
+		return modules.RenterContract{}, err
 	}
 	// verify the proof, first by verifying the old Merkle root...
-	numLeaves := contract.LastRevision().NewFileSize / modules.SectorSize
-	proofRanges := []crypto.ProofRange(nil)
+	numSectors := contract.LastRevision().NewFileSize / modules.SectorSize
+	proofRanges := calculateProofRanges(actions, numSectors)
 	proofHashes := merkleResp.OldSubtreeHashes
-	leafHashes := []crypto.Hash(nil)
+	leafHashes := merkleResp.OldLeafHashes
 	oldRoot, newRoot := contract.LastRevision().NewFileMerkleRoot, merkleResp.NewMerkleRoot
-	if !crypto.VerifyDiffProof(proofRanges, numLeaves, proofHashes, leafHashes, oldRoot) {
-		return modules.RenterContract{}, crypto.Hash{}, errors.New("invalid Merkle proof for old root")
+	if !crypto.VerifyDiffProof(proofRanges, numSectors, proofHashes, leafHashes, oldRoot) {
+		return modules.RenterContract{}, errors.New("invalid Merkle proof for old root")
 	}
 	// ...then by modifying the leaves and verifying the new Merkle root
-	proofRanges = append(proofRanges, crypto.ProofRange{numLeaves, numLeaves + 1})
-	leafHashes = append(leafHashes, sectorRoot)
-	if !crypto.VerifyDiffProof(proofRanges, numLeaves+1, proofHashes, leafHashes, newRoot) {
-		return modules.RenterContract{}, crypto.Hash{}, errors.New("invalid Merkle proof for new root")
+	leafHashes = modifyLeaves(leafHashes, actions, numSectors)
+	proofRanges = modifyProofRanges(proofRanges, actions, numSectors)
+	if !crypto.VerifyDiffProof(proofRanges, numSectors, proofHashes, leafHashes, newRoot) {
+		return modules.RenterContract{}, errors.New("invalid Merkle proof for new root")
 	}
 
-	// update the revision and sign it
+	// update the revision, sign it, and send it
 	rev.NewFileMerkleRoot = newRoot
 	txn := types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{rev},
@@ -220,37 +258,33 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	}
 	sig := crypto.SignHash(txn.SigHash(0, s.height), contract.SecretKey)
 	txn.TransactionSignatures[0].Signature = sig[:]
-
-	// send our signature
 	renterSig := modules.LoopWriteResponse{
 		Signature: sig[:],
 	}
-	if err := modules.WriteRPCResponse(s.conn, s.aead, renterSig, nil); err != nil {
-		return modules.RenterContract{}, crypto.Hash{}, err
+	if err := s.writeResponse(renterSig, nil); err != nil {
+		return modules.RenterContract{}, err
 	}
+
 	// read the host's signature
 	var hostSig modules.LoopWriteResponse
-	if err := modules.ReadRPCResponse(s.conn, s.aead, &hostSig, modules.RPCMinLen); err != nil {
-		return modules.RenterContract{}, crypto.Hash{}, err
+	if err := s.readResponse(&hostSig, modules.RPCMinLen); err != nil {
+		return modules.RenterContract{}, err
 	}
+	txn.TransactionSignatures[1].Signature = hostSig.Signature
 
 	// Disrupt here before updating the contract.
 	if s.deps.Disrupt("InterruptUploadAfterSendingRevision") {
-		return modules.RenterContract{}, crypto.Hash{}, errors.New("InterruptUploadAfterSendingRevision disrupt")
+		return modules.RenterContract{}, errors.New("InterruptUploadAfterSendingRevision disrupt")
 	}
-
-	// add host signature
-	txn.TransactionSignatures[1].Signature = hostSig.Signature
 
 	// update contract
 	//
 	// TODO: unnecessary?
-	err = sc.commitUpload(walTxn, txn, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
+	err = sc.commitUpload(walTxn, txn, crypto.Hash{}, storagePrice, bandwidthPrice)
 	if err != nil {
-		return modules.RenterContract{}, crypto.Hash{}, err
+		return modules.RenterContract{}, err
 	}
-
-	return sc.Metadata(), sectorRoot, nil
+	return sc.Metadata(), nil
 }
 
 // Read calls the Read RPC and returns the requested data. A Merkle proof is
@@ -668,4 +702,113 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 	}
 
 	return s, nil
+}
+
+// calculateProofRanges returns the proof ranges that should be used to verify a
+// pre-modification Merkle diff proof for the specified actions.
+func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint64) []crypto.ProofRange {
+	newNumSectors := oldNumSectors
+	sectorsChanged := make(map[uint64]struct{})
+	for _, action := range actions {
+		switch action.Type {
+		case modules.WriteActionAppend:
+			sectorsChanged[newNumSectors] = struct{}{}
+			newNumSectors++
+
+		case modules.WriteActionTrim:
+			newNumSectors--
+			sectorsChanged[newNumSectors] = struct{}{}
+
+		case modules.WriteActionSwap:
+			sectorsChanged[action.A] = struct{}{}
+			sectorsChanged[action.B] = struct{}{}
+
+		case modules.WriteActionUpdate:
+			panic("update not supported")
+		}
+	}
+
+	oldRanges := make([]crypto.ProofRange, 0, len(sectorsChanged))
+	for index := range sectorsChanged {
+		if index < oldNumSectors {
+			oldRanges = append(oldRanges, crypto.ProofRange{
+				Start: index,
+				End:   index + 1,
+			})
+		}
+	}
+	sort.Slice(oldRanges, func(i, j int) bool {
+		return oldRanges[i].Start < oldRanges[j].Start
+	})
+
+	return oldRanges
+}
+
+// modifyProofRanges modifies the proof ranges produced by calculateProofRanges
+// to verify a post-modification Merkle diff proof for the specified actions.
+func modifyProofRanges(proofRanges []crypto.ProofRange, actions []modules.LoopWriteAction, numSectors uint64) []crypto.ProofRange {
+	for _, action := range actions {
+		switch action.Type {
+		case modules.WriteActionAppend:
+			proofRanges = append(proofRanges, crypto.ProofRange{
+				Start: numSectors,
+				End:   numSectors + 1,
+			})
+			numSectors++
+
+		case modules.WriteActionTrim:
+			proofRanges = proofRanges[:uint64(len(proofRanges))-action.A]
+			numSectors--
+		}
+	}
+	return proofRanges
+}
+
+// modifyLeaves modifies the leaf hashes of a Merkle diff proof to verify a
+// post-modification Merkle diff proof for the specified actions.
+func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, numSectors uint64) []crypto.Hash {
+	// determine which sector index corresponds to each leaf hash
+	var indices []uint64
+	for _, action := range actions {
+		switch action.Type {
+		case modules.WriteActionAppend:
+			indices = append(indices, numSectors)
+			numSectors++
+		case modules.WriteActionTrim:
+			for j := uint64(0); j < action.A; j++ {
+				indices = append(indices, numSectors)
+				numSectors--
+			}
+		case modules.WriteActionSwap:
+			indices = append(indices, action.A, action.B)
+		}
+	}
+	sort.Slice(indices, func(i, j int) bool {
+		return indices[i] < indices[j]
+	})
+	indexMap := make(map[uint64]int, len(leafHashes))
+	for i, index := range indices {
+		if i > 0 && index == indices[i-1] {
+			continue // remove duplicates
+		}
+		indexMap[index] = i
+	}
+
+	for _, action := range actions {
+		switch action.Type {
+		case modules.WriteActionAppend:
+			leafHashes = append(leafHashes, crypto.MerkleRoot(action.Data))
+
+		case modules.WriteActionTrim:
+			leafHashes = leafHashes[:uint64(len(leafHashes))-action.A]
+
+		case modules.WriteActionSwap:
+			i, j := indexMap[action.A], indexMap[action.B]
+			leafHashes[i], leafHashes[j] = leafHashes[j], leafHashes[i]
+
+		case modules.WriteActionUpdate:
+			panic("update not supported")
+		}
+	}
+	return leafHashes
 }

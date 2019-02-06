@@ -486,6 +486,7 @@ type (
 	// for RPCLoopWrite.
 	LoopWriteMerkleProof struct {
 		OldSubtreeHashes []crypto.Hash
+		OldLeafHashes    []crypto.Hash
 		NewMerkleRoot    crypto.Hash
 	}
 
