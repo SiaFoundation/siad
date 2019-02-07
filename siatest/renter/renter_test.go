@@ -736,6 +736,17 @@ func testStreamingCache(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("download took longer than 30 seconds")
 		}
 	}
+	// Make sure that the stream downloads don't show up in the download
+	// history.
+	rgg, err := r.RenterDownloadsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, download := range rgg.Downloads {
+		if download.DestinationType == "httpseekstream" {
+			t.Fatal("Stream downloads shouldn't be added to the history")
+		}
+	}
 }
 
 // testUploadDownload is a subtest that uses an existing TestGroup to test if
