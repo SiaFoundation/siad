@@ -13,38 +13,9 @@ import (
 	"reflect"
 )
 
-const (
-	// MaxObjectSize refers to the maximum size an object could have.
-	// Limited to 12 MB.
-	MaxObjectSize = 12e6
-
-	// MaxSliceSize refers to the maximum size slice could have. Limited
-	// to 5 MB.
-	MaxSliceSize = 5e6 // 5 MB
-)
-
 var (
 	errBadPointer = errors.New("cannot decode into invalid pointer")
 )
-
-// ErrObjectTooLarge is an error when encoded object exceeds size limit.
-type ErrObjectTooLarge uint64
-
-// Error implements the error interface.
-func (e ErrObjectTooLarge) Error() string {
-	return fmt.Sprintf("encoded object (>= %v bytes) exceeds size limit (%v bytes)", uint64(e), uint64(MaxObjectSize))
-}
-
-// ErrSliceTooLarge is an error when encoded slice is too large.
-type ErrSliceTooLarge struct {
-	Len      uint64
-	ElemSize uint64
-}
-
-// Error implements the error interface.
-func (e ErrSliceTooLarge) Error() string {
-	return fmt.Sprintf("encoded slice (%v*%v bytes) exceeds size limit (%v bytes)", e.Len, e.ElemSize, uint64(MaxSliceSize))
-}
 
 type (
 	// A SiaMarshaler can encode and write itself to a stream.
@@ -276,9 +247,6 @@ func (d *Decoder) Read(p []byte) (int, error) {
 	var n int
 	n, d.err = d.r.Read(p)
 	d.n += n
-	if d.n > MaxObjectSize {
-		d.err = ErrObjectTooLarge(d.n)
-	}
 	return n, d.err
 }
 
@@ -292,9 +260,6 @@ func (d *Decoder) ReadFull(p []byte) {
 		d.err = err
 	}
 	d.n += n
-	if d.n > MaxObjectSize {
-		d.err = ErrObjectTooLarge(d.n)
-	}
 }
 
 // ReadPrefixedBytes reads a length-prefix, allocates a byte slice with that length,
@@ -342,10 +307,6 @@ func (d *Decoder) NextBool() bool {
 // NextPrefix returns 0 and sets d.Err().
 func (d *Decoder) NextPrefix(elemSize uintptr) uint64 {
 	n := d.NextUint64()
-	if n > 1<<31-1 || n*uint64(elemSize) > MaxSliceSize {
-		d.err = ErrSliceTooLarge{Len: n, ElemSize: uint64(elemSize)}
-		return 0
-	}
 	return n
 }
 

@@ -442,9 +442,8 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	}
 
 	// Verify that the transaction coming over the wire is a proper renewal.
-	renterSPK := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0].UnlockConditions.PublicKeys[0]
 	var renterPK crypto.PublicKey
-	copy(renterPK[:], renterSPK.Key)
+	copy(renterPK[:], req.RenterKey.Key)
 	err := h.managedVerifyRenewedContract(s.so, req.Transactions, renterPK)
 	if err != nil {
 		s.writeError(err)

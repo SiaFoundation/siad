@@ -188,6 +188,7 @@ type ContractUtility struct {
 type DirectoryInfo struct {
 	Health              float64   `json:"health"`
 	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+	NumStuckChunks      uint64    `json:"numstuckchunks"`
 	SiaPath             string    `json:"siapath"`
 }
 
@@ -227,8 +228,10 @@ type FileInfo struct {
 	CreateTime     time.Time         `json:"createtime"`
 	Expiration     types.BlockHeight `json:"expiration"`
 	Filesize       uint64            `json:"filesize"`
+	Health         float64           `json:"health"`
 	LocalPath      string            `json:"localpath"`
 	ModTime        time.Time         `json:"modtime"`
+	NumStuckChunks uint64            `json:"numstuckchunks"`
 	OnDisk         bool              `json:"ondisk"`
 	Recoverable    bool              `json:"recoverable"`
 	Redundancy     float64           `json:"redundancy"`
@@ -483,6 +486,18 @@ type Renter interface {
 
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []RenterContract
+
+	// CreateBackup creates a backup of the renter's siafiles at the provided
+	// destination.
+	// If a file from the backup would have the same path as an already
+	// existing file, a suffix of the form _[num] is appended to the siapath.
+	// [num] is incremented until a siapath is found that is not already in
+	// use.
+	CreateBackup(dst string) error
+
+	// LoadBackup loads the siafiles of a previously created backup into the
+	// renter.
+	LoadBackup(src string) error
 
 	// InitRecoveryScan starts scanning the whole blockchain for recoverable
 	// contracts within a separate thread.

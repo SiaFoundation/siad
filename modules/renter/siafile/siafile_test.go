@@ -318,3 +318,74 @@ func TestChunkHealth(t *testing.T) {
 		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap))
 	}
 }
+
+// TestStuckChunks checks to make sure the NumStuckChunks return the expected
+// values and that the stuck chunks are persisted properly
+func TestStuckChunks(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create siafile
+	sf, sfs, err := newTestSiaFileSetWithFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark every other chunk as stuck
+	expectedStuckChunks := 0
+	for i := range sf.staticChunks {
+		if (i % 2) != 0 {
+			continue
+		}
+		if err := sf.SetStuck(uint64(i), true); err != nil {
+			t.Fatal(err)
+		}
+		expectedStuckChunks++
+	}
+
+	// Sanity Check
+	if expectedStuckChunks == 0 {
+		t.Fatal("No chunks were set to stuck")
+	}
+
+	// Check that the total number of stuck chunks is consistent
+	numStuckChunks := sf.NumStuckChunks()
+	if numStuckChunks != uint64(expectedStuckChunks) {
+		t.Fatalf("Wrong number of stuck chunks, got %v expected %v", numStuckChunks, expectedStuckChunks)
+	}
+
+	// Close file and confirm it is out of memory
+	siaPath := sf.SiaPath()
+	if err = sf.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if len(sfs.siaFileMap) != 0 {
+		t.Fatal("File not removed from memory")
+	}
+
+	// Load siafile from disk
+	sf, err = sfs.Open(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the total number of stuck chunks is consistent
+	if numStuckChunks != sf.NumStuckChunks() {
+		t.Fatalf("Wrong number of stuck chunks, got %v expected %v", numStuckChunks, sf.NumStuckChunks())
+	}
+
+	// Check chunks and Stuck Chunk Table
+	for i, chunk := range sf.staticChunks {
+		if i%2 != 0 {
+			if chunk.Stuck {
+				t.Fatal("Found stuck chunk when un-stuck chunk was expected")
+			}
+			continue
+		}
+		if !chunk.Stuck {
+			t.Fatal("Found un-stuck chunk when stuck chunk was expected")
+		}
+	}
+}

@@ -19,8 +19,10 @@ func (r *Renter) CreateDir(siaPath string) error {
 	}
 	defer r.tg.Done()
 	siaDir, err := r.staticDirSet.NewSiaDir(siaPath)
-	defer siaDir.Close()
-	return err
+	if err != nil {
+		return err
+	}
+	return siaDir.Close()
 }
 
 // DeleteDir removes a directory from the renter and deletes all its sub
@@ -31,20 +33,17 @@ func (r *Renter) DeleteDir(siaPath string) error {
 
 // DirInfo returns the Directory Information of the siadir
 func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
-	// Grab the siadir entry
-	entry, err := r.staticDirSet.Open(siaPath)
-	if err != nil {
-		return modules.DirectoryInfo{}, err
-	}
-	defer entry.Close()
-
 	// Grab the health information and return the Directory Info, the worst
 	// health will be returned. Depending on the directory and its contents that
 	// could either be health or stuckHealth
-	health := entry.Health()
+	health, err := r.managedDirectoryHealth(siaPath)
+	if err != nil {
+		return modules.DirectoryInfo{}, nil
+	}
 	return modules.DirectoryInfo{
 		Health:              math.Max(health.Health, health.StuckHealth),
 		LastHealthCheckTime: health.LastHealthCheckTime,
+		NumStuckChunks:      health.NumStuckChunks,
 		SiaPath:             siaPath,
 	}, nil
 }
@@ -61,7 +60,7 @@ func (r *Renter) DirList(siaPath string) ([]modules.DirectoryInfo, []modules.Fil
 	}
 	dirs = append(dirs, di)
 	// Read Directory
-	fileInfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, siaPath))
+	fileInfos, err := ioutil.ReadDir(filepath.Join(r.staticFilesDir, siaPath))
 	if err != nil {
 		return nil, nil, err
 	}

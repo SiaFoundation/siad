@@ -417,6 +417,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	// Send the RenewContract request.
 	req := modules.LoopRenewContractRequest{
 		Transactions: txnSet,
+		RenterKey:    lastRev.UnlockConditions.PublicKeys[0],
 	}
 	if err := s.writeRequest(modules.RPCLoopRenewContract, req); err != nil {
 		return modules.RenterContract{}, err

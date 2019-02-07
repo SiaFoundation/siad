@@ -144,6 +144,14 @@ func (sf *SiaFile) ModTime() time.Time {
 	return sf.staticMetadata.ModTime
 }
 
+// NumStuckChunks returns the Number of Stuck Chunks recorded in the file's
+// metadata
+func (sf *SiaFile) NumStuckChunks() uint64 {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.NumStuckChunks
+}
+
 // PieceSize returns the size of a single piece of the file.
 func (sf *SiaFile) PieceSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize

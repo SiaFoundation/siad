@@ -240,7 +240,7 @@ type Renter struct {
 	log               *persist.Logger
 	persist           persistence
 	persistDir        string
-	filesDir          string
+	staticFilesDir    string
 	mu                *siasync.RWMutex
 	tg                threadgroup.ThreadGroup
 	tpool             modules.TransactionPool
@@ -755,8 +755,11 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		downloadHeap: new(downloadChunkHeap),
 
 		uploadHeap: uploadHeap{
-			activeChunks: make(map[uploadChunkID]struct{}),
-			newUploads:   make(chan struct{}, 1),
+			activeChunks:      make(map[uploadChunkID]struct{}),
+			newUploads:        make(chan struct{}, 1),
+			repairNeeded:      make(chan struct{}, 1),
+			stuckChunkFound:   make(chan struct{}, 1),
+			stuckChunkSuccess: make(chan struct{}, 1),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),
@@ -769,7 +772,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		hostDB:         hdb,
 		hostContractor: hc,
 		persistDir:     persistDir,
-		filesDir:       filepath.Join(persistDir, modules.SiapathRoot),
+		staticFilesDir: filepath.Join(persistDir, modules.SiapathRoot),
 		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
 	}
@@ -799,6 +802,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	go r.threadedDownloadLoop()
 	go r.threadedUploadLoop()
 	go r.threadedUpdateRenterHealth()
+	go r.threadedStuckFileLoop()
 
 	// Kill workers on shutdown.
 	r.tg.OnStop(func() error {

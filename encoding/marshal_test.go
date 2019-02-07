@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -148,25 +147,6 @@ func TestDecode(t *testing.T) {
 	err = Unmarshal([]byte{1, 2, 3}, new(map[int]int))
 	if err == nil || err.Error() != "could not decode type map[int]int: unknown type" {
 		t.Error("expected unknown type error, got", err)
-	}
-
-	// big slice (larger than MaxSliceSize)
-	err = Unmarshal(EncUint64(MaxSliceSize+1), new([]byte))
-	if err == nil || !strings.Contains(err.Error(), "exceeds size limit") {
-		t.Error("expected large slice error, got", err)
-	}
-
-	// massive slice (larger than MaxInt32)
-	err = Unmarshal(EncUint64(1<<32), new([]byte))
-	if err == nil || !strings.Contains(err.Error(), "exceeds size limit") {
-		t.Error("expected large slice error, got", err)
-	}
-
-	// many small slices (total larger than maxDecodeLen)
-	bigSlice := strings.Split(strings.Repeat("0123456789abcdefghijklmnopqrstuvwxyz", (MaxSliceSize/16)-1), "0")
-	err = Unmarshal(Marshal(bigSlice), new([]string))
-	if err == nil || !strings.Contains(err.Error(), "exceeds size limit") {
-		t.Error("expected size limit error, got", err)
 	}
 
 	// badReader should fail on every decode

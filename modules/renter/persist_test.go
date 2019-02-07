@@ -167,17 +167,17 @@ func TestRenterPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f1.Rename(siaPath1, filepath.Join(rt.renter.filesDir, siaPath1+siafile.ShareExtension))
+	f1.Rename(siaPath1, filepath.Join(rt.renter.staticFilesDir, siaPath1+siafile.ShareExtension))
 	f2, err := newTestingFile()
 	if err != nil {
 		t.Fatal(err)
 	}
-	f2.Rename(siaPath2, filepath.Join(rt.renter.filesDir, siaPath2+siafile.ShareExtension))
+	f2.Rename(siaPath2, filepath.Join(rt.renter.staticFilesDir, siaPath2+siafile.ShareExtension))
 	f3, err := newTestingFile()
 	if err != nil {
 		t.Fatal(err)
 	}
-	f3.Rename(siaPath3, filepath.Join(rt.renter.filesDir, siaPath3+siafile.ShareExtension))
+	f3.Rename(siaPath3, filepath.Join(rt.renter.staticFilesDir, siaPath3+siafile.ShareExtension))
 
 	// Restart the renter to re-do the init cycle.
 	err = rt.renter.Close()
@@ -216,12 +216,12 @@ func TestRenterPaths(t *testing.T) {
 	// folder and emit the name of each .sia file encountered (filepath.Walk
 	// is deterministic; it orders the files lexically).
 	var walkStr string
-	filepath.Walk(rt.renter.filesDir, func(path string, _ os.FileInfo, _ error) error {
+	filepath.Walk(rt.renter.staticFilesDir, func(path string, _ os.FileInfo, _ error) error {
 		// capture only .sia files
 		if filepath.Ext(path) != ".sia" {
 			return nil
 		}
-		rel, _ := filepath.Rel(rt.renter.filesDir, path) // strip testdir prefix
+		rel, _ := filepath.Rel(rt.renter.staticFilesDir, path) // strip testdir prefix
 		walkStr += rel
 		return nil
 	})

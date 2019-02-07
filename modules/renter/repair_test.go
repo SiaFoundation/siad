@@ -15,6 +15,22 @@ import (
 
 // TODO - Adding testing for interruptions
 
+// equalHealthsAndChunks is a helper that checks the Health, StuckHealth, and
+// NumStuckChunks fields of two SiaDirHealths for equality. It does not look at
+// the LastHealthCheckTime field
+func equalHealthsAndChunks(health1, health2 siadir.SiaDirHealth) error {
+	if health1.Health != health2.Health {
+		return fmt.Errorf("Healths not equal, %v and %v", health1.Health, health2.Health)
+	}
+	if health1.StuckHealth != health2.StuckHealth {
+		return fmt.Errorf("StuckHealths not equal, %v and %v", health1.StuckHealth, health2.StuckHealth)
+	}
+	if health1.NumStuckChunks != health2.NumStuckChunks {
+		return fmt.Errorf("NumStuckChunks not equal, %v and %v", health1.NumStuckChunks, health2.NumStuckChunks)
+	}
+	return nil
+}
+
 // TestBubbleHealth tests to make sure that the health of the most in need file
 // in a directory is bubbled up to the right levels and probes the supporting
 // functions as well
@@ -22,6 +38,7 @@ func TestBubbleHealth(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Create test renter
 	rt, err := newRenterTester(t.Name())
@@ -71,13 +88,15 @@ func TestBubbleHealth(t *testing.T) {
 	}
 
 	// Set Healths of all the directories so they are not the defaults
+	//
+	// NOTE: You cannot set the NumStuckChunks to a non zero number without a
+	// file in the directory as this will create a developer error
 	siaPath := ""
 	checkTime := time.Now()
 	healthUpdate := siadir.SiaDirHealth{
 		Health:              1,
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
-		NumStuckChunks:      5,
 	}
 	if err := rt.renter.staticDirSet.UpdateHealth(siaPath, healthUpdate); err != nil {
 		t.Fatal(err)
@@ -113,8 +132,12 @@ func TestBubbleHealth(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		// Check Health
-		if err = equalHealthsAndChunks(health, healthUpdate); err != nil {
+		// Compare to health of subDir1/subDir1
+		expectedHealth, err := rt.renter.managedDirectoryHealth(filepath.Join(subDir1, subDir1))
+		if err != nil {
+			return err
+		}
+		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -156,18 +179,20 @@ func TestBubbleHealth(t *testing.T) {
 	// that the health is the health of subDir1/subDir1 which was set to 1 again
 	// and the stuck health will be the health of the stuck file
 	go rt.renter.threadedBubbleHealth(siaPath)
-
-	// Reset healthUpdate with expected values
-	healthUpdate.StuckHealth = 2
-	healthUpdate.NumStuckChunks++
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryHealth("")
 		if err != nil {
 			return err
 		}
-		// Check Health
-		if err = equalHealthsAndChunks(health, healthUpdate); err != nil {
+		// Compare to health of subDir1/subDir1
+		expectedHealth, err := rt.renter.managedDirectoryHealth(filepath.Join(subDir1, subDir1))
+		if err != nil {
+			return err
+		}
+		expectedHealth.StuckHealth = 2
+		expectedHealth.NumStuckChunks++
+		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -182,11 +207,10 @@ func TestBubbleHealth(t *testing.T) {
 	// Now if we bubble the health and check for the worst health we should see
 	// that the health is the health of the file
 	go rt.renter.threadedBubbleHealth(siaPath)
-
-	// Reset healthUpdate with expected values
-	healthUpdate.Health = 2
-	healthUpdate.StuckHealth = 0
-	healthUpdate.NumStuckChunks--
+	expectedHealth := siadir.SiaDirHealth{
+		Health:      2,
+		StuckHealth: 0,
+	}
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryHealth("")
@@ -194,7 +218,7 @@ func TestBubbleHealth(t *testing.T) {
 			return err
 		}
 		// Check Health
-		if err = equalHealthsAndChunks(health, healthUpdate); err != nil {
+		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -212,8 +236,12 @@ func TestBubbleHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reset healthUpdate with expected values
-	healthUpdate.Health = 4
-	if err := rt.renter.staticDirSet.UpdateHealth(filepath.Join(siaPath, subDir1), healthUpdate); err != nil {
+	expectedHealth = siadir.SiaDirHealth{
+		Health:              4,
+		StuckHealth:         0,
+		LastHealthCheckTime: time.Now(),
+	}
+	if err := rt.renter.staticDirSet.UpdateHealth(filepath.Join(siaPath, subDir1), expectedHealth); err != nil {
 		t.Fatal(err)
 	}
 	go rt.renter.threadedBubbleHealth(siaPath)
@@ -224,7 +252,7 @@ func TestBubbleHealth(t *testing.T) {
 			return err
 		}
 		// Check Health
-		if err = equalHealthsAndChunks(health, healthUpdate); err != nil {
+		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -275,7 +303,6 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		Health:              1,
 		StuckHealth:         0,
 		LastHealthCheckTime: oldestCheckTime,
-		NumStuckChunks:      5,
 	}
 	if err := rt.renter.staticDirSet.UpdateHealth(siaPath, oldestHealthCheckUpdate); err != nil {
 		t.Fatal(err)
@@ -304,18 +331,200 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	}
 }
 
-// equalHealthsAndChunks is a helper that checks the Health, StuckHealth, and
-// NumStuckChunks fields of two SiaDirHealths for equality. It does not look at
-// the LastHealthCheckTime field
-func equalHealthsAndChunks(health1, health2 siadir.SiaDirHealth) error {
-	if health1.Health != health2.Health {
-		return fmt.Errorf("Healths not equal, %v and %v", health1.Health, health2.Health)
+// TestWorstHealthDirectory verifies that managedWorstHealthDirectory returns
+// the correct directory
+func TestWorstHealthDirectory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
 	}
-	if health1.StuckHealth != health2.StuckHealth {
-		return fmt.Errorf("StuckHealths not equal, %v and %v", health1.StuckHealth, health2.StuckHealth)
+	t.Parallel()
+
+	// Create a test directory with sub folders
+	//
+	// root/ 1
+	// root/SubDir1/
+	// root/SubDir1/SubDir2/
+	// root/SubDir2/
+
+	// Create test renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if health1.NumStuckChunks != health2.NumStuckChunks {
-		return fmt.Errorf("NumStuckChunks not equal, %v and %v", health1.NumStuckChunks, health2.NumStuckChunks)
+
+	// Create directory tree
+	subDir1 := "SubDir1"
+	subDir2 := "SubDir2"
+	if err := rt.renter.CreateDir(subDir1); err != nil {
+		t.Fatal(err)
 	}
-	return nil
+	if err := rt.renter.CreateDir(subDir2); err != nil {
+		t.Fatal(err)
+	}
+	siaPath := filepath.Join(subDir1, subDir2)
+	if err := rt.renter.CreateDir(siaPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm worst health directory is the top level directory since all
+	// directories should be at the default health which is 0 or full health
+	go rt.renter.threadedBubbleHealth(subDir1)
+	build.Retry(100, 100*time.Millisecond, func() error {
+		dir, health, err := rt.renter.managedWorstHealthDirectory()
+		if err != nil {
+			return err
+		}
+		if dir != "" {
+			return fmt.Errorf("Expected to find top level directory but found %v", dir)
+		}
+		if health != 0 {
+			return fmt.Errorf("Expected to find health of %v but found %v", 0, health)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the Health of SubDir1/SubDir2 to be the worst
+	worstHealth := float64(10)
+	worstHealthUpdate := siadir.SiaDirHealth{
+		Health:              worstHealth,
+		StuckHealth:         0,
+		LastHealthCheckTime: time.Now(),
+	}
+	if err := rt.renter.staticDirSet.UpdateHealth(siaPath, worstHealthUpdate); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bubble the health of SubDir1 so that the worst health of
+	// SubDir1/SubDir2 gets bubbled up
+	go rt.renter.threadedBubbleHealth(subDir1)
+
+	// Find the worst health directory, should be SubDir1/SubDir2
+	build.Retry(100, 100*time.Millisecond, func() error {
+		dir, health, err := rt.renter.managedWorstHealthDirectory()
+		if err != nil {
+			return err
+		}
+		if dir != siaPath {
+			return fmt.Errorf("Expected to find %v but found %v", siaPath, dir)
+		}
+		if health != worstHealth {
+			return fmt.Errorf("Expected to find health of %v but found %v", worstHealth, health)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRandomStuckDirectory probes managedStuckDirectory to make sure it
+// randomly picks a correct directory
+func TestRandomStuckDirectory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a test directory with sub folders
+	//
+	// root/
+	// root/SubDir1/
+	// root/SubDir1/SubDir2/
+	// root/SubDir2/
+	subDir1 := "SubDir1"
+	subDir2 := "SubDir2"
+	if err := rt.renter.CreateDir(subDir1); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(subDir2); err != nil {
+		t.Fatal(err)
+	}
+	siaPath := filepath.Join(subDir1, subDir2)
+	if err := rt.renter.CreateDir(siaPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a file to root and SubDir1/SubDir2 and mark the first chunk as stuck
+	// in each file
+	//
+	// This will test the edge case of continuing to find stuck files when a
+	// directory has no files only directories
+	rsc, _ := siafile.NewRSCode(1, 1)
+	up := modules.FileUploadParams{
+		Source:      "",
+		SiaPath:     "rootFile",
+		ErasureCode: rsc,
+	}
+	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.SetStuck(uint64(0), true); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	up.SiaPath = filepath.Join(siaPath, "subDir_1_subdir_2_file")
+	f, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.SetStuck(uint64(0), true); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bubble directory information so NumStuckChunks is updated
+	rt.renter.threadedBubbleHealth(siaPath)
+	build.Retry(100, 100*time.Millisecond, func() error {
+		// Get Root Directory Health
+		health, err := rt.renter.managedDirectoryHealth("")
+		if err != nil {
+			return err
+		}
+		// Check Health
+		if health.NumStuckChunks != uint64(3) {
+			return fmt.Errorf("Incorrect number of stuck chunks, got %v expected 3", health.NumStuckChunks)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create map of stuck directories that contain files. These are the only
+	// directories that should be returned.
+	stuckDirectories := make(map[string]struct{})
+	stuckDirectories[""] = struct{}{}
+	stuckDirectories[siaPath] = struct{}{}
+
+	// Find random directory several times, confirm that it finds a stuck
+	// directory and there it finds unique directories
+	var unique bool
+	for i := 0; i < 10; i++ {
+		dir, err := rt.renter.managedStuckDirectory()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, ok := stuckDirectories[dir]
+		if !ok {
+			t.Fatal("Found non stuck directory:", dir)
+		}
+		unique = true
+	}
+	if !unique {
+		t.Fatal("No unique directories found")
+	}
 }

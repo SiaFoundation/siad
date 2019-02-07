@@ -78,12 +78,12 @@ func TestRenter(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		{"TestClearDownloadHistory", testClearDownloadHistory},
-		{"TestDirectories", testDirectories},
-		{"TestSetFileTrackingPath", testSetFileTrackingPath},
-		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
+		{"TestClearDownloadHistory", testClearDownloadHistory},
+		{"TestSetFileTrackingPath", testSetFileTrackingPath},
+		{"TestDownloadAfterRenew", testDownloadAfterRenew},
+		{"TestDirectories", testDirectories},
 	}
 
 	// Run tests
@@ -715,6 +715,16 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
+	// Mine a block to trigger the repair loop so the chunk is marked as stuck
+	m := tg.Miners()[0]
+	if err := m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+	// Check to see if a chunk got marked as stuck
+	err = renter.WaitForStuckChunksToBubble()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// We should still be able to download
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
@@ -726,6 +736,11 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if err := renter.WaitForUploadRedundancy(remoteFile, fi.Redundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
+	}
+	// Check to see if a chunk got repaired and marked as unstuck
+	err = renter.WaitForStuckChunksToRepair()
+	if err != nil {
+		t.Fatal(err)
 	}
 	// We should be able to download
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
@@ -776,6 +791,25 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := r.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
+	// Mine a block to trigger the repair loop so the chunk is marked as stuck
+	m := tg.Miners()[0]
+	if err := m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+	// Check to see if a chunk got marked as stuck
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fi2, err := r.File(remoteFile)
+		if err != nil {
+			return err
+		}
+		if fi2.NumStuckChunks == 0 {
+			return errors.New("no stuck chunks found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	// We should still be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {
 		t.Error("Failed to download file", err)
@@ -789,6 +823,20 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	expectedRedundancy = (1.0 - renter.RemoteRepairDownloadThreshold) * fi.Redundancy
 	if err := r.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
+	}
+	// Check to see if a chunk got marked as unstuck
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fi2, err := r.File(remoteFile)
+		if err != nil {
+			return err
+		}
+		if fi2.NumStuckChunks != 0 {
+			return fmt.Errorf("%v stuck chunks found, expected 0", fi2.NumStuckChunks)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	// We should be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {
@@ -4173,8 +4221,8 @@ func TestSiafileCompatCode(t *testing.T) {
 		t.Fatalf("Siapath should be '%v' but was '%v'",
 			expectedSiaPath, fis[0].SiaPath)
 	}
-	// Make sure the legacy file was deleted.
-	if _, err := os.Stat(destination); !os.IsNotExist(err) {
+	// Make sure the folder containing the legacy file was deleted.
+	if _, err := os.Stat(filepath.Join(renterDir, "sub1")); !os.IsNotExist(err) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the siafile is exactly where we would expect it.
@@ -4239,9 +4287,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-
-	// Create a testgroup, creating without renter so the renter's
-	// contract transactions can easily be obtained.
+	// Create a testgroup.
 	groupParams := siatest.GroupParams{
 		Hosts:  2,
 		Miners: 1,
@@ -4380,6 +4426,91 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCreateLoadBackup tests that creating a backup with the /renter/backup
+// endpoint works as expected and that it can be loaded with the
+// /renter/recoverbackup endpoint.
+func TestCreateLoadBackup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(len(tg.Hosts()) - 1)
+	parityPieces := uint64(1)
+	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Create a backup.
+	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
+	err = r.RenterCreateBackupPost(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Get the renter's seed.
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Shut down the renter.
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+	// Start a new renter from the same seed.
+	rt := node.RenterTemplate
+	rt.PrimarySeed = wsg.PrimarySeed
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+	// Recover the backup.
+	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	// The file should be available and ready for download again.
+	if _, err := r.DownloadByStream(rf); err != nil {
+		t.Fatal(err)
+	}
+	// Recover the backup again. Now there should be another file with a suffix
+	// at the end.
+	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileGet(rf.SiaPath() + "_1")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,7 +70,7 @@ func (r *Renter) DeleteFile(nickname string) error {
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() ([]modules.FileInfo, error) {
 	fileList := []modules.FileInfo{}
-	err := filepath.Walk(r.filesDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
@@ -82,7 +83,7 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 		}
 
 		// Load the Siafile.
-		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.filesDir), siafile.ShareExtension)
+		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), siafile.ShareExtension)
 		file, err := r.File(siaPath)
 		if err != nil {
 			return err
@@ -115,6 +116,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	}
 	onDisk := !os.IsNotExist(err)
 	redundancy := entry.Redundancy(offline, goodForRenew)
+	health, stuckHealth, numStuckChunks := entry.Health(offline)
 	fileInfo := modules.FileInfo{
 		AccessTime:     entry.AccessTime(),
 		Available:      entry.Available(offline),
@@ -123,8 +125,10 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 		CreateTime:     entry.CreateTime(),
 		Expiration:     entry.Expiration(contracts),
 		Filesize:       entry.Size(),
+		Health:         math.Max(health, stuckHealth),
 		LocalPath:      localPath,
 		ModTime:        entry.ModTime(),
+		NumStuckChunks: numStuckChunks,
 		OnDisk:         onDisk,
 		Recoverable:    onDisk || redundancy >= 1,
 		Redundancy:     redundancy,

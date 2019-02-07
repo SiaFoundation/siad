@@ -448,6 +448,7 @@ type (
 	// LoopRenewContractRequest contains the request parameters for RPCLoopRenewContract.
 	LoopRenewContractRequest struct {
 		Transactions []types.Transaction
+		RenterKey    types.SiaPublicKey
 	}
 
 	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
