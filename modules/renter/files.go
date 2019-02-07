@@ -116,7 +116,7 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	}
 	onDisk := !os.IsNotExist(err)
 	redundancy := entry.Redundancy(offline, goodForRenew)
-	health, stuckHealth, numStuckChunks := entry.Health(offline)
+	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
 	fileInfo := modules.FileInfo{
 		AccessTime:     entry.AccessTime(),
 		Available:      entry.Available(offline),
