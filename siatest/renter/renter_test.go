@@ -4287,9 +4287,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-
-	// Create a testgroup, creating without renter so the renter's
-	// contract transactions can easily be obtained.
+	// Create a testgroup.
 	groupParams := siatest.GroupParams{
 		Hosts:   2,
 		Miners:  1,
@@ -4305,7 +4303,6 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-
 	// Get the renter node.
 	r := tg.Renters()[0]
 
@@ -4408,6 +4405,91 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	}
 	// Download the whole file again to see if all roots were recovered.
 	_, err = r.DownloadByStream(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCreateLoadBackup tests that creating a backup with the /renter/backup
+// endpoint works as expected and that it can be loaded with the
+// /renter/recoverbackup endpoint.
+func TestCreateLoadBackup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(len(tg.Hosts()) - 1)
+	parityPieces := uint64(1)
+	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Create a backup.
+	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
+	err = r.RenterCreateBackupPost(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Get the renter's seed.
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Shut down the renter.
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+	// Start a new renter from the same seed.
+	rt := node.RenterTemplate
+	rt.PrimarySeed = wsg.PrimarySeed
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+	// Recover the backup.
+	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	// The file should be available and ready for download again.
+	if _, err := r.DownloadByStream(rf); err != nil {
+		t.Fatal(err)
+	}
+	// Recover the backup again. Now there should be another file with a suffix
+	// at the end.
+	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileGet(rf.SiaPath() + "_1")
 	if err != nil {
 		t.Fatal(err)
 	}

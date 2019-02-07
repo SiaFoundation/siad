@@ -255,7 +255,7 @@ func (r *Renter) initPersist() error {
 	// The directory is needed before the staticDirSet can be initialized
 	// because the wal needs the directory to be created and the staticDirSet
 	// needs the wal.
-	err := os.MkdirAll(r.filesDir, 0700)
+	err := os.MkdirAll(r.staticFilesDir, 0700)
 	if err != nil {
 		return err
 	}
@@ -299,8 +299,8 @@ func (r *Renter) initPersist() error {
 	// Initialize the wal, staticFileSet and the staticDirSet. With the
 	// staticDirSet finish the initialization of the files directory
 	r.wal = wal
-	r.staticFileSet = siafile.NewSiaFileSet(r.filesDir, wal)
-	r.staticDirSet = siadir.NewSiaDirSet(r.filesDir, wal)
+	r.staticFileSet = siafile.NewSiaFileSet(r.staticFilesDir, wal)
+	r.staticDirSet = siadir.NewSiaDirSet(r.staticFilesDir, wal)
 	if err := r.staticDirSet.InitRootDir(); err != nil {
 		return err
 	}

@@ -48,7 +48,7 @@ func TestRenterCreateDirectories(t *testing.T) {
 // initialized correctly and the metadata file exist and contain the correct
 // information
 func (rt *renterTester) checkDirInitialized(siaPath string) error {
-	fullpath := filepath.Join(rt.renter.filesDir, siaPath, siadir.SiaDirExtension)
+	fullpath := filepath.Join(rt.renter.staticFilesDir, siaPath, siadir.SiaDirExtension)
 	if _, err := os.Stat(fullpath); err != nil {
 		return err
 	}

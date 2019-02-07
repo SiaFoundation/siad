@@ -297,7 +297,7 @@ func (r *Renter) managedBuildAndPushUnstuckChunks(files []*siafile.SiaFileSetEnt
 func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}, target repairTarget) {
 	// Get Directory files
 	var files []*siafile.SiaFileSetEntry
-	fileinfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, dirSiaPath))
+	fileinfos, err := ioutil.ReadDir(filepath.Join(r.staticFilesDir, dirSiaPath))
 	if err != nil {
 		return
 	}

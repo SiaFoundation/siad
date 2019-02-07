@@ -128,7 +128,7 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (siadir.SiaDirH
 		NumStuckChunks:      0,
 	}
 	// Read directory
-	path := filepath.Join(r.filesDir, siaPath)
+	path := filepath.Join(r.staticFilesDir, siaPath)
 	fileinfos, err := ioutil.ReadDir(path)
 	if err != nil {
 		r.log.Printf("WARN: Error in reading files in directory %v : %v\n", path, err)
@@ -219,7 +219,7 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath string) error {
 // to a file is past in
 func (r *Renter) managedDirectoryHealth(siaPath string) (siadir.SiaDirHealth, error) {
 	// Check for bad paths and files
-	fi, err := os.Stat(filepath.Join(r.filesDir, siaPath))
+	fi, err := os.Stat(filepath.Join(r.staticFilesDir, siaPath))
 	if err != nil {
 		return siadir.SiaDirHealth{}, err
 	}
@@ -404,7 +404,7 @@ func (r *Renter) managedStuckDirectory() (string, error) {
 // directory SiaPaths
 func (r *Renter) managedSubDirectories(siaPath string) ([]string, error) {
 	// Read directory
-	fileinfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, siaPath))
+	fileinfos, err := ioutil.ReadDir(filepath.Join(r.staticFilesDir, siaPath))
 	if err != nil {
 		return []string{}, err
 	}
@@ -504,7 +504,7 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 	// Calculate the health of the directory
 	health, err := r.managedCalculateDirectoryHealth(siaPath)
 	if err != nil {
-		r.log.Printf("WARN: Could not calculate the health of directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
+		r.log.Printf("WARN: Could not calculate the health of directory %v: %v\n", filepath.Join(r.staticFilesDir, siaPath), err)
 		return
 	}
 
@@ -526,12 +526,12 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 	// Update directory metadata with the health information
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
-		r.log.Printf("WARN: Could not open directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
+		r.log.Printf("WARN: Could not open directory %v: %v\n", filepath.Join(r.staticFilesDir, siaPath), err)
 		return
 	}
 	err = siaDir.UpdateHealth(health)
 	if err != nil {
-		r.log.Printf("WARN: Could not update the health of the directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
+		r.log.Printf("WARN: Could not update the health of the directory %v: %v\n", filepath.Join(r.staticFilesDir, siaPath), err)
 		return
 	}
 
