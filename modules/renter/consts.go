@@ -60,6 +60,10 @@ const (
 	// worker has experienced a download failure.
 	downloadFailureCooldown = time.Second * 3
 
+	// maxConsecutiveChunkRepairs is the maximum number of chunks we want to pop of
+	// the repair heap before rebuilding the heap
+	maxConsecutiveChunkRepairs = int(100)
+
 	// memoryPriorityLow is used to request low priority memory
 	memoryPriorityLow = false
 
@@ -99,6 +103,14 @@ var (
 		Dev:      15 * time.Minute,
 		Standard: 15 * time.Minute,
 		Testing:  1 * time.Minute,
+	}).(time.Duration)
+
+	// fileRepairInterval defines how long the renter should wait before
+	// continuing to repair a file that was recently repaired
+	fileRepairInterval = build.Select(build.Var{
+		Dev:      30 * time.Second,
+		Standard: 5 * time.Minute,
+		Testing:  1 * time.Second,
 	}).(time.Duration)
 
 	// healthCheckInterval defines the maximum amount of time that should pass
