@@ -400,7 +400,7 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // loop will continue until the renter stops, there are no more chunks, or
 // enough time has passed indicated by the rebuildHeapSignal
 func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
-	var chunksRepairing int
+	var consecutiveChunkRepairs int
 	rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
 	for {
 		select {
@@ -424,12 +424,20 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		if nextChunk == nil {
 			return
 		}
-		chunksRepairing++
 
-		// Update the recent repair time for the file
-		err := nextChunk.fileEntry.UpdateRecentRepairTime()
-		if err != nil {
-			r.log.Debugf("WARN: unable to update the recent repair time of %v : %v", nextChunk.fileEntry.SiaPath(), err)
+		// Check if file is reasonably healthy
+		//
+		// TODO - update to only read cached value once health is stored in the
+		// siafile metadata
+		hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{nextChunk.fileEntry})
+		health, _, _ := nextChunk.fileEntry.Health(hostOfflineMap, hostGoodForRenewMap)
+		if health < 0.8 {
+			// File is reasonably healthy so update the recent repair time for
+			// the file
+			err := nextChunk.fileEntry.UpdateRecentRepairTime()
+			if err != nil {
+				r.log.Debugf("WARN: unable to update the recent repair time of %v : %v", nextChunk.fileEntry.SiaPath(), err)
+			}
 		}
 
 		// Make sure we have enough workers for this chunk to reach minimum
@@ -442,19 +450,20 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 			continue
 		}
 
-		// Check if enough chunks are currently beeing repaired
-		if chunksRepairing >= maxParallelChunkRepairs {
+		// Perform the work. managedPrepareNextChunk will block until
+		// enough memory is available to perform the work, slowing this
+		// thread down to using only the resources that are available.
+		r.managedPrepareNextChunk(nextChunk, hosts)
+		consecutiveChunkRepairs++
+
+		// Check if enough chunks are currently being repaired
+		if consecutiveChunkRepairs >= maxConsecutiveChunkRepairs {
 			// zero out heap and return
 			lockID := r.mu.Lock()
 			r.uploadHeap.heap = uploadChunkHeap{}
 			r.mu.Unlock(lockID)
 			return
 		}
-
-		// Perform the work. managedPrepareNextChunk will block until
-		// enough memory is available to perform the work, slowing this
-		// thread down to using only the resources that are available.
-		r.managedPrepareNextChunk(nextChunk, hosts)
 	}
 }
 
