@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // managedRPCLoopSettings writes an RPC response containing the host's
@@ -27,13 +28,40 @@ func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
 	return nil
 }
 
-// managedRPCLoopRecentRevision writes an RPC response containing the most
-// recent revision of the requested contract.
-func (h *Host) managedRPCLoopRecentRevision(s *rpcSession) error {
+// managedRPCLoopLock handles the LoopLock RPC.
+func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	s.extendDeadline(modules.NegotiateRecentRevisionTime)
 
-	// Fetch the revision and signatures.
-	txn := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1]
+	// Read the request.
+	var req modules.LoopLockRequest
+	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// Another contract may already be locked; locking multiple contracts is
+	// not allowed.
+	if len(s.so.OriginTransactionSet) != 0 {
+		err := errors.New("another contract is already locked")
+		s.writeError(err)
+		return err
+	}
+
+	var newSO storageObligation
+	h.mu.RLock()
+	err := h.db.View(func(tx *bolt.Tx) error {
+		var err error
+		newSO, err = getStorageObligation(tx, req.ContractID)
+		return err
+	})
+	h.mu.RUnlock()
+	if err != nil {
+		s.writeError(errors.New("no record of that contract"))
+		return extendErr("could get storage obligation "+req.ContractID.String()+": ", err)
+	}
+
+	// get the revision and signatures
+	txn := newSO.RevisionTransactionSet[len(newSO.RevisionTransactionSet)-1]
 	rev := txn.FileContractRevisions[0]
 	var sigs []types.TransactionSignature
 	for _, sig := range txn.TransactionSignatures {
@@ -44,10 +72,34 @@ func (h *Host) managedRPCLoopRecentRevision(s *rpcSession) error {
 		}
 	}
 
+	// verify the challenge response
+	hash := crypto.HashAll(modules.RPCChallengePrefix, s.challenge)
+	var renterPK crypto.PublicKey
+	var renterSig crypto.Signature
+	copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
+	copy(renterSig[:], req.Signature)
+	if crypto.VerifyHash(hash, renterPK, renterSig) != nil {
+		err := errors.New("challenge signature is invalid")
+		s.writeError(err)
+		return err
+	}
+
+	// attempt to lock the storage obligation
+	// TODO: respect req.Timeout
+	lockErr := h.managedTryLockStorageObligation(req.ContractID)
+	if lockErr == nil {
+		s.so = newSO
+	}
+
+	// Generate a new challenge.
+	fastrand.Read(s.challenge[:])
+
 	// Write the response.
-	resp := modules.LoopRecentRevisionResponse{
-		Revision:   rev,
-		Signatures: sigs,
+	resp := modules.LoopLockResponse{
+		Acquired:     lockErr == nil,
+		NewChallenge: s.challenge,
+		Revision:     rev,
+		Signatures:   sigs,
 	}
 	if err := s.writeResponse(resp); err != nil {
 		return err
@@ -55,14 +107,23 @@ func (h *Host) managedRPCLoopRecentRevision(s *rpcSession) error {
 	return nil
 }
 
-// managedRPCLoopUpload reads an upload request and responds with a signature
-// for the new revision.
-func (h *Host) managedRPCLoopUpload(s *rpcSession) error {
-	s.extendDeadline(modules.NegotiateFileContractRevisionTime)
+// managedRPCLoopUnlock handles the LoopUnlock RPC. No response is sent.
+func (h *Host) managedRPCLoopUnlock(s *rpcSession) error {
+	s.extendDeadline(modules.NegotiateSettingsTime)
+	if len(s.so.OriginTransactionSet) != 0 {
+		h.managedUnlockStorageObligation(s.so.id())
+		s.so = storageObligation{}
+	}
+	return nil
+}
 
+// managedRPCLoopWrite reads an upload request and responds with a signature
+// for the new revision.
+func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
+	s.extendDeadline(modules.NegotiateFileContractRevisionTime)
 	// Read the request.
-	var req modules.LoopUploadRequest
-	if err := s.readRequest(&req); err != nil {
+	var req modules.LoopWriteRequest
+	if err := s.readRequest(&req, modules.SectorSize*5); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
 		s.writeError(err)
@@ -144,7 +205,7 @@ func (h *Host) managedRPCLoopUpload(s *rpcSession) error {
 	}
 
 	// Send the response.
-	resp := modules.LoopUploadResponse{
+	resp := modules.LoopWriteResponse{
 		Signature: txn.TransactionSignatures[1].Signature,
 	}
 	if err := s.writeResponse(resp); err != nil {
@@ -153,14 +214,14 @@ func (h *Host) managedRPCLoopUpload(s *rpcSession) error {
 	return nil
 }
 
-// managedRPCLoopDownload writes an RPC response containing the requested data
+// managedRPCLoopRead writes an RPC response containing the requested data
 // (along with signatures and an optional Merkle proof).
-func (h *Host) managedRPCLoopDownload(s *rpcSession) error {
+func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	s.extendDeadline(modules.NegotiateDownloadTime)
 
 	// Read the request.
-	var req modules.LoopDownloadRequest
-	if err := s.readRequest(&req); err != nil {
+	var req modules.LoopReadRequest
+	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
 		s.writeError(err)
@@ -176,12 +237,18 @@ func (h *Host) managedRPCLoopDownload(s *rpcSession) error {
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Validate the request.
+	if len(req.Sections) != 1 {
+		err := errors.New("invalid number of sections")
+		s.writeError(err)
+		return err
+	}
+	sec := req.Sections[0]
 	var err error
-	if uint64(req.Offset)+uint64(req.Length) > modules.SectorSize {
+	if uint64(sec.Offset)+uint64(sec.Length) > modules.SectorSize {
 		err = errRequestOutOfBounds
-	} else if req.Length == 0 {
+	} else if sec.Length == 0 {
 		err = errors.New("length cannot be zero")
-	} else if req.MerkleProof && (req.Offset%crypto.SegmentSize != 0 || req.Length%crypto.SegmentSize != 0) {
+	} else if req.MerkleProof && (sec.Offset%crypto.SegmentSize != 0 || sec.Length%crypto.SegmentSize != 0) {
 		err = errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
 	} else if len(req.NewValidProofValues) != len(currentRevision.NewValidProofOutputs) {
 		err = errors.New("wrong number of valid proof values")
@@ -211,7 +278,7 @@ func (h *Host) managedRPCLoopDownload(s *rpcSession) error {
 		}
 	}
 
-	expectedTransfer := settings.DownloadBandwidthPrice.Mul64(uint64(req.Length))
+	expectedTransfer := settings.DownloadBandwidthPrice.Mul64(uint64(sec.Length))
 	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, expectedTransfer)
 	if err != nil {
 		s.writeError(err)
@@ -219,18 +286,18 @@ func (h *Host) managedRPCLoopDownload(s *rpcSession) error {
 	}
 
 	// Fetch the requested data.
-	sectorData, err := h.ReadSector(req.MerkleRoot)
+	sectorData, err := h.ReadSector(sec.MerkleRoot)
 	if err != nil {
 		s.writeError(err)
 		return err
 	}
-	data := sectorData[req.Offset : req.Offset+req.Length]
+	data := sectorData[sec.Offset : sec.Offset+sec.Length]
 
 	// Construct the Merkle proof, if requested.
 	var proof []crypto.Hash
 	if req.MerkleProof {
-		proofStart := int(req.Offset) / crypto.SegmentSize
-		proofEnd := int(req.Offset+req.Length) / crypto.SegmentSize
+		proofStart := int(sec.Offset) / crypto.SegmentSize
+		proofEnd := int(sec.Offset+sec.Length) / crypto.SegmentSize
 		proof = crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
 	}
 
@@ -260,7 +327,7 @@ func (h *Host) managedRPCLoopDownload(s *rpcSession) error {
 	}
 
 	// send the response
-	resp := modules.LoopDownloadResponse{
+	resp := modules.LoopReadResponse{
 		Signature:   txn.TransactionSignatures[1].Signature,
 		Data:        data,
 		MerkleProof: proof,
@@ -278,7 +345,7 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 
 	// Read the contract request.
 	var req modules.LoopFormContractRequest
-	if err := s.readRequest(&req); err != nil {
+	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -320,7 +387,7 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	// transaction and a signature for the implicit no-op file contract
 	// revision.
 	var renterSigs modules.LoopContractSignatures
-	if err := s.readResponse(&renterSigs); err != nil {
+	if err := s.readResponse(&renterSigs, modules.RPCMinLen); err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -347,14 +414,6 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 		return err
 	}
 
-	// Set the storageObligation so that subsequent RPCs can use it.
-	h.mu.RLock()
-	err = h.db.View(func(tx *bolt.Tx) error {
-		s.so, err = getStorageObligation(tx, newSOID)
-		return err
-	})
-	h.mu.RUnlock()
-
 	return nil
 }
 
@@ -365,7 +424,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 
 	// Read the renewal request.
 	var req modules.LoopRenewContractRequest
-	if err := s.readRequest(&req); err != nil {
+	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -383,9 +442,8 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	}
 
 	// Verify that the transaction coming over the wire is a proper renewal.
-	renterSPK := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0].UnlockConditions.PublicKeys[0]
 	var renterPK crypto.PublicKey
-	copy(renterPK[:], renterSPK.Key)
+	copy(renterPK[:], req.RenterKey.Key)
 	err := h.managedVerifyRenewedContract(s.so, req.Transactions, renterPK)
 	if err != nil {
 		s.writeError(err)
@@ -410,7 +468,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	// transaction and a signature for the implicit no-op file contract
 	// revision.
 	var renterSigs modules.LoopContractSignatures
-	if err := s.readResponse(&renterSigs); err != nil {
+	if err := s.readResponse(&renterSigs, modules.RPCMinLen); err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -450,7 +508,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 
 	// Read the request.
 	var req modules.LoopSectorRootsRequest
-	if err := s.readRequest(&req); err != nil {
+	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
 		s.writeError(err)

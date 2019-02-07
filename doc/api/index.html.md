@@ -1932,6 +1932,16 @@ Location on disk that the file will be downloaded to.
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /renter/recoveryscan [POST]
+
+starts a rescan of the whole blockchain to find recoverable contracts. The
+contractor will periodically try to recover found contracts every 10 minutes
+until they are recovered or expired.
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
 ## /renter/rename/*siapath* [POST]
 
 ### Path Parameters

@@ -36,6 +36,10 @@ const (
 	// the next RPC ID in the new RPC loop. (More time is alloted for sending
 	// the actual RPC request object.)
 	rpcRequestInterval = 2 * time.Minute
+
+	// keyExchangeMaxLen is the maximum number of bytes the host will read
+	// from the renter during the RPC key exchange.
+	keyExchangeMaxLen = 256
 )
 
 var (

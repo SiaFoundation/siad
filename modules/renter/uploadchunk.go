@@ -3,6 +3,7 @@ package renter
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -39,6 +40,7 @@ type unfinishedUploadChunk struct {
 	minimumPieces  int    // number of pieces required to recover the file.
 	offset         int64  // Offset of the chunk within the file.
 	piecesNeeded   int    // number of pieces to achieve a 100% complete upload
+	stuck          bool   // indicates if the chunk was marked as stuck during last repair
 
 	// The logical data is the data that is presented to the user when the user
 	// requests the chunk. The physical data is all of the pieces that get
@@ -186,6 +188,16 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		return
 	}
 	defer r.tg.Done()
+
+	// Once the chunk is repaired we will want to call bubble on that directory
+	// to ensure the directory metadata is updated.
+	defer func() {
+		siaPath := filepath.Dir(chunk.fileEntry.SiaPath())
+		if siaPath == "." {
+			siaPath = ""
+		}
+		r.threadedBubbleHealth(siaPath)
+	}()
 
 	// Calculate the amount of memory needed for erasure coding. This will need
 	// to be released if there's an error before erasure coding is complete.
@@ -371,6 +383,50 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased
+
+	// Determine if chunk is stuck
+	var stuck bool
+	if _, err := os.Stat(uc.fileEntry.LocalPath()); os.IsNotExist(err) {
+		// If file is not on disk, then chunk is only stuck if it cannot get
+		// above the RemoteRepairDownloadThreshold
+		stuck = (1-RemoteRepairDownloadThreshold)*float64(uc.piecesNeeded) > float64(uc.piecesCompleted)
+
+	} else {
+		stuck = uc.piecesNeeded > uc.piecesCompleted
+
+	}
+	// Check to see if the chunk was stuck and now is successfully repaired
+	if uc.fileEntry.StuckChunkByIndex(uc.id.index) && !stuck {
+		// Signal the stuck loop that the chunk was successfully repaired
+		select {
+		case r.uploadHeap.stuckChunkSuccess <- struct{}{}:
+		default:
+		}
+	}
+	// Check if renter is shutting down
+	var renterError bool
+	select {
+	case <-r.tg.StopChan():
+		renterError = true
+	default:
+		// Check that the renter is still online
+		if !r.g.Online() {
+			renterError = true
+		}
+	}
+	// Check if chunk is flagged as stuck and if there is an error with the
+	// renter. We don't want to mark chunks as stuck due to the renter being
+	// offline or due to the renter shutting down
+	if stuck && renterError {
+		// Set stuck to the current chunk stuck status. We do this as to not
+		// incorrectly mark a stuck chunk as unstuck just because there was an
+		// error with the renter
+		stuck = uc.fileEntry.StuckChunkByIndex(uc.id.index)
+	}
+	// Update chunk stuck status
+	if err := uc.fileEntry.SetStuck(uc.id.index, stuck); err != nil {
+		r.log.Printf("WARN: could not mark chunk as stuck for file %v: %v", uc.fileEntry.SiaPath(), err)
+	}
 	uc.mu.Unlock()
 
 	// If there are pieces available, add the standby workers to collect them.

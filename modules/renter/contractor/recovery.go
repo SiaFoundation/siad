@@ -22,15 +22,56 @@ import (
 // we ignore that contract and don't delete it. We might want
 // to recover it later.
 
+// recoveryScanner is a scanner that subscribes to the consensus set from the
+// beginning and searches the blockchain for recoverable contracts. Potential
+// contracts will be added to the contractor which will then periodically try
+// to recover them.
+type recoveryScanner struct {
+	c  *Contractor
+	rs proto.RenterSeed
+}
+
+// newRecoveryScanner creates a new scanner from a seed.
+func (c *Contractor) newRecoveryScanner(rs proto.RenterSeed) *recoveryScanner {
+	return &recoveryScanner{
+		c:  c,
+		rs: rs,
+	}
+}
+
+// threadedScan subscribes the scanner to cs and scans the blockchain for
+// filecontracts belonging to the wallet's seed. Once done, all recoverable
+// contracts should be known to the contractor after which it will periodically
+// try to recover them.
+func (rs *recoveryScanner) threadedScan(cs consensusSet, cancel <-chan struct{}) error {
+	if err := rs.c.tg.Add(); err != nil {
+		return err
+	}
+	defer rs.c.tg.Done()
+	// Subscribe to the consensus set from the beginning.
+	err := cs.ConsensusSetSubscribe(rs, modules.ConsensusChangeBeginning, cancel)
+	if err != nil {
+		return err
+	}
+	// Unsubscribe once done.
+	cs.Unsubscribe(rs)
+	return nil
+}
+
+// ProcessConsensusChange scans the blockchain for information relevant to the
+// recoveryScanner.
+func (rs *recoveryScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
+	for _, block := range cc.AppliedBlocks {
+		// Find lost contracts for recovery.
+		rs.c.findRecoverableContracts(rs.rs, block)
+	}
+}
+
 // findRecoverableContracts scans the block for contracts that could
 // potentially be recovered. We are not going to recover them right away though
 // since many of them could already be expired. Recovery happens periodically
 // in threadedContractMaintenance.
-func (c *Contractor) findRecoverableContracts(walletSeed modules.Seed, b types.Block) {
-	// Get the master renter seed and wipe it once we are done with it.
-	renterSeed := proto.DeriveRenterSeed(walletSeed)
-	defer fastrand.Read(renterSeed[:])
-
+func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b types.Block) {
 	for _, txn := range b.Transactions {
 		// Check if the arbitrary data starts with the correct prefix.
 		csi, encryptedHostKey, hasIdentifier := hasFCIdentifier(txn)
@@ -96,14 +137,14 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	// Generate the secrety key for the handshake and wipe it after using it.
 	sk, _ := proto.GenerateKeyPairWithOutputID(rs, rc.InputParentID)
 	defer fastrand.Read(sk[:])
-	// Start a new RPC sessoin.
-	s, err := c.staticContracts.NewSessionWithSecret(host, rc.ID, blockHeight, c.hdb, sk, c.tg.StopChan())
+	// Start a new RPC session.
+	s, err := c.staticContracts.NewRawSession(host, blockHeight, c.hdb, c.tg.StopChan())
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 	// Get the most recent revision.
-	rev, sigs, err := s.RecentRevision()
+	rev, sigs, err := s.Lock(rc.ID, sk)
 	if err != nil {
 		return err
 	}

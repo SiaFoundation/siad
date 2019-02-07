@@ -16,6 +16,7 @@ import (
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
 type Session struct {
 	aead        cipher.AEAD
+	challenge   [16]byte
 	closeChan   chan struct{}
 	conn        net.Conn
 	contractID  types.FileContractID
@@ -29,112 +30,70 @@ type Session struct {
 
 // writeRequest sends an encrypted RPC request to the host.
 func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
-	err := modules.WriteRPCRequest(s.conn, s.aead, rpcID, req)
-	if err != nil {
-		// The write may have failed because the host rejected our challenge
-		// signature and closed the connection. Attempt to read the rejection
-		// error and return it instead of the write failure.
-		readErr := s.readResponse(nil)
-		if _, ok := readErr.(*modules.RPCError); ok {
-			err = readErr
-		}
-	}
-	return err
+	return modules.WriteRPCRequest(s.conn, s.aead, rpcID, req)
 }
 
 // readResponse reads an encrypted RPC response from the host.
-func (s *Session) readResponse(resp interface{}) error {
-	return modules.ReadRPCResponse(s.conn, s.aead, resp, 1e6)
+func (s *Session) readResponse(resp interface{}, maxLen uint64) error {
+	return modules.ReadRPCResponse(s.conn, s.aead, resp, maxLen)
 }
 
 // call is a helper method that calls writeRequest followed by readResponse.
-func (s *Session) call(rpcID types.Specifier, req, resp interface{}) error {
+func (s *Session) call(rpcID types.Specifier, req, resp interface{}, maxLen uint64) error {
 	if err := s.writeRequest(rpcID, req); err != nil {
 		return err
 	}
-	return s.readResponse(resp)
+	return s.readResponse(resp, maxLen)
+}
+
+// Lock calls the Lock RPC, locking the supplied contract and returning its
+// most recent revision.
+func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (types.FileContractRevision, []types.TransactionSignature, error) {
+	sig := crypto.SignHash(crypto.HashAll(modules.RPCChallengePrefix, s.challenge), secretKey)
+	req := modules.LoopLockRequest{
+		ContractID: id,
+		Signature:  sig[:],
+	}
+
+	extendDeadline(s.conn, modules.NegotiateSettingsTime) // TODO: should account for lock time
+	var resp modules.LoopLockResponse
+	if err := s.call(modules.RPCLoopLock, req, &resp, modules.RPCMinLen); err != nil {
+		return types.FileContractRevision{}, nil, err
+	}
+	// Unconditionally update the challenge.
+	s.challenge = resp.NewChallenge
+
+	if !resp.Acquired {
+		return resp.Revision, resp.Signatures, errors.New("contract is locked by another party")
+	}
+	// Set the new Session contract.
+	s.contractID = id
+	return resp.Revision, resp.Signatures, nil
+}
+
+// Unlock calls the Unlock RPC, unlocking the currently-locked contract.
+func (s *Session) Unlock() error {
+	if s.contractID == (types.FileContractID{}) {
+		return errors.New("no contract locked")
+	}
+	extendDeadline(s.conn, modules.NegotiateSettingsTime)
+	return s.writeRequest(modules.RPCLoopUnlock, nil)
 }
 
 // Settings calls the Settings RPC, returning the host's reported settings.
 func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	extendDeadline(s.conn, modules.NegotiateSettingsTime)
 	var resp modules.LoopSettingsResponse
-	if err := s.call(modules.RPCLoopSettings, nil, &resp); err != nil {
+	if err := s.call(modules.RPCLoopSettings, nil, &resp, modules.RPCMinLen); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
 	s.host.HostExternalSettings = resp.Settings
 	return resp.Settings, nil
 }
 
-// VerifyRecentRevision calls the RecentRevision RPC, returning the most recent
-// revision known to the host if it matches the one we have stored locally.
-// Otherwise an error is returned.
-func (s *Session) VerifyRecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
-	// Get the recent revision from the host.
-	rev, sigs, err := s.RecentRevision()
-	if err != nil {
-		return types.FileContractRevision{}, nil, err
-	}
-
-	// Acquire the contract.
-	sc, haveContract := s.contractSet.Acquire(s.contractID)
-	if !haveContract {
-		return types.FileContractRevision{}, nil, errors.New("contract not present in contract set")
-	}
-	defer s.contractSet.Return(sc)
-
-	// Check that the unlock hashes match; if they do not, something is
-	// seriously wrong. Otherwise, check that the revision numbers match.
-	ourRev := sc.header.LastRevision()
-	if rev.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
-		return types.FileContractRevision{}, nil, errors.New("unlock conditions do not match")
-	} else if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
-		// If the revision number doesn't match try to commit potential
-		// unapplied transactions and check again.
-		if err := sc.commitTxns(); err != nil {
-			return types.FileContractRevision{}, nil, errors.AddContext(err, "failed to commit transactions")
-		}
-		ourRev = sc.header.LastRevision()
-		if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
-			return types.FileContractRevision{}, nil, &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
-		}
-	}
-
-	return rev, sigs, nil
-}
-
-// RecentRevision calls the RecentRevision RPC, returning (what the host
-// claims is) the most recent revision of the contract.
-func (s *Session) RecentRevision() (types.FileContractRevision, []types.TransactionSignature, error) {
-	extendDeadline(s.conn, modules.NegotiateRecentRevisionTime)
-	var resp modules.LoopRecentRevisionResponse
-	if err := s.call(modules.RPCLoopRecentRevision, nil, &resp); err != nil {
-		return types.FileContractRevision{}, nil, err
-	}
-	// Create the revision transaction.
-	revTxn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{resp.Revision},
-		TransactionSignatures: resp.Signatures,
-	}
-	// Verify the signature on the revision before we use it to recover the
-	// roots.
-	var hpk crypto.PublicKey
-	var sig crypto.Signature
-	for i, signature := range revTxn.TransactionSignatures {
-		copy(hpk[:], resp.Revision.UnlockConditions.PublicKeys[i].Key)
-		copy(sig[:], signature.Signature)
-		err := crypto.VerifyHash(revTxn.SigHash(i, s.height), hpk, sig)
-		if err != nil {
-			return types.FileContractRevision{}, nil, err
-		}
-	}
-
-	return resp.Revision, resp.Signatures, nil
-}
-
-// Upload calls the Upload RPC and transfers the supplied data, returning the
+// Write calls the Write RPC and transfers the supplied data, returning the
 // updated contract and the Merkle root of the sector.
-func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
+func (s *Session) Write(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
 	// Acquire the contract.
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
@@ -191,7 +150,7 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// create the request
-	req := modules.LoopUploadRequest{
+	req := modules.LoopWriteRequest{
 		Data:              data,
 		NewRevisionNumber: rev.NewRevisionNumber,
 		Signature:         sig[:],
@@ -232,8 +191,8 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 
 	// send upload RPC request
 	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
-	var resp modules.LoopUploadResponse
-	err = s.call(modules.RPCLoopUpload, req, &resp)
+	var resp modules.LoopWriteResponse
+	err = s.call(modules.RPCLoopWrite, req, &resp, modules.RPCMinLen)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}
@@ -255,9 +214,9 @@ func (s *Session) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	return sc.Metadata(), sectorRoot, nil
 }
 
-// Download calls the download RPC and returns the requested data. A Merkle
-// proof is always requested.
-func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.RenterContract, _ []byte, err error) {
+// Read calls the Read RPC and returns the requested data. A Merkle proof is
+// always requested.
+func (s *Session) Read(root crypto.Hash, offset, length uint32) (_ modules.RenterContract, _ []byte, err error) {
 	// Reset deadline when finished.
 	defer extendDeadline(s.conn, time.Hour)
 
@@ -307,10 +266,13 @@ func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.R
 	txn.TransactionSignatures[0].Signature = sig[:]
 
 	// create the request object
-	req := modules.LoopDownloadRequest{
-		MerkleRoot:  root,
-		Offset:      offset,
-		Length:      length,
+	sec := modules.LoopReadRequestSection{
+		MerkleRoot: root,
+		Offset:     offset,
+		Length:     length,
+	}
+	req := modules.LoopReadRequest{
+		Sections:    []modules.LoopReadRequestSection{sec},
 		MerkleProof: true,
 	}
 	req.NewRevisionNumber = rev.NewRevisionNumber
@@ -348,21 +310,21 @@ func (s *Session) Download(root crypto.Hash, offset, length uint32) (_ modules.R
 
 	// send download RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
-	var resp modules.LoopDownloadResponse
-	err = s.call(modules.RPCLoopDownload, req, &resp)
+	var resp modules.LoopReadResponse
+	err = s.call(modules.RPCLoopRead, req, &resp, modules.RPCMinLen+uint64(sec.Length))
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
 
-	if len(resp.Data) != int(req.Length) {
+	if len(resp.Data) != int(sec.Length) {
 		return modules.RenterContract{}, nil, errors.New("host did not send enough sector data")
 	} else if req.MerkleProof {
-		proofStart := int(req.Offset) / crypto.SegmentSize
-		proofEnd := int(req.Offset+req.Length) / crypto.SegmentSize
-		if !crypto.VerifyRangeProof(resp.Data, resp.MerkleProof, proofStart, proofEnd, req.MerkleRoot) {
+		proofStart := int(sec.Offset) / crypto.SegmentSize
+		proofEnd := int(sec.Offset+sec.Length) / crypto.SegmentSize
+		if !crypto.VerifyRangeProof(resp.Data, resp.MerkleProof, proofStart, proofEnd, sec.MerkleRoot) {
 			return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data or Merkle proof")
 		}
-	} else if crypto.MerkleRoot(resp.Data) != req.MerkleRoot {
+	} else if crypto.MerkleRoot(resp.Data) != sec.MerkleRoot {
 		return modules.RenterContract{}, nil, errors.New("host provided incorrect sector data")
 	}
 
@@ -460,7 +422,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	// send SectorRoots RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopSectorRootsResponse
-	err = s.call(modules.RPCLoopSectorRoots, req, &resp)
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp, modules.RPCMinLen+(req.NumRoots*crypto.HashSize))
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -556,7 +518,7 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	// send SectorRoots RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopSectorRootsResponse
-	err = s.call(modules.RPCLoopSectorRoots, req, &resp)
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp, modules.RPCMinLen+(req.NumRoots*crypto.HashSize))
 	if err != nil {
 		return types.Transaction{}, nil, err
 	}
@@ -598,17 +560,29 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		return nil, errors.New("invalid contract")
 	}
 	defer cs.Return(sc)
-	return cs.managedNewSession(host, id, currentHeight, hdb, sc.header.SecretKey, cancel)
+	s, err := cs.managedNewSession(host, currentHeight, hdb, cancel)
+	if err != nil {
+		return nil, err
+	}
+	// Lock the contract and resynchronize if necessary
+	rev, _, err := s.Lock(id, sc.header.SecretKey)
+	if err != nil {
+		s.Close()
+		return nil, err
+	} else if err := sc.syncRevision(rev); err != nil {
+		s.Close()
+		return nil, err
+	}
+	return s, nil
 }
 
-// NewSessionWithSecret creates a new session using a contract's secret key
-// directly instead of fetching it from the set of known contracts.
-func (cs *ContractSet) NewSessionWithSecret(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, sk crypto.SecretKey, cancel <-chan struct{}) (_ *Session, err error) {
-	return cs.managedNewSession(host, id, currentHeight, hdb, sk, cancel)
+// NewRawSession creates a new session unassociated with any contract.
+func (cs *ContractSet) NewRawSession(host modules.HostDBEntry, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
+	return cs.managedNewSession(host, currentHeight, hdb, cancel)
 }
 
 // managedNewSession initiates the RPC loop with a host and returns a Session.
-func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, sk crypto.SecretKey, cancel <-chan struct{}) (_ *Session, err error) {
+func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
 		if err != nil {
@@ -637,21 +611,22 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, id types.File
 		}
 	}()
 
-	aead, err := performSessionHandshake(conn, host.PublicKey, id, sk)
+	// Perform the handshake and create the session object.
+	aead, challenge, err := performSessionHandshake(conn, host.PublicKey)
 	if err != nil {
 		return nil, err
 	}
-
-	// the host is now ready to accept revisions
-	return &Session{
+	s := &Session{
 		aead:        aead,
+		challenge:   challenge.Challenge,
 		closeChan:   closeChan,
 		conn:        conn,
-		contractID:  id,
 		contractSet: cs,
 		deps:        cs.deps,
 		hdb:         hdb,
 		height:      currentHeight,
 		host:        host,
-	}, nil
+	}
+
+	return s, nil
 }

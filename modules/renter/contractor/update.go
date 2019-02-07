@@ -5,6 +5,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // hasFCIdentifier checks the transaction for a ContractSignedIdentifier and
@@ -79,6 +80,10 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	if err != nil {
 		c.log.Println("Failed to get the wallet's seed:", err)
 	}
+	// Get the master renter seed and wipe it once we are done with it.
+	renterSeed := proto.DeriveRenterSeed(s)
+	defer fastrand.Read(renterSeed[:])
+
 	c.mu.Lock()
 	for _, block := range cc.RevertedBlocks {
 		if block.ID() != types.GenesisID {
@@ -91,7 +96,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 			c.blockHeight++
 		}
 		// Find lost contracts for recovery.
-		c.findRecoverableContracts(s, block)
+		c.findRecoverableContracts(renterSeed, block)
 	}
 
 	// If we have entered the next period, update currentPeriod

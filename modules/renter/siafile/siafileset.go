@@ -181,45 +181,6 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, error) {
 	}, nil
 }
 
-// All returns all the siafiles in the renter by either returning them from the
-// SiaFileSet of reading them from disk. The SiaFileSetEntry is closed after the
-// SiaFile is added to the slice. This way the files are removed from memory by
-// GC as soon as the calling method returns
-//
-// Note: This is currently only needed for the Files endpoint. This is an
-// expensive call so it should be avoided unless absolutely necessary
-//
-// TODO - Delete once !3378 is merged
-func (sfs *SiaFileSet) All() ([]*SiaFileSetEntry, error) {
-	var entrys []*SiaFileSetEntry
-	sfs.mu.Lock()
-	dir := sfs.siaFileDir
-	sfs.mu.Unlock()
-	// Recursively load all files found in renter directory. Errors
-	// are not considered fatal and are ignored.
-	return entrys, filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		// This error is non-nil if filepath.Walk couldn't stat a file or
-		// folder.
-		if err != nil {
-			return nil
-		}
-
-		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != ShareExtension {
-			return nil
-		}
-
-		// Load the Siafile.
-		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, dir), ShareExtension)
-		entry, err := sfs.Open(siaPath)
-		if err != nil {
-			return nil
-		}
-		entrys = append(entrys, entry)
-		return nil
-	})
-}
-
 // Delete deletes the SiaFileSetEntry's SiaFile
 func (sfs *SiaFileSet) Delete(siaPath string) error {
 	sfs.mu.Lock()

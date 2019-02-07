@@ -92,7 +92,7 @@ func (key twofishKey) DecryptBytesInPlace(ct Ciphertext, blockIndex uint64) ([]b
 
 // Derive derives a child key for a given combination of chunk and piece index.
 func (key twofishKey) Derive(chunkIndex, pieceIndex uint64) CipherKey {
-	entropy := HashAll(key[:], chunkIndex, pieceIndex)
+	entropy := HashAll(key, chunkIndex, pieceIndex)
 	ck, err := NewSiaKey(TypeTwofish, entropy[:])
 	if err != nil {
 		panic("this should not be possible when deriving from a valid key")

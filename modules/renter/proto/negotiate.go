@@ -2,6 +2,7 @@ package proto
 
 import (
 	"crypto/cipher"
+	"io"
 	"net"
 	"time"
 
@@ -243,10 +244,10 @@ func newModifyRevision(current types.FileContractRevision, merkleRoot crypto.Has
 }
 
 // performSessionHandshake conducts the initial handshake exchange of the
-// renter-host protocol, including the challenge/response. During the
-// handshake, a shared secret is established, which is used to initialize an
-// AEAD cipher. This cipher must be used to encrypt subsequent RPCs.
-func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey, id types.FileContractID, contractSK crypto.SecretKey) (cipher.AEAD, error) {
+// renter-host protocol. During the handshake, a shared secret is established,
+// which is used to initialize an AEAD cipher. This cipher must be used to
+// encrypt subsequent RPCs.
+func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey) (cipher.AEAD, modules.LoopChallengeRequest, error) {
 	// generate a session key
 	xsk, xpk := crypto.GenerateX25519KeyPair()
 
@@ -257,12 +258,12 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey, id
 	}
 	extendDeadline(conn, modules.NegotiateSettingsTime)
 	if err := encoding.NewEncoder(conn).EncodeAll(modules.RPCLoopEnter, req); err != nil {
-		return nil, err
+		return nil, modules.LoopChallengeRequest{}, err
 	}
 	// read host's half of the key exchange
 	var resp modules.LoopKeyExchangeResponse
-	if err := encoding.NewDecoder(conn).Decode(&resp); err != nil {
-		return nil, err
+	if err := encoding.NewDecoder(io.LimitReader(conn, keyExchangeMaxLen)).Decode(&resp); err != nil {
+		return nil, modules.LoopChallengeRequest{}, err
 	}
 	// validate the signature before doing anything else; don't want to punish
 	// the "host" if we're talking to an imposter
@@ -271,11 +272,11 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey, id
 	var sig crypto.Signature
 	copy(sig[:], resp.Signature)
 	if err := crypto.VerifyHash(crypto.HashAll(req.PublicKey, resp.PublicKey), hpk, sig); err != nil {
-		return nil, err
+		return nil, modules.LoopChallengeRequest{}, err
 	}
 	// check for compatible cipher
 	if resp.Cipher != modules.CipherChaCha20Poly1305 {
-		return nil, errors.New("host selected unsupported cipher")
+		return nil, modules.LoopChallengeRequest{}, errors.New("host selected unsupported cipher")
 	}
 	// derive shared secret, which we'll use as an encryption key
 	cipherKey := crypto.DeriveSharedSecret(xsk, resp.PublicKey)
@@ -284,27 +285,13 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey, id
 	aead, err := chacha20poly1305.New(cipherKey[:])
 	if err != nil {
 		build.Critical("could not create cipher")
-		return nil, err
+		return nil, modules.LoopChallengeRequest{}, err
 	}
 
 	// read host's challenge
 	var challengeReq modules.LoopChallengeRequest
-	if err := modules.ReadRPCResponse(conn, aead, &challengeReq, 1024); err != nil {
-		return nil, err
+	if err := modules.ReadRPCMessage(conn, aead, &challengeReq, modules.RPCMinLen); err != nil {
+		return nil, modules.LoopChallengeRequest{}, err
 	}
-
-	// reply to the challenge
-	challengeResp := modules.LoopChallengeResponse{
-		Version:    1,
-		ContractID: id,
-	}
-	if id != (types.FileContractID{}) {
-		sig := crypto.SignHash(crypto.HashAll(modules.RPCChallengePrefix, challengeReq.Challenge), contractSK)
-		challengeResp.Signature = sig[:]
-	}
-	if err := modules.WriteRPCResponse(conn, aead, challengeResp, nil); err != nil {
-		return nil, err
-	}
-
-	return aead, nil
+	return aead, challengeReq, nil
 }

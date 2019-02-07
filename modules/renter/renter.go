@@ -137,6 +137,10 @@ type hostContractor interface {
 	// began.
 	CurrentPeriod() types.BlockHeight
 
+	// InitRecoveryScan starts scanning the whole blockchain for recoverable
+	// contracts within a separate thread.
+	InitRecoveryScan() error
+
 	// PeriodSpending returns the amount spent on contracts during the current
 	// billing period.
 	PeriodSpending() modules.ContractorSpending
@@ -630,6 +634,12 @@ func (r *Renter) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility
 	return r.hostContractor.ContractUtility(pk)
 }
 
+// InitRecoveryScan starts scanning the whole blockchain for recoverable
+// contracts within a separate thread.
+func (r *Renter) InitRecoveryScan() error {
+	return r.hostContractor.InitRecoveryScan()
+}
+
 // OldContracts returns an array of host contractor's oldContracts
 func (r *Renter) OldContracts() []modules.RenterContract {
 	return r.hostContractor.OldContracts()
@@ -735,8 +745,11 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		downloadHeap: new(downloadChunkHeap),
 
 		uploadHeap: uploadHeap{
-			activeChunks: make(map[uploadChunkID]struct{}),
-			newUploads:   make(chan struct{}, 1),
+			activeChunks:      make(map[uploadChunkID]struct{}),
+			newUploads:        make(chan struct{}, 1),
+			repairNeeded:      make(chan struct{}, 1),
+			stuckChunkFound:   make(chan struct{}, 1),
+			stuckChunkSuccess: make(chan struct{}, 1),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),
@@ -779,6 +792,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	go r.threadedDownloadLoop()
 	go r.threadedUploadLoop()
 	go r.threadedUpdateRenterHealth()
+	go r.threadedStuckFileLoop()
 
 	// Kill workers on shutdown.
 	r.tg.OnStop(func() error {

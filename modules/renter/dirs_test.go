@@ -59,15 +59,17 @@ func (rt *renterTester) checkDirInitialized(siaPath string) error {
 	defer siaDir.Close()
 
 	// Check that health is default value
-	health, stuckHealth, lastCheck := siaDir.Health()
-	if health != siadir.DefaultDirHealth {
-		return fmt.Errorf("Expected Health to be %v, but instead was %v", siadir.DefaultDirHealth, health)
+	health := siaDir.Health()
+	defaultHealth := siadir.SiaDirHealth{
+		Health:      siadir.DefaultDirHealth,
+		StuckHealth: siadir.DefaultDirHealth,
 	}
-	if lastCheck.IsZero() {
+	if err = equalHealthsAndChunks(health, defaultHealth); err != nil {
+		return err
+	}
+	// Check that the LastHealthCheckTime is not zero
+	if health.LastHealthCheckTime.IsZero() {
 		return errors.New("LastHealthCheckTime was not initialized")
-	}
-	if stuckHealth != siadir.DefaultDirHealth {
-		return fmt.Errorf("Expected Stuck Health to be %v, but instead was %v", siadir.DefaultDirHealth, stuckHealth)
 	}
 	// Check that the SiaPath was initialized properly
 	if siaDir.SiaPath() != siaPath {
@@ -176,15 +178,15 @@ func TestRenterListDirectory(t *testing.T) {
 // compareDirectoryInfoAndMetadata is a helper that compares the information in
 // a DirectoryInfo struct and a SiaDirSetEntry struct
 func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.SiaDirSetEntry) error {
-	_, stuckHealth, lastHealthCheckTime := siaDir.Health()
+	health := siaDir.Health()
 	if di.SiaPath != siaDir.SiaPath() {
 		return fmt.Errorf("SiaPaths not equal %v and %v", di.SiaPath, siaDir.SiaPath())
 	}
-	if di.Health != stuckHealth {
-		return fmt.Errorf("Healths not equal %v and %v", di.SiaPath, stuckHealth)
+	if di.Health != health.StuckHealth {
+		return fmt.Errorf("Healths not equal %v and %v", di.SiaPath, health.StuckHealth)
 	}
-	if di.LastHealthCheckTime != lastHealthCheckTime {
-		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v", di.LastHealthCheckTime, lastHealthCheckTime)
+	if di.LastHealthCheckTime != health.LastHealthCheckTime {
+		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v", di.LastHealthCheckTime, health.LastHealthCheckTime)
 	}
 	return nil
 }

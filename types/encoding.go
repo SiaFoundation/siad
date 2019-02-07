@@ -654,13 +654,7 @@ func (s Specifier) MarshalJSON() ([]byte, error) {
 
 // String returns the specifier as a string, trimming any trailing zeros.
 func (s Specifier) String() string {
-	var i int
-	for i = range s {
-		if s[i] == 0 {
-			break
-		}
-	}
-	return string(s[:i])
+	return string(bytes.TrimRight(s[:], string(0)))
 }
 
 // UnmarshalJSON decodes the json string of the specifier.

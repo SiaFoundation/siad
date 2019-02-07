@@ -43,6 +43,10 @@ type Contractor struct {
 	interruptMaintenance chan struct{}
 	maintenanceLock      siasync.TryMutex
 
+	// Only one thread should be scanning the blockchain for recoverable
+	// contracts at a time.
+	scanInProgress bool
+
 	allowance     modules.Allowance
 	blockHeight   types.BlockHeight
 	currentPeriod types.BlockHeight
@@ -69,6 +73,41 @@ func (c *Contractor) Allowance() modules.Allowance {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.allowance
+}
+
+// InitRecoveryScan starts scanning the whole blockchain for recoverable
+// contracts within a separate thread.
+func (c *Contractor) InitRecoveryScan() error {
+	if err := c.tg.Add(); err != nil {
+		return err
+	}
+	defer c.tg.Done()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// Check if we are already scanning the blockchain.
+	if c.scanInProgress {
+		return errors.New("scan for recoverable contracts is already in progress")
+	}
+	c.scanInProgress = true
+	// Get the wallet seed.
+	s, _, err := c.wallet.PrimarySeed()
+	if err != nil {
+		return err
+	}
+	// Get the renter seed and wipe it once done.
+	rs := proto.DeriveRenterSeed(s)
+	// Create the scanner.
+	scanner := c.newRecoveryScanner(rs)
+	// Start the scan.
+	go func() {
+		if err := scanner.threadedScan(c.cs, c.tg.StopChan()); err != nil {
+			c.log.Println("Scan failed", err)
+		}
+		c.mu.Lock()
+		c.scanInProgress = false
+		c.mu.Unlock()
+	}()
+	return nil
 }
 
 // PeriodSpending returns the amount spent on contracts during the current
@@ -243,6 +282,14 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		return nil, err
 	}
 
+	// Initialize the contractIDToPubKey map
+	for _, contract := range c.oldContracts {
+		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
+	}
+	for _, contract := range c.staticContracts.ViewAll() {
+		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
+	}
+
 	// Subscribe to the consensus set.
 	err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
 	if err == modules.ErrInvalidConsensusChangeID {
@@ -266,14 +313,6 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	c.mu.Unlock()
 	if err != nil {
 		return nil, err
-	}
-
-	// Initialize the contractIDToPubKey map
-	for _, contract := range c.oldContracts {
-		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	}
-	for _, contract := range c.staticContracts.ViewAll() {
-		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	}
 
 	// Update the allowance in the hostdb with the one that was loaded from

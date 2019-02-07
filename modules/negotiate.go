@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -290,15 +291,16 @@ type (
 
 // New RPC IDs
 var (
-	RPCLoopEnter          = types.Specifier{'L', 'o', 'o', 'p', 'E', 'n', 't', 'e', 'r'}
-	RPCLoopExit           = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
-	RPCLoopSettings       = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
-	RPCLoopRecentRevision = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'c', 'e', 'n', 't', 'R', 'e', 'v'}
-	RPCLoopDownload       = types.Specifier{'L', 'o', 'o', 'p', 'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd'}
-	RPCLoopFormContract   = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
-	RPCLoopRenewContract  = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
-	RPCLoopSectorRoots    = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
-	RPCLoopUpload         = types.Specifier{'L', 'o', 'o', 'p', 'U', 'p', 'l', 'o', 'a', 'd'}
+	RPCLoopEnter         = types.Specifier{'L', 'o', 'o', 'p', 'E', 'n', 't', 'e', 'r'}
+	RPCLoopExit          = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
+	RPCLoopFormContract  = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
+	RPCLoopLock          = types.Specifier{'L', 'o', 'o', 'p', 'L', 'o', 'c', 'k'}
+	RPCLoopRead          = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
+	RPCLoopRenewContract = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
+	RPCLoopSectorRoots   = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
+	RPCLoopSettings      = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
+	RPCLoopUnlock        = types.Specifier{'L', 'o', 'o', 'p', 'U', 'n', 'l', 'o', 'c', 'k'}
+	RPCLoopWrite         = types.Specifier{'L', 'o', 'o', 'p', 'W', 'r', 'i', 't', 'e'}
 )
 
 // RPC ciphers
@@ -358,28 +360,36 @@ type (
 		Challenge [16]byte
 	}
 
-	// LoopChallengeResponse is the renter's response to ChallengeRequest,
-	// also containing the desired protocol version and contract to modify. It
-	// is the renter's first encrypted message, and is immediately followed by
-	// the renter's first RPC request.
-	LoopChallengeResponse struct {
-		// The version of the renter-host protocol that the renter intends to use.
-		Version byte
-
-		// The contract being referenced by subsequent RPCs; may be blank if the
-		// renter does not need to reference a contract (e.g. when forming a new
-		// contract, or when querying the host's settings).
+	// LoopLockRequest contains the request parameters for RPCLoopLock.
+	LoopLockRequest struct {
+		// The contract to lock; implicitly referenced by subsequent RPCs.
 		ContractID types.FileContractID
 
-		// The signed challenge. Should be nil if ContractID is blank.
+		// The host's challenge, signed by the renter's contract key.
 		Signature []byte
+
+		// Lock timeout, in milliseconds.
+		Timeout uint64
 	}
 
-	// LoopDownloadRequest contains the request parameters for RPCLoopDownload.
-	LoopDownloadRequest struct {
-		MerkleRoot  crypto.Hash
-		Offset      uint32
-		Length      uint32
+	// LoopLockResponse contains the response data for RPCLoopLock.
+	LoopLockResponse struct {
+		Acquired     bool
+		NewChallenge [16]byte
+		Revision     types.FileContractRevision
+		Signatures   []types.TransactionSignature
+	}
+
+	// LoopReadRequestSection is a section requested in LoopReadRequest.
+	LoopReadRequestSection struct {
+		MerkleRoot [32]byte
+		Offset     uint32
+		Length     uint32
+	}
+
+	// LoopReadRequest contains the request parameters for RPCLoopRead.
+	LoopReadRequest struct {
+		Sections    []LoopReadRequestSection
 		MerkleProof bool
 
 		NewRevisionNumber    uint64
@@ -388,8 +398,8 @@ type (
 		Signature            []byte
 	}
 
-	// LoopDownloadResponse contains the response data for RPCLoopDownload.
-	LoopDownloadResponse struct {
+	// LoopReadResponse contains the response data for RPCLoopRead.
+	LoopReadResponse struct {
 		Signature   []byte
 		Data        []byte
 		MerkleProof []crypto.Hash
@@ -438,12 +448,7 @@ type (
 	// LoopRenewContractRequest contains the request parameters for RPCLoopRenewContract.
 	LoopRenewContractRequest struct {
 		Transactions []types.Transaction
-	}
-
-	// LoopRecentRevisionResponse contains the response data for RPCLoopRecentRevisionResponse.
-	LoopRecentRevisionResponse struct {
-		Revision   types.FileContractRevision
-		Signatures []types.TransactionSignature
+		RenterKey    types.SiaPublicKey
 	}
 
 	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
@@ -451,8 +456,8 @@ type (
 		Settings HostExternalSettings
 	}
 
-	// LoopUploadRequest contains the request parameters for RPCLoopUpload.
-	LoopUploadRequest struct {
+	// LoopWriteRequest contains the request parameters for RPCLoopWrite.
+	LoopWriteRequest struct {
 		Data []byte
 
 		NewRevisionNumber    uint64
@@ -461,8 +466,8 @@ type (
 		Signature            []byte
 	}
 
-	// LoopUploadResponse contains the response data for RPCLoopUploadResponse.
-	LoopUploadResponse struct {
+	// LoopWriteResponse contains the response data for RPCLoopWriteResponse.
+	LoopWriteResponse struct {
 		Signature []byte
 	}
 )
@@ -472,16 +477,44 @@ func (e *RPCError) Error() string {
 	return e.Description
 }
 
+// RPCMinLen is the minimum size of an RPC message. If an encoded message
+// would be smaller than RPCMinLen, it is padded with random data.
+const RPCMinLen = 4096
+
+// WriteRPCMessage writes an encrypted RPC message.
+func WriteRPCMessage(w io.Writer, aead cipher.AEAD, obj interface{}) error {
+	payload := encoding.Marshal(obj)
+	// pad the payload to RPCMinLen bytes to prevent eavesdroppers from
+	// identifying RPCs by their size.
+	minLen := RPCMinLen - aead.Overhead() - aead.NonceSize()
+	if len(payload) < minLen {
+		payload = append(payload, fastrand.Bytes(minLen-len(payload))...)
+	}
+	return encoding.WritePrefixedBytes(w, crypto.EncryptWithNonce(payload, aead))
+}
+
+// ReadRPCMessage reads an encrypted RPC message.
+func ReadRPCMessage(r io.Reader, aead cipher.AEAD, obj interface{}, maxLen uint64) error {
+	ciphertext, err := encoding.ReadPrefixedBytes(r, maxLen)
+	if err != nil {
+		return err
+	}
+	plaintext, err := crypto.DecryptWithNonce(ciphertext, aead)
+	if err != nil {
+		return err
+	}
+	// plaintext may contain padding, so use Decoder instead of Unmarshal
+	return encoding.NewDecoder(bytes.NewReader(plaintext)).Decode(obj)
+}
+
 // WriteRPCRequest writes an encrypted RPC request using the new loop
 // protocol.
 func WriteRPCRequest(w io.Writer, aead cipher.AEAD, rpcID types.Specifier, req interface{}) error {
-	encryptedID := crypto.EncryptWithNonce(encoding.Marshal(rpcID), aead)
-	if err := encoding.WritePrefixedBytes(w, encryptedID); err != nil {
+	if err := WriteRPCMessage(w, aead, rpcID); err != nil {
 		return err
 	}
 	if req != nil {
-		encryptedReq := crypto.EncryptWithNonce(encoding.Marshal(req), aead)
-		return encoding.WritePrefixedBytes(w, encryptedReq)
+		return WriteRPCMessage(w, aead, req)
 	}
 	return nil
 }
@@ -506,33 +539,21 @@ func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error
 
 // ReadRPCID reads an RPC request ID using the new loop protocol.
 func ReadRPCID(r io.Reader, aead cipher.AEAD) (rpcID types.Specifier, err error) {
-	encryptedID, err := encoding.ReadPrefixedBytes(r, 1024)
-	if err != nil {
-		return
-	}
-	decryptedID, err := crypto.DecryptWithNonce(encryptedID, aead)
-	if err != nil {
-		return
-	}
-	err = encoding.Unmarshal(decryptedID, &rpcID)
+	err = ReadRPCMessage(r, aead, &rpcID, RPCMinLen)
 	return
 }
 
 // ReadRPCRequest reads an RPC request using the new loop protocol.
 func ReadRPCRequest(r io.Reader, aead cipher.AEAD, req interface{}, maxLen uint64) error {
-	encryptedReq, err := encoding.ReadPrefixedBytes(r, maxLen)
-	if err != nil {
-		return err
-	}
-	decryptedReq, err := crypto.DecryptWithNonce(encryptedReq, aead)
-	if err != nil {
-		return err
-	}
-	return encoding.Unmarshal(decryptedReq, req)
+	return ReadRPCMessage(r, aead, req, maxLen)
 }
 
 // ReadRPCResponse reads an RPC response using the new loop protocol.
 func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uint64) error {
+	if maxLen < RPCMinLen {
+		build.Critical("maxLen must be at least RPCMinLen")
+		maxLen = RPCMinLen
+	}
 	encryptedResp, err := encoding.ReadPrefixedBytes(r, maxLen)
 	if err != nil {
 		return err
