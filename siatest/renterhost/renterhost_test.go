@@ -118,4 +118,30 @@ func TestSession(t *testing.T) {
 	if droots[0] != crypto.MerkleRoot(sector2) {
 		t.Fatal("updated sector root does not match")
 	}
+
+	// shut down and restart the host to ensure the sectors are durable
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	host := tg.Hosts()[0]
+	if err := host.RestartNode(); err != nil {
+		t.Fatal(err)
+	}
+	// restarting changes the host's address
+	hg, err := host.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hhg.Entry.HostDBEntry.NetAddress = hg.ExternalSettings.NetAddress
+	// initiate session
+	s, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, s2data, err := s.Read(droots[0], 0, uint32(len(sector2)))
+	if err != nil {
+		t.Fatal(err)
+	} else if !bytes.Equal(s2data, sector2) {
+		t.Fatal("downloaded data does not match")
+	}
 }
