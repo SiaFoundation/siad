@@ -61,6 +61,11 @@ func TestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// upload another sector, to test Merkle proofs
+	_, _, err = s.Append(sector)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// download the sector
 	_, dsector, err := s.Read(root, 0, uint32(len(sector)))
@@ -96,7 +101,7 @@ func TestSession(t *testing.T) {
 	sector2 := fastrand.Bytes(int(modules.SectorSize))
 	_, err = s.Write([]modules.LoopWriteAction{
 		{Type: modules.WriteActionAppend, Data: sector2},
-		{Type: modules.WriteActionSwap, A: 0, B: 1},
+		{Type: modules.WriteActionSwap, A: 0, B: 2},
 		{Type: modules.WriteActionTrim, A: 1},
 	})
 	if err != nil {

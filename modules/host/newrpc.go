@@ -2,6 +2,7 @@ package host
 
 import (
 	"errors"
+	"sort"
 
 	"github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -155,6 +156,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 
 	// Process each action.
 	newRoots := append([]crypto.Hash(nil), s.so.SectorRoots...)
+	sectorsChanged := make(map[uint64]struct{}) // for construct Merkle proof
 	var bandwidthRevenue types.Currency
 	var sectorsRemoved []crypto.Hash
 	var sectorsGained []crypto.Hash
@@ -172,6 +174,8 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			sectorsGained = append(sectorsGained, newRoot)
 			gainedSectorData = append(gainedSectorData, action.Data)
 
+			sectorsChanged[uint64(len(newRoots))-1] = struct{}{}
+
 			// Update finances
 			bandwidthRevenue = bandwidthRevenue.Add(settings.UploadBandwidthPrice.Mul64(modules.SectorSize))
 
@@ -186,6 +190,8 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			sectorsRemoved = append(sectorsRemoved, newRoots[uint64(len(newRoots))-numSectors:]...)
 			newRoots = newRoots[:uint64(len(newRoots))-numSectors]
 
+			sectorsChanged[uint64(len(newRoots))] = struct{}{}
+
 		case modules.WriteActionSwap:
 			i, j := action.A, action.B
 			if i >= uint64(len(newRoots)) || j >= uint64(len(newRoots)) {
@@ -195,6 +201,9 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			}
 			// Update sector roots.
 			newRoots[i], newRoots[j] = newRoots[j], newRoots[i]
+
+			sectorsChanged[i] = struct{}{}
+			sectorsChanged[j] = struct{}{}
 
 		case modules.WriteActionUpdate:
 			sectorIndex, offset := action.A, action.B
@@ -278,21 +287,27 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	// If a Merkle proof was requested, send it and wait for the renter's signature.
 	if req.MerkleProof {
 		// Calculate which sectors changed.
-		var proofRanges []crypto.ProofRange
-		var leafHashes []crypto.Hash
-		for i, oldRoot := range s.so.SectorRoots {
-			if oldRoot != newRoots[i] {
+		oldNumSectors := uint64(len(s.so.SectorRoots))
+		proofRanges := make([]crypto.ProofRange, 0, len(sectorsChanged))
+		for index := range sectorsChanged {
+			if index < oldNumSectors {
 				proofRanges = append(proofRanges, crypto.ProofRange{
-					Start: uint64(i),
-					End:   uint64(i + 1),
+					Start: index,
+					End:   index + 1,
 				})
-				leafHashes = append(leafHashes, oldRoot)
 			}
 		}
+		sort.Slice(proofRanges, func(i, j int) bool {
+			return proofRanges[i].Start < proofRanges[j].Start
+		})
+		// Record old leaf hashes for all changed sectors.
+		leafHashes := make([]crypto.Hash, len(proofRanges))
+		for i, r := range proofRanges {
+			leafHashes[i] = s.so.SectorRoots[r.Start]
+		}
 		// Construct the Merkle proof.
-		numLeaves := currentRevision.NewFileSize / modules.SectorSize
 		merkleResp := modules.LoopWriteMerkleProof{
-			OldSubtreeHashes: crypto.MerkleDiffProof(proofRanges, numLeaves, nil, s.so.SectorRoots),
+			OldSubtreeHashes: crypto.MerkleDiffProof(proofRanges, oldNumSectors, nil, s.so.SectorRoots),
 			OldLeafHashes:    leafHashes,
 			NewMerkleRoot:    newRevision.NewFileMerkleRoot,
 		}
