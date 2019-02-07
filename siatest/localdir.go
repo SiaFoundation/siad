@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -17,9 +18,20 @@ type LocalDir struct {
 	path string
 }
 
-// Name returns the directory name of the directory on disk
-func (ld *LocalDir) Name() string {
-	return filepath.Base(ld.path)
+// NewLocalDir creates a new LocalDir
+func (tn *TestNode) NewLocalDir() *LocalDir {
+	fileName := fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4)))
+	path := filepath.Join(tn.RenterDir(), modules.SiapathRoot, fileName)
+	return &LocalDir{
+		path: path,
+	}
+}
+
+// CreateDir creates a new LocalDir in the current LocalDir with the provide
+// name
+func (ld *LocalDir) CreateDir(name string) (*LocalDir, error) {
+	path := filepath.Join(ld.path, name)
+	return &LocalDir{path: path}, os.MkdirAll(path, 0777)
 }
 
 // Files returns a slice of the files in the LocalDir
@@ -44,17 +56,9 @@ func (ld *LocalDir) Files() ([]*LocalFile, error) {
 	return files, nil
 }
 
-// CreateDir creates a new LocalDir in the current LocalDir with the provide
-// name
-func (ld *LocalDir) CreateDir(name string) (*LocalDir, error) {
-	path := filepath.Join(ld.path, name)
-	return &LocalDir{path: path}, os.MkdirAll(path, 0777)
-}
-
-// newDir creates a new LocalDir in the current LocalDir
-func (ld *LocalDir) newDir() (*LocalDir, error) {
-	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(8))))
-	return &LocalDir{path: path}, os.MkdirAll(path, 0777)
+// Name returns the directory name of the directory on disk
+func (ld *LocalDir) Name() string {
+	return filepath.Base(ld.path)
 }
 
 // NewFile creates a new LocalFile in the current LocalDir
@@ -103,6 +107,12 @@ func (ld *LocalDir) PopulateDir(files, dirs, levels uint) error {
 		}
 	}
 	return nil
+}
+
+// newDir creates a new LocalDir in the current LocalDir
+func (ld *LocalDir) newDir() (*LocalDir, error) {
+	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4))))
+	return &LocalDir{path: path}, os.MkdirAll(path, 0777)
 }
 
 // subDirs returns a slice of the sub directories in the LocalDir

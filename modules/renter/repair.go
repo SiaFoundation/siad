@@ -230,7 +230,20 @@ func (r *Renter) managedDirectoryHealth(siaPath string) (siadir.SiaDirHealth, er
 	//  Open SiaDir
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if os.IsNotExist(err) {
-		// Metadata file does not exists, create it
+		// Remember initial Error
+		initError := err
+		// Metadata file does not exists, check if directory is empty
+		fileInfos, err := ioutil.ReadDir(siaPath)
+		if err != nil {
+			return siadir.SiaDirHealth{}, err
+		}
+		// If the directory is empty and is not the root directory, assume it
+		// was deleted so do not create a metadata file
+		if len(fileInfos) == 0 && siaPath != "" {
+			return siadir.SiaDirHealth{}, initError
+		}
+		// If we are at the root directory or the directory is not empty, create
+		// a metadata file
 		siaDir, err = r.staticDirSet.NewSiaDir(siaPath)
 	}
 	if err != nil {
