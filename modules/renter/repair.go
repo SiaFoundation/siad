@@ -166,7 +166,7 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (siadir.SiaDirH
 			if err != nil {
 				return siadir.SiaDirHealth{}, err
 			}
-			if time.Since(fileHealth.recentRepairTime) >= rebuildChunkHeapInterval {
+			if time.Since(fileHealth.recentRepairTime) >= fileRepairInterval {
 				// If the file has not recently been repaired then consider the
 				// health of the file
 				health = fileHealth.health

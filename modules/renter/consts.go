@@ -105,6 +105,14 @@ var (
 		Testing:  1 * time.Minute,
 	}).(time.Duration)
 
+	// fileRepairInterval defines how long the renter should wait before
+	// continuing to repair a file that was recently repaired
+	fileRepairInterval = build.Select(build.Var{
+		Dev:      30 * time.Second,
+		Standard: 5 * time.Minute,
+		Testing:  1 * time.Second,
+	}).(time.Duration)
+
 	// healthCheckInterval defines the maximum amount of time that should pass
 	// in between checking the health of a file or directory
 	healthCheckInterval = build.Select(build.Var{

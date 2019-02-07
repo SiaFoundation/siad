@@ -326,7 +326,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		}
 
 		// For normal repairs, ignore files that have been recently repaired
-		if target == targetUnstuckChunks && time.Since(file.RecentRepairTime()) < rebuildChunkHeapInterval {
+		if target == targetUnstuckChunks && time.Since(file.RecentRepairTime()) < fileRepairInterval {
 			// Close unneeded files
 			err := file.Close()
 			if err != nil {
