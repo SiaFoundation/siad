@@ -427,6 +427,17 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	return health, stuckHealth, sf.staticMetadata.NumStuckChunks
 }
 
+// HealthPercentage returns the health in a more human understandable format out
+// of 100%
+func (sf *SiaFile) HealthPercentage(health float64) float64 {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	dataPieces := sf.staticMetadata.staticErasureCode.MinPieces()
+	parityPieces := sf.staticMetadata.staticErasureCode.NumPieces() - dataPieces
+	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
+	return (worstHealth - health) / worstHealth
+}
+
 // HostPublicKeys returns all the public keys of hosts the file has ever been
 // uploaded to. That means some of those hosts might no longer be in use.
 func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
