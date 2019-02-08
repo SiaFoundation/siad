@@ -59,7 +59,7 @@ func (api *API) minerHeaderHandlerGET(w http.ResponseWriter, req *http.Request, 
 // miner.
 func (api *API) minerHeaderHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var bh types.BlockHeader
-	err := encoding.NewDecoder(req.Body).Decode(&bh)
+	err := encoding.NewDecoder(req.Body, encoding.DefaultAllocLimit).Decode(&bh)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

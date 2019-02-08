@@ -114,7 +114,7 @@ func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 
 // UnmarshalSia implements the encoding.SiaUnmarshaler interface.
 func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
-	d := encoding.NewDecoder(r)
+	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
 	d.Decode(&hpk.PublicKey)
 	hpk.Used = d.NextBool()
 	return d.Err()
