@@ -237,7 +237,8 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath string) error {
 // to a file is past in
 func (r *Renter) managedDirectoryHealth(siaPath string) (siadir.SiaDirHealth, error) {
 	// Check for bad paths and files
-	fi, err := os.Stat(filepath.Join(r.staticFilesDir, siaPath))
+	fullPath := filepath.Join(r.staticFilesDir, siaPath)
+	fi, err := os.Stat(fullPath)
 	if err != nil {
 		return siadir.SiaDirHealth{}, err
 	}
@@ -251,7 +252,7 @@ func (r *Renter) managedDirectoryHealth(siaPath string) (siadir.SiaDirHealth, er
 		// Remember initial Error
 		initError := err
 		// Metadata file does not exists, check if directory is empty
-		fileInfos, err := ioutil.ReadDir(siaPath)
+		fileInfos, err := ioutil.ReadDir(fullPath)
 		if err != nil {
 			return siadir.SiaDirHealth{}, err
 		}

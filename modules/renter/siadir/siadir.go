@@ -119,11 +119,10 @@ func createDirMetadata(siaPath, rootDir string) (siaDirMetadata, writeaheadlog.U
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
 	// empty directories won't be viewed as being the most in need
 	md := siaDirMetadata{
-		Health:              DefaultDirHealth,
-		StuckHealth:         DefaultDirHealth,
-		LastHealthCheckTime: time.Now(),
-		RootDir:             rootDir,
-		SiaPath:             siaPath,
+		Health:      DefaultDirHealth,
+		StuckHealth: DefaultDirHealth,
+		RootDir:     rootDir,
+		SiaPath:     siaPath,
 	}
 	update, err := createMetadataUpdate(md)
 	return md, update, err
