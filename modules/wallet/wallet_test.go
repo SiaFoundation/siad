@@ -376,7 +376,7 @@ func TestAdvanceLookaheadNoRescan(t *testing.T) {
 
 	// choose 10 keys in the lookahead and remember them
 	var receivingAddresses []types.UnlockHash
-	for _, sk := range generateKeys(wt.wallet.primarySeed, progress, 10, false) {
+	for _, sk := range generateKeys(wt.wallet.primarySeed, progress, 10) {
 		sco := types.SiacoinOutput{
 			UnlockHash: sk.UnlockConditions.UnlockHash(),
 			Value:      types.NewCurrency64(1e3),

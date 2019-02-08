@@ -157,11 +157,16 @@ func (w *Wallet) LastAddresses(n uint64) ([]types.UnlockHash, error) {
 	if err != nil {
 		return []types.UnlockHash{}, err
 	}
+	// At most seedProgess addresses can be requested.
+	if n > seedProgress {
+		n = seedProgress
+	}
+	start := seedProgress - n
 	// Generate the keys.
-	keys := generateKeys(w.primarySeed, seedProgress-1, n, true)
-	uhs := make([]types.UnlockHash, len(keys))
-	for i := range keys {
-		uhs[i] = keys[i].UnlockConditions.UnlockHash()
+	keys := generateKeys(w.primarySeed, start, n)
+	uhs := make([]types.UnlockHash, 0, len(keys))
+	for i := len(keys) - 1; i >= 0; i-- {
+		uhs = append(uhs, keys[i].UnlockConditions.UnlockHash())
 	}
 	return uhs, nil
 }

@@ -44,15 +44,8 @@ func generateSpendableKey(seed modules.Seed, index uint64) spendableKey {
 	}
 }
 
-// generateKeys generates n keys from seed, starting from index start. If
-// reverse is set to true, it will start with index start and move towards
-// index 0. If n is too big and would result in a negative index, it will
-// return fewer than n spendable keys without throwing an error.
-func generateKeys(seed modules.Seed, start, n uint64, reverse bool) []spendableKey {
-	// Make sure that we don't generate below index 0.
-	if reverse && n > start+1 {
-		n = start + 1
-	}
+// generateKeys generates n keys from seed, starting from index start.
+func generateKeys(seed modules.Seed, start, n uint64) []spendableKey {
 	// generate in parallel, one goroutine per core.
 	keys := make([]spendableKey, n)
 	var wg sync.WaitGroup
@@ -60,17 +53,11 @@ func generateKeys(seed modules.Seed, start, n uint64, reverse bool) []spendableK
 	for cpu := 0; cpu < runtime.NumCPU(); cpu++ {
 		go func(offset uint64) {
 			defer wg.Done()
-			var index uint64
 			for i := offset; i < n; i += uint64(runtime.NumCPU()) {
 				// NOTE: don't bother trying to optimize generateSpendableKey;
 				// profiling shows that ed25519 key generation consumes far
 				// more CPU time than encoding or hashing.
-				if reverse {
-					index = start - i
-				} else {
-					index = start + i
-				}
-				keys[i] = generateSpendableKey(seed, index)
+				keys[i] = generateSpendableKey(seed, start+i)
 			}
 		}(uint64(cpu))
 	}
@@ -112,7 +99,7 @@ func (w *Wallet) regenerateLookahead(start uint64) {
 	maxKeys := maxLookahead(start)
 	existingKeys := uint64(len(w.lookahead))
 
-	for i, k := range generateKeys(w.primarySeed, start+existingKeys, maxKeys-existingKeys, false) {
+	for i, k := range generateKeys(w.primarySeed, start+existingKeys, maxKeys-existingKeys) {
 		w.lookahead[k.UnlockConditions.UnlockHash()] = start + existingKeys + uint64(i)
 	}
 }
@@ -120,7 +107,7 @@ func (w *Wallet) regenerateLookahead(start uint64) {
 // integrateSeed generates n spendableKeys from the seed and loads them into
 // the wallet.
 func (w *Wallet) integrateSeed(seed modules.Seed, n uint64) {
-	for _, sk := range generateKeys(seed, 0, n, false) {
+	for _, sk := range generateKeys(seed, 0, n) {
 		w.keys[sk.UnlockConditions.UnlockHash()] = sk
 	}
 }
@@ -143,7 +130,7 @@ func (w *Wallet) nextPrimarySeedAddresses(tx *bolt.Tx, n uint64) ([]types.Unlock
 	// Integrate the next keys into the wallet, and return the unlock
 	// conditions. Also remove new keys from the future keys and update them
 	// according to new progress
-	spendableKeys := generateKeys(w.primarySeed, progress, n, false)
+	spendableKeys := generateKeys(w.primarySeed, progress, n)
 	ucs := make([]types.UnlockConditions, 0, len(spendableKeys))
 	for _, spendableKey := range spendableKeys {
 		w.keys[spendableKey.UnlockConditions.UnlockHash()] = spendableKey

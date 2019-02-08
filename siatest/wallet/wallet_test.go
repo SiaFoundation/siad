@@ -532,6 +532,10 @@ func TestWalletLastAddresses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(addresses) != len(wlag.Addresses) {
+		t.Fatalf("Expected %v addresses but got %v",
+			len(addresses), len(wlag.Addresses))
+	}
 	// Make sure the returned addresses are the same and have the reversed
 	// order of the created ones.
 	for i := range wag.Addresses {
