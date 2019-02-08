@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -163,6 +165,14 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		}
 		names[i] = f.name
 		err = errors.Compose(err, entry.Close())
+		// Create and add a siadir to the SiaDirSet if one has not been created
+		sd, errDir := r.staticDirSet.NewSiaDir(filepath.Dir(f.name))
+		if errDir != nil && errDir != siadir.ErrPathOverload {
+			return nil, errors.Compose(err, errDir)
+		}
+		if errDir != siadir.ErrPathOverload {
+			err = errors.Compose(err, sd.Close())
+		}
 	}
 	return names, err
 }
