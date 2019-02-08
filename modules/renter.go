@@ -186,10 +186,18 @@ type ContractUtility struct {
 
 // DirectoryInfo provides information about a siadir
 type DirectoryInfo struct {
+	AggregateNumFiles   uint64    `json:"aggregatenumfiles"`
 	Health              float64   `json:"health"`
 	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+	MaxHealth           float64   `json:"maxhealth"`
+	MinRedundancy       float64   `json:"minredundancy"`
+	ModTime             time.Time `json:"modtime"`
+	NumFiles            uint64    `json:"numfiles"`
 	NumStuckChunks      uint64    `json:"numstuckchunks"`
+	NumSubDirs          uint64    `json:"numsubdirs"`
 	SiaPath             string    `json:"siapath"`
+	Size                uint64    `json:"size"`
+	StuckHealth         float64   `json:"stuckhealth"`
 }
 
 // DownloadInfo provides information about a file that has been requested for

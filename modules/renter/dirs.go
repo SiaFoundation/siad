@@ -33,18 +33,30 @@ func (r *Renter) DeleteDir(siaPath string) error {
 
 // DirInfo returns the Directory Information of the siadir
 func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
+	// Grab the siadir entry
+	entry, err := r.staticDirSet.Open(siaPath)
+	if err != nil {
+		return modules.DirectoryInfo{}, err
+	}
+	defer entry.Close()
+
 	// Grab the health information and return the Directory Info, the worst
 	// health will be returned. Depending on the directory and its contents that
 	// could either be health or stuckHealth
-	health, err := r.managedDirectoryHealth(siaPath)
-	if err != nil {
-		return modules.DirectoryInfo{}, nil
-	}
+	metadata := entry.BubbleMetadata()
 	return modules.DirectoryInfo{
-		Health:              math.Max(health.Health, health.StuckHealth),
-		LastHealthCheckTime: health.LastHealthCheckTime,
-		NumStuckChunks:      health.NumStuckChunks,
+		AggregateNumFiles:   metadata.AggregateNumFiles,
+		Health:              metadata.Health,
+		LastHealthCheckTime: metadata.LastHealthCheckTime,
+		MaxHealth:           math.Max(metadata.Health, metadata.StuckHealth),
+		MinRedundancy:       metadata.MinRedundancy,
+		ModTime:             metadata.ModTime,
+		NumFiles:            metadata.NumFiles,
+		NumStuckChunks:      metadata.NumStuckChunks,
+		NumSubDirs:          metadata.NumSubDirs,
 		SiaPath:             siaPath,
+		Size:                metadata.Size,
+		StuckHealth:         metadata.StuckHealth,
 	}, nil
 }
 

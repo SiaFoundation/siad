@@ -35,6 +35,9 @@ type (
 
 		// Repair loop fields
 		//
+		// Health is the worst health of the file's unstuck chunks and
+		// represents the percent of redundancy missing
+		//
 		// LastHealthCheckTime is the timestamp of the last time the SiaFile's
 		// health was checked by Health()
 		//
@@ -43,9 +46,18 @@ type (
 		//
 		// RecentRepairTime is the timestamp of the last time the file was added
 		// to the repair heap for repair
+		//
+		// Redundancy is the cached value of the last time the file's redundancy
+		// was checked
+		//
+		// StuckHealth is the worst health of any of the file's stuck chunks
+		//
+		Health              float64   `json:"health"`
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
 		RecentRepairTime    time.Time `json:"recentrepairtime"`
+		Redundancy          float64   `json:"redundancy"`
+		StuckHealth         float64   `json:"stuckhealth"`
 
 		// File ownership/permission fields.
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
@@ -85,6 +97,26 @@ type (
 		StaticErasureCodeType   [4]byte              `json:"erasurecodetype"`
 		StaticErasureCodeParams [8]byte              `json:"erasurecodeparams"`
 		staticErasureCode       modules.ErasureCoder // not persisted, exists for convenience
+	}
+
+	// BubbledMetadata is the metadata of a siafile that gets bubbled
+	BubbledMetadata struct {
+		Health              float64
+		LastHealthCheckTime time.Time
+		ModTime             time.Time
+		NumStuckChunks      uint64
+		RecentRepairTime    time.Time
+		Redundancy          float64
+		Size                uint64
+		StuckHealth         float64
+	}
+
+	// CachedHealthMetadata is a healper struct that contains the siafile health
+	// metadata fields that are cached
+	CachedHealthMetadata struct {
+		Health      float64
+		Redundancy  float64
+		StuckHealth float64
 	}
 )
 
@@ -282,7 +314,30 @@ func (sf *SiaFile) UpdateLastHealthCheckTime() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	sf.staticMetadata.LastHealthCheckTime = time.Now()
+	// Save changes to metadata to disk.
+	updates, err := sf.saveMetadataUpdate()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
 
+// UpdateCachedHealthMetadata updates the siafile metadata fields that are the
+// cached health values
+func (sf *SiaFile) UpdateCachedHealthMetadata(metadata CachedHealthMetadata) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Update the number of stuck chunks
+	var numStuckChunks uint64
+	for _, chunk := range sf.staticChunks {
+		if chunk.Stuck {
+			numStuckChunks++
+		}
+	}
+	sf.staticMetadata.Health = metadata.Health
+	sf.staticMetadata.NumStuckChunks = numStuckChunks
+	sf.staticMetadata.Redundancy = metadata.Redundancy
+	sf.staticMetadata.StuckHealth = metadata.StuckHealth
 	// Save changes to metadata to disk.
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {

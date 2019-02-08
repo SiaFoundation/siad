@@ -13,23 +13,49 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
-// equalMetadatas is a helper that compares two siaDirMetadatas.
+// equalMetadatas is a helper that compares two siaDirMetadatas. The time fields
+// are not checked due to how time is persisted and should be checked in the
+// test itself
 func equalMetadatas(md, md2 siaDirMetadata) error {
+	// Check AggregateNumFiles
+	if md.AggregateNumFiles != md2.AggregateNumFiles {
+		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, md2.AggregateNumFiles)
+	}
 	// Check Health
 	if md.Health != md2.Health {
 		return fmt.Errorf("healths not equal, %v and %v", md.Health, md2.Health)
 	}
-	// Check StuckHealth
-	if md.StuckHealth != md2.StuckHealth {
-		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
+	// Check MinRedundancy
+	if md.MinRedundancy != md2.MinRedundancy {
+		return fmt.Errorf("MinRedundancy not equal, %v and %v", md.MinRedundancy, md2.MinRedundancy)
+	}
+	// Check NumFiles
+	if md.NumFiles != md2.NumFiles {
+		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, md2.NumFiles)
+	}
+	// Check NumStuckChunks
+	if md.NumStuckChunks != md2.NumStuckChunks {
+		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, md2.NumStuckChunks)
+	}
+	// Check NumSubDirs
+	if md.NumSubDirs != md2.NumSubDirs {
+		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, md2.NumSubDirs)
+	}
+	// Check RootDir
+	if md.RootDir != md2.RootDir {
+		return fmt.Errorf("rootDirs not equal, %v and %v", md.RootDir, md2.RootDir)
 	}
 	// Check SiaPath
 	if md.SiaPath != md2.SiaPath {
 		return fmt.Errorf("siapaths not equal, %v and %v", md.SiaPath, md2.SiaPath)
 	}
-	// Check RootDir
-	if md.RootDir != md2.RootDir {
-		return fmt.Errorf("rootDirs not equal, %v and %v", md.RootDir, md2.RootDir)
+	// Check Size
+	if md.Size != md2.Size {
+		return fmt.Errorf("sizes not equal, %v and %v", md.Size, md2.Size)
+	}
+	// Check StuckHealth
+	if md.StuckHealth != md2.StuckHealth {
+		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
 	}
 
 	return nil

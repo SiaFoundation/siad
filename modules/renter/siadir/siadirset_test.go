@@ -224,26 +224,26 @@ func TestUpdateSiaDirSetHealth(t *testing.T) {
 	}
 
 	// Confirm Health is set properly
-	health := entry.Health()
+	health := entry.BubbleMetadata()
 	if err = checkHealthInit(health); err != nil {
 		t.Fatal(err)
 	}
 
 	// Update the health of the entry
 	checkTime := time.Now()
-	healthUpdate := SiaDirHealth{
+	healthUpdate := BubbledMetadata{
 		Health:              4,
 		StuckHealth:         2,
 		LastHealthCheckTime: checkTime,
 		NumStuckChunks:      5,
 	}
-	err = sds.UpdateHealth(siaPath, healthUpdate)
+	err = sds.UpdateMetadata(siaPath, healthUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Check Health was updated properly in memory and on disk
-	health = entry.Health()
+	health = entry.BubbleMetadata()
 	if !reflect.DeepEqual(health, healthUpdate) {
 		t.Log("Health", health)
 		t.Log("Health Update", healthUpdate)

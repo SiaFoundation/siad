@@ -264,9 +264,9 @@ func TestSiafileCompatibility(t *testing.T) {
 	}
 }
 
-// equalHealths is a helper that checks all the fields of two SiaDirHealths for
+// equalHealths is a helper that checks all the fields of two BubbledMetadatas for
 // equality
-func equalHealths(health1, health2 siadir.SiaDirHealth) error {
+func equalHealths(health1, health2 siadir.BubbledMetadata) error {
 	if health1.Health != health2.Health {
 		return fmt.Errorf("Healths not equal, %v and %v", health1.Health, health2.Health)
 	}

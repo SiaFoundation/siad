@@ -113,7 +113,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Bubble the health of the SiaFile directory to ensure the health is
 	// updated with the new file
-	go r.threadedBubbleHealth(dirSiaPath)
+	go r.threadedBubbleMetadata(dirSiaPath)
 
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()

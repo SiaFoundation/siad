@@ -57,13 +57,13 @@ func (rt *renterTester) checkDirInitialized(siaPath string) error {
 	}
 	defer siaDir.Close()
 
-	// Check that health is default value
-	health := siaDir.Health()
-	defaultHealth := siadir.SiaDirHealth{
+	// Check that metadata is default value
+	metadata := siaDir.BubbleMetadata()
+	defaultHealth := siadir.BubbledMetadata{
 		Health:      siadir.DefaultDirHealth,
 		StuckHealth: siadir.DefaultDirHealth,
 	}
-	if err = equalHealthsAndChunks(health, defaultHealth); err != nil {
+	if err = equalHealthsAndChunks(metadata, defaultHealth); err != nil {
 		return err
 	}
 	// Check that the SiaPath was initialized properly
@@ -173,15 +173,15 @@ func TestRenterListDirectory(t *testing.T) {
 // compareDirectoryInfoAndMetadata is a helper that compares the information in
 // a DirectoryInfo struct and a SiaDirSetEntry struct
 func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.SiaDirSetEntry) error {
-	health := siaDir.Health()
+	metadata := siaDir.BubbleMetadata()
 	if di.SiaPath != siaDir.SiaPath() {
 		return fmt.Errorf("SiaPaths not equal %v and %v", di.SiaPath, siaDir.SiaPath())
 	}
-	if di.Health != health.StuckHealth {
-		return fmt.Errorf("Healths not equal %v and %v", di.SiaPath, health.StuckHealth)
+	if di.Health != metadata.StuckHealth {
+		return fmt.Errorf("Healths not equal %v and %v", di.SiaPath, metadata.StuckHealth)
 	}
-	if di.LastHealthCheckTime != health.LastHealthCheckTime {
-		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v", di.LastHealthCheckTime, health.LastHealthCheckTime)
+	if di.LastHealthCheckTime != metadata.LastHealthCheckTime {
+		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v", di.LastHealthCheckTime, metadata.LastHealthCheckTime)
 	}
 	return nil
 }

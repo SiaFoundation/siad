@@ -202,7 +202,7 @@ func (r *Renter) loadAndExecuteBubbleUpdates() error {
 		return err
 	}
 	for dir := range r.bubbleUpdates {
-		go r.threadedBubbleHealth(dir)
+		go r.threadedBubbleMetadata(dir)
 	}
 	return nil
 }
