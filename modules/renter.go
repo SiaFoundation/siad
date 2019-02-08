@@ -523,6 +523,10 @@ type Renter interface {
 	// isn't available for recovery or something went wrong.
 	RecoverableContracts() []RecoverableContract
 
+	// RecoveryScanStatus returns a bool indicating if a scan for recoverable
+	// contracts is in progress and if it is, the current progress of the scan.
+	RecoveryScanStatus() (bool, types.BlockHeight)
+
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(path string) error
 

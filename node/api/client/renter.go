@@ -137,6 +137,13 @@ func (c *Client) RenterInitContractRecoveryScanPost() (err error) {
 	return
 }
 
+// RenterContractRecoveryProgressGet returns information about potentially
+// ongoing contract recovery scans.
+func (c *Client) RenterContractRecoveryProgressGet() (rrs api.RenterRecoveryStatusGET, err error) {
+	err = c.get("/renter/recoveryscan", &rrs)
+	return
+}
+
 // RenterExpiredContractsGet requests the /renter/contracts resource with the
 // expired flag set to true
 func (c *Client) RenterExpiredContractsGet() (rc api.RenterContracts, err error) {

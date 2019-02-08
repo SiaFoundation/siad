@@ -3,6 +3,7 @@ package contractor
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -64,6 +65,10 @@ func (rs *recoveryScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
 	for _, block := range cc.AppliedBlocks {
 		// Find lost contracts for recovery.
 		rs.c.findRecoverableContracts(rs.rs, block)
+		atomic.AddInt64(&rs.c.atomicRecoveryScanHeight, 1)
+	}
+	for range cc.RevertedBlocks {
+		atomic.AddInt64(&rs.c.atomicRecoveryScanHeight, -1)
 	}
 }
 

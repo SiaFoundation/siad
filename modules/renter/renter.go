@@ -165,6 +165,10 @@ type hostContractor interface {
 	// isn't available for recovery or something went wrong.
 	RecoverableContracts() []modules.RecoverableContract
 
+	// RecoveryScanStatus returns a bool indicating if a scan for recoverable
+	// contracts is in progress and if it is, the current progress of the scan.
+	RecoveryScanStatus() (bool, types.BlockHeight)
+
 	// RateLimits Gets the bandwidth limits for connections created by the
 	// contractor and its submodules.
 	RateLimits() (readBPS int64, writeBPS int64, packetSize uint64)
@@ -638,6 +642,12 @@ func (r *Renter) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility
 // contracts within a separate thread.
 func (r *Renter) InitRecoveryScan() error {
 	return r.hostContractor.InitRecoveryScan()
+}
+
+// RecoveryScanStatus returns a bool indicating if a scan for recoverable
+// contracts is in progress and if it is, the current progress of the scan.
+func (r *Renter) RecoveryScanStatus() (bool, types.BlockHeight) {
+	return r.hostContractor.RecoveryScanStatus()
 }
 
 // OldContracts returns an array of host contractor's oldContracts

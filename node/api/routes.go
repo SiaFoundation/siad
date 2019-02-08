@@ -79,7 +79,8 @@ func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword strin
 		router.GET("/renter/files", api.renterFilesHandler)
 		router.GET("/renter/file/*siapath", api.renterFileHandlerGET)
 		router.GET("/renter/prices", api.renterPricesHandler)
-		router.POST("/renter/recoveryscan", api.renterRecoveryScanHandler)
+		router.POST("/renter/recoveryscan", api.renterRecoveryScanHandlerPOST)
+		router.GET("/renter/recoveryscan", api.renterRecoveryScanHandlerGET)
 
 		// TODO: re-enable these routes once the new .sia format has been
 		// standardized and implemented.
