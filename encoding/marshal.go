@@ -251,7 +251,7 @@ type Decoder struct {
 	r        io.Reader
 	buf      [8]byte
 	err      error
-	canAlloc int // number of bytes that may be allocated
+	canAlloc uint64 // number of bytes that may be allocated
 }
 
 // Read implements the io.Reader interface.
@@ -319,11 +319,12 @@ func (d *Decoder) NextBool() bool {
 // NextPrefix returns 0 and sets d.Err().
 func (d *Decoder) NextPrefix(elemSize uintptr) uint64 {
 	n := d.NextUint64()
-	d.canAlloc -= int(n) * int(elemSize)
-	if d.canAlloc < 0 {
-		d.err = ErrAllocLimitExceeded(-d.canAlloc)
+	allocSize := n * uint64(elemSize)
+	if allocSize > d.canAlloc {
+		d.err = ErrAllocLimitExceeded(allocSize - d.canAlloc)
 		return 0
 	}
+	d.canAlloc -= allocSize
 	return n
 }
 
@@ -391,11 +392,12 @@ func (d *Decoder) decode(val reflect.Value) {
 		// make sure we aren't decoding into nil
 		if val.IsNil() {
 			// account for allocation
-			d.canAlloc -= int(val.Type().Elem().Size())
-			if d.canAlloc < 0 {
-				d.err = ErrAllocLimitExceeded(d.canAlloc)
+			allocSize := uint64(val.Type().Elem().Size())
+			if allocSize > d.canAlloc {
+				d.err = ErrAllocLimitExceeded(allocSize - d.canAlloc)
 				return
 			}
+			d.canAlloc -= allocSize
 			val.Set(reflect.New(val.Type().Elem()))
 		}
 		d.decode(val.Elem())
@@ -446,7 +448,7 @@ func NewDecoder(r io.Reader, maxAlloc int) *Decoder {
 	if d, ok := r.(*Decoder); ok {
 		return d
 	}
-	return &Decoder{r: r, canAlloc: maxAlloc}
+	return &Decoder{r: r, canAlloc: uint64(maxAlloc)}
 }
 
 // Unmarshal decodes the encoded value b and stores it in v, which must be a
