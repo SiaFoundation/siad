@@ -503,8 +503,7 @@ func ReadRPCMessage(r io.Reader, aead cipher.AEAD, obj interface{}, maxLen uint6
 	if err != nil {
 		return err
 	}
-	// plaintext may contain padding, so use Decoder instead of Unmarshal
-	return encoding.NewDecoder(bytes.NewReader(plaintext)).Decode(obj)
+	return encoding.Unmarshal(plaintext, obj)
 }
 
 // WriteRPCRequest writes an encrypted RPC request using the new loop
@@ -562,7 +561,7 @@ func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uin
 	if err != nil {
 		return err
 	}
-	dec := encoding.NewDecoder(bytes.NewReader(decryptedResp))
+	dec := encoding.NewDecoder(bytes.NewReader(decryptedResp), len(decryptedResp)*2+4096)
 	var rpcErr *RPCError
 	if err := dec.Decode(&rpcErr); err != nil {
 		return err
@@ -647,7 +646,7 @@ func DecodeAnnouncement(fullAnnouncement []byte) (na NetAddress, spk types.SiaPu
 	// Read the first part of the announcement to get the intended host
 	// announcement.
 	var ha HostAnnouncement
-	dec := encoding.NewDecoder(bytes.NewReader(fullAnnouncement))
+	dec := encoding.NewDecoder(bytes.NewReader(fullAnnouncement), len(fullAnnouncement)*2+4096)
 	err = dec.Decode(&ha)
 	if err != nil {
 		return "", types.SiaPublicKey{}, err

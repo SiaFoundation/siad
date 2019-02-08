@@ -121,7 +121,7 @@ func (f *file) MarshalSia(w io.Writer) error {
 // UnmarshalSia implements the encoding.SiaUnmarshaler interface,
 // reconstructing a file from the encoded bytes read from r.
 func (f *file) UnmarshalSia(r io.Reader) error {
-	dec := encoding.NewDecoder(r)
+	dec := encoding.NewDecoder(r, 100e6)
 
 	// COMPATv0.4.3 - decode bytesUploaded and chunksUploaded into dummy vars.
 	var bytesUploaded, chunksUploaded uint64

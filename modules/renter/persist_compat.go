@@ -104,7 +104,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 	var header [15]byte
 	var version string
 	var numFiles uint64
-	err := encoding.NewDecoder(reader).DecodeAll(
+	err := encoding.NewDecoder(reader, encoding.DefaultAllocLimit).DecodeAll(
 		&header,
 		&version,
 		&numFiles,
@@ -122,7 +122,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 	if err != nil {
 		return nil, err
 	}
-	dec := encoding.NewDecoder(unzip)
+	dec := encoding.NewDecoder(unzip, 100e6)
 
 	// Read each file.
 	files := make([]*file, numFiles)

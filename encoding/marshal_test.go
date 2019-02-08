@@ -56,7 +56,7 @@ func (t test5) MarshalSia(w io.Writer) error {
 }
 
 func (t *test5) UnmarshalSia(r io.Reader) error {
-	d := NewDecoder(r)
+	d := NewDecoder(r, 1e6)
 	t.s = string(d.ReadPrefixedBytes())
 	return d.Err()
 }
@@ -67,7 +67,7 @@ func (t *test6) MarshalSia(w io.Writer) error {
 }
 
 func (t *test6) UnmarshalSia(r io.Reader) error {
-	d := NewDecoder(r)
+	d := NewDecoder(r, 1e6)
 	t.s = string(d.ReadPrefixedBytes())
 	return d.Err()
 }
@@ -150,7 +150,7 @@ func TestDecode(t *testing.T) {
 	}
 
 	// badReader should fail on every decode
-	dec := NewDecoder(new(badReader))
+	dec := NewDecoder(new(badReader), 1e6)
 	for i := range testEncodings {
 		err := dec.Decode(emptyStructs[i])
 		if err == nil {
@@ -183,7 +183,7 @@ func TestEncodeDecode(t *testing.T) {
 	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}, &test7{}}
 	b := new(bytes.Buffer)
 	enc := NewEncoder(b)
-	dec := NewDecoder(b)
+	dec := NewDecoder(b, 1e6)
 	for i := range testStructs {
 		enc.Encode(testStructs[i])
 		err := dec.Decode(emptyStructs[i])
@@ -226,7 +226,7 @@ func TestDecodeAll(t *testing.T) {
 	NewEncoder(b).EncodeAll(testStructs...)
 
 	var emptyStructs = []interface{}{&test0{}, &test1{}, &test2{}, &test3{}, &test4{}, &test5{}, &test6{}, &test7{}}
-	err := NewDecoder(b).DecodeAll(emptyStructs...)
+	err := NewDecoder(b, 1e6).DecodeAll(emptyStructs...)
 	if err != nil {
 		t.Error(err)
 	}
@@ -248,7 +248,7 @@ func TestDecodeAll(t *testing.T) {
 		foo      string
 		tru      bool
 	)
-	err = NewDecoder(b).DecodeAll(&one, &two, &foo, &tru)
+	err = NewDecoder(b, 1e6).DecodeAll(&one, &two, &foo, &tru)
 	if err != nil {
 		t.Fatal(err)
 	} else if one != 1 || two != 2 || foo != "foo" || tru != true {

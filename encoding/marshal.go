@@ -13,6 +13,21 @@ import (
 	"reflect"
 )
 
+const (
+	// DefaultAllocLimit is a reasonable number of bytes that may be allocated
+	// when decoding an unspecified object.
+	DefaultAllocLimit = 1e6
+)
+
+// ErrAllocLimitExceeded is the error returned when an encoded object exceeds
+// the specified allocation limit.
+type ErrAllocLimitExceeded int
+
+// Error implements the error interface.
+func (e ErrAllocLimitExceeded) Error() string {
+	return fmt.Sprintf("encoded object exceeded allocation limit by %v bytes", int(e))
+}
+
 var (
 	errBadPointer = errors.New("cannot decode into invalid pointer")
 )
@@ -233,10 +248,10 @@ func WriteFile(filename string, v interface{}) error {
 // methods do not return errors, but instead set the value of d.Err(). Once
 // d.Err() is set, future operations become no-ops.
 type Decoder struct {
-	r   io.Reader
-	buf [8]byte
-	err error
-	n   int // total number of bytes read
+	r        io.Reader
+	buf      [8]byte
+	err      error
+	canAlloc int // number of bytes that may be allocated
 }
 
 // Read implements the io.Reader interface.
@@ -246,7 +261,6 @@ func (d *Decoder) Read(p []byte) (int, error) {
 	}
 	var n int
 	n, d.err = d.r.Read(p)
-	d.n += n
 	return n, d.err
 }
 
@@ -255,11 +269,10 @@ func (d *Decoder) ReadFull(p []byte) {
 	if d.err != nil {
 		return
 	}
-	n, err := io.ReadFull(d.r, p)
+	_, err := io.ReadFull(d.r, p)
 	if err != nil {
 		d.err = err
 	}
-	d.n += n
 }
 
 // ReadPrefixedBytes reads a length-prefix, allocates a byte slice with that length,
@@ -269,7 +282,6 @@ func (d *Decoder) ReadPrefixedBytes() []byte {
 	n := d.NextPrefix(1) // if too large, n == 0
 	if buf, ok := d.r.(*bytes.Buffer); ok {
 		b := buf.Next(int(n))
-		d.n += len(b)
 		if len(b) < int(n) && d.err == nil {
 			d.err = io.ErrUnexpectedEOF
 		}
@@ -307,6 +319,11 @@ func (d *Decoder) NextBool() bool {
 // NextPrefix returns 0 and sets d.Err().
 func (d *Decoder) NextPrefix(elemSize uintptr) uint64 {
 	n := d.NextUint64()
+	d.canAlloc -= int(n) * int(elemSize)
+	if d.canAlloc < 0 {
+		d.err = ErrAllocLimitExceeded(-d.canAlloc)
+		return 0
+	}
 	return n
 }
 
@@ -334,7 +351,6 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 	}()
 
 	// reset the read count
-	d.n = 0
 
 	d.decode(pval.Elem())
 	return
@@ -374,6 +390,12 @@ func (d *Decoder) decode(val reflect.Value) {
 		}
 		// make sure we aren't decoding into nil
 		if val.IsNil() {
+			// account for allocation
+			d.canAlloc -= int(val.Type().Elem().Size())
+			if d.canAlloc < 0 {
+				d.err = ErrAllocLimitExceeded(d.canAlloc)
+				return
+			}
 			val.Set(reflect.New(val.Type().Elem()))
 		}
 		d.decode(val.Elem())
@@ -418,27 +440,26 @@ func (d *Decoder) decode(val reflect.Value) {
 	}
 }
 
-// NewDecoder converts r to a Decoder.
-func NewDecoder(r io.Reader) *Decoder {
+// NewDecoder converts r to a Decoder. maxAlloc is the maximum number of bytes
+// that may be allocated by the decoder.
+func NewDecoder(r io.Reader, maxAlloc int) *Decoder {
 	if d, ok := r.(*Decoder); ok {
 		return d
 	}
-	return &Decoder{r: r}
+	return &Decoder{r: r, canAlloc: maxAlloc}
 }
 
 // Unmarshal decodes the encoded value b and stores it in v, which must be a
 // pointer. The decoding rules are the inverse of those specified in the
 // package docstring for marshaling.
 func Unmarshal(b []byte, v interface{}) error {
-	r := bytes.NewBuffer(b)
-	return NewDecoder(r).Decode(v)
+	return NewDecoder(bytes.NewBuffer(b), len(b)*2+4096).Decode(v)
 }
 
 // UnmarshalAll decodes the encoded values in b and stores them in vs, which
 // must be pointers.
 func UnmarshalAll(b []byte, vs ...interface{}) error {
-	dec := NewDecoder(bytes.NewBuffer(b))
-	return dec.DecodeAll(vs...)
+	return NewDecoder(bytes.NewBuffer(b), len(b)*2+4096).DecodeAll(vs...)
 }
 
 // ReadFile reads the contents of a file and decodes them into v.
@@ -448,7 +469,11 @@ func ReadFile(filename string, v interface{}) error {
 		return err
 	}
 	defer file.Close()
-	err = NewDecoder(file).Decode(v)
+	stat, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	err = NewDecoder(file, int(stat.Size()*2+4096)).Decode(v)
 	if err != nil {
 		return errors.New("error while reading " + filename + ": " + err.Error())
 	}

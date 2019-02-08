@@ -267,7 +267,7 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	// renter is using the old protocol, and that the following 8 bytes
 	// complete the renter's intended RPC ID.
 	var id types.Specifier
-	if err := encoding.NewDecoder(conn).Decode(&id); err != nil {
+	if err := encoding.NewDecoder(conn, encoding.DefaultAllocLimit).Decode(&id); err != nil {
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		h.log.Debugf("WARN: incoming conn %v was malformed: %v", conn.RemoteAddr(), err)
 		return
