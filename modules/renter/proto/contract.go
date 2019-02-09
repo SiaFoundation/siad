@@ -452,17 +452,27 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 
 // loadSafeContract loads a contract from disk and adds it to the contractset
 // if it is valid.
-func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlog.Transaction) error {
+func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlog.Transaction) (err error) {
 	f, err := os.OpenFile(filename, os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			f.Close()
+		}
+	}()
+	stat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+
 	headerSection := newFileSection(f, 0, contractHeaderSize)
 	rootsSection := newFileSection(f, contractHeaderSize, remainingFile)
 
 	// read header
 	var header contractHeader
-	if err := encoding.NewDecoder(f).Decode(&header); err != nil {
+	if err := encoding.NewDecoder(f, int(stat.Size()*2+4096)).Decode(&header); err != nil {
 		return err
 	} else if err := header.validate(); err != nil {
 		return err

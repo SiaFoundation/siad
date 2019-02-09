@@ -8,7 +8,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestRenterCreateDirectories checks that the renter properly created metadata files
@@ -48,7 +47,7 @@ func TestRenterCreateDirectories(t *testing.T) {
 // initialized correctly and the metadata file exist and contain the correct
 // information
 func (rt *renterTester) checkDirInitialized(siaPath string) error {
-	fullpath := filepath.Join(rt.renter.filesDir, siaPath, siadir.SiaDirExtension)
+	fullpath := filepath.Join(rt.renter.staticFilesDir, siaPath, siadir.SiaDirExtension)
 	if _, err := os.Stat(fullpath); err != nil {
 		return err
 	}
@@ -66,10 +65,6 @@ func (rt *renterTester) checkDirInitialized(siaPath string) error {
 	}
 	if err = equalHealthsAndChunks(health, defaultHealth); err != nil {
 		return err
-	}
-	// Check that the LastHealthCheckTime is not zero
-	if health.LastHealthCheckTime.IsZero() {
-		return errors.New("LastHealthCheckTime was not initialized")
 	}
 	// Check that the SiaPath was initialized properly
 	if siaDir.SiaPath() != siaPath {

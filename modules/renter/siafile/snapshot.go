@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -22,6 +23,50 @@ type (
 		staticSiaPath     string
 	}
 )
+
+// SnapshotReader is a helper type that allows reading a raw SiaFile from disk
+// while keeping the file in memory locked.
+type SnapshotReader struct {
+	f  *os.File
+	sf *SiaFile
+}
+
+// Close closes the underlying file.
+func (sfr *SnapshotReader) Close() error {
+	sfr.sf.mu.RUnlock()
+	return sfr.f.Close()
+}
+
+// Read calls Read on the underlying file.
+func (sfr *SnapshotReader) Read(b []byte) (int, error) {
+	return sfr.f.Read(b)
+}
+
+// Stat returns the FileInfo of the underlying file.
+func (sfr *SnapshotReader) Stat() (os.FileInfo, error) {
+	return sfr.f.Stat()
+}
+
+// SnapshotReader creates a io.ReadCloser that can be used to read the raw
+// Siafile from disk.
+func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
+	// Lock the file.
+	sf.mu.RLock()
+	if sf.deleted {
+		sf.mu.RUnlock()
+		return nil, errors.New("can't copy deleted SiaFile")
+	}
+	// Open file.
+	f, err := os.Open(sf.siaFilePath)
+	if err != nil {
+		sf.mu.RUnlock()
+		return nil, err
+	}
+	return &SnapshotReader{
+		sf: sf,
+		f:  f,
+	}, nil
+}
 
 // ChunkIndexByOffset will return the chunkIndex that contains the provided
 // offset of a file and also the relative offset within the chunk. If the

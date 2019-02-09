@@ -3,7 +3,6 @@ package host
 import (
 	"crypto/cipher"
 	"errors"
-	"io"
 	"net"
 	"time"
 
@@ -57,7 +56,7 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 	// read renter's half of key exchange
 	conn.SetDeadline(time.Now().Add(rpcRequestInterval))
 	var req modules.LoopKeyExchangeRequest
-	if err := encoding.NewDecoder(io.LimitReader(conn, keyExchangeMaxLen)).Decode(&req); err != nil {
+	if err := encoding.NewDecoder(conn, encoding.DefaultAllocLimit).Decode(&req); err != nil {
 		return err
 	}
 

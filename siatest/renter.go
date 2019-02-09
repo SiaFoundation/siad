@@ -251,18 +251,8 @@ func (tn *TestNode) UploadDirectory(ld *LocalDir) (*RemoteDir, error) {
 
 // UploadNewDirectory uses the node to create and upload a directory with a
 // random name
-func (tn *TestNode) UploadNewDirectory(files, dirs, levels uint) (*RemoteDir, error) {
-	// Create Directory
-	ld, err := tn.filesDir.newDir()
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to create local directory")
-	}
-	if err = ld.PopulateDir(files, dirs, levels); err != nil {
-		return nil, errors.AddContext(err, "failed to populate directory")
-	}
-
-	// Upload Directory
-	return tn.UploadDirectory(ld)
+func (tn *TestNode) UploadNewDirectory() (*RemoteDir, error) {
+	return tn.UploadDirectory(tn.NewLocalDir())
 }
 
 // UploadNewFile initiates the upload of a filesize bytes large file with the option to overwrite if exists.

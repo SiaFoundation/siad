@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // newRootDir creates a root directory for the test and removes old test files
@@ -117,9 +116,6 @@ func TestNewSiaDir(t *testing.T) {
 func checkHealthInit(health SiaDirHealth) error {
 	if health.Health != DefaultDirHealth {
 		return fmt.Errorf("SiaDir health not set properly: got %v expected %v", health.Health, DefaultDirHealth)
-	}
-	if health.LastHealthCheckTime.IsZero() {
-		return errors.New("lastHealthCheckTime not initialized")
 	}
 	if health.StuckHealth != DefaultDirHealth {
 		return fmt.Errorf("SiaDir stuck health not set properly: got %v expected %v", health.StuckHealth, DefaultDirHealth)

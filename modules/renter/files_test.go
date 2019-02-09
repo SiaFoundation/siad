@@ -57,7 +57,7 @@ func (r *Renter) newRenterTestFile() (*siafile.SiaFileSetEntry, error) {
 	// Generate name and erasure coding
 	name, rsc := testingFileParams()
 	// create the renter/files dir if it doesn't exist
-	siaFilePath := filepath.Join(r.filesDir, name+siafile.ShareExtension)
+	siaFilePath := filepath.Join(r.staticFilesDir, name+siafile.ShareExtension)
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
@@ -312,6 +312,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Create offline map
 	offlineMap := make(map[string]bool)
+	goodForRenewMap := make(map[string]bool)
 
 	// Check file health, since there are no pieces in the chunk yet no good
 	// pieces will be found resulting in a health of 1.5 with the erasure code
@@ -319,7 +320,7 @@ func TestFileHealth(t *testing.T) {
 	// file should be 0
 	//
 	// 1 - ((0 - 10) / 20)
-	health, stuckHealth, _ := f.Health(offlineMap)
+	health, stuckHealth, _ := f.Health(offlineMap, goodForRenewMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -333,6 +334,7 @@ func TestFileHealth(t *testing.T) {
 		spk := types.SiaPublicKey{}
 		spk.LoadString(host)
 		offlineMap[spk.String()] = false
+		goodForRenewMap[spk.String()] = true
 		if err := f.AddPiece(spk, 0, 0, crypto.Hash{}); err != nil {
 			t.Fatal(err)
 		}
@@ -342,7 +344,7 @@ func TestFileHealth(t *testing.T) {
 	// since the two good pieces were added to the same pieceSet
 	//
 	// 1 - ((1 - 10) / 20)
-	health, _, _ = f.Health(offlineMap)
+	health, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.45 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.45", health)
 	}
@@ -352,10 +354,11 @@ func TestFileHealth(t *testing.T) {
 	spk := types.SiaPublicKey{}
 	spk.LoadString(host)
 	offlineMap[spk.String()] = false
+	goodForRenewMap[spk.String()] = true
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
-	health, _, _ = f.Health(offlineMap)
+	health, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
@@ -365,10 +368,11 @@ func TestFileHealth(t *testing.T) {
 	spk = types.SiaPublicKey{}
 	spk.LoadString(host)
 	offlineMap[spk.String()] = false
+	goodForRenewMap[spk.String()] = true
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
-	health, _, _ = f.Health(offlineMap)
+	health, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
@@ -378,7 +382,7 @@ func TestFileHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	health, stuckHealth, numStuckChunks := f.Health(offlineMap)
+	health, stuckHealth, numStuckChunks := f.Health(offlineMap, goodForRenewMap)
 	// Health should now be 0 since there are no unstuck chunks
 	if health != 0 {
 		t.Fatalf("Health of file not as expected, got %v expected 0", health)
@@ -400,10 +404,11 @@ func TestFileHealth(t *testing.T) {
 
 	// Create offline map
 	offlineMap = make(map[string]bool)
+	goodForRenewMap = make(map[string]bool)
 
 	// Check file health, since there are no pieces in the chunk yet no good
 	// pieces will be found resulting in a health of 1.5
-	health, _, _ = f.Health(offlineMap)
+	health, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -414,6 +419,7 @@ func TestFileHealth(t *testing.T) {
 		spk := types.SiaPublicKey{}
 		spk.LoadString(host)
 		offlineMap[spk.String()] = false
+		goodForRenewMap[spk.String()] = true
 		if err := f.AddPiece(spk, 0, uint64(i%2), crypto.Hash{}); err != nil {
 			t.Fatal(err)
 		}
@@ -421,7 +427,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Check health, should still be 1.5 because other chunk doesn't have any
 	// good pieces
-	health, stuckHealth, _ = f.Health(offlineMap)
+	health, stuckHealth, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -433,11 +439,12 @@ func TestFileHealth(t *testing.T) {
 		spk := types.SiaPublicKey{}
 		spk.LoadString(host)
 		offlineMap[spk.String()] = false
+		goodForRenewMap[spk.String()] = true
 		if err := f.AddPiece(spk, 1, uint64(i%2), crypto.Hash{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	health, _, _ = f.Health(offlineMap)
+	health, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
@@ -447,7 +454,7 @@ func TestFileHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	health, stuckHealth, numStuckChunks = f.Health(offlineMap)
+	health, stuckHealth, numStuckChunks = f.Health(offlineMap, goodForRenewMap)
 	// Since both chunks have the same health, the file health and the file stuck health should be the same
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
@@ -595,7 +602,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+siafile.ShareExtension)) // set name to "1"
+	err = entry2.Rename("1", filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension)) // set name to "1"
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,10 +628,10 @@ func TestRenterDeleteFile(t *testing.T) {
 
 	// Check that all .sia files have been deleted.
 	var walkStr string
-	filepath.Walk(rt.renter.filesDir, func(path string, _ os.FileInfo, _ error) error {
+	filepath.Walk(rt.renter.staticFilesDir, func(path string, _ os.FileInfo, _ error) error {
 		// capture only .sia files
 		if filepath.Ext(path) == ".sia" {
-			rel, _ := filepath.Rel(rt.renter.filesDir, path) // strip testdir prefix
+			rel, _ := filepath.Rel(rt.renter.staticFilesDir, path) // strip testdir prefix
 			walkStr += rel
 		}
 		return nil
@@ -711,7 +718,7 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file that does exist.
 	entry, _ := rt.renter.newRenterTestFile()
-	err = entry.Rename("1", filepath.Join(rt.renter.filesDir, "1"+siafile.ShareExtension))
+	err = entry.Rename("1", filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -745,7 +752,7 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename("1", filepath.Join(rt.renter.filesDir, "1"+siafile.ShareExtension))
+	err = entry2.Rename("1", filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -258,9 +258,10 @@ func TestChunkHealth(t *testing.T) {
 
 	// Create offline map
 	offlineMap := make(map[string]bool)
+	goodForRenewMap := make(map[string]bool)
 
 	// Check and Record file health of initialized file
-	fileHealth, _, _ := sf.Health(offlineMap)
+	fileHealth, _, _ := sf.Health(offlineMap, goodForRenewMap)
 	initHealth := float64(1) - (float64(0-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
 	if fileHealth != initHealth {
 		t.Fatalf("Expected file to be %v, got %v", initHealth, fileHealth)
@@ -269,7 +270,7 @@ func TestChunkHealth(t *testing.T) {
 	// Since we are using a pre set offlineMap, all the chunks should have the
 	// same health as the file
 	for i := range sf.staticChunks {
-		chunkHealth := sf.chunkHealth(i, offlineMap)
+		chunkHealth := sf.chunkHealth(i, offlineMap, goodForRenewMap)
 		if chunkHealth != fileHealth {
 			t.Log("ChunkHealth:", chunkHealth)
 			t.Log("FileHealth:", fileHealth)
@@ -281,41 +282,43 @@ func TestChunkHealth(t *testing.T) {
 	host := fmt.Sprintln("host_0")
 	spk := types.SiaPublicKey{}
 	spk.LoadString(host)
-	offlineMap[string(spk.Key)] = false
+	offlineMap[spk.String()] = false
+	goodForRenewMap[spk.String()] = true
 	if err := sf.AddPiece(spk, 0, 0, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Chunk at index 0 should now have a health of 1 higher than before
 	newHealth := float64(1) - (float64(1-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
-	if sf.chunkHealth(0, offlineMap) != newHealth {
-		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(0, offlineMap))
+	if sf.chunkHealth(0, offlineMap, goodForRenewMap) != newHealth {
+		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, sf.chunkHealth(0, offlineMap, goodForRenewMap))
 	}
 
 	// Chunk at index 1 should still have lower health
-	if sf.chunkHealth(1, offlineMap) != fileHealth {
-		t.Fatalf("Expected file to be %v, got %v", fileHealth, sf.chunkHealth(1, offlineMap))
+	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != fileHealth {
+		t.Fatalf("Expected chunk health to be %v, got %v", fileHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
 	}
 
 	// Add good piece to second chunk
 	host = fmt.Sprintln("host_1")
 	spk = types.SiaPublicKey{}
 	spk.LoadString(host)
-	offlineMap[string(spk.Key)] = false
+	offlineMap[spk.String()] = false
+	goodForRenewMap[spk.String()] = true
 	if err := sf.AddPiece(spk, 1, 0, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Chunk at index 1 should now have a health of 1 higher than before
-	if sf.chunkHealth(1, offlineMap) != newHealth {
-		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap))
+	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != newHealth {
+		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
 	}
 
 	// Mark Chunk at index 1 as stuck and confirm that doesn't impact the result
 	// of chunkHealth
 	sf.staticChunks[1].Stuck = true
-	if sf.chunkHealth(1, offlineMap) != newHealth {
-		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap))
+	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != newHealth {
+		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
 	}
 }
 

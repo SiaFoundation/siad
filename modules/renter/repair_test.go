@@ -47,7 +47,7 @@ func TestBubbleHealth(t *testing.T) {
 	}
 
 	// Check to make sure bubble doesn't error on an empty directory
-	go rt.renter.threadedBubbleHealth("")
+	rt.renter.threadedBubbleHealth("")
 	defaultHealth := siadir.SiaDirHealth{
 		Health:              siadir.DefaultDirHealth,
 		StuckHealth:         siadir.DefaultDirHealth,
@@ -125,7 +125,7 @@ func TestBubbleHealth(t *testing.T) {
 	// Note: this tests the edge case of bubbling an empty directory and
 	// directories with no files but do have sub directories since bubble will
 	// execute on all the parent directories
-	go rt.renter.threadedBubbleHealth(siaPath)
+	rt.renter.threadedBubbleHealth(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryHealth("")
@@ -166,8 +166,8 @@ func TestBubbleHealth(t *testing.T) {
 	//
 	// Note: this tests the edge case of bubbling a directory with a file
 	// but no sub directories
-	offline, _, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{f})
-	fileHealth, _, _ := f.Health(offline)
+	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{f})
+	fileHealth, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
 	}
@@ -178,7 +178,7 @@ func TestBubbleHealth(t *testing.T) {
 	// Now when we bubble the health and check for the worst health we should still see
 	// that the health is the health of subDir1/subDir1 which was set to 1 again
 	// and the stuck health will be the health of the stuck file
-	go rt.renter.threadedBubbleHealth(siaPath)
+	rt.renter.threadedBubbleHealth(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryHealth("")
@@ -206,11 +206,34 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Now if we bubble the health and check for the worst health we should see
 	// that the health is the health of the file
-	go rt.renter.threadedBubbleHealth(siaPath)
+	rt.renter.threadedBubbleHealth(siaPath)
 	expectedHealth := siadir.SiaDirHealth{
 		Health:      2,
 		StuckHealth: 0,
 	}
+	build.Retry(100, 100*time.Millisecond, func() error {
+		// Get Root Directory Health
+		health, err := rt.renter.managedDirectoryHealth("")
+		if err != nil {
+			return err
+		}
+		// Check Health
+		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the RecentRepairTime of the file and confirm that the file's
+	// health is now ignored
+	if err := f.UpdateRecentRepairTime(); err != nil {
+		t.Fatal(err)
+	}
+	expectedHealth.Health = 0
+	rt.renter.threadedBubbleHealth(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryHealth("")
@@ -244,7 +267,7 @@ func TestBubbleHealth(t *testing.T) {
 	if err := rt.renter.staticDirSet.UpdateHealth(filepath.Join(siaPath, subDir1), expectedHealth); err != nil {
 		t.Fatal(err)
 	}
-	go rt.renter.threadedBubbleHealth(siaPath)
+	rt.renter.threadedBubbleHealth(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryHealth("")
@@ -368,7 +391,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 
 	// Confirm worst health directory is the top level directory since all
 	// directories should be at the default health which is 0 or full health
-	go rt.renter.threadedBubbleHealth(subDir1)
+	rt.renter.threadedBubbleHealth(subDir1)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		dir, health, err := rt.renter.managedWorstHealthDirectory()
 		if err != nil {
@@ -399,7 +422,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 
 	// Bubble the health of SubDir1 so that the worst health of
 	// SubDir1/SubDir2 gets bubbled up
-	go rt.renter.threadedBubbleHealth(subDir1)
+	rt.renter.threadedBubbleHealth(subDir1)
 
 	// Find the worst health directory, should be SubDir1/SubDir2
 	build.Retry(100, 100*time.Millisecond, func() error {
@@ -412,6 +435,66 @@ func TestWorstHealthDirectory(t *testing.T) {
 		}
 		if health != worstHealth {
 			return fmt.Errorf("Expected to find health of %v but found %v", worstHealth, health)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add file to SubDir1/SubDir2
+	rsc, _ := siafile.NewRSCode(1, 1)
+	up := modules.FileUploadParams{
+		Source:      "",
+		SiaPath:     filepath.Join(siaPath, "test"),
+		ErasureCode: rsc,
+	}
+	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Bubble health, confirm that the health worst directory is still
+	// SubDir1/SubDir2
+	rt.renter.threadedBubbleHealth(siaPath)
+
+	// Worst health with current erasure coding is 2 = (1 - (0-1)/1)
+	worstHealth = float64(2)
+	build.Retry(100, 100*time.Millisecond, func() error {
+		dir, health, err := rt.renter.managedWorstHealthDirectory()
+		if err != nil {
+			return err
+		}
+		if dir != siaPath {
+			return fmt.Errorf("Expected to find %v but found %v", siaPath, dir)
+		}
+		if health != worstHealth {
+			return fmt.Errorf("Expected to find health of %v but found %v", worstHealth, health)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update file's recent repair time
+	if err := f.UpdateRecentRepairTime(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bubble Health and confirm that the worst directory is now the top level
+	// directory
+	rt.renter.threadedBubbleHealth(siaPath)
+	build.Retry(100, 100*time.Millisecond, func() error {
+		dir, health, err := rt.renter.managedWorstHealthDirectory()
+		if err != nil {
+			return err
+		}
+		if dir != siaPath {
+			return fmt.Errorf("Expected to find %v but found %v", siaPath, dir)
+		}
+		if health != float64(0) {
+			return fmt.Errorf("Expected to find health of %v but found %v", float64(0), health)
 		}
 		return nil
 	})

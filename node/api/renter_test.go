@@ -1932,7 +1932,7 @@ func TestHealthLoop(t *testing.T) {
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
 			return nil
 		}
-		return errors.New("file not uploaded")
+		return fmt.Errorf("file not uploaded, %v files found and redundancy of first file is %v", len(rf.Files), rf.Files[0].Redundancy)
 	})
 	if err != nil {
 		t.Fatal(err)

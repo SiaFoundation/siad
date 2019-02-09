@@ -297,7 +297,7 @@ func (r *Renter) managedBuildAndPushUnstuckChunks(files []*siafile.SiaFileSetEnt
 func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}, target repairTarget) {
 	// Get Directory files
 	var files []*siafile.SiaFileSetEntry
-	fileinfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, dirSiaPath))
+	fileinfos, err := ioutil.ReadDir(filepath.Join(r.staticFilesDir, dirSiaPath))
 	if err != nil {
 		return
 	}
@@ -315,8 +315,18 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 			return
 		}
 
-		// Decide if file is being targeted for repair
+		// For stuck chunk repairs, check to see if file has stuck chunks
 		if target == targetStuckChunks && file.NumStuckChunks() == 0 {
+			// Close unneeded files
+			err := file.Close()
+			if err != nil {
+				r.log.Debugln("WARN: Could not close file:", err)
+			}
+			continue
+		}
+
+		// For normal repairs, ignore files that have been recently repaired
+		if target == targetUnstuckChunks && time.Since(file.RecentRepairTime()) < fileRepairInterval {
 			// Close unneeded files
 			err := file.Close()
 			if err != nil {
@@ -390,6 +400,7 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // loop will continue until the renter stops, there are no more chunks, or
 // enough time has passed indicated by the rebuildHeapSignal
 func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
+	var consecutiveChunkRepairs int
 	rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
 	for {
 		select {
@@ -414,6 +425,21 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 			return
 		}
 
+		// Check if file is reasonably healthy
+		//
+		// TODO - update to only read cached value once health is stored in the
+		// siafile metadata
+		hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{nextChunk.fileEntry})
+		health, _, _ := nextChunk.fileEntry.Health(hostOfflineMap, hostGoodForRenewMap)
+		if health < 0.8 {
+			// File is reasonably healthy so update the recent repair time for
+			// the file
+			err := nextChunk.fileEntry.UpdateRecentRepairTime()
+			if err != nil {
+				r.log.Debugf("WARN: unable to update the recent repair time of %v : %v", nextChunk.fileEntry.SiaPath(), err)
+			}
+		}
+
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy. Otherwise we ignore this chunk for now and try again
 		// the next time we rebuild the heap and refresh the workers.
@@ -428,6 +454,16 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		// enough memory is available to perform the work, slowing this
 		// thread down to using only the resources that are available.
 		r.managedPrepareNextChunk(nextChunk, hosts)
+		consecutiveChunkRepairs++
+
+		// Check if enough chunks are currently being repaired
+		if consecutiveChunkRepairs >= maxConsecutiveChunkRepairs {
+			// zero out heap and return
+			lockID := r.mu.Lock()
+			r.uploadHeap.heap = uploadChunkHeap{}
+			r.mu.Unlock(lockID)
+			return
+		}
 	}
 }
 
@@ -491,5 +527,9 @@ func (r *Renter) threadedUploadLoop() {
 
 		// Work through the heap and repair files
 		r.managedRepairLoop(hosts)
+
+		// Once we have worked through the heap, call bubble to update the
+		// directory metadata
+		r.threadedBubbleHealth(dirSiaPath)
 	}
 }

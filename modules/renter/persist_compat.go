@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -104,7 +106,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 	var header [15]byte
 	var version string
 	var numFiles uint64
-	err := encoding.NewDecoder(reader).DecodeAll(
+	err := encoding.NewDecoder(reader, encoding.DefaultAllocLimit).DecodeAll(
 		&header,
 		&version,
 		&numFiles,
@@ -122,7 +124,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 	if err != nil {
 		return nil, err
 	}
-	dec := encoding.NewDecoder(unzip)
+	dec := encoding.NewDecoder(unzip, 100e6)
 
 	// Read each file.
 	files := make([]*file, numFiles)
@@ -163,6 +165,14 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		}
 		names[i] = f.name
 		err = errors.Compose(err, entry.Close())
+		// Create and add a siadir to the SiaDirSet if one has not been created
+		sd, errDir := r.staticDirSet.NewSiaDir(filepath.Dir(f.name))
+		if errDir != nil && errDir != siadir.ErrPathOverload {
+			return nil, errors.Compose(err, errDir)
+		}
+		if errDir != siadir.ErrPathOverload {
+			err = errors.Compose(err, sd.Close())
+		}
 	}
 	return names, err
 }

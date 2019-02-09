@@ -74,6 +74,17 @@ var (
 	errNoStuckFiles = errors.New("no stuck files")
 )
 
+type (
+	// fileHealth is a helper struct that contains health metadata information
+	// about a SiaFile
+	fileHealth struct {
+		health           float64
+		stuckHealth      float64
+		numStuckChunks   uint64
+		recentRepairTime time.Time
+	}
+)
+
 // bubbleStatus indicates the status of a bubble being executed on a
 // directory
 type bubbleStatus int
@@ -128,7 +139,7 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (siadir.SiaDirH
 		NumStuckChunks:      0,
 	}
 	// Read directory
-	path := filepath.Join(r.filesDir, siaPath)
+	path := filepath.Join(r.staticFilesDir, siaPath)
 	fileinfos, err := ioutil.ReadDir(path)
 	if err != nil {
 		r.log.Printf("WARN: Error in reading files in directory %v : %v\n", path, err)
@@ -151,10 +162,17 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (siadir.SiaDirH
 		if ext == siafile.ShareExtension {
 			// SiaFile found, calculate the health of the siafile
 			fName := strings.TrimSuffix(fi.Name(), siafile.ShareExtension)
-			health, stuckHealth, numStuckChunks, err = r.managedFileHealth(filepath.Join(siaPath, fName))
+			fileHealth, err := r.managedFileHealth(filepath.Join(siaPath, fName))
 			if err != nil {
 				return siadir.SiaDirHealth{}, err
 			}
+			if time.Since(fileHealth.recentRepairTime) >= fileRepairInterval {
+				// If the file has not recently been repaired then consider the
+				// health of the file
+				health = fileHealth.health
+			}
+			stuckHealth = fileHealth.stuckHealth
+			numStuckChunks = fileHealth.numStuckChunks
 		} else if fi.IsDir() {
 			// Directory is found, read the directory metadata file
 			dirHealth, err := r.managedDirectoryHealth(filepath.Join(siaPath, fi.Name()))
@@ -219,7 +237,8 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath string) error {
 // to a file is past in
 func (r *Renter) managedDirectoryHealth(siaPath string) (siadir.SiaDirHealth, error) {
 	// Check for bad paths and files
-	fi, err := os.Stat(filepath.Join(r.filesDir, siaPath))
+	fullPath := filepath.Join(r.staticFilesDir, siaPath)
+	fi, err := os.Stat(fullPath)
 	if err != nil {
 		return siadir.SiaDirHealth{}, err
 	}
@@ -230,7 +249,20 @@ func (r *Renter) managedDirectoryHealth(siaPath string) (siadir.SiaDirHealth, er
 	//  Open SiaDir
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if os.IsNotExist(err) {
-		// Metadata file does not exists, create it
+		// Remember initial Error
+		initError := err
+		// Metadata file does not exists, check if directory is empty
+		fileInfos, err := ioutil.ReadDir(fullPath)
+		if err != nil {
+			return siadir.SiaDirHealth{}, err
+		}
+		// If the directory is empty and is not the root directory, assume it
+		// was deleted so do not create a metadata file
+		if len(fileInfos) == 0 && siaPath != "" {
+			return siadir.SiaDirHealth{}, initError
+		}
+		// If we are at the root directory or the directory is not empty, create
+		// a metadata file
 		siaDir, err = r.staticDirSet.NewSiaDir(siaPath)
 	}
 	if err != nil {
@@ -246,18 +278,23 @@ func (r *Renter) managedDirectoryHealth(siaPath string) (siadir.SiaDirHealth, er
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk or repair by upload streaming
-func (r *Renter) managedFileHealth(siaPath string) (float64, float64, uint64, error) {
+func (r *Renter) managedFileHealth(siaPath string) (fileHealth, error) {
 	// Load the Siafile.
 	sf, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
-		return 0, 0, 0, err
+		return fileHealth{}, err
 	}
 	defer sf.Close()
 
 	// Calculate file health
-	hostOfflineMap, _, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
-	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap)
-	return health, stuckHealth, numStuckChunks, nil
+	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	return fileHealth{
+		health:           health,
+		stuckHealth:      stuckHealth,
+		numStuckChunks:   numStuckChunks,
+		recentRepairTime: sf.RecentRepairTime(),
+	}, nil
 }
 
 // managedOldestHealthCheckTime finds the lowest level directory that has a
@@ -404,7 +441,7 @@ func (r *Renter) managedStuckDirectory() (string, error) {
 // directory SiaPaths
 func (r *Renter) managedSubDirectories(siaPath string) ([]string, error) {
 	// Read directory
-	fileinfos, err := ioutil.ReadDir(filepath.Join(r.filesDir, siaPath))
+	fileinfos, err := ioutil.ReadDir(filepath.Join(r.staticFilesDir, siaPath))
 	if err != nil {
 		return []string{}, err
 	}
@@ -504,7 +541,7 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 	// Calculate the health of the directory
 	health, err := r.managedCalculateDirectoryHealth(siaPath)
 	if err != nil {
-		r.log.Printf("WARN: Could not calculate the health of directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
+		r.log.Printf("WARN: Could not calculate the health of directory %v: %v\n", filepath.Join(r.staticFilesDir, siaPath), err)
 		return
 	}
 
@@ -526,12 +563,12 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 	// Update directory metadata with the health information
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
-		r.log.Printf("WARN: Could not open directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
+		r.log.Printf("WARN: Could not open directory %v: %v\n", filepath.Join(r.staticFilesDir, siaPath), err)
 		return
 	}
 	err = siaDir.UpdateHealth(health)
 	if err != nil {
-		r.log.Printf("WARN: Could not update the health of the directory %v: %v\n", filepath.Join(r.filesDir, siaPath), err)
+		r.log.Printf("WARN: Could not update the health of the directory %v: %v\n", filepath.Join(r.staticFilesDir, siaPath), err)
 		return
 	}
 

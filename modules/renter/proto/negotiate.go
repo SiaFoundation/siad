@@ -2,7 +2,6 @@ package proto
 
 import (
 	"crypto/cipher"
-	"io"
 	"net"
 	"time"
 
@@ -262,7 +261,7 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey) (c
 	}
 	// read host's half of the key exchange
 	var resp modules.LoopKeyExchangeResponse
-	if err := encoding.NewDecoder(io.LimitReader(conn, keyExchangeMaxLen)).Decode(&resp); err != nil {
+	if err := encoding.NewDecoder(conn, encoding.DefaultAllocLimit).Decode(&resp); err != nil {
 		return nil, modules.LoopChallengeRequest{}, err
 	}
 	// validate the signature before doing anything else; don't want to punish
