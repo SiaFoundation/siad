@@ -433,6 +433,35 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	return est, allowance, nil
 }
 
+// managedContractUtilityMaps returns a set of maps that contain contract
+// information. Information about which contracts are offline, goodForRenew are
+// available, as well as a full list of contracts keyed by their public key.
+func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
+	// Save host keys in map.
+	contracts = make(map[string]modules.RenterContract)
+	goodForRenew = make(map[string]bool)
+	offline = make(map[string]bool)
+
+	// Get the list of public keys from the contractor and use it to fill out
+	// the contracts map.
+	cs := r.hostContractor.Contracts()
+	for i := 0; i < len(cs); i++ {
+		contracts[cs[i].HostPublicKey.String()] = cs[i]
+	}
+
+	// Fill out the goodForRenew and offline maps based on the utility values of
+	// the contractor.
+	for pkString, contract := range contracts {
+		cu, ok := r.ContractUtility(contract.HostPublicKey)
+		if !ok {
+			continue
+		}
+		goodForRenew[pkString] = cu.GoodForRenew
+		offline[pkString] = r.hostContractor.IsOffline(contract.HostPublicKey)
+	}
+	return offline, goodForRenew, contracts
+}
+
 // managedRenterContractsAndUtilities grabs the pubkeys of the hosts that the
 // file(s) have been uploaded to and then generates maps of the contract's
 // utilities showing which hosts are GoodForRenew and which hosts are Offline.

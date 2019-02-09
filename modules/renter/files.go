@@ -69,6 +69,7 @@ func (r *Renter) DeleteFile(nickname string) error {
 
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() ([]modules.FileInfo, error) {
+	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 	fileList := []modules.FileInfo{}
 	err := filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
@@ -84,7 +85,7 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 
 		// Load the Siafile.
 		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), siafile.ShareExtension)
-		file, err := r.File(siaPath)
+		file, err := r.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
 		if err != nil {
 			return err
 		}
@@ -98,6 +99,26 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 // File returns file from siaPath queried by user.
 // Update based on FileList
 func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
+	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
+	return r.fileInfo(siaPath, offline, goodForRenew, contracts)
+}
+
+// RenameFile takes an existing file and changes the nickname. The original
+// file must exist, and there must not be any file that already has the
+// replacement nickname.
+func (r *Renter) RenameFile(currentName, newName string) error {
+	err := validateSiapath(newName)
+	if err != nil {
+		return err
+	}
+	return r.staticFileSet.Rename(currentName, newName)
+}
+
+// fileInfo returns information on a siafile. As a performance optimization, the
+// fileInfo takes the maps returned by renter.managedContractUtilityMaps as
+// input, preventing the need to build those maps many times when asking for
+// many files at once.
+func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Get the file and its contracts
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
@@ -105,12 +126,12 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	}
 	defer entry.Close()
 
-	offline, goodForRenew, contracts := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{entry})
-
 	// Build the FileInfo
 	renewing := true
 	localPath := entry.LocalPath()
-	_, err = os.Stat(localPath)
+	if localPath != "" {
+		_, err = os.Stat(localPath)
+	}
 	if err != nil && !os.IsNotExist(err) {
 		return modules.FileInfo{}, err
 	}
@@ -139,17 +160,6 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 	}
 
 	return fileInfo, nil
-}
-
-// RenameFile takes an existing file and changes the nickname. The original
-// file must exist, and there must not be any file that already has the
-// replacement nickname.
-func (r *Renter) RenameFile(currentName, newName string) error {
-	err := validateSiapath(newName)
-	if err != nil {
-		return err
-	}
-	return r.staticFileSet.Rename(currentName, newName)
 }
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
