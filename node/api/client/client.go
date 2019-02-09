@@ -106,7 +106,7 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", from, to))
+	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", from, to-1))
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {

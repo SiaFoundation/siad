@@ -1,6 +1,7 @@
 package siatest
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -21,6 +22,20 @@ type (
 		checksum crypto.Hash
 	}
 )
+
+// Equal will compare the input to the bytes of the local file, returning an
+// error if the bytes are not a perfect match, or if there is an error reading
+// the local file data.
+func (lf *LocalFile) Equal(data []byte) error {
+	localData, err := ioutil.ReadFile(lf.path)
+	if err != nil {
+		return errors.AddContext(err, "unable to read local file data")
+	}
+	if bytes.Compare(data, localData) != 0 {
+		return errors.New("local file data does not match input data")
+	}
+	return nil
+}
 
 // Delete removes the LocalFile from disk.
 func (lf *LocalFile) Delete() error {

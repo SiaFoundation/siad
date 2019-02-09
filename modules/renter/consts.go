@@ -20,31 +20,50 @@ var (
 
 var (
 	// defaultDataPieces is the number of data pieces per erasure-coded chunk
-	defaultDataPieces = func() int {
-		switch build.Release {
-		case "dev":
-			return 1
-		case "standard":
-			return 10
-		case "testing":
-			return 1
-		}
-		panic("undefined defaultDataPieces")
-	}()
+	defaultDataPieces = build.Select(build.Var{
+		Dev:      1,
+		Standard: 10,
+		Testing:  1,
+	}).(int)
 
 	// defaultParityPieces is the number of parity pieces per erasure-coded
 	// chunk
-	defaultParityPieces = func() int {
-		switch build.Release {
-		case "dev":
-			return 1
-		case "standard":
-			return 20
-		case "testing":
-			return 8
-		}
-		panic("undefined defaultParityPieces")
-	}()
+	defaultParityPieces = build.Select(build.Var{
+		Dev:      1,
+		Standard: 20,
+		Testing:  8,
+	}).(int)
+
+	// initialStreamerCacheSize defines the cache size that each streamer will
+	// start using when it is created. A lower initial cache size will mean that
+	// it will take more requests / round trips for the cache to grow, however
+	// the cache size gets set to at least 2x the minimum read size initially
+	// anyway, which means any application doing very large reads is going to
+	// automatically have the cache size stepped up without having to do manual
+	// growth.
+	initialStreamerCacheSize = build.Select(build.Var{
+		Dev:      int64(1 << 13), // 8 KiB
+		Standard: int64(1 << 18), // 256 KiB
+		Testing:  int64(1 << 10), // 1 KiB
+	}).(int64)
+
+	// maxStreamerCacheSize defines the maximum cache size that each streamer
+	// will use before it no longer increases its own cache size. The value has
+	// been set fairly low beacuse some applications like mpv will request very
+	// large buffer sizes, taking as much data as fast as they can. This results
+	// in the cache size on Sia's end growing to match the size of the
+	// requesting application's buffer, and harms seek times. Maintaining a low
+	// maximum ensures that runaway growth is kept under at least a bit of
+	// control.
+	//
+	// This would be best resolved by knowing the actual bitrate of the data
+	// being fed to the user instead of trying to guess a bitrate, however as of
+	// time of writing we don't have an easy way to get that informaiton.
+	maxStreamerCacheSize = build.Select(build.Var{
+		Dev:      int64(1 << 20), // 1 MiB
+		Standard: int64(1 << 16), // 16 MiB
+		Testing:  int64(1 << 13), // 8 KiB
+	}).(int64)
 )
 
 const (
