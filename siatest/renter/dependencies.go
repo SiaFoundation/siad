@@ -19,6 +19,12 @@ type dependencyDisableCloseUploadEntry struct {
 	modules.ProductionDependencies
 }
 
+// dependencyDisableRecoveryStatusReset prevents the fields scanInProgress and
+// atomicRecoveryScanHeight from being reset after the scan is done.
+type dependencyDisableRecoveryStatusReset struct {
+	modules.ProductionDependencies
+}
+
 // Disrupt will block the scan progress of the hostdb. The scan can be started
 // by calling Scan on the dependency.
 func (d *dependencyBlockScan) Disrupt(s string) bool {
@@ -34,6 +40,12 @@ func (d *dependencyBlockScan) Disrupt(s string) bool {
 // Disrupt prevents SiafileEntries in the upload code from being closed.
 func (d *dependencyDisableCloseUploadEntry) Disrupt(s string) bool {
 	return s == "disableCloseUploadEntry"
+}
+
+// Disrupt will prevent the fields scanInProgress and atomicRecoveryScanHeight
+// from being reset after the scan is done.
+func (d *dependencyDisableRecoveryStatusReset) Disrupt(s string) bool {
+	return s == "disableRecoveryStatusReset"
 }
 
 // Scan resumes the blocked scan.
