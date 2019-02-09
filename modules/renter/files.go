@@ -128,14 +128,12 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew 
 
 	// Build the FileInfo
 	renewing := true
+	var onDisk bool
 	localPath := entry.LocalPath()
 	if localPath != "" {
 		_, err = os.Stat(localPath)
+		onDisk = err == nil
 	}
-	if err != nil && !os.IsNotExist(err) {
-		return modules.FileInfo{}, err
-	}
-	onDisk := !os.IsNotExist(err)
 	redundancy := entry.Redundancy(offline, goodForRenew)
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
 	fileInfo := modules.FileInfo{

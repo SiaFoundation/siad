@@ -367,64 +367,48 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
 func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (float64, float64, uint64) {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
+	var health, stuckHealth float64
+	var numStuckChunks uint64
 	numPieces := float64(sf.staticMetadata.staticErasureCode.NumPieces())
 	minPieces := float64(sf.staticMetadata.staticErasureCode.MinPieces())
 	worstHealth := 1 - ((0 - minPieces) / (numPieces - minPieces))
-	var health, stuckHealth float64
-	var numStuckChunks uint64
+
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
 	for chunkIndex, chunk := range sf.staticChunks {
-		// Check if chunk is stuck
+		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
+
+		// Update the health or stuckHealth of the file according to the health
+		// of the chunk. The health of the file is the worst health (highest
+		// number) of all the chunks in the file.
 		if chunk.Stuck {
-			// Record stuck chunk
 			numStuckChunks++
-			// Check current health of chunk
-			chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
-			// Track worst stuck chunk health
 			if chunkHealth > stuckHealth {
 				stuckHealth = chunkHealth
 			}
-			continue
-		}
-
-		// Check current health of chunk
-		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
-		// Track the worst chunk health
-		if chunkHealth > health {
+		} else if chunkHealth > health {
 			health = chunkHealth
 		}
 	}
+
 	// Check if all chunks are stuck, if so then set health to max health to
 	// avoid file being targetted for repair
 	if int(numStuckChunks) == len(sf.staticChunks) {
 		health = float64(0)
 	}
-
-	// Verify NumStuckChunks in metadata matches numStuckChunks, return a
-	// developer error if there is an inconsistency
-	if sf.staticMetadata.NumStuckChunks != numStuckChunks {
-		err := fmt.Sprintf("Number of stuck chunks is not correct, have %v expected %v", sf.staticMetadata.NumStuckChunks, numStuckChunks)
-		build.Critical(err)
-	}
-
-	// Sanity check, health starts at 0 and goes with the greater value so check
-	// against upper bounds
+	// Sanity check, verify that the calculated health is not worse (greater)
+	// than the worst health.
 	if health > worstHealth {
-		if build.DEBUG {
-			build.Critical("WARN: health out of bounds. Max value, Min value, health found", worstHealth, 0, health)
-		}
-		health = float64(0)
+		build.Critical("WARN: health out of bounds. Max value, Min value, health found", worstHealth, 0, health)
+		health = worstHealth
 	}
-	// Sanity check, stuckHealth starts at 0 and goes with the greater value so
-	// check against upper bounds
+	// Sanity check, verify that the calculated stuck health is not worse
+	// (greater) than the worst health.
 	if stuckHealth > worstHealth {
-		if build.DEBUG {
-			build.Critical("WARN: stuckHealth out of bounds. Max value, Min value, stuckHealth found", worstHealth, 0, stuckHealth)
-		}
+		build.Critical("WARN: stuckHealth out of bounds. Max value, Min value, stuckHealth found", worstHealth, 0, stuckHealth)
 		stuckHealth = worstHealth
 	}
-	return health, stuckHealth, sf.staticMetadata.NumStuckChunks
+	return health, stuckHealth, numStuckChunks
 }
 
 // HostPublicKeys returns all the public keys of hosts the file has ever been
