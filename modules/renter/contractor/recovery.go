@@ -189,6 +189,9 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 
 // managedRecoverContracts recovers known recoverable contracts.
 func (c *Contractor) managedRecoverContracts() {
+	if c.staticDeps.Disrupt("DisableContractRecovery") {
+		return
+	}
 	// Get the wallet seed.
 	ws, _, err := c.wallet.PrimarySeed()
 	if err != nil {

@@ -4526,3 +4526,128 @@ func TestCreateLoadBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRemoveRecoverableContracts makes sure that recoverable contracts which
+// have been reverted by a reorg are removed from the map.
+func TestRemoveRecoverableContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup, creating without renter so the renter's
+	// contract transactions can easily be obtained.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get the renter node and its seed.
+	r := tg.Renters()[0]
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := wsg.PrimarySeed
+
+	// The renter should have one contract with each host.
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) != len(tg.Hosts()) {
+		t.Fatal("Insufficient active contracts")
+	}
+
+	// Stop the renter.
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start a new renter with the same seed but disable contract recovery.
+	newRenterDir := filepath.Join(testDir, "renter")
+	renterParams := node.Renter(newRenterDir)
+	renterParams.PrimarySeed = seed
+	renterParams.ContractorDeps = &dependencyDisableContractRecovery{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenter := nodes[0]
+
+	// The new renter should have the right number of recoverable contracts.
+	miner := tg.Miners()[0]
+	numRetries := 0
+	err = build.Retry(60, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
+		rc, err = newRenter.RenterRecoverableContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rc.RecoverableContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("Don't have enough recoverable contracts, expected %v but was %v",
+				len(tg.Hosts()), len(rc.RecoverableContracts))
+		}
+		return nil
+	})
+
+	// Get the current blockheight of the group.
+	cg, err := newRenter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bh := cg.Height
+
+	// Start a new miner which has a longer chain than the group.
+	newMiner, err := siatest.NewNode(siatest.Miner(filepath.Join(testDir, "miner")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := newMiner.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Mine a longer chain.
+	for i := types.BlockHeight(0); i < bh+10; i++ {
+		if err := newMiner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Connect the miner to the renter.
+	gg, err := newRenter.GatewayGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := newMiner.GatewayConnectPost(gg.NetAddress); err != nil {
+		t.Fatal(err)
+	}
+	// The recoverable contracts should be gone now after the reorg.
+	err = build.Retry(60, time.Second, func() error {
+		rc, err = newRenter.RenterRecoverableContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rc.RecoverableContracts) != 0 {
+			return fmt.Errorf("Expected no recoverable contracts, but was %v",
+				len(rc.RecoverableContracts))
+		}
+		return nil
+	})
+}
