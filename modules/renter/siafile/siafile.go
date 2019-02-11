@@ -367,14 +367,20 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
 func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (float64, float64, uint64) {
-	var health, stuckHealth float64
-	var numStuckChunks uint64
 	numPieces := float64(sf.staticMetadata.staticErasureCode.NumPieces())
 	minPieces := float64(sf.staticMetadata.staticErasureCode.MinPieces())
 	worstHealth := 1 - ((0 - minPieces) / (numPieces - minPieces))
 
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
+	// Check if siafile is deleted
+	if sf.deleted {
+		// Don't return health information of a deleted file to prevent
+		// misrepresenting the health information of a directory
+		return 0, 0, 0
+	}
+	var health, stuckHealth float64
+	var numStuckChunks uint64
 	for chunkIndex, chunk := range sf.staticChunks {
 		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
 
@@ -419,7 +425,7 @@ func (sf *SiaFile) HealthPercentage(health float64) float64 {
 	dataPieces := sf.staticMetadata.staticErasureCode.MinPieces()
 	parityPieces := sf.staticMetadata.staticErasureCode.NumPieces() - dataPieces
 	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
-	return (worstHealth - health) / worstHealth
+	return 100 * ((worstHealth - health) / worstHealth)
 }
 
 // HostPublicKeys returns all the public keys of hosts the file has ever been
