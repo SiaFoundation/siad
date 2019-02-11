@@ -190,6 +190,18 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string, oldContracts []module
 		}
 
 		for _, piece := range contract.Pieces {
+			// Make sure we don't add the same piece on the same host multiple
+			// times.
+			duplicate := false
+			for _, p := range chunks[piece.Chunk].Pieces[piece.Piece] {
+				if p.HostPubKey.String() == pk.String() {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
 			chunks[piece.Chunk].Pieces[piece.Piece] = append(chunks[piece.Chunk].Pieces[piece.Piece], siafile.Piece{
 				HostPubKey: pk,
 				MerkleRoot: piece.MerkleRoot,
