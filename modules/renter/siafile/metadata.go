@@ -114,6 +114,13 @@ func (sf *SiaFile) ChunkSize() uint64 {
 	return sf.staticChunkSize()
 }
 
+// LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
+func (sf *SiaFile) LastHealthCheckTime() time.Time {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.staticMetadata.LastHealthCheckTime
+}
+
 // LocalPath returns the path of the local data of the file.
 func (sf *SiaFile) LocalPath() string {
 	sf.mu.RLock()
@@ -252,6 +259,21 @@ func (sf *SiaFile) UpdateAccessTime() error {
 
 	// Save changes to metadata to disk.
 	updates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// UpdateLastHealthCheckTime updates the LastHealthCheckTime timestamp to the
+// current time.
+func (sf *SiaFile) UpdateLastHealthCheckTime() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.LastHealthCheckTime = time.Now()
+
+	// Save changes to metadata to disk.
+	updates, err := sf.saveMetadataUpdate()
 	if err != nil {
 		return err
 	}

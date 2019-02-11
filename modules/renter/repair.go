@@ -78,10 +78,11 @@ type (
 	// fileHealth is a helper struct that contains health metadata information
 	// about a SiaFile
 	fileHealth struct {
-		health           float64
-		stuckHealth      float64
-		numStuckChunks   uint64
-		recentRepairTime time.Time
+		health              float64
+		stuckHealth         float64
+		lastHealthCheckTime time.Time
+		numStuckChunks      uint64
+		recentRepairTime    time.Time
 	}
 )
 
@@ -157,6 +158,7 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (siadir.SiaDirH
 
 		var health, stuckHealth float64
 		var numStuckChunks uint64
+		var lastHealthCheckTime time.Time
 		ext := filepath.Ext(fi.Name())
 		// Check for SiaFiles and Directories
 		if ext == siafile.ShareExtension {
@@ -171,6 +173,7 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (siadir.SiaDirH
 				// health of the file
 				health = fileHealth.health
 			}
+			lastHealthCheckTime = fileHealth.lastHealthCheckTime
 			stuckHealth = fileHealth.stuckHealth
 			numStuckChunks = fileHealth.numStuckChunks
 		} else if fi.IsDir() {
@@ -181,11 +184,8 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (siadir.SiaDirH
 			}
 			health = dirHealth.Health
 			stuckHealth = dirHealth.StuckHealth
+			lastHealthCheckTime = dirHealth.LastHealthCheckTime
 			numStuckChunks = dirHealth.NumStuckChunks
-			// Update LastHealthCheckTime
-			if dirHealth.LastHealthCheckTime.Before(worstHealth.LastHealthCheckTime) {
-				worstHealth.LastHealthCheckTime = dirHealth.LastHealthCheckTime
-			}
 		} else {
 			// Ignore everthing that is not a SiaFile or a directory
 			continue
@@ -196,6 +196,10 @@ func (r *Renter) managedCalculateDirectoryHealth(siaPath string) (siadir.SiaDirH
 		}
 		if stuckHealth > worstHealth.StuckHealth {
 			worstHealth.StuckHealth = stuckHealth
+		}
+		// Update LastHealthCheckTime
+		if lastHealthCheckTime.Before(worstHealth.LastHealthCheckTime) {
+			worstHealth.LastHealthCheckTime = lastHealthCheckTime
 		}
 		worstHealth.NumStuckChunks += numStuckChunks
 	}
@@ -290,10 +294,11 @@ func (r *Renter) managedFileHealth(siaPath string) (fileHealth, error) {
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 	return fileHealth{
-		health:           health,
-		stuckHealth:      stuckHealth,
-		numStuckChunks:   numStuckChunks,
-		recentRepairTime: sf.RecentRepairTime(),
+		health:              health,
+		stuckHealth:         stuckHealth,
+		lastHealthCheckTime: sf.LastHealthCheckTime(),
+		numStuckChunks:      numStuckChunks,
+		recentRepairTime:    sf.RecentRepairTime(),
 	}, nil
 }
 
