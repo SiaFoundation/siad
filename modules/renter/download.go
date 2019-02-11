@@ -416,10 +416,12 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		return err
 	})
 
-	// Add the download object to the download queue.
-	r.downloadHistoryMu.Lock()
-	r.downloadHistory = append(r.downloadHistory, d)
-	r.downloadHistoryMu.Unlock()
+	// Add the download object to the download history if it's not a stream.
+	if destinationType != destinationTypeSeekStream {
+		r.downloadHistoryMu.Lock()
+		r.downloadHistory = append(r.downloadHistory, d)
+		r.downloadHistoryMu.Unlock()
+	}
 
 	// Return the download object
 	return d, nil
