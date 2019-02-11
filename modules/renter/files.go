@@ -178,7 +178,12 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFileSetE
 		chunks[i].Pieces = make([][]siafile.Piece, f.erasureCode.NumPieces())
 	}
 	for _, contract := range f.contracts {
-		pk := idToPk[contract.ID]
+		pk, exists := idToPk[contract.ID]
+		if !exists {
+			r.log.Printf("Couldn't find pubKey for contract %v with WindowStart",
+				contract.ID, contract.WindowStart)
+			continue
+		}
 
 		for _, piece := range contract.Pieces {
 			chunks[piece.Chunk].Pieces[piece.Piece] = append(chunks[piece.Chunk].Pieces[piece.Piece], siafile.Piece{
