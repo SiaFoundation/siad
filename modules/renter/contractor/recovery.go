@@ -277,10 +277,6 @@ func (c *Contractor) removeRecoverableContracts(b types.Block) {
 		for i := range txn.FileContracts {
 			// Compute the contract id for that contract.
 			fcid := txn.FileContractID(uint64(i))
-			_, known := c.staticContracts.View(fcid)
-			if known {
-				continue
-			}
 			// Delete the contract from the map since we no longer need to
 			// recover it.
 			delete(c.recoverableContracts, fcid)
