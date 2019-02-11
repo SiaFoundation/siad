@@ -34,7 +34,7 @@ type v137TrackedFile struct {
 
 // loadSiaFiles walks through the directory searching for siafiles and loading
 // them into memory.
-func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile) error {
+func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, oldContracts []modules.RenterContract) error {
 	// Recursively convert all files found in renter directory.
 	err := filepath.Walk(r.persistDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
@@ -62,7 +62,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile) 
 		}
 
 		// Load the file contents into the renter.
-		_, err = r.compatV137loadSiaFilesFromReader(file, tracking)
+		_, err = r.compatV137loadSiaFilesFromReader(file, tracking, oldContracts)
 		if err != nil {
 			return errors.Compose(err, file.Close())
 		}
@@ -101,7 +101,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile) 
 // compatV137LoadSiaFilesFromReader reads .sia data from reader and registers
 // the contained files in the renter. It returns the nicknames of the loaded
 // files.
-func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map[string]v137TrackedFile) ([]string, error) {
+func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map[string]v137TrackedFile, oldContracts []modules.RenterContract) ([]string, error) {
 	// read header
 	var header [15]byte
 	var version string
@@ -159,7 +159,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		}
 		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
 		// be returned here
-		entry, err := r.fileToSiaFile(f, repairPath)
+		entry, err := r.fileToSiaFile(f, repairPath, oldContracts)
 		if err != nil {
 			return nil, err
 		}
@@ -179,7 +179,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 
 // convertPersistVersionFrom133To140 upgrades a legacy persist file to the next
 // version, converting legacy SiaFiles in the process.
-func (r *Renter) convertPersistVersionFrom133To140(path string) error {
+func (r *Renter) convertPersistVersionFrom133To140(path string, oldContracts []modules.RenterContract) error {
 	metadata := persist.Metadata{
 		Header:  settingsMetadata.Header,
 		Version: persistVersion133,
@@ -194,7 +194,7 @@ func (r *Renter) convertPersistVersionFrom133To140(path string) error {
 	}
 	metadata.Version = persistVersion140
 	// Load potential legacy SiaFiles.
-	if err := r.compatV137ConvertSiaFiles(p.Tracking); err != nil {
+	if err := r.compatV137ConvertSiaFiles(p.Tracking, oldContracts); err != nil {
 		return err
 	}
 	return persist.SaveJSON(metadata, p, path)

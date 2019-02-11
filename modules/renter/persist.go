@@ -207,8 +207,8 @@ func (r *Renter) loadAndExecuteBubbleUpdates() error {
 	return nil
 }
 
-// load fetches the saved renter data from disk.
-func (r *Renter) loadSettings() error {
+// managedLoadSettings fetches the saved renter data from disk.
+func (r *Renter) managedLoadSettings() error {
 	r.persist = persistence{}
 	err := persist.LoadJSON(settingsMetadata, &r.persist, filepath.Join(r.persistDir, PersistFilename))
 	if os.IsNotExist(err) {
@@ -227,7 +227,8 @@ func (r *Renter) loadSettings() error {
 			r.log.Println("WARNING: 040 to 133 renter upgrade failed, trying 133 to 140 next", err)
 		}
 		// Then upgrade from 133 to 140.
-		err = r.convertPersistVersionFrom133To140(filepath.Join(r.persistDir, PersistFilename))
+		oldContracts := r.hostContractor.OldContracts()
+		err = r.convertPersistVersionFrom133To140(filepath.Join(r.persistDir, PersistFilename), oldContracts)
 		if err != nil {
 			r.log.Println("WARNING: 133 to 140 renter upgrade failed", err)
 			// Nothing left to try.
@@ -235,7 +236,7 @@ func (r *Renter) loadSettings() error {
 		}
 		r.log.Println("Renter upgrade successful")
 		// Re-load the settings now that the file has been upgraded.
-		return r.loadSettings()
+		return r.managedLoadSettings()
 	} else if err != nil {
 		return err
 	}
@@ -245,9 +246,9 @@ func (r *Renter) loadSettings() error {
 	return r.setBandwidthLimits(r.persist.MaxDownloadSpeed, r.persist.MaxUploadSpeed)
 }
 
-// initPersist handles all of the persistence initialization, such as creating
+// managedInitPersist handles all of the persistence initialization, such as creating
 // the persistence directory and starting the logger.
-func (r *Renter) initPersist() error {
+func (r *Renter) managedInitPersist() error {
 	// Create the persist and files directories if they do not yet exist.
 	//
 	// Note: the os package needs to be used here instead of the renter's
@@ -305,5 +306,5 @@ func (r *Renter) initPersist() error {
 		return err
 	}
 	// Load the prior persistence structures.
-	return r.loadSettings()
+	return r.managedLoadSettings()
 }
