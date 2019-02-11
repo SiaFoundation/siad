@@ -397,6 +397,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	// Check to see if the chunk was stuck and now is successfully repaired
 	if uc.fileEntry.StuckChunkByIndex(uc.id.index) && !stuck {
+		r.log.Debugln("Stuck chunk successfully repaired")
 		// Signal the stuck loop that the chunk was successfully repaired
 		select {
 		case r.uploadHeap.stuckChunkSuccess <- struct{}{}:
@@ -418,10 +419,14 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// renter. We don't want to mark chunks as stuck due to the renter being
 	// offline or due to the renter shutting down
 	if stuck && renterError {
+		r.log.Debugln("WARN: chunk through to be stuck but there was an error with the renter")
 		// Set stuck to the current chunk stuck status. We do this as to not
 		// incorrectly mark a stuck chunk as unstuck just because there was an
 		// error with the renter
 		stuck = uc.fileEntry.StuckChunkByIndex(uc.id.index)
+	}
+	if stuck {
+		r.log.Debugln("WARN: repair unsuccessful, marking chunk as stuck")
 	}
 	// Update chunk stuck status
 	if err := uc.fileEntry.SetStuck(uc.id.index, stuck); err != nil {

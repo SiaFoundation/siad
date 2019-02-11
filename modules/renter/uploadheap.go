@@ -271,6 +271,7 @@ func (r *Renter) managedBuildAndPushStuckChunks(files []*siafile.SiaFileSetEntry
 	r.mu.Unlock(id)
 	// Add a random stuck chunk to the upload heap
 	if len(unfinishedUploadChunks) == 0 {
+		r.log.Debugln("WARN: no stuck chunk added to heap")
 		return
 	}
 	randChunk := fastrand.Intn(len(unfinishedUploadChunks))
@@ -286,6 +287,10 @@ func (r *Renter) managedBuildAndPushUnstuckChunks(files []*siafile.SiaFileSetEnt
 		id := r.mu.Lock()
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
 		r.mu.Unlock(id)
+		if len(unfinishedUploadChunks) == 0 {
+			r.log.Debugln("WARN: no chunks added to heap")
+			return
+		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
 		}
@@ -340,8 +345,10 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 	// Build the unfinished upload chunks and add them to the upload heap
 	switch target {
 	case targetStuckChunks:
+		r.log.Debugln("Adding stuck chunk to heap")
 		r.managedBuildAndPushStuckChunks(files, hosts, target)
 	case targetUnstuckChunks:
+		r.log.Debugln("Adding chunks to heap")
 		r.managedBuildAndPushUnstuckChunks(files, hosts, target)
 	default:
 		r.log.Debugln("WARN: repair target not recognized", target)

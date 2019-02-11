@@ -652,6 +652,9 @@ func (r *Renter) threadedStuckFileLoop() {
 			// Stuck chunk was successfully repaired, continue to repair stuck
 			// chunks
 		}
+
+		// Call bubble to make sure that the renter is updated since the last stuck repair.
+		r.threadedBubbleHealth(siaPath)
 	}
 }
 
