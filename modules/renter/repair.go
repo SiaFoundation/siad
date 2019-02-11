@@ -637,7 +637,7 @@ func (r *Renter) threadedStuckFileLoop() {
 
 		// Try and repair stuck chunk. Since the heap prioritizes stuck chunks
 		// the first chunk popped off will be the stuck chunk.
-		r.log.Println("Attempting to repair stuck chunks")
+		r.log.Println("Attempting to repair stuck chunks from", siaPath)
 		r.managedRepairLoop(hosts)
 
 		// Sleep until it is time to try and repair another stuck chunk
