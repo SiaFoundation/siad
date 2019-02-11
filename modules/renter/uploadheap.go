@@ -530,7 +530,7 @@ func (r *Renter) threadedUploadLoop() {
 		r.uploadHeap.mu.Lock()
 		heapLen := r.uploadHeap.heap.Len()
 		r.uploadHeap.mu.Unlock()
-		r.log.Println("Repairing", heapLen, "chunks")
+		r.log.Println("Repairing", heapLen, "chunks from", dirSiaPath)
 
 		// Work through the heap and repair files
 		r.managedRepairLoop(hosts)
