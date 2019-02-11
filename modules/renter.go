@@ -221,24 +221,28 @@ type FileUploadParams struct {
 
 // FileInfo provides information about a file.
 type FileInfo struct {
-	AccessTime     time.Time         `json:"accesstime"`
-	Available      bool              `json:"available"`
-	ChangeTime     time.Time         `json:"changetime"`
-	CipherType     string            `json:"ciphertype"`
-	CreateTime     time.Time         `json:"createtime"`
-	Expiration     types.BlockHeight `json:"expiration"`
-	Filesize       uint64            `json:"filesize"`
-	Health         float64           `json:"health"`
-	LocalPath      string            `json:"localpath"`
-	ModTime        time.Time         `json:"modtime"`
-	NumStuckChunks uint64            `json:"numstuckchunks"`
-	OnDisk         bool              `json:"ondisk"`
-	Recoverable    bool              `json:"recoverable"`
-	Redundancy     float64           `json:"redundancy"`
-	Renewing       bool              `json:"renewing"`
-	SiaPath        string            `json:"siapath"`
-	UploadedBytes  uint64            `json:"uploadedbytes"`
-	UploadProgress float64           `json:"uploadprogress"`
+	AccessTime       time.Time         `json:"accesstime"`
+	Available        bool              `json:"available"`
+	ChangeTime       time.Time         `json:"changetime"`
+	CipherType       string            `json:"ciphertype"`
+	CreateTime       time.Time         `json:"createtime"`
+	Expiration       types.BlockHeight `json:"expiration"`
+	Filesize         uint64            `json:"filesize"`
+	Health           float64           `json:"health"`
+	LocalPath        string            `json:"localpath"`
+	MaxHealth        float64           `json:"maxhealth"`
+	MaxHealthPercent float64           `json:"maxhealthpercent"`
+	ModTime          time.Time         `json:"modtime"`
+	NumStuckChunks   uint64            `json:"numstuckchunks"`
+	OnDisk           bool              `json:"ondisk"`
+	Recoverable      bool              `json:"recoverable"`
+	Redundancy       float64           `json:"redundancy"`
+	Renewing         bool              `json:"renewing"`
+	SiaPath          string            `json:"siapath"`
+	Stuck            bool              `json:"stuck"`
+	StuckHealth      float64           `json:"stuckhealth"`
+	UploadedBytes    uint64            `json:"uploadedbytes"`
+	UploadProgress   float64           `json:"uploadprogress"`
 }
 
 // A HostDBEntry represents one host entry in the Renter's host DB. It
