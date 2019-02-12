@@ -52,11 +52,10 @@ type (
 		staticChunks []chunk
 
 		// utility fields. These are not persisted.
-		deleted        bool
-		deps           modules.Dependencies
-		mu             sync.RWMutex
-		staticUniqueID string
-		wal            *writeaheadlog.WAL // the wal that is used for SiaFiles
+		deleted bool
+		deps    modules.Dependencies
+		mu      sync.RWMutex
+		wal     *writeaheadlog.WAL // the wal that is used for SiaFiles
 
 		// siaFilePath is the path to the .sia file on disk.
 		siaFilePath string
@@ -148,12 +147,12 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
+			StaticUniqueID:          hex.EncodeToString(fastrand.Bytes(20)),
 			SiaPath:                 siaPath,
 		},
-		deps:           modules.ProdDependencies,
-		siaFilePath:    siaFilePath,
-		staticUniqueID: hex.EncodeToString(fastrand.Bytes(20)),
-		wal:            wal,
+		deps:        modules.ProdDependencies,
+		siaFilePath: siaFilePath,
+		wal:         wal,
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()
@@ -657,7 +656,7 @@ func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
 
 // UID returns a unique identifier for this file.
 func (sf *SiaFile) UID() string {
-	return sf.staticUniqueID
+	return sf.staticMetadata.StaticUniqueID
 }
 
 // UploadedBytes indicates how many bytes of the file have been uploaded via
