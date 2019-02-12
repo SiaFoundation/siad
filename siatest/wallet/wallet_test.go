@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"errors"
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -479,5 +480,80 @@ func TestFileContractUnspentOutputs(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("wallet's spendable outputs did not contain file contract output")
+	}
+}
+
+// TestWalletLastAddresses tests the /wallet/addresses endpoint with a
+// specified count.
+func TestWalletLastAddresses(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a new server
+	testNode, err := siatest.NewCleanNode(node.AllModules(siatest.TestDir(t.Name())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := testNode.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// The wallet should have 0 addresses.
+	wag, err := testNode.WalletAddressesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wag.Addresses) != 0 {
+		t.Fatal("Wallet should have 0 addresses but had", len(wag.Addresses))
+	}
+	// Generate n addresses.
+	n := 10
+	addresses := make([]types.UnlockHash, 0, n)
+	for i := 0; i < n; i++ {
+		wag, err := testNode.WalletAddressGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		addresses = append(addresses, wag.Address)
+	}
+	// The wallet should have n addresses now.
+	wag, err = testNode.WalletAddressesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wag.Addresses) != n {
+		t.Fatal("Wallet should have 100 addresses but had", len(wag.Addresses))
+	}
+	// Get the n addresses in reverse order.
+	wlag, err := testNode.WalletLastAddressesGet(uint64(n))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(addresses) != len(wlag.Addresses) {
+		t.Fatalf("Expected %v addresses but got %v",
+			len(addresses), len(wlag.Addresses))
+	}
+	// Make sure the returned addresses are the same and have the reversed
+	// order of the created ones.
+	for i := range wag.Addresses {
+		if addresses[i] != wlag.Addresses[len(wlag.Addresses)-1-i] {
+			t.Fatal("addresses don't match for i =", i)
+		}
+	}
+	// Get MaxUint64 addresses in reverse order. This should still only return
+	// n addresses.
+	wlag, err = testNode.WalletLastAddressesGet(math.MaxUint64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the returned addresses are the same and have the reversed
+	// order of the created ones.
+	for i := range wag.Addresses {
+		if addresses[i] != wlag.Addresses[len(wlag.Addresses)-1-i] {
+			t.Fatal("addresses don't match for i =", i)
+		}
 	}
 }

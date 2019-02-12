@@ -307,6 +307,10 @@ type (
 		// filepath. The backup will have all seeds and keys.
 		CreateBackup(string) error
 
+		// LastAddresses returns the last n addresses starting at the last seedProgress
+		// for which an address was generated.
+		LastAddresses(n uint64) ([]types.UnlockHash, error)
+
 		// LoadBackup will load a backup of the wallet from the provided
 		// address. The backup wallet will be added as an auxiliary seed, not
 		// as a primary seed.

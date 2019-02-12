@@ -254,6 +254,31 @@ func (api *API) walletAddressHandler(w http.ResponseWriter, req *http.Request, _
 	})
 }
 
+// walletSeedAddressesHandler handles the requests to /wallet/seedaddrs.
+func (api *API) walletSeedAddressesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse the count argument. If it isn't specified we return as many
+	// addresses as possible.
+	count := uint64(math.MaxUint64)
+	c := req.FormValue("count")
+	if c != "" {
+		_, err := fmt.Sscan(c, &count)
+		if err != nil {
+			WriteError(w, Error{"Failed to parse count: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	// Get the last count addresses.
+	addresses, err := api.wallet.LastAddresses(count)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("Error when calling /wallet/addresses: %v", err)}, http.StatusBadRequest)
+		return
+	}
+	// Send the response.
+	WriteJSON(w, WalletAddressesGET{
+		Addresses: addresses,
+	})
+}
+
 // walletAddressHandler handles API calls to /wallet/addresses.
 func (api *API) walletAddressesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	addresses, err := api.wallet.AllAddresses()
