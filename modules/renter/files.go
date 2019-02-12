@@ -166,11 +166,15 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew 
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
-func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFileSetEntry, error) {
+func (r *Renter) fileToSiaFile(f *file, repairPath string, oldContracts []modules.RenterContract) (*siafile.SiaFileSetEntry, error) {
 	// Create a mapping of contract ids to host keys.
 	contracts := r.hostContractor.Contracts()
 	idToPk := make(map[types.FileContractID]types.SiaPublicKey)
 	for _, c := range contracts {
+		idToPk[c.ID] = c.HostPublicKey
+	}
+	// Add old contracts to the mapping too.
+	for _, c := range oldContracts {
 		idToPk[c.ID] = c.HostPublicKey
 	}
 
@@ -190,9 +194,26 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string) (*siafile.SiaFileSetE
 		chunks[i].Pieces = make([][]siafile.Piece, f.erasureCode.NumPieces())
 	}
 	for _, contract := range f.contracts {
-		pk := idToPk[contract.ID]
+		pk, exists := idToPk[contract.ID]
+		if !exists {
+			r.log.Printf("Couldn't find pubKey for contract %v with WindowStart",
+				contract.ID, contract.WindowStart)
+			continue
+		}
 
 		for _, piece := range contract.Pieces {
+			// Make sure we don't add the same piece on the same host multiple
+			// times.
+			duplicate := false
+			for _, p := range chunks[piece.Chunk].Pieces[piece.Piece] {
+				if p.HostPubKey.String() == pk.String() {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
 			chunks[piece.Chunk].Pieces[piece.Piece] = append(chunks[piece.Chunk].Pieces[piece.Piece], siafile.Piece{
 				HostPubKey: pk,
 				MerkleRoot: piece.MerkleRoot,

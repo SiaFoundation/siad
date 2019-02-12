@@ -808,7 +808,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 
 	// Load all saved data.
-	if err := r.initPersist(); err != nil {
+	if err := r.managedInitPersist(); err != nil {
 		return nil, err
 	}
 
