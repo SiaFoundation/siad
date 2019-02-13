@@ -1984,6 +1984,26 @@ until they are recovered or expired.
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /renter/recoveryscan [GET]
+
+Returns some information about a potentially ongoing recovery scan.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "scaninprogress": true // boolean
+  "scannedheight" : 1000 // uint64
+}
+```
+**scaninprogress** | boolean
+indicates if a scan for recoverable contracts is currently in progress.
+
+**scannedheight** | uint64
+indicates the progress of a currently ongoing scan in terms of number of blocks
+that have already been scanned.
+
 ## /renter/rename/*siapath* [POST]
 
 ### Path Parameters
