@@ -4095,12 +4095,9 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Start a new renter with the same seed but skip setting the allowance.
-	// This will prevent new contracts from being formed while already formed
-	// contracts will still be recovered.
+	// Start a new renter with the same seed.
 	renterParams := node.Renter(newRenterDir)
 	renterParams.PrimarySeed = seed
-	renterParams.SkipSetAllowance = true
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)

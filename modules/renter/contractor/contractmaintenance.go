@@ -908,6 +908,12 @@ func (c *Contractor) threadedContractMaintenance() {
 			addressBlacklist = append(addressBlacklist, contract.HostPublicKey)
 		}
 	}
+	// Add the hosts we have recoverable contracts with to the blacklist to
+	// avoid losing existing data by forming a new/empty contract.
+	for _, contract := range c.recoverableContracts {
+		blacklist = append(blacklist, contract.HostPublicKey)
+	}
+
 	initialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(3)
 	c.mu.RUnlock()
 	hosts, err := c.hdb.RandomHosts(neededContracts*2+randomHostsBufferForScore, blacklist, addressBlacklist)
