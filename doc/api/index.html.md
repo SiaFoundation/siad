@@ -1512,6 +1512,7 @@ standard success or error response. See [standard responses](#standard-responses
 Creates a backup of all siafiles in the renter at the specified path.
 
 ### Query Response Parameters
+#### REQUIRED
 **destination** | string
 The path on disk where the backup will be created. Needs to be an absolute
 path.
@@ -1527,6 +1528,7 @@ contained within it to the renter. Should a siafile for a certain path already
 exist, a number will be added as a suffix. e.g. 'myfile_1.sia'
 
 ### Query Response Parameters
+#### REQUIRED
 **source** | string
 The path on disk where the backup will be recovered from. Needs to be an
 absolute path.
