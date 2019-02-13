@@ -114,6 +114,17 @@ func (sf *SiaFile) ChunkSize() uint64 {
 	return sf.staticChunkSize()
 }
 
+// DirSiaPath returns the SiaPath of the directory that the SiaFile is in
+func (sf *SiaFile) DirSiaPath() string {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	dirSiaPath := filepath.Dir(sf.staticMetadata.SiaPath)
+	if dirSiaPath == "." {
+		dirSiaPath = ""
+	}
+	return dirSiaPath
+}
+
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
 func (sf *SiaFile) LastHealthCheckTime() time.Time {
 	sf.mu.Lock()

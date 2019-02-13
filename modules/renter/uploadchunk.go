@@ -3,7 +3,6 @@ package renter
 import (
 	"io"
 	"os"
-	"path/filepath"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -105,6 +104,14 @@ func (uc *unfinishedUploadChunk) managedNotifyStandbyWorkers() {
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
 // physical data and distribute it to the worker pool.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
+	// Add chunk to repairingChunks map
+	r.uploadHeap.mu.Lock()
+	_, exists := r.uploadHeap.repairingChunks[uc.id]
+	if !exists {
+		r.uploadHeap.repairingChunks[uc.id] = struct{}{}
+	}
+	r.uploadHeap.mu.Unlock()
+
 	// Give the chunk to each worker, marking the number of workers that have
 	// received the chunk. The workers cannot be interacted with while the
 	// renter is holding a lock, so we need to build a list of workers while
@@ -192,11 +199,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// Once the chunk is repaired we will want to call bubble on that directory
 	// to ensure the directory metadata is updated.
 	defer func() {
-		siaPath := filepath.Dir(chunk.fileEntry.SiaPath())
-		if siaPath == "." {
-			siaPath = ""
-		}
-		r.threadedBubbleHealth(siaPath)
+		go r.threadedBubbleHealth(chunk.fileEntry.DirSiaPath())
 	}()
 
 	// Calculate the amount of memory needed for erasure coding. This will need
@@ -446,7 +449,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if memoryReleased > 0 {
 		r.memoryManager.Return(memoryReleased)
 	}
-	// If required, remove the chunk from the set of active chunks.
+	// If required, remove the chunk from the set of repairing chunks.
 	if chunkComplete && !released {
 		// Close the file entry unless disrupted.
 		if !r.deps.Disrupt("disableCloseUploadEntry") {
@@ -456,7 +459,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 			}
 		}
 		r.uploadHeap.mu.Lock()
-		delete(r.uploadHeap.activeChunks, uc.id)
+		delete(r.uploadHeap.repairingChunks, uc.id)
 		r.uploadHeap.mu.Unlock()
 	}
 	// Sanity check - all memory should be released if the chunk is complete.

@@ -1938,17 +1938,12 @@ func TestHealthLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify folder metadata is update, directory health should be 0 and
-	// LastHealthCheckTime stamp should be within the health check interval
-	// which is currently set to 5s
+	// Verify folder metadata is update, directory health should be 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		var rd RenterDirectory
 		st1.getAPI("/renter/dir/", &rd)
 		if rd.Directories[0].Health != 0 {
 			return fmt.Errorf("Directory health should be 0 but was %v", rd.Directories[0].Health)
-		}
-		if time.Since(rd.Directories[0].LastHealthCheckTime) > 5*time.Second {
-			return fmt.Errorf("LastHealthCheckTime is too far in the past")
 		}
 		return nil
 	})
@@ -1972,16 +1967,12 @@ func TestHealthLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check the metadata, lasthealthchecktime should have been updated and
-	// health in metadata should have been updated
+	// Check that the metadata has been updated
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		var rd RenterDirectory
 		st1.getAPI("/renter/dir/", &rd)
 		if rd.Directories[0].Health == 0 {
 			return fmt.Errorf("Directory health should have dropped below 0 but was %v", rd.Directories[0].Health)
-		}
-		if time.Since(rd.Directories[0].LastHealthCheckTime) > 5*time.Second {
-			return fmt.Errorf("LastHealthCheckTime is too far in the past")
 		}
 		return nil
 	})

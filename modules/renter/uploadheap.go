@@ -6,7 +6,6 @@ package renter
 import (
 	"container/heap"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -34,26 +33,28 @@ const (
 // uploadHeap contains a priority-sorted heap of all the chunks being uploaded
 // to the renter, along with some metadata.
 type uploadHeap struct {
-	// activeChunks contains a list of all the chunks actively being worked on.
-	// These chunks will either be in the heap, or will be in the queues of some
-	// of the workers. A chunk is added to the activeChunks map as soon as it is
-	// added to the uploadHeap, and it is removed from the map as soon as the
-	// last worker completes work on the chunk.
-	activeChunks      map[uploadChunkID]struct{}
-	heap              uploadChunkHeap
+	heap uploadChunkHeap
+
+	// heapChunks is a map containing all the chunks that are currently in the
+	// heap. Chunks are added and removed from the map when chunks are pushed
+	// and popped off the heap
+	//
+	// repairingChunks is a map containing all the chunks are that currently
+	// assigned to workers and are being repaired/worked on.
+	heapChunks      map[uploadChunkID]struct{}
+	repairingChunks map[uploadChunkID]struct{}
+
+	// Control channels
 	newUploads        chan struct{}
 	repairNeeded      chan struct{}
 	stuckChunkFound   chan struct{}
 	stuckChunkSuccess chan struct{}
-	mu                sync.Mutex
+
+	mu sync.Mutex
 }
 
 // uploadChunkHeap is a bunch of priority-sorted chunks that need to be either
 // uploaded or repaired.
-//
-// TODO: When the file system is adjusted to have a tree structure, the
-// filesystem itself will serve as the uploadChunkHeap, making this structure
-// unnecessary. The repair loop might be moved to repair.go.
 type uploadChunkHeap []*unfinishedUploadChunk
 
 // Implementation of heap.Interface for uploadChunkHeap.
@@ -86,24 +87,22 @@ func (uch *uploadChunkHeap) Pop() interface{} {
 	return x
 }
 
+// managedLen will return the length of the heap
+func (uh *uploadHeap) managedLen() int {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	return uh.heap.Len()
+}
+
 // managedPush will add a chunk to the upload heap.
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) {
-	// Create the unique chunk id.
-	ucid := uploadChunkID{
-		fileUID: uuc.fileEntry.UID(),
-		index:   uuc.index,
-	}
-	// Sanity check: fileUID should not be the empty value.
-	if uuc.fileEntry.UID() == "" {
-		panic("empty string for file UID")
-	}
-
 	// Check whether this chunk is already being repaired. If not, add it to the
 	// upload chunk heap.
 	uh.mu.Lock()
-	_, exists := uh.activeChunks[ucid]
-	if !exists {
-		uh.activeChunks[ucid] = struct{}{}
+	_, exists1 := uh.heapChunks[uuc.id]
+	_, exists2 := uh.repairingChunks[uuc.id]
+	if !exists1 && !exists2 {
+		uh.heapChunks[uuc.id] = struct{}{}
 		uh.heap.Push(uuc)
 	}
 	uh.mu.Unlock()
@@ -114,6 +113,7 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 	uh.mu.Lock()
 	if len(uh.heap) > 0 {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
+		delete(uh.heapChunks, uc.id)
 	}
 	uh.mu.Unlock()
 	return uc
@@ -127,11 +127,16 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) []*unfinishedUploadChunk {
 	// Sanity check that there are entries
 	if len(entrys) == 0 {
+		r.log.Debugln("WARN: no entries passed into buildUnfinishedChunks")
 		return nil
 	}
 
 	// If we don't have enough workers for the file, don't repair it right now.
 	if len(r.workerPool) < entrys[0].ErasureCode().MinPieces() {
+		r.log.Debugln("Not building any chunks from file as there are not enough workers")
+		if err := entrys[0].MarkAllChunksAsStuck(); err != nil {
+			r.log.Debugln("WARN: unable to mark all chunks as stuck:", err)
+		}
 		return nil
 	}
 
@@ -152,6 +157,12 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	// and the fact that chunks are going to be different sizes.
 	newUnfinishedChunks := make([]*unfinishedUploadChunk, len(chunkIndexes))
 	for i, index := range chunkIndexes {
+		// Sanity check: fileUID should not be the empty value.
+		if entrys[i].UID() == "" {
+			panic("empty string for file UID")
+		}
+
+		// Create unfinishedUploadChunk
 		newUnfinishedChunks[i] = &unfinishedUploadChunk{
 			fileEntry: entrys[i],
 
@@ -162,7 +173,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 
 			index:  uint64(index),
 			length: entrys[i].ChunkSize(),
-			offset: int64(uint64(i) * entrys[i].ChunkSize()),
+			offset: int64(uint64(index) * entrys[i].ChunkSize()),
 
 			// memoryNeeded has to also include the logical data, and also
 			// include the overhead for encryption.
@@ -252,7 +263,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		}
 	}
 	// TODO: Don't return chunks that can't be downloaded, uploaded or otherwise
-	// helped by the upload process.
+	// helped by the upload process. These chunks should be marked as stuck
 	return incompleteChunks
 }
 
@@ -287,10 +298,6 @@ func (r *Renter) managedBuildAndPushUnstuckChunks(files []*siafile.SiaFileSetEnt
 		id := r.mu.Lock()
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
 		r.mu.Unlock(id)
-		if len(unfinishedUploadChunks) == 0 {
-			r.log.Debugln("WARN: no chunks added to heap")
-			return
-		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
 		}
@@ -342,6 +349,11 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		files = append(files, file)
 	}
 
+	// Check if any files were selected from directory
+	if len(files) == 0 {
+		r.log.Debugln("No files pulled from", dirSiaPath, "to build the repair heap")
+	}
+
 	// Build the unfinished upload chunks and add them to the upload heap
 	switch target {
 	case targetStuckChunks:
@@ -354,12 +366,8 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		r.log.Debugln("WARN: repair target not recognized", target)
 	}
 
-	// Check if local file is missing and redundancy is less than 1
-	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities(files)
+	// Close all files
 	for _, file := range files {
-		if _, err := os.Stat(file.LocalPath()); os.IsNotExist(err) && file.Redundancy(offline, goodForRenew) < 1 {
-			r.log.Debugln("File not found on disk and possibly unrecoverable:", file.LocalPath())
-		}
 		err := file.Close()
 		if err != nil {
 			r.log.Debugln("WARN: Could not close file:", err)
@@ -448,12 +456,17 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		}
 
 		// Make sure we have enough workers for this chunk to reach minimum
-		// redundancy. Otherwise we ignore this chunk for now and try again
-		// the next time we rebuild the heap and refresh the workers.
+		// redundancy. Otherwise we ignore this chunk for now, mark it as stuck
+		// and let the stuck loop work on it
 		id := r.mu.RLock()
 		availableWorkers := len(r.workerPool)
 		r.mu.RUnlock(id)
 		if availableWorkers < nextChunk.minimumPieces {
+			err := nextChunk.fileEntry.SetStuck(nextChunk.index, true)
+			if err != nil {
+				r.log.Println("WARN: unable to set chunk as stuck:", err)
+			}
+			go r.threadedBubbleHealth(nextChunk.fileEntry.DirSiaPath())
 			continue
 		}
 
@@ -465,10 +478,18 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 
 		// Check if enough chunks are currently being repaired
 		if consecutiveChunkRepairs >= maxConsecutiveChunkRepairs {
-			// zero out heap and return
-			lockID := r.mu.Lock()
-			r.uploadHeap.heap = uploadChunkHeap{}
-			r.mu.Unlock(lockID)
+			// Pull all of the chunks out of the heap and return. Save the stuck
+			// chunks, as this is the repair loop and we aren't trying to erase
+			// the stuck chunks.
+			var stuckChunks []*unfinishedUploadChunk
+			for r.uploadHeap.managedLen() > 0 {
+				if c := r.uploadHeap.managedPop(); c.stuck {
+					stuckChunks = append(stuckChunks, c)
+				}
+			}
+			for _, sc := range stuckChunks {
+				r.uploadHeap.managedPush(sc)
+			}
 			return
 		}
 	}
