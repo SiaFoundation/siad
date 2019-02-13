@@ -338,7 +338,10 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	s.so.RiskedCollateral = s.so.RiskedCollateral.Add(newCollateral)
 	s.so.PotentialUploadRevenue = s.so.PotentialUploadRevenue.Add(bandwidthRevenue)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	if err := h.modifyStorageObligation(s.so, sectorsRemoved, sectorsGained, gainedSectorData); err != nil {
+	h.mu.Lock()
+	err = h.modifyStorageObligation(s.so, sectorsRemoved, sectorsGained, gainedSectorData)
+	h.mu.Unlock()
+	if err != nil {
 		s.writeError(err)
 		return err
 	}
