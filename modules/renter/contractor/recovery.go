@@ -189,6 +189,9 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 
 // managedRecoverContracts recovers known recoverable contracts.
 func (c *Contractor) managedRecoverContracts() {
+	if c.staticDeps.Disrupt("DisableContractRecovery") {
+		return
+	}
 	// Get the wallet seed.
 	ws, _, err := c.wallet.PrimarySeed()
 	if err != nil {
@@ -268,4 +271,18 @@ func (c *Contractor) managedRecoverContracts() {
 		c.log.Println("Unable to save while recovering contracts:", err)
 	}
 	c.mu.Unlock()
+}
+
+// removeRecoverableContracts removes contracts found in the block b from the
+// recoverableContracts map.
+func (c *Contractor) removeRecoverableContracts(b types.Block) {
+	for _, txn := range b.Transactions {
+		for i := range txn.FileContracts {
+			// Compute the contract id for that contract.
+			fcid := txn.FileContractID(uint64(i))
+			// Delete the contract from the map since we no longer need to
+			// recover it.
+			delete(c.recoverableContracts, fcid)
+		}
+	}
 }

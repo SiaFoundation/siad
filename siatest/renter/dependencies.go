@@ -19,6 +19,12 @@ type dependencyDisableCloseUploadEntry struct {
 	modules.ProductionDependencies
 }
 
+// dependencyDisableContractRecovery prents recoverable contracts from being
+// recovered in threadedContractMaintenance.
+type dependencyDisableContractRecovery struct {
+	modules.ProductionDependencies
+}
+
 // dependencyDisableRecoveryStatusReset prevents the fields scanInProgress and
 // atomicRecoveryScanHeight from being reset after the scan is done.
 type dependencyDisableRecoveryStatusReset struct {
@@ -35,6 +41,12 @@ func (d *dependencyBlockScan) Disrupt(s string) bool {
 		<-d.c
 	}
 	return false
+}
+
+// Disrupt prevents contracts from being recovered in
+// threadedContractMaintenance.
+func (d *dependencyDisableContractRecovery) Disrupt(s string) bool {
+	return s == "DisableContractRecovery"
 }
 
 // Disrupt prevents SiafileEntries in the upload code from being closed.
