@@ -797,16 +797,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Check to see if a chunk got marked as stuck
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		fi2, err := r.File(remoteFile)
-		if err != nil {
-			return err
-		}
-		if fi2.NumStuckChunks == 0 {
-			return errors.New("no stuck chunks found")
-		}
-		return nil
-	})
+	err = r.WaitForStuckChunksToBubble()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -824,17 +815,8 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := r.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
-	// Check to see if a chunk got marked as unstuck
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		fi2, err := r.File(remoteFile)
-		if err != nil {
-			return err
-		}
-		if fi2.NumStuckChunks != 0 {
-			return fmt.Errorf("%v stuck chunks found, expected 0", fi2.NumStuckChunks)
-		}
-		return nil
-	})
+	// Check to see if a chunk got repaired and marked as unstuck
+	err = r.WaitForStuckChunksToRepair()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1601,7 +1583,7 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	// means we should have number of hosts - 1 active contracts and number of
 	// hosts - 1 inactive contracts.  One of the inactive contracts will be
 	// !goodForRenew due to the host
-	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 5*time.Second, func() error {
+	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 1*time.Second, func() error {
 		if err := miner.MineBlock(); err != nil {
 			return err
 		}
@@ -4571,10 +4553,19 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 	if err := tg.RemoveNode(r); err != nil {
 		t.Fatal(err)
 	}
+	// Bring up new hosts for the new renter to form contracts with, otherwise no
+	// contracts will form because it will not form contracts with hosts it see to
+	// have recoverable contracts with
+	_, err = tg.AddNodeN(node.HostTemplate, 2)
+	if err != nil {
+		t.Fatal("Failed to create a new host", err)
+	}
 
 	// Start a new renter with the same seed but disable contract recovery.
 	newRenterDir := filepath.Join(testDir, "renter")
 	renterParams := node.Renter(newRenterDir)
+	renterParams.Allowance = modules.DefaultAllowance
+	renterParams.Allowance.Hosts = 2
 	renterParams.PrimarySeed = seed
 	renterParams.ContractorDeps = &dependencyDisableContractRecovery{}
 	nodes, err := tg.AddNodes(renterParams)

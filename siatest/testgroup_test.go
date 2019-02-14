@@ -10,7 +10,7 @@ import (
 
 // TestCreateTestGroup tests the behavior of NewGroup.
 func TestNewGroup(t *testing.T) {
-	if testing.Short() {
+	if !build.VLONG {
 		t.SkipNow()
 	}
 	// Specify the parameters for the group

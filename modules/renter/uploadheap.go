@@ -134,8 +134,16 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	// If we don't have enough workers for the file, don't repair it right now.
 	if len(r.workerPool) < entrys[0].ErasureCode().MinPieces() {
 		r.log.Debugln("Not building any chunks from file as there are not enough workers")
+		// Mark all chunks as stuck
 		if err := entrys[0].MarkAllChunksAsStuck(); err != nil {
 			r.log.Debugln("WARN: unable to mark all chunks as stuck:", err)
+		}
+		// Close all entrys
+		for _, entry := range entrys {
+			err := entry.Close()
+			if err != nil {
+				r.log.Debugln("WARN: Could not close file:", err)
+			}
 		}
 		return nil
 	}
@@ -143,8 +151,13 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	// Assemble chunk indexes, stuck Loop should only be adding stuck chunks and
 	// the repair loop should only be adding unstuck chunks
 	var chunkIndexes []int
-	for i := range entrys {
-		if (target == targetStuckChunks) != entrys[i].StuckChunkByIndex(uint64(i)) {
+	for i, entry := range entrys {
+		if (target == targetStuckChunks) != entry.StuckChunkByIndex(uint64(i)) {
+			// Close unneeded entrys
+			err := entry.Close()
+			if err != nil {
+				r.log.Debugln("WARN: Could not close file:", err)
+			}
 			continue
 		}
 		chunkIndexes = append(chunkIndexes, i)
@@ -159,7 +172,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	for i, index := range chunkIndexes {
 		// Sanity check: fileUID should not be the empty value.
 		if entrys[i].UID() == "" {
-			panic("empty string for file UID")
+			build.Critical("empty string for file UID")
 		}
 
 		// Create unfinishedUploadChunk
@@ -260,6 +273,12 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	for i := 0; i < len(newUnfinishedChunks); i++ {
 		if newUnfinishedChunks[i].piecesCompleted < newUnfinishedChunks[i].piecesNeeded {
 			incompleteChunks = append(incompleteChunks, newUnfinishedChunks[i])
+			continue
+		}
+		// Close entry of completed chunk
+		err := newUnfinishedChunks[i].fileEntry.Close()
+		if err != nil {
+			r.log.Debugln("WARN: could not close file:", err)
 		}
 	}
 	// TODO: Don't return chunks that can't be downloaded, uploaded or otherwise

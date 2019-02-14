@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -92,8 +91,10 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Create the directory path on disk. Renter directory is already present so
 	// only files not in top level directory need to have directories created
-	dir, _ := filepath.Split(up.SiaPath)
-	dirSiaPath := strings.TrimSuffix(dir, "/")
+	dirSiaPath := filepath.Dir(up.SiaPath)
+	if dirSiaPath == "." {
+		dirSiaPath = ""
+	}
 	// Check if directory exists already
 	exists, err := r.staticDirSet.Exists(dirSiaPath)
 	if !os.IsNotExist(err) && err != nil {
