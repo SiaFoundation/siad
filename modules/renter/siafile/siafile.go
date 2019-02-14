@@ -442,6 +442,39 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 	return keys
 }
 
+// MarkAllChunksAsStuck marks all chunks as stuck in the siafile
+func (sf *SiaFile) MarkAllChunksAsStuck() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// If the file has been deleted we can't mark a chunk as stuck.
+	if sf.deleted {
+		return errors.New("can't call SetStuck on deleted file")
+	}
+	var updates []writeaheadlog.Update
+	for chunkIndex, chunk := range sf.staticChunks {
+		// Check if chunk is already stuck
+		if chunk.Stuck {
+			continue
+		}
+		// Update chunk and NumStuckChunks in siafile metadata
+		chunk.Stuck = true
+		sf.staticMetadata.NumStuckChunks++
+		// Create chunk update
+		update, err := sf.saveChunkUpdate(chunkIndex)
+		if err != nil {
+			return err
+		}
+		updates = append(updates, update)
+	}
+	// Create metadata update and apply updates on disk
+	metadataUpdates, err := sf.saveMetadataUpdate()
+	if err != nil {
+		return err
+	}
+	updates = append(updates, metadataUpdates...)
+	return sf.createAndApplyTransaction(updates...)
+}
+
 // NumChunks returns the number of chunks the file consists of. This will
 // return the number of chunks the file consists of even if the file is not
 // fully uploaded yet.
@@ -708,7 +741,7 @@ func (sf *SiaFile) pruneHosts() {
 // renew.
 func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (uint64, uint64) {
 	numPiecesGoodForRenew := uint64(0)
-	numPiecesGoorForUpload := uint64(0)
+	numPiecesGoodForUpload := uint64(0)
 	for _, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
 		// Remember if we encountered a goodForRenew piece or a
 		// !goodForRenew piece that was at least online.
@@ -735,10 +768,10 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 		}
 		if foundGoodForRenew {
 			numPiecesGoodForRenew++
-			numPiecesGoorForUpload++
+			numPiecesGoodForUpload++
 		} else if foundOnline {
-			numPiecesGoorForUpload++
+			numPiecesGoodForUpload++
 		}
 	}
-	return numPiecesGoodForRenew, numPiecesGoorForUpload
+	return numPiecesGoodForRenew, numPiecesGoodForUpload
 }

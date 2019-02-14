@@ -49,7 +49,7 @@ var (
 
 	// maxStreamerCacheSize defines the maximum cache size that each streamer
 	// will use before it no longer increases its own cache size. The value has
-	// been set fairly low beacuse some applications like mpv will request very
+	// been set fairly low because some applications like mpv will request very
 	// large buffer sizes, taking as much data as fast as they can. This results
 	// in the cache size on Sia's end growing to match the size of the
 	// requesting application's buffer, and harms seek times. Maintaining a low
@@ -58,7 +58,7 @@ var (
 	//
 	// This would be best resolved by knowing the actual bitrate of the data
 	// being fed to the user instead of trying to guess a bitrate, however as of
-	// time of writing we don't have an easy way to get that informaiton.
+	// time of writing we don't have an easy way to get that information.
 	maxStreamerCacheSize = build.Select(build.Var{
 		Dev:      int64(1 << 20), // 1 MiB
 		Standard: int64(1 << 16), // 16 MiB
@@ -78,10 +78,6 @@ const (
 	// downloadFailureCooldown defines how long to wait for a worker after a
 	// worker has experienced a download failure.
 	downloadFailureCooldown = time.Second * 3
-
-	// maxConsecutiveChunkRepairs is the maximum number of chunks we want to pop of
-	// the repair heap before rebuilding the heap
-	maxConsecutiveChunkRepairs = int(100)
 
 	// memoryPriorityLow is used to request low priority memory
 	memoryPriorityLow = false
@@ -139,6 +135,14 @@ var (
 		Standard: 1 * time.Hour,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
+
+	// maxConsecutiveChunkRepairs is the maximum number of chunks we want to pop of
+	// the repair heap before rebuilding the heap
+	maxConsecutiveChunkRepairs = build.Select(build.Var{
+		Dev:      20,
+		Standard: 100,
+		Testing:  5,
+	}).(int)
 
 	// maxConsecutivePenalty determines how many times the timeout/cooldown for
 	// being a bad host can be doubled before a maximum cooldown is reached.

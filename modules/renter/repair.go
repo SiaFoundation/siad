@@ -293,6 +293,10 @@ func (r *Renter) managedFileHealth(siaPath string) (fileHealth, error) {
 	// Calculate file health
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	// Check if local file is missing and redundancy is less than one
+	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && sf.Redundancy(hostOfflineMap, hostGoodForRenewMap) < 1 {
+		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
+	}
 	return fileHealth{
 		health:              health,
 		stuckHealth:         stuckHealth,
@@ -615,10 +619,6 @@ func (r *Renter) threadedStuckFileLoop() {
 			return
 		}
 
-		// Refresh the worker pool and get the set of hosts that are currently
-		// useful for uploading.
-		hosts := r.managedRefreshHostsAndWorkers()
-
 		// Randomly get directory with stuck files
 		siaPath, err := r.managedStuckDirectory()
 		if err != nil && err != errNoStuckFiles {
@@ -637,6 +637,10 @@ func (r *Renter) threadedStuckFileLoop() {
 			continue
 		}
 
+		// Refresh the worker pool and get the set of hosts that are currently
+		// useful for uploading.
+		hosts := r.managedRefreshHostsAndWorkers()
+
 		// Add stuck chunk to upload heap
 		r.managedBuildChunkHeap(siaPath, hosts, targetStuckChunks)
 
@@ -644,6 +648,9 @@ func (r *Renter) threadedStuckFileLoop() {
 		// the first chunk popped off will be the stuck chunk.
 		r.log.Println("Attempting to repair stuck chunks from", siaPath)
 		r.managedRepairLoop(hosts)
+
+		// Call bubble once all chunks have been popped off heap
+		r.threadedBubbleHealth(siaPath)
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
@@ -657,9 +664,6 @@ func (r *Renter) threadedStuckFileLoop() {
 			// Stuck chunk was successfully repaired, continue to repair stuck
 			// chunks
 		}
-
-		// Call bubble to make sure that the renter is updated since the last stuck repair.
-		r.threadedBubbleHealth(siaPath)
 	}
 }
 

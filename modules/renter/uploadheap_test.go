@@ -125,7 +125,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	}
 
 	// Reset upload heap
-	rt.renter.uploadHeap.activeChunks = make(map[uploadChunkID]struct{})
+	rt.renter.uploadHeap.heapChunks = make(map[uploadChunkID]struct{})
 	rt.renter.uploadHeap.heap = uploadChunkHeap{}
 
 	// Set the first file's RecentRepairTime to now
@@ -141,7 +141,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	}
 
 	// Reset upload heap
-	rt.renter.uploadHeap.activeChunks = make(map[uploadChunkID]struct{})
+	rt.renter.uploadHeap.heapChunks = make(map[uploadChunkID]struct{})
 	rt.renter.uploadHeap.heap = uploadChunkHeap{}
 
 	// Call managedBuildChunkHeap as stuck loop, the heap should have a length
