@@ -49,7 +49,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	}
 
 	// Sanity-check the lock timeout
-	lockTimeout := time.Duration(req.Timeout)
+	lockTimeout := time.Duration(req.Timeout) * time.Millisecond
 	if lockTimeout > maxObligationLockTimeout {
 		err := errors.New("lock timeout is too long")
 		s.writeError(err)
