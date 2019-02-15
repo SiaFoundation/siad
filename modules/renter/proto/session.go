@@ -53,6 +53,7 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	req := modules.LoopLockRequest{
 		ContractID: id,
 		Signature:  sig[:],
+		Timeout:    defaultContractLockTimeout,
 	}
 
 	extendDeadline(s.conn, modules.NegotiateSettingsTime) // TODO: should account for lock time

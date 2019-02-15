@@ -24,6 +24,10 @@ const (
 	// keyExchangeMaxLen is the maximum number of bytes the renter will read
 	// from the host during the RPC key exchange.
 	keyExchangeMaxLen = 256
+
+	// defaultContractLockTimeout is the default amount of the time the renter
+	// will try to acquire a contract lock for.
+	defaultContractLockTimeout = 60 * time.Second
 )
 
 var (
