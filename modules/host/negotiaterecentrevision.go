@@ -5,13 +5,12 @@ import (
 	"net"
 	"time"
 
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-
-	"github.com/coreos/bbolt"
 )
 
 var (
@@ -36,7 +35,7 @@ func (h *Host) managedVerifyChallengeResponse(fcid types.FileContractID, challen
 	// Grab a lock before it is possible to perform any operations on the
 	// storage obligation. Defer a call to unlock in the event of an error. If
 	// there is no error, the storage obligation will be returned with a lock.
-	err = h.managedTryLockStorageObligation(fcid)
+	err = h.managedTryLockStorageObligation(fcid, obligationLockTimeout)
 	if err != nil {
 		err = extendErr("could not get "+fcid.String()+" lock: ", ErrorInternal(err.Error()))
 		return storageObligation{}, types.FileContractRevision{}, nil, err

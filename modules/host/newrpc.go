@@ -2,8 +2,9 @@ package host
 
 import (
 	"errors"
+	"time"
 
-	"github.com/coreos/bbolt"
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -47,6 +48,14 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 		return err
 	}
 
+	// Sanity-check the lock timeout
+	lockTimeout := time.Duration(req.Timeout)
+	if lockTimeout > maxObligationLockTimeout {
+		err := errors.New("lock timeout is too long")
+		s.writeError(err)
+		return err
+	}
+
 	var newSO storageObligation
 	h.mu.RLock()
 	err := h.db.View(func(tx *bolt.Tx) error {
@@ -85,8 +94,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	}
 
 	// attempt to lock the storage obligation
-	// TODO: respect req.Timeout
-	lockErr := h.managedTryLockStorageObligation(req.ContractID)
+	lockErr := h.managedTryLockStorageObligation(req.ContractID, lockTimeout)
 	if lockErr == nil {
 		s.so = newSO
 	}

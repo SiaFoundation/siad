@@ -27,7 +27,7 @@ func TestObligationLocks(t *testing.T) {
 	ht.host.managedUnlockStorageObligation(ob1)
 
 	// Simple lock and unlock, with trylock.
-	err = ht.host.managedTryLockStorageObligation(ob1)
+	err = ht.host.managedTryLockStorageObligation(ob1, obligationLockTimeout)
 	if err != nil {
 		t.Fatal("unable to get lock despite not having a lock in place")
 	}
@@ -53,7 +53,7 @@ func TestObligationLocks(t *testing.T) {
 		time.Sleep(obligationLockTimeout * 2)
 		ht.host.managedUnlockStorageObligation(ob1)
 	}()
-	err = ht.host.managedTryLockStorageObligation(ob1)
+	err = ht.host.managedTryLockStorageObligation(ob1, obligationLockTimeout)
 	if err != errObligationLocked {
 		t.Fatal("storage obligation was able to get a lock, despite already being locked")
 	}
@@ -64,7 +64,7 @@ func TestObligationLocks(t *testing.T) {
 		time.Sleep(obligationLockTimeout / 2)
 		ht.host.managedUnlockStorageObligation(ob1)
 	}()
-	err = ht.host.managedTryLockStorageObligation(ob1)
+	err = ht.host.managedTryLockStorageObligation(ob1, obligationLockTimeout)
 	if err != nil {
 		t.Fatal("storage obligation unable to get lock, depsite having enough time")
 	}
@@ -78,15 +78,15 @@ func TestObligationLocks(t *testing.T) {
 	ht.host.managedLockStorageObligation(ob3)
 	ht.host.managedUnlockStorageObligation(ob3)
 	ht.host.managedUnlockStorageObligation(ob2)
-	err = ht.host.managedTryLockStorageObligation(ob2)
+	err = ht.host.managedTryLockStorageObligation(ob2, obligationLockTimeout)
 	if err != nil {
 		t.Fatal("unable to get lock despite not having a lock in place")
 	}
-	err = ht.host.managedTryLockStorageObligation(ob3)
+	err = ht.host.managedTryLockStorageObligation(ob3, obligationLockTimeout)
 	if err != nil {
 		t.Fatal("unable to get lock despite not having a lock in place")
 	}
-	err = ht.host.managedTryLockStorageObligation(ob1)
+	err = ht.host.managedTryLockStorageObligation(ob1, obligationLockTimeout)
 	if err != errObligationLocked {
 		t.Fatal("storage obligation was able to get a lock, despite already being locked")
 	}
