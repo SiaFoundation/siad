@@ -43,6 +43,14 @@ func (tm *TryMutex) TryLock() bool {
 func (tm *TryMutex) TryLockTimed(t time.Duration) bool {
 	tm.once.Do(tm.init)
 
+	// For very small t (mostly t == 0), do a non-blocking check first to avoid
+	// racing the timer.
+	select {
+	case <-tm.lock:
+		return true
+	default:
+	}
+
 	timer := time.NewTimer(t)
 	select {
 	case <-tm.lock:
