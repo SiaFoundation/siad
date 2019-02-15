@@ -255,32 +255,6 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	return sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
 }
 
-// Available indicates whether the file is ready to be downloaded.
-func (sf *SiaFile) Available(offline map[string]bool) bool {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	// We need to find at least erasureCode.MinPieces different pieces for each
-	// chunk for the file to be available.
-	for _, chunk := range sf.staticChunks {
-		piecesForChunk := 0
-		for _, pieceSet := range chunk.Pieces {
-			for _, piece := range pieceSet {
-				if !offline[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()] {
-					piecesForChunk++
-					break // break out since we only count unique pieces
-				}
-			}
-			if piecesForChunk >= sf.staticMetadata.staticErasureCode.MinPieces() {
-				break // we already have enough pieces for this chunk.
-			}
-		}
-		if piecesForChunk < sf.staticMetadata.staticErasureCode.MinPieces() {
-			return false // this chunk isn't available.
-		}
-	}
-	return true
-}
-
 // chunkHealth returns the health of the chunk which is defined as the percent
 // of parity pieces remaining.
 //

@@ -138,7 +138,7 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew 
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
-		Available:        entry.Available(offline),
+		Available:        redundancy > 1 || onDisk,
 		ChangeTime:       entry.ChangeTime(),
 		CipherType:       entry.MasterKey().Type().String(),
 		CreateTime:       entry.CreateTime(),
