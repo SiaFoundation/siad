@@ -187,6 +187,9 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, error) {
 	if !exists {
 		// Try and Load File from disk
 		sf, err := LoadSiaFile(filepath.Join(sfs.siaFileDir, siaPath+ShareExtension), sfs.wal)
+		if os.IsNotExist(err) {
+			return nil, ErrUnknownPath
+		}
 		if err != nil {
 			return nil, err
 		}
