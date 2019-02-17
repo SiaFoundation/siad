@@ -63,7 +63,7 @@ func (ld *LocalDir) Name() string {
 
 // NewFile creates a new LocalFile in the current LocalDir
 func (ld *LocalDir) NewFile(size int) (*LocalFile, error) {
-	fileName := fmt.Sprintf("%dbytes %s", size, hex.EncodeToString(fastrand.Bytes(4)))
+	fileName := fmt.Sprintf("%dbytes-%s", size, hex.EncodeToString(fastrand.Bytes(4)))
 	path := filepath.Join(ld.path, fileName)
 	bytes := fastrand.Bytes(size)
 	err := ioutil.WriteFile(path, bytes, 0600)
