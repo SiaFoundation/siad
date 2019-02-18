@@ -221,7 +221,7 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string, oldContracts []module
 		}
 	}
 	fileData.Chunks = chunks
-	return r.staticFileSet.NewFromFileData(fileData)
+	return r.staticFileSet.NewFromLegacyData(fileData)
 }
 
 // numChunks returns the number of chunks that f was split into.

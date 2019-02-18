@@ -26,6 +26,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 
@@ -537,7 +538,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	// Create local file
 	size := 100 + siatest.Fuzz()
 	fd := r.FilesDir()
-	ld, err := fd.CreateDir("subDir1/subDir2/subDir3")
+	ld, err := fd.CreateDir("subDir1/subDir2/subDir3-" + persist.RandomSuffix())
 	if err != nil {
 		t.Fatal(err)
 	}
