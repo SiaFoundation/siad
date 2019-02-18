@@ -309,6 +309,14 @@ var (
 	CipherNoOverlap        = types.Specifier{'N', 'o', 'O', 'v', 'e', 'r', 'l', 'a', 'p'}
 )
 
+// Write actions
+var (
+	WriteActionAppend = types.Specifier{'A', 'p', 'p', 'e', 'n', 'd'}
+	WriteActionTrim   = types.Specifier{'T', 'r', 'i', 'm'}
+	WriteActionSwap   = types.Specifier{'S', 'w', 'a', 'p'}
+	WriteActionUpdate = types.Specifier{'U', 'p', 'd', 'a', 't', 'e'}
+)
+
 var (
 	// RPCChallengePrefix is the prefix prepended to the challenge data
 	// supplied by the host when proving ownership of a contract's secret key.
@@ -458,15 +466,31 @@ type (
 
 	// LoopWriteRequest contains the request parameters for RPCLoopWrite.
 	LoopWriteRequest struct {
-		Data []byte
+		Actions     []LoopWriteAction
+		MerkleProof bool
 
 		NewRevisionNumber    uint64
 		NewValidProofValues  []types.Currency
 		NewMissedProofValues []types.Currency
-		Signature            []byte
 	}
 
-	// LoopWriteResponse contains the response data for RPCLoopWriteResponse.
+	// LoopWriteAction is a generic Write action. The meaning of each field
+	// depends on the Type of the action.
+	LoopWriteAction struct {
+		Type types.Specifier
+		A, B uint64
+		Data []byte
+	}
+
+	// LoopWriteMerkleProof contains the optional Merkle proof for response data
+	// for RPCLoopWrite.
+	LoopWriteMerkleProof struct {
+		OldSubtreeHashes []crypto.Hash
+		OldLeafHashes    []crypto.Hash
+		NewMerkleRoot    crypto.Hash
+	}
+
+	// LoopWriteResponse contains the response data for RPCLoopWrite.
 	LoopWriteResponse struct {
 		Signature []byte
 	}
