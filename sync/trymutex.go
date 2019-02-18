@@ -43,7 +43,9 @@ func (tm *TryMutex) TryLock() bool {
 func (tm *TryMutex) TryLockTimed(t time.Duration) bool {
 	tm.once.Do(tm.init)
 
-	// For very small t (mostly t == 0), do a non-blocking check first to avoid
+	// For very small t (mostly t == 0), it's possible that the timer below
+	// could fire before we acquire the lock, even if the lock is actually
+	// available. To prevent this, do a non-blocking check for the lock before
 	// racing the timer.
 	select {
 	case <-tm.lock:
