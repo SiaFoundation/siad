@@ -364,8 +364,8 @@ func TestRenterDownloadAsyncNonexistentFile(t *testing.T) {
 
 	downpath := filepath.Join(st.dir, "testfile")
 	err = st.getAPI(fmt.Sprintf("/renter/downloadasync/doesntexist?destination=%v", downpath), nil)
-	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
-		t.Error("Expected error to contain 'no such file or directory':", err)
+	if err == nil {
+		t.Error("should not be able to download a file that does not exist")
 	}
 }
 
@@ -804,8 +804,8 @@ func TestRenterLoadNonexistent(t *testing.T) {
 	// Try downloading a nonexistent file.
 	downpath := filepath.Join(st.dir, "dnedown.dat")
 	err = st.stdGetAPI("/renter/download/dne?destination=" + downpath)
-	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
-		t.Error("Expected error to contain 'no such file or directory':", err)
+	if err == nil {
+		t.Error("should not be able to download non-existant file")
 	}
 
 	// The renter's downloads queue should be empty.

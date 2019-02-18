@@ -157,14 +157,6 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		if ok {
 			repairPath = tf.RepairPath
 		}
-		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
-		// be returned here
-		entry, err := r.fileToSiaFile(f, repairPath, oldContracts)
-		if err != nil {
-			return nil, err
-		}
-		names[i] = f.name
-		err = errors.Compose(err, entry.Close())
 		// Create and add a siadir to the SiaDirSet if one has not been created
 		sd, errDir := r.staticDirSet.NewSiaDir(filepath.Dir(f.name))
 		if errDir != nil && errDir != siadir.ErrPathOverload {
@@ -173,6 +165,14 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		if errDir != siadir.ErrPathOverload {
 			err = errors.Compose(err, sd.Close())
 		}
+		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
+		// be returned here
+		entry, err := r.fileToSiaFile(f, repairPath, oldContracts)
+		if err != nil {
+			return nil, err
+		}
+		names[i] = f.name
+		err = errors.Compose(err, entry.Close())
 	}
 	return names, err
 }

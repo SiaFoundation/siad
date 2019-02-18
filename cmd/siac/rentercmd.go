@@ -36,6 +36,20 @@ var (
 		Run:   wrap(renterallowancecmd),
 	}
 
+	renterBackupCreateCmd = &cobra.Command{
+		Use:   "createbackup [path]",
+		Short: "Create a backup of the renter's siafiles",
+		Long:  "Create a backup of the renter's siafiles at the specified path",
+		Run:   wrap(renterbackupcreatecmd),
+	}
+
+	renterBackupLoadCmd = &cobra.Command{
+		Use:   "loadbackup [path]",
+		Short: "Load a backup of the renter's siafiles",
+		Long:  "Load a backup of the renter's siafiles from the specified path",
+		Run:   wrap(renterbackuploadcmd),
+	}
+
 	renterCmd = &cobra.Command{
 		Use:   "renter",
 		Short: "Perform renter actions",
@@ -490,6 +504,28 @@ func (s byValue) Less(i, j int) bool {
 		return s[i].NetAddress < s[j].NetAddress
 	}
 	return cmp > 0
+}
+
+// renterbackcreatecmd is the handler for the command `siac renter
+// createbackup`.
+func renterbackupcreatecmd(path string) {
+	path = abs(path)
+
+	err := httpClient.RenterCreateBackupPost(path)
+	if err != nil {
+		die("Failed to create backup", err)
+	}
+}
+
+// renterbackloadcmd is the handler for the command `siac renter
+// loadbackup`.
+func renterbackuploadcmd(path string) {
+	path = abs(path)
+
+	err := httpClient.RenterRecoverBackupPost(path)
+	if err != nil {
+		die("Failed to load backup", err)
+	}
 }
 
 // rentercontractscmd is the handler for the comand `siac renter contracts`.
