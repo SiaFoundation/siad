@@ -21,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -95,17 +96,11 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	if dirSiaPath == "." {
 		dirSiaPath = ""
 	}
-	// Check if directory exists already
-	exists, err := r.staticDirSet.Exists(dirSiaPath)
-	if !os.IsNotExist(err) && err != nil {
+	// Try to create the directory. If ErrPathOverload is returned it already exists.
+	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
+	if err != siadir.ErrPathOverload && err != nil {
 		return err
-	}
-	if !exists {
-		// Create directory
-		siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
-		if err != nil {
-			return err
-		}
+	} else if err == nil {
 		siaDirEntry.Close()
 	}
 
