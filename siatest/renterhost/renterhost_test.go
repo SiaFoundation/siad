@@ -3,7 +3,9 @@ package renterhost
 import (
 	"bytes"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -144,4 +146,63 @@ func TestSession(t *testing.T) {
 	} else if !bytes.Equal(s2data, sector2) {
 		t.Fatal("downloaded data does not match")
 	}
+}
+
+// TestHostLockTimeout tests that the host respects the requested timeout in the
+// Lock RPC.
+func TestHostLockTimeout(t *testing.T) {
+	gp := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterHostTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Close()
+
+	// manually grab a renter contract
+	renter := tg.Renters()[0]
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := cs.ViewAll()[0]
+
+	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Begin an RPC session. This will lock the contract.
+	s1, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Attempt to begin a separate RPC session. This will block while waiting
+	// to acquire the contract lock, and eventually fail.
+	_, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err == nil || !strings.Contains(err.Error(), "contract is locked by another party") {
+		t.Fatal("expected contract lock error, got", err)
+	}
+
+	// Try again, but this time, unlock the contract during the timeout period.
+	// The new session should successfully acquire the lock.
+	go func() {
+		time.Sleep(3 * time.Second)
+		if err := s1.Close(); err != nil {
+			panic(err) // can't call t.Fatal from goroutine
+		}
+	}()
+	s2, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2.Close()
 }
