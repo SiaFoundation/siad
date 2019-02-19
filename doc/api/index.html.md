@@ -1507,6 +1507,50 @@ ID of the file contract
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /renter/backup [POST]
+
+Creates a backup of all siafiles in the renter at the specified path.
+
+### Query Response Parameters
+#### REQUIRED
+**destination** | string
+The path on disk where the backup will be created. Needs to be an absolute
+path.
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/recoverbackup [POST]
+
+Recovers an existing backup from the specified path by adding all the siafiles
+contained within it to the renter. Should a siafile for a certain path already
+exist, a number will be added as a suffix. e.g. 'myfile_1.sia'
+
+### Query Response Parameters
+#### REQUIRED
+**source** | string
+The path on disk where the backup will be recovered from. Needs to be an
+absolute path.
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/contract/cancel [POST]
+
+cancels a specific contract of the Renter.
+
+### Query String Parameters
+#### REQUIRED
+**id** | hash
+ID of the file contract
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+
 ## /renter/contracts [GET]
 
 Returns the renter's contracts.  Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default. Inactive contracts are contracts that are in the current period but are marked as not good for renew, these contracts have the potential to become active again but currently are not storing data.  Expired contracts are contracts not in the current period, where not more data is being stored and excess funds have been released to the renter. Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
@@ -1941,6 +1985,26 @@ until they are recovered or expired.
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/recoveryscan [GET]
+
+Returns some information about a potentially ongoing recovery scan.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "scaninprogress": true // boolean
+  "scannedheight" : 1000 // uint64
+}
+```
+**scaninprogress** | boolean
+indicates if a scan for recoverable contracts is currently in progress.
+
+**scannedheight** | uint64
+indicates the progress of a currently ongoing scan in terms of number of blocks
+that have already been scanned.
 
 ## /renter/rename/*siapath* [POST]
 
