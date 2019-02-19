@@ -42,9 +42,6 @@ func TestHostPersistCompat100(t *testing.T) {
 	// Check that, after loading the compatibility file, all of the values are
 	// still correct. The file that was transplanted had no zero-value fields.
 	ht.host.mu.Lock()
-	if h.financialMetrics.PotentialStorageRevenue.IsZero() {
-		t.Error("potential storage revenue not loaded correctly")
-	}
 	if h.settings.MinContractPrice.IsZero() {
 		t.Error("min contract price not loaded correctly")
 	}
