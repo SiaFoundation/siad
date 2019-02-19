@@ -191,18 +191,14 @@ func (sd *SiaDir) SiaPath() string {
 	return sd.staticMetadata.SiaPath
 }
 
-// updateHealth updates the SiaDir metadata on disk with the new Health value
-func (sd *SiaDir) updateHealth(health SiaDirHealth) error {
+// UpdateHealth updates the SiaDir metadata on disk with the new Health value
+func (sd *SiaDir) UpdateHealth(health SiaDirHealth) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+
 	sd.staticMetadata.Health = health.Health
 	sd.staticMetadata.StuckHealth = health.StuckHealth
 	sd.staticMetadata.LastHealthCheckTime = health.LastHealthCheckTime
 	sd.staticMetadata.NumStuckChunks = health.NumStuckChunks
 	return sd.saveDir()
-}
-
-// UpdateHealth is a helper wrapper for calling updateHealth
-func (sd *SiaDir) UpdateHealth(health SiaDirHealth) error {
-	sd.mu.Lock()
-	defer sd.mu.Unlock()
-	return sd.updateHealth(health)
 }
