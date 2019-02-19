@@ -242,7 +242,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		updates, err = sf.saveHeaderUpdates()
 	} else {
 		// Otherwise just the metadata.
-		updates, err = sf.saveMetadataUpdate()
+		updates, err = sf.saveMetadataUpdates()
 	}
 	if err != nil {
 		return err
@@ -467,7 +467,7 @@ func (sf *SiaFile) MarkAllChunksAsStuck() error {
 		updates = append(updates, update)
 	}
 	// Create metadata update and apply updates on disk
-	metadataUpdates, err := sf.saveMetadataUpdate()
+	metadataUpdates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
 	}
@@ -575,7 +575,7 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
 		sf.staticMetadata.NumStuckChunks--
 	}
 	// Update chunk and metadata on disk
-	updates, err := sf.saveMetadataUpdate()
+	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
 	}
