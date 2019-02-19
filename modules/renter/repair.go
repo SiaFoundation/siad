@@ -293,6 +293,9 @@ func (r *Renter) managedFileHealth(siaPath string) (fileHealth, error) {
 	// Calculate file health
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	if err := sf.UpdateLastHealthCheckTime(); err != nil {
+		return fileHealth{}, err
+	}
 	// Check if local file is missing and redundancy is less than one
 	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && sf.Redundancy(hostOfflineMap, hostGoodForRenewMap) < 1 {
 		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
