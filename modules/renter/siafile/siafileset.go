@@ -67,8 +67,8 @@ func NewSiaFileSet(filesDir string, wal *writeaheadlog.WAL) *SiaFileSet {
 	}
 }
 
-// newThreadType created a threadInfo entry for the threadMap
-func newThreadType() threadInfo {
+// newThreadInfo created a threadInfo entry for the threadMap
+func newThreadInfo() threadInfo {
 	tt := threadInfo{
 		callingFiles: make([]string, threadDepth+1),
 		callingLines: make([]int, threadDepth+1),
@@ -98,7 +98,7 @@ func (entry *SiaFileSetEntry) CopyEntry(n int) []*SiaFileSetEntry {
 			siaFileSetEntry: entry.siaFileSetEntry,
 			threadUID:       threadUID,
 		})
-		entry.threadMap[threadUID] = newThreadType()
+		entry.threadMap[threadUID] = newThreadInfo()
 	}
 	return entrys
 }
@@ -202,7 +202,7 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, error) {
 	threadUID := randomThreadUID()
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
-	entry.threadMap[threadUID] = newThreadType()
+	entry.threadMap[threadUID] = newThreadInfo()
 	return &SiaFileSetEntry{
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
@@ -259,7 +259,7 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 	}
 	entry := sfs.newSiaFileSetEntry(sf)
 	threadUID := randomThreadUID()
-	entry.threadMap[threadUID] = newThreadType()
+	entry.threadMap[threadUID] = newThreadInfo()
 	sfs.siaFileMap[siaPath] = entry
 	return &SiaFileSetEntry{
 		siaFileSetEntry: entry,
