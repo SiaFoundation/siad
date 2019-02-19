@@ -57,7 +57,12 @@ func TestSession(t *testing.T) {
 
 	// upload a sector
 	sector := fastrand.Bytes(int(modules.SectorSize))
-	_, root, err := s.Write(sector)
+	_, root, err := s.Append(sector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// upload another sector, to test Merkle proofs
+	_, _, err = s.Append(sector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +93,55 @@ func TestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(droots[0][:], root[:]) {
+	if droots[0] != root {
 		t.Fatal("downloaded sector root does not match")
+	}
+
+	// perform a more complex modification: append+swap+trim
+	sector2 := fastrand.Bytes(int(modules.SectorSize))
+	_, err = s.Write([]modules.LoopWriteAction{
+		{Type: modules.WriteActionAppend, Data: sector2},
+		{Type: modules.WriteActionSwap, A: 0, B: 2},
+		{Type: modules.WriteActionTrim, A: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// check that the write was applied correctly
+	_, droots, err = s.SectorRoots(modules.LoopSectorRootsRequest{
+		RootOffset: 0,
+		NumRoots:   1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if droots[0] != crypto.MerkleRoot(sector2) {
+		t.Fatal("updated sector root does not match")
+	}
+
+	// shut down and restart the host to ensure the sectors are durable
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	host := tg.Hosts()[0]
+	if err := host.RestartNode(); err != nil {
+		t.Fatal(err)
+	}
+	// restarting changes the host's address
+	hg, err := host.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hhg.Entry.HostDBEntry.NetAddress = hg.ExternalSettings.NetAddress
+	// initiate session
+	s, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, s2data, err := s.Read(droots[0], 0, uint32(len(sector2)))
+	if err != nil {
+		t.Fatal(err)
+	} else if !bytes.Equal(s2data, sector2) {
+		t.Fatal("downloaded data does not match")
 	}
 }
