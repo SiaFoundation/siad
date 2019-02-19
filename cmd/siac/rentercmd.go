@@ -64,6 +64,13 @@ var (
 		Run:   wrap(rentercontractscmd),
 	}
 
+	renterContractsRecoveryScanProgressCmd = &cobra.Command{
+		Use:   "recoveryscanprogress",
+		Short: "Returns the recovery scan progress.",
+		Long:  "Returns the progress of a potentially ongoing recovery scan.",
+		Run:   wrap(rentercontractrecoveryscanprogresscmd),
+	}
+
 	renterContractsViewCmd = &cobra.Command{
 		Use:   "view [contract-id]",
 		Short: "View details of the specified contract",
@@ -139,6 +146,13 @@ Note that setting the allowance will cause siad to immediately begin forming
 contracts! You should only set the allowance once you are fully synced and you
 have a reasonable number (>30) of hosts in your hostdb.`,
 		Run: rentersetallowancecmd,
+	}
+
+	renterTriggerContractRecoveryScanCmd = &cobra.Command{
+		Use:   "triggerrecoveryscan",
+		Short: "Triggers a recovery scan.",
+		Long:  "Triggers a scan of the whole blockchain to find recoverable contracts.",
+		Run:   wrap(rentertriggercontractrecoveryrescancmd),
 	}
 
 	renterUploadsCmd = &cobra.Command{
@@ -761,6 +775,39 @@ func renterfilesdownloadcmd(path, destination string) {
 		die("\nDownload could not be completed:", err)
 	}
 	fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
+}
+
+// rentertriggercontractrecoveryrescancmd starts a new scan for recoverable
+// contracts on the blockchain.
+func rentertriggercontractrecoveryrescancmd() {
+	crpg, err := httpClient.RenterContractRecoveryProgressGet()
+	if err != nil {
+		die("Failed to get recovery status", err)
+	}
+	if crpg.ScanInProgress {
+		fmt.Println("Scan already in progress")
+		fmt.Println("Scanned height:\t", crpg.ScannedHeight)
+		return
+	}
+	if err := httpClient.RenterInitContractRecoveryScanPost(); err != nil {
+		die("Failed to trigger recovery scan", err)
+	}
+	fmt.Println("Successfully triggered contract recovery scan.")
+}
+
+// rentercontractrecoveryscanprogresscmd returns the current progress of a
+// potentially ongoing recovery scan.
+func rentercontractrecoveryscanprogresscmd() {
+	crpg, err := httpClient.RenterContractRecoveryProgressGet()
+	if err != nil {
+		die("Failed to get recovery status", err)
+	}
+	if crpg.ScanInProgress {
+		fmt.Println("Scan in progress")
+		fmt.Println("Scanned height:\t", crpg.ScannedHeight)
+	} else {
+		fmt.Println("No scan in progress")
+	}
 }
 
 // bandwidthUnit takes bps (bits per second) as an argument and converts
