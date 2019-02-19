@@ -99,7 +99,7 @@ func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn typ
 		TotalCost:        types.NewCurrency64(1), // TODO set this
 		ContractFee:      types.NewCurrency64(1), // TODO set this
 		TxnFee:           rc.TxnFee,
-		SiafundFee:       types.Tax(rc.StartHeight, rc.Payout), // TODO set this
+		SiafundFee:       types.Tax(rc.StartHeight, rc.Payout),
 	}, roots)
 }
 

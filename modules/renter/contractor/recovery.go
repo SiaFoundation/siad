@@ -132,7 +132,7 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 				HostPublicKey: hostKey,
 				InputParentID: txn.SiacoinInputs[0].ParentID,
 				TxnFee:        txnFee,
-				StartHeight:   c.blockHeight,
+				StartHeight:   c.blockHeight - 1, // Assume that it takes 1 block to mine the contract
 			}
 		}
 	}

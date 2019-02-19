@@ -4125,8 +4125,14 @@ func TestRenterContractRecovery(t *testing.T) {
 			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
 				return errors.New("public keys don't match")
 			}
+			if contract.StartHeight != c.StartHeight {
+				return errors.New("startheights don't match")
+			}
 			if contract.EndHeight != c.EndHeight {
 				return errors.New("endheights don't match")
+			}
+			if c.Fees.Cmp(types.ZeroCurrency) <= 0 {
+				return errors.New("Fees wasn't set")
 			}
 			if contract.GoodForRenew != c.GoodForRenew {
 				return errors.New("GoodForRenew doesn't match")
