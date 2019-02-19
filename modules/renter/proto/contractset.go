@@ -88,18 +88,18 @@ func (cs *ContractSet) IDs() []types.FileContractID {
 }
 
 // InsertContract inserts an existing contract into the set.
-func (cs *ContractSet) InsertContract(revTxn types.Transaction, roots []crypto.Hash, sk crypto.SecretKey) (modules.RenterContract, error) {
+func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn types.Transaction, roots []crypto.Hash, sk crypto.SecretKey) (modules.RenterContract, error) {
 	return cs.managedInsertContract(contractHeader{
 		Transaction:      revTxn,
 		SecretKey:        sk,
-		StartHeight:      0,                      // TODO where to get this from
+		StartHeight:      rc.StartHeight,
 		DownloadSpending: types.NewCurrency64(1), // TODO set this
 		StorageSpending:  types.NewCurrency64(1), // TODO set this
 		UploadSpending:   types.NewCurrency64(1), // TODO set this
 		TotalCost:        types.NewCurrency64(1), // TODO set this
 		ContractFee:      types.NewCurrency64(1), // TODO set this
-		TxnFee:           types.NewCurrency64(1), // TODO set this
-		SiafundFee:       types.NewCurrency64(1), // TODO set this
+		TxnFee:           rc.TxnFee,
+		SiafundFee:       types.Tax(rc.StartHeight, rc.Payout), // TODO set this
 	}, roots)
 }
 

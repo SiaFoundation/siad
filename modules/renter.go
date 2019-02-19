@@ -392,6 +392,10 @@ type RecoverableContract struct {
 	// InputParentID is the ParentID of the first SiacoinInput of the
 	// transaction that contains this contract.
 	InputParentID types.SiacoinOutputID `json:"inputparentid"`
+	// StartHeight is the estimated startheight of a recoverable contract.
+	StartHeight types.BlockHeight `json:"startheight"`
+	// TxnFee of the transaction which contains the contract.
+	TxnFee types.Currency `json:"txnfee"`
 }
 
 // A RenterContract contains metadata about a file contract. It is read-only;
