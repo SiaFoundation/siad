@@ -127,7 +127,6 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew 
 	defer entry.Close()
 
 	// Build the FileInfo
-	renewing := true
 	var onDisk bool
 	localPath := entry.LocalPath()
 	if localPath != "" {
@@ -138,7 +137,7 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew 
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
-		Available:        redundancy > 1 || onDisk,
+		Available:        redundancy >= 1,
 		ChangeTime:       entry.ChangeTime(),
 		CipherType:       entry.MasterKey().Type().String(),
 		CreateTime:       entry.CreateTime(),
@@ -153,7 +152,7 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew 
 		OnDisk:           onDisk,
 		Recoverable:      onDisk || redundancy >= 1,
 		Redundancy:       redundancy,
-		Renewing:         renewing,
+		Renewing:         true,
 		SiaPath:          entry.SiaPath(),
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
