@@ -410,13 +410,13 @@ func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
 	return updates, nil
 }
 
-// saveMetadataUpdate saves the metadata of the SiaFile but not the publicKeyTable.
-// Most of the time updates are only made to the metadata and not to the
-// publicKeyTable and the metadata fits within a single disk sector on the
-// harddrive. This means that using saveMetadataUpdate instead of saveHeader is
-// potentially faster for SiaFiles with a header that can not be marshaled
-// within a single page.
-func (sf *SiaFile) saveMetadataUpdate() ([]writeaheadlog.Update, error) {
+// saveMetadataUpdates saves the metadata of the SiaFile but not the
+// publicKeyTable.  Most of the time updates are only made to the metadata and
+// not to the publicKeyTable and the metadata fits within a single disk sector
+// on the harddrive. This means that using saveMetadataUpdate instead of
+// saveHeader is potentially faster for SiaFiles with a header that can not be
+// marshaled within a single page.
+func (sf *SiaFile) saveMetadataUpdates() ([]writeaheadlog.Update, error) {
 	// Marshal the pubKeyTable.
 	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
 	if err != nil {
