@@ -317,7 +317,7 @@ func (sf *SiaFile) Delete() error {
 	defer sf.mu.Unlock()
 	// We can't delete a file multiple times.
 	if sf.deleted {
-		return errors.New("can't delete file more than once")
+		return errors.New("requested file has already been deleted")
 	}
 	update := sf.createDeleteUpdate()
 	err := sf.createAndApplyTransaction(update)

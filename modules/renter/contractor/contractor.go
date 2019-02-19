@@ -80,7 +80,7 @@ func (c *Contractor) Allowance() modules.Allowance {
 
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
 // contracts within a separate thread.
-func (c *Contractor) InitRecoveryScan() error {
+func (c *Contractor) InitRecoveryScan() (err error) {
 	if err := c.tg.Add(); err != nil {
 		return err
 	}
@@ -89,6 +89,13 @@ func (c *Contractor) InitRecoveryScan() error {
 	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
 		return errors.New("scan for recoverable contracts is already in progress")
 	}
+	// Reset the progress and status if there was an error.
+	defer func() {
+		if err != nil {
+			atomic.StoreUint32(&c.atomicScanInProgress, 0)
+			atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
+		}
+	}()
 	// Get the wallet seed.
 	s, _, err := c.wallet.PrimarySeed()
 	if err != nil {

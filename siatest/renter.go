@@ -218,7 +218,7 @@ func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64, force
 	siapath := tn.SiaPath(lf.path)
 	err := tn.RenterUploadForcePost(lf.path, siapath, dataPieces, parityPieces, force)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to upload from "+lf.path+" to "+siapath)
 	}
 	// Create remote file object
 	rf := &RemoteFile{

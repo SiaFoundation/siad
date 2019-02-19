@@ -2,10 +2,13 @@ package siafile
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -31,10 +34,16 @@ type (
 	}
 )
 
-// NewFromFileData creates a new SiaFile from a FileData object that was
-// previously created from a legacy file.
-func NewFromFileData(fd FileData) (*SiaFile, error) {
-	// legacy masterKeys are always twofish keys
+// NewFromLegacyData creates a new SiaFile from data that was previously loaded
+// from a legacy file.
+func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+
+	// Trim any leading slashes in the legacy name.
+	fd.Name = strings.TrimPrefix(fd.Name, "/")
+
+	// Legacy master keys are always twofish keys.
 	mk, err := crypto.NewSiaKey(crypto.TypeTwofish, fd.MasterKey[:])
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to restore master key")
@@ -60,9 +69,11 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 			StaticPieceSize:         fd.PieceSize,
 			SiaPath:                 fd.Name,
 		},
-		deps:           modules.ProdDependencies,
 		deleted:        fd.Deleted,
+		deps:           modules.ProdDependencies,
+		siaFilePath:    filepath.Join(sfs.siaFileDir, fd.Name+ShareExtension),
 		staticUniqueID: fd.UID,
+		wal:            sfs.wal,
 	}
 	file.staticChunks = make([]chunk, len(fd.Chunks))
 	for i := range file.staticChunks {
@@ -75,10 +86,10 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 		for pieceIndex, pieceSet := range chunk.Pieces {
 			for _, p := range pieceSet {
 				// Check if we already added that public key.
-				tableOffset, exists := pubKeyMap[p.HostPubKey.String()]
+				tableOffset, exists := pubKeyMap[string(p.HostPubKey.Key)]
 				if !exists {
 					tableOffset = uint32(len(file.pubKeyTable))
-					pubKeyMap[p.HostPubKey.String()] = tableOffset
+					pubKeyMap[string(p.HostPubKey.Key)] = tableOffset
 					file.pubKeyTable = append(file.pubKeyTable, HostPublicKey{
 						PublicKey: p.HostPubKey,
 						Used:      true,
@@ -92,5 +103,12 @@ func NewFromFileData(fd FileData) (*SiaFile, error) {
 			}
 		}
 	}
-	return file, nil
+	entry := sfs.newSiaFileSetEntry(file)
+	threadUID := randomThreadUID()
+	entry.threadMap[threadUID] = newThreadInfo()
+	sfs.siaFileMap[fd.Name] = entry
+	return &SiaFileSetEntry{
+		siaFileSetEntry: entry,
+		threadUID:       threadUID,
+	}, file.saveFile()
 }
