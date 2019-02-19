@@ -24,10 +24,6 @@ const (
 	// keyExchangeMaxLen is the maximum number of bytes the renter will read
 	// from the host during the RPC key exchange.
 	keyExchangeMaxLen = 256
-
-	// defaultContractLockTimeout is the default amount of the time, in
-	// milliseconds, that the renter will try to acquire a contract lock for.
-	defaultContractLockTimeout = 60 * 1000
 )
 
 var (
@@ -47,6 +43,14 @@ var (
 		Standard: 2 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
+
+	// defaultContractLockTimeout is the default amount of the time, in
+	// milliseconds, that the renter will try to acquire a contract lock for.
+	defaultContractLockTimeout = build.Select(build.Var{
+		Dev:      uint64(60 * 1000),
+		Standard: uint64(60 * 1000),
+		Testing:  uint64(5 * 1000),
+	}).(uint64)
 
 	// ephemeralSeedInterval is the amount of blocks after which we use a new
 	// renter seed for creating file contracts.

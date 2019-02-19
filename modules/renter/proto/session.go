@@ -63,7 +63,8 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 		Timeout:    defaultContractLockTimeout,
 	}
 
-	extendDeadline(s.conn, modules.NegotiateSettingsTime) // TODO: should account for lock time
+	timeoutDur := time.Duration(defaultContractLockTimeout) * time.Millisecond
+	extendDeadline(s.conn, modules.NegotiateSettingsTime+timeoutDur)
 	var resp modules.LoopLockResponse
 	if err := s.call(modules.RPCLoopLock, req, &resp, modules.RPCMinLen); err != nil {
 		return types.FileContractRevision{}, nil, err
