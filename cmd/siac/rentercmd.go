@@ -134,7 +134,7 @@ and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w r
 	}
 
 	renterSetAllowanceCmd = &cobra.Command{
-		Use:   "setallowance [amount] [period] [hosts] [renew window]",
+		Use:   "setallowance --amount [amount] --period [period] --hosts [hosts] --renew-window [renew window]",
 		Short: "Set the allowance",
 		Long: `Set the amount of money that can be spent over a given period.
 
