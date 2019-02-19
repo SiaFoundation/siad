@@ -311,7 +311,7 @@ func (s *streamer) threadedFillCache() {
 	}
 }
 
-// Close will close the underlying siafile.
+// Close closes the streamer.
 func (s *streamer) Close() error {
 	return nil
 }
