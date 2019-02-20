@@ -147,8 +147,7 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
-			StaticUniqueID:          hex.EncodeToString(fastrand.Bytes(20)),
-			SiaPath:                 siaPath,
+			StaticUniqueID:          SiafileUID(hex.EncodeToString(fastrand.Bytes(20))),
 		},
 		deps:        modules.ProdDependencies,
 		siaFilePath: siaFilePath,
@@ -655,7 +654,7 @@ func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
 }
 
 // UID returns a unique identifier for this file.
-func (sf *SiaFile) UID() string {
+func (sf *SiaFile) UID() SiafileUID {
 	return sf.staticMetadata.StaticUniqueID
 }
 

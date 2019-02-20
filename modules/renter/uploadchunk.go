@@ -14,8 +14,8 @@ import (
 
 // uploadChunkID is a unique identifier for each chunk in the renter.
 type uploadChunkID struct {
-	fileUID string // Unique to each file.
-	index   uint64 // Unique to each chunk within a file.
+	fileUID siafile.SiafileUID // Unique to each file.
+	index   uint64             // Unique to each chunk within a file.
 }
 
 // unfinishedUploadChunk contains a chunk from the filesystem that has not

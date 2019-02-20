@@ -12,9 +12,13 @@ import (
 )
 
 type (
+	// SiafileUID is a unique identifier for siafile which is used to track
+	// siafiles even after renaming them.
+	SiafileUID string
+
 	// metadata is the metadata of a SiaFile and is JSON encoded.
 	metadata struct {
-		StaticUniqueID string `json:"uniqueid"` // unique identifier for file
+		StaticUniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
 
 		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
 		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
@@ -223,7 +227,6 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
-	sf.staticMetadata.SiaPath = newSiaPath
 	// Update the ChangeTime because the metadata changed.
 	sf.staticMetadata.ChangeTime = time.Now()
 	// Write the header to the new location.
@@ -270,13 +273,6 @@ func (sf *SiaFile) SetLocalPath(path string) error {
 		return err
 	}
 	return sf.createAndApplyTransaction(updates...)
-}
-
-// SiaPath returns the file's sia path.
-func (sf *SiaFile) SiaPath() modules.SiaPath {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	return sf.staticMetadata.SiaPath
 }
 
 // Size returns the file's size.

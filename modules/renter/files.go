@@ -200,7 +200,7 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string, oldContracts []module
 		PieceSize:   f.pieceSize,
 		Mode:        os.FileMode(f.mode),
 		Deleted:     f.deleted,
-		UID:         f.staticUID,
+		UID:         siafile.SiafileUID(f.staticUID),
 	}
 	chunks := make([]siafile.FileChunk, f.numChunks())
 	for i := 0; i < len(chunks); i++ {
