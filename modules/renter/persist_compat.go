@@ -113,7 +113,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		&numFiles,
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to read header")
 	} else if header != shareHeader {
 		return nil, ErrBadFile
 	} else if version != shareVersion {
@@ -123,7 +123,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 	// Create decompressor.
 	unzip, err := gzip.NewReader(reader)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to create gzip decompressor")
 	}
 	dec := encoding.NewDecoder(unzip, 100e6)
 
@@ -133,7 +133,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		files[i] = new(file)
 		err := dec.Decode(files[i])
 		if err != nil {
-			return nil, err
+			return nil, errors.AddContext(err, "unable to decode file")
 		}
 
 		// Make sure the file's name does not conflict with existing files.
@@ -161,6 +161,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		// Create and add a siadir to the SiaDirSet if one has not been created
 		sd, errDir := r.staticDirSet.NewSiaDir(filepath.Dir(f.name))
 		if errDir != nil && errDir != siadir.ErrPathOverload {
+			errDir = errors.AddContext(errDir, "unable to create new sia dir")
 			return nil, errors.Compose(err, errDir)
 		}
 		if errDir != siadir.ErrPathOverload {
@@ -170,7 +171,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		// be returned here
 		entry, err := r.fileToSiaFile(f, repairPath, oldContracts)
 		if err != nil {
-			return nil, err
+			return nil, errors.AddContext(err, "unable to transform old file to new file")
 		}
 		names[i] = f.name
 		err = errors.Compose(err, entry.Close())
