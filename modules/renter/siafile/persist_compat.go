@@ -107,8 +107,13 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
 	sfs.siaFileMap[fd.Name] = entry
-	return &SiaFileSetEntry{
+	sfse := &SiaFileSetEntry{
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
-	}, file.saveFile()
+	}
+	err = file.saveFile()
+	if err != nil {
+		return sfse, errors.AddContext(nil, "unable to save file")
+	}
+	return sfse, nil
 }
