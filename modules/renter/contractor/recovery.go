@@ -83,6 +83,11 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 		if !hasIdentifier {
 			continue
 		}
+		// Get the total txnFees of the transaction.
+		var txnFee types.Currency
+		for _, mf := range txn.MinerFees {
+			txnFee = txnFee.Add(mf)
+		}
 		// Check if any contract should be recovered.
 		for i, fc := range txn.FileContracts {
 			// Create the EphemeralRenterSeed for this contract and wipe it
@@ -126,6 +131,8 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 				ID:            fcid,
 				HostPublicKey: hostKey,
 				InputParentID: txn.SiacoinInputs[0].ParentID,
+				TxnFee:        txnFee,
+				StartHeight:   c.blockHeight - 1, // Assume that it takes 1 block to mine the contract
 			}
 		}
 	}
@@ -167,8 +174,9 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 			return err
 		}
 	}
+
 	// Insert the contract into the set.
-	contract, err := c.staticContracts.InsertContract(revTxn, roots, sk)
+	contract, err := c.staticContracts.InsertContract(rc, revTxn, roots, sk)
 	if err != nil {
 		return err
 	}
