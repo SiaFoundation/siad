@@ -38,6 +38,7 @@ func TestSaveLoad(t *testing.T) {
 	c.renewedTo = map[types.FileContractID]types.FileContractID{
 		{1}: {2},
 	}
+	c.synced = true
 
 	// save, clear, and reload
 	err := c.save()
@@ -66,6 +67,9 @@ func TestSaveLoad(t *testing.T) {
 	if c.renewedTo[types.FileContractID{1}] != id {
 		t.Fatal("renewedTo not restored properly:", c.renewedTo)
 	}
+	if !c.synced {
+		t.Fatal("synced should be true")
+	}
 	// use stdPersist instead of mock
 	c.persist = NewPersist(build.TempDir("contractor", t.Name()))
 	os.MkdirAll(build.TempDir("contractor", t.Name()), 0700)
@@ -87,6 +91,7 @@ func TestSaveLoad(t *testing.T) {
 	c.oldContracts = make(map[types.FileContractID]modules.RenterContract)
 	c.renewedFrom = make(map[types.FileContractID]types.FileContractID)
 	c.renewedTo = make(map[types.FileContractID]types.FileContractID)
+	c.synced = false
 	err = c.load()
 	if err != nil {
 		t.Fatal(err)
@@ -103,6 +108,9 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if c.renewedTo[types.FileContractID{1}] != id {
 		t.Fatal("renewedTo not restored properly:", c.renewedTo)
+	}
+	if !c.synced {
+		t.Fatal("synced should be true")
 	}
 	if c.allowance.ExpectedStorage != modules.DefaultAllowance.ExpectedStorage {
 		t.Errorf("ExpectedStorage was %v but should be %v",
