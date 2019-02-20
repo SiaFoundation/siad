@@ -37,7 +37,7 @@ func createRandFile(path string, size int) error {
 
 // setupTestDownload creates a server tester with an uploaded file of size
 // `size` and name `name`.
-func setupTestDownload(t *testing.T, size int, name string, waitOnAvailability bool) (*serverTester, string) {
+func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy bool) (*serverTester, string) {
 	st, err := createServerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -89,12 +89,12 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnAvailability b
 		t.Fatal(err)
 	}
 
-	if waitOnAvailability {
-		// wait for the file to become available
+	if waitOnRedundancy {
+		// wait for the file to have a redundancy > 1
 		err = build.Retry(200, time.Second, func() error {
 			var rf RenterFiles
 			st.getAPI("/renter/files", &rf)
-			if len(rf.Files) != 1 || !rf.Files[0].Available {
+			if len(rf.Files) != 1 || rf.Files[0].Redundancy < 1 {
 				return fmt.Errorf("the uploading is not succeeding for some reason: %v\n", rf.Files[0])
 			}
 			return nil

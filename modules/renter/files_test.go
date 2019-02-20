@@ -131,34 +131,6 @@ func TestFileNumChunks(t *testing.T) {
 	}
 }
 
-// TestFileAvailable probes the available method of the file type.
-func TestFileAvailable(t *testing.T) {
-	rsc, _ := siafile.NewRSCode(1, 1) // can't use 0
-	f, err := newFileTesting(t.Name(), newTestingWal(), rsc, 100, 0777, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	neverOffline := make(map[string]bool)
-
-	if f.Available(neverOffline) {
-		t.Error("file should not be available")
-	}
-
-	for i := uint64(0); i < f.NumChunks(); i++ {
-		f.AddPiece(types.SiaPublicKey{}, i, 0, crypto.Hash{})
-	}
-
-	if !f.Available(neverOffline) {
-		t.Error("file should be available")
-	}
-
-	specificOffline := make(map[string]bool)
-	specificOffline[types.SiaPublicKey{}.String()] = true
-	if f.Available(specificOffline) {
-		t.Error("file should not be available")
-	}
-}
-
 // TestFileUploadedBytes tests that uploadedBytes() returns a value equal to
 // the number of sectors stored via contract times the size of each sector.
 func TestFileUploadedBytes(t *testing.T) {
