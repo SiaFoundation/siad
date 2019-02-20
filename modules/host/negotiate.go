@@ -225,7 +225,7 @@ func (h *Host) managedFinalizeContract(builder modules.TransactionBuilder, rente
 	}
 
 	// Get a lock on the storage obligation.
-	lockErr := h.managedTryLockStorageObligation(so.id())
+	lockErr := h.managedTryLockStorageObligation(so.id(), obligationLockTimeout)
 	if lockErr != nil {
 		build.Critical("failed to get a lock on a brand new storage obligation")
 		return nil, types.TransactionSignature{}, types.FileContractID{}, lockErr

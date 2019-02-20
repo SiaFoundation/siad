@@ -75,7 +75,7 @@ func GenerateKeyPairDeterministic(entropy [EntropySize]byte) (sk SecretKey, pk P
 func ReadSignedObject(r io.Reader, obj interface{}, maxLen uint64, pk PublicKey) error {
 	// read the signature
 	var sig Signature
-	err := encoding.NewDecoder(r, 0).Decode(&sig)
+	err := encoding.NewDecoder(r, encoding.DefaultAllocLimit).Decode(&sig)
 	if err != nil {
 		return err
 	}

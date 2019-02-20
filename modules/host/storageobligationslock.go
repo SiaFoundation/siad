@@ -2,6 +2,7 @@ package host
 
 import (
 	"errors"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -34,7 +35,7 @@ func (h *Host) managedLockStorageObligation(soid types.FileContractID) {
 
 // managedTryLockStorageObligation attempts to put a storage obligation under
 // lock, returning an error if the lock cannot be obtained.
-func (h *Host) managedTryLockStorageObligation(soid types.FileContractID) error {
+func (h *Host) managedTryLockStorageObligation(soid types.FileContractID, timeout time.Duration) error {
 	// Check if a lock has been created for this storage obligation. If not,
 	// create one. The map must be accessed under lock, but the request for the
 	// storage lock must not be made under lock.
@@ -46,7 +47,7 @@ func (h *Host) managedTryLockStorageObligation(soid types.FileContractID) error 
 	}
 	h.mu.Unlock()
 
-	if tl.TryLockTimed(obligationLockTimeout) {
+	if tl.TryLockTimed(timeout) {
 		return nil
 	}
 	return errObligationLocked

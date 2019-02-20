@@ -40,6 +40,10 @@ const (
 	// keyExchangeMaxLen is the maximum number of bytes the host will read
 	// from the renter during the RPC key exchange.
 	keyExchangeMaxLen = 256
+
+	// maxObligationLockTimeout is the maximum amount of time the host will wait
+	// to lock a storage obligation.
+	maxObligationLockTimeout = 10 * time.Minute
 )
 
 var (

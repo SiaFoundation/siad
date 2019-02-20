@@ -44,6 +44,14 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
+	// defaultContractLockTimeout is the default amount of the time, in
+	// milliseconds, that the renter will try to acquire a contract lock for.
+	defaultContractLockTimeout = build.Select(build.Var{
+		Dev:      uint64(60 * 1000),     // 1 minute
+		Standard: uint64(5 * 60 * 1000), // 5 minutes
+		Testing:  uint64(5 * 1000),      // 5 seconds
+	}).(uint64)
+
 	// ephemeralSeedInterval is the amount of blocks after which we use a new
 	// renter seed for creating file contracts.
 	ephemeralSeedInterval = build.Select(build.Var{
