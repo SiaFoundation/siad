@@ -175,6 +175,10 @@ type hostContractor interface {
 	// SetRateLimits sets the bandwidth limits for connections created by the
 	// contractor and its submodules.
 	SetRateLimits(int64, int64, uint64)
+
+	// Synced indicates if the contractor is fully synced with the peer-to-peer
+	// network.
+	Synced() bool
 }
 
 // A Renter is responsible for tracking all of the files that a user has

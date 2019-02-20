@@ -116,6 +116,19 @@ func (r *Renter) managedBlockUntilOnline() bool {
 	return true
 }
 
+// managedBlockUntilSynced will block until the contractor is synced with the
+// peer-to-peer network.
+func (r *Renter) managedBlockUntilSynced() bool {
+	for !r.hostContractor.Synced() {
+		select {
+		case <-r.tg.StopChan():
+			return false
+		case <-time.After(syncCheckFrequency):
+		}
+	}
+	return true
+}
+
 // managedDistributeDownloadChunkToWorkers will take a chunk and pass it out to
 // all of the workers.
 func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownloadChunk) {
@@ -165,6 +178,11 @@ func (r *Renter) threadedDownloadLoop() {
 	// Infinite loop to process downloads. Will return if r.tg.Stop() is called.
 LOOP:
 	for {
+		// Wait until the contractor is synced.
+		if !r.managedBlockUntilSynced() {
+			// The renter shut down before the contract was synced.
+			return
+		}
 		// Wait until the renter is online.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.

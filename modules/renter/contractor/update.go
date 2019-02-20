@@ -109,6 +109,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 		delete(c.oldContracts, metricsContractID)
 	}
 
+	c.synced = cc.Synced
 	c.lastChange = cc.ID
 	err = c.save()
 	if err != nil {

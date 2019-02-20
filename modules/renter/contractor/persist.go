@@ -23,6 +23,7 @@ type contractorPersist struct {
 	RecoverableContracts []modules.RecoverableContract   `json:"recoverablecontracts"`
 	RenewedFrom          map[string]types.FileContractID `json:"renewedfrom"`
 	RenewedTo            map[string]types.FileContractID `json:"renewedto"`
+	Synced               bool                            `json:"synced"`
 }
 
 // persistData returns the data in the Contractor that will be saved to disk.
@@ -34,6 +35,7 @@ func (c *Contractor) persistData() contractorPersist {
 		LastChange:    c.lastChange,
 		RenewedFrom:   make(map[string]types.FileContractID),
 		RenewedTo:     make(map[string]types.FileContractID),
+		Synced:        c.synced,
 	}
 	for k, v := range c.renewedFrom {
 		data.RenewedFrom[k.String()] = v
@@ -75,6 +77,7 @@ func (c *Contractor) load() error {
 	c.blockHeight = data.BlockHeight
 	c.currentPeriod = data.CurrentPeriod
 	c.lastChange = data.LastChange
+	c.synced = data.Synced
 	var fcid types.FileContractID
 	for k, v := range data.RenewedFrom {
 		if err := fcid.LoadString(k); err != nil {

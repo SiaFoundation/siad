@@ -52,6 +52,7 @@ type Contractor struct {
 
 	allowance     modules.Allowance
 	blockHeight   types.BlockHeight
+	synced        bool
 	currentPeriod types.BlockHeight
 	lastChange    modules.ConsensusChangeID
 
@@ -216,6 +217,14 @@ func (c *Contractor) RecoveryScanStatus() (bool, types.BlockHeight) {
 // contractSet.
 func (c *Contractor) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {
 	c.staticContracts.SetRateLimits(readBPS, writeBPS, packetSize)
+}
+
+// Synced indicates if the contractor is fully synced with the peer-to-peer
+// network.
+func (c *Contractor) Synced() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.synced
 }
 
 // Close closes the Contractor.
