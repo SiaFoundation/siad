@@ -243,21 +243,29 @@ type (
 		MaxCollateral types.Currency `json:"maxcollateral"`
 
 		// ContractPrice is the number of coins that the renter needs to pay to
-		// the host just to open a file contract with them. Generally, the
-		// price is only to cover the siacoin fees that the host will suffer
-		// when submitting the file contract revision and storage proof to the
+		// the host just to open a file contract with them. Generally, the price
+		// is only to cover the siacoin fees that the host will suffer when
+		// submitting the file contract revision and storage proof to the
 		// blockchain.
 		//
-		// The storage price is the cost per-byte-per-block in hastings of
-		// storing data on the host.
+		// BaseRPC price is a flat per-RPC fee charged by the host for any
+		// non-free RPC.
 		//
 		// 'Download' bandwidth price is the cost per byte of downloading data
-		// from the host.
+		// from the host. This includes metadata such as Merkle proofs.
+		//
+		// SectorAccessPrice is the cost per sector of data accessed when
+		// downloading data.
+		//
+		// StoragePrice is the cost per-byte-per-block in hastings of storing
+		// data on the host.
 		//
 		// 'Upload' bandwidth price is the cost per byte of uploading data to
 		// the host.
+		BaseRPCPrice           types.Currency `json:"baserpcprice"`
 		ContractPrice          types.Currency `json:"contractprice"`
 		DownloadBandwidthPrice types.Currency `json:"downloadbandwidthprice"`
+		SectorAccessPrice      types.Currency `json:"sectoraccessprice"`
 		StoragePrice           types.Currency `json:"storageprice"`
 		UploadBandwidthPrice   types.Currency `json:"uploadbandwidthprice"`
 

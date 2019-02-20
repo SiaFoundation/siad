@@ -58,8 +58,10 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		Collateral:    h.settings.Collateral,
 		MaxCollateral: h.settings.MaxCollateral,
 
+		BaseRPCPrice:           h.settings.MinBaseRPCPrice,
 		ContractPrice:          contractPrice,
 		DownloadBandwidthPrice: h.settings.MinDownloadBandwidthPrice,
+		SectorAccessPrice:      h.settings.MinSectorAccessPrice,
 		StoragePrice:           h.settings.MinStoragePrice,
 		UploadBandwidthPrice:   h.settings.MinUploadBandwidthPrice,
 

@@ -20,7 +20,6 @@ func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
 	h.mu.Lock()
 	hes := h.externalSettings()
 	h.mu.Unlock()
-
 	resp := modules.LoopSettingsResponse{
 		Settings: hes,
 	}
@@ -256,43 +255,9 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 		newCollateral = newCollateral.Add(settings.Collateral.Mul(blockBytesCurrency))
 	}
 
-	// construct the new revision
-	newRevision := currentRevision
-	newRevision.NewRevisionNumber = req.NewRevisionNumber
-	for _, action := range req.Actions {
-		if action.Type == modules.WriteActionAppend {
-			newRevision.NewFileSize += modules.SectorSize
-		} else if action.Type == modules.WriteActionTrim {
-			newRevision.NewFileSize -= modules.SectorSize * action.A
-		}
-	}
-	newRevision.NewFileMerkleRoot = cachedMerkleRoot(newRoots)
-	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
-	for i := range newRevision.NewValidProofOutputs {
-		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
-			Value:      req.NewValidProofValues[i],
-			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
-		}
-	}
-	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
-	for i := range newRevision.NewMissedProofOutputs {
-		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
-			Value:      req.NewMissedProofValues[i],
-			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
-		}
-	}
-
-	// verify the new revision
-	newRevenue := storageRevenue.Add(bandwidthRevenue)
-	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots // verifyRevision assumes new roots
-	err := verifyRevision(s.so, newRevision, blockHeight, newRevenue, newCollateral)
-	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots
-	if err != nil {
-		s.writeError(err)
-		return err
-	}
-
-	// If a Merkle proof was requested, send it and wait for the renter's signature.
+	// If a Merkle proof was requested, construct it.
+	newMerkleRoot := cachedMerkleRoot(newRoots)
+	var merkleResp modules.LoopWriteMerkleProof
 	if req.MerkleProof {
 		// Calculate which sectors changed.
 		oldNumSectors := uint64(len(s.so.SectorRoots))
@@ -314,12 +279,57 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			leafHashes[i] = s.so.SectorRoots[r.Start]
 		}
 		// Construct the Merkle proof.
-		merkleResp := modules.LoopWriteMerkleProof{
+		merkleResp = modules.LoopWriteMerkleProof{
 			OldSubtreeHashes: crypto.MerkleDiffProof(proofRanges, oldNumSectors, nil, s.so.SectorRoots),
 			OldLeafHashes:    leafHashes,
-			NewMerkleRoot:    newRevision.NewFileMerkleRoot,
+			NewMerkleRoot:    newMerkleRoot,
 		}
-		// Send the proof.
+		// Calculate bandwidth cost of proof.
+		proofSize := crypto.HashSize * (len(merkleResp.OldSubtreeHashes) + len(leafHashes) + 1)
+		if proofSize < modules.RPCMinLen {
+			proofSize = modules.RPCMinLen
+		}
+		bandwidthRevenue = bandwidthRevenue.Add(settings.DownloadBandwidthPrice.Mul64(uint64(proofSize)))
+	}
+
+	// construct the new revision
+	newRevision := currentRevision
+	newRevision.NewRevisionNumber = req.NewRevisionNumber
+	for _, action := range req.Actions {
+		if action.Type == modules.WriteActionAppend {
+			newRevision.NewFileSize += modules.SectorSize
+		} else if action.Type == modules.WriteActionTrim {
+			newRevision.NewFileSize -= modules.SectorSize * action.A
+		}
+	}
+	newRevision.NewFileMerkleRoot = newMerkleRoot
+	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
+	for i := range newRevision.NewValidProofOutputs {
+		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewValidProofValues[i],
+			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
+		}
+	}
+	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
+	for i := range newRevision.NewMissedProofOutputs {
+		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewMissedProofValues[i],
+			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
+		}
+	}
+
+	// verify the new revision
+	newRevenue := settings.BaseRPCPrice.Add(storageRevenue).Add(bandwidthRevenue)
+	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots // verifyRevision assumes new roots
+	err := verifyRevision(s.so, newRevision, blockHeight, newRevenue, newCollateral)
+	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// If a Merkle proof was requested, send it and wait for the renter's signature.
+	if req.MerkleProof {
 		if err := s.writeResponse(merkleResp); err != nil {
 			return err
 		} else if err := s.readResponse(&sigResponse, modules.RPCMinLen); err != nil {
@@ -428,8 +438,16 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 		}
 	}
 
-	expectedTransfer := settings.DownloadBandwidthPrice.Mul64(uint64(sec.Length))
-	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, expectedTransfer)
+	// calculate expected cost and verify against renter's revision
+	var bandwidthCost types.Currency
+	sectorAccesses := make(map[crypto.Hash]struct{})
+	for _, sec := range req.Sections {
+		bandwidthCost = bandwidthCost.Add(settings.DownloadBandwidthPrice.Mul64(uint64(sec.Length)))
+		sectorAccesses[sec.MerkleRoot] = struct{}{}
+	}
+	sectorAccessCost := settings.SectorAccessPrice.Mul64(uint64(len(sectorAccesses)))
+	totalCost := settings.BaseRPCPrice.Add(bandwidthCost).Add(sectorAccessCost)
+	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, totalCost)
 	if err != nil {
 		s.writeError(err)
 		return err
@@ -690,6 +708,12 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 		return extendErr("download iteration request failed: ", err)
 	}
 
+	// Fetch the roots and construct the Merkle proof
+	contractRoots := s.so.SectorRoots[req.RootOffset:][:req.NumRoots]
+	proofStart := int(req.RootOffset)
+	proofEnd := int(req.RootOffset + req.NumRoots)
+	proof := crypto.MerkleSectorRangeProof(s.so.SectorRoots, proofStart, proofEnd)
+
 	// construct the new revision
 	newRevision := currentRevision
 	newRevision.NewRevisionNumber = req.NewRevisionNumber
@@ -708,14 +732,18 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 		}
 	}
 
-	expectedTransfer := settings.DownloadBandwidthPrice.Mul64(req.NumRoots).Mul64(crypto.HashSize)
-	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, expectedTransfer)
+	// calculate expected cost and verify against renter's revision
+	responseSize := (req.NumRoots + uint64(len(proof))) * crypto.HashSize
+	if responseSize < modules.RPCMinLen {
+		responseSize = modules.RPCMinLen
+	}
+	bandwidthCost := settings.DownloadBandwidthPrice.Mul64(responseSize)
+	totalCost := settings.BaseRPCPrice.Add(bandwidthCost)
+	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, totalCost)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("payment validation failed: ", err)
 	}
-
-	contractRoots := s.so.SectorRoots[req.RootOffset:][:req.NumRoots]
 
 	// Sign the new revision.
 	renterSig := types.TransactionSignature{
@@ -741,11 +769,6 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 		s.writeError(err)
 		return extendErr("failed to modify storage obligation: ", err)
 	}
-
-	// Construct the Merkle proof
-	proofStart := int(req.RootOffset)
-	proofEnd := int(req.RootOffset + req.NumRoots)
-	proof := crypto.MerkleSectorRangeProof(s.so.SectorRoots, proofStart, proofEnd)
 
 	// send the response
 	resp := modules.LoopSectorRootsResponse{
