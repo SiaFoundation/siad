@@ -58,8 +58,8 @@ func (rt *renterTester) checkDirInitialized(siaPath string) error {
 	defer siaDir.Close()
 
 	// Check that metadata is default value
-	metadata := siaDir.BubbleMetadata()
-	defaultHealth := siadir.BubbledMetadata{
+	metadata := siaDir.Metadata()
+	defaultHealth := siadir.Metadata{
 		Health:      siadir.DefaultDirHealth,
 		StuckHealth: siadir.DefaultDirHealth,
 	}
@@ -173,7 +173,7 @@ func TestRenterListDirectory(t *testing.T) {
 // compareDirectoryInfoAndMetadata is a helper that compares the information in
 // a DirectoryInfo struct and a SiaDirSetEntry struct
 func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.SiaDirSetEntry) error {
-	metadata := siaDir.BubbleMetadata()
+	metadata := siaDir.Metadata()
 	if di.SiaPath != siaDir.SiaPath() {
 		return fmt.Errorf("SiaPaths not equal %v and %v", di.SiaPath, siaDir.SiaPath())
 	}

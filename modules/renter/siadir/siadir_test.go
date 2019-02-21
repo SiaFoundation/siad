@@ -4,13 +4,30 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// checkMetadataInit is a helper that verifies that the metadata was initialized
+// properly
+func checkMetadataInit(md Metadata) error {
+	if md.Health != DefaultDirHealth {
+		return fmt.Errorf("SiaDir health not set properly: got %v expected %v", md.Health, DefaultDirHealth)
+	}
+	if md.ModTime.IsZero() {
+		return errors.New("ModTime not initialized")
+	}
+	if md.NumStuckChunks != 0 {
+		return fmt.Errorf("SiaDir NumStuckChunks not initialized properly, expected 0, got %v", md.NumStuckChunks)
+	}
+	if md.StuckHealth != DefaultDirHealth {
+		return fmt.Errorf("SiaDir stuck health not set properly: got %v expected %v", md.StuckHealth, DefaultDirHealth)
+	}
+	return nil
+}
 
 // newRootDir creates a root directory for the test and removes old test files
 func newRootDir(t *testing.T) (string, error) {
@@ -46,9 +63,9 @@ func TestNewSiaDir(t *testing.T) {
 
 	// Check Sub Dir
 	//
-	// Check that the Health was initialized properly
-	health := siaDir.BubbleMetadata()
-	if err = checkHealthInit(health); err != nil {
+	// Check that the metadta was initialized properly
+	md := siaDir.metadata
+	if err = checkMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 	// Check that the SiaPath was initialized properly
@@ -78,9 +95,9 @@ func TestNewSiaDir(t *testing.T) {
 	}
 	// Get SiaDir
 	subDir, err := LoadSiaDir(rootDir, siaPathDir, modules.ProdDependencies, wal)
-	// Check that the Health was initialized properly
-	health = subDir.BubbleMetadata()
-	if err = checkHealthInit(health); err != nil {
+	// Check that the metadata was initialized properly
+	md = subDir.metadata
+	if err = checkMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 	// Check that the SiaPath was initialized properly
@@ -92,9 +109,9 @@ func TestNewSiaDir(t *testing.T) {
 	//
 	// Get SiaDir
 	rootSiaDir, err := LoadSiaDir(rootDir, "", modules.ProdDependencies, wal)
-	// Check that the Health was initialized properly
-	health = rootSiaDir.BubbleMetadata()
-	if err = checkHealthInit(health); err != nil {
+	// Check that the metadata was initialized properly
+	md = rootSiaDir.metadata
+	if err = checkMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 	// Check that the SiaPath was initialized properly
@@ -112,26 +129,8 @@ func TestNewSiaDir(t *testing.T) {
 	}
 }
 
-// checkHealthInit is a helper that verifies that the health was initialized
-// properly
-func checkHealthInit(health BubbledMetadata) error {
-	if health.Health != DefaultDirHealth {
-		return fmt.Errorf("SiaDir health not set properly: got %v expected %v", health.Health, DefaultDirHealth)
-	}
-	if health.ModTime.IsZero() {
-		return errors.New("ModTime not initialized")
-	}
-	if health.NumStuckChunks != 0 {
-		return fmt.Errorf("SiaDir NumStuckChunks not initialized properly, expected 0, got %v", health.NumStuckChunks)
-	}
-	if health.StuckHealth != DefaultDirHealth {
-		return fmt.Errorf("SiaDir stuck health not set properly: got %v expected %v", health.StuckHealth, DefaultDirHealth)
-	}
-	return nil
-}
-
-// Test Update BubbledMetadata
-func TestUpdateBubbledMetadata(t *testing.T) {
+// Test UpdatedMetadata
+func TestUpdateMetadata(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -149,59 +148,57 @@ func TestUpdateBubbledMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check Health was initialized properly in memory and on disk
-	health := siaDir.BubbleMetadata()
-	if err = checkHealthInit(health); err != nil {
+	// Check metadata was initialized properly in memory and on disk
+	md := siaDir.metadata
+	if err = checkMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 	siaDir, err = LoadSiaDir(rootDir, siaPath, modules.ProdDependencies, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
-	health = siaDir.BubbleMetadata()
-	if err = checkHealthInit(health); err != nil {
+	md = siaDir.metadata
+	if err = checkMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 
-	// Set the health
+	// Set the metadata
 	checkTime := time.Now()
-	healthUpdate := BubbledMetadata{
-		Health:              4,
-		StuckHealth:         2,
-		LastHealthCheckTime: checkTime,
-		NumStuckChunks:      5,
-	}
-	err = siaDir.UpdateMetadata(healthUpdate)
+	metadataUpdate := md
+	metadataUpdate.Health = 4
+	metadataUpdate.StuckHealth = 2
+	metadataUpdate.LastHealthCheckTime = checkTime
+	metadataUpdate.NumStuckChunks = 5
+
+	err = siaDir.UpdateMetadata(metadataUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Check Health was updated properly in memory and on disk
-	health = siaDir.BubbleMetadata()
-	if !reflect.DeepEqual(health, healthUpdate) {
-		t.Log("Health", health)
-		t.Log("Health Update", healthUpdate)
-		t.Fatal("health not updated correctly")
+	// Check that the metadata was updated properly in memory and on disk
+	md = siaDir.metadata
+	err = equalMetadatas(md, metadataUpdate)
+	if err != nil {
+		t.Fatal(err)
 	}
 	siaDir, err = LoadSiaDir(rootDir, siaPath, modules.ProdDependencies, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
-	health = siaDir.BubbleMetadata()
+	md = siaDir.metadata
 	// Check Time separately due to how the time is persisted
-	if !health.LastHealthCheckTime.Equal(healthUpdate.LastHealthCheckTime) {
-		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", health.LastHealthCheckTime, healthUpdate.LastHealthCheckTime)
+	if !md.LastHealthCheckTime.Equal(metadataUpdate.LastHealthCheckTime) {
+		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", md.LastHealthCheckTime, metadataUpdate.LastHealthCheckTime)
 	}
-	healthUpdate.LastHealthCheckTime = health.LastHealthCheckTime
-	if !health.ModTime.Equal(healthUpdate.ModTime) {
-		t.Fatalf("ModTimes not equal, got %v expected %v", health.ModTime, healthUpdate.ModTime)
+	metadataUpdate.LastHealthCheckTime = md.LastHealthCheckTime
+	if !md.ModTime.Equal(metadataUpdate.ModTime) {
+		t.Fatalf("ModTimes not equal, got %v expected %v", md.ModTime, metadataUpdate.ModTime)
 	}
-	healthUpdate.ModTime = health.ModTime
+	metadataUpdate.ModTime = md.ModTime
 	// Check the rest of the metadata
-	if !reflect.DeepEqual(health, healthUpdate) {
-		t.Log("Health", health)
-		t.Log("Health Update", healthUpdate)
-		t.Fatal("health not updated correctly")
+	err = equalMetadatas(md, metadataUpdate)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -226,7 +223,7 @@ func TestDelete(t *testing.T) {
 	if !entry.Deleted() {
 		t.Fatal("Deleted flag was not set correctly")
 	}
-	siaDirPath := filepath.Join(entry.staticMetadata.RootDir, entry.staticMetadata.SiaPath)
+	siaDirPath := filepath.Join(entry.metadata.RootDir, entry.metadata.SiaPath)
 	if _, err := os.Open(siaDirPath); !os.IsNotExist(err) {
 		t.Fatal("Expected a siadir doesn't exist error but got", err)
 	}

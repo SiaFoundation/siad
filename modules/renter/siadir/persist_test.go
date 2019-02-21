@@ -16,7 +16,7 @@ import (
 // equalMetadatas is a helper that compares two siaDirMetadatas. The time fields
 // are not checked due to how time is persisted and should be checked in the
 // test itself
-func equalMetadatas(md, md2 siaDirMetadata) error {
+func equalMetadatas(md, md2 Metadata) error {
 	// Check AggregateNumFiles
 	if md.AggregateNumFiles != md2.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, md2.AggregateNumFiles)
@@ -50,8 +50,8 @@ func equalMetadatas(md, md2 siaDirMetadata) error {
 		return fmt.Errorf("siapaths not equal, %v and %v", md.SiaPath, md2.SiaPath)
 	}
 	// Check Size
-	if md.Size != md2.Size {
-		return fmt.Errorf("sizes not equal, %v and %v", md.Size, md2.Size)
+	if md.AggregateSize != md2.AggregateSize {
+		return fmt.Errorf("aggregate sizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
 	}
 	// Check StuckHealth
 	if md.StuckHealth != md2.StuckHealth {
@@ -101,7 +101,7 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create metadata update
-	update, err := createMetadataUpdate(sd.staticMetadata)
+	update, err := createMetadataUpdate(sd.metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,18 +113,18 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 	}
 
 	// Check path
-	path2 := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
+	path2 := filepath.Join(sd.metadata.RootDir, sd.metadata.SiaPath, SiaDirExtension)
 	if path != path2 {
 		t.Fatalf("Path not correct: expected %v got %v", path2, path)
 	}
 
 	// Check data
-	var metadata siaDirMetadata
+	var metadata Metadata
 	err = json.Unmarshal(data, &metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
+	if err := equalMetadatas(metadata, sd.metadata); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -146,7 +146,7 @@ func TestCreateReadDeleteUpdate(t *testing.T) {
 	// Read update
 	path := readDeleteUpdate(update)
 	// Compare values
-	siaDirPath := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath)
+	siaDirPath := filepath.Join(sd.metadata.RootDir, sd.metadata.SiaPath)
 	if path != siaDirPath {
 		t.Error("paths don't match")
 	}
@@ -186,7 +186,7 @@ func TestApplyUpdates(t *testing.T) {
 // testApply tests if a given method applies a set of updates correctly.
 func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update) error) {
 	// Create an update to the metadata
-	metadata := siadir.staticMetadata
+	metadata := siadir.metadata
 	metadata.Health = 1.0
 	update, err := createMetadataUpdate(metadata)
 	if err != nil {
@@ -203,7 +203,7 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 		t.Fatal("Failed to load siadir", err)
 	}
 	// Check if correct data was written.
-	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
+	if err := equalMetadatas(metadata, sd.metadata); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -221,7 +221,7 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create an update to the metadata
-	metadata := siadir.staticMetadata
+	metadata := siadir.metadata
 	metadata.Health = 1.0
 	update, err := createMetadataUpdate(metadata)
 	if err != nil {
@@ -238,7 +238,7 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 		t.Fatal("Failed to load siadir", err)
 	}
 	// Check if correct data was written.
-	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
+	if err := equalMetadatas(metadata, sd.metadata); err != nil {
 		t.Fatal(err)
 	}
 }

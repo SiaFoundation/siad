@@ -315,7 +315,7 @@ func (sf *SiaFile) UpdateLastHealthCheckTime() error {
 	defer sf.mu.Unlock()
 	sf.staticMetadata.LastHealthCheckTime = time.Now()
 	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdate()
+	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
 	}

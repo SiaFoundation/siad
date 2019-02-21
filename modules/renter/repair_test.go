@@ -20,7 +20,7 @@ import (
 // equalHealthsAndChunks is a helper that checks the Health, StuckHealth, and
 // NumStuckChunks fields of two SiaDirHealths for equality. It does not look at
 // the LastHealthCheckTime field
-func equalHealthsAndChunks(health1, health2 siadir.BubbledMetadata) error {
+func equalHealthsAndChunks(health1, health2 siadir.Metadata) error {
 	if health1.Health != health2.Health {
 		return fmt.Errorf("Healths not equal, %v and %v", health1.Health, health2.Health)
 	}
@@ -50,7 +50,7 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Check to make sure bubble doesn't error on an empty directory
 	rt.renter.threadedBubbleMetadata("")
-	defaultHealth := siadir.BubbledMetadata{
+	defaultHealth := siadir.Metadata{
 		Health:              siadir.DefaultDirHealth,
 		StuckHealth:         siadir.DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
@@ -95,7 +95,7 @@ func TestBubbleHealth(t *testing.T) {
 	// file in the directory as this will create a developer error
 	siaPath := ""
 	checkTime := time.Now()
-	metadataUpdate := siadir.BubbledMetadata{
+	metadataUpdate := siadir.Metadata{
 		Health:              1,
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
@@ -209,7 +209,7 @@ func TestBubbleHealth(t *testing.T) {
 	// Now if we bubble the health and check for the worst health we should see
 	// that the health is the health of the file
 	rt.renter.threadedBubbleMetadata(siaPath)
-	expectedHealth := siadir.BubbledMetadata{
+	expectedHealth := siadir.Metadata{
 		Health:      2,
 		StuckHealth: 0,
 	}
@@ -261,7 +261,7 @@ func TestBubbleHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reset metadataUpdate with expected values
-	expectedHealth = siadir.BubbledMetadata{
+	expectedHealth = siadir.Metadata{
 		Health:              4,
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
@@ -324,7 +324,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 
 	// Set the LastHealthCheckTime of SubDir1/SubDir2 to be the oldest
 	oldestCheckTime := time.Now().AddDate(0, 0, -1)
-	oldestHealthCheckUpdate := siadir.BubbledMetadata{
+	oldestHealthCheckUpdate := siadir.Metadata{
 		Health:              1,
 		StuckHealth:         0,
 		LastHealthCheckTime: oldestCheckTime,
@@ -413,7 +413,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 
 	// Set the Health of SubDir1/SubDir2 to be the worst
 	worstHealth := float64(10)
-	worstHealthUpdate := siadir.BubbledMetadata{
+	worstHealthUpdate := siadir.Metadata{
 		Health:              worstHealth,
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
@@ -628,8 +628,8 @@ func TestDirectorySize(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if dirInfo.Size != 3*fileSize {
-			return fmt.Errorf("Size incorrect, got %v expected %v", dirInfo.Size, 3*fileSize)
+		if dirInfo.AggregateSize != 3*fileSize {
+			return fmt.Errorf("AggregateSize incorrect, got %v expected %v", dirInfo.AggregateSize, 3*fileSize)
 		}
 		return nil
 	})

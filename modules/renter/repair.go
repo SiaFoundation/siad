@@ -135,9 +135,9 @@ func (r *Renter) managedBubbleNeeded(siaPath string) (bool, error) {
 // managedCalculateDirectoryMetadata calculates the new values for the
 // directory's metadata and tracks the value, either worst or best, for each to
 // be bubbled up
-func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.BubbledMetadata, error) {
+func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Metadata, error) {
 	// Set default metadata values to start
-	metadata := siadir.BubbledMetadata{
+	metadata := siadir.Metadata{
 		AggregateNumFiles:   uint64(0),
 		Health:              siadir.DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
@@ -146,7 +146,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 		NumFiles:            uint64(0),
 		NumStuckChunks:      uint64(0),
 		NumSubDirs:          uint64(0),
-		Size:                uint64(0),
+		AggregateSize:       uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
 	}
 	// Read directory
@@ -154,7 +154,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 	fileinfos, err := ioutil.ReadDir(path)
 	if err != nil {
 		r.log.Printf("WARN: Error in reading files in directory %v : %v\n", path, err)
-		return siadir.BubbledMetadata{}, err
+		return siadir.Metadata{}, err
 	}
 
 	// Iterate over directory
@@ -162,7 +162,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 		// Check to make sure renter hasn't been shutdown
 		select {
 		case <-r.tg.StopChan():
-			return siadir.BubbledMetadata{}, err
+			return siadir.Metadata{}, err
 		default:
 		}
 
@@ -176,7 +176,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 			fName := strings.TrimSuffix(fi.Name(), siafile.ShareExtension)
 			fileMetadata, err := r.managedFileMetadata(filepath.Join(siaPath, fName))
 			if err != nil {
-				return siadir.BubbledMetadata{}, err
+				return siadir.Metadata{}, err
 			}
 			if time.Since(fileMetadata.RecentRepairTime) >= fileRepairInterval {
 				// If the file has not recently been repaired then consider the
@@ -192,12 +192,12 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 			metadata.NumFiles++
 			metadata.AggregateNumFiles++
 			// Update Size
-			metadata.Size += fileMetadata.Size
+			metadata.AggregateSize += fileMetadata.Size
 		} else if fi.IsDir() {
 			// Directory is found, read the directory metadata file
 			dirMetadata, err := r.managedDirectoryMetadata(filepath.Join(siaPath, fi.Name()))
 			if err != nil {
-				return siadir.BubbledMetadata{}, err
+				return siadir.Metadata{}, err
 			}
 			health = dirMetadata.Health
 			lastHealthCheckTime = dirMetadata.LastHealthCheckTime
@@ -210,7 +210,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 			// Update NumSubDirs
 			metadata.NumSubDirs++
 			// Update Size
-			metadata.Size += dirMetadata.Size
+			metadata.AggregateSize += dirMetadata.AggregateSize
 		} else {
 			// Ignore everthing that is not a SiaFile or a directory
 			continue
@@ -273,15 +273,15 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath string) error {
 
 // managedDirectoryMetadata reads the directory metadata and returns the bubble
 // metadata
-func (r *Renter) managedDirectoryMetadata(siaPath string) (siadir.BubbledMetadata, error) {
+func (r *Renter) managedDirectoryMetadata(siaPath string) (siadir.Metadata, error) {
 	// Check for bad paths and files
 	fullPath := filepath.Join(r.staticFilesDir, siaPath)
 	fi, err := os.Stat(fullPath)
 	if err != nil {
-		return siadir.BubbledMetadata{}, err
+		return siadir.Metadata{}, err
 	}
 	if !fi.IsDir() {
-		return siadir.BubbledMetadata{}, fmt.Errorf("%v is not a directory", siaPath)
+		return siadir.Metadata{}, fmt.Errorf("%v is not a directory", siaPath)
 	}
 
 	//  Open SiaDir
@@ -292,23 +292,23 @@ func (r *Renter) managedDirectoryMetadata(siaPath string) (siadir.BubbledMetadat
 		// Metadata file does not exists, check if directory is empty
 		fileInfos, err := ioutil.ReadDir(fullPath)
 		if err != nil {
-			return siadir.BubbledMetadata{}, err
+			return siadir.Metadata{}, err
 		}
 		// If the directory is empty and is not the root directory, assume it
 		// was deleted so do not create a metadata file
 		if len(fileInfos) == 0 && siaPath != "" {
-			return siadir.BubbledMetadata{}, initError
+			return siadir.Metadata{}, initError
 		}
 		// If we are at the root directory or the directory is not empty, create
 		// a metadata file
 		siaDir, err = r.staticDirSet.NewSiaDir(siaPath)
 	}
 	if err != nil {
-		return siadir.BubbledMetadata{}, err
+		return siadir.Metadata{}, err
 	}
 	defer siaDir.Close()
 
-	return siaDir.BubbleMetadata(), nil
+	return siaDir.Metadata(), nil
 }
 
 // managedFileMetadata returns the necessary metadata information of a siafile
@@ -325,7 +325,7 @@ func (r *Renter) managedFileMetadata(siaPath string) (siafile.BubbledMetadata, e
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 	if err := sf.UpdateLastHealthCheckTime(); err != nil {
-		return fileHealth{}, err
+		return siafile.BubbledMetadata{}, err
 	}
 	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
 	// Check if local file is missing and redundancy is less than one

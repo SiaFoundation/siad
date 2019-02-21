@@ -43,9 +43,10 @@ func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
 	// Grab the health information and return the Directory Info, the worst
 	// health will be returned. Depending on the directory and its contents that
 	// could either be health or stuckHealth
-	metadata := entry.BubbleMetadata()
+	metadata := entry.Metadata()
 	return modules.DirectoryInfo{
 		AggregateNumFiles:   metadata.AggregateNumFiles,
+		AggregateSize:       metadata.AggregateSize,
 		Health:              metadata.Health,
 		LastHealthCheckTime: metadata.LastHealthCheckTime,
 		MaxHealth:           math.Max(metadata.Health, metadata.StuckHealth),
@@ -55,7 +56,6 @@ func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
 		NumStuckChunks:      metadata.NumStuckChunks,
 		NumSubDirs:          metadata.NumSubDirs,
 		SiaPath:             siaPath,
-		Size:                metadata.Size,
 		StuckHealth:         metadata.StuckHealth,
 	}, nil
 }

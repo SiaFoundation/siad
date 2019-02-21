@@ -270,7 +270,7 @@ func (sds *SiaDirSet) Open(siaPath string) (*SiaDirSetEntry, error) {
 }
 
 // UpdateMetadata will update the metadata of the SiaDir in memory and on disk
-func (sds *SiaDirSet) UpdateMetadata(siaPath string, metadata BubbledMetadata) error {
+func (sds *SiaDirSet) UpdateMetadata(siaPath string, metadata Metadata) error {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	siaPath = strings.Trim(siaPath, "/")
