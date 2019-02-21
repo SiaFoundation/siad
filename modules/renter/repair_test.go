@@ -17,18 +17,48 @@ import (
 
 // TODO - Adding testing for interruptions
 
-// equalHealthsAndChunks is a helper that checks the Health, StuckHealth, and
-// NumStuckChunks fields of two SiaDirHealths for equality. It does not look at
-// the LastHealthCheckTime field
-func equalHealthsAndChunks(health1, health2 siadir.Metadata) error {
-	if health1.Health != health2.Health {
-		return fmt.Errorf("Healths not equal, %v and %v", health1.Health, health2.Health)
+// equalBubbledMetadata is a helper that checks for equality in the siadir
+// metadata that gets bubbled
+func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
+	// Check AggregateNumFiles
+	if md1.AggregateNumFiles != md2.AggregateNumFiles {
+		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md1.AggregateNumFiles, md2.AggregateNumFiles)
 	}
-	if health1.StuckHealth != health2.StuckHealth {
-		return fmt.Errorf("StuckHealths not equal, %v and %v", health1.StuckHealth, health2.StuckHealth)
+	// Check Size
+	if md1.AggregateSize != md2.AggregateSize {
+		return fmt.Errorf("aggregate sizes not equal, %v and %v", md1.AggregateSize, md2.AggregateSize)
 	}
-	if health1.NumStuckChunks != health2.NumStuckChunks {
-		return fmt.Errorf("NumStuckChunks not equal, %v and %v", health1.NumStuckChunks, health2.NumStuckChunks)
+	// Check Health
+	if md1.Health != md2.Health {
+		return fmt.Errorf("healths not equal, %v and %v", md1.Health, md2.Health)
+	}
+	// Check LastHealthCheckTimes
+	if md2.LastHealthCheckTime != md1.LastHealthCheckTime {
+		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v", md2.LastHealthCheckTime, md1.LastHealthCheckTime)
+	}
+	// Check MinRedundancy
+	if md1.MinRedundancy != md2.MinRedundancy {
+		return fmt.Errorf("MinRedundancy not equal, %v and %v", md1.MinRedundancy, md2.MinRedundancy)
+	}
+	// Check Mod Times
+	if md2.ModTime != md1.ModTime {
+		return fmt.Errorf("ModTimes not equal %v and %v", md2.ModTime, md1.ModTime)
+	}
+	// Check NumFiles
+	if md1.NumFiles != md2.NumFiles {
+		return fmt.Errorf("NumFiles not equal, %v and %v", md1.NumFiles, md2.NumFiles)
+	}
+	// Check NumStuckChunks
+	if md1.NumStuckChunks != md2.NumStuckChunks {
+		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md1.NumStuckChunks, md2.NumStuckChunks)
+	}
+	// Check NumSubDirs
+	if md1.NumSubDirs != md2.NumSubDirs {
+		return fmt.Errorf("NumSubDirs not equal, %v and %v", md1.NumSubDirs, md2.NumSubDirs)
+	}
+	// Check StuckHealth
+	if md1.StuckHealth != md2.StuckHealth {
+		return fmt.Errorf("stuck healths not equal, %v and %v", md1.StuckHealth, md2.StuckHealth)
 	}
 	return nil
 }
@@ -50,7 +80,7 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Check to make sure bubble doesn't error on an empty directory
 	rt.renter.threadedBubbleMetadata("")
-	defaultHealth := siadir.Metadata{
+	defaultMetadata := siadir.Metadata{
 		Health:              siadir.DefaultDirHealth,
 		StuckHealth:         siadir.DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
@@ -63,7 +93,7 @@ func TestBubbleHealth(t *testing.T) {
 			return err
 		}
 		// Check Health
-		if err = equalHealthsAndChunks(metadata, defaultHealth); err != nil {
+		if err = equalBubbledMetadata(metadata, defaultMetadata); err != nil {
 			return err
 		}
 		return nil
@@ -139,7 +169,7 @@ func TestBubbleHealth(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = equalHealthsAndChunks(metadata, expectedHealth); err != nil {
+		if err = equalBubbledMetadata(metadata, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -194,7 +224,7 @@ func TestBubbleHealth(t *testing.T) {
 		}
 		expectedHealth.StuckHealth = 2
 		expectedHealth.NumStuckChunks++
-		if err = equalHealthsAndChunks(metadata, expectedHealth); err != nil {
+		if err = equalBubbledMetadata(metadata, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -220,7 +250,7 @@ func TestBubbleHealth(t *testing.T) {
 			return err
 		}
 		// Check Health
-		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
+		if err = equalBubbledMetadata(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -243,7 +273,7 @@ func TestBubbleHealth(t *testing.T) {
 			return err
 		}
 		// Check Health
-		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
+		if err = equalBubbledMetadata(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil
@@ -277,7 +307,7 @@ func TestBubbleHealth(t *testing.T) {
 			return err
 		}
 		// Check Health
-		if err = equalHealthsAndChunks(health, expectedHealth); err != nil {
+		if err = equalBubbledMetadata(health, expectedHealth); err != nil {
 			return err
 		}
 		return nil

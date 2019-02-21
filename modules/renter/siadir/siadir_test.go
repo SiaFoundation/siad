@@ -129,7 +129,7 @@ func TestNewSiaDir(t *testing.T) {
 	}
 }
 
-// Test UpdatedMetadata
+// Test UpdatedMetadata probes the UpdateMetadata method
 func TestUpdateMetadata(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()

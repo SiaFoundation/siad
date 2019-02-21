@@ -238,6 +238,12 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Metad
 		}
 		metadata.NumStuckChunks += numStuckChunks
 	}
+	// Sanity check on ModTime. If mod time is still zero it means there were no
+	// files or subdirectories. Set ModTime to now since we just updated this
+	// directory
+	if metadata.ModTime.IsZero() {
+		metadata.ModTime = time.Now()
+	}
 
 	return metadata, nil
 }

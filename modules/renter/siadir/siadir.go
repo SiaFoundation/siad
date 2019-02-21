@@ -69,7 +69,7 @@ type (
 
 		// ModTime is the last time any of the files or sub directories
 		// was updated
-		ModTime time.Time `json:"lastupdatetime"`
+		ModTime time.Time `json:"modtime"`
 
 		// NumFiles is the number of files in a directory
 		NumFiles uint64 `json:"numfiles"`
@@ -133,12 +133,11 @@ func createDirMetadata(siaPath, rootDir string) (Metadata, writeaheadlog.Update,
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
 	// empty directories won't be viewed as being the most in need
 	md := Metadata{
-		Health:              DefaultDirHealth,
-		LastHealthCheckTime: time.Now(),
-		ModTime:             time.Now(),
-		StuckHealth:         DefaultDirHealth,
-		RootDir:             rootDir,
-		SiaPath:             siaPath,
+		Health:      DefaultDirHealth,
+		ModTime:     time.Now(),
+		StuckHealth: DefaultDirHealth,
+		RootDir:     rootDir,
+		SiaPath:     siaPath,
 	}
 	update, err := createMetadataUpdate(md)
 	return md, update, err
