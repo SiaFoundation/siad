@@ -551,8 +551,13 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	defer extendDeadline(s.conn, time.Hour)
 
 	// calculate price
-	paidBytes := uint64(req.NumRoots) * crypto.HashSize
-	price := s.host.DownloadBandwidthPrice.Mul64(paidBytes)
+	estProofHashes := bits.Len64(lastRev.NewFileSize / modules.SectorSize)
+	estBandwidth := (uint64(estProofHashes) + req.NumRoots) * crypto.HashSize
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
+	}
+	bandwidthPrice := s.host.DownloadBandwidthPrice.Mul64(estBandwidth)
+	price := s.host.BaseRPCPrice.Add(bandwidthPrice)
 	if lastRev.RenterFunds().Cmp(price) < 0 {
 		return types.Transaction{}, nil, errors.New("contract has insufficient funds to support sector roots download")
 	}
