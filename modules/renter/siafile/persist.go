@@ -166,9 +166,9 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 		build.Critical("the chunk offset is not page aligned")
 	}
 	// Open the file.
-	f, err := sf.deps.Open(sf.siaFilePath)
+	f, err := sf.deps.OpenFile(sf.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
-		return writeaheadlog.Update{}, err
+		return writeaheadlog.Update{}, errors.AddContext(err, "failed to open siafile")
 	}
 	defer f.Close()
 	// Seek the chunk offset.
@@ -328,13 +328,14 @@ func (sf *SiaFile) saveFile() error {
 	}
 	headerUpdates, err := sf.saveHeaderUpdates()
 	if err != nil {
-		return err
+		return errors.AddContext(err, "failed to to create save header updates")
 	}
 	chunksUpdates, err := sf.saveChunksUpdates()
 	if err != nil {
-		return err
+		return errors.AddContext(err, "failed to create save chunks updates")
 	}
-	return sf.createAndApplyTransaction(append(headerUpdates, chunksUpdates...)...)
+	err = sf.createAndApplyTransaction(append(headerUpdates, chunksUpdates...)...)
+	return errors.AddContext(err, "failed to apply saveFile updates")
 }
 
 // saveChunkUpdate creates a writeaheadlog update that saves a single marshaled chunk
@@ -371,7 +372,7 @@ func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
 	// Marshal the pubKeyTable.
 	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "failed to marshal pubkey table")
 	}
 
 	// Update the pubKeyTableOffset. This is not necessarily the final offset
@@ -382,7 +383,7 @@ func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
 	// Marshal the metadata.
 	metadata, err := marshalMetadata(sf.staticMetadata)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "failed to marshal metadata")
 	}
 
 	// If the metadata and the pubKeyTable overlap, we need to allocate a new
@@ -392,7 +393,7 @@ func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
 		// Create update to move chunkData back by a page.
 		chunkUpdate, err := sf.allocateHeaderPage()
 		if err != nil {
-			return nil, err
+			return nil, errors.AddContext(err, "failed to allocate new header page")
 		}
 		updates = append(updates, chunkUpdate)
 		// Update the PubKeyTableOffset.
@@ -400,7 +401,7 @@ func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
 		// Marshal the metadata again.
 		metadata, err = marshalMetadata(sf.staticMetadata)
 		if err != nil {
-			return nil, err
+			return nil, errors.AddContext(err, "failed to marshal metadata again")
 		}
 	}
 

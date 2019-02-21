@@ -111,9 +111,5 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
 	}
-	err = file.saveFile()
-	if err != nil {
-		return sfse, errors.AddContext(nil, "unable to save file")
-	}
-	return sfse, nil
+	return sfse, errors.AddContext(file.saveFile(), "unable to save file")
 }
