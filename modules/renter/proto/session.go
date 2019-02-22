@@ -2,6 +2,7 @@ package proto
 
 import (
 	"crypto/cipher"
+	"math/bits"
 	"net"
 	"sort"
 	"sync"
@@ -152,9 +153,13 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterCont
 		collateral = sectorCollateral.Mul64(addedSectors)
 	}
 
+	// estimate cost of Merkle proof
+	proofSize := crypto.HashSize * (128 + len(actions))
+	bandwidthPrice = bandwidthPrice.Add(s.host.DownloadBandwidthPrice.Mul64(uint64(proofSize)))
+
 	// to mitigate small errors (e.g. differing block heights), fudge the
 	// price and collateral by 0.2%.
-	cost := bandwidthPrice.Add(storagePrice).MulFloat(1 + hostPriceLeeway)
+	cost := s.host.BaseRPCPrice.Add(bandwidthPrice).Add(storagePrice).MulFloat(1 + hostPriceLeeway)
 	collateral = collateral.MulFloat(1 - hostPriceLeeway)
 
 	// check that enough funds are available
@@ -311,7 +316,9 @@ func (s *Session) Read(root crypto.Hash, offset, length uint32) (_ modules.Rente
 	contract := sc.header // for convenience
 
 	// calculate price
-	price := s.host.DownloadBandwidthPrice.Mul64(uint64(length))
+	bandwidthPrice := s.host.DownloadBandwidthPrice.Mul64(uint64(length))
+	sectorAccessPrice := s.host.SectorAccessPrice.Mul64(1)
+	price := s.host.BaseRPCPrice.Add(bandwidthPrice).Add(sectorAccessPrice)
 	if contract.RenterFunds().Cmp(price) < 0 {
 		return modules.RenterContract{}, nil, errors.New("contract has insufficient funds to support download")
 	}
@@ -435,8 +442,13 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	contract := sc.header // for convenience
 
 	// calculate price
-	paidBytes := uint64(req.NumRoots) * crypto.HashSize
-	price := s.host.DownloadBandwidthPrice.Mul64(paidBytes)
+	estProofHashes := bits.Len64(contract.LastRevision().NewFileSize / modules.SectorSize)
+	estBandwidth := (uint64(estProofHashes) + req.NumRoots) * crypto.HashSize
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
+	}
+	bandwidthPrice := s.host.DownloadBandwidthPrice.Mul64(estBandwidth)
+	price := s.host.BaseRPCPrice.Add(bandwidthPrice)
 	if contract.RenterFunds().Cmp(price) < 0 {
 		return modules.RenterContract{}, nil, errors.New("contract has insufficient funds to support sector roots download")
 	}
@@ -539,8 +551,13 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	defer extendDeadline(s.conn, time.Hour)
 
 	// calculate price
-	paidBytes := uint64(req.NumRoots) * crypto.HashSize
-	price := s.host.DownloadBandwidthPrice.Mul64(paidBytes)
+	estProofHashes := bits.Len64(lastRev.NewFileSize / modules.SectorSize)
+	estBandwidth := (uint64(estProofHashes) + req.NumRoots) * crypto.HashSize
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
+	}
+	bandwidthPrice := s.host.DownloadBandwidthPrice.Mul64(estBandwidth)
+	price := s.host.BaseRPCPrice.Add(bandwidthPrice)
 	if lastRev.RenterFunds().Cmp(price) < 0 {
 		return types.Transaction{}, nil, errors.New("contract has insufficient funds to support sector roots download")
 	}

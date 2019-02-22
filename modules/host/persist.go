@@ -11,7 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 
-	"github.com/coreos/bbolt"
+	bolt "github.com/coreos/bbolt"
 )
 
 // persistence is the data that is kept when the host is restarted.
@@ -64,9 +64,11 @@ func (h *Host) establishDefaults() error {
 		CollateralBudget: defaultCollateralBudget,
 		MaxCollateral:    defaultMaxCollateral,
 
-		MinStoragePrice:           defaultStoragePrice,
+		MinBaseRPCPrice:           defaultBaseRPCPrice,
 		MinContractPrice:          defaultContractPrice,
 		MinDownloadBandwidthPrice: defaultDownloadBandwidthPrice,
+		MinSectorAccessPrice:      defaultSectorAccessPrice,
+		MinStoragePrice:           defaultStoragePrice,
 		MinUploadBandwidthPrice:   defaultUploadBandwidthPrice,
 	}
 

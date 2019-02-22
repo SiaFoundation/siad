@@ -54,8 +54,10 @@ Available settings:
      collateralbudget: currency
      maxcollateral:    currency
 
+     minbaserpcprice:           currency
      mincontractprice:          currency
      mindownloadbandwidthprice: currency / TB
+     minsectoraccessprice:      currency
      minstorageprice:           currency / TB / Month
      minuploadbandwidthprice:   currency / TB
 
@@ -329,7 +331,7 @@ func hostconfigcmd(param, value string) {
 	var err error
 	switch param {
 	// currency (convert to hastings)
-	case "collateralbudget", "maxcollateral", "mincontractprice":
+	case "collateralbudget", "maxcollateral", "minbaserpcprice", "mincontractprice", "minsectoraccessprice":
 		value, err = parseCurrency(value)
 		if err != nil {
 			die("Could not parse "+param+":", err)

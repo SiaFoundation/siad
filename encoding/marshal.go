@@ -136,7 +136,7 @@ func (e *Encoder) encode(val reflect.Value) error {
 	// check for MarshalSia interface first
 	if val.CanInterface() {
 		if m, ok := val.Interface().(SiaMarshaler); ok {
-			return m.MarshalSia(e.w)
+			return m.MarshalSia(e)
 		}
 	}
 
@@ -374,7 +374,7 @@ func (d *Decoder) decode(val reflect.Value) {
 	// check for UnmarshalSia interface first
 	if val.CanAddr() && val.Addr().CanInterface() {
 		if u, ok := val.Addr().Interface().(SiaUnmarshaler); ok {
-			err := u.UnmarshalSia(d.r)
+			err := u.UnmarshalSia(d)
 			if err != nil {
 				panic(err)
 			}

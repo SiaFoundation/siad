@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -205,4 +206,62 @@ func TestHostLockTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	s2.Close()
+}
+
+// TestHostBaseRPCPrice tests that the host rejects RPCs when its base RPC price
+// is not respected.
+func TestHostBaseRPCPrice(t *testing.T) {
+	gp := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterHostTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Close()
+
+	// manually grab a renter contract
+	renter := tg.Renters()[0]
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := cs.ViewAll()[0]
+
+	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Begin an RPC session.
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a sector.
+	sector := fastrand.Bytes(int(modules.SectorSize))
+	_, _, err = s.Append(sector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Increase the host's base price.
+	host := tg.Hosts()[0]
+	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, types.SiacoinPrecision.Mul64(1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Attempt to upload another sector.
+	_, _, err = s.Append(sector)
+	if err == nil || !strings.Contains(err.Error(), "rejected for high paying renter valid output") {
+		t.Fatal("expected underpayment error, got", err)
+	}
 }

@@ -243,21 +243,29 @@ type (
 		MaxCollateral types.Currency `json:"maxcollateral"`
 
 		// ContractPrice is the number of coins that the renter needs to pay to
-		// the host just to open a file contract with them. Generally, the
-		// price is only to cover the siacoin fees that the host will suffer
-		// when submitting the file contract revision and storage proof to the
+		// the host just to open a file contract with them. Generally, the price
+		// is only to cover the siacoin fees that the host will suffer when
+		// submitting the file contract revision and storage proof to the
 		// blockchain.
 		//
-		// The storage price is the cost per-byte-per-block in hastings of
-		// storing data on the host.
+		// BaseRPC price is a flat per-RPC fee charged by the host for any
+		// non-free RPC.
 		//
 		// 'Download' bandwidth price is the cost per byte of downloading data
-		// from the host.
+		// from the host. This includes metadata such as Merkle proofs.
+		//
+		// SectorAccessPrice is the cost per sector of data accessed when
+		// downloading data.
+		//
+		// StoragePrice is the cost per-byte-per-block in hastings of storing
+		// data on the host.
 		//
 		// 'Upload' bandwidth price is the cost per byte of uploading data to
 		// the host.
+		BaseRPCPrice           types.Currency `json:"baserpcprice"`
 		ContractPrice          types.Currency `json:"contractprice"`
 		DownloadBandwidthPrice types.Currency `json:"downloadbandwidthprice"`
+		SectorAccessPrice      types.Currency `json:"sectoraccessprice"`
 		StoragePrice           types.Currency `json:"storageprice"`
 		UploadBandwidthPrice   types.Currency `json:"uploadbandwidthprice"`
 
@@ -542,22 +550,41 @@ func WriteRPCRequest(w io.Writer, aead cipher.AEAD, rpcID types.Specifier, req i
 	return nil
 }
 
+// rpcResponse is a helper type for encoding and decoding RPC response messages.
+type rpcResponse struct {
+	err  *RPCError
+	data interface{}
+}
+
+func (resp *rpcResponse) MarshalSia(w io.Writer) error {
+	if resp.data == nil {
+		resp.data = struct{}{}
+	}
+	return encoding.NewEncoder(w).EncodeAll(resp.err, resp.data)
+}
+
+func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
+	// NOTE: no allocation limit is required because this method is always
+	// called via encoding.Unmarshal, which already imposes an allocation limit.
+	d := encoding.NewDecoder(r, 0)
+	if err := d.Decode(&resp.err); err != nil {
+		return err
+	} else if resp.err != nil {
+		return resp.err
+	}
+	return d.Decode(resp.data)
+}
+
 // WriteRPCResponse writes an RPC response or error using the new loop
 // protocol. Either resp or err must be nil. If err is an *RPCError, it is
 // sent directly; otherwise, a generic RPCError is created from err's Error
 // string.
 func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error) error {
-	var unencryptedResp []byte
-	if err == nil {
-		unencryptedResp = encoding.MarshalAll((*RPCError)(nil), resp)
-	} else {
-		re, ok := err.(*RPCError)
-		if !ok {
-			re = &RPCError{Description: err.Error()}
-		}
-		unencryptedResp = encoding.Marshal(re)
+	re, ok := err.(*RPCError)
+	if err != nil && !ok {
+		re = &RPCError{Description: err.Error()}
 	}
-	return encoding.WritePrefixedBytes(w, crypto.EncryptWithNonce(unencryptedResp, aead))
+	return WriteRPCMessage(w, aead, &rpcResponse{re, resp})
 }
 
 // ReadRPCID reads an RPC request ID using the new loop protocol.
@@ -577,22 +604,7 @@ func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uin
 		build.Critical("maxLen must be at least RPCMinLen")
 		maxLen = RPCMinLen
 	}
-	encryptedResp, err := encoding.ReadPrefixedBytes(r, maxLen)
-	if err != nil {
-		return err
-	}
-	decryptedResp, err := crypto.DecryptWithNonce(encryptedResp, aead)
-	if err != nil {
-		return err
-	}
-	dec := encoding.NewDecoder(bytes.NewReader(decryptedResp), len(decryptedResp)*2+4096)
-	var rpcErr *RPCError
-	if err := dec.Decode(&rpcErr); err != nil {
-		return err
-	} else if rpcErr != nil {
-		return rpcErr
-	}
-	return dec.Decode(resp)
+	return ReadRPCMessage(r, aead, &rpcResponse{nil, resp}, maxLen)
 }
 
 // ReadNegotiationAcceptance reads an accept/reject response from r (usually a
