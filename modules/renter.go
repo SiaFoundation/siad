@@ -187,22 +187,23 @@ type ContractUtility struct {
 // DirectoryInfo provides information about a siadir
 type DirectoryInfo struct {
 	// The following fields are aggregate values of the siadir. These values are
-	// the totals of the siadir and any sub siadirs
-	AggregateNumFiles uint64 `json:"aggregatenumfiles"`
-	AggregateSize     uint64 `json:"aggregatesize"`
+	// the totals of the siadir and any sub siadirs, or are calculated based on
+	// all the values in the subtree
+	AggregateNumFiles       uint64    `json:"aggregatenumfiles"`
+	AggregateNumStuckChunks uint64    `json:"aggregatenumstuckchunks"`
+	AggregateSize           uint64    `json:"aggregatesize"`
+	Health                  float64   `json:"health"`
+	LastHealthCheckTime     time.Time `json:"lasthealthchecktime"`
+	MaxHealth               float64   `json:"maxhealth"`
+	MinRedundancy           float64   `json:"minredundancy"`
+	MostRecentModTime       time.Time `json:"mostrecentmodtime"`
+	StuckHealth             float64   `json:"stuckhealth"`
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
-	Health              float64   `json:"health"`
-	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
-	MaxHealth           float64   `json:"maxhealth"`
-	MinRedundancy       float64   `json:"minredundancy"`
-	ModTime             time.Time `json:"modtime"`
-	NumFiles            uint64    `json:"numfiles"`
-	NumStuckChunks      uint64    `json:"numstuckchunks"`
-	NumSubDirs          uint64    `json:"numsubdirs"`
-	SiaPath             string    `json:"siapath"`
-	StuckHealth         float64   `json:"stuckhealth"`
+	NumFiles   uint64 `json:"numfiles"`
+	NumSubDirs uint64 `json:"numsubdirs"`
+	SiaPath    string `json:"siapath"`
 }
 
 // DownloadInfo provides information about a file that has been requested for

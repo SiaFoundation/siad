@@ -445,7 +445,7 @@ func (r *Renter) managedStuckDirectory() (string, error) {
 			return siaPath, errNoStuckFiles
 		}
 		// Check if there are stuck chunks in this directory
-		if directories[0].NumStuckChunks == 0 {
+		if directories[0].AggregateNumStuckChunks == 0 {
 			// Log error if we are not at the root directory
 			if siaPath != "" {
 				r.log.Debugln("WARN: ended up in directory with no stuck chunks that is not root directory:", siaPath)
@@ -458,7 +458,7 @@ func (r *Renter) managedStuckDirectory() (string, error) {
 		}
 
 		// Get random int
-		rand := fastrand.Intn(int(directories[0].NumStuckChunks))
+		rand := fastrand.Intn(int(directories[0].AggregateNumStuckChunks))
 
 		// Use rand to decide which directory to go into. Work backwards over
 		// the slice of directories. Since the first element is the current
@@ -480,11 +480,11 @@ func (r *Renter) managedStuckDirectory() (string, error) {
 			}
 
 			// Skip directories with no stuck chunks
-			if directories[i].NumStuckChunks == uint64(0) {
+			if directories[i].AggregateNumStuckChunks == uint64(0) {
 				continue
 			}
 
-			rand = rand - int(directories[i].NumStuckChunks)
+			rand = rand - int(directories[i].AggregateNumStuckChunks)
 			siaPath = directories[i].SiaPath
 			// If rand is less than 0 break out of the loop and continue into
 			// that directory

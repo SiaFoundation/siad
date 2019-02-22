@@ -724,8 +724,8 @@ func TestDirectoryModTime(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if dirInfo.ModTime != f.ModTime() {
-			return fmt.Errorf("ModTime is incorrect, got %v expected %v", dirInfo.ModTime, f.ModTime())
+		if dirInfo.MostRecentModTime != f.ModTime() {
+			return fmt.Errorf("ModTime is incorrect, got %v expected %v", dirInfo.MostRecentModTime, f.ModTime())
 		}
 		return nil
 	})

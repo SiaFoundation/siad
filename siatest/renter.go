@@ -416,7 +416,7 @@ func (tn *TestNode) WaitForStuckChunksToBubble() error {
 		if err != nil {
 			return err
 		}
-		if rd.Directories[0].NumStuckChunks == 0 {
+		if rd.Directories[0].AggregateNumStuckChunks == 0 {
 			return errors.New("no stuck chunks found")
 		}
 		return nil
@@ -432,8 +432,8 @@ func (tn *TestNode) WaitForStuckChunksToRepair() error {
 		if err != nil {
 			return err
 		}
-		if rd.Directories[0].NumStuckChunks != 0 {
-			return fmt.Errorf("%v stuck chunks found, expected 0", rd.Directories[0].NumStuckChunks)
+		if rd.Directories[0].AggregateNumStuckChunks != 0 {
+			return fmt.Errorf("%v stuck chunks found, expected 0", rd.Directories[0].AggregateNumStuckChunks)
 		}
 		return nil
 	})

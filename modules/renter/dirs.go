@@ -45,18 +45,19 @@ func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
 	// could either be health or stuckHealth
 	metadata := entry.Metadata()
 	return modules.DirectoryInfo{
-		AggregateNumFiles:   metadata.AggregateNumFiles,
-		AggregateSize:       metadata.AggregateSize,
-		Health:              metadata.Health,
-		LastHealthCheckTime: metadata.LastHealthCheckTime,
-		MaxHealth:           math.Max(metadata.Health, metadata.StuckHealth),
-		MinRedundancy:       metadata.MinRedundancy,
-		ModTime:             metadata.ModTime,
-		NumFiles:            metadata.NumFiles,
-		NumStuckChunks:      metadata.NumStuckChunks,
-		NumSubDirs:          metadata.NumSubDirs,
-		SiaPath:             siaPath,
-		StuckHealth:         metadata.StuckHealth,
+		AggregateNumFiles:       metadata.AggregateNumFiles,
+		AggregateNumStuckChunks: metadata.NumStuckChunks,
+		AggregateSize:           metadata.AggregateSize,
+		Health:                  metadata.Health,
+		LastHealthCheckTime:     metadata.LastHealthCheckTime,
+		MaxHealth:               math.Max(metadata.Health, metadata.StuckHealth),
+		MinRedundancy:           metadata.MinRedundancy,
+		MostRecentModTime:       metadata.ModTime,
+		StuckHealth:             metadata.StuckHealth,
+
+		NumFiles:   metadata.NumFiles,
+		NumSubDirs: metadata.NumSubDirs,
+		SiaPath:    siaPath,
 	}, nil
 }
 

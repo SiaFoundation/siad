@@ -198,16 +198,16 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 		return fmt.Errorf("MinRedundancy not equal, %v and %v", md.MinRedundancy, di.MinRedundancy)
 	}
 	// Check Mod Times
-	if di.ModTime != md.ModTime {
-		return fmt.Errorf("ModTimes not equal %v and %v", di.ModTime, md.ModTime)
+	if di.MostRecentModTime != md.ModTime {
+		return fmt.Errorf("ModTimes not equal %v and %v", di.MostRecentModTime, md.ModTime)
 	}
 	// Check NumFiles
 	if md.NumFiles != di.NumFiles {
 		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, di.NumFiles)
 	}
 	// Check NumStuckChunks
-	if md.NumStuckChunks != di.NumStuckChunks {
-		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, di.NumStuckChunks)
+	if md.NumStuckChunks != di.AggregateNumStuckChunks {
+		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, di.AggregateNumStuckChunks)
 	}
 	// Check NumSubDirs
 	if md.NumSubDirs != di.NumSubDirs {
