@@ -591,7 +591,7 @@ func (r *Renter) threadedUploadLoop() {
 			r.log.Printf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
 			// Call threadedBubble to make sure that directory information is
 			// accurate
-			r.threadedBubbleHealth(dirSiaPath)
+			r.threadedBubbleMetadata(dirSiaPath)
 			continue
 		}
 		r.log.Println("Repairing", heapLen, "chunks from", dirSiaPath)

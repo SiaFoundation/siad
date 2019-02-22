@@ -303,5 +303,5 @@ func (sd *SiaDir) saveDir() error {
 
 // saveMetadataUpdate saves the metadata of the SiaDir
 func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
-	return createMetadataUpdate(sd.staticMetadata)
+	return createMetadataUpdate(sd.metadata)
 }

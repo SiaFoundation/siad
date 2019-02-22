@@ -628,13 +628,13 @@ func (r *Renter) threadedBubbleMetadata(siaPath string) {
 		// loop. This is only done at the root directory as the repair and stuck
 		// loops start at the root directory so there is no point triggering
 		// them until the root directory is updated
-		if health.Health >= RemoteRepairDownloadThreshold {
+		if metadata.Health >= RemoteRepairDownloadThreshold {
 			select {
 			case r.uploadHeap.repairNeeded <- struct{}{}:
 			default:
 			}
 		}
-		if health.NumStuckChunks > 0 {
+		if metadata.NumStuckChunks > 0 {
 			select {
 			case r.uploadHeap.stuckChunkFound <- struct{}{}:
 			default:
@@ -707,7 +707,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		r.managedRepairLoop(hosts)
 
 		// Call bubble once all chunks have been popped off heap
-		r.threadedBubbleMetadata(siaPath)
+		r.threadedBubbleMetadata(dirSiaPath)
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)

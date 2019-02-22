@@ -168,7 +168,7 @@ func (sds *SiaDirSet) closeEntry(entry *SiaDirSetEntry) {
 	// and then a new/different file was uploaded with the same siapath.
 	//
 	// If they are not the same entry, there is nothing more to do.
-	currentEntry := sds.siaDirMap[entry.staticMetadata.SiaPath]
+	currentEntry := sds.siaDirMap[entry.metadata.SiaPath]
 	if currentEntry != entry.siaDirSetEntry {
 		return
 	}
@@ -176,7 +176,7 @@ func (sds *SiaDirSet) closeEntry(entry *SiaDirSetEntry) {
 	// If there are no more threads that have the current entry open, delete
 	// this entry from the set cache.
 	if len(currentEntry.threadMap) == 0 {
-		delete(sds.siaDirMap, entry.staticMetadata.SiaPath)
+		delete(sds.siaDirMap, entry.metadata.SiaPath)
 	}
 }
 

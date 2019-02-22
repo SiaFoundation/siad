@@ -471,7 +471,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// stuck files to the heap and then find the next stuck chunk. By ensuring
 	// that the directory has been updated we eliminate the possibility that the
 	// same chunk is found by the stuck loop and re-added to the repair heap
-	r.threadedBubbleHealth(uc.fileEntry.DirSiaPath())
+	r.threadedBubbleMetadata(uc.fileEntry.DirSiaPath())
 
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop
