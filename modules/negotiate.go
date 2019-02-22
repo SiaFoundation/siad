@@ -555,17 +555,23 @@ func WriteRPCRequest(w io.Writer, aead cipher.AEAD, rpcID types.Specifier, req i
 // sent directly; otherwise, a generic RPCError is created from err's Error
 // string.
 func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error) error {
-	var unencryptedResp []byte
+	var payload []byte
 	if err == nil {
-		unencryptedResp = encoding.MarshalAll((*RPCError)(nil), resp)
+		payload = encoding.MarshalAll((*RPCError)(nil), resp)
 	} else {
 		re, ok := err.(*RPCError)
 		if !ok {
 			re = &RPCError{Description: err.Error()}
 		}
-		unencryptedResp = encoding.Marshal(re)
+		payload = encoding.Marshal(re)
 	}
-	return encoding.WritePrefixedBytes(w, crypto.EncryptWithNonce(unencryptedResp, aead))
+	// pad the payload to RPCMinLen bytes to prevent eavesdroppers from
+	// identifying RPCs by their size.
+	minLen := RPCMinLen - aead.Overhead() - aead.NonceSize()
+	if len(payload) < minLen {
+		payload = append(payload, fastrand.Bytes(minLen-len(payload))...)
+	}
+	return encoding.WritePrefixedBytes(w, crypto.EncryptWithNonce(payload, aead))
 }
 
 // ReadRPCID reads an RPC request ID using the new loop protocol.
