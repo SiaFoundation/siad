@@ -79,20 +79,6 @@ func NewSiaDirSet(rootDir string, wal *writeaheadlog.WAL) *SiaDirSet {
 	}
 }
 
-// close removes the thread from the threadMap. If the length of threadMap count
-// is 0 then it will remove the siaDirSetEntry from the SiaDirSet map, which
-// will remove it from memory
-func (entry *SiaDirSetEntry) close() error {
-	if _, ok := entry.threadMap[entry.threadUID]; !ok {
-		return ErrUnknownThread
-	}
-	delete(entry.threadMap, entry.threadUID)
-	if len(entry.threadMap) == 0 {
-		delete(entry.siaDirSet.siaDirMap, entry.SiaPath())
-	}
-	return nil
-}
-
 // exists checks to see if a SiaDir with the provided siaPath already exists in
 // the renter
 func (sds *SiaDirSet) exists(siaPath string) (bool, error) {
@@ -144,15 +130,54 @@ func (sds *SiaDirSet) open(siaPath string) (*SiaDirSetEntry, error) {
 	}, nil
 }
 
-// Close removes the thread from the threadMap. If the length of threadMap count
-// is 0 then it will remove the SiaDirSetEntry from the SiaDirSet map, which
-// will remove it from memory
+// Close will close the set entry, removing the entry from memory if there are
+// no other entries using the siadir.
+//
+// Note that 'Close' grabs a lock on the SiaDirSet, do not call this function
+// while holding a lock on the SiaDirSet - standard concurrency conventions
+// though dictate that you should not be calling exported / capitalized
+// functions while holding a lock anyway, but this function is particularly
+// sensitive to that.
 func (entry *SiaDirSetEntry) Close() error {
 	entry.siaDirSet.mu.Lock()
 	defer entry.siaDirSet.mu.Unlock()
+	entry.siaDirSet.closeEntry(entry)
+	return nil
+}
+
+// closeEntry will close an entry in the SiaDirSet, removing the siadir from the
+// cache if no other entries are open for that siadir.
+//
+// Note that this function needs to be called while holding a lock on the
+// SiaDirSet, per standard concurrency conventions. This function also goes and
+// grabs a lock on the entry that it is being passed, which means that the lock
+// cannot be held while calling 'closeEntry'.
+//
+// The memory model we have has the SiaDirSet as the superior object, so per
+// convention methods on the SiaDirSet should not be getting held while entry
+// locks are being held, but this function is particularly dependent on that
+// convention.
+func (sds *SiaDirSet) closeEntry(entry *SiaDirSetEntry) {
+	// Lock the thread map mu and remove the threadUID from the entry.
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
-	return entry.close()
+	delete(entry.threadMap, entry.threadUID)
+
+	// The entry that exists in the siadir set may not be the same as the entry
+	// that is being closed, this can happen if there was a rename or a delete
+	// and then a new/different file was uploaded with the same siapath.
+	//
+	// If they are not the same entry, there is nothing more to do.
+	currentEntry := sds.siaDirMap[entry.staticMetadata.SiaPath]
+	if currentEntry != entry.siaDirSetEntry {
+		return
+	}
+
+	// If there are no more threads that have the current entry open, delete
+	// this entry from the set cache.
+	if len(currentEntry.threadMap) == 0 {
+		delete(sds.siaDirMap, entry.staticMetadata.SiaPath)
+	}
 }
 
 // Delete deletes the SiaDir that belongs to the siaPath
@@ -173,7 +198,7 @@ func (sds *SiaDirSet) Delete(siaPath string) error {
 		return err
 	}
 	// Defer close entry
-	defer entry.close()
+	defer sds.closeEntry(entry)
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
 	// Delete SiaDir
@@ -260,6 +285,6 @@ func (sds *SiaDirSet) UpdateHealth(siaPath string, health SiaDirHealth) error {
 	if err != nil {
 		return err
 	}
-	defer entry.close()
+	defer sds.closeEntry(entry)
 	return entry.UpdateHealth(health)
 }
