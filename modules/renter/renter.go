@@ -789,7 +789,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			newUploads:        make(chan struct{}, 1),
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
-			stuckChunkSuccess: make(chan struct{}, 1),
+			stuckChunkSuccess: make(chan string, 1),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),
