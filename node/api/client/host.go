@@ -30,6 +30,11 @@ const (
 	HostParamMinUploadBandwidthPrice = HostParam("minuploadbandwidthprice")
 	// HostParamCollateral is the host's collateral in hastings/byte/block.
 	HostParamCollateral = HostParam("collateral")
+	// HostParamMinBaseRPCPrice is the minimum base RPC price in hastings.
+	HostParamMinBaseRPCPrice = HostParam("minbaserpcprice")
+	// HostParamMinSectorAccessPrice is the minimum sector access price in
+	// hastings.
+	HostParamMinSectorAccessPrice = HostParam("minsectoraccessprice")
 	// HostParamMinStoragePrice is the minimum storage price in
 	// hastings/byte/block.
 	HostParamMinStoragePrice = HostParam("minstorageprice")

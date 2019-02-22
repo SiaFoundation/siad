@@ -176,6 +176,14 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		settings.MaxCollateral = x
 	}
 
+	if req.FormValue("minbaserpcprice") != "" {
+		var x types.Currency
+		_, err := fmt.Sscan(req.FormValue("minbaserpcprice"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.MinBaseRPCPrice = x
+	}
 	if req.FormValue("mincontractprice") != "" {
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("mincontractprice"), &x)
@@ -191,6 +199,14 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 			return modules.HostInternalSettings{}, err
 		}
 		settings.MinDownloadBandwidthPrice = x
+	}
+	if req.FormValue("minsectoraccessprice") != "" {
+		var x types.Currency
+		_, err := fmt.Sscan(req.FormValue("minsectoraccessprice"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.MinSectorAccessPrice = x
 	}
 	if req.FormValue("minstorageprice") != "" {
 		var x types.Currency
