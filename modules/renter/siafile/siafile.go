@@ -275,6 +275,14 @@ func (sf *SiaFile) chunkHealth(chunkIndex int, offlineMap map[string]bool, goodF
 	return 1 - (float64(int(goodPieces)-minPieces) / targetPieces)
 }
 
+// ChunkHealth returns the health of the chunk which is defined as the percent
+// of parity pieces remaining.
+func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.chunkHealth(index, offlineMap, goodForRenewMap)
+}
+
 // ChunkIndexByOffset will return the chunkIndex that contains the provided
 // offset of a file and also the relative offset within the chunk. If the
 // offset is out of bounds, chunkIndex will be equal to NumChunk().
