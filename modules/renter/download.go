@@ -328,6 +328,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	if err != nil {
 		return nil, err
 	}
+	defer entry.Close()
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil
@@ -407,8 +408,6 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	d.OnComplete(func(_ error) error {
 		// Update the access time.
 		err := entry.SiaFile.UpdateAccessTime()
-		// Close the fileEntry.
-		err = errors.Compose(err, entry.Close())
 		// close the destination if possible.
 		if closer, ok := dw.(io.Closer); ok {
 			err = errors.Compose(err, closer.Close())

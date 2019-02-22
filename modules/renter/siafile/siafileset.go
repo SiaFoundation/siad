@@ -219,6 +219,7 @@ func (sfs *SiaFileSet) Delete(siaPath string) error {
 	if err != nil {
 		return err
 	}
+	defer sfs.closeEntry(entry)
 	err = entry.Delete()
 	if err != nil {
 		return err
