@@ -550,28 +550,41 @@ func WriteRPCRequest(w io.Writer, aead cipher.AEAD, rpcID types.Specifier, req i
 	return nil
 }
 
+// rpcResponse is a helper type for encoding and decoding RPC response messages.
+type rpcResponse struct {
+	err  *RPCError
+	data interface{}
+}
+
+func (resp *rpcResponse) MarshalSia(w io.Writer) error {
+	if resp.data == nil {
+		resp.data = struct{}{}
+	}
+	return encoding.NewEncoder(w).EncodeAll(resp.err, resp.data)
+}
+
+func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
+	// NOTE: no allocation limit is required because this method is always
+	// called via encoding.Unmarshal, which already imposes an allocation limit.
+	d := encoding.NewDecoder(r, 0)
+	if err := d.Decode(&resp.err); err != nil {
+		return err
+	} else if resp.err != nil {
+		return resp.err
+	}
+	return d.Decode(resp.data)
+}
+
 // WriteRPCResponse writes an RPC response or error using the new loop
 // protocol. Either resp or err must be nil. If err is an *RPCError, it is
 // sent directly; otherwise, a generic RPCError is created from err's Error
 // string.
 func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error) error {
-	var payload []byte
-	if err == nil {
-		payload = encoding.MarshalAll((*RPCError)(nil), resp)
-	} else {
-		re, ok := err.(*RPCError)
-		if !ok {
-			re = &RPCError{Description: err.Error()}
-		}
-		payload = encoding.Marshal(re)
+	re, ok := err.(*RPCError)
+	if err != nil && !ok {
+		re = &RPCError{Description: err.Error()}
 	}
-	// pad the payload to RPCMinLen bytes to prevent eavesdroppers from
-	// identifying RPCs by their size.
-	minLen := RPCMinLen - aead.Overhead() - aead.NonceSize()
-	if len(payload) < minLen {
-		payload = append(payload, fastrand.Bytes(minLen-len(payload))...)
-	}
-	return encoding.WritePrefixedBytes(w, crypto.EncryptWithNonce(payload, aead))
+	return WriteRPCMessage(w, aead, &rpcResponse{re, resp})
 }
 
 // ReadRPCID reads an RPC request ID using the new loop protocol.
@@ -591,22 +604,7 @@ func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uin
 		build.Critical("maxLen must be at least RPCMinLen")
 		maxLen = RPCMinLen
 	}
-	encryptedResp, err := encoding.ReadPrefixedBytes(r, maxLen)
-	if err != nil {
-		return err
-	}
-	decryptedResp, err := crypto.DecryptWithNonce(encryptedResp, aead)
-	if err != nil {
-		return err
-	}
-	dec := encoding.NewDecoder(bytes.NewReader(decryptedResp), len(decryptedResp)*2+4096)
-	var rpcErr *RPCError
-	if err := dec.Decode(&rpcErr); err != nil {
-		return err
-	} else if rpcErr != nil {
-		return rpcErr
-	}
-	return dec.Decode(resp)
+	return ReadRPCMessage(r, aead, &rpcResponse{nil, resp}, maxLen)
 }
 
 // ReadNegotiationAcceptance reads an accept/reject response from r (usually a
