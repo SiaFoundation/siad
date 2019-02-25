@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -14,12 +13,12 @@ import (
 // TestStresstestSiaFileSet is a vlong test that performs multiple operations
 // which modify the siafileset in parallel for a period of time.
 func TestStresstestSiaFileSet(t *testing.T) {
-	if !build.VLONG {
+	if testing.Short() { // || !build.VLONG {
 		t.SkipNow()
 	}
 	// Create a group for the test.
 	groupParams := siatest.GroupParams{
-		Hosts:   50,
+		Hosts:   5,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -34,18 +33,23 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	}()
 	// Run the test for a set amount of time.
 	timer := time.NewTimer(time.Minute)
+	stop := make(chan struct{})
+	go func() {
+		<-timer.C
+		close(stop)
+	}()
 	wg := new(sync.WaitGroup)
 	r := tg.Renters()[0]
 	// Upload params.
-	dataPieces := uint64(10)
-	parityPieces := uint64(20)
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
 	// One thread uploads new files.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for {
 			select {
-			case <-timer.C:
+			case <-stop:
 				return
 			default:
 			}
@@ -62,7 +66,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 		defer wg.Done()
 		for {
 			select {
-			case <-timer.C:
+			case <-stop:
 				return
 			default:
 			}
@@ -70,6 +74,11 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			files, err := r.Files()
 			if err != nil {
 				t.Fatal(err)
+			}
+			// If there are no files we try again later.
+			if len(files) == 0 {
+				time.Sleep(time.Second)
+				continue
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
 			lf, err := r.FilesDir().NewFile(int(modules.SectorSize) + siatest.Fuzz())
@@ -89,7 +98,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 		defer wg.Done()
 		for {
 			select {
-			case <-timer.C:
+			case <-stop:
 				return
 			default:
 			}
@@ -101,7 +110,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 		defer wg.Done()
 		for {
 			select {
-			case <-timer.C:
+			case <-stop:
 				return
 			default:
 			}
@@ -113,7 +122,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 		defer wg.Done()
 		for {
 			select {
-			case <-timer.C:
+			case <-stop:
 				return
 			default:
 			}
