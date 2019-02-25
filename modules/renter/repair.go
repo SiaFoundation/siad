@@ -391,19 +391,20 @@ func (r *Renter) managedStuckDirectory() (string, error) {
 		if len(directories) == 0 {
 			build.Critical("No directories returned from DirList")
 		}
-		// Sanity check that we didn't end up in an empty directory with stuck
-		// chunks. The expection is the root files directory as this is the case
-		// for new renters until a file is uploaded
+		// Check if we are in an empty Directory. This could happen if the only
+		// file in a directory was stuck and was very recently deleted so the
+		// health of the directory has not yet been updated.
 		emptyDir := len(directories) == 1 && len(files) == 0
-		if emptyDir && directories[0].NumStuckChunks != 0 && siaPath != "" {
-			build.Critical("Empty directory found with stuck chunks:", siaPath)
+		if emptyDir {
+			// Log an error to keep track of occurrences
+			r.log.Debugln("WARN: empty directory found with stuck chunks:", siaPath)
+			return siaPath, errNoStuckFiles
 		}
-		// Sanity check if there are stuck chunks in this directory, this is the
-		// case when it is a healthy renter's directory
+		// Check if there are stuck chunks in this directory
 		if directories[0].NumStuckChunks == 0 {
-			// Sanity check that we are at the root directory
+			// Log error if we are not at the root directory
 			if siaPath != "" {
-				build.Critical("ended up in directory with no stuck chunks that is not root directory:", siaPath)
+				r.log.Debugln("WARN: ended up in directory with no stuck chunks that is not root directory:", siaPath)
 			}
 			return siaPath, errNoStuckFiles
 		}
