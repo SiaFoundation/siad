@@ -275,19 +275,11 @@ func (d *Decoder) ReadFull(p []byte) {
 	}
 }
 
-// ReadPrefixedBytes reads a length-prefix, allocates a byte slice with that length,
-// reads into the byte slice, and returns it. If the length prefix exceeds
-// encoding.MaxSliceSize, ReadPrefixedBytes returns nil and sets d.Err().
+// ReadPrefixedBytes reads a length-prefix, allocates a byte slice with that
+// length, reads into the byte slice, and returns it. If the byte slice would
+// exceed the allocation limit, ReadPrefixedBytes returns nil and sets d.Err().
 func (d *Decoder) ReadPrefixedBytes() []byte {
 	n := d.NextPrefix(1) // if too large, n == 0
-	if buf, ok := d.r.(*bytes.Buffer); ok {
-		b := buf.Next(int(n))
-		if len(b) < int(n) && d.err == nil {
-			d.err = io.ErrUnexpectedEOF
-		}
-		return b
-	}
-
 	b := make([]byte, n)
 	d.ReadFull(b)
 	if d.err != nil {
@@ -351,8 +343,7 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 		}
 	}()
 
-	// reset the read count
-
+	// decode the value
 	d.decode(pval.Elem())
 	return
 }
@@ -455,13 +446,13 @@ func NewDecoder(r io.Reader, maxAlloc int) *Decoder {
 // pointer. The decoding rules are the inverse of those specified in the
 // package docstring for marshaling.
 func Unmarshal(b []byte, v interface{}) error {
-	return NewDecoder(bytes.NewBuffer(b), len(b)*2+4096).Decode(v)
+	return NewDecoder(bytes.NewBuffer(b), len(b)*3).Decode(v)
 }
 
 // UnmarshalAll decodes the encoded values in b and stores them in vs, which
 // must be pointers.
 func UnmarshalAll(b []byte, vs ...interface{}) error {
-	return NewDecoder(bytes.NewBuffer(b), len(b)*2+4096).DecodeAll(vs...)
+	return NewDecoder(bytes.NewBuffer(b), len(b)*3).DecodeAll(vs...)
 }
 
 // ReadFile reads the contents of a file and decodes them into v.
@@ -475,7 +466,7 @@ func ReadFile(filename string, v interface{}) error {
 	if err != nil {
 		return err
 	}
-	err = NewDecoder(file, int(stat.Size()*2+4096)).Decode(v)
+	err = NewDecoder(file, int(stat.Size()*3)).Decode(v)
 	if err != nil {
 		return errors.New("error while reading " + filename + ": " + err.Error())
 	}
