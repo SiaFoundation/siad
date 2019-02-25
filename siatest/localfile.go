@@ -57,6 +57,11 @@ func (lf *LocalFile) Move() error {
 	return nil
 }
 
+// Path returns the on-disk path of the local file.
+func (lf *LocalFile) Path() string {
+	return lf.path
+}
+
 // checkIntegrity compares the in-memory checksum to the checksum of the data
 // on disk
 func (lf *LocalFile) checkIntegrity() error {
