@@ -343,8 +343,7 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 		}
 	}()
 
-	// reset the read count
-
+	// decode the value
 	d.decode(pval.Elem())
 	return
 }
@@ -447,13 +446,13 @@ func NewDecoder(r io.Reader, maxAlloc int) *Decoder {
 // pointer. The decoding rules are the inverse of those specified in the
 // package docstring for marshaling.
 func Unmarshal(b []byte, v interface{}) error {
-	return NewDecoder(bytes.NewBuffer(b), len(b)*2+4096).Decode(v)
+	return NewDecoder(bytes.NewBuffer(b), len(b)*3).Decode(v)
 }
 
 // UnmarshalAll decodes the encoded values in b and stores them in vs, which
 // must be pointers.
 func UnmarshalAll(b []byte, vs ...interface{}) error {
-	return NewDecoder(bytes.NewBuffer(b), len(b)*2+4096).DecodeAll(vs...)
+	return NewDecoder(bytes.NewBuffer(b), len(b)*3).DecodeAll(vs...)
 }
 
 // ReadFile reads the contents of a file and decodes them into v.
@@ -467,7 +466,7 @@ func ReadFile(filename string, v interface{}) error {
 	if err != nil {
 		return err
 	}
-	err = NewDecoder(file, int(stat.Size()*2+4096)).Decode(v)
+	err = NewDecoder(file, int(stat.Size()*3)).Decode(v)
 	if err != nil {
 		return errors.New("error while reading " + filename + ": " + err.Error())
 	}
