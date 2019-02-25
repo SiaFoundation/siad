@@ -275,19 +275,11 @@ func (d *Decoder) ReadFull(p []byte) {
 	}
 }
 
-// ReadPrefixedBytes reads a length-prefix, allocates a byte slice with that length,
-// reads into the byte slice, and returns it. If the length prefix exceeds
-// encoding.MaxSliceSize, ReadPrefixedBytes returns nil and sets d.Err().
+// ReadPrefixedBytes reads a length-prefix, allocates a byte slice with that
+// length, reads into the byte slice, and returns it. If the byte slice would
+// exceed the allocation limit, ReadPrefixedBytes returns nil and sets d.Err().
 func (d *Decoder) ReadPrefixedBytes() []byte {
 	n := d.NextPrefix(1) // if too large, n == 0
-	if buf, ok := d.r.(*bytes.Buffer); ok {
-		b := buf.Next(int(n))
-		if len(b) < int(n) && d.err == nil {
-			d.err = io.ErrUnexpectedEOF
-		}
-		return b
-	}
-
 	b := make([]byte, n)
 	d.ReadFull(b)
 	if d.err != nil {
