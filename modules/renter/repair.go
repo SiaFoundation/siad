@@ -578,6 +578,7 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 		r.log.Printf("WARN: Could not open directory %v: %v\n", filepath.Join(r.staticFilesDir, siaPath), err)
 		return
 	}
+	defer siaDir.Close()
 	err = siaDir.UpdateHealth(health)
 	if err != nil {
 		r.log.Printf("WARN: Could not update the health of the directory %v: %v\n", filepath.Join(r.staticFilesDir, siaPath), err)
