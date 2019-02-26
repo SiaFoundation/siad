@@ -2,6 +2,8 @@ package renter
 
 import (
 	"archive/zip"
+	"crypto/cipher"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -9,22 +11,64 @@ import (
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/fastrand"
+	"golang.org/x/crypto/twofish"
+)
+
+// backupHeader defines the structure of the backup's JSON header.
+type backupHeader struct {
+	Version    string `json:"version"`
+	Encryption string `json:"encryption"`
+	IV         []byte `json:"iv"`
+}
+
+// The following specifiers are options for the encryption of backups.
+var (
+	encryptionPlaintext = ""
+	encryptionTwofish   = "twofish-ofb"
 )
 
 // CreateBackup creates a backup of the renter's siafiles.
-// TODO add encryption support (follow-up)
-func (r *Renter) CreateBackup(dst string) error {
+func (r *Renter) CreateBackup(dst string, encrypt bool) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
 	defer r.tg.Done()
 
+	// Prepare the backup header.
+	bh := backupHeader{
+		Version: "1.0",
+	}
+
 	// Create the zip file.
-	zipFile, err := os.Create(dst)
+	var zipFile io.Writer
+	f, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer zipFile.Close()
+	defer f.Close()
+	zipFile = f
+
+	// Wrap it for encryption if required.
+	if encrypt {
+		bh.Encryption = encryptionTwofish
+		bh.IV = fastrand.Bytes(twofish.BlockSize)
+		c, err := twofish.NewCipher([]byte{}) // TODO: use key
+		if err != nil {
+			return err
+		}
+		sw := cipher.StreamWriter{
+			S: cipher.NewOFB(c, bh.IV),
+			W: f,
+		}
+		zipFile = sw
+	}
+
+	// Write header
+	jsonEncoder := json.NewEncoder(f)
+	if err := jsonEncoder.Encode(bh); err != nil {
+		return err
+	}
 
 	// Init the zip writer.
 	zw := zip.NewWriter(zipFile)

@@ -515,7 +515,7 @@ type Renter interface {
 	// existing file, a suffix of the form _[num] is appended to the siapath.
 	// [num] is incremented until a siapath is found that is not already in
 	// use.
-	CreateBackup(dst string) error
+	CreateBackup(dst string, encrypt bool) error
 
 	// LoadBackup loads the siafiles of a previously created backup into the
 	// renter.
