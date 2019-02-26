@@ -308,7 +308,7 @@ func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry
 	r.mu.Unlock(id)
 	// Sanity check that there are stuck chunks
 	if len(unfinishedUploadChunks) == 0 {
-		r.log.Debugln("WARN: no stuck chunk added to heap")
+		r.log.Debugln("WARN: no stuck unfinishedUploadChunks returned from buildUnfinishedChunks, so no stuck chunks will be added to the heap")
 		return
 	}
 	// Add a random stuck chunk to the upload heap and set its stuckRepair field
@@ -329,6 +329,10 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		id := r.mu.Lock()
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
 		r.mu.Unlock(id)
+		if len(unfinishedUploadChunks) == 0 {
+			r.log.Debugln("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
+			return
+		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
 		}
@@ -383,6 +387,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 	// Check if any files were selected from directory
 	if len(files) == 0 {
 		r.log.Debugln("No files pulled from", dirSiaPath, "to build the repair heap")
+		return
 	}
 
 	// Build the unfinished upload chunks and add them to the upload heap
@@ -582,6 +587,13 @@ func (r *Renter) threadedUploadLoop() {
 		r.uploadHeap.mu.Lock()
 		heapLen := r.uploadHeap.heap.Len()
 		r.uploadHeap.mu.Unlock()
+		if heapLen == 0 {
+			r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
+			// Call threadedBubble to make sure that directory information is
+			// accurate
+			r.threadedBubbleHealth(dirSiaPath)
+			continue
+		}
 		r.log.Println("Repairing", heapLen, "chunks from", dirSiaPath)
 
 		// Work through the heap and repair files
