@@ -40,6 +40,7 @@ type unfinishedUploadChunk struct {
 	offset         int64  // Offset of the chunk within the file.
 	piecesNeeded   int    // number of pieces to achieve a 100% complete upload
 	stuck          bool   // indicates if the chunk was marked as stuck during last repair
+	stuckRepair    bool   // indicates if the chunk was identified for repair by the stuck loop
 
 	// The logical data is the data that is presented to the user when the user
 	// requests the chunk. The physical data is all of the pieces that get
@@ -196,12 +197,6 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	}
 	defer r.tg.Done()
 
-	// Once the chunk is repaired we will want to call bubble on that directory
-	// to ensure the directory metadata is updated.
-	defer func() {
-		go r.threadedBubbleHealth(chunk.fileEntry.DirSiaPath())
-	}()
-
 	// Calculate the amount of memory needed for erasure coding. This will need
 	// to be released if there's an error before erasure coding is complete.
 	erasureCodingMemory := chunk.fileEntry.PieceSize() * uint64(chunk.fileEntry.ErasureCode().MinPieces())
@@ -348,6 +343,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 // cleanup required. This can include returning rememory and releasing the chunk
 // from the map of active chunks in the chunk heap.
 func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
+	defer r.managedUpdateUploadChunkStuckStatus(uc)
 	uc.mu.Lock()
 	piecesAvailable := 0
 	var memoryReleased uint64
@@ -386,55 +382,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased
-
-	// Determine if chunk is stuck
-	var stuck bool
-	if _, err := os.Stat(uc.fileEntry.LocalPath()); os.IsNotExist(err) {
-		// If file is not on disk, then chunk is only stuck if it cannot get
-		// above the RemoteRepairDownloadThreshold
-		stuck = (1-RemoteRepairDownloadThreshold)*float64(uc.piecesNeeded) > float64(uc.piecesCompleted)
-
-	} else {
-		stuck = uc.piecesNeeded > uc.piecesCompleted
-
-	}
-	// Check to see if the chunk was stuck and now is successfully repaired
-	if uc.fileEntry.StuckChunkByIndex(uc.id.index) && !stuck {
-		r.log.Debugln("Stuck chunk successfully repaired")
-		// Signal the stuck loop that the chunk was successfully repaired
-		select {
-		case r.uploadHeap.stuckChunkSuccess <- struct{}{}:
-		default:
-		}
-	}
-	// Check if renter is shutting down
-	var renterError bool
-	select {
-	case <-r.tg.StopChan():
-		renterError = true
-	default:
-		// Check that the renter is still online
-		if !r.g.Online() {
-			renterError = true
-		}
-	}
-	// Check if chunk is flagged as stuck and if there is an error with the
-	// renter. We don't want to mark chunks as stuck due to the renter being
-	// offline or due to the renter shutting down
-	if stuck && renterError {
-		r.log.Debugln("WARN: chunk through to be stuck but there was an error with the renter")
-		// Set stuck to the current chunk stuck status. We do this as to not
-		// incorrectly mark a stuck chunk as unstuck just because there was an
-		// error with the renter
-		stuck = uc.fileEntry.StuckChunkByIndex(uc.id.index)
-	}
-	if stuck {
-		r.log.Debugln("WARN: repair unsuccessful, marking chunk as stuck")
-	}
-	// Update chunk stuck status
-	if err := uc.fileEntry.SetStuck(uc.id.index, stuck); err != nil {
-		r.log.Printf("WARN: could not mark chunk as stuck for file %v: %v", uc.fileEntry.SiaPath(), err)
-	}
 	uc.mu.Unlock()
 
 	// If there are pieces available, add the standby workers to collect them.
@@ -465,5 +412,77 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// Sanity check - all memory should be released if the chunk is complete.
 	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
 		r.log.Critical("No workers remaining, but not all memory released:", uc.workersRemaining, uc.piecesRegistered, uc.memoryReleased, uc.memoryNeeded)
+	}
+}
+
+// managedUpdateUploadChunkStuckStatus checks to see if the repair was
+// successful and then updates the chunk's stuck status
+func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) {
+	// Grab necessary information from upload chunk under lock
+	uc.mu.Lock()
+	index := uc.id.index
+	stuck := uc.stuck
+	piecesCompleted := uc.piecesCompleted
+	piecesNeeded := uc.piecesNeeded
+	stuckRepair := uc.stuckRepair
+	uc.mu.Unlock()
+
+	// Determine if repair was successful
+	var successfulRepair bool
+	if _, err := os.Stat(uc.fileEntry.LocalPath()); err != nil {
+		// If there is an error with stat then the file is not on disk or
+		// potentially unaccessible. In either case the repair is successful if
+		// it completed more pieces than the RemoteRepairDownloadThreshold
+		successfulRepair = (1-RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
+	} else {
+		// Since the file is on disk and accessible with stat then the repair is
+		// successful if >= piecesNeeded pieces are repaired
+		successfulRepair = piecesNeeded <= piecesCompleted
+	}
+
+	// Check if renter is shutting down
+	var renterError bool
+	select {
+	case <-r.tg.StopChan():
+		renterError = true
+	default:
+		// Check that the renter is still online
+		if !r.g.Online() {
+			renterError = true
+		}
+	}
+
+	// If the repair was unsuccessful and there was a renter error then return
+	if !successfulRepair && renterError {
+		r.log.Debugln("WARN: repair unsuccessful for chunk", uc.id, "due to an error with the renter")
+		return
+	}
+	// Log if the repair was unsuccessful
+	if !successfulRepair {
+		r.log.Debugln("WARN: repair unsuccessful, marking chunk", uc.id, "as stuck")
+	}
+	// Update chunk stuck status
+	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
+		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaPath(), err)
+	}
+
+	// Bubble the updated information. We call this in a blocking fashion as the
+	// next step potentially triggers the stuck loop to add the rest of the
+	// stuck files to the heap and then find the next stuck chunk. By ensuring
+	// that the directory has been updated we eliminate the possibility that the
+	// same chunk is found by the stuck loop and re-added to the repair heap
+	r.threadedBubbleHealth(uc.fileEntry.DirSiaPath())
+
+	// Check to see if the chunk was stuck and now is successfully repaired by
+	// the stuck loop
+	if stuck && successfulRepair && stuckRepair {
+		// Signal the stuck loop that the chunk was successfully repaired
+		r.log.Debugln("Stuck chunk", uc.id, "successfully repaired")
+		select {
+		case <-r.tg.StopChan():
+			r.log.Debugln("WARN: renter shut down before the stuck loop was signalled that the stuck repair was successful")
+			return
+		case r.uploadHeap.stuckChunkSuccess <- uc.fileEntry.SiaPath():
+		}
 	}
 }

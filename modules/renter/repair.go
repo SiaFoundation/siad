@@ -99,6 +99,22 @@ const (
 	bubblePending
 )
 
+// managedAddStuckChunksToHeap adds all the stuck chunks in a file to the repair
+// heap
+func (r *Renter) managedAddStuckChunksToHeap(siaPath string) error {
+	// Open File
+	sf, err := r.staticFileSet.Open(siaPath)
+	if err != nil {
+		return fmt.Errorf("unable to open siafile %v, error: %v", siaPath, err)
+	}
+	defer sf.Close()
+	// Add stuck chunks from file to repair heap
+	files := []*siafile.SiaFileSetEntry{sf}
+	hosts := r.managedRefreshHostsAndWorkers()
+	r.managedBuildAndPushChunks(files, hosts, targetStuckChunks)
+	return nil
+}
+
 // managedBubbleNeeded checks if a bubble is needed for a directory, updates the
 // renter's bubbleUpdates map and returns a bool
 func (r *Renter) managedBubbleNeeded(siaPath string) (bool, error) {
@@ -620,12 +636,12 @@ func (r *Renter) threadedStuckFileLoop() {
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.
-			fmt.Println("renter shutdown before internet connection")
+			r.log.Debugln("renter shutdown before internet connection")
 			return
 		}
 
 		// Randomly get directory with stuck files
-		siaPath, err := r.managedStuckDirectory()
+		dirSiaPath, err := r.managedStuckDirectory()
 		if err != nil && err != errNoStuckFiles {
 			r.log.Debugln("WARN: error getting random stuck directory:", err)
 			continue
@@ -633,11 +649,18 @@ func (r *Renter) threadedStuckFileLoop() {
 		if err == errNoStuckFiles {
 			// Block until new work is required.
 			select {
-			case <-r.uploadHeap.stuckChunkFound:
-				// Health Loop found stuck chunk
 			case <-r.tg.StopChan():
 				// The renter has shut down.
 				return
+			case <-r.uploadHeap.stuckChunkFound:
+				// Health Loop found stuck chunk
+			case siaPath := <-r.uploadHeap.stuckChunkSuccess:
+				// Stuck chunk was successfully repaired. Add the rest of the file
+				// to the heap
+				err := r.managedAddStuckChunksToHeap(siaPath)
+				if err != nil {
+					r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath, "to heap:", err)
+				}
 			}
 			continue
 		}
@@ -647,15 +670,16 @@ func (r *Renter) threadedStuckFileLoop() {
 		hosts := r.managedRefreshHostsAndWorkers()
 
 		// Add stuck chunk to upload heap
-		r.managedBuildChunkHeap(siaPath, hosts, targetStuckChunks)
+		r.managedBuildChunkHeap(dirSiaPath, hosts, targetStuckChunks)
 
 		// Try and repair stuck chunk. Since the heap prioritizes stuck chunks
 		// the first chunk popped off will be the stuck chunk.
-		r.log.Println("Attempting to repair stuck chunks from", siaPath)
+		r.log.Debugf("Attempting to repair stuck chunks from directory `%s`", dirSiaPath)
 		r.managedRepairLoop(hosts)
 
-		// Call bubble once all chunks have been popped off heap
-		r.threadedBubbleHealth(siaPath)
+		// Call bubble to update renter directory now that all the chunks have
+		// been popped off the heap
+		r.threadedBubbleHealth(dirSiaPath)
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
@@ -665,9 +689,13 @@ func (r *Renter) threadedStuckFileLoop() {
 			return
 		case <-rebuildStuckHeapSignal:
 			// Time to find another random chunk
-		case <-r.uploadHeap.stuckChunkSuccess:
-			// Stuck chunk was successfully repaired, continue to repair stuck
-			// chunks
+		case siaPath := <-r.uploadHeap.stuckChunkSuccess:
+			// Stuck chunk was successfully repaired. Add the rest of the file
+			// to the heap
+			err := r.managedAddStuckChunksToHeap(siaPath)
+			if err != nil {
+				r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath, "to heap:", err)
+			}
 		}
 	}
 }

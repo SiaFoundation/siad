@@ -424,13 +424,13 @@ func (sf *SiaFile) MarkAllChunksAsStuck() error {
 		return errors.New("can't call SetStuck on deleted file")
 	}
 	var updates []writeaheadlog.Update
-	for chunkIndex, chunk := range sf.staticChunks {
+	for chunkIndex := range sf.staticChunks {
 		// Check if chunk is already stuck
-		if chunk.Stuck {
+		if sf.staticChunks[chunkIndex].Stuck {
 			continue
 		}
 		// Update chunk and NumStuckChunks in siafile metadata
-		chunk.Stuck = true
+		sf.staticChunks[chunkIndex].Stuck = true
 		sf.staticMetadata.NumStuckChunks++
 		// Create chunk update
 		update, err := sf.saveChunkUpdate(chunkIndex)

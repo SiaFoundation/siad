@@ -48,7 +48,7 @@ type uploadHeap struct {
 	newUploads        chan struct{}
 	repairNeeded      chan struct{}
 	stuckChunkFound   chan struct{}
-	stuckChunkSuccess chan struct{}
+	stuckChunkSuccess chan string
 
 	mu sync.Mutex
 }
@@ -161,6 +161,12 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 			continue
 		}
 		chunkIndexes = append(chunkIndexes, i)
+	}
+
+	// Sanity check that we have chunk indices to go through
+	if len(chunkIndexes) == 0 {
+		r.log.Debugln("WARN: no chunk indices gathered, can't add chunks to heap")
+		return nil
 	}
 
 	// Assemble the set of chunks.
@@ -286,31 +292,37 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	return incompleteChunks
 }
 
-// managedBuildAndPushStuckChunks randomly selects a file and builds the
-// unfinished stuck chunks, then randomly adds one chunk to the upload heap
-func (r *Renter) managedBuildAndPushStuckChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) {
-	// Grab a random file
+// managedBuildAndPushRandomChunk randomly selects a file and builds the
+// unfinished chunks, then randomly adds one chunk to the upload heap
+func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) {
+	// Sanity check that there are files
 	if len(files) == 0 {
 		return
 	}
-	randFile := fastrand.Intn(len(files))
-	file := files[randFile]
+	// Grab a random file
+	randFileIndex := fastrand.Intn(len(files))
+	file := files[randFileIndex]
 	id := r.mu.Lock()
 	// Build the unfinished stuck chunks from the file
 	unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
 	r.mu.Unlock(id)
-	// Add a random stuck chunk to the upload heap
+	// Sanity check that there are stuck chunks
 	if len(unfinishedUploadChunks) == 0 {
 		r.log.Debugln("WARN: no stuck chunk added to heap")
 		return
 	}
-	randChunk := fastrand.Intn(len(unfinishedUploadChunks))
-	r.uploadHeap.managedPush(unfinishedUploadChunks[randChunk])
+	// Add a random stuck chunk to the upload heap and set its stuckRepair field
+	// to true
+	randChunkIndex := fastrand.Intn(len(unfinishedUploadChunks))
+	randChunk := unfinishedUploadChunks[randChunkIndex]
+	randChunk.stuckRepair = true
+	r.uploadHeap.managedPush(randChunk)
+	return
 }
 
-// managedBuildAndPushUnstuckChunks builds the unfinished upload chunks and adds
-// them to the upload heap
-func (r *Renter) managedBuildAndPushUnstuckChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) {
+// managedBuildAndPushChunks builds the unfinished upload chunks and adds them
+// to the upload heap
+func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) {
 	// Loop through the whole set of files and get a list of chunks to add to
 	// the heap.
 	for _, file := range files {
@@ -377,10 +389,10 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 	switch target {
 	case targetStuckChunks:
 		r.log.Debugln("Adding stuck chunk to heap")
-		r.managedBuildAndPushStuckChunks(files, hosts, target)
+		r.managedBuildAndPushRandomChunk(files, hosts, target)
 	case targetUnstuckChunks:
 		r.log.Debugln("Adding chunks to heap")
-		r.managedBuildAndPushUnstuckChunks(files, hosts, target)
+		r.managedBuildAndPushChunks(files, hosts, target)
 	default:
 		r.log.Debugln("WARN: repair target not recognized", target)
 	}
@@ -575,8 +587,8 @@ func (r *Renter) threadedUploadLoop() {
 		// Work through the heap and repair files
 		r.managedRepairLoop(hosts)
 
-		// Once we have worked through the heap, call bubble to update the
-		// directory metadata
+		// Call bubble to update renter directory now that all the chunks have
+		// been popped off the heap
 		r.threadedBubbleHealth(dirSiaPath)
 	}
 }

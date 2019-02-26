@@ -120,8 +120,20 @@ func TestBuildChunkHeap(t *testing.T) {
 	// Call managedBuildChunkHeap as not stuck loop, the heap should have a
 	// length equal to the number of chunks in both of the files
 	rt.renter.managedBuildChunkHeap("", hosts, targetUnstuckChunks)
-	if len(rt.renter.uploadHeap.heap) != int(f1.NumChunks()+f2.NumChunks()) {
-		t.Fatalf("Expected heap length of %v but got %v", int(f1.NumChunks()+f2.NumChunks()), len(rt.renter.uploadHeap.heap))
+	if rt.renter.uploadHeap.managedLen() != int(f1.NumChunks()+f2.NumChunks()) {
+		t.Fatalf("Expected heap length of %v but got %v", int(f1.NumChunks()+f2.NumChunks()), rt.renter.uploadHeap.managedLen())
+	}
+
+	// Pop all chunks off and confirm they are not stuck and not marked as
+	// stuckRepair
+	chunk := rt.renter.uploadHeap.managedPop()
+	for chunk != nil {
+		if chunk.stuck || chunk.stuckRepair {
+			t.Log("Stuck:", chunk.stuck)
+			t.Log("StuckRepair:", chunk.stuckRepair)
+			t.Fatal("Chunk has incorrect stuck fields")
+		}
+		chunk = rt.renter.uploadHeap.managedPop()
 	}
 
 	// Reset upload heap
@@ -136,18 +148,49 @@ func TestBuildChunkHeap(t *testing.T) {
 	// Call managedBuildChunkHeap as not stuck loop, the heap should have a
 	// length equal to the number of chunks in only the second file
 	rt.renter.managedBuildChunkHeap("", hosts, targetUnstuckChunks)
-	if len(rt.renter.uploadHeap.heap) != int(f2.NumChunks()) {
-		t.Fatalf("Expected heap length of %v but got %v", int(f2.NumChunks()), len(rt.renter.uploadHeap.heap))
+	if rt.renter.uploadHeap.managedLen() != int(f2.NumChunks()) {
+		t.Fatalf("Expected heap length of %v but got %v", int(f2.NumChunks()), rt.renter.uploadHeap.managedLen())
+	}
+
+	// Pop all chunks off and confirm they are not stuck and not marked as
+	// stuckRepair
+	chunk = rt.renter.uploadHeap.managedPop()
+	for chunk != nil {
+		if chunk.stuck || chunk.stuckRepair {
+			t.Log("Stuck:", chunk.stuck)
+			t.Log("StuckRepair:", chunk.stuckRepair)
+			t.Fatal("Chunk has incorrect stuck fields")
+		}
+		chunk = rt.renter.uploadHeap.managedPop()
 	}
 
 	// Reset upload heap
 	rt.renter.uploadHeap.heapChunks = make(map[uploadChunkID]struct{})
 	rt.renter.uploadHeap.heap = uploadChunkHeap{}
 
+	// Mark both files as stuck
+	if err := f1.MarkAllChunksAsStuck(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f2.MarkAllChunksAsStuck(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Call managedBuildChunkHeap as stuck loop, the heap should have a length
-	// of zero because neither file is stuck
+	// of 1 because only 1 chunk should be added to the heap from the stuck loop
 	rt.renter.managedBuildChunkHeap("", hosts, targetStuckChunks)
-	if len(rt.renter.uploadHeap.heap) != 0 {
-		t.Fatalf("Expected heap length of %v but got %v", 0, len(rt.renter.uploadHeap.heap))
+	if rt.renter.uploadHeap.managedLen() != 1 {
+		t.Fatalf("Expected heap length of %v but got %v", 1, rt.renter.uploadHeap.managedLen())
+	}
+
+	// Pop all chunks off and confirm they are stuck and marked as stuckRepair
+	chunk = rt.renter.uploadHeap.managedPop()
+	for chunk != nil {
+		if !chunk.stuck || !chunk.stuckRepair {
+			t.Log("Stuck:", chunk.stuck)
+			t.Log("StuckRepair:", chunk.stuckRepair)
+			t.Fatal("Chunk has incorrect stuck fields")
+		}
+		chunk = rt.renter.uploadHeap.managedPop()
 	}
 }
