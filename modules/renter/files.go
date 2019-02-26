@@ -195,7 +195,7 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string, oldContracts []module
 	for _, contract := range f.contracts {
 		pk, exists := idToPk[contract.ID]
 		if !exists {
-			r.log.Printf("Couldn't find pubKey for contract %v with WindowStart",
+			r.log.Printf("Couldn't find pubKey for contract %v with WindowStart %v",
 				contract.ID, contract.WindowStart)
 			continue
 		}
