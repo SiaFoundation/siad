@@ -198,11 +198,30 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	if sf.deleted {
 		return errors.New("can't call applyUpdates on deleted file")
 	}
+
+	// If the set of updates contains a delete, all updates prior to that delete
+	// are irrelevant, so perform the last delete and then process the remaining
+	// updates. This also prevents a bug on Windows where we attempt to delete
+	// the file while holding a open file handle.
+	for i := len(updates) - 1; i >= 0; i-- {
+		u := updates[i]
+		if u.Name == updateDeleteName {
+			if err := os.RemoveAll(readDeleteUpdate(u)); err != nil {
+				return err
+			}
+			updates = updates[i+1:]
+			break
+		}
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+
 	// Create the path if it doesn't exist yet.
 	if err = os.MkdirAll(filepath.Dir(sf.siaFilePath), 0700); err != nil {
 		return err
 	}
-	// Open the file.
+	// Create and/or open the file.
 	f, err := sf.deps.OpenFile(sf.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return err
@@ -220,14 +239,12 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// Apply updates.
 	for _, u := range updates {
 		err := func() error {
-			// Check if it is a delete update.
-			if u.Name == updateDeleteName {
-				err := os.Remove(readDeleteUpdate(u))
-				if os.IsNotExist(err) {
-					return nil
-				}
-				return err
+			// Sanity check: all of the updates should be insert updates.
+			if u.Name != updateInsertName {
+				build.Critical("Unexpected non-insert update", u.Name)
+				return nil
 			}
+
 			// Decode update.
 			path, index, data, err := readInsertUpdate(u)
 			if err != nil {
