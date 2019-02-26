@@ -682,7 +682,7 @@ func DecodeAnnouncement(fullAnnouncement []byte) (na NetAddress, spk types.SiaPu
 	// Read the first part of the announcement to get the intended host
 	// announcement.
 	var ha HostAnnouncement
-	dec := encoding.NewDecoder(bytes.NewReader(fullAnnouncement), len(fullAnnouncement)*2+4096)
+	dec := encoding.NewDecoder(bytes.NewReader(fullAnnouncement), len(fullAnnouncement)*3)
 	err = dec.Decode(&ha)
 	if err != nil {
 		return "", types.SiaPublicKey{}, err
