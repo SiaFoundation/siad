@@ -195,7 +195,7 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 		return
 	}
 	// Create the backup.
-	if err := api.renter.CreateBackup(dst); err != nil {
+	if err := api.renter.CreateBackup(dst, true); err != nil {
 		WriteError(w, Error{"failed to create backup" + err.Error()}, http.StatusBadRequest)
 		return
 	}
