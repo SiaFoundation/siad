@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest"
@@ -16,7 +17,7 @@ import (
 // TestStresstestSiaFileSet is a vlong test that performs multiple operations
 // which modify the siafileset in parallel for a period of time.
 func TestStresstestSiaFileSet(t *testing.T) {
-	if testing.Short() { // || !build.VLONG {
+	if !build.VLONG {
 		t.SkipNow()
 	}
 	// Create a group for the test.
