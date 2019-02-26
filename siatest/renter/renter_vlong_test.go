@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"encoding/hex"
 	"sync"
 	"testing"
 	"time"
@@ -102,6 +103,22 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				return
 			default:
 			}
+			// Get existing files and choose one randomly.
+			files, err := r.Files()
+			if err != nil {
+				t.Fatal(err)
+			}
+			// If there are no files we try again later.
+			if len(files) == 0 {
+				time.Sleep(time.Second)
+				continue
+			}
+			sp := files[fastrand.Intn(len(files))].SiaPath
+			err = r.RenterRenamePost(sp, hex.EncodeToString(fastrand.Bytes(16)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s
 		}
 	}()
 	// One thread deletes files.
@@ -114,6 +131,22 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				return
 			default:
 			}
+			// Get existing files and choose one randomly.
+			files, err := r.Files()
+			if err != nil {
+				t.Fatal(err)
+			}
+			// If there are no files we try again later.
+			if len(files) == 0 {
+				time.Sleep(time.Second)
+				continue
+			}
+			sp := files[fastrand.Intn(len(files))].SiaPath
+			err = r.RenterDeletePost(sp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Duration(fastrand.Intn(5000))*time.Millisecond + time.Second) // between 5s and 6s
 		}
 	}()
 	// One thread kills hosts to trigger repairs.
@@ -125,6 +158,17 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			case <-stop:
 				return
 			default:
+			}
+			// Break out if we only have dataPieces hosts left.
+			hosts := tg.Hosts()
+			if uint64(len(hosts)) == dataPieces {
+				break
+			}
+			time.Sleep(10 * time.Second)
+			// Choose random host.
+			host := hosts[fastrand.Intn(len(hosts))]
+			if err := tg.RemoveNode(host); err != nil {
+				t.Fatal(err)
 			}
 		}
 	}()
