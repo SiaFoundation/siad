@@ -2,11 +2,13 @@ package renter
 
 import (
 	"encoding/hex"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -33,7 +35,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 		}
 	}()
 	// Run the test for a set amount of time.
-	timer := time.NewTimer(time.Minute)
+	timer := time.NewTimer(2 * time.Minute)
 	stop := make(chan struct{})
 	go func() {
 		<-timer.C
@@ -55,7 +57,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			default:
 			}
 			_, _, err := r.UploadNewFileBlocking(int(modules.SectorSize)+siatest.Fuzz(), dataPieces, parityPieces, false)
-			if err != nil {
+			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(1000))*time.Millisecond + time.Second) // between 1s and 2s
@@ -87,7 +89,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			err = r.RenterUploadForcePost(lf.Path(), sp, dataPieces, parityPieces, true)
-			if err != nil {
+			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s
@@ -115,7 +117,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
 			err = r.RenterRenamePost(sp, hex.EncodeToString(fastrand.Bytes(16)))
-			if err != nil {
+			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s
@@ -143,7 +145,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
 			err = r.RenterDeletePost(sp)
-			if err != nil {
+			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(5000))*time.Millisecond + time.Second) // between 5s and 6s
