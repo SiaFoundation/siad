@@ -573,14 +573,17 @@ func rentercontractscmd() {
 `, len(rc.ActiveContracts), filesizeUnits(int64(activeTotalStored)),
 			currencyUnits(activeTotalRemaining), currencyUnits(activeTotalSpent), currencyUnits(activeTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  Host\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.ActiveContracts {
 			address := c.NetAddress
+			hostVersion := c.HostVersion
 			if address == "" {
 				address = "Host Removed"
+				hostVersion = ""
 			}
-			fmt.Fprintf(w, "  %v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
+				hostVersion,
 				currencyUnits(c.RenterFunds),
 				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
 				currencyUnits(c.Fees),
@@ -617,14 +620,17 @@ func rentercontractscmd() {
 
 `, len(rc.InactiveContracts), filesizeUnits(int64(inactiveTotalStored)), currencyUnits(inactiveTotalRemaining), currencyUnits(inactiveTotalSpent), currencyUnits(inactiveTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  Host\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.InactiveContracts {
 			address := c.NetAddress
+			hostVersion := c.HostVersion
 			if address == "" {
 				address = "Host Removed"
+				hostVersion = ""
 			}
-			fmt.Fprintf(w, "  %v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
+				hostVersion,
 				currencyUnits(c.RenterFunds),
 				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
 				currencyUnits(c.Fees),
@@ -664,14 +670,17 @@ func rentercontractscmd() {
 			
 	`, len(rce.ExpiredContracts), filesizeUnits(int64(expiredTotalStored)), currencyUnits(expiredTotalWithheld), currencyUnits(expiredTotalSpent), currencyUnits(expiredTotalFees))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  Host\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+			fmt.Fprintln(w, "  Host\tHost Version\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 			for _, c := range rce.ExpiredContracts {
 				address := c.NetAddress
+				hostVersion := c.HostVersion
 				if address == "" {
 					address = "Host Removed"
+					hostVersion = ""
 				}
-				fmt.Fprintf(w, "  %v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+				fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 					address,
+					hostVersion,
 					currencyUnits(c.RenterFunds),
 					currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
 					currencyUnits(c.Fees),
@@ -709,7 +718,8 @@ func rentercontractsviewcmd(cid string) {
 			}
 			fmt.Printf(`
 Contract %v
-  Host: %v (Public Key: %v)
+	Host: %v (Public Key: %v)
+	Host Version: %v
 
   Start Height: %v
   End Height:   %v
@@ -722,7 +732,7 @@ Contract %v
   Remaining Funds:   %v
 
   File Size: %v
-`, rc.ID, rc.NetAddress, rc.HostPublicKey.String(), rc.StartHeight, rc.EndHeight,
+`, rc.ID, rc.NetAddress, rc.HostVersion, rc.HostPublicKey.String(), rc.StartHeight, rc.EndHeight,
 				currencyUnits(rc.TotalCost),
 				currencyUnits(rc.Fees),
 				currencyUnits(rc.TotalCost.Sub(rc.Fees)),

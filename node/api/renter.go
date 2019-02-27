@@ -75,6 +75,8 @@ type (
 		Fees types.Currency `json:"fees"`
 		// Public key of the host the contract was formed with.
 		HostPublicKey types.SiaPublicKey `json:"hostpublickey"`
+		// HostVersion is the version of Sia that the host is running
+		HostVersion string `json:"hostversion"`
 		// ID of the file contract.
 		ID types.FileContractID `json:"id"`
 		// A signed transaction containing the most recent contract revision.
@@ -465,6 +467,7 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 			GoodForUpload:             c.Utility.GoodForUpload,
 			GoodForRenew:              c.Utility.GoodForRenew,
 			HostPublicKey:             c.HostPublicKey,
+			HostVersion:               hdbe.Version,
 			ID:                        c.ID,
 			LastTransaction:           c.Transaction,
 			NetAddress:                netAddress,
@@ -506,6 +509,7 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 				GoodForUpload:             c.Utility.GoodForUpload,
 				GoodForRenew:              c.Utility.GoodForRenew,
 				HostPublicKey:             c.HostPublicKey,
+				HostVersion:               hdbe.Version,
 				ID:                        c.ID,
 				LastTransaction:           c.Transaction,
 				NetAddress:                netAddress,

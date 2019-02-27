@@ -192,6 +192,7 @@ func hostcmd() {
 		// describe net address
 		fmt.Printf(`General Info:
 	Connectability Status: %v
+	Version:               %v
 
 Host Internal Settings:
 	acceptingcontracts:   %v
@@ -238,6 +239,7 @@ RPC Stats:
 	FormContract Calls: %v
 `,
 			connectabilityString,
+			es.Version,
 
 			yesNo(is.AcceptingContracts), periodUnits(is.MaxDuration),
 			filesizeUnits(int64(is.MaxDownloadBatchSize)),
