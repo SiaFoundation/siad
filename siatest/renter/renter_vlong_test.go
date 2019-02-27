@@ -96,7 +96,8 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s
 		}
 	}()
-	// One thread renames files.
+	// One thread renames files and sometimes uploads a new file directly
+	// afterwards.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -120,6 +121,17 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			err = r.RenterRenamePost(sp, hex.EncodeToString(fastrand.Bytes(16)))
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
+			}
+			// 50% chance to replace renamed file with new one.
+			if fastrand.Intn(2) == 0 {
+				lf, err := r.FilesDir().NewFile(int(modules.SectorSize) + siatest.Fuzz())
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = r.RenterUploadForcePost(lf.Path(), sp, dataPieces, parityPieces, false)
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s
 		}
