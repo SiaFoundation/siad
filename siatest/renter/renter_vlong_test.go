@@ -129,7 +129,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 					t.Fatal(err)
 				}
 				err = r.RenterUploadForcePost(lf.Path(), sp, dataPieces, parityPieces, false)
-				if err != nil {
+				if err != nil && !strings.Contains(err.Error(), siafile.ErrPathOverload.Error()) {
 					t.Fatal(err)
 				}
 			}
