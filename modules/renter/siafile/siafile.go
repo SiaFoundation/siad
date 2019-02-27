@@ -353,6 +353,12 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		// misrepresenting the health information of a directory
 		return 0, 0, 0
 	}
+	// Check for Zero byte files
+	if sf.staticMetadata.StaticFileSize == 0 {
+		// Return default health information for zero byte files to prevent
+		// misrepresenting the health information of a directory
+		return 0, 0, 0
+	}
 	var health, stuckHealth float64
 	var numStuckChunks uint64
 	for chunkIndex, chunk := range sf.staticChunks {

@@ -3186,6 +3186,25 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	if rf.UploadProgress != 100 {
 		t.Fatalf("Expected upload progress to be 100, got %v", rf.UploadProgress)
 	}
+	// Check health information
+	if rf.Health != 0 {
+		t.Fatalf("Expected health to be 0, got %v", rf.Health)
+	}
+	if rf.MaxHealth != 0 {
+		t.Fatalf("Expected max health to be 0, got %v", rf.MaxHealth)
+	}
+	if rf.MaxHealthPercent != 100 {
+		t.Fatalf("Expected max health percentage to be 100, got %v", rf.MaxHealthPercent)
+	}
+	if rf.NumStuckChunks != 0 {
+		t.Fatalf("Expected number of stuck chunks to be 0, got %v", rf.NumStuckChunks)
+	}
+	if rf.Stuck {
+		t.Fatalf("Expected file not to be stuck")
+	}
+	if rf.StuckHealth != 0 {
+		t.Fatalf("Expected stuck health to be 0, got %v", rf.StuckHealth)
+	}
 
 	// Test uploading 1 byte file
 	_, oneRF, err := r.UploadNewFileBlocking(oneByteFile, dataPieces, parityPieces, false)
