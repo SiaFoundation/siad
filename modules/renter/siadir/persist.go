@@ -165,9 +165,27 @@ func readMetadataUpdate(update writeaheadlog.Update) (data []byte, path string, 
 	return
 }
 
-// applyUpdates  applies a number of writeaheadlog updates to the corresponding
+// applyUpdates applies a number of writeaheadlog updates to the corresponding
 // SiaDir.
 func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
+	// If the set of updates contains a delete, all updates prior to that delete
+	// are irrelevant, so perform the last delete and then process the remaining
+	// updates. This also prevents a bug on Windows where we attempt to delete
+	// the file while holding a open file handle.
+	for i := len(updates) - 1; i >= 0; i-- {
+		u := updates[i]
+		if u.Name == updateDeleteName {
+			if err := os.RemoveAll(readDeleteUpdate(u)); err != nil {
+				return err
+			}
+			updates = updates[i+1:]
+			break
+		}
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+
 	// Open the file
 	siaDirPath := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
 	file, err := sd.deps.OpenFile(siaDirPath, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
@@ -189,12 +207,8 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 		err := func() error {
 			switch u.Name {
 			case updateDeleteName:
-				// Delete from disk
-				err := os.RemoveAll(readDeleteUpdate(u))
-				if os.IsNotExist(err) {
-					return nil
-				}
-				return err
+				build.Critical("Unexpected delete update")
+				return nil
 			case updateMetadataName:
 				return sd.readAndApplyMetadataUpdate(file, u)
 			default:
