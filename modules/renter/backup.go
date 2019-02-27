@@ -2,7 +2,10 @@ package renter
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
+	"crypto/cipher"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +14,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"golang.org/x/crypto/twofish"
 )
 
 // backupHeader defines the structure of the backup's JSON header.
@@ -24,6 +29,7 @@ type backupHeader struct {
 var (
 	encryptionPlaintext = ""
 	encryptionTwofish   = "twofish-ofb"
+	encryptionVersion   = "1.0"
 )
 
 // CreateBackup creates a backup of the renter's siafiles.
@@ -34,11 +40,39 @@ func (r *Renter) CreateBackup(dst string, encrypt bool) error {
 	defer r.tg.Done()
 
 	// Create the gzip file.
-	archive, err := os.Create(dst)
+	var archive io.Writer
+	f, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer archive.Close()
+	defer f.Close()
+	archive = f
+
+	// Prepare a header for the backup.
+	bh := backupHeader{
+		Version: encryptionVersion,
+	}
+
+	// Wrap it for encryption if required.
+	if encrypt {
+		bh.Encryption = encryptionTwofish
+		bh.IV = fastrand.Bytes(twofish.BlockSize)
+		c, err := twofish.NewCipher(make([]byte, twofish.BlockSize)) // TODO: use key
+		if err != nil {
+			return err
+		}
+		sw := cipher.StreamWriter{
+			S: cipher.NewOFB(c, bh.IV),
+			W: archive,
+		}
+		archive = sw
+	}
+
+	// Write the header.
+	enc := json.NewEncoder(f)
+	if err := enc.Encode(bh); err != nil {
+		return err
+	}
 
 	// Use a pipe to direct the output of the tar writer into the gzip reader.
 	tarReader, tarWriter := io.Pipe()
@@ -64,12 +98,48 @@ func (r *Renter) LoadBackup(src string) error {
 	}
 	defer r.tg.Done()
 
-	// Open the archive file.
+	// Open the gzip file.
+	var archive io.Reader
 	f, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	archive = f
+
+	// Read the header.
+	dec := json.NewDecoder(archive)
+	var bh backupHeader
+	if err := dec.Decode(&bh); err != nil {
+		return err
+	}
+	// Seek back to the beginning of the body.
+	if buf, ok := dec.Buffered().(*bytes.Reader); ok {
+		_, err := f.Seek(int64(1-buf.Len()), io.SeekCurrent)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Check if encryption is required.
+	if bh.Version != encryptionVersion {
+		return errors.New("unknown version")
+	}
+	switch bh.Encryption {
+	case encryptionTwofish:
+		c, err := twofish.NewCipher(make([]byte, twofish.BlockSize)) // TODO: use key
+		if err != nil {
+			return err
+		}
+		sw := cipher.StreamReader{
+			S: cipher.NewOFB(c, bh.IV),
+			R: archive,
+		}
+		archive = sw
+	case encryptionPlaintext:
+	default:
+		return errors.New("unknown cipher")
+	}
 
 	// Create a pipe to redirect the unzipped output to the tar reader.
 	gzipReader, gzipWriter := io.Pipe()
@@ -77,7 +147,7 @@ func (r *Renter) LoadBackup(src string) error {
 	// Start unzipping the archive.
 	gzipErr := make(chan error)
 	go func() {
-		err := gunzipSiaFiles(f, gzipWriter)
+		err := gunzipSiaFiles(archive, gzipWriter)
 		err = errors.Compose(err, gzipWriter.Close())
 		gzipErr <- err
 	}()
