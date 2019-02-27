@@ -32,8 +32,9 @@ var (
 	encryptionVersion   = "1.0"
 )
 
-// CreateBackup creates a backup of the renter's siafiles.
-func (r *Renter) CreateBackup(dst string, encrypt bool) error {
+// CreateBackup creates a backup of the renter's siafiles. If a secret is not
+// nil, the backup will be encrypted using the provided secret.
+func (r *Renter) CreateBackup(dst string, secret []byte) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -54,10 +55,10 @@ func (r *Renter) CreateBackup(dst string, encrypt bool) error {
 	}
 
 	// Wrap it for encryption if required.
-	if encrypt {
+	if secret != nil {
 		bh.Encryption = encryptionTwofish
 		bh.IV = fastrand.Bytes(twofish.BlockSize)
-		c, err := twofish.NewCipher(make([]byte, twofish.BlockSize)) // TODO: use key
+		c, err := twofish.NewCipher(secret)
 		if err != nil {
 			return err
 		}
@@ -91,8 +92,9 @@ func (r *Renter) CreateBackup(dst string, encrypt bool) error {
 }
 
 // LoadBackup loads the siafiles of a previously created backup into the
-// renter.
-func (r *Renter) LoadBackup(src string) error {
+// renter. If the backup is encrypted, secret will be used to decrypt it.
+// Otherwise the argument is ignored.
+func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -127,7 +129,7 @@ func (r *Renter) LoadBackup(src string) error {
 	}
 	switch bh.Encryption {
 	case encryptionTwofish:
-		c, err := twofish.NewCipher(make([]byte, twofish.BlockSize)) // TODO: use key
+		c, err := twofish.NewCipher(secret)
 		if err != nil {
 			return err
 		}
