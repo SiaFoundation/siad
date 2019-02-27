@@ -17,6 +17,12 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
+var (
+	// errUnknownSiaFileUpdate is returned when applyUpdates finds an update
+	// that is unknown
+	errUnknownSiaFileUpdate = errors.New("unknown siafile update")
+)
+
 // ApplyUpdates is a wrapper for applyUpdates that uses the production
 // dependencies.
 func ApplyUpdates(updates ...writeaheadlog.Update) error {
@@ -36,36 +42,14 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := func() error {
-			// Check if it is a delete update.
-			if u.Name == updateDeleteName {
-				if err := deps.RemoveFile(readDeleteUpdate(u)); os.IsNotExist(err) {
-					return nil
-				} else if err != nil {
-					return err
-				}
+			switch u.Name {
+			case updateDeleteName:
+				return readAndApplyDeleteUpdate(deps, u)
+			case updateInsertName:
+				return readAndApplyInsertUpdate(deps, u)
+			default:
+				return errUnknownSiaFileUpdate
 			}
-
-			// Decode update.
-			path, index, data, err := readInsertUpdate(u)
-			if err != nil {
-				return err
-			}
-
-			// Open the file.
-			f, err := deps.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-
-			// Write data.
-			if n, err := f.WriteAt(data, index); err != nil {
-				return err
-			} else if n < len(data) {
-				return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
-			}
-			// Sync file.
-			return f.Sync()
 		}()
 		if err != nil {
 			return errors.AddContext(err, "failed to apply update")
@@ -139,6 +123,43 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 	return sf, nil
 }
 
+// readAndApplyDeleteUpdate reads the delete update and applies it. This helper
+// assumes that the file is not open
+func readAndApplyDeleteUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
+	err := deps.RemoveFile(readDeleteUpdate(update))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+// readAndApplyInsertupdate reads the insert update and applies it. This helper
+// assumes that the file is not open and so should only be called on start up
+// before any siafiles are loaded from disk
+func readAndApplyInsertUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
+	// Decode update.
+	path, index, data, err := readInsertUpdate(update)
+	if err != nil {
+		return err
+	}
+
+	// Open the file.
+	f, err := deps.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// Write data.
+	if n, err := f.WriteAt(data, index); err != nil {
+		return err
+	} else if n < len(data) {
+		return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
+	}
+	// Sync file.
+	return f.Sync()
+}
+
 // readDeleteUpdate unmarshals the update's instructions and returns the
 // encoded path.
 func readDeleteUpdate(update writeaheadlog.Update) string {
@@ -205,12 +226,15 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// the file while holding a open file handle.
 	for i := len(updates) - 1; i >= 0; i-- {
 		u := updates[i]
-		if u.Name == updateDeleteName {
-			if err := os.RemoveAll(readDeleteUpdate(u)); err != nil {
+		switch u.Name {
+		case updateDeleteName:
+			if err := readAndApplyDeleteUpdate(sf.deps, u); err != nil {
 				return err
 			}
 			updates = updates[i+1:]
 			break
+		default:
+			continue
 		}
 	}
 	if len(updates) == 0 {
@@ -239,31 +263,16 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// Apply updates.
 	for _, u := range updates {
 		err := func() error {
-			// Sanity check: all of the updates should be insert updates.
-			if u.Name != updateInsertName {
+			switch u.Name {
+			case updateDeleteName:
+				// Sanity check: all of the updates should be insert updates.
 				build.Critical("Unexpected non-insert update", u.Name)
 				return nil
+			case updateInsertName:
+				return sf.readAndApplyInsertUpdate(f, u)
+			default:
+				return errUnknownSiaFileUpdate
 			}
-
-			// Decode update.
-			path, index, data, err := readInsertUpdate(u)
-			if err != nil {
-				return err
-			}
-
-			// Sanity check path. Update should belong to SiaFile.
-			if sf.siaFilePath != path {
-				build.Critical(fmt.Sprintf("can't apply update for file %s to SiaFile %s", path, sf.siaFilePath))
-				return nil
-			}
-
-			// Write data.
-			if n, err := f.WriteAt(data, index); err != nil {
-				return err
-			} else if n < len(data) {
-				return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
-			}
-			return nil
 		}()
 		if err != nil {
 			return errors.AddContext(err, "failed to apply update")
@@ -335,6 +344,30 @@ func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Up
 		Name:         updateInsertName,
 		Instructions: encoding.MarshalAll(sf.siaFilePath, index, data),
 	}
+}
+
+// readAndApplyInsertUpdate reads the insert update for a SiaFile and then
+// applies it
+func (sf *SiaFile) readAndApplyInsertUpdate(f modules.File, update writeaheadlog.Update) error {
+	// Decode update.
+	path, index, data, err := readInsertUpdate(update)
+	if err != nil {
+		return err
+	}
+
+	// Sanity check path. Update should belong to SiaFile.
+	if sf.siaFilePath != path {
+		build.Critical(fmt.Sprintf("can't apply update for file %s to SiaFile %s", path, sf.siaFilePath))
+		return nil
+	}
+
+	// Write data.
+	if n, err := f.WriteAt(data, index); err != nil {
+		return err
+	} else if n < len(data) {
+		return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
+	}
+	return nil
 }
 
 // saveFile saves the whole SiaFile atomically.
