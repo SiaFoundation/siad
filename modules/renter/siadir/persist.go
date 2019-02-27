@@ -33,17 +33,24 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 func applyUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
 	switch update.Name {
 	case updateDeleteName:
-		// Delete from disk
-		err := os.RemoveAll(readDeleteUpdate(update))
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
+		return readAndApplyDeleteUpdate(update)
 	case updateMetadataName:
 		return readAndApplyMetadataUpdate(deps, update)
 	default:
 		return fmt.Errorf("Update not recognized: %v", update.Name)
 	}
+}
+
+// readAndApplyDeleteUpdate reads the delete update and then applies it. This
+// helper assumes that the file is not currently open and so should only be
+// called on startup before any siadir is loaded from disk
+func readAndApplyDeleteUpdate(update writeaheadlog.Update) error {
+	// Delete from disk
+	err := os.RemoveAll(readDeleteUpdate(update))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 // readAndApplyMetadataUpdate reads the metadata update and then applies it.
@@ -174,12 +181,15 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 	// the file while holding a open file handle.
 	for i := len(updates) - 1; i >= 0; i-- {
 		u := updates[i]
-		if u.Name == updateDeleteName {
-			if err := os.RemoveAll(readDeleteUpdate(u)); err != nil {
+		switch u.Name {
+		case updateDeleteName:
+			if err := readAndApplyDeleteUpdate(u); err != nil {
 				return err
 			}
 			updates = updates[i+1:]
 			break
+		default:
+			continue
 		}
 	}
 	if len(updates) == 0 {
@@ -258,20 +268,6 @@ func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
 	}
 }
 
-// saveDir saves the whole SiaDir atomically.
-func (sd *SiaDir) saveDir() error {
-	metadataUpdate, err := sd.saveMetadataUpdate()
-	if err != nil {
-		return err
-	}
-	return sd.createAndApplyTransaction(metadataUpdate)
-}
-
-// saveMetadataUpdate saves the metadata of the SiaDir
-func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
-	return createMetadataUpdate(sd.staticMetadata)
-}
-
 // readAndApplyMetadataUpdate reads the metadata update for a file and then
 // applies it.
 func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeaheadlog.Update) error {
@@ -294,4 +290,18 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 		return err
 	}
 	return nil
+}
+
+// saveDir saves the whole SiaDir atomically.
+func (sd *SiaDir) saveDir() error {
+	metadataUpdate, err := sd.saveMetadataUpdate()
+	if err != nil {
+		return err
+	}
+	return sd.createAndApplyTransaction(metadataUpdate)
+}
+
+// saveMetadataUpdate saves the metadata of the SiaDir
+func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
+	return createMetadataUpdate(sd.staticMetadata)
 }
