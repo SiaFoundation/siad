@@ -472,7 +472,7 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 
 	// read header
 	var header contractHeader
-	if err := encoding.NewDecoder(f, int(stat.Size()*2+4096)).Decode(&header); err != nil {
+	if err := encoding.NewDecoder(f, int(stat.Size()*3)).Decode(&header); err != nil {
 		return err
 	} else if err := header.validate(); err != nil {
 		return err
