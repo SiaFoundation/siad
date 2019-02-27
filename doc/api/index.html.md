@@ -1580,6 +1580,7 @@ flag indicating if recoverable contracts should be returned.
         "algorithm": "ed25519",   // string
         "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU=" // hash
       },
+      "hostversion":      "1.4.0",  // string
       "id": "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // hash
       "lasttransaction": {},                // transaction
       "netaddress":       "12.34.56.78:9",  // string
@@ -1609,7 +1610,10 @@ Fees paid in order to form the file contract.
 
 **hostpublickey** 
 Public key of the host that the file contract is formed with.  
-        
+       
+**hostversion** | string
+The version of the host. 
+
 **algorithm** | string
 Algorithm used for signing and verification. Typically "ed25519".  
 
