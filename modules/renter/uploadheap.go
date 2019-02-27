@@ -136,13 +136,13 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		r.log.Debugln("Not building any chunks from file as there are not enough workers")
 		// Mark all chunks as stuck
 		if err := entrys[0].MarkAllChunksAsStuck(); err != nil {
-			r.log.Debugln("WARN: unable to mark all chunks as stuck:", err)
+			r.log.Println("WARN: unable to mark all chunks as stuck:", err)
 		}
 		// Close all entrys
 		for _, entry := range entrys {
 			err := entry.Close()
 			if err != nil {
-				r.log.Debugln("WARN: Could not close file:", err)
+				r.log.Println("WARN: Could not close file:", err)
 			}
 		}
 		return nil
@@ -156,7 +156,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 			// Close unneeded entrys
 			err := entry.Close()
 			if err != nil {
-				r.log.Debugln("WARN: Could not close file:", err)
+				r.log.Println("WARN: Could not close file:", err)
 			}
 			continue
 		}
@@ -165,7 +165,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 
 	// Sanity check that we have chunk indices to go through
 	if len(chunkIndexes) == 0 {
-		r.log.Debugln("WARN: no chunk indices gathered, can't add chunks to heap")
+		r.log.Println("WARN: no chunk indices gathered, can't add chunks to heap")
 		return nil
 	}
 
@@ -284,7 +284,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		// Close entry of completed chunk
 		err := newUnfinishedChunks[i].fileEntry.Close()
 		if err != nil {
-			r.log.Debugln("WARN: could not close file:", err)
+			r.log.Println("WARN: could not close file:", err)
 		}
 	}
 	// TODO: Don't return chunks that can't be downloaded, uploaded or otherwise
@@ -308,7 +308,7 @@ func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry
 	r.mu.Unlock(id)
 	// Sanity check that there are stuck chunks
 	if len(unfinishedUploadChunks) == 0 {
-		r.log.Debugln("WARN: no stuck unfinishedUploadChunks returned from buildUnfinishedChunks, so no stuck chunks will be added to the heap")
+		r.log.Println("WARN: no stuck unfinishedUploadChunks returned from buildUnfinishedChunks, so no stuck chunks will be added to the heap")
 		return
 	}
 	// Add a random stuck chunk to the upload heap and set its stuckRepair field
@@ -330,7 +330,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
 		r.mu.Unlock(id)
 		if len(unfinishedUploadChunks) == 0 {
-			r.log.Debugln("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
+			r.log.Println("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
 			return
 		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
@@ -367,7 +367,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 			// Close unneeded files
 			err := file.Close()
 			if err != nil {
-				r.log.Debugln("WARN: Could not close file:", err)
+				r.log.Println("WARN: Could not close file:", err)
 			}
 			continue
 		}
@@ -377,7 +377,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 			// Close unneeded files
 			err := file.Close()
 			if err != nil {
-				r.log.Debugln("WARN: Could not close file:", err)
+				r.log.Println("WARN: Could not close file:", err)
 			}
 			continue
 		}
@@ -386,7 +386,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 
 	// Check if any files were selected from directory
 	if len(files) == 0 {
-		r.log.Debugln("No files pulled from", dirSiaPath, "to build the repair heap")
+		r.log.Println("No files pulled from", dirSiaPath, "to build the repair heap")
 		return
 	}
 
@@ -399,14 +399,14 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		r.log.Debugln("Adding chunks to heap")
 		r.managedBuildAndPushChunks(files, hosts, target)
 	default:
-		r.log.Debugln("WARN: repair target not recognized", target)
+		r.log.Println("WARN: repair target not recognized", target)
 	}
 
 	// Close all files
 	for _, file := range files {
 		err := file.Close()
 		if err != nil {
-			r.log.Debugln("WARN: Could not close file:", err)
+			r.log.Println("WARN: Could not close file:", err)
 		}
 	}
 }
@@ -487,7 +487,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 			// the file
 			err := nextChunk.fileEntry.UpdateRecentRepairTime()
 			if err != nil {
-				r.log.Debugf("WARN: unable to update the recent repair time of %v : %v", nextChunk.fileEntry.SiaPath(), err)
+				r.log.Printf("WARN: unable to update the recent repair time of %v : %v", nextChunk.fileEntry.SiaPath(), err)
 			}
 		}
 
@@ -557,7 +557,7 @@ func (r *Renter) threadedUploadLoop() {
 		// Find Directory that needs to be repaired
 		dirSiaPath, dirHealth, err := r.managedWorstHealthDirectory()
 		if err != nil {
-			r.log.Debugln("WARN: getting worst health directory:", err)
+			r.log.Println("WARN: getting worst health directory:", err)
 			return
 		}
 
@@ -588,7 +588,7 @@ func (r *Renter) threadedUploadLoop() {
 		heapLen := r.uploadHeap.heap.Len()
 		r.uploadHeap.mu.Unlock()
 		if heapLen == 0 {
-			r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
+			r.log.Printf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
 			// Call threadedBubble to make sure that directory information is
 			// accurate
 			r.threadedBubbleHealth(dirSiaPath)
