@@ -1,9 +1,8 @@
 package renter
 
 import (
-	"archive/zip"
-	"crypto/cipher"
-	"encoding/json"
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
@@ -11,8 +10,7 @@ import (
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/fastrand"
-	"golang.org/x/crypto/twofish"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // backupHeader defines the structure of the backup's JSON header.
@@ -35,58 +33,119 @@ func (r *Renter) CreateBackup(dst string, encrypt bool) error {
 	}
 	defer r.tg.Done()
 
-	// Prepare the backup header.
-	bh := backupHeader{
-		Version: "1.0",
+	// Create the gzip file.
+	archive, err := os.Create(dst)
+	if err != nil {
+		return err
 	}
+	defer archive.Close()
 
-	// Create the zip file.
-	var zipFile io.Writer
-	f, err := os.Create(dst)
+	// Use a pipe to direct the output of the tar writer into the gzip reader.
+	tarReader, tarWriter := io.Pipe()
+
+	// Start creating the tarball.
+	tarErr := make(chan error)
+	go func() {
+		err := r.managedTarSiaFiles(tarWriter)
+		err = errors.Compose(err, tarWriter.Close())
+		tarErr <- err
+	}()
+
+	// Gzip the tarball and grab the error from the other thread.
+	err = gzipSiaFiles(tarReader, archive)
+	return errors.Compose(err, <-tarErr)
+}
+
+// LoadBackup loads the siafiles of a previously created backup into the
+// renter.
+func (r *Renter) LoadBackup(src string) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+
+	// Open the archive file.
+	f, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	zipFile = f
 
-	// Wrap it for encryption if required.
-	if encrypt {
-		bh.Encryption = encryptionTwofish
-		bh.IV = fastrand.Bytes(twofish.BlockSize)
-		c, err := twofish.NewCipher([]byte{}) // TODO: use key
-		if err != nil {
-			return err
-		}
-		sw := cipher.StreamWriter{
-			S: cipher.NewOFB(c, bh.IV),
-			W: f,
-		}
-		zipFile = sw
-	}
+	// Create a pipe to redirect the unzipped output to the tar reader.
+	gzipReader, gzipWriter := io.Pipe()
 
-	// Write header
-	jsonEncoder := json.NewEncoder(f)
-	if err := jsonEncoder.Encode(bh); err != nil {
+	// Start unzipping the archive.
+	gzipErr := make(chan error)
+	go func() {
+		err := gunzipSiaFiles(f, gzipWriter)
+		err = errors.Compose(err, gzipWriter.Close())
+		gzipErr <- err
+	}()
+
+	// Untar the tarball and grab the error from the other thread.
+	err = untarDir(gzipReader, r.staticFilesDir)
+	return errors.Compose(err, <-gzipErr)
+}
+
+// gunzipSiaFiles unzips the data read from src and writes its output to dst.
+func gunzipSiaFiles(src io.Reader, dst io.Writer) error {
+	// Create the gzip reader.
+	archive, err := gzip.NewReader(src)
+	if err != nil {
 		return err
 	}
+	defer archive.Close()
 
-	// Init the zip writer.
-	zw := zip.NewWriter(zipFile)
-	defer zw.Close()
+	// Unzip the archive.
+	_, err = io.Copy(dst, archive)
+	return err
+}
 
-	// Walk over all the siafiles and add them to the archive.
+// gzipSiaFiles gzips the data from src and writes the archive to dst.
+func gzipSiaFiles(src io.Reader, dst io.Writer) error {
+	// Init the gzip writer.
+	gzw := gzip.NewWriter(dst)
+	defer gzw.Close()
+
+	// Gzip the tarball.
+	_, err := io.Copy(gzw, src)
+	return err
+}
+
+// managedTarSiaFiles creates a tarball from the renter's siafiles and writes
+// it to dst.
+func (r *Renter) managedTarSiaFiles(dst io.Writer) error {
+	// Create the writer for the tarball.
+	tarball := tar.NewWriter(dst)
+	defer tarball.Close()
+
+	// Walk over all the siafiles and add them to the tarball.
 	return filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
 			return err
 		}
-		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != siafile.ShareExtension {
+		// Nothing to do for non-folders and non-siafiles.
+		if !info.IsDir() && filepath.Ext(path) != siafile.ShareExtension {
+			return nil
+		}
+		// Create the header for the file/dir.
+		header, err := tar.FileInfoHeader(info, info.Name())
+		if err != nil {
+			return err
+		}
+		relPath := strings.TrimPrefix(path, r.staticFilesDir)
+		header.Name = relPath
+		// Write the header.
+		if err := tarball.WriteHeader(header); err != nil {
+			return err
+		}
+		// If the info is a dir there is nothing more to do.
+		if info.IsDir() {
 			return nil
 		}
 		// Get the siafile.
-		relPath := strings.TrimPrefix(path, r.staticFilesDir)
 		entry, err := r.staticFileSet.Open(strings.TrimSuffix(relPath, siafile.ShareExtension))
 		if err != nil {
 			return err
@@ -99,91 +158,47 @@ func (r *Renter) CreateBackup(dst string, encrypt bool) error {
 		}
 		defer sr.Close()
 		// Add the file to the archive.
-		return addFileToZip(zw, sr, strings.TrimPrefix(path, r.staticFilesDir))
+		_, err = io.Copy(tarball, sr)
+		return err
 	})
 }
 
-// LoadBackup loads the siafiles of a previously created backup into the
-// renter.
-// TODO add decryption support (follow-up)
-func (r *Renter) LoadBackup(src string) error {
-	if err := r.tg.Add(); err != nil {
-		return err
-	}
-	defer r.tg.Done()
-
-	return unzipDir(src, r.staticFilesDir)
-}
-
-// addFileToZip adds a file to a zip archive.
-func addFileToZip(zw *zip.Writer, file *siafile.SnapshotReader, headerName string) error {
-	// Get the file info.
-	zfi, err := file.Stat()
-	if err != nil {
-		return err
-	}
-	// Get the info header.
-	header, err := zip.FileInfoHeader(zfi)
-	if err != nil {
-		return err
-	}
-	// Overwrite the header.Name field to preserve the folder structure
-	// within the archive.
-	header.Name = headerName
-	// Add compression.
-	header.Method = zip.Deflate
-	writer, err := zw.CreateHeader(header)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(writer, file)
-	return err
-}
-
-// unzipDir unzips the archive at zipPath and writes the contents to dstFolder
+// untarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
-func unzipDir(zipPath, dstFolder string) error {
-	r, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
-	// Copy the files from the archive to the new location.
-	for _, f := range r.File {
-		// Open the archived file.
-		rc, err := f.Open()
-		if err != nil {
+func untarDir(src io.Reader, dstFolder string) error {
+	// Create tar reader.
+	tarReader := tar.NewReader(src)
+	// Copy the files from the tarball to the new location.
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
 			return err
 		}
-		dst := filepath.Join(dstFolder, f.Name)
+		dst := filepath.Join(dstFolder, header.Name)
 
-		// Search for zipslip.
-		if !strings.HasPrefix(dst, filepath.Clean(dstFolder)+string(os.PathSeparator)) {
-			return fmt.Errorf("%s: illegal file path", dst)
-		}
-		// Check for folder.
-		if f.FileInfo().IsDir() {
+		// Check for dir.
+		info := header.FileInfo()
+		if info.IsDir() {
+			if err = os.MkdirAll(dst, info.Mode()); err != nil {
+				return err
+			}
 			continue
 		}
 		// Add a suffix to the dst path if the file already exists.
 		dst = uniqueFilename(dst)
-		// Copy File.
-		if err = os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
-			return err
-		}
-		if _, err := os.Stat(dst); !os.IsNotExist(err) {
-			continue
-		}
-		f, err := os.Create(dst)
+		// Create file while preserving mode.
+		f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(f, rc)
+		_, err = io.Copy(f, tarReader)
 
-		// Close the file.
+		// Close the file right away instead of defering it.
 		_ = f.Close()
 
+		// Check if io.Copy was successful.
 		if err != nil {
 			return err
 		}
