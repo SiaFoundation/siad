@@ -975,8 +975,11 @@ func TestRenterParallelDelete(t *testing.T) {
 		st.getAPI("/renter/files", &rf)
 		time.Sleep(100 * time.Millisecond)
 	}
-	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
-		t.Fatal("the uploading is not succeeding for some reason:", rf.Files)
+	if len(rf.Files) != 1 {
+		t.Fatal("Expected 1 file but got", len(rf.Files))
+	}
+	if rf.Files[0].UploadProgress < 10 {
+		t.Fatal("Expected upload progress to be >=10 but was", rf.Files[0].UploadProgress)
 	}
 
 	// In parallel, download and delete the second file.
@@ -1671,8 +1674,14 @@ func TestUploadedBytesReporting(t *testing.T) {
 	}
 
 	// Upload progress should be 100% and redundancy should reach 2
-	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 100 || rf.Files[0].Redundancy != 2 {
-		t.Fatal("the uploading is not succeeding for some reason:", rf.Files[0])
+	if len(rf.Files) != 1 {
+		t.Fatal("Expected 1 file but got", len(rf.Files))
+	}
+	if rf.Files[0].UploadProgress < 100 {
+		t.Fatal("Expected UploadProgress to be 100 but was", rf.Files[0].UploadProgress)
+	}
+	if rf.Files[0].Redundancy != 2 {
+		t.Fatal("Expected Redundancy to be 2 but was", rf.Files[0].Redundancy)
 	}
 
 	// When the file is fully redundantly uploaded, UploadedBytes should

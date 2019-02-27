@@ -13,23 +13,57 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
-// equalMetadatas is a helper that compares two siaDirMetadatas.
-func equalMetadatas(md, md2 siaDirMetadata) error {
+// equalMetadatas is a helper that compares two siaDirMetadatas. If using this
+// function to check persistence the time fields should be checked in the test
+// itself as well and reset due to how time is persisted
+func equalMetadatas(md, md2 Metadata) error {
+	// Check AggregateNumFiles
+	if md.AggregateNumFiles != md2.AggregateNumFiles {
+		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, md2.AggregateNumFiles)
+	}
 	// Check Health
 	if md.Health != md2.Health {
 		return fmt.Errorf("healths not equal, %v and %v", md.Health, md2.Health)
 	}
-	// Check StuckHealth
-	if md.StuckHealth != md2.StuckHealth {
-		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
+	// Check LastHealthCheckTime
+	if md.LastHealthCheckTime != md2.LastHealthCheckTime {
+		return fmt.Errorf("lasthealthchecktimes not equal, %v and %v", md.LastHealthCheckTime, md2.LastHealthCheckTime)
+	}
+	// Check MinRedundancy
+	if md.MinRedundancy != md2.MinRedundancy {
+		return fmt.Errorf("MinRedundancy not equal, %v and %v", md.MinRedundancy, md2.MinRedundancy)
+	}
+	// Check ModTimes
+	if md.ModTime != md2.ModTime {
+		return fmt.Errorf("ModTimes not equal, %v and %v", md.ModTime, md2.ModTime)
+	}
+	// Check NumFiles
+	if md.NumFiles != md2.NumFiles {
+		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, md2.NumFiles)
+	}
+	// Check NumStuckChunks
+	if md.NumStuckChunks != md2.NumStuckChunks {
+		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, md2.NumStuckChunks)
+	}
+	// Check NumSubDirs
+	if md.NumSubDirs != md2.NumSubDirs {
+		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, md2.NumSubDirs)
+	}
+	// Check RootDir
+	if md.RootDir != md2.RootDir {
+		return fmt.Errorf("rootDirs not equal, %v and %v", md.RootDir, md2.RootDir)
 	}
 	// Check SiaPath
 	if md.SiaPath != md2.SiaPath {
 		return fmt.Errorf("siapaths not equal, %v and %v", md.SiaPath, md2.SiaPath)
 	}
-	// Check RootDir
-	if md.RootDir != md2.RootDir {
-		return fmt.Errorf("rootDirs not equal, %v and %v", md.RootDir, md2.RootDir)
+	// Check Size
+	if md.AggregateSize != md2.AggregateSize {
+		return fmt.Errorf("aggregate sizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
+	}
+	// Check StuckHealth
+	if md.StuckHealth != md2.StuckHealth {
+		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
 	}
 
 	return nil
@@ -75,7 +109,7 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create metadata update
-	update, err := createMetadataUpdate(sd.staticMetadata)
+	update, err := createMetadataUpdate(sd.metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,18 +121,27 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 	}
 
 	// Check path
-	path2 := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
+	path2 := filepath.Join(sd.metadata.RootDir, sd.metadata.SiaPath, SiaDirExtension)
 	if path != path2 {
 		t.Fatalf("Path not correct: expected %v got %v", path2, path)
 	}
 
 	// Check data
-	var metadata siaDirMetadata
+	var metadata Metadata
 	err = json.Unmarshal(data, &metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
+	// Check Time separately due to how the time is persisted
+	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
+		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
+	}
+	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
+		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
+	}
+	sd.metadata.ModTime = metadata.ModTime
+	if err := equalMetadatas(metadata, sd.metadata); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -120,7 +163,7 @@ func TestCreateReadDeleteUpdate(t *testing.T) {
 	// Read update
 	path := readDeleteUpdate(update)
 	// Compare values
-	siaDirPath := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath)
+	siaDirPath := filepath.Join(sd.metadata.RootDir, sd.metadata.SiaPath)
 	if path != siaDirPath {
 		t.Error("paths don't match")
 	}
@@ -160,7 +203,7 @@ func TestApplyUpdates(t *testing.T) {
 // testApply tests if a given method applies a set of updates correctly.
 func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update) error) {
 	// Create an update to the metadata
-	metadata := siadir.staticMetadata
+	metadata := siadir.metadata
 	metadata.Health = 1.0
 	update, err := createMetadataUpdate(metadata)
 	if err != nil {
@@ -176,8 +219,17 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 	if err != nil {
 		t.Fatal("Failed to load siadir", err)
 	}
+	// Check Time separately due to how the time is persisted
+	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
+		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
+	}
+	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
+		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
+	}
+	sd.metadata.ModTime = metadata.ModTime
 	// Check if correct data was written.
-	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
+	if err := equalMetadatas(metadata, sd.metadata); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -195,7 +247,7 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create an update to the metadata
-	metadata := siadir.staticMetadata
+	metadata := siadir.metadata
 	metadata.Health = 1.0
 	update, err := createMetadataUpdate(metadata)
 	if err != nil {
@@ -211,8 +263,17 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to load siadir", err)
 	}
+	// Check Time separately due to how the time is persisted
+	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
+		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
+	}
+	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
+		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
+	}
+	sd.metadata.ModTime = metadata.ModTime
 	// Check if correct data was written.
-	if err := equalMetadatas(metadata, sd.staticMetadata); err != nil {
+	if err := equalMetadatas(metadata, sd.metadata); err != nil {
 		t.Fatal(err)
 	}
 }

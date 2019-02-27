@@ -145,7 +145,7 @@ func createDirMetadataAll(siaPath, rootDir string) ([]writeaheadlog.Update, erro
 
 // createMetadataUpdate is a helper method which creates a writeaheadlog update for
 // updating the siaDir metadata
-func createMetadataUpdate(metadata siaDirMetadata) (writeaheadlog.Update, error) {
+func createMetadataUpdate(metadata Metadata) (writeaheadlog.Update, error) {
 	// Encode metadata
 	data, err := json.Marshal(metadata)
 	if err != nil {
@@ -197,7 +197,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 	}
 
 	// Open the file
-	siaDirPath := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
+	siaDirPath := filepath.Join(sd.metadata.RootDir, sd.metadata.SiaPath, SiaDirExtension)
 	file, err := sd.deps.OpenFile(siaDirPath, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
 	if err != nil {
 		return err
@@ -264,7 +264,7 @@ func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) err
 func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
 	return writeaheadlog.Update{
 		Name:         updateDeleteName,
-		Instructions: []byte(filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath)),
+		Instructions: []byte(filepath.Join(sd.metadata.RootDir, sd.metadata.SiaPath)),
 	}
 }
 
@@ -278,7 +278,7 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 	}
 
 	// Sanity check path belongs to siadir
-	siaDirPath := filepath.Join(sd.staticMetadata.RootDir, sd.staticMetadata.SiaPath, SiaDirExtension)
+	siaDirPath := filepath.Join(sd.metadata.RootDir, sd.metadata.SiaPath, SiaDirExtension)
 	if path != siaDirPath {
 		build.Critical(fmt.Sprintf("can't apply update for file %s to SiaDir %s", path, siaDirPath))
 		return nil
@@ -303,5 +303,5 @@ func (sd *SiaDir) saveDir() error {
 
 // saveMetadataUpdate saves the metadata of the SiaDir
 func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
-	return createMetadataUpdate(sd.staticMetadata)
+	return createMetadataUpdate(sd.metadata)
 }

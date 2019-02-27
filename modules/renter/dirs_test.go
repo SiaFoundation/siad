@@ -57,14 +57,16 @@ func (rt *renterTester) checkDirInitialized(siaPath string) error {
 	}
 	defer siaDir.Close()
 
-	// Check that health is default value
-	health := siaDir.Health()
-	defaultHealth := siadir.SiaDirHealth{
-		Health:      siadir.DefaultDirHealth,
-		StuckHealth: siadir.DefaultDirHealth,
+	// Check that metadata is default value
+	metadata := siaDir.Metadata()
+	if metadata.Health != siadir.DefaultDirHealth {
+		return fmt.Errorf("Health not initialized properly: have %v expected %v", metadata.Health, siadir.DefaultDirHealth)
 	}
-	if err = equalHealthsAndChunks(health, defaultHealth); err != nil {
-		return err
+	if metadata.StuckHealth != siadir.DefaultDirHealth {
+		return fmt.Errorf("StuckHealth not initialized properly: have %v expected %v", metadata.StuckHealth, siadir.DefaultDirHealth)
+	}
+	if metadata.ModTime.IsZero() {
+		return fmt.Errorf("ModTime not initialized: %v", metadata.ModTime)
 	}
 	// Check that the SiaPath was initialized properly
 	if siaDir.SiaPath() != siaPath {
@@ -173,15 +175,51 @@ func TestRenterListDirectory(t *testing.T) {
 // compareDirectoryInfoAndMetadata is a helper that compares the information in
 // a DirectoryInfo struct and a SiaDirSetEntry struct
 func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.SiaDirSetEntry) error {
-	health := siaDir.Health()
-	if di.SiaPath != siaDir.SiaPath() {
-		return fmt.Errorf("SiaPaths not equal %v and %v", di.SiaPath, siaDir.SiaPath())
+	md := siaDir.Metadata()
+
+	// Check AggregateNumFiles
+	if md.AggregateNumFiles != di.AggregateNumFiles {
+		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, di.AggregateNumFiles)
 	}
-	if di.Health != health.StuckHealth {
-		return fmt.Errorf("Healths not equal %v and %v", di.SiaPath, health.StuckHealth)
+	// Check Size
+	if md.AggregateSize != di.AggregateSize {
+		return fmt.Errorf("aggregate sizes not equal, %v and %v", md.AggregateSize, di.AggregateSize)
 	}
-	if di.LastHealthCheckTime != health.LastHealthCheckTime {
-		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v", di.LastHealthCheckTime, health.LastHealthCheckTime)
+	// Check Health
+	if md.Health != di.Health {
+		return fmt.Errorf("healths not equal, %v and %v", md.Health, di.Health)
+	}
+	// Check LastHealthCheckTimes
+	if di.LastHealthCheckTime != md.LastHealthCheckTime {
+		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v", di.LastHealthCheckTime, md.LastHealthCheckTime)
+	}
+	// Check MinRedundancy
+	if md.MinRedundancy != di.MinRedundancy {
+		return fmt.Errorf("MinRedundancy not equal, %v and %v", md.MinRedundancy, di.MinRedundancy)
+	}
+	// Check Mod Times
+	if di.MostRecentModTime != md.ModTime {
+		return fmt.Errorf("ModTimes not equal %v and %v", di.MostRecentModTime, md.ModTime)
+	}
+	// Check NumFiles
+	if md.NumFiles != di.NumFiles {
+		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, di.NumFiles)
+	}
+	// Check NumStuckChunks
+	if md.NumStuckChunks != di.AggregateNumStuckChunks {
+		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, di.AggregateNumStuckChunks)
+	}
+	// Check NumSubDirs
+	if md.NumSubDirs != di.NumSubDirs {
+		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, di.NumSubDirs)
+	}
+	// Check SiaPath
+	if md.SiaPath != di.SiaPath {
+		return fmt.Errorf("siapaths not equal, %v and %v", md.SiaPath, di.SiaPath)
+	}
+	// Check StuckHealth
+	if md.StuckHealth != di.StuckHealth {
+		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, di.StuckHealth)
 	}
 	return nil
 }

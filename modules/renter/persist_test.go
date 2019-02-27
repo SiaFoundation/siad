@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -262,22 +261,4 @@ func TestSiafileCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-// equalHealths is a helper that checks all the fields of two SiaDirHealths for
-// equality
-func equalHealths(health1, health2 siadir.SiaDirHealth) error {
-	if health1.Health != health2.Health {
-		return fmt.Errorf("Healths not equal, %v and %v", health1.Health, health2.Health)
-	}
-	if health1.StuckHealth != health2.StuckHealth {
-		return fmt.Errorf("StuckHealths not equal, %v and %v", health1.StuckHealth, health2.StuckHealth)
-	}
-	if !health1.LastHealthCheckTime.Equal(health2.LastHealthCheckTime) {
-		return fmt.Errorf("LastHealthCheckTimes not equal, %v and %v", health1.LastHealthCheckTime, health2.LastHealthCheckTime)
-	}
-	if health1.NumStuckChunks != health2.NumStuckChunks {
-		return fmt.Errorf("NumStuckChunks not equal, %v and %v", health1.NumStuckChunks, health2.NumStuckChunks)
-	}
-	return nil
 }

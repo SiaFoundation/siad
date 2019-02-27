@@ -36,7 +36,7 @@ var (
 type (
 	// SiaDir contains the metadata information about a renter directory
 	SiaDir struct {
-		staticMetadata siaDirMetadata
+		metadata Metadata
 
 		// Utility fields
 		deleted bool
@@ -45,37 +45,51 @@ type (
 		wal     *writeaheadlog.WAL
 	}
 
-	// SiaDirHealth is an exported struct containing the health information of
-	// the SiaDir
-	SiaDirHealth struct {
-		Health              float64
-		StuckHealth         float64
-		LastHealthCheckTime time.Time
-		NumStuckChunks      uint64
-	}
+	// Metadata is the metadata that is saved to disk as a .siadir file
+	Metadata struct {
+		// AggregateNumFiles is the total number of files in a directory and any
+		// sub directory
+		AggregateNumFiles uint64 `json:"aggregatenumfiles"`
 
-	// siaDirMetadata is the metadata that is saved to disk as a .siadir file
-	siaDirMetadata struct {
+		// AggregateSize is the total amount of data in the files and sub
+		// directories
+		AggregateSize uint64 `json:"aggregatesize"`
+
 		// Health is the health of the most in need file in the directory or any
 		// of the sub directories that are not stuck
 		Health float64 `json:"health"`
-		// StuckHealth is the health of the most in need file in the directory
-		// or any of the sub directories, stuck or not stuck
-		StuckHealth float64 `json:"stuckhealth"`
 
 		// LastHealthCheckTime is the oldest LastHealthCheckTime of any of the
 		// siafiles in the siadir or any of the sub directories
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 
+		// MinRedundancy is the minimum redundancy of any of the files or sub
+		// directories
+		MinRedundancy float64 `json:"minredundancy"`
+
+		// ModTime is the last time any of the files or sub directories
+		// was updated
+		ModTime time.Time `json:"modtime"`
+
+		// NumFiles is the number of files in a directory
+		NumFiles uint64 `json:"numfiles"`
+
 		// NumStuckChunks is the sum of all the Stuck Chunks of any of the
 		// siafiles in the siadir or any of the sub directories
 		NumStuckChunks uint64 `json:"numstuckchunks"`
+
+		// NumSubDirs is the number of subdirectories in a directory
+		NumSubDirs uint64 `json:"numsubdirs"`
 
 		// RootDir is the path to the root directory on disk
 		RootDir string `json:"rootdir"`
 
 		// SiaPath is the path to the siadir on the sia network
 		SiaPath string `json:"siapath"`
+
+		// StuckHealth is the health of the most in need file in the directory
+		// or any of the sub directories, stuck or not stuck
+		StuckHealth float64 `json:"stuckhealth"`
 	}
 )
 
@@ -99,9 +113,9 @@ func New(siaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 
 	// Create SiaDir
 	sd := &SiaDir{
-		staticMetadata: md,
-		deps:           modules.ProdDependencies,
-		wal:            wal,
+		metadata: md,
+		deps:     modules.ProdDependencies,
+		wal:      wal,
 	}
 
 	return sd, managedCreateAndApplyTransaction(wal, append(updates, update)...)
@@ -109,17 +123,18 @@ func New(siaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 
 // createDirMetadata makes sure there is a metadata file in the directory and
 // creates one as needed
-func createDirMetadata(siaPath, rootDir string) (siaDirMetadata, writeaheadlog.Update, error) {
+func createDirMetadata(siaPath, rootDir string) (Metadata, writeaheadlog.Update, error) {
 	// Check if metadata file exists
 	_, err := os.Stat(filepath.Join(rootDir, siaPath, SiaDirExtension))
 	if err == nil || !os.IsNotExist(err) {
-		return siaDirMetadata{}, writeaheadlog.Update{}, err
+		return Metadata{}, writeaheadlog.Update{}, err
 	}
 
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
 	// empty directories won't be viewed as being the most in need
-	md := siaDirMetadata{
+	md := Metadata{
 		Health:      DefaultDirHealth,
+		ModTime:     time.Now(),
 		StuckHealth: DefaultDirHealth,
 		RootDir:     rootDir,
 		SiaPath:     siaPath,
@@ -149,7 +164,7 @@ func LoadSiaDir(rootDir, siaPath string, deps modules.Dependencies, wal *writeah
 	}
 
 	// Parse the json object.
-	err = json.Unmarshal(bytes, &sd.staticMetadata)
+	err = json.Unmarshal(bytes, &sd.metadata)
 
 	return sd, err
 }
@@ -172,33 +187,33 @@ func (sd *SiaDir) Deleted() bool {
 	return sd.deleted
 }
 
-// Health returns the health metadata of the SiaDir
-func (sd *SiaDir) Health() SiaDirHealth {
+// Metadata returns the metadata of the SiaDir
+func (sd *SiaDir) Metadata() Metadata {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
-	return SiaDirHealth{
-		Health:              sd.staticMetadata.Health,
-		StuckHealth:         sd.staticMetadata.StuckHealth,
-		LastHealthCheckTime: sd.staticMetadata.LastHealthCheckTime,
-		NumStuckChunks:      sd.staticMetadata.NumStuckChunks,
-	}
+	return sd.metadata
 }
 
 // SiaPath returns the SiaPath of the SiaDir
 func (sd *SiaDir) SiaPath() string {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
-	return sd.staticMetadata.SiaPath
+	return sd.metadata.SiaPath
 }
 
-// UpdateHealth updates the SiaDir metadata on disk with the new Health value
-func (sd *SiaDir) UpdateHealth(health SiaDirHealth) error {
+// UpdateMetadata updates the SiaDir metadata on disk
+func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
-
-	sd.staticMetadata.Health = health.Health
-	sd.staticMetadata.StuckHealth = health.StuckHealth
-	sd.staticMetadata.LastHealthCheckTime = health.LastHealthCheckTime
-	sd.staticMetadata.NumStuckChunks = health.NumStuckChunks
+	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
+	sd.metadata.AggregateSize = metadata.AggregateSize
+	sd.metadata.Health = metadata.Health
+	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	sd.metadata.MinRedundancy = metadata.MinRedundancy
+	sd.metadata.ModTime = metadata.ModTime
+	sd.metadata.NumFiles = metadata.NumFiles
+	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
+	sd.metadata.NumSubDirs = metadata.NumSubDirs
+	sd.metadata.StuckHealth = metadata.StuckHealth
 	return sd.saveDir()
 }

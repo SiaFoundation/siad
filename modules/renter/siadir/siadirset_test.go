@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
@@ -202,8 +201,8 @@ func TestDirsInMemory(t *testing.T) {
 	}
 }
 
-// TestUpdateSiaDirSetHealth probes the UpdateHealth method of the SiaDirSet
-func TestUpdateSiaDirSetHealth(t *testing.T) {
+// TestUpdateSiaDirSetMetadata probes the UpdateMetadata method of the SiaDirSet
+func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -223,30 +222,29 @@ func TestUpdateSiaDirSetHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Confirm Health is set properly
-	health := entry.Health()
-	if err = checkHealthInit(health); err != nil {
+	// Confirm metadata is set properly
+	md := entry.metadata
+	if err = checkMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 
-	// Update the health of the entry
+	// Update the metadata of the entry
 	checkTime := time.Now()
-	healthUpdate := SiaDirHealth{
-		Health:              4,
-		StuckHealth:         2,
-		LastHealthCheckTime: checkTime,
-		NumStuckChunks:      5,
-	}
-	err = sds.UpdateHealth(siaPath, healthUpdate)
+	metadataUpdate := md
+	metadataUpdate.Health = 4
+	metadataUpdate.StuckHealth = 2
+	metadataUpdate.LastHealthCheckTime = checkTime
+	metadataUpdate.NumStuckChunks = 5
+
+	err = sds.UpdateMetadata(siaPath, metadataUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Check Health was updated properly in memory and on disk
-	health = entry.Health()
-	if !reflect.DeepEqual(health, healthUpdate) {
-		t.Log("Health", health)
-		t.Log("Health Update", healthUpdate)
-		t.Fatal("health not updated correctly")
+	// Check if the metadata was updated properly in memory and on disk
+	md = entry.metadata
+	err = equalMetadatas(md, metadataUpdate)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

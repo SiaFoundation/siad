@@ -168,7 +168,7 @@ func (sds *SiaDirSet) closeEntry(entry *SiaDirSetEntry) {
 	// and then a new/different file was uploaded with the same siapath.
 	//
 	// If they are not the same entry, there is nothing more to do.
-	currentEntry := sds.siaDirMap[entry.staticMetadata.SiaPath]
+	currentEntry := sds.siaDirMap[entry.metadata.SiaPath]
 	if currentEntry != entry.siaDirSetEntry {
 		return
 	}
@@ -176,7 +176,7 @@ func (sds *SiaDirSet) closeEntry(entry *SiaDirSetEntry) {
 	// If there are no more threads that have the current entry open, delete
 	// this entry from the set cache.
 	if len(currentEntry.threadMap) == 0 {
-		delete(sds.siaDirMap, entry.staticMetadata.SiaPath)
+		delete(sds.siaDirMap, entry.metadata.SiaPath)
 	}
 }
 
@@ -269,8 +269,8 @@ func (sds *SiaDirSet) Open(siaPath string) (*SiaDirSetEntry, error) {
 	return sds.open(siaPath)
 }
 
-// UpdateHealth will update the health of the SiaDir in memory and on disk
-func (sds *SiaDirSet) UpdateHealth(siaPath string, health SiaDirHealth) error {
+// UpdateMetadata will update the metadata of the SiaDir in memory and on disk
+func (sds *SiaDirSet) UpdateMetadata(siaPath string, metadata Metadata) error {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	siaPath = strings.Trim(siaPath, "/")
@@ -286,5 +286,5 @@ func (sds *SiaDirSet) UpdateHealth(siaPath string, health SiaDirHealth) error {
 		return err
 	}
 	defer sds.closeEntry(entry)
-	return entry.UpdateHealth(health)
+	return entry.UpdateMetadata(metadata)
 }
