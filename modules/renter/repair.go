@@ -574,21 +574,6 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 		return
 	}
 
-	// Check for files in need of repair or stuck chunks and trigger the
-	// appropriate repair loop
-	if health.Health >= RemoteRepairDownloadThreshold {
-		select {
-		case r.uploadHeap.repairNeeded <- struct{}{}:
-		default:
-		}
-	}
-	if health.NumStuckChunks > 0 {
-		select {
-		case r.uploadHeap.stuckChunkFound <- struct{}{}:
-		default:
-		}
-	}
-
 	// Update directory metadata with the health information
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
@@ -612,6 +597,23 @@ func (r *Renter) threadedBubbleHealth(siaPath string) {
 	// If siaPath is equal to "" then return as we are in the root files
 	// directory of the renter
 	if siaPath == "" {
+		// If we are at the root directory then check if any files were found in
+		// need of repair or and stuck chunks and trigger the appropriate repair
+		// loop. This is only done at the root directory as the repair and stuck
+		// loops start at the root directory so there is no point triggering
+		// them until the root directory is updated
+		if health.Health >= RemoteRepairDownloadThreshold {
+			select {
+			case r.uploadHeap.repairNeeded <- struct{}{}:
+			default:
+			}
+		}
+		if health.NumStuckChunks > 0 {
+			select {
+			case r.uploadHeap.stuckChunkFound <- struct{}{}:
+			default:
+			}
+		}
 		return
 	}
 	// Move to parent directory
