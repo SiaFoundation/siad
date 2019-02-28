@@ -210,7 +210,7 @@ func (d *download) onComplete(f modules.DownloadCompleteFunc) {
 	select {
 	case <-d.completeChan:
 		if err := f(d.err); err != nil {
-			d.log.Println("Failed to execute at least one downloadCompleteFunc", err)
+			d.log.Println("Failed to execute downloadCompleteFunc", err)
 		}
 		return
 	default:
