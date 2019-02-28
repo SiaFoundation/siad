@@ -393,10 +393,15 @@ func (s *Session) Read(root crypto.Hash, offset, length uint32) (_ modules.Rente
 		return modules.RenterContract{}, nil, errors.New("InterruptDownloadBeforeSendingRevision disrupt")
 	}
 
-	// send download RPC request
+	// send read RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopReadResponse
 	err = s.call(modules.RPCLoopRead, req, &resp, modules.RPCMinLen+uint64(sec.Length))
+	if err != nil {
+		return modules.RenterContract{}, nil, err
+	}
+	// send "stop" signal
+	err = s.writeResponse(modules.RPCLoopReadStop, nil)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
