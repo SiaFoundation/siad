@@ -764,7 +764,7 @@ func renterfilesdeletecmd(path string) {
 // Downloads a path from the Sia network to the local specified destination.
 func renterfilesdownloadcmd(path, destination string) {
 	destination = abs(destination)
-
+	path = strings.TrimPrefix(path, "/")
 	// Queue the download. An error will be returned if the queueing failed, but
 	// the call will return before the download has completed. The call is made
 	// as an async call.

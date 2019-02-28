@@ -135,6 +135,42 @@ func (w *Wallet) Height() (types.BlockHeight, error) {
 	return types.BlockHeight(height), nil
 }
 
+// LastAddresses returns the last n addresses starting at the last seedProgress
+// for which an address was generated. If n is greater than the current
+// progress, fewer than n keys will be returned. That means all addresses can
+// be retrieved in reverse order by simply supplying math.MaxUint64 for n.
+func (w *Wallet) LastAddresses(n uint64) ([]types.UnlockHash, error) {
+	if err := w.tg.Add(); err != nil {
+		return nil, modules.ErrWalletShutdown
+	}
+	defer w.tg.Done()
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Get the current seed progress from disk.
+	var seedProgress uint64
+	err := w.db.View(func(tx *bolt.Tx) (err error) {
+		seedProgress, err = dbGetPrimarySeedProgress(tx)
+		return
+	})
+	if err != nil {
+		return []types.UnlockHash{}, err
+	}
+	// At most seedProgess addresses can be requested.
+	if n > seedProgress {
+		n = seedProgress
+	}
+	start := seedProgress - n
+	// Generate the keys.
+	keys := generateKeys(w.primarySeed, start, n)
+	uhs := make([]types.UnlockHash, 0, len(keys))
+	for i := len(keys) - 1; i >= 0; i-- {
+		uhs = append(uhs, keys[i].UnlockConditions.UnlockHash())
+	}
+	return uhs, nil
+}
+
 // New creates a new wallet, loading any known addresses from the input file
 // name and then using the file to save in the future. Keys and addresses are
 // not loaded into the wallet during the call to 'new', but rather during the
