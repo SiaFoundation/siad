@@ -28,6 +28,10 @@ func (r *Renter) CreateDir(siaPath string) error {
 // DeleteDir removes a directory from the renter and deletes all its sub
 // directories and files
 func (r *Renter) DeleteDir(siaPath string) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	return r.staticDirSet.Delete(siaPath)
 }
 
@@ -64,6 +68,10 @@ func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
 // DirList returns directories and files stored in the siadir as well as the
 // DirectoryInfo of the siadir
 func (r *Renter) DirList(siaPath string) ([]modules.DirectoryInfo, []modules.FileInfo, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, nil, err
+	}
+	defer r.tg.Done()
 	var dirs []modules.DirectoryInfo
 	var files []modules.FileInfo
 	// Get DirectoryInfo

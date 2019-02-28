@@ -55,6 +55,10 @@ func validateSource(sourcePath string) error {
 // Upload instructs the renter to start tracking a file. The renter will
 // automatically upload and repair tracked files using a background loop.
 func (r *Renter) Upload(up modules.FileUploadParams) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	// Enforce nickname rules.
 	if err := validateSiapath(up.SiaPath); err != nil {
 		return err

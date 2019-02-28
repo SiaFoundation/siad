@@ -456,6 +456,10 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 // Streamer creates a modules.Streamer that can be used to stream downloads from
 // the sia network.
 func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
+	if err := r.tg.Add(); err != nil {
+		return "", nil, err
+	}
+	defer r.tg.Done()
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {

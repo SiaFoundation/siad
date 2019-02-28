@@ -64,11 +64,19 @@ type pieceData struct {
 // DeleteFile removes a file entry from the renter and deletes its data from
 // the hosts it is stored on.
 func (r *Renter) DeleteFile(nickname string) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	return r.staticFileSet.Delete(nickname)
 }
 
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() ([]modules.FileInfo, error) {
+	if err := r.tg.Add(); err != nil {
+		return []modules.FileInfo{}, err
+	}
+	defer r.tg.Done()
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 	fileList := []modules.FileInfo{}
 	err := filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
@@ -99,6 +107,10 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 // File returns file from siaPath queried by user.
 // Update based on FileList
 func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.FileInfo{}, err
+	}
+	defer r.tg.Done()
 	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
 	return r.fileInfo(siaPath, offline, goodForRenew, contracts)
 }
@@ -107,6 +119,10 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 // file must exist, and there must not be any file that already has the
 // replacement nickname.
 func (r *Renter) RenameFile(currentName, newName string) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	err := validateSiapath(newName)
 	if err != nil {
 		return err

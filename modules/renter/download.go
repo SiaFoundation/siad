@@ -299,6 +299,10 @@ func (d *download) OnComplete(f downloadCompleteFunc) {
 // Download performs a file download using the passed parameters and blocks
 // until the download is finished.
 func (r *Renter) Download(p modules.RenterDownloadParameters) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	d, err := r.managedDownload(p)
 	if err != nil {
 		return err
@@ -315,6 +319,10 @@ func (r *Renter) Download(p modules.RenterDownloadParameters) error {
 // DownloadAsync performs a file download using the passed parameters without
 // blocking until the download is finished.
 func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	_, err := r.managedDownload(p)
 	return err
 }
