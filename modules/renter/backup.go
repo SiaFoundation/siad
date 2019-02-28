@@ -114,7 +114,6 @@ func (r *Renter) CreateBackup(dst string, secret []byte) error {
 
 	// Write the hash to the file.
 	chks := h.Sum(nil)
-	fmt.Println("before", chks)
 	_, err = f.WriteAt(chks, chksOff)
 	return errors.Compose(err, <-tarErr)
 }
@@ -158,24 +157,39 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if err != nil {
 		return err
 	}
-	// Check if encryption is required.
+	// Check the version number.
 	if bh.Version != encryptionVersion {
 		return errors.New("unknown version")
 	}
-	switch bh.Encryption {
-	case encryptionTwofish:
-		c, err := twofish.NewCipher(secret)
-		if err != nil {
-			return err
-		}
-		sw := cipher.StreamReader{
-			S: cipher.NewOFB(c, bh.IV),
-			R: archive,
-		}
-		archive = sw
-	case encryptionPlaintext:
-	default:
-		return errors.New("unknown cipher")
+	// Wrap the file in the correct streamcipher.
+	archive, err = wrapReaderInCipher(f, bh, secret)
+	if err != nil {
+		return err
+	}
+	// Remember offset of the body.
+	off, err := f.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+	// Pipe the remaining file into the hasher to verify that the hash is
+	// correct.
+	h := crypto.NewHash()
+	_, err = io.Copy(h, archive)
+	if err != nil {
+		return err
+	}
+	// Verify the hash.
+	if !bytes.Equal(h.Sum(nil), chks[:]) {
+		return errors.New("checksum doesn't match")
+	}
+	// Seek back to the offset.
+	if _, err := f.Seek(off, io.SeekStart); err != nil {
+		return err
+	}
+	// Wrap the file again.
+	archive, err = wrapReaderInCipher(f, bh, secret)
+	if err != nil {
+		return err
 	}
 
 	// Create a pipe to redirect the unzipped output to the tar reader.
@@ -330,5 +344,27 @@ func uniqueFilename(dst string) string {
 		// Duplicate detected. Increment suffix and counter.
 		suffix = fmt.Sprintf("_%v", counter)
 		counter++
+	}
+}
+
+// wrapReaderInCipher wraps the reader r into another reader according to the
+// used encryption specified in the backupHeader.
+func wrapReaderInCipher(r io.Reader, bh backupHeader, secret []byte) (io.Reader, error) {
+	// Check if encryption is required and wrap the archive into a cipher if
+	// necessary.
+	switch bh.Encryption {
+	case encryptionTwofish:
+		c, err := twofish.NewCipher(secret)
+		if err != nil {
+			return nil, err
+		}
+		return cipher.StreamReader{
+			S: cipher.NewOFB(c, bh.IV),
+			R: r,
+		}, nil
+	case encryptionPlaintext:
+		return r, nil
+	default:
+		return nil, errors.New("unknown cipher")
 	}
 }
