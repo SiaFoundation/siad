@@ -24,6 +24,7 @@ func TestSaveLoad(t *testing.T) {
 	// create contractor with mocked persist dependency
 	c := &Contractor{
 		persist: new(memPersist),
+		synced:  make(chan struct{}),
 	}
 
 	c.oldContracts = map[types.FileContractID]modules.RenterContract{
@@ -38,7 +39,7 @@ func TestSaveLoad(t *testing.T) {
 	c.renewedTo = map[types.FileContractID]types.FileContractID{
 		{1}: {2},
 	}
-	c.synced = true
+	close(c.synced)
 
 	// save, clear, and reload
 	err := c.save()
@@ -67,8 +68,10 @@ func TestSaveLoad(t *testing.T) {
 	if c.renewedTo[types.FileContractID{1}] != id {
 		t.Fatal("renewedTo not restored properly:", c.renewedTo)
 	}
-	if !c.synced {
-		t.Fatal("synced should be true")
+	select {
+	case <-c.synced:
+	default:
+		t.Fatal("contractor should be synced")
 	}
 	// use stdPersist instead of mock
 	c.persist = NewPersist(build.TempDir("contractor", t.Name()))
@@ -91,7 +94,7 @@ func TestSaveLoad(t *testing.T) {
 	c.oldContracts = make(map[types.FileContractID]modules.RenterContract)
 	c.renewedFrom = make(map[types.FileContractID]types.FileContractID)
 	c.renewedTo = make(map[types.FileContractID]types.FileContractID)
-	c.synced = false
+	c.synced = make(chan struct{})
 	err = c.load()
 	if err != nil {
 		t.Fatal(err)
@@ -109,8 +112,10 @@ func TestSaveLoad(t *testing.T) {
 	if c.renewedTo[types.FileContractID{1}] != id {
 		t.Fatal("renewedTo not restored properly:", c.renewedTo)
 	}
-	if !c.synced {
-		t.Fatal("synced should be true")
+	select {
+	case <-c.synced:
+	default:
+		t.Fatal("contractor should be synced")
 	}
 	if c.allowance.ExpectedStorage != modules.DefaultAllowance.ExpectedStorage {
 		t.Errorf("ExpectedStorage was %v but should be %v",

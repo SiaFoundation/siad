@@ -52,7 +52,7 @@ type Contractor struct {
 
 	allowance     modules.Allowance
 	blockHeight   types.BlockHeight
-	synced        bool
+	synced        chan struct{}
 	currentPeriod types.BlockHeight
 	lastChange    modules.ConsensusChangeID
 
@@ -219,9 +219,9 @@ func (c *Contractor) SetRateLimits(readBPS int64, writeBPS int64, packetSize uin
 	c.staticContracts.SetRateLimits(readBPS, writeBPS, packetSize)
 }
 
-// Synced indicates if the contractor is fully synced with the peer-to-peer
-// network.
-func (c *Contractor) Synced() bool {
+// Synced returns a channel that is closed when the contractor is synced with
+// the peer-to-peer network.
+func (c *Contractor) Synced() <-chan struct{} {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.synced
@@ -284,6 +284,7 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		wallet:     w,
 
 		interruptMaintenance: make(chan struct{}),
+		synced:               make(chan struct{}),
 
 		staticContracts:      contractSet,
 		downloaders:          make(map[types.FileContractID]*hostDownloader),

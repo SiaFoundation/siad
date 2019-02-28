@@ -119,14 +119,12 @@ func (r *Renter) managedBlockUntilOnline() bool {
 // managedBlockUntilSynced will block until the contractor is synced with the
 // peer-to-peer network.
 func (r *Renter) managedBlockUntilSynced() bool {
-	for !r.hostContractor.Synced() {
-		select {
-		case <-r.tg.StopChan():
-			return false
-		case <-time.After(syncCheckFrequency):
-		}
+	select {
+	case <-r.tg.StopChan():
+		return false
+	case <-r.hostContractor.Synced():
+		return true
 	}
-	return true
 }
 
 // managedDistributeDownloadChunkToWorkers will take a chunk and pass it out to

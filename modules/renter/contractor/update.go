@@ -109,7 +109,10 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 		delete(c.oldContracts, metricsContractID)
 	}
 
-	c.synced = cc.Synced
+	c.synced = make(chan struct{})
+	if cc.Synced {
+		close(c.synced)
+	}
 	c.lastChange = cc.ID
 	err = c.save()
 	if err != nil {

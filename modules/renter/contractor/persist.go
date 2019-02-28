@@ -28,6 +28,12 @@ type contractorPersist struct {
 
 // persistData returns the data in the Contractor that will be saved to disk.
 func (c *Contractor) persistData() contractorPersist {
+	synced := false
+	select {
+	case <-c.synced:
+		synced = true
+	default:
+	}
 	data := contractorPersist{
 		Allowance:     c.allowance,
 		BlockHeight:   c.blockHeight,
@@ -35,7 +41,7 @@ func (c *Contractor) persistData() contractorPersist {
 		LastChange:    c.lastChange,
 		RenewedFrom:   make(map[string]types.FileContractID),
 		RenewedTo:     make(map[string]types.FileContractID),
-		Synced:        c.synced,
+		Synced:        synced,
 	}
 	for k, v := range c.renewedFrom {
 		data.RenewedFrom[k.String()] = v
@@ -77,7 +83,10 @@ func (c *Contractor) load() error {
 	c.blockHeight = data.BlockHeight
 	c.currentPeriod = data.CurrentPeriod
 	c.lastChange = data.LastChange
-	c.synced = data.Synced
+	c.synced = make(chan struct{})
+	if data.Synced {
+		close(c.synced)
+	}
 	var fcid types.FileContractID
 	for k, v := range data.RenewedFrom {
 		if err := fcid.LoadString(k); err != nil {
