@@ -275,9 +275,9 @@ func TestFileHealth(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create File with 1 chunk
+	// Create a Zero byte file
 	rsc, _ := siafile.NewRSCode(10, 20)
-	f, err := newFileTesting(t.Name(), newTestingWal(), rsc, 100, 0777, "")
+	zeroFile, err := newFileTesting(t.Name(), newTestingWal(), rsc, 0, 0777, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,13 +286,31 @@ func TestFileHealth(t *testing.T) {
 	offlineMap := make(map[string]bool)
 	goodForRenewMap := make(map[string]bool)
 
+	// Confirm the health is correct
+	health, stuckHealth, numStuckChunks := zeroFile.Health(offlineMap, goodForRenewMap)
+	if health != 0 {
+		t.Fatal("Expected health to be 0 but was", health)
+	}
+	if stuckHealth != 0 {
+		t.Fatal("Expected stuck health to be 0 but was", stuckHealth)
+	}
+	if numStuckChunks != 0 {
+		t.Fatal("Expected no stuck chunks but found", numStuckChunks)
+	}
+
+	// Create File with 1 chunk
+	f, err := newFileTesting(t.Name(), newTestingWal(), rsc, 100, 0777, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Check file health, since there are no pieces in the chunk yet no good
 	// pieces will be found resulting in a health of 1.5 with the erasure code
 	// settings of 10/30. Since there are no stuck chunks the stuckHealth of the
 	// file should be 0
 	//
 	// 1 - ((0 - 10) / 20)
-	health, stuckHealth, _ := f.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -354,7 +372,7 @@ func TestFileHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	health, stuckHealth, numStuckChunks := f.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, numStuckChunks = f.Health(offlineMap, goodForRenewMap)
 	// Health should now be 0 since there are no unstuck chunks
 	if health != 0 {
 		t.Fatalf("Health of file not as expected, got %v expected 0", health)
