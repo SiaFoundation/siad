@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -878,7 +879,20 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 		return
 	}
 	if params.Async {
-		err = api.renter.DownloadAsync(params)
+		var cancel modules.DownloadCancelFunc
+		id := hex.EncodeToString(fastrand.Bytes(16))
+		cancel, err = api.renter.DownloadAsync(params, func(_ error) error {
+			api.downloadMu.Lock()
+			delete(api.downloads, id)
+			api.downloadMu.Unlock()
+			return nil
+		})
+		if err == nil {
+			w.Header().Set("ID", id)
+			api.downloadMu.Lock()
+			api.downloads[id] = cancel
+			api.downloadMu.Unlock()
+		}
 	} else {
 		err = api.renter.Download(params)
 	}

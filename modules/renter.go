@@ -44,6 +44,16 @@ var (
 	BackupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
 )
 
+type (
+	// DownloadCancelFunc is a function that cancels the corresponding download
+	// when called.
+	DownloadCancelFunc func()
+	// DownloadCompleteFunc is a function called upon completion of the
+	// download. It accepts an error as an argument and returns an error. That
+	// way it's possible to add custom behavior for failing downloads.
+	DownloadCompleteFunc func(error) error
+)
+
 // FilterMode is the helper type for the enum constants for the HostDB filter
 // mode
 type FilterMode int
@@ -566,7 +576,7 @@ type Renter interface {
 
 	// Download performs a download according to the parameters passed without
 	// blocking, including downloads of `offset` and `length` type.
-	DownloadAsync(params RenterDownloadParameters) error
+	DownloadAsync(params RenterDownloadParameters, f DownloadCompleteFunc) (DownloadCancelFunc, error)
 
 	// ClearDownloadHistory clears the download history of the renter
 	// inclusive for before and after times.

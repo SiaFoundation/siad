@@ -98,8 +98,10 @@ type API struct {
 	tpool    modules.TransactionPool
 	wallet   modules.Wallet
 
-	router   http.Handler
-	routerMu sync.RWMutex
+	downloadMu sync.Mutex
+	downloads  map[string]modules.DownloadCancelFunc
+	router     http.Handler
+	routerMu   sync.RWMutex
 
 	requiredUserAgent string
 	requiredPassword  string
@@ -139,6 +141,7 @@ func New(requiredUserAgent string, requiredPassword string, cs modules.Consensus
 		renter:            r,
 		tpool:             tp,
 		wallet:            w,
+		downloads:         make(map[string]modules.DownloadCancelFunc),
 		requiredUserAgent: requiredUserAgent,
 		requiredPassword:  requiredPassword,
 	}
