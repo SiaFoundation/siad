@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -75,6 +77,18 @@ func (r *Renter) CreateBackup(dst string, secret []byte) error {
 		return err
 	}
 
+	// Get the current offset within the file.
+	chksOff, err := f.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+
+	// Write a placeholder for the hash.
+	_, err = f.Write(make([]byte, crypto.HashSize))
+	if err != nil {
+		return err
+	}
+
 	// Use a pipe to direct the output of the tar writer into the gzip reader.
 	tarReader, tarWriter := io.Pipe()
 
@@ -86,8 +100,22 @@ func (r *Renter) CreateBackup(dst string, secret []byte) error {
 		tarErr <- err
 	}()
 
-	// Gzip the tarball and grab the error from the other thread.
-	err = gzipSiaFiles(tarReader, archive)
+	// Create a hasher to compute a hash of gzip archive before being
+	// encrypted. We combine the hasher and the tarWriter in a multiwriter
+	// and write the created tarball to it.
+	h := crypto.NewHash()
+	mr := io.MultiWriter(archive, h)
+
+	// Gzip the tarball into the multiwriter and grab the error from the other
+	// thread.
+	if err := gzipSiaFiles(tarReader, mr); err != nil {
+		return errors.Compose(err, <-tarErr)
+	}
+
+	// Write the hash to the file.
+	chks := h.Sum(nil)
+	fmt.Println("before", chks)
+	_, err = f.WriteAt(chks, chksOff)
 	return errors.Compose(err, <-tarErr)
 }
 
@@ -115,14 +143,21 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if err := dec.Decode(&bh); err != nil {
 		return err
 	}
-	// Seek back to the beginning of the body.
+	// Seek back by the amount of data left in the decoder's buffer.
 	if buf, ok := dec.Buffered().(*bytes.Reader); ok {
-		_, err := f.Seek(int64(1-buf.Len()), io.SeekCurrent)
+		_, err = f.Seek(int64(1-buf.Len()), io.SeekCurrent)
 		if err != nil {
 			return err
 		}
+	} else {
+		build.Critical("Buffered should return a bytes.Reader")
 	}
-
+	// Read the checksum.
+	var chks crypto.Hash
+	_, err = io.ReadFull(archive, chks[:])
+	if err != nil {
+		return err
+	}
 	// Check if encryption is required.
 	if bh.Version != encryptionVersion {
 		return errors.New("unknown version")
