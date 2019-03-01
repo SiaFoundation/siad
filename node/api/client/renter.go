@@ -159,11 +159,20 @@ func (c *Client) RenterRecoverableContractsGet() (rc api.RenterContracts, err er
 	return
 }
 
+// RenterCancelDownloadPost requests the /renter/download/cancel endpoint to
+// cancel an ongoing doing.
+func (c *Client) RenterCancelDownloadPost(id string) (err error) {
+	values := url.Values{}
+	values.Set("id", id)
+	err = c.post("/renter/download/cancel", values.Encode(), nil)
+	return
+}
+
 // RenterDeletePost uses the /renter/delete endpoint to delete a file.
 func (c *Client) RenterDeletePost(siaPath modules.SiaPath) (err error) {
 	sp := escapeSiaPath(siaPath)
 	err = c.post(fmt.Sprintf("/renter/delete/%s", sp), "", nil)
-	return err
+	return
 }
 
 // RenterDownloadGet uses the /renter/download endpoint to download a file to a

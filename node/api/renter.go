@@ -871,6 +871,28 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 	WriteSuccess(w)
 }
 
+// renterCancelDownloadHandler handles the API call to cancel a download.
+func (api *API) renterCancelDownloadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Get the id.
+	id := req.FormValue("id")
+	if id == "" {
+		WriteError(w, Error{"id not specified"}, http.StatusBadRequest)
+		return
+	}
+	// Get the download from the map.
+	api.downloadMu.Lock()
+	defer api.downloadMu.Unlock()
+	cancel, ok := api.downloads[id]
+	if !ok {
+		WriteError(w, Error{"download for id not found"}, http.StatusBadRequest)
+		return
+	}
+	// Cancel download and delete it from the map.
+	cancel()
+	delete(api.downloads, id)
+	WriteSuccess(w)
+}
+
 // renterDownloadHandler handles the API call to download a file.
 func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	params, err := parseDownloadParameters(w, req, ps)
