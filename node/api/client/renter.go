@@ -104,11 +104,11 @@ func escapeSiaPath(siaPath modules.SiaPath) string {
 
 // RenterContractCancelPost uses the /renter/contract/cancel endpoint to cancel
 // a contract
-func (c *Client) RenterContractCancelPost(id types.FileContractID) error {
+func (c *Client) RenterContractCancelPost(id types.FileContractID) (err error) {
 	values := url.Values{}
 	values.Set("id", id.String())
-	err := c.post("/renter/contract/cancel", values.Encode(), nil)
-	return err
+	err = c.post("/renter/contract/cancel", values.Encode(), nil)
+	return
 }
 
 // RenterContractsGet requests the /renter/contracts resource and returns
@@ -177,15 +177,15 @@ func (c *Client) RenterDeletePost(siaPath modules.SiaPath) (err error) {
 
 // RenterDownloadGet uses the /renter/download endpoint to download a file to a
 // destination on disk.
-func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool) (err error) {
+func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool) (string, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("destination", destination)
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("async", fmt.Sprint(async))
-	err = c.get(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()), nil)
-	return
+	h, _, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
+	return h.Get("ID"), err
 }
 
 // RenterCreateBackupPost creates a backup of the SiaFiles of the renter.
@@ -265,7 +265,11 @@ func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, 
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("httpresp", fmt.Sprint(true))
+<<<<<<< HEAD
 	resp, err = c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
+=======
+	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", siaPath, values.Encode()))
+>>>>>>> add siatest
 	return
 }
 
@@ -355,9 +359,15 @@ func (c *Client) RenterSetCheckIPViolationPost(enabled bool) (err error) {
 
 // RenterStreamGet uses the /renter/stream endpoint to download data as a
 // stream.
+<<<<<<< HEAD
 func (c *Client) RenterStreamGet(siaPath modules.SiaPath) (resp []byte, err error) {
 	sp := escapeSiaPath(siaPath)
 	resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s", sp))
+=======
+func (c *Client) RenterStreamGet(siaPath string) (resp []byte, err error) {
+	siaPath = escapeSiaPath(trimSiaPath(siaPath))
+	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s", siaPath))
+>>>>>>> add siatest
 	return
 }
 

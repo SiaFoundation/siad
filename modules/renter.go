@@ -30,6 +30,10 @@ var (
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
 
+	// ErrDownloadCancelled is the error set when a download was cancelled
+	// manually by the user.
+	ErrDownloadCancelled = errors.New("download was cancelled")
+
 	// PriceEstimationScope is the number of hosts that get queried by the
 	// renter when providing price estimates. Especially for the 'Standard'
 	// variable, there should be congruence with the number of contracts being

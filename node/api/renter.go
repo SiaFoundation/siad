@@ -879,17 +879,17 @@ func (api *API) renterCancelDownloadHandler(w http.ResponseWriter, req *http.Req
 		WriteError(w, Error{"id not specified"}, http.StatusBadRequest)
 		return
 	}
-	// Get the download from the map.
+	// Get the download from the map and delete it.
 	api.downloadMu.Lock()
-	defer api.downloadMu.Unlock()
 	cancel, ok := api.downloads[id]
+	delete(api.downloads, id)
+	api.downloadMu.Unlock()
 	if !ok {
 		WriteError(w, Error{"download for id not found"}, http.StatusBadRequest)
 		return
 	}
 	// Cancel download and delete it from the map.
 	cancel()
-	delete(api.downloads, id)
 	WriteSuccess(w)
 }
 

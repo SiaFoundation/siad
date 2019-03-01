@@ -268,6 +268,7 @@ func TestRenterThree(t *testing.T) {
 		{"TestAllowanceDefaultSet", testAllowanceDefaultSet},
 		{"TestFileAvailableAndRecoverable", testFileAvailableAndRecoverable},
 		{"TestSetFileStuck", testSetFileStuck},
+		{"TestCancelAsyncDownload", testCancelAsyncDownload},
 		{"TestUploadStreaming", testUploadStreaming},
 		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
@@ -450,7 +451,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 		// Download files to build download history
 		dest := filepath.Join(siatest.SiaTestingDir, strconv.Itoa(fastrand.Intn(math.MaxInt32)))
 		for i := 0; i < remainingDownloads; i++ {
-			err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false)
+			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false)
 			if err != nil {
 				t.Fatal("Could not Download file:", err)
 			}
@@ -915,6 +916,60 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		if !reflect.DeepEqual(files[i], rf.File) {
 			t.Fatalf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
 		}
+	}
+}
+
+// testCancelAsyncDownload tests that cancelling an async download aborts the
+// download and sets the correct fields.
+func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := 10 * modules.SectorSize
+	_, remoteFile, err := renter.UploadNewFileBlocking(int(fileSize), dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Set a ratelimit that only allows for downloading a sector every second.
+	if err := renter.RenterPostRateLimit(int64(modules.SectorSize), 0); err != nil {
+		t.Fatal(err)
+	}
+	// Download the file asynchronously.
+	dst := filepath.Join(renter.FilesDir().Path(), "canceled_download.dat")
+	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Cancel the download.
+	if err := renter.RenterCancelDownloadPost(cancelID); err != nil {
+		t.Fatal(err)
+	}
+	// Get the download info.
+	rdg, err := renter.RenterDownloadsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var di *api.DownloadInfo
+	for _, d := range rdg.Downloads {
+		if remoteFile.SiaPath() == d.SiaPath && dst == d.Destination {
+			di = &d
+			break
+		}
+	}
+	if di == nil {
+		t.Fatal("couldn't find download")
+	}
+	// Make sure the download was cancelled.
+	if !di.Completed {
+		t.Fatal("download is not marked as completed")
+	}
+	if di.Received >= fileSize {
+		t.Fatal("the download finished successfully")
+	}
+	if di.Error != modules.ErrDownloadCancelled.Error() {
+		t.Fatal("error message doesn't match ErrDownloadCancelled")
 	}
 }
 

@@ -148,7 +148,7 @@ type (
 
 // managedCancel cancels a download by marking it as failed.
 func (d *download) managedCancel() {
-	d.managedFail(errors.New("download was cancelled"))
+	d.managedFail(modules.ErrDownloadCancelled)
 }
 
 // managedFail will mark the download as complete, but with the provided error.

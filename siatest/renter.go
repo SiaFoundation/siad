@@ -32,7 +32,7 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	if err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async); err != nil {
+	if _, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async); err != nil {
 		return nil, errors.AddContext(err, "failed to download file")
 	}
 	// Create the TestFile
@@ -63,7 +63,7 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	if err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async); err != nil {
+	if _, err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async); err != nil {
 		return nil, errors.AddContext(err, "failed to download file")
 	}
 	// Create the TestFile
