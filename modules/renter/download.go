@@ -276,6 +276,9 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f modules.Dow
 	}
 	defer r.tg.Done()
 	d, err := r.managedDownload(p)
+	if err != nil {
+		return nil, err
+	}
 	if f != nil {
 		d.onComplete(f)
 	}
