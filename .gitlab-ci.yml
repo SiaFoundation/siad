@@ -68,7 +68,7 @@ integration-tests:
       - $CI_PROJECT_DIR/cover/cover.out
     when: always
   script:
-    - make test-long run=. pkgs="./siatest ./siatest/consensus ./siatest/renter ./siatest/wallet"
+    - make test-vlong run=TestStresstestSiaFileSet pkgs="./siatest ./siatest/consensus ./siatest/renter ./siatest/wallet"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
     - cp -R ./cover $CI_PROJECT_DIR/cover
 
