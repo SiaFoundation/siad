@@ -245,6 +245,12 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Metad
 		metadata.ModTime = time.Now()
 	}
 
+	// Sanity check on Redundancy. If MinRedundancy is still math.MaxFloat64
+	// then set it to 0
+	if metadata.MinRedundancy == math.MaxFloat64 {
+		metadata.MinRedundancy = 0
+	}
+
 	return metadata, nil
 }
 
@@ -344,12 +350,13 @@ func (r *Renter) managedFileMetadata(siaPath string) (siafile.BubbledMetadata, e
 		StuckHealth: stuckHealth,
 	}
 	return siafile.BubbledMetadata{
-		Health:         health,
-		ModTime:        sf.ModTime(),
-		NumStuckChunks: numStuckChunks,
-		Redundancy:     redundancy,
-		Size:           sf.Size(),
-		StuckHealth:    stuckHealth,
+		Health:              health,
+		LastHealthCheckTime: sf.LastHealthCheckTime(),
+		ModTime:             sf.ModTime(),
+		NumStuckChunks:      numStuckChunks,
+		Redundancy:          redundancy,
+		Size:                sf.Size(),
+		StuckHealth:         stuckHealth,
 	}, sf.UpdateCachedHealthMetadata(metadata)
 }
 
