@@ -260,6 +260,10 @@ func (r *Renter) Close() error {
 // allowance will be used if one is set.  The final allowance used will be
 // returned.
 func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPriceEstimation, modules.Allowance, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.RenterPriceEstimation{}, modules.Allowance{}, err
+	}
+	defer r.tg.Done()
 	// Use provide allowance. If no allowance provided use the existing
 	// allowance. If no allowance exists, use a sane default allowance.
 	if reflect.DeepEqual(allowance, modules.Allowance{}) {
@@ -533,6 +537,10 @@ func (r *Renter) setBandwidthLimits(downloadSpeed int64, uploadSpeed int64) erro
 // (like the allowance) to succeed, but then if the bandwidth limits for example
 // are bad, then the allowance will update but the bandwidth will not update.
 func (r *Renter) SetSettings(s modules.RenterSettings) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	// Early input validation.
 	if s.MaxDownloadSpeed < 0 || s.MaxUploadSpeed < 0 {
 		return errors.New("bandwidth limits cannot be negative")
@@ -584,6 +592,10 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // caller is responsible for not accidentally corrupting the uploaded file by
 // providing a different file with the same size.
 func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	// Check if file exists and is being tracked.
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
@@ -613,6 +625,10 @@ func (r *Renter) AllHosts() []modules.HostDBEntry { return r.hostDB.AllHosts() }
 
 // SetFilterMode sets the renter's hostdb filter mode
 func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	// Check to see how many hosts are needed for the allowance
 	minHosts := r.Settings().Allowance.Hosts
 	if len(hosts) < int(minHosts) && lm == modules.HostDBActiveWhitelist {
