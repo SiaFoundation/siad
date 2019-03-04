@@ -850,3 +850,83 @@ func TestRandomStuckDirectory(t *testing.T) {
 		t.Fatal("No unique directories found")
 	}
 }
+
+// TestCalculateFileMetadata checks that the values returned from
+// managedCalculateFileMetadata make sense
+func TestCalculateFileMetadata(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that the root directory LastHealthCheckTime is non Zero
+	siaDir, err := rt.renter.staticDirSet.Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirMetadata := siaDir.Metadata()
+	if dirMetadata.LastHealthCheckTime.IsZero() {
+		t.Fatal("root directory LastHealthCheckTime is zero")
+	}
+
+	// Create a file
+	rsc, _ := siafile.NewRSCode(1, 1)
+	up := modules.FileUploadParams{
+		Source:      "",
+		SiaPath:     "rootFile",
+		ErasureCode: rsc,
+	}
+	fileSize := uint64(100)
+	sf, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab initial metadata values
+	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	health, stuckHealth, numStuckChunks := sf.Health(offline, goodForRenew)
+	redundancy := sf.Redundancy(offline, goodForRenew)
+	lastHealthCheckTime := sf.LastHealthCheckTime()
+	modTime := sf.ModTime()
+	recentRepairTime := sf.RecentRepairTime()
+
+	// Check calculated metadata
+	fileMetadata, err := rt.renter.managedCalculateFileMetadata(up.SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check siafile calculated metadata
+	if fileMetadata.Health != health {
+		t.Fatalf("health incorrect, expected %v got %v", health, fileMetadata.Health)
+	}
+	if fileMetadata.StuckHealth != stuckHealth {
+		t.Fatalf("stuckHealth incorrect, expected %v got %v", stuckHealth, fileMetadata.StuckHealth)
+	}
+	if fileMetadata.Redundancy != redundancy {
+		t.Fatalf("redundancy incorrect, expected %v got %v", redundancy, fileMetadata.Redundancy)
+	}
+	if fileMetadata.Size != fileSize {
+		t.Fatalf("size incorrect, expected %v got %v", fileSize, fileMetadata.Size)
+	}
+	if fileMetadata.NumStuckChunks != numStuckChunks {
+		t.Fatalf("numstuckchunks incorrect, expected %v got %v", numStuckChunks, fileMetadata.NumStuckChunks)
+	}
+	if !fileMetadata.RecentRepairTime.Equal(recentRepairTime) {
+		t.Fatalf("Unexpected recentrepairtime, expected %v got %v", recentRepairTime, fileMetadata.RecentRepairTime)
+	}
+	if fileMetadata.LastHealthCheckTime.Equal(lastHealthCheckTime) || fileMetadata.LastHealthCheckTime.IsZero() {
+		t.Log("Initial lasthealthchecktime", lastHealthCheckTime)
+		t.Log("Calculated lasthealthchecktime", fileMetadata.LastHealthCheckTime)
+		t.Fatal("Expected lasthealthchecktime to have updated and be non zero")
+	}
+	if !fileMetadata.ModTime.Equal(modTime) {
+		t.Fatalf("Unexpected modtime, expected %v got %v", modTime, fileMetadata.ModTime)
+	}
+}

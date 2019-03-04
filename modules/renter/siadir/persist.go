@@ -73,9 +73,12 @@ func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.
 	}()
 
 	// Write and sync.
-	_, err = file.Write(data)
+	n, err := file.Write(data)
 	if err != nil {
 		return err
+	}
+	if n < len(data) {
+		return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
 	}
 	return file.Sync()
 }
@@ -285,9 +288,12 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 	}
 
 	// Write and sync.
-	_, err = file.Write(data)
+	n, err := file.Write(data)
 	if err != nil {
 		return err
+	}
+	if n < len(data) {
+		return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
 	}
 	return nil
 }

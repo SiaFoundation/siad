@@ -1669,9 +1669,19 @@ Path to the directory on the sia netork
 {
   "directories": [
     {
-      "heatlh":             1.0,                                    // float64
-      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00"   // unix timestamp
-      "siapath":            "foo/bar"                               // string
+      "aggregatenumfiles":        2,    // uint64
+      "aggregatenumstuckchunks":  4,    // uint64
+      "aggregatesize":            4096, // uint64
+      "heatlh":                   1.0,  // float64
+      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "maxhealth":                0.5,  // float64
+      "minredundancy":            2.6,  // float64
+      "mostrecentmodtime":  "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "stuckhealth":              1.0,  // float64
+
+      "numfiles":   3,        // uint64
+      "numsubdirs": 2,        // uint64
+      "siapath":    "foo/bar" // string
     }
   ],
   "files": []
@@ -1680,14 +1690,37 @@ Path to the directory on the sia netork
 **directories**
 An array of sia directories
 
+**aggregatenumfiles** | uint64
+the total number of files in the sub directory tree
+
+**aggregatenumstuckchunks** | uint64
+the total number of stuck chunks in the sub directory tree
+
+**aggregatenumsize** | uint64
+
 **health** | float64
 This is the worst health of any of the files or subdirectories. Health is the percent of parity pieces missing.
  - health = 0 is full redundancy
  - health <= 1 is recoverable
  - health > 1 needs to be repaired from disk
 
-**lasthealthchecktime** | unix timestampe
+**lasthealthchecktime** | timestamp
 The oldest time that the health of the directory or any of its files or sub directories' health was checked.
+
+**maxhealth** | float64
+This is the worst health when comparing stuck health vs health
+
+**minredundancy** | float64
+the lowest redundancy of any file or directory in the sub directory tree
+
+**mostrecentmodtime** | timestamp
+the most recent mod time of any file or directory in the sub directory tree
+
+**numfiles** | uint64
+the number of files in the directory
+
+**numsubdirs** | uint64
+the number of directories in the directory
 
 **siapath** | string
 The path to the directory on the sia network
