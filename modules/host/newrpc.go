@@ -1,6 +1,7 @@
 package host
 
 import (
+	"encoding/json"
 	"errors"
 	"sort"
 	"time"
@@ -20,8 +21,9 @@ func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
 	h.mu.Lock()
 	hes := h.externalSettings()
 	h.mu.Unlock()
+	js, _ := json.Marshal(hes)
 	resp := modules.LoopSettingsResponse{
-		Settings: hes,
+		Settings: js,
 	}
 	if err := s.writeResponse(resp); err != nil {
 		return err

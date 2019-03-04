@@ -491,7 +491,7 @@ type (
 
 	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
 	LoopSettingsResponse struct {
-		Settings HostExternalSettings
+		Settings []byte // actually a JSON-encoded HostExternalSettings
 	}
 
 	// LoopWriteRequest contains the request parameters for RPCLoopWrite.

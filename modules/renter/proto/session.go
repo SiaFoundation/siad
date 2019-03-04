@@ -2,6 +2,7 @@ package proto
 
 import (
 	"crypto/cipher"
+	"encoding/json"
 	"math/bits"
 	"net"
 	"sort"
@@ -97,8 +98,10 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	if err := s.call(modules.RPCLoopSettings, nil, &resp, modules.RPCMinLen); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
-	s.host.HostExternalSettings = resp.Settings
-	return resp.Settings, nil
+	if err := json.Unmarshal(resp.Settings, &s.host.HostExternalSettings); err != nil {
+		return modules.HostExternalSettings{}, err
+	}
+	return s.host.HostExternalSettings, nil
 }
 
 // Append calls the Write RPC with a single Append action, returning the
