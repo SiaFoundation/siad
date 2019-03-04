@@ -174,7 +174,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Metad
 		if ext == siafile.ShareExtension {
 			// SiaFile found, calculate the needed metadata information of the siafile
 			fName := strings.TrimSuffix(fi.Name(), siafile.ShareExtension)
-			fileMetadata, err := r.managedFileMetadata(filepath.Join(siaPath, fName))
+			fileMetadata, err := r.managedCalculateFileMetadata(filepath.Join(siaPath, fName))
 			if err != nil {
 				return siadir.Metadata{}, err
 			}
@@ -254,6 +254,43 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Metad
 	return metadata, nil
 }
 
+// managedCalculateFileMetadata calculates and returns the necessary metadata
+// information of a siafile that needs to be bubbled
+func (r *Renter) managedCalculateFileMetadata(siaPath string) (siafile.BubbledMetadata, error) {
+	// Load the Siafile.
+	sf, err := r.staticFileSet.Open(siaPath)
+	if err != nil {
+		return siafile.BubbledMetadata{}, err
+	}
+	defer sf.Close()
+
+	// Calculate file health
+	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	if err := sf.UpdateLastHealthCheckTime(); err != nil {
+		return siafile.BubbledMetadata{}, err
+	}
+	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
+	// Check if local file is missing and redundancy is less than one
+	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
+		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
+	}
+	metadata := siafile.CachedHealthMetadata{
+		Health:      health,
+		Redundancy:  redundancy,
+		StuckHealth: stuckHealth,
+	}
+	return siafile.BubbledMetadata{
+		Health:              health,
+		LastHealthCheckTime: sf.LastHealthCheckTime(),
+		ModTime:             sf.ModTime(),
+		NumStuckChunks:      numStuckChunks,
+		Redundancy:          redundancy,
+		Size:                sf.Size(),
+		StuckHealth:         stuckHealth,
+	}, sf.UpdateCachedHealthMetadata(metadata)
+}
+
 // managedCompleteBubbleUpdate completes the bubble update and updates and/or
 // removes it from the renter's bubbleUpdates.
 func (r *Renter) managedCompleteBubbleUpdate(siaPath string) error {
@@ -321,43 +358,6 @@ func (r *Renter) managedDirectoryMetadata(siaPath string) (siadir.Metadata, erro
 	defer siaDir.Close()
 
 	return siaDir.Metadata(), nil
-}
-
-// managedFileMetadata returns the necessary metadata information of a siafile
-// that needs to be bubbled
-func (r *Renter) managedFileMetadata(siaPath string) (siafile.BubbledMetadata, error) {
-	// Load the Siafile.
-	sf, err := r.staticFileSet.Open(siaPath)
-	if err != nil {
-		return siafile.BubbledMetadata{}, err
-	}
-	defer sf.Close()
-
-	// Calculate file health
-	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
-	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
-	if err := sf.UpdateLastHealthCheckTime(); err != nil {
-		return siafile.BubbledMetadata{}, err
-	}
-	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
-	// Check if local file is missing and redundancy is less than one
-	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
-		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
-	}
-	metadata := siafile.CachedHealthMetadata{
-		Health:      health,
-		Redundancy:  redundancy,
-		StuckHealth: stuckHealth,
-	}
-	return siafile.BubbledMetadata{
-		Health:              health,
-		LastHealthCheckTime: sf.LastHealthCheckTime(),
-		ModTime:             sf.ModTime(),
-		NumStuckChunks:      numStuckChunks,
-		Redundancy:          redundancy,
-		Size:                sf.Size(),
-		StuckHealth:         stuckHealth,
-	}, sf.UpdateCachedHealthMetadata(metadata)
 }
 
 // managedOldestHealthCheckTime finds the lowest level directory that has a

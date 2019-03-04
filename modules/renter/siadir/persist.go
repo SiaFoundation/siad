@@ -77,7 +77,7 @@ func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.
 	if err != nil {
 		return err
 	}
-	if n > len(data) {
+	if n < len(data) {
 		return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
 	}
 	return file.Sync()
