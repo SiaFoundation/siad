@@ -277,6 +277,28 @@ type (
 		Version        string `json:"version"`
 	}
 
+	// HostOldExternalSettings are the pre-v1.4.0 host settings.
+	HostOldExternalSettings struct {
+		AcceptingContracts     bool              `json:"acceptingcontracts"`
+		MaxDownloadBatchSize   uint64            `json:"maxdownloadbatchsize"`
+		MaxDuration            types.BlockHeight `json:"maxduration"`
+		MaxReviseBatchSize     uint64            `json:"maxrevisebatchsize"`
+		NetAddress             NetAddress        `json:"netaddress"`
+		RemainingStorage       uint64            `json:"remainingstorage"`
+		SectorSize             uint64            `json:"sectorsize"`
+		TotalStorage           uint64            `json:"totalstorage"`
+		UnlockHash             types.UnlockHash  `json:"unlockhash"`
+		WindowSize             types.BlockHeight `json:"windowsize"`
+		Collateral             types.Currency    `json:"collateral"`
+		MaxCollateral          types.Currency    `json:"maxcollateral"`
+		ContractPrice          types.Currency    `json:"contractprice"`
+		DownloadBandwidthPrice types.Currency    `json:"downloadbandwidthprice"`
+		StoragePrice           types.Currency    `json:"storageprice"`
+		UploadBandwidthPrice   types.Currency    `json:"uploadbandwidthprice"`
+		RevisionNumber         uint64            `json:"revisionnumber"`
+		Version                string            `json:"version"`
+	}
+
 	// A RevisionAction is a description of an edit to be performed on a file
 	// contract. Three types are allowed, 'ActionDelete', 'ActionInsert', and
 	// 'ActionModify'. ActionDelete just takes a sector index, indicating which

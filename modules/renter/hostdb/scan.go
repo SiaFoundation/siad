@@ -381,7 +381,7 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 	updateHostHistoricInteractions(&entry, hdb.blockHeight)
 	hdb.mu.RUnlock()
 
-	var settings modules.HostExternalSettings
+	var settings modules.HostOldExternalSettings
 	var latency time.Duration
 	err = func() error {
 		timeout := hostRequestTimeout
@@ -432,11 +432,33 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		return crypto.ReadSignedObject(conn, &settings, maxSettingsLen, pubkey)
 	}()
 	if err != nil {
-		hdb.log.Debugf("Scan of host at %v failed: %v", netAddr, err)
+		hdb.log.Debugf("Scan of host at %v failed: %v", pubKey, err)
 
 	} else {
-		hdb.log.Debugf("Scan of host at %v succeeded.", netAddr)
-		entry.HostExternalSettings = settings
+		hdb.log.Debugf("Scan of host at %v succeeded.", pubKey)
+		entry.HostExternalSettings = modules.HostExternalSettings{
+			AcceptingContracts:     settings.AcceptingContracts,
+			MaxDownloadBatchSize:   settings.MaxDownloadBatchSize,
+			MaxDuration:            settings.MaxDuration,
+			MaxReviseBatchSize:     settings.MaxReviseBatchSize,
+			NetAddress:             settings.NetAddress,
+			RemainingStorage:       settings.RemainingStorage,
+			SectorSize:             settings.SectorSize,
+			TotalStorage:           settings.TotalStorage,
+			UnlockHash:             settings.UnlockHash,
+			WindowSize:             settings.WindowSize,
+			Collateral:             settings.Collateral,
+			MaxCollateral:          settings.MaxCollateral,
+			ContractPrice:          settings.ContractPrice,
+			DownloadBandwidthPrice: settings.DownloadBandwidthPrice,
+			StoragePrice:           settings.StoragePrice,
+			UploadBandwidthPrice:   settings.UploadBandwidthPrice,
+			RevisionNumber:         settings.RevisionNumber,
+			Version:                settings.Version,
+			// New fields are set to zero.
+			BaseRPCPrice:      types.ZeroCurrency,
+			SectorAccessPrice: types.ZeroCurrency,
+		}
 	}
 	success := err == nil
 
