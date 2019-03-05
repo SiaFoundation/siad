@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"errors"
 	"io"
+	"net"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -12,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 const (
@@ -277,6 +279,28 @@ type (
 		Version        string `json:"version"`
 	}
 
+	// HostOldExternalSettings are the pre-v1.4.0 host settings.
+	HostOldExternalSettings struct {
+		AcceptingContracts     bool              `json:"acceptingcontracts"`
+		MaxDownloadBatchSize   uint64            `json:"maxdownloadbatchsize"`
+		MaxDuration            types.BlockHeight `json:"maxduration"`
+		MaxReviseBatchSize     uint64            `json:"maxrevisebatchsize"`
+		NetAddress             NetAddress        `json:"netaddress"`
+		RemainingStorage       uint64            `json:"remainingstorage"`
+		SectorSize             uint64            `json:"sectorsize"`
+		TotalStorage           uint64            `json:"totalstorage"`
+		UnlockHash             types.UnlockHash  `json:"unlockhash"`
+		WindowSize             types.BlockHeight `json:"windowsize"`
+		Collateral             types.Currency    `json:"collateral"`
+		MaxCollateral          types.Currency    `json:"maxcollateral"`
+		ContractPrice          types.Currency    `json:"contractprice"`
+		DownloadBandwidthPrice types.Currency    `json:"downloadbandwidthprice"`
+		StoragePrice           types.Currency    `json:"storageprice"`
+		UploadBandwidthPrice   types.Currency    `json:"uploadbandwidthprice"`
+		RevisionNumber         uint64            `json:"revisionnumber"`
+		Version                string            `json:"version"`
+	}
+
 	// A RevisionAction is a description of an edit to be performed on a file
 	// contract. Three types are allowed, 'ActionDelete', 'ActionInsert', and
 	// 'ActionModify'. ActionDelete just takes a sector index, indicating which
@@ -469,7 +493,7 @@ type (
 
 	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
 	LoopSettingsResponse struct {
-		Settings HostExternalSettings
+		Settings []byte // actually a JSON-encoded HostExternalSettings
 	}
 
 	// LoopWriteRequest contains the request parameters for RPCLoopWrite.
@@ -605,6 +629,94 @@ func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uin
 		maxLen = RPCMinLen
 	}
 	return ReadRPCMessage(r, aead, &rpcResponse{nil, resp}, maxLen)
+}
+
+// A RenterHostSession is a session of the new renter-host protocol.
+type RenterHostSession struct {
+	aead cipher.AEAD
+	conn net.Conn
+}
+
+// WriteRequest writes an encrypted RPC request using the new loop
+// protocol.
+func (s *RenterHostSession) WriteRequest(rpcID types.Specifier, req interface{}) error {
+	return WriteRPCRequest(s.conn, s.aead, rpcID, req)
+}
+
+// WriteResponse writes an RPC response or error using the new loop
+// protocol. Either resp or err must be nil. If err is an *RPCError, it is
+// sent directly; otherwise, a generic RPCError is created from err's Error
+// string.
+func (s *RenterHostSession) WriteResponse(resp interface{}, err error) error {
+	return WriteRPCResponse(s.conn, s.aead, resp, err)
+}
+
+// ReadRPCID reads an RPC request ID using the new loop protocol.
+func (s *RenterHostSession) ReadRPCID() (rpcID types.Specifier, err error) {
+	return ReadRPCID(s.conn, s.aead)
+}
+
+// ReadRequest reads an RPC request using the new loop protocol.
+func (s *RenterHostSession) ReadRequest(req interface{}, maxLen uint64) error {
+	return ReadRPCRequest(s.conn, s.aead, req, maxLen)
+}
+
+// ReadResponse reads an RPC response using the new loop protocol.
+func (s *RenterHostSession) ReadResponse(resp interface{}, maxLen uint64) error {
+	return ReadRPCResponse(s.conn, s.aead, resp, maxLen)
+}
+
+// NewRenterSession returns a new renter-side session of the renter-host
+// protocol.
+func NewRenterSession(conn net.Conn, hostPublicKey types.SiaPublicKey) (*RenterHostSession, LoopChallengeRequest, error) {
+	// generate a session key
+	xsk, xpk := crypto.GenerateX25519KeyPair()
+
+	// send our half of the key exchange
+	req := LoopKeyExchangeRequest{
+		PublicKey: xpk,
+		Ciphers:   []types.Specifier{CipherChaCha20Poly1305},
+	}
+	if err := encoding.NewEncoder(conn).EncodeAll(RPCLoopEnter, req); err != nil {
+		return nil, LoopChallengeRequest{}, err
+	}
+	// read host's half of the key exchange
+	var resp LoopKeyExchangeResponse
+	if err := encoding.NewDecoder(conn, encoding.DefaultAllocLimit).Decode(&resp); err != nil {
+		return nil, LoopChallengeRequest{}, err
+	}
+	// validate the signature before doing anything else; don't want to punish
+	// the "host" if we're talking to an imposter
+	var hpk crypto.PublicKey
+	copy(hpk[:], hostPublicKey.Key)
+	var sig crypto.Signature
+	copy(sig[:], resp.Signature)
+	if err := crypto.VerifyHash(crypto.HashAll(req.PublicKey, resp.PublicKey), hpk, sig); err != nil {
+		return nil, LoopChallengeRequest{}, err
+	}
+	// check for compatible cipher
+	if resp.Cipher != CipherChaCha20Poly1305 {
+		return nil, LoopChallengeRequest{}, errors.New("host selected unsupported cipher")
+	}
+	// derive shared secret, which we'll use as an encryption key
+	cipherKey := crypto.DeriveSharedSecret(xsk, resp.PublicKey)
+
+	// use cipherKey to initialize an AEAD cipher
+	aead, err := chacha20poly1305.New(cipherKey[:])
+	if err != nil {
+		build.Critical("could not create cipher")
+		return nil, LoopChallengeRequest{}, err
+	}
+
+	// read host's challenge
+	var challengeReq LoopChallengeRequest
+	if err := ReadRPCMessage(conn, aead, &challengeReq, RPCMinLen); err != nil {
+		return nil, LoopChallengeRequest{}, err
+	}
+	return &RenterHostSession{
+		aead: aead,
+		conn: conn,
+	}, challengeReq, nil
 }
 
 // ReadNegotiationAcceptance reads an accept/reject response from r (usually a

@@ -54,7 +54,7 @@ func verifySettings(conn net.Conn, host modules.HostDBEntry) (modules.HostDBEntr
 	copy(pk[:], host.PublicKey.Key)
 
 	// read signed host settings
-	var recvSettings modules.HostExternalSettings
+	var recvSettings modules.HostOldExternalSettings
 	if err := crypto.ReadSignedObject(conn, &recvSettings, modules.NegotiateMaxHostExternalSettingsLen, pk); err != nil {
 		return modules.HostDBEntry{}, errors.New("couldn't read host's settings: " + err.Error())
 	}
@@ -65,7 +65,29 @@ func verifySettings(conn net.Conn, host modules.HostDBEntry) (modules.HostDBEntr
 		// host.NetAddress works (it was the one we dialed to get conn)
 		recvSettings.NetAddress = host.NetAddress
 	}
-	host.HostExternalSettings = recvSettings
+	host.HostExternalSettings = modules.HostExternalSettings{
+		AcceptingContracts:     recvSettings.AcceptingContracts,
+		MaxDownloadBatchSize:   recvSettings.MaxDownloadBatchSize,
+		MaxDuration:            recvSettings.MaxDuration,
+		MaxReviseBatchSize:     recvSettings.MaxReviseBatchSize,
+		NetAddress:             recvSettings.NetAddress,
+		RemainingStorage:       recvSettings.RemainingStorage,
+		SectorSize:             recvSettings.SectorSize,
+		TotalStorage:           recvSettings.TotalStorage,
+		UnlockHash:             recvSettings.UnlockHash,
+		WindowSize:             recvSettings.WindowSize,
+		Collateral:             recvSettings.Collateral,
+		MaxCollateral:          recvSettings.MaxCollateral,
+		ContractPrice:          recvSettings.ContractPrice,
+		DownloadBandwidthPrice: recvSettings.DownloadBandwidthPrice,
+		StoragePrice:           recvSettings.StoragePrice,
+		UploadBandwidthPrice:   recvSettings.UploadBandwidthPrice,
+		RevisionNumber:         recvSettings.RevisionNumber,
+		Version:                recvSettings.Version,
+		// New fields are set to zero.
+		BaseRPCPrice:      types.ZeroCurrency,
+		SectorAccessPrice: types.ZeroCurrency,
+	}
 	return host, nil
 }
 

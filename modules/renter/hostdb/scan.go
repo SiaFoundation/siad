@@ -5,6 +5,7 @@ package hostdb
 // settings of the hosts.
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
@@ -423,19 +424,78 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		defer close(connCloseChan)
 		conn.SetDeadline(time.Now().Add(hostScanDeadline))
 
+		// Assume that the host supports the new protocol, and request its
+		// settings. If we are talking to an old host, they will not recognize
+		// the request and will close the connection.
+		tryNewProtoErr := func() error {
+			s, _, err := modules.NewRenterSession(conn, pubKey)
+			if err != nil {
+				return err
+			}
+			if err := s.WriteRequest(modules.RPCLoopSettings, nil); err != nil {
+				return err
+			}
+			var resp modules.LoopSettingsResponse
+			if err := s.ReadResponse(&resp, maxSettingsLen); err != nil {
+				return err
+			}
+			return json.Unmarshal(resp.Settings, &settings)
+		}()
+		if tryNewProtoErr == nil {
+			return nil
+		}
+
+		// Failed to get settings with the new protocol; fall back to the old
+		// protocol, filling in the missing fields with default values.
+		conn.Close()
+		conn2, err := dialer.Dial("tcp", string(netAddr))
+		if err != nil {
+			return err
+		}
+		// NOTE: we can't assign the result of Dial directly to conn, because if
+		// the Dial fails and conn is nil, then the deferred call to Close will
+		// segfault.
+		conn = conn2
 		err = encoding.WriteObject(conn, modules.RPCSettings)
 		if err != nil {
 			return err
 		}
 		var pubkey crypto.PublicKey
 		copy(pubkey[:], pubKey.Key)
-		return crypto.ReadSignedObject(conn, &settings, maxSettingsLen, pubkey)
+		var oldSettings modules.HostOldExternalSettings
+		err = crypto.ReadSignedObject(conn, &oldSettings, maxSettingsLen, pubkey)
+		if err != nil {
+			return err
+		}
+		settings = modules.HostExternalSettings{
+			AcceptingContracts:     oldSettings.AcceptingContracts,
+			MaxDownloadBatchSize:   oldSettings.MaxDownloadBatchSize,
+			MaxDuration:            oldSettings.MaxDuration,
+			MaxReviseBatchSize:     oldSettings.MaxReviseBatchSize,
+			NetAddress:             oldSettings.NetAddress,
+			RemainingStorage:       oldSettings.RemainingStorage,
+			SectorSize:             oldSettings.SectorSize,
+			TotalStorage:           oldSettings.TotalStorage,
+			UnlockHash:             oldSettings.UnlockHash,
+			WindowSize:             oldSettings.WindowSize,
+			Collateral:             oldSettings.Collateral,
+			MaxCollateral:          oldSettings.MaxCollateral,
+			ContractPrice:          oldSettings.ContractPrice,
+			DownloadBandwidthPrice: oldSettings.DownloadBandwidthPrice,
+			StoragePrice:           oldSettings.StoragePrice,
+			UploadBandwidthPrice:   oldSettings.UploadBandwidthPrice,
+			RevisionNumber:         oldSettings.RevisionNumber,
+			Version:                oldSettings.Version,
+			// New fields are set to zero.
+			BaseRPCPrice:      types.ZeroCurrency,
+			SectorAccessPrice: types.ZeroCurrency,
+		}
+		return nil
 	}()
 	if err != nil {
-		hdb.log.Debugf("Scan of host at %v failed: %v", netAddr, err)
-
+		hdb.log.Debugf("Scan of host at %v failed: %v", pubKey, err)
 	} else {
-		hdb.log.Debugf("Scan of host at %v succeeded.", netAddr)
+		hdb.log.Debugf("Scan of host at %v succeeded.", pubKey)
 		entry.HostExternalSettings = settings
 	}
 	success := err == nil

@@ -1,8 +1,10 @@
 package host
 
 import (
+	"encoding/json"
 	"errors"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	bolt "github.com/coreos/bbolt"
@@ -15,13 +17,15 @@ import (
 // managedRPCLoopSettings writes an RPC response containing the host's
 // settings.
 func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
+	atomic.AddUint64(&h.atomicSettingsCalls, 1)
 	s.extendDeadline(modules.NegotiateSettingsTime)
 
 	h.mu.Lock()
 	hes := h.externalSettings()
 	h.mu.Unlock()
+	js, _ := json.Marshal(hes)
 	resp := modules.LoopSettingsResponse{
-		Settings: hes,
+		Settings: js,
 	}
 	if err := s.writeResponse(resp); err != nil {
 		return err
