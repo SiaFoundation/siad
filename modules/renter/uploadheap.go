@@ -16,7 +16,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // repairTarget is a helper type for telling the repair heap what type of
@@ -220,12 +219,6 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		}
 	}
 
-	// Build a map of host public keys.
-	pks := make(map[string]types.SiaPublicKey)
-	for _, pk := range entrys[0].HostPublicKeys() {
-		pks[pk.String()] = pk
-	}
-
 	// Iterate through the pieces of all chunks of the file and mark which
 	// hosts are already in use for a particular chunk. As you delete hosts
 	// from the 'unusedHosts' map, also increment the 'piecesCompleted' value.
@@ -238,11 +231,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		for pieceIndex, pieceSet := range pieces {
 			for _, piece := range pieceSet {
 				// Get the contract for the piece.
-				pk, exists := pks[piece.HostPubKey.String()]
-				if !exists {
-					build.Critical("Couldn't find public key in map. This should never happen")
-				}
-				contractUtility, exists := r.hostContractor.ContractUtility(pk)
+				contractUtility, exists := r.hostContractor.ContractUtility(piece.HostPubKey)
 				if !exists {
 					// File contract does not seem to be part of the host anymore.
 					continue
@@ -254,12 +243,12 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 				}
 
 				// Mark the chunk set based on the pieces in this contract.
-				_, exists = newUnfinishedChunks[i].unusedHosts[pk.String()]
+				_, exists = newUnfinishedChunks[i].unusedHosts[piece.HostPubKey.String()]
 				redundantPiece := newUnfinishedChunks[i].pieceUsage[pieceIndex]
 				if exists && !redundantPiece {
 					newUnfinishedChunks[i].pieceUsage[pieceIndex] = true
 					newUnfinishedChunks[i].piecesCompleted++
-					delete(newUnfinishedChunks[i].unusedHosts, pk.String())
+					delete(newUnfinishedChunks[i].unusedHosts, piece.HostPubKey.String())
 				} else if exists {
 					// This host has a piece, but it is the same piece another
 					// host has. We should still remove the host from the
@@ -268,7 +257,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 					// has multiple pieces and another host with redundant
 					// pieces goes offline, we end up with false redundancy
 					// reporting.
-					delete(newUnfinishedChunks[i].unusedHosts, pk.String())
+					delete(newUnfinishedChunks[i].unusedHosts, piece.HostPubKey.String())
 				}
 			}
 		}
