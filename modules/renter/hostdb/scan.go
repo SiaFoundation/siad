@@ -448,10 +448,14 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		// Failed to get settings with the new protocol; fall back to the old
 		// protocol, filling in the missing fields with default values.
 		conn.Close()
-		conn, err = dialer.Dial("tcp", string(netAddr))
+		conn2, err := dialer.Dial("tcp", string(netAddr))
 		if err != nil {
 			return err
 		}
+		// NOTE: we can't assign the result of Dial directly to conn, because if
+		// the Dial fails and conn is nil, then the deferred call to Close will
+		// segfault.
+		conn = conn2
 		err = encoding.WriteObject(conn, modules.RPCSettings)
 		if err != nil {
 			return err
