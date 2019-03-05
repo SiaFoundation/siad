@@ -325,13 +325,30 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	defer s.contractSet.Return(sc)
 	contract := sc.header // for convenience
 
-	// calculate price
+	// calculate estimated bandwidth
 	var totalLength uint64
 	for _, sec := range req.Sections {
 		totalLength += uint64(sec.Length)
 	}
-	bandwidthPrice := s.host.DownloadBandwidthPrice.Mul64(totalLength)
-	sectorAccessPrice := s.host.SectorAccessPrice.Mul64(1)
+	var estProofHashes uint64
+	if req.MerkleProof {
+		// use the worst-case proof size of 2*tree depth (this occurs when
+		// proving across the two leaves in the center of the tree)
+		estHashesPerProof := 2 * bits.Len64(modules.SectorSize/crypto.SegmentSize)
+		estProofHashes = uint64(len(req.Sections) * estHashesPerProof)
+	}
+	estBandwidth := totalLength + estProofHashes*crypto.HashSize
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
+	}
+	// calculate sector accesses
+	sectorAccesses := make(map[crypto.Hash]struct{})
+	for _, sec := range req.Sections {
+		sectorAccesses[sec.MerkleRoot] = struct{}{}
+	}
+	// calculate price
+	bandwidthPrice := s.host.DownloadBandwidthPrice.Mul64(estBandwidth)
+	sectorAccessPrice := s.host.SectorAccessPrice.Mul64(uint64(len(sectorAccesses)))
 	price := s.host.BaseRPCPrice.Add(bandwidthPrice).Add(sectorAccessPrice)
 	if contract.RenterFunds().Cmp(price) < 0 {
 		return modules.RenterContract{}, errors.New("contract has insufficient funds to support download")

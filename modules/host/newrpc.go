@@ -3,6 +3,7 @@ package host
 import (
 	"encoding/json"
 	"errors"
+	"math/bits"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -456,12 +457,19 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	}
 
 	// calculate expected cost and verify against renter's revision
-	var bandwidthCost types.Currency
+	var estBandwidth uint64
 	sectorAccesses := make(map[crypto.Hash]struct{})
 	for _, sec := range req.Sections {
-		bandwidthCost = bandwidthCost.Add(settings.DownloadBandwidthPrice.Mul64(uint64(sec.Length)))
+		// use the worst-case proof size of 2*tree depth (this occurs when
+		// proving across the two leaves in the center of the tree)
+		estHashesPerProof := 2 * bits.Len64(modules.SectorSize/crypto.SegmentSize)
+		estBandwidth += uint64(sec.Length) + uint64(estHashesPerProof*crypto.HashSize)
 		sectorAccesses[sec.MerkleRoot] = struct{}{}
 	}
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
+	}
+	bandwidthCost := settings.DownloadBandwidthPrice.Mul64(estBandwidth)
 	sectorAccessCost := settings.SectorAccessPrice.Mul64(uint64(len(sectorAccesses)))
 	totalCost := settings.BaseRPCPrice.Add(bandwidthCost).Add(sectorAccessCost)
 	err := verifyPaymentRevision(currentRevision, newRevision, blockHeight, totalCost)
