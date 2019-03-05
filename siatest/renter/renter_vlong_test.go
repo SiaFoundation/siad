@@ -2,7 +2,6 @@ package renter
 
 import (
 	"encoding/hex"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -61,15 +60,14 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to upload the file to.
 			dirs, err := r.Dirs()
+			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+				continue
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
-				continue
-			}
 			dir := dirs[fastrand.Intn(len(dirs))]
 			sp := filepath.Join(dir, hex.EncodeToString(fastrand.Bytes(16)))
-			fmt.Println("uploading to", sp)
 			// Upload the file
 			lf, err := r.FilesDir().NewFile(int(modules.SectorSize) + siatest.Fuzz())
 			if err != nil {
@@ -194,16 +192,57 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to create a dir in.
 			dirs, err := r.Dirs()
+			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+				continue
+			}
 			if err != nil {
 				t.Fatal(err)
-			}
-			if strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
-				continue
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
 			sp := filepath.Join(dir, hex.EncodeToString(fastrand.Bytes(16)))
 			if err := r.RenterDirCreatePost(sp); err != nil {
 				t.Fatal(err)
+			}
+			time.Sleep(time.Duration(fastrand.Intn(500))*time.Millisecond + 500*time.Millisecond) // between 0.5s and 1s
+		}
+	}()
+	// One thread deletes a random directory and sometimes creates an empty one
+	// in its place or simply renames it to be a sub dir of a random directory.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			// Get a random directory to delete.
+			dirs, err := r.Dirs()
+			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+				continue
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := dirs[fastrand.Intn(len(dirs))]
+			if fastrand.Intn(2) == 0 {
+				// 50% chance to delete and recreate the directory.
+				if err := r.RenterDirDeletePost(dir); err != nil {
+					t.Fatal(err)
+				}
+				if err := r.RenterDirCreatePost(dir); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				// TODO uncomment this one rename is implemented
+				// 50% chance to rename the directory to be the child of a
+				// random existing directory.
+				//newParent := dirs[fastrand.Intn(len(dirs))]
+				//newDir := filepath.Join(newParent, hex.EncodeToString(fastrand.Bytes(16)))
+				//if err := r.RenterDirRenamePost(dir, newDir); err != nil {
+				//	t.Fatal(err)
+				//}
 			}
 			time.Sleep(time.Duration(fastrand.Intn(500))*time.Millisecond + 500*time.Millisecond) // between 0.5s and 1s
 		}
