@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	bolt "github.com/coreos/bbolt"
@@ -16,6 +17,7 @@ import (
 // managedRPCLoopSettings writes an RPC response containing the host's
 // settings.
 func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
+	atomic.AddUint64(&h.atomicSettingsCalls, 1)
 	s.extendDeadline(modules.NegotiateSettingsTime)
 
 	h.mu.Lock()
