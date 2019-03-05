@@ -260,7 +260,8 @@ func (d *download) markComplete() {
 func (d *download) onComplete(f downloadCompleteFunc) {
 	select {
 	case <-d.completeChan:
-		build.Critical("Can't call OnComplete after download is completed")
+		err := f(d.err)
+		d.log.Println("Failed to execute downloadCompleteFunc", err)
 	default:
 	}
 	d.downloadCompleteFuncs = append(d.downloadCompleteFuncs, f)

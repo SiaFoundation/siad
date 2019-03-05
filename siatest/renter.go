@@ -286,6 +286,37 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 	return localFile, remoteFile, err
 }
 
+// Dirs returns the siapaths of all dirs of the TestNode's renter in no
+// deterministic order.
+func (tn *TestNode) Dirs() ([]string, error) {
+	// dirs always contains the root dir.
+	dirs := []string{""}
+	toVisit := []string{""}
+
+	// As long as we find new dirs we add them to dirs.
+	for len(toVisit) > 0 {
+		// Pop of the first dir.
+		d := toVisit[0]
+		toVisit = toVisit[1:]
+
+		// Add the first dir to dirs.
+		dirs = append(dirs, d)
+
+		// Get the dir info.
+		rd, err := tn.RenterGetDir(d)
+		if err != nil {
+			return nil, err
+		}
+		// Append the subdirs to toVisit.
+		for _, di := range rd.Directories {
+			if di.SiaPath != d {
+				toVisit = append(toVisit, di.SiaPath)
+			}
+		}
+	}
+	return dirs, nil
+}
+
 // UploadBlocking attempts to upload an existing file with the option to overwrite if exists
 // and waits for the upload to reach 100% progress and redundancy.
 func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {

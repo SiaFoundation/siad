@@ -81,7 +81,10 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 	fileList := []modules.FileInfo{}
 	err := filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
-		// folder.
+		// folder. We simply ignore missing files.
+		if os.IsNotExist(err) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -94,6 +97,9 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 		// Load the Siafile.
 		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), siafile.ShareExtension)
 		file, err := r.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+		if os.IsNotExist(err) || err == siafile.ErrUnknownPath {
+			return nil
+		}
 		if err != nil {
 			return err
 		}

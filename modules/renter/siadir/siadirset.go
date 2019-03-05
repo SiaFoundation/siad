@@ -114,6 +114,9 @@ func (sds *SiaDirSet) open(siaPath string) (*SiaDirSetEntry, error) {
 	if !exists {
 		// Try and Load File from disk
 		sd, err := LoadSiaDir(sds.rootDir, siaPath, modules.ProdDependencies, sds.wal)
+		if os.IsNotExist(err) {
+			return nil, ErrUnknownPath
+		}
 		if err != nil {
 			return nil, err
 		}
