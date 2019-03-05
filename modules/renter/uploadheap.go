@@ -6,6 +6,7 @@ package renter
 import (
 	"container/heap"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -124,7 +125,7 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 // TODO / NOTE: This code can be substantially simplified once the files store
 // the HostPubKey instead of the FileContractID, and can be simplified even
 // further once the layout is per-chunk instead of per-filecontract.
-func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) []*unfinishedUploadChunk {
+func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
 	// Sanity check that there are entries
 	if len(entrys) == 0 {
 		r.log.Debugln("WARN: no entries passed into buildUnfinishedChunks")
@@ -274,27 +275,52 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	}
 
 	// Iterate through the set of newUnfinishedChunks and remove any that are
-	// completed.
+	// completed or are not downloadable.
 	incompleteChunks := newUnfinishedChunks[:0]
-	for i := 0; i < len(newUnfinishedChunks); i++ {
-		if newUnfinishedChunks[i].piecesCompleted < newUnfinishedChunks[i].piecesNeeded {
-			incompleteChunks = append(incompleteChunks, newUnfinishedChunks[i])
+	for _, chunk := range newUnfinishedChunks {
+		// Check if chunk is complete
+		incomplete := chunk.piecesCompleted < chunk.piecesNeeded
+		// Check if chunk is downloadable
+		chunkHealth := chunk.fileEntry.ChunkHealth(int(chunk.index), offline, goodForRenew)
+		_, err := os.Stat(chunk.fileEntry.LocalPath())
+		downloadable := chunkHealth <= 1 || err == nil
+		// Check if chunk seems stuck
+		stuck := !incomplete && chunkHealth != 0
+
+		// Add chunk to list of incompleteChunks if it is incomplete and
+		// downloadable or if we are targetting stuck chunks
+		if incomplete && (downloadable || target == targetStuckChunks) {
+			incompleteChunks = append(incompleteChunks, chunk)
 			continue
 		}
-		// Close entry of completed chunk
-		err := newUnfinishedChunks[i].fileEntry.Close()
+
+		// If a chunk is not downloadable mark it as stuck
+		if !downloadable {
+			r.log.Debugln("Marking chunk", chunk.id, "as stuck due to not being downloadable")
+			err = chunk.fileEntry.SetStuck(chunk.index, true)
+			if err != nil {
+				r.log.Debugln("WARN: unable to mark chunk as stuck:", err)
+			}
+		} else if stuck {
+			r.log.Debugln("Marking chunk", chunk.id, "as stuck due to being complete but having a health of", chunkHealth)
+			err = chunk.fileEntry.SetStuck(chunk.index, true)
+			if err != nil {
+				r.log.Debugln("WARN: unable to mark chunk as stuck:", err)
+			}
+		}
+
+		// Close entry of completed or not downloadable chunk
+		err = chunk.fileEntry.Close()
 		if err != nil {
 			r.log.Println("WARN: could not close file:", err)
 		}
 	}
-	// TODO: Don't return chunks that can't be downloaded, uploaded or otherwise
-	// helped by the upload process. These chunks should be marked as stuck
 	return incompleteChunks
 }
 
 // managedBuildAndPushRandomChunk randomly selects a file and builds the
 // unfinished chunks, then randomly adds one chunk to the upload heap
-func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) {
+func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
 	// Sanity check that there are files
 	if len(files) == 0 {
 		return
@@ -304,7 +330,7 @@ func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry
 	file := files[randFileIndex]
 	id := r.mu.Lock()
 	// Build the unfinished stuck chunks from the file
-	unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
+	unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target, offline, goodForRenew)
 	r.mu.Unlock(id)
 	// Sanity check that there are stuck chunks
 	if len(unfinishedUploadChunks) == 0 {
@@ -322,12 +348,12 @@ func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry
 
 // managedBuildAndPushChunks builds the unfinished upload chunks and adds them
 // to the upload heap
-func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget) {
+func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
 	// Loop through the whole set of files and get a list of chunks to add to
 	// the heap.
 	for _, file := range files {
 		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target)
+		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target, offline, goodForRenew)
 		r.mu.Unlock(id)
 		if len(unfinishedUploadChunks) == 0 {
 			r.log.Println("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
@@ -386,18 +412,19 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 
 	// Check if any files were selected from directory
 	if len(files) == 0 {
-		r.log.Println("No files pulled from", dirSiaPath, "to build the repair heap")
+		r.log.Println("No files pulled from `", dirSiaPath, "` to build the repair heap")
 		return
 	}
 
 	// Build the unfinished upload chunks and add them to the upload heap
+	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	switch target {
 	case targetStuckChunks:
 		r.log.Debugln("Adding stuck chunk to heap")
-		r.managedBuildAndPushRandomChunk(files, hosts, target)
+		r.managedBuildAndPushRandomChunk(files, hosts, target, offline, goodForRenew)
 	case targetUnstuckChunks:
 		r.log.Debugln("Adding chunks to heap")
-		r.managedBuildAndPushChunks(files, hosts, target)
+		r.managedBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
 	default:
 		r.log.Println("WARN: repair target not recognized", target)
 	}

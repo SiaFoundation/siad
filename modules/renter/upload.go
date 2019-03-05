@@ -119,14 +119,11 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	// updated with the new file
 	go r.threadedBubbleMetadata(dirSiaPath)
 
+	// Create nil maps for offline and goodForRenew
+	nilMap := make(map[string]bool)
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
-	id := r.mu.Lock()
-	unfinishedChunks := r.buildUnfinishedChunks(entry.CopyEntry(int(entry.NumChunks())), hosts, targetUnstuckChunks)
-	r.mu.Unlock(id)
-	for i := 0; i < len(unfinishedChunks); i++ {
-		r.uploadHeap.managedPush(unfinishedChunks[i])
-	}
+	r.managedBuildAndPushChunks(entry.CopyEntry(int(entry.NumChunks())), hosts, targetUnstuckChunks, nilMap, nilMap)
 	select {
 	case r.uploadHeap.newUploads <- struct{}{}:
 	default:

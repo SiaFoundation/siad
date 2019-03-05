@@ -2,6 +2,7 @@ package renter
 
 import (
 	"encoding/hex"
+	"fmt"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -43,8 +44,23 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Manually add workers to worker pool and create host map
+	// Add 1 piece to each chunk
 	hosts := make(map[string]struct{})
+	offline := make(map[string]bool)
+	goodForRenew := make(map[string]bool)
+	for i := uint64(0); i < f.NumChunks(); i++ {
+		host := fmt.Sprintln("host", i)
+		spk := types.SiaPublicKey{}
+		spk.LoadString(host)
+		hosts[spk.String()] = struct{}{}
+		goodForRenew[spk.String()] = true
+		offline[spk.String()] = false
+		if err := f.AddPiece(spk, i, 0, crypto.Hash{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
 		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
 			downloadChan: make(chan struct{}, 1),
@@ -54,7 +70,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	}
 
 	// Call buildUnfinishedChunks as not stuck loop, all un stuck chunks should be returned
-	uucs := rt.renter.buildUnfinishedChunks(f.CopyEntry(int(f.NumChunks())), hosts, targetUnstuckChunks)
+	uucs := rt.renter.buildUnfinishedChunks(f.CopyEntry(int(f.NumChunks())), hosts, targetUnstuckChunks, offline, goodForRenew)
 	if len(uucs) != int(f.NumChunks())-1 {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", int(f.NumChunks())-1, len(uucs))
 	}
@@ -65,9 +81,33 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	}
 
 	// Call buildUnfinishedChunks as stuck loop, all stuck chunks should be returned
-	uucs = rt.renter.buildUnfinishedChunks(f.CopyEntry(int(f.NumChunks())), hosts, targetStuckChunks)
+	uucs = rt.renter.buildUnfinishedChunks(f.CopyEntry(int(f.NumChunks())), hosts, targetStuckChunks, offline, goodForRenew)
 	if len(uucs) != 1 {
 		t.Fatalf("Incorrect number of chunks returned, expected 1 got %v", len(uucs))
+	}
+	for _, c := range uucs {
+		if !c.stuck {
+			t.Fatal("Found unstuck chunk when expecting only stuck chunks")
+		}
+	}
+
+	// Reset offline and goodForRenewMaps to make chunks seem not downloadable
+	goodForRenew = make(map[string]bool)
+	offline = make(map[string]bool)
+
+	// Call buildUnfinishedChunks as not stuck loop, since the file is now not
+	// downloadable it should return no chunks
+	uucs = rt.renter.buildUnfinishedChunks(f.CopyEntry(int(f.NumChunks())), hosts, targetUnstuckChunks, offline, goodForRenew)
+	if len(uucs) != 0 {
+		t.Fatalf("Incorrect number of chunks returned, expected 0 got %v", len(uucs))
+	}
+
+	// Call buildUnfinishedChunks as stuck loop, all chunks should be returned
+	// because they should have been marked as stuck by the previous call and
+	// stuck chunks should still be returned if the file is not downloadable
+	uucs = rt.renter.buildUnfinishedChunks(f.CopyEntry(int(f.NumChunks())), hosts, targetStuckChunks, offline, goodForRenew)
+	if len(uucs) != int(f.NumChunks()) {
+		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", f.NumChunks(), len(uucs))
 	}
 	for _, c := range uucs {
 		if !c.stuck {
@@ -117,74 +157,33 @@ func TestBuildChunkHeap(t *testing.T) {
 		}
 	}
 
-	// Call managedBuildChunkHeap as not stuck loop, the heap should have a
-	// length equal to the number of chunks in both of the files
+	// Call managedBuildChunkHeap as stuck loop, since there are no stuck chunks
+	// there should be no chunks in the upload heap
+	rt.renter.managedBuildChunkHeap("", hosts, targetStuckChunks)
+	if rt.renter.uploadHeap.managedLen() != 0 {
+		t.Fatalf("Expected heap length of %v but got %v", 0, rt.renter.uploadHeap.managedLen())
+	}
+
+	// Call managedBuildChunkHeap as not stuck loop, since we didn't upload the
+	// files we created nor do we have contracts, all the chunks will be viewed
+	// as not downloadable because they have a health of >1. Therefore we
+	// shouldn't see any chunks in the heap
 	rt.renter.managedBuildChunkHeap("", hosts, targetUnstuckChunks)
-	if rt.renter.uploadHeap.managedLen() != int(f1.NumChunks()+f2.NumChunks()) {
-		t.Fatalf("Expected heap length of %v but got %v", int(f1.NumChunks()+f2.NumChunks()), rt.renter.uploadHeap.managedLen())
+	if rt.renter.uploadHeap.managedLen() != 0 {
+		t.Fatalf("Expected heap length of %v but got %v", 0, rt.renter.uploadHeap.managedLen())
 	}
 
-	// Pop all chunks off and confirm they are not stuck and not marked as
-	// stuckRepair
-	chunk := rt.renter.uploadHeap.managedPop()
-	for chunk != nil {
-		if chunk.stuck || chunk.stuckRepair {
-			t.Log("Stuck:", chunk.stuck)
-			t.Log("StuckRepair:", chunk.stuckRepair)
-			t.Fatal("Chunk has incorrect stuck fields")
-		}
-		chunk = rt.renter.uploadHeap.managedPop()
-	}
-
-	// Reset upload heap
-	rt.renter.uploadHeap.heapChunks = make(map[uploadChunkID]struct{})
-	rt.renter.uploadHeap.heap = uploadChunkHeap{}
-
-	// Set the first file's RecentRepairTime to now
-	if err := f1.UpdateRecentRepairTime(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Call managedBuildChunkHeap as not stuck loop, the heap should have a
-	// length equal to the number of chunks in only the second file
-	rt.renter.managedBuildChunkHeap("", hosts, targetUnstuckChunks)
-	if rt.renter.uploadHeap.managedLen() != int(f2.NumChunks()) {
-		t.Fatalf("Expected heap length of %v but got %v", int(f2.NumChunks()), rt.renter.uploadHeap.managedLen())
-	}
-
-	// Pop all chunks off and confirm they are not stuck and not marked as
-	// stuckRepair
-	chunk = rt.renter.uploadHeap.managedPop()
-	for chunk != nil {
-		if chunk.stuck || chunk.stuckRepair {
-			t.Log("Stuck:", chunk.stuck)
-			t.Log("StuckRepair:", chunk.stuckRepair)
-			t.Fatal("Chunk has incorrect stuck fields")
-		}
-		chunk = rt.renter.uploadHeap.managedPop()
-	}
-
-	// Reset upload heap
-	rt.renter.uploadHeap.heapChunks = make(map[uploadChunkID]struct{})
-	rt.renter.uploadHeap.heap = uploadChunkHeap{}
-
-	// Mark both files as stuck
-	if err := f1.MarkAllChunksAsStuck(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f2.MarkAllChunksAsStuck(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Call managedBuildChunkHeap as stuck loop, the heap should have a length
-	// of 1 because only 1 chunk should be added to the heap from the stuck loop
+	// Call managedBuildChunkHeap again as the stuck loop, since the previous
+	// call saw all the chunks as not downloadable it will have marked them as
+	// stuck so we should now see one chunk in the heap
 	rt.renter.managedBuildChunkHeap("", hosts, targetStuckChunks)
 	if rt.renter.uploadHeap.managedLen() != 1 {
 		t.Fatalf("Expected heap length of %v but got %v", 1, rt.renter.uploadHeap.managedLen())
 	}
 
-	// Pop all chunks off and confirm they are stuck and marked as stuckRepair
-	chunk = rt.renter.uploadHeap.managedPop()
+	// Pop all chunks off and confirm they are not stuck and not marked as
+	// stuckRepair
+	chunk := rt.renter.uploadHeap.managedPop()
 	for chunk != nil {
 		if !chunk.stuck || !chunk.stuckRepair {
 			t.Log("Stuck:", chunk.stuck)
