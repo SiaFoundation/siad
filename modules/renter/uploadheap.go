@@ -284,6 +284,8 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		chunkHealth := chunk.fileEntry.ChunkHealth(int(chunk.index), offline, goodForRenew)
 		_, err := os.Stat(chunk.fileEntry.LocalPath())
 		downloadable := chunkHealth <= 1 || err == nil
+		// Check if chunk seems stuck
+		stuck := !incomplete && chunkHealth != 0
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
 		// downloadable or if we are targetting stuck chunks
@@ -294,6 +296,13 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 
 		// If a chunk is not downloadable mark it as stuck
 		if !downloadable {
+			r.log.Debugln("Marking chunk", chunk.id, "as stuck due to not being downloadable")
+			err = chunk.fileEntry.SetStuck(chunk.index, true)
+			if err != nil {
+				r.log.Debugln("WARN: unable to mark chunk as stuck:", err)
+			}
+		} else if stuck {
+			r.log.Debugln("Marking chunk", chunk.id, "as stuck due to being complete but having a health of", chunkHealth)
 			err = chunk.fileEntry.SetStuck(chunk.index, true)
 			if err != nil {
 				r.log.Debugln("WARN: unable to mark chunk as stuck:", err)
@@ -403,7 +412,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 
 	// Check if any files were selected from directory
 	if len(files) == 0 {
-		r.log.Println("No files pulled from", dirSiaPath, "to build the repair heap")
+		r.log.Println("No files pulled from `", dirSiaPath, "` to build the repair heap")
 		return
 	}
 
