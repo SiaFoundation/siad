@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -60,7 +61,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to upload the file to.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
 				continue
 			}
 			if err != nil {
@@ -192,7 +193,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to create a dir in.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
 				continue
 			}
 			if err != nil {
@@ -219,7 +220,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to delete.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
 				continue
 			}
 			if err != nil {
