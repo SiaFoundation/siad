@@ -30,7 +30,7 @@ type backupHeader struct {
 // The following specifiers are options for the encryption of backups.
 var (
 	encryptionPlaintext = ""
-	encryptionTwofish   = "twofish-ofb"
+	encryptionTwofish   = "twofish-ctr"
 	encryptionVersion   = "1.0"
 )
 
@@ -43,13 +43,12 @@ func (r *Renter) CreateBackup(dst string, secret []byte) error {
 	defer r.tg.Done()
 
 	// Create the gzip file.
-	var archive io.Writer
 	f, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	archive = f
+	archive := io.Writer(f)
 
 	// Prepare a header for the backup.
 	bh := backupHeader{
@@ -65,57 +64,43 @@ func (r *Renter) CreateBackup(dst string, secret []byte) error {
 			return err
 		}
 		sw := cipher.StreamWriter{
-			S: cipher.NewOFB(c, bh.IV),
+			S: cipher.NewCTR(c, bh.IV),
 			W: archive,
 		}
 		archive = sw
 	}
 
+	// Skip the checkum for now.
+	if _, err := f.Seek(crypto.HashSize, io.SeekStart); err != nil {
+		return err
+	}
 	// Write the header.
 	enc := json.NewEncoder(f)
 	if err := enc.Encode(bh); err != nil {
 		return err
 	}
-
-	// Get the current offset within the file.
-	chksOff, err := f.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return err
-	}
-
-	// Write a placeholder for the hash.
-	_, err = f.Write(make([]byte, crypto.HashSize))
-	if err != nil {
-		return err
-	}
-
-	// Use a pipe to direct the output of the tar writer into the gzip reader.
-	tarReader, tarWriter := io.Pipe()
-
-	// Start creating the tarball.
-	tarErr := make(chan error)
-	go func() {
-		err := r.managedTarSiaFiles(tarWriter)
-		err = errors.Compose(err, tarWriter.Close())
-		tarErr <- err
-	}()
-
-	// Create a hasher to compute a hash of gzip archive before being
-	// encrypted. We combine the hasher and the tarWriter in a multiwriter
-	// and write the created tarball to it.
+	// Wrap the archive in a multiwriter to hash the contents of the archive
+	// before encrypting it.
 	h := crypto.NewHash()
-	mr := io.MultiWriter(archive, h)
-
-	// Gzip the tarball into the multiwriter and grab the error from the other
-	// thread.
-	if err := gzipSiaFiles(tarReader, mr); err != nil {
-		return errors.Compose(err, <-tarErr)
+	archive = io.MultiWriter(archive, h)
+	// Wrap the potentially encrypted writer into a gzip writer.
+	gzw := gzip.NewWriter(archive)
+	//defer gzw.Close()
+	// Wrap the gzip writer into a tar writer.
+	tw := tar.NewWriter(gzw)
+	//defer tw.Close()
+	// Add the files to the archive.
+	if err := r.managedTarSiaFiles(tw); err != nil {
+		twErr := tw.Close()
+		gzwErr := gzw.Close()
+		return errors.Compose(err, twErr, gzwErr)
 	}
-
-	// Write the hash to the file.
-	chks := h.Sum(nil)
-	_, err = f.WriteAt(chks, chksOff)
-	return errors.Compose(err, <-tarErr)
+	// Close writers to flush them before computing the hash.
+	twErr := tw.Close()
+	gzwErr := gzw.Close()
+	// Write the hash to the beginning of the file.
+	_, err = f.WriteAt(h.Sum(nil), 0)
+	return errors.Compose(err, twErr, gzwErr)
 }
 
 // LoadBackup loads the siafiles of a previously created backup into the
@@ -128,34 +113,35 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	defer r.tg.Done()
 
 	// Open the gzip file.
-	var archive io.Reader
 	f, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	archive = f
+	archive := io.Reader(f)
 
+	// Read the checksum.
+	var chks crypto.Hash
+	_, err = io.ReadFull(f, chks[:])
+	if err != nil {
+		return err
+	}
 	// Read the header.
 	dec := json.NewDecoder(archive)
 	var bh backupHeader
 	if err := dec.Decode(&bh); err != nil {
 		return err
 	}
-	// Seek back by the amount of data left in the decoder's buffer.
+	// Seek back by the amount of data left in the decoder's buffer. That gives
+	// us the offset of the body.
+	var off int64
 	if buf, ok := dec.Buffered().(*bytes.Reader); ok {
-		_, err = f.Seek(int64(1-buf.Len()), io.SeekCurrent)
+		off, err = f.Seek(int64(1-buf.Len()), io.SeekCurrent)
 		if err != nil {
 			return err
 		}
 	} else {
 		build.Critical("Buffered should return a bytes.Reader")
-	}
-	// Read the checksum.
-	var chks crypto.Hash
-	_, err = io.ReadFull(archive, chks[:])
-	if err != nil {
-		return err
 	}
 	// Check the version number.
 	if bh.Version != encryptionVersion {
@@ -163,11 +149,6 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	}
 	// Wrap the file in the correct streamcipher.
 	archive, err = wrapReaderInCipher(f, bh, secret)
-	if err != nil {
-		return err
-	}
-	// Remember offset of the body.
-	off, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return err
 	}
@@ -182,7 +163,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if !bytes.Equal(h.Sum(nil), chks[:]) {
 		return errors.New("checksum doesn't match")
 	}
-	// Seek back to the offset.
+	// Seek back to the beginning of the body.
 	if _, err := f.Seek(off, io.SeekStart); err != nil {
 		return err
 	}
@@ -191,55 +172,21 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if err != nil {
 		return err
 	}
-
-	// Create a pipe to redirect the unzipped output to the tar reader.
-	gzipReader, gzipWriter := io.Pipe()
-
-	// Start unzipping the archive.
-	gzipErr := make(chan error)
-	go func() {
-		err := gunzipSiaFiles(archive, gzipWriter)
-		err = errors.Compose(err, gzipWriter.Close())
-		gzipErr <- err
-	}()
-
-	// Untar the tarball and grab the error from the other thread.
-	err = untarDir(gzipReader, r.staticFilesDir)
-	return errors.Compose(err, <-gzipErr)
-}
-
-// gunzipSiaFiles unzips the data read from src and writes its output to dst.
-func gunzipSiaFiles(src io.Reader, dst io.Writer) error {
-	// Create the gzip reader.
-	archive, err := gzip.NewReader(src)
+	// Wrap the potentially encrypted reader in a gzip reader.
+	gzr, err := gzip.NewReader(archive)
 	if err != nil {
 		return err
 	}
-	defer archive.Close()
-
-	// Unzip the archive.
-	_, err = io.Copy(dst, archive)
-	return err
-}
-
-// gzipSiaFiles gzips the data from src and writes the archive to dst.
-func gzipSiaFiles(src io.Reader, dst io.Writer) error {
-	// Init the gzip writer.
-	gzw := gzip.NewWriter(dst)
-	defer gzw.Close()
-
-	// Gzip the tarball.
-	_, err := io.Copy(gzw, src)
-	return err
+	defer gzr.Close()
+	// Wrap the gzip reader in a tar reader.
+	tr := tar.NewReader(gzr)
+	// Untar the files.
+	return untarDir(tr, r.staticFilesDir)
 }
 
 // managedTarSiaFiles creates a tarball from the renter's siafiles and writes
 // it to dst.
-func (r *Renter) managedTarSiaFiles(dst io.Writer) error {
-	// Create the writer for the tarball.
-	tarball := tar.NewWriter(dst)
-	defer tarball.Close()
-
+func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 	// Walk over all the siafiles and add them to the tarball.
 	return filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
@@ -259,7 +206,7 @@ func (r *Renter) managedTarSiaFiles(dst io.Writer) error {
 		relPath := strings.TrimPrefix(path, r.staticFilesDir)
 		header.Name = relPath
 		// Write the header.
-		if err := tarball.WriteHeader(header); err != nil {
+		if err := tw.WriteHeader(header); err != nil {
 			return err
 		}
 		// If the info is a dir there is nothing more to do.
@@ -279,19 +226,17 @@ func (r *Renter) managedTarSiaFiles(dst io.Writer) error {
 		}
 		defer sr.Close()
 		// Add the file to the archive.
-		_, err = io.Copy(tarball, sr)
+		_, err = io.Copy(tw, sr)
 		return err
 	})
 }
 
 // untarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
-func untarDir(src io.Reader, dstFolder string) error {
-	// Create tar reader.
-	tarReader := tar.NewReader(src)
+func untarDir(tr *tar.Reader, dstFolder string) error {
 	// Copy the files from the tarball to the new location.
 	for {
-		header, err := tarReader.Next()
+		header, err := tr.Next()
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -314,7 +259,7 @@ func untarDir(src io.Reader, dstFolder string) error {
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(f, tarReader)
+		_, err = io.Copy(f, tr)
 
 		// Close the file right away instead of defering it.
 		_ = f.Close()
@@ -359,7 +304,7 @@ func wrapReaderInCipher(r io.Reader, bh backupHeader, secret []byte) (io.Reader,
 			return nil, err
 		}
 		return cipher.StreamReader{
-			S: cipher.NewOFB(c, bh.IV),
+			S: cipher.NewCTR(c, bh.IV),
 			R: r,
 		}, nil
 	case encryptionPlaintext:
