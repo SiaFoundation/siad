@@ -2,6 +2,8 @@ package renter
 
 import (
 	"encoding/hex"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -57,7 +59,23 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				return
 			default:
 			}
-			_, _, err := r.UploadNewFileBlocking(int(modules.SectorSize)+siatest.Fuzz(), dataPieces, parityPieces, false)
+			// Get a random directory to upload the file to.
+			dirs, err := r.Dirs()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+				continue
+			}
+			dir := dirs[fastrand.Intn(len(dirs))]
+			sp := filepath.Join(dir, hex.EncodeToString(fastrand.Bytes(16)))
+			fmt.Println("uploading to", sp)
+			// Upload the file
+			lf, err := r.FilesDir().NewFile(int(modules.SectorSize) + siatest.Fuzz())
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = r.RenterUploadForcePost(lf.Path(), sp, dataPieces, parityPieces, false)
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
@@ -162,6 +180,32 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(5000))*time.Millisecond + time.Second) // between 5s and 6s
+		}
+	}()
+	// One thread creates empty dirs.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			// Get a random directory to create a dir in.
+			dirs, err := r.Dirs()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+				continue
+			}
+			dir := dirs[fastrand.Intn(len(dirs))]
+			sp := filepath.Join(dir, hex.EncodeToString(fastrand.Bytes(16)))
+			if err := r.RenterDirCreatePost(sp); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Duration(fastrand.Intn(500))*time.Millisecond + 500*time.Millisecond) // between 0.5s and 1s
 		}
 	}()
 	// One thread kills hosts to trigger repairs.
