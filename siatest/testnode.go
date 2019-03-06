@@ -237,5 +237,5 @@ func (tn *TestNode) initRootDirs() error {
 // SiaPath returns the siapath of a local file or directory to be used for
 // uploading
 func (tn *TestNode) SiaPath(path string) string {
-	return strings.TrimPrefix(path, tn.filesDir.path+"/")
+	return strings.TrimPrefix(path, tn.filesDir.path+string(filepath.Separator))
 }
