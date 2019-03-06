@@ -30,6 +30,35 @@ const (
 	targetUnstuckChunks
 )
 
+// uploadChunkHeap is a bunch of priority-sorted chunks that need to be either
+// uploaded or repaired.
+type uploadChunkHeap []*unfinishedUploadChunk
+
+// Implementation of heap.Interface for uploadChunkHeap.
+func (uch uploadChunkHeap) Len() int { return len(uch) }
+func (uch uploadChunkHeap) Less(i, j int) bool {
+	// If the chunks have the same stuck status, check which chunk has the lower
+	// completion percentage.
+	if uch[i].stuck == uch[j].stuck {
+		return float64(uch[i].piecesCompleted)/float64(uch[i].piecesNeeded) < float64(uch[j].piecesCompleted)/float64(uch[j].piecesNeeded)
+	}
+	// If chunk i is stuck, return true to prioritize it.
+	if uch[i].stuck {
+		return true
+	}
+	// Chunk j is stuck, return false to prioritize it.
+	return false
+}
+func (uch uploadChunkHeap) Swap(i, j int)       { uch[i], uch[j] = uch[j], uch[i] }
+func (uch *uploadChunkHeap) Push(x interface{}) { *uch = append(*uch, x.(*unfinishedUploadChunk)) }
+func (uch *uploadChunkHeap) Pop() interface{} {
+	old := *uch
+	n := len(old)
+	x := old[n-1]
+	*uch = old[0 : n-1]
+	return x
+}
+
 // uploadHeap contains a priority-sorted heap of all the chunks being uploaded
 // to the renter, along with some metadata.
 type uploadHeap struct {
@@ -53,45 +82,12 @@ type uploadHeap struct {
 	mu sync.Mutex
 }
 
-// uploadChunkHeap is a bunch of priority-sorted chunks that need to be either
-// uploaded or repaired.
-type uploadChunkHeap []*unfinishedUploadChunk
-
-// Implementation of heap.Interface for uploadChunkHeap.
-func (uch uploadChunkHeap) Len() int { return len(uch) }
-func (uch uploadChunkHeap) Less(i, j int) bool {
-	// If both chunks are stuck, check which chunk has lower completion
-	// percentage
-	if uch[i].stuck && uch[j].stuck {
-		return float64(uch[i].piecesCompleted)/float64(uch[i].piecesNeeded) < float64(uch[j].piecesCompleted)/float64(uch[j].piecesNeeded)
-	}
-	// If chunk i is stuck return true to prioritize it
-	if uch[i].stuck {
-		return true
-	}
-	// If chunk j is stuck return false to prioritize it
-	if uch[j].stuck {
-		return false
-	}
-	// If neither chunk is stuck, check which chunk has lower completion
-	// percentage
-	return float64(uch[i].piecesCompleted)/float64(uch[i].piecesNeeded) < float64(uch[j].piecesCompleted)/float64(uch[j].piecesNeeded)
-}
-func (uch uploadChunkHeap) Swap(i, j int)       { uch[i], uch[j] = uch[j], uch[i] }
-func (uch *uploadChunkHeap) Push(x interface{}) { *uch = append(*uch, x.(*unfinishedUploadChunk)) }
-func (uch *uploadChunkHeap) Pop() interface{} {
-	old := *uch
-	n := len(old)
-	x := old[n-1]
-	*uch = old[0 : n-1]
-	return x
-}
-
 // managedLen will return the length of the heap
 func (uh *uploadHeap) managedLen() int {
 	uh.mu.Lock()
-	defer uh.mu.Unlock()
-	return uh.heap.Len()
+	uhLen := uh.heap.Len()
+	uh.mu.Unlock()
+	return uhLen
 }
 
 // managedPush will add a chunk to the upload heap.
@@ -575,8 +571,12 @@ func (r *Renter) threadedUploadLoop() {
 		}
 
 		// Check if directory requires repairing. We only want to repair
-		// directories with a health worse than the repairHealthThreshold to
-		// save resources
+		// directories with a health worse than the remote repair threshold to
+		// save resources. It has been decided that it's not worth repairing
+		// files that have most of their redundancy, because the repair
+		// operation can require doing an expensive download, and expensive
+		// computation, and we will need to perform those operations frequently
+		// due to host churn if the threshold is too low.
 		if dirHealth < RemoteRepairDownloadThreshold {
 			// Block until new work is required.
 			select {
