@@ -59,6 +59,10 @@ var (
 		Dev:      types.BlockHeight(1),
 		Testing:  types.BlockHeight(1),
 	}).(types.BlockHeight)
+
+	//BackupKeySpecifier is the specifier used for deriving the secret used to
+	//encrypt a backup from the RenterSeed.
+	backupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
 )
 
 type (
@@ -208,7 +212,7 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 	rs := proto.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll()
+	secret := crypto.HashAll(rs, backupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Create the backup.
 	if err := api.renter.CreateBackup(dst, secret[:twofish.BlockSize]); err != nil {
@@ -241,7 +245,7 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 	rs := proto.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll()
+	secret := crypto.HashAll(rs, backupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Load the backup.
 	if err := api.renter.LoadBackup(src, secret[:twofish.BlockSize]); err != nil {

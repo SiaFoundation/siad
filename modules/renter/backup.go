@@ -29,7 +29,7 @@ type backupHeader struct {
 
 // The following specifiers are options for the encryption of backups.
 var (
-	encryptionPlaintext = ""
+	encryptionPlaintext = "plaintext"
 	encryptionTwofish   = "twofish-ctr"
 	encryptionVersion   = "1.0"
 )
@@ -50,9 +50,11 @@ func (r *Renter) CreateBackup(dst string, secret []byte) error {
 	defer f.Close()
 	archive := io.Writer(f)
 
-	// Prepare a header for the backup.
+	// Prepare a header for the backup and default to no encryption. This will
+	// potentially be overwritten later.
 	bh := backupHeader{
-		Version: encryptionVersion,
+		Version:    encryptionVersion,
+		Encryption: encryptionPlaintext,
 	}
 
 	// Wrap it for encryption if required.
@@ -85,10 +87,8 @@ func (r *Renter) CreateBackup(dst string, secret []byte) error {
 	archive = io.MultiWriter(archive, h)
 	// Wrap the potentially encrypted writer into a gzip writer.
 	gzw := gzip.NewWriter(archive)
-	//defer gzw.Close()
 	// Wrap the gzip writer into a tar writer.
 	tw := tar.NewWriter(gzw)
-	//defer tw.Close()
 	// Add the files to the archive.
 	if err := r.managedTarSiaFiles(tw); err != nil {
 		twErr := tw.Close()
