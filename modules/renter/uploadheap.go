@@ -374,7 +374,8 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		siaPath := filepath.Join(dirSiaPath, strings.TrimSuffix(fi.Name(), ext))
 		file, err := r.staticFileSet.Open(siaPath)
 		if err != nil {
-			return
+			r.log.Println("WARN: could not open siafile:", err)
+			continue
 		}
 
 		// For stuck chunk repairs, check to see if file has stuck chunks
