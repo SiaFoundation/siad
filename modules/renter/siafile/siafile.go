@@ -442,7 +442,7 @@ func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodFo
 		// Check health of chunk
 		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
 		// If chunk is healthy then we don't need to mark it as stuck
-		if chunkHealth == 0 {
+		if chunkHealth <= RemoteRepairDownloadThreshold {
 			continue
 		}
 		// Check if chunk is already stuck

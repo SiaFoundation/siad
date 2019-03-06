@@ -577,7 +577,7 @@ func (r *Renter) threadedUploadLoop() {
 		// operation can require doing an expensive download, and expensive
 		// computation, and we will need to perform those operations frequently
 		// due to host churn if the threshold is too low.
-		if dirHealth < RemoteRepairDownloadThreshold {
+		if dirHealth < siafile.RemoteRepairDownloadThreshold {
 			// Block until new work is required.
 			select {
 			case <-r.uploadHeap.newUploads:
