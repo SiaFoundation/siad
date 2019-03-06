@@ -72,57 +72,6 @@ package renter
 // targeted latency. These filters can target other traits as well, such as
 // price and total throughput.
 
-// TODO: One of the biggest requested features for users is to improve the
-// latency of the system. The biggest fruit actually doesn't happen here, right
-// now the hostdb doesn't discriminate based on latency at all, and simply
-// adding some sort of latency scoring will probably be the biggest thing that
-// we can do to improve overall file latency.
-//
-// After we do that, the second most important thing that we can do is enable
-// partial downloads. It's hard to have a low latency when to get any data back
-// at all you need to download a full 40 MiB. If we can leverage partial
-// downloads to drop that to something like 256kb, we'll get much better overall
-// latency for small files and for starting video streams.
-//
-// After both of those, we can leverage worker latency discrimination. We can
-// add code to 'managedProcessDownloadChunk' to put a worker on standby
-// initially instead of have it grab a piece if the latency of the worker is
-// higher than the faster workers. This will prevent the slow workers from
-// bottlenecking a chunk that we are trying to download quickly, though it will
-// harm overall system throughput because it means that the slower workers will
-// idle some of the time.
-
-// TODO: Currently the number of overdrive workers is set to '2' for the first 2
-// chunks of any user-initiated download. But really, this should be a parameter
-// of downloading that gets set by the user through the API on a per-file basis
-// instead of set by default.
-
-// TODO: I tried to write the code such that the transition to true partial
-// downloads would be as seamless as possible, but there's a lot of work that
-// still needs to be done to make that fully possible. The most disruptive thing
-// probably is the place where we call 'Sector' in worker.managedDownload.
-// That's going to need to be changed to a partial sector. This is probably
-// going to result in downloading that's 64-byte aligned instead of perfectly
-// byte-aligned. Further, the encryption and erasure coding may also have
-// alignment requirements which interfere with how the call to Sector can work.
-// So you need to make sure that in 'managedDownload' you download at least
-// enough data to fit the alignment requirements of all 3 steps (download from
-// host, encryption, erasure coding). After the logical data has been recovered,
-// we slice it to whatever is meant to be written to the underlying
-// downloadWriter, that code is going to need to be adjusted as well to slice
-// things in the right way.
-//
-// Overall I don't think it's going to be all that difficult, but it's not
-// nearly as clean-cut as some of the other potential extensions that we can do.
-
-// TODO: Right now the whole download will build and send off chunks even if
-// there are not enough hosts to download the file, and even if there are not
-// enough hosts to download a particular chunk. For the downloads and chunks
-// which are doomed from the outset, we can skip some computation by checking
-// and failing earlier. Another optimization we can make is to not count a
-// worker for a chunk if the worker's contract does not appear in the chunk
-// heap.
-
 import (
 	"fmt"
 	"io"
