@@ -230,7 +230,7 @@ func (c *Contractor) managedRecoverContracts() {
 			if blockHeight >= rc.WindowEnd {
 				// No need to recover a contract if we are beyond the WindowEnd.
 				deleteContract[j] = true
-				c.log.Printf("Not recovering contract since the current blockheight %v is >= the WindowEnd %v:",
+				c.log.Printf("Not recovering contract since the current blockheight %v is >= the WindowEnd %v: %v",
 					blockHeight, rc.WindowEnd, rc.ID)
 				return
 			}
