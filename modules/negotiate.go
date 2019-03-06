@@ -349,6 +349,11 @@ var (
 	WriteActionUpdate = types.Specifier{'U', 'p', 'd', 'a', 't', 'e'}
 )
 
+// Read interrupt
+var (
+	RPCLoopReadStop = types.Specifier{'R', 'e', 'a', 'd', 'S', 't', 'o', 'p'}
+)
+
 var (
 	// RPCChallengePrefix is the prefix prepended to the challenge data
 	// supplied by the host when proving ownership of a contract's secret key.

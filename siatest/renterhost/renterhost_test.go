@@ -71,7 +71,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// download the sector
-	_, dsector, err := s.Read(root, 0, uint32(len(sector)))
+	_, dsector, err := s.ReadSection(root, 0, uint32(len(sector)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// download less than a full sector
-	_, partialSector, err := s.Read(root, crypto.SegmentSize*5, crypto.SegmentSize*12)
+	_, partialSector, err := s.ReadSection(root, crypto.SegmentSize*5, crypto.SegmentSize*12)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, s2data, err := s.Read(droots[0], 0, uint32(len(sector2)))
+	_, s2data, err := s.ReadSection(droots[0], 0, uint32(len(sector2)))
 	if err != nil {
 		t.Fatal(err)
 	} else if !bytes.Equal(s2data, sector2) {
@@ -263,5 +263,84 @@ func TestHostBaseRPCPrice(t *testing.T) {
 	_, _, err = s.Append(sector)
 	if err == nil || !strings.Contains(err.Error(), "rejected for high paying renter valid output") {
 		t.Fatal("expected underpayment error, got", err)
+	}
+}
+
+// TestMultiRead tests the Read RPC.
+func TestMultiRead(t *testing.T) {
+	gp := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterHostTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Close()
+
+	// manually grab a renter contract
+	renter := tg.Renters()[0]
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := cs.ViewAll()[0]
+
+	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// begin the RPC session
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// upload a sector
+	sector := fastrand.Bytes(int(modules.SectorSize))
+	_, root, err := s.Append(sector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download a single section without interrupting.
+	var buf bytes.Buffer
+	req := modules.LoopReadRequest{
+		Sections: []modules.LoopReadRequestSection{{
+			MerkleRoot: root,
+			Offset:     0,
+			Length:     uint32(modules.SectorSize),
+		}},
+		MerkleProof: true,
+	}
+	_, err = s.Read(&buf, req, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buf.Bytes(), sector) {
+		t.Fatal("downloaded sector does not match")
+	}
+
+	// download two sections, but interrupt immediately; we should receive the
+	// first section
+	buf.Reset()
+	req.Sections = []modules.LoopReadRequestSection{
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+	}
+	cancel := make(chan struct{}, 1)
+	cancel <- struct{}{}
+	_, err = s.Read(&buf, req, cancel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buf.Bytes(), sector) {
+		t.Fatal("downloaded sector does not match")
 	}
 }

@@ -104,7 +104,7 @@ func (hs *hostSession) Download(root crypto.Hash, offset, length uint32) ([]byte
 	}
 
 	// Download the data.
-	_, data, err := hs.session.Read(root, offset, length)
+	_, data, err := hs.session.ReadSection(root, offset, length)
 	if err != nil {
 		return nil, err
 	}
