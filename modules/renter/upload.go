@@ -119,7 +119,11 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	// updated with the new file
 	go r.threadedBubbleMetadata(dirSiaPath)
 
-	// Create nil maps for offline and goodForRenew
+	// Create nil maps for offline and goodForRenew to pass in to
+	// managedBuildAndPushChunks. These maps are used to determine the health of
+	// the file and its chunks. Nil maps will result in the file and its chunks
+	// having the worst possible health which is accurate since the file hasn't
+	// been uploaded yet
 	nilMap := make(map[string]bool)
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
