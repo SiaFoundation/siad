@@ -123,15 +123,15 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
 	// Sanity check that there are entries
 	if len(entrys) == 0 {
-		r.log.Debugln("WARN: no entries passed into buildUnfinishedChunks")
+		r.log.Println("WARN: no entries passed into buildUnfinishedChunks")
 		return nil
 	}
 
 	// If we don't have enough workers for the file, don't repair it right now.
 	if len(r.workerPool) < entrys[0].ErasureCode().MinPieces() {
-		r.log.Debugln("Not building any chunks from file as there are not enough workers")
-		// Mark all chunks as stuck
-		if err := entrys[0].MarkAllChunksAsStuck(); err != nil {
+		r.log.Println("Not building any chunks from file as there are not enough workers, marking all unhealthy chunks as stuck")
+		// Mark all unhealthy chunks as stuck
+		if err := entrys[0].MarkAllUnhealthyChunksAsStuck(offline, goodForRenew); err != nil {
 			r.log.Println("WARN: unable to mark all chunks as stuck:", err)
 		}
 		// Close all entrys
@@ -281,16 +281,16 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 
 		// If a chunk is not downloadable mark it as stuck
 		if !downloadable {
-			r.log.Debugln("Marking chunk", chunk.id, "as stuck due to not being downloadable")
+			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being downloadable")
 			err = chunk.fileEntry.SetStuck(chunk.index, true)
 			if err != nil {
-				r.log.Debugln("WARN: unable to mark chunk as stuck:", err)
+				r.log.Println("WARN: unable to mark chunk as stuck:", err)
 			}
 		} else if stuck {
-			r.log.Debugln("Marking chunk", chunk.id, "as stuck due to being complete but having a health of", chunkHealth)
+			r.log.Println("Marking chunk", chunk.id, "as stuck due to being complete but having a health of", chunkHealth)
 			err = chunk.fileEntry.SetStuck(chunk.index, true)
 			if err != nil {
-				r.log.Debugln("WARN: unable to mark chunk as stuck:", err)
+				r.log.Println("WARN: unable to mark chunk as stuck:", err)
 			}
 		}
 
