@@ -346,7 +346,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		r.mu.Unlock(id)
 		if len(unfinishedUploadChunks) == 0 {
 			r.log.Println("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
-			return
+			continue
 		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
@@ -396,6 +396,15 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 			}
 			continue
 		}
+		// For normal repairs, ignore files that don't have any unstuck chunks
+		if target == targetUnstuckChunks && file.NumChunks() == file.NumStuckChunks() {
+			err := file.Close()
+			if err != nil {
+				r.log.Println("WARN: Could not close file:", err)
+			}
+			continue
+		}
+
 		files = append(files, file)
 	}
 
