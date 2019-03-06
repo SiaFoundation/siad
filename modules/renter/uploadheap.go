@@ -149,6 +149,10 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	var chunkIndexes []int
 	for i, entry := range entrys {
 		if (target == targetStuckChunks) != entry.StuckChunkByIndex(uint64(i)) {
+			stuckLoop := target == targetStuckChunks
+			chunkStuck := entry.StuckChunkByIndex(uint64(i))
+			chunkHealth := entry.ChunkHealth(i, offline, goodForRenew)
+			r.log.Debugln("Chunk not needed stuckLoop:", stuckLoop, "chunkStuck:", chunkStuck, "chunkHealh:", chunkHealth)
 			// Close unneeded entrys
 			err := entry.Close()
 			if err != nil {
