@@ -1971,8 +1971,8 @@ func TestHealthLoop(t *testing.T) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		var rd RenterDirectory
 		st1.getAPI("/renter/dir/", &rd)
-		if rd.Directories[0].Health == 0 {
-			return fmt.Errorf("Directory health should have dropped below 0 but was %v", rd.Directories[0].Health)
+		if rd.Directories[0].MaxHealth == 0 {
+			return fmt.Errorf("Directory max health should have dropped below 0 but was %v", rd.Directories[0].MaxHealth)
 		}
 		return nil
 	})
