@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -90,18 +91,22 @@ func (uh *uploadHeap) managedLen() int {
 	return uhLen
 }
 
-// managedPush will add a chunk to the upload heap.
-func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) {
+// managedPush will try and add a chunk to the upload heap. If the chunk is
+// added it will return true otherwise it will return false
+func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	// Check whether this chunk is already being repaired. If not, add it to the
 	// upload chunk heap.
+	var added bool
 	uh.mu.Lock()
 	_, exists1 := uh.heapChunks[uuc.id]
 	_, exists2 := uh.repairingChunks[uuc.id]
 	if !exists1 && !exists2 {
 		uh.heapChunks[uuc.id] = struct{}{}
 		uh.heap.Push(uuc)
+		added = true
 	}
 	uh.mu.Unlock()
+	return added
 }
 
 // managedPop will pull a chunk off of the upload heap and return it.
@@ -282,22 +287,24 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		// If a chunk is not downloadable mark it as stuck
 		if !downloadable {
 			r.log.Debugln("Marking chunk", chunk.id, "as stuck due to not being downloadable")
-			err = chunk.fileEntry.SetStuck(chunk.index, true)
+			err = r.managedSetStuckAndClose(chunk, true)
 			if err != nil {
-				r.log.Debugln("WARN: unable to mark chunk as stuck:", err)
+				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
 			}
+			continue
 		} else if stuck {
 			r.log.Debugln("Marking chunk", chunk.id, "as stuck due to being complete but having a health of", chunkHealth)
-			err = chunk.fileEntry.SetStuck(chunk.index, true)
+			err = r.managedSetStuckAndClose(chunk, stuck)
 			if err != nil {
-				r.log.Debugln("WARN: unable to mark chunk as stuck:", err)
+				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
 			}
+			continue
 		}
 
-		// Close entry of completed or not downloadable chunk
-		err = chunk.fileEntry.Close()
+		// Close entry of completed chunk
+		err = r.managedSetStuckAndClose(chunk, false)
 		if err != nil {
-			r.log.Println("WARN: could not close file:", err)
+			r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
 		}
 	}
 	return incompleteChunks
@@ -327,7 +334,21 @@ func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry
 	randChunkIndex := fastrand.Intn(len(unfinishedUploadChunks))
 	randChunk := unfinishedUploadChunks[randChunkIndex]
 	randChunk.stuckRepair = true
-	r.uploadHeap.managedPush(randChunk)
+	if !r.uploadHeap.managedPush(randChunk) {
+		// Chunk wasn't added to the heap. Close the file
+		err := randChunk.fileEntry.Close()
+		if err != nil {
+			r.log.Println("WARN: unable to close file:", err)
+		}
+	}
+	// Close the unused unfinishedUploadChunks
+	unfinishedUploadChunks = append(unfinishedUploadChunks[:randChunkIndex], unfinishedUploadChunks[randChunkIndex+1:]...)
+	for _, chunk := range unfinishedUploadChunks {
+		err := chunk.fileEntry.Close()
+		if err != nil {
+			r.log.Println("WARN: unable to close file:", err)
+		}
+	}
 	return
 }
 
@@ -345,7 +366,13 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 			return
 		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
-			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
+			if !r.uploadHeap.managedPush(unfinishedUploadChunks[i]) {
+				// Chunk wasn't added to the heap. Close the file
+				err := unfinishedUploadChunks[i].fileEntry.Close()
+				if err != nil {
+					r.log.Println("WARN: unable to close file:", err)
+				}
+			}
 		}
 	}
 }
@@ -428,16 +455,17 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 // available, fetching the logical data for the chunk (either from the disk or
 // from the network), erasure coding the logical data into the physical data,
 // and then finally passing the work onto the workers.
-func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[string]struct{}) {
+func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[string]struct{}) error {
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
 	if !r.memoryManager.Request(uuc.memoryNeeded, memoryPriorityLow) {
-		return
+		return errors.New("couldn't request memory")
 	}
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
 	// does not need to bottleneck the repair loop.
 	go r.threadedFetchAndRepairChunk(uuc)
+	return nil
 }
 
 // managedRefreshHostsAndWorkers will reset the set of hosts and the set of
@@ -507,18 +535,27 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		availableWorkers := len(r.workerPool)
 		r.mu.RUnlock(id)
 		if availableWorkers < nextChunk.minimumPieces {
-			err := nextChunk.fileEntry.SetStuck(nextChunk.index, true)
+			// Not enough available workers, mark as stuck and close
+			err := r.managedSetStuckAndClose(nextChunk, true)
 			if err != nil {
-				r.log.Println("WARN: unable to set chunk as stuck:", err)
+				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
 			}
-			go r.threadedBubbleMetadata(nextChunk.fileEntry.DirSiaPath())
 			continue
 		}
 
 		// Perform the work. managedPrepareNextChunk will block until
 		// enough memory is available to perform the work, slowing this
 		// thread down to using only the resources that are available.
-		r.managedPrepareNextChunk(nextChunk, hosts)
+		err := r.managedPrepareNextChunk(nextChunk, hosts)
+		if err != nil {
+			// We were unsuccessful in preparing the next chunk so we need to
+			// mark the chunk as stuck and close the file
+			err = r.managedSetStuckAndClose(nextChunk, true)
+			if err != nil {
+				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
+			}
+			continue
+		}
 		consecutiveChunkRepairs++
 
 		// Check if enough chunks are currently being repaired
@@ -533,7 +570,13 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 				}
 			}
 			for _, sc := range stuckChunks {
-				r.uploadHeap.managedPush(sc)
+				if !r.uploadHeap.managedPush(sc) {
+					// Chunk wasn't added to the heap. Close the file
+					err := sc.fileEntry.Close()
+					if err != nil {
+						r.log.Println("WARN: unable to close file:", err)
+					}
+				}
 			}
 			return
 		}
