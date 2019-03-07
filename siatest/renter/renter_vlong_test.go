@@ -50,7 +50,6 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	// Upload params.
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
-	fullRedundancy := 2.0
 	// One thread uploads new files.
 	wg.Add(1)
 	go func() {
@@ -88,7 +87,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) && !errors.Contains(err, siatest.ErrFileNotTracked) {
 				t.Fatal(err)
 			}
-			if err := r.WaitForUploadRedundancy(rf, fullRedundancy); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
+			if err := r.WaitForUploadRedundancy(rf, 1.0); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(1000))*time.Millisecond + time.Second) // between 1s and 2s
@@ -129,7 +128,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) && !errors.Contains(err, siatest.ErrFileNotTracked) {
 				t.Fatal(err)
 			}
-			if err := r.WaitForUploadRedundancy(rf, fullRedundancy); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
+			if err := r.WaitForUploadRedundancy(rf, 1.0); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s
