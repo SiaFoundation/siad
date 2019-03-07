@@ -64,6 +64,9 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
 				continue
 			}
+			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+				continue
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -196,6 +199,9 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
 				continue
 			}
+			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+				continue
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -223,6 +229,9 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
 				continue
 			}
+			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+				continue
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -232,7 +241,11 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				if err := r.RenterDirDeletePost(dir); err != nil {
 					t.Fatal(err)
 				}
-				if err := r.RenterDirCreatePost(dir); err != nil {
+				err := r.RenterDirCreatePost(dir)
+				// NOTE we could probably avoid ignoring ErrPathOverload if we
+				// decided that `siadir.New` returns a potentially existing
+				// directory instead.
+				if err != nil && !strings.Contains(err.Error(), siadir.ErrPathOverload.Error()) {
 					t.Fatal(err)
 				}
 			} else {
