@@ -674,7 +674,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Check whether a repair is needed. If a repair is not needed, block
 		// until there is a signal suggesting that a repair is needed. If there
 		// is a new upload, a signal will be sent through the 'newUploads'
-		// channel, and if the health scanning loop finds a new file that needs
+		// channel, and if the metadata updating code finds a file that needs
 		// repairing, a signal is sent through the 'repairNeeded' channel.
 		rootMetadata, err := r.managedDirectoryMetadata("") // empty string to fetch root metadata
 		if err != nil {
@@ -703,9 +703,9 @@ func (r *Renter) threadedUploadAndRepair() {
 		// iteration have been met - perform an upload and repair iteration.
 		err = r.managedUploadAndRepair()
 		if err != nil {
-			// If there is an error fetching the root directory metadata, sleep
-			// for a bit and hope that on the next iteration, things will be
-			// better.
+			// If there is an error performing an upload and repair iteration,
+			// sleep for a bit and hope that on the next iteration, things will
+			// be better.
 			r.log.Println("WARN: error performing upload and repair iteration:", err)
 			select {
 			case <-time.After(uploadAndRepairErrorSleepDuration):
