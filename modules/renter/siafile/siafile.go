@@ -429,8 +429,8 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 	return keys
 }
 
-// MarkAllChunksAsStuck marks all chunks as stuck in the siafile
-func (sf *SiaFile) MarkAllChunksAsStuck() error {
+// MarkAllUnhealthyChunksAsStuck marks all chunks as stuck in the siafile
+func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// If the file has been deleted we can't mark a chunk as stuck.
@@ -439,6 +439,12 @@ func (sf *SiaFile) MarkAllChunksAsStuck() error {
 	}
 	var updates []writeaheadlog.Update
 	for chunkIndex := range sf.staticChunks {
+		// Check health of chunk
+		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
+		// If chunk is healthy then we don't need to mark it as stuck
+		if chunkHealth <= RemoteRepairDownloadThreshold {
+			continue
+		}
 		// Check if chunk is already stuck
 		if sf.staticChunks[chunkIndex].Stuck {
 			continue

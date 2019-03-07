@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -48,6 +49,14 @@ var (
 	// for files where every 64 bytes of an encoded piece can be decoded
 	// separately.
 	ecReedSolomonSubShards64 = modules.ErasureCoderType{0, 0, 0, 2}
+
+	// RemoteRepairDownloadThreshold defines the threshold in percent under
+	// which the renter starts repairing a file that is not available on disk.
+	RemoteRepairDownloadThreshold = build.Select(build.Var{
+		Dev:      0.25,
+		Standard: 0.25,
+		Testing:  0.25,
+	}).(float64)
 )
 
 // marshaledChunkSize is a helper method that returns the size of a chunk on

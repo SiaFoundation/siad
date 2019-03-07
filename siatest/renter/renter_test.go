@@ -807,7 +807,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to create a new host", err)
 	}
 	// When doing remote repair the redundancy might not reach 100%.
-	expectedRedundancy = (1.0 - renter.RemoteRepairDownloadThreshold) * fi.Redundancy
+	expectedRedundancy = (1.0 - siafile.RemoteRepairDownloadThreshold) * fi.Redundancy
 	if err := r.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}

@@ -128,15 +128,15 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
 	// Sanity check that there are entries
 	if len(entrys) == 0 {
-		r.log.Debugln("WARN: no entries passed into buildUnfinishedChunks")
+		r.log.Println("WARN: no entries passed into buildUnfinishedChunks")
 		return nil
 	}
 
 	// If we don't have enough workers for the file, don't repair it right now.
 	if len(r.workerPool) < entrys[0].ErasureCode().MinPieces() {
-		r.log.Debugln("Not building any chunks from file as there are not enough workers")
-		// Mark all chunks as stuck
-		if err := entrys[0].MarkAllChunksAsStuck(); err != nil {
+		r.log.Println("Not building any chunks from file as there are not enough workers, marking all unhealthy chunks as stuck")
+		// Mark all unhealthy chunks as stuck
+		if err := entrys[0].MarkAllUnhealthyChunksAsStuck(offline, goodForRenew); err != nil {
 			r.log.Println("WARN: unable to mark all chunks as stuck:", err)
 		}
 		// Close all entrys
@@ -154,6 +154,10 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	var chunkIndexes []int
 	for i, entry := range entrys {
 		if (target == targetStuckChunks) != entry.StuckChunkByIndex(uint64(i)) {
+			stuckLoop := target == targetStuckChunks
+			chunkStuck := entry.StuckChunkByIndex(uint64(i))
+			chunkHealth := entry.ChunkHealth(i, offline, goodForRenew)
+			r.log.Debugln("Chunk not needed stuckLoop:", stuckLoop, "chunkStuck:", chunkStuck, "chunkHealh:", chunkHealth)
 			// Close unneeded entrys
 			err := entry.Close()
 			if err != nil {
@@ -286,17 +290,17 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 
 		// If a chunk is not downloadable mark it as stuck
 		if !downloadable {
-			r.log.Debugln("Marking chunk", chunk.id, "as stuck due to not being downloadable")
-			err = r.managedSetStuckAndClose(chunk, true)
+			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being downloadable")
+			err = chunk.fileEntry.SetStuck(chunk.index, true)
 			if err != nil {
-				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
+				r.log.Println("WARN: unable to mark chunk as stuck:", err)
 			}
 			continue
 		} else if stuck {
-			r.log.Debugln("Marking chunk", chunk.id, "as stuck due to being complete but having a health of", chunkHealth)
-			err = r.managedSetStuckAndClose(chunk, stuck)
+			r.log.Println("Marking chunk", chunk.id, "as stuck due to being complete but having a health of", chunkHealth)
+			err = chunk.fileEntry.SetStuck(chunk.index, true)
 			if err != nil {
-				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
+				r.log.Println("WARN: unable to mark chunk as stuck:", err)
 			}
 			continue
 		}
@@ -363,7 +367,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		r.mu.Unlock(id)
 		if len(unfinishedUploadChunks) == 0 {
 			r.log.Println("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
-			return
+			continue
 		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			if !r.uploadHeap.managedPush(unfinishedUploadChunks[i]) {
@@ -397,7 +401,8 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		siaPath := filepath.Join(dirSiaPath, strings.TrimSuffix(fi.Name(), ext))
 		file, err := r.staticFileSet.Open(siaPath)
 		if err != nil {
-			return
+			r.log.Println("WARN: could not open siafile:", err)
+			continue
 		}
 
 		// For stuck chunk repairs, check to see if file has stuck chunks
@@ -419,6 +424,15 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 			}
 			continue
 		}
+		// For normal repairs, ignore files that don't have any unstuck chunks
+		if target == targetUnstuckChunks && file.NumChunks() == file.NumStuckChunks() {
+			err := file.Close()
+			if err != nil {
+				r.log.Println("WARN: Could not close file:", err)
+			}
+			continue
+		}
+
 		files = append(files, file)
 	}
 
@@ -620,7 +634,7 @@ func (r *Renter) threadedUploadLoop() {
 		// operation can require doing an expensive download, and expensive
 		// computation, and we will need to perform those operations frequently
 		// due to host churn if the threshold is too low.
-		if dirHealth < RemoteRepairDownloadThreshold {
+		if dirHealth < siafile.RemoteRepairDownloadThreshold {
 			// Block until new work is required.
 			select {
 			case <-r.uploadHeap.newUploads:

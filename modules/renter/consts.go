@@ -177,14 +177,6 @@ var (
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
-	// RemoteRepairDownloadThreshold defines the threshold in percent under
-	// which the renter starts repairing a file that is not available on disk.
-	RemoteRepairDownloadThreshold = build.Select(build.Var{
-		Dev:      0.25,
-		Standard: 0.25,
-		Testing:  0.25,
-	}).(float64)
-
 	// repairStuckChunkInterval defines how long the renter sleeps between
 	// trying to repair a stuck chunk. The uploadHeap prioritizes stuck chunks
 	// so this interval is to allow time for unstuck chunks to be repaired.

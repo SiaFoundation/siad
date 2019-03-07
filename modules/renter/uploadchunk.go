@@ -297,7 +297,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
 	// Only download this file if more than 25% of the redundancy is missing.
 	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
-	minMissingPiecesToDownload := int(numParityPieces * RemoteRepairDownloadThreshold)
+	minMissingPiecesToDownload := int(numParityPieces * siafile.RemoteRepairDownloadThreshold)
 	download := chunk.piecesCompleted+minMissingPiecesToDownload < chunk.piecesNeeded
 
 	// Download the chunk if it's not on disk.
@@ -452,7 +452,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		// If there is an error with stat then the file is not on disk or
 		// potentially unaccessible. In either case the repair is successful if
 		// it completed more pieces than the RemoteRepairDownloadThreshold
-		successfulRepair = (1-RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
+		successfulRepair = (1-siafile.RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
 	} else {
 		// Since the file is on disk and accessible with stat then the repair is
 		// successful if >= piecesNeeded pieces are repaired

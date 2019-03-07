@@ -534,7 +534,7 @@ func (r *Renter) managedWorstHealthDirectory() (string, float64, error) {
 	// Follow the path of worst health to the lowest level. We only want to find
 	// directories with a health worse than the repairHealthThreshold to save
 	// resources
-	for health.Health >= RemoteRepairDownloadThreshold {
+	for health.Health >= siafile.RemoteRepairDownloadThreshold {
 		// Check to make sure renter hasn't been shutdown
 		select {
 		case <-r.tg.StopChan():
@@ -636,7 +636,7 @@ func (r *Renter) threadedBubbleMetadata(siaPath string) {
 		// loop. This is only done at the root directory as the repair and stuck
 		// loops start at the root directory so there is no point triggering
 		// them until the root directory is updated
-		if metadata.Health >= RemoteRepairDownloadThreshold {
+		if metadata.Health >= siafile.RemoteRepairDownloadThreshold {
 			select {
 			case r.uploadHeap.repairNeeded <- struct{}{}:
 			default:
