@@ -545,7 +545,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
-	rf, err := r.Upload(lf, dataPieces, parityPieces, false)
+	rf, err := r.Upload(lf, r.SiaPath(lf.Path()), dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}

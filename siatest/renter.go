@@ -17,6 +17,12 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+var (
+	// ErrFileNotTracked is an error returned by the TestNode in case a file
+	// wasn't accessible due to being unknown to the renter.
+	ErrFileNotTracked = errors.New("file is not tracked by renter")
+)
+
 // DownloadToDisk downloads a previously uploaded file. The file will be downloaded
 // to a random location and returned as a LocalFile object.
 func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, error) {
@@ -213,9 +219,8 @@ func (tn *TestNode) Files() ([]modules.FileInfo, error) {
 }
 
 // Upload uses the node to upload the file with the option to overwrite if exists.
-func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
+func (tn *TestNode) Upload(lf *LocalFile, siapath string, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file
-	siapath := tn.SiaPath(lf.path)
 	err := tn.RenterUploadForcePost(lf.path, siapath, dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to upload from "+lf.path+" to "+siapath)
@@ -228,7 +233,7 @@ func (tn *TestNode) Upload(lf *LocalFile, dataPieces, parityPieces uint64, force
 	// Make sure renter tracks file
 	_, err = tn.File(rf)
 	if err != nil {
-		return rf, errors.AddContext(err, "uploaded file is not tracked by the renter")
+		return rf, ErrFileNotTracked
 	}
 	return rf, nil
 }
@@ -263,7 +268,7 @@ func (tn *TestNode) UploadNewFile(filesize int, dataPieces uint64, parityPieces 
 		return nil, nil, errors.AddContext(err, "failed to create file")
 	}
 	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces, force)
+	remoteFile, err := tn.Upload(localFile, tn.SiaPath(localFile.path), dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to start upload")
 	}
@@ -321,7 +326,7 @@ func (tn *TestNode) Dirs() ([]string, error) {
 // and waits for the upload to reach 100% progress and redundancy.
 func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.Upload(localFile, dataPieces, parityPieces, force)
+	remoteFile, err := tn.Upload(localFile, tn.SiaPath(localFile.path), dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to start upload")
 	}
@@ -369,13 +374,13 @@ func (tn *TestNode) WaitForDownload(lf *LocalFile, rf *RemoteFile) error {
 // WaitForUploadProgress waits for a file to reach a certain upload progress.
 func (tn *TestNode) WaitForUploadProgress(rf *RemoteFile, progress float64) error {
 	if _, err := tn.File(rf); err != nil {
-		return errors.New("file is not tracked by renter")
+		return ErrFileNotTracked
 	}
 	// Wait until it reaches the progress
 	return Retry(1000, 100*time.Millisecond, func() error {
 		file, err := tn.File(rf)
 		if err != nil {
-			return errors.AddContext(err, "couldn't retrieve FileInfo")
+			return ErrFileNotTracked
 		}
 		if file.UploadProgress < progress {
 			return fmt.Errorf("progress should be %v but was %v", progress, file.UploadProgress)
@@ -389,13 +394,13 @@ func (tn *TestNode) WaitForUploadProgress(rf *RemoteFile, progress float64) erro
 func (tn *TestNode) WaitForUploadRedundancy(rf *RemoteFile, redundancy float64) error {
 	// Check if file is tracked by renter at all
 	if _, err := tn.File(rf); err != nil {
-		return errors.New("file is not tracked by renter")
+		return ErrFileNotTracked
 	}
 	// Wait until it reaches the redundancy
 	err := Retry(1000, 100*time.Millisecond, func() error {
 		file, err := tn.File(rf)
 		if err != nil {
-			return errors.AddContext(err, "couldn't retrieve FileInfo")
+			return ErrFileNotTracked
 		}
 		if file.Redundancy < redundancy {
 			return fmt.Errorf("redundancy should be %v but was %v", redundancy, file.Redundancy)
@@ -423,13 +428,13 @@ func (tn *TestNode) WaitForUploadRedundancy(rf *RemoteFile, redundancy float64) 
 func (tn *TestNode) WaitForDecreasingRedundancy(rf *RemoteFile, redundancy float64) error {
 	// Check if file is tracked by renter at all
 	if _, err := tn.File(rf); err != nil {
-		return errors.New("file is not tracked by renter")
+		return ErrFileNotTracked
 	}
 	// Wait until it reaches the redundancy
 	return Retry(1000, 100*time.Millisecond, func() error {
 		file, err := tn.File(rf)
 		if err != nil {
-			return errors.AddContext(err, "couldn't retrieve FileInfo")
+			return ErrFileNotTracked
 		}
 		if file.Redundancy > redundancy {
 			return fmt.Errorf("redundancy should be %v but was %v", redundancy, file.Redundancy)
