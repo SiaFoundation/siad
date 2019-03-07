@@ -1959,7 +1959,7 @@ func TestHealthLoop(t *testing.T) {
 		var rf RenterFiles
 		st1.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
-			return errors.New("file redundancy still 2")
+			return fmt.Errorf("Expect 1 file with a redundancy of less than 2, got %v files and redundancy of %v", len(rf.Files), rf.Files[0].Redundancy)
 		}
 		return nil
 	})

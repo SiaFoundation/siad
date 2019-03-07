@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -413,6 +414,24 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
 		r.log.Critical("No workers remaining, but not all memory released:", uc.workersRemaining, uc.piecesRegistered, uc.memoryReleased, uc.memoryNeeded)
 	}
+}
+
+// managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status,
+// triggers threadedBubble to update the directory, and then closes the
+// fileEntry
+func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) error {
+	// Update chunk stuck status
+	err := uc.fileEntry.SetStuck(uc.index, stuck)
+	if err != nil {
+		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaPath(), err)
+	}
+	go r.threadedBubbleMetadata(uc.fileEntry.DirSiaPath())
+	// Close SiaFile
+	err = uc.fileEntry.Close()
+	if err != nil {
+		return fmt.Errorf("WARN: unable to close siafile %v", uc.fileEntry.SiaPath())
+	}
+	return nil
 }
 
 // managedUpdateUploadChunkStuckStatus checks to see if the repair was
