@@ -18,7 +18,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"golang.org/x/crypto/twofish"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -215,7 +214,7 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 	secret := crypto.HashAll(rs, backupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Create the backup.
-	if err := api.renter.CreateBackup(dst, secret[:twofish.BlockSize]); err != nil {
+	if err := api.renter.CreateBackup(dst, secret[:32]); err != nil {
 		WriteError(w, Error{"failed to create backup" + err.Error()}, http.StatusBadRequest)
 		return
 	}
@@ -248,7 +247,7 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 	secret := crypto.HashAll(rs, backupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Load the backup.
-	if err := api.renter.LoadBackup(src, secret[:twofish.BlockSize]); err != nil {
+	if err := api.renter.LoadBackup(src, secret[:32]); err != nil {
 		WriteError(w, Error{"failed to load backup" + err.Error()}, http.StatusBadRequest)
 		return
 	}
