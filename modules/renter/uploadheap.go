@@ -122,6 +122,15 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 
 // buildUnfinishedChunks will pull all of the unfinished chunks out of a file.
 //
+// NOTE: buildUnfinishedChunks takes a slice of SiaFileSetEntrys as input. The
+// SiaFileSetEntrys are all for the same SiaFile. We need a slice of copies
+// because each unfinishedUploadChunk needs its own SiaFileSetEntry. This is due
+// to the SiaFiles being removed from memory. Since the renter does not keep the
+// SiaFiles in memory the unfinishedUploadChunks need to close the SiaFile when
+// they are done and so cannot share a SiaFileSetEntry as the first chunk to
+// finish would then close the Entry and consequentially impact the remaining
+// chunks.
+//
 // TODO / NOTE: This code can be substantially simplified once the files store
 // the HostPubKey instead of the FileContractID, and can be simplified even
 // further once the layout is per-chunk instead of per-filecontract.
