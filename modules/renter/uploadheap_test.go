@@ -2,6 +2,7 @@ package renter
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -177,14 +178,19 @@ func TestBuildChunkHeap(t *testing.T) {
 
 	// Call managedBuildChunkHeap again as the stuck loop, since the previous
 	// call saw all the chunks as not downloadable it will have marked them as
-	// stuck so we should now see one chunk in the heap
+	// stuck.
+	//
+	// For the stuck loop managedBuildChunkHeap will randomly grab one chunk
+	// from maxChunksInHeap files to add to the heap. There are two files
+	// created in the test so we would expect 2 or maxStuckChunksInHeap,
+	// whichever is less, chunks to be added to the heap
 	rt.renter.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetStuckChunks)
-	if rt.renter.uploadHeap.managedLen() != 1 {
-		t.Fatalf("Expected heap length of %v but got %v", 1, rt.renter.uploadHeap.managedLen())
+	expectedChunks := math.Min(2, float64(maxStuckChunksInHeap))
+	if rt.renter.uploadHeap.managedLen() != int(expectedChunks) {
+		t.Fatalf("Expected heap length of %v but got %v", expectedChunks, rt.renter.uploadHeap.managedLen())
 	}
 
-	// Pop all chunks off and confirm they are not stuck and not marked as
-	// stuckRepair
+	// Pop all chunks off and confirm they are stuck and marked as stuckRepair
 	chunk := rt.renter.uploadHeap.managedPop()
 	for chunk != nil {
 		if !chunk.stuck || !chunk.stuckRepair {

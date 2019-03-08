@@ -763,8 +763,10 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		downloadHeap: new(downloadChunkHeap),
 
 		uploadHeap: uploadHeap{
-			heapChunks:        make(map[uploadChunkID]struct{}),
 			repairingChunks:   make(map[uploadChunkID]struct{}),
+			stuckHeapChunks:   make(map[uploadChunkID]struct{}),
+			unstuckHeapChunks: make(map[uploadChunkID]struct{}),
+
 			newUploads:        make(chan struct{}, 1),
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
