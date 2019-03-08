@@ -86,21 +86,17 @@ func randomThreadUID() uint64 {
 	return fastrand.Uint64n(math.MaxUint64)
 }
 
-// CopyEntry copies the SiaFileSetEntry n times and returns an array of
-// SiaFileSetEntrys
-func (entry *SiaFileSetEntry) CopyEntry(n int) []*SiaFileSetEntry {
-	var entrys []*SiaFileSetEntry
+// CopyEntry returns a copy of the SiaFileSetEntry
+func (entry *SiaFileSetEntry) CopyEntry() *SiaFileSetEntry {
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
-	for i := 0; i < n; i++ {
-		threadUID := randomThreadUID()
-		entrys = append(entrys, &SiaFileSetEntry{
-			siaFileSetEntry: entry.siaFileSetEntry,
-			threadUID:       threadUID,
-		})
-		entry.threadMap[threadUID] = newThreadInfo()
+	threadUID := randomThreadUID()
+	copy := &SiaFileSetEntry{
+		siaFileSetEntry: entry.siaFileSetEntry,
+		threadUID:       threadUID,
 	}
-	return entrys
+	entry.threadMap[threadUID] = newThreadInfo()
+	return copy
 }
 
 // Close will close the set entry, removing the entry from memory if there are
