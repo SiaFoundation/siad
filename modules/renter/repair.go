@@ -265,14 +265,21 @@ func (r *Renter) managedCalculateFileMetadata(siaPath string) (siafile.BubbledMe
 	}
 	defer sf.Close()
 
-	// Calculate file health
+	// Mark sure that healthy chunks are not marked as stuck
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	err = sf.MarkAllHealthyChunksAsUnstuck(hostOfflineMap, hostGoodForRenewMap)
+	if err != nil {
+		return siafile.BubbledMetadata{}, errors.AddContext(err, "unable to mark healthy chunks as unstuck")
+	}
+	// Calculate file health
 	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	// Update the LastHealthCheckTime
 	if err := sf.UpdateLastHealthCheckTime(); err != nil {
 		return siafile.BubbledMetadata{}, err
 	}
+	// Calculate file Redundancy and check if local file is missing and
+	// redundancy is less than one
 	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
-	// Check if local file is missing and redundancy is less than one
 	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
 		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
 	}

@@ -322,6 +322,111 @@ func TestChunkHealth(t *testing.T) {
 	}
 }
 
+// TestMarkHealthyChunksAsUnstuck probes the MarkAllHealthyChunksAsUnstuck
+// method
+func TestMarkHealthyChunksAsUnstuck(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Get a blank siafile.
+	// Get new file params, ensure at least 2 chunks
+	siaFilePath, siaPath, source, rc, sk, _, numChunks, fileMode := newTestFileParams()
+	numChunks++
+	pieceSize := modules.SectorSize - sk.Type().Overhead()
+	fileSize := pieceSize * uint64(rc.MinPieces()) * uint64(numChunks)
+	// Create the path to the file.
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Create the file.
+	wal, _ := newTestWAL()
+	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that the number of chunks in the file is correct.
+	if len(sf.staticChunks) != numChunks {
+		t.Fatal("newTestFile didn't create the expected number of chunks")
+	}
+
+	// Create offline and goodForRenew maps
+	offlineMap := make(map[string]bool)
+	goodForRenewMap := make(map[string]bool)
+
+	// Mark all chunks as stuck
+	err = sf.MarkAllUnhealthyChunksAsStuck(offlineMap, goodForRenewMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sf.NumStuckChunks() != sf.NumChunks() {
+		t.Fatalf("numStuckChunks should be %v but was %v", sf.NumChunks(), sf.NumStuckChunks())
+	}
+
+	// Try and mark chunks as unstuck
+	err = sf.MarkAllHealthyChunksAsUnstuck(offlineMap, goodForRenewMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm that all chunks are still stuck
+	if sf.NumStuckChunks() != sf.NumChunks() {
+		t.Fatalf("numStuckChunks should be %v but was %v", sf.NumChunks(), sf.NumStuckChunks())
+	}
+
+	// Add good pieces to first chunk
+	for pieceIndex := range sf.staticChunks[0].Pieces {
+		host := fmt.Sprintln("host", 0, pieceIndex)
+		spk := types.SiaPublicKey{}
+		spk.LoadString(host)
+		offlineMap[spk.String()] = false
+		goodForRenewMap[spk.String()] = true
+		if err := sf.AddPiece(spk, 0, uint64(pieceIndex), crypto.Hash{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Try and mark first chunk as unstuck
+	err = sf.MarkAllHealthyChunksAsUnstuck(offlineMap, goodForRenewMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm that all chunks are still stuck
+	if sf.NumStuckChunks() != sf.NumChunks()-1 {
+		t.Fatalf("numStuckChunks should be %v but was %v", sf.NumChunks()-1, sf.NumStuckChunks())
+	}
+
+	// Make file fully healthy
+	// Reset maps
+	offlineMap = make(map[string]bool)
+	goodForRenewMap = make(map[string]bool)
+
+	// Add good pieces to all chunks
+	for chunkIndex, chunk := range sf.staticChunks {
+		for pieceIndex := range chunk.Pieces {
+			host := fmt.Sprintln("host", chunkIndex, pieceIndex)
+			spk := types.SiaPublicKey{}
+			spk.LoadString(host)
+			offlineMap[spk.String()] = false
+			goodForRenewMap[spk.String()] = true
+			if err := sf.AddPiece(spk, uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	// Mark health chunks as unstuck
+	err = sf.MarkAllHealthyChunksAsUnstuck(offlineMap, goodForRenewMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that all chunks were marked as unstuck
+	if sf.NumStuckChunks() != 0 {
+		t.Fatalf("numStuckChunks should be %v but was %v", 0, sf.NumStuckChunks())
+	}
+}
+
 // TestMarkUnhealthyChunksAsStuck probes the MarkAllUnhealthyChunksAsStuck method
 func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	if testing.Short() {
