@@ -402,6 +402,10 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		build.Critical("WARN: stuckHealth out of bounds. Max value, Min value, stuckHealth found", worstHealth, 0, stuckHealth)
 		stuckHealth = worstHealth
 	}
+	// Sanity Check that the number of stuck chunks makes sense
+	if numStuckChunks != sf.staticMetadata.NumStuckChunks {
+		build.Critical("WARN: the number of stuck chunks found: %v does not match the number of stuck chunks in the siafile metadata: %v", numStuckChunks, sf.staticMetadata.NumStuckChunks)
+	}
 	return health, stuckHealth, numStuckChunks
 }
 
@@ -429,7 +433,49 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 	return keys
 }
 
-// MarkAllUnhealthyChunksAsStuck marks all chunks as stuck in the siafile
+// MarkAllHealthyChunksAsUnstuck marks all health chunks as unstuck in the
+// siafile
+func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodForRenew map[string]bool) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// If the file has been deleted we can't mark a chunk as stuck.
+	if sf.deleted {
+		return errors.New("can't call SetStuck on deleted file")
+	}
+	var updates []writeaheadlog.Update
+	for chunkIndex := range sf.staticChunks {
+		// Check health of chunk
+		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
+		// If chunk is unhealthy then we don't need to mark it as unstuck. We
+		// are only want to mark chunks that are 100% healthy as unstuck.
+		if chunkHealth != 0 {
+			continue
+		}
+		// Check if chunk is already unstuck
+		if !sf.staticChunks[chunkIndex].Stuck {
+			continue
+		}
+		// Update chunk and NumStuckChunks in siafile metadata
+		sf.staticChunks[chunkIndex].Stuck = false
+		sf.staticMetadata.NumStuckChunks--
+		// Create chunk update
+		update, err := sf.saveChunkUpdate(chunkIndex)
+		if err != nil {
+			return err
+		}
+		updates = append(updates, update)
+	}
+	// Create metadata update and apply updates on disk
+	metadataUpdates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	updates = append(updates, metadataUpdates...)
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// MarkAllUnhealthyChunksAsStuck marks all unhealthy chunks as stuck in the
+// siafile
 func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
