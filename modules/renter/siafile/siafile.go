@@ -404,7 +404,7 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	}
 	// Sanity Check that the number of stuck chunks makes sense
 	if numStuckChunks != sf.staticMetadata.NumStuckChunks {
-		build.Critical("WARN: the number of stuck chunks found: %v does not match the number of stuck chunks in the siafile metadata: %v", numStuckChunks, sf.staticMetadata.NumStuckChunks)
+		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, sf.staticMetadata.NumStuckChunks)
 	}
 	return health, stuckHealth, numStuckChunks
 }
@@ -444,15 +444,15 @@ func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodFo
 	}
 	var updates []writeaheadlog.Update
 	for chunkIndex := range sf.staticChunks {
+		// Check if chunk is already unstuck
+		if !sf.staticChunks[chunkIndex].Stuck {
+			continue
+		}
 		// Check health of chunk
 		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
 		// If chunk is unhealthy then we don't need to mark it as unstuck. We
 		// are only want to mark chunks that are 100% healthy as unstuck.
 		if chunkHealth != 0 {
-			continue
-		}
-		// Check if chunk is already unstuck
-		if !sf.staticChunks[chunkIndex].Stuck {
 			continue
 		}
 		// Update chunk and NumStuckChunks in siafile metadata
@@ -485,14 +485,14 @@ func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodFo
 	}
 	var updates []writeaheadlog.Update
 	for chunkIndex := range sf.staticChunks {
+		// Check if chunk is already stuck
+		if sf.staticChunks[chunkIndex].Stuck {
+			continue
+		}
 		// Check health of chunk
 		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
 		// If chunk is healthy then we don't need to mark it as stuck
 		if chunkHealth <= RemoteRepairDownloadThreshold {
-			continue
-		}
-		// Check if chunk is already stuck
-		if sf.staticChunks[chunkIndex].Stuck {
 			continue
 		}
 		// Update chunk and NumStuckChunks in siafile metadata
