@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -687,17 +688,33 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 // renterFileHandler handles POST requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	newTrackingPath := req.FormValue("trackingpath")
-
+	newTrackingPath, err := url.QueryUnescape(req.FormValue("trackingpath"))
+	if err != nil {
+		WriteError(w, Error{"unable to unescape new tracking path"}, http.StatusBadRequest)
+		return
+	}
+	stuck := req.FormValue("stuck")
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{"unable to parse siapath" + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	// Handle changing the tracking path of a file.
 	if newTrackingPath != "" {
-		siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
-		if err != nil {
-			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-			return
-		}
 		if err := api.renter.SetFileTrackingPath(siaPath, newTrackingPath); err != nil {
 			WriteError(w, Error{fmt.Sprintf("unable set tracking path: %v", err)}, http.StatusBadRequest)
+			return
+		}
+	}
+	// Handle changing the 'stuck' status of a file.
+	if stuck != "" {
+		s, err := strconv.ParseBool(stuck)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'stuck' arg"}, http.StatusBadRequest)
+			return
+		}
+		if err := api.renter.SetFileStuck(siaPath, s); err != nil {
+			WriteError(w, Error{"failed to change file 'stuck' status: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}

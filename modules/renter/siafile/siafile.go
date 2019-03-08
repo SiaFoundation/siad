@@ -607,10 +607,34 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 	return minRedundancy
 }
 
+// SetAllStuck sets the Stuck field of all chunks to stuck.
+func (sf *SiaFile) SetAllStuck(stuck bool) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+
+	// If the file has been deleted we can't mark a chunk as stuck.
+	if sf.deleted {
+		return errors.New("can't call SetStuck on deleted file")
+	}
+	// Update all the Stuck field for each chunk.
+	for chunkIndex := range sf.staticChunks {
+		sf.staticChunks[chunkIndex].Stuck = stuck
+	}
+	// Update NumStuckChunks in siafile metadata
+	if stuck {
+		sf.staticMetadata.NumStuckChunks = uint64(len(sf.staticChunks))
+	} else {
+		sf.staticMetadata.NumStuckChunks = 0
+	}
+	// Save the whole file atomically.
+	return sf.saveFile()
+}
+
 // SetStuck sets the Stuck field of the chunk at the given index
 func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+
 	// If the file has been deleted we can't mark a chunk as stuck.
 	if sf.deleted {
 		return errors.New("can't call SetStuck on deleted file")
