@@ -103,6 +103,21 @@ func (uc *unfinishedUploadChunk) managedNotifyStandbyWorkers() {
 	}
 }
 
+// chunkComplete checks some fields of the chunk to determine if the chunk is
+// completed. This can either mean that it ran out of workers or that it was
+// uploaded successfully.
+func (uc *unfinishedUploadChunk) chunkComplete() bool {
+	// The whole chunk was uploaded successfully.
+	if uc.piecesCompleted == uc.piecesNeeded && uc.piecesRegistered == 0 {
+		return true
+	}
+	// We are no longer doing any uploads and we don't have any workers left.
+	if uc.workersRemaining == 0 && uc.piecesRegistered == 0 {
+		return true
+	}
+	return false
+}
+
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
 // physical data and distribute it to the worker pool.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
@@ -375,7 +390,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// Check if the chunk needs to be removed from the list of active
 	// chunks. It needs to be removed if the chunk is complete, but hasn't
 	// yet been released.
-	chunkComplete := uc.workersRemaining == 0 && uc.piecesRegistered == 0
+	chunkComplete := uc.chunkComplete()
 	released := uc.released
 	if chunkComplete && !released {
 		uc.released = true
