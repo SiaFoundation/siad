@@ -606,80 +606,112 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 	}
 }
 
-// threadedUploadLoop is a background thread that checks on the health of files,
-// tracking the least healthy files and queuing the worst ones for repair.
-func (r *Renter) threadedUploadLoop() {
+// managedUploadAndRepair will find new uploads and existing files in need of
+// repair and execute the uploads and repairs. This function effectively runs a
+// single iteration of threadedUploadAndRepair.
+func (r *Renter) managedUploadAndRepair() error {
+	// Find the lowest health directory to queue for repairs.
+	dirSiaPath, dirHealth, err := r.managedWorstHealthDirectory()
+	if err != nil {
+		r.log.Println("WARN: error getting worst health directory:", err)
+		return err
+	}
+
+	// Refresh the worker pool and get the set of hosts that are currently
+	// useful for uploading.
+	hosts := r.managedRefreshHostsAndWorkers()
+
+	// Build a min-heap of chunks organized by upload progress.
+	r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
+	r.uploadHeap.mu.Lock()
+	heapLen := r.uploadHeap.heap.Len()
+	r.uploadHeap.mu.Unlock()
+	if heapLen == 0 {
+		r.log.Printf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
+		// Call threadedBubble to make sure that directory information is
+		// accurate
+		r.threadedBubbleMetadata(dirSiaPath)
+		return nil
+	}
+	r.log.Println("Repairing", heapLen, "chunks from", dirSiaPath)
+
+	// Work through the heap and repair files
+	r.managedRepairLoop(hosts)
+
+	// Once we have worked through the heap, call bubble to update the
+	// directory metadata
+	r.threadedBubbleMetadata(dirSiaPath)
+	return nil
+}
+
+// threadedUploadAndRepair is a background thread that maintains a queue of
+// chunks to repair. This thread attempts to prioritize repairing files and
+// chunks with the lowest health, and attempts to keep heavy throughput
+// sustained for data upload as long as there is at least one chunk in need of
+// upload or repair.
+func (r *Renter) threadedUploadAndRepair() {
 	err := r.tg.Add()
 	if err != nil {
 		return
 	}
 	defer r.tg.Done()
 
+	// Perpetual loop to scan for more files.
 	for {
+		// Return if the renter has shut down.
 		select {
 		case <-r.tg.StopChan():
-			// Return if the renter has shut down.
 			return
 		default:
 		}
 
-		// Wait until the renter is online to proceed.
+		// Wait until the renter is online to proceed. This function will return
+		// 'false' if the renter has shut down before being online.
 		if !r.managedBlockUntilOnline() {
-			// The renter shut down before the internet connection was restored.
 			return
 		}
 
-		// Find Directory that needs to be repaired
-		dirSiaPath, dirHealth, err := r.managedWorstHealthDirectory()
+		// Check whether a repair is needed. If a repair is not needed, block
+		// until there is a signal suggesting that a repair is needed. If there
+		// is a new upload, a signal will be sent through the 'newUploads'
+		// channel, and if the metadata updating code finds a file that needs
+		// repairing, a signal is sent through the 'repairNeeded' channel.
+		rootMetadata, err := r.managedDirectoryMetadata("") // empty string to fetch root metadata
 		if err != nil {
-			r.log.Println("WARN: getting worst health directory:", err)
-			return
+			// If there is an error fetching the root directory metadata, sleep
+			// for a bit and hope that on the next iteration, things will be
+			// better.
+			r.log.Println("WARN: error fetching filesystem root metadata:", err)
+			select {
+			case <-time.After(uploadAndRepairErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
+			continue
 		}
-
-		// Check if directory requires repairing. We only want to repair
-		// directories with a health worse than the remote repair threshold to
-		// save resources. It has been decided that it's not worth repairing
-		// files that have most of their redundancy, because the repair
-		// operation can require doing an expensive download, and expensive
-		// computation, and we will need to perform those operations frequently
-		// due to host churn if the threshold is too low.
-		if dirHealth < siafile.RemoteRepairDownloadThreshold {
-			// Block until new work is required.
+		if rootMetadata.Health < siafile.RemoteRepairDownloadThreshold {
 			select {
 			case <-r.uploadHeap.newUploads:
-				// User has uploaded a new file.
 			case <-r.uploadHeap.repairNeeded:
-				// Health loop found a file in need of repair
 			case <-r.tg.StopChan():
-				// The renter has shut down.
 				return
 			}
 			continue
 		}
 
-		// Refresh the worker pool and get the set of hosts that are currently
-		// useful for uploading.
-		hosts := r.managedRefreshHostsAndWorkers()
-
-		// Build a min-heap of chunks organized by upload progress.
-		r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
-		r.uploadHeap.mu.Lock()
-		heapLen := r.uploadHeap.heap.Len()
-		r.uploadHeap.mu.Unlock()
-		if heapLen == 0 {
-			r.log.Printf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
-			// Call threadedBubble to make sure that directory information is
-			// accurate
-			r.threadedBubbleMetadata(dirSiaPath)
-			continue
+		// The necessary conditions for performing an upload and repair
+		// iteration have been met - perform an upload and repair iteration.
+		err = r.managedUploadAndRepair()
+		if err != nil {
+			// If there is an error performing an upload and repair iteration,
+			// sleep for a bit and hope that on the next iteration, things will
+			// be better.
+			r.log.Println("WARN: error performing upload and repair iteration:", err)
+			select {
+			case <-time.After(uploadAndRepairErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
 		}
-		r.log.Println("Repairing", heapLen, "chunks from", dirSiaPath)
-
-		// Work through the heap and repair files
-		r.managedRepairLoop(hosts)
-
-		// Once we have worked through the heap, call bubble to update the
-		// directory metadata
-		r.threadedBubbleMetadata(dirSiaPath)
 	}
 }
