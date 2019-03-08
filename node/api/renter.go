@@ -11,10 +11,13 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -55,6 +58,10 @@ var (
 		Dev:      types.BlockHeight(1),
 		Testing:  types.BlockHeight(1),
 	}).(types.BlockHeight)
+
+	//BackupKeySpecifier is the specifier used for deriving the secret used to
+	//encrypt a backup from the RenterSeed.
+	backupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
 )
 
 type (
@@ -194,8 +201,20 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{"destination must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
+	// Get the wallet seed.
+	ws, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
+		return
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, backupKeySpecifier)
+	defer fastrand.Read(secret[:])
 	// Create the backup.
-	if err := api.renter.CreateBackup(dst); err != nil {
+	if err := api.renter.CreateBackup(dst, secret[:32]); err != nil {
 		WriteError(w, Error{"failed to create backup" + err.Error()}, http.StatusBadRequest)
 		return
 	}
@@ -215,8 +234,20 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
+	// Get the wallet seed.
+	ws, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
+		return
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, backupKeySpecifier)
+	defer fastrand.Read(secret[:])
 	// Load the backup.
-	if err := api.renter.LoadBackup(src); err != nil {
+	if err := api.renter.LoadBackup(src, secret[:32]); err != nil {
 		WriteError(w, Error{"failed to load backup" + err.Error()}, http.StatusBadRequest)
 		return
 	}

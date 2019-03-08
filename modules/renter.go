@@ -39,6 +39,9 @@ var (
 		Dev:      int(12),
 		Testing:  int(4),
 	}).(int)
+	// BackupKeySpecifier is a specifier that is hashed with the wallet seed to
+	// create a key for encrypting backups.
+	BackupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
 )
 
 // FilterMode is the helper type for the enum constants for the HostDB filter
@@ -509,17 +512,18 @@ type Renter interface {
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []RenterContract
 
-	// CreateBackup creates a backup of the renter's siafiles at the provided
-	// destination.
+	// CreateBackup creates a backup of the renter's siafiles. If a secret is not
+	// nil, the backup will be encrypted using the provided secret.
+	CreateBackup(dst string, secret []byte) error
+
+	// LoadBackup loads the siafiles of a previously created backup into the
+	// renter. If the backup is encrypted, secret will be used to decrypt it.
+	// Otherwise the argument is ignored.
 	// If a file from the backup would have the same path as an already
 	// existing file, a suffix of the form _[num] is appended to the siapath.
 	// [num] is incremented until a siapath is found that is not already in
 	// use.
-	CreateBackup(dst string) error
-
-	// LoadBackup loads the siafiles of a previously created backup into the
-	// renter.
-	LoadBackup(src string) error
+	LoadBackup(src string, secret []byte) error
 
 	// InitRecoveryScan starts scanning the whole blockchain for recoverable
 	// contracts within a separate thread.
