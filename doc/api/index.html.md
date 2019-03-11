@@ -16,14 +16,14 @@ search: true
 ## Welcome to the Sia Storage Platform API!
 > Example GET curl call 
 
-```go
-curl -A "Sia-Agent" "localhost:9980/wallet/transactions?startheight=1&endheight=250"
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] "localhost:9980/wallet/transactions?startheight=1&endheight=250"
 ```
 
 > Example POST curl call
 
-```go
-curl -A "Sia-Agent" --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
 ```
 
 Sia uses semantic versioning and is backwards compatible to version v1.0.0.
@@ -75,7 +75,7 @@ The standard error response indicating the request failed for any reason, is a 4
 > Example POST curl call with Authentication
 
 ```go
-curl -A "Sia-Agent" --user "":"foobar" --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
+curl -A "Sia-Agent" --user "":[apipassword] --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
 ```
 
 API authentication is enabled by default, using a password stored in a flat file. The location of this file is:
@@ -96,7 +96,7 @@ For example, if the API password is "foobar" the request header should include
 
 And for a curl call the following would be included
 
-`--user "":"foobar"`
+`--user "":[apipassword]`
 
 Authentication can be disabled by passing the `--authenticate-api=false` flag to siad. You can change the password by modifying the password file, setting the `SIA_API_PASSWORD` environment variable, or passing the `--temp-password` flag to siad.
 
@@ -114,6 +114,11 @@ The consensus set manages everything related to consensus and keeps the blockcha
 
 Returns information about the consensus set, such as the current block height.
 Also returns the set of constants in use in the consensus code.
+
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] "localhost:9980/consensus"
+```
 
 ### JSON Response
 > JSON Response Example
@@ -216,6 +221,13 @@ BlockID of the requested block.
 **height** | blockheight
 BlockHeight of the requested block.  
 
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] "localhost:9980/consensus/blocks?height=20032"
+
+curl -A "Sia-Agent" -u "":[apipassword] "localhost:9980/consensus/blocks?id=00000000000033b9eb57fa63a51adeea857e70f6415ebbfe5df2a01f0d0477f4"
+```
+
 ### JSON Response
 > JSON Response Example
 
@@ -306,6 +318,11 @@ validates a set of transactions using the current utxo set.
 
 Since transactions may be large, the transaction set is supplied in the POST body, encoded in JSON format.
 
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] --data "[JSON-encoded-transaction-set]" "localhost:9980/consensus/validate/transactionset"
+```
+
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
@@ -317,6 +334,11 @@ The daemon is responsible for starting and stopping the modules which make up th
 ## /daemon/stop [GET]
 
 Cleanly shuts down the daemon. This may take a few seconds.
+
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] "localhost:9980/daemon/stop"
+```
 
 ### Response
 standard success or error response. See [standard responses](#standard-responses).
@@ -343,6 +365,11 @@ The gateway maintains a peer to peer connection to the network and provides a me
 ## /gateway [GET]
 
 returns information about the gateway, including the list of connected peers.
+
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] "localhost:9980/gateway"
+```
 
 ### JSON Response
 > JSON Response Example
@@ -393,10 +420,15 @@ Modify settings that control the gateway's behavior.
 ### Query String Parameters
 #### OPTIONAL
 **maxdownloadspeed** | bytes per second
-Max download speed permitted, speed provide in bytes per second.  
+Max download speed permitted, speed provides in bytes per second.  
 
 **maxuploadspeed** | bytes per second
-Max upload speed permitted, speed provide in bytes per second.  
+Max upload speed permitted, speed provides in bytes per second.  
+
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] --data "maxdownloadspeed=1000000&maxuploadspeed=20000" "localhost:9980/gateway"
+```
 
 ### Response
 
@@ -414,6 +446,11 @@ netaddress is the address of the peer to connect to. It should be a reachable ip
 Example IPV4 address: 123.456.789.0:123  
 Example IPV6 address: [123::456]:789  
 
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] -X POST "localhost:9980/gateway/connect/123.456.789.0:9981"
+```
+
 ### Response
 standard success or error response. See [standard responses](#Standard-Responses).
 
@@ -429,6 +466,11 @@ netaddress is the address of the peer to connect to. It should be a reachable ip
 Example IPV4 address: 123.456.789.0:123  
 Example IPV6 address: [123::456]:789  
 
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] -X POST "localhost:9980/gateway/disconnect/123.456.789.0:9981"
+```
+
 ### Response
 standard success or error response. See [standard responses](#standard-responses).
 
@@ -439,6 +481,11 @@ The host provides storage from local disks to the network. The host negotiates f
 ## /host [GET]
 
 fetches status information about the host.
+
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] "localhost:9980/host"
+```
 
 ### JSON Response
 > JSON Response Example
@@ -740,6 +787,11 @@ The minimum price that the host will demand when storing data for extended perio
 **minuploadbandwidthprice** | hastings / byte
 The minimum price that the host will demand from a renter when the renter is uploading data. If the host is saturated, the host may increase the price from the minimum.  
 
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] -X POST "localhost:9980/host?acceptingcontracts=true&maxduration=12096&windowsize=1008"
+```
+
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
@@ -755,6 +807,11 @@ Note that even after the host has been announced, it will not accept new contrac
 **netaddress string** | string  
 The address to be announced. If no address is provided, the automatically discovered address will be used instead.  
 
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] -X POST "localhost:9980/host/announce"
+```
+
 ### Response
 
 standard success or error response. See [standard responses](#Standard-Responses).
@@ -762,6 +819,11 @@ standard success or error response. See [standard responses](#Standard-Responses
 ## /host/contracts [GET]
 
 Get contract information from the host database. This call will return all storage obligations on the host. Its up to the caller to filter the contracts based on their needs.
+
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] "localhost:9980/host/contracts"
+```
 
 ### JSON Response
 > JSON Response Example
@@ -858,6 +920,11 @@ Revision constructed indicates whether there was a file contract revision constr
 
 Gets a list of folders tracked by the host's storage manager.
 
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] "localhost:9980/host/storage"
+```
+
 ### JSON Response
 > JSON Response Example
  
@@ -904,6 +971,11 @@ Local path on disk to the storage folder to add.
 **size** | bytes  
 Initial capacity of the storage folder. This value isn't validated so it is possible to set the capacity of the storage folder greater than the capacity of the disk. Do not do this.  
 
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] --data "path=foo/bar&size=1000000000000" "localhost:9980/host/storage/add"
+```
+
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
@@ -921,6 +993,11 @@ Local path on disk to the storage folder to removed.
 **force** | boolean  
 If `force` is true, the storage folder will be removed even if the data in the storage folder cannot be moved to other storage folders, typically because they don't have sufficient capacity. If `force` is true and the data cannot be moved, data will be lost.  
 
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] --data "path=foo/bar&force=false" "localhost:9980/host/storage/remove"
+```
+
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
@@ -937,6 +1014,11 @@ Local path on disk to the storage folder to resize.
 **newsize** | bytes  
 Desired new size of the storage folder. This will be the new capacity of the storage folder.  
 
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] --data "path=foo/bar&newsize=1000000000000" "localhost:9980/host/storage/resize"
+```
+
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
@@ -949,6 +1031,11 @@ Deletes a sector, meaning that the manager will be unable to upload that sector 
 #### REQUIRED
 **merkleroot** | merkleroot
 Merkleroot of the sector to delete.  
+
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] -X POST "localhost:9980/host/storage/sectors/delete/[merkleroot]"
+```
 
 ### Response
 
@@ -978,6 +1065,11 @@ See [host internal settings](#internalsettings)
 ### JSON Response
 > JSON Response Example
  
+### Curl Example
+```bash
+curl -A "Sia-Agent" -u "":[apipassword] "localhost:9980/host/estimatescore"
+```
+
 ```go
 {
 	"estimatedscore": "123456786786786786786786786742133",  // big int
