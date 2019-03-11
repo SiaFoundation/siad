@@ -1491,6 +1491,10 @@ merkle root | [80-112) | [48-80)
 The renter manages the user's files on the network. The renter's API endpoints expose methods for managing files on the network and managing the renter's allocated funds.
 
 ## /renter [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter"
+```
 
 Returns the current settings along with metrics on the renter's spending.
 
@@ -1577,6 +1581,10 @@ Amount of money in the allowance that has not been spent.
 Height at which the current allowance period began.  
 
 ## /renter [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> --date "period=12096&renewwindow=4032&funds=1000&hosts=50" "localhost:9980/renter"
+```
 
 Modify settings that control the renter's behavior.
 
@@ -1592,6 +1600,10 @@ Enables or disables the check for hosts using the same ip subnets within the hos
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/contract/cancel [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> --date "id=bd7ef21b13fb85eda933a9ff2874ec50a1ffb4299e98210bf0dd343ae1632f80" "localhost:9980/renter/contract/cancel"
+```
 
 cancels a specific contract of the Renter.
 
@@ -1605,6 +1617,10 @@ ID of the file contract
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/backup [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> --date "destination=/home/backups/01-01-1968.backup" "localhost:9980/renter/backup"
+```
 
 Creates a backup of all siafiles in the renter at the specified path.
 
@@ -1619,6 +1635,10 @@ path.
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/recoverbackup [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> --date "source=/home/backups/01-01-1968.backup" "localhost:9980/renter/recoverbackup"
+```
 
 Recovers an existing backup from the specified path by adding all the siafiles
 contained within it to the renter. Should a siafile for a certain path already
@@ -1634,21 +1654,11 @@ absolute path.
 
 standard success or error response. See [standard responses](#standard-responses).
 
-## /renter/contract/cancel [POST]
-
-cancels a specific contract of the Renter.
-
-### Query String Parameters
-#### REQUIRED
-**id** | hash
-ID of the file contract
-
-### Response
-
-standard success or error response. See [standard responses](#standard-responses).
-
-
 ## /renter/contracts [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/contracts?inactive=true&expired=true&recoverable=false"
+```
 
 Returns the renter's contracts.  Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default. Inactive contracts are contracts that are in the current period but are marked as not good for renew, these contracts have the potential to become active again but currently are not storing data.  Expired contracts are contracts not in the current period, where not more data is being stored and excess funds have been released to the renter. Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
 
@@ -1751,6 +1761,12 @@ Signals if contract is good for uploading data.
 Signals if contract is good for a renewal.  
 
 ## /renter/dir/*siapath [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/dir/"
+
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/dir/mydir"
+```
 
 retrieves the contents of a directory on the sia network
 
@@ -1826,6 +1842,10 @@ The path to the directory on the sia network
 Same response as [files](#files)
 
 ## /renter/dir/*siapath [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> --data "action=delete" "localhost:9980/renter/dir/mydir"
+```
 
 performs various functions on the renter's directories
 
@@ -1906,6 +1926,10 @@ Time at which the download was initiated.
 The total amount of data transfered when downloading the file. This will eventually include data transferred during contract + payment negotiation, as well as data from failed piece downloads.  
 
 ## /renter/downloads/clear [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/downloads/clear?before=1551398400&after=1552176000"
+```
 
 Clears the download history of the renter for a range of unix time stamps.  Both parameters are optional, if no parameters are provided, the entire download history will be cleared.  To clear a single download, provide the timestamp for the download as both parameters.  Providing only the before parameter will clear all downloads older than the timestamp. Conversely, providing only the after parameter will clear all downloads newer than the timestamp.
 
@@ -1922,6 +1946,10 @@ unix timestamp found in the download history
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/prices [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/prices"
+```
 
 Lists the estimated prices of performing various storage and data operations. An allowance can be submitted to provide a more personalized estimate. If no allowance is submitted then the current set allowance will be used, if there is no allowance set then sane defaults will be used. Submitting an allowance is optional, but when submitting an allowance all the components of the allowance are required. The allowance used to create the estimate is returned with the estimate.
 
@@ -1959,6 +1987,10 @@ The estimated cost of uploading one terabyte of data to the network, including a
 The allowance settings used for the estimation are also returned, see the fields [here](#allowance)
 
 ## /renter/files [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/files"
+```
 
 lists the status of all files.
 
@@ -2064,6 +2096,10 @@ Total number of bytes successfully uploaded via current file contracts. This num
 Percentage of the file uploaded, including redundancy. Uploading has completed when uploadprogress is 100. Files may be available for download before upload progress is 100.  
 
 ## /renter/file/*siapath* [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/file/myfile"
+```
 
 Lists the status of specified file.
 
@@ -2076,6 +2112,10 @@ Path to the file in the renter on the network.
 Same response as [files](#files)
 
 ## /renter/file/*siapath* [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> --data "trackingpath=/home/myfile" "localhost:9980/renter/file/myfile"
+```
 
 endpoint for changing file metadata.
 
@@ -2094,6 +2134,10 @@ If provided, this parameter changes the tracking path of a file to the  specifie
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/delete/*siapath* [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/delete/myfile"
+```
 
 deletes a renter file entry. Does not delete any downloads or original files, only the entry in the renter.
 
@@ -2107,6 +2151,10 @@ Path to the file in the renter on the network.
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/download/*siapath* [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/download/myfile?httpresp=true"
+```
 
 downloads a file to the local filesystem. The call will block until the file has been downloaded.
 
@@ -2116,16 +2164,16 @@ downloads a file to the local filesystem. The call will block until the file has
 Path to the file in the renter on the network.
 
 ### Query String Parameters
-#### REQUIRED
+#### REQUIRED (Either one or the other)
 **destination** | string
 Location on disk that the file will be downloaded to.  
+
+**httpresp** | boolean
+If httresp is true, the data will be written to the http response.
 
 #### OPTIONAL
 **async** | boolean
 If async is true, the http request will be non blocking. Can't be used with:  
-
-**httpresp** | boolean
-If httresp is true, the data will be written to the http response.  
 
 **length** | bytes
 Length of the requested data. Has to be <= filesize-offset.  
@@ -2138,6 +2186,10 @@ Offset relative to the file start from where the download starts.
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/downloadsync/*siapath* [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/downloadasync/myfile?destination=/home/myfile"
+```
 
 downloads a file to the local filesystem. The call will return immediately.
 
@@ -2156,6 +2208,10 @@ Location on disk that the file will be downloaded to.
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/recoveryscan [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/recoveryscan"
+```
 
 starts a rescan of the whole blockchain to find recoverable contracts. The
 contractor will periodically try to recover found contracts every 10 minutes
@@ -2166,6 +2222,10 @@ until they are recovered or expired.
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/recoveryscan [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/recoveryscan"
+```
 
 Returns some information about a potentially ongoing recovery scan.
 
@@ -2186,6 +2246,10 @@ indicates the progress of a currently ongoing scan in terms of number of blocks
 that have already been scanned.
 
 ## /renter/rename/*siapath* [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> --data "newsiapath=myfile2" "localhost:9980/renter/rename/myfile"
+```
 
 ### Path Parameters
 #### REQUIRED
@@ -2202,6 +2266,12 @@ New location of the file in the renter on the network.
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/stream/*siapath* [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/stream/myfile"
+
+curl -A "Sia-Agent" -u "":<apipassword> -H "Range: bytes=0-1023" "localhost:9980/renter/stream/myfile"
+```
 
 downloads a file using http streaming. This call blocks until the data is received. The streaming endpoint also uses caching internally to prevent siad from re-downloading the same chunk multiple times when only parts of a file are requested at once. This might lead to a substantial increase in ram usage and therefore it is not recommended to stream multiple files in parallel at the moment. This restriction will be removed together with the caching once partial downloads are supported in the future. If you want to stream multiple files you should increase the size of the Renter's `streamcachesize` to at least 2x the number of files you are steaming.
 
@@ -2215,6 +2285,10 @@ Path to the file in the renter on the network.
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/upload/*siapath* [POST]
+> curl example
+``` bash
+curl -A "Sia-Agent" -u "":<apipassword> --data "source=/home/myfile" "localhost:9980/renter/upload/myfile"
+```
 
 uploads a file to the network from the local filesystem.
 
