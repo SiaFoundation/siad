@@ -113,7 +113,7 @@ The consensus set manages everything related to consensus and keeps the blockcha
 ## /consensus [GET]
 > curl example
 ```bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/consensus"
+curl -A "Sia-Agent" "localhost:9980/consensus"
 ```
 
 Returns information about the consensus set, such as the current block height.
@@ -209,9 +209,9 @@ Number of Hastings in one Siacoin.
 ## /consensus/blocks [GET]
 > curl example
 ```bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/consensus/blocks?height=20032"
+curl -A "Sia-Agent" "localhost:9980/consensus/blocks?height=20032"
 
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/consensus/blocks?id=00000000000033b9eb57fa63a51adeea857e70f6415ebbfe5df2a01f0d0477f4"
+curl -A "Sia-Agent" "localhost:9980/consensus/blocks?id=00000000000033b9eb57fa63a51adeea857e70f6415ebbfe5df2a01f0d0477f4"
 ```
 
 Returns the block for a given id or height.
@@ -311,7 +311,7 @@ BlockHeight of the requested block.
 ## /consensus/validate/transactionset [POST]
 > curl example
 ```bash
-curl -A "Sia-Agent" -u "":<apipassword> --data "[JSON-encoded-txnset]" "localhost:9980/validate/transactionset"
+curl -A "Sia-Agent" --data "[JSON-encoded-txnset]" "localhost:9980/validate/transactionset"
 ```
 
 validates a set of transactions using the current utxo set.
@@ -365,7 +365,7 @@ The gateway maintains a peer to peer connection to the network and provides a me
 ## /gateway [GET]
 > curl example
 ```bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/gateway"
+curl -A "Sia-Agent" "localhost:9980/gateway"
 ```
 
 returns information about the gateway, including the list of connected peers.
@@ -435,7 +435,7 @@ standard success or error response. See [standard responses](#standard-responses
 ## /gateway/connect/:*netaddress* [POST]
 > curl example
 ```bash
-curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/gateway/connect/123.456.789.0:9981"
+curl -A "Sia-Agent" -X POST "localhost:9980/gateway/connect/123.456.789.0:9981"
 ```
 
 connects the gateway to a peer. The peer is added to the node list if it is not already present. The node list is the list of all nodes the gateway knows about, but is not necessarily connected to.  
@@ -477,7 +477,7 @@ The host provides storage from local disks to the network. The host negotiates f
 ## /host [GET]
 > curl example
 ```bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/host"
+curl -A "Sia-Agent" "localhost:9980/host"
 ```
 
 fetches status information about the host.
@@ -812,7 +812,7 @@ standard success or error response. See [standard responses](#Standard-Responses
 ## /host/contracts [GET]
 > curl example
 ```bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/host/contracts"
+curl -A "Sia-Agent" "localhost:9980/host/contracts"
 ```
 
 
@@ -912,7 +912,7 @@ Revision constructed indicates whether there was a file contract revision constr
 ## /host/storage [GET]
 > curl example
 ```bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/host/storage"
+curl -A "Sia-Agent" "localhost:9980/host/storage"
 ```
 
 Gets a list of folders tracked by the host's storage manager.
@@ -1032,7 +1032,7 @@ standard success or error response. See [standard responses](#standard-responses
 ## /host/estimatescore [GET]
 > curl example
 ```bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/host/estimatescore"
+curl -A "Sia-Agent" "localhost:9980/host/estimatescore"
 ```
 
 Returns the estimated HostDB score of the host using its current settings, combined with the provided settings.
@@ -1285,6 +1285,10 @@ Lists all of the hosts known to the renter. Hosts are not guaranteed to be in an
 Repsonse is the same as [`/hostdb/active`](#hosts)
 
 ## /hostdb/hosts/:*pubkey* [GET]
+> curl example
+```bash
+curl -A "Sia-Agent" "localhost:9980/hostdb/hosts/ed25519:8a95848bc71e9689e2f753c82c35dc47a1d62867f77c0113ebb6fa5b51723215"
+```
 
 fetches detailed information about a particular host, including metrics regarding the score of the host within the database. It should be noted that each renter uses different metrics for selecting hosts, and that a good score on in one hostdb does not mean that the host will be successful on the network overall.
 
@@ -1386,7 +1390,7 @@ The miner provides endpoints for getting headers for work and submitting solved 
 ## /miner [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/miner"
+curl -A "Sia-Agent" "localhost:9980/miner"
 ```
 returns the status of the miner.
 
@@ -1493,7 +1497,7 @@ The renter manages the user's files on the network. The renter's API endpoints e
 ## /renter [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter"
+curl -A "Sia-Agent" "localhost:9980/renter"
 ```
 
 Returns the current settings along with metrics on the renter's spending.
@@ -1657,7 +1661,7 @@ standard success or error response. See [standard responses](#standard-responses
 ## /renter/contracts [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/contracts?inactive=true&expired=true&recoverable=false"
+curl -A "Sia-Agent" "localhost:9980/renter/contracts?inactive=true&expired=true&recoverable=false"
 ```
 
 Returns the renter's contracts.  Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default. Inactive contracts are contracts that are in the current period but are marked as not good for renew, these contracts have the potential to become active again but currently are not storing data.  Expired contracts are contracts not in the current period, where not more data is being stored and excess funds have been released to the renter. Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
@@ -1763,9 +1767,9 @@ Signals if contract is good for a renewal.
 ## /renter/dir/*siapath [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/dir/"
+curl -A "Sia-Agent" "localhost:9980/renter/dir/"
 
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/dir/mydir"
+curl -A "Sia-Agent" "localhost:9980/renter/dir/mydir"
 ```
 
 retrieves the contents of a directory on the sia network
@@ -1866,6 +1870,10 @@ Action can be either `create` or `delete`.
 standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/downloads [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" "localhost:9980/renter/downloads"
+```
 
 Lists all files in the download queue.
 
@@ -1948,7 +1956,7 @@ standard success or error response. See [standard responses](#standard-responses
 ## /renter/prices [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/prices"
+curl -A "Sia-Agent" "localhost:9980/renter/prices"
 ```
 
 Lists the estimated prices of performing various storage and data operations. An allowance can be submitted to provide a more personalized estimate. If no allowance is submitted then the current set allowance will be used, if there is no allowance set then sane defaults will be used. Submitting an allowance is optional, but when submitting an allowance all the components of the allowance are required. The allowance used to create the estimate is returned with the estimate.
@@ -1989,7 +1997,7 @@ The allowance settings used for the estimation are also returned, see the fields
 ## /renter/files [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/files"
+curl -A "Sia-Agent" "localhost:9980/renter/files"
 ```
 
 lists the status of all files.
@@ -2098,7 +2106,7 @@ Percentage of the file uploaded, including redundancy. Uploading has completed w
 ## /renter/file/*siapath* [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/file/myfile"
+curl -A "Sia-Agent" "localhost:9980/renter/file/myfile"
 ```
 
 Lists the status of specified file.
@@ -2224,7 +2232,7 @@ standard success or error response. See [standard responses](#standard-responses
 ## /renter/recoveryscan [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/recoveryscan"
+curl -A "Sia-Agent" "localhost:9980/renter/recoveryscan"
 ```
 
 Returns some information about a potentially ongoing recovery scan.
@@ -2268,9 +2276,9 @@ standard success or error response. See [standard responses](#standard-responses
 ## /renter/stream/*siapath* [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/stream/myfile"
+curl -A "Sia-Agent" "localhost:9980/renter/stream/myfile"
 
-curl -A "Sia-Agent" -u "":<apipassword> -H "Range: bytes=0-1023" "localhost:9980/renter/stream/myfile"
+curl -A "Sia-Agent" -H "Range: bytes=0-1023" "localhost:9980/renter/stream/myfile"
 ```
 
 downloads a file using http streaming. This call blocks until the data is received. The streaming endpoint also uses caching internally to prevent siad from re-downloading the same chunk multiple times when only parts of a file are requested at once. This might lead to a substantial increase in ram usage and therefore it is not recommended to stream multiple files in parallel at the moment. This restriction will be removed together with the caching once partial downloads are supported in the future. If you want to stream multiple files you should increase the size of the Renter's `streamcachesize` to at least 2x the number of files you are steaming.
@@ -2342,7 +2350,7 @@ indicates if a transaction is confirmed on the blockchain
 ## /tpool/fee [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/tpool/fee"
+curl -A "Sia-Agent" "localhost:9980/tpool/fee"
 ```
 
 returns the minimum and maximum estimated fees expected by the transaction pool.
@@ -2365,7 +2373,7 @@ the maximum estimated fee
 ## /tpool/raw/:id [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/tpool/raw/22e8d5428abc184302697929f332fa0377ace60d405c39dd23c0327dc694fae7"
+curl -A "Sia-Agent" "localhost:9980/tpool/raw/22e8d5428abc184302697929f332fa0377ace60d405c39dd23c0327dc694fae7"
 ```
 
 returns the ID for the requested transaction and its raw encoded parents and transaction data.
@@ -2397,7 +2405,7 @@ raw, base64 encoded transaction data
 ## /tpool/raw [POST]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> --data "<raw-encoded-tset>" "localhost:9980/tpool/raw"
+curl -A "Sia-Agent" --data "<raw-encoded-tset>" "localhost:9980/tpool/raw"
 ```
 
 submits a raw transaction to the transaction pool, broadcasting it to the transaction pool's peers.  
@@ -2414,12 +2422,34 @@ JSON- or base64-encoded transaction
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /tpool/confirmed/:id [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" "localhost:9980/tpool/confirmed/9028cc285ad755b81c0cfead3710c1344044175e59cdc4ca097374fe188c9acf"
+```
+
+### Query String Parameters
+#### REQUIRED
+**id** | hash
+id of the transaction being queried
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "confirmed": true,
+}
+```
+**confirmed** | boolean
+boolean that indicates if transaction was confirmed
+
 # Wallet
 
 ## /wallet [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet"
+curl -A "Sia-Agent" "localhost:9980/wallet"
 ```
 
 Returns basic information about the wallet, such as whether the wallet is locked or unlocked.
@@ -2512,7 +2542,7 @@ Wallet address that can receive siacoins or siafunds. Addresses are 76 character
 ## /wallet/addresses [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/addresses"
+curl -A "Sia-Agent" "localhost:9980/wallet/addresses"
 ```
 
 Fetches the list of addresses from the wallet. If the wallet has not been created or unlocked, no addresses will be returned. After the wallet is unlocked, this call will continue to return its addresses even after the wallet is locked again.
@@ -2535,7 +2565,7 @@ Array of wallet addresses owned by the wallet.
 ## /wallet/seedaddrs [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/seedaddrs"
+curl -A "Sia-Agent" "localhost:9980/wallet/seedaddrs"
 ```
 
 Fetches addresses generated by the wallet in reverse order. The last address
@@ -2933,7 +2963,7 @@ standard success or error response. See [standard responses](#standard-responses
 ## /wallet/transaction/:*id* [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/transaction/22e8d5428abc184302697929f332fa0377ace60d405c39dd23c0327dc694fae7"
+curl -A "Sia-Agent" "localhost:9980/wallet/transaction/22e8d5428abc184302697929f332fa0377ace60d405c39dd23c0327dc694fae7"
 ```
 
 Gets the transaction associated with a specific transaction id.
@@ -3037,7 +3067,7 @@ Amount of funds that have been moved in the output.
 ## /wallet/transactions [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/transactions"
+curl -A "Sia-Agent" "localhost:9980/wallet/transactions"
 ```
 
 Returns a list of transactions related to the wallet in chronological order.
@@ -3080,7 +3110,7 @@ See the documentation for '/wallet/transaction/:id' for more information.
 ## /wallet/transactions/:addr [GET]
 > curl example
 ``` bash
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/transactions/abf1ba4ad65820ce2bd5d63466b8555d0ec9bfe5f5fa920b4fef6ad98f443e2809e5ae619b74"
+curl -A "Sia-Agent" "localhost:9980/wallet/transactions/abf1ba4ad65820ce2bd5d63466b8555d0ec9bfe5f5fa920b4fef6ad98f443e2809e5ae619b74"
 ```
 
 Returns all of the transactions related to a specific address.
@@ -3208,6 +3238,10 @@ Amount of funds in the output; hastings for siacoin outputs, and siafunds for si
 Whether the output comes from a watched address or from the wallet's seed.  
 
 ## /wallet/verify/address/:addr [GET]
+> curl example
+``` bash
+curl -A "Sia-Agent" "localhost:9980/wallet/verify/address/75d9a7351022681ba3539d7e0c5699d143ab5a7747604998cace1299ab6c04c5ea2aa2e87aac"
+```
 
 Takes the address specified by :addr and returns a JSON response indicating if the address is valid.
 
