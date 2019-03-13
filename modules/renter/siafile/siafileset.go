@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -218,6 +219,11 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
 	}, nil
+}
+
+// siaFilePath returns the path of a sia file on disk given its siapath.
+func (sfs *SiaFileSet) siaFilePath(siapath string) string {
+	return filepath.Join(sfs.siaFileDir, siapath+ShareExtension)
 }
 
 // Delete deletes the SiaFileSetEntry's SiaFile
