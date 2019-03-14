@@ -128,7 +128,11 @@ func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps 
 		WriteError(w, Error{"requested host does not exist"}, http.StatusBadRequest)
 		return
 	}
-	breakdown := api.renter.ScoreBreakdown(entry)
+	breakdown, err := api.renter.ScoreBreakdown(entry)
+	if err != nil {
+		WriteError(w, Error{"error calculating score breakdown: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
 
 	// Extend the hostdb entry  to have the public key string.
 	extendedEntry := ExtendedHostDBEntry{

@@ -232,11 +232,18 @@ func (c *Contractor) managedMarkContractsUtility() error {
 	// good for upload.
 	var minScore types.Currency
 	if len(hosts) > 0 {
-		lowestScore := c.hdb.ScoreBreakdown(hosts[0]).Score
+		sb, err := c.hdb.ScoreBreakdown(hosts[0])
+		if err != nil {
+			return err
+		}
+		lowestScore := sb.Score
 		for i := 1; i < len(hosts); i++ {
-			score := c.hdb.ScoreBreakdown(hosts[i]).Score
-			if score.Cmp(lowestScore) < 0 {
-				lowestScore = score
+			score, err := c.hdb.ScoreBreakdown(hosts[i])
+			if err != nil {
+				return err
+			}
+			if score.Score.Cmp(lowestScore) < 0 {
+				lowestScore = score.Score
 			}
 		}
 		// Set the minimum acceptable score to a factor of the lowest score.
@@ -245,7 +252,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 	// Update utility fields for each contract.
 	for _, contract := range c.staticContracts.ViewAll() {
-		utility := func() (u modules.ContractUtility) {
+		utility, err := func() (u modules.ContractUtility, err error) {
 			// Record current utility of the contract
 			u.GoodForRenew = contract.Utility.GoodForRenew
 			u.GoodForUpload = contract.Utility.GoodForUpload
@@ -266,7 +273,11 @@ func (c *Contractor) managedMarkContractsUtility() error {
 				return
 			}
 			// Contract has no utility if the score is poor.
-			if !minScore.IsZero() && c.hdb.ScoreBreakdown(host).Score.Cmp(minScore) < 0 {
+			sb, err := c.hdb.ScoreBreakdown(host)
+			if err != nil {
+				return u, err
+			}
+			if !minScore.IsZero() && sb.Score.Cmp(minScore) < 0 {
 				u.GoodForUpload = false
 				u.GoodForRenew = false
 				return
@@ -289,9 +300,12 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			}
 			return
 		}()
+		if err != nil {
+			return err
+		}
 
 		// Apply changes.
-		err := c.managedUpdateContractUtility(contract.ID, utility)
+		err = c.managedUpdateContractUtility(contract.ID, utility)
 		if err != nil {
 			return err
 		}

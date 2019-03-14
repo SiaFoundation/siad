@@ -494,14 +494,22 @@ func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hos
 
 // EstimateHostScore takes a HostExternalSettings and returns the estimated
 // score of that host in the hostdb, assuming no penalties for age or uptime.
-func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance modules.Allowance) modules.HostScoreBreakdown {
-	return hdb.managedScoreBreakdown(entry, true, true)
+func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance modules.Allowance) (modules.HostScoreBreakdown, error) {
+	if err := hdb.tg.Add(); err != nil {
+		return modules.HostScoreBreakdown{}, err
+	}
+	defer hdb.tg.Done()
+	return hdb.managedScoreBreakdown(entry, true, true), nil
 }
 
 // ScoreBreakdown provdes a detailed set of scalars and bools indicating
 // elements of the host's overall score.
-func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBreakdown {
-	return hdb.managedScoreBreakdown(entry, false, false)
+func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
+	if err := hdb.tg.Add(); err != nil {
+		return modules.HostScoreBreakdown{}, err
+	}
+	defer hdb.tg.Done()
+	return hdb.managedScoreBreakdown(entry, false, false), nil
 }
 
 // managedScoreBreakdown computes the score breakdown of a host. Certain

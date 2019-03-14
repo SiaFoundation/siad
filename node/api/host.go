@@ -272,7 +272,11 @@ func (api *API) hostEstimateScoreGET(w http.ResponseWriter, req *http.Request, _
 	entry.HostExternalSettings = mergedSettings
 	// Use the default allowance for now, since we do not know what sort of
 	// allowance the renters may use to attempt to access this host.
-	estimatedScoreBreakdown := api.renter.EstimateHostScore(entry, modules.DefaultAllowance)
+	estimatedScoreBreakdown, err := api.renter.EstimateHostScore(entry, modules.DefaultAllowance)
+	if err != nil {
+		WriteError(w, Error{"error estimating host score: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
 	e := HostEstimateScoreGET{
 		EstimatedScore: estimatedScoreBreakdown.Score,
 		ConversionRate: estimatedScoreBreakdown.ConversionRate,
