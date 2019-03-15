@@ -447,7 +447,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 
 	// Check if any files were selected from directory
 	if len(files) == 0 {
-		r.log.Println("No files pulled from `", dirSiaPath, "` to build the repair heap")
+		r.log.Debugln("No files pulled from `", dirSiaPath, "` to build the repair heap")
 		return
 	}
 
@@ -627,7 +627,7 @@ func (r *Renter) managedUploadAndRepair() error {
 	heapLen := r.uploadHeap.heap.Len()
 	r.uploadHeap.mu.Unlock()
 	if heapLen == 0 {
-		r.log.Printf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
+		r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
 		// Call threadedBubble to make sure that directory information is
 		// accurate
 		r.threadedBubbleMetadata(dirSiaPath)
@@ -690,6 +690,9 @@ func (r *Renter) threadedUploadAndRepair() {
 			continue
 		}
 		if rootMetadata.Health < siafile.RemoteRepairDownloadThreshold {
+			// Block until a signal is received that there is more work to do.
+			// A signal will be sent if new data to upload is received, or if
+			// the health loop discovers that some files are not in good health.
 			select {
 			case <-r.uploadHeap.newUploads:
 			case <-r.uploadHeap.repairNeeded:
@@ -713,5 +716,11 @@ func (r *Renter) threadedUploadAndRepair() {
 				return
 			}
 		}
+
+		// TODO: This sleep is a hack to keep the CPU from spinning at 100% for
+		// a brief time when all of the chunks in the directory have been added
+		// to the repair loop, but the directory isn't full yet so it keeps
+		// trying to add more chunks.
+		time.Sleep(20 * time.Millisecond)
 	}
 }
