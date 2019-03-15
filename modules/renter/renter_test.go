@@ -117,14 +117,14 @@ func (stubHostDB) IsOffline(modules.NetAddress) bool                            
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return []modules.HostDBEntry{}, nil
 }
-func (stubHostDB) EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown {
-	return modules.HostScoreBreakdown{}
+func (stubHostDB) EstimateHostScore(modules.HostDBEntry, modules.Allowance) (modules.HostScoreBreakdown, error) {
+	return modules.HostScoreBreakdown{}, nil
 }
 func (stubHostDB) Host(types.SiaPublicKey) (modules.HostDBEntry, bool) {
 	return modules.HostDBEntry{}, false
 }
-func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown {
-	return modules.HostScoreBreakdown{}
+func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
+	return modules.HostScoreBreakdown{}, nil
 }
 
 // stubContractor is the minimal implementation of the hostContractor

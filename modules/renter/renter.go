@@ -94,7 +94,7 @@ type hostDB interface {
 
 	// ScoreBreakdown returns a detailed explanation of the various properties
 	// of the host.
-	ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown
+	ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error)
 
 	// SetIPViolationCheck enables/disables the IP violation check within the
 	// hostdb.
@@ -102,7 +102,7 @@ type hostDB interface {
 
 	// EstimateHostScore returns the estimated score breakdown of a host with the
 	// provided settings.
-	EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown
+	EstimateHostScore(modules.HostDBEntry, modules.Allowance) (modules.HostScoreBreakdown, error)
 }
 
 // A hostContractor negotiates, revises, renews, and provides access to file
@@ -651,12 +651,12 @@ func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) { retu
 func (r *Renter) InitialScanComplete() (bool, error) { return r.hostDB.InitialScanComplete() }
 
 // ScoreBreakdown returns the score breakdown
-func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) modules.HostScoreBreakdown {
+func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
 	return r.hostDB.ScoreBreakdown(e)
 }
 
 // EstimateHostScore returns the estimated host score
-func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) modules.HostScoreBreakdown {
+func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) (modules.HostScoreBreakdown, error) {
 	if reflect.DeepEqual(a, modules.Allowance{}) {
 		a = r.Settings().Allowance
 	}

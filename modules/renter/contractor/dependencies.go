@@ -59,7 +59,7 @@ type (
 		IncrementSuccessfulInteractions(key types.SiaPublicKey)
 		IncrementFailedInteractions(key types.SiaPublicKey)
 		RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error)
-		ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown
+		ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error)
 		SetAllowance(allowance modules.Allowance) error
 	}
 
