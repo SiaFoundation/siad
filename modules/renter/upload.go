@@ -115,6 +115,11 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 	defer entry.Close()
 
+	// No need to upload zero-byte files.
+	if fileInfo.Size() == 0 {
+		return nil
+	}
+
 	// Bubble the health of the SiaFile directory to ensure the health is
 	// updated with the new file
 	go r.threadedBubbleMetadata(dirSiaPath)
