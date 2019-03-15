@@ -89,21 +89,13 @@ func TestRenter(t *testing.T) {
 	}
 }
 
-func TestRenterX(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	for t.Run("TestZeroByteFile", TestRenterTwo) {
-	}
-}
-
 // TestRenterTwo executes a number of subtests using the same TestGroup to
 // save time on initialization
 func TestRenterTwo(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	//t.Parallel()
+	t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -114,12 +106,12 @@ func TestRenterTwo(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		//{"TestReceivedFieldEqualsFileSize", testReceivedFieldEqualsFileSize},
-		//{"TestRemoteRepair", testRemoteRepair},
-		//{"TestSingleFileGet", testSingleFileGet},
-		//{"TestSiaFileTimestamps", testSiafileTimestamps},
+		{"TestReceivedFieldEqualsFileSize", testReceivedFieldEqualsFileSize},
+		{"TestRemoteRepair", testRemoteRepair},
+		{"TestSingleFileGet", testSingleFileGet},
+		{"TestSiaFileTimestamps", testSiafileTimestamps},
 		{"TestZeroByteFile", testZeroByteFile},
-		//{"TestUploadWithAndWithoutForceParameter", testUploadWithAndWithoutForceParameter},
+		{"TestUploadWithAndWithoutForceParameter", testUploadWithAndWithoutForceParameter},
 	}
 
 	// Run tests
