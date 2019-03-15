@@ -539,10 +539,12 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		println("popping chunk")
 		nextChunk := r.uploadHeap.managedPop()
 		if nextChunk == nil {
+			println("chunk is nil, returning out - nothing to do")
 			return
 		}
 
 		// Check if file is reasonably healthy
+		println("getting health of chunk")
 		hostOfflineMap, hostGoodForRenewMap, _ := r.managedContractUtilityMaps()
 		health, _, _ := nextChunk.fileEntry.Health(hostOfflineMap, hostGoodForRenewMap)
 		if health < 0.8 {
@@ -574,6 +576,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		// Perform the work. managedPrepareNextChunk will block until
 		// enough memory is available to perform the work, slowing this
 		// thread down to using only the resources that are available.
+		println("preparing chunk")
 		err := r.managedPrepareNextChunk(nextChunk, hosts)
 		if err != nil {
 			// We were unsuccessful in preparing the next chunk so we need to
@@ -587,7 +590,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		consecutiveChunkRepairs++
 
 		// Check if enough chunks are currently being repaired
-		println("and we're down here now")
+		println("checking for heap reset condition")
 		if consecutiveChunkRepairs >= maxConsecutiveChunkRepairs {
 			// Pull all of the chunks out of the heap and return. Save the stuck
 			// chunks, as this is the repair loop and we aren't trying to erase
@@ -609,6 +612,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 			}
 			return
 		}
+
+		println("bottom of loop")
 	}
 }
 
