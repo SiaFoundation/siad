@@ -31,7 +31,7 @@ var (
 // TODO: Make this a part of the codebase with a threadgroup.
 func (c *Contractor) threadedRegularMaintenance() {
 	for {
-		time.Sleep(time.Second*30)
+		time.Sleep(time.Second * 30)
 		go c.threadedContractMaintenance()
 	}
 }
