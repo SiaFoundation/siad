@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -26,6 +27,21 @@ var (
 	// financial metrics from older contractors
 	metricsContractID = types.FileContractID{'m', 'e', 't', 'r', 'i', 'c', 's'}
 )
+
+func (c *Contractor) threadedRegularMaintenance() {
+	for {
+		time.Sleep(time.Second*30)
+		c.log.Println("Trying to tie a bow in your face")
+		c.log.Println("Trying to tie a bow in your face")
+		c.log.Println("Trying to tie a bow in your face")
+		c.log.Println("Trying to tie a bow in your face")
+		c.log.Println("Trying to tie a bow in your face")
+		c.log.Println("Trying to tie a bow in your face")
+		c.log.Println("Trying to tie a bow in your face")
+		c.log.Println("Trying to tie a bow in your face")
+		go c.threadedContractMaintenance()
+	}
+}
 
 // A Contractor negotiates, revises, renews, and provides access to file
 // contracts.
@@ -343,5 +359,7 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	if err != nil {
 		return nil, err
 	}
+
+	go c.threadedRegularMaintenance()
 	return c, nil
 }
