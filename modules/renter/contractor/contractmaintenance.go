@@ -725,7 +725,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.managedCheckForDuplicates()
 	c.managedPrunePubkeyMap()
 	c.managedPrunedRedundantAddressRange()
-	err := c.managedMarkContractsUtility()
+	err = c.managedMarkContractsUtility()
 	if err != nil {
 		c.log.Debugln("Unable to mark contract utilities:", err)
 		return
