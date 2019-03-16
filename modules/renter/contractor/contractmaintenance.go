@@ -727,6 +727,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	if build.Release == "testing" {
 		c.maintenanceLock.Lock()
 	} else if !c.maintenanceLock.TryLock() {
+		c.log.Println("maintenance lock could not be obtained")
 		return
 	}
 	defer c.maintenanceLock.Unlock()
