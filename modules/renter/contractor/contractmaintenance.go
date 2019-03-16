@@ -682,6 +682,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 // signal is being sent. If so, maintenance returns, yielding to whatever thread
 // issued the interrupt.
 func (c *Contractor) threadedContractMaintenance() {
+	c.log.Println("starting contract maintenance")
 	// Threading protection.
 	err := c.tg.Add()
 	if err != nil {
@@ -756,10 +757,20 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Iterate through the contracts again, figuring out which contracts to
 	// renew and how much extra funds to renew them with.
 	for _, contract := range c.staticContracts.ViewAll() {
+		c.log.Println("Examining a contract", contract.HostPublicKey, contract.ID)
+		// Skip any host that does not match our whitelist/blacklist filter
+		// settings.
+		host, _ := c.hdb.Host(contract.HostPublicKey)
+		if host.Filtered {
+			c.log.Println("Contract skipped because it is filtered")
+			continue
+		}
+
 		// Skip any contracts which do not exist or are otherwise unworthy for
 		// renewal.
 		utility, ok := c.managedContractUtility(contract.ID)
 		if !ok || !utility.GoodForRenew {
+			c.log.Println("Contract skipped because it is not good for renew (utility.GoodForRenew, exists)", utility.GoodForRenew, ok)
 			continue
 		}
 
@@ -770,12 +781,14 @@ func (c *Contractor) threadedContractMaintenance() {
 		if blockHeight+allowance.RenewWindow >= contract.EndHeight {
 			renewAmount, err := c.managedEstimateRenewFundingRequirements(contract, blockHeight, allowance)
 			if err != nil {
+				c.log.Println("Contract skipped because there was an error estimating renew funding requirements", renewAmount, err)
 				continue
 			}
 			renewSet = append(renewSet, fileContractRenewal{
 				id:     contract.ID,
 				amount: renewAmount,
 			})
+			c.log.Println("Contract should have been added to the renew set for being past the renew height")
 			continue
 		}
 
@@ -783,10 +796,6 @@ func (c *Contractor) threadedContractMaintenance() {
 		// if less than 'minContractFundRenewalThreshold' funds are remaining
 		// (3% at time of writing), or if there is less than 3 sectors worth of
 		// storage+upload+download remaining.
-		host, _ := c.hdb.Host(contract.HostPublicKey)
-		if host.Filtered {
-			continue
-		}
 		blockBytes := types.NewCurrency64(modules.SectorSize * uint64(allowance.Period))
 		sectorStoragePrice := host.StoragePrice.Mul(blockBytes)
 		sectorUploadBandwidthPrice := host.UploadBandwidthPrice.Mul64(modules.SectorSize)
@@ -811,10 +820,16 @@ func (c *Contractor) threadedContractMaintenance() {
 				id:     contract.ID,
 				amount: contract.TotalCost.Mul64(2),
 			})
+			c.log.Println("Contract identified as needing to be added to refresh set")
+		} else {
+			c.log.Println("Contract did not get added to the refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, minContractFundRenewalThreshold)
 		}
 	}
 	if len(renewSet) != 0 {
 		c.log.Printf("renewing %v contracts", len(renewSet))
+	}
+	if len(refreshSet) != 0 {
+		c.log.Printf("refreshing %v contracts", len(refreshSet))
 	}
 
 	// Remove contracts that are not scheduled for renew from the
@@ -840,26 +855,27 @@ func (c *Contractor) threadedContractMaintenance() {
 	if spending.TotalAllocated.Cmp(allowance.Funds) < 0 {
 		fundsRemaining = allowance.Funds.Sub(spending.TotalAllocated)
 	}
+	c.log.Println("This many funds remain in the allowance:", fundsRemaining)
 
 	// Go through the contracts we've assembled for renewal. Any contracts that
 	// need to be renewed because they are expiring (renewSet) get priority over
 	// contracts that need to be renewed because they have exhausted their funds
 	// (refreshSet). If there is not enough money available, the more expensive
 	// contracts will be skipped.
-	//
-	// TODO: We need some sort of global warning system so that we can alert the
-	// user to the fact that they do not have enough money to keep their
-	// contracts going in the event that we run out of funds.
 	for _, renewal := range renewSet {
 		// Skip this renewal if we don't have enough funds remaining.
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
+			c.log.Println("Skipping a renewal because there are not enough funds remaining", renewal.id, renewal.amount, fundsRemaining)
 			continue
 		}
 
 		// Renew one contract. The error is ignored because the renew function
 		// already will have logged the error, and in the event of an error,
 		// 'fundsSpent' will return '0'.
-		fundsSpent, _ := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
+		fundsSpent, err := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
+		if err != nil {
+			c.log.Println("Error renewing a contract", renewal.id, err)
+		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 
 		// Return here if an interrupt or kill signal has been sent.
@@ -874,13 +890,17 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, renewal := range refreshSet {
 		// Skip this renewal if we don't have enough funds remaining.
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
+			c.log.Println("skipping a refresh because there are not enough funds remaining)", renewal.id, renewal.amount, fundsRemaining)
 			continue
 		}
 
 		// Renew one contract. The error is ignored because the renew function
 		// already will have logged the error, and in the event of an error,
 		// 'fundsSpent' will return '0'.
-		fundsSpent, _ := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
+		fundsSpent, err := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
+		if err != nil {
+			c.log.Println("Error refreshing a contract", renewal.id, err)
+		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 
 		// Return here if an interrupt or kill signal has been sent.
@@ -905,8 +925,10 @@ func (c *Contractor) threadedContractMaintenance() {
 	neededContracts := int(c.allowance.Hosts) - uploadContracts
 	c.mu.RUnlock()
 	if neededContracts <= 0 {
+		c.log.Println("do not seem to need more contracts")
 		return
 	}
+	c.log.Println("need more contracts:", neededContracts)
 
 	// Assemble two exclusion lists. The first one includes all hosts that we
 	// already have contracts with and the second one includes all hosts we

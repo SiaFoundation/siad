@@ -224,6 +224,8 @@ func (cs *ConsensusSet) threadedSleepOnFutureBlock(b types.Block) {
 // consecutive calls to AcceptBlock with each successive call accepting the
 // child block of the previous call.
 func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExtended bool, err error) {
+	println("accept blocks small")
+	totalTime := time.Now()
 	// Grab a lock on the consensus set.
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -243,6 +245,7 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 
 	// Verify the headers for every block, throw out known blocks, and the
 	// invalid blocks (which includes the children of invalid blocks).
+	addBlockTime := time.Now()
 	chainExtended := false
 	changes := make([]changeEntry, 0, len(blocks))
 	setErr := cs.db.Update(func(tx *bolt.Tx) error {
@@ -262,7 +265,9 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 			}
 
 			// Try adding the block to consensus.
+			println("adding a single block to the tree")
 			changeEntry, err := cs.addBlockToTree(tx, blocks[i], parent)
+			println("block is done being added to the tree")
 			if err == nil {
 				changes = append(changes, changeEntry)
 				chainExtended = true
@@ -289,6 +294,7 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 		}
 		return nil
 	})
+	println("add block time:", time.Since(addBlockTime))
 	if _, ok := setErr.(bolt.MmapError); ok {
 		cs.log.Println("ERROR: Bolt mmap failed:", setErr)
 		fmt.Println("Blockchain database has run out of disk space!")
@@ -308,9 +314,15 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 		return false, modules.ErrNonExtendingBlock
 	}
 	// Send any changes to subscribers.
+	subTime := time.Now()
 	for i := 0; i < len(changes); i++ {
+		println("giving to subscriber")
 		cs.updateSubscribers(changes[i])
+		println("subscriber is done")
 	}
+	println("subscriber time:", time.Since(subTime))
+
+	println("total time:", time.Since(totalTime))
 	return chainExtended, nil
 }
 
@@ -322,6 +334,7 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 // without error, it will be relayed to all connected peers. This function
 // should only be called for new blocks.
 func (cs *ConsensusSet) AcceptBlock(b types.Block) error {
+	println("Accept Block Large")
 	err := cs.tg.Add()
 	if err != nil {
 		return err

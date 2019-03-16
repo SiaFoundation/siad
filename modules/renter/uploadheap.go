@@ -163,10 +163,6 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 	var chunkIndexes []int
 	for i, entry := range entrys {
 		if (target == targetStuckChunks) != entry.StuckChunkByIndex(uint64(i)) {
-			stuckLoop := target == targetStuckChunks
-			chunkStuck := entry.StuckChunkByIndex(uint64(i))
-			chunkHealth := entry.ChunkHealth(i, offline, goodForRenew)
-			r.log.Debugln("Chunk not needed stuckLoop:", stuckLoop, "chunkStuck:", chunkStuck, "chunkHealh:", chunkHealth)
 			// Close unneeded entrys
 			err := entry.Close()
 			if err != nil {
@@ -482,9 +478,11 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
+	println("blocking to get memory")
 	if !r.memoryManager.Request(uuc.memoryNeeded, memoryPriorityLow) {
 		return errors.New("couldn't request memory")
 	}
+	println("memory successfully fetched")
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
 	// does not need to bottleneck the repair loop.
 	go r.threadedFetchAndRepairChunk(uuc)
