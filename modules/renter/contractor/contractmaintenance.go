@@ -827,8 +827,16 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	if len(renewSet) != 0 {
 		c.log.Printf("renewing %v contracts", len(renewSet))
+		c.log.Printf("renewing %v contracts", len(renewSet))
+		c.log.Printf("renewing %v contracts", len(renewSet))
+		c.log.Printf("renewing %v contracts", len(renewSet))
+		c.log.Printf("renewing %v contracts", len(renewSet))
 	}
 	if len(refreshSet) != 0 {
+		c.log.Printf("refreshing %v contracts", len(refreshSet))
+		c.log.Printf("refreshing %v contracts", len(refreshSet))
+		c.log.Printf("refreshing %v contracts", len(refreshSet))
+		c.log.Printf("refreshing %v contracts", len(refreshSet))
 		c.log.Printf("refreshing %v contracts", len(refreshSet))
 	}
 
@@ -863,6 +871,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	// (refreshSet). If there is not enough money available, the more expensive
 	// contracts will be skipped.
 	for _, renewal := range renewSet {
+		c.log.Println("Attempting to perform a renewal:", renewal.id)
 		// Skip this renewal if we don't have enough funds remaining.
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
 			c.log.Println("Skipping a renewal because there are not enough funds remaining", renewal.id, renewal.amount, fundsRemaining)
@@ -875,20 +884,25 @@ func (c *Contractor) threadedContractMaintenance() {
 		fundsSpent, err := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
 		if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
+		} else {
+			c.log.Println("Contract seems to have been successfully renewed?")
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 
 		// Return here if an interrupt or kill signal has been sent.
 		select {
 		case <-c.tg.StopChan():
+			c.log.Println("returning because the renter was stopped")
 			return
 		case <-c.interruptMaintenance:
+			c.log.Println("returning because maintenance was interrupted")
 			return
 		default:
 		}
 	}
 	for _, renewal := range refreshSet {
 		// Skip this renewal if we don't have enough funds remaining.
+		c.log.Println("Attempting to performa refresh:", renewal.id)
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
 			c.log.Println("skipping a refresh because there are not enough funds remaining)", renewal.id, renewal.amount, fundsRemaining)
 			continue
@@ -906,8 +920,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		// Return here if an interrupt or kill signal has been sent.
 		select {
 		case <-c.tg.StopChan():
+			c.log.Println("returning because the renter was stopped")
 			return
 		case <-c.interruptMaintenance:
+			c.log.Println("returning because maintenance was interrupted")
 			return
 		default:
 		}
