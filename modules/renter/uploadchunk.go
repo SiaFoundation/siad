@@ -468,16 +468,10 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		// potentially unaccessible. In either case the repair is successful if
 		// it completed more pieces than the RemoteRepairDownloadThreshold
 		successfulRepair = (1-siafile.RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
-		if !successfulRepair {
-			println("remote repair seems to have failed", piecesNeeded, piecesCompleted)
-		}
 	} else {
 		// Since the file is on disk and accessible with stat then the repair is
 		// successful if >= piecesNeeded pieces are repaired
 		successfulRepair = piecesNeeded <= piecesCompleted
-		if !successfulRepair {
-			println("local repair seems to have failed:", piecesNeeded, piecesCompleted)
-		}
 	}
 
 	// Check if renter is shutting down

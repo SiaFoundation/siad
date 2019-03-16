@@ -546,10 +546,12 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 
 	// Mark the contract as being renewed, and defer logic to unmark it
 	// once renewing is complete.
+	c.log.Debugln("Marking a contract for a renew", id)
 	c.mu.Lock()
 	c.renewing[id] = true
 	c.mu.Unlock()
 	defer func() {
+		c.log.Debugln("Unmarking the contract for renew", id)
 		c.mu.Lock()
 		delete(c.renewing, id)
 		c.mu.Unlock()
@@ -563,18 +565,26 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	s, sok := c.sessions[id]
 	c.mu.RUnlock()
 	if eok {
+		c.log.Debugln("Waiting for editor invalidation")
 		e.invalidate()
+		c.log.Debugln("Got editor invalidation")
 	}
 	if dok {
+		c.log.Debugln("Waiting for downloader invalidation")
 		d.invalidate()
+		c.log.Debugln("Got downloader invalidation")
 	}
 	if sok {
+		c.log.Debugln("Waiting for session invalidation")
 		s.invalidate()
+		c.log.Debugln("Got session invalidation")
 	}
 
 	// Fetch the contract that we are renewing.
+	c.log.Debugln("Acquiring contract from the contract set", id)
 	oldContract, exists := c.staticContracts.Acquire(id)
 	if !exists {
+		c.log.Debugln("Contract does not seem to exist")
 		return types.ZeroCurrency, errors.New("contract no longer exists")
 	}
 	// Return the contract if it's not useful for renewing.
@@ -591,11 +601,14 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// before. Once it has failed for a certain number of blocks in a
 	// row and reached its second half of the renew window, we give up
 	// on renewing it and set goodForRenew to false.
+	c.log.Debugln("calling managedRenew on contract", id)
 	newContract, errRenew := c.managedRenew(oldContract, amount, endHeight)
+	c.log.Debugln("managedRenew has returned with error:", errRenew)
 	if errRenew != nil {
 		// Increment the number of failed renews for the contract if it
 		// was the host's fault.
 		if modules.IsHostsFault(errRenew) {
+			c.log.Debugln("remote host determined to be at fault, tallying up failed renews", id)
 			c.mu.Lock()
 			c.numFailedRenews[oldContract.Metadata().ID]++
 			c.mu.Unlock()
@@ -616,7 +629,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 			if err != nil {
 				c.log.Println("WARN: failed to mark contract as !goodForRenew:", err)
 			}
-			c.log.Printf("WARN: failed to renew %v, marked as bad: %v\n",
+			c.log.Printf("WARN: failed to renew %v, marked as bad and locked: %v\n",
 				oldContract.Metadata().HostPublicKey, errRenew)
 			c.staticContracts.Return(oldContract)
 			return types.ZeroCurrency, errors.AddContext(errRenew, "contract marked as bad for too many consecutive failed renew attempts")
@@ -683,41 +696,13 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 // signal is being sent. If so, maintenance returns, yielding to whatever thread
 // issued the interrupt.
 func (c *Contractor) threadedContractMaintenance() {
-	c.log.Println("starting contract maintenance")
-	// Threading protection.
+	c.log.Debugln("starting contract maintenance")
 	err := c.tg.Add()
 	if err != nil {
+		c.log.Debugln("contract maintenance exited because the contractor has been closed")
 		return
 	}
 	defer c.tg.Done()
-
-	// Recover unknown contracts found on the blockchain.
-	c.managedRecoverContracts()
-
-	// Archive contracts that need to be archived before doing additional
-	// maintenance, check for any duplicates caused by interruption, and then
-	// prune the pubkey map.
-	c.managedArchiveContracts()
-	c.managedCheckForDuplicates()
-	c.managedPrunePubkeyMap()
-
-	// Deduplicate contracts which share the same subnet.
-	c.managedPrunedRedundantAddressRange()
-
-	// Update the utility fields for the contracts based on the most recent
-	// hostdb.
-	if err := c.managedMarkContractsUtility(); err != nil {
-		c.log.Println("WARNING: wasn't able to mark contracts", err)
-		return
-	}
-
-	// Nothing left to do if there are no hosts.
-	c.mu.RLock()
-	wantedHosts := c.allowance.Hosts
-	c.mu.RUnlock()
-	if wantedHosts <= 0 {
-		return
-	}
 
 	// Only one instance of this thread should be running at a time. Under
 	// normal conditions, fine to return early if another thread is already
@@ -727,10 +712,34 @@ func (c *Contractor) threadedContractMaintenance() {
 	if build.Release == "testing" {
 		c.maintenanceLock.Lock()
 	} else if !c.maintenanceLock.TryLock() {
-		c.log.Println("maintenance lock could not be obtained")
+		c.log.Debugln("maintenance lock could not be obtained")
 		return
 	}
 	defer c.maintenanceLock.Unlock()
+
+	// Perform general cleanup of the contracts. This includes recovering lost
+	// contracts, archiving contracts, and other cleanup work. This should all
+	// happen before the rest of the maintenance.
+	c.managedRecoverContracts()
+	c.managedArchiveContracts()
+	c.managedCheckForDuplicates()
+	c.managedPrunePubkeyMap()
+	c.managedPrunedRedundantAddressRange()
+	err := c.managedMarkContractsUtility()
+	if err != nil {
+		c.log.Debugln("Unable to mark contract utilities:", err)
+		return
+	}
+
+	// If there are no hosts requested by the allowance, there is no remaining
+	// work.
+	c.mu.RLock()
+	wantedHosts := c.allowance.Hosts
+	c.mu.RUnlock()
+	if wantedHosts <= 0 {
+		c.log.Debugln("Exiting contract maintenance because the number of desired hosts is <= zero.")
+		return
+	}
 
 	// The rest of this function needs to know a few of the stateful variables
 	// from the contractor, build those up under a lock so that the rest of the
@@ -759,12 +768,12 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Iterate through the contracts again, figuring out which contracts to
 	// renew and how much extra funds to renew them with.
 	for _, contract := range c.staticContracts.ViewAll() {
-		c.log.Println("Examining a contract", contract.HostPublicKey, contract.ID)
+		c.log.Debugln("Examining a contract:", contract.HostPublicKey, contract.ID)
 		// Skip any host that does not match our whitelist/blacklist filter
 		// settings.
 		host, _ := c.hdb.Host(contract.HostPublicKey)
 		if host.Filtered {
-			c.log.Println("Contract skipped because it is filtered")
+			c.log.Debugln("Contract skipped because it is filtered")
 			continue
 		}
 
@@ -772,7 +781,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// renewal.
 		utility, ok := c.managedContractUtility(contract.ID)
 		if !ok || !utility.GoodForRenew {
-			c.log.Println("Contract skipped because it is not good for renew (utility.GoodForRenew, exists)", utility.GoodForRenew, ok)
+			c.log.Debugln("Contract skipped because it is not good for renew (utility.GoodForRenew, exists)", utility.GoodForRenew, ok)
 			continue
 		}
 
@@ -783,14 +792,14 @@ func (c *Contractor) threadedContractMaintenance() {
 		if blockHeight+allowance.RenewWindow >= contract.EndHeight {
 			renewAmount, err := c.managedEstimateRenewFundingRequirements(contract, blockHeight, allowance)
 			if err != nil {
-				c.log.Println("Contract skipped because there was an error estimating renew funding requirements", renewAmount, err)
+				c.log.Debugln("Contract skipped because there was an error estimating renew funding requirements", renewAmount, err)
 				continue
 			}
 			renewSet = append(renewSet, fileContractRenewal{
 				id:     contract.ID,
 				amount: renewAmount,
 			})
-			c.log.Println("Contract should have been added to the renew set for being past the renew height")
+			c.log.Debugln("Contract has been added to the renew set for being past the renew height")
 			continue
 		}
 
@@ -822,32 +831,27 @@ func (c *Contractor) threadedContractMaintenance() {
 				id:     contract.ID,
 				amount: contract.TotalCost.Mul64(2),
 			})
-			c.log.Println("Contract identified as needing to be added to refresh set")
+			c.log.Println("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, minContractFundRenewalThreshold)
 		} else {
 			c.log.Println("Contract did not get added to the refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, minContractFundRenewalThreshold)
 		}
 	}
-	if len(renewSet) != 0 {
-		c.log.Printf("renewing %v contracts", len(renewSet))
-		c.log.Printf("renewing %v contracts", len(renewSet))
-		c.log.Printf("renewing %v contracts", len(renewSet))
-		c.log.Printf("renewing %v contracts", len(renewSet))
-		c.log.Printf("renewing %v contracts", len(renewSet))
-	}
-	if len(refreshSet) != 0 {
-		c.log.Printf("refreshing %v contracts", len(refreshSet))
-		c.log.Printf("refreshing %v contracts", len(refreshSet))
-		c.log.Printf("refreshing %v contracts", len(refreshSet))
-		c.log.Printf("refreshing %v contracts", len(refreshSet))
-		c.log.Printf("refreshing %v contracts", len(refreshSet))
+	if len(renewSet) != 0 || len(refreshSet) != 0 {
+		c.log.Printf("renewing %v contracts and refreshing %v contracts", len(renewSet), len(refreshSet))
 	}
 
-	// Remove contracts that are not scheduled for renew from the
-	// firstFailedRenew map. We do this by making a new map entirely and copying
-	// over all the elements that still matter.
+	// Update the failed renew map so that it only contains contracts which we
+	// are currently trying to renew or refresh. The failed renew map is a map
+	// that we use to track how many times consecutively we failed to renew a
+	// contract with a host, so that we know if we need to abandon that host.
 	c.mu.Lock()
 	newFirstFailedRenew := make(map[types.FileContractID]types.BlockHeight)
 	for _, r := range renewSet {
+		if _, exists := c.numFailedRenews[r.id]; exists {
+			newFirstFailedRenew[r.id] = c.numFailedRenews[r.id]
+		}
+	}
+	for _, r := range refreshSet {
 		if _, exists := c.numFailedRenews[r.id]; exists {
 			newFirstFailedRenew[r.id] = c.numFailedRenews[r.id]
 		}
@@ -865,7 +869,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	if spending.TotalAllocated.Cmp(allowance.Funds) < 0 {
 		fundsRemaining = allowance.Funds.Sub(spending.TotalAllocated)
 	}
-	c.log.Println("This many funds remain in the allowance:", fundsRemaining)
+	c.log.Debugln("The allowance has this many remaning funds:", fundsRemaining)
 
 	// Go through the contracts we've assembled for renewal. Any contracts that
 	// need to be renewed because they are expiring (renewSet) get priority over
@@ -876,7 +880,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Println("Attempting to perform a renewal:", renewal.id)
 		// Skip this renewal if we don't have enough funds remaining.
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
-			c.log.Println("Skipping a renewal because there are not enough funds remaining", renewal.id, renewal.amount, fundsRemaining)
+			c.log.Println("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
 			continue
 		}
 
@@ -887,7 +891,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
 		} else {
-			c.log.Println("Contract seems to have been successfully renewed?")
+			c.log.Println("Renewal completed without error")
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 
@@ -904,9 +908,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	for _, renewal := range refreshSet {
 		// Skip this renewal if we don't have enough funds remaining.
-		c.log.Println("Attempting to performa refresh:", renewal.id)
+		c.log.Println("Attempting to perform a contract refresh:", renewal.id)
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
-			c.log.Println("skipping a refresh because there are not enough funds remaining)", renewal.id, renewal.amount, fundsRemaining)
+			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount, fundsRemaining)
 			continue
 		}
 

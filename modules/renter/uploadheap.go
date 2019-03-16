@@ -1,8 +1,5 @@
 package renter
 
-// TODO: Renter will try to download to repair a piece even if there are not
-// enough workers to make any progress on the repair.  This should be fixed.
-
 import (
 	"container/heap"
 	"io/ioutil"
@@ -478,11 +475,9 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
-	println("blocking to get memory")
 	if !r.memoryManager.Request(uuc.memoryNeeded, memoryPriorityLow) {
 		return errors.New("couldn't request memory")
 	}
-	println("memory successfully fetched")
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
 	// does not need to bottleneck the repair loop.
 	go r.threadedFetchAndRepairChunk(uuc)
@@ -515,14 +510,12 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 	var consecutiveChunkRepairs int
 	rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
 	for {
-		println("repair loop top of loop")
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
 			return
 		case <-rebuildHeapSignal:
 			// Return if workers/heap need to be refreshed.
-			println("received rebuild heap signal")
 			return
 		default:
 		}
@@ -534,21 +527,17 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 
 		// Check if there is work by trying to pop of the next chunk from
 		// the heap.
-		println("popping chunk")
 		nextChunk := r.uploadHeap.managedPop()
 		if nextChunk == nil {
-			println("chunk is nil, returning out - nothing to do")
 			return
 		}
 
 		// Check if file is reasonably healthy
-		println("getting health of chunk")
 		hostOfflineMap, hostGoodForRenewMap, _ := r.managedContractUtilityMaps()
 		health, _, _ := nextChunk.fileEntry.Health(hostOfflineMap, hostGoodForRenewMap)
 		if health < 0.8 {
 			// File is reasonably healthy so update the recent repair time for
 			// the file
-			println("reasonably healthy update repair time")
 			err := nextChunk.fileEntry.UpdateRecentRepairTime()
 			if err != nil {
 				r.log.Printf("WARN: unable to update the recent repair time of %v : %v", nextChunk.fileEntry.SiaPath(), err)
@@ -563,7 +552,6 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		r.mu.RUnlock(id)
 		if availableWorkers < nextChunk.minimumPieces {
 			// Not enough available workers, mark as stuck and close
-			println("there are not enough available workers")
 			err := r.managedSetStuckAndClose(nextChunk, true)
 			if err != nil {
 				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
@@ -574,7 +562,6 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		// Perform the work. managedPrepareNextChunk will block until
 		// enough memory is available to perform the work, slowing this
 		// thread down to using only the resources that are available.
-		println("preparing chunk")
 		err := r.managedPrepareNextChunk(nextChunk, hosts)
 		if err != nil {
 			// We were unsuccessful in preparing the next chunk so we need to
@@ -588,7 +575,6 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		consecutiveChunkRepairs++
 
 		// Check if enough chunks are currently being repaired
-		println("checking for heap reset condition")
 		if consecutiveChunkRepairs >= maxConsecutiveChunkRepairs {
 			// Pull all of the chunks out of the heap and return. Save the stuck
 			// chunks, as this is the repair loop and we aren't trying to erase
@@ -610,8 +596,6 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 			}
 			return
 		}
-
-		println("bottom of loop")
 	}
 }
 
@@ -620,7 +604,6 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 // single iteration of threadedUploadAndRepair.
 func (r *Renter) managedUploadAndRepair() error {
 	// Find the lowest health directory to queue for repairs.
-	println("grabbing worst health dir")
 	dirSiaPath, dirHealth, err := r.managedWorstHealthDirectory()
 	if err != nil {
 		r.log.Println("WARN: error getting worst health directory:", err)
@@ -629,28 +612,23 @@ func (r *Renter) managedUploadAndRepair() error {
 
 	// Refresh the worker pool and get the set of hosts that are currently
 	// useful for uploading.
-	println("refreshing hosts and workers")
 	hosts := r.managedRefreshHostsAndWorkers()
 
 	// Build a min-heap of chunks organized by upload progress.
-	println("building the chunk heap")
 	r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
 	r.uploadHeap.mu.Lock()
 	heapLen := r.uploadHeap.heap.Len()
 	r.uploadHeap.mu.Unlock()
 	if heapLen == 0 {
-		println("chunk heap has len of zero")
 		r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
 		// Call threadedBubble to make sure that directory information is
 		// accurate
 		r.threadedBubbleMetadata(dirSiaPath)
 		return nil
 	}
-	println("repairing some chunks", heapLen)
 	r.log.Println("Repairing", heapLen, "chunks from", dirSiaPath)
 
 	// Work through the heap and repair files
-	println("running repair loop")
 	r.managedRepairLoop(hosts)
 
 	// Once we have worked through the heap, call bubble to update the
@@ -665,8 +643,6 @@ func (r *Renter) managedUploadAndRepair() error {
 // sustained for data upload as long as there is at least one chunk in need of
 // upload or repair.
 func (r *Renter) threadedUploadAndRepair() {
-	println("top of repair loop")
-	defer println("exiting the repair loop")
 	err := r.tg.Add()
 	if err != nil {
 		return
@@ -675,7 +651,6 @@ func (r *Renter) threadedUploadAndRepair() {
 
 	// Perpetual loop to scan for more files.
 	for {
-		println("top of perpetual loop")
 		// Return if the renter has shut down.
 		select {
 		case <-r.tg.StopChan():
@@ -685,7 +660,6 @@ func (r *Renter) threadedUploadAndRepair() {
 
 		// Wait until the renter is online to proceed. This function will return
 		// 'false' if the renter has shut down before being online.
-		println("block until online")
 		if !r.managedBlockUntilOnline() {
 			return
 		}
@@ -695,13 +669,11 @@ func (r *Renter) threadedUploadAndRepair() {
 		// is a new upload, a signal will be sent through the 'newUploads'
 		// channel, and if the metadata updating code finds a file that needs
 		// repairing, a signal is sent through the 'repairNeeded' channel.
-		println("getting root metadata")
 		rootMetadata, err := r.managedDirectoryMetadata("") // empty string to fetch root metadata
 		if err != nil {
 			// If there is an error fetching the root directory metadata, sleep
 			// for a bit and hope that on the next iteration, things will be
 			// better.
-			println("error getting root metadata")
 			r.log.Println("WARN: error fetching filesystem root metadata:", err)
 			select {
 			case <-time.After(uploadAndRepairErrorSleepDuration):
@@ -710,12 +682,10 @@ func (r *Renter) threadedUploadAndRepair() {
 			}
 			continue
 		}
-		println("checking health")
 		if rootMetadata.Health < siafile.RemoteRepairDownloadThreshold {
 			// Block until a signal is received that there is more work to do.
 			// A signal will be sent if new data to upload is received, or if
 			// the health loop discovers that some files are not in good health.
-			println("health is good enough, no repairs")
 			select {
 			case <-r.uploadHeap.newUploads:
 			case <-r.uploadHeap.repairNeeded:
@@ -727,7 +697,6 @@ func (r *Renter) threadedUploadAndRepair() {
 
 		// The necessary conditions for performing an upload and repair
 		// iteration have been met - perform an upload and repair iteration.
-		println("doing an upload and repair")
 		err = r.managedUploadAndRepair()
 		if err != nil {
 			// If there is an error performing an upload and repair iteration,

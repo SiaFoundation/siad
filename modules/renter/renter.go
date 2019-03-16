@@ -774,7 +774,6 @@ var _ modules.Renter = (*Renter)(nil)
 
 // NewCustomRenter initializes a renter and returns it.
 func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, hc hostContractor, persistDir string, deps modules.Dependencies) (*Renter, error) {
-	println("STARTING UR MOM")
 	if g == nil {
 		return nil, errNilGateway
 	}
@@ -826,30 +825,25 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 
 	// Load all saved data.
-	println("init persist")
 	if err := r.managedInitPersist(); err != nil {
 		return nil, err
 	}
 
 	// Load and execute bubble updates
-	println("execut bubble updates")
 	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
 		return nil, err
 	}
 
 	// Initialize the streaming cache.
-	println("new stream cache")
 	r.staticStreamCache = newStreamCache(r.persist.StreamCacheSize)
 
 	// Subscribe to the consensus set.
-	println("consensus set subscribe")
 	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
 	if err != nil {
 		return nil, err
 	}
 
 	// Spin up the workers for the work pool.
-	println("update worker pool and launch threads")
 	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
 	go r.threadedUploadAndRepair()
@@ -866,22 +860,18 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil
 	})
 
-	println("returning new renter")
 	return r, nil
 }
 
 // New returns an initialized renter.
 func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, persistDir string) (*Renter, error) {
-	println("init hostdb")
 	hdb, err := hostdb.New(g, cs, tpool, persistDir)
 	if err != nil {
 		return nil, err
 	}
-	println("init contractor")
 	hc, err := contractor.New(cs, wallet, tpool, hdb, persistDir)
 	if err != nil {
 		return nil, err
 	}
-	println("init custom renter")
 	return NewCustomRenter(g, cs, tpool, hdb, hc, persistDir, modules.ProdDependencies)
 }
