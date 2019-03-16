@@ -28,17 +28,10 @@ var (
 	metricsContractID = types.FileContractID{'m', 'e', 't', 'r', 'i', 'c', 's'}
 )
 
+// TODO: Make this a part of the codebase with a threadgroup.
 func (c *Contractor) threadedRegularMaintenance() {
 	for {
 		time.Sleep(time.Second*30)
-		c.log.Println("Trying to tie a bow in your face")
-		c.log.Println("Trying to tie a bow in your face")
-		c.log.Println("Trying to tie a bow in your face")
-		c.log.Println("Trying to tie a bow in your face")
-		c.log.Println("Trying to tie a bow in your face")
-		c.log.Println("Trying to tie a bow in your face")
-		c.log.Println("Trying to tie a bow in your face")
-		c.log.Println("Trying to tie a bow in your face")
 		go c.threadedContractMaintenance()
 	}
 }
