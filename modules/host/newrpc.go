@@ -409,6 +409,14 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 		}
 	}()
 
+	// Check that a contract is locked.
+	if len(s.so.OriginTransactionSet) == 0 {
+		err := errors.New("no contract locked")
+		s.writeError(err)
+		<-stopSignal
+		return err
+	}
+
 	// Read some internal fields for later.
 	h.mu.RLock()
 	blockHeight := h.blockHeight
@@ -722,6 +730,13 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
+		s.writeError(err)
+		return err
+	}
+
+	// Check that a contract is locked.
+	if len(s.so.OriginTransactionSet) == 0 {
+		err := errors.New("no contract locked")
 		s.writeError(err)
 		return err
 	}
