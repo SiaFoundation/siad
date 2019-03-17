@@ -72,6 +72,7 @@ func (r *Renter) DirList(siaPath string) ([]modules.DirectoryInfo, []modules.Fil
 		return nil, nil, err
 	}
 	defer r.tg.Done()
+
 	var dirs []modules.DirectoryInfo
 	var files []modules.FileInfo
 	// Get DirectoryInfo
@@ -88,7 +89,7 @@ func (r *Renter) DirList(siaPath string) ([]modules.DirectoryInfo, []modules.Fil
 	for _, fi := range fileInfos {
 		// Check for directories
 		if fi.IsDir() {
-			di, err := r.DirInfo(filepath.Join(siaPath, fi.Name()))
+			di, err := r.DirInfo(siaPath+"/"+fi.Name()))
 			if err != nil {
 				return nil, nil, err
 			}

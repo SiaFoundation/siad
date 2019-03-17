@@ -608,10 +608,11 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		// Increment the number of failed renews for the contract if it
 		// was the host's fault.
 		if modules.IsHostsFault(errRenew) {
-			c.log.Debugln("remote host determined to be at fault, tallying up failed renews", id)
 			c.mu.Lock()
 			c.numFailedRenews[oldContract.Metadata().ID]++
+			totalFailures := c.numFailedRenews[oldContract.Metadata().ID]
 			c.mu.Unlock()
+			c.log.Debugln("remote host determined to be at fault, tallying up failed renews", totalFailures, id)
 		}
 
 		// Check if contract has to be replaced.
@@ -619,9 +620,8 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		c.mu.RLock()
 		numRenews, failedBefore := c.numFailedRenews[md.ID]
 		c.mu.RUnlock()
-		secondHalfOfWindow := blockHeight+allowance.RenewWindow/2 >= md.EndHeight
 		replace := numRenews >= consecutiveRenewalsBeforeReplacement
-		if failedBefore && secondHalfOfWindow && replace {
+		if failedBefore && replace {
 			oldUtility.GoodForRenew = false
 			oldUtility.GoodForUpload = false
 			oldUtility.Locked = true
