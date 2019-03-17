@@ -594,6 +594,7 @@ func wallettransactionscmd() {
 	}
 	fmt.Println("             [timestamp]    [height]                                                   [transaction id]    [net siacoins]   [net siafunds]")
 	txns := append(wtg.ConfirmedTransactions, wtg.UnconfirmedTransactions...)
+	var totals float64
 	for _, txn := range txns {
 		// Determine the number of outgoing siacoins and siafunds.
 		var outgoingSiacoins types.Currency
@@ -606,11 +607,15 @@ func wallettransactionscmd() {
 				outgoingSiafunds = outgoingSiafunds.Add(input.Value)
 			}
 		}
+		fmt.Println("total outgoing:", outgoingSiacoins)
 
 		// Determine the number of incoming siacoins and siafunds.
 		var incomingSiacoins types.Currency
 		var incomingSiafunds types.Currency
 		for _, output := range txn.Outputs {
+			if len(txn.Transaction.FileContracts) > 0 || len(txn.Transaction.FileContractRevisions) > 0 {
+				break
+			}
 			if output.FundType == types.SpecifierMinerPayout {
 				incomingSiacoins = incomingSiacoins.Add(output.Value)
 			}
@@ -621,6 +626,7 @@ func wallettransactionscmd() {
 				incomingSiafunds = incomingSiafunds.Add(output.Value)
 			}
 		}
+		fmt.Println("total incoming:", incomingSiacoins)
 
 		// Convert the siacoins to a float.
 		incomingSiacoinsFloat, _ := new(big.Rat).SetFrac(incomingSiacoins.Big(), types.SiacoinPrecision.Big()).Float64()
@@ -638,6 +644,7 @@ func wallettransactionscmd() {
 			fmt.Printf(" unconfirmed")
 		}
 		fmt.Printf("%67v%15.2f SC", txn.TransactionID, incomingSiacoinsFloat-outgoingSiacoinsFloat)
+		totals += incomingSiacoinsFloat-outgoingSiacoinsFloat
 		// For siafunds, need to avoid having a negative types.Currency.
 		if incomingSiafunds.Cmp(outgoingSiafunds) >= 0 {
 			fmt.Printf("%14v SF\n", incomingSiafunds.Sub(outgoingSiafunds))
@@ -645,6 +652,7 @@ func wallettransactionscmd() {
 			fmt.Printf("-%14v SF\n", outgoingSiafunds.Sub(incomingSiafunds))
 		}
 	}
+	fmt.Println(totals)
 }
 
 // walletunlockcmd unlocks a saved wallet

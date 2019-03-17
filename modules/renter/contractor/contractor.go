@@ -28,14 +28,6 @@ var (
 	metricsContractID = types.FileContractID{'m', 'e', 't', 'r', 'i', 'c', 's'}
 )
 
-// TODO: Make this a part of the codebase with a threadgroup.
-func (c *Contractor) threadedRegularMaintenance() {
-	for {
-		time.Sleep(time.Second * 30)
-		go c.threadedContractMaintenance()
-	}
-}
-
 // A Contractor negotiates, revises, renews, and provides access to file
 // contracts.
 type Contractor struct {
@@ -352,7 +344,5 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	if err != nil {
 		return nil, err
 	}
-
-	go c.threadedRegularMaintenance()
 	return c, nil
 }

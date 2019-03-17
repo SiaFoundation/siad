@@ -311,7 +311,6 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 	for i := 0; i < len(changes); i++ {
 		cs.updateSubscribers(changes[i])
 	}
-
 	return chainExtended, nil
 }
 

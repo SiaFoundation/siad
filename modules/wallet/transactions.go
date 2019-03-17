@@ -115,11 +115,14 @@ func (w *Wallet) Transactions(startHeight, endHeight types.BlockHeight) (pts []m
 		return nil, err
 	}
 	defer w.tg.Done()
-	// ensure durability of reported transactions
+
+	// There may be transactions which haven't been saved / committed yet. Sync
+	// the database to ensure that any information which gets reported to the
+	// user will be persisted through a restart.
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err = w.syncDB(); err != nil {
-		return
+		return nil, err
 	}
 
 	height, err := dbGetConsensusHeight(w.dbTx)
