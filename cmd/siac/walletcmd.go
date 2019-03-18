@@ -606,7 +606,6 @@ func wallettransactionscmd() {
 				outgoingSiafunds = outgoingSiafunds.Add(input.Value)
 			}
 		}
-		fmt.Println("total outgoing:", outgoingSiacoins)
 
 		// Determine the number of incoming siacoins and siafunds.
 		var incomingSiacoins types.Currency
