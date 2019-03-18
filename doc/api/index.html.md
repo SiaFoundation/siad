@@ -2993,3 +2993,6 @@ The addresses currently watched by the wallet.
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
+
+# Version
+<a href='https://sia.tech/docs/v140'>**v140**
