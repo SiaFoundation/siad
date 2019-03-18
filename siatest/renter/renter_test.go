@@ -942,6 +942,9 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Sometimes wait a second to not always cancel the download right
+	// away.
+	time.Sleep(time.Second * time.Duration(fastrand.Intn(2)))
 	// Cancel the download.
 	if err := renter.RenterCancelDownloadPost(cancelID); err != nil {
 		t.Fatal(err)
