@@ -746,7 +746,6 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 func (c *Contractor) threadedContractMaintenance() {
 	err := c.tg.Add()
 	if err != nil {
-		c.log.Debugln("contract maintenance exited because the contractor has been closed")
 		return
 	}
 	defer c.tg.Done()
