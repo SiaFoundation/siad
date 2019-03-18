@@ -423,10 +423,10 @@ Modify settings that control the gateway's behavior.
 ### Query String Parameters
 #### OPTIONAL
 **maxdownloadspeed** | bytes per second
-Max download speed permitted, speed provides in bytes per second.  
+Max download speed permitted in bytes per second
 
 **maxuploadspeed** | bytes per second
-Max upload speed permitted, speed provides in bytes per second.  
+Max upload speed permitted in bytes per second
 
 ### Response
 
