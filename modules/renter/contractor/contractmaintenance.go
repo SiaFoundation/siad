@@ -697,13 +697,13 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 // signal is being sent. If so, maintenance returns, yielding to whatever thread
 // issued the interrupt.
 func (c *Contractor) threadedContractMaintenance() {
-	c.log.Debugln("starting contract maintenance")
 	err := c.tg.Add()
 	if err != nil {
 		c.log.Debugln("contract maintenance exited because the contractor has been closed")
 		return
 	}
 	defer c.tg.Done()
+	c.log.Debugln("starting contract maintenance")
 
 	// Only one instance of this thread should be running at a time. Under
 	// normal conditions, fine to return early if another thread is already
