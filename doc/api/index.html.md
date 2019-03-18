@@ -430,11 +430,11 @@ Modify settings that control the gateway's behavior.
 
 ### Query String Parameters
 #### OPTIONAL
-**maxdownloadspeed** | bytes per second
-Max download speed permitted in bytes per second
+**maxdownloadspeed** | bytes per second  
+Max download speed permitted in bytes per second  
 
-**maxuploadspeed** | bytes per second
-Max upload speed permitted in bytes per second
+**maxuploadspeed** | bytes per second  
+Max upload speed permitted in bytes per second  
 
 ### Response
 
@@ -1390,7 +1390,8 @@ The multiplier that gets applied to a host based on the version of Sia that they
 
 ```go
 curl -A "Sia-Agent" --user "":<apipassword> --data '{"filtermode" : "whitelist","hosts" : ["ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef","ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef","ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]}' "localhost:9980/hostdb/filtermode"
-
+```  
+```go
 curl -A "Sia-Agent" --user "":<apipassword> --data '{"filtermode" : "disable"}' "localhost:9980/hostdb/filtermode"
 ```
 Lets you enable and disable a filter mode for the hostdb. Currenlty the two modes supported are `blacklist` mode and `whitelist` mode. In `blacklist` mode, any hosts you identify as being on the `blacklist` will not be used to form contracts. In `whitelist` mode, only the hosts identified as being on the `whitelist` will be used to form contracts. In both modes, hosts that you are blacklisted will be filtered from your hostdb. To enable either mode, set `filtermode` to the desired mode and submit a list of host pubkeys as the corresponding `blacklist` or `whitelist`. To disable either list, the `host` field can be left blank (e.g. empty slice) and the `filtermode` should be set to `disable`.  
@@ -1804,8 +1805,9 @@ Signals if contract is good for a renewal.
 ## /renter/dir/*siapath [GET]
 > curl example  
 
-The root siadir path is "" so submitting the API call without an empty siapath
+> The root siadir path is "" so submitting the API call without an empty siapath
 will return the root siadir information.  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/dir/"
 ```  
@@ -2330,12 +2332,13 @@ standard success or error response. See [standard responses](#standard-responses
 ## /renter/stream/*siapath* [GET]
 > curl example  
 
-Stream the whole file.  
+> Stream the whole file.  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/stream/myfile"
 ```  
-The file can be streamed partially by using standard partial http requests
-which means setting the "Range" field in the http header.  
+> The file can be streamed partially by using standard partial http requests which means setting the "Range" field in the http header.  
+
 ```go
 curl -A "Sia-Agent" -H "Range: bytes=0-1023" "localhost:9980/renter/stream/myfile"
 ```
