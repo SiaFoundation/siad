@@ -89,7 +89,7 @@ func (r *Renter) DirList(siaPath string) ([]modules.DirectoryInfo, []modules.Fil
 	for _, fi := range fileInfos {
 		// Check for directories
 		if fi.IsDir() {
-			di, err := r.DirInfo(filepath.Join(siapath, fi.Name()))
+			di, err := r.DirInfo(filepath.Join(siaPath, fi.Name()))
 			if err != nil {
 				return nil, nil, err
 			}
