@@ -359,6 +359,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 // cleanup required. This can include returning rememory and releasing the chunk
 // from the map of active chunks in the chunk heap.
 func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
+	defer r.managedUpdateUploadChunkStuckStatus(uc)
 	uc.mu.Lock()
 	piecesAvailable := 0
 	var memoryReleased uint64
@@ -413,7 +414,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	// If required, remove the chunk from the set of repairing chunks.
 	if chunkComplete && !released {
-		r.managedUpdateUploadChunkStuckStatus(uc)
 		// Close the file entry unless disrupted.
 		if !r.deps.Disrupt("disableCloseUploadEntry") {
 			err := uc.fileEntry.Close()
