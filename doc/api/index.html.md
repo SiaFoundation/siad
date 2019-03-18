@@ -112,6 +112,7 @@ The consensus set manages everything related to consensus and keeps the blockcha
 
 ## /consensus [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/consensus"
 ```
@@ -208,6 +209,7 @@ Number of Hastings in one Siacoin.
 
 ## /consensus/blocks [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/consensus/blocks?height=20032"
 ```
@@ -311,6 +313,7 @@ BlockHeight of the requested block.
 
 ## /consensus/validate/transactionset [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" --data "[JSON-encoded-txnset]" "localhost:9980/validate/transactionset"
 ```
@@ -331,6 +334,7 @@ The daemon is responsible for starting and stopping the modules which make up th
 
 ## /daemon/stop [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/stop"
 ```
@@ -342,6 +346,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /daemon/version [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/version"
 ```
@@ -365,6 +370,7 @@ The gateway maintains a peer to peer connection to the network and provides a me
 
 ## /gateway [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/gateway"
 ```
@@ -415,6 +421,7 @@ Max upload speed permitted in bytes per second
 
 ## /gateway [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "maxdownloadspeed=1000000&maxuploadspeed=20000" "localhost:9980/gateway"
 ```
@@ -435,6 +442,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /gateway/connect/:*netaddress* [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -X POST "localhost:9980/gateway/connect/123.456.789.0:9981"
 ```
@@ -454,6 +462,7 @@ standard success or error response. See [standard responses](#Standard-Responses
 
 ## /gateway/disconnect/:*netaddress* [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/gateway/disconnect/123.456.789.0:9981"
 ```
@@ -477,6 +486,7 @@ The host provides storage from local disks to the network. The host negotiates f
 
 ## /host [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/host"
 ```
@@ -740,6 +750,7 @@ workingstatus is one of "checking", "working", or "not working" and indicates if
 
 ## /host [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/host?acceptingcontracts=true&maxduration=12096&windowsize=1008"
 ```
@@ -793,6 +804,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /host/announce [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/host/announce"
 ```
@@ -812,6 +824,7 @@ standard success or error response. See [standard responses](#Standard-Responses
 
 ## /host/contracts [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/host/contracts"
 ```
@@ -912,6 +925,7 @@ Revision constructed indicates whether there was a file contract revision constr
 
 ## /host/storage [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/host/storage"
 ```
@@ -954,6 +968,7 @@ Number of successful read & write operations.
 
 ## /host/storage/folders/add [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&size=1000000000000" "localhost:9980/host/storage/add"
 ```
@@ -974,6 +989,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /host/storage/folders/remove [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&force=false" "localhost:9980/host/storage/remove"
 ```
@@ -995,6 +1011,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /host/storage/folders/resize [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&newsize=1000000000000" "localhost:9980/host/storage/resize"
 ```
@@ -1015,6 +1032,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /host/storage/sectors/delete/:*merkleroot* [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/host/storage/sectors/delete/[merkleroot]"
 ```
@@ -1032,6 +1050,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /host/estimatescore [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/host/estimatescore"
 ```
@@ -1076,6 +1095,7 @@ The hostdb maintains a database of all hosts known to the network. The database 
 
 ## /hostdb [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/hostdb"
 ```
@@ -1095,6 +1115,7 @@ indicates if all known hosts have been scanned at least once.
 
 ## /hostdb/active [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/hostdb/active"
 ```
@@ -1276,6 +1297,7 @@ Indicates if the host is currently being filtered from the HostDB
 
 ## /hostdb/all [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/hostdb/all"
 ```
@@ -1287,6 +1309,7 @@ Repsonse is the same as [`/hostdb/active`](#hosts)
 
 ## /hostdb/hosts/:*pubkey* [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/hostdb/hosts/ed25519:8a95848bc71e9689e2f753c82c35dc47a1d62867f77c0113ebb6fa5b51723215"
 ```
@@ -1295,6 +1318,7 @@ fetches detailed information about a particular host, including metrics regardin
 
 ### Path Parameters
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/hostdb/hosts/<pubkey>"
 ```
@@ -1363,6 +1387,7 @@ The multiplier that gets applied to a host based on the version of Sia that they
 
 ## /hostdb/filtermode [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" --user "":<apipassword> --data '{"filtermode" : "whitelist","hosts" : ["ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef","ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef","ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]}' "localhost:9980/hostdb/filtermode"
 
@@ -1390,6 +1415,7 @@ The miner provides endpoints for getting headers for work and submitting solved 
 
 ## /miner [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/miner"
 ```
@@ -1421,6 +1447,7 @@ Number of mined blocks that are stale, indicating that they are not included in 
 
 ## /miner/start [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/miner/start"
 ```
@@ -1433,6 +1460,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /miner/stop [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/miner/stop"
 ```
@@ -1445,6 +1473,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /miner/header [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/miner/header"
 ```
@@ -1469,6 +1498,7 @@ merkle root | [80-112) | [48-80)
 
 ## /miner/header [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -data "<byte-encoded-header>" -u "":<apipassword> "localhost:9980/miner"
 ```
@@ -1497,6 +1527,7 @@ The renter manages the user's files on the network. The renter's API endpoints e
 
 ## /renter [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter"
 ```
@@ -1587,6 +1618,7 @@ Height at which the current allowance period began.
 
 ## /renter [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&funds=1000&hosts=50" "localhost:9980/renter"
 ```
@@ -1606,6 +1638,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/contract/cancel [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "id=bd7ef21b13fb85eda933a9ff2874ec50a1ffb4299e98210bf0dd343ae1632f80" "localhost:9980/renter/contract/cancel"
 ```
@@ -1623,6 +1656,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/backup [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "destination=/home/backups/01-01-1968.backup" "localhost:9980/renter/backup"
 ```
@@ -1641,6 +1675,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/recoverbackup [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "source=/home/backups/01-01-1968.backup" "localhost:9980/renter/recoverbackup"
 ```
@@ -1661,6 +1696,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/contracts [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/contracts?inactive=true&expired=true&recoverable=false"
 ```
@@ -1767,6 +1803,7 @@ Signals if contract is good for a renewal.
 
 ## /renter/dir/*siapath [GET]
 > curl example  
+
 The root siadir path is "" so submitting the API call without an empty siapath
 will return the root siadir information.  
 ```go
@@ -1851,6 +1888,7 @@ Same response as [files](#files)
 
 ## /renter/dir/*siapath [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "action=delete" "localhost:9980/renter/dir/mydir"
 ```
@@ -1875,6 +1913,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/downloads [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/downloads"
 ```
@@ -1939,6 +1978,7 @@ The total amount of data transfered when downloading the file. This will eventua
 
 ## /renter/downloads/clear [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/downloads/clear?before=1551398400&after=1552176000"
 ```
@@ -1959,6 +1999,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/prices [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/prices"
 ```
@@ -2000,6 +2041,7 @@ The allowance settings used for the estimation are also returned, see the fields
 
 ## /renter/files [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/files"
 ```
@@ -2109,6 +2151,7 @@ Percentage of the file uploaded, including redundancy. Uploading has completed w
 
 ## /renter/file/*siapath* [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/file/myfile"
 ```
@@ -2125,6 +2168,7 @@ Same response as [files](#files)
 
 ## /renter/file/*siapath* [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "trackingpath=/home/myfile" "localhost:9980/renter/file/myfile"
 ```
@@ -2147,6 +2191,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/delete/*siapath* [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/delete/myfile"
 ```
@@ -2164,6 +2209,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/download/*siapath* [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/download/myfile?httpresp=true"
 ```
@@ -2199,6 +2245,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/downloadsync/*siapath* [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/downloadasync/myfile?destination=/home/myfile"
 ```
@@ -2221,6 +2268,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/recoveryscan [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/recoveryscan"
 ```
@@ -2235,6 +2283,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/recoveryscan [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/recoveryscan"
 ```
@@ -2259,6 +2308,7 @@ that have already been scanned.
 
 ## /renter/rename/*siapath* [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "newsiapath=myfile2" "localhost:9980/renter/rename/myfile"
 ```
@@ -2279,6 +2329,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/stream/*siapath* [GET]
 > curl example  
+
 Stream the whole file.  
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/stream/myfile"
@@ -2302,6 +2353,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/upload/*siapath* [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "source=/home/myfile" "localhost:9980/renter/upload/myfile"
 ```
@@ -2333,6 +2385,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /tpool/confirmed/:id [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/tpool/confirmed/22e8d5428abc184302697929f332fa0377ace60d405c39dd23c0327dc694fae7"
 ```
@@ -2357,6 +2410,7 @@ indicates if a transaction is confirmed on the blockchain
 
 ## /tpool/fee [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/tpool/fee"
 ```
@@ -2380,6 +2434,7 @@ the maximum estimated fee
 
 ## /tpool/raw/:id [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/tpool/raw/22e8d5428abc184302697929f332fa0377ace60d405c39dd23c0327dc694fae7"
 ```
@@ -2412,6 +2467,7 @@ raw, base64 encoded transaction data
 
 ## /tpool/raw [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" --data "<raw-encoded-tset>" "localhost:9980/tpool/raw"
 ```
@@ -2432,6 +2488,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /tpool/confirmed/:id [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/tpool/confirmed/9028cc285ad755b81c0cfead3710c1344044175e59cdc4ca097374fe188c9acf"
 ```
@@ -2456,6 +2513,7 @@ boolean that indicates if transaction was confirmed
 
 ## /wallet [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/wallet"
 ```
@@ -2510,6 +2568,7 @@ Number of siacoins, in hastings per byte, below which a transaction output canno
 
 ## /wallet/033x [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "source=/home/legacy-wallet&encryptionpassword=mypassword" "localhost:9980/wallet/033x"
 ```
@@ -2530,6 +2589,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /wallet/address [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/address"
 ```
@@ -2549,6 +2609,7 @@ Wallet address that can receive siacoins or siafunds. Addresses are 76 character
 
 ## /wallet/addresses [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/wallet/addresses"
 ```
@@ -2572,6 +2633,7 @@ Array of wallet addresses owned by the wallet.
 
 ## /wallet/seedaddrs [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/wallet/seedaddrs"
 ```
@@ -2605,6 +2667,7 @@ Array of wallet addresses previously generated by the wallet.
 
 ## /wallet/backup [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/backup?destination=/home/wallet-settings.backup"
 ```
@@ -2622,6 +2685,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /wallet/changepassword [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/wallet/changepassword?encryptionpassword=<currentpassword>&newpassword=<newpassword>"
 ```
@@ -2642,6 +2706,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /wallet/init [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "encryptionpassword=<password>&force=false" "localhost:9980/wallet/init"
 ```
@@ -2672,6 +2737,7 @@ Wallet seed used to generate addresses that the wallet is able to spend.
 
 ## /wallet/init/seed [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "seed=<seed>&encryptionpassword=<password>&force=false" "localhost:9980/wallet/init/seed"
 ```
@@ -2692,6 +2758,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /wallet/seed [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "seed=<seed>" "localhost:9980/wallet/seed"
 ```
@@ -2711,6 +2778,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /wallet/seeds [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/seeds"
 ```
@@ -2746,6 +2814,7 @@ Array of all seeds that the wallet references when scanning the blockchain for o
 
 ## /wallet/siacoins [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&destination=c134a8372bd250688b36867e6522a37bdc391a344ede72c2a79206ca1c34c84399d9ebf17773" "localhost:9980/wallet/siacoins"
 ```
@@ -2784,6 +2853,7 @@ Array of IDs of the transactions that were created when sending the coins. The l
 
 ## /wallet/siafunds [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "amount=10&destination=c134a8372bd250688b36867e6522a37bdc391a344ede72c2a79206ca1c34c84399d9ebf17773" "localhost:9980/wallet/siafunds"
 ```
@@ -2815,6 +2885,7 @@ Array of IDs of the transactions that were created when sending the coins. The l
 
 ## /wallet/siagkey [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "encryptionpassword=<password>&keyfiles=/file1,/home/file2" "localhost:9980/wallet/siagkey"
 ```
@@ -2835,6 +2906,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /wallet/sign [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "<requestbody>" "localhost:9980/wallet/sign"
 ```
@@ -2927,6 +2999,7 @@ Signs a transaction. The wallet will attempt to sign each input specified. The t
 
 ## /wallet/sweep/seed [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "seed=<seed>" "localhost:9980/wallet/sweep/seed"
 ```
@@ -2958,6 +3031,7 @@ Number of siafunds transferred to the wallet as a result of the sweep.
 
 ## /wallet/lock [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/wallet/lock"
 ```
@@ -2970,6 +3044,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /wallet/transaction/:*id* [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/wallet/transaction/22e8d5428abc184302697929f332fa0377ace60d405c39dd23c0327dc694fae7"
 ```
@@ -3074,6 +3149,7 @@ Amount of funds that have been moved in the output.
 
 ## /wallet/transactions [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/wallet/transactions"
 ```
@@ -3117,6 +3193,7 @@ See the documentation for '/wallet/transaction/:id' for more information.
 
 ## /wallet/transactions/:addr [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/wallet/transactions/abf1ba4ad65820ce2bd5d63466b8555d0ec9bfe5f5fa920b4fef6ad98f443e2809e5ae619b74"
 ```
@@ -3147,6 +3224,7 @@ See the documentation for '/wallet/transaction/:id' for more information.
 
 ## /wallet/unlock [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "encryptionpassword=<password>" "localhost:9980/wallet/unlock"
 ```
@@ -3164,6 +3242,7 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /wallet/unlockconditions/:addr [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/unlockconditions/2d6c6d705c80f17448d458e47c3fb1a02a24e018a82d702cda35262085a3167d98cc7a2ba339"
 ```
@@ -3201,6 +3280,7 @@ The set of keys whose signatures count towards signaturesrequired.
 
 ## /wallet/unspent [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/unspent"
 ```
@@ -3247,6 +3327,7 @@ Whether the output comes from a watched address or from the wallet's seed.
 
 ## /wallet/verify/address/:addr [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/wallet/verify/address/75d9a7351022681ba3539d7e0c5699d143ab5a7747604998cace1299ab6c04c5ea2aa2e87aac"
 ```
@@ -3271,6 +3352,7 @@ valid indicates if the address supplied to :addr is a valid UnlockHash.
 
 ## /wallet/watch [GET]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/watch"
 ```
@@ -3293,6 +3375,7 @@ The addresses currently watched by the wallet.
 
 ## /wallet/watch [POST]
 > curl example  
+
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "<requestbody>" "localhost:9980/wallet/watch"
 ```
