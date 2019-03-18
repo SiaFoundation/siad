@@ -74,7 +74,7 @@ The standard error response indicating the request failed for any reason, is a 4
 # Authentication
 > Example POST curl call with Authentication
 
-```go
+```bash
 curl -A "Sia-Agent" --user "":<apipassword> --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
 ```
 
