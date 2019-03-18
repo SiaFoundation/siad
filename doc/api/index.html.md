@@ -1588,7 +1588,7 @@ Height at which the current allowance period began.
 ## /renter [POST]
 > curl example  
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --date "period=12096&renewwindow=4032&funds=1000&hosts=50" "localhost:9980/renter"
+curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&funds=1000&hosts=50" "localhost:9980/renter"
 ```
 
 Modify settings that control the renter's behavior.
@@ -1607,7 +1607,7 @@ standard success or error response. See [standard responses](#standard-responses
 ## /renter/contract/cancel [POST]
 > curl example  
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --date "id=bd7ef21b13fb85eda933a9ff2874ec50a1ffb4299e98210bf0dd343ae1632f80" "localhost:9980/renter/contract/cancel"
+curl -A "Sia-Agent" -u "":<apipassword> --data "id=bd7ef21b13fb85eda933a9ff2874ec50a1ffb4299e98210bf0dd343ae1632f80" "localhost:9980/renter/contract/cancel"
 ```
 
 cancels a specific contract of the Renter.
@@ -1624,7 +1624,7 @@ standard success or error response. See [standard responses](#standard-responses
 ## /renter/backup [POST]
 > curl example  
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --date "destination=/home/backups/01-01-1968.backup" "localhost:9980/renter/backup"
+curl -A "Sia-Agent" -u "":<apipassword> --data "destination=/home/backups/01-01-1968.backup" "localhost:9980/renter/backup"
 ```
 
 Creates a backup of all siafiles in the renter at the specified path.
@@ -1642,7 +1642,7 @@ standard success or error response. See [standard responses](#standard-responses
 ## /renter/recoverbackup [POST]
 > curl example  
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --date "source=/home/backups/01-01-1968.backup" "localhost:9980/renter/recoverbackup"
+curl -A "Sia-Agent" -u "":<apipassword> --data "source=/home/backups/01-01-1968.backup" "localhost:9980/renter/recoverbackup"
 ```
 
 Recovers an existing backup from the specified path by adding all the siafiles
@@ -1767,9 +1767,12 @@ Signals if contract is good for a renewal.
 
 ## /renter/dir/*siapath [GET]
 > curl example  
+The root siadir path is "" so submitting the API call without an empty siapath
+will return the root siadir information.  
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/dir/"
-
+```  
+```go
 curl -A "Sia-Agent" "localhost:9980/renter/dir/mydir"
 ```
 
@@ -2276,9 +2279,13 @@ standard success or error response. See [standard responses](#standard-responses
 
 ## /renter/stream/*siapath* [GET]
 > curl example  
+Stream the whole file.  
 ```go
 curl -A "Sia-Agent" "localhost:9980/renter/stream/myfile"
-
+```  
+The file can be streamed partially by using standard partial http requests
+which means setting the "Range" field in the http header.  
+```go
 curl -A "Sia-Agent" -H "Range: bytes=0-1023" "localhost:9980/renter/stream/myfile"
 ```
 
