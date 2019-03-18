@@ -764,11 +764,6 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	defer c.maintenanceLock.Unlock()
 
-	// Check if the wallet is unlocked, abort if not.
-	if c.wallet.Unlocked() {
-		return
-	}
-
 	// Perform general cleanup of the contracts. This includes recovering lost
 	// contracts, archiving contracts, and other cleanup work. This should all
 	// happen before the rest of the maintenance.
