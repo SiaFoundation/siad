@@ -86,7 +86,7 @@ func (b *Block) UnmarshalSia(r io.Reader) error {
 		}()
 	}
 
-	d := encoding.NewDecoder(r, int(BlockSizeLimit*2))
+	d := encoding.NewDecoder(r, int(BlockSizeLimit*3))
 	d.ReadFull(b.ParentID[:])
 	d.ReadFull(b.Nonce[:])
 	b.Timestamp = Timestamp(d.NextUint64())
