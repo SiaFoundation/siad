@@ -426,6 +426,12 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		return nil
 	})
 
+	// Nothing more to do for 0-byte files or 0-length downloads.
+	if d.staticLength == 0 {
+		d.markComplete()
+		return d, nil
+	}
+
 	// Determine which chunks to download.
 	minChunk, minChunkOffset := params.file.ChunkIndexByOffset(params.offset)
 	maxChunk, maxChunkOffset := params.file.ChunkIndexByOffset(params.offset + params.length)
