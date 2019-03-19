@@ -1,8 +1,5 @@
 package renter
 
-// TODO: Renter will try to download to repair a piece even if there are not
-// enough workers to make any progress on the repair.  This should be fixed.
-
 import (
 	"container/heap"
 	"io/ioutil"
@@ -147,14 +144,9 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 	// the repair loop should only be adding unstuck chunks
 	var chunkIndexes []uint64
 	for i := uint64(0); i < entry.NumChunks(); i++ {
-		if (target == targetStuckChunks) != entry.StuckChunkByIndex(i) {
-			stuckLoop := target == targetStuckChunks
-			chunkStuck := entry.StuckChunkByIndex(i)
-			chunkHealth := entry.ChunkHealth(int(i), offline, goodForRenew)
-			r.log.Debugln("Chunk not needed stuckLoop:", stuckLoop, "chunkStuck:", chunkStuck, "chunkHealh:", chunkHealth)
-			continue
+		if (target == targetStuckChunks) == entry.StuckChunkByIndex(i) {
+			chunkIndexes = append(chunkIndexes, i)
 		}
-		chunkIndexes = append(chunkIndexes, i)
 	}
 
 	// Sanity check that we have chunk indices to go through

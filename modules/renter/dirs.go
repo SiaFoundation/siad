@@ -72,6 +72,7 @@ func (r *Renter) DirList(siaPath string) ([]modules.DirectoryInfo, []modules.Fil
 		return nil, nil, err
 	}
 	defer r.tg.Done()
+
 	var dirs []modules.DirectoryInfo
 	var files []modules.FileInfo
 	// Get DirectoryInfo
