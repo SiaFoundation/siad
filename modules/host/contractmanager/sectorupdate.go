@@ -409,35 +409,32 @@ func (cm *ContractManager) AddSectorBatch(sectorRoots []crypto.Hash) error {
 	}
 	defer cm.tg.Done()
 
-	// Add each sector in a separate goroutine.
-	var wg sync.WaitGroup
-	// Ensure only 'maxSectorBatchThreads' goroutines are running at a time.
-	semaphore := make(chan struct{}, maxSectorBatchThreads)
-	for _, root := range sectorRoots {
-		wg.Add(1)
-		semaphore <- struct{}{}
-		go func(root crypto.Hash) {
-			defer wg.Done()
-			defer func() {
-				<-semaphore
-			}()
+	go func() {
+		// Ensure only 'maxSectorBatchThreads' goroutines are running at a time.
+		semaphore := make(chan struct{}, maxSectorBatchThreads)
+		for _, root := range sectorRoots {
+			semaphore <- struct{}{}
+			go func(root crypto.Hash) {
+				defer func() {
+					<-semaphore
+				}()
 
-			// Hold a sector lock throughout the duration of the function, but release
-			// before syncing.
-			id := cm.managedSectorID(root)
-			cm.wal.managedLockSector(id)
-			defer cm.wal.managedUnlockSector(id)
+				// Hold a sector lock throughout the duration of the function, but release
+				// before syncing.
+				id := cm.managedSectorID(root)
+				cm.wal.managedLockSector(id)
+				defer cm.wal.managedUnlockSector(id)
 
-			// Add the sector as virtual.
-			cm.wal.mu.Lock()
-			location, exists := cm.sectorLocations[id]
-			cm.wal.mu.Unlock()
-			if exists {
-				cm.wal.managedAddVirtualSector(id, location)
-			}
-		}(root)
-	}
-	wg.Wait()
+				// Add the sector as virtual.
+				cm.wal.mu.Lock()
+				location, exists := cm.sectorLocations[id]
+				cm.wal.mu.Unlock()
+				if exists {
+					cm.wal.managedAddVirtualSector(id, location)
+				}
+			}(root)
+		}
+	}()
 	return nil
 }
 
