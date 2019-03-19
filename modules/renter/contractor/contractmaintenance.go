@@ -924,6 +924,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	// (refreshSet). If there is not enough money available, the more expensive
 	// contracts will be skipped.
 	for _, renewal := range renewSet {
+		// TODO: Check if the wallet is unlocked here. If the wallet is locked,
+		// exit here.
+
 		c.log.Println("Attempting to perform a renewal:", renewal.id)
 		// Skip this renewal if we don't have enough funds remaining.
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
@@ -954,6 +957,9 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 	}
 	for _, renewal := range refreshSet {
+		// TODO: Check if the wallet is unlocked here. If the wallet is locked,
+		// exit here.
+
 		// Skip this renewal if we don't have enough funds remaining.
 		c.log.Debugln("Attempting to perform a contract refresh:", renewal.id)
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
@@ -1030,6 +1036,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
+		// TODO: Check if the wallet is unlocked here. If the wallet is locked,
+		// exit here.
+
 		// Determine if we have enough money to form a new contract.
 		if fundsRemaining.Cmp(initialContractFunds) < 0 {
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
