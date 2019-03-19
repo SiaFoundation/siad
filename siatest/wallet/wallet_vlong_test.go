@@ -63,4 +63,54 @@ func TestWalletTransactionsSumUpToWalletBalance(t *testing.T) {
 		t.Fatalf("Expected the summed up balance to be %v but was %v: Diff -%v",
 			balance.HumanString(), totalBalance.HumanString(), balance.Sub(totalBalance).HumanString())
 	}
+
+	// Figure out the endheight of the contracts.
+	rcs, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	endHeight := rcs.ActiveContracts[0].EndHeight
+	// Mine enough blocks for all contracts to be renewed.
+	m := tg.Miners()[0]
+	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := types.BlockHeight(0); i < endHeight+types.MaturityDelay-cg.Height; i++ {
+		if err := m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check that the transactions still add up to the wallet's balance.
+	txns, err = renter.ConfirmedTransactions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// These transactions should contain two contracts for each host and sum up
+	// to the renter's wallet's balance.
+	numFC = 0
+	totalBalance = types.ZeroCurrency
+	for _, txn := range txns {
+		numFC += len(txn.Transaction.FileContracts)
+		totalBalance = totalBalance.Add(txn.ConfirmedIncomingValue)
+		totalBalance = totalBalance.Sub(txn.ConfirmedOutgoingValue)
+	}
+	if numFC != 2*len(tg.Hosts()) {
+		t.Fatalf("Expected %v contracts but got %v", numFC, len(tg.Hosts()))
+	}
+
+	// Get the renter's wallet's balance and compare it to the sum of the
+	// confirmed transactions.
+	balance, err = renter.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if totalBalance.Cmp(balance) > 0 {
+		t.Fatalf("Expected the summed up balance to be %v but was %v: Diff +%v",
+			balance.HumanString(), totalBalance.HumanString(), totalBalance.Sub(balance).HumanString())
+	} else if totalBalance.Cmp(balance) < 0 {
+		t.Fatalf("Expected the summed up balance to be %v but was %v: Diff -%v",
+			balance.HumanString(), totalBalance.HumanString(), balance.Sub(totalBalance).HumanString())
+	}
 }

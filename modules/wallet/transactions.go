@@ -210,70 +210,100 @@ func (w *Wallet) Transactions(startHeight, endHeight types.BlockHeight) (sts []m
 			panic("Failed to decode the processed transaction")
 		}
 	}
-
-	// Loop over all transactions and map the id of each contract to the most
-	// recent revision of this contract that has passed the maturity height.
-	//revisionMap := make(map[types.FileContractID]uint64)
-	//for _, pt := range pts {
-	//	for _, rev := range pt.Transaction.FileContractRevisions {
-	//		if height > rev.NewWindowEnd+types.MaturityDelay {
-	//			revisionMap[rev.ParentID] = rev.NewRevisionNumber
-	//		}
-	//	}
-	//}
-
-	// Loop over all the transactions again and set the value to all contracts
-	// and revisions to 0 except for the latest revision.
-	sts = make([]modules.SuperTransaction, 0, len(pts))
-	for _, pt := range pts {
-		sts = append(sts, w.newSuperTransaction(pt))
-	}
-	return
+	return w.computeSuperTransactions(pts)
 }
 
-// newSuperTransaction creates a new SuperTransaction from a
-// ProcessedTransaction.
-func (w *Wallet) newSuperTransaction(pt modules.ProcessedTransaction) modules.SuperTransaction {
-	// Determine the value of the transaction assuming that it's a regular
-	// transaction.
-	var outgoingSiacoins types.Currency
-	for _, input := range pt.Inputs {
-		if input.FundType == types.SpecifierSiacoinInput && input.WalletAddress {
-			outgoingSiacoins = outgoingSiacoins.Add(input.Value)
+// computeSuperTransaction creates SuperTransaction from a set of
+// ProcessedTransactions.
+func (w *Wallet) computeSuperTransactions(pts []modules.ProcessedTransaction) ([]modules.SuperTransaction, error) {
+	// Loop over all transactions and map the id of each contract to the most
+	// recent revision within the set.
+	revisionMap := make(map[types.FileContractID]types.FileContractRevision)
+	for _, pt := range pts {
+		for _, rev := range pt.Transaction.FileContractRevisions {
+			revisionMap[rev.ParentID] = rev
 		}
 	}
-	var incomingSiacoins types.Currency
-	for _, output := range pt.Outputs {
-		if output.FundType == types.SpecifierMinerPayout && output.WalletAddress {
-			incomingSiacoins = incomingSiacoins.Add(output.Value)
+	// Get the consensus height.
+	height, err := dbGetConsensusHeight(w.dbTx)
+	if err != nil {
+		return nil, err
+	}
+
+	sts := make([]modules.SuperTransaction, 0, len(pts))
+	for _, pt := range pts {
+		// Determine the value of the transaction assuming that it's a regular
+		// transaction.
+		var outgoingSiacoins types.Currency
+		for _, input := range pt.Inputs {
+			if input.FundType == types.SpecifierSiacoinInput && input.WalletAddress {
+				outgoingSiacoins = outgoingSiacoins.Add(input.Value)
+			}
 		}
-		if output.FundType == types.SpecifierSiacoinOutput && output.WalletAddress {
-			incomingSiacoins = incomingSiacoins.Add(output.Value)
+		var incomingSiacoins types.Currency
+		for _, output := range pt.Outputs {
+			if output.FundType == types.SpecifierMinerPayout && output.WalletAddress {
+				incomingSiacoins = incomingSiacoins.Add(output.Value)
+			}
+			if output.FundType == types.SpecifierSiacoinOutput && output.WalletAddress {
+				incomingSiacoins = incomingSiacoins.Add(output.Value)
+			}
 		}
+		// Create the txn assuming that it's a regular txn without contracts or
+		// revisions.
+		st := modules.SuperTransaction{
+			ProcessedTransaction:   pt,
+			ConfirmedIncomingValue: incomingSiacoins,
+			ConfirmedOutgoingValue: outgoingSiacoins,
+		}
+		// If the transaction doesn't contain contracts or revisions we are done.
+		if len(pt.Transaction.FileContracts) == 0 && len(pt.Transaction.FileContractRevisions) == 0 {
+			sts = append(sts, st)
+			continue
+		}
+		// If there are contracts, then there can't be revisions in the
+		// transaction.
+		if len(pt.Transaction.FileContracts) > 0 {
+			// A contract doesn't generate incoming value for the wallet.
+			st.ConfirmedIncomingValue = types.ZeroCurrency
+			// A contract with a revision doesn't have outgoing value since the
+			// outgoing value is determined by the latest revision.
+			_, hasRevision := revisionMap[pt.Transaction.FileContractID(0)]
+			if hasRevision {
+				st.ConfirmedOutgoingValue = types.ZeroCurrency
+			}
+			sts = append(sts, st)
+			continue
+		}
+		// Else the contract contains a revision.
+		rev := pt.Transaction.FileContractRevisions[0]
+		latestRev, ok := revisionMap[rev.ParentID]
+		if !ok {
+			err = errors.New("no revision exists for the provided id which should never happen")
+			build.Critical(err)
+			return nil, err
+		}
+		// If the revision isn't the latest one, it has neither incoming nor
+		// outgoing value.
+		if rev.NewRevisionNumber != latestRev.NewRevisionNumber {
+			st.ConfirmedIncomingValue = types.ZeroCurrency
+			st.ConfirmedOutgoingValue = types.ZeroCurrency
+			sts = append(sts, st)
+			continue
+		}
+		// It is the latest but if it hasn't reached maturiy height yet we
+		// don't count the incoming value.
+		if height <= rev.NewWindowEnd+types.MaturityDelay {
+			st.ConfirmedIncomingValue = types.ZeroCurrency
+			sts = append(sts, st)
+			continue
+		}
+		// Otherwise we leave the incoming and outgoing value fields the way
+		// they are.
+		sts = append(sts, st)
+		continue
 	}
-	// Create the txn assuming that it's a regular txn without contracts or
-	// revisions.
-	st := modules.SuperTransaction{
-		ProcessedTransaction:   pt,
-		ConfirmedIncomingValue: incomingSiacoins,
-		ConfirmedOutgoingValue: outgoingSiacoins,
-	}
-	// If the transaction doesn't contain contracts or revisions we are done.
-	if len(pt.Transaction.FileContracts) == 0 && len(pt.Transaction.FileContractRevisions) == 0 {
-		return st
-	}
-	// If there are contracts, then there can't be revisions. A contract
-	// revision itself doesn't have a value.
-	if len(pt.Transaction.FileContracts) > 0 {
-		st.ConfirmedIncomingValue = types.ZeroCurrency
-		//st.ConfirmedOutgoingValue = types.ZeroCurrency TODO: set outgoing
-		//value also to zero if revision exists.
-		return st
-	}
-	// Else the contract contains a revision.
-	st.ConfirmedIncomingValue = types.ZeroCurrency
-	st.ConfirmedOutgoingValue = types.ZeroCurrency
-	panic("TODO: handle revisions")
+	return sts, nil
 }
 
 // UnconfirmedTransactions returns the set of unconfirmed transactions that are
