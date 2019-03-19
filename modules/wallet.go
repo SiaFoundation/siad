@@ -108,6 +108,18 @@ type (
 		Outputs []ProcessedOutput `json:"outputs"`
 	}
 
+	// SuperTransaction is a transaction that has been valued according to the
+	// current state of consensus. This means that the value of it can
+	// potentially change. e.g. if a storage proof gets reverted due to a
+	// reorg.
+	// TODO find a better name for it.
+	SuperTransaction struct {
+		ProcessedTransaction
+
+		ConfirmedIncomingValue types.Currency `json:"confirmedincomingvalue"`
+		ConfirmedOutgoingValue types.Currency `json:"confirmedoutgoingvalue"`
+	}
+
 	// A UnspentOutput is a SiacoinOutput or SiafundOutput that the wallet
 	// is tracking.
 	UnspentOutput struct {
@@ -408,7 +420,7 @@ type (
 		// Transactions returns all of the transactions that were confirmed at
 		// heights [startHeight, endHeight]. Unconfirmed transactions are not
 		// included.
-		Transactions(startHeight types.BlockHeight, endHeight types.BlockHeight) ([]ProcessedTransaction, error)
+		Transactions(startHeight types.BlockHeight, endHeight types.BlockHeight) ([]SuperTransaction, error)
 
 		// UnconfirmedTransactions returns all unconfirmed transactions
 		// relative to the wallet.

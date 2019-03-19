@@ -17,7 +17,7 @@ func TestWalletTransactionsSumUpToWalletBalance(t *testing.T) {
 	}
 	// Create a group for the test.
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   1,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -43,20 +43,13 @@ func TestWalletTransactionsSumUpToWalletBalance(t *testing.T) {
 	var totalBalance types.Currency
 	for _, txn := range txns {
 		numFC += len(txn.Transaction.FileContracts)
-		for _, in := range txn.Inputs {
-			if in.WalletAddress {
-				totalBalance = totalBalance.Sub(in.Value)
-			}
-		}
-		for _, out := range txn.Outputs {
-			if out.WalletAddress {
-				totalBalance = totalBalance.Add(out.Value)
-			}
-		}
+		totalBalance = totalBalance.Add(txn.ConfirmedIncomingValue)
+		totalBalance = totalBalance.Sub(txn.ConfirmedOutgoingValue)
 	}
 	if numFC != len(tg.Hosts()) {
 		t.Fatalf("Expected %v contracts but got %v", numFC, len(tg.Hosts()))
 	}
+
 	// Get the renter's wallet's balance and compare it to the sum of the
 	// confirmed transactions.
 	balance, err := renter.ConfirmedBalance()

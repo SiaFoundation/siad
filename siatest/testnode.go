@@ -250,7 +250,7 @@ func (tn *TestNode) ConfirmedBalance() (types.Currency, error) {
 
 // ConfirmedTransactions returns all of the wallet's tracked confirmed
 // transactions.
-func (tn *TestNode) ConfirmedTransactions() ([]modules.ProcessedTransaction, error) {
+func (tn *TestNode) ConfirmedTransactions() ([]modules.SuperTransaction, error) {
 	wtg, err := tn.WalletTransactionsGet(0, math.MaxUint64)
 	return wtg.ConfirmedTransactions, err
 }
