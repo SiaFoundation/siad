@@ -27,7 +27,21 @@ var (
 	// minContractFundRenewalThreshold defines the ratio of remaining funds to
 	// total contract cost below which the contractor will prematurely renew a
 	// contract.
-	minContractFundRenewalThreshold = float64(0.03) // 3%
+	//
+	// This number is deliberately a little higher than the
+	// minContractFundUploadThreshold because we want to make sure that renewals
+	// will kick in before uploading stops.
+	minContractFundRenewalThreshold = float64(0.06) // 6%
+
+	// minContractFundUploadThreshold is the percentage of contract funds
+	// remaining at which the contract gets marked !GoodForUpload. The number is
+	// high so that there is plenty of money available for downloading, so that
+	// urgent repairs can be performed and also so that user file access is not
+	// interrupted until after uploading progress is interrupted. Structuring
+	// things this way essentially allows the user to experience the failure
+	// mode of 'can't store additional stuff' before the user experiences the
+	// failure mode of 'can't retreive stuff already uploaded'.
+	minContractFundUploadThreshold = float64(0.05) // 5%
 
 	// randomHostsBufferForScore defines how many extra hosts are queried when trying
 	// to figure out an appropriate minimum score for the hosts that we have.

@@ -335,7 +335,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			sectorBandwidthPrice := sectorUploadBandwidthPrice.Add(sectorDownloadBandwidthPrice)
 			sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
 			percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
-			if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < minContractFundRenewalThreshold {
+			if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < minContractFundUploadThreshold {
 				u.GoodForUpload = false
 				u.GoodForRenew = true
 				return u, nil
