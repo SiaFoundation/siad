@@ -20,10 +20,16 @@ search: true
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/transactions?startheight=1&endheight=250"
 ```
 
-> Example POST curl call
+> Example POST curl call with data
 
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
+```
+
+> Example POST curl call without data or authentication
+
+```go
+curl -A "Sia-Agent" -X POST "localhost:9980/gateway/connect/123.456.789.0:9981"
 ```
 
 Sia uses semantic versioning and is backwards compatible to version v1.0.0.
