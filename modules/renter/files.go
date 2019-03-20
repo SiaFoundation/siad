@@ -11,13 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
-)
-
-var (
-	// ErrEmptyFilename is an error when filename is empty
-	ErrEmptyFilename = errors.New("filename must be a nonempty string")
 )
 
 // A file is a single file that has been uploaded to the network. Files are
@@ -63,12 +56,12 @@ type pieceData struct {
 
 // DeleteFile removes a file entry from the renter and deletes its data from
 // the hosts it is stored on.
-func (r *Renter) DeleteFile(nickname string) error {
+func (r *Renter) DeleteFile(siaPath types.SiaPath) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticFileSet.Delete(nickname)
+	return r.staticFileSet.Delete(siaPath)
 }
 
 // FileList returns all of the files that the renter has.
@@ -90,12 +83,16 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 		}
 
 		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != siafile.ShareExtension {
+		if info.IsDir() || filepath.Ext(path) != types.SiaFileExtension {
 			return nil
 		}
 
 		// Load the Siafile.
-		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), siafile.ShareExtension)
+		str := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), types.SiaFileExtension)
+		siaPath, err := types.NewSiaPath(str)
+		if err != nil {
+			return err
+		}
 		file, err := r.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
 		if os.IsNotExist(err) || err == siafile.ErrUnknownPath {
 			return nil
@@ -112,7 +109,7 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 
 // File returns file from siaPath queried by user.
 // Update based on FileList
-func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
+func (r *Renter) File(siaPath types.SiaPath) (modules.FileInfo, error) {
 	if err := r.tg.Add(); err != nil {
 		return modules.FileInfo{}, err
 	}
@@ -124,15 +121,11 @@ func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
 // RenameFile takes an existing file and changes the nickname. The original
 // file must exist, and there must not be any file that already has the
 // replacement nickname.
-func (r *Renter) RenameFile(currentName, newName string) error {
+func (r *Renter) RenameFile(currentName, newName types.SiaPath) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	err := validateSiapath(newName)
-	if err != nil {
-		return err
-	}
 	return r.staticFileSet.Rename(currentName, newName)
 }
 
@@ -140,7 +133,7 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 // fileInfo takes the maps returned by renter.managedContractUtilityMaps as
 // input, preventing the need to build those maps many times when asking for
 // many files at once.
-func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+func (r *Renter) fileInfo(siaPath types.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Get the file and its contracts
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
@@ -175,7 +168,7 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew 
 		Recoverable:      onDisk || redundancy >= 1,
 		Redundancy:       redundancy,
 		Renewing:         true,
-		SiaPath:          entry.SiaPath(),
+		SiaPath:          entry.SiaPath().ToString(),
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
 		UploadedBytes:    entry.UploadedBytes(),

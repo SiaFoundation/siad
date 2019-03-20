@@ -33,7 +33,7 @@ func TestRenterUploadInode(t *testing.T) {
 	}
 	params := modules.FileUploadParams{
 		Source:      testUploadPath,
-		SiaPath:     "test",
+		SiaPath:     newRandSiaPath(),
 		ErasureCode: ec,
 	}
 	err = rt.renter.Upload(params)

@@ -25,7 +25,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -591,7 +590,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // right size, but it can't check that the content is the same. Therefore the
 // caller is responsible for not accidentally corrupting the uploaded file by
 // providing a different file with the same size.
-func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
+func (r *Renter) SetFileTrackingPath(siaPath types.SiaPath, newPath string) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -733,42 +732,6 @@ func (r *Renter) SetIPViolationCheck(enabled bool) {
 	r.hostDB.SetIPViolationCheck(enabled)
 }
 
-// validateSiapath checks that a Siapath is a legal filename.
-// ../ is disallowed to prevent directory traversal, and paths must not begin
-// with / or be empty.
-func validateSiapath(siapath string) error {
-	if siapath == "" {
-		return ErrEmptyFilename
-	}
-	if siapath == ".." {
-		return errors.New("siapath cannot be '..'")
-	}
-	if siapath == "." {
-		return errors.New("siapath cannot be '.'")
-	}
-	// check prefix
-	if strings.HasPrefix(siapath, "/") {
-		return errors.New("siapath cannot begin with /")
-	}
-	if strings.HasPrefix(siapath, "../") {
-		return errors.New("siapath cannot begin with ../")
-	}
-	if strings.HasPrefix(siapath, "./") {
-		return errors.New("siapath connot begin with ./")
-	}
-	var prevElem string
-	for _, pathElem := range strings.Split(siapath, "/") {
-		if pathElem == "." || pathElem == ".." {
-			return errors.New("siapath cannot contain . or .. elements")
-		}
-		if prevElem != "" && pathElem == "" {
-			return ErrEmptyFilename
-		}
-		prevElem = pathElem
-	}
-	return nil
-}
-
 // Enforce that Renter satisfies the modules.Renter interface.
 var _ modules.Renter = (*Renter)(nil)
 
@@ -805,7 +768,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			newUploads:        make(chan struct{}, 1),
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
-			stuckChunkSuccess: make(chan string, 1),
+			stuckChunkSuccess: make(chan types.SiaPath, 1),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),

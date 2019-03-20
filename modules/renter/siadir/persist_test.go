@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -54,7 +55,7 @@ func equalMetadatas(md, md2 Metadata) error {
 		return fmt.Errorf("rootDirs not equal, %v and %v", md.RootDir, md2.RootDir)
 	}
 	// Check SiaPath
-	if md.SiaPath != md2.SiaPath {
+	if !types.EqualSiaPaths(md.SiaPath, md2.SiaPath) {
 		return fmt.Errorf("siapaths not equal, %v and %v", md.SiaPath, md2.SiaPath)
 	}
 	// Check Size
@@ -69,6 +70,15 @@ func equalMetadatas(md, md2 Metadata) error {
 	return nil
 }
 
+// newRandSiaPath creates a new SiaPath type with a random path.
+func newRandSiaPath() types.SiaPath {
+	siaPath, err := types.NewSiaPath(hex.EncodeToString(fastrand.Bytes(4)))
+	if err != nil {
+		panic(err)
+	}
+	return siaPath
+}
+
 // newTestDir creates a new SiaDir for testing, the test Name should be passed
 // in as the rootDir
 func newTestDir(rootDir string) (*SiaDir, error) {
@@ -76,9 +86,8 @@ func newTestDir(rootDir string) (*SiaDir, error) {
 	if err := os.RemoveAll(rootPath); err != nil {
 		return nil, err
 	}
-	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
 	wal, _ := newTestWAL()
-	return New(siaPath, rootPath, wal)
+	return New(newRandSiaPath(), rootPath, wal)
 }
 
 // newTestWal is a helper method to create a WAL for testing.
@@ -121,7 +130,7 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 	}
 
 	// Check path
-	path2 := filepath.Join(sd.metadata.RootDir, sd.metadata.SiaPath, SiaDirExtension)
+	path2 := sd.metadata.SiaPath.SiaDirMetadataSysPath(sd.metadata.RootDir)
 	if path != path2 {
 		t.Fatalf("Path not correct: expected %v got %v", path2, path)
 	}
@@ -163,7 +172,7 @@ func TestCreateReadDeleteUpdate(t *testing.T) {
 	// Read update
 	path := readDeleteUpdate(update)
 	// Compare values
-	siaDirPath := filepath.Join(sd.metadata.RootDir, sd.metadata.SiaPath)
+	siaDirPath := sd.metadata.SiaPath.DirSysPath(sd.metadata.RootDir)
 	if path != siaDirPath {
 		t.Error("paths don't match")
 	}

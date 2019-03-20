@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -45,7 +46,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 		}
 
 		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != siafile.ShareExtension {
+		if info.IsDir() || filepath.Ext(path) != types.SiaFileExtension {
 			return nil
 		}
 
@@ -140,7 +141,11 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		dupCount := 0
 		origName := files[i].name
 		for {
-			exists := r.staticFileSet.Exists(files[i].name)
+			siaPath, err := types.NewSiaPath(files[i].name)
+			if err != nil {
+				return nil, err
+			}
+			exists := r.staticFileSet.Exists(siaPath)
 			if !exists {
 				break
 			}
@@ -159,7 +164,11 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 			repairPath = tf.RepairPath
 		}
 		// Create and add a siadir to the SiaDirSet if one has not been created
-		sd, errDir := r.staticDirSet.NewSiaDir(filepath.Dir(f.name))
+		siaPath, err := types.NewSiaPath(f.name)
+		if err != nil {
+			return nil, err
+		}
+		sd, errDir := r.staticDirSet.NewSiaDir(siaPath.Dir())
 		if errDir != nil && errDir != siadir.ErrPathOverload {
 			errDir = errors.AddContext(errDir, "unable to create new sia dir")
 			return nil, errors.Compose(err, errDir)

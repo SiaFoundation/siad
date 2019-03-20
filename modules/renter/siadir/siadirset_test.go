@@ -1,13 +1,12 @@
 package siadir
 
 import (
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // newTestSiaDirSet creates a new SiaDirSet
@@ -21,13 +20,12 @@ func newTestSiaDirSet() *SiaDirSet {
 // newTestSiaDirSetWithDir creates a new SiaDirSet and SiaDir and makes sure
 // that they are linked
 func newTestSiaDirSetWithDir() (*SiaDirSetEntry, *SiaDirSet, error) {
-	// Create params
-	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
+	// Create directory
 	dir := filepath.Join(os.TempDir(), "siadirs")
 	// Create SiaDirSet and SiaDirSetEntry
 	wal, _ := newTestWAL()
 	sds := NewSiaDirSet(dir, wal)
-	entry, err := sds.NewSiaDir(siaPath)
+	entry, err := sds.NewSiaDir(newRandSiaPath())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -51,7 +49,7 @@ func TestInitRootDir(t *testing.T) {
 	}
 
 	// Verify the siadir exists on disk
-	siaPath := filepath.Join(sds.rootDir, SiaDirExtension)
+	siaPath := types.RootDirSiaPath().SiaDirMetadataSysPath(sds.rootDir)
 	_, err := os.Stat(siaPath)
 	if err != nil {
 		t.Fatal(err)

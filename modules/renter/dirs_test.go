@@ -3,11 +3,11 @@ package renter
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestRenterCreateDirectories checks that the renter properly created metadata files
@@ -23,22 +23,38 @@ func TestRenterCreateDirectories(t *testing.T) {
 	defer rt.Close()
 
 	// Test creating directory
-	err = rt.renter.CreateDir("foo/bar/baz")
+	siaPath, err := types.NewSiaPath("foo/bar/baz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.CreateDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm that direcotry metadata files were created in all directories
-	if err := rt.checkDirInitialized(""); err != nil {
+	if err := rt.checkDirInitialized(types.RootDirSiaPath()); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.checkDirInitialized("foo"); err != nil {
+	siaPath, err = types.NewSiaPath("foo")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.checkDirInitialized("foo/bar"); err != nil {
+	if err := rt.checkDirInitialized(siaPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.checkDirInitialized("foo/bar/baz"); err != nil {
+	siaPath, err = types.NewSiaPath("foo/bar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.checkDirInitialized(siaPath); err != nil {
+		t.Fatal(err)
+	}
+	siaPath, err = types.NewSiaPath("foo/bar/baz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.checkDirInitialized(siaPath); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -46,8 +62,8 @@ func TestRenterCreateDirectories(t *testing.T) {
 // checkDirInitialized is a helper function that checks that the directory was
 // initialized correctly and the metadata file exist and contain the correct
 // information
-func (rt *renterTester) checkDirInitialized(siaPath string) error {
-	fullpath := filepath.Join(rt.renter.staticFilesDir, siaPath, siadir.SiaDirExtension)
+func (rt *renterTester) checkDirInitialized(siaPath types.SiaPath) error {
+	fullpath := siaPath.SiaDirMetadataSysPath(rt.renter.staticFilesDir)
 	if _, err := os.Stat(fullpath); err != nil {
 		return err
 	}
@@ -87,25 +103,29 @@ func TestDirInfo(t *testing.T) {
 	defer rt.Close()
 
 	// Create directory
-	err = rt.renter.CreateDir("foo/")
+	siaPath, err := types.NewSiaPath("foo/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.CreateDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Check that DirInfo returns the same information as stored in the metadata
-	fooDirInfo, err := rt.renter.DirInfo("foo")
+	fooDirInfo, err := rt.renter.DirInfo(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootDirInfo, err := rt.renter.DirInfo("")
+	rootDirInfo, err := rt.renter.DirInfo(types.RootDirSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	fooEntry, err := rt.renter.staticDirSet.Open("foo")
+	fooEntry, err := rt.renter.staticDirSet.Open(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootEntry, err := rt.renter.staticDirSet.Open("")
+	rootEntry, err := rt.renter.staticDirSet.Open(types.RootDirSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +152,11 @@ func TestRenterListDirectory(t *testing.T) {
 	defer rt.Close()
 
 	// Create directory
-	err = rt.renter.CreateDir("foo/")
+	siaPath, err := types.NewSiaPath("foo/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.CreateDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +168,7 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Confirm that DirList returns 1 FileInfo and 2 DirectoryInfos
-	directories, files, err := rt.renter.DirList("")
+	directories, files, err := rt.renter.DirList(types.RootDirSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,11 +180,11 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Verify that the directory information matches the on disk information
-	rootDir, err := rt.renter.staticDirSet.Open("")
+	rootDir, err := rt.renter.staticDirSet.Open(types.RootDirSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	fooDir, err := rt.renter.staticDirSet.Open("foo")
+	fooDir, err := rt.renter.staticDirSet.Open(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +238,7 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, di.NumSubDirs)
 	}
 	// Check SiaPath
-	if md.SiaPath != di.SiaPath {
+	if md.SiaPath.ToString() != di.SiaPath {
 		return fmt.Errorf("siapaths not equal, %v and %v", md.SiaPath, di.SiaPath)
 	}
 	// Check StuckHealth

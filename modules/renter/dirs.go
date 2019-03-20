@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // CreateDir creates a directory for the renter
-func (r *Renter) CreateDir(siaPath string) error {
+func (r *Renter) CreateDir(siaPath types.SiaPath) error {
 	err := r.tg.Add()
 	if err != nil {
 		return err
@@ -27,7 +27,7 @@ func (r *Renter) CreateDir(siaPath string) error {
 
 // DeleteDir removes a directory from the renter and deletes all its sub
 // directories and files
-func (r *Renter) DeleteDir(siaPath string) error {
+func (r *Renter) DeleteDir(siaPath types.SiaPath) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -36,14 +36,13 @@ func (r *Renter) DeleteDir(siaPath string) error {
 }
 
 // DirInfo returns the Directory Information of the siadir
-func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
+func (r *Renter) DirInfo(siaPath types.SiaPath) (modules.DirectoryInfo, error) {
 	// Grab the siadir entry
 	entry, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
 		return modules.DirectoryInfo{}, err
 	}
 	defer entry.Close()
-
 	// Grab the health information and return the Directory Info, the worst
 	// health will be returned. Depending on the directory and its contents that
 	// could either be health or stuckHealth
@@ -61,13 +60,13 @@ func (r *Renter) DirInfo(siaPath string) (modules.DirectoryInfo, error) {
 
 		NumFiles:   metadata.NumFiles,
 		NumSubDirs: metadata.NumSubDirs,
-		SiaPath:    siaPath,
+		SiaPath:    siaPath.ToString(),
 	}, nil
 }
 
 // DirList returns directories and files stored in the siadir as well as the
 // DirectoryInfo of the siadir
-func (r *Renter) DirList(siaPath string) ([]modules.DirectoryInfo, []modules.FileInfo, error) {
+func (r *Renter) DirList(siaPath types.SiaPath) ([]modules.DirectoryInfo, []modules.FileInfo, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, nil, err
 	}
@@ -82,14 +81,18 @@ func (r *Renter) DirList(siaPath string) ([]modules.DirectoryInfo, []modules.Fil
 	}
 	dirs = append(dirs, di)
 	// Read Directory
-	fileInfos, err := ioutil.ReadDir(filepath.Join(r.staticFilesDir, siaPath))
+	fileInfos, err := ioutil.ReadDir(siaPath.DirSysPath(r.staticFilesDir))
 	if err != nil {
 		return nil, nil, err
 	}
 	for _, fi := range fileInfos {
 		// Check for directories
 		if fi.IsDir() {
-			di, err := r.DirInfo(filepath.Join(siaPath, fi.Name()))
+			dirSiaPath, err := siaPath.Join(fi.Name())
+			if err != nil {
+				return nil, nil, err
+			}
+			di, err := r.DirInfo(dirSiaPath)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -98,12 +101,16 @@ func (r *Renter) DirList(siaPath string) ([]modules.DirectoryInfo, []modules.Fil
 		}
 		// Ignore non siafiles
 		ext := filepath.Ext(fi.Name())
-		if ext != siafile.ShareExtension {
+		if ext != types.SiaFileExtension {
 			continue
 		}
 		// Grab siafile
-		fileName := strings.TrimSuffix(fi.Name(), siafile.ShareExtension)
-		file, err := r.File(filepath.Join(siaPath, fileName))
+		fileName := strings.TrimSuffix(fi.Name(), types.SiaFileExtension)
+		fileSiaPath, err := siaPath.Join(fileName)
+		if err != nil {
+			return nil, nil, err
+		}
+		file, err := r.File(fileSiaPath)
 		if err != nil {
 			return nil, nil, err
 		}
