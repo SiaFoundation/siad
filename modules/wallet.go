@@ -424,7 +424,7 @@ type (
 
 		// UnconfirmedTransactions returns all unconfirmed transactions
 		// relative to the wallet.
-		UnconfirmedTransactions() ([]ProcessedTransaction, error)
+		UnconfirmedTransactions() ([]SuperTransaction, error)
 
 		// RegisterTransaction takes a transaction and its parents and returns
 		// a TransactionBuilder which can be used to expand the transaction.

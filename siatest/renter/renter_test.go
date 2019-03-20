@@ -3351,7 +3351,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Filter out transactions without file contracts.
-	var fcTxns []modules.ProcessedTransaction
+	var fcTxns []modules.SuperTransaction
 	for _, txn := range txns.ConfirmedTransactions {
 		if len(txn.Transaction.FileContracts) > 0 {
 			fcTxns = append(fcTxns, txn)

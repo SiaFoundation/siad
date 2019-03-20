@@ -308,12 +308,12 @@ func (w *Wallet) computeSuperTransactions(pts []modules.ProcessedTransaction) ([
 
 // UnconfirmedTransactions returns the set of unconfirmed transactions that are
 // relevant to the wallet.
-func (w *Wallet) UnconfirmedTransactions() ([]modules.ProcessedTransaction, error) {
+func (w *Wallet) UnconfirmedTransactions() ([]modules.SuperTransaction, error) {
 	if err := w.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer w.tg.Done()
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	return w.unconfirmedProcessedTransactions, nil
+	return w.computeSuperTransactions(w.unconfirmedProcessedTransactions)
 }
