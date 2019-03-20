@@ -280,11 +280,14 @@ func (c *Contractor) managedMarkContractsUtility() error {
 	// Update utility fields for each contract.
 	for _, contract := range c.staticContracts.ViewAll() {
 		utility, err := func() (u modules.ContractUtility, err error) {
-			// Do not investigate the contract if the contract is locked.
-			u.GoodForRenew = contract.Utility.GoodForRenew
-			u.GoodForUpload = contract.Utility.GoodForUpload
-			if contract.Utility.Locked {
-				return u, nil
+			u = contract.Utility
+
+			// Start the contract in good standing if the utility isn't locked
+			// but don't completely ignore the utility. A locked utility can
+			// always get worse but not better.
+			if !u.Locked {
+				u.GoodForUpload = true
+				u.GoodForRenew = true
 			}
 
 			host, exists := c.hdb.Host(contract.HostPublicKey)
@@ -322,7 +325,6 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			c.mu.RUnlock()
 			if blockHeight+renewWindow >= contract.EndHeight {
 				u.GoodForUpload = false
-				u.GoodForRenew = true
 				return u, nil
 			}
 
@@ -337,14 +339,8 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
 			if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < minContractFundUploadThreshold {
 				u.GoodForUpload = false
-				u.GoodForRenew = true
 				return u, nil
 			}
-
-			// The contract appears to be both good for upload and good for
-			// renew.
-			u.GoodForUpload = true
-			u.GoodForRenew = true
 			return u, nil
 		}()
 		if err != nil {
