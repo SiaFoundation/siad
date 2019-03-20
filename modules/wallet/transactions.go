@@ -110,7 +110,7 @@ func (w *Wallet) Transaction(txid types.TransactionID) (pt modules.ProcessedTran
 
 // Transactions returns all transactions relevant to the wallet that were
 // confirmed in the range [startHeight, endHeight].
-func (w *Wallet) Transactions(startHeight, endHeight types.BlockHeight) (sts []modules.SuperTransaction, err error) {
+func (w *Wallet) Transactions(startHeight, endHeight types.BlockHeight) (pts []modules.ProcessedTransaction, err error) {
 	if err := w.tg.Add(); err != nil {
 		return nil, err
 	}
@@ -192,7 +192,6 @@ func (w *Wallet) Transactions(startHeight, endHeight types.BlockHeight) (sts []m
 	}
 
 	// Gather all transactions until endHeight is reached
-	var pts []modules.ProcessedTransaction
 	for pt.ConfirmationHeight <= endHeight {
 		if build.DEBUG && pt.ConfirmationHeight < startHeight {
 			build.Critical("wallet processed transactions are not sorted")
@@ -210,12 +209,12 @@ func (w *Wallet) Transactions(startHeight, endHeight types.BlockHeight) (sts []m
 			panic("Failed to decode the processed transaction")
 		}
 	}
-	return w.computeSuperTransactions(pts)
+	return
 }
 
-// computeSuperTransaction creates SuperTransaction from a set of
+// ComputeSuperTransactions creates SuperTransaction from a set of
 // ProcessedTransactions.
-func (w *Wallet) computeSuperTransactions(pts []modules.ProcessedTransaction) ([]modules.SuperTransaction, error) {
+func ComputeSuperTransactions(pts []modules.ProcessedTransaction, blockHeight types.BlockHeight) ([]modules.SuperTransaction, error) {
 	// Loop over all transactions and map the id of each contract to the most
 	// recent revision within the set.
 	revisionMap := make(map[types.FileContractID]types.FileContractRevision)
@@ -224,12 +223,6 @@ func (w *Wallet) computeSuperTransactions(pts []modules.ProcessedTransaction) ([
 			revisionMap[rev.ParentID] = rev
 		}
 	}
-	// Get the consensus height.
-	height, err := dbGetConsensusHeight(w.dbTx)
-	if err != nil {
-		return nil, err
-	}
-
 	sts := make([]modules.SuperTransaction, 0, len(pts))
 	for _, pt := range pts {
 		// Determine the value of the transaction assuming that it's a regular
@@ -279,7 +272,7 @@ func (w *Wallet) computeSuperTransactions(pts []modules.ProcessedTransaction) ([
 		rev := pt.Transaction.FileContractRevisions[0]
 		latestRev, ok := revisionMap[rev.ParentID]
 		if !ok {
-			err = errors.New("no revision exists for the provided id which should never happen")
+			err := errors.New("no revision exists for the provided id which should never happen")
 			build.Critical(err)
 			return nil, err
 		}
@@ -293,7 +286,7 @@ func (w *Wallet) computeSuperTransactions(pts []modules.ProcessedTransaction) ([
 		}
 		// It is the latest but if it hasn't reached maturiy height yet we
 		// don't count the incoming value.
-		if height <= rev.NewWindowEnd+types.MaturityDelay {
+		if blockHeight <= rev.NewWindowEnd+types.MaturityDelay {
 			st.ConfirmedIncomingValue = types.ZeroCurrency
 			sts = append(sts, st)
 			continue
@@ -308,12 +301,12 @@ func (w *Wallet) computeSuperTransactions(pts []modules.ProcessedTransaction) ([
 
 // UnconfirmedTransactions returns the set of unconfirmed transactions that are
 // relevant to the wallet.
-func (w *Wallet) UnconfirmedTransactions() ([]modules.SuperTransaction, error) {
+func (w *Wallet) UnconfirmedTransactions() ([]modules.ProcessedTransaction, error) {
 	if err := w.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer w.tg.Done()
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	return w.computeSuperTransactions(w.unconfirmedProcessedTransactions)
+	return w.unconfirmedProcessedTransactions, nil
 }

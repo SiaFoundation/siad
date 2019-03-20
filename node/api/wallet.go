@@ -100,8 +100,8 @@ type (
 	// WalletTransactionsGET contains the specified set of confirmed and
 	// unconfirmed transactions.
 	WalletTransactionsGET struct {
-		ConfirmedTransactions   []modules.SuperTransaction `json:"confirmedtransactions"`
-		UnconfirmedTransactions []modules.SuperTransaction `json:"unconfirmedtransactions"`
+		ConfirmedTransactions   []modules.ProcessedTransaction `json:"confirmedtransactions"`
+		UnconfirmedTransactions []modules.ProcessedTransaction `json:"unconfirmedtransactions"`
 	}
 
 	// WalletTransactionsGETaddr contains the set of wallet transactions

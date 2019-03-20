@@ -108,11 +108,8 @@ type (
 		Outputs []ProcessedOutput `json:"outputs"`
 	}
 
-	// SuperTransaction is a transaction that has been valued according to the
-	// current state of consensus. This means that the value of it can
-	// potentially change. e.g. if a storage proof gets reverted due to a
-	// reorg.
-	// TODO find a better name for it.
+	// SuperTransaction is a transaction that has been given incoming and
+	// outgoing siacoin value fields.	// TODO find a better name for it.
 	SuperTransaction struct {
 		ProcessedTransaction
 
@@ -420,11 +417,11 @@ type (
 		// Transactions returns all of the transactions that were confirmed at
 		// heights [startHeight, endHeight]. Unconfirmed transactions are not
 		// included.
-		Transactions(startHeight types.BlockHeight, endHeight types.BlockHeight) ([]SuperTransaction, error)
+		Transactions(startHeight types.BlockHeight, endHeight types.BlockHeight) ([]ProcessedTransaction, error)
 
 		// UnconfirmedTransactions returns all unconfirmed transactions
 		// relative to the wallet.
-		UnconfirmedTransactions() ([]SuperTransaction, error)
+		UnconfirmedTransactions() ([]ProcessedTransaction, error)
 
 		// RegisterTransaction takes a transaction and its parents and returns
 		// a TransactionBuilder which can be used to expand the transaction.

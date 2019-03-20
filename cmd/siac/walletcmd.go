@@ -592,9 +592,17 @@ func wallettransactionscmd() {
 	if err != nil {
 		die("Could not fetch transaction history:", err)
 	}
+	cg, err := httpClient.ConsensusGet()
+	if err != nil {
+		die("Could not fetch consensus information:", err)
+	}
 	fmt.Println("             [timestamp]    [height]                                                   [transaction id]    [net siacoins]   [net siafunds]")
 	txns := append(wtg.ConfirmedTransactions, wtg.UnconfirmedTransactions...)
-	for _, txn := range txns {
+	sts, err := wallet.ComputeSuperTransactions(txns, cg.Height)
+	if err != nil {
+
+	}
+	for _, txn := range sts {
 		// Determine the number of outgoing siacoins and siafunds.
 		var outgoingSiafunds types.Currency
 		for _, input := range txn.Inputs {

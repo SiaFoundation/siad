@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -32,11 +33,21 @@ func TestWalletTransactionsSumUpToWalletBalance(t *testing.T) {
 	}()
 	// Get the renter for the test.
 	renter := tg.Renters()[0]
-	// Get the renter's confirmed transactions.
-	txns, err := renter.ConfirmedTransactions()
+	// Get the renter's confirmed transactions and blockheight.
+	confirmedTxns, err := renter.ConfirmedTransactions()
 	if err != nil {
 		t.Fatal(err)
 	}
+	bh, err := renter.BlockHeight()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Convert the transactions.
+	txns, err := wallet.ComputeSuperTransactions(confirmedTxns, bh)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// These transactions should contain one contract for each host and sum up
 	// to the renter's wallet's balance.
 	var numFC int
@@ -83,7 +94,16 @@ func TestWalletTransactionsSumUpToWalletBalance(t *testing.T) {
 	}
 
 	// Check that the transactions still add up to the wallet's balance.
-	txns, err = renter.ConfirmedTransactions()
+	confirmedTxns, err = renter.ConfirmedTransactions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bh, err = renter.BlockHeight()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Convert the transactions.
+	txns, err = wallet.ComputeSuperTransactions(confirmedTxns, bh)
 	if err != nil {
 		t.Fatal(err)
 	}
