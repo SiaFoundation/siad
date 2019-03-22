@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -90,6 +91,20 @@ func (sp *SiaPath) LoadString(s string) error {
 	return sp.validate()
 }
 
+// MarshalJSON marshales a SiaPath as a string.
+func (sp SiaPath) MarshalJSON() ([]byte, error) {
+	return json.Marshal(sp.String())
+}
+
+// UnmarshalJSON unmarshals a siapath into a SiaPath object.
+func (sp *SiaPath) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	return sp.LoadString(s)
+}
+
 // SiaDirSysPath returns the system path needed to read a directory on disk, the
 // input dir is the root siadir directory on disk
 func (sp SiaPath) SiaDirSysPath(dir string) string {
@@ -116,9 +131,6 @@ func (sp SiaPath) String() string {
 // validate checks that a Siapath is a legal filename. ../ is disallowed to
 // prevent directory traversal, and paths must not begin with / or be empty.
 func (sp SiaPath) validate() error {
-	if sp.Path == "" {
-		return ErrEmptySiaPath
-	}
 	if sp.Path == ".." {
 		return errors.New("siapath cannot be '..'")
 	}
