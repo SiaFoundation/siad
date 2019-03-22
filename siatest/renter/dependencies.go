@@ -31,6 +31,11 @@ type dependencyDisableRecoveryStatusReset struct {
 	modules.ProductionDependencies
 }
 
+// dependencyDisableRenewal prevents contracts from being renewed.
+type dependencyDisableRenewal struct {
+	modules.ProductionDependencies
+}
+
 // Disrupt will block the scan progress of the hostdb. The scan can be started
 // by calling Scan on the dependency.
 func (d *dependencyBlockScan) Disrupt(s string) bool {
@@ -58,6 +63,11 @@ func (d *dependencyDisableCloseUploadEntry) Disrupt(s string) bool {
 // from being reset after the scan is done.
 func (d *dependencyDisableRecoveryStatusReset) Disrupt(s string) bool {
 	return s == "disableRecoveryStatusReset"
+}
+
+// Disrupt will prevent contracts from being renewed.
+func (d *dependencyDisableRenewal) Disrupt(s string) bool {
+	return s == "disableRenew"
 }
 
 // Scan resumes the blocked scan.

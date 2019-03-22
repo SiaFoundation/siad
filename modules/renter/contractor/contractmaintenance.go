@@ -337,7 +337,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			sectorBandwidthPrice := sectorUploadBandwidthPrice.Add(sectorDownloadBandwidthPrice)
 			sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
 			percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
-			if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < minContractFundUploadThreshold {
+			if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundUploadThreshold {
 				u.GoodForUpload = false
 				return u, nil
 			}
@@ -832,7 +832,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// calculate a spending for the contract that is proportional to how
 		// much money was spend on the contract throughout this billing cycle
 		// (which is now ending).
-		if blockHeight+allowance.RenewWindow >= contract.EndHeight {
+		if blockHeight+allowance.RenewWindow >= contract.EndHeight && !c.staticDeps.Disrupt("disableRenew") {
 			renewAmount, err := c.managedEstimateRenewFundingRequirements(contract, blockHeight, allowance)
 			if err != nil {
 				c.log.Debugln("Contract skipped because there was an error estimating renew funding requirements", renewAmount, err)
@@ -857,7 +857,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		sectorBandwidthPrice := sectorUploadBandwidthPrice.Add(sectorDownloadBandwidthPrice)
 		sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
 		percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
-		if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < minContractFundRenewalThreshold {
+		if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundRenewalThreshold && !c.staticDeps.Disrupt("disableRenew") {
 			// Renew the contract with double the amount of funds that the
 			// contract had previously. The reason that we double the funding
 			// instead of doing anything more clever is that we don't know what
@@ -874,9 +874,9 @@ func (c *Contractor) threadedContractMaintenance() {
 				id:     contract.ID,
 				amount: contract.TotalCost.Mul64(2),
 			})
-			c.log.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, minContractFundRenewalThreshold)
+			c.log.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
 		} else {
-			c.log.Debugln("Contract did not get added to the refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, minContractFundRenewalThreshold)
+			c.log.Debugln("Contract did not get added to the refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
 		}
 	}
 	if len(renewSet) != 0 || len(refreshSet) != 0 {
