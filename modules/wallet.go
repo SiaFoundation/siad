@@ -108,6 +108,15 @@ type (
 		Outputs []ProcessedOutput `json:"outputs"`
 	}
 
+	// ValuedTransaction is a transaction that has been given incoming and
+	// outgoing siacoin value fields.
+	ValuedTransaction struct {
+		ProcessedTransaction
+
+		ConfirmedIncomingValue types.Currency `json:"confirmedincomingvalue"`
+		ConfirmedOutgoingValue types.Currency `json:"confirmedoutgoingvalue"`
+	}
+
 	// A UnspentOutput is a SiacoinOutput or SiafundOutput that the wallet
 	// is tracking.
 	UnspentOutput struct {
