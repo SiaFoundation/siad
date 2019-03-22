@@ -26,6 +26,10 @@ func TestSiapathValidate(t *testing.T) {
 		{"foo/./bar", false},
 		{"", false},
 		{"blank/end/", false},
+		{"double//dash", false},
+		{"../", false},
+		{"./", false},
+		{".", false},
 	}
 	for _, pathtest := range pathtests {
 		siaPath := SiaPath{
@@ -48,6 +52,7 @@ func TestNewSiapath(t *testing.T) {
 		valid bool
 	}{
 		{"valid/siapath", true},
+		{"\\some\\windows\\path", true}, // the \\ should be replaced with / so this should translate to a valid siapath
 		{"../../../directory/traversal", false},
 		{"testpath", true},
 		{"valid/siapath/../with/directory/traversal", false},
@@ -64,6 +69,10 @@ func TestNewSiapath(t *testing.T) {
 		{"foo/./bar", false},
 		{"", false},
 		{"blank/end/", true}, // NewSiaPath will trim trailing slashes so this is a valid input
+		{"double//dash", false},
+		{"../", false},
+		{"./", false},
+		{".", false},
 	}
 	for _, pathtest := range pathtests {
 		_, err := NewSiaPath(pathtest.in)

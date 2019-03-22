@@ -61,7 +61,7 @@ func TestNewSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath, err := siaPathDir.Join(siaPathSubDir.ToString())
+	siaPath, err := siaPathDir.Join(siaPathSubDir.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestNewSiaDir(t *testing.T) {
 		t.Fatalf("SiaDir SiaPath not set properly: got %v expected %v", siaDir.SiaPath(), siaPath)
 	}
 	// Check that the directory and .siadir file were created on disk
-	_, err = os.Stat(siaPath.DirSysPath(rootDir))
+	_, err = os.Stat(siaPath.SiaDirSysPath(rootDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestNewSiaDir(t *testing.T) {
 	// Check Top Directory
 	//
 	// Check that the directory and .siadir file were created on disk
-	_, err = os.Stat(siaPath.DirSysPath(rootDir))
+	_, err = os.Stat(siaPath.SiaDirSysPath(rootDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,8 +125,8 @@ func TestNewSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check that the SiaPath was initialized properly
-	if rootSiaDir.SiaPath().ToString() != "" {
-		t.Fatalf("SiaDir SiaPath not set properly: got %v expected %v", rootSiaDir.SiaPath().ToString(), "")
+	if !rootSiaDir.SiaPath().IsRoot() {
+		t.Fatalf("SiaDir SiaPath not set properly: got %v expected %v", rootSiaDir.SiaPath().String(), "")
 	}
 	// Check that the directory and .siadir file were created on disk
 	_, err = os.Stat(rootDir)
@@ -236,7 +236,7 @@ func TestDelete(t *testing.T) {
 	if !entry.Deleted() {
 		t.Fatal("Deleted flag was not set correctly")
 	}
-	siaDirPath := entry.metadata.SiaPath.DirSysPath(entry.metadata.RootDir)
+	siaDirPath := entry.metadata.SiaPath.SiaDirSysPath(entry.metadata.RootDir)
 	if _, err := os.Open(siaDirPath); !os.IsNotExist(err) {
 		t.Fatal("Expected a siadir doesn't exist error but got", err)
 	}

@@ -369,7 +369,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath types.SiaPath, hosts map[strin
 	// Get Directory files
 	var files []*siafile.SiaFileSetEntry
 	var err error
-	fileinfos, err := ioutil.ReadDir(dirSiaPath.DirSysPath(r.staticFilesDir))
+	fileinfos, err := ioutil.ReadDir(dirSiaPath.SiaDirSysPath(r.staticFilesDir))
 	if err != nil {
 		return
 	}

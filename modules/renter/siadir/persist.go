@@ -121,16 +121,17 @@ func managedCreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeah
 // sure that all the parent directories have metadata files.
 func createDirMetadataAll(siaPath types.SiaPath, rootDir string) ([]writeaheadlog.Update, error) {
 	// Create path to directory
-	if err := os.MkdirAll(siaPath.DirSysPath(rootDir), 0700); err != nil {
+	if err := os.MkdirAll(siaPath.SiaDirSysPath(rootDir), 0700); err != nil {
 		return nil, err
 	}
 
 	// Create metadata
 	var updates []writeaheadlog.Update
+	var err error
 	for {
-		siaPath = siaPath.Dir()
-		if siaPath.ToString() == "." {
-			siaPath = types.RootDirSiaPath()
+		siaPath, err = siaPath.Dir()
+		if err != nil {
+			return nil, err
 		}
 		_, update, err := createDirMetadata(siaPath, rootDir)
 		if err != nil {
@@ -139,7 +140,7 @@ func createDirMetadataAll(siaPath types.SiaPath, rootDir string) ([]writeaheadlo
 		if !reflect.DeepEqual(update, writeaheadlog.Update{}) {
 			updates = append(updates, update)
 		}
-		if siaPath.ToString() == "" {
+		if siaPath.IsRoot() {
 			break
 		}
 	}
@@ -267,7 +268,7 @@ func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) err
 func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
 	return writeaheadlog.Update{
 		Name:         updateDeleteName,
-		Instructions: []byte(sd.metadata.SiaPath.DirSysPath(sd.metadata.RootDir)),
+		Instructions: []byte(sd.metadata.SiaPath.SiaDirSysPath(sd.metadata.RootDir)),
 	}
 }
 

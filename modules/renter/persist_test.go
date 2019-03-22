@@ -17,7 +17,7 @@ import (
 // newTestingFile initializes a file object with random parameters.
 func newTestingFile() (*siafile.SiaFile, error) {
 	siaPath, rsc := testingFileParams()
-	return newFileTesting(siaPath.ToString(), newTestingWal(), rsc, 1000, 0777, "")
+	return newFileTesting(siaPath.String(), newTestingWal(), rsc, 1000, 0777, "")
 }
 
 // testingFileParams generates the ErasureCoder and a random name for a testing
@@ -232,7 +232,7 @@ func TestRenterPaths(t *testing.T) {
 		return nil
 	})
 	// walk will descend into foo/bar/, reading baz, bar, and finally foo
-	expWalkStr := (f3.SiaPath().ToString() + ".sia") + (f2.SiaPath().ToString() + ".sia") + (f1.SiaPath().ToString() + ".sia")
+	expWalkStr := (f3.SiaPath().String() + ".sia") + (f2.SiaPath().String() + ".sia") + (f1.SiaPath().String() + ".sia")
 	if filepath.ToSlash(walkStr) != expWalkStr {
 		t.Fatalf("Bad walk string: expected %v, got %v", expWalkStr, walkStr)
 	}

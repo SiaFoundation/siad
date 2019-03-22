@@ -60,7 +60,7 @@ func (r *Renter) DirInfo(siaPath types.SiaPath) (modules.DirectoryInfo, error) {
 
 		NumFiles:   metadata.NumFiles,
 		NumSubDirs: metadata.NumSubDirs,
-		SiaPath:    siaPath.ToString(),
+		SiaPath:    siaPath.String(),
 	}, nil
 }
 
@@ -81,7 +81,7 @@ func (r *Renter) DirList(siaPath types.SiaPath) ([]modules.DirectoryInfo, []modu
 	}
 	dirs = append(dirs, di)
 	// Read Directory
-	fileInfos, err := ioutil.ReadDir(siaPath.DirSysPath(r.staticFilesDir))
+	fileInfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
 	if err != nil {
 		return nil, nil, err
 	}

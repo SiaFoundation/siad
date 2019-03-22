@@ -30,16 +30,8 @@ type (
 )
 
 // EqualSiaPaths compares two SiaPath types for equality
-//
-// NOTE: each field should be checked explicitly
 func EqualSiaPaths(siaPath1, siaPath2 SiaPath) bool {
-	// Compare paths
-	if siaPath1.Path != siaPath2.Path {
-		return false
-	}
-
-	// SiaPaths are equal
-	return true
+	return siaPath1.Path == siaPath2.Path
 }
 
 // NewSiaPath returns a new SiaPath with the path set
@@ -49,13 +41,13 @@ func NewSiaPath(s string) (SiaPath, error) {
 
 // RootDirSiaPath returns a SiaPath for the root siadir which has a blank path
 func RootDirSiaPath() SiaPath {
-	return SiaPath{
-		Path: "",
-	}
+	return SiaPath{}
 }
 
 // newSiaPath returns a new SiaPath with the path set
 func newSiaPath(s string) (SiaPath, error) {
+	// Remove any windows path delimiters
+	s = strings.Replace(s, "\\", "/", -1)
 	// Trim any leading or trailing /
 	s = strings.TrimPrefix(s, "/")
 	s = strings.TrimSuffix(s, "/")
@@ -66,19 +58,16 @@ func newSiaPath(s string) (SiaPath, error) {
 }
 
 // Dir returns the directory of the SiaPath
-func (sp SiaPath) Dir() SiaPath {
-	return SiaPath{
-		Path: filepath.Dir(sp.Path),
+func (sp SiaPath) Dir() (SiaPath, error) {
+	str := filepath.Dir(sp.Path)
+	if str == "." {
+		return RootDirSiaPath(), nil
 	}
+	return newSiaPath(str)
 }
 
-// DirSysPath returns the system path needed to read a directory on disk
-func (sp SiaPath) DirSysPath(dir string) string {
-	return filepath.Join(dir, sp.Path+"/")
-}
-
-// IsBlank indicates whether or not the SiaPath path is a blank string
-func (sp SiaPath) IsBlank() bool {
+// IsRoot indicates whether or not the SiaPath path is a root directory siapath
+func (sp SiaPath) IsRoot() bool {
 	return sp.Path == ""
 }
 
@@ -93,20 +82,30 @@ func (sp *SiaPath) LoadString(s string) {
 	sp.Path = s
 }
 
+// SiaDirSysPath returns the system path needed to read a directory on disk
+func (sp SiaPath) SiaDirSysPath(dir string) string {
+	return filepath.Join(dir, sp.sysPath(), "")
+}
+
 // SiaDirMetadataSysPath returns the system path needed to read the SiaDir
 // metadata file from disk
 func (sp SiaPath) SiaDirMetadataSysPath(dir string) string {
-	return filepath.Join(dir, sp.Path+"/"+SiaDirExtension)
+	return filepath.Join(dir, sp.sysPath(), SiaDirExtension)
 }
 
 // SiaFileSysPath returns the system path needed to read the SiaFile from disk
 func (sp SiaPath) SiaFileSysPath(dir string) string {
-	return filepath.Join(dir, sp.Path+SiaFileExtension)
+	return filepath.Join(dir, sp.sysPath()+SiaFileExtension)
 }
 
-// ToString returns the SiaPath's path
-func (sp SiaPath) ToString() string {
+// String returns the SiaPath's path
+func (sp SiaPath) String() string {
 	return sp.Path
+}
+
+// sysPath returns to the SiaPath's path joined with OS delimiters
+func (sp SiaPath) sysPath() string {
+	return filepath.Join(strings.Split(sp.Path, "/")...)
 }
 
 // validate checks that a Siapath is a legal filename. ../ is disallowed to
@@ -138,6 +137,9 @@ func (sp SiaPath) validate() error {
 		}
 		if prevElem != "" && pathElem == "" {
 			return ErrEmptySiaPath
+		}
+		if prevElem == "/" || pathElem == "/" {
+			return errors.New("siapath cannot contain //")
 		}
 		prevElem = pathElem
 	}

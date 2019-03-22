@@ -440,7 +440,12 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	if err != nil {
 		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaPath(), err)
 	}
-	go r.threadedBubbleMetadata(uc.fileEntry.DirSiaPath())
+	siaPath := uc.fileEntry.SiaPath()
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		return err
+	}
+	go r.threadedBubbleMetadata(dirSiaPath)
 	// Close SiaFile
 	err = uc.fileEntry.Close()
 	if err != nil {
@@ -505,7 +510,12 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// stuck files to the heap and then find the next stuck chunk. By ensuring
 	// that the directory has been updated we eliminate the possibility that the
 	// same chunk is found by the stuck loop and re-added to the repair heap
-	r.threadedBubbleMetadata(uc.fileEntry.DirSiaPath())
+	siaPath := uc.fileEntry.SiaPath()
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		return
+	}
+	r.threadedBubbleMetadata(dirSiaPath)
 
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop

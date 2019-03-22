@@ -168,7 +168,7 @@ func (r *Renter) fileInfo(siaPath types.SiaPath, offline map[string]bool, goodFo
 		Recoverable:      onDisk || redundancy >= 1,
 		Redundancy:       redundancy,
 		Renewing:         true,
-		SiaPath:          entry.SiaPath().ToString(),
+		SiaPath:          entry.SiaPath().String(),
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
 		UploadedBytes:    entry.UploadedBytes(),

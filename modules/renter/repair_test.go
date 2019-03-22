@@ -118,11 +118,11 @@ func TestBubbleHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subDir1_1, err := subDir1.Join(subDir1.ToString())
+	subDir1_1, err := subDir1.Join(subDir1.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	subDir1_2, err := subDir1.Join(subDir2.ToString())
+	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +305,7 @@ func TestBubbleHealth(t *testing.T) {
 	//
 	// Note: this tests the edge case of bubbling a directory that has both a
 	// file and a sub directory
-	subDir1_2_1, err := subDir1_2.Join(subDir1.ToString())
+	subDir1_2_1, err := subDir1_2.Join(subDir1.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	if err := rt.renter.CreateDir(subDir2); err != nil {
 		t.Fatal(err)
 	}
-	subDir1_2, err := subDir1.Join(subDir2.ToString())
+	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +405,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 			return err
 		}
 		if types.EqualSiaPaths(dir, subDir1_2) {
-			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.ToString(), dir.ToString())
+			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
 		}
 		if !lastCheck.Equal(oldestCheckTime) {
 			return fmt.Errorf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck)
@@ -453,7 +453,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 	if err := rt.renter.CreateDir(subDir2); err != nil {
 		t.Fatal(err)
 	}
-	subDir1_2, err := subDir1.Join(subDir2.ToString())
+	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +470,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 			return err
 		}
 		if types.EqualSiaPaths(dir, types.RootDirSiaPath()) {
-			return fmt.Errorf("Expected to find top level directory but found %v", dir.ToString())
+			return fmt.Errorf("Expected to find top level directory but found %v", dir.String())
 		}
 		if health != 0 {
 			return fmt.Errorf("Expected to find health of %v but found %v", 0, health)
@@ -503,7 +503,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 			return err
 		}
 		if types.EqualSiaPaths(dir, subDir1_2) {
-			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.ToString(), dir.ToString())
+			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
 		}
 		if health != worstHealth {
 			return fmt.Errorf("Expected to find health of %v but found %v", worstHealth, health)
@@ -542,7 +542,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 			return err
 		}
 		if types.EqualSiaPaths(dir, subDir1_2) {
-			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.ToString(), dir.ToString())
+			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
 		}
 		if health != worstHealth {
 			return fmt.Errorf("Expected to find health of %v but found %v", worstHealth, health)
@@ -611,7 +611,7 @@ func TestNumFiles(t *testing.T) {
 	if err := rt.renter.CreateDir(subDir1); err != nil {
 		t.Fatal(err)
 	}
-	subDir1_2, err := subDir1.Join(subDir2.ToString())
+	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -691,7 +691,7 @@ func TestDirectorySize(t *testing.T) {
 	if err := rt.renter.CreateDir(subDir1); err != nil {
 		t.Fatal(err)
 	}
-	subDir1_2, err := subDir1.Join(subDir2.ToString())
+	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -768,7 +768,7 @@ func TestDirectoryModTime(t *testing.T) {
 	if err := rt.renter.CreateDir(subDir1); err != nil {
 		t.Fatal(err)
 	}
-	subDir1_2, err := subDir1.Join(subDir2.ToString())
+	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -848,7 +848,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err := rt.renter.CreateDir(subDir2); err != nil {
 		t.Fatal(err)
 	}
-	subDir1_2, err := subDir1.Join(subDir2.ToString())
+	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}

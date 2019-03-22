@@ -168,7 +168,11 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		if err != nil {
 			return nil, err
 		}
-		sd, errDir := r.staticDirSet.NewSiaDir(siaPath.Dir())
+		dirSiaPath, err := siaPath.Dir()
+		if err != nil {
+			return nil, err
+		}
+		sd, errDir := r.staticDirSet.NewSiaDir(dirSiaPath)
 		if errDir != nil && errDir != siadir.ErrPathOverload {
 			errDir = errors.AddContext(errDir, "unable to create new sia dir")
 			return nil, errors.Compose(err, errDir)

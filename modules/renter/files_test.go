@@ -687,7 +687,7 @@ func TestRenterFileList(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatal("FileList is not returning the only file in the renter")
 	}
-	if files[0].SiaPath != entry1.SiaPath().ToString() {
+	if files[0].SiaPath != entry1.SiaPath().String() {
 		t.Error("FileList is not returning the correct filename for the only file")
 	}
 
@@ -704,13 +704,13 @@ func TestRenterFileList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !((files[0].SiaPath == entry1.SiaPath().ToString() || files[0].SiaPath == entry2.SiaPath().ToString()) &&
-		(files[1].SiaPath == entry1.SiaPath().ToString() || files[1].SiaPath == entry2.SiaPath().ToString()) &&
+	if !((files[0].SiaPath == entry1.SiaPath().String() || files[0].SiaPath == entry2.SiaPath().String()) &&
+		(files[1].SiaPath == entry1.SiaPath().String() || files[1].SiaPath == entry2.SiaPath().String()) &&
 		(files[0].SiaPath != files[1].SiaPath)) {
 		t.Log("files[0].SiaPath", files[0].SiaPath)
 		t.Log("files[1].SiaPath", files[1].SiaPath)
-		t.Log("file1.SiaPath()", entry1.SiaPath().ToString())
-		t.Log("file2.SiaPath()", entry2.SiaPath().ToString())
+		t.Log("file1.SiaPath()", entry1.SiaPath().String())
+		t.Log("file2.SiaPath()", entry2.SiaPath().String())
 		t.Error("FileList is returning wrong names for the files")
 	}
 }
@@ -757,8 +757,8 @@ func TestRenterRenameFile(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatal("FileList has unexpected number of files:", len(files))
 	}
-	if files[0].SiaPath != siaPath1a.ToString() {
-		t.Errorf("RenameFile failed: expected %v, got %v", siaPath1a.ToString(), files[0].SiaPath)
+	if files[0].SiaPath != siaPath1a.String() {
+		t.Errorf("RenameFile failed: expected %v, got %v", siaPath1a.String(), files[0].SiaPath)
 	}
 	// Confirm SiaFileSet was updated
 	_, err = rt.renter.staticFileSet.Open(siaPath1a)

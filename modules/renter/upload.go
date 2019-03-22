@@ -22,7 +22,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -92,9 +91,9 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Create the directory path on disk. Renter directory is already present so
 	// only files not in top level directory need to have directories created
-	dirSiaPath := up.SiaPath.Dir()
-	if dirSiaPath.ToString() == "." {
-		dirSiaPath = types.RootDirSiaPath()
+	dirSiaPath, err := up.SiaPath.Dir()
+	if err != nil {
+		return err
 	}
 	// Try to create the directory. If ErrPathOverload is returned it already exists.
 	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)

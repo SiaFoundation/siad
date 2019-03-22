@@ -479,5 +479,5 @@ func (r *Renter) Streamer(siaPath types.SiaPath) (string, modules.Streamer, erro
 	}
 
 	go s.threadedFillCache()
-	return entry.SiaPath().ToString(), s, nil
+	return entry.SiaPath().String(), s, nil
 }

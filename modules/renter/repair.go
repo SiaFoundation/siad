@@ -113,7 +113,7 @@ func (r *Renter) managedBubbleNeeded(siaPath types.SiaPath) (bool, error) {
 	defer r.bubbleUpdatesMu.Unlock()
 
 	// Check for bubble in bubbleUpdate map
-	siaPathStr := siaPath.ToString()
+	siaPathStr := siaPath.String()
 	status, ok := r.bubbleUpdates[siaPathStr]
 	if !ok {
 		status = bubbleInit
@@ -153,9 +153,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath types.SiaPath) (siadi
 		StuckHealth:         siadir.DefaultDirHealth,
 	}
 	// Read directory
-	fileinfos, err := ioutil.ReadDir(siaPath.DirSysPath(r.staticFilesDir))
+	fileinfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
 	if err != nil {
-		r.log.Printf("WARN: Error in reading files in directory %v : %v\n", siaPath.DirSysPath(r.staticFilesDir), err)
+		r.log.Printf("WARN: Error in reading files in directory %v : %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
 		return siadir.Metadata{}, err
 	}
 
@@ -315,7 +315,7 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath types.SiaPath) error {
 	defer r.bubbleUpdatesMu.Unlock()
 
 	// Check current status
-	siaPathStr := siaPath.ToString()
+	siaPathStr := siaPath.String()
 	status, ok := r.bubbleUpdates[siaPathStr]
 	if !ok {
 		// Bubble not found in map, treat as developer error as this should not happen
@@ -342,7 +342,7 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath types.SiaPath) error {
 // metadata
 func (r *Renter) managedDirectoryMetadata(siaPath types.SiaPath) (siadir.Metadata, error) {
 	// Check for bad paths and files
-	fi, err := os.Stat(siaPath.DirSysPath(r.staticFilesDir))
+	fi, err := os.Stat(siaPath.SiaDirSysPath(r.staticFilesDir))
 	if err != nil {
 		return siadir.Metadata{}, err
 	}
@@ -356,13 +356,13 @@ func (r *Renter) managedDirectoryMetadata(siaPath types.SiaPath) (siadir.Metadat
 		// Remember initial Error
 		initError := err
 		// Metadata file does not exists, check if directory is empty
-		fileInfos, err := ioutil.ReadDir(siaPath.DirSysPath(r.staticFilesDir))
+		fileInfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
 		if err != nil {
 			return siadir.Metadata{}, err
 		}
 		// If the directory is empty and is not the root directory, assume it
 		// was deleted so do not create a metadata file
-		if len(fileInfos) == 0 && !siaPath.IsBlank() {
+		if len(fileInfos) == 0 && !siaPath.IsRoot() {
 			return siadir.Metadata{}, initError
 		}
 		// If we are at the root directory or the directory is not empty, create
@@ -471,7 +471,7 @@ func (r *Renter) managedStuckDirectory() (types.SiaPath, error) {
 		// Check if there are stuck chunks in this directory
 		if directories[0].AggregateNumStuckChunks == 0 {
 			// Log error if we are not at the root directory
-			if !siaPath.IsBlank() {
+			if !siaPath.IsRoot() {
 				r.log.Debugln("WARN: ended up in directory with no stuck chunks that is not root directory:", siaPath)
 			}
 			return siaPath, errNoStuckFiles
@@ -524,7 +524,7 @@ func (r *Renter) managedStuckDirectory() (types.SiaPath, error) {
 // directory SiaPaths
 func (r *Renter) managedSubDirectories(siaPath types.SiaPath) ([]types.SiaPath, error) {
 	// Read directory
-	fileinfos, err := ioutil.ReadDir(siaPath.DirSysPath(r.staticFilesDir))
+	fileinfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
 	if err != nil {
 		return nil, err
 	}
@@ -625,20 +625,20 @@ func (r *Renter) threadedBubbleMetadata(siaPath types.SiaPath) {
 	// Calculate the new metadata values of the directory
 	metadata, err := r.managedCalculateDirectoryMetadata(siaPath)
 	if err != nil {
-		r.log.Printf("WARN: Could not calculate the metadata of directory %v: %v\n", siaPath.DirSysPath(r.staticFilesDir), err)
+		r.log.Printf("WARN: Could not calculate the metadata of directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
 		return
 	}
 
 	// Update directory metadata with the health information
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
-		r.log.Printf("WARN: Could not open directory %v: %v\n", siaPath.DirSysPath(r.staticFilesDir), err)
+		r.log.Printf("WARN: Could not open directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
 		return
 	}
 	defer siaDir.Close()
 	err = siaDir.UpdateMetadata(metadata)
 	if err != nil {
-		r.log.Printf("WARN: Could not update the metadata of the directory %v: %v\n", siaPath.DirSysPath(r.staticFilesDir), err)
+		r.log.Printf("WARN: Could not update the metadata of the directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
 		return
 	}
 
@@ -651,7 +651,7 @@ func (r *Renter) threadedBubbleMetadata(siaPath types.SiaPath) {
 
 	// If siaPath is equal to "" then return as we are in the root files
 	// directory of the renter
-	if siaPath.IsBlank() {
+	if siaPath.IsRoot() {
 		// If we are at the root directory then check if any files were found in
 		// need of repair or and stuck chunks and trigger the appropriate repair
 		// loop. This is only done at the root directory as the repair and stuck
@@ -672,9 +672,9 @@ func (r *Renter) threadedBubbleMetadata(siaPath types.SiaPath) {
 		return
 	}
 	// Move to parent directory
-	siaPath = siaPath.Dir()
-	if siaPath.ToString() == "." {
-		siaPath = types.RootDirSiaPath()
+	siaPath, err = siaPath.Dir()
+	if err != nil {
+		return
 	}
 	go r.threadedBubbleMetadata(siaPath)
 	return

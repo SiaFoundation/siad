@@ -368,7 +368,7 @@ func TestRename(t *testing.T) {
 	entry, _, _ := newTestSiaFileSetWithFile()
 
 	// Create new paths for the file.
-	oldSiaPathStr := entry.staticMetadata.SiaPath.ToString()
+	oldSiaPathStr := entry.staticMetadata.SiaPath.String()
 	newSiaPath, err := types.NewSiaPath(oldSiaPathStr + "1")
 	if err != nil {
 		t.Fatal(err)

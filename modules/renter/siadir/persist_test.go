@@ -172,7 +172,7 @@ func TestCreateReadDeleteUpdate(t *testing.T) {
 	// Read update
 	path := readDeleteUpdate(update)
 	// Compare values
-	siaDirPath := sd.metadata.SiaPath.DirSysPath(sd.metadata.RootDir)
+	siaDirPath := sd.metadata.SiaPath.SiaDirSysPath(sd.metadata.RootDir)
 	if path != siaDirPath {
 		t.Error("paths don't match")
 	}
