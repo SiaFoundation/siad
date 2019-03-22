@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -46,7 +45,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 		}
 
 		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != types.SiaFileExtension {
+		if info.IsDir() || filepath.Ext(path) != modules.SiaFileExtension {
 			return nil
 		}
 
@@ -141,7 +140,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		dupCount := 0
 		origName := files[i].name
 		for {
-			siaPath, err := types.NewSiaPath(files[i].name)
+			siaPath, err := modules.NewSiaPath(files[i].name)
 			if err != nil {
 				return nil, err
 			}
@@ -164,7 +163,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 			repairPath = tf.RepairPath
 		}
 		// Create and add a siadir to the SiaDirSet if one has not been created
-		siaPath, err := types.NewSiaPath(f.name)
+		siaPath, err := modules.NewSiaPath(f.name)
 		if err != nil {
 			return nil, err
 		}

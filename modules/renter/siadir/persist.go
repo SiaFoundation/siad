@@ -9,7 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -119,7 +118,7 @@ func managedCreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeah
 
 // createDirMetadataAll creates a path on disk to the provided siaPath and make
 // sure that all the parent directories have metadata files.
-func createDirMetadataAll(siaPath types.SiaPath, rootDir string) ([]writeaheadlog.Update, error) {
+func createDirMetadataAll(siaPath modules.SiaPath, rootDir string) ([]writeaheadlog.Update, error) {
 	// Create path to directory
 	if err := os.MkdirAll(siaPath.SiaDirSysPath(rootDir), 0700); err != nil {
 		return nil, err

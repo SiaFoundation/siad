@@ -7,13 +7,12 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // newRandSiaPath creates a new SiaPath type with a random path.
-func newRandSiaPath() types.SiaPath {
-	siaPath, err := types.NewSiaPath(hex.EncodeToString(fastrand.Bytes(4)))
+func newRandSiaPath() modules.SiaPath {
+	siaPath, err := modules.NewSiaPath(hex.EncodeToString(fastrand.Bytes(4)))
 	if err != nil {
 		panic(err)
 	}

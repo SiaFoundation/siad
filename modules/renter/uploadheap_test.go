@@ -26,7 +26,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Create file with more than 1 chunk and mark the first chunk at stuck
 	rsc, _ := siafile.NewRSCode(1, 1)
-	siaPath, err := types.NewSiaPath("stuckFile")
+	siaPath, err := modules.NewSiaPath("stuckFile")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestBuildChunkHeap(t *testing.T) {
 
 	// Call managedBuildChunkHeap as stuck loop, since there are no stuck chunks
 	// there should be no chunks in the upload heap
-	rt.renter.managedBuildChunkHeap(types.RootDirSiaPath(), hosts, targetStuckChunks)
+	rt.renter.managedBuildChunkHeap(modules.RootDirSiaPath(), hosts, targetStuckChunks)
 	if rt.renter.uploadHeap.managedLen() != 0 {
 		t.Fatalf("Expected heap length of %v but got %v", 0, rt.renter.uploadHeap.managedLen())
 	}
@@ -170,7 +170,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	// files we created nor do we have contracts, all the chunks will be viewed
 	// as not downloadable because they have a health of >1. Therefore we
 	// shouldn't see any chunks in the heap
-	rt.renter.managedBuildChunkHeap(types.RootDirSiaPath(), hosts, targetUnstuckChunks)
+	rt.renter.managedBuildChunkHeap(modules.RootDirSiaPath(), hosts, targetUnstuckChunks)
 	if rt.renter.uploadHeap.managedLen() != 0 {
 		t.Fatalf("Expected heap length of %v but got %v", 0, rt.renter.uploadHeap.managedLen())
 	}
@@ -178,7 +178,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	// Call managedBuildChunkHeap again as the stuck loop, since the previous
 	// call saw all the chunks as not downloadable it will have marked them as
 	// stuck so we should now see one chunk in the heap
-	rt.renter.managedBuildChunkHeap(types.RootDirSiaPath(), hosts, targetStuckChunks)
+	rt.renter.managedBuildChunkHeap(modules.RootDirSiaPath(), hosts, targetStuckChunks)
 	if rt.renter.uploadHeap.managedLen() != 1 {
 		t.Fatalf("Expected heap length of %v but got %v", 1, rt.renter.uploadHeap.managedLen())
 	}

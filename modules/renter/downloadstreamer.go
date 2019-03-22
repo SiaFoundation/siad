@@ -8,7 +8,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -456,7 +455,7 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 
 // Streamer creates a modules.Streamer that can be used to stream downloads from
 // the sia network.
-func (r *Renter) Streamer(siaPath types.SiaPath) (string, modules.Streamer, error) {
+func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, error) {
 	if err := r.tg.Add(); err != nil {
 		return "", nil, err
 	}

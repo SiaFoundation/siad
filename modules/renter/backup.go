@@ -14,7 +14,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/twofish"
@@ -195,7 +195,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			return err
 		}
 		// Nothing to do for non-folders and non-siafiles.
-		if !info.IsDir() && filepath.Ext(path) != types.SiaFileExtension {
+		if !info.IsDir() && filepath.Ext(path) != modules.SiaFileExtension {
 			return nil
 		}
 		// Create the header for the file/dir.
@@ -214,7 +214,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			return nil
 		}
 		// Get the siafile.
-		siaPath, err := types.NewSiaPath(strings.TrimSuffix(relPath, types.SiaFileExtension))
+		siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
 		if err != nil {
 			return err
 		}

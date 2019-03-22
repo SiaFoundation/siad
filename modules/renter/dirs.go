@@ -6,13 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/types"
-
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // CreateDir creates a directory for the renter
-func (r *Renter) CreateDir(siaPath types.SiaPath) error {
+func (r *Renter) CreateDir(siaPath modules.SiaPath) error {
 	err := r.tg.Add()
 	if err != nil {
 		return err
@@ -27,7 +25,7 @@ func (r *Renter) CreateDir(siaPath types.SiaPath) error {
 
 // DeleteDir removes a directory from the renter and deletes all its sub
 // directories and files
-func (r *Renter) DeleteDir(siaPath types.SiaPath) error {
+func (r *Renter) DeleteDir(siaPath modules.SiaPath) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -36,7 +34,7 @@ func (r *Renter) DeleteDir(siaPath types.SiaPath) error {
 }
 
 // DirInfo returns the Directory Information of the siadir
-func (r *Renter) DirInfo(siaPath types.SiaPath) (modules.DirectoryInfo, error) {
+func (r *Renter) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
 	// Grab the siadir entry
 	entry, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
@@ -66,7 +64,7 @@ func (r *Renter) DirInfo(siaPath types.SiaPath) (modules.DirectoryInfo, error) {
 
 // DirList returns directories and files stored in the siadir as well as the
 // DirectoryInfo of the siadir
-func (r *Renter) DirList(siaPath types.SiaPath) ([]modules.DirectoryInfo, []modules.FileInfo, error) {
+func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, []modules.FileInfo, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, nil, err
 	}
@@ -101,11 +99,11 @@ func (r *Renter) DirList(siaPath types.SiaPath) ([]modules.DirectoryInfo, []modu
 		}
 		// Ignore non siafiles
 		ext := filepath.Ext(fi.Name())
-		if ext != types.SiaFileExtension {
+		if ext != modules.SiaFileExtension {
 			continue
 		}
 		// Grab siafile
-		fileName := strings.TrimSuffix(fi.Name(), types.SiaFileExtension)
+		fileName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
 		fileSiaPath, err := siaPath.Join(fileName)
 		if err != nil {
 			return nil, nil, err

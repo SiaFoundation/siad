@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -76,7 +76,7 @@ type uploadHeap struct {
 	newUploads        chan struct{}
 	repairNeeded      chan struct{}
 	stuckChunkFound   chan struct{}
-	stuckChunkSuccess chan types.SiaPath
+	stuckChunkSuccess chan modules.SiaPath
 
 	mu sync.Mutex
 }
@@ -365,7 +365,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
-func (r *Renter) managedBuildChunkHeap(dirSiaPath types.SiaPath, hosts map[string]struct{}, target repairTarget) {
+func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[string]struct{}, target repairTarget) {
 	// Get Directory files
 	var files []*siafile.SiaFileSetEntry
 	var err error
@@ -376,7 +376,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath types.SiaPath, hosts map[strin
 	for _, fi := range fileinfos {
 		// skip sub directories and non siafiles
 		ext := filepath.Ext(fi.Name())
-		if fi.IsDir() || ext != types.SiaFileExtension {
+		if fi.IsDir() || ext != modules.SiaFileExtension {
 			continue
 		}
 
@@ -653,7 +653,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// is a new upload, a signal will be sent through the 'newUploads'
 		// channel, and if the metadata updating code finds a file that needs
 		// repairing, a signal is sent through the 'repairNeeded' channel.
-		rootMetadata, err := r.managedDirectoryMetadata(types.RootDirSiaPath())
+		rootMetadata, err := r.managedDirectoryMetadata(modules.RootDirSiaPath())
 		if err != nil {
 			// If there is an error fetching the root directory metadata, sleep
 			// for a bit and hope that on the next iteration, things will be

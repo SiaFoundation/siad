@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestRenterCreateDirectories checks that the renter properly created metadata files
@@ -23,7 +22,7 @@ func TestRenterCreateDirectories(t *testing.T) {
 	defer rt.Close()
 
 	// Test creating directory
-	siaPath, err := types.NewSiaPath("foo/bar/baz")
+	siaPath, err := modules.NewSiaPath("foo/bar/baz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,24 +32,24 @@ func TestRenterCreateDirectories(t *testing.T) {
 	}
 
 	// Confirm that direcotry metadata files were created in all directories
-	if err := rt.checkDirInitialized(types.RootDirSiaPath()); err != nil {
+	if err := rt.checkDirInitialized(modules.RootDirSiaPath()); err != nil {
 		t.Fatal(err)
 	}
-	siaPath, err = types.NewSiaPath("foo")
+	siaPath, err = modules.NewSiaPath("foo")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := rt.checkDirInitialized(siaPath); err != nil {
 		t.Fatal(err)
 	}
-	siaPath, err = types.NewSiaPath("foo/bar")
+	siaPath, err = modules.NewSiaPath("foo/bar")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := rt.checkDirInitialized(siaPath); err != nil {
 		t.Fatal(err)
 	}
-	siaPath, err = types.NewSiaPath("foo/bar/baz")
+	siaPath, err = modules.NewSiaPath("foo/bar/baz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +61,7 @@ func TestRenterCreateDirectories(t *testing.T) {
 // checkDirInitialized is a helper function that checks that the directory was
 // initialized correctly and the metadata file exist and contain the correct
 // information
-func (rt *renterTester) checkDirInitialized(siaPath types.SiaPath) error {
+func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	fullpath := siaPath.SiaDirMetadataSysPath(rt.renter.staticFilesDir)
 	if _, err := os.Stat(fullpath); err != nil {
 		return err
@@ -103,7 +102,7 @@ func TestDirInfo(t *testing.T) {
 	defer rt.Close()
 
 	// Create directory
-	siaPath, err := types.NewSiaPath("foo/")
+	siaPath, err := modules.NewSiaPath("foo/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +116,7 @@ func TestDirInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootDirInfo, err := rt.renter.DirInfo(types.RootDirSiaPath())
+	rootDirInfo, err := rt.renter.DirInfo(modules.RootDirSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +124,7 @@ func TestDirInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootEntry, err := rt.renter.staticDirSet.Open(types.RootDirSiaPath())
+	rootEntry, err := rt.renter.staticDirSet.Open(modules.RootDirSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +151,7 @@ func TestRenterListDirectory(t *testing.T) {
 	defer rt.Close()
 
 	// Create directory
-	siaPath, err := types.NewSiaPath("foo/")
+	siaPath, err := modules.NewSiaPath("foo/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +167,7 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Confirm that DirList returns 1 FileInfo and 2 DirectoryInfos
-	directories, files, err := rt.renter.DirList(types.RootDirSiaPath())
+	directories, files, err := rt.renter.DirList(modules.RootDirSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +179,7 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Verify that the directory information matches the on disk information
-	rootDir, err := rt.renter.staticDirSet.Open(types.RootDirSiaPath())
+	rootDir, err := rt.renter.staticDirSet.Open(modules.RootDirSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}

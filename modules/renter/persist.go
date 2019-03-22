@@ -41,7 +41,7 @@ var (
 	ErrNoNicknames = errors.New("at least one nickname must be supplied")
 	// ErrNonShareSuffix is an error when the suffix of a file does not match
 	// the defined share extension
-	ErrNonShareSuffix = errors.New("suffix of file must be " + types.SiaFileExtension)
+	ErrNonShareSuffix = errors.New("suffix of file must be " + modules.SiaFileExtension)
 
 	settingsMetadata = persist.Metadata{
 		Header:  "Renter Persistence",
@@ -201,7 +201,7 @@ func (r *Renter) loadAndExecuteBubbleUpdates() error {
 	if err != nil {
 		return err
 	}
-	var siaPath types.SiaPath
+	var siaPath modules.SiaPath
 	for dir := range r.bubbleUpdates {
 		siaPath.LoadString(dir)
 		go r.threadedBubbleMetadata(siaPath)

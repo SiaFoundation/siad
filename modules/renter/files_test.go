@@ -29,7 +29,7 @@ func newFileTesting(name string, wal *writeaheadlog.WAL, rsc modules.ErasureCode
 		return nil, err
 	}
 	// Create SiaPath
-	siaPath, err := types.NewSiaPath(name)
+	siaPath, err := modules.NewSiaPath(name)
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +56,8 @@ func newTestingWal() *writeaheadlog.WAL {
 }
 
 // newRandSiaPath creates a new SiaPath type with a random path.
-func newRandSiaPath() types.SiaPath {
-	siaPath, err := types.NewSiaPath(hex.EncodeToString(fastrand.Bytes(4)))
+func newRandSiaPath() modules.SiaPath {
+	siaPath, err := modules.NewSiaPath(hex.EncodeToString(fastrand.Bytes(4)))
 	if err != nil {
 		panic(err)
 	}
@@ -563,7 +563,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	defer rt.Close()
 
 	// Delete a file from an empty renter.
-	siaPath, err := types.NewSiaPath("dne")
+	siaPath, err := modules.NewSiaPath("dne")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,7 +578,7 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Delete a different file.
-	siaPathOne, err := types.NewSiaPath("one")
+	siaPathOne, err := modules.NewSiaPath("one")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +614,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath1, err := types.NewSiaPath("1")
+	siaPath1, err := modules.NewSiaPath("1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -727,11 +727,11 @@ func TestRenterRenameFile(t *testing.T) {
 	defer rt.Close()
 
 	// Rename a file that doesn't exist.
-	siaPath1, err := types.NewSiaPath("1")
+	siaPath1, err := modules.NewSiaPath("1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath1a, err := types.NewSiaPath("1a")
+	siaPath1a, err := modules.NewSiaPath("1a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -795,7 +795,7 @@ func TestRenterRenameFile(t *testing.T) {
 	}
 
 	// Confirm ability to rename file
-	siaPath1b, err := types.NewSiaPath("1b")
+	siaPath1b, err := modules.NewSiaPath("1b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -835,7 +835,7 @@ func TestRenterFileDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath, err := types.NewSiaPath(fileName)
+	siaPath, err := modules.NewSiaPath(fileName)
 	if err != nil {
 		t.Fatal(err)
 	}

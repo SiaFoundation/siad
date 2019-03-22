@@ -56,7 +56,7 @@ type pieceData struct {
 
 // DeleteFile removes a file entry from the renter and deletes its data from
 // the hosts it is stored on.
-func (r *Renter) DeleteFile(siaPath types.SiaPath) error {
+func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -83,13 +83,13 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 		}
 
 		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != types.SiaFileExtension {
+		if info.IsDir() || filepath.Ext(path) != modules.SiaFileExtension {
 			return nil
 		}
 
 		// Load the Siafile.
-		str := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), types.SiaFileExtension)
-		siaPath, err := types.NewSiaPath(str)
+		str := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), modules.SiaFileExtension)
+		siaPath, err := modules.NewSiaPath(str)
 		if err != nil {
 			return err
 		}
@@ -109,7 +109,7 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 
 // File returns file from siaPath queried by user.
 // Update based on FileList
-func (r *Renter) File(siaPath types.SiaPath) (modules.FileInfo, error) {
+func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 	if err := r.tg.Add(); err != nil {
 		return modules.FileInfo{}, err
 	}
@@ -121,7 +121,7 @@ func (r *Renter) File(siaPath types.SiaPath) (modules.FileInfo, error) {
 // RenameFile takes an existing file and changes the nickname. The original
 // file must exist, and there must not be any file that already has the
 // replacement nickname.
-func (r *Renter) RenameFile(currentName, newName types.SiaPath) error {
+func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func (r *Renter) RenameFile(currentName, newName types.SiaPath) error {
 // fileInfo takes the maps returned by renter.managedContractUtilityMaps as
 // input, preventing the need to build those maps many times when asking for
 // many files at once.
-func (r *Renter) fileInfo(siaPath types.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+func (r *Renter) fileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Get the file and its contracts
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {

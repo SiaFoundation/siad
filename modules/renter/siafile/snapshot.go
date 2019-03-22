@@ -5,7 +5,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -21,7 +20,7 @@ type (
 		staticMasterKey   crypto.CipherKey
 		staticMode        os.FileMode
 		staticPubKeyTable []HostPublicKey
-		staticSiaPath     types.SiaPath
+		staticSiaPath     modules.SiaPath
 	}
 )
 
@@ -119,7 +118,7 @@ func (s *Snapshot) PieceSize() uint64 {
 }
 
 // SiaPath returns the SiaPath of the file.
-func (s *Snapshot) SiaPath() types.SiaPath {
+func (s *Snapshot) SiaPath() modules.SiaPath {
 	return s.staticSiaPath
 }
 

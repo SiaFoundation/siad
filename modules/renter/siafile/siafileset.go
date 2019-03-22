@@ -9,7 +9,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -24,7 +23,7 @@ type (
 	// siafiles in memory
 	SiaFileSet struct {
 		siaFileDir string
-		siaFileMap map[types.SiaPath]*siaFileSetEntry
+		siaFileMap map[modules.SiaPath]*siaFileSetEntry
 
 		// utilities
 		mu  sync.Mutex
@@ -61,7 +60,7 @@ type (
 func NewSiaFileSet(filesDir string, wal *writeaheadlog.WAL) *SiaFileSet {
 	return &SiaFileSet{
 		siaFileDir: filesDir,
-		siaFileMap: make(map[types.SiaPath]*siaFileSetEntry),
+		siaFileMap: make(map[modules.SiaPath]*siaFileSetEntry),
 		wal:        wal,
 	}
 }
@@ -150,7 +149,7 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 
 // exists checks to see if a file with the provided siaPath already exists in
 // the renter
-func (sfs *SiaFileSet) exists(siaPath types.SiaPath) bool {
+func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file in Memory
 	_, exists := sfs.siaFileMap[siaPath]
 	if exists {
@@ -172,7 +171,7 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) *siaFileSetEntry {
 }
 
 // open will return the siaFileSetEntry in memory or load it from disk
-func (sfs *SiaFileSet) open(siaPath types.SiaPath) (*SiaFileSetEntry, error) {
+func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	var entry *siaFileSetEntry
 	entry, exists := sfs.siaFileMap[siaPath]
 	if !exists {
@@ -201,7 +200,7 @@ func (sfs *SiaFileSet) open(siaPath types.SiaPath) (*SiaFileSetEntry, error) {
 }
 
 // Delete deletes the SiaFileSetEntry's SiaFile
-func (sfs *SiaFileSet) Delete(siaPath types.SiaPath) error {
+func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 
@@ -223,7 +222,7 @@ func (sfs *SiaFileSet) Delete(siaPath types.SiaPath) error {
 
 // Exists checks to see if a file with the provided siaPath already exists in
 // the renter
-func (sfs *SiaFileSet) Exists(siaPath types.SiaPath) bool {
+func (sfs *SiaFileSet) Exists(siaPath modules.SiaPath) bool {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.exists(siaPath)
@@ -261,7 +260,7 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 // Open returns the siafile from the SiaFileSet for the corresponding key and
 // adds the thread to the entry's threadMap. If the siafile is not in memory it
 // will load it from disk
-func (sfs *SiaFileSet) Open(siaPath types.SiaPath) (*SiaFileSetEntry, error) {
+func (sfs *SiaFileSet) Open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.open(siaPath)
@@ -269,7 +268,7 @@ func (sfs *SiaFileSet) Open(siaPath types.SiaPath) (*SiaFileSetEntry, error) {
 
 // Rename will move a siafile from one path to a new path. Existing entries that
 // are already open at the old path will continue to be valid.
-func (sfs *SiaFileSet) Rename(siaPath, newSiaPath types.SiaPath) error {
+func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 

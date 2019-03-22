@@ -9,7 +9,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -22,7 +21,7 @@ func newTestingFile() (*siafile.SiaFile, error) {
 
 // testingFileParams generates the ErasureCoder and a random name for a testing
 // file
-func testingFileParams() (types.SiaPath, modules.ErasureCoder) {
+func testingFileParams() (modules.SiaPath, modules.ErasureCoder) {
 	nData := fastrand.Intn(10)
 	nParity := fastrand.Intn(10)
 	rsc, _ := siafile.NewRSCode(nData+1, nParity+1)
@@ -156,15 +155,15 @@ func TestRenterPaths(t *testing.T) {
 	//   foo/bar.sia
 	//   foo/bar/baz.sia
 
-	siaPath1, err := types.NewSiaPath("foo")
+	siaPath1, err := modules.NewSiaPath("foo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath2, err := types.NewSiaPath("foo/bar")
+	siaPath2, err := modules.NewSiaPath("foo/bar")
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath3, err := types.NewSiaPath("foo/bar/baz")
+	siaPath3, err := modules.NewSiaPath("foo/bar/baz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +263,7 @@ func TestSiafileCompatibility(t *testing.T) {
 		t.Fatal("nickname not loaded properly:", names)
 	}
 	// Make sure that we can open the file afterwards.
-	siaPath, err := types.NewSiaPath(names[0])
+	siaPath, err := modules.NewSiaPath(names[0])
 	if err != nil {
 		t.Fatal(err)
 	}

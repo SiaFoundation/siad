@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -53,11 +52,11 @@ func TestNewSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPathDir, err := types.NewSiaPath("TestDir")
+	siaPathDir, err := modules.NewSiaPath("TestDir")
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPathSubDir, err := types.NewSiaPath("SubDir")
+	siaPathSubDir, err := modules.NewSiaPath("SubDir")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +117,7 @@ func TestNewSiaDir(t *testing.T) {
 	// Check Root Directory
 	//
 	// Get SiaDir
-	rootSiaDir, err := LoadSiaDir(rootDir, types.RootDirSiaPath(), modules.ProdDependencies, wal)
+	rootSiaDir, err := LoadSiaDir(rootDir, modules.RootDirSiaPath(), modules.ProdDependencies, wal)
 	// Check that the metadata was initialized properly
 	md = rootSiaDir.metadata
 	if err = checkMetadataInit(md); err != nil {
@@ -133,7 +132,7 @@ func TestNewSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = os.Stat(types.RootDirSiaPath().SiaDirMetadataSysPath(rootDir))
+	_, err = os.Stat(modules.RootDirSiaPath().SiaDirMetadataSysPath(rootDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +150,7 @@ func TestUpdateMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath, err := types.NewSiaPath("TestDir")
+	siaPath, err := modules.NewSiaPath("TestDir")
 	if err != nil {
 		t.Fatal(err)
 	}

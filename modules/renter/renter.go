@@ -590,7 +590,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // right size, but it can't check that the content is the same. Therefore the
 // caller is responsible for not accidentally corrupting the uploaded file by
 // providing a different file with the same size.
-func (r *Renter) SetFileTrackingPath(siaPath types.SiaPath, newPath string) error {
+func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -768,7 +768,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			newUploads:        make(chan struct{}, 1),
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
-			stuckChunkSuccess: make(chan types.SiaPath, 1),
+			stuckChunkSuccess: make(chan modules.SiaPath, 1),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),

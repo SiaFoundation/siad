@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -85,7 +84,7 @@ type (
 		RootDir string `json:"rootdir"`
 
 		// SiaPath is the path to the siadir on the sia network
-		SiaPath types.SiaPath `json:"siapath"`
+		SiaPath modules.SiaPath `json:"siapath"`
 
 		// StuckHealth is the health of the most in need file in the directory
 		// or any of the sub directories, stuck or not stuck
@@ -98,7 +97,7 @@ type (
 // also make sure that all the parent directories are created and have metadata
 // files as well and will return the SiaDir containing the information for the
 // directory that matches the siaPath provided
-func New(siaPath types.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
+func New(siaPath modules.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	// Create path to direcotry and ensure path contains all metadata
 	updates, err := createDirMetadataAll(siaPath, rootDir)
 	if err != nil {
@@ -123,7 +122,7 @@ func New(siaPath types.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir
 
 // createDirMetadata makes sure there is a metadata file in the directory and
 // creates one as needed
-func createDirMetadata(siaPath types.SiaPath, rootDir string) (Metadata, writeaheadlog.Update, error) {
+func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, writeaheadlog.Update, error) {
 	// Check if metadata file exists
 	_, err := os.Stat(siaPath.SiaDirMetadataSysPath(rootDir))
 	if err == nil || !os.IsNotExist(err) {
@@ -144,7 +143,7 @@ func createDirMetadata(siaPath types.SiaPath, rootDir string) (Metadata, writeah
 }
 
 // LoadSiaDir loads the directory metadata from disk
-func LoadSiaDir(rootDir string, siaPath types.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (*SiaDir, error) {
+func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	sd := &SiaDir{
 		deps: deps,
 		wal:  wal,
@@ -194,7 +193,7 @@ func (sd *SiaDir) Metadata() Metadata {
 }
 
 // SiaPath returns the SiaPath of the SiaDir
-func (sd *SiaDir) SiaPath() types.SiaPath {
+func (sd *SiaDir) SiaPath() modules.SiaPath {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
 	return sd.metadata.SiaPath

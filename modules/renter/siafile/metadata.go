@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -15,12 +14,12 @@ import (
 type (
 	// metadata is the metadata of a SiaFile and is JSON encoded.
 	metadata struct {
-		StaticPagesPerChunk uint8         `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
-		StaticVersion       [16]byte      `json:"version"`       // version of the sia file format used
-		StaticFileSize      int64         `json:"filesize"`      // total size of the file
-		StaticPieceSize     uint64        `json:"piecesize"`     // size of a single piece of the file
-		LocalPath           string        `json:"localpath"`     // file to the local copy of the file used for repairing
-		SiaPath             types.SiaPath `json:"siapath"`       // the path of the file on the Sia network
+		StaticPagesPerChunk uint8           `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
+		StaticVersion       [16]byte        `json:"version"`       // version of the sia file format used
+		StaticFileSize      int64           `json:"filesize"`      // total size of the file
+		StaticPieceSize     uint64          `json:"piecesize"`     // size of a single piece of the file
+		LocalPath           string          `json:"localpath"`     // file to the local copy of the file used for repairing
+		SiaPath             modules.SiaPath `json:"siapath"`       // the path of the file on the Sia network
 
 		// fields for encryption
 		StaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
@@ -208,7 +207,7 @@ func (sf *SiaFile) RecentRepairTime() time.Time {
 }
 
 // Rename changes the name of the file to a new one.
-func (sf *SiaFile) Rename(newSiaPath types.SiaPath, newSiaFilePath string) error {
+func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// Create path to renamed location.
@@ -273,7 +272,7 @@ func (sf *SiaFile) SetLocalPath(path string) error {
 }
 
 // SiaPath returns the file's sia path.
-func (sf *SiaFile) SiaPath() types.SiaPath {
+func (sf *SiaFile) SiaPath() modules.SiaPath {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	return sf.staticMetadata.SiaPath

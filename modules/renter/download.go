@@ -117,7 +117,7 @@ type (
 		staticDestinationType string        // "memory buffer", "http stream", "file", etc.
 		staticLength          uint64        // Length to download starting from the offset.
 		staticOffset          uint64        // Offset within the file to start the download.
-		staticSiaPath         types.SiaPath // The path of the siafile at the time the download started.
+		staticSiaPath         modules.SiaPath // The path of the siafile at the time the download started.
 
 		// Retrieval settings for the file.
 		staticLatencyTarget time.Duration // In milliseconds. Lower latency results in lower total system throughput.

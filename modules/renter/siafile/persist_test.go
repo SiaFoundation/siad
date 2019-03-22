@@ -160,7 +160,7 @@ func newTestFile() *SiaFile {
 
 // newTestFileParams creates the required parameters for creating a siafile and
 // creates a directory for the file
-func newTestFileParams() (string, types.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
+func newTestFileParams() (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
 	// Create arguments for new file.
 	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
 	pieceSize := modules.SectorSize - sk.Type().Overhead()
@@ -369,7 +369,7 @@ func TestRename(t *testing.T) {
 
 	// Create new paths for the file.
 	oldSiaPathStr := entry.staticMetadata.SiaPath.String()
-	newSiaPath, err := types.NewSiaPath(oldSiaPathStr + "1")
+	newSiaPath, err := modules.NewSiaPath(oldSiaPathStr + "1")
 	if err != nil {
 		t.Fatal(err)
 	}

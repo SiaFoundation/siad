@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // newTestSiaDirSet creates a new SiaDirSet
@@ -49,7 +49,7 @@ func TestInitRootDir(t *testing.T) {
 	}
 
 	// Verify the siadir exists on disk
-	siaPath := types.RootDirSiaPath().SiaDirMetadataSysPath(sds.rootDir)
+	siaPath := modules.RootDirSiaPath().SiaDirMetadataSysPath(sds.rootDir)
 	_, err := os.Stat(siaPath)
 	if err != nil {
 		t.Fatal(err)

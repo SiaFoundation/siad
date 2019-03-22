@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -50,7 +49,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	}
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(fd.ErasureCode)
-	siaPath, err := types.NewSiaPath(fd.Name)
+	siaPath, err := modules.NewSiaPath(fd.Name)
 	if err != nil {
 		return &SiaFileSetEntry{}, err
 	}
