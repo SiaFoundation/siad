@@ -214,7 +214,7 @@ func (w *Wallet) Transactions(startHeight, endHeight types.BlockHeight) (pts []m
 
 // ComputeSuperTransactions creates SuperTransaction from a set of
 // ProcessedTransactions.
-func ComputeSuperTransactions(pts []modules.ProcessedTransaction, blockHeight types.BlockHeight) ([]modules.SuperTransaction, error) {
+func ComputeSuperTransactions(pts []modules.ProcessedTransaction, blockHeight types.BlockHeight) ([]modules.ValuedTransaction, error) {
 	// Loop over all transactions and map the id of each contract to the most
 	// recent revision within the set.
 	revisionMap := make(map[types.FileContractID]types.FileContractRevision)
@@ -223,7 +223,7 @@ func ComputeSuperTransactions(pts []modules.ProcessedTransaction, blockHeight ty
 			revisionMap[rev.ParentID] = rev
 		}
 	}
-	sts := make([]modules.SuperTransaction, 0, len(pts))
+	sts := make([]modules.ValuedTransaction, 0, len(pts))
 	for _, pt := range pts {
 		// Determine the value of the transaction assuming that it's a regular
 		// transaction.
@@ -244,7 +244,7 @@ func ComputeSuperTransactions(pts []modules.ProcessedTransaction, blockHeight ty
 		}
 		// Create the txn assuming that it's a regular txn without contracts or
 		// revisions.
-		st := modules.SuperTransaction{
+		st := modules.ValuedTransaction{
 			ProcessedTransaction:   pt,
 			ConfirmedIncomingValue: incomingSiacoins,
 			ConfirmedOutgoingValue: outgoingSiacoins,

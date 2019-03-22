@@ -108,9 +108,9 @@ type (
 		Outputs []ProcessedOutput `json:"outputs"`
 	}
 
-	// SuperTransaction is a transaction that has been given incoming and
-	// outgoing siacoin value fields.	// TODO find a better name for it.
-	SuperTransaction struct {
+	// ValuedTransaction is a transaction that has been given incoming and
+	// outgoing siacoin value fields.
+	ValuedTransaction struct {
 		ProcessedTransaction
 
 		ConfirmedIncomingValue types.Currency `json:"confirmedincomingvalue"`
