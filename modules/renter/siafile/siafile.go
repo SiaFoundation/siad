@@ -435,7 +435,7 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 
 // MarkAllHealthyChunksAsUnstuck marks all health chunks as unstuck in the
 // siafile
-func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodForRenew map[string]bool) error {
+func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// If the file has been deleted we can't mark a chunk as stuck.
@@ -455,6 +455,14 @@ func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodFo
 		if chunkHealth != 0 {
 			continue
 		}
+		// In case an error happens we need to revert the changes we are going
+		// to make.
+		defer func() {
+			if err != nil {
+				sf.staticChunks[chunkIndex].Stuck = true
+				sf.staticMetadata.NumStuckChunks++
+			}
+		}()
 		// Update chunk and NumStuckChunks in siafile metadata
 		sf.staticChunks[chunkIndex].Stuck = false
 		sf.staticMetadata.NumStuckChunks--
@@ -476,7 +484,7 @@ func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodFo
 
 // MarkAllUnhealthyChunksAsStuck marks all unhealthy chunks as stuck in the
 // siafile
-func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) error {
+func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// If the file has been deleted we can't mark a chunk as stuck.
@@ -495,6 +503,14 @@ func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodFo
 		if chunkHealth < RemoteRepairDownloadThreshold {
 			continue
 		}
+		// In case an error happens we need to revert the changes we are going
+		// to make.
+		defer func() {
+			if err != nil {
+				sf.staticChunks[chunkIndex].Stuck = false
+				sf.staticMetadata.NumStuckChunks--
+			}
+		}()
 		// Update chunk and NumStuckChunks in siafile metadata
 		sf.staticChunks[chunkIndex].Stuck = true
 		sf.staticMetadata.NumStuckChunks++
@@ -595,7 +611,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 }
 
 // SetStuck sets the Stuck field of the chunk at the given index
-func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
+func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// If the file has been deleted we can't mark a chunk as stuck.
@@ -606,6 +622,15 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
 	if stuck == sf.staticChunks[index].Stuck {
 		return nil
 	}
+	// Remember the currenct number of stuck chunks in case an error happens.
+	nsc := sf.staticMetadata.NumStuckChunks
+	s := sf.staticChunks[index].Stuck
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.NumStuckChunks = nsc
+			sf.staticChunks[index].Stuck = s
+		}
+	}()
 	// Update chunk and NumStuckChunks in siafile metadata
 	sf.staticChunks[index].Stuck = stuck
 	if stuck {

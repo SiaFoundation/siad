@@ -388,13 +388,13 @@ func renewContractsByRenewWindow(renter *siatest.TestNode, tg *siatest.TestGroup
 	return nil
 }
 
-// renewContractsBySpending uploads files until the contracts renew due to
+// drainContractsByUploading uploads files until the contracts renew due to
 // running out of funds
-func renewContractsBySpending(renter *siatest.TestNode, tg *siatest.TestGroup) (startingUploadSpend types.Currency, err error) {
+func drainContractsByUploading(renter *siatest.TestNode, tg *siatest.TestGroup, maxPercentageRemaining float64) (startingUploadSpend types.Currency, err error) {
 	// Renew contracts by running out of funds
 	// Set upload price to max price
 	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte)
-	maxUploadPrice := maxStoragePrice.Mul64(10 * 4320)
+	maxUploadPrice := maxStoragePrice.Mul64(100 * 4320)
 	hosts := tg.Hosts()
 	for _, h := range hosts {
 		err := h.HostModifySettingPost(client.HostParamMinUploadBandwidthPrice, maxUploadPrice)
@@ -436,7 +436,7 @@ LOOP:
 		// To protect against contracts not renewing during uploads
 		for _, c := range rc.ActiveContracts {
 			percentRemaining, _ := big.NewRat(0, 1).SetFrac(c.RenterFunds.Big(), c.TotalCost.Big()).Float64()
-			if percentRemaining < float64(0.03) {
+			if percentRemaining < maxPercentageRemaining {
 				break LOOP
 			}
 		}
