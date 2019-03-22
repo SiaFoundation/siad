@@ -247,7 +247,7 @@ func TestChunkHealth(t *testing.T) {
 	}
 	// Create the file.
 	wal, _ := newTestWAL()
-	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestMarkHealthyChunksAsUnstuck(t *testing.T) {
 	}
 	// Create the file.
 	wal, _ := newTestWAL()
-	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +446,7 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	}
 	// Create the file.
 	wal, _ := newTestWAL()
-	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}

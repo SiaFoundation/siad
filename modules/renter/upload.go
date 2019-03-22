@@ -16,7 +16,6 @@ package renter
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -59,10 +58,6 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return err
 	}
 	defer r.tg.Done()
-	// Enforce nickname rules.
-	if err := validateSiapath(up.SiaPath); err != nil {
-		return err
-	}
 	// Enforce source rules.
 	if err := validateSource(up.Source); err != nil {
 		return err
@@ -96,9 +91,9 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Create the directory path on disk. Renter directory is already present so
 	// only files not in top level directory need to have directories created
-	dirSiaPath := filepath.Dir(up.SiaPath)
-	if dirSiaPath == "." {
-		dirSiaPath = ""
+	dirSiaPath, err := up.SiaPath.Dir()
+	if err != nil {
+		return err
 	}
 	// Try to create the directory. If ErrPathOverload is returned it already exists.
 	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)

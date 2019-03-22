@@ -113,7 +113,7 @@ func benchmarkSnapshot(b *testing.B, fileSize uint64) {
 		numChunks++
 	}
 	wal, _ := newTestWAL()
-	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		b.Fatal(err)
 	}

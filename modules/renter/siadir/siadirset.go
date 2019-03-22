@@ -3,9 +3,7 @@ package siadir
 import (
 	"math"
 	"os"
-	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +16,7 @@ type (
 	// SiaDirSet handles the thread management for the SiaDirs on disk and in memory
 	SiaDirSet struct {
 		rootDir   string
-		siaDirMap map[string]*siaDirSetEntry
+		siaDirMap map[modules.SiaPath]*siaDirSetEntry
 
 		// utilities
 		mu  sync.Mutex
@@ -74,22 +72,21 @@ func randomThreadUID() uint64 {
 func NewSiaDirSet(rootDir string, wal *writeaheadlog.WAL) *SiaDirSet {
 	return &SiaDirSet{
 		rootDir:   rootDir,
-		siaDirMap: make(map[string]*siaDirSetEntry),
+		siaDirMap: make(map[modules.SiaPath]*siaDirSetEntry),
 		wal:       wal,
 	}
 }
 
 // exists checks to see if a SiaDir with the provided siaPath already exists in
 // the renter
-func (sds *SiaDirSet) exists(siaPath string) (bool, error) {
+func (sds *SiaDirSet) exists(siaPath modules.SiaPath) (bool, error) {
 	// Check for SiaDir in Memory
-	siaPath = strings.Trim(siaPath, "/")
 	_, exists := sds.siaDirMap[siaPath]
 	if exists {
 		return exists, nil
 	}
 	// Check for SiaDir on disk
-	_, err := os.Stat(filepath.Join(sds.rootDir, siaPath+"/"+SiaDirExtension))
+	_, err := os.Stat(siaPath.SiaDirMetadataSysPath(sds.rootDir))
 	if err == nil {
 		return true, nil
 	}
@@ -107,9 +104,8 @@ func (sds *SiaDirSet) newSiaDirSetEntry(sd *SiaDir) *siaDirSetEntry {
 }
 
 // open will return the siaDirSetEntry in memory or load it from disk
-func (sds *SiaDirSet) open(siaPath string) (*SiaDirSetEntry, error) {
+func (sds *SiaDirSet) open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
 	var entry *siaDirSetEntry
-	siaPath = strings.Trim(siaPath, "/")
 	entry, exists := sds.siaDirMap[siaPath]
 	if !exists {
 		// Try and Load File from disk
@@ -184,7 +180,7 @@ func (sds *SiaDirSet) closeEntry(entry *SiaDirSetEntry) {
 }
 
 // Delete deletes the SiaDir that belongs to the siaPath
-func (sds *SiaDirSet) Delete(siaPath string) error {
+func (sds *SiaDirSet) Delete(siaPath modules.SiaPath) error {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	// Check if SiaDir exists
@@ -213,7 +209,7 @@ func (sds *SiaDirSet) Delete(siaPath string) error {
 
 // Exists checks to see if a file with the provided siaPath already exists in
 // the renter
-func (sds *SiaDirSet) Exists(siaPath string) (bool, error) {
+func (sds *SiaDirSet) Exists(siaPath modules.SiaPath) (bool, error) {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	return sds.exists(siaPath)
@@ -225,23 +221,23 @@ func (sds *SiaDirSet) InitRootDir() error {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	// Check is SiaDir already exists
-	exists, err := sds.exists("")
+	rootSiaDir := modules.RootSiaPath()
+	exists, err := sds.exists(rootSiaDir)
 	if exists {
 		return nil
 	}
 	if !os.IsNotExist(err) && err != nil {
 		return err
 	}
-	_, err = New("", sds.rootDir, sds.wal)
+	_, err = New(rootSiaDir, sds.rootDir, sds.wal)
 	return err
 }
 
 // NewSiaDir creates a new SiaDir and returns a SiaDirSetEntry
-func (sds *SiaDirSet) NewSiaDir(siaPath string) (*SiaDirSetEntry, error) {
+func (sds *SiaDirSet) NewSiaDir(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	// Check is SiaDir already exists
-	siaPath = strings.Trim(siaPath, "/")
 	exists, err := sds.exists(siaPath)
 	if exists {
 		return nil, ErrPathOverload
@@ -266,17 +262,16 @@ func (sds *SiaDirSet) NewSiaDir(siaPath string) (*SiaDirSetEntry, error) {
 // Open returns the siadir from the SiaDirSet for the corresponding key and
 // adds the thread to the entry's threadMap. If the siadir is not in memory it
 // will load it from disk
-func (sds *SiaDirSet) Open(siaPath string) (*SiaDirSetEntry, error) {
+func (sds *SiaDirSet) Open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	return sds.open(siaPath)
 }
 
 // UpdateMetadata will update the metadata of the SiaDir in memory and on disk
-func (sds *SiaDirSet) UpdateMetadata(siaPath string, metadata Metadata) error {
+func (sds *SiaDirSet) UpdateMetadata(siaPath modules.SiaPath, metadata Metadata) error {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
-	siaPath = strings.Trim(siaPath, "/")
 	exists, err := sds.exists(siaPath)
 	if !exists && os.IsNotExist(err) {
 		return ErrUnknownPath

@@ -15,7 +15,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -892,8 +891,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to an empty string.
 	renameValues.Set("newsiapath", "")
 	err = st.stdPostAPI("/renter/rename/test1", renameValues)
-	if err == nil || err.Error() != renter.ErrEmptyFilename.Error() {
-		t.Fatalf("expected error to be %v; got %v", renter.ErrEmptyFilename, err)
+	if err == nil || err.Error() != modules.ErrEmptySiaPath.Error() {
+		t.Fatalf("expected error to be %v; got %v", modules.ErrEmptySiaPath, err)
 	}
 
 	// Rename the file.
@@ -1941,7 +1940,10 @@ func TestHealthLoop(t *testing.T) {
 	// Verify folder metadata is update, directory health should be 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		var rd RenterDirectory
-		st1.getAPI("/renter/dir/", &rd)
+		err := st1.getAPI("/renter/dir/", &rd)
+		if err != nil {
+			return err
+		}
 		if rd.Directories[0].Health != 0 {
 			return fmt.Errorf("Directory health should be 0 but was %v", rd.Directories[0].Health)
 		}

@@ -119,7 +119,7 @@ func newBlankTestFileAndWAL() (*SiaFile, *writeaheadlog.WAL, string) {
 	}
 	// Create the file.
 	wal, walPath := newTestWAL()
-	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		panic(err)
 	}
@@ -160,11 +160,11 @@ func newTestFile() *SiaFile {
 
 // newTestFileParams creates the required parameters for creating a siafile and
 // creates a directory for the file
-func newTestFileParams() (string, string, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
+func newTestFileParams() (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
 	// Create arguments for new file.
 	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
 	pieceSize := modules.SectorSize - sk.Type().Overhead()
-	siaPath := string(hex.EncodeToString(fastrand.Bytes(8)))
+	siaPath := newRandSiaPath()
 	rc, err := NewRSCode(10, 20)
 	if err != nil {
 		panic(err)
@@ -175,7 +175,7 @@ func newTestFileParams() (string, string, string, modules.ErasureCoder, crypto.C
 	source := string(hex.EncodeToString(fastrand.Bytes(8)))
 
 	// Create the path to the file.
-	siaFilePath := filepath.Join(os.TempDir(), "siafiles", siaPath+ShareExtension)
+	siaFilePath := siaPath.SiaFileSysPath(filepath.Join(os.TempDir(), "siafiles"))
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		panic(err)
@@ -368,7 +368,11 @@ func TestRename(t *testing.T) {
 	entry, _, _ := newTestSiaFileSetWithFile()
 
 	// Create new paths for the file.
-	newSiaPath := entry.staticMetadata.SiaPath + "1"
+	oldSiaPathStr := entry.staticMetadata.SiaPath.String()
+	newSiaPath, err := modules.NewSiaPath(oldSiaPathStr + "1")
+	if err != nil {
+		t.Fatal(err)
+	}
 	newSiaFilePath := entry.siaFilePath + "1"
 	oldSiaFilePath := entry.siaFilePath
 

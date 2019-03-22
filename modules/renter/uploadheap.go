@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -75,7 +76,7 @@ type uploadHeap struct {
 	newUploads        chan struct{}
 	repairNeeded      chan struct{}
 	stuckChunkFound   chan struct{}
-	stuckChunkSuccess chan string
+	stuckChunkSuccess chan modules.SiaPath
 
 	mu sync.Mutex
 }
@@ -364,22 +365,26 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
-func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struct{}, target repairTarget) {
+func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[string]struct{}, target repairTarget) {
 	// Get Directory files
 	var files []*siafile.SiaFileSetEntry
-	fileinfos, err := ioutil.ReadDir(filepath.Join(r.staticFilesDir, dirSiaPath))
+	var err error
+	fileinfos, err := ioutil.ReadDir(dirSiaPath.SiaDirSysPath(r.staticFilesDir))
 	if err != nil {
 		return
 	}
 	for _, fi := range fileinfos {
 		// skip sub directories and non siafiles
 		ext := filepath.Ext(fi.Name())
-		if fi.IsDir() || ext != siafile.ShareExtension {
+		if fi.IsDir() || ext != modules.SiaFileExtension {
 			continue
 		}
 
 		// Open SiaFile
-		siaPath := filepath.Join(dirSiaPath, strings.TrimSuffix(fi.Name(), ext))
+		siaPath, err := dirSiaPath.Join(strings.TrimSuffix(fi.Name(), ext))
+		if err != nil {
+			return
+		}
 		file, err := r.staticFileSet.Open(siaPath)
 		if err != nil {
 			r.log.Println("WARN: could not open siafile:", err)
@@ -648,7 +653,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// is a new upload, a signal will be sent through the 'newUploads'
 		// channel, and if the metadata updating code finds a file that needs
 		// repairing, a signal is sent through the 'repairNeeded' channel.
-		rootMetadata, err := r.managedDirectoryMetadata("") // empty string to fetch root metadata
+		rootMetadata, err := r.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			// If there is an error fetching the root directory metadata, sleep
 			// for a bit and hope that on the next iteration, things will be
