@@ -43,7 +43,7 @@ func TestWalletTransactionsSumUpToWalletBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Convert the transactions.
-	txns, err := wallet.ComputeSuperTransactions(confirmedTxns, bh)
+	txns, err := wallet.ComputeValuedTransactions(confirmedTxns, bh)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestWalletTransactionsSumUpToWalletBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Convert the transactions.
-	txns, err = wallet.ComputeSuperTransactions(confirmedTxns, bh)
+	txns, err = wallet.ComputeValuedTransactions(confirmedTxns, bh)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -212,9 +212,9 @@ func (w *Wallet) Transactions(startHeight, endHeight types.BlockHeight) (pts []m
 	return
 }
 
-// ComputeSuperTransactions creates SuperTransaction from a set of
+// ComputeValuedTransactions creates ValuedTransaction from a set of
 // ProcessedTransactions.
-func ComputeSuperTransactions(pts []modules.ProcessedTransaction, blockHeight types.BlockHeight) ([]modules.ValuedTransaction, error) {
+func ComputeValuedTransactions(pts []modules.ProcessedTransaction, blockHeight types.BlockHeight) ([]modules.ValuedTransaction, error) {
 	// Loop over all transactions and map the id of each contract to the most
 	// recent revision within the set.
 	revisionMap := make(map[types.FileContractID]types.FileContractRevision)

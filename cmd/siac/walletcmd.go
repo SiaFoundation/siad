@@ -598,7 +598,7 @@ func wallettransactionscmd() {
 	}
 	fmt.Println("             [timestamp]    [height]                                                   [transaction id]    [net siacoins]   [net siafunds]")
 	txns := append(wtg.ConfirmedTransactions, wtg.UnconfirmedTransactions...)
-	sts, err := wallet.ComputeSuperTransactions(txns, cg.Height)
+	sts, err := wallet.ComputeValuedTransactions(txns, cg.Height)
 	if err != nil {
 
 	}
