@@ -78,7 +78,7 @@ func TestBubbleHealth(t *testing.T) {
 	}
 
 	// Check to make sure bubble doesn't error on an empty directory
-	rt.renter.threadedBubbleMetadata(modules.RootDirSiaPath())
+	rt.renter.threadedBubbleMetadata(modules.RootSiaPath())
 	defaultMetadata := siadir.Metadata{
 		Health:              siadir.DefaultDirHealth,
 		StuckHealth:         siadir.DefaultDirHealth,
@@ -87,7 +87,7 @@ func TestBubbleHealth(t *testing.T) {
 	}
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
-		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootDirSiaPath())
+		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -143,7 +143,7 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
 	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(modules.RootDirSiaPath(), metadataUpdate); err != nil {
+	if err := rt.renter.staticDirSet.UpdateMetadata(modules.RootSiaPath(), metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	siaPath = subDir1
@@ -173,7 +173,7 @@ func TestBubbleHealth(t *testing.T) {
 	rt.renter.threadedBubbleMetadata(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
-		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootDirSiaPath())
+		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -230,7 +230,7 @@ func TestBubbleHealth(t *testing.T) {
 	rt.renter.threadedBubbleMetadata(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
-		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootDirSiaPath())
+		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -262,7 +262,7 @@ func TestBubbleHealth(t *testing.T) {
 	}
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
-		health, err := rt.renter.managedDirectoryMetadata(modules.RootDirSiaPath())
+		health, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -285,7 +285,7 @@ func TestBubbleHealth(t *testing.T) {
 	rt.renter.threadedBubbleMetadata(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
-		health, err := rt.renter.managedDirectoryMetadata(modules.RootDirSiaPath())
+		health, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -323,7 +323,7 @@ func TestBubbleHealth(t *testing.T) {
 	rt.renter.threadedBubbleMetadata(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
-		health, err := rt.renter.managedDirectoryMetadata(modules.RootDirSiaPath())
+		health, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -403,7 +403,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if modules.EqualSiaPaths(dir, subDir1_2) {
+		if dir.Equals(subDir1_2) {
 			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
 		}
 		if !lastCheck.Equal(oldestCheckTime) {
@@ -468,7 +468,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if modules.EqualSiaPaths(dir, modules.RootDirSiaPath()) {
+		if dir.Equals(modules.RootSiaPath()) {
 			return fmt.Errorf("Expected to find top level directory but found %v", dir.String())
 		}
 		if health != 0 {
@@ -501,7 +501,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if modules.EqualSiaPaths(dir, subDir1_2) {
+		if dir.Equals(subDir1_2) {
 			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
 		}
 		if health != worstHealth {
@@ -540,7 +540,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if modules.EqualSiaPaths(dir, subDir1_2) {
+		if dir.Equals(subDir1_2) {
 			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
 		}
 		if health != worstHealth {
@@ -641,7 +641,7 @@ func TestNumFiles(t *testing.T) {
 	// of files and aggregate number of files
 	rt.renter.threadedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.DirInfo(modules.RootDirSiaPath())
+		dirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -721,7 +721,7 @@ func TestDirectorySize(t *testing.T) {
 	// Call bubble on lowest lever and confirm top level reports accurate size
 	rt.renter.threadedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.DirInfo(modules.RootDirSiaPath())
+		dirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -799,7 +799,7 @@ func TestDirectoryModTime(t *testing.T) {
 	// update time
 	rt.renter.threadedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.DirInfo(modules.RootDirSiaPath())
+		dirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -899,7 +899,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	rt.renter.threadedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
-		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootDirSiaPath())
+		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -916,7 +916,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// Create map of stuck directories that contain files. These are the only
 	// directories that should be returned.
 	stuckDirectories := make(map[modules.SiaPath]struct{})
-	stuckDirectories[modules.RootDirSiaPath()] = struct{}{}
+	stuckDirectories[modules.RootSiaPath()] = struct{}{}
 	stuckDirectories[subDir1_2] = struct{}{}
 
 	// Find random directory several times, confirm that it finds a stuck
@@ -933,7 +933,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 		if !ok {
 			t.Fatal("Found non stuck directory:", dir)
 		}
-		if !modules.EqualSiaPaths(previousDir, dir) {
+		if !dir.Equals(previousDir) {
 			unique = true
 		}
 		previousDir = dir
@@ -958,7 +958,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 
 	// Confirm that the root directory LastHealthCheckTime is non Zero
-	siaDir, err := rt.renter.staticDirSet.Open(modules.RootDirSiaPath())
+	siaDir, err := rt.renter.staticDirSet.Open(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}

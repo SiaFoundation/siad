@@ -117,7 +117,7 @@ func TestNewSiaDir(t *testing.T) {
 	// Check Root Directory
 	//
 	// Get SiaDir
-	rootSiaDir, err := LoadSiaDir(rootDir, modules.RootDirSiaPath(), modules.ProdDependencies, wal)
+	rootSiaDir, err := LoadSiaDir(rootDir, modules.RootSiaPath(), modules.ProdDependencies, wal)
 	// Check that the metadata was initialized properly
 	md = rootSiaDir.metadata
 	if err = checkMetadataInit(md); err != nil {
@@ -132,7 +132,7 @@ func TestNewSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = os.Stat(modules.RootDirSiaPath().SiaDirMetadataSysPath(rootDir))
+	_, err = os.Stat(modules.RootSiaPath().SiaDirMetadataSysPath(rootDir))
 	if err != nil {
 		t.Fatal(err)
 	}

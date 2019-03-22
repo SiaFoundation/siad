@@ -221,7 +221,7 @@ func (sds *SiaDirSet) InitRootDir() error {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	// Check is SiaDir already exists
-	rootSiaDir := modules.RootDirSiaPath()
+	rootSiaDir := modules.RootSiaPath()
 	exists, err := sds.exists(rootSiaDir)
 	if exists {
 		return nil

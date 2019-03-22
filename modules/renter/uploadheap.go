@@ -653,7 +653,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// is a new upload, a signal will be sent through the 'newUploads'
 		// channel, and if the metadata updating code finds a file that needs
 		// repairing, a signal is sent through the 'repairNeeded' channel.
-		rootMetadata, err := r.managedDirectoryMetadata(modules.RootDirSiaPath())
+		rootMetadata, err := r.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			// If there is an error fetching the root directory metadata, sleep
 			// for a bit and hope that on the next iteration, things will be

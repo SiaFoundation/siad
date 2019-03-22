@@ -381,7 +381,7 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 // LastHealthCheckTime that is outside the healthCheckInterval
 func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, error) {
 	// Check the siadir metadata for the root files directory
-	siaPath := modules.RootDirSiaPath()
+	siaPath := modules.RootSiaPath()
 	health, err := r.managedDirectoryMetadata(siaPath)
 	if err != nil {
 		return modules.SiaPath{}, time.Time{}, err
@@ -442,7 +442,7 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 	// Iterating of the renter direcotry until randomly ending up in a
 	// directory, break and return that directory
-	siaPath := modules.RootDirSiaPath()
+	siaPath := modules.RootSiaPath()
 	for {
 		select {
 		// Check to make sure renter hasn't been shutdown
@@ -546,7 +546,7 @@ func (r *Renter) managedSubDirectories(siaPath modules.SiaPath) ([]modules.SiaPa
 // level possible
 func (r *Renter) managedWorstHealthDirectory() (modules.SiaPath, float64, error) {
 	// Check the health of the root files directory
-	siaPath := modules.RootDirSiaPath()
+	siaPath := modules.RootSiaPath()
 	health, err := r.managedDirectoryMetadata(siaPath)
 	if err != nil {
 		return modules.SiaPath{}, 0, err

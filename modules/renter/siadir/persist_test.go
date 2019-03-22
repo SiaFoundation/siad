@@ -54,7 +54,7 @@ func equalMetadatas(md, md2 Metadata) error {
 		return fmt.Errorf("rootDirs not equal, %v and %v", md.RootDir, md2.RootDir)
 	}
 	// Check SiaPath
-	if !modules.EqualSiaPaths(md.SiaPath, md2.SiaPath) {
+	if !md.SiaPath.Equals(md2.SiaPath) {
 		return fmt.Errorf("siapaths not equal, %v and %v", md.SiaPath, md2.SiaPath)
 	}
 	// Check Size
