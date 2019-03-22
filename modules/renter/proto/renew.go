@@ -2,6 +2,7 @@ package proto
 
 import (
 	"net"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -150,7 +151,8 @@ func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams
 	}
 
 	// allot time for negotiation
-	extendDeadline(conn, modules.NegotiateRenewContractTime)
+	numSectors := fc.FileSize / modules.SectorSize
+	extendDeadline(conn, modules.NegotiateRenewContractTime+(time.Duration(numSectors)*10*time.Millisecond))
 
 	// send acceptance, txn signed by us, and pubkey
 	if err = modules.WriteNegotiationAcceptance(conn); err != nil {
