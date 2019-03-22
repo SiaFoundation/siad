@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io"
 	"math/big"
@@ -15,10 +14,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // The following are helper functions for the renter tests
@@ -350,7 +349,7 @@ func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 		// Wait to ensure download and stream have started
 		time.Sleep(sleep)
 		var err error
-		rf, err = r.Rename(rf, hex.EncodeToString(fastrand.Bytes(4)))
+		rf, err = r.Rename(rf, persist.RandomSuffix())
 		if err != nil {
 			t.Fatal(err)
 		}

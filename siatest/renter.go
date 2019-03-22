@@ -1,7 +1,6 @@
 package siatest
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
@@ -12,7 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/Sia/persist"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -31,7 +30,7 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 		return nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
 	// Create a random destination for the download
-	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, hex.EncodeToString(fastrand.Bytes(4)))
+	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
 	if err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async); err != nil {
 		return nil, errors.AddContext(err, "failed to download file")
@@ -62,7 +61,7 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 		return nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
 	// Create a random destination for the download
-	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, hex.EncodeToString(fastrand.Bytes(4)))
+	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
 	if err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async); err != nil {
 		return nil, errors.AddContext(err, "failed to download file")

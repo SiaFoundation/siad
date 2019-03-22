@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"encoding/hex"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -12,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -72,7 +72,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
-			sp := filepath.Join(dir, hex.EncodeToString(fastrand.Bytes(16)))
+			sp := filepath.Join(dir, persist.RandomSuffix())
 			// 30% chance for the file to be a 0-byte file.
 			size := int(modules.SectorSize) + siatest.Fuzz()
 			if fastrand.Intn(3) == 0 {
@@ -156,7 +156,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
-			err = r.RenterRenamePost(sp, hex.EncodeToString(fastrand.Bytes(16)))
+			err = r.RenterRenamePost(sp, persist.RandomSuffix())
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
@@ -224,7 +224,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
-			sp := filepath.Join(dir, hex.EncodeToString(fastrand.Bytes(16)))
+			sp := filepath.Join(dir, persist.RandomSuffix())
 			if err := r.RenterDirCreatePost(sp); err != nil {
 				t.Fatal(err)
 			}
@@ -271,7 +271,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				// 50% chance to rename the directory to be the child of a
 				// random existing directory.
 				//newParent := dirs[fastrand.Intn(len(dirs))]
-				//newDir := filepath.Join(newParent, hex.EncodeToString(fastrand.Bytes(16)))
+				//newDir := filepath.Join(newParent, persist.RandomSuffix())
 				//if err := r.RenterDirRenamePost(dir, newDir); err != nil {
 				//	t.Fatal(err)
 				//}
