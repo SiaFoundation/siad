@@ -39,15 +39,19 @@ func RootSiaPath() SiaPath {
 	return SiaPath{}
 }
 
-// newSiaPath returns a new SiaPath with the path set
-func newSiaPath(s string) (SiaPath, error) {
-	// Remove any OS specific path delimiters and make them slashes
+// clean cleans up the string by converting an OS separators to forward slashes
+// and trims leading and trailing slashes
+func clean(s string) string {
 	s = filepath.ToSlash(s)
-	// Trim any leading or trailing /
 	s = strings.TrimPrefix(s, "/")
 	s = strings.TrimSuffix(s, "/")
+	return s
+}
+
+// newSiaPath returns a new SiaPath with the path set
+func newSiaPath(s string) (SiaPath, error) {
 	sp := SiaPath{
-		Path: s,
+		Path: clean(s),
 	}
 	return sp, sp.validate()
 }
@@ -74,41 +78,39 @@ func (sp SiaPath) IsRoot() bool {
 // Join joins the string to the end of the SiaPath with a "/" and returns
 // the new SiaPath
 func (sp SiaPath) Join(s string) (SiaPath, error) {
-	return newSiaPath(sp.Path + "/" + filepath.ToSlash(s))
+	if s == "" {
+		return SiaPath{}, errors.New("cannot join an empty string to a siapath")
+	}
+	return newSiaPath(sp.Path + "/" + clean(s))
 }
 
 // LoadString sets the path of the SiaPath to the provided string
 func (sp *SiaPath) LoadString(s string) error {
-	sp.Path = s
+	sp.Path = clean(s)
 	return sp.validate()
 }
 
 // SiaDirSysPath returns the system path needed to read a directory on disk, the
 // input dir is the root siadir directory on disk
 func (sp SiaPath) SiaDirSysPath(dir string) string {
-	return filepath.Join(dir, sp.sysPath(), "")
+	return filepath.Join(dir, filepath.FromSlash(sp.Path), "")
 }
 
 // SiaDirMetadataSysPath returns the system path needed to read the SiaDir
 // metadata file from disk, the input dir is the root siadir directory on disk
 func (sp SiaPath) SiaDirMetadataSysPath(dir string) string {
-	return filepath.Join(dir, sp.sysPath(), SiaDirExtension)
+	return filepath.Join(dir, filepath.FromSlash(sp.Path), SiaDirExtension)
 }
 
 // SiaFileSysPath returns the system path needed to read the SiaFile from disk,
 // the input dir is the root siafile directory on disk
 func (sp SiaPath) SiaFileSysPath(dir string) string {
-	return filepath.Join(dir, sp.sysPath()+SiaFileExtension)
+	return filepath.Join(dir, filepath.FromSlash(sp.Path)+SiaFileExtension)
 }
 
 // String returns the SiaPath's path
 func (sp SiaPath) String() string {
 	return sp.Path
-}
-
-// sysPath returns to the SiaPath's path joined with OS delimiters
-func (sp SiaPath) sysPath() string {
-	return filepath.Join(strings.Split(sp.Path, "/")...)
 }
 
 // validate checks that a Siapath is a legal filename. ../ is disallowed to
