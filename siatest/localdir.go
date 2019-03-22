@@ -1,7 +1,6 @@
 package siatest
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -9,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -20,7 +20,7 @@ type LocalDir struct {
 
 // NewLocalDir creates a new LocalDir
 func (tn *TestNode) NewLocalDir() *LocalDir {
-	fileName := fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4)))
+	fileName := fmt.Sprintf("dir-%s", persist.RandomSuffix())
 	path := filepath.Join(tn.RenterDir(), modules.SiapathRoot, fileName)
 	return &LocalDir{
 		path: path,
@@ -63,7 +63,7 @@ func (ld *LocalDir) Name() string {
 
 // NewFile creates a new LocalFile in the current LocalDir
 func (ld *LocalDir) NewFile(size int) (*LocalFile, error) {
-	fileName := fmt.Sprintf("%dbytes - %s", size, hex.EncodeToString(fastrand.Bytes(4)))
+	fileName := fmt.Sprintf("%dbytes - %s", size, persist.RandomSuffix())
 	path := filepath.Join(ld.path, fileName)
 	bytes := fastrand.Bytes(size)
 	err := ioutil.WriteFile(path, bytes, 0600)
@@ -111,7 +111,7 @@ func (ld *LocalDir) PopulateDir(files, dirs, levels uint) error {
 
 // newDir creates a new LocalDir in the current LocalDir
 func (ld *LocalDir) newDir() (*LocalDir, error) {
-	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", hex.EncodeToString(fastrand.Bytes(4))))
+	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", persist.RandomSuffix()))
 	return &LocalDir{path: path}, os.MkdirAll(path, 0777)
 }
 

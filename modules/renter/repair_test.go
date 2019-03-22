@@ -957,16 +957,6 @@ func TestCalculateFileMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Confirm that the root directory LastHealthCheckTime is non Zero
-	siaDir, err := rt.renter.staticDirSet.Open(modules.RootSiaPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	dirMetadata := siaDir.Metadata()
-	if dirMetadata.LastHealthCheckTime.IsZero() {
-		t.Fatal("root directory LastHealthCheckTime is zero")
-	}
-
 	// Create a file
 	rsc, _ := siafile.NewRSCode(1, 1)
 	siaPath, err := modules.NewSiaPath("rootFile")

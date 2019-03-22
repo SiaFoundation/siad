@@ -783,7 +783,14 @@ func (r *Renter) threadedUpdateRenterHealth() {
 
 		// If lastHealthCheckTime is within the healthCheckInterval block
 		// until it is time to check again
-		healthCheckSignal := time.After(healthCheckInterval - time.Since(lastHealthCheckTime))
+		var nextCheckTime time.Duration
+		timeSinceLastCheck := time.Since(lastHealthCheckTime)
+		if timeSinceLastCheck > healthCheckInterval { // Check for underflow
+			nextCheckTime = 0
+		} else {
+			nextCheckTime = healthCheckInterval - timeSinceLastCheck
+		}
+		healthCheckSignal := time.After(nextCheckTime)
 		select {
 		case <-r.tg.StopChan():
 			return
