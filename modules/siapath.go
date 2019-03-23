@@ -54,7 +54,7 @@ func newSiaPath(s string) (SiaPath, error) {
 	sp := SiaPath{
 		Path: clean(s),
 	}
-	return sp, sp.validate()
+	return sp, sp.validate(false)
 }
 
 // Dir returns the directory of the SiaPath
@@ -88,7 +88,7 @@ func (sp SiaPath) Join(s string) (SiaPath, error) {
 // LoadString sets the path of the SiaPath to the provided string
 func (sp *SiaPath) LoadString(s string) error {
 	sp.Path = clean(s)
-	return sp.validate()
+	return sp.validate(false)
 }
 
 // MarshalJSON marshales a SiaPath as a string.
@@ -98,11 +98,11 @@ func (sp SiaPath) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON unmarshals a siapath into a SiaPath object.
 func (sp *SiaPath) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
+	if err := json.Unmarshal(b, &sp.Path); err != nil {
 		return err
 	}
-	return sp.LoadString(s)
+	sp.Path = clean(sp.Path)
+	return sp.validate(true)
 }
 
 // SiaDirSysPath returns the system path needed to read a directory on disk, the
@@ -130,7 +130,10 @@ func (sp SiaPath) String() string {
 
 // validate checks that a Siapath is a legal filename. ../ is disallowed to
 // prevent directory traversal, and paths must not begin with / or be empty.
-func (sp SiaPath) validate() error {
+func (sp SiaPath) validate(isRoot bool) error {
+	if sp.Path == "" && !isRoot {
+		return ErrEmptySiaPath
+	}
 	if sp.Path == ".." {
 		return errors.New("siapath cannot be '..'")
 	}
