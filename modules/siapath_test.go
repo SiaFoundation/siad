@@ -37,7 +37,7 @@ func TestSiapathValidate(t *testing.T) {
 		siaPath := SiaPath{
 			Path: pathtest.in,
 		}
-		err := siaPath.validate()
+		err := siaPath.validate(false)
 		if err != nil && pathtest.valid {
 			t.Fatal("validateSiapath failed on valid path: ", pathtest.in)
 		}
