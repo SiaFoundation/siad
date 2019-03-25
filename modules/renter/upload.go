@@ -14,12 +14,15 @@ package renter
 // all need to be fixed when we do enable it, but we should enable it.
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -30,6 +33,13 @@ var (
 // validateSource verifies that a sourcePath meets the
 // requirements for upload.
 func validateSource(sourcePath string) error {
+	// Check for read access
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		return errors.AddContext(err, "unable to open the source file")
+	}
+	file.Close()
+
 	finfo, err := os.Stat(sourcePath)
 	if err != nil {
 		return err
@@ -44,10 +54,10 @@ func validateSource(sourcePath string) error {
 // Upload instructs the renter to start tracking a file. The renter will
 // automatically upload and repair tracked files using a background loop.
 func (r *Renter) Upload(up modules.FileUploadParams) error {
-	// Enforce nickname rules.
-	if err := validateSiapath(up.SiaPath); err != nil {
+	if err := r.tg.Add(); err != nil {
 		return err
 	}
+	defer r.tg.Done()
 	// Enforce source rules.
 	if err := validateSource(up.Source); err != nil {
 		return err
@@ -55,17 +65,9 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if up.Force {
-		if err := r.DeleteFile(up.SiaPath); err != nil && err != ErrUnknownPath {
+		if err := r.DeleteFile(up.SiaPath); err != nil && err != siafile.ErrUnknownPath {
 			return err
 		}
-	}
-
-	// Check for a nickname conflict.
-	lockID := r.mu.RLock()
-	_, exists := r.files[up.SiaPath]
-	r.mu.RUnlock(lockID)
-	if exists {
-		return ErrPathOverload
 	}
 
 	// Fill in any missing upload params with sensible defaults.
@@ -74,7 +76,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return err
 	}
 	if up.ErasureCode == nil {
-		up.ErasureCode, _ = NewRSCode(defaultDataPieces, defaultParityPieces)
+		up.ErasureCode, _ = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, 64)
 	}
 
 	// Check that we have contracts to upload to. We need at least data +
@@ -87,31 +89,45 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (up.ErasureCode.NumPieces()+up.ErasureCode.MinPieces())/2)
 	}
 
-	// Create file object.
-	f := newFile(up.SiaPath, up.ErasureCode, pieceSize, uint64(fileInfo.Size()))
-	f.mode = uint32(fileInfo.Mode())
-
-	// Add file to renter.
-	lockID = r.mu.Lock()
-	r.files[up.SiaPath] = f
-	r.persist.Tracking[up.SiaPath] = trackedFile{
-		RepairPath: up.Source,
-	}
-	r.saveSync()
-	err = r.saveFile(f)
-	r.mu.Unlock(lockID)
+	// Create the directory path on disk. Renter directory is already present so
+	// only files not in top level directory need to have directories created
+	dirSiaPath, err := up.SiaPath.Dir()
 	if err != nil {
 		return err
 	}
+	// Try to create the directory. If ErrPathOverload is returned it already exists.
+	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
+	if err != siadir.ErrPathOverload && err != nil {
+		return err
+	} else if err == nil {
+		siaDirEntry.Close()
+	}
 
+	// Create the Siafile and add to renter
+	entry, err := r.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fileInfo.Size()), fileInfo.Mode())
+	if err != nil {
+		return err
+	}
+	defer entry.Close()
+
+	// No need to upload zero-byte files.
+	if fileInfo.Size() == 0 {
+		return nil
+	}
+
+	// Bubble the health of the SiaFile directory to ensure the health is
+	// updated with the new file
+	go r.threadedBubbleMetadata(dirSiaPath)
+
+	// Create nil maps for offline and goodForRenew to pass in to
+	// managedBuildAndPushChunks. These maps are used to determine the health of
+	// the file and its chunks. Nil maps will result in the file and its chunks
+	// having the worst possible health which is accurate since the file hasn't
+	// been uploaded yet
+	nilMap := make(map[string]bool)
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
-	id := r.mu.Lock()
-	unfinishedChunks := r.buildUnfinishedChunks(f, hosts)
-	r.mu.Unlock(id)
-	for i := 0; i < len(unfinishedChunks); i++ {
-		r.uploadHeap.managedPush(unfinishedChunks[i])
-	}
+	r.managedBuildAndPushChunks([]*siafile.SiaFileSetEntry{entry}, hosts, targetUnstuckChunks, nilMap, nilMap)
 	select {
 	case r.uploadHeap.newUploads <- struct{}{}:
 	default:

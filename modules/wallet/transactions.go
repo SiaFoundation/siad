@@ -115,11 +115,14 @@ func (w *Wallet) Transactions(startHeight, endHeight types.BlockHeight) (pts []m
 		return nil, err
 	}
 	defer w.tg.Done()
-	// ensure durability of reported transactions
+
+	// There may be transactions which haven't been saved / committed yet. Sync
+	// the database to ensure that any information which gets reported to the
+	// user will be persisted through a restart.
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err = w.syncDB(); err != nil {
-		return
+		return nil, err
 	}
 
 	height, err := dbGetConsensusHeight(w.dbTx)
@@ -210,6 +213,93 @@ func (w *Wallet) Transactions(startHeight, endHeight types.BlockHeight) (pts []m
 		}
 	}
 	return
+}
+
+// ComputeValuedTransactions creates ValuedTransaction from a set of
+// ProcessedTransactions.
+func ComputeValuedTransactions(pts []modules.ProcessedTransaction, blockHeight types.BlockHeight) ([]modules.ValuedTransaction, error) {
+	// Loop over all transactions and map the id of each contract to the most
+	// recent revision within the set.
+	revisionMap := make(map[types.FileContractID]types.FileContractRevision)
+	for _, pt := range pts {
+		for _, rev := range pt.Transaction.FileContractRevisions {
+			revisionMap[rev.ParentID] = rev
+		}
+	}
+	sts := make([]modules.ValuedTransaction, 0, len(pts))
+	for _, pt := range pts {
+		// Determine the value of the transaction assuming that it's a regular
+		// transaction.
+		var outgoingSiacoins types.Currency
+		for _, input := range pt.Inputs {
+			if input.FundType == types.SpecifierSiacoinInput && input.WalletAddress {
+				outgoingSiacoins = outgoingSiacoins.Add(input.Value)
+			}
+		}
+		var incomingSiacoins types.Currency
+		for _, output := range pt.Outputs {
+			if output.FundType == types.SpecifierMinerPayout && output.WalletAddress {
+				incomingSiacoins = incomingSiacoins.Add(output.Value)
+			}
+			if output.FundType == types.SpecifierSiacoinOutput && output.WalletAddress {
+				incomingSiacoins = incomingSiacoins.Add(output.Value)
+			}
+		}
+		// Create the txn assuming that it's a regular txn without contracts or
+		// revisions.
+		st := modules.ValuedTransaction{
+			ProcessedTransaction:   pt,
+			ConfirmedIncomingValue: incomingSiacoins,
+			ConfirmedOutgoingValue: outgoingSiacoins,
+		}
+		// If the transaction doesn't contain contracts or revisions we are done.
+		if len(pt.Transaction.FileContracts) == 0 && len(pt.Transaction.FileContractRevisions) == 0 {
+			sts = append(sts, st)
+			continue
+		}
+		// If there are contracts, then there can't be revisions in the
+		// transaction.
+		if len(pt.Transaction.FileContracts) > 0 {
+			// A contract doesn't generate incoming value for the wallet.
+			st.ConfirmedIncomingValue = types.ZeroCurrency
+			// A contract with a revision doesn't have outgoing value since the
+			// outgoing value is determined by the latest revision.
+			_, hasRevision := revisionMap[pt.Transaction.FileContractID(0)]
+			if hasRevision {
+				st.ConfirmedOutgoingValue = types.ZeroCurrency
+			}
+			sts = append(sts, st)
+			continue
+		}
+		// Else the contract contains a revision.
+		rev := pt.Transaction.FileContractRevisions[0]
+		latestRev, ok := revisionMap[rev.ParentID]
+		if !ok {
+			err := errors.New("no revision exists for the provided id which should never happen")
+			build.Critical(err)
+			return nil, err
+		}
+		// If the revision isn't the latest one, it has neither incoming nor
+		// outgoing value.
+		if rev.NewRevisionNumber != latestRev.NewRevisionNumber {
+			st.ConfirmedIncomingValue = types.ZeroCurrency
+			st.ConfirmedOutgoingValue = types.ZeroCurrency
+			sts = append(sts, st)
+			continue
+		}
+		// It is the latest but if it hasn't reached maturiy height yet we
+		// don't count the incoming value.
+		if blockHeight <= rev.NewWindowEnd+types.MaturityDelay {
+			st.ConfirmedIncomingValue = types.ZeroCurrency
+			sts = append(sts, st)
+			continue
+		}
+		// Otherwise we leave the incoming and outgoing value fields the way
+		// they are.
+		sts = append(sts, st)
+		continue
+	}
+	return sts, nil
 }
 
 // UnconfirmedTransactions returns the set of unconfirmed transactions that are

@@ -11,6 +11,7 @@ import (
 // Dependencies.
 type (
 	transactionBuilder interface {
+		AddArbitraryData(arb []byte) uint64
 		AddFileContract(types.FileContract) uint64
 		AddMinerFee(types.Currency) uint64
 		AddParents([]types.Transaction)
@@ -43,6 +44,7 @@ type ContractParams struct {
 	StartHeight   types.BlockHeight
 	EndHeight     types.BlockHeight
 	RefundAddress types.UnlockHash
+	RenterSeed    EphemeralRenterSeed
 	// TODO: add optional keypair
 }
 

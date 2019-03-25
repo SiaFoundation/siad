@@ -97,13 +97,19 @@ func (hdb *HostDB) load() error {
 // threadedSaveLoop saves the hostdb to disk every 2 minutes, also saving when
 // given the shutdown signal.
 func (hdb *HostDB) threadedSaveLoop() {
+	err := hdb.tg.Add()
+	if err != nil {
+		return
+	}
+	defer hdb.tg.Done()
+
 	for {
 		select {
 		case <-hdb.tg.StopChan():
 			return
 		case <-time.After(saveFrequency):
 			hdb.mu.Lock()
-			err := hdb.saveSync()
+			err = hdb.saveSync()
 			hdb.mu.Unlock()
 			if err != nil {
 				hdb.log.Println("Difficulties saving the hostdb:", err)

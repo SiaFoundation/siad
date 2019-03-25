@@ -1,8 +1,12 @@
 package siatest
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
@@ -18,6 +22,9 @@ type TestNode struct {
 	client.Client
 	params      node.NodeParams
 	primarySeed string
+
+	downloadDir *LocalDir
+	filesDir    *LocalDir
 }
 
 // PrintDebugInfo prints out helpful debug information when debug tests and ndfs, the
@@ -171,7 +178,15 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 	c.Password = password
 
 	// Create TestNode
-	tn := &TestNode{s, *c, nodeParams, ""}
+	tn := &TestNode{
+		Server:      s,
+		Client:      *c,
+		params:      nodeParams,
+		primarySeed: "",
+	}
+	if err = tn.initRootDirs(); err != nil {
+		return nil, errors.AddContext(err, "failed to create root directories")
+	}
 
 	// If there is no wallet we are done.
 	if !nodeParams.CreateWallet && nodeParams.Wallet == nil {
@@ -179,11 +194,19 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 	}
 
 	// Init wallet
-	wip, err := tn.WalletInitPost("", false)
-	if err != nil {
-		return nil, err
+	if nodeParams.PrimarySeed != "" {
+		err := tn.WalletInitSeedPost(nodeParams.PrimarySeed, "", false)
+		if err != nil {
+			return nil, err
+		}
+		tn.primarySeed = nodeParams.PrimarySeed
+	} else {
+		wip, err := tn.WalletInitPost("", false)
+		if err != nil {
+			return nil, err
+		}
+		tn.primarySeed = wip.PrimarySeed
 	}
-	tn.primarySeed = wip.PrimarySeed
 
 	// Unlock wallet
 	if err := tn.WalletUnlockPost(tn.primarySeed); err != nil {
@@ -192,4 +215,27 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 
 	// Return TestNode
 	return tn, nil
+}
+
+// initRootDirs creates the download and upload directories for the TestNode
+func (tn *TestNode) initRootDirs() error {
+	tn.downloadDir = &LocalDir{
+		path: filepath.Join(tn.RenterDir(), "downloads"),
+	}
+	if err := os.MkdirAll(tn.downloadDir.path, 0777); err != nil {
+		return err
+	}
+	tn.filesDir = &LocalDir{
+		path: filepath.Join(tn.RenterDir(), modules.SiapathRoot),
+	}
+	if err := os.MkdirAll(tn.filesDir.path, 0777); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SiaPath returns the siapath of a local file or directory to be used for
+// uploading
+func (tn *TestNode) SiaPath(path string) string {
+	return strings.TrimPrefix(path, tn.filesDir.path+string(filepath.Separator))
 }

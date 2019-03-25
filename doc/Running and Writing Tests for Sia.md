@@ -148,6 +148,13 @@ coverage.  We're working on fixing that, but we could use your help.
 	holds in general][global], not just for tests.
 * As always, code should adhere to the standards and conventions laid out in
     [doc/Developers.md][developers].
+* If a test interacts with the disk it should be skipped during the short tests
+  by including the following at the beginning of the test:
+  ```go
+  if testing.Short() {
+	  t.SkipNow()
+  }
+  ```
 
 <a name="basic"></a>
 ### Basic test format

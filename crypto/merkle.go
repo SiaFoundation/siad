@@ -117,6 +117,8 @@ func MerkleRoot(b []byte) Hash {
 
 // MerkleProof builds a Merkle proof that the data at segment 'proofIndex' is a
 // part of the Merkle root formed by 'b'.
+//
+// MerkleProof is NOT equivalent to MerkleRangeProof for a single segment.
 func MerkleProof(b []byte, proofIndex uint64) (base []byte, hashSet []Hash) {
 	// Create the tree.
 	t := NewTree()
@@ -145,6 +147,8 @@ func MerkleProof(b []byte, proofIndex uint64) (base []byte, hashSet []Hash) {
 
 // VerifySegment will verify that a segment, given the proof, is a part of a
 // Merkle root.
+//
+// VerifySegment is NOT equivalent to VerifyRangeProof for a single segment.
 func VerifySegment(base []byte, hashSet []Hash, numSegments, proofIndex uint64, root Hash) bool {
 	// convert base and hashSet to proofSet
 	proofSet := make([][]byte, len(hashSet)+1)
@@ -153,4 +157,95 @@ func VerifySegment(base []byte, hashSet []Hash, numSegments, proofIndex uint64, 
 		proofSet[i+1] = hashSet[i][:]
 	}
 	return merkletree.VerifyProof(NewHash(), root[:], proofSet, proofIndex, numSegments)
+}
+
+// MerkleRangeProof builds a Merkle proof for the segment range [start,end).
+//
+// MerkleRangeProof for a single segment is NOT equivalent to MerkleProof.
+func MerkleRangeProof(b []byte, start, end int) []Hash {
+	proof, _ := merkletree.BuildRangeProof(start, end, merkletree.NewReaderSubtreeHasher(bytes.NewReader(b), SegmentSize, NewHash()))
+	proofHashes := make([]Hash, len(proof))
+	for i := range proofHashes {
+		copy(proofHashes[i][:], proof[i])
+	}
+	return proofHashes
+}
+
+// VerifyRangeProof verifies a proof produced by MerkleRangeProof.
+//
+// VerifyRangeProof for a single segment is NOT equivalent to VerifySegment.
+func VerifyRangeProof(segments []byte, proof []Hash, start, end int, root Hash) bool {
+	proofBytes := make([][]byte, len(proof))
+	for i := range proof {
+		proofBytes[i] = proof[i][:]
+	}
+	result, _ := merkletree.VerifyRangeProof(merkletree.NewReaderLeafHasher(bytes.NewReader(segments), NewHash(), SegmentSize), NewHash(), start, end, proofBytes, root[:])
+	return result
+}
+
+// MerkleSectorRangeProof builds a Merkle proof for the sector range [start,end).
+func MerkleSectorRangeProof(roots []Hash, start, end int) []Hash {
+	leafHashes := make([][]byte, len(roots))
+	for i := range leafHashes {
+		leafHashes[i] = roots[i][:]
+	}
+	sh := merkletree.NewCachedSubtreeHasher(leafHashes, NewHash())
+	proof, _ := merkletree.BuildRangeProof(start, end, sh)
+	proofHashes := make([]Hash, len(proof))
+	for i := range proofHashes {
+		copy(proofHashes[i][:], proof[i])
+	}
+	return proofHashes
+}
+
+// VerifySectorRangeProof verifies a proof produced by MerkleSectorRangeProof.
+func VerifySectorRangeProof(roots []Hash, proof []Hash, start, end int, root Hash) bool {
+	leafHashes := make([][]byte, len(roots))
+	for i := range leafHashes {
+		leafHashes[i] = roots[i][:]
+	}
+	lh := merkletree.NewCachedLeafHasher(leafHashes)
+	proofBytes := make([][]byte, len(proof))
+	for i := range proof {
+		proofBytes[i] = proof[i][:]
+	}
+	result, _ := merkletree.VerifyRangeProof(lh, NewHash(), start, end, proofBytes, root[:])
+	return result
+}
+
+// A ProofRange is a contiguous range of segments or sectors.
+type ProofRange = merkletree.LeafRange
+
+// MerkleDiffProof builds a Merkle proof for multiple segment ranges.
+func MerkleDiffProof(ranges []ProofRange, numLeaves uint64, updatedSectors [][]byte, sectorRoots []Hash) []Hash {
+	leafHashes := make([][]byte, len(sectorRoots))
+	for i := range leafHashes {
+		leafHashes[i] = sectorRoots[i][:]
+	}
+	sh := merkletree.NewCachedSubtreeHasher(leafHashes, NewHash()) // TODO: needs to include updatedSectors somehow
+	proof, _ := merkletree.BuildDiffProof(ranges, sh, numLeaves)
+	proofHashes := make([]Hash, len(proof))
+	for i := range proofHashes {
+		copy(proofHashes[i][:], proof[i])
+	}
+	return proofHashes
+}
+
+// VerifyDiffProof verifies a proof produced by MerkleDiffProof.
+func VerifyDiffProof(ranges []ProofRange, numLeaves uint64, proofHashes, leafHashes []Hash, root Hash) bool {
+	proofBytes := make([][]byte, len(proofHashes))
+	for i := range proofHashes {
+		proofBytes[i] = proofHashes[i][:]
+	}
+	leafBytes := make([][]byte, len(leafHashes))
+	for i := range leafHashes {
+		leafBytes[i] = leafHashes[i][:]
+	}
+	rootBytes := root[:]
+	if root == (Hash{}) {
+		rootBytes = nil // empty trees hash to nil, not 32 zeros
+	}
+	lh := merkletree.NewCachedLeafHasher(leafBytes)
+	ok, _ := merkletree.VerifyDiffProof(lh, numLeaves, NewHash(), ranges, proofBytes, rootBytes)
+	return ok
 }

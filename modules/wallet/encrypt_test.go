@@ -12,14 +12,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // postEncryptionTesting runs a series of checks on the wallet after it has
 // been encrypted, to make sure that locking, unlocking, and spending after
 // unlocking are all happening in the correct order and returning the correct
 // errors.
-func postEncryptionTesting(m modules.TestMiner, w *Wallet, masterKey crypto.TwofishKey) {
+func postEncryptionTesting(m modules.TestMiner, w *Wallet, masterKey crypto.CipherKey) {
 	encrypted, err := w.Encrypted()
 	if err != nil {
 		panic(err)
@@ -76,7 +75,7 @@ func postEncryptionTesting(m modules.TestMiner, w *Wallet, masterKey crypto.Twof
 	if err != modules.ErrLockedWallet {
 		panic(err)
 	}
-	err = w.Unlock(crypto.TwofishKey{})
+	err = w.Unlock(nil)
 	if err != modules.ErrBadEncryptionKey {
 		panic(err)
 	}
@@ -126,7 +125,7 @@ func TestIntegrationPreEncryption(t *testing.T) {
 	if err != modules.ErrLockedWallet {
 		t.Fatal(err)
 	}
-	err = wt.wallet.Unlock(crypto.TwofishKey{})
+	err = wt.wallet.Unlock(nil)
 	if err != errUnencryptedWallet {
 		t.Fatal(err)
 	}
@@ -170,8 +169,7 @@ func TestIntegrationUserSuppliedEncryption(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer wt.closeWt()
-	var masterKey crypto.TwofishKey
-	fastrand.Read(masterKey[:])
+	masterKey := crypto.NewWalletKey(crypto.HashObject([]byte{}))
 	_, err = wt.wallet.Encrypt(masterKey)
 	if err != nil {
 		t.Error(err)
@@ -193,18 +191,19 @@ func TestIntegrationBlankEncryption(t *testing.T) {
 	}
 	defer wt.closeWt()
 	// Encrypt the wallet using a blank key.
-	seed, err := wt.wallet.Encrypt(crypto.TwofishKey{})
+	seed, err := wt.wallet.Encrypt(nil)
 	if err != nil {
 		t.Error(err)
 	}
 
 	// Try unlocking the wallet using a blank key.
-	err = wt.wallet.Unlock(crypto.TwofishKey{})
+	err = wt.wallet.Unlock(nil)
 	if err != modules.ErrBadEncryptionKey {
 		t.Fatal(err)
 	}
 	// Try unlocking the wallet using the correct key.
-	err = wt.wallet.Unlock(crypto.TwofishKey(crypto.HashObject(seed)))
+	sk := crypto.NewWalletKey(crypto.HashObject(seed))
+	err = wt.wallet.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +211,8 @@ func TestIntegrationBlankEncryption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	postEncryptionTesting(wt.miner, wt.wallet, crypto.TwofishKey(crypto.HashObject(seed)))
+	sk = crypto.NewWalletKey(crypto.HashObject(seed))
+	postEncryptionTesting(wt.miner, wt.wallet, sk)
 }
 
 // TestLock checks that lock correctly wipes keys when locking the wallet,
@@ -315,20 +315,21 @@ func TestInitFromSeedConcurrentUnlock(t *testing.T) {
 	}
 
 	// spawn an initfromseed goroutine
-	go w.InitFromSeed(crypto.TwofishKey{}, seed)
+	go w.InitFromSeed(nil, seed)
 
 	// pause for 10ms to allow the seed sweeper to start
 	time.Sleep(time.Millisecond * 10)
 
 	// unlock should now return an error
-	err = w.Unlock(crypto.TwofishKey(crypto.HashObject(seed)))
+	sk := crypto.NewWalletKey(crypto.HashObject(seed))
+	err = w.Unlock(sk)
 	if err != errScanInProgress {
 		t.Fatal("expected errScanInProgress, got", err)
 	}
 	// wait for init to finish
 	for i := 0; i < 100; i++ {
 		time.Sleep(time.Millisecond * 10)
-		err = w.Unlock(crypto.TwofishKey(crypto.HashObject(seed)))
+		err = w.Unlock(sk)
 		if err == nil {
 			break
 		}
@@ -411,11 +412,12 @@ func TestInitFromSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = w.InitFromSeed(crypto.TwofishKey{}, seed)
+	err = w.InitFromSeed(nil, seed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = w.Unlock(crypto.TwofishKey(crypto.HashObject(seed)))
+	sk := crypto.NewWalletKey(crypto.HashObject(seed))
+	err = w.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,8 +444,7 @@ func TestReset(t *testing.T) {
 	}
 	defer wt.closeWt()
 
-	var originalKey crypto.TwofishKey
-	fastrand.Read(originalKey[:])
+	originalKey := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err = wt.wallet.Encrypt(originalKey)
 	if err != nil {
 		t.Fatal(err)
@@ -471,8 +472,7 @@ func TestReset(t *testing.T) {
 	}
 	wt.miner = newminer
 
-	var newKey crypto.TwofishKey
-	fastrand.Read(newKey[:])
+	newKey := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err = wt.wallet.Encrypt(newKey)
 	if err != nil {
 		t.Fatal(err)
@@ -493,8 +493,7 @@ func TestChangeKey(t *testing.T) {
 	}
 	defer wt.closeWt()
 
-	var newKey crypto.TwofishKey
-	fastrand.Read(newKey[:])
+	newKey := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	origBal, _, _, err := wt.wallet.ConfirmedBalance()
 	if err != nil {
 		t.Fatal(err)

@@ -15,13 +15,14 @@ import (
 
 // contractorPersist defines what Contractor data persists across sessions.
 type contractorPersist struct {
-	Allowance     modules.Allowance               `json:"allowance"`
-	BlockHeight   types.BlockHeight               `json:"blockheight"`
-	CurrentPeriod types.BlockHeight               `json:"currentperiod"`
-	LastChange    modules.ConsensusChangeID       `json:"lastchange"`
-	OldContracts  []modules.RenterContract        `json:"oldcontracts"`
-	RenewedFrom   map[string]types.FileContractID `json:"renewedfrom"`
-	RenewedTo     map[string]types.FileContractID `json:"renewedto"`
+	Allowance            modules.Allowance               `json:"allowance"`
+	BlockHeight          types.BlockHeight               `json:"blockheight"`
+	CurrentPeriod        types.BlockHeight               `json:"currentperiod"`
+	LastChange           modules.ConsensusChangeID       `json:"lastchange"`
+	OldContracts         []modules.RenterContract        `json:"oldcontracts"`
+	RecoverableContracts []modules.RecoverableContract   `json:"recoverablecontracts"`
+	RenewedFrom          map[string]types.FileContractID `json:"renewedfrom"`
+	RenewedTo            map[string]types.FileContractID `json:"renewedto"`
 }
 
 // persistData returns the data in the Contractor that will be saved to disk.
@@ -42,6 +43,9 @@ func (c *Contractor) persistData() contractorPersist {
 	}
 	for _, contract := range c.oldContracts {
 		data.OldContracts = append(data.OldContracts, contract)
+	}
+	for _, contract := range c.recoverableContracts {
+		data.RecoverableContracts = append(data.RecoverableContracts, contract)
 	}
 	return data
 }
@@ -86,6 +90,9 @@ func (c *Contractor) load() error {
 	}
 	for _, contract := range data.OldContracts {
 		c.oldContracts[contract.ID] = contract
+	}
+	for _, contract := range data.RecoverableContracts {
+		c.recoverableContracts[contract.ID] = contract
 	}
 
 	return nil

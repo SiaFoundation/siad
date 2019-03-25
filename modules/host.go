@@ -90,8 +90,10 @@ type (
 		CollateralBudget types.Currency `json:"collateralbudget"`
 		MaxCollateral    types.Currency `json:"maxcollateral"`
 
+		MinBaseRPCPrice           types.Currency `json:"minbaserpcprice"`
 		MinContractPrice          types.Currency `json:"mincontractprice"`
 		MinDownloadBandwidthPrice types.Currency `json:"mindownloadbandwidthprice"`
+		MinSectorAccessPrice      types.Currency `json:"minsectoraccessprice"`
 		MinStoragePrice           types.Currency `json:"minstorageprice"`
 		MinUploadBandwidthPrice   types.Currency `json:"minuploadbandwidthprice"`
 	}

@@ -31,9 +31,12 @@ dependencies:
 	go get -u github.com/inconshreveable/go-update
 	go get -u github.com/kardianos/osext
 	go get -u github.com/inconshreveable/mousetrap
+	go get -u github.com/dchest/threefish
+	go get -u golang.org/x/crypto/curve25519
+	go get -u golang.org/x/crypto/chacha20poly1305
 	# Frontend Dependencies
 	go get -u golang.org/x/crypto/ssh/terminal
-	go get -u github.com/spf13/cobra/...
+	go get -u github.com/spf13/cobra/doc
 	# Developer Dependencies
 	go install -race std
 	go get -u github.com/client9/misspell/cmd/misspell
@@ -45,9 +48,9 @@ dependencies:
 run = .
 pkgs = ./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer \
        ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor       \
-       ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/miner ./modules/wallet   \
-       ./modules/transactionpool ./node ./node/api ./persist ./siatest ./siatest/consensus ./siatest/gateway              \
-       ./siatest/renter ./siatest/wallet ./node/api/server ./sync ./types
+       ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir            \
+       ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./node ./node/api ./persist    \
+	   ./siatest ./siatest/consensus ./siatest/renter ./siatest/wallet ./node/api/server ./sync ./types
 
 # fmt calls go fmt on all packages.
 fmt:

@@ -975,8 +975,11 @@ func TestRenterParallelDelete(t *testing.T) {
 		st.getAPI("/renter/files", &rf)
 		time.Sleep(100 * time.Millisecond)
 	}
-	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
-		t.Fatal("the uploading is not succeeding for some reason:", rf.Files)
+	if len(rf.Files) != 1 {
+		t.Fatal("Expected 1 file but got", len(rf.Files))
+	}
+	if rf.Files[0].UploadProgress < 10 {
+		t.Fatal("Expected upload progress to be >=10 but was", rf.Files[0].UploadProgress)
 	}
 
 	// In parallel, download and delete the second file.
@@ -1637,13 +1640,19 @@ func TestUploadedBytesReporting(t *testing.T) {
 	}
 
 	// Calculate the encrypted size of our fully redundant encoded file
-	pieceSize := modules.SectorSize - crypto.TwofishOverhead
-	chunkSize := pieceSize * uint64(dataPieces)
-	numChunks := uint64(filesize) / chunkSize
-	if uint64(filesize)%chunkSize != 0 {
-		numChunks++
+	fullyRedundantSize := func(cipherType string) uint64 {
+		var ct crypto.CipherType
+		if err := ct.FromString(cipherType); err != nil {
+			t.Fatal(err)
+		}
+		pieceSize := modules.SectorSize - ct.Overhead()
+		chunkSize := pieceSize * uint64(dataPieces)
+		numChunks := uint64(filesize) / chunkSize
+		if uint64(filesize)%chunkSize != 0 {
+			numChunks++
+		}
+		return modules.SectorSize * uint64(dataPieces+parityPieces) * uint64(numChunks)
 	}
-	fullyRedundantSize := modules.SectorSize * uint64(dataPieces+parityPieces) * uint64(numChunks)
 
 	// Monitor the file as it uploads. Ensure that the UploadProgress times
 	// the fully redundant file size always equals UploadedBytes reported
@@ -1651,7 +1660,7 @@ func TestUploadedBytesReporting(t *testing.T) {
 	for i := 0; i < 60 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 100); i++ {
 		st.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 {
-			uploadProgressBytes := uint64(float64(fullyRedundantSize) * rf.Files[0].UploadProgress / 100.0)
+			uploadProgressBytes := uint64(float64(fullyRedundantSize(rf.Files[0].CipherType)) * rf.Files[0].UploadProgress / 100.0)
 			// Note: in Go 1.10 we will be able to write Math.Round(uploadProgressBytes) != rf.Files[0].UploadedBytes
 			if uploadProgressBytes != rf.Files[0].UploadedBytes && (uploadProgressBytes+1) != rf.Files[0].UploadedBytes {
 				t.Fatalf("api reports having uploaded %v bytes when upload progress is %v%%, but the actual uploaded bytes count should be %v\n",
@@ -1665,15 +1674,21 @@ func TestUploadedBytesReporting(t *testing.T) {
 	}
 
 	// Upload progress should be 100% and redundancy should reach 2
-	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 100 || rf.Files[0].Redundancy != 2 {
-		t.Fatal("the uploading is not succeeding for some reason:", rf.Files[0])
+	if len(rf.Files) != 1 {
+		t.Fatal("Expected 1 file but got", len(rf.Files))
+	}
+	if rf.Files[0].UploadProgress < 100 {
+		t.Fatal("Expected UploadProgress to be 100 but was", rf.Files[0].UploadProgress)
+	}
+	if rf.Files[0].Redundancy != 2 {
+		t.Fatal("Expected Redundancy to be 2 but was", rf.Files[0].Redundancy)
 	}
 
 	// When the file is fully redundantly uploaded, UploadedBytes should
 	// equal the file's fully redundant size
-	if rf.Files[0].UploadedBytes != fullyRedundantSize {
+	if rf.Files[0].UploadedBytes != fullyRedundantSize(rf.Files[0].CipherType) {
 		t.Fatalf("api reports having uploaded %v bytes when upload progress is 100%%, but the actual fully redundant file size is %v\n",
-			rf.Files[0].UploadedBytes, fullyRedundantSize)
+			rf.Files[0].UploadedBytes, fullyRedundantSize(rf.Files[0].CipherType))
 	}
 
 }

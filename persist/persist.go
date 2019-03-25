@@ -4,7 +4,6 @@ import (
 	"encoding/base32"
 	"errors"
 	"os"
-	"path/filepath"
 	"sync"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -23,7 +22,7 @@ const (
 var (
 	// ErrBadFilenameSuffix indicates that SaveJSON or LoadJSON was called using
 	// a filename that has a bad suffix. This prevents users from trying to use
-	// this package to manage the temp files - this packaage will manage them
+	// this package to manage the temp files - this package will manage them
 	// automatically.
 	ErrBadFilenameSuffix = errors.New("filename suffix not allowed")
 
@@ -84,25 +83,6 @@ func (sf *safeFile) CommitSync() error {
 		return err
 	}
 	return os.Rename(sf.finalName+"_temp", sf.finalName)
-}
-
-// NewSafeFile returns a file that can atomically be written to disk,
-// minimizing the risk of corruption.
-func NewSafeFile(filename string) (*safeFile, error) {
-	file, err := os.Create(filename + tempSuffix)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get the absolute path of the filename so that calling os.Chdir in
-	// between calling NewSafeFile and calling safeFile.Commit does not change
-	// the final file path.
-	absFilename, err := filepath.Abs(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	return &safeFile{file, absFilename}, nil
 }
 
 // RemoveFile removes an atomic file from disk, along with any uncommitted

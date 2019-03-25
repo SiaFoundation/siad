@@ -300,8 +300,14 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 		}
 	})
 
+	// Ensure the host is consistent by pruning any stale storage obligations.
+	if err := h.PruneStaleStorageObligations(); err != nil {
+		h.log.Println("Could not prune stale storage obligations:", err)
+		return nil, err
+	}
+
 	// Initialize the networking. We need to hold the lock while doing so since
-	// the previous load subscribed the host to the consenus set.
+	// the previous load subscribed the host to the consensus set.
 	h.mu.Lock()
 	err = h.initNetworking(listenerAddress)
 	h.mu.Unlock()

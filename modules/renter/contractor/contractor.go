@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -43,6 +45,11 @@ type Contractor struct {
 	interruptMaintenance chan struct{}
 	maintenanceLock      siasync.TryMutex
 
+	// Only one thread should be scanning the blockchain for recoverable
+	// contracts at a time.
+	atomicScanInProgress     uint32
+	atomicRecoveryScanHeight int64
+
 	allowance     modules.Allowance
 	blockHeight   types.BlockHeight
 	currentPeriod types.BlockHeight
@@ -50,17 +57,18 @@ type Contractor struct {
 
 	downloaders         map[types.FileContractID]*hostDownloader
 	editors             map[types.FileContractID]*hostEditor
+	sessions            map[types.FileContractID]*hostSession
 	numFailedRenews     map[types.FileContractID]types.BlockHeight
 	pubKeysToContractID map[string]types.FileContractID
-	contractIDToPubKey  map[types.FileContractID]types.SiaPublicKey
 	renewing            map[types.FileContractID]bool // prevent revising during renewal
 
 	// renewedFrom links the new contract's ID to the old contract's ID
 	// renewedTo links the old contract's ID to the new contract's ID
-	staticContracts *proto.ContractSet
-	oldContracts    map[types.FileContractID]modules.RenterContract
-	renewedFrom     map[types.FileContractID]types.FileContractID
-	renewedTo       map[types.FileContractID]types.FileContractID
+	staticContracts      *proto.ContractSet
+	oldContracts         map[types.FileContractID]modules.RenterContract
+	recoverableContracts map[types.FileContractID]modules.RecoverableContract
+	renewedFrom          map[types.FileContractID]types.FileContractID
+	renewedTo            map[types.FileContractID]types.FileContractID
 }
 
 // Allowance returns the current allowance.
@@ -68,6 +76,52 @@ func (c *Contractor) Allowance() modules.Allowance {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.allowance
+}
+
+// InitRecoveryScan starts scanning the whole blockchain for recoverable
+// contracts within a separate thread.
+func (c *Contractor) InitRecoveryScan() (err error) {
+	if err := c.tg.Add(); err != nil {
+		return err
+	}
+	defer c.tg.Done()
+	// Check if we are already scanning the blockchain.
+	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
+		return errors.New("scan for recoverable contracts is already in progress")
+	}
+	// Reset the progress and status if there was an error.
+	defer func() {
+		if err != nil {
+			atomic.StoreUint32(&c.atomicScanInProgress, 0)
+			atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
+		}
+	}()
+	// Get the wallet seed.
+	s, _, err := c.wallet.PrimarySeed()
+	if err != nil {
+		return err
+	}
+	// Get the renter seed and wipe it once done.
+	rs := proto.DeriveRenterSeed(s)
+	// Reset the scan progress before starting the scan.
+	atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
+	// Create the scanner.
+	scanner := c.newRecoveryScanner(rs)
+	// Start the scan.
+	go func() {
+		if err := scanner.threadedScan(c.cs, c.tg.StopChan()); err != nil {
+			c.log.Println("Scan failed", err)
+		}
+		if c.staticDeps.Disrupt("disableRecoveryStatusReset") {
+			return
+		}
+		// Reset the scan related fields.
+		if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 1, 0) {
+			build.Critical("finished recovery scan but scanInProgress was already set to 0")
+		}
+		atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
+	}()
+	return nil
 }
 
 // PeriodSpending returns the amount spent on contracts during the current
@@ -150,6 +204,14 @@ func (c *Contractor) RateLimits() (readBPW int64, writeBPS int64, packetSize uin
 	return c.staticContracts.RateLimits()
 }
 
+// RecoveryScanStatus returns a bool indicating if a scan for recoverable
+// contracts is in progress and if it is, the current progress of the scan.
+func (c *Contractor) RecoveryScanStatus() (bool, types.BlockHeight) {
+	bh := types.BlockHeight(atomic.LoadInt64(&c.atomicRecoveryScanHeight))
+	sip := atomic.LoadUint32(&c.atomicScanInProgress)
+	return sip == 1, bh
+}
+
 // SetRateLimits sets the bandwidth limits for connections created by the
 // contractSet.
 func (c *Contractor) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {
@@ -214,15 +276,16 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 
 		interruptMaintenance: make(chan struct{}),
 
-		staticContracts:     contractSet,
-		downloaders:         make(map[types.FileContractID]*hostDownloader),
-		editors:             make(map[types.FileContractID]*hostEditor),
-		oldContracts:        make(map[types.FileContractID]modules.RenterContract),
-		contractIDToPubKey:  make(map[types.FileContractID]types.SiaPublicKey),
-		pubKeysToContractID: make(map[string]types.FileContractID),
-		renewing:            make(map[types.FileContractID]bool),
-		renewedFrom:         make(map[types.FileContractID]types.FileContractID),
-		renewedTo:           make(map[types.FileContractID]types.FileContractID),
+		staticContracts:      contractSet,
+		downloaders:          make(map[types.FileContractID]*hostDownloader),
+		editors:              make(map[types.FileContractID]*hostEditor),
+		sessions:             make(map[types.FileContractID]*hostSession),
+		oldContracts:         make(map[types.FileContractID]modules.RenterContract),
+		recoverableContracts: make(map[types.FileContractID]modules.RecoverableContract),
+		pubKeysToContractID:  make(map[string]types.FileContractID),
+		renewing:             make(map[types.FileContractID]bool),
+		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
+		renewedTo:            make(map[types.FileContractID]types.FileContractID),
 	}
 
 	// Close the contract set and logger upon shutdown.
@@ -239,6 +302,14 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	err := c.load()
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
+	}
+
+	// Initialize the contractIDToPubKey map
+	for _, contract := range c.oldContracts {
+		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
+	}
+	for _, contract := range c.staticContracts.ViewAll() {
+		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	}
 
 	// Subscribe to the consensus set.
@@ -264,16 +335,6 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	c.mu.Unlock()
 	if err != nil {
 		return nil, err
-	}
-
-	// Initialize the contractIDToPubKey map
-	for _, contract := range c.oldContracts {
-		c.contractIDToPubKey[contract.ID] = contract.HostPublicKey
-		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	}
-	for _, contract := range c.staticContracts.ViewAll() {
-		c.contractIDToPubKey[contract.ID] = contract.HostPublicKey
-		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	}
 
 	// Update the allowance in the hostdb with the one that was loaded from

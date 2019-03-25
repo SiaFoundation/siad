@@ -1,11 +1,13 @@
 package renter
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -21,9 +23,9 @@ type uploadChunkID struct {
 type unfinishedUploadChunk struct {
 	// Information about the file. localPath may be the empty string if the file
 	// is known not to exist locally.
-	id         uploadChunkID
-	localPath  string
-	renterFile *file
+	id        uploadChunkID
+	fileEntry *siafile.SiaFileSetEntry
+	threadUID int
 
 	// Information about the chunk, namely where it exists within the file.
 	//
@@ -38,6 +40,8 @@ type unfinishedUploadChunk struct {
 	minimumPieces  int    // number of pieces required to recover the file.
 	offset         int64  // Offset of the chunk within the file.
 	piecesNeeded   int    // number of pieces to achieve a 100% complete upload
+	stuck          bool   // indicates if the chunk was marked as stuck during last repair
+	stuckRepair    bool   // indicates if the chunk was identified for repair by the stuck loop
 
 	// The logical data is the data that is presented to the user when the user
 	// requests the chunk. The physical data is all of the pieces that get
@@ -99,9 +103,32 @@ func (uc *unfinishedUploadChunk) managedNotifyStandbyWorkers() {
 	}
 }
 
+// chunkComplete checks some fields of the chunk to determine if the chunk is
+// completed. This can either mean that it ran out of workers or that it was
+// uploaded successfully.
+func (uc *unfinishedUploadChunk) chunkComplete() bool {
+	// The whole chunk was uploaded successfully.
+	if uc.piecesCompleted == uc.piecesNeeded && uc.piecesRegistered == 0 {
+		return true
+	}
+	// We are no longer doing any uploads and we don't have any workers left.
+	if uc.workersRemaining == 0 && uc.piecesRegistered == 0 {
+		return true
+	}
+	return false
+}
+
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
 // physical data and distribute it to the worker pool.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
+	// Add chunk to repairingChunks map
+	r.uploadHeap.mu.Lock()
+	_, exists := r.uploadHeap.repairingChunks[uc.id]
+	if !exists {
+		r.uploadHeap.repairingChunks[uc.id] = struct{}{}
+	}
+	r.uploadHeap.mu.Unlock()
+
 	// Give the chunk to each worker, marking the number of workers that have
 	// received the chunk. The workers cannot be interacted with while the
 	// renter is holding a lock, so we need to build a list of workers while
@@ -129,16 +156,16 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	// TODO: There is a disparity in the way that the upload and download code
 	// handle the last chunk, which may not be full sized.
 	downloadLength := chunk.length
-	if chunk.index == chunk.renterFile.numChunks()-1 && chunk.renterFile.size%chunk.length != 0 {
-		downloadLength = chunk.renterFile.size % chunk.length
+	if chunk.index == chunk.fileEntry.NumChunks()-1 && chunk.fileEntry.Size()%chunk.length != 0 {
+		downloadLength = chunk.fileEntry.Size() % chunk.length
 	}
 
 	// Create the download.
-	buf := NewDownloadDestinationBuffer(chunk.length)
+	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 	d, err := r.managedNewDownload(downloadParams{
 		destination:     buf,
 		destinationType: "buffer",
-		file:            chunk.renterFile,
+		file:            chunk.fileEntry.SiaFile.Snapshot(),
 
 		latencyTarget: 200e3, // No need to rush latency on repair downloads.
 		length:        downloadLength,
@@ -150,6 +177,12 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	if err != nil {
 		return err
 	}
+
+	// Register some cleanup for when the download is done.
+	d.OnComplete(func(_ error) error {
+		// Update the access time when the download is done.
+		return chunk.fileEntry.SiaFile.UpdateAccessTime()
+	})
 
 	// Set the in-memory buffer to nil just to be safe in case of a memory
 	// leak.
@@ -164,19 +197,25 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		return errors.New("repair download interrupted by stop call")
 	}
 	if d.Err() != nil {
-		buf = nil
+		buf.buf = nil
 		return d.Err()
 	}
-	chunk.logicalChunkData = [][]byte(buf)
+	chunk.logicalChunkData = [][]byte(buf.buf)
 	return nil
 }
 
-// managedFetchAndRepairChunk will fetch the logical data for a chunk, create
+// threadedFetchAndRepairChunk will fetch the logical data for a chunk, create
 // the physical pieces for the chunk, and then distribute them.
-func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
+func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
+	err := r.tg.Add()
+	if err != nil {
+		return
+	}
+	defer r.tg.Done()
+
 	// Calculate the amount of memory needed for erasure coding. This will need
 	// to be released if there's an error before erasure coding is complete.
-	erasureCodingMemory := chunk.renterFile.pieceSize * uint64(chunk.renterFile.erasureCode.MinPieces())
+	erasureCodingMemory := chunk.fileEntry.PieceSize() * uint64(chunk.fileEntry.ErasureCode().MinPieces())
 
 	// Calculate the amount of memory to release due to already completed
 	// pieces. This memory gets released during encryption, but needs to be
@@ -184,7 +223,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	var pieceCompletedMemory uint64
 	for i := 0; i < len(chunk.pieceUsage); i++ {
 		if chunk.pieceUsage[i] {
-			pieceCompletedMemory += chunk.renterFile.pieceSize + crypto.TwofishOverhead
+			pieceCompletedMemory += modules.SectorSize
 		}
 	}
 
@@ -199,7 +238,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	defer r.managedCleanUpUploadChunk(chunk)
 
 	// Fetch the logical data for the chunk.
-	err := r.managedFetchLogicalChunkData(chunk)
+	err = r.managedFetchLogicalChunkData(chunk)
 	if err != nil {
 		// Logical data is not available, cannot upload. Chunk will not be
 		// distributed to workers, therefore set workersRemaining equal to zero.
@@ -221,7 +260,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// fact to reduce the total memory required to create the physical data.
 	// That will also change the amount of memory we need to allocate, and the
 	// number of times we need to return memory.
-	chunk.physicalChunkData, err = chunk.renterFile.erasureCode.EncodeShards(chunk.logicalChunkData)
+	chunk.physicalChunkData, err = chunk.fileEntry.ErasureCode().EncodeShards(chunk.logicalChunkData)
 	chunk.logicalChunkData = nil
 	r.memoryManager.Return(erasureCodingMemory)
 	chunk.memoryReleased += erasureCodingMemory
@@ -251,7 +290,7 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			chunk.physicalChunkData[i] = nil
 		} else {
 			// Encrypt the piece.
-			key := deriveKey(chunk.renterFile.masterKey, chunk.index, uint64(i))
+			key := chunk.fileEntry.MasterKey().Derive(chunk.index, uint64(i))
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
 		}
 	}
@@ -273,13 +312,13 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
 	// Only download this file if more than 25% of the redundancy is missing.
 	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
-	minMissingPiecesToDownload := int(numParityPieces * RemoteRepairDownloadThreshold)
+	minMissingPiecesToDownload := int(numParityPieces * siafile.RemoteRepairDownloadThreshold)
 	download := chunk.piecesCompleted+minMissingPiecesToDownload < chunk.piecesNeeded
 
 	// Download the chunk if it's not on disk.
-	if chunk.localPath == "" && download {
+	if chunk.fileEntry.LocalPath() == "" && download {
 		return r.managedDownloadLogicalChunkData(chunk)
-	} else if chunk.localPath == "" {
+	} else if chunk.fileEntry.LocalPath() == "" {
 		return errors.New("file not available locally")
 	}
 
@@ -290,7 +329,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// loading fails. Should do this after we swap the file format, the tracking
 	// data for the file should reside in the file metadata and not in a
 	// separate struct.
-	osFile, err := os.Open(chunk.localPath)
+	osFile, err := os.Open(chunk.fileEntry.LocalPath())
 	if err != nil && download {
 		return r.managedDownloadLogicalChunkData(chunk)
 	} else if err != nil {
@@ -300,7 +339,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// TODO: Once we have enabled support for small chunks, we should stop
 	// needing to ignore the EOF errors, because the chunk size should always
 	// match the tail end of the file. Until then, we ignore io.EOF.
-	buf := NewDownloadDestinationBuffer(chunk.length)
+	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 	sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
 	_, err = buf.ReadFrom(sr)
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF && download {
@@ -310,7 +349,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		r.log.Debugln("failed to read file locally:", err)
 		return errors.Extend(err, errors.New("failed to read file locally"))
 	}
-	chunk.logicalChunkData = buf
+	chunk.logicalChunkData = buf.buf
 
 	// Data successfully read from disk.
 	return nil
@@ -320,6 +359,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 // cleanup required. This can include returning rememory and releasing the chunk
 // from the map of active chunks in the chunk heap.
 func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
+	defer r.managedUpdateUploadChunkStuckStatus(uc)
 	uc.mu.Lock()
 	piecesAvailable := 0
 	var memoryReleased uint64
@@ -336,7 +376,10 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		// will prefer releasing later pieces, which improves computational
 		// complexity for erasure coding.
 		if piecesAvailable >= uc.workersRemaining {
-			memoryReleased += uc.renterFile.pieceSize + crypto.TwofishOverhead
+			memoryReleased += modules.SectorSize
+			if len(uc.physicalChunkData) < len(uc.pieceUsage) {
+				// TODO handle this. Might happen if erasure coding the chunk failed.
+			}
 			uc.physicalChunkData[i] = nil
 			// Mark this piece as taken so that we don't double release memory.
 			uc.pieceUsage[i] = true
@@ -348,7 +391,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// Check if the chunk needs to be removed from the list of active
 	// chunks. It needs to be removed if the chunk is complete, but hasn't
 	// yet been released.
-	chunkComplete := uc.workersRemaining == 0 && uc.piecesRegistered == 0
+	chunkComplete := uc.chunkComplete()
 	released := uc.released
 	if chunkComplete && !released {
 		uc.released = true
@@ -369,14 +412,121 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if memoryReleased > 0 {
 		r.memoryManager.Return(memoryReleased)
 	}
-	// If required, remove the chunk from the set of active chunks.
+	// If required, remove the chunk from the set of repairing chunks.
 	if chunkComplete && !released {
+		// Close the file entry unless disrupted.
+		if !r.deps.Disrupt("disableCloseUploadEntry") {
+			err := uc.fileEntry.Close()
+			if err != nil {
+				r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", uc.fileEntry.SiaPath(), err)
+			}
+		}
 		r.uploadHeap.mu.Lock()
-		delete(r.uploadHeap.activeChunks, uc.id)
+		delete(r.uploadHeap.repairingChunks, uc.id)
 		r.uploadHeap.mu.Unlock()
 	}
 	// Sanity check - all memory should be released if the chunk is complete.
 	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
 		r.log.Critical("No workers remaining, but not all memory released:", uc.workersRemaining, uc.piecesRegistered, uc.memoryReleased, uc.memoryNeeded)
+	}
+}
+
+// managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status,
+// triggers threadedBubble to update the directory, and then closes the
+// fileEntry
+func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) error {
+	// Update chunk stuck status
+	err := uc.fileEntry.SetStuck(uc.index, stuck)
+	if err != nil {
+		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaPath(), err)
+	}
+	siaPath := uc.fileEntry.SiaPath()
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		return err
+	}
+	go r.threadedBubbleMetadata(dirSiaPath)
+	// Close SiaFile
+	err = uc.fileEntry.Close()
+	if err != nil {
+		return fmt.Errorf("WARN: unable to close siafile %v", uc.fileEntry.SiaPath())
+	}
+	return nil
+}
+
+// managedUpdateUploadChunkStuckStatus checks to see if the repair was
+// successful and then updates the chunk's stuck status
+func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) {
+	// Grab necessary information from upload chunk under lock
+	uc.mu.Lock()
+	index := uc.id.index
+	stuck := uc.stuck
+	piecesCompleted := uc.piecesCompleted
+	piecesNeeded := uc.piecesNeeded
+	stuckRepair := uc.stuckRepair
+	uc.mu.Unlock()
+
+	// Determine if repair was successful
+	var successfulRepair bool
+	if _, err := os.Stat(uc.fileEntry.LocalPath()); err != nil {
+		// If there is an error with stat then the file is not on disk or
+		// potentially unaccessible. In either case the repair is successful if
+		// it completed more pieces than the RemoteRepairDownloadThreshold
+		successfulRepair = (1-siafile.RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
+	} else {
+		// Since the file is on disk and accessible with stat then the repair is
+		// successful if >= piecesNeeded pieces are repaired
+		successfulRepair = piecesNeeded <= piecesCompleted
+	}
+
+	// Check if renter is shutting down
+	var renterError bool
+	select {
+	case <-r.tg.StopChan():
+		renterError = true
+	default:
+		// Check that the renter is still online
+		if !r.g.Online() {
+			renterError = true
+		}
+	}
+
+	// If the repair was unsuccessful and there was a renter error then return
+	if !successfulRepair && renterError {
+		r.log.Debugln("WARN: repair unsuccessful for chunk", uc.id, "due to an error with the renter")
+		return
+	}
+	// Log if the repair was unsuccessful
+	if !successfulRepair {
+		r.log.Debugln("WARN: repair unsuccessful, marking chunk", uc.id, "as stuck")
+	}
+	// Update chunk stuck status
+	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
+		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaPath(), err)
+	}
+
+	// Bubble the updated information. We call this in a blocking fashion as the
+	// next step potentially triggers the stuck loop to add the rest of the
+	// stuck files to the heap and then find the next stuck chunk. By ensuring
+	// that the directory has been updated we eliminate the possibility that the
+	// same chunk is found by the stuck loop and re-added to the repair heap
+	siaPath := uc.fileEntry.SiaPath()
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		return
+	}
+	r.threadedBubbleMetadata(dirSiaPath)
+
+	// Check to see if the chunk was stuck and now is successfully repaired by
+	// the stuck loop
+	if stuck && successfulRepair && stuckRepair {
+		// Signal the stuck loop that the chunk was successfully repaired
+		r.log.Debugln("Stuck chunk", uc.id, "successfully repaired")
+		select {
+		case <-r.tg.StopChan():
+			r.log.Debugln("WARN: renter shut down before the stuck loop was signalled that the stuck repair was successful")
+			return
+		case r.uploadHeap.stuckChunkSuccess <- uc.fileEntry.SiaPath():
+		}
 	}
 }

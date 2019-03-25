@@ -395,6 +395,10 @@ func (hdb *HostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey) 
 
 // SetFilterMode sets the hostdb filter mode
 func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error {
+	if err := hdb.tg.Add(); err != nil {
+		return err
+	}
+	defer hdb.tg.Done()
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
 

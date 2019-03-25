@@ -136,7 +136,9 @@ func main() {
 		renterDownloadsCmd, renterAllowanceCmd, renterSetAllowanceCmd,
 		renterContractsCmd, renterFilesListCmd, renterFilesRenameCmd,
 		renterFilesUploadCmd, renterUploadsCmd, renterExportCmd,
-		renterPricesCmd)
+		renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
+		renterTriggerContractRecoveryScanCmd,
+		renterContractsRecoveryScanProgressCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -181,15 +183,18 @@ func main() {
 		fmt.Println("Using SIA_API_PASSWORD environment variable")
 	}
 
-	// If the API password wasn't set we try to read it from the file. If
-	// reading fails, continue silently; but in the next release, this will
-	// be an error.
-	if httpClient.Password == "" {
-		pw, err := ioutil.ReadFile(build.APIPasswordFile(siaDir))
-		if err == nil {
+	// If the API password wasn't set we try to read it from the file. This must
+	// be done only *after* we parse the sia-directory flag, which is why we do
+	// it inside OnInitialize.
+	cobra.OnInitialize(func() {
+		if httpClient.Password == "" {
+			pw, err := ioutil.ReadFile(build.APIPasswordFile(siaDir))
+			if err != nil {
+				die("Could not read API password file:", err)
+			}
 			httpClient.Password = strings.TrimSpace(string(pw))
 		}
-	}
+	})
 
 	// run
 	if err := root.Execute(); err != nil {

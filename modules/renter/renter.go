@@ -23,17 +23,20 @@ package renter
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
-	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -90,7 +93,7 @@ type hostDB interface {
 
 	// ScoreBreakdown returns a detailed explanation of the various properties
 	// of the host.
-	ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown
+	ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error)
 
 	// SetIPViolationCheck enables/disables the IP violation check within the
 	// hostdb.
@@ -98,7 +101,7 @@ type hostDB interface {
 
 	// EstimateHostScore returns the estimated score breakdown of a host with the
 	// provided settings.
-	EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown
+	EstimateHostScore(modules.HostDBEntry, modules.Allowance) (modules.HostScoreBreakdown, error)
 }
 
 // A hostContractor negotiates, revises, renews, and provides access to file
@@ -122,9 +125,6 @@ type hostContractor interface {
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []modules.RenterContract
 
-	// OldContracts returns the oldContracts of the renter's hostContractor.
-	OldContracts() []modules.RenterContract
-
 	// ContractByPublicKey returns the contract associated with the host key.
 	ContractByPublicKey(types.SiaPublicKey) (modules.RenterContract, bool)
 
@@ -136,9 +136,16 @@ type hostContractor interface {
 	// began.
 	CurrentPeriod() types.BlockHeight
 
+	// InitRecoveryScan starts scanning the whole blockchain for recoverable
+	// contracts within a separate thread.
+	InitRecoveryScan() error
+
 	// PeriodSpending returns the amount spent on contracts during the current
 	// billing period.
 	PeriodSpending() modules.ContractorSpending
+
+	// OldContracts returns the oldContracts of the renter's hostContractor.
+	OldContracts() []modules.RenterContract
 
 	// Editor creates an Editor from the specified contract ID, allowing the
 	// insertion, deletion, and modification of sectors.
@@ -151,8 +158,15 @@ type hostContractor interface {
 	// allowing the retrieval of sectors.
 	Downloader(types.SiaPublicKey, <-chan struct{}) (contractor.Downloader, error)
 
-	// ResolveIDToPubKey returns the public key of a host given a contract id.
-	ResolveIDToPubKey(types.FileContractID) types.SiaPublicKey
+	// RecoverableContracts returns the contracts that the contractor deems
+	// recoverable. That means they are not expired yet and also not part of the
+	// active contracts. Usually this should return an empty slice unless the host
+	// isn't available for recovery or something went wrong.
+	RecoverableContracts() []modules.RecoverableContract
+
+	// RecoveryScanStatus returns a bool indicating if a scan for recoverable
+	// contracts is in progress and if it is, the current progress of the scan.
+	RecoveryScanStatus() (bool, types.BlockHeight)
 
 	// RateLimits Gets the bandwidth limits for connections created by the
 	// contractor and its submodules.
@@ -161,15 +175,6 @@ type hostContractor interface {
 	// SetRateLimits sets the bandwidth limits for connections created by the
 	// contractor and its submodules.
 	SetRateLimits(int64, int64, uint64)
-}
-
-// A trackedFile contains metadata about files being tracked by the Renter.
-// Tracked files are actively repaired by the Renter. By default, files
-// uploaded by the user are tracked, and files that are added (via loading a
-// .sia file) are not.
-type trackedFile struct {
-	// location of original file on disk
-	RepairPath string
 }
 
 // A Renter is responsible for tracking all of the files that a user has
@@ -184,9 +189,11 @@ type trackedFile struct {
 type Renter struct {
 	// File management.
 	//
-	// tracking contains a list of files that the user intends to maintain. By
-	// default, files loaded through sharing are not maintained by the user.
-	files map[string]*file
+	staticFileSet *siafile.SiaFileSet
+
+	// Directory Management
+	//
+	staticDirSet *siadir.SiaDirSet
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -212,6 +219,16 @@ type Renter struct {
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
 
+	// bubbleUpdates are active and pending bubbles that need to be executed on
+	// directories in order to keep the renter's directory tree metadata up to
+	// date
+	//
+	// A bubble is the process of updating a directory's metadata and then
+	// moving on to its parent directory so that any changes in metadata are
+	// properly reflected throughout the filesystem.
+	bubbleUpdates   map[string]bubbleStatus
+	bubbleUpdatesMu sync.Mutex
+
 	// Utilities.
 	staticStreamCache *streamCache
 	cs                modules.ConsensusSet
@@ -222,9 +239,11 @@ type Renter struct {
 	log               *persist.Logger
 	persist           persistence
 	persistDir        string
+	staticFilesDir    string
 	mu                *siasync.RWMutex
 	tg                threadgroup.ThreadGroup
 	tpool             modules.TransactionPool
+	wal               *writeaheadlog.WAL
 }
 
 // Close closes the Renter and its dependencies
@@ -240,6 +259,10 @@ func (r *Renter) Close() error {
 // allowance will be used if one is set.  The final allowance used will be
 // returned.
 func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPriceEstimation, modules.Allowance, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.RenterPriceEstimation{}, modules.Allowance{}, err
+	}
+	defer r.tg.Done()
 	// Use provide allowance. If no allowance provided use the existing
 	// allowance. If no allowance exists, use a sane default allowance.
 	if reflect.DeepEqual(allowance, modules.Allowance{}) {
@@ -417,6 +440,76 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	return est, allowance, nil
 }
 
+// managedContractUtilityMaps returns a set of maps that contain contract
+// information. Information about which contracts are offline, goodForRenew are
+// available, as well as a full list of contracts keyed by their public key.
+func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
+	// Save host keys in map.
+	contracts = make(map[string]modules.RenterContract)
+	goodForRenew = make(map[string]bool)
+	offline = make(map[string]bool)
+
+	// Get the list of public keys from the contractor and use it to fill out
+	// the contracts map.
+	cs := r.hostContractor.Contracts()
+	for i := 0; i < len(cs); i++ {
+		contracts[cs[i].HostPublicKey.String()] = cs[i]
+	}
+
+	// Fill out the goodForRenew and offline maps based on the utility values of
+	// the contractor.
+	for pkString, contract := range contracts {
+		cu, ok := r.ContractUtility(contract.HostPublicKey)
+		if !ok {
+			continue
+		}
+		goodForRenew[pkString] = cu.GoodForRenew
+		offline[pkString] = r.hostContractor.IsOffline(contract.HostPublicKey)
+	}
+	return offline, goodForRenew, contracts
+}
+
+// managedRenterContractsAndUtilities grabs the pubkeys of the hosts that the
+// file(s) have been uploaded to and then generates maps of the contract's
+// utilities showing which hosts are GoodForRenew and which hosts are Offline.
+// Additionally a map of host pubkeys to renter contract is returned.  The
+// offline and goodforrenew maps are needed for calculating redundancy and other
+// file metrics.
+func (r *Renter) managedRenterContractsAndUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
+	// Save host keys in map.
+	pks := make(map[string]types.SiaPublicKey)
+	goodForRenew = make(map[string]bool)
+	offline = make(map[string]bool)
+	for _, e := range entrys {
+		var used []types.SiaPublicKey
+		for _, pk := range e.HostPublicKeys() {
+			pks[pk.String()] = pk
+			used = append(used, pk)
+		}
+		if err := e.UpdateUsedHosts(used); err != nil {
+			r.log.Debugln("WARN: Could not update used hosts:", err)
+		}
+	}
+
+	// Build 2 maps that map every pubkey to its offline and goodForRenew
+	// status.
+	contracts = make(map[string]modules.RenterContract)
+	for _, pk := range pks {
+		cu, ok := r.ContractUtility(pk)
+		if !ok {
+			continue
+		}
+		contract, ok := r.hostContractor.ContractByPublicKey(pk)
+		if !ok {
+			continue
+		}
+		goodForRenew[pk.String()] = cu.GoodForRenew
+		offline[pk.String()] = r.hostContractor.IsOffline(pk)
+		contracts[pk.String()] = contract
+	}
+	return offline, goodForRenew, contracts
+}
+
 // setBandwidthLimits will change the bandwidth limits of the renter based on
 // the persist values for the bandwidth.
 func (r *Renter) setBandwidthLimits(downloadSpeed int64, uploadSpeed int64) error {
@@ -443,6 +536,10 @@ func (r *Renter) setBandwidthLimits(downloadSpeed int64, uploadSpeed int64) erro
 // (like the allowance) to succeed, but then if the bandwidth limits for example
 // are bad, then the allowance will update but the bandwidth will not update.
 func (r *Renter) SetSettings(s modules.RenterSettings) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	// Early input validation.
 	if s.MaxDownloadSpeed < 0 || s.MaxUploadSpeed < 0 {
 		return errors.New("bandwidth limits cannot be negative")
@@ -493,38 +590,30 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // right size, but it can't check that the content is the same. Therefore the
 // caller is responsible for not accidentally corrupting the uploaded file by
 // providing a different file with the same size.
-func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
-	id := r.mu.Lock()
-	defer r.mu.Unlock(id)
-
+func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	// Check if file exists and is being tracked.
-	file, exists := r.files[siaPath]
-	if !exists {
-		return fmt.Errorf("unknown file %s", siaPath)
+	entry, err := r.staticFileSet.Open(siaPath)
+	if err != nil {
+		return err
 	}
-	tf, exists := r.persist.Tracking[siaPath]
-	if !exists {
-		return fmt.Errorf("file with path %s is not tracked", siaPath)
-	}
+	defer entry.Close()
 
 	// Sanity check that a file with the correct size exists at the new
 	// location.
-	file.mu.Lock()
-	defer file.mu.Unlock()
 	fi, err := os.Stat(newPath)
 	if err != nil {
 		return errors.AddContext(err, "failed to get fileinfo of the file")
 	}
-	if uint64(fi.Size()) != file.size {
-		return fmt.Errorf("file sizes don't match - want %v but got %v", file.size, fi.Size())
+	if uint64(fi.Size()) != entry.Size() {
+		return fmt.Errorf("file sizes don't match - want %v but got %v", entry.Size(), fi.Size())
 	}
 
-	// Set new path
-	tf.RepairPath = newPath
-	r.persist.Tracking[siaPath] = tf
-
-	// Save the change.
-	return r.saveSync()
+	// Set the new path on disk.
+	return entry.SetLocalPath(newPath)
 }
 
 // ActiveHosts returns an array of hostDB's active hosts
@@ -535,6 +624,10 @@ func (r *Renter) AllHosts() []modules.HostDBEntry { return r.hostDB.AllHosts() }
 
 // SetFilterMode sets the renter's hostdb filter mode
 func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
 	// Check to see how many hosts are needed for the allowance
 	minHosts := r.Settings().Allowance.Hosts
 	if len(hosts) < int(minHosts) && lm == modules.HostDBActiveWhitelist {
@@ -557,12 +650,12 @@ func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) { retu
 func (r *Renter) InitialScanComplete() (bool, error) { return r.hostDB.InitialScanComplete() }
 
 // ScoreBreakdown returns the score breakdown
-func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) modules.HostScoreBreakdown {
+func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
 	return r.hostDB.ScoreBreakdown(e)
 }
 
 // EstimateHostScore returns the estimated host score
-func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) modules.HostScoreBreakdown {
+func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) (modules.HostScoreBreakdown, error) {
 	if reflect.DeepEqual(a, modules.Allowance{}) {
 		a = r.Settings().Allowance
 	}
@@ -580,11 +673,6 @@ func (r *Renter) CancelContract(id types.FileContractID) error {
 // Contracts returns an array of host contractor's staticContracts
 func (r *Renter) Contracts() []modules.RenterContract { return r.hostContractor.Contracts() }
 
-// OldContracts returns an array of host contractor's oldContracts
-func (r *Renter) OldContracts() []modules.RenterContract {
-	return r.hostContractor.OldContracts()
-}
-
 // CurrentPeriod returns the host contractor's current period
 func (r *Renter) CurrentPeriod() types.BlockHeight { return r.hostContractor.CurrentPeriod() }
 
@@ -594,8 +682,30 @@ func (r *Renter) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility
 	return r.hostContractor.ContractUtility(pk)
 }
 
+// InitRecoveryScan starts scanning the whole blockchain for recoverable
+// contracts within a separate thread.
+func (r *Renter) InitRecoveryScan() error {
+	return r.hostContractor.InitRecoveryScan()
+}
+
+// RecoveryScanStatus returns a bool indicating if a scan for recoverable
+// contracts is in progress and if it is, the current progress of the scan.
+func (r *Renter) RecoveryScanStatus() (bool, types.BlockHeight) {
+	return r.hostContractor.RecoveryScanStatus()
+}
+
+// OldContracts returns an array of host contractor's oldContracts
+func (r *Renter) OldContracts() []modules.RenterContract {
+	return r.hostContractor.OldContracts()
+}
+
 // PeriodSpending returns the host contractor's period spending
 func (r *Renter) PeriodSpending() modules.ContractorSpending { return r.hostContractor.PeriodSpending() }
+
+// RecoverableContracts returns the host contractor's recoverable contracts.
+func (r *Renter) RecoverableContracts() []modules.RecoverableContract {
+	return r.hostContractor.RecoverableContracts()
+}
 
 // Settings returns the renter's allowance
 func (r *Renter) Settings() modules.RenterSettings {
@@ -622,42 +732,6 @@ func (r *Renter) SetIPViolationCheck(enabled bool) {
 	r.hostDB.SetIPViolationCheck(enabled)
 }
 
-// validateSiapath checks that a Siapath is a legal filename.
-// ../ is disallowed to prevent directory traversal, and paths must not begin
-// with / or be empty.
-func validateSiapath(siapath string) error {
-	if siapath == "" {
-		return ErrEmptyFilename
-	}
-	if siapath == ".." {
-		return errors.New("siapath cannot be '..'")
-	}
-	if siapath == "." {
-		return errors.New("siapath cannot be '.'")
-	}
-	// check prefix
-	if strings.HasPrefix(siapath, "/") {
-		return errors.New("siapath cannot begin with /")
-	}
-	if strings.HasPrefix(siapath, "../") {
-		return errors.New("siapath cannot begin with ../")
-	}
-	if strings.HasPrefix(siapath, "./") {
-		return errors.New("siapath connot begin with ./")
-	}
-	var prevElem string
-	for _, pathElem := range strings.Split(siapath, "/") {
-		if pathElem == "." || pathElem == ".." {
-			return errors.New("siapath cannot contain . or .. elements")
-		}
-		if prevElem != "" && pathElem == "" {
-			return ErrEmptyFilename
-		}
-		prevElem = pathElem
-	}
-	return nil
-}
-
 // Enforce that Renter satisfies the modules.Renter interface.
 var _ modules.Renter = (*Renter)(nil)
 
@@ -680,8 +754,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 
 	r := &Renter{
-		files: make(map[string]*file),
-
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the
 		// download heap loop, searching for a chunk that's not there. This is
@@ -691,11 +763,17 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		downloadHeap: new(downloadChunkHeap),
 
 		uploadHeap: uploadHeap{
-			activeChunks: make(map[uploadChunkID]struct{}),
-			newUploads:   make(chan struct{}, 1),
+			heapChunks:        make(map[uploadChunkID]struct{}),
+			repairingChunks:   make(map[uploadChunkID]struct{}),
+			newUploads:        make(chan struct{}, 1),
+			repairNeeded:      make(chan struct{}, 1),
+			stuckChunkFound:   make(chan struct{}, 1),
+			stuckChunkSuccess: make(chan modules.SiaPath, 1),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),
+
+		bubbleUpdates: make(map[string]bubbleStatus),
 
 		cs:             cs,
 		deps:           deps,
@@ -703,23 +781,19 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		hostDB:         hdb,
 		hostContractor: hc,
 		persistDir:     persistDir,
+		staticFilesDir: filepath.Join(persistDir, modules.SiapathRoot),
 		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 
 	// Load all saved data.
-	if err := r.initPersist(); err != nil {
+	if err := r.managedInitPersist(); err != nil {
 		return nil, err
 	}
 
-	// Set the bandwidth limits, since the contractor doesn't persist them.
-	//
-	// TODO: Reconsider the way that the bandwidth limits are allocated to the
-	// renter module, because really it seems they only impact the contractor.
-	// The renter itself doesn't actually do any uploading or downloading.
-	err := r.setBandwidthLimits(r.persist.MaxDownloadSpeed, r.persist.MaxUploadSpeed)
-	if err != nil {
+	// Load and execute bubble updates
+	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
 		return nil, err
 	}
 
@@ -727,7 +801,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	r.staticStreamCache = newStreamCache(r.persist.StreamCacheSize)
 
 	// Subscribe to the consensus set.
-	err = cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
+	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
 	if err != nil {
 		return nil, err
 	}
@@ -735,7 +809,9 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// Spin up the workers for the work pool.
 	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
-	go r.threadedUploadLoop()
+	go r.threadedUploadAndRepair()
+	go r.threadedUpdateRenterHealth()
+	go r.threadedStuckFileLoop()
 
 	// Kill workers on shutdown.
 	r.tg.OnStop(func() error {
@@ -760,6 +836,5 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 	if err != nil {
 		return nil, err
 	}
-
 	return NewCustomRenter(g, cs, tpool, hdb, hc, persistDir, modules.ProdDependencies)
 }

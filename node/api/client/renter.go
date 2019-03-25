@@ -130,11 +130,34 @@ func (c *Client) RenterInactiveContractsGet() (rc api.RenterContracts, err error
 	return
 }
 
+// RenterInitContractRecoveryScanPost initializes a contract recovery scan
+// using the /renter/recoveryscan endpoint.
+func (c *Client) RenterInitContractRecoveryScanPost() (err error) {
+	err = c.post("/renter/recoveryscan", "", nil)
+	return
+}
+
+// RenterContractRecoveryProgressGet returns information about potentially
+// ongoing contract recovery scans.
+func (c *Client) RenterContractRecoveryProgressGet() (rrs api.RenterRecoveryStatusGET, err error) {
+	err = c.get("/renter/recoveryscan", &rrs)
+	return
+}
+
 // RenterExpiredContractsGet requests the /renter/contracts resource with the
 // expired flag set to true
 func (c *Client) RenterExpiredContractsGet() (rc api.RenterContracts, err error) {
 	values := url.Values{}
 	values.Set("expired", fmt.Sprint(true))
+	err = c.get("/renter/contracts?"+values.Encode(), &rc)
+	return
+}
+
+// RenterRecoverableContractsGet requests the /renter/contracts resource with the
+// recoverable flag set to true
+func (c *Client) RenterRecoverableContractsGet() (rc api.RenterContracts, err error) {
+	values := url.Values{}
+	values.Set("recoverable", fmt.Sprint(true))
 	err = c.get("/renter/contracts?"+values.Encode(), &rc)
 	return
 }
@@ -156,6 +179,22 @@ func (c *Client) RenterDownloadGet(siaPath, destination string, offset, length u
 	values.Set("length", fmt.Sprint(length))
 	values.Set("async", fmt.Sprint(async))
 	err = c.get(fmt.Sprintf("/renter/download/%s?%s", siaPath, values.Encode()), nil)
+	return
+}
+
+// RenterCreateBackupPost creates a backup of the SiaFiles of the renter.
+func (c *Client) RenterCreateBackupPost(dst string) (err error) {
+	values := url.Values{}
+	values.Set("destination", dst)
+	err = c.post("/renter/backup", values.Encode(), nil)
+	return
+}
+
+// RenterRecoverBackupPost loads a backup of the SiaFiles of the renter.
+func (c *Client) RenterRecoverBackupPost(src string) (err error) {
+	values := url.Values{}
+	values.Set("source", src)
+	err = c.post("/renter/recoverbackup", values.Encode(), nil)
 	return
 }
 
@@ -328,7 +367,7 @@ func (c *Client) RenterStreamPartialGet(siaPath string, start, end uint64) (resp
 // path of a file to a new location. The file at newPath must exists.
 func (c *Client) RenterSetRepairPathPost(siaPath, newPath string) (err error) {
 	values := url.Values{}
-	values.Set("trackingpath", newPath)
+	values.Set("trackingpath", url.QueryEscape(newPath))
 	err = c.post("/renter/file/"+siaPath, values.Encode(), nil)
 	return
 }
@@ -358,5 +397,37 @@ func (c *Client) RenterUploadDefaultPost(path, siaPath string) (err error) {
 	values := url.Values{}
 	values.Set("source", path)
 	err = c.post(fmt.Sprintf("/renter/upload/%s", siaPath), values.Encode(), nil)
+	return
+}
+
+// RenterDirCreatePost uses the /renter/dir/ endpoint to create a directory for the
+// renter
+func (c *Client) RenterDirCreatePost(siaPath string) (err error) {
+	siaPath = strings.TrimPrefix(siaPath, "/")
+	err = c.post(fmt.Sprintf("/renter/dir/%s", siaPath), "action=create", nil)
+	return
+}
+
+// RenterDirDeletePost uses the /renter/dir/ endpoint to delete a directory for the
+// renter
+func (c *Client) RenterDirDeletePost(siaPath string) (err error) {
+	siaPath = strings.TrimPrefix(siaPath, "/")
+	err = c.post(fmt.Sprintf("/renter/dir/%s", siaPath), "action=delete", nil)
+	return
+}
+
+// RenterDirRenamePost uses the /renter/dir/ endpoint to rename a directory for the
+// renter
+func (c *Client) RenterDirRenamePost(siaPath, newSiaPath string) (err error) {
+	siaPath = strings.TrimPrefix(siaPath, "/")
+	newSiaPath = strings.TrimPrefix(newSiaPath, "/")
+	err = c.post(fmt.Sprintf("/renter/dir/%s?newsiapath=%s", siaPath, newSiaPath), "action=rename", nil)
+	return
+}
+
+// RenterGetDir uses the /renter/dir/ endpoint to query a directory
+func (c *Client) RenterGetDir(siaPath string) (rd api.RenterDirectory, err error) {
+	siaPath = strings.TrimPrefix(siaPath, "/")
+	err = c.get(fmt.Sprintf("/renter/dir/%s", siaPath), &rd)
 	return
 }

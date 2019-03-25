@@ -31,43 +31,44 @@ import (
 // passthrough function. But if the underlying object is a stream, WriteAt may
 // block while it waits for previous data to be written.
 type downloadDestination interface {
-	Close() error
 	WriteAt(data []byte, offset int64) (int, error)
 }
 
 // downloadDestinationBuffer writes logical chunk data to an in-memory buffer.
 // This buffer is primarily used when performing repairs on uploads.
-type downloadDestinationBuffer [][]byte
+type downloadDestinationBuffer struct {
+	buf       [][]byte
+	pieceSize uint64
+}
 
 // NewDownloadDestinationBuffer allocates the necessary number of shards for
 // the downloadDestinationBuffer and returns the new buffer.
-func NewDownloadDestinationBuffer(length uint64) downloadDestinationBuffer {
+func NewDownloadDestinationBuffer(length, pieceSize uint64) downloadDestinationBuffer {
 	// Round length up to next multiple of SectorSize.
 	if length%pieceSize != 0 {
 		length += pieceSize - length%pieceSize
 	}
-	buf := make([][]byte, 0, length/pieceSize)
+	// Create buffer
+	ddb := downloadDestinationBuffer{
+		buf:       make([][]byte, 0, length/pieceSize),
+		pieceSize: pieceSize,
+	}
 	for length > 0 {
-		buf = append(buf, make([]byte, pieceSize))
+		ddb.buf = append(ddb.buf, make([]byte, pieceSize))
 		length -= pieceSize
 	}
-	return buf
-}
-
-// Close implements Close for the downloadDestination interface.
-func (dw downloadDestinationBuffer) Close() error {
-	return nil
+	return ddb
 }
 
 // ReadFrom reads data from a io.Reader until the buffer is full.
 func (dw downloadDestinationBuffer) ReadFrom(r io.Reader) (int64, error) {
 	var n int64
-	for len(dw) > 0 {
-		read, err := io.ReadFull(r, dw[0])
+	for len(dw.buf) > 0 {
+		read, err := io.ReadFull(r, dw.buf[0])
 		if err != nil {
 			return n, err
 		}
-		dw = dw[1:]
+		dw.buf = dw.buf[1:]
 		n += int64(read)
 	}
 	return n, nil
@@ -75,21 +76,21 @@ func (dw downloadDestinationBuffer) ReadFrom(r io.Reader) (int64, error) {
 
 // WriteAt writes the provided data to the downloadDestinationBuffer.
 func (dw downloadDestinationBuffer) WriteAt(data []byte, offset int64) (int, error) {
-	if uint64(len(data))+uint64(offset) > uint64(len(dw))*pieceSize || offset < 0 {
+	if uint64(len(data))+uint64(offset) > uint64(len(dw.buf))*dw.pieceSize || offset < 0 {
 		return 0, errors.New("write at specified offset exceeds buffer size")
 	}
 	written := len(data)
 	for len(data) > 0 {
-		shardIndex := offset / int64(pieceSize)
-		sliceIndex := offset % int64(pieceSize)
-		n := copy(dw[shardIndex][sliceIndex:], data)
+		shardIndex := offset / int64(dw.pieceSize)
+		sliceIndex := offset % int64(dw.pieceSize)
+		n := copy(dw.buf[shardIndex][sliceIndex:], data)
 		data = data[n:]
 		offset += int64(n)
 	}
 	return written, nil
 }
 
-// downloadDestinationWriteCloser is a downloadDestination that writes to an
+// downloadDestinationWriter is a downloadDestination that writes to an
 // underlying data stream. The data stream is expecting sequential data while
 // the download chunks will be written in an arbitrary order using calls to
 // WriteAt. We need to block the calls to WriteAt until all prior data has been
@@ -102,11 +103,11 @@ func (dw downloadDestinationBuffer) WriteAt(data []byte, offset int64) (int, err
 //
 // NOTE: Calling WriteAt has linear time performance in the number of concurrent
 // calls to WriteAt.
-type downloadDestinationWriteCloser struct {
-	closed         bool
-	mu             sync.Mutex // Protects the underlying data structures.
-	progress       int64      // How much data has been written yet.
-	io.WriteCloser            // The underlying writer.
+type downloadDestinationWriter struct {
+	closed    bool
+	mu        sync.Mutex // Protects the underlying data structures.
+	progress  int64      // How much data has been written yet.
+	io.Writer            // The underlying writer.
 
 	// A list of write calls and their corresponding locks. When one write call
 	// completes, it'll search through the list of write calls for the next one.
@@ -126,10 +127,10 @@ var (
 	errOffsetAlreadyWritten = errors.New("cannot write to that offset in stream, data already written")
 )
 
-// newDownloadDestinationWriteCloser takes an io.WriteCloser and converts it
+// newDownloadDestinationWriter takes an io.Writer and converts it
 // into a downloadDestination.
-func newDownloadDestinationWriteCloser(w io.WriteCloser) downloadDestination {
-	return &downloadDestinationWriteCloser{WriteCloser: w}
+func newDownloadDestinationWriter(w io.Writer) *downloadDestinationWriter {
+	return &downloadDestinationWriter{Writer: w}
 }
 
 // unblockNextWrites will iterate over all of the blocking write calls and
@@ -138,7 +139,7 @@ func newDownloadDestinationWriteCloser(w io.WriteCloser) downloadDestination {
 //
 // NOTE: unblockNextWrites has linear time performance in the number of currently
 // blocking calls.
-func (ddw *downloadDestinationWriteCloser) unblockNextWrites() {
+func (ddw *downloadDestinationWriter) unblockNextWrites() {
 	for i, offset := range ddw.blockingWriteCalls {
 		if offset <= ddw.progress {
 			ddw.blockingWriteSignals[i].Unlock()
@@ -150,7 +151,7 @@ func (ddw *downloadDestinationWriteCloser) unblockNextWrites() {
 
 // Close will unblock any hanging calls to WriteAt, and then call Close on the
 // underlying WriteCloser.
-func (ddw *downloadDestinationWriteCloser) Close() error {
+func (ddw *downloadDestinationWriter) Close() error {
 	ddw.mu.Lock()
 	if ddw.closed {
 		ddw.mu.Unlock()
@@ -161,13 +162,13 @@ func (ddw *downloadDestinationWriteCloser) Close() error {
 		ddw.blockingWriteSignals[i].Unlock()
 	}
 	ddw.mu.Unlock()
-	return ddw.WriteCloser.Close()
+	return nil
 }
 
 // WriteAt will block until the stream has progressed to 'offset', and then it
 // will write its own data. An error will be returned if the stream has already
 // progressed beyond 'offset'.
-func (ddw *downloadDestinationWriteCloser) WriteAt(data []byte, offset int64) (int, error) {
+func (ddw *downloadDestinationWriter) WriteAt(data []byte, offset int64) (int, error) {
 	write := func() (int, error) {
 		// Error if the stream has been closed.
 		if ddw.closed {
@@ -216,25 +217,4 @@ func (ddw *downloadDestinationWriteCloser) WriteAt(data []byte, offset int64) (i
 	n, err := write()
 	ddw.mu.Unlock()
 	return n, err
-}
-
-// writerToWriteCloser will convert an io.Writer to an io.WriteCloser by adding
-// a Close function which always returns nil.
-type writerToWriteCloser struct {
-	io.Writer
-}
-
-// Close will always return nil.
-func (writerToWriteCloser) Close() error { return nil }
-
-// newDownloadDestinationWriteCloserFromWriter will return a
-// downloadDestinationWriteCloser taking an io.Writer as input. The io.Writer
-// will be wrapped with a Close function which always returns nil. If the
-// underlying object is an io.WriteCloser, newDownloadDestinationWriteCloser
-// should be called instead.
-//
-// This function is primarily used with http streams, which do not implement a
-// Close function.
-func newDownloadDestinationWriteCloserFromWriter(w io.Writer) downloadDestination {
-	return newDownloadDestinationWriteCloser(writerToWriteCloser{Writer: w})
 }

@@ -22,6 +22,19 @@ func (c *Contractor) managedCancelContract(cid types.FileContractID) error {
 	})
 }
 
+// managedContractByPublicKey returns the contract with the key specified, if
+// it exists. The contract will be resolved if possible to the most recent
+// child contract.
+func (c *Contractor) managedContractByPublicKey(pk types.SiaPublicKey) (modules.RenterContract, bool) {
+	c.mu.RLock()
+	id, ok := c.pubKeysToContractID[pk.String()]
+	c.mu.RUnlock()
+	if !ok {
+		return modules.RenterContract{}, false
+	}
+	return c.staticContracts.View(id)
+}
+
 // managedContractUtility returns the ContractUtility for a contract with a given id.
 func (c *Contractor) managedContractUtility(id types.FileContractID) (modules.ContractUtility, bool) {
 	rc, exists := c.staticContracts.View(id)
@@ -35,18 +48,16 @@ func (c *Contractor) managedContractUtility(id types.FileContractID) (modules.Co
 // exists. The contract will be resolved if possible to the most recent child
 // contract.
 func (c *Contractor) ContractByPublicKey(pk types.SiaPublicKey) (modules.RenterContract, bool) {
-	c.mu.RLock()
-	id, ok := c.pubKeysToContractID[pk.String()]
-	c.mu.RUnlock()
-	if !ok {
-		return modules.RenterContract{}, false
-	}
-	return c.staticContracts.View(id)
+	return c.managedContractByPublicKey(pk)
 }
 
 // CancelContract cancels the Contractor's contract by marking it !GoodForRenew
 // and !GoodForUpload
 func (c *Contractor) CancelContract(id types.FileContractID) error {
+	if err := c.tg.Add(); err != nil {
+		return err
+	}
+	defer c.tg.Done()
 	defer c.threadedContractMaintenance()
 	return c.managedCancelContract(id)
 }
@@ -56,6 +67,17 @@ func (c *Contractor) CancelContract(id types.FileContractID) error {
 // returned.
 func (c *Contractor) Contracts() []modules.RenterContract {
 	return c.staticContracts.ViewAll()
+}
+
+// ContractUtility returns the utility fields for the given contract.
+func (c *Contractor) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility, bool) {
+	c.mu.RLock()
+	id, ok := c.pubKeysToContractID[pk.String()]
+	c.mu.RUnlock()
+	if !ok {
+		return modules.ContractUtility{}, false
+	}
+	return c.managedContractUtility(id)
 }
 
 // OldContracts returns the contracts formed by the contractor that have
@@ -70,24 +92,16 @@ func (c *Contractor) OldContracts() []modules.RenterContract {
 	return contracts
 }
 
-// ContractUtility returns the utility fields for the given contract.
-func (c *Contractor) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility, bool) {
-	c.mu.RLock()
-	id, ok := c.pubKeysToContractID[pk.String()]
-	c.mu.RUnlock()
-	if !ok {
-		return modules.ContractUtility{}, false
+// RecoverableContracts returns the contracts that the contractor deems
+// recoverable. That means they are not expired yet and also not part of the
+// active contracts. Usually this should return an empty slice unless the host
+// isn't available for recovery or something went wrong.
+func (c *Contractor) RecoverableContracts() []modules.RecoverableContract {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	contracts := make([]modules.RecoverableContract, 0, len(c.recoverableContracts))
+	for _, c := range c.recoverableContracts {
+		contracts = append(contracts, c)
 	}
-	return c.managedContractUtility(id)
-}
-
-// ResolveIDToPubKey returns the ID of the most recent renewal of id.
-func (c *Contractor) ResolveIDToPubKey(id types.FileContractID) types.SiaPublicKey {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	pk, exists := c.contractIDToPubKey[id]
-	if !exists {
-		panic("renewed should never miss an id")
-	}
-	return pk
+	return contracts
 }

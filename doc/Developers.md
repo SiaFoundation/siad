@@ -140,6 +140,14 @@ should only call these functions within their own goroutine (e.g.,
 Prefix functions with `managed` (e.g. `managedUpdateWorkerPool`) if the function
 acquires any locks in its body.
 
+### Exported Functions
+
+Exported functions should utilize the module's thread group. This ensures that
+if the module is stopped than any exported methods that are called will return
+an appropriate error. This is important for export methods that are either
+returning a status that another modules will act on or performing a action that
+will alter the module in some way.
+
 Control Flow
 ------------
 

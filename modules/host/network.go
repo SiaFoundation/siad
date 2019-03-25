@@ -15,6 +15,7 @@ package host
 // have to keep all the files following a renew in order to get the money.
 
 import (
+	"io"
 	"net"
 	"sync/atomic"
 	"time"
@@ -261,15 +262,37 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 		return
 	}
 
-	// Read a specifier indicating which action is being called.
+	// Read the first 16 bytes. If those bytes are RPCLoopEnter, then the
+	// renter is attempting to use the new protocol; otherweise, assume the
+	// renter is using the old protocol, and that the following 8 bytes
+	// complete the renter's intended RPC ID.
 	var id types.Specifier
-	if err := encoding.ReadObject(conn, &id, 16); err != nil {
+	if err := encoding.NewDecoder(conn, encoding.DefaultAllocLimit).Decode(&id); err != nil {
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		h.log.Debugf("WARN: incoming conn %v was malformed: %v", conn.RemoteAddr(), err)
 		return
 	}
+	if id != modules.RPCLoopEnter {
+		// first 8 bytes should be a length prefix of 16
+		if lp := encoding.DecUint64(id[:8]); lp != 16 {
+			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			h.log.Debugf("WARN: incoming conn %v was malformed: invalid length prefix %v", conn.RemoteAddr(), lp)
+			return
+		}
+		// shift down 8 bytes, then read next 8
+		copy(id[:8], id[8:])
+		if _, err := io.ReadFull(conn, id[8:]); err != nil {
+			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			h.log.Debugf("WARN: incoming conn %v was malformed: %v", conn.RemoteAddr(), err)
+			return
+		}
+	}
 
 	switch id {
+	// new RPCs: enter an infinite request/response loop
+	case modules.RPCLoopEnter:
+		err = extendErr("incoming RPCLoopEnter failed: ", h.managedRPCLoop(conn))
+	// old RPCs: handle a single request/response
 	case modules.RPCDownload:
 		atomic.AddUint64(&h.atomicDownloadCalls, 1)
 		err = extendErr("incoming RPCDownload failed: ", h.managedRPCDownload(conn))
@@ -298,7 +321,7 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 }
 
-// listen listens for incoming RPCs and spawns an appropriate handler for each.
+// threadedListen listens for incoming RPCs and spawns an appropriate handler for each.
 func (h *Host) threadedListen(closeChan chan struct{}) {
 	defer close(closeChan)
 

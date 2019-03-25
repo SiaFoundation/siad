@@ -25,6 +25,7 @@ func (newStub) Unsubscribe(modules.ConsensusSetSubscriber) { return }
 
 // wallet stubs
 func (newStub) NextAddress() (uc types.UnlockConditions, err error)          { return }
+func (newStub) PrimarySeed() (modules.Seed, uint64, error)                   { return modules.Seed{}, 0, nil }
 func (newStub) StartTransaction() (tb modules.TransactionBuilder, err error) { return }
 
 // transaction pool stubs
@@ -45,8 +46,8 @@ func (newStub) IncrementFailedInteractions(key types.SiaPublicKey)              
 func (newStub) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return nil, nil
 }
-func (newStub) ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown {
-	return modules.HostScoreBreakdown{}
+func (newStub) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
+	return modules.HostScoreBreakdown{}, nil
 }
 func (newStub) SetAllowance(allowance modules.Allowance) error { return nil }
 
@@ -126,8 +127,8 @@ func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                          
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) (hs []modules.HostDBEntry, _ error) {
 	return
 }
-func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown {
-	return modules.HostScoreBreakdown{}
+func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
+	return modules.HostScoreBreakdown{}, nil
 }
 func (stubHostDB) SetAllowance(allowance modules.Allowance) error { return nil }
 
@@ -691,6 +692,9 @@ type testWalletShim struct {
 func (ws *testWalletShim) NextAddress() (types.UnlockConditions, error) {
 	ws.nextAddressCalled = true
 	return types.UnlockConditions{}, nil
+}
+func (ws *testWalletShim) PrimarySeed() (modules.Seed, uint64, error) {
+	return modules.Seed{}, 0, nil
 }
 func (ws *testWalletShim) StartTransaction() (modules.TransactionBuilder, error) {
 	ws.startTxnCalled = true

@@ -41,6 +41,9 @@ Difficulty: %v
 		if estimatedProgress > 100 {
 			estimatedProgress = 99.9
 		}
+		if estimatedProgress == 100 && !cg.Synced {
+			estimatedProgress = 99.9
+		}
 		fmt.Printf(`Synced: %v
 Height: %v
 Progress (estimated): %.1f%%

@@ -54,8 +54,10 @@ Available settings:
      collateralbudget: currency
      maxcollateral:    currency
 
+     minbaserpcprice:           currency
      mincontractprice:          currency
      mindownloadbandwidthprice: currency / TB
+     minsectoraccessprice:      currency
      minstorageprice:           currency / TB / Month
      minuploadbandwidthprice:   currency / TB
 
@@ -190,6 +192,7 @@ func hostcmd() {
 		// describe net address
 		fmt.Printf(`General Info:
 	Connectability Status: %v
+	Version:               %v
 
 Host Internal Settings:
 	acceptingcontracts:   %v
@@ -236,6 +239,7 @@ RPC Stats:
 	FormContract Calls: %v
 `,
 			connectabilityString,
+			es.Version,
 
 			yesNo(is.AcceptingContracts), periodUnits(is.MaxDuration),
 			filesizeUnits(int64(is.MaxDownloadBatchSize)),
@@ -329,7 +333,7 @@ func hostconfigcmd(param, value string) {
 	var err error
 	switch param {
 	// currency (convert to hastings)
-	case "collateralbudget", "maxcollateral", "mincontractprice":
+	case "collateralbudget", "maxcollateral", "minbaserpcprice", "mincontractprice", "minsectoraccessprice":
 		value, err = parseCurrency(value)
 		if err != nil {
 			die("Could not parse "+param+":", err)

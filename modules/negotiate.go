@@ -2,14 +2,18 @@ package modules
 
 import (
 	"bytes"
+	"crypto/cipher"
 	"errors"
 	"io"
+	"net"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 const (
@@ -151,6 +155,11 @@ var (
 	// announcement will follow this prefix.
 	PrefixHostAnnouncement = types.Specifier{'H', 'o', 's', 't', 'A', 'n', 'n', 'o', 'u', 'n', 'c', 'e', 'm', 'e', 'n', 't'}
 
+	// PrefixFileContractIdentifier is used to indicate that a transaction's
+	// Arbitrary Data field contains a file contract identifier. The identifier
+	// and its signature will follow this prefix.
+	PrefixFileContractIdentifier = types.Specifier{'F', 'C', 'I', 'd', 'e', 'n', 't', 'i', 'f', 'i', 'e', 'r'}
+
 	// RPCDownload is the specifier for downloading a file from a host.
 	RPCDownload = types.Specifier{'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 2}
 
@@ -236,21 +245,29 @@ type (
 		MaxCollateral types.Currency `json:"maxcollateral"`
 
 		// ContractPrice is the number of coins that the renter needs to pay to
-		// the host just to open a file contract with them. Generally, the
-		// price is only to cover the siacoin fees that the host will suffer
-		// when submitting the file contract revision and storage proof to the
+		// the host just to open a file contract with them. Generally, the price
+		// is only to cover the siacoin fees that the host will suffer when
+		// submitting the file contract revision and storage proof to the
 		// blockchain.
 		//
-		// The storage price is the cost per-byte-per-block in hastings of
-		// storing data on the host.
+		// BaseRPC price is a flat per-RPC fee charged by the host for any
+		// non-free RPC.
 		//
 		// 'Download' bandwidth price is the cost per byte of downloading data
-		// from the host.
+		// from the host. This includes metadata such as Merkle proofs.
+		//
+		// SectorAccessPrice is the cost per sector of data accessed when
+		// downloading data.
+		//
+		// StoragePrice is the cost per-byte-per-block in hastings of storing
+		// data on the host.
 		//
 		// 'Upload' bandwidth price is the cost per byte of uploading data to
 		// the host.
+		BaseRPCPrice           types.Currency `json:"baserpcprice"`
 		ContractPrice          types.Currency `json:"contractprice"`
 		DownloadBandwidthPrice types.Currency `json:"downloadbandwidthprice"`
+		SectorAccessPrice      types.Currency `json:"sectoraccessprice"`
 		StoragePrice           types.Currency `json:"storageprice"`
 		UploadBandwidthPrice   types.Currency `json:"uploadbandwidthprice"`
 
@@ -260,6 +277,28 @@ type (
 		// which is the most recent.
 		RevisionNumber uint64 `json:"revisionnumber"`
 		Version        string `json:"version"`
+	}
+
+	// HostOldExternalSettings are the pre-v1.4.0 host settings.
+	HostOldExternalSettings struct {
+		AcceptingContracts     bool              `json:"acceptingcontracts"`
+		MaxDownloadBatchSize   uint64            `json:"maxdownloadbatchsize"`
+		MaxDuration            types.BlockHeight `json:"maxduration"`
+		MaxReviseBatchSize     uint64            `json:"maxrevisebatchsize"`
+		NetAddress             NetAddress        `json:"netaddress"`
+		RemainingStorage       uint64            `json:"remainingstorage"`
+		SectorSize             uint64            `json:"sectorsize"`
+		TotalStorage           uint64            `json:"totalstorage"`
+		UnlockHash             types.UnlockHash  `json:"unlockhash"`
+		WindowSize             types.BlockHeight `json:"windowsize"`
+		Collateral             types.Currency    `json:"collateral"`
+		MaxCollateral          types.Currency    `json:"maxcollateral"`
+		ContractPrice          types.Currency    `json:"contractprice"`
+		DownloadBandwidthPrice types.Currency    `json:"downloadbandwidthprice"`
+		StoragePrice           types.Currency    `json:"storageprice"`
+		UploadBandwidthPrice   types.Currency    `json:"uploadbandwidthprice"`
+		RevisionNumber         uint64            `json:"revisionnumber"`
+		Version                string            `json:"version"`
 	}
 
 	// A RevisionAction is a description of an edit to be performed on a file
@@ -281,6 +320,409 @@ type (
 		Data        []byte
 	}
 )
+
+// New RPC IDs
+var (
+	RPCLoopEnter         = types.Specifier{'L', 'o', 'o', 'p', 'E', 'n', 't', 'e', 'r'}
+	RPCLoopExit          = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
+	RPCLoopFormContract  = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
+	RPCLoopLock          = types.Specifier{'L', 'o', 'o', 'p', 'L', 'o', 'c', 'k'}
+	RPCLoopRead          = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
+	RPCLoopRenewContract = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
+	RPCLoopSectorRoots   = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
+	RPCLoopSettings      = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
+	RPCLoopUnlock        = types.Specifier{'L', 'o', 'o', 'p', 'U', 'n', 'l', 'o', 'c', 'k'}
+	RPCLoopWrite         = types.Specifier{'L', 'o', 'o', 'p', 'W', 'r', 'i', 't', 'e'}
+)
+
+// RPC ciphers
+var (
+	CipherChaCha20Poly1305 = types.Specifier{'C', 'h', 'a', 'C', 'h', 'a', '2', '0', 'P', 'o', 'l', 'y', '1', '3', '0', '5'}
+	CipherNoOverlap        = types.Specifier{'N', 'o', 'O', 'v', 'e', 'r', 'l', 'a', 'p'}
+)
+
+// Write actions
+var (
+	WriteActionAppend = types.Specifier{'A', 'p', 'p', 'e', 'n', 'd'}
+	WriteActionTrim   = types.Specifier{'T', 'r', 'i', 'm'}
+	WriteActionSwap   = types.Specifier{'S', 'w', 'a', 'p'}
+	WriteActionUpdate = types.Specifier{'U', 'p', 'd', 'a', 't', 'e'}
+)
+
+// Read interrupt
+var (
+	RPCLoopReadStop = types.Specifier{'R', 'e', 'a', 'd', 'S', 't', 'o', 'p'}
+)
+
+var (
+	// RPCChallengePrefix is the prefix prepended to the challenge data
+	// supplied by the host when proving ownership of a contract's secret key.
+	RPCChallengePrefix = types.Specifier{'c', 'h', 'a', 'l', 'l', 'e', 'n', 'g', 'e'}
+)
+
+// New RPC request and response types
+type (
+	// An RPCError may be sent instead of a Response to any RPC.
+	RPCError struct {
+		Type        types.Specifier
+		Data        []byte // structure depends on Type
+		Description string // human-readable error string
+	}
+
+	// LoopKeyExchangeRequest is the first object sent when initializing the
+	// renter-host protocol.
+	LoopKeyExchangeRequest struct {
+		// The renter's ephemeral X25519 public key.
+		PublicKey crypto.X25519PublicKey
+
+		// Encryption ciphers that the renter supports.
+		Ciphers []types.Specifier
+	}
+
+	// LoopKeyExchangeResponse contains the host's response to the
+	// KeyExchangeRequest.
+	LoopKeyExchangeResponse struct {
+		// The host's ephemeral X25519 public key.
+		PublicKey crypto.X25519PublicKey
+
+		// Signature of (Host's Public Key | Renter's Public Key). Note that this
+		// also serves to authenticate the host.
+		Signature []byte
+
+		// Cipher selected by the host. Must be one of the ciphers offered in
+		// the key exchange request.
+		Cipher types.Specifier
+	}
+
+	// LoopChallengeRequest contains a challenge for the renter to prove their
+	// identity. It is the host's first encrypted message, and immediately
+	// follows KeyExchangeResponse.
+	LoopChallengeRequest struct {
+		// Entropy signed by the renter to prove that it controls the secret key
+		// used to sign contract revisions. The actual data signed should be:
+		//
+		//    blake2b(RPCChallengePrefix | Challenge)
+		Challenge [16]byte
+	}
+
+	// LoopLockRequest contains the request parameters for RPCLoopLock.
+	LoopLockRequest struct {
+		// The contract to lock; implicitly referenced by subsequent RPCs.
+		ContractID types.FileContractID
+
+		// The host's challenge, signed by the renter's contract key.
+		Signature []byte
+
+		// Lock timeout, in milliseconds.
+		Timeout uint64
+	}
+
+	// LoopLockResponse contains the response data for RPCLoopLock.
+	LoopLockResponse struct {
+		Acquired     bool
+		NewChallenge [16]byte
+		Revision     types.FileContractRevision
+		Signatures   []types.TransactionSignature
+	}
+
+	// LoopReadRequestSection is a section requested in LoopReadRequest.
+	LoopReadRequestSection struct {
+		MerkleRoot [32]byte
+		Offset     uint32
+		Length     uint32
+	}
+
+	// LoopReadRequest contains the request parameters for RPCLoopRead.
+	LoopReadRequest struct {
+		Sections    []LoopReadRequestSection
+		MerkleProof bool
+
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+		Signature            []byte
+	}
+
+	// LoopReadResponse contains the response data for RPCLoopRead.
+	LoopReadResponse struct {
+		Signature   []byte
+		Data        []byte
+		MerkleProof []crypto.Hash
+	}
+
+	// LoopSectorRootsRequest contains the request parameters for RPCLoopSectorRoots.
+	LoopSectorRootsRequest struct {
+		RootOffset uint64
+		NumRoots   uint64
+
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+		Signature            []byte
+	}
+
+	// LoopSectorRootsResponse contains the response data for RPCLoopSectorRoots.
+	LoopSectorRootsResponse struct {
+		Signature   []byte
+		SectorRoots []crypto.Hash
+		MerkleProof []crypto.Hash
+	}
+
+	// LoopFormContractRequest contains the request parameters for RPCLoopFormContract.
+	LoopFormContractRequest struct {
+		Transactions []types.Transaction
+		RenterKey    types.SiaPublicKey
+	}
+
+	// LoopContractAdditions contains the parent transaction, inputs, and
+	// outputs added by the host when negotiating a file contract.
+	LoopContractAdditions struct {
+		Parents []types.Transaction
+		Inputs  []types.SiacoinInput
+		Outputs []types.SiacoinOutput
+	}
+
+	// LoopContractSignatures contains the signatures for a contract
+	// transaction and initial revision. These signatures are sent by both the
+	// renter and host during contract formation and renewal.
+	LoopContractSignatures struct {
+		ContractSignatures []types.TransactionSignature
+		RevisionSignature  types.TransactionSignature
+	}
+
+	// LoopRenewContractRequest contains the request parameters for RPCLoopRenewContract.
+	LoopRenewContractRequest struct {
+		Transactions []types.Transaction
+		RenterKey    types.SiaPublicKey
+	}
+
+	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
+	LoopSettingsResponse struct {
+		Settings []byte // actually a JSON-encoded HostExternalSettings
+	}
+
+	// LoopWriteRequest contains the request parameters for RPCLoopWrite.
+	LoopWriteRequest struct {
+		Actions     []LoopWriteAction
+		MerkleProof bool
+
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+	}
+
+	// LoopWriteAction is a generic Write action. The meaning of each field
+	// depends on the Type of the action.
+	LoopWriteAction struct {
+		Type types.Specifier
+		A, B uint64
+		Data []byte
+	}
+
+	// LoopWriteMerkleProof contains the optional Merkle proof for response data
+	// for RPCLoopWrite.
+	LoopWriteMerkleProof struct {
+		OldSubtreeHashes []crypto.Hash
+		OldLeafHashes    []crypto.Hash
+		NewMerkleRoot    crypto.Hash
+	}
+
+	// LoopWriteResponse contains the response data for RPCLoopWrite.
+	LoopWriteResponse struct {
+		Signature []byte
+	}
+)
+
+// Error implements the error interface.
+func (e *RPCError) Error() string {
+	return e.Description
+}
+
+// RPCMinLen is the minimum size of an RPC message. If an encoded message
+// would be smaller than RPCMinLen, it is padded with random data.
+const RPCMinLen = 4096
+
+// WriteRPCMessage writes an encrypted RPC message.
+func WriteRPCMessage(w io.Writer, aead cipher.AEAD, obj interface{}) error {
+	payload := encoding.Marshal(obj)
+	// pad the payload to RPCMinLen bytes to prevent eavesdroppers from
+	// identifying RPCs by their size.
+	minLen := RPCMinLen - aead.Overhead() - aead.NonceSize()
+	if len(payload) < minLen {
+		payload = append(payload, fastrand.Bytes(minLen-len(payload))...)
+	}
+	return encoding.WritePrefixedBytes(w, crypto.EncryptWithNonce(payload, aead))
+}
+
+// ReadRPCMessage reads an encrypted RPC message.
+func ReadRPCMessage(r io.Reader, aead cipher.AEAD, obj interface{}, maxLen uint64) error {
+	ciphertext, err := encoding.ReadPrefixedBytes(r, maxLen)
+	if err != nil {
+		return err
+	}
+	plaintext, err := crypto.DecryptWithNonce(ciphertext, aead)
+	if err != nil {
+		return err
+	}
+	return encoding.Unmarshal(plaintext, obj)
+}
+
+// WriteRPCRequest writes an encrypted RPC request using the new loop
+// protocol.
+func WriteRPCRequest(w io.Writer, aead cipher.AEAD, rpcID types.Specifier, req interface{}) error {
+	if err := WriteRPCMessage(w, aead, rpcID); err != nil {
+		return err
+	}
+	if req != nil {
+		return WriteRPCMessage(w, aead, req)
+	}
+	return nil
+}
+
+// rpcResponse is a helper type for encoding and decoding RPC response messages.
+type rpcResponse struct {
+	err  *RPCError
+	data interface{}
+}
+
+func (resp *rpcResponse) MarshalSia(w io.Writer) error {
+	if resp.data == nil {
+		resp.data = struct{}{}
+	}
+	return encoding.NewEncoder(w).EncodeAll(resp.err, resp.data)
+}
+
+func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
+	// NOTE: no allocation limit is required because this method is always
+	// called via encoding.Unmarshal, which already imposes an allocation limit.
+	d := encoding.NewDecoder(r, 0)
+	if err := d.Decode(&resp.err); err != nil {
+		return err
+	} else if resp.err != nil {
+		return resp.err
+	}
+	return d.Decode(resp.data)
+}
+
+// WriteRPCResponse writes an RPC response or error using the new loop
+// protocol. Either resp or err must be nil. If err is an *RPCError, it is
+// sent directly; otherwise, a generic RPCError is created from err's Error
+// string.
+func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error) error {
+	re, ok := err.(*RPCError)
+	if err != nil && !ok {
+		re = &RPCError{Description: err.Error()}
+	}
+	return WriteRPCMessage(w, aead, &rpcResponse{re, resp})
+}
+
+// ReadRPCID reads an RPC request ID using the new loop protocol.
+func ReadRPCID(r io.Reader, aead cipher.AEAD) (rpcID types.Specifier, err error) {
+	err = ReadRPCMessage(r, aead, &rpcID, RPCMinLen)
+	return
+}
+
+// ReadRPCRequest reads an RPC request using the new loop protocol.
+func ReadRPCRequest(r io.Reader, aead cipher.AEAD, req interface{}, maxLen uint64) error {
+	return ReadRPCMessage(r, aead, req, maxLen)
+}
+
+// ReadRPCResponse reads an RPC response using the new loop protocol.
+func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uint64) error {
+	if maxLen < RPCMinLen {
+		build.Critical("maxLen must be at least RPCMinLen")
+		maxLen = RPCMinLen
+	}
+	return ReadRPCMessage(r, aead, &rpcResponse{nil, resp}, maxLen)
+}
+
+// A RenterHostSession is a session of the new renter-host protocol.
+type RenterHostSession struct {
+	aead cipher.AEAD
+	conn net.Conn
+}
+
+// WriteRequest writes an encrypted RPC request using the new loop
+// protocol.
+func (s *RenterHostSession) WriteRequest(rpcID types.Specifier, req interface{}) error {
+	return WriteRPCRequest(s.conn, s.aead, rpcID, req)
+}
+
+// WriteResponse writes an RPC response or error using the new loop
+// protocol. Either resp or err must be nil. If err is an *RPCError, it is
+// sent directly; otherwise, a generic RPCError is created from err's Error
+// string.
+func (s *RenterHostSession) WriteResponse(resp interface{}, err error) error {
+	return WriteRPCResponse(s.conn, s.aead, resp, err)
+}
+
+// ReadRPCID reads an RPC request ID using the new loop protocol.
+func (s *RenterHostSession) ReadRPCID() (rpcID types.Specifier, err error) {
+	return ReadRPCID(s.conn, s.aead)
+}
+
+// ReadRequest reads an RPC request using the new loop protocol.
+func (s *RenterHostSession) ReadRequest(req interface{}, maxLen uint64) error {
+	return ReadRPCRequest(s.conn, s.aead, req, maxLen)
+}
+
+// ReadResponse reads an RPC response using the new loop protocol.
+func (s *RenterHostSession) ReadResponse(resp interface{}, maxLen uint64) error {
+	return ReadRPCResponse(s.conn, s.aead, resp, maxLen)
+}
+
+// NewRenterSession returns a new renter-side session of the renter-host
+// protocol.
+func NewRenterSession(conn net.Conn, hostPublicKey types.SiaPublicKey) (*RenterHostSession, LoopChallengeRequest, error) {
+	// generate a session key
+	xsk, xpk := crypto.GenerateX25519KeyPair()
+
+	// send our half of the key exchange
+	req := LoopKeyExchangeRequest{
+		PublicKey: xpk,
+		Ciphers:   []types.Specifier{CipherChaCha20Poly1305},
+	}
+	if err := encoding.NewEncoder(conn).EncodeAll(RPCLoopEnter, req); err != nil {
+		return nil, LoopChallengeRequest{}, err
+	}
+	// read host's half of the key exchange
+	var resp LoopKeyExchangeResponse
+	if err := encoding.NewDecoder(conn, encoding.DefaultAllocLimit).Decode(&resp); err != nil {
+		return nil, LoopChallengeRequest{}, err
+	}
+	// validate the signature before doing anything else; don't want to punish
+	// the "host" if we're talking to an imposter
+	var hpk crypto.PublicKey
+	copy(hpk[:], hostPublicKey.Key)
+	var sig crypto.Signature
+	copy(sig[:], resp.Signature)
+	if err := crypto.VerifyHash(crypto.HashAll(req.PublicKey, resp.PublicKey), hpk, sig); err != nil {
+		return nil, LoopChallengeRequest{}, err
+	}
+	// check for compatible cipher
+	if resp.Cipher != CipherChaCha20Poly1305 {
+		return nil, LoopChallengeRequest{}, errors.New("host selected unsupported cipher")
+	}
+	// derive shared secret, which we'll use as an encryption key
+	cipherKey := crypto.DeriveSharedSecret(xsk, resp.PublicKey)
+
+	// use cipherKey to initialize an AEAD cipher
+	aead, err := chacha20poly1305.New(cipherKey[:])
+	if err != nil {
+		build.Critical("could not create cipher")
+		return nil, LoopChallengeRequest{}, err
+	}
+
+	// read host's challenge
+	var challengeReq LoopChallengeRequest
+	if err := ReadRPCMessage(conn, aead, &challengeReq, RPCMinLen); err != nil {
+		return nil, LoopChallengeRequest{}, err
+	}
+	return &RenterHostSession{
+		aead: aead,
+		conn: conn,
+	}, challengeReq, nil
+}
 
 // ReadNegotiationAcceptance reads an accept/reject response from r (usually a
 // net.Conn). If the response is not AcceptResponse, ReadNegotiationAcceptance
@@ -357,7 +799,7 @@ func DecodeAnnouncement(fullAnnouncement []byte) (na NetAddress, spk types.SiaPu
 	// Read the first part of the announcement to get the intended host
 	// announcement.
 	var ha HostAnnouncement
-	dec := encoding.NewDecoder(bytes.NewReader(fullAnnouncement))
+	dec := encoding.NewDecoder(bytes.NewReader(fullAnnouncement), len(fullAnnouncement)*3)
 	err = dec.Decode(&ha)
 	if err != nil {
 		return "", types.SiaPublicKey{}, err

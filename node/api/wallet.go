@@ -152,16 +152,16 @@ type (
 
 // encryptionKeys enumerates the possible encryption keys that can be derived
 // from an input string.
-func encryptionKeys(seedStr string) (validKeys []crypto.TwofishKey) {
+func encryptionKeys(seedStr string) (validKeys []crypto.CipherKey) {
 	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
 	for _, dict := range dicts {
 		seed, err := modules.StringToSeed(seedStr, dict)
 		if err != nil {
 			continue
 		}
-		validKeys = append(validKeys, crypto.TwofishKey(crypto.HashObject(seed)))
+		validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seed)))
 	}
-	validKeys = append(validKeys, crypto.TwofishKey(crypto.HashObject(seedStr)))
+	validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seedStr)))
 	return validKeys
 }
 
@@ -309,9 +309,9 @@ func (api *API) walletBackupHandler(w http.ResponseWriter, req *http.Request, _ 
 
 // walletInitHandler handles API calls to /wallet/init.
 func (api *API) walletInitHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var encryptionKey crypto.TwofishKey
+	var encryptionKey crypto.CipherKey
 	if req.FormValue("encryptionpassword") != "" {
-		encryptionKey = crypto.TwofishKey(crypto.HashObject(req.FormValue("encryptionpassword")))
+		encryptionKey = crypto.NewWalletKey(crypto.HashObject(req.FormValue("encryptionpassword")))
 	}
 
 	if req.FormValue("force") == "true" {
@@ -343,9 +343,9 @@ func (api *API) walletInitHandler(w http.ResponseWriter, req *http.Request, _ ht
 
 // walletInitSeedHandler handles API calls to /wallet/init/seed.
 func (api *API) walletInitSeedHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var encryptionKey crypto.TwofishKey
+	var encryptionKey crypto.CipherKey
 	if req.FormValue("encryptionpassword") != "" {
-		encryptionKey = crypto.TwofishKey(crypto.HashObject(req.FormValue("encryptionpassword")))
+		encryptionKey = crypto.NewWalletKey(crypto.HashObject(req.FormValue("encryptionpassword")))
 	}
 	dictID := mnemonics.DictionaryID(req.FormValue("dictionary"))
 	if dictID == "" {
@@ -696,13 +696,13 @@ func (api *API) walletUnlockHandler(w http.ResponseWriter, req *http.Request, _ 
 
 // walletChangePasswordHandler handles API calls to /wallet/changepassword
 func (api *API) walletChangePasswordHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var newKey crypto.TwofishKey
+	var newKey crypto.CipherKey
 	newPassword := req.FormValue("newpassword")
 	if newPassword == "" {
 		WriteError(w, Error{"a password must be provided to newpassword"}, http.StatusBadRequest)
 		return
 	}
-	newKey = crypto.TwofishKey(crypto.HashObject(newPassword))
+	newKey = crypto.NewWalletKey(crypto.HashObject(newPassword))
 
 	originalKeys := encryptionKeys(req.FormValue("encryptionpassword"))
 	for _, key := range originalKeys {

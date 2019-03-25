@@ -58,8 +58,10 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		Collateral:    h.settings.Collateral,
 		MaxCollateral: h.settings.MaxCollateral,
 
+		BaseRPCPrice:           h.settings.MinBaseRPCPrice,
 		ContractPrice:          contractPrice,
 		DownloadBandwidthPrice: h.settings.MinDownloadBandwidthPrice,
+		SectorAccessPrice:      h.settings.MinSectorAccessPrice,
 		StoragePrice:           h.settings.MinStoragePrice,
 		UploadBandwidthPrice:   h.settings.MinUploadBandwidthPrice,
 
@@ -90,9 +92,31 @@ func (h *Host) managedRPCSettings(conn net.Conn) error {
 	hes = h.externalSettings()
 	h.mu.Unlock()
 
+	// Convert the settings to the pre-v1.4.0 version.
+	settings := modules.HostOldExternalSettings{
+		AcceptingContracts:     hes.AcceptingContracts,
+		MaxDownloadBatchSize:   hes.MaxDownloadBatchSize,
+		MaxDuration:            hes.MaxDuration,
+		MaxReviseBatchSize:     hes.MaxReviseBatchSize,
+		NetAddress:             hes.NetAddress,
+		RemainingStorage:       hes.RemainingStorage,
+		SectorSize:             hes.SectorSize,
+		TotalStorage:           hes.TotalStorage,
+		UnlockHash:             hes.UnlockHash,
+		WindowSize:             hes.WindowSize,
+		Collateral:             hes.Collateral,
+		MaxCollateral:          hes.MaxCollateral,
+		ContractPrice:          hes.ContractPrice,
+		DownloadBandwidthPrice: hes.DownloadBandwidthPrice,
+		StoragePrice:           hes.StoragePrice,
+		UploadBandwidthPrice:   hes.UploadBandwidthPrice,
+		RevisionNumber:         hes.RevisionNumber,
+		Version:                hes.Version,
+	}
+
 	// Write the settings to the renter. If the write fails, return a
 	// connection error.
-	err := crypto.WriteSignedObject(conn, hes, secretKey)
+	err := crypto.WriteSignedObject(conn, settings, secretKey)
 	if err != nil {
 		return ErrorConnection("failed WriteSignedObject during RPCSettings: " + err.Error())
 	}

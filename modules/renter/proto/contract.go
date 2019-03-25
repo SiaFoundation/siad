@@ -105,19 +105,19 @@ func (h *contractHeader) LastRevision() types.FileContractRevision {
 }
 
 func (h *contractHeader) ID() types.FileContractID {
-	return h.LastRevision().ParentID
+	return h.LastRevision().ID()
 }
 
 func (h *contractHeader) HostPublicKey() types.SiaPublicKey {
-	return h.LastRevision().UnlockConditions.PublicKeys[1]
+	return h.LastRevision().HostPublicKey()
 }
 
 func (h *contractHeader) RenterFunds() types.Currency {
-	return h.LastRevision().NewValidProofOutputs[0].Value
+	return h.LastRevision().RenterFunds()
 }
 
 func (h *contractHeader) EndHeight() types.BlockHeight {
-	return h.LastRevision().NewWindowStart
+	return h.LastRevision().EndHeight()
 }
 
 // A SafeContract contains the most recent revision transaction negotiated
@@ -391,6 +391,27 @@ func (c *SafeContract) unappliedHeader() (h contractHeader) {
 	return
 }
 
+// syncRevision checks whether rev accords with the SafeContract's most recent
+// revision; if it does not, syncRevision attempts to synchronize with rev by
+// committing any uncommitted WAL transactions.
+func (c *SafeContract) syncRevision(rev types.FileContractRevision) error {
+	ourRev := c.header.LastRevision()
+	if rev.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
+		return errors.New("unlock conditions do not match")
+	} else if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
+		// If the revision number doesn't match, try to commit potential
+		// unapplied transactions and check again.
+		if err := c.commitTxns(); err != nil {
+			return errors.AddContext(err, "failed to commit transactions")
+		}
+		ourRev = c.header.LastRevision()
+		if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
+			return &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
+		}
+	}
+	return nil
+}
+
 func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Hash) (modules.RenterContract, error) {
 	if err := h.validate(); err != nil {
 		return modules.RenterContract{}, err
@@ -431,17 +452,27 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 
 // loadSafeContract loads a contract from disk and adds it to the contractset
 // if it is valid.
-func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlog.Transaction) error {
+func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlog.Transaction) (err error) {
 	f, err := os.OpenFile(filename, os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			f.Close()
+		}
+	}()
+	stat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+
 	headerSection := newFileSection(f, 0, contractHeaderSize)
 	rootsSection := newFileSection(f, contractHeaderSize, remainingFile)
 
 	// read header
 	var header contractHeader
-	if err := encoding.NewDecoder(f).Decode(&header); err != nil {
+	if err := encoding.NewDecoder(f, int(stat.Size()*3)).Decode(&header); err != nil {
 		return err
 	} else if err := header.validate(); err != nil {
 		return err

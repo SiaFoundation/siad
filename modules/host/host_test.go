@@ -29,7 +29,7 @@ type hostTester struct {
 	renting   bool
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey crypto.TwofishKey
+	walletKey crypto.CipherKey
 
 	host *Host
 
@@ -84,7 +84,7 @@ func (ht *hostTester) initRenting() error {
 // and then stores the key in the host tester.
 func (ht *hostTester) initWallet() error {
 	// Create the keys for the wallet and unlock it.
-	key := crypto.GenerateTwofishKey()
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	ht.walletKey = key
 	_, err := ht.wallet.Encrypt(key)
 	if err != nil {

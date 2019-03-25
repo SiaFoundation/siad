@@ -31,6 +31,19 @@ const (
 	// Typically, this transaction will contain either a file contract, a file
 	// contract revision, or a storage proof.
 	resubmissionTimeout = 3
+
+	// rpcRequestInterval is the amount of time that the renter has to send
+	// the next RPC ID in the new RPC loop. (More time is alloted for sending
+	// the actual RPC request object.)
+	rpcRequestInterval = 2 * time.Minute
+
+	// keyExchangeMaxLen is the maximum number of bytes the host will read
+	// from the renter during the RPC key exchange.
+	keyExchangeMaxLen = 256
+
+	// maxObligationLockTimeout is the maximum amount of time the host will wait
+	// to lock a storage obligation.
+	maxObligationLockTimeout = 10 * time.Minute
 )
 
 var (
@@ -57,6 +70,11 @@ var (
 		Dev:      time.Minute * 5,
 		Testing:  time.Second * 90,
 	}).(time.Duration)
+
+	// defaultBaseRPCPrice is the default price of talking to the host. It is
+	// roughly equal to the default bandwidth cost of exchanging a pair of
+	// 4096-byte messages.
+	defaultBaseRPCPrice = types.SiacoinPrecision.Mul64(100).Div64(1e9) // 100 nS
 
 	// defaultCollateral defines the amount of money that the host puts up as
 	// collateral per-byte by default. The collateral should be considered as
@@ -114,6 +132,10 @@ var (
 	// 17 MiB is a conservative default, most hosts are likely to be just fine
 	// with a number like 65 MiB.
 	defaultMaxReviseBatchSize = 17 * (1 << 20)
+
+	// defaultSectorAccessPrice defines the default price of a sector access. It
+	// is roughly equal to the cost of downloading 64 KiB.
+	defaultSectorAccessPrice = types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
 
 	// defaultStoragePrice defines the starting price for hosts selling
 	// storage. We try to match a number that is both reasonably profitable and

@@ -1,13 +1,14 @@
 package siatest
 
 import (
-	"encoding/hex"
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -22,18 +23,18 @@ type (
 	}
 )
 
-// NewFile creates and returns a new LocalFile. It will write size random bytes
-// to the file and give the file a random name.
-func (tn *TestNode) NewFile(size int) (*LocalFile, error) {
-	fileName := fmt.Sprintf("%dbytes %s", size, hex.EncodeToString(fastrand.Bytes(4)))
-	path := filepath.Join(tn.filesDir(), fileName)
-	bytes := fastrand.Bytes(size)
-	err := ioutil.WriteFile(path, bytes, 0600)
-	return &LocalFile{
-		path:     path,
-		size:     size,
-		checksum: crypto.HashBytes(bytes),
-	}, err
+// Equal will compare the input to the bytes of the local file, returning an
+// error if the bytes are not a perfect match, or if there is an error reading
+// the local file data.
+func (lf *LocalFile) Equal(data []byte) error {
+	localData, err := ioutil.ReadFile(lf.path)
+	if err != nil {
+		return errors.AddContext(err, "unable to read local file data")
+	}
+	if bytes.Compare(data, localData) != 0 {
+		return errors.New("local file data does not match input data")
+	}
+	return nil
 }
 
 // Delete removes the LocalFile from disk.
@@ -44,7 +45,7 @@ func (lf *LocalFile) Delete() error {
 // Move moves the file to a new random location.
 func (lf *LocalFile) Move() error {
 	// Get the new path
-	fileName := fmt.Sprintf("%dbytes-%s", lf.size, hex.EncodeToString(fastrand.Bytes(4)))
+	fileName := fmt.Sprintf("%dbytes %s", lf.size, persist.RandomSuffix())
 	dir, _ := filepath.Split(lf.path)
 	path := filepath.Join(dir, fileName)
 
@@ -54,6 +55,11 @@ func (lf *LocalFile) Move() error {
 	}
 	lf.path = path
 	return nil
+}
+
+// Path returns the on-disk path of the local file.
+func (lf *LocalFile) Path() string {
+	return lf.path
 }
 
 // checkIntegrity compares the in-memory checksum to the checksum of the data
@@ -72,8 +78,8 @@ func (lf *LocalFile) checkIntegrity() error {
 	return nil
 }
 
-// fileName returns the file name of the file on disk
-func (lf *LocalFile) fileName() string {
+// FileName returns the file name of the file on disk
+func (lf *LocalFile) FileName() string {
 	return filepath.Base(lf.path)
 }
 

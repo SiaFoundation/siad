@@ -1,27 +1,16 @@
 package renter
 
 import (
-	"errors"
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
-)
-
-var (
-	// ErrEmptyFilename is an error when filename is empty
-	ErrEmptyFilename = errors.New("filename must be a nonempty string")
-	// ErrPathOverload is an error when a file already exists at that location
-	ErrPathOverload = errors.New("a file already exists at that location")
-	// ErrUnknownPath is an error when a file cannot be found with the given path
-	ErrUnknownPath = errors.New("no file known with that path")
 )
 
 // A file is a single file that has been uploaded to the network. Files are
@@ -33,11 +22,11 @@ type file struct {
 	name        string
 	size        uint64 // Static - can be accessed without lock.
 	contracts   map[types.FileContractID]fileContract
-	masterKey   crypto.TwofishKey    // Static - can be accessed without lock.
-	erasureCode modules.ErasureCoder // Static - can be accessed without lock.
-	pieceSize   uint64               // Static - can be accessed without lock.
-	mode        uint32               // actually an os.FileMode
-	deleted     bool                 // indicates if the file has been deleted.
+	masterKey   [crypto.EntropySize]byte // Static - can be accessed without lock.
+	erasureCode modules.ErasureCoder     // Static - can be accessed without lock.
+	pieceSize   uint64                   // Static - can be accessed without lock.
+	mode        uint32                   // actually an os.FileMode
+	deleted     bool                     // indicates if the file has been deleted.
 
 	staticUID string // A UID assigned to the file when it gets created.
 
@@ -65,14 +54,188 @@ type pieceData struct {
 	MerkleRoot crypto.Hash // the Merkle root of the piece
 }
 
-// deriveKey derives the key used to encrypt and decrypt a specific file piece.
-func deriveKey(masterKey crypto.TwofishKey, chunkIndex, pieceIndex uint64) crypto.TwofishKey {
-	return crypto.TwofishKey(crypto.HashAll(masterKey, chunkIndex, pieceIndex))
+// DeleteFile removes a file entry from the renter and deletes its data from
+// the hosts it is stored on.
+func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticFileSet.Delete(siaPath)
 }
 
-// staticChunkSize returns the size of one chunk.
-func (f *file) staticChunkSize() uint64 {
-	return f.pieceSize * uint64(f.erasureCode.MinPieces())
+// FileList returns all of the files that the renter has.
+func (r *Renter) FileList() ([]modules.FileInfo, error) {
+	if err := r.tg.Add(); err != nil {
+		return []modules.FileInfo{}, err
+	}
+	defer r.tg.Done()
+	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+	fileList := []modules.FileInfo{}
+	err := filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
+		// This error is non-nil if filepath.Walk couldn't stat a file or
+		// folder. We simply ignore missing files.
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		// Skip folders and non-sia files.
+		if info.IsDir() || filepath.Ext(path) != modules.SiaFileExtension {
+			return nil
+		}
+
+		// Load the Siafile.
+		str := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), modules.SiaFileExtension)
+		siaPath, err := modules.NewSiaPath(str)
+		if err != nil {
+			return err
+		}
+		file, err := r.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+		if os.IsNotExist(err) || err == siafile.ErrUnknownPath {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		fileList = append(fileList, file)
+		return nil
+	})
+
+	return fileList, err
+}
+
+// File returns file from siaPath queried by user.
+// Update based on FileList
+func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.FileInfo{}, err
+	}
+	defer r.tg.Done()
+	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
+	return r.fileInfo(siaPath, offline, goodForRenew, contracts)
+}
+
+// RenameFile takes an existing file and changes the nickname. The original
+// file must exist, and there must not be any file that already has the
+// replacement nickname.
+func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticFileSet.Rename(currentName, newName)
+}
+
+// fileInfo returns information on a siafile. As a performance optimization, the
+// fileInfo takes the maps returned by renter.managedContractUtilityMaps as
+// input, preventing the need to build those maps many times when asking for
+// many files at once.
+func (r *Renter) fileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	// Get the file and its contracts
+	entry, err := r.staticFileSet.Open(siaPath)
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+	defer entry.Close()
+
+	// Build the FileInfo
+	var onDisk bool
+	localPath := entry.LocalPath()
+	if localPath != "" {
+		_, err = os.Stat(localPath)
+		onDisk = err == nil
+	}
+	redundancy := entry.Redundancy(offline, goodForRenew)
+	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
+	fileInfo := modules.FileInfo{
+		AccessTime:       entry.AccessTime(),
+		Available:        redundancy >= 1,
+		ChangeTime:       entry.ChangeTime(),
+		CipherType:       entry.MasterKey().Type().String(),
+		CreateTime:       entry.CreateTime(),
+		Expiration:       entry.Expiration(contracts),
+		Filesize:         entry.Size(),
+		Health:           health,
+		LocalPath:        localPath,
+		MaxHealth:        math.Max(health, stuckHealth),
+		MaxHealthPercent: entry.HealthPercentage(math.Max(health, stuckHealth)),
+		ModTime:          entry.ModTime(),
+		NumStuckChunks:   numStuckChunks,
+		OnDisk:           onDisk,
+		Recoverable:      onDisk || redundancy >= 1,
+		Redundancy:       redundancy,
+		Renewing:         true,
+		SiaPath:          entry.SiaPath().String(),
+		Stuck:            numStuckChunks > 0,
+		StuckHealth:      stuckHealth,
+		UploadedBytes:    entry.UploadedBytes(),
+		UploadProgress:   entry.UploadProgress(),
+	}
+
+	return fileInfo, nil
+}
+
+// fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
+// populated using the legacy file remain blank.
+func (r *Renter) fileToSiaFile(f *file, repairPath string, oldContracts []modules.RenterContract) (*siafile.SiaFileSetEntry, error) {
+	// Create a mapping of contract ids to host keys.
+	contracts := r.hostContractor.Contracts()
+	idToPk := make(map[types.FileContractID]types.SiaPublicKey)
+	for _, c := range contracts {
+		idToPk[c.ID] = c.HostPublicKey
+	}
+	// Add old contracts to the mapping too.
+	for _, c := range oldContracts {
+		idToPk[c.ID] = c.HostPublicKey
+	}
+
+	fileData := siafile.FileData{
+		Name:        f.name,
+		FileSize:    f.size,
+		MasterKey:   f.masterKey,
+		ErasureCode: f.erasureCode,
+		RepairPath:  repairPath,
+		PieceSize:   f.pieceSize,
+		Mode:        os.FileMode(f.mode),
+		Deleted:     f.deleted,
+		UID:         f.staticUID,
+	}
+	chunks := make([]siafile.FileChunk, f.numChunks())
+	for i := 0; i < len(chunks); i++ {
+		chunks[i].Pieces = make([][]siafile.Piece, f.erasureCode.NumPieces())
+	}
+	for _, contract := range f.contracts {
+		pk, exists := idToPk[contract.ID]
+		if !exists {
+			r.log.Printf("Couldn't find pubKey for contract %v with WindowStart %v",
+				contract.ID, contract.WindowStart)
+			continue
+		}
+
+		for _, piece := range contract.Pieces {
+			// Make sure we don't add the same piece on the same host multiple
+			// times.
+			duplicate := false
+			for _, p := range chunks[piece.Chunk].Pieces[piece.Piece] {
+				if p.HostPubKey.String() == pk.String() {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
+			chunks[piece.Chunk].Pieces[piece.Piece] = append(chunks[piece.Chunk].Pieces[piece.Piece], siafile.Piece{
+				HostPubKey: pk,
+				MerkleRoot: piece.MerkleRoot,
+			})
+		}
+	}
+	fileData.Chunks = chunks
+	return r.staticFileSet.NewFromLegacyData(fileData)
 }
 
 // numChunks returns the number of chunks that f was split into.
@@ -89,384 +252,7 @@ func (f *file) numChunks() uint64 {
 	return n
 }
 
-// available indicates whether the file is ready to be downloaded.
-func (f *file) available(offline map[types.FileContractID]bool) bool {
-	chunkPieces := make([]int, f.numChunks())
-	for _, fc := range f.contracts {
-		if offline[fc.ID] {
-			continue
-		}
-		for _, p := range fc.Pieces {
-			chunkPieces[p.Chunk]++
-		}
-	}
-	for _, n := range chunkPieces {
-		if n < f.erasureCode.MinPieces() {
-			return false
-		}
-	}
-	return true
-}
-
-// uploadedBytes indicates how many bytes of the file have been uploaded via
-// current file contracts. Note that this includes padding and redundancy, so
-// uploadedBytes can return a value much larger than the file's original filesize.
-func (f *file) uploadedBytes() uint64 {
-	var uploaded uint64
-	for _, fc := range f.contracts {
-		// Note: we need to multiply by SectorSize here instead of
-		// f.pieceSize because the actual bytes uploaded include overhead
-		// from TwoFish encryption
-		uploaded += uint64(len(fc.Pieces)) * modules.SectorSize
-	}
-	return uploaded
-}
-
-// uploadProgress indicates what percentage of the file (plus redundancy) has
-// been uploaded. Note that a file may be Available long before UploadProgress
-// reaches 100%, and UploadProgress may report a value greater than 100%.
-func (f *file) uploadProgress() float64 {
-	uploaded := f.uploadedBytes()
-	desired := modules.SectorSize * uint64(f.erasureCode.NumPieces()) * f.numChunks()
-
-	return math.Min(100*(float64(uploaded)/float64(desired)), 100)
-}
-
-// redundancy returns the redundancy of the least redundant chunk. A file
-// becomes available when this redundancy is >= 1. Assumes that every piece is
-// unique within a file contract. -1 is returned if the file has size 0. It
-// takes one argument, a map of offline contracts for this file.
-func (f *file) redundancy(offlineMap map[types.FileContractID]bool, goodForRenewMap map[types.FileContractID]bool) float64 {
-	if f.size == 0 {
-		return -1
-	}
-	piecesPerChunk := make([]int, f.numChunks())
-	piecesPerChunkNoRenew := make([]int, f.numChunks())
-	// If the file has non-0 size then the number of chunks should also be
-	// non-0. Therefore the f.size == 0 conditional block above must appear
-	// before this check.
-	if len(piecesPerChunk) == 0 {
-		build.Critical("cannot get redundancy of a file with 0 chunks")
-		return -1
-	}
-	// pieceRenewMap stores each encountered piece and a boolean to indicate if
-	// that piece was already encountered on a goodForRenew contract.
-	pieceRenewMap := make(map[string]bool)
-	for _, fc := range f.contracts {
-		offline, exists1 := offlineMap[fc.ID]
-		goodForRenew, exists2 := goodForRenewMap[fc.ID]
-		if exists1 != exists2 {
-			build.Critical("contract can't be in one map but not in the other")
-		}
-		if !exists1 {
-			continue
-		}
-
-		// do not count pieces from the contract if the contract is offline
-		if offline {
-			continue
-		}
-		for _, p := range fc.Pieces {
-			pieceKey := fmt.Sprintf("%v/%v", p.Chunk, p.Piece)
-			// If the piece is redundant we need to check if the same piece was
-			// encountered on a goodForRenew contract before. If it wasn't we
-			// need to increase the piecesPerChunk counter and set the value of
-			// the pieceKey entry to true. Otherwise we just ignore the piece.
-			if gfr, redundant := pieceRenewMap[pieceKey]; redundant && gfr {
-				continue
-			} else if redundant && !gfr {
-				pieceRenewMap[pieceKey] = true
-				piecesPerChunk[p.Chunk]++
-				continue
-			}
-			pieceRenewMap[pieceKey] = goodForRenew
-
-			// If the contract is goodForRenew, increment the entry in both
-			// maps. If not, only the one in piecesPerChunkNoRenew.
-			if goodForRenew {
-				piecesPerChunk[p.Chunk]++
-			}
-			piecesPerChunkNoRenew[p.Chunk]++
-		}
-	}
-	// Find the chunk with the least finished pieces counting only pieces of
-	// contracts that are goodForRenew.
-	minPieces := piecesPerChunk[0]
-	for _, numPieces := range piecesPerChunk {
-		if numPieces < minPieces {
-			minPieces = numPieces
-		}
-	}
-	// Find the chunk with the least finished pieces including pieces from
-	// contracts that are not good for renewal.
-	minPiecesNoRenew := piecesPerChunkNoRenew[0]
-	for _, numPieces := range piecesPerChunkNoRenew {
-		if numPieces < minPiecesNoRenew {
-			minPiecesNoRenew = numPieces
-		}
-	}
-	// If the redundancy is smaller than 1x we return the redundancy that
-	// includes contracts that are not good for renewal. The reason for this is
-	// a better user experience. If the renter operates correctly, redundancy
-	// should never go above numPieces / minPieces and redundancyNoRenew should
-	// never go below 1.
-	redundancy := float64(minPieces) / float64(f.erasureCode.MinPieces())
-	redundancyNoRenew := float64(minPiecesNoRenew) / float64(f.erasureCode.MinPieces())
-	if redundancy < 1 {
-		return redundancyNoRenew
-	}
-	return redundancy
-}
-
-// expiration returns the lowest height at which any of the file's contracts
-// will expire.
-func (f *file) expiration() types.BlockHeight {
-	if len(f.contracts) == 0 {
-		return 0
-	}
-	lowest := ^types.BlockHeight(0)
-	for _, fc := range f.contracts {
-		if fc.WindowStart < lowest {
-			lowest = fc.WindowStart
-		}
-	}
-	return lowest
-}
-
-// newFile creates a new file object.
-func newFile(name string, code modules.ErasureCoder, pieceSize, fileSize uint64) *file {
-	return &file{
-		name:        name,
-		size:        fileSize,
-		contracts:   make(map[types.FileContractID]fileContract),
-		masterKey:   crypto.GenerateTwofishKey(),
-		erasureCode: code,
-		pieceSize:   pieceSize,
-
-		staticUID: persist.RandomSuffix(),
-	}
-}
-
-// DeleteFile removes a file entry from the renter and deletes its data from
-// the hosts it is stored on.
-//
-// TODO: The data is not cleared from any contracts where the host is not
-// immediately online.
-func (r *Renter) DeleteFile(nickname string) error {
-	lockID := r.mu.Lock()
-	f, exists := r.files[nickname]
-	if !exists {
-		r.mu.Unlock(lockID)
-		return ErrUnknownPath
-	}
-	delete(r.files, nickname)
-	delete(r.persist.Tracking, nickname)
-
-	err := persist.RemoveFile(filepath.Join(r.persistDir, f.name+ShareExtension))
-	if err != nil {
-		r.log.Println("WARN: couldn't remove file :", err)
-	}
-
-	r.saveSync()
-	r.mu.Unlock(lockID)
-
-	// delete the file's associated contract data.
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	// mark the file as deleted
-	f.deleted = true
-
-	// TODO: delete the sectors of the file as well.
-
-	return nil
-}
-
-// FileList returns all of the files that the renter has.
-func (r *Renter) FileList() []modules.FileInfo {
-	// Get all the files and their contracts
-	var files []*file
-	contractIDs := make(map[types.FileContractID]struct{})
-	lockID := r.mu.RLock()
-	for _, f := range r.files {
-		files = append(files, f)
-		f.mu.RLock()
-		for cid := range f.contracts {
-			contractIDs[cid] = struct{}{}
-		}
-		f.mu.RUnlock()
-	}
-	r.mu.RUnlock(lockID)
-
-	// Build 2 maps that map every contract id to its offline and goodForRenew
-	// status.
-	goodForRenew := make(map[types.FileContractID]bool)
-	offline := make(map[types.FileContractID]bool)
-	for cid := range contractIDs {
-		resolvedKey := r.hostContractor.ResolveIDToPubKey(cid)
-		cu, ok := r.hostContractor.ContractUtility(resolvedKey)
-		if !ok {
-			continue
-		}
-		goodForRenew[cid] = ok && cu.GoodForRenew
-		offline[cid] = r.hostContractor.IsOffline(resolvedKey)
-	}
-
-	// Build the list of FileInfos.
-	fileList := []modules.FileInfo{}
-	for _, f := range files {
-		lockID := r.mu.RLock()
-		f.mu.RLock()
-		renewing := true
-		var localPath string
-		tf, exists := r.persist.Tracking[f.name]
-		if exists {
-			localPath = tf.RepairPath
-		}
-		// Check for 0byte files
-		//
-		// TODO - once tiny files are stored in the metadata this code should be
-		// able to be cleaned up.
-		var redundancy, uploadProgress float64
-		if f.size == 0 {
-			redundancy = float64(f.erasureCode.NumPieces()) / float64(f.erasureCode.MinPieces())
-			uploadProgress = 100
-		} else {
-			redundancy = f.redundancy(offline, goodForRenew)
-			uploadProgress = f.uploadProgress()
-		}
-		_, err := os.Stat(localPath)
-		onDisk := !os.IsNotExist(err)
-		fileList = append(fileList, modules.FileInfo{
-			SiaPath:        f.name,
-			LocalPath:      localPath,
-			Filesize:       f.size,
-			Renewing:       renewing,
-			Available:      f.available(offline),
-			Redundancy:     redundancy,
-			UploadedBytes:  f.uploadedBytes(),
-			UploadProgress: uploadProgress,
-			Expiration:     f.expiration(),
-			OnDisk:         onDisk,
-			Recoverable:    onDisk || redundancy >= 1,
-		})
-		f.mu.RUnlock()
-		r.mu.RUnlock(lockID)
-	}
-	return fileList
-}
-
-// File returns file from siaPath queried by user.
-// Update based on FileList
-func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
-	var fileInfo modules.FileInfo
-
-	// Get the file and its contracts
-	contractIDs := make(map[types.FileContractID]struct{})
-	lockID := r.mu.RLock()
-	defer r.mu.RUnlock(lockID)
-	file, exists := r.files[siaPath]
-	if !exists {
-		return fileInfo, ErrUnknownPath
-	}
-	file.mu.RLock()
-	defer file.mu.RUnlock()
-	for cid := range file.contracts {
-		contractIDs[cid] = struct{}{}
-	}
-
-	// Build 2 maps that map every contract id to its offline and goodForRenew
-	// status.
-	goodForRenew := make(map[types.FileContractID]bool)
-	offline := make(map[types.FileContractID]bool)
-	for cid := range contractIDs {
-		resolvedKey := r.hostContractor.ResolveIDToPubKey(cid)
-		cu, ok := r.hostContractor.ContractUtility(resolvedKey)
-		if !ok {
-			continue
-		}
-		goodForRenew[cid] = ok && cu.GoodForRenew
-		offline[cid] = r.hostContractor.IsOffline(resolvedKey)
-	}
-
-	// Build the FileInfo
-	renewing := true
-	var localPath string
-	tf, exists := r.persist.Tracking[file.name]
-	if exists {
-		localPath = tf.RepairPath
-	}
-	var redundancy, uploadProgress float64
-	if file.size == 0 {
-		redundancy = float64(file.erasureCode.NumPieces()) / float64(file.erasureCode.MinPieces())
-		uploadProgress = 100
-	} else {
-		redundancy = file.redundancy(offline, goodForRenew)
-		uploadProgress = file.uploadProgress()
-	}
-	_, err := os.Stat(localPath)
-	onDisk := !os.IsNotExist(err)
-	fileInfo = modules.FileInfo{
-		SiaPath:        file.name,
-		LocalPath:      localPath,
-		Filesize:       file.size,
-		Renewing:       renewing,
-		Available:      file.available(offline),
-		Redundancy:     redundancy,
-		UploadedBytes:  file.uploadedBytes(),
-		UploadProgress: uploadProgress,
-		Expiration:     file.expiration(),
-		OnDisk:         onDisk,
-		Recoverable:    onDisk || redundancy >= 1,
-	}
-
-	return fileInfo, nil
-}
-
-// RenameFile takes an existing file and changes the nickname. The original
-// file must exist, and there must not be any file that already has the
-// replacement nickname.
-func (r *Renter) RenameFile(currentName, newName string) error {
-	lockID := r.mu.Lock()
-	defer r.mu.Unlock(lockID)
-
-	err := validateSiapath(newName)
-	if err != nil {
-		return err
-	}
-
-	// Check that currentName exists and newName doesn't.
-	file, exists := r.files[currentName]
-	if !exists {
-		return ErrUnknownPath
-	}
-	_, exists = r.files[newName]
-	if exists {
-		return ErrPathOverload
-	}
-
-	// Modify the file and save it to disk.
-	file.mu.Lock()
-	file.name = newName
-	err = r.saveFile(file)
-	file.mu.Unlock()
-	if err != nil {
-		return err
-	}
-
-	// Update the entries in the renter.
-	delete(r.files, currentName)
-	r.files[newName] = file
-	if t, ok := r.persist.Tracking[currentName]; ok {
-		delete(r.persist.Tracking, currentName)
-		r.persist.Tracking[newName] = t
-	}
-	err = r.saveSync()
-	if err != nil {
-		return err
-	}
-
-	// Delete the old .sia file.
-	oldPath := filepath.Join(r.persistDir, currentName+ShareExtension)
-	return os.RemoveAll(oldPath)
+// staticChunkSize returns the size of one chunk.
+func (f *file) staticChunkSize() uint64 {
+	return f.pieceSize * uint64(f.erasureCode.MinPieces())
 }

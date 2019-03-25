@@ -1,8 +1,11 @@
 package proto
 
 import (
+	"crypto/cipher"
 	"net"
 	"time"
+
+	"golang.org/x/crypto/chacha20poly1305"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -51,7 +54,7 @@ func verifySettings(conn net.Conn, host modules.HostDBEntry) (modules.HostDBEntr
 	copy(pk[:], host.PublicKey.Key)
 
 	// read signed host settings
-	var recvSettings modules.HostExternalSettings
+	var recvSettings modules.HostOldExternalSettings
 	if err := crypto.ReadSignedObject(conn, &recvSettings, modules.NegotiateMaxHostExternalSettingsLen, pk); err != nil {
 		return modules.HostDBEntry{}, errors.New("couldn't read host's settings: " + err.Error())
 	}
@@ -62,7 +65,29 @@ func verifySettings(conn net.Conn, host modules.HostDBEntry) (modules.HostDBEntr
 		// host.NetAddress works (it was the one we dialed to get conn)
 		recvSettings.NetAddress = host.NetAddress
 	}
-	host.HostExternalSettings = recvSettings
+	host.HostExternalSettings = modules.HostExternalSettings{
+		AcceptingContracts:     recvSettings.AcceptingContracts,
+		MaxDownloadBatchSize:   recvSettings.MaxDownloadBatchSize,
+		MaxDuration:            recvSettings.MaxDuration,
+		MaxReviseBatchSize:     recvSettings.MaxReviseBatchSize,
+		NetAddress:             recvSettings.NetAddress,
+		RemainingStorage:       recvSettings.RemainingStorage,
+		SectorSize:             recvSettings.SectorSize,
+		TotalStorage:           recvSettings.TotalStorage,
+		UnlockHash:             recvSettings.UnlockHash,
+		WindowSize:             recvSettings.WindowSize,
+		Collateral:             recvSettings.Collateral,
+		MaxCollateral:          recvSettings.MaxCollateral,
+		ContractPrice:          recvSettings.ContractPrice,
+		DownloadBandwidthPrice: recvSettings.DownloadBandwidthPrice,
+		StoragePrice:           recvSettings.StoragePrice,
+		UploadBandwidthPrice:   recvSettings.UploadBandwidthPrice,
+		RevisionNumber:         recvSettings.RevisionNumber,
+		Version:                recvSettings.Version,
+		// New fields are set to zero.
+		BaseRPCPrice:      types.ZeroCurrency,
+		SectorAccessPrice: types.ZeroCurrency,
+	}
 	return host, nil
 }
 
@@ -237,4 +262,57 @@ func newModifyRevision(current types.FileContractRevision, merkleRoot crypto.Has
 	rev := newRevision(current, uploadCost)
 	rev.NewFileMerkleRoot = merkleRoot
 	return rev
+}
+
+// performSessionHandshake conducts the initial handshake exchange of the
+// renter-host protocol. During the handshake, a shared secret is established,
+// which is used to initialize an AEAD cipher. This cipher must be used to
+// encrypt subsequent RPCs.
+func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey) (cipher.AEAD, modules.LoopChallengeRequest, error) {
+	// generate a session key
+	xsk, xpk := crypto.GenerateX25519KeyPair()
+
+	// send our half of the key exchange
+	req := modules.LoopKeyExchangeRequest{
+		PublicKey: xpk,
+		Ciphers:   []types.Specifier{modules.CipherChaCha20Poly1305},
+	}
+	extendDeadline(conn, modules.NegotiateSettingsTime)
+	if err := encoding.NewEncoder(conn).EncodeAll(modules.RPCLoopEnter, req); err != nil {
+		return nil, modules.LoopChallengeRequest{}, err
+	}
+	// read host's half of the key exchange
+	var resp modules.LoopKeyExchangeResponse
+	if err := encoding.NewDecoder(conn, encoding.DefaultAllocLimit).Decode(&resp); err != nil {
+		return nil, modules.LoopChallengeRequest{}, err
+	}
+	// validate the signature before doing anything else; don't want to punish
+	// the "host" if we're talking to an imposter
+	var hpk crypto.PublicKey
+	copy(hpk[:], hostPublicKey.Key)
+	var sig crypto.Signature
+	copy(sig[:], resp.Signature)
+	if err := crypto.VerifyHash(crypto.HashAll(req.PublicKey, resp.PublicKey), hpk, sig); err != nil {
+		return nil, modules.LoopChallengeRequest{}, err
+	}
+	// check for compatible cipher
+	if resp.Cipher != modules.CipherChaCha20Poly1305 {
+		return nil, modules.LoopChallengeRequest{}, errors.New("host selected unsupported cipher")
+	}
+	// derive shared secret, which we'll use as an encryption key
+	cipherKey := crypto.DeriveSharedSecret(xsk, resp.PublicKey)
+
+	// use cipherKey to initialize an AEAD cipher
+	aead, err := chacha20poly1305.New(cipherKey[:])
+	if err != nil {
+		build.Critical("could not create cipher")
+		return nil, modules.LoopChallengeRequest{}, err
+	}
+
+	// read host's challenge
+	var challengeReq modules.LoopChallengeRequest
+	if err := modules.ReadRPCMessage(conn, aead, &challengeReq, modules.RPCMinLen); err != nil {
+		return nil, modules.LoopChallengeRequest{}, err
+	}
+	return aead, challengeReq, nil
 }

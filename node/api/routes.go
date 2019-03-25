@@ -70,6 +70,8 @@ func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword strin
 	if api.renter != nil {
 		router.GET("/renter", api.renterHandlerGET)
 		router.POST("/renter", RequirePassword(api.renterHandlerPOST, requiredPassword))
+		router.POST("/renter/backup", RequirePassword(api.renterBackupHandlerPOST, requiredPassword))
+		router.POST("/renter/recoverbackup", RequirePassword(api.renterLoadBackupHandlerPOST, requiredPassword))
 		router.POST("/renter/contract/cancel", RequirePassword(api.renterContractCancelHandler, requiredPassword))
 		router.GET("/renter/contracts", api.renterContractsHandler)
 		router.GET("/renter/downloads", api.renterDownloadsHandler)
@@ -77,6 +79,8 @@ func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword strin
 		router.GET("/renter/files", api.renterFilesHandler)
 		router.GET("/renter/file/*siapath", api.renterFileHandlerGET)
 		router.GET("/renter/prices", api.renterPricesHandler)
+		router.POST("/renter/recoveryscan", RequirePassword(api.renterRecoveryScanHandlerPOST, requiredPassword))
+		router.GET("/renter/recoveryscan", api.renterRecoveryScanHandlerGET)
 
 		// TODO: re-enable these routes once the new .sia format has been
 		// standardized and implemented.
@@ -92,6 +96,10 @@ func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword strin
 		router.GET("/renter/stream/*siapath", api.renterStreamHandler)
 		router.POST("/renter/upload/*siapath", RequirePassword(api.renterUploadHandler, requiredPassword))
 		router.POST("/renter/file/*siapath", RequirePassword(api.renterFileHandlerPOST, requiredPassword))
+
+		// Directory endpoints
+		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))
+		router.GET("/renter/dir/*siapath", api.renterDirHandlerGET)
 
 		// HostDB endpoints.
 		router.GET("/hostdb", api.hostdbHandler)

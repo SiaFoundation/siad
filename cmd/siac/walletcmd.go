@@ -592,39 +592,36 @@ func wallettransactionscmd() {
 	if err != nil {
 		die("Could not fetch transaction history:", err)
 	}
+	cg, err := httpClient.ConsensusGet()
+	if err != nil {
+		die("Could not fetch consensus information:", err)
+	}
 	fmt.Println("             [timestamp]    [height]                                                   [transaction id]    [net siacoins]   [net siafunds]")
 	txns := append(wtg.ConfirmedTransactions, wtg.UnconfirmedTransactions...)
-	for _, txn := range txns {
+	sts, err := wallet.ComputeValuedTransactions(txns, cg.Height)
+	if err != nil {
+
+	}
+	for _, txn := range sts {
 		// Determine the number of outgoing siacoins and siafunds.
-		var outgoingSiacoins types.Currency
 		var outgoingSiafunds types.Currency
 		for _, input := range txn.Inputs {
-			if input.FundType == types.SpecifierSiacoinInput && input.WalletAddress {
-				outgoingSiacoins = outgoingSiacoins.Add(input.Value)
-			}
 			if input.FundType == types.SpecifierSiafundInput && input.WalletAddress {
 				outgoingSiafunds = outgoingSiafunds.Add(input.Value)
 			}
 		}
 
 		// Determine the number of incoming siacoins and siafunds.
-		var incomingSiacoins types.Currency
 		var incomingSiafunds types.Currency
 		for _, output := range txn.Outputs {
-			if output.FundType == types.SpecifierMinerPayout {
-				incomingSiacoins = incomingSiacoins.Add(output.Value)
-			}
-			if output.FundType == types.SpecifierSiacoinOutput && output.WalletAddress {
-				incomingSiacoins = incomingSiacoins.Add(output.Value)
-			}
 			if output.FundType == types.SpecifierSiafundOutput && output.WalletAddress {
 				incomingSiafunds = incomingSiafunds.Add(output.Value)
 			}
 		}
 
 		// Convert the siacoins to a float.
-		incomingSiacoinsFloat, _ := new(big.Rat).SetFrac(incomingSiacoins.Big(), types.SiacoinPrecision.Big()).Float64()
-		outgoingSiacoinsFloat, _ := new(big.Rat).SetFrac(outgoingSiacoins.Big(), types.SiacoinPrecision.Big()).Float64()
+		incomingSiacoinsFloat, _ := new(big.Rat).SetFrac(txn.ConfirmedIncomingValue.Big(), types.SiacoinPrecision.Big()).Float64()
+		outgoingSiacoinsFloat, _ := new(big.Rat).SetFrac(txn.ConfirmedOutgoingValue.Big(), types.SiacoinPrecision.Big()).Float64()
 
 		// Print the results.
 		if uint64(txn.ConfirmationTimestamp) != unconfirmedTransactionTimestamp {

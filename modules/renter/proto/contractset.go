@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
@@ -84,6 +85,22 @@ func (cs *ContractSet) IDs() []types.FileContractID {
 		pks = append(pks, fcid)
 	}
 	return pks
+}
+
+// InsertContract inserts an existing contract into the set.
+func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn types.Transaction, roots []crypto.Hash, sk crypto.SecretKey) (modules.RenterContract, error) {
+	return cs.managedInsertContract(contractHeader{
+		Transaction:      revTxn,
+		SecretKey:        sk,
+		StartHeight:      rc.StartHeight,
+		DownloadSpending: types.NewCurrency64(1), // TODO set this
+		StorageSpending:  types.NewCurrency64(1), // TODO set this
+		UploadSpending:   types.NewCurrency64(1), // TODO set this
+		TotalCost:        types.NewCurrency64(1), // TODO set this
+		ContractFee:      types.NewCurrency64(1), // TODO set this
+		TxnFee:           rc.TxnFee,
+		SiafundFee:       types.Tax(rc.StartHeight, rc.Payout),
+	}, roots)
 }
 
 // Len returns the number of contracts in the set.

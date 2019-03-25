@@ -3,9 +3,8 @@ package renter
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"math"
-	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,24 +18,18 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
-
-// Test Limitations
-//
-// Timeouts - when possible test should be run in parallel to improve runtime
-//
-// panic: too many open files - There is a limit to how many tests can be run in
-// parallel (~10).  When too many test groups are trying to be created at the
-// same time the test package panics because to many files have been created and
-// it can't support any more tests
 
 // test is a helper struct for running subtests when tests can use the same test
 // group
@@ -48,7 +41,7 @@ type test struct {
 // runRenterTests is a helper function to run the subtests when tests can use
 // the same test group
 func runRenterTests(t *testing.T, gp siatest.GroupParams, tests []test) error {
-	tg, err := siatest.NewGroupFromTemplate(siatest.TestDir(t.Name()), gp)
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
 	if err != nil {
 		return errors.AddContext(err, "failed to create group")
 	}
@@ -83,11 +76,12 @@ func TestRenter(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
+		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
+		{"TestLocalRepair", testLocalRepair},
 		{"TestClearDownloadHistory", testClearDownloadHistory},
 		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
-		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
-		{"TestLocalRepair", testLocalRepair},
+		{"TestDirectories", testDirectories},
 	}
 
 	// Run tests
@@ -116,15 +110,132 @@ func TestRenterTwo(t *testing.T) {
 		{"TestReceivedFieldEqualsFileSize", testReceivedFieldEqualsFileSize},
 		{"TestRemoteRepair", testRemoteRepair},
 		{"TestSingleFileGet", testSingleFileGet},
-		{"TestStreamingCache", testStreamingCache},
+		{"TestSiaFileTimestamps", testSiafileTimestamps},
 		{"TestZeroByteFile", testZeroByteFile},
 		{"TestUploadWithAndWithoutForceParameter", testUploadWithAndWithoutForceParameter},
-		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
 
 	// Run tests
 	if err := runRenterTests(t, groupParams, subTests); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSiafileTimestamps tests if timestamps are set correctly when creating,
+// uploading, downloading and modifying a file.
+func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the renter.
+	r := tg.Renters()[0]
+
+	// Get the current time.
+	beforeUploadTime := time.Now()
+
+	// Upload a new file.
+	_, rf, err := r.UploadNewFileBlocking(100+siatest.Fuzz(), 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the time again.
+	afterUploadTime := time.Now()
+
+	// Get the timestamps using the API.
+	fi, err := r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The timestamps should all be between beforeUploadTime and
+	// afterUploadTime.
+	if fi.CreateTime.Before(beforeUploadTime) || fi.CreateTime.After(afterUploadTime) {
+		t.Fatal("CreateTime was not within the correct interval")
+	}
+	if fi.AccessTime.Before(beforeUploadTime) || fi.AccessTime.After(afterUploadTime) {
+		t.Fatal("AccessTime was not within the correct interval")
+	}
+	if fi.ChangeTime.Before(beforeUploadTime) || fi.ChangeTime.After(afterUploadTime) {
+		t.Fatal("ChangeTime was not within the correct interval")
+	}
+	if fi.ModTime.Before(beforeUploadTime) || fi.ModTime.After(afterUploadTime) {
+		t.Fatal("ModTime was not within the correct interval")
+	}
+
+	// After uploading a file the AccessTime, ChangeTime and ModTime should be
+	// the same.
+	if fi.AccessTime != fi.ChangeTime || fi.ChangeTime != fi.ModTime {
+		t.Fatal("AccessTime, ChangeTime and ModTime are not the same")
+	}
+
+	// The CreateTime should precede the other timestamps.
+	if fi.CreateTime.After(fi.AccessTime) {
+		t.Fatal("CreateTime should before other timestamps")
+	}
+
+	// Get the time before starting the download.
+	beforeDownloadTime := time.Now()
+
+	// Download the file.
+	_, err = r.DownloadByStream(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the time after the download is done.
+	afterDownloadTime := time.Now()
+
+	// Get the timestamps using the API.
+	fi2, err := r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Only the AccessTime should have changed.
+	if fi2.AccessTime.Before(beforeDownloadTime) || fi2.AccessTime.After(afterDownloadTime) {
+		t.Fatal("AccessTime was not within the correct interval")
+	}
+	if fi.CreateTime != fi2.CreateTime {
+		t.Fatal("CreateTime changed after download")
+	}
+	if fi.ChangeTime != fi2.ChangeTime {
+		t.Fatal("ChangeTime changed after download")
+	}
+	if fi.ModTime != fi2.ModTime {
+		t.Fatal("ModTime changed after download")
+	}
+
+	// TODO Once we can change the localPath using the API, check that it only
+	// changes the ChangeTime to do so.
+
+	// Get the time before renaming.
+	beforeRenameTime := time.Now()
+
+	// Rename the file and check that only the ChangeTime changed.
+	rf, err = r.Rename(rf, "newsiapath")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the time after renaming.
+	afterRenameTime := time.Now()
+
+	// Get the timestamps using the API.
+	fi3, err := r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Only the ChangeTime should have changed.
+	if fi3.ChangeTime.Before(beforeRenameTime) || fi3.ChangeTime.After(afterRenameTime) {
+		t.Fatal("ChangeTime was not within the correct interval")
+	}
+	if fi2.CreateTime != fi3.CreateTime {
+		t.Fatal("CreateTime changed after download")
+	}
+	if fi2.AccessTime != fi3.AccessTime {
+		t.Fatal("AccessTime changed after download")
+	}
+	if fi2.ModTime != fi3.ModTime {
+		t.Fatal("ModTime changed after download")
 	}
 }
 
@@ -146,7 +257,8 @@ func TestRenterThree(t *testing.T) {
 	// Specify subtests to run
 	subTests := []test{
 		{"TestAllowanceDefaultSet", testAllowanceDefaultSet},
-		{"TestStreamLargeFile", testStreamLargeFile},
+		{"TestFileAvailableAndRecoverable", testFileAvailableAndRecoverable},
+		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
 
 	// Run tests
@@ -390,6 +502,95 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testDirectories checks the functionality of directories in the Renter
+func testDirectories(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
+	r := tg.Renters()[0]
+
+	// Test Directory endpoint for creating empty directory
+	rd, err := r.UploadNewDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check directory
+	rgd, err := r.RenterGetDir(rd.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Directory should return 0 FileInfos and 1 DirectoryInfo with would belong
+	// to the directory itself
+	if len(rgd.Directories) != 1 {
+		t.Fatal("Expected 1 DirectoryInfo to be returned but got:", len(rgd.Directories))
+	}
+	if rgd.Directories[0].SiaPath != rd.SiaPath() {
+		t.Fatalf("SiaPaths do not match %v and %v", rgd.Directories[0].SiaPath, rd.SiaPath())
+	}
+	if len(rgd.Files) != 0 {
+		t.Fatal("Expected no files in directory but found:", len(rgd.Files))
+	}
+
+	// Check uploading file to new subdirectory
+	// Create local file
+	size := 100 + siatest.Fuzz()
+	fd := r.FilesDir()
+	ld, err := fd.CreateDir("subDir1/subDir2/subDir3-" + persist.RandomSuffix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err := ld.NewFile(size)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload file
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	rf, err := r.Upload(lf, r.SiaPath(lf.Path()), dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check directory that file was uploaded to
+	siaPath := filepath.Dir(rf.SiaPath())
+	rgd, err = r.RenterGetDir(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Directory should have 1 file and 0 sub directories
+	if len(rgd.Directories) != 1 {
+		t.Fatal("Expected 1 DirectoryInfo to be returned but got:", len(rgd.Directories))
+	}
+	if len(rgd.Files) != 1 {
+		t.Fatal("Expected 1 file in directory but found:", len(rgd.Files))
+	}
+
+	// Check parent directory
+	siaPath = filepath.Dir(siaPath)
+	rgd, err = r.RenterGetDir(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Directory should have 0 files and 1 sub directory
+	if len(rgd.Directories) != 2 {
+		t.Fatal("Expected 2 DirectoryInfos to be returned but got:", len(rgd.Directories))
+	}
+	if len(rgd.Files) != 0 {
+		t.Fatal("Expected 0 files in directory but found:", len(rgd.Files))
+	}
+
+	// Test deleting directory
+	if err = r.RenterDirDeletePost(rd.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that siadir was deleted from disk
+	_, err = os.Stat(filepath.Join(r.RenterFilesDir(), rd.SiaPath()))
+	if !os.IsNotExist(err) {
+		t.Fatal("Expected IsNotExist err, but got err:", err)
+	}
+}
+
 // testDownloadAfterRenew makes sure that we can still download a file
 // after the contract period has ended.
 func testDownloadAfterRenew(t *testing.T, tg *siatest.TestGroup) {
@@ -498,7 +699,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Get the file info of the fully uploaded file. Tha way we can compare the
 	// redundancies later.
-	fi, err := renter.FileInfo(remoteFile)
+	fi, err := renter.File(remoteFile)
 	if err != nil {
 		t.Fatal("failed to get file info", err)
 	}
@@ -511,6 +712,16 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
+	// Mine a block to trigger the repair loop so the chunk is marked as stuck
+	m := tg.Miners()[0]
+	if err := m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+	// Check to see if a chunk got marked as stuck
+	err = renter.WaitForStuckChunksToBubble()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// We should still be able to download
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
@@ -522,6 +733,11 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if err := renter.WaitForUploadRedundancy(remoteFile, fi.Redundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
+	}
+	// Check to see if a chunk got repaired and marked as unstuck
+	err = renter.WaitForStuckChunksToRepair()
+	if err != nil {
+		t.Fatal(err)
 	}
 	// We should be able to download
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
@@ -552,7 +768,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Get the file info of the fully uploaded file. Tha way we can compare the
 	// redundancieslater.
-	fi, err := r.FileInfo(remoteFile)
+	fi, err := r.File(remoteFile)
 	if err != nil {
 		t.Fatal("failed to get file info", err)
 	}
@@ -572,9 +788,19 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := r.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
+	// Mine a block to trigger the repair loop so the chunk is marked as stuck
+	m := tg.Miners()[0]
+	if err := m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+	// Check to see if a chunk got marked as stuck
+	err = r.WaitForStuckChunksToBubble()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// We should still be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {
-		t.Fatal("Failed to download file", err)
+		t.Error("Failed to download file", err)
 	}
 	// Bring up new parity hosts and check if redundancy increments again.
 	_, err = tg.AddNodeN(node.HostTemplate, int(parityPieces))
@@ -582,9 +808,14 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to create a new host", err)
 	}
 	// When doing remote repair the redundancy might not reach 100%.
-	expectedRedundancy = (1.0 - renter.RemoteRepairDownloadThreshold) * fi.Redundancy
+	expectedRedundancy = (1.0 - siafile.RemoteRepairDownloadThreshold) * fi.Redundancy
 	if err := r.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
+	}
+	// Check to see if a chunk got repaired and marked as unstuck
+	err = r.WaitForStuckChunksToRepair()
+	if err != nil {
+		t.Fatal(err)
 	}
 	// We should be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {
@@ -650,102 +881,6 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if checks == 0 {
 		t.Fatal("No files checks through single file endpoint.")
-	}
-}
-
-// testStreamingCache checks if the chunk cache works correctly.
-func testStreamingCache(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the first of the group's renters
-	r := tg.Renters()[0]
-
-	// Testing setting StreamCacheSize for streaming
-	// Test setting it to larger than the defaultCacheSize
-	if err := r.RenterSetStreamCacheSizePost(4); err != nil {
-		t.Fatal(err, "Could not set StreamCacheSize to 4")
-	}
-	rg, err := r.RenterGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rg.Settings.StreamCacheSize != 4 {
-		t.Fatal("StreamCacheSize not set to 4, set to", rg.Settings.StreamCacheSize)
-	}
-
-	// Test resetting to the value of defaultStreamCacheSize (2)
-	if err := r.RenterSetStreamCacheSizePost(2); err != nil {
-		t.Fatal(err, "Could not set StreamCacheSize to 2")
-	}
-	rg, err = r.RenterGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rg.Settings.StreamCacheSize != 2 {
-		t.Fatal("StreamCacheSize not set to 2, set to", rg.Settings.StreamCacheSize)
-	}
-
-	prev := rg.Settings.StreamCacheSize
-
-	// Test setting to 0
-	if err := r.RenterSetStreamCacheSizePost(0); err == nil {
-		t.Fatal(err, "expected setting stream cache size to zero to fail with an error")
-	}
-	rg, err = r.RenterGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rg.Settings.StreamCacheSize == 0 {
-		t.Fatal("StreamCacheSize set to 0, should have stayed as previous value or", prev)
-	}
-
-	// Set fileSize and redundancy for upload
-	dataPieces := uint64(1)
-	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-
-	// Set the bandwidth limit to 1 chunk per second.
-	pieceSize := modules.SectorSize - crypto.TwofishOverhead
-	chunkSize := int64(pieceSize * dataPieces)
-	if err := r.RenterPostRateLimit(chunkSize, chunkSize); err != nil {
-		t.Fatal(err)
-	}
-
-	rg, err = r.RenterGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rg.Settings.MaxDownloadSpeed != chunkSize {
-		t.Fatal(errors.New("MaxDownloadSpeed doesn't match value set through RenterPostRateLimit"))
-	}
-	if rg.Settings.MaxUploadSpeed != chunkSize {
-		t.Fatal(errors.New("MaxUploadSpeed doesn't match value set through RenterPostRateLimit"))
-	}
-
-	// Upload a file that is a single chunk big.
-	_, remoteFile, err := r.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Download the same chunk 250 times. This should take at least 250 seconds
-	// without caching but not more than 30 with caching.
-	start := time.Now()
-	for i := 0; i < 250; i++ {
-		if _, err := r.Stream(remoteFile); err != nil {
-			t.Fatal(err)
-		}
-		if time.Since(start) > time.Second*30 {
-			t.Fatal("download took longer than 30 seconds")
-		}
-	}
-	// Make sure that the stream downloads don't show up in the download
-	// history.
-	rgg, err := r.RenterDownloadsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, download := range rgg.Downloads {
-		if download.DestinationType == "httpseekstream" {
-			t.Fatal("Stream downloads shouldn't be added to the history")
-		}
 	}
 }
 
@@ -826,30 +961,6 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
 	if err == nil {
 		t.Fatal("File overwritten without specifying 'force=true'")
-	}
-}
-
-// testStreamLargeFile tests that using the streaming endpoint to download
-// multiple chunks works.
-func testStreamLargeFile(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the first of the group's renters
-	renter := tg.Renters()[0]
-	// Upload file, creating a piece for each host in the group
-	dataPieces := uint64(1)
-	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := int(10 * siatest.ChunkSize(dataPieces))
-	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
-	if err != nil {
-		t.Fatal("Failed to upload a file for testing: ", err)
-	}
-	// Stream the file partially a few times. At least 1 byte is streamed.
-	for i := 0; i < 5; i++ {
-		from := fastrand.Intn(fileSize - 1)             // [0..fileSize-2]
-		to := from + 1 + fastrand.Intn(fileSize-from-1) // [from+1..fileSize-1]
-		_, err = renter.StreamPartial(remoteFile, localFile, uint64(from), uint64(to))
-		if err != nil {
-			t.Fatal(err)
-		}
 	}
 }
 
@@ -1026,15 +1137,14 @@ func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 
 	// Set the bandwidth limit to 1 chunk per second.
 	renter := nodes[0]
+	ct := crypto.TypeDefaultRenter
 	dataPieces := uint64(len(tg.Hosts())) - 1
 	parityPieces := uint64(1)
-	chunkSize := siatest.ChunkSize(uint64(dataPieces))
+	chunkSize := siatest.ChunkSize(dataPieces, ct)
 	_, remoteFile, err := renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Set the bandwidth limit to 1 chunk per second.
 	if err := renter.RenterPostRateLimit(int64(chunkSize), int64(chunkSize)); err != nil {
 		t.Fatal(err)
 	}
@@ -1084,10 +1194,11 @@ func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.De
 	}
 
 	// Set the bandwidth limit to 1 chunk per second.
+	ct := crypto.TypeDefaultRenter
 	renter := nodes[0]
 	dataPieces := uint64(len(tg.Hosts())) - 1
 	parityPieces := uint64(1)
-	chunkSize := siatest.ChunkSize(uint64(dataPieces))
+	chunkSize := siatest.ChunkSize(dataPieces, ct)
 	if err := renter.RenterPostRateLimit(int64(chunkSize), int64(chunkSize)); err != nil {
 		t.Fatal(err)
 	}
@@ -1252,7 +1363,7 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	// Add a renter with a custom allowance to give it plenty of time to renew
 	// the contract later.
-	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
+	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 1)
 	renterParams.Allowance.Period = 100
@@ -1347,7 +1458,7 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	// means we should have number of hosts - 1 active contracts and number of
 	// hosts - 1 inactive contracts.  One of the inactive contracts will be
 	// !goodForRenew due to the host
-	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 5*time.Second, func() error {
+	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 1*time.Second, func() error {
 		if err := miner.MineBlock(); err != nil {
 			return err
 		}
@@ -1390,7 +1501,7 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 // allowance after the allowance was cancelled will trigger the correct contract
 // formation.
 func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
-	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
+	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -1614,7 +1725,7 @@ func TestRenterContracts(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
-	testDir := siatest.TestDir(t.Name())
+	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
@@ -1849,7 +1960,7 @@ func TestRenterContracts(t *testing.T) {
 	endHeight := rc.ActiveContracts[0].EndHeight
 
 	// Renew contracts by running out of funds
-	startingUploadSpend, err := renewContractsBySpending(r, tg)
+	startingUploadSpend, err := drainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -2122,6 +2233,9 @@ func TestRenterLosingHosts(t *testing.T) {
 		files, err := r.RenterFilesGet()
 		if err != nil {
 			return err
+		}
+		if len(files.Files) == 0 {
+			return errors.New("renter has no files")
 		}
 		if files.Files[0].Redundancy != 1.5 {
 			return fmt.Errorf("Expected redundancy to be 1.5 but was %v", files.Files[0].Redundancy)
@@ -2418,28 +2532,9 @@ func TestRenterPersistData(t *testing.T) {
 	testDir := renterTestDir(t.Name())
 
 	// Copying legacy file to test directory
-	renterDir := filepath.Join(testDir, "renter")
-	destination := filepath.Join(renterDir, "renter.json")
-	err := os.MkdirAll(renterDir, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-	from, err := os.Open("../../compatibility/renter_v04.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	to, err := os.OpenFile(destination, os.O_RDWR|os.O_CREATE, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = io.Copy(to, from)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = from.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err = to.Close(); err != nil {
+	source := "../../compatibility/renter_v04.json"
+	destination := filepath.Join(testDir, "renter", "renter.json")
+	if err := copyFile(source, destination); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2809,7 +2904,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 
 	// Renew contracts by running out of funds
-	_, err = renewContractsBySpending(r, tg)
+	_, err = drainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -2968,6 +3063,25 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	if rf.UploadProgress != 100 {
 		t.Fatalf("Expected upload progress to be 100, got %v", rf.UploadProgress)
 	}
+	// Check health information
+	if rf.Health != 0 {
+		t.Fatalf("Expected health to be 0, got %v", rf.Health)
+	}
+	if rf.MaxHealth != 0 {
+		t.Fatalf("Expected max health to be 0, got %v", rf.MaxHealth)
+	}
+	if rf.MaxHealthPercent != 100 {
+		t.Fatalf("Expected max health percentage to be 100, got %v", rf.MaxHealthPercent)
+	}
+	if rf.NumStuckChunks != 0 {
+		t.Fatalf("Expected number of stuck chunks to be 0, got %v", rf.NumStuckChunks)
+	}
+	if rf.Stuck {
+		t.Fatalf("Expected file not to be stuck")
+	}
+	if rf.StuckHealth != 0 {
+		t.Fatalf("Expected stuck health to be 0, got %v", rf.StuckHealth)
+	}
 
 	// Test uploading 1 byte file
 	_, oneRF, err := r.UploadNewFileBlocking(oneByteFile, dataPieces, parityPieces, false)
@@ -2988,336 +3102,94 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// The following are helper functions for the renter tests
+// TestRenterFileChangeDuringDownload confirms that a download will continue and
+// succeed if the file is renamed or deleted after the download has started
+func TestRenterFileChangeDuringDownload(t *testing.T) {
+	if !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
 
-// checkBalanceVsSpending checks the renters confirmed siacoin balance in their
-// wallet against their reported spending
-func checkBalanceVsSpending(r *siatest.TestNode, initialBalance types.Currency) error {
-	// Getting initial financial metrics
-	// Setting variables to easier reference
-	rg, err := r.RenterGet()
+	// Create a testgroup,
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Renters: 1,
+		Miners:  1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
-		return err
+		t.Fatal("Failed to create group: ", err)
 	}
-	fm := rg.FinancialMetrics
-
-	// Check balance after allowance is set
-	wg, err := r.WalletGet()
-	if err != nil {
-		return err
-	}
-	expectedBalance := initialBalance.Sub(fm.TotalAllocated).Sub(fm.WithheldFunds).Sub(fm.PreviousSpending)
-	if expectedBalance.Cmp(wg.ConfirmedSiacoinBalance) != 0 {
-		details := fmt.Sprintf(`Initial balance minus Renter Reported Spending does not equal wallet Confirmed Siacoin Balance
-		Expected Balance:   %v
-		Wallet Balance:     %v
-		Actual difference:  %v
-		ExpectedBalance:    %v
-		walletBalance:      %v
-		`, expectedBalance.HumanString(), wg.ConfirmedSiacoinBalance.HumanString(), initialBalance.Sub(wg.ConfirmedSiacoinBalance).HumanString(),
-			expectedBalance.HumanString(), wg.ConfirmedSiacoinBalance.HumanString())
-		var diff string
-		if expectedBalance.Cmp(wg.ConfirmedSiacoinBalance) > 0 {
-			diff = fmt.Sprintf("Under reported by:  %v\n", expectedBalance.Sub(wg.ConfirmedSiacoinBalance).HumanString())
-		} else {
-			diff = fmt.Sprintf("Over reported by:   %v\n", wg.ConfirmedSiacoinBalance.Sub(expectedBalance).HumanString())
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
 		}
-		err := details + diff
-		return errors.New(err)
-	}
-	return nil
-}
+	}()
 
-// checkContracts confirms that contracts are renewed as expected, renewed
-// contracts should be the renter's active contracts and oldContracts should be
-// the renter's inactive and expired contracts
-func checkContracts(numHosts, numRenewals int, oldContracts, renewedContracts []api.RenterContract) error {
-	if len(renewedContracts) != numHosts {
-		return fmt.Errorf("Incorrect number of Active contracts: have %v expected %v", len(renewedContracts), numHosts)
-	}
-	if len(oldContracts) == 0 && numRenewals == 0 {
-		return nil
-	}
-	// Confirm contracts were renewed, this will also mean there are old contracts
-	// Verify there are not more renewedContracts than there are oldContracts
-	// This would mean contracts are not getting archived
-	if len(oldContracts) < len(renewedContracts) {
-		return errors.New("Too many renewed contracts")
-	}
-	if len(oldContracts) != numHosts*numRenewals {
-		return fmt.Errorf("Incorrect number of Old contracts: have %v expected %v", len(oldContracts), numHosts*numRenewals)
-	}
-
-	// Create Maps for comparison
-	initialContractIDMap := make(map[types.FileContractID]struct{})
-	initialContractKeyMap := make(map[crypto.Hash]struct{})
-	for _, c := range oldContracts {
-		initialContractIDMap[c.ID] = struct{}{}
-		initialContractKeyMap[crypto.HashBytes(c.HostPublicKey.Key)] = struct{}{}
-	}
-
-	for _, c := range renewedContracts {
-		// Verify that all the contracts marked as GoodForRenew
-		// were renewed
-		if _, ok := initialContractIDMap[c.ID]; ok {
-			return errors.New("ID from renewedContracts found in oldContracts")
-		}
-		// Verifying that Renewed Contracts have the same HostPublicKey
-		// as an initial contract
-		if _, ok := initialContractKeyMap[crypto.HashBytes(c.HostPublicKey.Key)]; !ok {
-			return errors.New("Host Public Key from renewedContracts not found in oldContracts")
-		}
-	}
-	return nil
-}
-
-// checkContractVsReportedSpending confirms that the spending recorded in the
-// renter's contracts matches the reported spending for the renter. Renewed
-// contracts should be the renter's active contracts and oldContracts should be
-// the renter's inactive and expired contracts
-func checkContractVsReportedSpending(r *siatest.TestNode, WindowSize types.BlockHeight, oldContracts, renewedContracts []api.RenterContract) error {
-	// Get Current BlockHeight
-	cg, err := r.ConsensusGet()
-	if err != nil {
-		return err
-	}
-
-	// Getting financial metrics after uploads, downloads, and
-	// contract renewal
-	rg, err := r.RenterGet()
-	if err != nil {
-		return err
-	}
-
-	fm := rg.FinancialMetrics
-	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
-		Add(fm.DownloadSpending).Add(fm.StorageSpending)
-	total := totalSpent.Add(fm.Unspent)
-	allowance := rg.Settings.Allowance
-
-	// Check that renter financial metrics add up to allowance
-	if total.Cmp(allowance.Funds) != 0 {
-		return fmt.Errorf(`Combined Total of reported spending and unspent funds not equal to allowance:
-			total:     %v
-			allowance: %v
-			`, total.HumanString(), allowance.Funds.HumanString())
-	}
-
-	// Check renter financial metrics against contract spending
-	var spending modules.ContractorSpending
-	for _, contract := range oldContracts {
-		if contract.StartHeight >= rg.CurrentPeriod {
-			// Calculate ContractFees
-			spending.ContractFees = spending.ContractFees.Add(contract.Fees)
-			// Calculate TotalAllocated
-			spending.TotalAllocated = spending.TotalAllocated.Add(contract.TotalCost)
-			// Calculate Spending
-			spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
-			spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
-			spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
-		} else if contract.EndHeight+WindowSize+types.MaturityDelay > cg.Height {
-			// Calculated funds that are being withheld in contracts
-			spending.WithheldFunds = spending.WithheldFunds.Add(contract.RenterFunds)
-			// Record the largest window size for worst case when reporting the spending
-			if contract.EndHeight+WindowSize+types.MaturityDelay >= spending.ReleaseBlock {
-				spending.ReleaseBlock = contract.EndHeight + WindowSize + types.MaturityDelay
-			}
-			// Calculate Previous spending
-			spending.PreviousSpending = spending.PreviousSpending.Add(contract.Fees).
-				Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending)
-		} else {
-			// Calculate Previous spending
-			spending.PreviousSpending = spending.PreviousSpending.Add(contract.Fees).
-				Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending)
-		}
-	}
-	for _, contract := range renewedContracts {
-		if contract.GoodForRenew {
-			// Calculate ContractFees
-			spending.ContractFees = spending.ContractFees.Add(contract.Fees)
-			// Calculate TotalAllocated
-			spending.TotalAllocated = spending.TotalAllocated.Add(contract.TotalCost)
-			// Calculate Spending
-			spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
-			spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
-			spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
-		}
-	}
-
-	// Compare contract fees
-	if fm.ContractFees.Cmp(spending.ContractFees) != 0 {
-		return fmt.Errorf(`Fees not equal:
-			Financial Metrics Fees: %v
-			Contract Fees:          %v
-			`, fm.ContractFees.HumanString(), spending.ContractFees.HumanString())
-	}
-	// Compare Total Allocated
-	if fm.TotalAllocated.Cmp(spending.TotalAllocated) != 0 {
-		return fmt.Errorf(`Total Allocated not equal:
-			Financial Metrics TA: %v
-			Contract TA:          %v
-			`, fm.TotalAllocated.HumanString(), spending.TotalAllocated.HumanString())
-	}
-	// Compare Upload Spending
-	if fm.UploadSpending.Cmp(spending.UploadSpending) != 0 {
-		return fmt.Errorf(`Upload spending not equal:
-			Financial Metrics US: %v
-			Contract US:          %v
-			`, fm.UploadSpending.HumanString(), spending.UploadSpending.HumanString())
-	}
-	// Compare Download Spending
-	if fm.DownloadSpending.Cmp(spending.DownloadSpending) != 0 {
-		return fmt.Errorf(`Download spending not equal:
-			Financial Metrics DS: %v
-			Contract DS:          %v
-			`, fm.DownloadSpending.HumanString(), spending.DownloadSpending.HumanString())
-	}
-	// Compare Storage Spending
-	if fm.StorageSpending.Cmp(spending.StorageSpending) != 0 {
-		return fmt.Errorf(`Storage spending not equal:
-			Financial Metrics SS: %v
-			Contract SS:          %v
-			`, fm.StorageSpending.HumanString(), spending.StorageSpending.HumanString())
-	}
-	// Compare Withheld Funds
-	if fm.WithheldFunds.Cmp(spending.WithheldFunds) != 0 {
-		return fmt.Errorf(`Withheld Funds not equal:
-			Financial Metrics WF: %v
-			Contract WF:          %v
-			`, fm.WithheldFunds.HumanString(), spending.WithheldFunds.HumanString())
-	}
-	// Compare Release Block
-	if fm.ReleaseBlock != spending.ReleaseBlock {
-		return fmt.Errorf(`Release Block not equal:
-			Financial Metrics RB: %v
-			Contract RB:          %v
-			`, fm.ReleaseBlock, spending.ReleaseBlock)
-	}
-	// Compare Previous Spending
-	if fm.PreviousSpending.Cmp(spending.PreviousSpending) != 0 {
-		return fmt.Errorf(`Previous spending not equal:
-			Financial Metrics PS: %v
-			Contract PS:          %v
-			`, fm.PreviousSpending.HumanString(), spending.PreviousSpending.HumanString())
-	}
-
-	return nil
-}
-
-// checkRenewedContracts confirms that renewed contracts have zero upload and
-// download spending. Renewed contracts should be the renter's active contracts
-func checkRenewedContracts(renewedContracts []api.RenterContract) error {
-	for _, c := range renewedContracts {
-		if c.UploadSpending.Cmp(types.ZeroCurrency) != 0 && c.GoodForUpload {
-			return fmt.Errorf("Upload spending on renewed contract equal to %v, expected zero", c.UploadSpending.HumanString())
-		}
-		if c.DownloadSpending.Cmp(types.ZeroCurrency) != 0 {
-			return fmt.Errorf("Download spending on renewed contract equal to %v, expected zero", c.DownloadSpending.HumanString())
-		}
-	}
-	return nil
-}
-
-// renewContractByRenewWindow mines blocks to force contract renewal
-func renewContractsByRenewWindow(renter *siatest.TestNode, tg *siatest.TestGroup) error {
-	rg, err := renter.RenterGet()
-	if err != nil {
-		return err
-	}
-	cg, err := renter.ConsensusGet()
-	if err != nil {
-		return err
-	}
-	rc, err := renter.RenterContractsGet()
-	if err != nil {
-		return err
-	}
-	blocksToMine := rc.ActiveContracts[0].EndHeight - rg.Settings.Allowance.RenewWindow - cg.Height
-	m := tg.Miners()[0]
-	for i := 0; i < int(blocksToMine); i++ {
-		if err = m.MineBlock(); err != nil {
-			return err
-		}
-	}
-
-	// Waiting for nodes to sync
-	if err = tg.Sync(); err != nil {
-		return err
-	}
-	return nil
-}
-
-// renewContractsBySpending uploads files until the contracts renew due to
-// running out of funds
-func renewContractsBySpending(renter *siatest.TestNode, tg *siatest.TestGroup) (startingUploadSpend types.Currency, err error) {
-	// Renew contracts by running out of funds
-	// Set upload price to max price
-	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte)
-	maxUploadPrice := maxStoragePrice.Mul64(10 * 4320)
-	hosts := tg.Hosts()
-	for _, h := range hosts {
-		err := h.HostModifySettingPost(client.HostParamMinUploadBandwidthPrice, maxUploadPrice)
-		if err != nil {
-			return types.ZeroCurrency, errors.AddContext(err, "could not set Host Upload Price")
-		}
-	}
-
-	// Waiting for nodes to sync
-	m := tg.Miners()[0]
-	if err := m.MineBlock(); err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "error mining block")
-	}
-	if err := tg.Sync(); err != nil {
-		return types.ZeroCurrency, err
-	}
-
-	// Set upload parameters
+	// Grab Renter and upload file
+	r := tg.Renters()[0]
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
-	chunkSize := siatest.ChunkSize(1)
-
-	// Upload once to show upload spending
-	_, _, err = renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
+	chunkSize := int64(siatest.ChunkSize(dataPieces, crypto.TypeDefaultRenter))
+	fileSize := 3 * int(chunkSize)
+	_, rf1, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "failed to upload first file in renewContractsBySpending")
+		t.Fatal(err)
 	}
-
-	// Get current upload spend, previously contracts had zero upload spend
-	rc, err := renter.RenterContractsGet()
+	_, rf2, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "could not get renter active contracts")
+		t.Fatal(err)
 	}
-	startingUploadSpend = rc.ActiveContracts[0].UploadSpending
+	_, rf3, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf4, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf5, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// Upload files to force contract renewal due to running out of funds
-LOOP:
-	for {
-		// To protect against contracts not renewing during uploads
-		for _, c := range rc.ActiveContracts {
-			percentRemaining, _ := big.NewRat(0, 1).SetFrac(c.RenterFunds.Big(), c.TotalCost.Big()).Float64()
-			if percentRemaining < float64(0.03) {
-				break LOOP
-			}
-		}
-		_, _, err = renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
-		if err != nil {
-			pr, _ := big.NewRat(0, 1).SetFrac(rc.ActiveContracts[0].RenterFunds.Big(), rc.ActiveContracts[0].TotalCost.Big()).Float64()
-			s := fmt.Sprintf("failed to upload file in renewContractsBySpending loop, percentRemaining: %v", pr)
-			return types.ZeroCurrency, errors.AddContext(err, s)
-		}
+	// Set the bandwidth limit to 1 chunk per second.
+	if err := r.RenterPostRateLimit(chunkSize, chunkSize); err != nil {
+		t.Fatal(err)
+	}
 
-		rc, err = renter.RenterContractsGet()
-		if err != nil {
-			return types.ZeroCurrency, errors.AddContext(err, "could not get renter active contracts")
-		}
-	}
-	if err = m.MineBlock(); err != nil {
-		return startingUploadSpend, err
-	}
-	if err := tg.Sync(); err != nil {
-		return types.ZeroCurrency, err
-	}
-	return startingUploadSpend, nil
+	// Create Wait group
+	wg := new(sync.WaitGroup)
+
+	// Test Renaming while Downloading and Streaming on 5 files.
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf1, t, wg, time.Second)
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf2, t, wg, time.Second)
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf3, t, wg, time.Second)
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf4, t, wg, time.Second)
+	wg.Add(1)
+	go renameDuringDownloadAndStream(r, rf5, t, wg, time.Second)
+	wg.Wait()
+
+	// Test Deleting while Downloading and Streaming
+	//
+	// Download the file
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf1, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf2, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf3, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf4, t, wg, time.Second)
+	wg.Add(1)
+	go deleteDuringDownloadAndStream(r, rf5, t, wg, time.Second)
+
+	wg.Wait()
 }
 
 // testSetFileTrackingPath tests if changing the repairPath of a file works.
@@ -3372,8 +3244,8 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
 	}
-	// Create a new file that is smaller then the first one.
-	smallFile, err := renter.NewFile(fileSize / 2)
+	// Create a new file that is smaller than the first one.
+	smallFile, err := renter.FilesDir().NewFile(fileSize - 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3388,5 +3260,1016 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if err := renter.SetFileRepairPath(remoteFile, smallFile); err == nil {
 		t.Fatal("Changing repair path to a nonexistent file shouldn't work")
+	}
+}
+
+// TestRenterFileContractIdentifier checks that the file contract's identifier
+// is set correctly when forming a contract and after renewing it.
+func TestRenterFileContractIdentifier(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup, creating without renter so the renter's
+	// contract transactions can easily be obtained.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a Renter node
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	rcg, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Get the endheight of the contracts.
+	eh := rcg.ActiveContracts[0].EndHeight
+
+	// Get the blockheight.
+	cg, err := tg.Hosts()[0].ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bh := cg.Height
+
+	// Mine blocks until we reach the endheight
+	m := tg.Miners()[0]
+	for i := 0; i < int(eh-bh); i++ {
+		if err := m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Confirm that the contracts got renewed.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Mine a block.
+		if err := m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		// Get the contracts from the renter.
+		rcg, err := r.RenterExpiredContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// We should have one contract for each host.
+		if len(rcg.ActiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v active contracts but got %v",
+				len(tg.Hosts()), rcg.ActiveContracts)
+		}
+		// We should have one expired contract for each host.
+		if len(rcg.ExpiredContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v expired contracts but got %v",
+				len(tg.Hosts()), len(rcg.ExpiredContracts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the transaction which are related to the renter since we started the
+	// renter.
+	txns, err := r.WalletTransactionsGet(0, ^types.BlockHeight(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Filter out transactions without file contracts.
+	var fcTxns []modules.ProcessedTransaction
+	for _, txn := range txns.ConfirmedTransactions {
+		if len(txn.Transaction.FileContracts) > 0 {
+			fcTxns = append(fcTxns, txn)
+		}
+	}
+	// There should be twice as many transactions with contracts as there are hosts.
+	if len(fcTxns) != 2*len(tg.Hosts()) {
+		t.Fatalf("Expected %v txns but got %v", 2*len(tg.Hosts()), len(fcTxns))
+	}
+
+	// Get the wallet seed of the renter.
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed, err := modules.StringToSeed(wsg.PrimarySeed, "english")
+	if err != nil {
+		t.Fatal(err)
+	}
+	renterSeed := proto.DeriveRenterSeed(seed)
+	defer fastrand.Read(renterSeed[:])
+
+	// Check the arbitrary data of each transaction and contract.
+	for _, fcTxn := range fcTxns {
+		txn := fcTxn.Transaction
+		for _, fc := range txn.FileContracts {
+			// Check that the arbitrary data has correct length.
+			if len(txn.ArbitraryData) != 1 {
+				t.Fatal("arbitrary data has wrong length")
+			}
+			csi := proto.ContractSignedIdentifier{}
+			n := copy(csi[:], txn.ArbitraryData[0])
+			encryptedHostKey := txn.ArbitraryData[0][n:]
+			// Calculate the renter seed given the WindowStart of the contract.
+			rs := renterSeed.EphemeralRenterSeed(fc.WindowStart)
+			// Check if the identifier is valid.
+			spk, valid := csi.IsValid(rs, txn, encryptedHostKey)
+			if !valid {
+				t.Fatal("identifier is invalid")
+			}
+			// Check that the host's key is a valid key from the hostb.
+			_, err := r.HostDbHostsGet(spk)
+			if err != nil {
+				t.Fatal("hostKey is invalid", err)
+			}
+		}
+	}
+}
+
+// TestUploadAfterDelete tests that rapidly uploading a file to the same
+// siapath as a previously deleted file works.
+func TestUploadAfterDelete(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a Renter node
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencyDisableCloseUploadEntry{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(modules.SectorSize)
+	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Repeatedly upload and delete a file with the same SiaPath without
+	// closing the entry. That shouldn't cause issues.
+	for i := 0; i < 5; i++ {
+		// Delete the file.
+		if err := renter.RenterDeletePost(remoteFile.SiaPath()); err != nil {
+			t.Fatal(err)
+		}
+		// Upload the file again right after deleting it.
+		if _, err := renter.UploadBlocking(localFile, dataPieces, parityPieces, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestRenterContractRecovery tests that recovering a node from a seed that has
+// contracts associated with it will recover those contracts.
+func TestRenterContractRecovery(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup, creating without renter so the renter's
+	// contract transactions can easily be obtained.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get the renter node and its seed.
+	r := tg.Renters()[0]
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := wsg.PrimarySeed
+
+	// Upload a file to the renter.
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(10 * modules.SectorSize)
+	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// Remember the contracts the renter formed with the hosts.
+	oldContracts := make(map[types.FileContractID]api.RenterContract)
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range rc.ActiveContracts {
+		oldContracts[c.ID] = c
+	}
+
+	// Stop the renter.
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+
+	// Copy the siafile to the new location.
+	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+modules.SiaFileExtension)
+	siaFile, err := ioutil.ReadFile(oldPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenterDir := filepath.Join(testDir, "renter")
+	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+modules.SiaFileExtension)
+	if err := os.MkdirAll(filepath.Dir(newPath), 0777); err != nil {
+		t.Fatal(err)
+	}
+	if err := ioutil.WriteFile(newPath, siaFile, 0777); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start a new renter with the same seed.
+	renterParams := node.Renter(newRenterDir)
+	renterParams.PrimarySeed = seed
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenter := nodes[0]
+
+	// Make sure that the new renter actually uses the same primary seed.
+	wsg, err = newRenter.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenterSeed := wsg.PrimarySeed
+	if seed != newRenterSeed {
+		t.Log("old seed", seed)
+		t.Log("new seed", newRenterSeed)
+		t.Fatal("Seeds of new and old renters don't match")
+	}
+
+	// The new renter should have the same active contracts as the old one.
+	miner := tg.Miners()[0]
+	numRetries := 0
+	err = build.Retry(60, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
+		rc, err = newRenter.RenterContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rc.ActiveContracts) != len(oldContracts) {
+			return fmt.Errorf("Didn't recover the right number of contracts, expected %v but was %v",
+				len(oldContracts), len(rc.ActiveContracts))
+		}
+		for _, c := range rc.ActiveContracts {
+			contract, exists := oldContracts[c.ID]
+			if !exists {
+				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
+			}
+			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+				return errors.New("public keys don't match")
+			}
+			if contract.StartHeight != c.StartHeight {
+				return errors.New("startheights don't match")
+			}
+			if contract.EndHeight != c.EndHeight {
+				return errors.New("endheights don't match")
+			}
+			if c.Fees.Cmp(types.ZeroCurrency) <= 0 {
+				return errors.New("Fees wasn't set")
+			}
+			if contract.GoodForRenew != c.GoodForRenew {
+				return errors.New("GoodForRenew doesn't match")
+			}
+			if contract.GoodForUpload != c.GoodForUpload {
+				return errors.New("GoodForRenew doesn't match")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		rc, _ = newRenter.RenterContractsGet()
+		t.Log("Contracts in total:", len(rc.Contracts))
+		t.Fatal(err)
+	}
+	// Download the whole file again to see if all roots were recovered.
+	_, err = newRenter.DownloadByStream(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSiafileCompatCode checks that legacy renters can upgrade to the latest
+// siafile format.
+func TestSiafileCompatCode(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Get test directory
+	testDir := renterTestDir(t.Name())
+
+	// The siapath stored in the legacy file.
+	expectedSiaPath := "sub1/sub2/testfile"
+
+	// Copying legacy file to test directory
+	renterDir := filepath.Join(testDir, "renter")
+	source := filepath.Join("..", "..", "compatibility", "siafile_v1.3.7.sia")
+	destination := filepath.Join(renterDir, "sub1", "sub2", "testfile.sia")
+	if err := copyFile(source, destination); err != nil {
+		t.Fatal(err)
+	}
+	// Copy the legacy settings file to the test directory.
+	source2 := "../../compatibility/renter_v137.json"
+	destination2 := filepath.Join(renterDir, "renter.json")
+	if err := copyFile(source2, destination2); err != nil {
+		t.Fatal(err)
+	}
+	// Copy the legacy contracts into the test directory.
+	contractsSource := "../../compatibility/contracts_v137"
+	contracts, err := ioutil.ReadDir(contractsSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fi := range contracts {
+		contractDst := filepath.Join(contractsSource, fi.Name())
+		err := copyFile(contractDst, filepath.Join(renterDir, "contracts", fi.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create new node with legacy sia file.
+	r, err := siatest.NewNode(node.AllModules(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err = r.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Check that exactly 1 siafile exists and that it's the correct one.
+	fis, err := r.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fis) != 1 {
+		t.Fatal("Expected 1 file but got", len(fis))
+	}
+	if fis[0].SiaPath != expectedSiaPath {
+		t.Fatalf("Siapath should be '%v' but was '%v'",
+			expectedSiaPath, fis[0].SiaPath)
+	}
+	// Make sure the folder containing the legacy file was deleted.
+	if _, err := os.Stat(filepath.Join(renterDir, "sub1")); !os.IsNotExist(err) {
+		t.Fatal("Error should be ErrNotExist but was", err)
+	}
+	// Make sure the siafile is exactly where we would expect it.
+	expectedLocation := filepath.Join(renterDir, "siafiles", "sub1", "sub2", "testfile.sia")
+	if _, err := os.Stat(expectedLocation); err != nil {
+		t.Fatal(err)
+	}
+	// Check the other fields of the file.
+	sf := fis[0]
+	if sf.AccessTime.IsZero() {
+		t.Fatal("AccessTime wasn't set correctly")
+	}
+	if sf.ChangeTime.IsZero() {
+		t.Fatal("ChangeTime wasn't set correctly")
+	}
+	if sf.CreateTime.IsZero() {
+		t.Fatal("CreateTime wasn't set correctly")
+	}
+	if sf.ModTime.IsZero() {
+		t.Fatal("ModTime wasn't set correctly")
+	}
+	if sf.Available {
+		t.Fatal("File shouldn't be available since we don't know the hosts")
+	}
+	if sf.CipherType != crypto.TypeTwofish.String() {
+		t.Fatal("CipherType should be twofish but was", sf.CipherType)
+	}
+	if sf.Filesize != 4096 {
+		t.Fatal("Filesize should be 4096 but was", sf.Filesize)
+	}
+	if sf.Expiration != 91 {
+		t.Fatal("Expiration should be 91 but was", sf.Expiration)
+	}
+	if sf.LocalPath != "/tmp/SiaTesting/siatest/TestRenterTwo/gctwr-EKYAZSVOZ6U2T4HZYIAQ/files/4096bytes 16951a61" {
+		t.Fatal("LocalPath doesn't match")
+	}
+	if sf.Redundancy != 0 {
+		t.Fatal("Redundancy should be 0 since we don't know the hosts")
+	}
+	if sf.UploadProgress != 100 {
+		t.Fatal("File was uploaded before so the progress should be 100")
+	}
+	if sf.UploadedBytes != 40960 {
+		t.Fatal("Redundancy should be 10/20 so 10x the Filesize = 40960 bytes should be uploaded")
+	}
+	if sf.OnDisk {
+		t.Fatal("OnDisk should be false but was true")
+	}
+	if sf.Recoverable {
+		t.Fatal("Recoverable should be false but was true")
+	}
+	if !sf.Renewing {
+		t.Fatal("Renewing should be true but wasn't")
+	}
+}
+
+// TestRenterContractInitRecoveryScan tests that a renter which has already
+// scanned the whole blockchain and has lost its contracts, can recover them by
+// triggering a rescan through the API.
+func TestRenterContractInitRecoveryScan(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a Renter node
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.ContractorDeps = &dependencyDisableRecoveryStatusReset{}
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := tg.Renters()[0]
+
+	// Upload a file to the renter.
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(10 * modules.SectorSize)
+	_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// Remember the contracts the renter formed with the hosts.
+	oldContracts := make(map[types.FileContractID]api.RenterContract)
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range rc.ActiveContracts {
+		oldContracts[c.ID] = c
+	}
+
+	// Cancel the allowance to avoid new contracts replacing the recoverable
+	// ones.
+	if err := r.RenterCancelAllowance(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop the renter.
+	if err := tg.StopNode(r); err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete the contracts.
+	if err := os.RemoveAll(filepath.Join(r.Dir, modules.RenterDir, "contracts")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start the renter again.
+	if err := tg.StartNode(r); err != nil {
+		t.Fatal(err)
+	}
+
+	// The renter shouldn't have any contracts.
+	rcg, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rcg.ActiveContracts)+len(rcg.InactiveContracts)+len(rcg.ExpiredContracts) > 0 {
+		t.Fatal("There shouldn't be any contracts after deleting them")
+	}
+
+	// Trigger a rescan of the blockchain.
+	if err := r.RenterInitContractRecoveryScanPost(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The new renter should have the same active contracts as the old one.
+	miner := tg.Miners()[0]
+	numRetries := 0
+	err = build.Retry(60, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
+		rc, err = r.RenterContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rc.ActiveContracts) != len(oldContracts) {
+			return fmt.Errorf("Didn't recover the right number of contracts, expected %v but was %v",
+				len(oldContracts), len(rc.ActiveContracts))
+		}
+		for _, c := range rc.ActiveContracts {
+			contract, exists := oldContracts[c.ID]
+			if !exists {
+				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
+			}
+			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+				return errors.New("public keys don't match")
+			}
+			if contract.EndHeight != c.EndHeight {
+				return errors.New("endheights don't match")
+			}
+			if contract.GoodForRenew != c.GoodForRenew {
+				return errors.New("GoodForRenew doesn't match")
+			}
+			if contract.GoodForUpload != c.GoodForUpload {
+				return errors.New("GoodForRenew doesn't match")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		rc, _ = r.RenterContractsGet()
+		t.Log("Contracts in total:", len(rc.Contracts))
+		t.Fatal(err)
+	}
+	// Download the whole file again to see if all roots were recovered.
+	_, err = r.DownloadByStream(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that the RecoveryScanStatus was set.
+	rrs, err := r.RenterContractRecoveryProgressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Check the recovery progress endpoint.
+		if !rrs.ScanInProgress || rrs.ScannedHeight == 0 {
+			return fmt.Errorf("ScanInProgress and/or ScannedHeight weren't set correctly: %v", rrs)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCreateLoadBackup tests that creating a backup with the /renter/backup
+// endpoint works as expected and that it can be loaded with the
+// /renter/recoverbackup endpoint.
+func TestCreateLoadBackup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(len(tg.Hosts()) - 1)
+	parityPieces := uint64(1)
+	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Create a backup.
+	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
+	err = r.RenterCreateBackupPost(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Get the renter's seed.
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Shut down the renter.
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+	// Start a new renter from the same seed.
+	rt := node.RenterTemplate
+	rt.PrimarySeed = wsg.PrimarySeed
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+	// Recover the backup.
+	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	// The file should be available and ready for download again.
+	if _, err := r.DownloadByStream(rf); err != nil {
+		t.Fatal(err)
+	}
+	// Recover the backup again. Now there should be another file with a suffix
+	// at the end.
+	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileGet(rf.SiaPath() + "_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRemoveRecoverableContracts makes sure that recoverable contracts which
+// have been reverted by a reorg are removed from the map.
+func TestRemoveRecoverableContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup, creating without renter so the renter's
+	// contract transactions can easily be obtained.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get the renter node and its seed.
+	r := tg.Renters()[0]
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := wsg.PrimarySeed
+
+	// The renter should have one contract with each host.
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) != len(tg.Hosts()) {
+		t.Fatal("Insufficient active contracts")
+	}
+
+	// Stop the renter.
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+	// Bring up new hosts for the new renter to form contracts with, otherwise no
+	// contracts will form because it will not form contracts with hosts it see to
+	// have recoverable contracts with
+	_, err = tg.AddNodeN(node.HostTemplate, 2)
+	if err != nil {
+		t.Fatal("Failed to create a new host", err)
+	}
+
+	// Start a new renter with the same seed but disable contract recovery.
+	newRenterDir := filepath.Join(testDir, "renter")
+	renterParams := node.Renter(newRenterDir)
+	renterParams.Allowance = modules.DefaultAllowance
+	renterParams.Allowance.Hosts = 2
+	renterParams.PrimarySeed = seed
+	renterParams.ContractorDeps = &dependencyDisableContractRecovery{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenter := nodes[0]
+
+	// The new renter should have the right number of recoverable contracts.
+	miner := tg.Miners()[0]
+	numRetries := 0
+	err = build.Retry(60, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
+		rc, err = newRenter.RenterRecoverableContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rc.RecoverableContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("Don't have enough recoverable contracts, expected %v but was %v",
+				len(tg.Hosts()), len(rc.RecoverableContracts))
+		}
+		return nil
+	})
+
+	// Get the current blockheight of the group.
+	cg, err := newRenter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bh := cg.Height
+
+	// Start a new miner which has a longer chain than the group.
+	newMiner, err := siatest.NewNode(siatest.Miner(filepath.Join(testDir, "miner")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := newMiner.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Mine a longer chain.
+	for i := types.BlockHeight(0); i < bh+10; i++ {
+		if err := newMiner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Connect the miner to the renter.
+	gg, err := newRenter.GatewayGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := newMiner.GatewayConnectPost(gg.NetAddress); err != nil {
+		t.Fatal(err)
+	}
+	// The recoverable contracts should be gone now after the reorg.
+	err = build.Retry(60, time.Second, func() error {
+		rc, err = newRenter.RenterRecoverableContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rc.RecoverableContracts) != 0 {
+			return fmt.Errorf("Expected no recoverable contracts, but was %v",
+				len(rc.RecoverableContracts))
+		}
+		return nil
+	})
+}
+
+// testFileAvailableAndRecoverable checks to make sure that the API properly
+// reports if a file is available and/or recoverable
+func testFileAvailableAndRecoverable(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	r := tg.Renters()[0]
+
+	// Check that we have 5 hosts for this test so that the redundancy
+	// assumptions work for the test
+	if len(tg.Hosts()) != 5 {
+		t.Fatal("This test requires 5 hosts")
+	}
+
+	// Set fileSize and redundancy for upload
+	fileSize := int(modules.SectorSize)
+	dataPieces := uint64(4)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+
+	// Upload file
+	localFile, remoteFile, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the file info and check if it is available and recoverable. File
+	// should be available, recoverable, redundancy >1, and the file should be
+	// on disk
+	fi, err := r.File(remoteFile)
+	if err != nil {
+		t.Fatal("failed to get file info", err)
+	}
+	if fi.Redundancy < 1 {
+		t.Fatal("redundancy of file is less than 1:", fi.Redundancy)
+	}
+	if !fi.OnDisk {
+		t.Fatal("file is not on disk")
+	}
+	if !fi.Available {
+		t.Fatal("file is not available")
+	}
+	if !fi.Recoverable {
+		t.Fatal("file is not recoverable")
+	}
+
+	// Take down two hosts so that the redundancy drops below 1
+	for i := 0; i < 2; i++ {
+		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
+			t.Fatal("Failed to shutdown host", err)
+		}
+	}
+	expectedRedundancy := float64(dataPieces+parityPieces-2) / float64(dataPieces)
+	if err := r.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
+		t.Fatal("Redundancy isn't decreasing", err)
+	}
+
+	// Get file into, file should not be available because the redundancy is  <1
+	// but it should be recoverable because the file is on disk
+	fi, err = r.File(remoteFile)
+	if err != nil {
+		t.Fatal("failed to get file info", err)
+	}
+	if fi.Redundancy >= 1 {
+		t.Fatal("redundancy of file should be less than 1:", fi.Redundancy)
+	}
+	if !fi.OnDisk {
+		t.Fatal("file is not on disk")
+	}
+	if fi.Available {
+		t.Fatal("file should not be available")
+	}
+	if !fi.Recoverable {
+		t.Fatal("file should be recoverable")
+	}
+
+	// Delete the file locally.
+	if err := localFile.Delete(); err != nil {
+		t.Fatal("failed to delete local file", err)
+	}
+
+	// Get file into, file should now not be available or recoverable
+	fi, err = r.File(remoteFile)
+	if err != nil {
+		t.Fatal("failed to get file info", err)
+	}
+	if fi.Redundancy >= 1 {
+		t.Fatal("redundancy of file should be less than 1:", fi.Redundancy)
+	}
+	if fi.OnDisk {
+		t.Fatal("file is still on disk")
+	}
+	if fi.Available {
+		t.Fatal("file should not be available")
+	}
+	if fi.Recoverable {
+		t.Fatal("file should not be recoverable")
+	}
+}
+
+// TestRenterDownloadWithDrainedContract tests if draining a contract below
+// MinContractFundUploadThreshold correctly sets a contract to !GoodForUpload
+// while still being able to download the file.
+func TestRenterDownloadWithDrainedContract(t *testing.T) {
+	if testing.Short() || !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Add a renter with a dependency that prevents contract renewals due to
+	// low funds.
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencyDisableRenewal{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+	miner := tg.Miners()[0]
+	// Drain the contracts until they are supposed to no longer be good for
+	// uploading.
+	_, err = drainContractsByUploading(renter, tg, contractor.MinContractFundUploadThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numRetries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// The 2 contracts should no longer be good for upload.
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
+		if len(rc.Contracts) != len(tg.Hosts()) {
+			return fmt.Errorf("There should be %v contracts but was %v", len(tg.Hosts()), len(rc.Contracts))
+		}
+		for _, c := range rc.Contracts {
+			if c.GoodForUpload || !c.GoodForRenew {
+				return fmt.Errorf("Contract shouldn't be good for uploads but it should be good for renew: %v %v",
+					c.GoodForUpload, c.GoodForRenew)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Choose a random file and download it.
+	files, err := renter.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

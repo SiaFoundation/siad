@@ -21,10 +21,12 @@ type (
 	// transactionBuilder.
 	walletShim interface {
 		NextAddress() (types.UnlockConditions, error)
+		PrimarySeed() (modules.Seed, uint64, error)
 		StartTransaction() (modules.TransactionBuilder, error)
 	}
 	wallet interface {
 		NextAddress() (types.UnlockConditions, error)
+		PrimarySeed() (modules.Seed, uint64, error)
 		StartTransaction() (transactionBuilder, error)
 	}
 	transactionBuilder interface {
@@ -57,7 +59,7 @@ type (
 		IncrementSuccessfulInteractions(key types.SiaPublicKey)
 		IncrementFailedInteractions(key types.SiaPublicKey)
 		RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error)
-		ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown
+		ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error)
 		SetAllowance(allowance modules.Allowance) error
 	}
 
@@ -76,6 +78,9 @@ type WalletBridge struct {
 
 // NextAddress computes and returns the next address of the wallet.
 func (ws *WalletBridge) NextAddress() (types.UnlockConditions, error) { return ws.W.NextAddress() }
+
+// PrimarySeed returns the primary wallet seed.
+func (ws *WalletBridge) PrimarySeed() (modules.Seed, uint64, error) { return ws.W.PrimarySeed() }
 
 // StartTransaction creates a new transactionBuilder that can be used to create
 // and sign a transaction.

@@ -6,6 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 const (
@@ -19,6 +20,19 @@ const (
 	// remainingFile is a constant used to indicate that a fileSection can access
 	// the whole remaining file instead of being bound to a certain end offset.
 	remainingFile = -1
+
+	// keyExchangeMaxLen is the maximum number of bytes the renter will read
+	// from the host during the RPC key exchange.
+	keyExchangeMaxLen = 256
+)
+
+var (
+	// The following specifiers are used for deriving different seeds from the
+	// wallet seed.
+	identifierSeedSpecifier = types.Specifier{'i', 'd', 'e', 'n', 't', 'i', 'f', 'i', 'e', 'r', 's', 'e', 'e', 'd'}
+	renterSeedSpecifier     = types.Specifier{'r', 'e', 'n', 't', 'e', 'r'}
+	secretKeySeedSpecifier  = types.Specifier{'s', 'e', 'c', 'r', 'e', 't', 'k', 'e', 'y', 's', 'e', 'e', 'd'}
+	signingKeySeedSpecifier = types.Specifier{'s', 'i', 'g', 'n', 'i', 'n', 'g', 'k', 'e', 'y', 's', 'e', 'e', 'd'}
 )
 
 var (
@@ -29,6 +43,22 @@ var (
 		Standard: 2 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
+
+	// defaultContractLockTimeout is the default amount of the time, in
+	// milliseconds, that the renter will try to acquire a contract lock for.
+	defaultContractLockTimeout = build.Select(build.Var{
+		Dev:      uint64(60 * 1000),     // 1 minute
+		Standard: uint64(5 * 60 * 1000), // 5 minutes
+		Testing:  uint64(5 * 1000),      // 5 seconds
+	}).(uint64)
+
+	// ephemeralSeedInterval is the amount of blocks after which we use a new
+	// renter seed for creating file contracts.
+	ephemeralSeedInterval = build.Select(build.Var{
+		Dev:      types.BlockHeight(100),
+		Standard: types.BlockHeight(1000),
+		Testing:  types.BlockHeight(10),
+	}).(types.BlockHeight)
 
 	// hostPriceLeeway is the amount of flexibility we give to hosts when
 	// choosing how much to pay for file uploads. If the host does not have the

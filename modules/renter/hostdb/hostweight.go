@@ -338,7 +338,11 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	if build.VersionCmp(entry.Version, "1.5.0") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
 	}
-	// we shouldn't use pre hardfork hosts
+	// small penalty for hosts below version 1.4.0.
+	if build.VersionCmp(entry.Version, "1.4.0") < 0 {
+		base = base * 0.90 // 10% penalty
+	}
+	// we shouldn't use pre hardfork hosts.
 	if build.VersionCmp(entry.Version, "1.3.7") < 0 {
 		base = math.SmallestNonzeroFloat64
 	}
@@ -490,14 +494,22 @@ func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hos
 
 // EstimateHostScore takes a HostExternalSettings and returns the estimated
 // score of that host in the hostdb, assuming no penalties for age or uptime.
-func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance modules.Allowance) modules.HostScoreBreakdown {
-	return hdb.managedScoreBreakdown(entry, true, true)
+func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance modules.Allowance) (modules.HostScoreBreakdown, error) {
+	if err := hdb.tg.Add(); err != nil {
+		return modules.HostScoreBreakdown{}, err
+	}
+	defer hdb.tg.Done()
+	return hdb.managedScoreBreakdown(entry, true, true), nil
 }
 
 // ScoreBreakdown provdes a detailed set of scalars and bools indicating
 // elements of the host's overall score.
-func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) modules.HostScoreBreakdown {
-	return hdb.managedScoreBreakdown(entry, false, false)
+func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
+	if err := hdb.tg.Add(); err != nil {
+		return modules.HostScoreBreakdown{}, err
+	}
+	defer hdb.tg.Done()
+	return hdb.managedScoreBreakdown(entry, false, false), nil
 }
 
 // managedScoreBreakdown computes the score breakdown of a host. Certain

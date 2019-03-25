@@ -176,6 +176,14 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		settings.MaxCollateral = x
 	}
 
+	if req.FormValue("minbaserpcprice") != "" {
+		var x types.Currency
+		_, err := fmt.Sscan(req.FormValue("minbaserpcprice"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.MinBaseRPCPrice = x
+	}
 	if req.FormValue("mincontractprice") != "" {
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("mincontractprice"), &x)
@@ -191,6 +199,14 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 			return modules.HostInternalSettings{}, err
 		}
 		settings.MinDownloadBandwidthPrice = x
+	}
+	if req.FormValue("minsectoraccessprice") != "" {
+		var x types.Currency
+		_, err := fmt.Sscan(req.FormValue("minsectoraccessprice"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.MinSectorAccessPrice = x
 	}
 	if req.FormValue("minstorageprice") != "" {
 		var x types.Currency
@@ -256,7 +272,11 @@ func (api *API) hostEstimateScoreGET(w http.ResponseWriter, req *http.Request, _
 	entry.HostExternalSettings = mergedSettings
 	// Use the default allowance for now, since we do not know what sort of
 	// allowance the renters may use to attempt to access this host.
-	estimatedScoreBreakdown := api.renter.EstimateHostScore(entry, modules.DefaultAllowance)
+	estimatedScoreBreakdown, err := api.renter.EstimateHostScore(entry, modules.DefaultAllowance)
+	if err != nil {
+		WriteError(w, Error{"error estimating host score: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
 	e := HostEstimateScoreGET{
 		EstimatedScore: estimatedScoreBreakdown.Score,
 		ConversionRate: estimatedScoreBreakdown.ConversionRate,

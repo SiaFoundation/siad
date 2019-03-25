@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -16,9 +15,11 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
+
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -35,7 +36,7 @@ func createRandFile(path string, size int) error {
 
 // setupTestDownload creates a server tester with an uploaded file of size
 // `size` and name `name`.
-func setupTestDownload(t *testing.T, size int, name string, waitOnAvailability bool) (*serverTester, string) {
+func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy bool) (*serverTester, string) {
 	st, err := createServerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -87,12 +88,12 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnAvailability b
 		t.Fatal(err)
 	}
 
-	if waitOnAvailability {
-		// wait for the file to become available
+	if waitOnRedundancy {
+		// wait for the file to have a redundancy > 1
 		err = build.Retry(200, time.Second, func() error {
 			var rf RenterFiles
 			st.getAPI("/renter/files", &rf)
-			if len(rf.Files) != 1 || !rf.Files[0].Available {
+			if len(rf.Files) != 1 || rf.Files[0].Redundancy < 1 {
 				return fmt.Errorf("the uploading is not succeeding for some reason: %v\n", rf.Files[0])
 			}
 			return nil
@@ -119,16 +120,16 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 	// Read the section to be downloaded from the original file.
 	uf, err := os.Open(path) // Uploaded file.
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to open the uploaded file locally")
 	}
 	var originalBytes bytes.Buffer
 	_, err = uf.Seek(offset, 0)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "error when seeking through the local uploaded file")
 	}
 	_, err = io.CopyN(&originalBytes, uf, length)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "error when copying from the local uploaded file")
 	}
 
 	// Download the original file from the passed offsets.
@@ -145,26 +146,26 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 		// Make request.
 		resp, err := HttpGET("http://" + st.server.listener.Addr().String() + dlURL)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to make an http request")
 		}
 		defer resp.Body.Close()
 
 		_, err = io.Copy(&downbytes, resp.Body)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to make a copy after the http request")
 		}
 	} else {
 		dlURL += "&destination=" + downpath
 		err := st.getAPI(dlURL, nil)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "download request failed")
 		}
 		// wait for the download to complete
 		err = build.Retry(30, time.Second, func() error {
 			var rdq RenterDownloadQueue
 			err = st.getAPI("/renter/downloads", &rdq)
 			if err != nil {
-				return err
+				return errors.AddContext(err, "unable to view the download queue")
 			}
 			for _, download := range rdq.Downloads {
 				if download.Received == download.Filesize && download.SiaPath == ulSiaPath {
@@ -174,7 +175,7 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 			return errors.New("file not downloaded")
 		})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatal(errors.AddContext(err, "download does not appear to have completed"))
 		}
 
 		// open the downloaded file
@@ -274,9 +275,8 @@ func TestValidDownloads(t *testing.T) {
 		{sectorSize * 5, 150, 3 * (sectorSize * 5) / 4, true, "HttpRespOffsetAndLengthManyChunks"},
 		{sectorSize * 5, 150, sectorSize * 5 / 4, true, "HttpRespOffsetAndLengthManyChunksSubsetOfChunks"},
 	}
-	for i, params := range testParams {
-		params := params
-		t.Run(fmt.Sprintf("%v-%v", t.Name(), i), func(st *testing.T) {
+	for _, params := range testParams {
+		t.Run(params.testName, func(st *testing.T) {
 			st.Parallel()
 			err := runDownloadTest(st, params.filesize, params.offset, params.length, params.useHttpResp, params.testName)
 			if err != nil {
@@ -363,8 +363,8 @@ func TestRenterDownloadAsyncNonexistentFile(t *testing.T) {
 
 	downpath := filepath.Join(st.dir, "testfile")
 	err = st.getAPI(fmt.Sprintf("/renter/downloadasync/doesntexist?destination=%v", downpath), nil)
-	if err == nil || err.Error() != fmt.Sprintf("download failed: no file with that path: doesntexist") {
-		t.Fatal("downloadasync did not return error on nonexistent file")
+	if err == nil {
+		t.Error("should not be able to download a file that does not exist")
 	}
 }
 
@@ -572,9 +572,9 @@ func TestRenterConflicts(t *testing.T) {
 
 	// Upload using the same nickname.
 	err = st.stdPostAPI("/renter/upload/foo/bar.sia/test", uploadValues)
-	expectedErr := Error{"upload failed: " + renter.ErrPathOverload.Error()}
+	expectedErr := Error{"upload failed: " + siafile.ErrPathOverload.Error()}
 	if err != expectedErr {
-		t.Fatalf("expected %v, got %v", Error{"upload failed: " + renter.ErrPathOverload.Error()}, err)
+		t.Fatalf("expected %v, got %v", Error{"upload failed: " + siafile.ErrPathOverload.Error()}, err)
 	}
 
 	// Upload using nickname that conflicts with folder.
@@ -803,9 +803,8 @@ func TestRenterLoadNonexistent(t *testing.T) {
 	// Try downloading a nonexistent file.
 	downpath := filepath.Join(st.dir, "dnedown.dat")
 	err = st.stdGetAPI("/renter/download/dne?destination=" + downpath)
-	hasPrefix := strings.HasPrefix(err.Error(), "download failed: no file with that path")
-	if err == nil || !hasPrefix {
-		t.Errorf("expected error to be 'download failed: no file with that path'; got %v instead", err)
+	if err == nil {
+		t.Error("should not be able to download non-existant file")
 	}
 
 	// The renter's downloads queue should be empty.
@@ -846,8 +845,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	renameValues := url.Values{}
 	renameValues.Set("newsiapath", "newdne")
 	err = st.stdPostAPI("/renter/rename/dne", renameValues)
-	if err == nil || err.Error() != renter.ErrUnknownPath.Error() {
-		t.Errorf("expected error to be %v; got %v", renter.ErrUnknownPath, err)
+	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
 	// Set an allowance for the renter, allowing a contract to be formed.
@@ -892,8 +891,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to an empty string.
 	renameValues.Set("newsiapath", "")
 	err = st.stdPostAPI("/renter/rename/test1", renameValues)
-	if err == nil || err.Error() != renter.ErrEmptyFilename.Error() {
-		t.Fatalf("expected error to be %v; got %v", renter.ErrEmptyFilename, err)
+	if err == nil || err.Error() != modules.ErrEmptySiaPath.Error() {
+		t.Fatalf("expected error to be %v; got %v", modules.ErrEmptySiaPath, err)
 	}
 
 	// Rename the file.
@@ -928,8 +927,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to a name that's already taken.
 	renameValues.Set("newsiapath", "newtest1")
 	err = st.stdPostAPI("/renter/rename/test2", renameValues)
-	if err == nil || err.Error() != renter.ErrPathOverload.Error() {
-		t.Errorf("expected error to be %v; got %v", renter.ErrPathOverload, err)
+	if err == nil || err.Error() != siafile.ErrPathOverload.Error() {
+		t.Errorf("expected error to be %v; got %v", siafile.ErrPathOverload, err)
 	}
 }
 
@@ -997,8 +996,8 @@ func TestRenterHandlerDelete(t *testing.T) {
 
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
-	if err == nil || err.Error() != renter.ErrUnknownPath.Error() {
-		t.Errorf("expected error to be %v, got %v", renter.ErrUnknownPath, err)
+	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 }
 
@@ -1804,7 +1803,11 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !st.renter.FileList()[0].Available {
+		files, err := st.renter.FileList()
+		if err != nil {
+			return err
+		}
+		if !files[0].Available {
 			return errors.New("file did not complete uploading")
 		}
 		return nil
@@ -1831,5 +1834,151 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 			t.Fatal("changing host price caused renew")
 		}
 		time.Sleep(time.Millisecond * 100)
+	}
+}
+
+// TestHealthLoop probes the code involved with threadedUpdateRenterHealth to
+// verify the health information stored in the siadir metadata is getting
+// updated as the health of the files changes
+func TestHealthLoop(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create renter and hosts
+	st1, err := createServerTester(t.Name() + "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st1.server.panicClose()
+	if err = st1.announceHost(); err != nil {
+		t.Fatal(err)
+	}
+	st2, err := createServerTester(t.Name() + "2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Connect the testers to eachother so that they are all on the same
+	// blockchain.
+	testGroup := []*serverTester{st1, st2}
+	err = fullyConnectNodes(testGroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure that every wallet has money in it.
+	err = fundAllNodes(testGroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add storage to every host.
+	err = addStorageToAllHosts(testGroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Announce the hosts.
+	err = announceAllHosts(testGroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set an allowance for the renter, allowing a contract to be formed.
+	allowanceValues := url.Values{}
+	allowanceValues.Set("funds", testFunds)
+	allowanceValues.Set("period", testPeriod)
+	allowanceValues.Set("renewwindow", testRenewWindow)
+	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	if err = st1.stdPostAPI("/renter", allowanceValues); err != nil {
+		t.Fatal(err)
+	}
+
+	// Block until the allowance has finished forming contracts.
+	err = build.Retry(50, time.Millisecond*250, func() error {
+		var rc RenterContracts
+		err = st1.getAPI("/renter/contracts", &rc)
+		if err != nil {
+			return errors.New("couldn't get renter stats")
+		}
+		if len(rc.Contracts) != 2 {
+			return errors.New("no contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal("allowance setting failed")
+	}
+
+	// Create and upload files
+	path := filepath.Join(st1.dir, "test.dat")
+	if err = createRandFile(path, 1024); err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload to host.
+	uploadValues := url.Values{}
+	uploadValues.Set("source", path)
+	uploadValues.Set("datapieces", "1")
+	uploadValues.Set("paritypieces", "1")
+	if err = st1.stdPostAPI("/renter/upload/test", uploadValues); err != nil {
+		t.Fatal(err)
+	}
+
+	// redundancy should reach 2
+	err = build.Retry(120, 250*time.Millisecond, func() error {
+		var rf RenterFiles
+		st1.getAPI("/renter/files", &rf)
+		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
+			return nil
+		}
+		return fmt.Errorf("file not uploaded, %v files found and redundancy of first file is %v", len(rf.Files), rf.Files[0].Redundancy)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify folder metadata is update, directory health should be 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		var rd RenterDirectory
+		err := st1.getAPI("/renter/dir/", &rd)
+		if err != nil {
+			return err
+		}
+		if rd.Directories[0].Health != 0 {
+			return fmt.Errorf("Directory health should be 0 but was %v", rd.Directories[0].Health)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Take Down a host
+	st2.server.panicClose()
+
+	// redundancy should drop
+	err = build.Retry(120, 250*time.Millisecond, func() error {
+		var rf RenterFiles
+		st1.getAPI("/renter/files", &rf)
+		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
+			return fmt.Errorf("Expect 1 file with a redundancy of less than 2, got %v files and redundancy of %v", len(rf.Files), rf.Files[0].Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the metadata has been updated
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		var rd RenterDirectory
+		st1.getAPI("/renter/dir/", &rd)
+		if rd.Directories[0].MaxHealth == 0 {
+			return fmt.Errorf("Directory max health should have dropped below 0 but was %v", rd.Directories[0].MaxHealth)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

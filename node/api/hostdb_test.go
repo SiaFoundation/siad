@@ -238,7 +238,7 @@ func TestHostDBHostsHandler(t *testing.T) {
 
 // assembleHostHostname is assembleServerTester but you can specify which
 // hostname the host should use.
-func assembleHostPort(key crypto.TwofishKey, hostHostname string, testdir string) (*serverTester, error) {
+func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string) (*serverTester, error) {
 	// assembleServerTester should not get called during short tests, as it
 	// takes a long time to run.
 	if testing.Short() {

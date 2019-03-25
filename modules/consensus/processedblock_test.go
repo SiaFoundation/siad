@@ -40,7 +40,7 @@ func TestIntegrationMinimumValidChildTimestamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := crypto.GenerateTwofishKey()
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err = w.Encrypt(key)
 	if err != nil {
 		t.Fatal(err)

@@ -36,6 +36,20 @@ var (
 		Run:   wrap(renterallowancecmd),
 	}
 
+	renterBackupCreateCmd = &cobra.Command{
+		Use:   "createbackup [path]",
+		Short: "Create a backup of the renter's siafiles",
+		Long:  "Create a backup of the renter's siafiles at the specified path",
+		Run:   wrap(renterbackupcreatecmd),
+	}
+
+	renterBackupLoadCmd = &cobra.Command{
+		Use:   "loadbackup [path]",
+		Short: "Load a backup of the renter's siafiles",
+		Long:  "Load a backup of the renter's siafiles from the specified path",
+		Run:   wrap(renterbackuploadcmd),
+	}
+
 	renterCmd = &cobra.Command{
 		Use:   "renter",
 		Short: "Perform renter actions",
@@ -48,6 +62,13 @@ var (
 		Short: "View the Renter's contracts",
 		Long:  "View the contracts that the Renter has formed with hosts.",
 		Run:   wrap(rentercontractscmd),
+	}
+
+	renterContractsRecoveryScanProgressCmd = &cobra.Command{
+		Use:   "recoveryscanprogress",
+		Short: "Returns the recovery scan progress.",
+		Long:  "Returns the progress of a potentially ongoing recovery scan.",
+		Run:   wrap(rentercontractrecoveryscanprogresscmd),
 	}
 
 	renterContractsViewCmd = &cobra.Command{
@@ -113,7 +134,7 @@ and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w r
 	}
 
 	renterSetAllowanceCmd = &cobra.Command{
-		Use:   "setallowance [amount] [period] [hosts] [renew window]",
+		Use:   "setallowance --amount [amount] --period [period] --hosts [hosts] --renew-window [renew window]",
 		Short: "Set the allowance",
 		Long: `Set the amount of money that can be spent over a given period.
 
@@ -125,6 +146,13 @@ Note that setting the allowance will cause siad to immediately begin forming
 contracts! You should only set the allowance once you are fully synced and you
 have a reasonable number (>30) of hosts in your hostdb.`,
 		Run: rentersetallowancecmd,
+	}
+
+	renterTriggerContractRecoveryScanCmd = &cobra.Command{
+		Use:   "triggerrecoveryscan",
+		Short: "Triggers a recovery scan.",
+		Long:  "Triggers a scan of the whole blockchain to find recoverable contracts.",
+		Run:   wrap(rentertriggercontractrecoveryrescancmd),
 	}
 
 	renterUploadsCmd = &cobra.Command{
@@ -492,6 +520,28 @@ func (s byValue) Less(i, j int) bool {
 	return cmp > 0
 }
 
+// renterbackcreatecmd is the handler for the command `siac renter
+// createbackup`.
+func renterbackupcreatecmd(path string) {
+	path = abs(path)
+
+	err := httpClient.RenterCreateBackupPost(path)
+	if err != nil {
+		die("Failed to create backup", err)
+	}
+}
+
+// renterbackloadcmd is the handler for the command `siac renter
+// loadbackup`.
+func renterbackuploadcmd(path string) {
+	path = abs(path)
+
+	err := httpClient.RenterRecoverBackupPost(path)
+	if err != nil {
+		die("Failed to load backup", err)
+	}
+}
+
 // rentercontractscmd is the handler for the comand `siac renter contracts`.
 // It lists the Renter's contracts.
 func rentercontractscmd() {
@@ -523,14 +573,17 @@ func rentercontractscmd() {
 `, len(rc.ActiveContracts), filesizeUnits(int64(activeTotalStored)),
 			currencyUnits(activeTotalRemaining), currencyUnits(activeTotalSpent), currencyUnits(activeTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  Host\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.ActiveContracts {
 			address := c.NetAddress
+			hostVersion := c.HostVersion
 			if address == "" {
 				address = "Host Removed"
+				hostVersion = ""
 			}
-			fmt.Fprintf(w, "  %v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
+				hostVersion,
 				currencyUnits(c.RenterFunds),
 				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
 				currencyUnits(c.Fees),
@@ -567,14 +620,17 @@ func rentercontractscmd() {
 
 `, len(rc.InactiveContracts), filesizeUnits(int64(inactiveTotalStored)), currencyUnits(inactiveTotalRemaining), currencyUnits(inactiveTotalSpent), currencyUnits(inactiveTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  Host\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.InactiveContracts {
 			address := c.NetAddress
+			hostVersion := c.HostVersion
 			if address == "" {
 				address = "Host Removed"
+				hostVersion = ""
 			}
-			fmt.Fprintf(w, "  %v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
+				hostVersion,
 				currencyUnits(c.RenterFunds),
 				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
 				currencyUnits(c.Fees),
@@ -614,14 +670,17 @@ func rentercontractscmd() {
 			
 	`, len(rce.ExpiredContracts), filesizeUnits(int64(expiredTotalStored)), currencyUnits(expiredTotalWithheld), currencyUnits(expiredTotalSpent), currencyUnits(expiredTotalFees))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  Host\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+			fmt.Fprintln(w, "  Host\tHost Version\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 			for _, c := range rce.ExpiredContracts {
 				address := c.NetAddress
+				hostVersion := c.HostVersion
 				if address == "" {
 					address = "Host Removed"
+					hostVersion = ""
 				}
-				fmt.Fprintf(w, "  %v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+				fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 					address,
+					hostVersion,
 					currencyUnits(c.RenterFunds),
 					currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
 					currencyUnits(c.Fees),
@@ -659,7 +718,8 @@ func rentercontractsviewcmd(cid string) {
 			}
 			fmt.Printf(`
 Contract %v
-  Host: %v (Public Key: %v)
+	Host: %v (Public Key: %v)
+	Host Version: %v
 
   Start Height: %v
   End Height:   %v
@@ -672,7 +732,7 @@ Contract %v
   Remaining Funds:   %v
 
   File Size: %v
-`, rc.ID, rc.NetAddress, rc.HostPublicKey.String(), rc.StartHeight, rc.EndHeight,
+`, rc.ID, rc.NetAddress, rc.HostVersion, rc.HostPublicKey.String(), rc.StartHeight, rc.EndHeight,
 				currencyUnits(rc.TotalCost),
 				currencyUnits(rc.Fees),
 				currencyUnits(rc.TotalCost.Sub(rc.Fees)),
@@ -725,6 +785,39 @@ func renterfilesdownloadcmd(path, destination string) {
 		die("\nDownload could not be completed:", err)
 	}
 	fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
+}
+
+// rentertriggercontractrecoveryrescancmd starts a new scan for recoverable
+// contracts on the blockchain.
+func rentertriggercontractrecoveryrescancmd() {
+	crpg, err := httpClient.RenterContractRecoveryProgressGet()
+	if err != nil {
+		die("Failed to get recovery status", err)
+	}
+	if crpg.ScanInProgress {
+		fmt.Println("Scan already in progress")
+		fmt.Println("Scanned height:\t", crpg.ScannedHeight)
+		return
+	}
+	if err := httpClient.RenterInitContractRecoveryScanPost(); err != nil {
+		die("Failed to trigger recovery scan", err)
+	}
+	fmt.Println("Successfully triggered contract recovery scan.")
+}
+
+// rentercontractrecoveryscanprogresscmd returns the current progress of a
+// potentially ongoing recovery scan.
+func rentercontractrecoveryscanprogresscmd() {
+	crpg, err := httpClient.RenterContractRecoveryProgressGet()
+	if err != nil {
+		die("Failed to get recovery status", err)
+	}
+	if crpg.ScanInProgress {
+		fmt.Println("Scan in progress")
+		fmt.Println("Scanned height:\t", crpg.ScannedHeight)
+	} else {
+		fmt.Println("No scan in progress")
+	}
 }
 
 // bandwidthUnit takes bps (bits per second) as an argument and converts
@@ -855,7 +948,7 @@ func renterfileslistcmd() {
 	fmt.Printf(" %9s\n", filesizeUnits(int64(totalStored)))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if renterListVerbose {
-		fmt.Fprintln(w, "  File size\tAvailable\tUploaded\tProgress\tRedundancy\tRenewing\tOn Disk\tRecoverable\tSia path")
+		fmt.Fprintln(w, "  File size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tOn Disk\tRecoverable\tSia path")
 	}
 	sort.Sort(bySiaPath(rf.Files))
 	for _, file := range rf.Files {
@@ -867,13 +960,15 @@ func renterfileslistcmd() {
 			if file.Redundancy == -1 {
 				redundancyStr = "-"
 			}
+			healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
 			uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
 			if file.UploadProgress == -1 {
 				uploadProgressStr = "-"
 			}
 			onDiskStr := yesNo(file.OnDisk)
 			recoverableStr := yesNo(file.Recoverable)
-			fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%s\t%s\t%s", availableStr, filesizeUnits(int64(file.UploadedBytes)), uploadProgressStr, redundancyStr, renewingStr, onDiskStr, recoverableStr)
+			stuckStr := yesNo(file.Stuck)
+			fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(int64(file.UploadedBytes)), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
 		}
 		fmt.Fprintf(w, "\t%s", file.SiaPath)
 		if !renterListVerbose && !file.Available {
@@ -923,16 +1018,18 @@ func renterfilesuploadcmd(source, path string) {
 		} else if len(files) == 0 {
 			die("Nothing to upload.")
 		}
+		failed := 0
 		for _, file := range files {
 			fpath, _ := filepath.Rel(source, file)
 			fpath = filepath.Join(path, fpath)
 			fpath = filepath.ToSlash(fpath)
 			err = httpClient.RenterUploadDefaultPost(abs(file), fpath)
 			if err != nil {
-				die("Could not upload file:", err)
+				failed++
+				fmt.Printf("Could not upload file %s :%v\n", file, err)
 			}
 		}
-		fmt.Printf("Uploaded %d files into '%s'.\n", len(files), path)
+		fmt.Printf("\nUploaded %d of %d files into '%s'.\n", len(files)-failed, len(files), path)
 	} else {
 		// single file
 		err = httpClient.RenterUploadDefaultPost(abs(source), path)

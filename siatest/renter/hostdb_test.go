@@ -24,6 +24,8 @@ func TestInitialScanComplete(t *testing.T) {
 		t.SkipNow()
 	}
 
+	t.Parallel()
+
 	// Get a directory for testing.
 	testDir := renterTestDir(t.Name())
 
@@ -618,8 +620,8 @@ func TestFilterMode(t *testing.T) {
 		Hosts:  10,
 		Miners: 1,
 	}
-
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), groupParams)
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal(errors.AddContext(err, "failed to create group"))
 	}
@@ -632,7 +634,7 @@ func TestFilterMode(t *testing.T) {
 	// Create renter. Set allowance of 2 with 10 total hosts, this will allow a
 	// blacklist or whitelist of 2, and a number of extra hosts to potentially
 	// cancel contracts with
-	renterParams := node.Renter(filepath.Join(siatest.TestDir(t.Name()), "renter"))
+	renterParams := node.Renter(testDir + "/renter")
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = uint64(2)
 	nodes, err := tg.AddNodes(renterParams)
