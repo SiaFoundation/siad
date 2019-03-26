@@ -499,6 +499,8 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// Log if the repair was unsuccessful
 	if !successfulRepair {
 		r.log.Debugln("WARN: repair unsuccessful, marking chunk", uc.id, "as stuck")
+	} else {
+		r.log.Debugln("SUCCESS: repair successsful, marking chunk as non-stuck:", uc.id)
 	}
 	// Update chunk stuck status
 	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {

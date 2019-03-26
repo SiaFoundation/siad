@@ -33,6 +33,7 @@ func (w *worker) managedDropUploadChunks() {
 
 	for i := 0; i < len(chunksToDrop); i++ {
 		w.managedDropChunk(chunksToDrop[i])
+		w.renter.log.Debugln("dropping chunk because the worker is dropping all chunks", w.hostPubKey)
 	}
 }
 
@@ -83,6 +84,7 @@ func (w *worker) managedQueueUploadChunk(uc *unfinishedUploadChunk) {
 		// The worker should not be uploading, remove the chunk.
 		w.mu.Unlock()
 		w.managedDropChunk(uc)
+		w.renter.log.Debugln("Dropping chunk before putting into queue", !goodForUpload, w.uploadTerminated, w.onUploadCooldown(), w.hostPubKey)
 		return
 	}
 	w.unprocessedChunks = append(w.unprocessedChunks, uc)
@@ -171,6 +173,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 		// This worker no longer needs to track this chunk.
 		uc.mu.Unlock()
 		w.managedDropChunk(uc)
+		w.renter.log.Debugln("Worker dropping a chunk while processing", chunkComplete, !candidateHost, !goodForUpload, onCooldown, w.hostPubKey)
 		return nil, 0
 	}
 
