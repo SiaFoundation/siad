@@ -625,6 +625,13 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 
 	// Make sure we call threadedBubbleMetadata on the parent once we are done.
 	defer func() {
+		// Complete bubble
+		err = r.managedCompleteBubbleUpdate(siaPath)
+		if err != nil {
+			r.log.Println("WARN: error in completing bubble:", err)
+			return
+		}
+		// Continue with parent dir if we aren't in the root dir already.
 		if siaPath.IsRoot() {
 			return
 		}
