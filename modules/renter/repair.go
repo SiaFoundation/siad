@@ -319,8 +319,8 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) error {
 	siaPathStr := siaPath.String()
 	status, ok := r.bubbleUpdates[siaPathStr]
 	if !ok {
-		// Bubble not found in map, treat as developer error as this should not happen
-		build.Critical("bubble status not found in bubble update map")
+		// Bubble not found in map, nothing to do.
+		return nil
 	}
 
 	// Update status and call new bubble or remove from bubbleUpdates and save
