@@ -182,7 +182,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			}
 			fileMetadata, err := r.managedCalculateFileMetadata(fileSiaPath)
 			if err != nil {
-				return siadir.Metadata{}, err
+				r.log.Printf("failed to calculate file metadata %v: %v", fi.Name(), err)
+				continue
 			}
 			if time.Since(fileMetadata.RecentRepairTime) >= fileRepairInterval {
 				// If the file has not recently been repaired then consider the
@@ -622,6 +623,19 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 		return
 	}
 
+	// Make sure we call threadedBubbleMetadata on the parent once we are done.
+	defer func() {
+		if siaPath.IsRoot() {
+			return
+		}
+		parentDir, err := siaPath.Dir()
+		if err != nil {
+			r.log.Printf("WARN: Failed to defer threadedBubbleMetadata: %v", err)
+			return
+		}
+		go r.threadedBubbleMetadata(parentDir)
+	}()
+
 	// Calculate the new metadata values of the directory
 	metadata, err := r.managedCalculateDirectoryMetadata(siaPath)
 	if err != nil {
@@ -671,12 +685,6 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 		}
 		return
 	}
-	// Move to parent directory
-	siaPath, err = siaPath.Dir()
-	if err != nil {
-		return
-	}
-	go r.threadedBubbleMetadata(siaPath)
 	return
 }
 
