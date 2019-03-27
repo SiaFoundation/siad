@@ -6,11 +6,20 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
+)
+
+var (
+	healthTime     time.Duration
+	buildTime      time.Duration
+	redundancyTime time.Duration
+	openTime       time.Duration
+	statTime       time.Duration
 )
 
 // A file is a single file that has been uploaded to the network. Files are
@@ -66,12 +75,19 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() ([]modules.FileInfo, error) {
+	statTime = 0
+	healthTime = 0
+	buildTime = 0
+	redundancyTime = 0
+	openTime = 0
+	wholeTime := time.Now()
 	if err := r.tg.Add(); err != nil {
 		return []modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 	fileList := []modules.FileInfo{}
+	var fileInfoTime time.Duration
 	err := filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder. We simply ignore missing files.
@@ -93,7 +109,9 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 		if err != nil {
 			return err
 		}
+		infoStart := time.Now()
 		file, err := r.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+		fileInfoTime += time.Since(infoStart)
 		if os.IsNotExist(err) || err == siafile.ErrUnknownPath {
 			return nil
 		}
@@ -104,6 +122,13 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 		return nil
 	})
 
+	println("redun time:   ", redundancyTime)
+	println("build time:   ", buildTime)
+	println("health time:  ", healthTime)
+	println("open time:    ", openTime)
+	println("stat time:    ", statTime)
+	println("fileInfo time:", fileInfoTime)
+	println("whole time:   ", time.Since(wholeTime))
 	return fileList, err
 }
 
@@ -135,7 +160,9 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 // many files at once.
 func (r *Renter) fileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Get the file and its contracts
+	openStart := time.Now()
 	entry, err := r.staticFileSet.Open(siaPath)
+	openTime += time.Since(openStart)
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
@@ -145,11 +172,18 @@ func (r *Renter) fileInfo(siaPath modules.SiaPath, offline map[string]bool, good
 	var onDisk bool
 	localPath := entry.LocalPath()
 	if localPath != "" {
+		statStart := time.Now()
 		_, err = os.Stat(localPath)
+		statTime += time.Since(statStart)
 		onDisk = err == nil
 	}
+	redundancyStart := time.Now()
 	redundancy := entry.Redundancy(offline, goodForRenew)
+	redundancyTime += time.Since(redundancyStart)
+	healthStart := time.Now()
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
+	healthTime += time.Since(healthStart)
+	buildStart := time.Now()
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
 		Available:        redundancy >= 1,
@@ -174,6 +208,7 @@ func (r *Renter) fileInfo(siaPath modules.SiaPath, offline map[string]bool, good
 		UploadedBytes:    entry.UploadedBytes(),
 		UploadProgress:   entry.UploadProgress(),
 	}
+	buildTime += time.Since(buildStart)
 
 	return fileInfo, nil
 }
