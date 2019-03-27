@@ -234,6 +234,7 @@ func (c *Contractor) managedInterruptContractMaintenance() {
 		case <-gotLock:
 			return
 		case c.interruptMaintenance <- struct{}{}:
+			c.log.Debugln("Signal sent to interrupt contract maintenance")
 		}
 	}
 }
@@ -1023,7 +1024,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 	initialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(3)
 	c.mu.RUnlock()
-	hosts, err := c.hdb.RandomHosts(neededContracts*2+randomHostsBufferForScore, blacklist, addressBlacklist)
+	hosts, err := c.hdb.RandomHosts(neededContracts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)
 		return
