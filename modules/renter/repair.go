@@ -650,24 +650,17 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 		return
 	}
 
-	// Update directory metadata with the health information
+	// Update directory metadata with the health information. Don't return here
+	// to avoid skipping the repairNeeded and stuckChunkFound signals.
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
 		r.log.Printf("WARN: Could not open directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
-		return
-	}
-	defer siaDir.Close()
-	err = siaDir.UpdateMetadata(metadata)
-	if err != nil {
-		r.log.Printf("WARN: Could not update the metadata of the directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
-		return
-	}
-
-	// Complete bubble
-	err = r.managedCompleteBubbleUpdate(siaPath)
-	if err != nil {
-		r.log.Println("WARN: error in completing bubble:", err)
-		return
+	} else {
+		defer siaDir.Close()
+		err = siaDir.UpdateMetadata(metadata)
+		if err != nil {
+			r.log.Printf("WARN: Could not update the metadata of the directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
+		}
 	}
 
 	// If siaPath is equal to "" then return as we are in the root files
