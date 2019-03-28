@@ -43,8 +43,20 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		contractPrice = h.settings.MinContractPrice
 	}
 
+	// If the host's wallet is locked, or has insufficient funds to pay
+	// collateral, report that it is not accepting contracts.
+	acceptingContracts := h.settings.AcceptingContracts
+	if unlocked, err := h.wallet.Unlocked(); err != nil || !unlocked {
+		acceptingContracts = false
+	} else if balance, _, _, err := h.wallet.ConfirmedBalance(); err != nil || balance.Cmp(h.settings.MaxCollateral) < 0 {
+		acceptingContracts = false
+	}
+	if h.settings.CollateralBudget.Cmp(h.settings.MaxCollateral.Add(h.financialMetrics.LockedStorageCollateral)) < 0 {
+		acceptingContracts = false
+	}
+
 	return modules.HostExternalSettings{
-		AcceptingContracts:   h.settings.AcceptingContracts,
+		AcceptingContracts:   acceptingContracts,
 		MaxDownloadBatchSize: h.settings.MaxDownloadBatchSize,
 		MaxDuration:          h.settings.MaxDuration,
 		MaxReviseBatchSize:   h.settings.MaxReviseBatchSize,
