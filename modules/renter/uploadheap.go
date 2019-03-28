@@ -517,22 +517,6 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		}
 		r.log.Debugln("Sending next chunk to the workers", nextChunk.id)
 
-		// Check if file is reasonably healthy
-		//
-		// TODO: what's the purpose of this code again? Why do we only update
-		// the recent repair time if the file has extra redundacny?
-		hostOfflineMap, hostGoodForRenewMap, _ := r.managedContractUtilityMaps()
-		health, _, _ := nextChunk.fileEntry.Health(hostOfflineMap, hostGoodForRenewMap)
-		if health < 0.8 {
-			// File is reasonably healthy so update the recent repair time for
-			// the file
-			r.log.Debugln("Updating the recent repair time of this file because the health is good", nextChunk.id)
-			err := nextChunk.fileEntry.UpdateRecentRepairTime()
-			if err != nil {
-				r.log.Printf("WARN: unable to update the recent repair time of %v : %v", nextChunk.fileEntry.SiaPath(), err)
-			}
-		}
-
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy. Otherwise we ignore this chunk for now, mark it as stuck
 		// and let the stuck loop work on it
