@@ -80,11 +80,13 @@ func (w *worker) managedQueueUploadChunk(uc *unfinishedUploadChunk) {
 	utility, exists := w.renter.hostContractor.ContractUtility(w.contract.HostPublicKey)
 	goodForUpload := exists && utility.GoodForUpload
 	w.mu.Lock()
-	if !goodForUpload || w.uploadTerminated || w.onUploadCooldown() {
+	onCooldown := w.onUploadCooldown()
+	uploadTerminated := w.uploadTerminated
+	if !goodForUpload || uploadTerminated || onCooldown {
 		// The worker should not be uploading, remove the chunk.
 		w.mu.Unlock()
 		w.managedDropChunk(uc)
-		w.renter.log.Debugln("Dropping chunk before putting into queue", !goodForUpload, w.uploadTerminated, w.onUploadCooldown(), w.hostPubKey)
+		w.renter.log.Debugln("Dropping chunk before putting into queue", !goodForUpload, uploadTerminated, onCooldown, w.hostPubKey)
 		return
 	}
 	w.unprocessedChunks = append(w.unprocessedChunks, uc)
