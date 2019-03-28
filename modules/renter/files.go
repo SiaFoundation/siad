@@ -66,11 +66,6 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() ([]modules.FileInfo, error) {
-	statTime = 0
-	healthTime = 0
-	buildTime = 0
-	redundancyTime = 0
-	openTime = 0
 	if err := r.tg.Add(); err != nil {
 		return []modules.FileInfo{}, err
 	}
