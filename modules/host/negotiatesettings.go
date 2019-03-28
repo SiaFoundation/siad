@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // capacity returns the amount of storage still available on the machine. The
@@ -43,16 +44,25 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		contractPrice = h.settings.MinContractPrice
 	}
 
-	// If the host's wallet is locked, or has insufficient funds to pay
-	// collateral, report that it is not accepting contracts.
+	// If the host's wallet is locked report that it is not accepting contracts.
 	acceptingContracts := h.settings.AcceptingContracts
 	if unlocked, err := h.wallet.Unlocked(); err != nil || !unlocked {
 		acceptingContracts = false
-	} else if balance, _, _, err := h.wallet.ConfirmedBalance(); err != nil || balance.Cmp(h.settings.MaxCollateral) < 0 {
-		acceptingContracts = false
 	}
-	if h.settings.CollateralBudget.Cmp(h.settings.MaxCollateral.Add(h.financialMetrics.LockedStorageCollateral)) < 0 {
-		acceptingContracts = false
+	// If the host's wallet cannot afford to put MaxCollateral coins into a
+	// contract, reduce its advertised MaxCollateral.
+	maxCollateral := h.settings.MaxCollateral
+	balance, _, _, err := h.wallet.ConfirmedBalance()
+	if err != nil {
+		maxCollateral = types.ZeroCurrency
+	}
+	if balance.Cmp(maxCollateral) < 0 {
+		maxCollateral = balance
+	}
+	if h.settings.CollateralBudget.Cmp(h.financialMetrics.LockedStorageCollateral) < 0 {
+		maxCollateral = types.ZeroCurrency
+	} else if h.financialMetrics.LockedStorageCollateral.Add(maxCollateral).Cmp(h.settings.CollateralBudget) > 0 {
+		maxCollateral = h.settings.CollateralBudget.Sub(h.financialMetrics.LockedStorageCollateral)
 	}
 
 	return modules.HostExternalSettings{
@@ -68,7 +78,7 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		WindowSize:           h.settings.WindowSize,
 
 		Collateral:    h.settings.Collateral,
-		MaxCollateral: h.settings.MaxCollateral,
+		MaxCollateral: maxCollateral,
 
 		BaseRPCPrice:           h.settings.MinBaseRPCPrice,
 		ContractPrice:          contractPrice,
