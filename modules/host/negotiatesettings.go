@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // capacity returns the amount of storage still available on the machine. The
@@ -51,8 +52,17 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 	// If the host's wallet cannot afford to put MaxCollateral coins into a
 	// contract, reduce its advertised MaxCollateral.
 	maxCollateral := h.settings.MaxCollateral
-	if balance, _, _, err := h.wallet.ConfirmedBalance(); err != nil || balance.Cmp(h.settings.MaxCollateral) < 0 {
+	balance, _, _, err := h.wallet.ConfirmedBalance()
+	if err != nil {
+		maxCollateral = types.ZeroCurrency
+	}
+	if balance.Cmp(maxCollateral) < 0 {
 		maxCollateral = balance
+	}
+	if h.settings.CollateralBudget.Cmp(h.financialMetrics.LockedStorageCollateral) < 0 {
+		maxCollateral = types.ZeroCurrency
+	} else if h.financialMetrics.LockedStorageCollateral.Add(maxCollateral).Cmp(h.settings.CollateralBudget) > 0 {
+		maxCollateral = h.settings.CollateralBudget.Sub(h.financialMetrics.LockedStorageCollateral)
 	}
 
 	return modules.HostExternalSettings{
