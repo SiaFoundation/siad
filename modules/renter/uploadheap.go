@@ -515,7 +515,22 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		if nextChunk == nil {
 			return
 		}
+<<<<<<< HEAD
 		r.log.Debugln("Sending next chunk to the workers", nextChunk.id)
+=======
+
+		// Check if file is reasonably healthy
+		hostOfflineMap, hostGoodForRenewMap, _ := r.managedContractUtilityMaps()
+		health, _, _ := nextChunk.fileEntry.Health(hostOfflineMap, hostGoodForRenewMap)
+		if health < 0.8 {
+			// File is reasonably healthy so update the recent repair time for
+			// the file
+			err := nextChunk.fileEntry.UpdateRecentRepairTime()
+			if err != nil {
+				r.log.Printf("WARN: unable to update the recent repair time of %v : %v", r.staticFileSet.SiaPath(nextChunk.fileEntry), err)
+			}
+		}
+>>>>>>> fix build errors
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy. Otherwise we ignore this chunk for now, mark it as stuck

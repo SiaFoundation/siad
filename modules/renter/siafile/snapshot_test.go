@@ -55,9 +55,11 @@ func TestSnapshot(t *testing.T) {
 	if !reflect.DeepEqual(sf.pubKeyTable, snap.staticPubKeyTable) {
 		t.Error("pubkeytables don't match")
 	}
-	if sf.siaFileSet.SiaPath(sf) != snap.staticSiaPath {
+	sf.siaFileSet.mu.Lock()
+	if sf.siaFileSet.siaPath(sf) != snap.staticSiaPath {
 		t.Error("siapaths don't match")
 	}
+	sf.siaFileSet.mu.Unlock()
 	// Compare the pieces.
 	for i := range sf.staticChunks {
 		sfPieces, err1 := sf.Pieces(uint64(i))

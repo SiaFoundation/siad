@@ -368,7 +368,9 @@ func TestRename(t *testing.T) {
 	entry, sfs, _ := newTestSiaFileSetWithFile()
 
 	// Create new paths for the file.
-	oldSiaPathStr := sfs.SiaPath(entry.siaFileSetEntry).String()
+	sfs.mu.Lock()
+	oldSiaPathStr := sfs.siaPath(entry.siaFileSetEntry).String()
+	sfs.mu.Unlock()
 	newSiaPath, err := modules.NewSiaPath(oldSiaPathStr + "1")
 	if err != nil {
 		t.Fatal(err)
@@ -396,9 +398,11 @@ func TestRename(t *testing.T) {
 	if entry.siaFilePath != newSiaFilePath {
 		t.Fatal("SiaFilePath wasn't updated correctly")
 	}
-	if !sfs.SiaPath(entry.siaFileSetEntry).Equals(newSiaPath) {
+	sfs.mu.Lock()
+	if !sfs.siaPath(entry.siaFileSetEntry).Equals(newSiaPath) {
 		t.Fatal("SiaPath wasn't updated correctly")
 	}
+	sfs.mu.Unlock()
 }
 
 // TestApplyUpdates tests a variety of functions that are used to apply

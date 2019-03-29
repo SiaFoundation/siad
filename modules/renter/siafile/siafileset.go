@@ -118,10 +118,10 @@ func (entry *SiaFileSetEntry) Close() error {
 }
 
 // SiaPath returns the siapath of a siafile.
-func (sfs *SiaFileSet) SiaPath(entry *siaFileSetEntry) modules.SiaPath {
+func (sfs *SiaFileSet) SiaPath(entry *SiaFileSetEntry) modules.SiaPath {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.siaPath(entry)
+	return sfs.siaPath(entry.siaFileSetEntry)
 }
 
 // closeEntry will close an entry in the SiaFileSet, removing the siafile from

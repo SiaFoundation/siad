@@ -88,7 +88,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siapath := entry.SiaPath()
+	siapath := rt.renter.staticFileSet.SiaPath(entry)
 	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +231,8 @@ func TestRenterPaths(t *testing.T) {
 		return nil
 	})
 	// walk will descend into foo/bar/, reading baz, bar, and finally foo
-	expWalkStr := (entry3.SiaPath().String() + ".sia") + (entry2.SiaPath().String() + ".sia") + (entry1.SiaPath().String() + ".sia")
+	sfs := rt.renter.staticFileSet
+	expWalkStr := (sfs.SiaPath(entry3).String() + ".sia") + (sfs.SiaPath(entry2).String() + ".sia") + (sfs.SiaPath(entry1).String() + ".sia")
 	if filepath.ToSlash(walkStr) != expWalkStr {
 		t.Fatalf("Bad walk string: expected %v, got %v", expWalkStr, walkStr)
 	}

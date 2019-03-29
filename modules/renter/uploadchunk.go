@@ -418,7 +418,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		if !r.deps.Disrupt("disableCloseUploadEntry") {
 			err := uc.fileEntry.Close()
 			if err != nil {
-				r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", uc.fileEntry.SiaPath(), err)
+				r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
 			}
 		}
 		r.uploadHeap.mu.Lock()
@@ -438,9 +438,9 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	// Update chunk stuck status
 	err := uc.fileEntry.SetStuck(uc.index, stuck)
 	if err != nil {
-		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaPath(), err)
+		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
-	siaPath := uc.fileEntry.SiaPath()
+	siaPath := r.staticFileSet.SiaPath(uc.fileEntry)
 	dirSiaPath, err := siaPath.Dir()
 	if err != nil {
 		return err
@@ -449,7 +449,7 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	// Close SiaFile
 	err = uc.fileEntry.Close()
 	if err != nil {
-		return fmt.Errorf("WARN: unable to close siafile %v", uc.fileEntry.SiaPath())
+		return fmt.Errorf("WARN: unable to close siafile %v", r.staticFileSet.SiaPath(uc.fileEntry))
 	}
 	return nil
 }
@@ -494,7 +494,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	}
 	// Update chunk stuck status
 	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
-		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaPath(), err)
+		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
 
 	// Bubble the updated information. We call this in a blocking fashion as the
@@ -502,7 +502,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// stuck files to the heap and then find the next stuck chunk. By ensuring
 	// that the directory has been updated we eliminate the possibility that the
 	// same chunk is found by the stuck loop and re-added to the repair heap
-	siaPath := uc.fileEntry.SiaPath()
+	siaPath := r.staticFileSet.SiaPath(uc.fileEntry)
 	dirSiaPath, err := siaPath.Dir()
 	if err != nil {
 		return
@@ -518,7 +518,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		case <-r.tg.StopChan():
 			r.log.Debugln("WARN: renter shut down before the stuck loop was signalled that the stuck repair was successful")
 			return
-		case r.uploadHeap.stuckChunkSuccess <- uc.fileEntry.SiaPath():
+		case r.uploadHeap.stuckChunkSuccess <- r.staticFileSet.SiaPath(uc.fileEntry):
 		}
 	}
 }

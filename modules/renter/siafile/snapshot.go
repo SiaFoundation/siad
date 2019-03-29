@@ -170,6 +170,10 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 	}
 	sf.mu.RUnlock()
 
+	sf.siaFileSet.mu.Lock()
+	sp := sf.siaFileSet.siaPath(sf)
+	sf.siaFileSet.mu.Unlock()
+
 	return &Snapshot{
 		staticChunks:      chunks,
 		staticFileSize:    sf.staticMetadata.StaticFileSize,
@@ -178,6 +182,6 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 		staticMasterKey:   mk,
 		staticMode:        sf.staticMetadata.Mode,
 		staticPubKeyTable: pkt,
-		staticSiaPath:     sf.siaFileSet.SiaPath(sf),
+		staticSiaPath:     sp,
 	}
 }
