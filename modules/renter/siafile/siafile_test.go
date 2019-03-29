@@ -14,6 +14,20 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// dummyEntry wraps a SiaFile into a siaFileSetEntry.
+func dummyEntry(s *SiaFile) *siaFileSetEntry {
+	return &siaFileSetEntry{
+		SiaFile: s,
+		siaFileSet: &SiaFileSet{
+			siaFileDir:   s.siaFilePath,
+			siaFileMap:   make(map[SiafileUID]*siaFileSetEntry),
+			siapathToUID: make(map[modules.SiaPath]SiafileUID),
+			wal:          nil,
+		},
+		threadMap: make(map[uint64]threadInfo),
+	}
+}
+
 // randomChunk is a helper method for testing that creates a random chunk.
 func randomChunk() chunk {
 	numPieces := 30

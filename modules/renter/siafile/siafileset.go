@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -118,6 +117,11 @@ func (entry *SiaFileSetEntry) Close() error {
 	return nil
 }
 
+// SiaPath returns the siapath of a siafile.
+func (entry *siaFileSetEntry) SiaPath() modules.SiaPath {
+	return modules.SiaPath{}
+}
+
 // closeEntry will close an entry in the SiaFileSet, removing the siafile from
 // the cache if no other entries are open for that siafile.
 //
@@ -221,11 +225,6 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	}, nil
 }
 
-// siaFilePath returns the path of a sia file on disk given its siapath.
-func (sfs *SiaFileSet) siaFilePath(siapath string) string {
-	return filepath.Join(sfs.siaFileDir, siapath+ShareExtension)
-}
-
 // Delete deletes the SiaFileSetEntry's SiaFile
 func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	sfs.mu.Lock()
@@ -245,7 +244,7 @@ func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	// Remove the siafile from the set maps so that other threads can't find
 	// it.
 	delete(sfs.siaFileMap, entry.staticMetadata.StaticUniqueID)
-	delete(sfs.siapathToUID, entry.staticMetadata.SiaPath)
+	delete(sfs.siapathToUID, entry.SiaPath())
 	return nil
 }
 
