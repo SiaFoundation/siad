@@ -5,13 +5,13 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -118,8 +118,21 @@ func (entry *SiaFileSetEntry) Close() error {
 }
 
 // SiaPath returns the siapath of a siafile.
-func (entry *siaFileSetEntry) SiaPath() modules.SiaPath {
-	return modules.SiaPath{}
+func (sfs *SiaFileSet) SiaPath(entry *siaFileSetEntry) modules.SiaPath {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.siaPath(entry)
+}
+
+// siaPath returns the siapath of a siafile.
+func (sfs *SiaFileSet) siaPath(entry *siaFileSetEntry) modules.SiaPath {
+	relPath := strings.TrimPrefix(entry.SiaFilePath(), sfs.siaFileDir)
+	relPath = strings.TrimSuffix(relPath, modules.SiaFileExtension)
+	sp, err := modules.NewSiaPath(relPath)
+	if err != nil {
+		build.Critical("SiaPath of entry is corrupted:", err)
+	}
+	return sp
 }
 
 // closeEntry will close an entry in the SiaFileSet, removing the siafile from
@@ -154,17 +167,34 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	// this entry from the set cache.
 	if len(currentEntry.threadMap) == 0 {
 		delete(sfs.siaFileMap, entry.staticMetadata.StaticUniqueID)
-		delete(sfs.siapathToUID, entry.SiaPath())
+		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	}
+}
+
+// siaPathToEntryAndUID translates a siaPath to a siaFileSetEntry and
+// SiafileUID while also sanity checking siapathToUID and siaFileMap for
+// consistency.
+func (sfs *SiaFileSet) siaPathToEntryAndUID(siaPath modules.SiaPath) (*siaFileSetEntry, SiafileUID, bool) {
+	uid, exists := sfs.siapathToUID[siaPath]
+	if !exists {
+		return nil, "", false
+	}
+	entry, exists2 := sfs.siaFileMap[uid]
+	if !exists2 {
+		build.Critical("siapathToUID and siaFileMap are inconsistent")
+		delete(sfs.siapathToUID, siaPath)
+		return nil, "", false
+	}
+	return entry, uid, exists
 }
 
 // exists checks to see if a file with the provided siaPath already exists in
 // the renter
 func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file in Memory
-	_, exists := sfs.siapathToUID[siaPath]
+	_, _, exists := sfs.siaPathToEntryAndUID(siaPath)
 	if exists {
-		return exists
+		return true
 	}
 	// Check for file on disk
 	_, err := os.Stat(siaPath.SiaFileSysPath(sfs.siaFileDir))
@@ -184,15 +214,8 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) *siaFileSetEntry {
 // open will return the siaFileSetEntry in memory or load it from disk
 func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	var entry *siaFileSetEntry
-	var exists, exists2 bool
-	uid, exists := sfs.siapathToUID[siaPath]
-	if exists {
-		entry, exists2 = sfs.siaFileMap[uid]
-		if !exists2 {
-			build.Critical("siapathToUID and siaFileMap are inconsistent")
-			return nil, errors.New("siapathToUID and siaFileMap are inconsistent")
-		}
-	}
+	var exists bool
+	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)
 	if !exists {
 		// Try and Load File from disk
 		sf, err := LoadSiaFile(siaPath.SiaFileSysPath(sfs.siaFileDir), sfs.wal)
@@ -204,7 +227,7 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		}
 		// Check for duplicate uid.
 		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
-			err := fmt.Errorf("%v and %v share the same UID", conflictingEntry.SiaPath(), siaPath)
+			err := fmt.Errorf("%v and %v share the same UID", sfs.siaPath(conflictingEntry), siaPath)
 			build.Critical(err)
 			return nil, err
 		}
@@ -244,7 +267,7 @@ func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	// Remove the siafile from the set maps so that other threads can't find
 	// it.
 	delete(sfs.siaFileMap, entry.staticMetadata.StaticUniqueID)
-	delete(sfs.siapathToUID, entry.SiaPath())
+	delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	return nil
 }
 

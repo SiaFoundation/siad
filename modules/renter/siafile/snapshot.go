@@ -131,7 +131,6 @@ func (s *Snapshot) Size() uint64 {
 func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 	mk := sf.MasterKey()
 	sf.mu.RLock()
-	defer sf.mu.RUnlock()
 
 	// Copy PubKeyTable.
 	pkt := make([]HostPublicKey, len(sf.pubKeyTable))
@@ -169,6 +168,7 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 			Pieces: pieces,
 		})
 	}
+	sf.mu.RUnlock()
 
 	return &Snapshot{
 		staticChunks:      chunks,
@@ -178,6 +178,6 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 		staticMasterKey:   mk,
 		staticMode:        sf.staticMetadata.Mode,
 		staticPubKeyTable: pkt,
-		staticSiaPath:     sf.SiaPath(),
+		staticSiaPath:     sf.siaFileSet.SiaPath(sf),
 	}
 }

@@ -589,7 +589,7 @@ func TestStuckChunks(t *testing.T) {
 	}
 
 	// Close file and confirm it is out of memory
-	siaPath := sf.SiaPath()
+	siaPath := sfs.SiaPath(sf.siaFileSetEntry)
 	if err = sf.Close(); err != nil {
 		t.Fatal(err)
 	}

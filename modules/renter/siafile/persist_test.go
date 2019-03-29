@@ -365,10 +365,10 @@ func TestRename(t *testing.T) {
 	t.Parallel()
 
 	// Create SiaFileSet with SiaFile
-	entry, _, _ := newTestSiaFileSetWithFile()
+	entry, sfs, _ := newTestSiaFileSetWithFile()
 
 	// Create new paths for the file.
-	oldSiaPathStr := entry.SiaPath().String()
+	oldSiaPathStr := sfs.SiaPath(entry.siaFileSetEntry).String()
 	newSiaPath, err := modules.NewSiaPath(oldSiaPathStr + "1")
 	if err != nil {
 		t.Fatal(err)
@@ -396,7 +396,7 @@ func TestRename(t *testing.T) {
 	if entry.siaFilePath != newSiaFilePath {
 		t.Fatal("SiaFilePath wasn't updated correctly")
 	}
-	if !entry.SiaPath().Equals(newSiaPath) {
+	if !sfs.SiaPath(entry.siaFileSetEntry).Equals(newSiaPath) {
 		t.Fatal("SiaPath wasn't updated correctly")
 	}
 }

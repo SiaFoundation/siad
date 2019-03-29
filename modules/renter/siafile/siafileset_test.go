@@ -73,7 +73,7 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Delete SiaFile
-		if err := sfs.Delete(entry.SiaPath()); err != nil {
+		if err := sfs.Delete(sfs.SiaPath(entry.siaFileSetEntry)); err != nil {
 			t.Fatal(err)
 		}
 		// The set should be empty.
@@ -109,7 +109,7 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath := entry.SiaPath()
+	siaPath := sfs.SiaPath(entry.siaFileSetEntry)
 	exists := sfs.Exists(siaPath)
 	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
@@ -164,7 +164,7 @@ func TestFilesInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath := entry.SiaPath()
+	siaPath := sfs.SiaPath(entry.siaFileSetEntry)
 	exists := sfs.Exists(siaPath)
 	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
@@ -242,7 +242,7 @@ func TestRenameFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath := entry.SiaPath()
+	siaPath := sfs.SiaPath(entry.siaFileSetEntry)
 	exists := sfs.Exists(siaPath)
 	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
@@ -311,7 +311,7 @@ func TestDeleteFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath := entry.SiaPath()
+	siaPath := sfs.SiaPath(entry.siaFileSetEntry)
 	exists := sfs.Exists(siaPath)
 	if !exists {
 		t.Fatal("No SiaFileSetEntry found")
