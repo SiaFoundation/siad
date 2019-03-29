@@ -131,7 +131,6 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 
 // fileInfo returns information on a siafile. As a performance optimization, the
 // fileInfo takes the maps returned by renter.managedContractUtilityMaps as
-// input, preventing the need to build those maps many times when asking for
 // many files at once.
 func (r *Renter) fileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Get the file and its contracts

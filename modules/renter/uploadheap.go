@@ -515,18 +515,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		if nextChunk == nil {
 			return
 		}
-
-		// Check if file is reasonably healthy
-		hostOfflineMap, hostGoodForRenewMap, _ := r.managedContractUtilityMaps()
-		health, _, _ := nextChunk.fileEntry.Health(hostOfflineMap, hostGoodForRenewMap)
-		if health < 0.8 {
-			// File is reasonably healthy so update the recent repair time for
-			// the file
-			err := nextChunk.fileEntry.UpdateRecentRepairTime()
-			if err != nil {
-				r.log.Printf("WARN: unable to update the recent repair time of %v : %v", nextChunk.fileEntry.SiaPath(), err)
-			}
-		}
+		r.log.Debugln("Sending next chunk to the workers", nextChunk.id)
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy. Otherwise we ignore this chunk for now, mark it as stuck
@@ -536,6 +525,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		r.mu.RUnlock(id)
 		if availableWorkers < nextChunk.minimumPieces {
 			// Not enough available workers, mark as stuck and close
+			r.log.Debugln("Setting chunk  as stuck because there are not enough good workers", nextChunk.id)
 			err := r.managedSetStuckAndClose(nextChunk, true)
 			if err != nil {
 				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
@@ -550,6 +540,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		if err != nil {
 			// We were unsuccessful in preparing the next chunk so we need to
 			// mark the chunk as stuck and close the file
+			r.log.Debugln("WARN: unable to prepare next chunk without issues", err, nextChunk.id)
 			err = r.managedSetStuckAndClose(nextChunk, true)
 			if err != nil {
 				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)

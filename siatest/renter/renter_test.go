@@ -704,11 +704,15 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("failed to get file info", err)
 	}
 
-	// Take down one of the hosts and check if redundancy decreases.
-	if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
-		t.Fatal("Failed to shutdown host", err)
+	// Take down hosts until enough are missing that the chunks get marked as
+	// stuck after repairs.
+	var hostsRemoved uint64
+	for hostsRemoved = 0; float64(hostsRemoved)/float64(parityPieces) <= siafile.RemoteRepairDownloadThreshold; hostsRemoved++ {
+		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
+			t.Fatal("Failed to shutdown host", err)
+		}
 	}
-	expectedRedundancy := float64(dataPieces+parityPieces-1) / float64(dataPieces)
+	expectedRedundancy := float64(dataPieces+parityPieces-hostsRemoved) / float64(dataPieces)
 	if err := renter.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
@@ -726,10 +730,13 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
 	}
-	// Bring up a new host and check if redundancy increments again.
-	_, err = tg.AddNodes(node.HostTemplate)
-	if err != nil {
-		t.Fatal("Failed to create a new host", err)
+	// Bring up hosts to replace the ones that went offline.
+	for hostsRemoved > 0 {
+		hostsRemoved--
+		_, err = tg.AddNodes(node.HostTemplate)
+		if err != nil {
+			t.Fatal("Failed to create a new host", err)
+		}
 	}
 	if err := renter.WaitForUploadRedundancy(remoteFile, fi.Redundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)

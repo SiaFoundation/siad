@@ -47,7 +47,7 @@ var (
 	// to figure out an appropriate minimum score for the hosts that we have.
 	randomHostsBufferForScore = build.Select(build.Var{
 		Dev:      2,
-		Standard: 10,
+		Standard: 50,
 		Testing:  1,
 	}).(int)
 )

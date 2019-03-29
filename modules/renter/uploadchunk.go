@@ -467,17 +467,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	uc.mu.Unlock()
 
 	// Determine if repair was successful
-	var successfulRepair bool
-	if _, err := os.Stat(uc.fileEntry.LocalPath()); err != nil {
-		// If there is an error with stat then the file is not on disk or
-		// potentially unaccessible. In either case the repair is successful if
-		// it completed more pieces than the RemoteRepairDownloadThreshold
-		successfulRepair = (1-siafile.RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
-	} else {
-		// Since the file is on disk and accessible with stat then the repair is
-		// successful if >= piecesNeeded pieces are repaired
-		successfulRepair = piecesNeeded <= piecesCompleted
-	}
+	successfulRepair := (1-siafile.RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
 
 	// Check if renter is shutting down
 	var renterError bool
@@ -498,7 +488,9 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	}
 	// Log if the repair was unsuccessful
 	if !successfulRepair {
-		r.log.Debugln("WARN: repair unsuccessful, marking chunk", uc.id, "as stuck")
+		r.log.Debugln("WARN: repair unsuccessful, marking chunk", uc.id, "as stuck", float64(piecesCompleted)/float64(piecesNeeded))
+	} else {
+		r.log.Debugln("SUCCESS: repair successsful, marking chunk as non-stuck:", uc.id)
 	}
 	// Update chunk stuck status
 	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
