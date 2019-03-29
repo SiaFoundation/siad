@@ -113,11 +113,11 @@ type (
 
 		// Basic information about the file.
 		destination           downloadDestination
-		destinationString     string // The string reported to the user to indicate the download's destination.
-		staticDestinationType string // "memory buffer", "http stream", "file", etc.
-		staticLength          uint64 // Length to download starting from the offset.
-		staticOffset          uint64 // Offset within the file to start the download.
-		staticSiaPath         string // The path of the siafile at the time the download started.
+		destinationString     string          // The string reported to the user to indicate the download's destination.
+		staticDestinationType string          // "memory buffer", "http stream", "file", etc.
+		staticLength          uint64          // Length to download starting from the offset.
+		staticOffset          uint64          // Offset within the file to start the download.
+		staticSiaPath         modules.SiaPath // The path of the siafile at the time the download started.
 
 		// Retrieval settings for the file.
 		staticLatencyTarget time.Duration // In milliseconds. Lower latency results in lower total system throughput.
@@ -426,6 +426,12 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		return nil
 	})
 
+	// Nothing more to do for 0-byte files or 0-length downloads.
+	if d.staticLength == 0 {
+		d.markComplete()
+		return d, nil
+	}
+
 	// Determine which chunks to download.
 	minChunk, minChunkOffset := params.file.ChunkIndexByOffset(params.offset)
 	maxChunk, maxChunkOffset := params.file.ChunkIndexByOffset(params.offset + params.length)
@@ -564,7 +570,7 @@ func (r *Renter) DownloadHistory() []modules.DownloadInfo {
 			DestinationType: d.staticDestinationType,
 			Length:          d.staticLength,
 			Offset:          d.staticOffset,
-			SiaPath:         d.staticSiaPath,
+			SiaPath:         d.staticSiaPath.String(),
 
 			Completed:            d.staticComplete(),
 			EndTime:              d.endTime,

@@ -103,6 +103,21 @@ func (uc *unfinishedUploadChunk) managedNotifyStandbyWorkers() {
 	}
 }
 
+// chunkComplete checks some fields of the chunk to determine if the chunk is
+// completed. This can either mean that it ran out of workers or that it was
+// uploaded successfully.
+func (uc *unfinishedUploadChunk) chunkComplete() bool {
+	// The whole chunk was uploaded successfully.
+	if uc.piecesCompleted == uc.piecesNeeded && uc.piecesRegistered == 0 {
+		return true
+	}
+	// We are no longer doing any uploads and we don't have any workers left.
+	if uc.workersRemaining == 0 && uc.piecesRegistered == 0 {
+		return true
+	}
+	return false
+}
+
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
 // physical data and distribute it to the worker pool.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
@@ -375,7 +390,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// Check if the chunk needs to be removed from the list of active
 	// chunks. It needs to be removed if the chunk is complete, but hasn't
 	// yet been released.
-	chunkComplete := uc.workersRemaining == 0 && uc.piecesRegistered == 0
+	chunkComplete := uc.chunkComplete()
 	released := uc.released
 	if chunkComplete && !released {
 		uc.released = true
@@ -425,7 +440,12 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	if err != nil {
 		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaPath(), err)
 	}
-	go r.threadedBubbleMetadata(uc.fileEntry.DirSiaPath())
+	siaPath := uc.fileEntry.SiaPath()
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		return err
+	}
+	go r.threadedBubbleMetadata(dirSiaPath)
 	// Close SiaFile
 	err = uc.fileEntry.Close()
 	if err != nil {
@@ -490,7 +510,12 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// stuck files to the heap and then find the next stuck chunk. By ensuring
 	// that the directory has been updated we eliminate the possibility that the
 	// same chunk is found by the stuck loop and re-added to the repair heap
-	r.threadedBubbleMetadata(uc.fileEntry.DirSiaPath())
+	siaPath := uc.fileEntry.SiaPath()
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		return
+	}
+	r.threadedBubbleMetadata(dirSiaPath)
 
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop

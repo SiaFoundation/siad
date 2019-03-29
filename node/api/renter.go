@@ -7,14 +7,16 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -55,6 +57,10 @@ var (
 		Dev:      types.BlockHeight(1),
 		Testing:  types.BlockHeight(1),
 	}).(types.BlockHeight)
+
+	//BackupKeySpecifier is the specifier used for deriving the secret used to
+	//encrypt a backup from the RenterSeed.
+	backupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
 )
 
 type (
@@ -194,8 +200,20 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{"destination must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
+	// Get the wallet seed.
+	ws, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
+		return
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, backupKeySpecifier)
+	defer fastrand.Read(secret[:])
 	// Create the backup.
-	if err := api.renter.CreateBackup(dst); err != nil {
+	if err := api.renter.CreateBackup(dst, secret[:32]); err != nil {
 		WriteError(w, Error{"failed to create backup" + err.Error()}, http.StatusBadRequest)
 		return
 	}
@@ -215,8 +233,20 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
+	// Get the wallet seed.
+	ws, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
+		return
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, backupKeySpecifier)
+	defer fastrand.Read(secret[:])
 	// Load the backup.
-	if err := api.renter.LoadBackup(src); err != nil {
+	if err := api.renter.LoadBackup(src, secret[:32]); err != nil {
 		WriteError(w, Error{"failed to load backup" + err.Error()}, http.StatusBadRequest)
 		return
 	}
@@ -620,12 +650,22 @@ func (api *API) renterRecoveryScanHandlerGET(w http.ResponseWriter, req *http.Re
 // renterRenameHandler handles the API call to rename a file entry in the
 // renter.
 func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	newSiaPath, err := url.QueryUnescape(req.FormValue("newsiapath"))
+	newSiaPathStr, err := url.QueryUnescape(req.FormValue("newsiapath"))
 	if err != nil {
 		WriteError(w, Error{"failed to unescape newsiapath"}, http.StatusBadRequest)
 		return
 	}
-	err = api.renter.RenameFile(strings.TrimPrefix(ps.ByName("siapath"), "/"), strings.TrimPrefix(newSiaPath, "/"))
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	newSiaPath, err := modules.NewSiaPath(newSiaPathStr)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	err = api.renter.RenameFile(siaPath, newSiaPath)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -635,7 +675,12 @@ func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps
 
 // renterFileHandler handles GET requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	file, err := api.renter.File(strings.TrimPrefix(ps.ByName("siapath"), "/"))
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	file, err := api.renter.File(siaPath)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -655,8 +700,12 @@ func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, 
 
 	// Handle changing the tracking path of a file.
 	if newTrackingPath != "" {
-		siapath := strings.TrimPrefix(ps.ByName("siapath"), "/")
-		if err := api.renter.SetFileTrackingPath(siapath, newTrackingPath); err != nil {
+		siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		if err := api.renter.SetFileTrackingPath(siaPath, newTrackingPath); err != nil {
 			WriteError(w, Error{fmt.Sprintf("unable set tracking path: %v", err)}, http.StatusBadRequest)
 			return
 		}
@@ -760,7 +809,12 @@ func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, ps
 // renterDeleteHandler handles the API call to delete a file entry from the
 // renter.
 func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	err := api.renter.DeleteFile(strings.TrimPrefix(ps.ByName("siapath"), "/"))
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	err = api.renter.DeleteFile(siaPath)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -848,14 +902,17 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 		return modules.RenterDownloadParameters{}, errors.AddContext(err, "async parameter could not be parsed")
 	}
 
-	siapath := strings.TrimPrefix(ps.ByName("siapath"), "/") // Sia file name.
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the siapath")
+	}
 
 	dp := modules.RenterDownloadParameters{
 		Destination: destination,
 		Async:       async,
 		Length:      length,
 		Offset:      offset,
-		SiaPath:     siapath,
+		SiaPath:     siaPath,
 	}
 	if httpresp {
 		dp.Httpwriter = w
@@ -866,7 +923,11 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 
 // renterStreamHandler handles downloads from the /renter/stream endpoint
 func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	siaPath := strings.TrimPrefix(ps.ByName("siapath"), "/")
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
 	fileName, streamer, err := api.renter.Streamer(siaPath)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to create download streamer: %v", err)},
@@ -942,9 +1003,14 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 	}
 
 	// Call the renter to upload the file.
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
 	err = api.renter.Upload(modules.FileUploadParams{
 		Source:      source,
-		SiaPath:     strings.TrimPrefix(ps.ByName("siapath"), "/"),
+		SiaPath:     siaPath,
 		ErasureCode: ec,
 		Force:       force,
 	})
@@ -957,7 +1023,19 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 
 // renterDirHandlerGET handles the API call to create a directory
 func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	directories, files, err := api.renter.DirList(strings.TrimPrefix(ps.ByName("siapath"), "/"))
+	var siaPath modules.SiaPath
+	var err error
+	str := ps.ByName("siapath")
+	if str == "" || str == "/" {
+		siaPath = modules.RootSiaPath()
+	} else {
+		siaPath, err = modules.NewSiaPath(str)
+	}
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	directories, files, err := api.renter.DirList(siaPath)
 	if err != nil {
 		WriteError(w, Error{"failed to get directory contents:" + err.Error()}, http.StatusInternalServerError)
 		return
@@ -977,9 +1055,14 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		WriteError(w, Error{"you must set the action you wish to execute"}, http.StatusInternalServerError)
 		return
 	}
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
 	if action == "create" {
 		// Call the renter to create directory
-		err := api.renter.CreateDir(strings.TrimPrefix(ps.ByName("siapath"), "/"))
+		err := api.renter.CreateDir(siaPath)
 		if err != nil {
 			WriteError(w, Error{"failed to create directory: " + err.Error()}, http.StatusInternalServerError)
 			return
@@ -988,7 +1071,7 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 	if action == "delete" {
-		err := api.renter.DeleteDir(strings.TrimPrefix(ps.ByName("siapath"), "/"))
+		err := api.renter.DeleteDir(siaPath)
 		if err != nil {
 			WriteError(w, Error{"failed to create directory: " + err.Error()}, http.StatusInternalServerError)
 			return

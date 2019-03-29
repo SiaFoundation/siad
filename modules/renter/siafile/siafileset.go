@@ -3,9 +3,7 @@ package siafile
 import (
 	"math"
 	"os"
-	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -25,7 +23,7 @@ type (
 	// siafiles in memory
 	SiaFileSet struct {
 		siaFileDir string
-		siaFileMap map[string]*siaFileSetEntry
+		siaFileMap map[modules.SiaPath]*siaFileSetEntry
 
 		// utilities
 		mu  sync.Mutex
@@ -62,7 +60,7 @@ type (
 func NewSiaFileSet(filesDir string, wal *writeaheadlog.WAL) *SiaFileSet {
 	return &SiaFileSet{
 		siaFileDir: filesDir,
-		siaFileMap: make(map[string]*siaFileSetEntry),
+		siaFileMap: make(map[modules.SiaPath]*siaFileSetEntry),
 		wal:        wal,
 	}
 }
@@ -86,21 +84,17 @@ func randomThreadUID() uint64 {
 	return fastrand.Uint64n(math.MaxUint64)
 }
 
-// CopyEntry copies the SiaFileSetEntry n times and returns an array of
-// SiaFileSetEntrys
-func (entry *SiaFileSetEntry) CopyEntry(n int) []*SiaFileSetEntry {
-	var entrys []*SiaFileSetEntry
+// CopyEntry returns a copy of the SiaFileSetEntry
+func (entry *SiaFileSetEntry) CopyEntry() *SiaFileSetEntry {
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
-	for i := 0; i < n; i++ {
-		threadUID := randomThreadUID()
-		entrys = append(entrys, &SiaFileSetEntry{
-			siaFileSetEntry: entry.siaFileSetEntry,
-			threadUID:       threadUID,
-		})
-		entry.threadMap[threadUID] = newThreadInfo()
+	threadUID := randomThreadUID()
+	copy := &SiaFileSetEntry{
+		siaFileSetEntry: entry.siaFileSetEntry,
+		threadUID:       threadUID,
 	}
-	return entrys
+	entry.threadMap[threadUID] = newThreadInfo()
+	return copy
 }
 
 // Close will close the set entry, removing the entry from memory if there are
@@ -155,16 +149,14 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 
 // exists checks to see if a file with the provided siaPath already exists in
 // the renter
-func (sfs *SiaFileSet) exists(siaPath string) bool {
-	// Make sure there are no leading slashes
-	siaPath = strings.TrimPrefix(siaPath, "/")
+func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file in Memory
 	_, exists := sfs.siaFileMap[siaPath]
 	if exists {
 		return exists
 	}
 	// Check for file on disk
-	_, err := os.Stat(filepath.Join(sfs.siaFileDir, siaPath+ShareExtension))
+	_, err := os.Stat(siaPath.SiaFileSysPath(sfs.siaFileDir))
 	return !os.IsNotExist(err)
 }
 
@@ -179,14 +171,12 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) *siaFileSetEntry {
 }
 
 // open will return the siaFileSetEntry in memory or load it from disk
-func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, error) {
-	// Make sure there are no leading slashes
-	siaPath = strings.TrimPrefix(siaPath, "/")
+func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	var entry *siaFileSetEntry
 	entry, exists := sfs.siaFileMap[siaPath]
 	if !exists {
 		// Try and Load File from disk
-		sf, err := LoadSiaFile(filepath.Join(sfs.siaFileDir, siaPath+ShareExtension), sfs.wal)
+		sf, err := LoadSiaFile(siaPath.SiaFileSysPath(sfs.siaFileDir), sfs.wal)
 		if os.IsNotExist(err) {
 			return nil, ErrUnknownPath
 		}
@@ -210,7 +200,7 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, error) {
 }
 
 // Delete deletes the SiaFileSetEntry's SiaFile
-func (sfs *SiaFileSet) Delete(siaPath string) error {
+func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 
@@ -232,7 +222,7 @@ func (sfs *SiaFileSet) Delete(siaPath string) error {
 
 // Exists checks to see if a file with the provided siaPath already exists in
 // the renter
-func (sfs *SiaFileSet) Exists(siaPath string) bool {
+func (sfs *SiaFileSet) Exists(siaPath modules.SiaPath) bool {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.exists(siaPath)
@@ -246,22 +236,21 @@ func (sfs *SiaFileSet) Exists(siaPath string) bool {
 func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFileSetEntry, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	siaPath := strings.TrimPrefix(up.SiaPath, "/")
 	// Check is SiaFile already exists
-	exists := sfs.exists(siaPath)
+	exists := sfs.exists(up.SiaPath)
 	if exists && !up.Force {
 		return nil, ErrPathOverload
 	}
 	// Make sure there are no leading slashes
-	siaFilePath := filepath.Join(sfs.siaFileDir, siaPath+ShareExtension)
-	sf, err := New(siaFilePath, siaPath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode)
+	siaFilePath := up.SiaPath.SiaFileSysPath(sfs.siaFileDir)
+	sf, err := New(up.SiaPath, siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode)
 	if err != nil {
 		return nil, err
 	}
 	entry := sfs.newSiaFileSetEntry(sf)
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
-	sfs.siaFileMap[siaPath] = entry
+	sfs.siaFileMap[up.SiaPath] = entry
 	return &SiaFileSetEntry{
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
@@ -271,7 +260,7 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 // Open returns the siafile from the SiaFileSet for the corresponding key and
 // adds the thread to the entry's threadMap. If the siafile is not in memory it
 // will load it from disk
-func (sfs *SiaFileSet) Open(siaPath string) (*SiaFileSetEntry, error) {
+func (sfs *SiaFileSet) Open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.open(siaPath)
@@ -279,7 +268,7 @@ func (sfs *SiaFileSet) Open(siaPath string) (*SiaFileSetEntry, error) {
 
 // Rename will move a siafile from one path to a new path. Existing entries that
 // are already open at the old path will continue to be valid.
-func (sfs *SiaFileSet) Rename(siaPath, newSiaPath string) error {
+func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 
@@ -303,5 +292,5 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath string) error {
 	delete(sfs.siaFileMap, siaPath)
 
 	// Update the siafile to have a new name.
-	return entry.Rename(newSiaPath, filepath.Join(sfs.siaFileDir, newSiaPath+ShareExtension))
+	return entry.Rename(newSiaPath, newSiaPath.SiaFileSysPath(sfs.siaFileDir))
 }

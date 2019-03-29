@@ -46,8 +46,8 @@ func (newStub) IncrementFailedInteractions(key types.SiaPublicKey)              
 func (newStub) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return nil, nil
 }
-func (newStub) ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown {
-	return modules.HostScoreBreakdown{}
+func (newStub) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
+	return modules.HostScoreBreakdown{}, nil
 }
 func (newStub) SetAllowance(allowance modules.Allowance) error { return nil }
 
@@ -127,8 +127,8 @@ func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                          
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) (hs []modules.HostDBEntry, _ error) {
 	return
 }
-func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown {
-	return modules.HostScoreBreakdown{}
+func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
+	return modules.HostScoreBreakdown{}, nil
 }
 func (stubHostDB) SetAllowance(allowance modules.Allowance) error { return nil }
 

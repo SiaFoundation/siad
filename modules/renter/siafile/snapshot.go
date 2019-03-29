@@ -20,7 +20,7 @@ type (
 		staticMasterKey   crypto.CipherKey
 		staticMode        os.FileMode
 		staticPubKeyTable []HostPublicKey
-		staticSiaPath     string
+		staticSiaPath     modules.SiaPath
 	}
 )
 
@@ -118,7 +118,7 @@ func (s *Snapshot) PieceSize() uint64 {
 }
 
 // SiaPath returns the SiaPath of the file.
-func (s *Snapshot) SiaPath() string {
+func (s *Snapshot) SiaPath() modules.SiaPath {
 	return s.staticSiaPath
 }
 

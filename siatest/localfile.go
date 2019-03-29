@@ -2,13 +2,13 @@ package siatest
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -45,7 +45,7 @@ func (lf *LocalFile) Delete() error {
 // Move moves the file to a new random location.
 func (lf *LocalFile) Move() error {
 	// Get the new path
-	fileName := fmt.Sprintf("%dbytes %s", lf.size, hex.EncodeToString(fastrand.Bytes(4)))
+	fileName := fmt.Sprintf("%dbytes %s", lf.size, persist.RandomSuffix())
 	dir, _ := filepath.Split(lf.path)
 	path := filepath.Join(dir, fileName)
 

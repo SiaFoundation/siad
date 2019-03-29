@@ -29,9 +29,6 @@ var (
 	// ErrUnknownThread is an error when a SiaFile is trying to be closed by a
 	// thread that is not in the threadMap
 	ErrUnknownThread = errors.New("thread should not be calling Close(), does not have control of the siafile")
-
-	// ShareExtension is the extension to be used
-	ShareExtension = ".sia"
 )
 
 type (
@@ -131,7 +128,7 @@ func (c *chunk) numPieces() (numPieces int) {
 }
 
 // New create a new SiaFile.
-func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
+func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
 	file := &SiaFile{
@@ -402,6 +399,10 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		build.Critical("WARN: stuckHealth out of bounds. Max value, Min value, stuckHealth found", worstHealth, 0, stuckHealth)
 		stuckHealth = worstHealth
 	}
+	// Sanity Check that the number of stuck chunks makes sense
+	if numStuckChunks != sf.staticMetadata.NumStuckChunks {
+		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, sf.staticMetadata.NumStuckChunks)
+	}
 	return health, stuckHealth, numStuckChunks
 }
 
@@ -429,8 +430,9 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 	return keys
 }
 
-// MarkAllUnhealthyChunksAsStuck marks all chunks as stuck in the siafile
-func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) error {
+// MarkAllHealthyChunksAsUnstuck marks all health chunks as unstuck in the
+// siafile
+func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// If the file has been deleted we can't mark a chunk as stuck.
@@ -439,16 +441,73 @@ func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodFo
 	}
 	var updates []writeaheadlog.Update
 	for chunkIndex := range sf.staticChunks {
-		// Check health of chunk
-		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
-		// If chunk is healthy then we don't need to mark it as stuck
-		if chunkHealth <= RemoteRepairDownloadThreshold {
+		// Check if chunk is already unstuck
+		if !sf.staticChunks[chunkIndex].Stuck {
 			continue
 		}
+		// Check health of chunk
+		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
+		// If chunk is unhealthy then we don't need to mark it as unstuck. We
+		// are only want to mark chunks that are 100% healthy as unstuck.
+		if chunkHealth != 0 {
+			continue
+		}
+		// In case an error happens we need to revert the changes we are going
+		// to make.
+		defer func() {
+			if err != nil {
+				sf.staticChunks[chunkIndex].Stuck = true
+				sf.staticMetadata.NumStuckChunks++
+			}
+		}()
+		// Update chunk and NumStuckChunks in siafile metadata
+		sf.staticChunks[chunkIndex].Stuck = false
+		sf.staticMetadata.NumStuckChunks--
+		// Create chunk update
+		update, err := sf.saveChunkUpdate(chunkIndex)
+		if err != nil {
+			return err
+		}
+		updates = append(updates, update)
+	}
+	// Create metadata update and apply updates on disk
+	metadataUpdates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	updates = append(updates, metadataUpdates...)
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// MarkAllUnhealthyChunksAsStuck marks all unhealthy chunks as stuck in the
+// siafile
+func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// If the file has been deleted we can't mark a chunk as stuck.
+	if sf.deleted {
+		return errors.New("can't call SetStuck on deleted file")
+	}
+	var updates []writeaheadlog.Update
+	for chunkIndex := range sf.staticChunks {
 		// Check if chunk is already stuck
 		if sf.staticChunks[chunkIndex].Stuck {
 			continue
 		}
+		// Check health of chunk
+		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
+		// If chunk is healthy then we don't need to mark it as stuck
+		if chunkHealth < RemoteRepairDownloadThreshold {
+			continue
+		}
+		// In case an error happens we need to revert the changes we are going
+		// to make.
+		defer func() {
+			if err != nil {
+				sf.staticChunks[chunkIndex].Stuck = false
+				sf.staticMetadata.NumStuckChunks--
+			}
+		}()
 		// Update chunk and NumStuckChunks in siafile metadata
 		sf.staticChunks[chunkIndex].Stuck = true
 		sf.staticMetadata.NumStuckChunks++
@@ -549,7 +608,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 }
 
 // SetStuck sets the Stuck field of the chunk at the given index
-func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
+func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// If the file has been deleted we can't mark a chunk as stuck.
@@ -560,6 +619,15 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
 	if stuck == sf.staticChunks[index].Stuck {
 		return nil
 	}
+	// Remember the currenct number of stuck chunks in case an error happens.
+	nsc := sf.staticMetadata.NumStuckChunks
+	s := sf.staticChunks[index].Stuck
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.NumStuckChunks = nsc
+			sf.staticChunks[index].Stuck = s
+		}
+	}()
 	// Update chunk and NumStuckChunks in siafile metadata
 	sf.staticChunks[index].Stuck = stuck
 	if stuck {

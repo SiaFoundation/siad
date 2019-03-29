@@ -8,7 +8,6 @@ package types
 import (
 	"errors"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 )
@@ -157,27 +156,6 @@ func (t Transaction) ID() TransactionID {
 	h := crypto.NewHash()
 	t.marshalSiaNoSignatures(h)
 	h.Sum(txid[:0])
-
-	// Sanity check in debug builds to make sure that the ids are going to be
-	// the same.
-	if build.DEBUG {
-		verify := TransactionID(crypto.HashAll(
-			t.SiacoinInputs,
-			t.SiacoinOutputs,
-			t.FileContracts,
-			t.FileContractRevisions,
-			t.StorageProofs,
-			t.SiafundInputs,
-			t.SiafundOutputs,
-			t.MinerFees,
-			t.ArbitraryData,
-		))
-
-		if verify != txid {
-			panic("TransactionID is not marshalling correctly")
-		}
-	}
-
 	return txid
 }
 
@@ -193,28 +171,6 @@ func (t Transaction) SiacoinOutputID(i uint64) SiacoinOutputID {
 	t.marshalSiaNoSignatures(h) // Encode non-signature fields into hash.
 	encoding.WriteUint64(h, i)  // Writes index of this output.
 	h.Sum(id[:0])
-
-	// Sanity check - verify that the optimized code is always returning the
-	// same ids as the unoptimized code.
-	if build.DEBUG {
-		verificationID := SiacoinOutputID(crypto.HashAll(
-			SpecifierSiacoinOutput,
-			t.SiacoinInputs,
-			t.SiacoinOutputs,
-			t.FileContracts,
-			t.FileContractRevisions,
-			t.StorageProofs,
-			t.SiafundInputs,
-			t.SiafundOutputs,
-			t.MinerFees,
-			t.ArbitraryData,
-			i,
-		))
-		if id != verificationID {
-			panic("SiacoinOutputID is not marshalling correctly")
-		}
-	}
-
 	return id
 }
 
@@ -229,28 +185,6 @@ func (t Transaction) FileContractID(i uint64) FileContractID {
 	t.marshalSiaNoSignatures(h) // Encode non-signature fields into hash.
 	encoding.WriteUint64(h, i)  // Writes index of this output.
 	h.Sum(id[:0])
-
-	// Sanity check - verify that the optimized code is always returning the
-	// same ids as the unoptimized code.
-	if build.DEBUG {
-		verificationID := FileContractID(crypto.HashAll(
-			SpecifierFileContract,
-			t.SiacoinInputs,
-			t.SiacoinOutputs,
-			t.FileContracts,
-			t.FileContractRevisions,
-			t.StorageProofs,
-			t.SiafundInputs,
-			t.SiafundOutputs,
-			t.MinerFees,
-			t.ArbitraryData,
-			i,
-		))
-		if id != verificationID {
-			panic("FileContractID is not marshalling correctly")
-		}
-	}
-
 	return id
 }
 
@@ -265,27 +199,6 @@ func (t Transaction) SiafundOutputID(i uint64) SiafundOutputID {
 	t.marshalSiaNoSignatures(h) // Encode non-signature fields into hash.
 	encoding.WriteUint64(h, i)  // Writes index of this output.
 	h.Sum(id[:0])
-
-	// Sanity check - verify that the optimized code is always returning the
-	// same ids as the unoptimized code.
-	if build.DEBUG {
-		verificationID := SiafundOutputID(crypto.HashAll(
-			SpecifierSiafundOutput,
-			t.SiacoinInputs,
-			t.SiacoinOutputs,
-			t.FileContracts,
-			t.FileContractRevisions,
-			t.StorageProofs,
-			t.SiafundInputs,
-			t.SiafundOutputs,
-			t.MinerFees,
-			t.ArbitraryData,
-			i,
-		))
-		if id != verificationID {
-			panic("SiafundOutputID is not marshalling correctly")
-		}
-	}
 	return id
 }
 

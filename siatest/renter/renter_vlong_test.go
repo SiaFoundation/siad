@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"encoding/hex"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -10,8 +9,11 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -60,6 +62,9 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to upload the file to.
 			dirs, err := r.Dirs()
+			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+				continue
+			}
 			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				continue
 			}
@@ -67,14 +72,22 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
-			sp := filepath.Join(dir, hex.EncodeToString(fastrand.Bytes(16)))
+			sp := filepath.Join(dir, persist.RandomSuffix())
+			// 30% chance for the file to be a 0-byte file.
+			size := int(modules.SectorSize) + siatest.Fuzz()
+			if fastrand.Intn(3) == 0 {
+				size = 0
+			}
 			// Upload the file
-			lf, err := r.FilesDir().NewFile(int(modules.SectorSize) + siatest.Fuzz())
+			lf, err := r.FilesDir().NewFile(size)
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = r.RenterUploadForcePost(lf.Path(), sp, dataPieces, parityPieces, false)
-			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+			rf, err := r.Upload(lf, sp, dataPieces, parityPieces, false)
+			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) && !errors.Contains(err, siatest.ErrFileNotTracked) {
+				t.Fatal(err)
+			}
+			if err := r.WaitForUploadRedundancy(rf, 1.0); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(1000))*time.Millisecond + time.Second) // between 1s and 2s
@@ -100,13 +113,22 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				time.Sleep(time.Second)
 				continue
 			}
+			// 30% chance for the file to be a 0-byte file.
+			size := int(modules.SectorSize) + siatest.Fuzz()
+			if fastrand.Intn(3) == 0 {
+				size = 0
+			}
+			// Upload the file.
 			sp := files[fastrand.Intn(len(files))].SiaPath
-			lf, err := r.FilesDir().NewFile(int(modules.SectorSize) + siatest.Fuzz())
+			lf, err := r.FilesDir().NewFile(size)
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = r.RenterUploadForcePost(lf.Path(), sp, dataPieces, parityPieces, true)
-			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+			rf, err := r.Upload(lf, sp, dataPieces, parityPieces, true)
+			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) && !errors.Contains(err, siatest.ErrFileNotTracked) {
+				t.Fatal(err)
+			}
+			if err := r.WaitForUploadRedundancy(rf, 1.0); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s
@@ -134,7 +156,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
-			err = r.RenterRenamePost(sp, hex.EncodeToString(fastrand.Bytes(16)))
+			err = r.RenterRenamePost(sp, persist.RandomSuffix())
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
@@ -192,6 +214,9 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to create a dir in.
 			dirs, err := r.Dirs()
+			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+				continue
+			}
 			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				continue
 			}
@@ -199,7 +224,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
-			sp := filepath.Join(dir, hex.EncodeToString(fastrand.Bytes(16)))
+			sp := filepath.Join(dir, persist.RandomSuffix())
 			if err := r.RenterDirCreatePost(sp); err != nil {
 				t.Fatal(err)
 			}
@@ -219,6 +244,9 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to delete.
 			dirs, err := r.Dirs()
+			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+				continue
+			}
 			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				continue
 			}
@@ -231,7 +259,11 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				if err := r.RenterDirDeletePost(dir); err != nil {
 					t.Fatal(err)
 				}
-				if err := r.RenterDirCreatePost(dir); err != nil {
+				err := r.RenterDirCreatePost(dir)
+				// NOTE we could probably avoid ignoring ErrPathOverload if we
+				// decided that `siadir.New` returns a potentially existing
+				// directory instead.
+				if err != nil && !strings.Contains(err.Error(), siadir.ErrPathOverload.Error()) {
 					t.Fatal(err)
 				}
 			} else {
@@ -239,7 +271,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				// 50% chance to rename the directory to be the child of a
 				// random existing directory.
 				//newParent := dirs[fastrand.Intn(len(dirs))]
-				//newDir := filepath.Join(newParent, hex.EncodeToString(fastrand.Bytes(16)))
+				//newDir := filepath.Join(newParent, persist.RandomSuffix())
 				//if err := r.RenterDirRenamePost(dir, newDir); err != nil {
 				//	t.Fatal(err)
 				//}

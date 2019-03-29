@@ -2,7 +2,6 @@ package siafile
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -50,6 +49,10 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	}
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(fd.ErasureCode)
+	siaPath, err := modules.NewSiaPath(fd.Name)
+	if err != nil {
+		return &SiaFileSetEntry{}, err
+	}
 	file := &SiaFile{
 		staticMetadata: metadata{
 			AccessTime:              currentTime,
@@ -67,11 +70,11 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(fd.ErasureCode.NumPieces()),
 			StaticPieceSize:         fd.PieceSize,
-			SiaPath:                 fd.Name,
+			SiaPath:                 siaPath,
 		},
 		deleted:        fd.Deleted,
 		deps:           modules.ProdDependencies,
-		siaFilePath:    filepath.Join(sfs.siaFileDir, fd.Name+ShareExtension),
+		siaFilePath:    siaPath.SiaFileSysPath(sfs.siaFileDir),
 		staticUniqueID: fd.UID,
 		wal:            sfs.wal,
 	}
@@ -106,7 +109,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	entry := sfs.newSiaFileSetEntry(file)
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
-	sfs.siaFileMap[fd.Name] = entry
+	sfs.siaFileMap[siaPath] = entry
 	sfse := &SiaFileSetEntry{
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,

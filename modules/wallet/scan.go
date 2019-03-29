@@ -57,6 +57,7 @@ type seedScanner struct {
 	dustThreshold    types.Currency              // minimum value of outputs to be included
 	keys             map[types.UnlockHash]uint64 // map address to seed index
 	largestIndexSeen uint64                      // largest index that has appeared in the blockchain
+	scannedHeight    types.BlockHeight
 	seed             modules.Seed
 	siacoinOutputs   map[types.SiacoinOutputID]scannedOutput
 	siafundOutputs   map[types.SiafundOutputID]scannedOutput
@@ -136,6 +137,13 @@ func (s *seedScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
 			}
 		}
 	}
+	// Adjust the scanned height and print the scan progress.
+	s.scannedHeight += types.BlockHeight(len(cc.AppliedBlocks) - len(cc.RevertedBlocks))
+	if !cc.Synced {
+		print("\rWallet: scanned to height ", s.scannedHeight, "...")
+	} else {
+		println("\nDone!")
+	}
 }
 
 // scan subscribes s to cs and scans the blockchain for addresses that belong
@@ -149,7 +157,7 @@ func (s *seedScanner) scan(cs modules.ConsensusSet, cancel <-chan struct{}) erro
 	//
 	// NOTE: since scanning is very slow, we aim to only scan once, which
 	// means generating many keys.
-	var numKeys uint64 = numInitialKeys
+	numKeys := numInitialKeys
 	for s.numKeys() < maxScanKeys {
 		s.generateKeys(numKeys)
 		if err := cs.ConsensusSetSubscribe(s, modules.ConsensusChangeBeginning, cancel); err != nil {

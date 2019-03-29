@@ -25,7 +25,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -94,7 +93,7 @@ type hostDB interface {
 
 	// ScoreBreakdown returns a detailed explanation of the various properties
 	// of the host.
-	ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown
+	ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error)
 
 	// SetIPViolationCheck enables/disables the IP violation check within the
 	// hostdb.
@@ -102,7 +101,7 @@ type hostDB interface {
 
 	// EstimateHostScore returns the estimated score breakdown of a host with the
 	// provided settings.
-	EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown
+	EstimateHostScore(modules.HostDBEntry, modules.Allowance) (modules.HostScoreBreakdown, error)
 }
 
 // A hostContractor negotiates, revises, renews, and provides access to file
@@ -591,7 +590,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // right size, but it can't check that the content is the same. Therefore the
 // caller is responsible for not accidentally corrupting the uploaded file by
 // providing a different file with the same size.
-func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
+func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -651,12 +650,12 @@ func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) { retu
 func (r *Renter) InitialScanComplete() (bool, error) { return r.hostDB.InitialScanComplete() }
 
 // ScoreBreakdown returns the score breakdown
-func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) modules.HostScoreBreakdown {
+func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
 	return r.hostDB.ScoreBreakdown(e)
 }
 
 // EstimateHostScore returns the estimated host score
-func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) modules.HostScoreBreakdown {
+func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) (modules.HostScoreBreakdown, error) {
 	if reflect.DeepEqual(a, modules.Allowance{}) {
 		a = r.Settings().Allowance
 	}
@@ -733,42 +732,6 @@ func (r *Renter) SetIPViolationCheck(enabled bool) {
 	r.hostDB.SetIPViolationCheck(enabled)
 }
 
-// validateSiapath checks that a Siapath is a legal filename.
-// ../ is disallowed to prevent directory traversal, and paths must not begin
-// with / or be empty.
-func validateSiapath(siapath string) error {
-	if siapath == "" {
-		return ErrEmptyFilename
-	}
-	if siapath == ".." {
-		return errors.New("siapath cannot be '..'")
-	}
-	if siapath == "." {
-		return errors.New("siapath cannot be '.'")
-	}
-	// check prefix
-	if strings.HasPrefix(siapath, "/") {
-		return errors.New("siapath cannot begin with /")
-	}
-	if strings.HasPrefix(siapath, "../") {
-		return errors.New("siapath cannot begin with ../")
-	}
-	if strings.HasPrefix(siapath, "./") {
-		return errors.New("siapath connot begin with ./")
-	}
-	var prevElem string
-	for _, pathElem := range strings.Split(siapath, "/") {
-		if pathElem == "." || pathElem == ".." {
-			return errors.New("siapath cannot contain . or .. elements")
-		}
-		if prevElem != "" && pathElem == "" {
-			return ErrEmptyFilename
-		}
-		prevElem = pathElem
-	}
-	return nil
-}
-
 // Enforce that Renter satisfies the modules.Renter interface.
 var _ modules.Renter = (*Renter)(nil)
 
@@ -805,7 +768,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			newUploads:        make(chan struct{}, 1),
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
-			stuckChunkSuccess: make(chan string, 1),
+			stuckChunkSuccess: make(chan modules.SiaPath, 1),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),
@@ -846,7 +809,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// Spin up the workers for the work pool.
 	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
-	go r.threadedUploadLoop()
+	go r.threadedUploadAndRepair()
 	go r.threadedUpdateRenterHealth()
 	go r.threadedStuckFileLoop()
 
