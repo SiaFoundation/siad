@@ -204,11 +204,15 @@ func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 // newSiaFileSetEntry initializes and returns a siaFileSetEntry
 func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) *siaFileSetEntry {
 	threads := make(map[uint64]threadInfo)
-	return &siaFileSetEntry{
+	entry := &siaFileSetEntry{
 		SiaFile:    sf,
 		siaFileSet: sfs,
 		threadMap:  threads,
 	}
+	// Add entry to siaFileMap and siapathToUID map.
+	sfs.siaFileMap[entry.UID()] = entry
+	sfs.siapathToUID[sfs.siaPath(entry)] = entry.UID()
+	return entry
 }
 
 // open will return the siaFileSetEntry in memory or load it from disk
@@ -232,8 +236,6 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 			return nil, err
 		}
 		entry = sfs.newSiaFileSetEntry(sf)
-		sfs.siaFileMap[sf.UID()] = entry
-		sfs.siapathToUID[siaPath] = sf.UID()
 	}
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
@@ -301,8 +303,6 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 	entry := sfs.newSiaFileSetEntry(sf)
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
-	sfs.siaFileMap[entry.UID()] = entry
-	sfs.siapathToUID[up.SiaPath] = entry.UID()
 	return &SiaFileSetEntry{
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,

@@ -103,8 +103,6 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	entry := sfs.newSiaFileSetEntry(file)
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
-	sfs.siaFileMap[fd.UID] = entry
-	sfs.siapathToUID[siaPath] = fd.UID
 	sfse := &SiaFileSetEntry{
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
