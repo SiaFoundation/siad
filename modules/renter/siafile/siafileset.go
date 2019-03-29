@@ -124,17 +124,6 @@ func (sfs *SiaFileSet) SiaPath(entry *siaFileSetEntry) modules.SiaPath {
 	return sfs.siaPath(entry)
 }
 
-// siaPath returns the siapath of a siafile.
-func (sfs *SiaFileSet) siaPath(entry *siaFileSetEntry) modules.SiaPath {
-	relPath := strings.TrimPrefix(entry.SiaFilePath(), sfs.siaFileDir)
-	relPath = strings.TrimSuffix(relPath, modules.SiaFileExtension)
-	sp, err := modules.NewSiaPath(relPath)
-	if err != nil {
-		build.Critical("SiaPath of entry is corrupted:", err)
-	}
-	return sp
-}
-
 // closeEntry will close an entry in the SiaFileSet, removing the siafile from
 // the cache if no other entries are open for that siafile.
 //
@@ -169,6 +158,17 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 		delete(sfs.siaFileMap, entry.staticMetadata.StaticUniqueID)
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	}
+}
+
+// siaPath returns the siapath of a siafile.
+func (sfs *SiaFileSet) siaPath(entry *siaFileSetEntry) modules.SiaPath {
+	relPath := strings.TrimPrefix(entry.SiaFilePath(), sfs.siaFileDir)
+	relPath = strings.TrimSuffix(relPath, modules.SiaFileExtension)
+	sp, err := modules.NewSiaPath(relPath)
+	if err != nil {
+		build.Critical("SiaPath of entry is corrupted:", err)
+	}
+	return sp
 }
 
 // siaPathToEntryAndUID translates a siaPath to a siaFileSetEntry and
