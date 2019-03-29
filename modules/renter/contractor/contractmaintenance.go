@@ -295,6 +295,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			// Contract has no utility if the host is not in the database. Or is
 			// filtered by the blacklist or whitelist.
 			if !exists || host.Filtered {
+				c.log.Debugf("Marking contract as having no utility because found in hostDB: %v, and host is Filtered: %v", exists, host.Filtered)
 				u.GoodForUpload = false
 				u.GoodForRenew = false
 				return u, nil
@@ -306,6 +307,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 				return u, err
 			}
 			if !minScore.IsZero() && sb.Score.Cmp(minScore) < 0 {
+				c.log.Debugf("Marking contract as having no utility because of host score: %v, minScore: %v", sb.Score, minScore)
 				u.GoodForUpload = false
 				u.GoodForRenew = false
 				return u, nil
@@ -313,6 +315,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 			// Contract has no utility if the host is offline.
 			if isOffline(host) {
+				c.log.Debugln("Marking contract as having no utility because of host being offline")
 				u.GoodForUpload = false
 				u.GoodForRenew = false
 				return u, nil
@@ -325,6 +328,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			renewWindow := c.allowance.RenewWindow
 			c.mu.RUnlock()
 			if blockHeight+renewWindow >= contract.EndHeight {
+				c.log.Debugln("Marking contract as not good for upload because it is time to renew the contract")
 				u.GoodForUpload = false
 				return u, nil
 			}
@@ -339,6 +343,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
 			percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
 			if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundUploadThreshold {
+				c.log.Debugf("Marking contract as having no utility because of insufficient funds for upload, RenterFunds < 3 x Sector Price: %v, percentRemaining: %v", contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0, percentRemaining)
 				u.GoodForUpload = false
 				return u, nil
 			}

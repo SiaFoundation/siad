@@ -182,7 +182,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			}
 			fileMetadata, err := r.managedCalculateFileMetadata(fileSiaPath)
 			if err != nil {
-				return siadir.Metadata{}, err
+				r.log.Printf("failed to calculate file metadata %v: %v", fi.Name(), err)
+				continue
 			}
 			if time.Since(fileMetadata.RecentRepairTime) >= fileRepairInterval {
 				// If the file has not recently been repaired then consider the
@@ -318,8 +319,8 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) error {
 	siaPathStr := siaPath.String()
 	status, ok := r.bubbleUpdates[siaPathStr]
 	if !ok {
-		// Bubble not found in map, treat as developer error as this should not happen
-		build.Critical("bubble status not found in bubble update map")
+		// Bubble not found in map, nothing to do.
+		return nil
 	}
 
 	// Update status and call new bubble or remove from bubbleUpdates and save
@@ -622,6 +623,26 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 		return
 	}
 
+	// Make sure we call threadedBubbleMetadata on the parent once we are done.
+	defer func() {
+		// Complete bubble
+		err = r.managedCompleteBubbleUpdate(siaPath)
+		if err != nil {
+			r.log.Println("WARN: error in completing bubble:", err)
+			return
+		}
+		// Continue with parent dir if we aren't in the root dir already.
+		if siaPath.IsRoot() {
+			return
+		}
+		parentDir, err := siaPath.Dir()
+		if err != nil {
+			r.log.Printf("WARN: Failed to defer threadedBubbleMetadata: %v", err)
+			return
+		}
+		go r.threadedBubbleMetadata(parentDir)
+	}()
+
 	// Calculate the new metadata values of the directory
 	metadata, err := r.managedCalculateDirectoryMetadata(siaPath)
 	if err != nil {
@@ -629,24 +650,17 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 		return
 	}
 
-	// Update directory metadata with the health information
+	// Update directory metadata with the health information. Don't return here
+	// to avoid skipping the repairNeeded and stuckChunkFound signals.
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
 		r.log.Printf("WARN: Could not open directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
-		return
-	}
-	defer siaDir.Close()
-	err = siaDir.UpdateMetadata(metadata)
-	if err != nil {
-		r.log.Printf("WARN: Could not update the metadata of the directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
-		return
-	}
-
-	// Complete bubble
-	err = r.managedCompleteBubbleUpdate(siaPath)
-	if err != nil {
-		r.log.Println("WARN: error in completing bubble:", err)
-		return
+	} else {
+		defer siaDir.Close()
+		err = siaDir.UpdateMetadata(metadata)
+		if err != nil {
+			r.log.Printf("WARN: Could not update the metadata of the directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
+		}
 	}
 
 	// If siaPath is equal to "" then return as we are in the root files
@@ -671,12 +685,6 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 		}
 		return
 	}
-	// Move to parent directory
-	siaPath, err = siaPath.Dir()
-	if err != nil {
-		return
-	}
-	go r.threadedBubbleMetadata(siaPath)
 	return
 }
 
