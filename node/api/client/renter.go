@@ -89,7 +89,7 @@ func (a *AllowanceRequestPost) Send() (err error) {
 
 // escapeSiaPath escapes the siapath to make it safe to use within a URL. This
 // should only be used on SiaPaths which are used as part of the URL path.
-// Paths within the query have to be escaped with net.QueryEscape.
+// Paths within the query have to be escaped with url.PathEscape.
 func escapeSiaPath(siaPath string) string {
 	pathSegments := strings.Split(siaPath, "/")
 
@@ -174,7 +174,7 @@ func (c *Client) RenterDeletePost(siaPath string) (err error) {
 func (c *Client) RenterDownloadGet(siaPath, destination string, offset, length uint64, async bool) (err error) {
 	siaPath = escapeSiaPath(trimSiaPath(siaPath))
 	values := url.Values{}
-	values.Set("destination", url.QueryEscape(destination))
+	values.Set("destination", destination)
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("async", fmt.Sprint(async))
@@ -203,7 +203,7 @@ func (c *Client) RenterRecoverBackupPost(src string) (err error) {
 func (c *Client) RenterDownloadFullGet(siaPath, destination string, async bool) (err error) {
 	siaPath = escapeSiaPath(trimSiaPath(siaPath))
 	values := url.Values{}
-	values.Set("destination", url.QueryEscape(destination))
+	values.Set("destination", destination)
 	values.Set("httpresp", fmt.Sprint(false))
 	values.Set("async", fmt.Sprint(async))
 	err = c.get(fmt.Sprintf("/renter/download/%s?%s", siaPath, values.Encode()), nil)
@@ -367,7 +367,7 @@ func (c *Client) RenterStreamPartialGet(siaPath string, start, end uint64) (resp
 // path of a file to a new location. The file at newPath must exists.
 func (c *Client) RenterSetRepairPathPost(siaPath, newPath string) (err error) {
 	values := url.Values{}
-	values.Set("trackingpath", url.QueryEscape(newPath))
+	values.Set("trackingpath", newPath)
 	err = c.post("/renter/file/"+siaPath, values.Encode(), nil)
 	return
 }

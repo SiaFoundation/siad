@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -650,11 +649,7 @@ func (api *API) renterRecoveryScanHandlerGET(w http.ResponseWriter, req *http.Re
 // renterRenameHandler handles the API call to rename a file entry in the
 // renter.
 func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	newSiaPathStr, err := url.QueryUnescape(req.FormValue("newsiapath"))
-	if err != nil {
-		WriteError(w, Error{"failed to unescape newsiapath"}, http.StatusBadRequest)
-		return
-	}
+	newSiaPathStr := req.FormValue("newsiapath")
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -692,11 +687,7 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 // renterFileHandler handles POST requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	newTrackingPath, err := url.QueryUnescape(req.FormValue("trackingpath"))
-	if err != nil {
-		WriteError(w, Error{"unable to unescape new tracking path"}, http.StatusBadRequest)
-		return
-	}
+	newTrackingPath := req.FormValue("trackingpath")
 
 	// Handle changing the tracking path of a file.
 	if newTrackingPath != "" {
@@ -859,10 +850,7 @@ func (api *API) renterDownloadAsyncHandler(w http.ResponseWriter, req *http.Requ
 // /renter/download endpoint. Validation of these parameters is done by the
 // renter.
 func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (modules.RenterDownloadParameters, error) {
-	destination, err := url.QueryUnescape(req.FormValue("destination"))
-	if err != nil {
-		return modules.RenterDownloadParameters{}, errors.AddContext(err, "failed to unescape the destination")
-	}
+	destination := req.FormValue("destination")
 
 	// The offset and length in bytes.
 	offsetparam := req.FormValue("offset")
@@ -940,17 +928,13 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 
 // renterUploadHandler handles the API call to upload a file.
 func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	source, err := url.QueryUnescape(req.FormValue("source"))
-	if err != nil {
-		WriteError(w, Error{"failed to unescape the source path"}, http.StatusBadRequest)
-		return
-	}
+	source := req.FormValue("source")
 	if !filepath.IsAbs(source) {
 		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
-
 	// Check whether existing file should be overwritten
+	var err error
 	force := false
 	if f := req.FormValue("force"); f != "" {
 		force, err = strconv.ParseBool(f)
