@@ -375,7 +375,7 @@ func TestRename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newSiaFilePath := entry.siaFilePath + "1"
+	newSiaFilePath := newSiaPath.SiaFileSysPath(sfs.siaFileDir)
 	oldSiaFilePath := entry.siaFilePath
 
 	// Rename file
@@ -399,8 +399,9 @@ func TestRename(t *testing.T) {
 		t.Fatal("SiaFilePath wasn't updated correctly")
 	}
 	sfs.mu.Lock()
-	if !sfs.siaPath(entry.siaFileSetEntry).Equals(newSiaPath) {
-		t.Fatal("SiaPath wasn't updated correctly")
+	siaPath := sfs.siaPath(entry.siaFileSetEntry)
+	if !siaPath.Equals(newSiaPath) {
+		t.Fatal("SiaPath wasn't updated correctly", siaPath, newSiaPath)
 	}
 	sfs.mu.Unlock()
 }
