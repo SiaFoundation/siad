@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,7 +20,7 @@ func dummyEntry(s *SiaFile) *siaFileSetEntry {
 	return &siaFileSetEntry{
 		SiaFile: s,
 		siaFileSet: &SiaFileSet{
-			siaFileDir:   s.siaFilePath,
+			siaFileDir:   filepath.Join(hex.EncodeToString(fastrand.Bytes(16)), "siaFileDir"),
 			siaFileMap:   make(map[SiafileUID]*siaFileSetEntry),
 			siapathToUID: make(map[modules.SiaPath]SiafileUID),
 			wal:          nil,

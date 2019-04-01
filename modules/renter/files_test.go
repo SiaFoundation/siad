@@ -740,9 +740,12 @@ func TestRenterRenameFile(t *testing.T) {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
+	// Get the fileset.
+	sfs := rt.renter.staticFileSet
+
 	// Rename a file that does exist.
 	entry, _ := rt.renter.newRenterTestFile()
-	err = entry.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir))
+	err = rt.renter.RenameFile(sfs.SiaPath(entry), siaPath1)
 	if err != nil {
 		t.Fatal(err)
 	}
