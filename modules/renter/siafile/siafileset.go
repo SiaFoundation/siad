@@ -5,7 +5,6 @@ import (
 	"math"
 	"os"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -160,15 +159,14 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	}
 }
 
-// siaPath returns the siapath of a siafile.
-func (sfs *SiaFileSet) siaPath(entry *siaFileSetEntry) modules.SiaPath {
-	relPath := strings.TrimPrefix(entry.SiaFilePath(), sfs.siaFileDir)
-	relPath = strings.TrimSuffix(relPath, modules.SiaFileExtension)
-	sp, err := modules.NewSiaPath(relPath)
-	if err != nil {
-		build.Critical("SiaPath of entry is corrupted:", err)
+// siaPath is a convenience wrapper around FromSysPath. Since the files are
+// loaded from disk, the siapaths should always be correct. It's argument is
+// also an entry instead of the path and dir.
+func (sfs *SiaFileSet) siaPath(entry *siaFileSetEntry) (sp modules.SiaPath) {
+	if err := sp.FromSysPath(entry.SiaFilePath(), sfs.siaFileDir); err != nil {
+		build.Critical("Siapath of entry is corrupted. This shouldn't happen within the SiaFileSet", err)
 	}
-	return sp
+	return
 }
 
 // siaPathToEntryAndUID translates a siaPath to a siaFileSetEntry and
