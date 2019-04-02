@@ -28,8 +28,7 @@ type StreamShard struct {
 	signalChan chan struct{}
 }
 
-// NewStreamShard creates a new stream shard from a reader and an optional
-// waitForChan.
+// NewStreamShard creates a new stream shard from a reader.
 func NewStreamShard(r io.Reader) *StreamShard {
 	return &StreamShard{
 		r:          r,
