@@ -840,14 +840,18 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64) {
 	var total, unique uint64
 	for _, chunk := range sf.staticChunks {
 		for _, pieceSet := range chunk.Pieces {
-			// Note: we need to multiply by SectorSize here instead of
-			// f.pieceSize because the actual bytes uploaded include overhead
-			// from TwoFish encryption
-			total += uint64(len(pieceSet)) * modules.SectorSize
-
+			// Move onto the next pieceSet if nothing has been uploaded yet
 			if len(pieceSet) == 0 {
 				continue
 			}
+
+			// Note: we need to multiply by SectorSize here instead of
+			// f.pieceSize because the actual bytes uploaded include overhead
+			// from TwoFish encryption
+			//
+			// Sum the total bytes uploaded
+			total += uint64(len(pieceSet)) * modules.SectorSize
+			// Sum the unique bytes uploaded
 			unique += modules.SectorSize
 		}
 	}
