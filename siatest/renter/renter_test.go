@@ -2569,10 +2569,6 @@ func TestRenterPersistData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rg.Settings.StreamCacheSize != renter.DefaultStreamCacheSize {
-		t.Fatalf("StreamCacheSize not set to default of %v, set to %v",
-			renter.DefaultStreamCacheSize, rg.Settings.StreamCacheSize)
-	}
 	if rg.Settings.MaxDownloadSpeed != renter.DefaultMaxDownloadSpeed {
 		t.Fatalf("MaxDownloadSpeed not set to default of %v, set to %v",
 			renter.DefaultMaxDownloadSpeed, rg.Settings.MaxDownloadSpeed)
@@ -2598,9 +2594,6 @@ func TestRenterPersistData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rg.Settings.StreamCacheSize != cacheSize {
-		t.Fatalf("StreamCacheSize not set to %v, set to %v", cacheSize, rg.Settings.StreamCacheSize)
-	}
 	if rg.Settings.MaxDownloadSpeed != ds {
 		t.Fatalf("MaxDownloadSpeed not set to %v, set to %v", ds, rg.Settings.MaxDownloadSpeed)
 	}
@@ -2618,9 +2611,6 @@ func TestRenterPersistData(t *testing.T) {
 	rg, err = r.RenterGet()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if rg.Settings.StreamCacheSize != cacheSize {
-		t.Fatalf("StreamCacheSize not persisted as %v, set to %v", cacheSize, rg.Settings.StreamCacheSize)
 	}
 	if rg.Settings.MaxDownloadSpeed != ds {
 		t.Fatalf("MaxDownloadSpeed not persisted as %v, set to %v", ds, rg.Settings.MaxDownloadSpeed)

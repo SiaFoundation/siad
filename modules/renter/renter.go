@@ -230,20 +230,19 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
-	staticStreamCache *streamCache
-	cs                modules.ConsensusSet
-	deps              modules.Dependencies
-	g                 modules.Gateway
-	hostContractor    hostContractor
-	hostDB            hostDB
-	log               *persist.Logger
-	persist           persistence
-	persistDir        string
-	staticFilesDir    string
-	mu                *siasync.RWMutex
-	tg                threadgroup.ThreadGroup
-	tpool             modules.TransactionPool
-	wal               *writeaheadlog.WAL
+	cs             modules.ConsensusSet
+	deps           modules.Dependencies
+	g              modules.Gateway
+	hostContractor hostContractor
+	hostDB         hostDB
+	log            *persist.Logger
+	persist        persistence
+	persistDir     string
+	staticFilesDir string
+	mu             *siasync.RWMutex
+	tg             threadgroup.ThreadGroup
+	tpool          modules.TransactionPool
+	wal            *writeaheadlog.WAL
 }
 
 // Close closes the Renter and its dependencies
@@ -544,9 +543,6 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	if s.MaxDownloadSpeed < 0 || s.MaxUploadSpeed < 0 {
 		return errors.New("bandwidth limits cannot be negative")
 	}
-	if s.StreamCacheSize <= 0 {
-		return errors.New("stream cache size needs to be 1 or larger")
-	}
 
 	// Set allowance.
 	err := r.hostContractor.SetAllowance(s.Allowance)
@@ -561,13 +557,6 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	}
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
-
-	// Set StreamingCacheSize
-	err = r.staticStreamCache.SetStreamingCacheSize(s.StreamCacheSize)
-	if err != nil {
-		return err
-	}
-	r.persist.StreamCacheSize = s.StreamCacheSize
 
 	// Set IPViolationsCheck
 	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
@@ -715,7 +704,6 @@ func (r *Renter) Settings() modules.RenterSettings {
 		IPViolationsCheck: r.hostDB.IPViolationsCheck(),
 		MaxDownloadSpeed:  download,
 		MaxUploadSpeed:    upload,
-		StreamCacheSize:   r.staticStreamCache.cacheSize,
 	}
 }
 
@@ -796,9 +784,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
 		return nil, err
 	}
-
-	// Initialize the streaming cache.
-	r.staticStreamCache = newStreamCache(r.persist.StreamCacheSize)
 
 	// Subscribe to the consensus set.
 	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
