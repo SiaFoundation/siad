@@ -103,6 +103,14 @@ Use sighash to calculate the hash of a transaction.
 and all words appear in the Sia dictionary. The language may be english (default), japanese, or german`,
 		Run: wrap(utilsverifyseed),
 	}
+
+    utilsDisplayAPIPasswordCmd = &cobra.Command{
+		Use:   "display-api-password",
+		Short: "display the API password",
+		Long: `Display the API password.  The API password is required for some 3rd 
+party integrations such as Duplicati`,
+		Run: wrap(utilsdisplayapipassword),
+    }
 )
 
 func bashcomplcmd(path string) {
@@ -232,4 +240,8 @@ func utilsverifyseed() {
 	}
 	fmt.Println("No issues detected with your seed")
 
+}
+
+func utilsdisplayapipassword() {
+    fmt.Println(httpClient.Password)
 }
