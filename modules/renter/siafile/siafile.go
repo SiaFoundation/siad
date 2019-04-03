@@ -326,30 +326,6 @@ func (sf *SiaFile) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uin
 	return
 }
 
-//
-//	// We need to find at least erasureCode.MinPieces different pieces for each
-//	// chunk for the file to be available.
-//	for _, chunk := range sf.chunks {
-//		piecesForChunk := 0
-//		for _, pieceSet := range chunk.Pieces {
-//			for _, piece := range pieceSet {
-//				if !offline[string(sf.pubKeyTable[piece.HostTableOffset].PublicKey.Key)] {
-//					piecesForChunk++
-//					break // break out since we only count unique pieces
-//				}
-//			}
-//			if piecesForChunk >= sf.staticMetadata.staticErasureCode.MinPieces() {
-//				break // we already have enough pieces for this chunk.
-//			}
-//		}
-//		if piecesForChunk < sf.staticMetadata.staticErasureCode.MinPieces() {
-//			return false // this chunk isn't available.
-//		}
-//	}
-//	return true
-//>>>>>>> rename filesize and chunks
-//}
-
 // Delete removes the file from disk and marks it as deleted. Once the file is
 // deleted, certain methods should return an error.
 func (sf *SiaFile) Delete() error {

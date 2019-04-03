@@ -14,6 +14,25 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// Upload Streaming Overview:
+// Most of the logic that enables upload streaming can be found within
+// UploadStreamFromReader and the StreamShard. As seen at the beginning of the
+// big for - loop in UploadStreamFromReader, the streamer currently always
+// assumes that the data provided by the user starts at index 0 of chunk 0. In
+// every iteration the siafile is grown by a single chunk to prepare for the
+// upload of the next chunk. To allow the upload code to repair a chunk from a
+// stream, the stream is passed into the unfinished chunk as a new field. If the
+// upload code detects a stream, it will use that instead of a local file to
+// fetch the chunk's logical data. As soon as the upload code is done fetching
+// the logical data, it will close that streamer to signal the loop that it's
+// save to upload another chunk.
+// This is possible due to the custom StreamShard type which is a wrapper for a
+// io.Reader with a channel which is closed when the StreamShard is closed.
+//
+// TODO: We should easily be able to extend this code to allow for stream
+// repairs by adding an optional offset parameter which allows the upload
+// streamer to start from a different chunkIndex than 0.
+
 // StreamShard is a helper type that allows us to split an io.Reader up into
 // multiple readers, wait for the shard to finish reading and then check the
 // error for that Read.
