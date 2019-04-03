@@ -493,12 +493,18 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 }
 
 // managedRepairLoop works through the upload heap repairing chunks. The repair
-// loop will continue until the renter stops, there are no more chunks, or
-// enough time has passed indicated by the rebuildHeapSignal
+// loop will continue until the renter stops, there are no more chunks, enough
+// time has passed indicated by the rebuildHeapSignal, or the heap needs more
+// chunks as indicated by minUploadHeapSize
 func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
-	var consecutiveChunkRepairs int
+	// smallRepair indicates whether or not the repair loop is starting off
+	// below minUploadHeapSize. This is the case with small file uploads, small
+	// file repairs, or repairs on mostly healthy file systems. In these cases
+	// we want to just drain the heap
+	smallRepair := r.uploadHeap.managedLen() < minUploadHeapSize
+
 	rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
-	for {
+	for r.uploadHeap.managedLen() >= minUploadHeapSize || smallRepair {
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
@@ -552,36 +558,6 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 			}
 			continue
 		}
-		consecutiveChunkRepairs++
-
-		// Check if enough chunks are currently being repaired
-		if consecutiveChunkRepairs >= maxConsecutiveChunkRepairs {
-			// Pull all of the chunks out of the heap and return. Save the stuck
-			// chunks, as this is the repair loop and we aren't trying to erase
-			// the stuck chunks.
-			var stuckChunks []*unfinishedUploadChunk
-			for r.uploadHeap.managedLen() > 0 {
-				if c := r.uploadHeap.managedPop(); c.stuck {
-					stuckChunks = append(stuckChunks, c)
-				} else {
-					// Unstuck chunks are not added back and need to be closed.
-					err = c.fileEntry.Close()
-					if err != nil {
-						r.log.Println("WARN: unable to close file:", err)
-					}
-				}
-			}
-			for _, sc := range stuckChunks {
-				if !r.uploadHeap.managedPush(sc) {
-					// Chunk wasn't added to the heap. Close the file
-					err := sc.fileEntry.Close()
-					if err != nil {
-						r.log.Println("WARN: unable to close file:", err)
-					}
-				}
-			}
-			return
-		}
 	}
 }
 
@@ -602,9 +578,7 @@ func (r *Renter) managedUploadAndRepair() error {
 
 	// Build a min-heap of chunks organized by upload progress.
 	r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
-	r.uploadHeap.mu.Lock()
-	heapLen := r.uploadHeap.heap.Len()
-	r.uploadHeap.mu.Unlock()
+	heapLen := r.uploadHeap.managedLen()
 	if heapLen == 0 {
 		r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
 		// Call threadedBubble to make sure that directory information is
