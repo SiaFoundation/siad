@@ -104,13 +104,13 @@ and all words appear in the Sia dictionary. The language may be english (default
 		Run: wrap(utilsverifyseed),
 	}
 
-    utilsDisplayAPIPasswordCmd = &cobra.Command{
+	utilsDisplayAPIPasswordCmd = &cobra.Command{
 		Use:   "display-api-password",
 		Short: "display the API password",
 		Long: `Display the API password.  The API password is required for some 3rd 
 party integrations such as Duplicati`,
 		Run: wrap(utilsdisplayapipassword),
-    }
+	}
 )
 
 func bashcomplcmd(path string) {
@@ -243,5 +243,5 @@ func utilsverifyseed() {
 }
 
 func utilsdisplayapipassword() {
-    fmt.Println(httpClient.Password)
+	fmt.Println(httpClient.Password)
 }
