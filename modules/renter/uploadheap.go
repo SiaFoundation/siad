@@ -558,6 +558,12 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 			for r.uploadHeap.managedLen() > 0 {
 				if c := r.uploadHeap.managedPop(); c.stuck {
 					stuckChunks = append(stuckChunks, c)
+				} else {
+					// Unstuck chunks are not added back and need to be closed.
+					err = c.fileEntry.Close()
+					if err != nil {
+						r.log.Println("WARN: unable to close file:", err)
+					}
 				}
 			}
 			for _, sc := range stuckChunks {
