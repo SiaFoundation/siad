@@ -213,6 +213,11 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		pieces, err := entry.Pieces(uint64(index))
 		if err != nil {
 			r.log.Println("failed to get pieces for building incomplete chunks")
+			for _, uc := range newUnfinishedChunks {
+				if err := uc.fileEntry.Close(); err != nil {
+					r.log.Println("failed to close file:", err)
+				}
+			}
 			return nil
 		}
 		for pieceIndex, pieceSet := range pieces {
