@@ -100,7 +100,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	_, exists2 := uh.repairingChunks[uuc.id]
 	if !exists1 && !exists2 {
 		uh.heapChunks[uuc.id] = struct{}{}
-		uh.heap.Push(uuc)
+		heap.Push(&uh.heap, uuc)
 		added = true
 	}
 	uh.mu.Unlock()
