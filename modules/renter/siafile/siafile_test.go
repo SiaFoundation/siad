@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -718,5 +719,71 @@ func TestUploadedBytes(t *testing.T) {
 	}
 	if uniqueBytes != modules.SectorSize {
 		t.Errorf("expected uploadedBytes to be %v, got %v", modules.SectorSize, uniqueBytes)
+	}
+}
+
+// TestFileUploadProgressPinning verifies that uploadProgress() returns at most
+// 100%, even if more pieces have been uploaded,
+func TestFileUploadProgressPinning(t *testing.T) {
+	f := newBlankTestFile()
+	for i := uint64(0); i < 2; i++ {
+		err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, uint64(0), i, crypto.Hash{})
+		err2 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(1)}}, uint64(0), i, crypto.Hash{})
+		if err := errors.Compose(err1, err2); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if f.staticMetadata.CachedUploadProgress != 100 {
+		t.Fatal("expected uploadProgress to report 100% but was", f.staticMetadata.CachedUploadProgress)
+	}
+}
+
+// TestFileExpiration probes the expiration method of the file type.
+func TestFileExpiration(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	f := newBlankTestFile()
+	contracts := make(map[string]modules.RenterContract)
+	f.UpdateExpiration(contracts)
+	if f.staticMetadata.CachedExpiration != 0 {
+		t.Error("file with no pieces should report as having no time remaining")
+	}
+	// Create 3 public keys
+	pk1 := types.SiaPublicKey{Key: []byte{0}}
+	pk2 := types.SiaPublicKey{Key: []byte{1}}
+	pk3 := types.SiaPublicKey{Key: []byte{2}}
+
+	// Add a piece for each key to the file.
+	err1 := f.AddPiece(pk1, 0, 0, crypto.Hash{})
+	err2 := f.AddPiece(pk2, 0, 1, crypto.Hash{})
+	err3 := f.AddPiece(pk3, 0, 2, crypto.Hash{})
+	if err := errors.Compose(err1, err2, err3); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a contract.
+	fc := modules.RenterContract{}
+	fc.EndHeight = 100
+	contracts[pk1.String()] = fc
+	f.UpdateExpiration(contracts)
+	if f.staticMetadata.CachedExpiration != 100 {
+		t.Error("file did not report lowest WindowStart")
+	}
+
+	// Add a contract with a lower WindowStart.
+	fc.EndHeight = 50
+	contracts[pk2.String()] = fc
+	f.UpdateExpiration(contracts)
+	if f.staticMetadata.CachedExpiration != 50 {
+		t.Error("file did not report lowest WindowStart")
+	}
+
+	// Add a contract with a higher WindowStart.
+	fc.EndHeight = 75
+	contracts[pk3.String()] = fc
+	f.UpdateExpiration(contracts)
+	if f.staticMetadata.CachedExpiration != 50 {
+		t.Error("file did not report lowest WindowStart")
 	}
 }
