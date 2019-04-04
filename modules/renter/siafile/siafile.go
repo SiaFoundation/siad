@@ -39,7 +39,7 @@ type (
 		// size of the staticMetadata on disk should always be a multiple of 4kib.
 		// The staticMetadata is also the only part of the file that is JSON encoded
 		// and can therefore be easily extended.
-		staticMetadata metadata
+		staticMetadata Metadata
 
 		// pubKeyTable stores the public keys of the hosts this file's pieces are uploaded to.
 		// Since multiple pieces from different chunks might be uploaded to the same host, this
@@ -136,7 +136,7 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
 	file := &SiaFile{
-		staticMetadata: metadata{
+		staticMetadata: Metadata{
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
@@ -224,6 +224,9 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	if sf.deleted {
 		return errors.New("can't add piece to deleted file")
 	}
+
+	// Update cache.
+	defer sf.updateUploadProgressAndBytes()
 
 	// Get the index of the host in the public key table.
 	tableIndex := -1
@@ -359,13 +362,14 @@ func (sf *SiaFile) ErasureCode() modules.ErasureCoder {
 	return sf.staticMetadata.staticErasureCode
 }
 
-// Expiration returns the lowest height at which any of the file's contracts
-// will expire.
-func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types.BlockHeight {
+// UpdateExpiration updates CachedExpiration with the lowest height at which any
+// of the file's contracts will expire.
+func (sf *SiaFile) UpdateExpiration(contracts map[string]modules.RenterContract) {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	if len(sf.pubKeyTable) == 0 {
-		return 0
+		sf.staticMetadata.CachedExpiration = 0
+		return
 	}
 
 	lowest := ^types.BlockHeight(0)
@@ -378,7 +382,7 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 			lowest = contract.EndHeight
 		}
 	}
-	return lowest
+	sf.staticMetadata.CachedExpiration = lowest
 }
 
 // Health calculates the health of the file to be used in determining repair
@@ -388,13 +392,20 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
-func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (float64, float64, uint64) {
+func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (h float64, sh float64, nsc uint64) {
 	numPieces := float64(sf.staticMetadata.staticErasureCode.NumPieces())
 	minPieces := float64(sf.staticMetadata.staticErasureCode.MinPieces())
 	worstHealth := 1 - ((0 - minPieces) / (numPieces - minPieces))
 
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
+
+	// Update the cache.
+	defer func() {
+		sf.staticMetadata.CachedHealth = h
+		sf.staticMetadata.CachedStuckHealth = sh
+	}()
+
 	// Check if siafile is deleted
 	if sf.deleted {
 		// Don't return health information of a deleted file to prevent
@@ -447,17 +458,6 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, sf.staticMetadata.NumStuckChunks)
 	}
 	return health, stuckHealth, numStuckChunks
-}
-
-// HealthPercentage returns the health in a more human understandable format out
-// of 100%
-func (sf *SiaFile) HealthPercentage(health float64) float64 {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	dataPieces := sf.staticMetadata.staticErasureCode.MinPieces()
-	parityPieces := sf.staticMetadata.staticErasureCode.NumPieces() - dataPieces
-	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
-	return 100 * ((worstHealth - health) / worstHealth)
 }
 
 // HostPublicKeys returns all the public keys of hosts the file has ever been
@@ -602,9 +602,13 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 // unique within a file contract. -1 is returned if the file has size 0. It
 // takes two arguments, a map of offline contracts for this file and a map that
 // indicates if a contract is goodForRenew.
-func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
+func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) (r float64) {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
+	// Update the cache.
+	defer func() {
+		sf.staticMetadata.CachedRedundancy = r
+	}()
 	if sf.staticMetadata.FileSize == 0 {
 		// TODO change this once tiny files are supported.
 		if len(sf.chunks) != 1 {
@@ -718,17 +722,6 @@ func (sf *SiaFile) UID() SiafileUID {
 	return sf.staticMetadata.StaticUniqueID
 }
 
-// UploadedBytes indicates how many bytes of the file have been uploaded via
-// current file contracts. Note that this is total uploaded bytes so it includes
-// padding and redundancy, so uploadedBytes can return a value much larger than
-// the file's original filesize.
-func (sf *SiaFile) UploadedBytes() uint64 {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	uploaded, _ := sf.uploadedBytes()
-	return uploaded
-}
-
 // UpdateUsedHosts updates the 'Used' flag for the entries in the pubKeyTable
 // of the SiaFile. The keys of all used hosts should be passed to the method
 // and the SiaFile will update the flag for hosts it knows of to 'true' and set
@@ -772,20 +765,6 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 		updates = append(updates, chunkUpdates...)
 	}
 	return sf.createAndApplyTransaction(updates...)
-}
-
-// UploadProgress indicates what percentage of the file has been uploaded based
-// on the unique pieces that have been uploaded. Note that a file may be
-// Available long before UploadProgress reaches 100%.
-func (sf *SiaFile) UploadProgress() float64 {
-	if sf.Size() == 0 {
-		return 100
-	}
-	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	_, uploaded := sf.uploadedBytes()
-	return math.Min(100*(float64(uploaded)/float64(desired)), 100)
 }
 
 // defragChunk removes pieces which belong to bad hosts and if that wasn't
@@ -898,6 +877,23 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 	return numPiecesGoodForRenew, numPiecesGoodForUpload
 }
 
+// updateUploadProgressAndBytes updates the CachedUploadProgress and
+// CachedUploadedBytes fields to indicate what percentage of the file has been
+// uploaded based on the unique pieces that have been uploaded and also how many
+// bytes have been uploaded of that file in total. Note that a file may be
+// Available long before UploadProgress reaches 100%.
+func (sf *SiaFile) updateUploadProgressAndBytes() {
+	_, uploaded := sf.uploadedBytes()
+	if sf.staticMetadata.FileSize == 0 {
+		// Update cache.
+		sf.staticMetadata.CachedUploadProgress = 100
+		return
+	}
+	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
+	// Update cache.
+	sf.staticMetadata.CachedUploadProgress = math.Min(100*(float64(uploaded)/float64(desired)), 100)
+}
+
 // uploadedBytes indicates how many bytes of the file have been uploaded via
 // current file contracts in total as well as unique uploaded bytes. Note that
 // this includes padding and redundancy, so uploadedBytes can return a value
@@ -921,5 +917,7 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64) {
 			unique += modules.SectorSize
 		}
 	}
+	// Update cache.
+	sf.staticMetadata.CachedUploadedBytes = total
 	return total, unique
 }

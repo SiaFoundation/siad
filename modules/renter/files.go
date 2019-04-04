@@ -189,45 +189,42 @@ func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
 // fileInfo takes the maps returned by renter.managedContractUtilityMaps as
 // many files at once.
 func (r *Renter) fileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
-	// Get the file and its contracts
-	entry, err := r.staticFileSet.Open(siaPath)
+	// Get the file's metadata and its contracts
+	md, err := r.staticFileSet.Metadata(siaPath)
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
-	defer entry.Close()
 
 	// Build the FileInfo
 	var onDisk bool
-	localPath := entry.LocalPath()
+	localPath := md.LocalPath
 	if localPath != "" {
 		_, err = os.Stat(localPath)
 		onDisk = err == nil
 	}
-	redundancy := entry.Redundancy(offline, goodForRenew)
-	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
 	fileInfo := modules.FileInfo{
-		AccessTime:       entry.AccessTime(),
-		Available:        redundancy >= 1,
-		ChangeTime:       entry.ChangeTime(),
-		CipherType:       entry.MasterKey().Type().String(),
-		CreateTime:       entry.CreateTime(),
-		Expiration:       entry.Expiration(contracts),
-		Filesize:         entry.Size(),
-		Health:           health,
+		AccessTime:       md.AccessTime,
+		Available:        md.CachedRedundancy >= 1,
+		ChangeTime:       md.ChangeTime,
+		CipherType:       md.StaticMasterKeyType.String(),
+		CreateTime:       md.CreateTime,
+		Expiration:       md.CachedExpiration,
+		Filesize:         uint64(md.FileSize),
+		Health:           md.CachedHealth,
 		LocalPath:        localPath,
-		MaxHealth:        math.Max(health, stuckHealth),
-		MaxHealthPercent: entry.HealthPercentage(math.Max(health, stuckHealth)),
-		ModTime:          entry.ModTime(),
-		NumStuckChunks:   numStuckChunks,
+		MaxHealth:        math.Max(md.CachedHealth, md.CachedStuckHealth),
+		MaxHealthPercent: md.HealthPercentage(),
+		ModTime:          md.ModTime,
+		NumStuckChunks:   md.NumStuckChunks,
 		OnDisk:           onDisk,
-		Recoverable:      onDisk || redundancy >= 1,
-		Redundancy:       redundancy,
+		Recoverable:      onDisk || md.CachedRedundancy >= 1,
+		Redundancy:       md.CachedRedundancy,
 		Renewing:         true,
-		SiaPath:          r.staticFileSet.SiaPath(entry),
-		Stuck:            numStuckChunks > 0,
-		StuckHealth:      stuckHealth,
-		UploadedBytes:    entry.UploadedBytes(),
-		UploadProgress:   entry.UploadProgress(),
+		SiaPath:          siaPath,
+		Stuck:            md.NumStuckChunks > 0,
+		StuckHealth:      md.CachedStuckHealth,
+		UploadedBytes:    md.CachedUploadedBytes,
+		UploadProgress:   md.CachedUploadProgress,
 	}
 
 	return fileInfo, nil

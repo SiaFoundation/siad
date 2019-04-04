@@ -258,6 +258,25 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	}, nil
 }
 
+// metadata returns the metadata of the SiaFile at siaPath.
+func (sfs *SiaFileSet) metadata(siaPath modules.SiaPath) (Metadata, error) {
+	var entry *siaFileSetEntry
+	entry, _, exists := sfs.siaPathToEntryAndUID(siaPath)
+	if exists {
+		// Get metadata from entry.
+		return entry.staticMetadata, nil
+	}
+	// Try and Load Metadata from disk
+	md, err := LoadSiaFileMetadata(siaPath.SiaFileSysPath(sfs.siaFileDir))
+	if os.IsNotExist(err) {
+		return Metadata{}, ErrUnknownPath
+	}
+	if err != nil {
+		return Metadata{}, err
+	}
+	return md, nil
+}
+
 // Delete deletes the SiaFileSetEntry's SiaFile
 func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	sfs.mu.Lock()
@@ -327,6 +346,13 @@ func (sfs *SiaFileSet) Open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.open(siaPath)
+}
+
+// Metadata returns the metadata of a SiaFile.
+func (sfs *SiaFileSet) Metadata(siaPath modules.SiaPath) (Metadata, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.metadata(siaPath)
 }
 
 // Rename will move a siafile from one path to a new path. Existing entries that
