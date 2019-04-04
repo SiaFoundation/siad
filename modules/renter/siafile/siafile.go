@@ -661,20 +661,13 @@ func (sf *SiaFile) UID() string {
 }
 
 // UploadedBytes indicates how many bytes of the file have been uploaded via
-// current file contracts. Note that this includes padding and redundancy, so
-// uploadedBytes can return a value much larger than the file's original filesize.
+// current file contracts. Note that this is total uploaded bytes so it includes
+// padding and redundancy, so uploadedBytes can return a value much larger than
+// the file's original filesize.
 func (sf *SiaFile) UploadedBytes() uint64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	var uploaded uint64
-	for _, chunk := range sf.staticChunks {
-		for _, pieceSet := range chunk.Pieces {
-			// Note: we need to multiply by SectorSize here instead of
-			// f.pieceSize because the actual bytes uploaded include overhead
-			// from TwoFish encryption
-			uploaded += uint64(len(pieceSet)) * modules.SectorSize
-		}
-	}
+	uploaded, _ := sf.uploadedBytes()
 	return uploaded
 }
 
@@ -726,15 +719,17 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
-// UploadProgress indicates what percentage of the file (plus redundancy) has
-// been uploaded. Note that a file may be Available long before UploadProgress
-// reaches 100%, and UploadProgress may report a value greater than 100%.
+// UploadProgress indicates what percentage of the file has been uploaded based
+// on the unique pieces that have been uploaded. Note that a file may be
+// Available long before UploadProgress reaches 100%.
 func (sf *SiaFile) UploadProgress() float64 {
 	if sf.Size() == 0 {
 		return 100
 	}
-	uploaded := sf.UploadedBytes()
 	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	_, uploaded := sf.uploadedBytes()
 	return math.Min(100*(float64(uploaded)/float64(desired)), 100)
 }
 
@@ -835,4 +830,30 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 		}
 	}
 	return numPiecesGoodForRenew, numPiecesGoodForUpload
+}
+
+// uploadedBytes indicates how many bytes of the file have been uploaded via
+// current file contracts in total as well as unique uploaded bytes. Note that
+// this includes padding and redundancy, so uploadedBytes can return a value
+// much larger than the file's original filesize.
+func (sf *SiaFile) uploadedBytes() (uint64, uint64) {
+	var total, unique uint64
+	for _, chunk := range sf.staticChunks {
+		for _, pieceSet := range chunk.Pieces {
+			// Move onto the next pieceSet if nothing has been uploaded yet
+			if len(pieceSet) == 0 {
+				continue
+			}
+
+			// Note: we need to multiply by SectorSize here instead of
+			// f.pieceSize because the actual bytes uploaded include overhead
+			// from TwoFish encryption
+			//
+			// Sum the total bytes uploaded
+			total += uint64(len(pieceSet)) * modules.SectorSize
+			// Sum the unique bytes uploaded
+			unique += modules.SectorSize
+		}
+	}
+	return total, unique
 }

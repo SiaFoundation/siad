@@ -11,7 +11,7 @@ import (
 
 // TestRenterUploadDirectory verifies that the renter returns an error if a
 // directory is provided as the source of an upload.
-func TestRenterUploadInode(t *testing.T) {
+func TestRenterUploadDirectory(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
