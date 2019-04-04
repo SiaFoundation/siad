@@ -703,6 +703,9 @@ func TestStuckChunks(t *testing.T) {
 // TestUploadedBytes tests that uploadedBytes() returns the expected values for
 // total and unique uploaded bytes.
 func TestUploadedBytes(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	// Create a new blank test file
 	f := newBlankTestFile()
 	// Add multiple pieces to the first pieceSet of the first piece of the first
@@ -725,6 +728,9 @@ func TestUploadedBytes(t *testing.T) {
 // TestFileUploadProgressPinning verifies that uploadProgress() returns at most
 // 100%, even if more pieces have been uploaded,
 func TestFileUploadProgressPinning(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	f := newBlankTestFile()
 	for i := uint64(0); i < 2; i++ {
 		err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, uint64(0), i, crypto.Hash{})

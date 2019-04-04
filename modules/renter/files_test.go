@@ -138,6 +138,9 @@ func TestFileNumChunks(t *testing.T) {
 // TestFileRedundancy tests that redundancy is correctly calculated for files
 // with varying number of filecontracts and erasure code settings.
 func TestFileRedundancy(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	nDatas := []int{1, 2, 10}
 	neverOffline := make(map[string]bool)
 	goodForRenew := make(map[string]bool)
