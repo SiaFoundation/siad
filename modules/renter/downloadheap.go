@@ -195,11 +195,6 @@ LOOP:
 				break
 			}
 
-			// Check if we got the chunk cached already.
-			if r.staticStreamCache.Retrieve(nextChunk) {
-				continue
-			}
-
 			// Get the required memory to download this chunk.
 			if !r.managedAcquireMemoryForDownloadChunk(nextChunk) {
 				// The renter shut down before memory could be acquired.

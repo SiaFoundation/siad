@@ -62,7 +62,6 @@ type (
 	persistence struct {
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
-		StreamCacheSize  uint64
 	}
 )
 
@@ -217,7 +216,6 @@ func (r *Renter) managedLoadSettings() error {
 		// No persistence yet, set the defaults and continue.
 		r.persist.MaxDownloadSpeed = DefaultMaxDownloadSpeed
 		r.persist.MaxUploadSpeed = DefaultMaxUploadSpeed
-		r.persist.StreamCacheSize = DefaultStreamCacheSize
 		err = r.saveSync()
 		if err != nil {
 			return err

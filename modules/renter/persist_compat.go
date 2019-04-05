@@ -234,6 +234,5 @@ func convertPersistVersionFrom040To133(path string) error {
 	metadata.Version = persistVersion133
 	p.MaxDownloadSpeed = DefaultMaxDownloadSpeed
 	p.MaxUploadSpeed = DefaultMaxUploadSpeed
-	p.StreamCacheSize = DefaultStreamCacheSize
 	return persist.SaveJSON(metadata, p, path)
 }
