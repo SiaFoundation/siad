@@ -222,6 +222,13 @@ func (sf *SiaFile) MasterKey() crypto.CipherKey {
 	return sk
 }
 
+// Metadata returns the metadata of the SiaFile.
+func (sf *SiaFile) Metadata() Metadata {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata
+}
+
 // Mode returns the FileMode of the SiaFile.
 func (sf *SiaFile) Mode() os.FileMode {
 	sf.mu.RLock()

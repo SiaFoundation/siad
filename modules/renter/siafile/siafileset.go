@@ -147,7 +147,7 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	// and then a new/different file was uploaded with the same siapath.
 	//
 	// If they are not the same entry, there is nothing more to do.
-	currentEntry := sfs.siaFileMap[entry.staticMetadata.StaticUniqueID]
+	currentEntry := sfs.siaFileMap[entry.Metadata().StaticUniqueID]
 	if currentEntry != entry.siaFileSetEntry {
 		return
 	}
@@ -155,7 +155,7 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	// If there are no more threads that have the current entry open, delete
 	// this entry from the set cache.
 	if len(currentEntry.threadMap) == 0 {
-		delete(sfs.siaFileMap, entry.staticMetadata.StaticUniqueID)
+		delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	}
 }
@@ -264,7 +264,7 @@ func (sfs *SiaFileSet) metadata(siaPath modules.SiaPath) (Metadata, error) {
 	entry, _, exists := sfs.siaPathToEntryAndUID(siaPath)
 	if exists {
 		// Get metadata from entry.
-		return entry.staticMetadata, nil
+		return entry.Metadata(), nil
 	}
 	// Try and Load Metadata from disk
 	md, err := LoadSiaFileMetadata(siaPath.SiaFileSysPath(sfs.siaFileDir))
@@ -295,7 +295,7 @@ func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 
 	// Remove the siafile from the set maps so that other threads can't find
 	// it.
-	delete(sfs.siaFileMap, entry.staticMetadata.StaticUniqueID)
+	delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
 	delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	return nil
 }
