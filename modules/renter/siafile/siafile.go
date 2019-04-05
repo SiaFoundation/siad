@@ -167,6 +167,13 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 	for i := range file.chunks {
 		file.chunks[i].Pieces = make([][]piece, erasureCode.NumPieces())
 	}
+	// Init cached fields for 0-Byte files.
+	if file.staticMetadata.StaticFileSize == 0 {
+		file.staticMetadata.CachedHealth = 0
+		file.staticMetadata.CachedStuckHealth = 0
+		file.staticMetadata.CachedRedundancy = float64(erasureCode.NumPieces()) / float64(erasureCode.MinPieces())
+		file.staticMetadata.CachedUploadProgress = 100
+	}
 	// Save file.
 	return file, file.saveFile()
 }
