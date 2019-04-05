@@ -3733,6 +3733,15 @@ func TestSiafileCompatCode(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+	// Make sure the folder containing the legacy file was deleted.
+	if _, err := os.Stat(filepath.Join(renterDir, "sub1")); !os.IsNotExist(err) {
+		t.Fatal("Error should be ErrNotExist but was", err)
+	}
+	// Make sure the siafile is exactly where we would expect it.
+	expectedLocation := filepath.Join(renterDir, "siafiles", "sub1", "sub2", "testfile.sia")
+	if _, err := os.Stat(expectedLocation); err != nil {
+		t.Fatal(err)
+	}
 	// Check that exactly 1 siafile exists and that it's the correct one.
 	fis, err := r.Files()
 	if err != nil {
@@ -3745,61 +3754,63 @@ func TestSiafileCompatCode(t *testing.T) {
 		t.Fatalf("Siapath should be '%v' but was '%v'",
 			expectedSiaPath, fis[0].SiaPath)
 	}
-	// Make sure the folder containing the legacy file was deleted.
-	if _, err := os.Stat(filepath.Join(renterDir, "sub1")); !os.IsNotExist(err) {
-		t.Fatal("Error should be ErrNotExist but was", err)
-	}
-	// Make sure the siafile is exactly where we would expect it.
-	expectedLocation := filepath.Join(renterDir, "siafiles", "sub1", "sub2", "testfile.sia")
-	if _, err := os.Stat(expectedLocation); err != nil {
+	// Check the other fields of the files in a loop since the cached fields might
+	// need some time to update.
+	err = build.Retry(100, time.Second, func() error {
+		fis, err := r.Files()
+		if err != nil {
+			return err
+		}
+		sf := fis[0]
+		if sf.AccessTime.IsZero() {
+			return errors.New("AccessTime wasn't set correctly")
+		}
+		if sf.ChangeTime.IsZero() {
+			return errors.New("ChangeTime wasn't set correctly")
+		}
+		if sf.CreateTime.IsZero() {
+			return errors.New("CreateTime wasn't set correctly")
+		}
+		if sf.ModTime.IsZero() {
+			return errors.New("ModTime wasn't set correctly")
+		}
+		if sf.Available {
+			return errors.New("File shouldn't be available since we don't know the hosts")
+		}
+		if sf.CipherType != crypto.TypeTwofish.String() {
+			return fmt.Errorf("CipherType should be twofish but was: %v", sf.CipherType)
+		}
+		if sf.Filesize != 4096 {
+			return fmt.Errorf("Filesize should be 4096 but was: %v", sf.Filesize)
+		}
+		if sf.Expiration != 91 {
+			return fmt.Errorf("Expiration should be 91 but was: %v", sf.Expiration)
+		}
+		if sf.LocalPath != "/tmp/SiaTesting/siatest/TestRenterTwo/gctwr-EKYAZSVOZ6U2T4HZYIAQ/files/4096bytes 16951a61" {
+			return errors.New("LocalPath doesn't match")
+		}
+		if sf.Redundancy != 0 {
+			return errors.New("Redundancy should be 0 since we don't know the hosts")
+		}
+		if sf.UploadProgress != 100 {
+			return errors.New("File was uploaded before so the progress should be 100")
+		}
+		if sf.UploadedBytes != 40960 {
+			return errors.New("Redundancy should be 10/20 so 10x the Filesize = 40960 bytes should be uploaded")
+		}
+		if sf.OnDisk {
+			return errors.New("OnDisk should be false but was true")
+		}
+		if sf.Recoverable {
+			return errors.New("Recoverable should be false but was true")
+		}
+		if !sf.Renewing {
+			return errors.New("Renewing should be true but wasn't")
+		}
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
-	}
-	// Check the other fields of the file.
-	sf := fis[0]
-	if sf.AccessTime.IsZero() {
-		t.Fatal("AccessTime wasn't set correctly")
-	}
-	if sf.ChangeTime.IsZero() {
-		t.Fatal("ChangeTime wasn't set correctly")
-	}
-	if sf.CreateTime.IsZero() {
-		t.Fatal("CreateTime wasn't set correctly")
-	}
-	if sf.ModTime.IsZero() {
-		t.Fatal("ModTime wasn't set correctly")
-	}
-	if sf.Available {
-		t.Fatal("File shouldn't be available since we don't know the hosts")
-	}
-	if sf.CipherType != crypto.TypeTwofish.String() {
-		t.Fatal("CipherType should be twofish but was", sf.CipherType)
-	}
-	if sf.Filesize != 4096 {
-		t.Fatal("Filesize should be 4096 but was", sf.Filesize)
-	}
-	if sf.Expiration != 91 {
-		t.Fatal("Expiration should be 91 but was", sf.Expiration)
-	}
-	if sf.LocalPath != "/tmp/SiaTesting/siatest/TestRenterTwo/gctwr-EKYAZSVOZ6U2T4HZYIAQ/files/4096bytes 16951a61" {
-		t.Fatal("LocalPath doesn't match")
-	}
-	if sf.Redundancy != 0 {
-		t.Fatal("Redundancy should be 0 since we don't know the hosts")
-	}
-	if sf.UploadProgress != 100 {
-		t.Fatal("File was uploaded before so the progress should be 100")
-	}
-	if sf.UploadedBytes != 40960 {
-		t.Fatal("Redundancy should be 10/20 so 10x the Filesize = 40960 bytes should be uploaded")
-	}
-	if sf.OnDisk {
-		t.Fatal("OnDisk should be false but was true")
-	}
-	if sf.Recoverable {
-		t.Fatal("Recoverable should be false but was true")
-	}
-	if !sf.Renewing {
-		t.Fatal("Renewing should be true but wasn't")
 	}
 }
 
