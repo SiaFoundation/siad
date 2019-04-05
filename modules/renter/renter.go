@@ -400,7 +400,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	}
 
 	// Divide by zero check. The only way to get 0 numHosts is if
-	// RenterPayoutsPreTax errors for every host. This would happend if the
+	// RenterPayoutsPreTax errors for every host. This would happen if the
 	// funding of the allowance is not enough as that would cause the
 	// fundingPerHost to be less than the contract price
 	if numHosts == 0 {
@@ -411,7 +411,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	hostCollateral = hostCollateral.Mul64(allowance.Hosts)
 
 	// Add in siafund fee. which should be around 10%. The 10% siafund fee
-	// accounts for paying 3.9% siafund on transactions and host collatoral. We
+	// accounts for paying 3.9% siafund on transactions and host collateral. We
 	// estimate the renter to spend all of it's allowance so the siafund fee
 	// will be calculated on the sum of the allowance and the hosts collateral
 	totalPayout := allowance.Funds.Add(hostCollateral)

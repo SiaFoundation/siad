@@ -266,7 +266,7 @@ func (s *streamer) managedFillCache() bool {
 		s.cacheOffset = streamOffset
 	}
 
-	// Return true, indicating that this function should be called agian,
+	// Return true, indicating that this function should be called again,
 	// because there may be more cache that has been requested or used since the
 	// previous request.
 	return true

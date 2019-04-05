@@ -476,7 +476,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	}
 	txn.TransactionSignatures[1].Signature = hostSig
 
-	// Disrupt before commiting.
+	// Disrupt before committing.
 	if s.deps.Disrupt("InterruptDownloadAfterSendingRevision") {
 		return modules.RenterContract{}, errors.New("InterruptDownloadAfterSendingRevision disrupt")
 	}
