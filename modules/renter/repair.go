@@ -651,7 +651,7 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 	}
 
 	// Update directory metadata with the health information. Don't return here
-	// to avoid skipping the repairNeeded and stuckChunkFound signals.
+	// to avoid skipping the addChunksToHeap and stuckChunkFound signals.
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
 		r.log.Printf("WARN: Could not open directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
@@ -673,7 +673,7 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 		// them until the root directory is updated
 		if metadata.Health >= siafile.RemoteRepairDownloadThreshold {
 			select {
-			case r.uploadHeap.repairNeeded <- struct{}{}:
+			case r.uploadHeap.addChunksToHeap <- struct{}{}:
 			default:
 			}
 		}
@@ -735,16 +735,13 @@ func (r *Renter) threadedStuckFileLoop() {
 		// useful for uploading.
 		hosts := r.managedRefreshHostsAndWorkers()
 
-		// Add stuck chunk to upload heap
+		// Add stuck chunk to upload heap and signal repair needed
 		r.managedBuildChunkHeap(dirSiaPath, hosts, targetStuckChunks)
-
-		// Try and repair stuck chunk. Since the heap prioritizes stuck chunks
-		// the first chunk popped off will be the stuck chunk.
 		r.log.Debugf("Attempting to repair stuck chunks from directory `%s`", dirSiaPath)
-		r.managedRepairLoop(hosts)
-
-		// Call bubble once all chunks have been popped off heap
-		r.threadedBubbleMetadata(dirSiaPath)
+		select {
+		case r.uploadHeap.repairNeeded <- struct{}{}:
+		default:
+		}
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
@@ -762,6 +759,13 @@ func (r *Renter) threadedStuckFileLoop() {
 				r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath, "to heap:", err)
 			}
 		}
+
+		// Call bubble before continuing on next iteration to ensure filesystem
+		// is up to date. We do not use the upload heap's channel since bubble
+		// is called when a chunk is done with its repair and since this loop
+		// only typically adds one chunk at a time call bubble before the next
+		// iteration is sufficient.
+		r.threadedBubbleMetadata(dirSiaPath)
 	}
 }
 

@@ -73,6 +73,8 @@ type uploadHeap struct {
 	repairingChunks map[uploadChunkID]struct{}
 
 	// Control channels
+	addChunksToHeap   chan struct{}
+	dirToBeBubbled    chan modules.SiaPath
 	newUploads        chan struct{}
 	repairNeeded      chan struct{}
 	stuckChunkFound   chan struct{}
@@ -492,79 +494,121 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 	return hosts
 }
 
-// managedRepairLoop works through the upload heap repairing chunks. The repair
-// loop will continue until the renter stops, there are no more chunks, enough
-// time has passed indicated by the rebuildHeapSignal, or the heap needs more
-// chunks as indicated by minUploadHeapSize
-func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
-	// smallRepair indicates whether or not the repair loop is starting off
-	// below minUploadHeapSize. This is the case with small file uploads, small
-	// file repairs, or repairs on mostly healthy file systems. In these cases
-	// we want to just drain the heap
-	smallRepair := r.uploadHeap.managedLen() < minUploadHeapSize
+// threadedRepairLoop is a background thread that works through the upload heap
+// repairing chunks.
+func (r *Renter) threadedRepairLoop() {
+	err := r.tg.Add()
+	if err != nil {
+		return
+	}
+	defer r.tg.Done()
 
-	rebuildHeapSignal := time.After(rebuildChunkHeapInterval)
-	for r.uploadHeap.managedLen() >= minUploadHeapSize || smallRepair {
+	// Perpetual loop to repair chunks
+	for {
+		// Wait until the renter is online to proceed. This function will return
+		// 'false' if the renter has shut down before being online.
+		if !r.managedBlockUntilOnline() {
+			return
+		}
+
+		// Refresh the worker pool and get the set of hosts that are currently
+		// useful for uploading.
+		hosts := r.managedRefreshHostsAndWorkers()
+
+		// smallRepair indicates whether or not the repair loop is starting off
+		// below minUploadHeapSize. This is the case with small file uploads, small
+		// file repairs, or repairs on mostly healthy file systems. In these cases
+		// we want to just drain the heap
+		smallRepair := r.uploadHeap.managedLen() < minUploadHeapSize
+
+		// Work through the heap repairing chunks until heap is empty for
+		// smallRepairs or heap drops below minUploadHeapSize for larger repairs
+		for r.uploadHeap.managedLen() >= minUploadHeapSize || smallRepair {
+			select {
+			case <-r.tg.StopChan():
+				// Return if the renter has shut down.
+				return
+			default:
+			}
+
+			// Check if there is work by trying to pop of the next chunk from
+			// the heap.
+			nextChunk := r.uploadHeap.managedPop()
+			if nextChunk == nil {
+				break
+			}
+			r.log.Debugln("Sending next chunk to the workers", nextChunk.id)
+
+			// Make sure we have enough workers for this chunk to reach minimum
+			// redundancy. Otherwise we ignore this chunk for now, mark it as stuck
+			// and let the stuck loop work on it
+			id := r.mu.RLock()
+			availableWorkers := len(r.workerPool)
+			r.mu.RUnlock(id)
+			if availableWorkers < nextChunk.minimumPieces {
+				// Not enough available workers, mark as stuck and close
+				r.log.Debugln("Setting chunk  as stuck because there are not enough good workers", nextChunk.id)
+				err := r.managedSetStuckAndClose(nextChunk, true)
+				if err != nil {
+					r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
+				}
+				continue
+			}
+
+			// Perform the work. managedPrepareNextChunk will block until
+			// enough memory is available to perform the work, slowing this
+			// thread down to using only the resources that are available.
+			err := r.managedPrepareNextChunk(nextChunk, hosts)
+			if err != nil {
+				// We were unsuccessful in preparing the next chunk so we need to
+				// mark the chunk as stuck and close the file
+				r.log.Debugln("WARN: unable to prepare next chunk without issues", err, nextChunk.id)
+				err = r.managedSetStuckAndClose(nextChunk, true)
+				if err != nil {
+					r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
+				}
+				continue
+			}
+		}
+
+		// Call threadedBubbleMetadata to update the filesystem if there is a
+		// directory that is pending
 		select {
-		case <-r.tg.StopChan():
-			// Return if the renter has shut down.
-			return
-		case <-rebuildHeapSignal:
-			// Return if workers/heap need to be refreshed.
-			return
+		case siaPath := <-r.uploadHeap.dirToBeBubbled:
+			r.threadedBubbleMetadata(siaPath)
 		default:
 		}
 
-		// Return if not online.
-		if !r.g.Online() {
+		// Signal that the heap needs more chunks
+		select {
+		case r.uploadHeap.addChunksToHeap <- struct{}{}:
+		default:
+		}
+
+		// Block until there is a new upload or there is a repair that is
+		// needed.
+		select {
+		case <-r.uploadHeap.newUploads:
+		case <-r.uploadHeap.repairNeeded:
+		case <-r.tg.StopChan():
 			return
-		}
-
-		// Check if there is work by trying to pop of the next chunk from
-		// the heap.
-		nextChunk := r.uploadHeap.managedPop()
-		if nextChunk == nil {
-			return
-		}
-		r.log.Debugln("Sending next chunk to the workers", nextChunk.id)
-
-		// Make sure we have enough workers for this chunk to reach minimum
-		// redundancy. Otherwise we ignore this chunk for now, mark it as stuck
-		// and let the stuck loop work on it
-		id := r.mu.RLock()
-		availableWorkers := len(r.workerPool)
-		r.mu.RUnlock(id)
-		if availableWorkers < nextChunk.minimumPieces {
-			// Not enough available workers, mark as stuck and close
-			r.log.Debugln("Setting chunk  as stuck because there are not enough good workers", nextChunk.id)
-			err := r.managedSetStuckAndClose(nextChunk, true)
-			if err != nil {
-				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
-			}
-			continue
-		}
-
-		// Perform the work. managedPrepareNextChunk will block until
-		// enough memory is available to perform the work, slowing this
-		// thread down to using only the resources that are available.
-		err := r.managedPrepareNextChunk(nextChunk, hosts)
-		if err != nil {
-			// We were unsuccessful in preparing the next chunk so we need to
-			// mark the chunk as stuck and close the file
-			r.log.Debugln("WARN: unable to prepare next chunk without issues", err, nextChunk.id)
-			err = r.managedSetStuckAndClose(nextChunk, true)
-			if err != nil {
-				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
-			}
-			continue
 		}
 	}
 }
 
-// managedUploadAndRepair will find new uploads and existing files in need of
-// repair and execute the uploads and repairs. This function effectively runs a
-// single iteration of threadedUploadAndRepair.
-func (r *Renter) managedUploadAndRepair() error {
+// managedAddChunksToHeap will add chunks to the upload heap from a directory
+// that is in need of repair. It does this by finding the worst health directory
+// and adding the chunks from that directory to the upload heap
+func (r *Renter) managedAddChunksToHeap() error {
+	// We want to be sure that to trigger the repair loop regardless of the
+	// outcome of this method to avoid the repair loop being stuck
+	defer func() {
+		select {
+		case r.uploadHeap.repairNeeded <- struct{}{}:
+		default:
+		}
+	}()
+
 	// Find the lowest health directory to queue for repairs.
 	dirSiaPath, dirHealth, err := r.managedWorstHealthDirectory()
 	if err != nil {
@@ -588,28 +632,28 @@ func (r *Renter) managedUploadAndRepair() error {
 	}
 	r.log.Println("Repairing", heapLen, "chunks from", dirSiaPath)
 
-	// Work through the heap and repair files
-	r.managedRepairLoop(hosts)
-
-	// Once we have worked through the heap, call bubble to update the
-	// directory metadata
-	r.threadedBubbleMetadata(dirSiaPath)
+	// Let the heap know which directory should be bubbled. This is a blocking
+	// call to prevent directories from being missed.
+	select {
+	case r.uploadHeap.dirToBeBubbled <- dirSiaPath:
+	case <-r.tg.StopChan():
+	}
 	return nil
 }
 
-// threadedUploadAndRepair is a background thread that maintains a queue of
-// chunks to repair. This thread attempts to prioritize repairing files and
-// chunks with the lowest health, and attempts to keep heavy throughput
+// threadedAddChunksToHeap is a background thread that is responsible for adding
+// chunks to the upload heap. This thread attempts to prioritize repairing files
+// and chunks with the lowest health, and attempts to keep heavy throughput
 // sustained for data upload as long as there is at least one chunk in need of
 // upload or repair.
-func (r *Renter) threadedUploadAndRepair() {
+func (r *Renter) threadedAddChunksToHeap() {
 	err := r.tg.Add()
 	if err != nil {
 		return
 	}
 	defer r.tg.Done()
 
-	// Perpetual loop to scan for more files.
+	// Perpetual loop to scan for more chunks to add to heap.
 	for {
 		// Return if the renter has shut down.
 		select {
@@ -625,10 +669,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Check whether a repair is needed. If a repair is not needed, block
-		// until there is a signal suggesting that a repair is needed. If there
-		// is a new upload, a signal will be sent through the 'newUploads'
-		// channel, and if the metadata updating code finds a file that needs
-		// repairing, a signal is sent through the 'repairNeeded' channel.
+		// until there is a signal requesting additional chunks again.
 		rootMetadata, err := r.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			// If there is an error fetching the root directory metadata, sleep
@@ -643,37 +684,45 @@ func (r *Renter) threadedUploadAndRepair() {
 			continue
 		}
 		if rootMetadata.Health < siafile.RemoteRepairDownloadThreshold {
+			// File system is healthy, no chunks need to be added. Check if the
+			// heap is empty, if there are still chunks in the heap then signal
+			// the heap to continue
+			if r.uploadHeap.managedLen() != 0 {
+				select {
+				case r.uploadHeap.repairNeeded <- struct{}{}:
+				default:
+				}
+			}
+
 			// Block until a signal is received that there is more work to do.
-			// A signal will be sent if new data to upload is received, or if
-			// the health loop discovers that some files are not in good health.
 			select {
-			case <-r.uploadHeap.newUploads:
-			case <-r.uploadHeap.repairNeeded:
+			case <-r.uploadHeap.addChunksToHeap:
 			case <-r.tg.StopChan():
 				return
 			}
 			continue
 		}
 
-		// The necessary conditions for performing an upload and repair
-		// iteration have been met - perform an upload and repair iteration.
-		err = r.managedUploadAndRepair()
+		// There are chunks that need repairing, perform one iteration of adding
+		// chunks to the heap
+		err = r.managedAddChunksToHeap()
 		if err != nil {
-			// If there is an error performing an upload and repair iteration,
-			// sleep for a bit and hope that on the next iteration, things will
-			// be better.
+			// If there is an error adding chunks to the heap, sleep for a bit
+			// and hope that on the next iteration, things will be better.
 			r.log.Println("WARN: error performing upload and repair iteration:", err)
 			select {
 			case <-time.After(uploadAndRepairErrorSleepDuration):
 			case <-r.tg.StopChan():
 				return
 			}
+			continue
 		}
 
-		// TODO: This sleep is a hack to keep the CPU from spinning at 100% for
-		// a brief time when all of the chunks in the directory have been added
-		// to the repair loop, but the directory isn't full yet so it keeps
-		// trying to add more chunks.
-		time.Sleep(20 * time.Millisecond)
+		// Block until more chunks are needed
+		select {
+		case <-r.uploadHeap.addChunksToHeap:
+		case <-r.tg.StopChan():
+			return
+		}
 	}
 }

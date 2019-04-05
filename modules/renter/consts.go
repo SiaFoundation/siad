@@ -134,14 +134,6 @@ var (
 		Testing:  250 * time.Millisecond,
 	}).(time.Duration)
 
-	// rebuildChunkHeapInterval defines how long the renter sleeps between
-	// checking on the filesystem health.
-	rebuildChunkHeapInterval = build.Select(build.Var{
-		Dev:      90 * time.Second,
-		Standard: 15 * time.Minute,
-		Testing:  3 * time.Second,
-	}).(time.Duration)
-
 	// repairStuckChunkInterval defines how long the renter sleeps between
 	// trying to repair a stuck chunk. The uploadHeap prioritizes stuck chunks
 	// so this interval is to allow time for unstuck chunks to be repaired.
