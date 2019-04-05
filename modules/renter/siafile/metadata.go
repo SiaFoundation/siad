@@ -45,7 +45,9 @@ type (
 		// Cached fields. These fields are cached fields and are only meant to be used
 		// to create FileInfos for file related API endpoints. There is no guarantee
 		// that these fields are up-to-date. Neither in memory nor on disk. Updates to
-		// these fields aren't persisted immediately.
+		// these fields aren't persisted immediately. Instead they will only be
+		// persisted whenever another method persists the metadata or when the SiaFile
+		// is closed.
 		//
 		// CachedRedundancy is the redundancy of the file on the network and is
 		// updated within the 'Redundancy' method which is periodically called by the

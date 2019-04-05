@@ -152,11 +152,13 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 		return
 	}
 
-	// If there are no more threads that have the current entry open, delete
-	// this entry from the set cache.
+	// If there are no more threads that have the current entry open, delete this
+	// entry from the set cache and save the file to make sure all changes are
+	// persisted.
 	if len(currentEntry.threadMap) == 0 {
 		delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
+		_ = entry.Save() // TODO: add logging
 	}
 }
 

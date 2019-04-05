@@ -362,11 +362,18 @@ func (sf *SiaFile) ErasureCode() modules.ErasureCoder {
 	return sf.staticMetadata.staticErasureCode
 }
 
+// Save saves the entire file to disk.
+func (sf *SiaFile) Save() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.saveFile()
+}
+
 // UpdateExpiration updates CachedExpiration with the lowest height at which any
 // of the file's contracts will expire.
 func (sf *SiaFile) UpdateExpiration(contracts map[string]modules.RenterContract) {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
 	if len(sf.pubKeyTable) == 0 {
 		sf.staticMetadata.CachedExpiration = 0
 		return
@@ -397,8 +404,8 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	minPieces := float64(sf.staticMetadata.staticErasureCode.MinPieces())
 	worstHealth := 1 - ((0 - minPieces) / (numPieces - minPieces))
 
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
 
 	// Update the cache.
 	defer func() {
@@ -603,8 +610,8 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 // takes two arguments, a map of offline contracts for this file and a map that
 // indicates if a contract is goodForRenew.
 func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) (r float64) {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
 	// Update the cache.
 	defer func() {
 		sf.staticMetadata.CachedRedundancy = r
@@ -889,7 +896,7 @@ func (sf *SiaFile) updateUploadProgressAndBytes() {
 		sf.staticMetadata.CachedUploadProgress = 100
 		return
 	}
-	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
+	desired := uint64(len(sf.staticChunks)) * modules.SectorSize * uint64(sf.staticMetadata.staticErasureCode.NumPieces())
 	// Update cache.
 	sf.staticMetadata.CachedUploadProgress = math.Min(100*(float64(uploaded)/float64(desired)), 100)
 }
