@@ -140,7 +140,14 @@ func loadSiaFileMetadata(path string, deps modules.Dependencies) (md Metadata, e
 	defer f.Close()
 	// Load the metadata.
 	decoder := json.NewDecoder(f)
-	err = decoder.Decode(&md)
+	if err = decoder.Decode(&md); err != nil {
+		return
+	}
+	// Create the erasure coder.
+	md.staticErasureCode, err = unmarshalErasureCoder(md.StaticErasureCodeType, md.StaticErasureCodeParams)
+	if err != nil {
+		return
+	}
 	return
 }
 
