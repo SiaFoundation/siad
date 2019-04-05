@@ -306,6 +306,12 @@ func TestDefragChunk(t *testing.T) {
 		duration += time.Since(before)
 	}
 
+	// Save the file to disk again to make sure cached fields are persisted.
+	err = sf.saveFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Finally load the file from disk again and compare it to the original.
 	sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
 	if err != nil {
@@ -732,11 +738,13 @@ func TestFileUploadProgressPinning(t *testing.T) {
 		t.SkipNow()
 	}
 	f := newBlankTestFile()
-	for i := uint64(0); i < 2; i++ {
-		err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, uint64(0), i, crypto.Hash{})
-		err2 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(1)}}, uint64(0), i, crypto.Hash{})
-		if err := errors.Compose(err1, err2); err != nil {
-			t.Fatal(err)
+	for chunkIndex := uint64(0); chunkIndex < f.NumChunks(); chunkIndex++ {
+		for pieceIndex := uint64(0); pieceIndex < uint64(f.ErasureCode().NumPieces()); pieceIndex++ {
+			err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, chunkIndex, pieceIndex, crypto.Hash{})
+			err2 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(1)}}, chunkIndex, pieceIndex, crypto.Hash{})
+			if err := errors.Compose(err1, err2); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	if f.staticMetadata.CachedUploadProgress != 100 {
