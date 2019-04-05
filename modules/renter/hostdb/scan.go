@@ -71,7 +71,7 @@ func (hdb *HostDB) managedUpdateTxnFees() {
 	hdb.mu.Unlock()
 	// Recompute the host weight function.
 	hwf := hdb.managedCalculateHostWeightFn(allowance)
-	// Set the weight funtion.
+	// Set the weight function.
 	if err := hdb.managedSetWeightFunction(hwf); err != nil {
 		// This shouldn't happen.
 		build.Critical("Failed to set the new weight function", err)

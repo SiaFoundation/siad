@@ -269,7 +269,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		stuck := !incomplete && chunkHealth != 0
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
-		// downloadable or if we are targetting stuck chunks
+		// downloadable or if we are targeting stuck chunks
 		if incomplete && (downloadable || target == targetStuckChunks) {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue
