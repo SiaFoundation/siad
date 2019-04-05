@@ -30,7 +30,7 @@ offline the Renter is notified and can have its Contractor adjust any contracts
 accordingly.
 
 ### Proto
-TODO
+TODO - Chris
 
 ### SiaDir
 The SiaDir package is the code that defines what a directory is on the Sia network.
@@ -39,7 +39,7 @@ The SiaDir package is the code that defines what a directory is on the Sia netwo
 The SiaFile package is the code that defines what a file is on the Sia network.
 
 ### Worker
-TODO
+TODO - David
 While the Worker is not currently a submodule, it plays a key role for the Renter.
 
 ## Functions of the Renter
@@ -48,7 +48,7 @@ The Renter has the following functions that it performs.
  - Repairs / Uploads
 
 ### Downloads
-TODO
+TODO - Chris
 
 ### Repairs and Uploads
 The following describes the work flow of how the Renter repairs files.
