@@ -249,6 +249,13 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 		r.log.Debugln("Fetching logical data of a chunk failed:", err)
+
+		// Mark chunk as stuck
+		r.log.Debugln("Marking chunk", chunk.id, "as stuck due to error fetching logical chunk data")
+		err = chunk.fileEntry.SetStuck(chunk.index, true)
+		if err != nil {
+			r.log.Debugln("Error marking chunk", chunk.id, "as stuck:", err)
+		}
 		return
 	}
 
