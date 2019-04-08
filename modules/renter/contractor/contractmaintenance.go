@@ -338,7 +338,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 					c.log.Println("Marking contract as not good for upload because it is time to renew the contract", contract.ID)
 				}
 				if !u.GoodForRenew {
-					c.log.Println("Contract is now seen as being good for renew:", contract.ID)
+					c.log.Println("Marking contract as being good for renew:", contract.ID)
 				}
 				u.GoodForUpload = false
 				u.GoodForRenew = true
@@ -359,7 +359,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 					c.log.Println("Marking contract as not good for upload because of insufficient funds: %v vs. %v - %v", contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0, percentRemaining, contract.ID)
 				}
 				if !u.GoodForRenew {
-					c.log.Println("Contract is now seen as being good for renew:", contract.ID)
+					c.log.Println("Marking contract as being good for renew:", contract.ID)
 				}
 				u.GoodForUpload = false
 				u.GoodForRenew = true
@@ -367,7 +367,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			}
 
 			if !u.GoodForUpload || !u.GoodForRenew {
-				c.log.Println("Marking contract as being both GoodForUpload and GoodForRenew", contract.ID)
+				c.log.Println("Marking contract as being both GoodForUpload and GoodForRenew", u.GoodForUpload, u.GoodForRenew, contract.ID)
 			}
 			u.GoodForUpload = true
 			u.GoodForRenew = true
