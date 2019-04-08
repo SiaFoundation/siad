@@ -283,19 +283,19 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		utility, err := func() (u modules.ContractUtility, err error) {
 			u = contract.Utility
 
-			// Start the contract in good standing if the utility isn't locked
-			// but don't completely ignore the utility. A locked utility can
-			// always get worse but not better.
-			if !u.Locked {
-				u.GoodForUpload = true
-				u.GoodForRenew = true
+			// If the utility is locked, do nothing.
+			if u.Locked {
+				return u, nil
 			}
 
 			host, exists := c.hdb.Host(contract.HostPublicKey)
 			// Contract has no utility if the host is not in the database. Or is
 			// filtered by the blacklist or whitelist.
 			if !exists || host.Filtered {
-				c.log.Debugf("Marking contract as having no utility because found in hostDB: %v, and host is Filtered: %v", exists, host.Filtered)
+				// Log if the utility has changed.
+				if u.GoodForUpload || u.GoodForRenew {
+					c.log.Printf("Marking contract as having no utility because found in hostDB: %v, or host is Filtered: %v - %v", exists, host.Filtered, contract.ID)
+				}
 				u.GoodForUpload = false
 				u.GoodForRenew = false
 				return u, nil
@@ -307,7 +307,10 @@ func (c *Contractor) managedMarkContractsUtility() error {
 				return u, err
 			}
 			if !minScore.IsZero() && sb.Score.Cmp(minScore) < 0 {
-				c.log.Debugf("Marking contract as having no utility because of host score: %v, minScore: %v", sb.Score, minScore)
+				// Log if the utility has changed.
+				if u.GoodForUpload || u.GoodForRenew {
+					c.log.Printf("Marking contract as having no utility because of host score: %v, minScore: %v - %v", sb.Score, minScore, contract.ID)
+				}
 				u.GoodForUpload = false
 				u.GoodForRenew = false
 				return u, nil
@@ -315,7 +318,10 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 			// Contract has no utility if the host is offline.
 			if isOffline(host) {
-				c.log.Debugln("Marking contract as having no utility because of host being offline")
+				// Log if the utility has changed.
+				if u.GoodForUpload || u.GoodForRenew {
+					c.log.Println("Marking contract as having no utility because of host being offline", contract.ID)
+				}
 				u.GoodForUpload = false
 				u.GoodForRenew = false
 				return u, nil
@@ -328,8 +334,14 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			renewWindow := c.allowance.RenewWindow
 			c.mu.RUnlock()
 			if blockHeight+renewWindow >= contract.EndHeight {
-				c.log.Debugln("Marking contract as not good for upload because it is time to renew the contract")
+				if u.GoodForUpload {
+					c.log.Println("Marking contract as not good for upload because it is time to renew the contract", contract.ID)
+				}
+				if !u.GoodForRenew {
+					c.log.Println("Contract is now seen as being good for renew:", contract.ID)
+				}
 				u.GoodForUpload = false
+				u.GoodForRenew = true
 				return u, nil
 			}
 
@@ -343,10 +355,22 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
 			percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
 			if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundUploadThreshold {
-				c.log.Debugf("Marking contract as having no utility because of insufficient funds for upload, RenterFunds < 3 x Sector Price: %v, percentRemaining: %v", contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0, percentRemaining)
+				if u.GoodForUpload {
+					c.log.Println("Marking contract as not good for upload because of insufficient funds: %v vs. %v - %v", contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0, percentRemaining, contract.ID)
+				}
+				if !u.GoodForRenew {
+					c.log.Println("Contract is now seen as being good for renew:", contract.ID)
+				}
 				u.GoodForUpload = false
+				u.GoodForRenew = true
 				return u, nil
 			}
+
+			if !u.GoodForUpload || !u.GoodForRenew {
+				c.log.Println("Marking contract as being both GoodForUpload and GoodForRenew", contract.ID)
+			}
+			u.GoodForUpload = true
+			u.GoodForRenew = true
 			return u, nil
 		}()
 		if err != nil {
