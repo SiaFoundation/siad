@@ -124,6 +124,9 @@ func TestRenterTwo(t *testing.T) {
 // testSiafileTimestamps tests if timestamps are set correctly when creating,
 // uploading, downloading and modifying a file.
 func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
 	// Grab the renter.
 	r := tg.Renters()[0]
 
@@ -833,6 +836,9 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 // testSingleFileGet is a subtest that uses an existing TestGroup to test if
 // using the single file API endpoint works
 func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 	// Upload file, creating a piece for each host in the group
@@ -941,6 +947,9 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 // testUploadWithAndWithoutForceParameter is a subtest that uses an existing TestGroup to test if
 // uploading an existing file is successful when setting 'force' to 'true' and 'force' set to 'false'
 func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 
@@ -3033,6 +3042,9 @@ func TestRenterSpendingReporting(t *testing.T) {
 
 // testZeroByteFile tests uploading and downloading a 0 and 1 byte file
 func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
 	// Grab renter
 	r := tg.Renters()[0]
 
