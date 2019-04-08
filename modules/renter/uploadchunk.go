@@ -281,6 +281,13 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			chunk.physicalChunkData[i] = nil
 		}
 		r.log.Debugln("Fetching physical data of a chunk failed:", err)
+
+		// Mark chunk as stuck
+		r.log.Debugln("Marking chunk", chunk.id, "as stuck due to error an error with the physical data")
+		err = chunk.fileEntry.SetStuck(chunk.index, true)
+		if err != nil {
+			r.log.Debugln("Error marking chunk", chunk.id, "as stuck:", err)
+		}
 		return
 	}
 
@@ -288,6 +295,12 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// do elements in our piece usage.
 	if len(chunk.physicalChunkData) < len(chunk.pieceUsage) {
 		r.log.Critical("not enough physical pieces to match the upload settings of the file")
+		// Mark chunk as stuck
+		r.log.Debugln("Marking chunk", chunk.id, "as stuck due to insufficient physical pieces")
+		err = chunk.fileEntry.SetStuck(chunk.index, true)
+		if err != nil {
+			r.log.Debugln("Error marking chunk", chunk.id, "as stuck:", err)
+		}
 		return
 	}
 	// Loop through the pieces and encrypt any that are needed, while dropping
