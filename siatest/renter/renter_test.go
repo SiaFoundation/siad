@@ -3793,7 +3793,7 @@ func TestSiafileCompatCode(t *testing.T) {
 			return errors.New("Redundancy should be 0 since we don't know the hosts")
 		}
 		if sf.UploadProgress != 100 {
-			return errors.New("File was uploaded before so the progress should be 100")
+			return fmt.Errorf("File was uploaded before so the progress should be 100 but was %v", sf.UploadProgress)
 		}
 		if sf.UploadedBytes != 40960 {
 			return errors.New("Redundancy should be 10/20 so 10x the Filesize = 40960 bytes should be uploaded")
