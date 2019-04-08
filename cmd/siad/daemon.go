@@ -12,10 +12,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/node/api/server"
 	"gitlab.com/NebulousLabs/Sia/profile"
-	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -113,27 +112,6 @@ func processConfig(config Config) (Config, error) {
 	return config, nil
 }
 
-// unlockWallet is called on siad startup and attempts to automatically
-// unlock the wallet with the given password string.
-func unlockWallet(w modules.Wallet, password string) error {
-	var validKeys []crypto.CipherKey
-	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
-	for _, dict := range dicts {
-		seed, err := modules.StringToSeed(password, dict)
-		if err != nil {
-			continue
-		}
-		validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seed)))
-	}
-	validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(password)))
-	for _, key := range validKeys {
-		if err := w.Unlock(key); err == nil {
-			return nil
-		}
-	}
-	return modules.ErrBadEncryptionKey
-}
-
 // apiPassword discovers the API password, which may be specified in an
 // environment variable, stored in a file on disk, or supplied by the user via
 // stdin.
@@ -169,9 +147,9 @@ func apiPassword(siaDir string) (string, error) {
 	return pw, nil
 }
 
-// startDaemon uses the config parameters to initialize Sia modules and start
-// siad.
-func startDaemon(config Config) (err error) {
+// loadAPIPassword determines whether to use an API password from disk or a
+// temporary one entered by the user according to the provided config.
+func loadAPIPassword(config Config) (err error) {
 	if config.Siad.AuthenticateAPI {
 		if config.Siad.TempPassword {
 			config.APIPassword, err = passwordPrompt("Enter API password: ")
@@ -189,17 +167,22 @@ func startDaemon(config Config) (err error) {
 			}
 		}
 	}
+	return nil
+}
 
-	// Print the siad Version and GitRevision
+// printVersionAndRevision prints the daemon's version and revision numbers.
+func printVersionAndRevision() {
 	fmt.Println("Sia Daemon v" + build.Version)
 	if build.GitRevision == "" {
 		fmt.Println("WARN: compiled without build commit or version. To compile correctly, please use the makefile")
 	} else {
 		fmt.Println("Git Revision " + build.GitRevision)
 	}
+}
 
-	// Install a signal handler that will catch exceptions thrown by mmap'd
-	// files.
+// installMmapSignalHandler installs a signal handler for Mmap related signals
+// and exits when such a signal is received.
+func installMmapSignalHandler() {
 	// NOTE: ideally we would catch SIGSEGV here too, since that signal can
 	// also be thrown by an mmap I/O error. However, SIGSEGV can occur under
 	// other circumstances as well, and in those cases, we will want a full
@@ -212,26 +195,69 @@ func startDaemon(config Config) (err error) {
 		fmt.Println("Please check your disk for errors.")
 		os.Exit(1)
 	}()
+}
+
+// installKillSignalHandler installs a signal handler for os.Interrupt, os.Kill
+// and syscall.SIGTERM and returns a channel that is closed when one of them is
+// caught.
+func installKillSignalHandler() chan os.Signal {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, os.Kill, syscall.SIGTERM)
+	return sigChan
+}
+
+// tryAutoUnlock will try to automatically unlock the server's wallet if the
+// environment variable is set.
+func tryAutoUnlock(srv *server.Server) {
+	if password := os.Getenv("SIA_WALLET_PASSWORD"); password != "" {
+		fmt.Println("Sia Wallet Password found, attempting to auto-unlock wallet")
+		if err := srv.Unlock(password); err != nil {
+			fmt.Println("Auto-unlock failed.")
+		} else {
+			fmt.Println("Auto-unlock successful.")
+		}
+	}
+}
+
+// startDaemon uses the config parameters to initialize Sia modules and start
+// siad.
+func startDaemon(config Config) (err error) {
+	// Process the config variables after they are parsed by cobra.
+	config, err = processConfig(config)
+	if err != nil {
+		return errors.AddContext(err, "failed to parse input parameter")
+	}
+
+	// Load API password.
+	if err = loadAPIPassword(config); err != nil {
+		return errors.AddContext(err, "failed to get API password")
+	}
+
+	// Print the siad Version and GitRevision
+	printVersionAndRevision()
+
+	// Install a signal handler that will catch exceptions thrown by mmap'd
+	// files.
+	installMmapSignalHandler()
 
 	// Print a startup message.
 	fmt.Println("Loading...")
 	loadStart := time.Now()
-	srv, err := NewServer(config)
-	if err != nil {
-		return err
-	}
-	errChan := make(chan error)
-	go func() {
-		errChan <- srv.Serve()
-	}()
-	err = srv.loadModules()
+
+	// Create the node params by parsing the modules specified in the config.
+	nodeParams := parseModules(config)
+
+	// Start and run the server.
+	srv, err := server.New(config.Siad.APIaddr, config.Siad.RequiredUserAgent, config.APIPassword, nodeParams)
 	if err != nil {
 		return err
 	}
 
+	// Attempt to auto-unlock the wallet using the SIA_WALLET_PASSWORD env variable
+	tryAutoUnlock(srv)
+
 	// listen for kill signals
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, os.Kill, syscall.SIGTERM)
+	sigChan := installKillSignalHandler()
 
 	// Print a 'startup complete' message.
 	startupTime := time.Since(loadStart)
@@ -240,7 +266,7 @@ func startDaemon(config Config) (err error) {
 	// wait for Serve to return or for kill signal to be caught
 	err = func() error {
 		select {
-		case err := <-errChan:
+		case err := <-srv.ServeErr():
 			return err
 		case <-sigChan:
 			fmt.Println("\rCaught stop signal, quitting...")

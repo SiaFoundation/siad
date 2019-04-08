@@ -18,6 +18,13 @@ func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword strin
 	router.NotFound = http.HandlerFunc(UnrecognizedCallHandler)
 	router.RedirectTrailingSlash = false
 
+	// Daemon API Calls
+	router.GET("/daemon/constants", api.daemonConstantsHandler)
+	router.GET("/daemon/version", api.daemonVersionHandler)
+	router.GET("/daemon/update", api.daemonUpdateHandlerGET)
+	router.POST("/daemon/update", api.daemonUpdateHandlerPOST)
+	router.GET("/daemon/stop", RequirePassword(api.daemonStopHandler, requiredPassword))
+
 	// Consensus API Calls
 	if api.cs != nil {
 		router.GET("/consensus", api.consensusHandler)

@@ -97,7 +97,8 @@ type API struct {
 	tpool    modules.TransactionPool
 	wallet   modules.Wallet
 
-	router http.Handler
+	router   http.Handler
+	Shutdown func() error
 }
 
 // api.ServeHTTP implements the http.Handler interface.
