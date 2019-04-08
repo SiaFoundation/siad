@@ -335,15 +335,11 @@ func storageRemainingAdjustments(entry modules.HostDBEntry) float64 {
 // version reported by the host.
 func versionAdjustments(entry modules.HostDBEntry) float64 {
 	base := float64(1)
-	if build.VersionCmp(entry.Version, "1.5.0") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.2") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
 	}
-	// small penalty for hosts below version 1.4.0.
+	// Heavy penalty for hosts below v1.4.0
 	if build.VersionCmp(entry.Version, "1.4.0") < 0 {
-		base = base * 0.90 // 10% penalty
-	}
-	// we shouldn't use pre hardfork hosts.
-	if build.VersionCmp(entry.Version, "1.3.7") < 0 {
 		base = math.SmallestNonzeroFloat64
 	}
 	return base

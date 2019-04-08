@@ -125,7 +125,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	// amount of money that was spent on upload and download by this contract
 	// line in this period. That's going to require iterating over the renew
 	// history of the contract to get all the spending across any refreshes that
-	// ocurred this period.
+	// occurred this period.
 	prevUploadSpending := contract.UploadSpending
 	prevDownloadSpending := contract.DownloadSpending
 	c.mu.Lock()

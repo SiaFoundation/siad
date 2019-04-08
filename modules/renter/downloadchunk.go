@@ -77,9 +77,6 @@ type unfinishedDownloadChunk struct {
 
 	// The SiaFile from which data is being downloaded.
 	renterFile *siafile.Snapshot
-
-	// Caching related fields
-	staticStreamCache *streamCache
 }
 
 // fail will set the chunk status to failed. The physical chunk memory will be
@@ -224,14 +221,6 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 
 	// Get recovered data
 	recoveredData := recoverWriter.Bytes()
-
-	// Add the chunk to the cache.
-	if udc.download.staticDestinationType == destinationTypeSeekStream {
-		// We only cache streaming chunks since browsers and media players tend
-		// to only request a few kib at once when streaming data. That way we can
-		// prevent scheduling the same chunk for download over and over.
-		udc.staticStreamCache.Add(udc.staticCacheID, recoveredData)
-	}
 
 	// Write the bytes to the requested output.
 	start := recoveredDataOffset(udc.staticFetchOffset, udc.erasureCode)

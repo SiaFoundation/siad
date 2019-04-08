@@ -69,18 +69,13 @@ func TestRenterSaveLoad(t *testing.T) {
 	if settings.MaxUploadSpeed != DefaultMaxUploadSpeed {
 		t.Error("default max upload speed not set at init")
 	}
-	if settings.StreamCacheSize != DefaultStreamCacheSize {
-		t.Error("default stream cache size not set at init")
-	}
 
 	// Update the settings of the renter to have a new stream cache size and
 	// download speed.
 	newDownSpeed := int64(300e3)
 	newUpSpeed := int64(500e3)
-	newCacheSize := uint64(3)
 	settings.MaxDownloadSpeed = newDownSpeed
 	settings.MaxUploadSpeed = newUpSpeed
-	settings.StreamCacheSize = newCacheSize
 	rt.renter.SetSettings(settings)
 
 	// Add a file to the renter
@@ -125,9 +120,6 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 	if newSettings.MaxUploadSpeed != newUpSpeed {
 		t.Error("upload settings not being persisted correctly")
-	}
-	if newSettings.StreamCacheSize != newCacheSize {
-		t.Error("cache settings not being persisted correctly")
 	}
 
 	// Check that SiaFileSet loaded the renter's file

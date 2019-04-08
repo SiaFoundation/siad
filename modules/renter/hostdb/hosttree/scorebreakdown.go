@@ -34,7 +34,7 @@ var (
 	baseWeight = types.NewCurrency64(1)
 )
 
-// conversionRate computes the likelyhood of a host with 'score' to be drawn
+// conversionRate computes the likelihood of a host with 'score' to be drawn
 // from the hosttree assuming that all hosts have 'totalScore'.
 func conversionRate(score, totalScore types.Currency) float64 {
 	if totalScore.IsZero() {

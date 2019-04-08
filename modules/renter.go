@@ -348,7 +348,6 @@ type RenterSettings struct {
 	IPViolationsCheck bool      `json:"ipviolationcheck"`
 	MaxUploadSpeed    int64     `json:"maxuploadspeed"`
 	MaxDownloadSpeed  int64     `json:"maxdownloadspeed"`
-	StreamCacheSize   uint64    `json:"streamcachesize"`
 }
 
 // HostDBScans represents a sortable slice of scans.
