@@ -312,8 +312,8 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
 	// Only download this file if more than 25% of the redundancy is missing.
 	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
-	minMissingPiecesToDownload := int(numParityPieces * siafile.RemoteRepairDownloadThreshold)
-	download := chunk.piecesCompleted+minMissingPiecesToDownload < chunk.piecesNeeded
+	chunkHealth := 1 - (float64(chunk.piecesCompleted-chunk.minimumPieces) / numParityPieces)
+	download := chunkHealth >= siafile.RemoteRepairDownloadThreshold
 
 	// Download the chunk if it's not on disk.
 	if chunk.fileEntry.LocalPath() == "" && download {

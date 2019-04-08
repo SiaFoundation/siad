@@ -497,8 +497,10 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
+			r.log.Println("Repair loop interrupted because renter is shutting down")
 			return
 		case <-rebuildHeapSignal:
+			r.log.Println("Repair loop interrupted because signal was received to rebuild the repair heap")
 			// Return if workers/heap need to be refreshed.
 			return
 		default:
@@ -525,7 +527,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		r.mu.RUnlock(id)
 		if availableWorkers < nextChunk.minimumPieces {
 			// Not enough available workers, mark as stuck and close
-			r.log.Debugln("Setting chunk  as stuck because there are not enough good workers", nextChunk.id)
+			r.log.Debugln("Setting chunk as stuck because there are not enough good workers", nextChunk.id)
 			err := r.managedSetStuckAndClose(nextChunk, true)
 			if err != nil {
 				r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
