@@ -803,6 +803,29 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Rename file that would create a directory
+	siaPathWithDir, err := modules.NewSiaPath("new/name/with/dir/test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.RenameFile(siaPath1b, siaPathWithDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm directory metadatas exist
+	dirSiaPath := siaPathWithDir
+	for !dirSiaPath.Equals(modules.RootSiaPath()) {
+		dirSiaPath, err = dirSiaPath.Dir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = rt.renter.staticDirSet.Open(dirSiaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // TestRenterFileDir tests that the renter files are uploaded to the files
