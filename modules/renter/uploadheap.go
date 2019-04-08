@@ -254,12 +254,19 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 	// completed or are not downloadable.
 	incompleteChunks := newUnfinishedChunks[:0]
 	for _, chunk := range newUnfinishedChunks {
-		// Check if chunk is complete
-		incomplete := chunk.piecesCompleted < chunk.piecesNeeded
 		// Check if chunk is downloadable
 		chunkHealth := chunk.fileEntry.ChunkHealth(int(chunk.index), offline, goodForRenew)
 		_, err := os.Stat(chunk.fileEntry.LocalPath())
+		onDisk := err == nil
 		downloadable := chunkHealth <= 1 || err == nil
+		// Check if chunk is incomplete, for files not on disk chunk's are only
+		// incomplete if health is worse than RemoteRepairDownloadThreshold
+		var incomplete bool
+		if onDisk {
+			incomplete = chunkHealth >= siafile.RemoteRepairDownloadThreshold
+		} else {
+			incomplete = chunkHealth > float64(0)
+		}
 		// Check if chunk seems stuck
 		stuck := !incomplete && chunkHealth != 0
 
