@@ -671,6 +671,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			// Block until a signal is received that there is more work to do.
 			// A signal will be sent if new data to upload is received, or if
 			// the health loop discovers that some files are not in good health.
+			r.log.Println("All files appear to be in good health. No repairs launched.")
 			select {
 			case <-r.uploadHeap.newUploads:
 			case <-r.uploadHeap.repairNeeded:
@@ -682,6 +683,7 @@ func (r *Renter) threadedUploadAndRepair() {
 
 		// The necessary conditions for performing an upload and repair
 		// iteration have been met - perform an upload and repair iteration.
+		r.log.Println("Executing an upload and repair cycle")
 		err = r.managedUploadAndRepair()
 		if err != nil {
 			// If there is an error performing an upload and repair iteration,
