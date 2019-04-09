@@ -272,21 +272,13 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		needsRepair := chunkHealth >= siafile.RemoteRepairDownloadThreshold
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
-		// downloadable or if we are targetting stuck chunks
-		//
-		// TODO / QUESTION: Should we be skipping stuck chunks here if we are
-		// not targeting stuck chunks? And should we be skipping unstuck chunks
-		// here if we are targeting stuck chunks?
+		// repairable or if we are targetting stuck chunks
 		if needsRepair && (repairable || target == targetStuckChunks) {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue
 		}
 
 		// If a chunk is not able to be repaired, mark it as stuck.
-		//
-		// TODO / QUESTION: Since settings a chunk as stuck incurs some i/o
-		// penalty, should we be checking here that it's not already marked as
-		// stuck?
 		if !repairable {
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being downloadable")
 			err = chunk.fileEntry.SetStuck(chunk.index, true)
