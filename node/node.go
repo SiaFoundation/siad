@@ -222,8 +222,6 @@ func New(params NodeParams) (*Node, error) {
 		if params.CreateGateway && params.Gateway != nil {
 			return nil, errors.New("cannot both create a gateway and use a passed in gateway")
 		}
-		i++
-		printfRelease("(%d/%d) Loading gateway...\n", i, numModules)
 		if params.Gateway != nil {
 			return params.Gateway, nil
 		}
@@ -233,6 +231,8 @@ func New(params NodeParams) (*Node, error) {
 		if params.RPCAddress == "" {
 			params.RPCAddress = "localhost:0"
 		}
+		i++
+		printfRelease("(%d/%d) Loading gateway...\n", i, numModules)
 		return gateway.New(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir))
 	}()
 	if err != nil {
@@ -244,14 +244,14 @@ func New(params NodeParams) (*Node, error) {
 		if params.CreateConsensusSet && params.ConsensusSet != nil {
 			return nil, errors.New("cannot both create consensus and use passed in consensus")
 		}
-		i++
-		printfRelease("(%d/%d) Loading consensus...\n", i, numModules)
 		if params.ConsensusSet != nil {
 			return params.ConsensusSet, nil
 		}
 		if !params.CreateConsensusSet {
 			return nil, nil
 		}
+		i++
+		printfRelease("(%d/%d) Loading consensus...\n", i, numModules)
 		return consensus.New(g, params.Bootstrap, filepath.Join(dir, modules.ConsensusDir))
 	}()
 	if err != nil {
@@ -263,8 +263,6 @@ func New(params NodeParams) (*Node, error) {
 		if !params.CreateExplorer && params.Explorer != nil {
 			return nil, errors.New("cannot create explorer and also use custom explorer")
 		}
-		i++
-		printfRelease("(%d/%d) Loading explorer...\n", i, numModules)
 		if params.Explorer != nil {
 			return params.Explorer, nil
 		}
@@ -275,6 +273,8 @@ func New(params NodeParams) (*Node, error) {
 		if err != nil {
 			return nil, err
 		}
+		i++
+		printfRelease("(%d/%d) Loading explorer...\n", i, numModules)
 		return e, nil
 	}()
 	if err != nil {
@@ -286,14 +286,14 @@ func New(params NodeParams) (*Node, error) {
 		if params.CreateTransactionPool && params.TransactionPool != nil {
 			return nil, errors.New("cannot create transaction pool and also use custom transaction pool")
 		}
-		i++
-		printfRelease("(%d/%d) Loading transaction pool...\n", i, numModules)
 		if params.TransactionPool != nil {
 			return params.TransactionPool, nil
 		}
 		if !params.CreateTransactionPool {
 			return nil, nil
 		}
+		i++
+		printfRelease("(%d/%d) Loading transaction pool...\n", i, numModules)
 		return transactionpool.New(cs, g, filepath.Join(dir, modules.TransactionPoolDir))
 	}()
 	if err != nil {
@@ -305,8 +305,6 @@ func New(params NodeParams) (*Node, error) {
 		if params.CreateWallet && params.Wallet != nil {
 			return nil, errors.New("cannot create wallet and use custom wallet")
 		}
-		i++
-		printfRelease("(%d/%d) Loading wallet...\n", i, numModules)
 		if params.Wallet != nil {
 			return params.Wallet, nil
 		}
@@ -317,6 +315,8 @@ func New(params NodeParams) (*Node, error) {
 		if walletDeps == nil {
 			walletDeps = modules.ProdDependencies
 		}
+		i++
+		printfRelease("(%d/%d) Loading wallet...\n", i, numModules)
 		return wallet.NewCustomWallet(cs, tp, filepath.Join(dir, modules.WalletDir), walletDeps)
 	}()
 	if err != nil {
@@ -328,14 +328,14 @@ func New(params NodeParams) (*Node, error) {
 		if params.CreateMiner && params.Miner != nil {
 			return nil, errors.New("cannot create miner and also use custom miner")
 		}
-		i++
-		printfRelease("(%d/%d) Loading miner...\n", i, numModules)
 		if params.Miner != nil {
 			return params.Miner, nil
 		}
 		if !params.CreateMiner {
 			return nil, nil
 		}
+		i++
+		printfRelease("(%d/%d) Loading miner...\n", i, numModules)
 		m, err := miner.New(cs, tp, w, filepath.Join(dir, modules.MinerDir))
 		if err != nil {
 			return nil, err
@@ -351,8 +351,6 @@ func New(params NodeParams) (*Node, error) {
 		if params.CreateHost && params.Host != nil {
 			return nil, errors.New("cannot create host and use custom host")
 		}
-		i++
-		printfRelease("(%d/%d) Loading host...\n", i, numModules)
 		if params.Host != nil {
 			return params.Host, nil
 		}
@@ -362,6 +360,8 @@ func New(params NodeParams) (*Node, error) {
 		if params.HostAddress == "" {
 			params.HostAddress = "localhost:0"
 		}
+		i++
+		printfRelease("(%d/%d) Loading host...\n", i, numModules)
 		return host.New(cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
 	}()
 	if err != nil {
@@ -373,8 +373,6 @@ func New(params NodeParams) (*Node, error) {
 		if params.CreateRenter && params.Renter != nil {
 			return nil, errors.New("cannot create renter and also use custom renter")
 		}
-		i++
-		printfRelease("(%d/%d) Loading renter...\n", i, numModules)
 		if params.Renter != nil {
 			return params.Renter, nil
 		}
@@ -398,6 +396,9 @@ func New(params NodeParams) (*Node, error) {
 			renterDeps = modules.ProdDependencies
 		}
 		persistDir := filepath.Join(dir, modules.RenterDir)
+
+		i++
+		printfRelease("(%d/%d) Loading renter...\n", i, numModules)
 
 		// HostDB
 		hdb, err := hostdb.NewCustomHostDB(g, cs, tp, persistDir, hostDBDeps)
