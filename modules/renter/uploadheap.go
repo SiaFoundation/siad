@@ -609,7 +609,7 @@ func (r *Renter) managedUploadAndRepair() error {
 		r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
 		// Call threadedBubble to make sure that directory information is
 		// accurate
-		r.threadedBubbleMetadata(dirSiaPath)
+		r.managedBubbleMetadata(dirSiaPath)
 		return nil
 	}
 	r.log.Println("Repairing", heapLen, "chunks from", dirSiaPath)
@@ -619,7 +619,7 @@ func (r *Renter) managedUploadAndRepair() error {
 
 	// Once we have worked through the heap, call bubble to update the
 	// directory metadata
-	r.threadedBubbleMetadata(dirSiaPath)
+	r.managedBubbleMetadata(dirSiaPath)
 	return nil
 }
 
