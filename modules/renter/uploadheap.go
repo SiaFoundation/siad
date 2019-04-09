@@ -254,39 +254,36 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 	// completed or are not downloadable.
 	incompleteChunks := newUnfinishedChunks[:0]
 	for _, chunk := range newUnfinishedChunks {
-		// Check if chunk is downloadable
+		// Check the chunk status. A chunk is repairable if it can be fully
+		// downloaded, or if the source file is available on disk. We also check
+		// if the chunk needs repair, which is only true if more than a certain
+		// amount of redundancy is missing. We only repair above a certain
+		// threshold of missing redundancy to minimize the amount of repair work
+		// that gets triggered by host churn.
 		chunkHealth := chunk.fileEntry.ChunkHealth(int(chunk.index), offline, goodForRenew)
 		_, err := os.Stat(chunk.fileEntry.LocalPath())
 		onDisk := err == nil
-		downloadable := chunkHealth <= 1 || err == nil
-		// Check if chunk is incomplete, for files not on disk chunk's are only
-		// incomplete if health is worse than RemoteRepairDownloadThreshold
-		var incomplete bool
-		if onDisk {
-			incomplete = chunkHealth >= siafile.RemoteRepairDownloadThreshold
-		} else {
-			incomplete = chunkHealth > float64(0)
-		}
-		// Check if chunk seems stuck
-		stuck := !incomplete && chunkHealth != 0
+		repairable := chunkHealth <= 1 || onDisk
+		needsRepair := chunkHealth >= siafile.RemoteRepairDownloadThreshold
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
 		// downloadable or if we are targetting stuck chunks
-		if incomplete && (downloadable || target == targetStuckChunks) {
+		//
+		// TODO / QUESTION: Should we be skipping stuck chunks here if we are
+		// not targeting stuck chunks? And should we be skipping unstuck chunks
+		// here if we are targeting stuck chunks?
+		if needsRepair && (repairable || target == targetStuckChunks) {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue
 		}
 
-		// If a chunk is not downloadable mark it as stuck
-		if !downloadable {
+		// If a chunk is not able to be repaired, mark it as stuck.
+		//
+		// TODO / QUESTION: Since settings a chunk as stuck incurs some i/o
+		// penalty, should we be checking here that it's not already marked as
+		// stuck?
+		if !repairable {
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being downloadable")
-			err = chunk.fileEntry.SetStuck(chunk.index, true)
-			if err != nil {
-				r.log.Println("WARN: unable to mark chunk as stuck:", err)
-			}
-			continue
-		} else if stuck {
-			r.log.Println("Marking chunk", chunk.id, "as stuck due to being complete but having a health of", chunkHealth)
 			err = chunk.fileEntry.SetStuck(chunk.index, true)
 			if err != nil {
 				r.log.Println("WARN: unable to mark chunk as stuck:", err)
@@ -355,12 +352,16 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file, hosts, target, offline, goodForRenew)
 		r.mu.Unlock(id)
 		if len(unfinishedUploadChunks) == 0 {
-			r.log.Println("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
 			continue
 		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			if !r.uploadHeap.managedPush(unfinishedUploadChunks[i]) {
 				// Chunk wasn't added to the heap. Close the file
+				//
+				// TODO / QUESITON: We close a file entry here, but it looks
+				// like we don't close a file entry if we skip over the file.
+				// Was this the memory leak we already fixed, or is this another
+				// one?
 				err := unfinishedUploadChunks[i].fileEntry.Close()
 				if err != nil {
 					r.log.Println("WARN: unable to close file:", err)
