@@ -223,7 +223,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			// Update Size
 			metadata.AggregateSize += dirMetadata.AggregateSize
 		} else {
-			// Ignore everthing that is not a SiaFile or a directory
+			// Ignore everything that is not a SiaFile or a directory
 			continue
 		}
 		// Update Health and Stuck Health
@@ -441,7 +441,7 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 
 // managedStuckDirectory randomly finds a directory that contains stuck chunks
 func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
-	// Iterating of the renter direcotry until randomly ending up in a
+	// Iterating of the renter directory until randomly ending up in a
 	// directory, break and return that directory
 	siaPath := modules.RootSiaPath()
 	for {
@@ -490,7 +490,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		// directory that means that it is the sum of all the files and
 		// directories.  We can chose a directory by subtracting the number of
 		// stuck chunks a directory has from rand and if rand gets to 0 or less
-		// we choose that direcotry
+		// we choose that directory
 		for i := len(directories) - 1; i >= 0; i-- {
 			// If we make it to the last iteration double check that the current
 			// directory has files

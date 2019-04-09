@@ -152,7 +152,7 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
-	// uploadAndRepairErrorSleepDuration indicats how long a repair process
+	// uploadAndRepairErrorSleepDuration indicates how long a repair process
 	// should sleep before retrying if there is an error fetching the metadata
 	// of the root directory of the renter's filesystem.
 	uploadAndRepairErrorSleepDuration = build.Select(build.Var{
@@ -178,7 +178,7 @@ var (
 
 	// uploadFailureCooldown is how long a worker will wait initially if an
 	// upload fails. This number is prime to increase the chance to avoid
-	// intersecting with regularly occuring events which may cause failures.
+	// intersecting with regularly occurring events which may cause failures.
 	uploadFailureCooldown = build.Select(build.Var{
 		Dev:      time.Second * 7,
 		Standard: time.Second * 61,

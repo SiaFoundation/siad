@@ -31,7 +31,7 @@ func TestRenterCreateDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Confirm that direcotry metadata files were created in all directories
+	// Confirm that directory metadata files were created in all directories
 	if err := rt.checkDirInitialized(modules.RootSiaPath()); err != nil {
 		t.Fatal(err)
 	}

@@ -146,7 +146,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	if !ok {
 		return errors.New("Can't recover contract with unknown host")
 	}
-	// Generate the secrety key for the handshake and wipe it after using it.
+	// Generate the secret key for the handshake and wipe it after using it.
 	sk, _ := proto.GenerateKeyPairWithOutputID(rs, rc.InputParentID)
 	defer fastrand.Read(sk[:])
 	// Start a new RPC session.

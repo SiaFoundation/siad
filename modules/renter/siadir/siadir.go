@@ -98,7 +98,7 @@ type (
 // files as well and will return the SiaDir containing the information for the
 // directory that matches the siaPath provided
 func New(siaPath modules.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
-	// Create path to direcotry and ensure path contains all metadata
+	// Create path to directory and ensure path contains all metadata
 	updates, err := createDirMetadataAll(siaPath, rootDir)
 	if err != nil {
 		return nil, err

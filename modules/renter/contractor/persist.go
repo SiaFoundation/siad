@@ -63,7 +63,7 @@ func (c *Contractor) load() error {
 	if !reflect.DeepEqual(data.Allowance, modules.Allowance{}) {
 		if data.Allowance.ExpectedStorage == 0 && data.Allowance.ExpectedUpload == 0 &&
 			data.Allowance.ExpectedDownload == 0 && data.Allowance.ExpectedRedundancy == 0 {
-			// Set the fields to the defauls.
+			// Set the fields to the defaults.
 			data.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 			data.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 			data.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload

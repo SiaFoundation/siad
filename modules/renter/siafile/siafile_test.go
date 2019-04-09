@@ -607,3 +607,25 @@ func TestStuckChunks(t *testing.T) {
 		}
 	}
 }
+
+// TestUploadedBytes tests that uploadedBytes() returns the expected values for
+// total and unique uploaded bytes.
+func TestUploadedBytes(t *testing.T) {
+	// Create a new blank test file
+	f := newBlankTestFile()
+	// Add multiple pieces to the first pieceSet of the first piece of the first
+	// chunk
+	for i := 0; i < 4; i++ {
+		err := f.AddPiece(types.SiaPublicKey{}, uint64(0), 0, crypto.Hash{})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	totalBytes, uniqueBytes := f.uploadedBytes()
+	if totalBytes != 4*modules.SectorSize {
+		t.Errorf("expected totalBytes to be %v, got %v", 4*modules.SectorSize, f.UploadedBytes())
+	}
+	if uniqueBytes != modules.SectorSize {
+		t.Errorf("expected uploadedBytes to be %v, got %v", modules.SectorSize, f.UploadedBytes())
+	}
+}

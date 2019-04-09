@@ -230,20 +230,19 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
-	staticStreamCache *streamCache
-	cs                modules.ConsensusSet
-	deps              modules.Dependencies
-	g                 modules.Gateway
-	hostContractor    hostContractor
-	hostDB            hostDB
-	log               *persist.Logger
-	persist           persistence
-	persistDir        string
-	staticFilesDir    string
-	mu                *siasync.RWMutex
-	tg                threadgroup.ThreadGroup
-	tpool             modules.TransactionPool
-	wal               *writeaheadlog.WAL
+	cs             modules.ConsensusSet
+	deps           modules.Dependencies
+	g              modules.Gateway
+	hostContractor hostContractor
+	hostDB         hostDB
+	log            *persist.Logger
+	persist        persistence
+	persistDir     string
+	staticFilesDir string
+	mu             *siasync.RWMutex
+	tg             threadgroup.ThreadGroup
+	tpool          modules.TransactionPool
+	wal            *writeaheadlog.WAL
 }
 
 // Close closes the Renter and its dependencies
@@ -401,7 +400,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	}
 
 	// Divide by zero check. The only way to get 0 numHosts is if
-	// RenterPayoutsPreTax errors for every host. This would happend if the
+	// RenterPayoutsPreTax errors for every host. This would happen if the
 	// funding of the allowance is not enough as that would cause the
 	// fundingPerHost to be less than the contract price
 	if numHosts == 0 {
@@ -412,7 +411,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	hostCollateral = hostCollateral.Mul64(allowance.Hosts)
 
 	// Add in siafund fee. which should be around 10%. The 10% siafund fee
-	// accounts for paying 3.9% siafund on transactions and host collatoral. We
+	// accounts for paying 3.9% siafund on transactions and host collateral. We
 	// estimate the renter to spend all of it's allowance so the siafund fee
 	// will be calculated on the sum of the allowance and the hosts collateral
 	totalPayout := allowance.Funds.Add(hostCollateral)
@@ -544,9 +543,6 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	if s.MaxDownloadSpeed < 0 || s.MaxUploadSpeed < 0 {
 		return errors.New("bandwidth limits cannot be negative")
 	}
-	if s.StreamCacheSize <= 0 {
-		return errors.New("stream cache size needs to be 1 or larger")
-	}
 
 	// Set allowance.
 	err := r.hostContractor.SetAllowance(s.Allowance)
@@ -561,13 +557,6 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	}
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
-
-	// Set StreamingCacheSize
-	err = r.staticStreamCache.SetStreamingCacheSize(s.StreamCacheSize)
-	if err != nil {
-		return err
-	}
-	r.persist.StreamCacheSize = s.StreamCacheSize
 
 	// Set IPViolationsCheck
 	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
@@ -715,7 +704,6 @@ func (r *Renter) Settings() modules.RenterSettings {
 		IPViolationsCheck: r.hostDB.IPViolationsCheck(),
 		MaxDownloadSpeed:  download,
 		MaxUploadSpeed:    upload,
-		StreamCacheSize:   r.staticStreamCache.cacheSize,
 	}
 }
 
@@ -796,9 +784,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
 		return nil, err
 	}
-
-	// Initialize the streaming cache.
-	r.staticStreamCache = newStreamCache(r.persist.StreamCacheSize)
 
 	// Subscribe to the consensus set.
 	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
