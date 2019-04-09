@@ -110,5 +110,9 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
 	}
+
+	// Update the cached fields for progress and uploaded bytes.
+	file.updateUploadProgressAndBytes()
+
 	return sfse, errors.AddContext(file.saveFile(), "unable to save file")
 }
