@@ -63,6 +63,18 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+
+	// Call threadedBubbleMetadata on the old directory to make sure the system
+	// metadata is updated to reflect the move
+	defer func() error {
+		dirSiaPath, err := siaPath.Dir()
+		if err != nil {
+			return err
+		}
+		go r.threadedBubbleMetadata(dirSiaPath)
+		return nil
+	}()
+
 	return r.staticFileSet.Delete(siaPath)
 }
 
