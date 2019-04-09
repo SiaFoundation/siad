@@ -133,9 +133,17 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
+	// Call threadedBubbleMetadata on the old directory to make sure the system
+	// metadata is updated to reflect the move
+	dirSiaPath, err := currentName.Dir()
+	if err != nil {
+		return err
+	}
+	go r.threadedBubbleMetadata(dirSiaPath)
+
 	// Create directory metadata for new path, ignore errors if siadir already
 	// exists
-	dirSiaPath, err := newName.Dir()
+	dirSiaPath, err = newName.Dir()
 	if err != nil {
 		return err
 	}
@@ -143,6 +151,9 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	if err != siadir.ErrPathOverload && err != nil {
 		return err
 	}
+	// Call threadedBubbleMetadata on the new directory to make sure the system
+	// metadata is updated to reflect the move
+	go r.threadedBubbleMetadata(dirSiaPath)
 	return nil
 }
 
