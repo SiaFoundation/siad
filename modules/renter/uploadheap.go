@@ -281,9 +281,9 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		// If a chunk is not able to be repaired, mark it as stuck.
 		if !repairable {
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being downloadable")
-			err = chunk.fileEntry.SetStuck(chunk.index, true)
+			err = r.managedSetStuckAndClose(chunk, true)
 			if err != nil {
-				r.log.Println("WARN: unable to mark chunk as stuck:", err)
+				r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
 			}
 			continue
 		}
@@ -291,7 +291,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		// Close entry of completed chunk
 		err = r.managedSetStuckAndClose(chunk, false)
 		if err != nil {
-			r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
+			r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
 		}
 	}
 	return incompleteChunks
