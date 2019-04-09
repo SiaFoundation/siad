@@ -2,12 +2,10 @@ package siafile
 
 import (
 	"os"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -24,7 +22,7 @@ type (
 		PieceSize   uint64
 		Mode        os.FileMode
 		Deleted     bool
-		UID         string
+		UID         SiafileUID
 		Chunks      []FileChunk
 	}
 	// FileChunk is a helper struct that contains data about a chunk.
@@ -38,9 +36,6 @@ type (
 func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-
-	// Trim any leading slashes in the legacy name.
-	fd.Name = strings.TrimPrefix(fd.Name, "/")
 
 	// Legacy master keys are always twofish keys.
 	mk, err := crypto.NewSiaKey(crypto.TypeTwofish, fd.MasterKey[:])
@@ -70,13 +65,12 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(fd.ErasureCode.NumPieces()),
 			StaticPieceSize:         fd.PieceSize,
-			SiaPath:                 siaPath,
+			StaticUniqueID:          SiafileUID(fd.UID),
 		},
-		deleted:        fd.Deleted,
-		deps:           modules.ProdDependencies,
-		siaFilePath:    siaPath.SiaFileSysPath(sfs.siaFileDir),
-		staticUniqueID: fd.UID,
-		wal:            sfs.wal,
+		siaFilePath: siaPath.SiaFileSysPath(sfs.siaFileDir),
+		deps:        modules.ProdDependencies,
+		deleted:     fd.Deleted,
+		wal:         sfs.wal,
 	}
 	file.staticChunks = make([]chunk, len(fd.Chunks))
 	for i := range file.staticChunks {
@@ -109,7 +103,6 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	entry := sfs.newSiaFileSetEntry(file)
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
-	sfs.siaFileMap[siaPath] = entry
 	sfse := &SiaFileSetEntry{
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,

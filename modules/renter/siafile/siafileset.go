@@ -1,12 +1,14 @@
 package siafile
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"runtime"
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 
@@ -22,8 +24,9 @@ type (
 	// SiaFileSet is a helper struct responsible for managing the renter's
 	// siafiles in memory
 	SiaFileSet struct {
-		siaFileDir string
-		siaFileMap map[modules.SiaPath]*siaFileSetEntry
+		siaFileDir   string
+		siaFileMap   map[SiafileUID]*siaFileSetEntry
+		siapathToUID map[modules.SiaPath]SiafileUID
 
 		// utilities
 		mu  sync.Mutex
@@ -59,9 +62,10 @@ type (
 // NewSiaFileSet initializes and returns a SiaFileSet
 func NewSiaFileSet(filesDir string, wal *writeaheadlog.WAL) *SiaFileSet {
 	return &SiaFileSet{
-		siaFileDir: filesDir,
-		siaFileMap: make(map[modules.SiaPath]*siaFileSetEntry),
-		wal:        wal,
+		siaFileDir:   filesDir,
+		siaFileMap:   make(map[SiafileUID]*siaFileSetEntry),
+		siapathToUID: make(map[modules.SiaPath]SiafileUID),
+		wal:          wal,
 	}
 }
 
@@ -112,6 +116,13 @@ func (entry *SiaFileSetEntry) Close() error {
 	return nil
 }
 
+// SiaPath returns the siapath of a siafile.
+func (sfs *SiaFileSet) SiaPath(entry *SiaFileSetEntry) modules.SiaPath {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.siaPath(entry.siaFileSetEntry)
+}
+
 // closeEntry will close an entry in the SiaFileSet, removing the siafile from
 // the cache if no other entries are open for that siafile.
 //
@@ -135,7 +146,7 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	// and then a new/different file was uploaded with the same siapath.
 	//
 	// If they are not the same entry, there is nothing more to do.
-	currentEntry := sfs.siaFileMap[entry.staticMetadata.SiaPath]
+	currentEntry := sfs.siaFileMap[entry.staticMetadata.StaticUniqueID]
 	if currentEntry != entry.siaFileSetEntry {
 		return
 	}
@@ -143,17 +154,45 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	// If there are no more threads that have the current entry open, delete
 	// this entry from the set cache.
 	if len(currentEntry.threadMap) == 0 {
-		delete(sfs.siaFileMap, entry.staticMetadata.SiaPath)
+		delete(sfs.siaFileMap, entry.staticMetadata.StaticUniqueID)
+		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	}
+}
+
+// siaPath is a convenience wrapper around FromSysPath. Since the files are
+// loaded from disk, the siapaths should always be correct. It's argument is
+// also an entry instead of the path and dir.
+func (sfs *SiaFileSet) siaPath(entry *siaFileSetEntry) (sp modules.SiaPath) {
+	if err := sp.FromSysPath(entry.SiaFilePath(), sfs.siaFileDir); err != nil {
+		build.Critical("Siapath of entry is corrupted. This shouldn't happen within the SiaFileSet", err)
+	}
+	return
+}
+
+// siaPathToEntryAndUID translates a siaPath to a siaFileSetEntry and
+// SiafileUID while also sanity checking siapathToUID and siaFileMap for
+// consistency.
+func (sfs *SiaFileSet) siaPathToEntryAndUID(siaPath modules.SiaPath) (*siaFileSetEntry, SiafileUID, bool) {
+	uid, exists := sfs.siapathToUID[siaPath]
+	if !exists {
+		return nil, "", false
+	}
+	entry, exists2 := sfs.siaFileMap[uid]
+	if !exists2 {
+		build.Critical("siapathToUID and siaFileMap are inconsistent")
+		delete(sfs.siapathToUID, siaPath)
+		return nil, "", false
+	}
+	return entry, uid, exists
 }
 
 // exists checks to see if a file with the provided siaPath already exists in
 // the renter
 func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file in Memory
-	_, exists := sfs.siaFileMap[siaPath]
+	_, _, exists := sfs.siaPathToEntryAndUID(siaPath)
 	if exists {
-		return exists
+		return true
 	}
 	// Check for file on disk
 	_, err := os.Stat(siaPath.SiaFileSysPath(sfs.siaFileDir))
@@ -163,17 +202,22 @@ func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 // newSiaFileSetEntry initializes and returns a siaFileSetEntry
 func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) *siaFileSetEntry {
 	threads := make(map[uint64]threadInfo)
-	return &siaFileSetEntry{
+	entry := &siaFileSetEntry{
 		SiaFile:    sf,
 		siaFileSet: sfs,
 		threadMap:  threads,
 	}
+	// Add entry to siaFileMap and siapathToUID map.
+	sfs.siaFileMap[entry.UID()] = entry
+	sfs.siapathToUID[sfs.siaPath(entry)] = entry.UID()
+	return entry
 }
 
 // open will return the siaFileSetEntry in memory or load it from disk
 func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	var entry *siaFileSetEntry
-	entry, exists := sfs.siaFileMap[siaPath]
+	var exists bool
+	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)
 	if !exists {
 		// Try and Load File from disk
 		sf, err := LoadSiaFile(siaPath.SiaFileSysPath(sfs.siaFileDir), sfs.wal)
@@ -183,8 +227,13 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Check for duplicate uid.
+		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
+			err := fmt.Errorf("%v and %v share the same UID", sfs.siaPath(conflictingEntry), siaPath)
+			build.Critical(err)
+			return nil, err
+		}
 		entry = sfs.newSiaFileSetEntry(sf)
-		sfs.siaFileMap[siaPath] = entry
 	}
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
@@ -215,8 +264,10 @@ func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 		return err
 	}
 
-	// Remove the siafile from the set map so that other threads can't find it.
-	delete(sfs.siaFileMap, entry.staticMetadata.SiaPath)
+	// Remove the siafile from the set maps so that other threads can't find
+	// it.
+	delete(sfs.siaFileMap, entry.staticMetadata.StaticUniqueID)
+	delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	return nil
 }
 
@@ -250,7 +301,6 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 	entry := sfs.newSiaFileSetEntry(sf)
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
-	sfs.siaFileMap[up.SiaPath] = entry
 	return &SiaFileSetEntry{
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
@@ -288,8 +338,8 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 	defer sfs.closeEntry(entry)
 
 	// Update SiaFileSet map to hold the entry in the new siapath.
-	sfs.siaFileMap[newSiaPath] = entry.siaFileSetEntry
-	delete(sfs.siaFileMap, siaPath)
+	sfs.siapathToUID[newSiaPath] = entry.UID()
+	delete(sfs.siapathToUID, siaPath)
 
 	// Update the siafile to have a new name.
 	return entry.Rename(newSiaPath, newSiaPath.SiaFileSysPath(sfs.siaFileDir))
