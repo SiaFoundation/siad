@@ -361,12 +361,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			if !r.uploadHeap.managedPush(unfinishedUploadChunks[i]) {
-				// Chunk wasn't added to the heap. Close the file
-				//
-				// TODO / QUESITON: We close a file entry here, but it looks
-				// like we don't close a file entry if we skip over the file.
-				// Was this the memory leak we already fixed, or is this another
-				// one?
+				// Chunk wasn't added to the heap. Close the file.
 				err := unfinishedUploadChunks[i].fileEntry.Close()
 				if err != nil {
 					r.log.Println("WARN: unable to close file:", err)
