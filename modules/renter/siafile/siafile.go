@@ -168,7 +168,7 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 		file.chunks[i].Pieces = make([][]piece, erasureCode.NumPieces())
 	}
 	// Init cached fields for 0-Byte files.
-	if file.staticMetadata.StaticFileSize == 0 {
+	if file.staticMetadata.FileSize == 0 {
 		file.staticMetadata.CachedHealth = 0
 		file.staticMetadata.CachedStuckHealth = 0
 		file.staticMetadata.CachedRedundancy = float64(erasureCode.NumPieces()) / float64(erasureCode.MinPieces())
@@ -903,7 +903,7 @@ func (sf *SiaFile) updateUploadProgressAndBytes() {
 		sf.staticMetadata.CachedUploadProgress = 100
 		return
 	}
-	desired := uint64(len(sf.staticChunks)) * modules.SectorSize * uint64(sf.staticMetadata.staticErasureCode.NumPieces())
+	desired := uint64(len(sf.chunks)) * modules.SectorSize * uint64(sf.staticMetadata.staticErasureCode.NumPieces())
 	// Update cache.
 	sf.staticMetadata.CachedUploadProgress = math.Min(100*(float64(uploaded)/float64(desired)), 100)
 }
