@@ -149,6 +149,8 @@ func (w *Wallet) initPersist() error {
 
 	// ensure that the final db transaction is committed when the wallet closes
 	err = w.tg.AfterStop(func() error {
+		w.mu.Lock()
+		defer w.mu.Unlock()
 		var err error
 		if w.dbRollback {
 			// rollback txn if necessry.

@@ -387,15 +387,6 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		}
 		settings.MaxUploadSpeed = uploadSpeed
 	}
-	// Scan the stream cache size. (optional parameter)
-	if dcs := req.FormValue("streamcachesize"); dcs != "" {
-		var streamCacheSize uint64
-		if _, err := fmt.Sscan(dcs, &streamCacheSize); err != nil {
-			WriteError(w, Error{"unable to parse streamcachesize: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		settings.StreamCacheSize = streamCacheSize
-	}
 	// Scan the checkforipviolation flag.
 	if ipc := req.FormValue("checkforipviolation"); ipc != "" {
 		var ipviolationcheck bool

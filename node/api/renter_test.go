@@ -803,7 +803,7 @@ func TestRenterLoadNonexistent(t *testing.T) {
 	downpath := filepath.Join(st.dir, "dnedown.dat")
 	err = st.stdGetAPI("/renter/download/dne?destination=" + downpath)
 	if err == nil {
-		t.Error("should not be able to download non-existant file")
+		t.Error("should not be able to download non-existent file")
 	}
 
 	// The renter's downloads queue should be empty.

@@ -100,7 +100,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	_, exists2 := uh.repairingChunks[uuc.id]
 	if !exists1 && !exists2 {
 		uh.heapChunks[uuc.id] = struct{}{}
-		uh.heap.Push(uuc)
+		heap.Push(&uh.heap, uuc)
 		added = true
 	}
 	uh.mu.Unlock()
@@ -213,6 +213,11 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		pieces, err := entry.Pieces(uint64(index))
 		if err != nil {
 			r.log.Println("failed to get pieces for building incomplete chunks")
+			for _, uc := range newUnfinishedChunks {
+				if err := uc.fileEntry.Close(); err != nil {
+					r.log.Println("failed to close file:", err)
+				}
+			}
 			return nil
 		}
 		for pieceIndex, pieceSet := range pieces {
@@ -568,6 +573,12 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 			for r.uploadHeap.managedLen() > 0 {
 				if c := r.uploadHeap.managedPop(); c.stuck {
 					stuckChunks = append(stuckChunks, c)
+				} else {
+					// Unstuck chunks are not added back and need to be closed.
+					err = c.fileEntry.Close()
+					if err != nil {
+						r.log.Println("WARN: unable to close file:", err)
+					}
 				}
 			}
 			for _, sc := range stuckChunks {

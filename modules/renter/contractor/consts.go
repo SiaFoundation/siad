@@ -40,7 +40,7 @@ var (
 	// interrupted until after uploading progress is interrupted. Structuring
 	// things this way essentially allows the user to experience the failure
 	// mode of 'can't store additional stuff' before the user experiences the
-	// failure mode of 'can't retreive stuff already uploaded'.
+	// failure mode of 'can't retrieve stuff already uploaded'.
 	MinContractFundUploadThreshold = float64(0.05) // 5%
 
 	// randomHostsBufferForScore defines how many extra hosts are queried when trying
