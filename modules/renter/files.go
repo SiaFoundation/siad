@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -61,6 +63,18 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+
+	// Call threadedBubbleMetadata on the old directory to make sure the system
+	// metadata is updated to reflect the move
+	defer func() error {
+		dirSiaPath, err := siaPath.Dir()
+		if err != nil {
+			return err
+		}
+		go r.threadedBubbleMetadata(dirSiaPath)
+		return nil
+	}()
+
 	return r.staticFileSet.Delete(siaPath)
 }
 
@@ -126,7 +140,33 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticFileSet.Rename(currentName, newName)
+	// Rename file
+	err := r.staticFileSet.Rename(currentName, newName)
+	if err != nil {
+		return err
+	}
+	// Call threadedBubbleMetadata on the old directory to make sure the system
+	// metadata is updated to reflect the move
+	dirSiaPath, err := currentName.Dir()
+	if err != nil {
+		return err
+	}
+	go r.threadedBubbleMetadata(dirSiaPath)
+
+	// Create directory metadata for new path, ignore errors if siadir already
+	// exists
+	dirSiaPath, err = newName.Dir()
+	if err != nil {
+		return err
+	}
+	err = r.CreateDir(dirSiaPath)
+	if err != siadir.ErrPathOverload && err != nil {
+		return err
+	}
+	// Call threadedBubbleMetadata on the new directory to make sure the system
+	// metadata is updated to reflect the move
+	go r.threadedBubbleMetadata(dirSiaPath)
+	return nil
 }
 
 // fileInfo returns information on a siafile. As a performance optimization, the
