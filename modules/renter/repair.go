@@ -697,6 +697,10 @@ func (r *Renter) threadedStuckFileLoop() {
 	}
 	defer r.tg.Done()
 
+	if r.deps.Disrupt("InterruptRepairAndStuckLoops") {
+		return
+	}
+
 	// Loop until the renter has shutdown or until there are no stuck chunks
 	for {
 		// Wait until the renter is online to proceed.

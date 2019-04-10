@@ -632,6 +632,10 @@ func (r *Renter) threadedUploadAndRepair() {
 	}
 	defer r.tg.Done()
 
+	if r.deps.Disrupt("InterruptRepairAndStuckLoops") {
+		return
+	}
+
 	// Perpetual loop to scan for more files.
 	for {
 		// Return if the renter has shut down.

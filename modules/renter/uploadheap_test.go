@@ -2,6 +2,7 @@ package renter
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -9,6 +10,42 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// DependencyInterruptOnceOnKeyword is a generic dependency that interrupts
+// the flow of the program if the argument passed to Disrupt equals str and
+// if f was set to true by calling Fail.
+type DependencyInterruptOnceOnKeyword struct {
+	modules.ProductionDependencies
+	mu  sync.Mutex
+	str string
+}
+
+// newDependencyInterruptOnceOnKeyword creates a new
+// DependencyInterruptOnceOnKeyword from a given disrupt key.
+func newDependencyInterruptOnceOnKeyword(str string) *DependencyInterruptOnceOnKeyword {
+	return &DependencyInterruptOnceOnKeyword{
+		str: str,
+	}
+}
+
+// Disrupt returns true if the correct string is provided and if the flag was
+// set to true by calling fail on the dependency beforehand. After simulating a
+// crash the flag will be set to false and fail has to be called again for
+// another disruption.
+func (d *DependencyInterruptOnceOnKeyword) Disrupt(s string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if s == d.str {
+		return true
+	}
+	return false
+}
+
+// newDependencyInterruptRepairAndStuckLoops creates a new dependency that
+// interrupts the background repair loop and stuck loop threads
+func newDependencyInterruptRepairAndStuckLoops() *DependencyInterruptOnceOnKeyword {
+	return newDependencyInterruptOnceOnKeyword("InterruptRepairAndStuckLoops")
+}
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
 // correct chunks are being added to the heap
@@ -127,7 +164,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	t.Parallel()
 
 	// Create Renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), newDependencyInterruptRepairAndStuckLoops())
 	if err != nil {
 		t.Fatal(err)
 	}
