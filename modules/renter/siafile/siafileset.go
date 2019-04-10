@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -205,9 +204,9 @@ func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	return !os.IsNotExist(err)
 }
 
-// readLockFileInfo returns information on a siafile. As a performance optimization, the
-// fileInfo takes the maps returned by renter.managedContractUtilityMaps as
-// many files at once.
+// readLockFileInfo returns information on a siafile. As a performance
+// optimization, the fileInfo takes the maps returned by
+// renter.managedContractUtilityMaps for many files at once.
 func (sfs *SiaFileSet) readLockFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Get the file's metadata and its contracts
 	md, err := sfs.readLockMetadata(siaPath)
@@ -309,7 +308,7 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 }
 
 // readLockMetadata returns the metadata of the SiaFile at siaPath. NOTE: The
-// 'readLock' prefix in this case is used to indicate that it's save to call
+// 'readLock' prefix in this case is used to indicate that it's safe to call
 // this method with other 'readLock' methods without locking since is doesn't
 // write to any fields. This guarantee can be made by locking sfs.mu and then
 // spawning multiple threads which call 'readLock' methods in parallel.
@@ -363,7 +362,7 @@ func (sfs *SiaFileSet) Exists(siaPath modules.SiaPath) bool {
 }
 
 // FileInfo returns information on a siafile. As a performance optimization, the
-// fileInfo takes the maps returned by renter.managedContractUtilityMaps as
+// fileInfo takes the maps returned by renter.managedContractUtilityMaps for
 // many files at once.
 func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	sfs.mu.Lock()
@@ -385,9 +384,8 @@ func (sfs *SiaFileSet) FileList(offlineMap map[string]bool, goodForRenewMap map[
 	worker := func() {
 		for path := range loadChan {
 			// Load the Siafile.
-			str := strings.TrimSuffix(strings.TrimPrefix(path, sfs.siaFileDir), modules.SiaFileExtension)
-			siaPath, err := modules.NewSiaPath(str)
-			if err != nil {
+			var siaPath modules.SiaPath
+			if err := siaPath.LoadSysPath(sfs.siaFileDir, path); err != nil {
 				continue
 			}
 			file, err := sfs.readLockFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
