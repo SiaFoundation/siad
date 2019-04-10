@@ -137,7 +137,7 @@ func main() {
 		renterContractsCmd, renterFilesListCmd, renterFilesRenameCmd,
 		renterFilesUploadCmd, renterUploadsCmd, renterExportCmd,
 		renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
-		renterTriggerContractRecoveryScanCmd,
+		renterTriggerContractRecoveryScanCmd, renterDirDeleteCmd,
 		renterContractsRecoveryScanProgressCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)

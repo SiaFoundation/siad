@@ -78,6 +78,14 @@ var (
 		Run:   wrap(rentercontractsviewcmd),
 	}
 
+	renterDirDeleteCmd = &cobra.Command{
+		Use:     "deletedir [path]",
+		Aliases: []string{"rmdir"},
+		Short:   "Delete a directory",
+		Long:    "Delete a directory. Does not delete the directory on disk.",
+		Run:     wrap(renterdirdeletecmd),
+	}
+
 	renterDownloadsCmd = &cobra.Command{
 		Use:   "downloads",
 		Short: "View the download queue",
@@ -750,6 +758,16 @@ Contract %v
 	fmt.Println("Contract not found")
 }
 
+// renterfilesdeletecmd is the handler for the command `siac renter deletedir [path]`.
+// Removes the specified path from the Sia network.
+func renterdirdeletecmd(path string) {
+	err := httpClient.RenterDirDeletePost(path)
+	if err != nil {
+		die("Could not delete directory:", err)
+	}
+	fmt.Printf("Deleted directory '%v'\n", path)
+}
+
 // renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
 // Removes the specified path from the Sia network.
 func renterfilesdeletecmd(path string) {
@@ -757,7 +775,7 @@ func renterfilesdeletecmd(path string) {
 	if err != nil {
 		die("Could not delete file:", err)
 	}
-	fmt.Println("Deleted", path)
+	fmt.Printf("Deleted file '%v'\n", path)
 }
 
 // renterfilesdownloadcmd is the handler for the comand `siac renter download [path] [destination]`.
