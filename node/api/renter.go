@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -688,11 +687,7 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 // renterFileHandler handles POST requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	newTrackingPath, err := url.QueryUnescape(req.FormValue("trackingpath"))
-	if err != nil {
-		WriteError(w, Error{"unable to unescape new tracking path"}, http.StatusBadRequest)
-		return
-	}
+	newTrackingPath := req.FormValue("trackingpath")
 	stuck := req.FormValue("stuck")
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
