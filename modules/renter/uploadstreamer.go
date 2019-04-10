@@ -28,21 +28,17 @@ import (
 // save to upload another chunk.
 // This is possible due to the custom StreamShard type which is a wrapper for a
 // io.Reader with a channel which is closed when the StreamShard is closed.
-//
-// TODO: We should easily be able to extend this code to allow for stream
-// repairs by adding an optional offset parameter which allows the upload
-// streamer to start from a different chunkIndex than 0.
 
 // StreamShard is a helper type that allows us to split an io.Reader up into
 // multiple readers, wait for the shard to finish reading and then check the
 // error for that Read.
-// NOTE each shard should only be used for a single call to Read.
 type StreamShard struct {
 	n   int
 	err error
 
 	r io.Reader
 
+	closed     bool
 	mu         sync.Mutex
 	signalChan chan struct{}
 }
@@ -58,6 +54,7 @@ func NewStreamShard(r io.Reader) *StreamShard {
 // Close closes the underlying channel of the shard.
 func (ss *StreamShard) Close() error {
 	close(ss.signalChan)
+	ss.closed = true
 	return nil
 }
 
@@ -71,6 +68,9 @@ func (ss *StreamShard) Result() (int, error) {
 // Read implements the io.Reader interface. It closes signalChan after Read
 // returns.
 func (ss *StreamShard) Read(b []byte) (int, error) {
+	if ss.closed {
+		return 0, errors.New("StreamShard already closed")
+	}
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	n, err := ss.r.Read(b)
@@ -165,7 +165,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 	}
 }
 
-// managedInitUploadStream  verifies hte upload parameters and prepares an empty
+// managedInitUploadStream  verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
 func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.SiaFileSetEntry, error) {
 	siaPath, ec, force := up.SiaPath, up.ErasureCode, up.Force

@@ -980,17 +980,14 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 // renterUploadHandler handles the API call to upload a file.
 func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Get the source path.
-	source, err := url.QueryUnescape(req.FormValue("source"))
-	if err != nil {
-		WriteError(w, Error{"failed to unescape the source path"}, http.StatusBadRequest)
-		return
-	}
+	source := req.FormValue("source")
 	// Source must be absolute path.
 	if !filepath.IsAbs(source) {
 		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
 	// Check whether existing file should be overwritten
+	var err error
 	force := false
 	if f := req.FormValue("force"); f != "" {
 		force, err = strconv.ParseBool(f)

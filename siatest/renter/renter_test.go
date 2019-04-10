@@ -302,8 +302,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Test requires at least 1 renter")
 	}
 	// Create some random data to write.
-	//fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
-	fileSize := 6383
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
 	data := fastrand.Bytes(fileSize)
 	d := bytes.NewReader(data)
 

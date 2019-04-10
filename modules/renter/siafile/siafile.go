@@ -191,7 +191,6 @@ func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 		return err
 	}
 	updates = append(updates, mdu...)
-	//return sf.createAndApplyTransaction(updates...)
 	// Update the filesize in the metadata.
 	return sf.createAndApplyTransaction(updates...)
 }
