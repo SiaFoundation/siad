@@ -14,7 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -349,7 +348,7 @@ func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 		// Wait to ensure download and stream have started
 		time.Sleep(sleep)
 		var err error
-		rf, err = r.Rename(rf, persist.RandomSuffix())
+		rf, err = r.Rename(rf, modules.RandomSiaPath())
 		if err != nil {
 			t.Fatal(err)
 		}

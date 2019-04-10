@@ -58,7 +58,7 @@ func (r *Renter) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error)
 
 		NumFiles:   metadata.NumFiles,
 		NumSubDirs: metadata.NumSubDirs,
-		SiaPath:    siaPath.String(),
+		SiaPath:    siaPath,
 	}, nil
 }
 

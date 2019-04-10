@@ -81,6 +81,13 @@ var (
 		Run:   wrap(rentercontractsviewcmd),
 	}
 
+	renterDirDownloadCmd = &cobra.Command{
+		Use:   "downloaddir [path] [destination]",
+		Short: "Download a directory",
+		Long:  "Download a directory to a specified destination.",
+		Run:   wrap(renterdirdownloadcmd),
+	}
+
 	renterDownloadsCmd = &cobra.Command{
 		Use:   "downloads",
 		Short: "View the download queue",
@@ -762,11 +769,68 @@ Contract %v
 	fmt.Println("Contract not found")
 }
 
+// renterdirdownloadcmd is the handler for the command `siac renter downloaddir [path]`
+func renterdirdownloadcmd(path, destination string) {
+	destination = abs(destination)
+	// Parse SiaPath.
+	siaPath, err := modules.NewSiaPath(path)
+	if err != nil {
+		die("Failed to parse SiaPath:", err)
+	}
+	// Get dir info.
+	rd, err := httpClient.RenterGetDir(siaPath)
+	if err != nil {
+		die("Failed to get dir info:", err)
+	}
+	// Create destination on disk.
+	if err := os.MkdirAll(destination, 775); err != nil {
+		die("Failed to create destination dir:", err)
+	}
+	// Download files.
+	tfs := make([]trackedFile, 0, len(rd.Files))
+	for _, file := range rd.Files {
+		// Skip files that already exist.
+		dst := filepath.Join(destination, file.SiaPath.Name())
+		if _, err := os.Stat(dst); err == nil {
+			fmt.Printf("Skipping file '%v' since it already exists\n", dst)
+			continue
+		} else if !os.IsNotExist(err) {
+			die("Failed to get file stats:", err)
+		}
+		// Download file.
+		err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		if err != nil {
+			die("Failed to start download:", err)
+		}
+		// Append file to tracked files.
+		tfs = append(tfs, trackedFile{
+			siaPath: file.SiaPath,
+			dst:     dst,
+		})
+	}
+	// If the download is async, report success.
+	if renterDownloadAsync {
+		fmt.Printf("Queued Download '%s' to %s.\n", siaPath.String(), abs(destination))
+		return
+	}
+	// If the download is blocking, display progress as the file downloads.
+	err = downloadprogress(tfs)
+	if err != nil {
+		die("\nDownload could not be completed:", err)
+	}
+	fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
+}
+
 // renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
 // Removes the specified path from the Sia network.
 func renterfilesdeletecmd(path string) {
+	// Parse SiaPath.
+	siaPath, err := modules.NewSiaPath(path)
+	if err != nil {
+		die("Couldn't parse SiaPath:", err)
+	}
 	// Try to delete file.
-	errFile := httpClient.RenterDeletePost(path)
+	errFile := httpClient.RenterDeletePost(siaPath)
 	if errFile == nil {
 		fmt.Printf("Deleted file '%v'\n", path)
 		return
@@ -774,7 +838,7 @@ func renterfilesdeletecmd(path string) {
 		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 	}
 	// Try to delete folder.
-	errDir := httpClient.RenterDirDeletePost(path)
+	errDir := httpClient.RenterDirDeletePost(siaPath)
 	if errDir == nil {
 		fmt.Printf("Deleted directory '%v'\n", path)
 		return
@@ -789,23 +853,27 @@ func renterfilesdeletecmd(path string) {
 // Downloads a path from the Sia network to the local specified destination.
 func renterfilesdownloadcmd(path, destination string) {
 	destination = abs(destination)
-	path = strings.TrimPrefix(path, "/")
+	// Parse SiaPath.
+	siaPath, err := modules.NewSiaPath(path)
+	if err != nil {
+		die("Couldn't parse SiaPath:", err)
+	}
 	// Queue the download. An error will be returned if the queueing failed, but
 	// the call will return before the download has completed. The call is made
 	// as an async call.
-	err := httpClient.RenterDownloadFullGet(path, destination, true)
+	err = httpClient.RenterDownloadFullGet(siaPath, destination, true)
 	if err != nil {
 		die("Download could not be started:", err)
 	}
 
 	// If the download is async, report success.
 	if renterDownloadAsync {
-		fmt.Printf("Queued Download '%s' to %s.\n", path, abs(destination))
+		fmt.Printf("Queued Download '%s' to %s.\n", siaPath.String(), abs(destination))
 		return
 	}
 
 	// If the download is blocking, display progress as the file downloads.
-	err = downloadprogress(path, destination)
+	err = downloadprogress([]trackedFile{{siaPath: siaPath, dst: destination}})
 	if err != nil {
 		die("\nDownload could not be completed:", err)
 	}
@@ -864,81 +932,100 @@ func bandwidthUnit(bps uint64) string {
 	return fmt.Sprintf("%.2f %s", float64(bps)/float64(mag), unit)
 }
 
+type trackedFile struct {
+	siaPath modules.SiaPath
+	dst     string
+}
+
+// helper type used for measurements.
+type measurement struct {
+	progress uint64
+	time     time.Time
+}
+
 // downloadprogress will display the progress of the provided download to the
 // user, and return an error when the download is finished.
-func downloadprogress(siapath, destination string) error {
+func downloadprogress(tfs []trackedFile) error {
 	start := time.Now()
 
-	// helper type used for measurements.
-	type measurement struct {
-		progress uint64
-		time     time.Time
+	// Create a map of all tracked files for faster lookups and also a measurement
+	// map which is initialized with 0 progress for all tracked files.
+	tfsMap := make(map[modules.SiaPath]trackedFile)
+	measurements := make(map[modules.SiaPath][]measurement)
+	for _, tf := range tfsMap {
+		tfsMap[tf.siaPath] = tf
+		measurements[tf.siaPath] = []measurement{{
+			progress: 0,
+			time:     time.Now(),
+		}}
 	}
-
-	// initialize measurementswith a first measurement of 0 progress.
-	measurements := []measurement{{
-		progress: 0,
-		time:     time.Now(),
-	}}
+	// Periodically print measurements until download is done.
 	for range time.Tick(OutputRefreshRate) {
 		// Get the list of downloads.
-		queue, err := httpClient.RenterDownloadsGet()
+		rdg, err := httpClient.RenterDownloadsGet()
 		if err != nil {
 			continue // benign
 		}
+		// Create a map of downloads for faster lookups. To get unique keys we use
+		// siaPath + destination as the key.
+		queue := make(map[string]api.DownloadInfo)
+		for _, d := range rdg.Downloads {
+			queue[d.SiaPath.String()+d.Destination] = d
+		}
+		// Take new measurements for each tracked file.
+		for tfIdx, tf := range tfs {
+			// Search for the download in the list of downloads.
+			d, found := queue[tf.siaPath.String()+tf.dst]
+			m, exists := measurements[tf.siaPath]
+			if !exists {
+				die("Measurement missing for tracked file. This should never happen.")
+			}
+			// If the download has not appeared in the queue yet, either continue or
+			// give up.
+			if !found {
+				if time.Since(start) > RenterDownloadTimeout {
+					die("Unable to find download in queue. This should never happen.")
+				}
+				continue
+			}
+			// Check whether the file has completed or otherwise errored out.
+			if d.Error != "" {
+				return errors.New(d.Error)
+			}
+			if d.Completed {
+				return nil
+			}
+			// Add the current progress to the measurements.
+			m = append(m, measurement{
+				progress: d.Received,
+				time:     time.Now(),
+			})
+			// Shrink the measurements to only contain measurements from within the
+			// SpeedEstimationWindow.
+			for len(m) > 2 && m[len(m)-1].time.Sub(m[0].time) > SpeedEstimationWindow {
+				m = m[1:]
+			}
+			// Update measurements in the map.
+			measurements[tf.siaPath] = m
+			// Compute the progress and timespan between the first and last
+			// measurement to get the speed.
+			received := float64(m[len(m)-1].progress - m[0].progress)
+			timespan := m[len(m)-1].time.Sub(m[0].time)
+			speed := bandwidthUnit(uint64((received * 8) / timespan.Seconds()))
 
-		// Search for the download in the list of downloads.
-		var d api.DownloadInfo
-		found := false
-		for _, d = range queue.Downloads {
-			if d.SiaPath == siapath && d.Destination == destination {
-				found = true
-				break
+			// Compuate the percentage of completion and time elapsed since the
+			// start of the download.
+			pct := 100 * float64(d.Received) / float64(d.Filesize)
+			elapsed := time.Since(d.StartTime)
+			elapsed -= elapsed % time.Second // round to nearest second
+
+			progressStr := fmt.Sprintf("\rDownloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, filesizeUnits(int64(d.Filesize)), elapsed, speed)
+			if tfIdx < len(tfs)-1 {
+				println(progressStr)
+			} else {
+				print(progressStr)
 			}
 		}
-		// If the download has not appeared in the queue yet, either continue or
-		// give up.
-		if !found {
-			if time.Since(start) > RenterDownloadTimeout {
-				return errors.New("Unable to find download in queue")
-			}
-			continue
-		}
-
-		// Check whether the file has completed or otherwise errored out.
-		if d.Error != "" {
-			return errors.New(d.Error)
-		}
-		if d.Completed {
-			return nil
-		}
-
-		// Add the current progress to the measurements.
-		measurements = append(measurements, measurement{
-			progress: d.Received,
-			time:     time.Now(),
-		})
-
-		// Shrink the measurements to only contain measurements from within the
-		// SpeedEstimationWindow.
-		for len(measurements) > 2 && measurements[len(measurements)-1].time.Sub(measurements[0].time) > SpeedEstimationWindow {
-			measurements = measurements[1:]
-		}
-
-		// Compute the progress and timespan between the first and last
-		// measurement to get the speed.
-		received := float64(measurements[len(measurements)-1].progress - measurements[0].progress)
-		timespan := measurements[len(measurements)-1].time.Sub(measurements[0].time)
-		speed := bandwidthUnit(uint64((received * 8) / timespan.Seconds()))
-
-		// Compuate the percentage of completion and time elapsed since the
-		// start of the download.
-		pct := 100 * float64(d.Received) / float64(d.Filesize)
-		elapsed := time.Since(d.StartTime)
-		elapsed -= elapsed % time.Second // round to nearest second
-
-		// Update the progress for the user.
-		fmt.Printf("\rDownloading... %5.1f%% of %v, %v elapsed, %s    ", pct, filesizeUnits(int64(d.Filesize)), elapsed, speed)
 	}
 
 	// This code is unreachable, but the compiler requires this to be here.
@@ -951,7 +1038,7 @@ type bySiaPath []modules.FileInfo
 
 func (s bySiaPath) Len() int           { return len(s) }
 func (s bySiaPath) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s bySiaPath) Less(i, j int) bool { return s[i].SiaPath < s[j].SiaPath }
+func (s bySiaPath) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].SiaPath.String() }
 
 // renterfileslistcmd is the handler for the command `siac renter list`.
 // Lists files known to the renter on the network.
@@ -1007,7 +1094,13 @@ func renterfileslistcmd() {
 // renterfilesrenamecmd is the handler for the command `siac renter rename [path] [newpath]`.
 // Renames a file on the Sia network.
 func renterfilesrenamecmd(path, newpath string) {
-	err := httpClient.RenterRenamePost(path, newpath)
+	// Parse SiaPath.
+	siaPath, err1 := modules.NewSiaPath(path)
+	newSiaPath, err2 := modules.NewSiaPath(newpath)
+	if err := errors.Compose(err1, err2); err != nil {
+		die("Couldn't parse SiaPath:", err)
+	}
+	err := httpClient.RenterRenamePost(siaPath, newSiaPath)
 	if err != nil {
 		die("Could not rename file:", err)
 	}
@@ -1068,7 +1161,12 @@ func renterfilesuploadcmd(source, path string) {
 			fpath, _ := filepath.Rel(source, file)
 			fpath = filepath.Join(path, fpath)
 			fpath = filepath.ToSlash(fpath)
-			err = httpClient.RenterUploadDefaultPost(abs(file), fpath)
+			// Parse SiaPath.
+			fSiaPath, err := modules.NewSiaPath(fpath)
+			if err != nil {
+				die("Couldn't parse SiaPath:", err)
+			}
+			err = httpClient.RenterUploadDefaultPost(abs(file), fSiaPath)
 			if err != nil {
 				failed++
 				fmt.Printf("Could not upload file %s :%v\n", file, err)
@@ -1077,7 +1175,12 @@ func renterfilesuploadcmd(source, path string) {
 		fmt.Printf("\nUploaded %d of %d files into '%s'.\n", len(files)-failed, len(files), path)
 	} else {
 		// single file
-		err = httpClient.RenterUploadDefaultPost(abs(source), path)
+		// Parse SiaPath.
+		siaPath, err := modules.NewSiaPath(path)
+		if err != nil {
+			die("Couldn't parse SiaPath:", err)
+		}
+		err = httpClient.RenterUploadDefaultPost(abs(source), siaPath)
 		if err != nil {
 			die("Could not upload file:", err)
 		}

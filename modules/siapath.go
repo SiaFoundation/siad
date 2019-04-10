@@ -1,11 +1,14 @@
 package modules
 
 import (
+	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // siapath.go contains the types and methods for creating and manipulating
@@ -34,6 +37,14 @@ type (
 // NewSiaPath returns a new SiaPath with the path set
 func NewSiaPath(s string) (SiaPath, error) {
 	return newSiaPath(s)
+}
+
+// RandomSiaPath returns a random SiaPath created from 20 bytes of base32
+// encoded entropy.
+func RandomSiaPath() (sp SiaPath) {
+	sp.Path = base32.StdEncoding.EncodeToString(fastrand.Bytes(20))
+	sp.Path = sp.Path[:20]
+	return
 }
 
 // RootSiaPath returns a SiaPath for the root siadir which has a blank path
@@ -95,6 +106,12 @@ func (sp *SiaPath) LoadString(s string) error {
 // MarshalJSON marshales a SiaPath as a string.
 func (sp SiaPath) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sp.String())
+}
+
+// Name returns the name of the file.
+func (sp SiaPath) Name() string {
+	_, name := filepath.Split(sp.Path)
+	return name
 }
 
 // UnmarshalJSON unmarshals a siapath into a SiaPath object.
