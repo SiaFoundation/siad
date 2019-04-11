@@ -604,62 +604,69 @@ func (r *Renter) managedWorstHealthDirectory() (modules.SiaPath, float64, error)
 	return siaPath, health.Health, nil
 }
 
-// threadedBubbleMetadata calculates the updated values of a directory's
-// metadata and updates the siadir metadata on disk then calls
-// threadedBubbleMetadata on the parent directory
+// threadedBubbleMetadata is the thread safe method used to call
+// managedBubbleMetadata when the call does not need to be blocking
 func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 	if err := r.tg.Add(); err != nil {
 		return
 	}
 	defer r.tg.Done()
+	if err := r.managedBubbleMetadata(siaPath); err != nil {
+		r.log.Debugln("WARN: error with bubbling metadata:", err)
+	}
+}
 
+// managedBubbleMetadata calculates the updated values of a directory's metadata
+// and updates the siadir metadata on disk then calls threadedBubbleMetadata on
+// the parent directory so that it is only blocking for the current directory
+func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 	// Check if bubble is needed
 	needed, err := r.managedBubbleNeeded(siaPath)
 	if err != nil {
-		r.log.Println("WARN: error in checking if bubble is needed:", err)
-		return
+		return errors.AddContext(err, "error in checking if bubble is needed")
 	}
 	if !needed {
-		return
+		return nil
 	}
 
 	// Make sure we call threadedBubbleMetadata on the parent once we are done.
-	defer func() {
+	defer func() error {
 		// Complete bubble
 		err = r.managedCompleteBubbleUpdate(siaPath)
 		if err != nil {
-			r.log.Println("WARN: error in completing bubble:", err)
-			return
+			return errors.AddContext(err, "error in completing bubble")
 		}
 		// Continue with parent dir if we aren't in the root dir already.
 		if siaPath.IsRoot() {
-			return
+			return nil
 		}
 		parentDir, err := siaPath.Dir()
 		if err != nil {
-			r.log.Printf("WARN: Failed to defer threadedBubbleMetadata: %v", err)
-			return
+			return errors.AddContext(err, "failed to defer threadedBubbleMetadata on parent dir")
 		}
 		go r.threadedBubbleMetadata(parentDir)
+		return nil
 	}()
 
 	// Calculate the new metadata values of the directory
 	metadata, err := r.managedCalculateDirectoryMetadata(siaPath)
 	if err != nil {
-		r.log.Printf("WARN: Could not calculate the metadata of directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
-		return
+		e := fmt.Sprintf("could not calculate the metadata of directory %v", siaPath.SiaDirSysPath(r.staticFilesDir))
+		return errors.AddContext(err, e)
 	}
 
 	// Update directory metadata with the health information. Don't return here
 	// to avoid skipping the repairNeeded and stuckChunkFound signals.
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
-		r.log.Printf("WARN: Could not open directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
+		e := fmt.Sprintf("could not open directory %v", siaPath.SiaDirSysPath(r.staticFilesDir))
+		err = errors.AddContext(err, e)
 	} else {
 		defer siaDir.Close()
 		err = siaDir.UpdateMetadata(metadata)
 		if err != nil {
-			r.log.Printf("WARN: Could not update the metadata of the directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
+			e := fmt.Sprintf("could not update the metadata of the  directory %v", siaPath.SiaDirSysPath(r.staticFilesDir))
+			err = errors.AddContext(err, e)
 		}
 	}
 
@@ -683,9 +690,8 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 			default:
 			}
 		}
-		return
 	}
-	return
+	return err
 }
 
 // threadedStuckFileLoop go through the renter directory and finds the stuck
@@ -744,7 +750,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		r.managedRepairLoop(hosts)
 
 		// Call bubble once all chunks have been popped off heap
-		r.threadedBubbleMetadata(dirSiaPath)
+		r.managedBubbleMetadata(dirSiaPath)
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
@@ -804,7 +810,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			return
 		case <-healthCheckSignal:
 			// Bubble directory
-			r.threadedBubbleMetadata(siaPath)
+			r.managedBubbleMetadata(siaPath)
 		}
 	}
 }
