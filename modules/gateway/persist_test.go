@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"bytes"
-	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -63,7 +62,7 @@ func TestLoadv033(t *testing.T) {
 		persistDir: filepath.Join("testdata", t.Name()),
 		log:        log,
 	}
-	if err := g.load(); err != nil && !os.IsNotExist(err) {
+	if err := g.load(); err != nil {
 		t.Fatal(err)
 	}
 

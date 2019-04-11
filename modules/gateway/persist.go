@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
@@ -75,30 +76,37 @@ func (g *Gateway) persistDataBlacklist() (ips []string) {
 func (g *Gateway) load() error {
 	// load nodes
 	var nodes []*node
+	var v130 bool
 	err := persist.LoadJSON(nodePersistMetadata, &nodes, filepath.Join(g.persistDir, nodesFile))
 	if err != nil {
 		// COMPATv1.3.0
-		err = g.loadv033persist()
-		if err != nil {
+		compatErr := g.loadv033persist()
+		if compatErr != nil {
 			return err
 		}
+		v130 = true
 	}
 	for i := range nodes {
 		g.nodes[nodes[i].NetAddress] = nodes[i]
 	}
 
+	// If we were loading a 1.3.0 gateway we are done. Neither does it have a
+	// gateway.json nor a blacklist.json.
+	if v130 {
+		return nil
+	}
+
 	// load g.persist
-	g.persist = persistence{}
 	err = persist.LoadJSON(persistMetadata, &g.persist, filepath.Join(g.persistDir, persistFilename))
 	if err != nil {
-		return err
+		return errors.AddContext(err, "failed to load gateway persistence")
 	}
 
 	// load blacklist
 	var ips []string
 	err = persist.LoadJSON(persistMetadataBlacklist, &ips, filepath.Join(g.persistDir, blacklistFile))
 	if err != nil {
-		return err
+		return errors.AddContext(err, "failed to load blacklist")
 	}
 	for _, ip := range ips {
 		g.blacklist[ip] = struct{}{}
