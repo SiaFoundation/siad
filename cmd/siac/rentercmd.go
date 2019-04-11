@@ -964,6 +964,7 @@ func downloadprogress(tfs []trackedFile) error {
 		}}
 	}
 	// Periodically print measurements until download is done.
+	completed := make(map[string]struct{})
 	for range time.Tick(OutputRefreshRate) {
 		// Get the list of downloads.
 		rdg, err := httpClient.RenterDownloadsGet()
@@ -997,7 +998,12 @@ func downloadprogress(tfs []trackedFile) error {
 				return errors.New(d.Error)
 			}
 			if d.Completed {
-				return nil
+				completed[tf.siaPath.String()+tf.dst] = struct{}{}
+				// Check if all downloads are done.
+				if len(completed) == len(tfs) {
+					return nil
+				}
+				continue
 			}
 			// Add the current progress to the measurements.
 			m = append(m, measurement{
