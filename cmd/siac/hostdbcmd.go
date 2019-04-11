@@ -287,27 +287,26 @@ func hostdbcmd() {
 	}
 }
 
-func hostdbfiltermodecmd(filtermode, hosts string) {
+func hostdbfiltermodecmd(filtermodeStr, hostsStr string) {
 	var fm modules.FilterMode
-	err := fm.FromString(filtermode)
+	err := fm.FromString(filtermodeStr)
 	if err != nil {
 		fmt.Println("Could not parse filtermode: ", err)
 	}
 
-	var publicKey types.SiaPublicKey
-	var hs []types.SiaPublicKey
-	hostsSplit := strings.Split(hosts, ",")
+	var host types.SiaPublicKey
+	var hosts []types.SiaPublicKey
 
-	for _, host := range hostsSplit {
-		publicKey.LoadString(string(host))
-		hs = append(hs, publicKey)
+	for _, h := range strings.Split(hostsStr, ",") {
+		host.LoadString(string(h))
+		hosts = append(hosts, host)
 	}
 
-	err = httpClient.HostDbFilterModePost(fm, hs)
+	err = httpClient.HostDbFilterModePost(fm, hosts)
 	if err != nil {
 		fmt.Println("Could not set hostdb filtermode: ", err)
 	}
-	fmt.Println("filtermode:", filtermode, " and hosts:", hosts)
+	fmt.Println("Set filtermode to ", filtermodeStr, " with hosts ", hostsStr)
 }
 
 func hostdbviewcmd(pubkey string) {
