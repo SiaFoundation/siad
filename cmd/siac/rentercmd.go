@@ -975,7 +975,10 @@ func downloadprogress(tfs []trackedFile) error {
 		// siaPath + destination as the key.
 		queue := make(map[string]api.DownloadInfo)
 		for _, d := range rdg.Downloads {
-			queue[d.SiaPath.String()+d.Destination] = d
+			key := d.SiaPath.String() + d.Destination
+			if _, exists := queue[key]; !exists {
+				queue[key] = d
+			}
 		}
 		// Take new measurements for each tracked file.
 		for tfIdx, tf := range tfs {
