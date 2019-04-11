@@ -81,13 +81,6 @@ var (
 		Run:   wrap(rentercontractsviewcmd),
 	}
 
-	renterDirDownloadCmd = &cobra.Command{
-		Use:   "downloaddir [path] [destination]",
-		Short: "Download a directory",
-		Long:  "Download a directory to a specified destination.",
-		Run:   wrap(renterdirdownloadcmd),
-	}
-
 	renterDownloadsCmd = &cobra.Command{
 		Use:   "downloads",
 		Short: "View the download queue",
@@ -105,8 +98,8 @@ var (
 
 	renterFilesDownloadCmd = &cobra.Command{
 		Use:   "download [path] [destination]",
-		Short: "Download a file",
-		Long:  "Download a previously-uploaded file to a specified destination.",
+		Short: "Download a file or folder",
+		Long:  "Download a previously-uploaded file or folder to a specified destination.",
 		Run:   wrap(renterfilesdownloadcmd),
 	}
 
@@ -769,8 +762,9 @@ Contract %v
 	fmt.Println("Contract not found")
 }
 
-// renterdirdownloadcmd is the handler for the command `siac renter downloaddir [path]`
-func renterdirdownloadcmd(path, destination string) {
+// renterfilesdownload downloads the dir at the given path from the Sia network
+// to the local specified destination.
+func renterdirdownload(path, destination string) {
 	destination = abs(destination)
 	// Parse SiaPath.
 	siaPath, err := modules.NewSiaPath(path)
@@ -854,9 +848,34 @@ func renterfilesdeletecmd(path string) {
 	die(fmt.Sprintf("Unknown path '%v'", path))
 }
 
-// renterfilesdownloadcmd is the handler for the comand `siac renter download [path] [destination]`.
-// Downloads a path from the Sia network to the local specified destination.
+// renterfilesdownload is the handler for the comand `siac renter download [path] [destination]`.
+// It determines whether a file or a folder is downloaded and calls the corresponding sub-handler.
 func renterfilesdownloadcmd(path, destination string) {
+	// Parse SiaPath.
+	siaPath, err := modules.NewSiaPath(path)
+	if err != nil {
+		die("Couldn't parse SiaPath:", err)
+	}
+	_, err = httpClient.RenterFileGet(siaPath)
+	if err == nil {
+		renterfilesdownload(path, destination)
+		return
+	} else if !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+		die("Failed to download file:", err)
+	}
+	_, err = httpClient.RenterGetDir(siaPath)
+	if err == nil {
+		renterdirdownload(path, destination)
+		return
+	} else if !strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+		die("Failed to download folder:", err)
+	}
+	die(fmt.Sprintf("Unknown file '%v'", path))
+}
+
+// renterfilesdownload downloads the file at the specified path from the Sia
+// network to the local specified destination.
+func renterfilesdownload(path, destination string) {
 	destination = abs(destination)
 	// Parse SiaPath.
 	siaPath, err := modules.NewSiaPath(path)
