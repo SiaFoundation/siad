@@ -783,7 +783,7 @@ func renterdirdownloadcmd(path, destination string) {
 		die("Failed to get dir info:", err)
 	}
 	// Create destination on disk.
-	if err := os.MkdirAll(destination, 775); err != nil {
+	if err := os.MkdirAll(destination, 0755); err != nil {
 		die("Failed to create destination dir:", err)
 	}
 	// Download files.
