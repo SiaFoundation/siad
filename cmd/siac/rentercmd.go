@@ -814,11 +814,16 @@ func renterdirdownloadcmd(path, destination string) {
 		return
 	}
 	// If the download is blocking, display progress as the file downloads.
-	err = downloadprogress(tfs)
-	if err != nil {
-		die("\nDownload could not be completed:", err)
+	failedDownloads := downloadprogress(tfs)
+	// Handle potential errors.
+	if len(failedDownloads) == 0 {
+		fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
+		os.Exit(0)
 	}
-	fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
+	for _, fd := range failedDownloads {
+		fmt.Printf("Download of file '%v' to destination '%v' failed: %v\n", fd.SiaPath, fd.Destination, fd.Error)
+	}
+	os.Exit(1)
 }
 
 // renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
@@ -873,9 +878,9 @@ func renterfilesdownloadcmd(path, destination string) {
 	}
 
 	// If the download is blocking, display progress as the file downloads.
-	err = downloadprogress([]trackedFile{{siaPath: siaPath, dst: destination}})
-	if err != nil {
-		die("\nDownload could not be completed:", err)
+	failedDownloads := downloadprogress([]trackedFile{{siaPath: siaPath, dst: destination}})
+	if len(failedDownloads) > 0 {
+		die("\nDownload could not be completed:", failedDownloads[0].Error)
 	}
 	fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
 }
@@ -943,9 +948,9 @@ type measurement struct {
 	time     time.Time
 }
 
-// downloadprogress will display the progress of the provided download to the
-// user, and return an error when the download is finished.
-func downloadprogress(tfs []trackedFile) error {
+// downloadprogress will display the progress of the provided files and return a
+// slice of DownloadInfos for failed downloads.
+func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 	// Nothing to do if no files are tracked.
 	if len(tfs) == 0 {
 		return nil
@@ -965,6 +970,7 @@ func downloadprogress(tfs []trackedFile) error {
 	}
 	// Periodically print measurements until download is done.
 	completed := make(map[string]struct{})
+	errMap := make(map[string]api.DownloadInfo)
 	for range time.Tick(OutputRefreshRate) {
 		// Get the list of downloads.
 		rdg, err := httpClient.RenterDownloadsGet()
@@ -983,7 +989,8 @@ func downloadprogress(tfs []trackedFile) error {
 		// Take new measurements for each tracked file.
 		for tfIdx, tf := range tfs {
 			// Search for the download in the list of downloads.
-			d, found := queue[tf.siaPath.String()+tf.dst]
+			mapKey := tf.siaPath.String() + tf.dst
+			d, found := queue[mapKey]
 			m, exists := measurements[tf.siaPath]
 			if !exists {
 				die("Measurement missing for tracked file. This should never happen.")
@@ -998,10 +1005,10 @@ func downloadprogress(tfs []trackedFile) error {
 			}
 			// Check whether the file has completed or otherwise errored out.
 			if d.Error != "" {
-				return errors.New(d.Error)
+				errMap[mapKey] = d
 			}
 			if d.Completed {
-				completed[tf.siaPath.String()+tf.dst] = struct{}{}
+				completed[mapKey] = struct{}{}
 				// Check if all downloads are done.
 				if len(completed) == len(tfs) {
 					return nil
@@ -1040,9 +1047,8 @@ func downloadprogress(tfs []trackedFile) error {
 			}
 		}
 	}
-
 	// This code is unreachable, but the compiler requires this to be here.
-	return errors.New("ERROR: download progress reached code that should not be reachable")
+	return nil
 }
 
 // bySiaPath implements sort.Interface for [] modules.FileInfo based on the
