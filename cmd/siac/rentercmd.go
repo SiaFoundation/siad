@@ -946,6 +946,10 @@ type measurement struct {
 // downloadprogress will display the progress of the provided download to the
 // user, and return an error when the download is finished.
 func downloadprogress(tfs []trackedFile) error {
+	// Nothing to do if no files are tracked.
+	if len(tfs) == 0 {
+		return nil
+	}
 	start := time.Now()
 
 	// Create a map of all tracked files for faster lookups and also a measurement
