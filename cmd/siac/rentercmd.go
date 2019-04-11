@@ -972,6 +972,9 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 	completed := make(map[string]struct{})
 	errMap := make(map[string]api.DownloadInfo)
 	for range time.Tick(OutputRefreshRate) {
+		// Clear terminal.
+		print("\033[H\033[2J")
+		//print("\033[0;0H")
 		// Get the list of downloads.
 		rdg, err := httpClient.RenterDownloadsGet()
 		if err != nil {
@@ -1039,7 +1042,7 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 			elapsed := time.Since(d.StartTime)
 			elapsed -= elapsed % time.Second // round to nearest second
 
-			progressStr := fmt.Sprintf("\rDownloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, filesizeUnits(int64(d.Filesize)), elapsed, speed)
+			progressStr := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, filesizeUnits(int64(d.Filesize)), elapsed, speed)
 			if tfIdx < len(tfs)-1 {
 				println(progressStr)
 			} else {
