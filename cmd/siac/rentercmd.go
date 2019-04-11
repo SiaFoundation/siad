@@ -952,7 +952,7 @@ func downloadprogress(tfs []trackedFile) error {
 	// map which is initialized with 0 progress for all tracked files.
 	tfsMap := make(map[modules.SiaPath]trackedFile)
 	measurements := make(map[modules.SiaPath][]measurement)
-	for _, tf := range tfsMap {
+	for _, tf := range tfs {
 		tfsMap[tf.siaPath] = tf
 		measurements[tf.siaPath] = []measurement{{
 			progress: 0,
