@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"os"
 	"path/filepath"
 	"time"
 
@@ -102,10 +103,10 @@ func (g *Gateway) load() error {
 		return errors.AddContext(err, "failed to load gateway persistence")
 	}
 
-	// load blacklist
+	// load blacklist if available.
 	var ips []string
 	err = persist.LoadJSON(persistMetadataBlacklist, &ips, filepath.Join(g.persistDir, blacklistFile))
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return errors.AddContext(err, "failed to load blacklist")
 	}
 	for _, ip := range ips {
