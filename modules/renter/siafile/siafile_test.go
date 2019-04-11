@@ -57,6 +57,79 @@ func randomPiece() piece {
 	return piece
 }
 
+// TestGrowNumChunks is a unit test for the SiaFile's GrowNumChunks method.
+func TestGrowNumChunks(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a blank file.
+	sf, wal, _ := newBlankTestFileAndWAL()
+	expectedChunks := sf.NumChunks()
+	expectedSize := sf.Size()
+
+	// Declare a check method.
+	checkFile := func(sf *SiaFile, numChunks, size uint64) {
+		if numChunks != sf.NumChunks() {
+			t.Fatalf("Expected %v chunks but was %v", numChunks, sf.NumChunks())
+		}
+		if size != sf.Size() {
+			t.Fatalf("Expected size to be %v but was %v", size, sf.Size())
+		}
+	}
+
+	// Increase the size of the file by 1 chunk.
+	expectedChunks++
+	expectedSize += sf.ChunkSize()
+	err := sf.GrowNumChunks(expectedChunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check the file after growing the chunks.
+	checkFile(sf, expectedChunks, expectedSize)
+	// Load the file from disk again to also check that persistence works.
+	sf, err = LoadSiaFile(sf.siaFilePath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that size and chunks still match.
+	checkFile(sf, expectedChunks, expectedSize)
+
+	// Call GrowNumChunks with the same argument again. This should be a no-op.
+	err = sf.GrowNumChunks(expectedChunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check the file after growing the chunks.
+	checkFile(sf, expectedChunks, expectedSize)
+	// Load the file from disk again to also check that no wrong persistence
+	// happened.
+	sf, err = LoadSiaFile(sf.siaFilePath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that size and chunks still match.
+	checkFile(sf, expectedChunks, expectedSize)
+
+	// Grow the file by 2 chunks to see if multiple chunks also work.
+	expectedChunks += 2
+	expectedSize += 2 * sf.ChunkSize()
+	err = sf.GrowNumChunks(expectedChunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check the file after growing the chunks.
+	checkFile(sf, expectedChunks, expectedSize)
+	// Load the file from disk again to also check that persistence works.
+	sf, err = LoadSiaFile(sf.siaFilePath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that size and chunks still match.
+	checkFile(sf, expectedChunks, expectedSize)
+}
+
 // TestPruneHosts is a unit test for the pruneHosts method.
 func TestPruneHosts(t *testing.T) {
 	if testing.Short() {

@@ -176,6 +176,10 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Check if we need to grow the file.
+	if uint64(len(sf.chunks)) >= numChunks {
+		return nil // nothing to do
+	}
 	// Update the chunks.
 	var updates []writeaheadlog.Update
 	for uint64(len(sf.chunks)) < numChunks {
