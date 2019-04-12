@@ -190,9 +190,12 @@ func main() {
 		if httpClient.Password == "" {
 			pw, err := ioutil.ReadFile(build.APIPasswordFile(siaDir))
 			if err != nil {
-				die("Could not read API password file:", err)
+				fmt.Println("Could not read API password file:", err)
+				httpClient.Password = ""
+			} else {
+				httpClient.Password = strings.TrimSpace(string(pw))
 			}
-			httpClient.Password = strings.TrimSpace(string(pw))
+
 		}
 	})
 
