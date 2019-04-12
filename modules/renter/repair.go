@@ -656,7 +656,7 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 	}
 
 	// Update directory metadata with the health information. Don't return here
-	// to avoid skipping the addChunksToHeap and stuckChunkFound signals.
+	// to avoid skipping the repairNeeded and stuckChunkFound signals.
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
 		e := fmt.Sprintf("could not open directory %v", siaPath.SiaDirSysPath(r.staticFilesDir))
@@ -680,7 +680,7 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 		// them until the root directory is updated
 		if metadata.Health >= siafile.RemoteRepairDownloadThreshold {
 			select {
-			case r.uploadHeap.addChunksToHeap <- struct{}{}:
+			case r.uploadHeap.repairNeeded <- struct{}{}:
 			default:
 			}
 		}

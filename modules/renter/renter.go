@@ -754,8 +754,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		uploadHeap: uploadHeap{
 			heapChunks:        make(map[uploadChunkID]struct{}),
 			repairingChunks:   make(map[uploadChunkID]struct{}),
-			addChunksToHeap:   make(chan struct{}, 1),
-			dirToBeBubbled:    make(chan modules.SiaPath, 1),
 			newUploads:        make(chan struct{}, 1),
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
@@ -800,8 +798,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// Spin up the workers for the work pool.
 	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
-	go r.threadedRepairLoop()
-	go r.threadedAddChunksToHeap()
+	go r.threadedUploadAndRepair()
 	go r.threadedUpdateRenterHealth()
 	go r.threadedStuckFileLoop()
 
