@@ -618,7 +618,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir)) // set name to "1"
+	err = rt.renter.RenameFile(rt.renter.staticFileSet.SiaPath(entry2), siaPath1) // set name to "1"
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -778,7 +778,7 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir))
+	err = rt.renter.RenameFile(rt.renter.staticFileSet.SiaPath(entry2), siaPath1) // Rename to "1"
 	if err != nil {
 		t.Fatal(err)
 	}
