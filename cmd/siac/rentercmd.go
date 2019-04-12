@@ -782,11 +782,12 @@ func renterdirdownload(path, destination string) {
 	}
 	// Download files.
 	tfs := make([]trackedFile, 0, len(rd.Files))
+	var skipped []string
 	for _, file := range rd.Files {
 		// Skip files that already exist.
 		dst := filepath.Join(destination, file.SiaPath.Name())
 		if _, err := os.Stat(dst); err == nil {
-			fmt.Printf("Skipping file '%v' since it already exists\n", dst)
+			skipped = append(skipped, dst)
 			continue
 		} else if !os.IsNotExist(err) {
 			die("Failed to get file stats:", err)
@@ -809,11 +810,16 @@ func renterdirdownload(path, destination string) {
 	}
 	// If the download is blocking, display progress as the file downloads.
 	failedDownloads := downloadprogress(tfs)
+	// Print skipped files.
+	for _, s := range skipped {
+		fmt.Printf("Skipped file '%v' since it already exists\n", s)
+	}
 	// Handle potential errors.
 	if len(failedDownloads) == 0 {
 		fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
 		os.Exit(0)
 	}
+	// Print errors.
 	for _, fd := range failedDownloads {
 		fmt.Printf("Download of file '%v' to destination '%v' failed: %v\n", fd.SiaPath, fd.Destination, fd.Error)
 	}
