@@ -460,13 +460,13 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		if len(directories) == 0 {
 			build.Critical("No directories returned from DirList")
 		}
-		// Check if we are in an empty Directory. This could happen if the only
-		// file in a directory was stuck and was very recently deleted so the
-		// health of the directory has not yet been updated.
+		// Check if we are in an empty Directory. This will be the case before
+		// any files have been uploaded so the root directory is empty. Also it
+		// could happen if the only file in a directory was stuck and was very
+		// recently deleted so the health of the directory has not yet been
+		// updated.
 		emptyDir := len(directories) == 1 && len(files) == 0
 		if emptyDir {
-			// Log an error to keep track of occurrences
-			r.log.Debugln("WARN: empty directory found with stuck chunks:", siaPath)
 			return siaPath, errNoStuckFiles
 		}
 		// Check if there are stuck chunks in this directory

@@ -672,20 +672,20 @@ func (r *Renter) threadedUploadAndRepair() {
 				// iteration of the repair loop the filesystem metadata might
 				// not be updated yet and it might appear to be healthy and
 				// therefore not begin the repair/upload.
-
-				// We do want to make sure that the hosts and workers are
-				// updated though for the new upload
-				hosts = r.managedRefreshHostsAndWorkers()
 			case <-r.uploadHeap.repairNeeded:
-				// Since the repairNeeded channel is used when an unhealthy
-				// chunk is found and reported at the root directory we continue
-				// to the next iteration of the loop so that we can build the
-				// heap from the chunks in the unhealthy directory because the
-				// filesystem metadata is up to date.
-				continue
+				// Since the repairNeeded channel is used by the stuck loop to
+				// indicate that a stuck chunk has been added to the uploadheap,
+				// we want to move straight to the repair instead of continuing
+				// to the next iteration of the for loop. If we continue to the
+				// next iteration of the repair loop we will end up back here as
+				// stuck chunks are not considered in the Health of the
+				// filesystem so the filesystem will still appear to be healthy.
 			case <-r.tg.StopChan():
 				return
 			}
+			// Make sure that the hosts and workers are updated before
+			// continuing to the repair loop
+			hosts = r.managedRefreshHostsAndWorkers()
 		}
 
 		// The necessary conditions for performing an upload and repair have
