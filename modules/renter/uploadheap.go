@@ -132,11 +132,20 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 // further once the layout is per-chunk instead of per-filecontract.
 func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
 	// If we don't have enough workers for the file, don't repair it right now.
-	if len(r.workerPool) < entry.ErasureCode().MinPieces() {
-		r.log.Println("Not building any chunks from file as there are not enough workers, marking all unhealthy chunks as stuck")
-		// Mark all unhealthy chunks as stuck
-		if err := entry.MarkAllUnhealthyChunksAsStuck(offline, goodForRenew); err != nil {
-			r.log.Println("WARN: unable to mark all chunks as stuck:", err)
+	minPieces := entry.ErasureCode().MinPieces()
+	if len(r.workerPool) < minPieces {
+		// There are not enough workers for the chunk to reach minimum
+		// redundancy. Check if the allowance has enough hosts for the chunk to
+		// reach minimum redundancy
+		r.log.Debugln("Not building any chunks from file as there are not enough workers")
+		allowance := r.hostContractor.Allowance()
+		if allowance.Hosts < uint64(minPieces) {
+			// There are not enough hosts in the allowance for the file to reach
+			// minimum redundancy. Mark all unhealthy chunks as stuck
+			r.log.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for file %v", allowance.Hosts, minPieces, entry.SiaFilePath())
+			if err := entry.MarkAllUnhealthyChunksAsStuck(offline, goodForRenew); err != nil {
+				r.log.Println("WARN: unable to mark all chunks as stuck:", err)
+			}
 		}
 		return nil
 	}
