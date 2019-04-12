@@ -26,6 +26,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -1079,39 +1080,39 @@ func TestRenterInterrupt(t *testing.T) {
 // a dependency that interrupts the download after sending the signed revision
 // to the host.
 func testContractInterruptedSaveToDiskAfterDeletion(t *testing.T, tg *siatest.TestGroup) {
-	testContractInterrupted(t, tg, newDependencyInterruptContractSaveToDiskAfterDeletion())
+	testContractInterrupted(t, tg, dependencies.NewDependencyInterruptContractSaveToDiskAfterDeletion())
 }
 
 // testDownloadInterruptedAfterSendingRevision runs testDownloadInterrupted with
 // a dependency that interrupts the download after sending the signed revision
 // to the host.
 func testDownloadInterruptedAfterSendingRevision(t *testing.T, tg *siatest.TestGroup) {
-	testDownloadInterrupted(t, tg, newDependencyInterruptDownloadAfterSendingRevision())
+	testDownloadInterrupted(t, tg, dependencies.NewDependencyInterruptDownloadAfterSendingRevision())
 }
 
 // testDownloadInterruptedBeforeSendingRevision runs testDownloadInterrupted
 // with a dependency that interrupts the download before sending the signed
 // revision to the host.
 func testDownloadInterruptedBeforeSendingRevision(t *testing.T, tg *siatest.TestGroup) {
-	testDownloadInterrupted(t, tg, newDependencyInterruptDownloadBeforeSendingRevision())
+	testDownloadInterrupted(t, tg, dependencies.NewDependencyInterruptDownloadBeforeSendingRevision())
 }
 
 // testUploadInterruptedAfterSendingRevision runs testUploadInterrupted with a
 // dependency that interrupts the upload after sending the signed revision to
 // the host.
 func testUploadInterruptedAfterSendingRevision(t *testing.T, tg *siatest.TestGroup) {
-	testUploadInterrupted(t, tg, newDependencyInterruptUploadAfterSendingRevision())
+	testUploadInterrupted(t, tg, dependencies.NewDependencyInterruptUploadAfterSendingRevision())
 }
 
 // testUploadInterruptedBeforeSendingRevision runs testUploadInterrupted with a
 // dependency that interrupts the upload before sending the signed revision to
 // the host.
 func testUploadInterruptedBeforeSendingRevision(t *testing.T, tg *siatest.TestGroup) {
-	testUploadInterrupted(t, tg, newDependencyInterruptUploadBeforeSendingRevision())
+	testUploadInterrupted(t, tg, dependencies.NewDependencyInterruptUploadBeforeSendingRevision())
 }
 
 // testContractInterrupted interrupts a download using the provided dependencies.
-func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.DependencyInterruptOnceOnKeyword) {
+func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyInterruptOnceOnKeyword) {
 	// Add Renter
 	testDir := renterTestDir(t.Name())
 	renterTemplate := node.Renter(testDir + "/renter")
@@ -1207,7 +1208,7 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 }
 
 // testDownloadInterrupted interrupts a download using the provided dependencies.
-func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.DependencyInterruptOnceOnKeyword) {
+func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyInterruptOnceOnKeyword) {
 	// Add Renter
 	testDir := renterTestDir(t.Name())
 	renterTemplate := node.Renter(testDir + "/renter")
@@ -1265,7 +1266,7 @@ func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 
 // testUploadInterrupted let's the upload fail using the provided dependencies
 // and makes sure that this doesn't corrupt the contract.
-func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.DependencyInterruptOnceOnKeyword) {
+func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyInterruptOnceOnKeyword) {
 	// Add Renter
 	testDir := renterTestDir(t.Name())
 	renterTemplate := node.Renter(testDir + "/renter")
@@ -3589,7 +3590,7 @@ func TestUploadAfterDelete(t *testing.T) {
 
 	// Add a Renter node
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.RenterDeps = &dependencyDisableCloseUploadEntry{}
+	renterParams.RenterDeps = &dependencies.DependencyDisableCloseUploadEntry{}
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -3918,7 +3919,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 
 	// Add a Renter node
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.ContractorDeps = &dependencyDisableRecoveryStatusReset{}
+	renterParams.ContractorDeps = &dependencies.DependencyDisableRecoveryStatusReset{}
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -4194,7 +4195,7 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 	renterParams.Allowance = modules.DefaultAllowance
 	renterParams.Allowance.Hosts = 2
 	renterParams.PrimarySeed = seed
-	renterParams.ContractorDeps = &dependencyDisableContractRecovery{}
+	renterParams.ContractorDeps = &dependencies.DependencyDisableContractRecovery{}
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -4391,7 +4392,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	// Add a renter with a dependency that prevents contract renewals due to
 	// low funds.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.RenterDeps = &dependencyDisableRenewal{}
+	renterParams.RenterDeps = &dependencies.DependencyDisableRenewal{}
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
