@@ -14,6 +14,20 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// dummyEntry wraps a SiaFile into a siaFileSetEntry.
+func dummyEntry(s *SiaFile) *siaFileSetEntry {
+	return &siaFileSetEntry{
+		SiaFile: s,
+		siaFileSet: &SiaFileSet{
+			siaFileDir:   filepath.Dir(s.SiaFilePath()),
+			siaFileMap:   make(map[SiafileUID]*siaFileSetEntry),
+			siapathToUID: make(map[modules.SiaPath]SiafileUID),
+			wal:          nil,
+		},
+		threadMap: make(map[uint64]threadInfo),
+	}
+}
+
 // randomChunk is a helper method for testing that creates a random chunk.
 func randomChunk() chunk {
 	numPieces := 30
@@ -575,12 +589,15 @@ func TestStuckChunks(t *testing.T) {
 	}
 
 	// Close file and confirm it is out of memory
-	siaPath := sf.SiaPath()
+	siaPath := sfs.SiaPath(sf)
 	if err = sf.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if len(sfs.siaFileMap) != 0 {
 		t.Fatal("File not removed from memory")
+	}
+	if len(sfs.siapathToUID) != 0 {
+		t.Fatal("File not removed from uid map")
 	}
 
 	// Load siafile from disk

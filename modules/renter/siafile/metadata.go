@@ -12,14 +12,19 @@ import (
 )
 
 type (
+	// SiafileUID is a unique identifier for siafile which is used to track
+	// siafiles even after renaming them.
+	SiafileUID string
+
 	// metadata is the metadata of a SiaFile and is JSON encoded.
 	metadata struct {
-		StaticPagesPerChunk uint8           `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
-		StaticVersion       [16]byte        `json:"version"`       // version of the sia file format used
-		StaticFileSize      int64           `json:"filesize"`      // total size of the file
-		StaticPieceSize     uint64          `json:"piecesize"`     // size of a single piece of the file
-		LocalPath           string          `json:"localpath"`     // file to the local copy of the file used for repairing
-		SiaPath             modules.SiaPath `json:"siapath"`       // the path of the file on the Sia network
+		StaticUniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
+
+		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
+		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
+		StaticFileSize      int64    `json:"filesize"`      // total size of the file
+		StaticPieceSize     uint64   `json:"piecesize"`     // size of a single piece of the file
+		LocalPath           string   `json:"localpath"`     // file to the local copy of the file used for repairing
 
 		// fields for encryption
 		StaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
@@ -212,9 +217,6 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	defer sf.mu.Unlock()
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
-	// TODO - this code creates directories without metadata files.  Add
-	// metadate file creation in repair by folder code when updating renter
-	// redundancy
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
@@ -222,7 +224,6 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
-	sf.staticMetadata.SiaPath = newSiaPath
 	// Update the ChangeTime because the metadata changed.
 	sf.staticMetadata.ChangeTime = time.Now()
 	// Write the header to the new location.
@@ -269,13 +270,6 @@ func (sf *SiaFile) SetLocalPath(path string) error {
 		return err
 	}
 	return sf.createAndApplyTransaction(updates...)
-}
-
-// SiaPath returns the file's sia path.
-func (sf *SiaFile) SiaPath() modules.SiaPath {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	return sf.staticMetadata.SiaPath
 }
 
 // Size returns the file's size.

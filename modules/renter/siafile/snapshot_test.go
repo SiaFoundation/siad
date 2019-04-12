@@ -20,7 +20,7 @@ func TestSnapshot(t *testing.T) {
 	t.Parallel()
 
 	// Create a random file for testing and create a snapshot from it.
-	sf := newTestFile()
+	sf := dummyEntry(newTestFile())
 	snap := sf.Snapshot()
 
 	// Make sure the snapshot has the same fields as the SiaFile.
@@ -55,9 +55,11 @@ func TestSnapshot(t *testing.T) {
 	if !reflect.DeepEqual(sf.pubKeyTable, snap.staticPubKeyTable) {
 		t.Error("pubkeytables don't match")
 	}
-	if sf.staticMetadata.SiaPath != snap.staticSiaPath {
+	sf.siaFileSet.mu.Lock()
+	if sf.siaFileSet.siaPath(sf) != snap.staticSiaPath {
 		t.Error("siapaths don't match")
 	}
+	sf.siaFileSet.mu.Unlock()
 	// Compare the pieces.
 	for i := range sf.staticChunks {
 		sfPieces, err1 := sf.Pieces(uint64(i))
@@ -113,10 +115,11 @@ func benchmarkSnapshot(b *testing.B, fileSize uint64) {
 		numChunks++
 	}
 	wal, _ := newTestWAL()
-	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
+	siafile, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		b.Fatal(err)
 	}
+	sf := dummyEntry(siafile)
 	// Add a host key to the table.
 	sf.addRandomHostKeys(1)
 	// Add numPieces to each chunks.

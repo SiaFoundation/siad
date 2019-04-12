@@ -34,8 +34,11 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	fdd.disable()
 
 	// Create a new blank siafile.
-	sf, wal, walPath := newBlankTestFileAndWAL()
-	sf.deps = fdd
+	siafile, wal, walPath := newBlankTestFileAndWAL()
+	siafile.deps = fdd
+
+	// Wrap it in a file set entry.
+	sf := dummyEntry(siafile)
 
 	// Create 50 hostkeys from which to choose from.
 	hostkeys := make([]types.SiaPublicKey, 0, 50)
@@ -129,7 +132,7 @@ OUTER:
 				}
 			}
 			// Load file again.
-			sf, err = loadSiaFile(sf.siaFilePath, wal, fdd)
+			siafile, err = loadSiaFile(sf.siaFilePath, wal, fdd)
 			if err != nil {
 				if errors.Contains(err, errDiskFault) {
 					numRecoveries++
@@ -138,7 +141,8 @@ OUTER:
 					t.Fatal(err)
 				}
 			}
-			sf.deps = fdd
+			siafile.deps = fdd
+			sf = dummyEntry(siafile)
 			break
 		}
 

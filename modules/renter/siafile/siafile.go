@@ -52,11 +52,10 @@ type (
 		staticChunks []chunk
 
 		// utility fields. These are not persisted.
-		deleted        bool
-		deps           modules.Dependencies
-		mu             sync.RWMutex
-		staticUniqueID string
-		wal            *writeaheadlog.WAL // the wal that is used for SiaFiles
+		deleted bool
+		deps    modules.Dependencies
+		mu      sync.RWMutex
+		wal     *writeaheadlog.WAL // the wal that is used for SiaFiles
 
 		// siaFilePath is the path to the .sia file on disk.
 		siaFilePath string
@@ -109,6 +108,13 @@ func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 	return e.Err()
 }
 
+// SiaFilePath returns the siaFilePath field of the SiaFile.
+func (sf *SiaFile) SiaFilePath() string {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.siaFilePath
+}
+
 // UnmarshalSia implements the encoding.SiaUnmarshaler interface.
 func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
@@ -148,12 +154,11 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
-			SiaPath:                 siaPath,
+			StaticUniqueID:          SiafileUID(hex.EncodeToString(fastrand.Bytes(20))),
 		},
-		deps:           modules.ProdDependencies,
-		siaFilePath:    siaFilePath,
-		staticUniqueID: hex.EncodeToString(fastrand.Bytes(20)),
-		wal:            wal,
+		deps:        modules.ProdDependencies,
+		siaFilePath: siaFilePath,
+		wal:         wal,
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()
@@ -656,8 +661,8 @@ func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
 }
 
 // UID returns a unique identifier for this file.
-func (sf *SiaFile) UID() string {
-	return sf.staticUniqueID
+func (sf *SiaFile) UID() SiafileUID {
+	return sf.staticMetadata.StaticUniqueID
 }
 
 // UploadedBytes indicates how many bytes of the file have been uploaded via
@@ -783,7 +788,6 @@ func (sf *SiaFile) pruneHosts() {
 				if exists {
 					pieceSet[i].HostTableOffset = newOffset
 					newPieceSet = append(newPieceSet, pieceSet[i])
-
 				}
 			}
 			sf.staticChunks[chunkIndex].Pieces[pieceIndex] = newPieceSet
