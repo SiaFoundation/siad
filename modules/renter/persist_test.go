@@ -25,7 +25,7 @@ func testingFileParams() (modules.SiaPath, modules.ErasureCoder) {
 	nData := fastrand.Intn(10)
 	nParity := fastrand.Intn(10)
 	rsc, _ := siafile.NewRSCode(nData+1, nParity+1)
-	return newRandSiaPath(), rsc
+	return modules.RandomSiaPath(), rsc
 }
 
 // equalFiles is a helper function that compares two files for equality.

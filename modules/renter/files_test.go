@@ -55,15 +55,6 @@ func newTestingWal() *writeaheadlog.WAL {
 	return wal
 }
 
-// newRandSiaPath creates a new SiaPath type with a random path.
-func newRandSiaPath() modules.SiaPath {
-	siaPath, err := modules.NewSiaPath(hex.EncodeToString(fastrand.Bytes(4)))
-	if err != nil {
-		panic(err)
-	}
-	return siaPath
-}
-
 // newRenterTestFile creates a test file when the test has a renter so that the
 // file is properly added to the renter. It returns the SiaFileSetEntry that the
 // SiaFile is stored in
