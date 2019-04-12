@@ -139,7 +139,10 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		// reach minimum redundancy
 		r.log.Debugln("Not building any chunks from file as there are not enough workers")
 		allowance := r.hostContractor.Allowance()
-		if allowance.Hosts < uint64(minPieces) {
+		// Only perform this check when we are looking for unstuck chunks. This
+		// will prevent log spam from repeatedly logging to the user the issue
+		// with the file after marking the chunks as stuck
+		if allowance.Hosts < uint64(minPieces) && target == targetUnstuckChunks {
 			// There are not enough hosts in the allowance for the file to reach
 			// minimum redundancy. Mark all unhealthy chunks as stuck
 			r.log.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for file %v", allowance.Hosts, minPieces, entry.SiaFilePath())
@@ -575,7 +578,9 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			// minimum redundancy. Check if the allowance has enough hosts for
 			// the chunk to reach minimum redundancy
 			allowance := r.hostContractor.Allowance()
-			if allowance.Hosts < uint64(nextChunk.minimumPieces) {
+			// Only perform this check on chunks that are not stuck to prevent
+			// log spam
+			if allowance.Hosts < uint64(nextChunk.minimumPieces) && !nextChunk.stuck {
 				// There are not enough hosts in the allowance for this chunk to
 				// reach minimum redundancy. Log an error, set the chunk as stuck,
 				// and close the file
