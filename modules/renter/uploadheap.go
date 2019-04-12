@@ -685,7 +685,7 @@ func (r *Renter) threadedUploadAndRepair() {
 
 		// The necessary conditions for performing an upload and repair
 		// iteration have been met - perform an upload and repair iteration.
-		r.log.Println("Executing an upload and repair cycle")
+		r.log.Debugln("Executing an upload and repair cycle")
 		err = r.managedUploadAndRepair()
 		if err != nil {
 			// If there is an error performing an upload and repair iteration,
