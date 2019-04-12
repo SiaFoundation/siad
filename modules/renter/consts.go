@@ -133,14 +133,6 @@ var (
 		Testing:  250 * time.Millisecond,
 	}).(time.Duration)
 
-	// syncCheckFrequency is how long the renter will wait to check the sync
-	// status of the contractor if it is not synced.
-	syncCheckFrequency = build.Select(build.Var{
-		Dev:      3 * time.Second,
-		Standard: 10 * time.Second,
-		Testing:  250 * time.Millisecond,
-	}).(time.Duration)
-
 	// rebuildChunkHeapInterval defines how long the renter sleeps between
 	// checking on the filesystem health.
 	rebuildChunkHeapInterval = build.Select(build.Var{
