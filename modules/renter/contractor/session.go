@@ -131,6 +131,21 @@ func (hs *hostSession) Upload(data []byte) (crypto.Hash, error) {
 	return sectorRoot, nil
 }
 
+// Replace replaces the sector at the specified index with data.
+func (hs *hostSession) Replace(data []byte, sectorIndex uint64) (crypto.Hash, error) {
+	hs.mu.Lock()
+	defer hs.mu.Unlock()
+	if hs.invalid {
+		return crypto.Hash{}, errInvalidSession
+	}
+
+	_, sectorRoot, err := hs.session.Replace(data, sectorIndex)
+	if err != nil {
+		return crypto.Hash{}, err
+	}
+	return sectorRoot, nil
+}
+
 // Session returns a Session object that can be used to upload, modify, and
 // delete sectors on a host.
 func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Session, err error) {
