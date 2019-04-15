@@ -806,6 +806,13 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 		foundGoodForRenew := false
 		foundOnline := false
 		for _, piece := range pieceSet {
+			// Add dummy hostkeys to the table in case of siafile corruption and mark
+			// them as unused. The next time the table is pruned, the keys will be
+			// removed which is fine. This doesn't fix heavy corruption and the file but
+			// still be lost but it's better than crashing.
+			for piece.HostTableOffset >= uint32(len(sf.pubKeyTable)) {
+				sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+			}
 			offline, exists1 := offlineMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
 			goodForRenew, exists2 := goodForRenewMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
 			if exists1 != exists2 {
