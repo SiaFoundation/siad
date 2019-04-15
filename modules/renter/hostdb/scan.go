@@ -432,6 +432,7 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			if err != nil {
 				return err
 			}
+			defer s.WriteRequest(modules.RPCLoopExit, nil) // make sure we close cleanly
 			if err := s.WriteRequest(modules.RPCLoopSettings, nil); err != nil {
 				return err
 			}
