@@ -120,7 +120,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 
 		// Start the chunk upload.
 		id := r.mu.Lock()
-		uuc := r.buildUnfinishedChunk(entry, chunkIndex, hosts, pks)
+		uuc := r.buildUnfinishedChunk(entry, chunkIndex, hosts, pks, true)
 		r.mu.Unlock(id)
 
 		// Create a new shard set it to be the source reader of the chunk.
@@ -130,10 +130,8 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
 			// Add the chunk to the upload heap.
-			select {
-			case <-r.tg.StopChan():
-				return errors.New("interrupted by shutdown")
-			case r.uploadHeap.priorityUpload <- uuc:
+			if !r.uploadHeap.managedPush(uuc) {
+				return fmt.Errorf("failed to push chunk with idx %v of stream to uploadheap", chunkIndex)
 			}
 			// Notify the upload loop.
 			select {

@@ -760,7 +760,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
 			stuckChunkSuccess: make(chan modules.SiaPath, 1),
-			priorityUpload:    make(chan *unfinishedUploadChunk, 1),
 		},
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]struct{}),

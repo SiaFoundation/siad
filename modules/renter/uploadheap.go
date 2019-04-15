@@ -37,6 +37,14 @@ type uploadChunkHeap []*unfinishedUploadChunk
 // Implementation of heap.Interface for uploadChunkHeap.
 func (uch uploadChunkHeap) Len() int { return len(uch) }
 func (uch uploadChunkHeap) Less(i, j int) bool {
+	// If chunk i is high priority, return true to prioritize it.
+	if uch[i].priority {
+		return true
+	}
+	// If chunk j is high priority, return false to prioritize it.
+	if uch[j].priority {
+		return false
+	}
 	// If the chunks have the same stuck status, check which chunk has the lower
 	// completion percentage.
 	if uch[i].stuck == uch[j].stuck {
@@ -79,10 +87,6 @@ type uploadHeap struct {
 	repairNeeded      chan struct{}
 	stuckChunkFound   chan struct{}
 	stuckChunkSuccess chan modules.SiaPath
-
-	// priorityUpload is a channel for uploads which have to be started as soon
-	// as possible. They skip the hierarchy in the heap.
-	priorityUpload chan *unfinishedUploadChunk
 
 	mu sync.Mutex
 }
@@ -128,11 +132,6 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 
 // managedPop will pull a chunk off of the upload heap and return it.
 func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
-	select {
-	case uc = <-uh.priorityUpload:
-		return uc
-	default:
-	}
 	uh.mu.Lock()
 	if len(uh.heap) > 0 {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
@@ -144,7 +143,7 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 }
 
 // buildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey) *unfinishedUploadChunk {
+func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool) *unfinishedUploadChunk {
 	uuc := &unfinishedUploadChunk{
 		fileEntry: entry.CopyEntry(),
 
@@ -153,9 +152,10 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 			index:   chunkIndex,
 		},
 
-		index:  chunkIndex,
-		length: entry.ChunkSize(),
-		offset: int64(chunkIndex * entry.ChunkSize()),
+		index:    chunkIndex,
+		length:   entry.ChunkSize(),
+		offset:   int64(chunkIndex * entry.ChunkSize()),
+		priority: priority,
 
 		// memoryNeeded has to also include the logical data, and also
 		// include the overhead for encryption.
@@ -294,7 +294,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		}
 
 		// Create unfinishedUploadChunk
-		newUnfinishedChunks[i] = r.buildUnfinishedChunk(entry, uint64(index), hosts, pks)
+		newUnfinishedChunks[i] = r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false)
 	}
 
 	// Iterate through the set of newUnfinishedChunks and remove any that are
