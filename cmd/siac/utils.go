@@ -242,7 +242,7 @@ func utilschecksigcmd(base64Sig, hexHash, pkStr string) {
 }
 
 // utilsverifyseed is the handler for the command `siac utils verify-seed`.
-// verifies a seed matches the required formatting.  This can be used to help 
+// verifies a seed matches the required formatting.  This can be used to help
 // troubleshot seeds that are not being accepted by siad.
 func utilsverifyseed() {
 	seed, err := passwordPrompt("Please enter your seed: ")
