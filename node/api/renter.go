@@ -1048,7 +1048,7 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	if action == "delete" {
 		err := api.renter.DeleteDir(siaPath)
 		if err != nil {
-			WriteError(w, Error{"failed to create directory: " + err.Error()}, http.StatusInternalServerError)
+			WriteError(w, Error{"failed to delete directory: " + err.Error()}, http.StatusInternalServerError)
 			return
 		}
 		WriteSuccess(w)
