@@ -267,6 +267,11 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		// that gets triggered by host churn.
 		chunkHealth := chunk.fileEntry.ChunkHealth(int(chunk.index), offline, goodForRenew)
 		_, err := os.Stat(chunk.fileEntry.LocalPath())
+		// While a file could be on disk as long as !os.IsNotExist(err), for the
+		// purposes of repairing a file is only considered on disk if it can be
+		// accessed without error. If there is an error accessing the file then
+		// it is likely that we can not read the file in which case it can not
+		// be used for repair.
 		onDisk := err == nil
 		repairable := chunkHealth <= 1 || onDisk
 		needsRepair := chunkHealth >= siafile.RemoteRepairDownloadThreshold
