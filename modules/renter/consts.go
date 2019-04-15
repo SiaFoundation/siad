@@ -123,12 +123,13 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
-	// maxConsecutiveChunkRepairs is the maximum number of chunks we want to pop of
-	// the repair heap before rebuilding the heap.
-	maxConsecutiveChunkRepairs = build.Select(build.Var{
-		Dev:      20,
-		Standard: 100,
-		Testing:  5,
+	// minUploadHeapSize is the minimum number of chunks we want in the upload
+	// heap before trying to add more in order to maintain back pressure on the
+	// workers, repairs, and uploads
+	minUploadHeapSize = build.Select(build.Var{
+		Dev:      5,
+		Standard: 20,
+		Testing:  1,
 	}).(int)
 
 	// offlineCheckFrequency is how long the renter will wait to check the
@@ -137,14 +138,6 @@ var (
 		Dev:      3 * time.Second,
 		Standard: 10 * time.Second,
 		Testing:  250 * time.Millisecond,
-	}).(time.Duration)
-
-	// rebuildChunkHeapInterval defines how long the renter sleeps between
-	// checking on the filesystem health.
-	rebuildChunkHeapInterval = build.Select(build.Var{
-		Dev:      90 * time.Second,
-		Standard: 15 * time.Minute,
-		Testing:  3 * time.Second,
 	}).(time.Duration)
 
 	// repairStuckChunkInterval defines how long the renter sleeps between

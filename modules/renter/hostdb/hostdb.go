@@ -287,7 +287,9 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 // weight. If hostdb is in black or white list mode, then only active hosts from
 // the filteredTree will be returned
 func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry) {
+	hdb.mu.RLock()
 	allHosts := hdb.filteredTree.All()
+	hdb.mu.RUnlock()
 	for _, entry := range allHosts {
 		if len(entry.ScanHistory) == 0 {
 			continue
@@ -306,6 +308,8 @@ func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry) {
 // AllHosts returns all of the hosts known to the hostdb, including the inactive
 // ones. AllHosts is not filtered by blacklist or whitelist mode.
 func (hdb *HostDB) AllHosts() (allHosts []modules.HostDBEntry) {
+	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
 	return hdb.hostTree.All()
 }
 
