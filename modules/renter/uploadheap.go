@@ -286,35 +286,36 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 	// completed or are not downloadable.
 	incompleteChunks := newUnfinishedChunks[:0]
 	for _, chunk := range newUnfinishedChunks {
-		// Check if chunk is complete
-		incomplete := chunk.piecesCompleted < chunk.piecesNeeded
-		// Check if chunk is downloadable
+		// Check the chunk status. A chunk is repairable if it can be fully
+		// downloaded, or if the source file is available on disk. We also check
+		// if the chunk needs repair, which is only true if more than a certain
+		// amount of redundancy is missing. We only repair above a certain
+		// threshold of missing redundancy to minimize the amount of repair work
+		// that gets triggered by host churn.
 		chunkHealth := chunk.fileEntry.ChunkHealth(int(chunk.index), offline, goodForRenew)
 		_, err := os.Stat(chunk.fileEntry.LocalPath())
-		downloadable := chunkHealth <= 1 || err == nil
-		// Check if chunk seems stuck
-		stuck := !incomplete && chunkHealth != 0
+		// While a file could be on disk as long as !os.IsNotExist(err), for the
+		// purposes of repairing a file is only considered on disk if it can be
+		// accessed without error. If there is an error accessing the file then
+		// it is likely that we can not read the file in which case it can not
+		// be used for repair.
+		onDisk := err == nil
+		repairable := chunkHealth <= 1 || onDisk
+		needsRepair := chunkHealth >= siafile.RemoteRepairDownloadThreshold
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
-		// downloadable or if we are targeting stuck chunks
-		if incomplete && (downloadable || target == targetStuckChunks) {
+		// repairable or if we are targetting stuck chunks
+		if needsRepair && (repairable || target == targetStuckChunks) {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue
 		}
 
-		// If a chunk is not downloadable mark it as stuck
-		if !downloadable {
+		// If a chunk is not able to be repaired, mark it as stuck.
+		if !repairable {
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being downloadable")
-			err = chunk.fileEntry.SetStuck(chunk.index, true)
+			err = r.managedSetStuckAndClose(chunk, true)
 			if err != nil {
-				r.log.Println("WARN: unable to mark chunk as stuck:", err)
-			}
-			continue
-		} else if stuck {
-			r.log.Println("Marking chunk", chunk.id, "as stuck due to being complete but having a health of", chunkHealth)
-			err = chunk.fileEntry.SetStuck(chunk.index, true)
-			if err != nil {
-				r.log.Println("WARN: unable to mark chunk as stuck:", err)
+				r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
 			}
 			continue
 		}
@@ -322,7 +323,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		// Close entry of completed chunk
 		err = r.managedSetStuckAndClose(chunk, false)
 		if err != nil {
-			r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
+			r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
 		}
 	}
 	return incompleteChunks
@@ -417,12 +418,11 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file, hosts, target, offline, goodForRenew)
 		r.mu.Unlock(id)
 		if len(unfinishedUploadChunks) == 0 {
-			r.log.Debugln("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
 			continue
 		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			if !r.uploadHeap.managedPush(unfinishedUploadChunks[i]) {
-				// Chunk wasn't added to the heap. Close the file
+				// Chunk wasn't added to the heap. Close the file.
 				err := unfinishedUploadChunks[i].fileEntry.Close()
 				if err != nil {
 					r.log.Println("WARN: unable to close file:", err)
@@ -572,7 +572,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
-			return errors.New("repair loop ended early due to renter shutdown")
+			return errors.New("Repair loop interrupted because renter is shutting down")
 		default:
 		}
 
@@ -654,6 +654,10 @@ func (r *Renter) threadedUploadAndRepair() {
 	}
 	defer r.tg.Done()
 
+	if r.deps.Disrupt("InterruptRepairAndStuckLoops") {
+		return
+	}
+
 	// Perpetual loop to scan for more files and add chunks to the uploadheap
 	for {
 		// Return if the renter has shut down
@@ -718,6 +722,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// The necessary conditions for performing an upload and repair have
 		// been met - perform the upload and repair by having the repair loop
 		// work through the chunks in the uploadheap
+		r.log.Debugln("Executing an upload and repair cycle")
 		err = r.managedRepairLoop(hosts)
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit

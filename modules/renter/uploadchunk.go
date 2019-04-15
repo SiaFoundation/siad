@@ -249,6 +249,13 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 		r.log.Debugln("Fetching logical data of a chunk failed:", err)
+
+		// Mark chunk as stuck
+		r.log.Debugln("Marking chunk", chunk.id, "as stuck due to error fetching logical chunk data")
+		err = chunk.fileEntry.SetStuck(chunk.index, true)
+		if err != nil {
+			r.log.Debugln("Error marking chunk", chunk.id, "as stuck:", err)
+		}
 		return
 	}
 
@@ -274,6 +281,13 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			chunk.physicalChunkData[i] = nil
 		}
 		r.log.Debugln("Fetching physical data of a chunk failed:", err)
+
+		// Mark chunk as stuck
+		r.log.Debugln("Marking chunk", chunk.id, "as stuck due to error an error with the physical data")
+		err = chunk.fileEntry.SetStuck(chunk.index, true)
+		if err != nil {
+			r.log.Debugln("Error marking chunk", chunk.id, "as stuck:", err)
+		}
 		return
 	}
 
@@ -281,6 +295,12 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// do elements in our piece usage.
 	if len(chunk.physicalChunkData) < len(chunk.pieceUsage) {
 		r.log.Critical("not enough physical pieces to match the upload settings of the file")
+		// Mark chunk as stuck
+		r.log.Debugln("Marking chunk", chunk.id, "as stuck due to insufficient physical pieces")
+		err = chunk.fileEntry.SetStuck(chunk.index, true)
+		if err != nil {
+			r.log.Debugln("Error marking chunk", chunk.id, "as stuck:", err)
+		}
 		return
 	}
 	// Loop through the pieces and encrypt any that are needed, while dropping
@@ -312,8 +332,8 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
 	// Only download this file if more than 25% of the redundancy is missing.
 	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
-	minMissingPiecesToDownload := int(numParityPieces * siafile.RemoteRepairDownloadThreshold)
-	download := chunk.piecesCompleted+minMissingPiecesToDownload < chunk.piecesNeeded
+	chunkHealth := 1 - (float64(chunk.piecesCompleted-chunk.minimumPieces) / numParityPieces)
+	download := chunkHealth >= siafile.RemoteRepairDownloadThreshold
 
 	// Download the chunk if it's not on disk.
 	if chunk.fileEntry.LocalPath() == "" && download {
