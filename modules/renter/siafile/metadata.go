@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -347,4 +349,9 @@ func (sf *SiaFile) UpdateRecentRepairTime() error {
 // staticChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) staticChunkSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize * uint64(sf.staticMetadata.staticErasureCode.MinPieces())
+}
+
+// uniqueID creates a random unique SiafileUID.
+func uniqueID() SiafileUID {
+	return SiafileUID(hex.EncodeToString(fastrand.Bytes(20)))
 }

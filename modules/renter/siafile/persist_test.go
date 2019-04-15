@@ -730,3 +730,33 @@ func TestSaveChunk(t *testing.T) {
 		t.Fatal("marshaled chunk doesn't equal chunk on disk")
 	}
 }
+
+// TestUniqueIDMissing makes sure that loading a siafile sets the unique id in
+// the metadata if it wasn't set before.
+func TestUniqueIDMissing(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a new file.
+	sf, wal, _ := newBlankTestFileAndWAL()
+	// It should have a UID.
+	if sf.staticMetadata.StaticUniqueID == "" {
+		t.Fatal("unique ID wasn't set")
+	}
+	// Set the UID to a blank string and save the file.
+	sf.staticMetadata.StaticUniqueID = ""
+	if err := sf.saveFile(); err != nil {
+		t.Fatal(err)
+	}
+	// Load the file again.
+	sf, err := LoadSiaFile(sf.siaFilePath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// It should have a UID now.
+	if sf.staticMetadata.StaticUniqueID == "" {
+		t.Fatal("unique ID wasn't set after loading file")
+	}
+}
