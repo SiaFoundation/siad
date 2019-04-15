@@ -4,14 +4,20 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
+	"syscall"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -74,6 +80,40 @@ func (srv *Server) HostPublicKey() (types.SiaPublicKey, error) {
 	return srv.node.Host.PublicKey(), nil
 }
 
+// ServeErr is a blocking call that will return the result of srv.serve after
+// the server stopped.
+func (srv *Server) ServeErr() <-chan error {
+	c := make(chan error)
+	go func() {
+		<-srv.done
+		close(c)
+	}()
+	return c
+}
+
+// Unlock unlocks the server's wallet using the provided password.
+func (srv *Server) Unlock(password string) error {
+	if srv.node.Wallet == nil {
+		return errors.New("server doesn't have a wallet")
+	}
+	var validKeys []crypto.CipherKey
+	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
+	for _, dict := range dicts {
+		seed, err := modules.StringToSeed(password, dict)
+		if err != nil {
+			continue
+		}
+		validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seed)))
+	}
+	validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(password)))
+	for _, key := range validKeys {
+		if err := srv.node.Wallet.Unlock(key); err == nil {
+			return nil
+		}
+	}
+	return modules.ErrBadEncryptionKey
+}
+
 // New creates a new API server from the provided modules. The API will
 // require authentication using HTTP basic auth if the supplied password is not
 // the empty string. Usernames are ignored for authentication. This type of
@@ -89,6 +129,9 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 	// Create the Sia node for the server.
 	node, err := node.New(nodeParams)
 	if err != nil {
+		if isAddrInUseErr(err) {
+			return nil, fmt.Errorf("%v; are you running another instance of siad?", err.Error())
+		}
 		return nil, errors.AddContext(err, "server is unable to create the Sia node")
 	}
 
@@ -98,6 +141,23 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 		api: api,
 		apiServer: &http.Server{
 			Handler: api,
+
+			// set reasonable timeout windows for requests, to prevent the Sia API
+			// server from leaking file descriptors due to slow, disappearing, or
+			// unreliable API clients.
+
+			// ReadTimeout defines the maximum amount of time allowed to fully read
+			// the request body. This timeout is applied to every handler in the
+			// server.
+			ReadTimeout: time.Minute * 5,
+
+			// ReadHeaderTimeout defines the amount of time allowed to fully read the
+			// request headers.
+			ReadHeaderTimeout: time.Minute * 2,
+
+			// IdleTimeout defines the maximum duration a HTTP Keep-Alive connection
+			// the API is kept open with no activity before closing.
+			IdleTimeout: time.Minute * 5,
 		},
 		done:              make(chan struct{}),
 		listener:          listener,
@@ -105,6 +165,9 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 		requiredUserAgent: requiredUserAgent,
 		Dir:               nodeParams.Dir,
 	}
+
+	// Set the shutdown method to allow the api to shutdown the server.
+	api.Shutdown = srv.Close
 
 	// Spin up a goroutine that serves the API and closes srv.done when
 	// finished.
@@ -114,4 +177,14 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 	}()
 
 	return srv, nil
+}
+
+// isAddrInUseErr checks if the error corresponds to syscall.EADDRINUSE
+func isAddrInUseErr(err error) bool {
+	if opErr, ok := err.(*net.OpError); ok {
+		if syscallErr, ok := opErr.Err.(*os.SyscallError); ok {
+			return syscallErr.Err == syscall.EADDRINUSE
+		}
+	}
+	return false
 }
