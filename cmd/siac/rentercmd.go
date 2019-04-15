@@ -13,6 +13,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
 
@@ -88,8 +91,8 @@ var (
 	renterFilesDeleteCmd = &cobra.Command{
 		Use:     "delete [path]",
 		Aliases: []string{"rm"},
-		Short:   "Delete a file",
-		Long:    "Delete a file. Does not delete the file on disk.",
+		Short:   "Delete a file or folder",
+		Long:    "Delete a file or folder. Does not delete the file/folder on disk.",
 		Run:     wrap(renterfilesdeletecmd),
 	}
 
@@ -753,11 +756,24 @@ Contract %v
 // renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
 // Removes the specified path from the Sia network.
 func renterfilesdeletecmd(path string) {
-	err := httpClient.RenterDeletePost(path)
-	if err != nil {
-		die("Could not delete file:", err)
+	// Try to delete file.
+	errFile := httpClient.RenterDeletePost(path)
+	if errFile == nil {
+		fmt.Printf("Deleted file '%v'\n", path)
+		return
+	} else if !strings.Contains(errFile.Error(), siafile.ErrUnknownPath.Error()) {
+		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 	}
-	fmt.Println("Deleted", path)
+	// Try to delete folder.
+	errDir := httpClient.RenterDirDeletePost(path)
+	if errDir == nil {
+		fmt.Printf("Deleted directory '%v'\n", path)
+		return
+	} else if !strings.Contains(errDir.Error(), siadir.ErrUnknownPath.Error()) {
+		die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
+	}
+	// Unknown file/folder.
+	die(fmt.Sprintf("Unknown path '%v'", path))
 }
 
 // renterfilesdownloadcmd is the handler for the comand `siac renter download [path] [destination]`.

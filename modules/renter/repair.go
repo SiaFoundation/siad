@@ -460,13 +460,13 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		if len(directories) == 0 {
 			build.Critical("No directories returned from DirList")
 		}
-		// Check if we are in an empty Directory. This could happen if the only
-		// file in a directory was stuck and was very recently deleted so the
-		// health of the directory has not yet been updated.
+		// Check if we are in an empty Directory. This will be the case before
+		// any files have been uploaded so the root directory is empty. Also it
+		// could happen if the only file in a directory was stuck and was very
+		// recently deleted so the health of the directory has not yet been
+		// updated.
 		emptyDir := len(directories) == 1 && len(files) == 0
 		if emptyDir {
-			// Log an error to keep track of occurrences
-			r.log.Debugln("WARN: empty directory found with stuck chunks:", siaPath)
 			return siaPath, errNoStuckFiles
 		}
 		// Check if there are stuck chunks in this directory
@@ -745,16 +745,13 @@ func (r *Renter) threadedStuckFileLoop() {
 		// useful for uploading.
 		hosts := r.managedRefreshHostsAndWorkers()
 
-		// Add stuck chunk to upload heap
+		// Add stuck chunk to upload heap and signal repair needed
 		r.managedBuildChunkHeap(dirSiaPath, hosts, targetStuckChunks)
-
-		// Try and repair stuck chunk. Since the heap prioritizes stuck chunks
-		// the first chunk popped off will be the stuck chunk.
 		r.log.Debugf("Attempting to repair stuck chunks from directory `%s`", dirSiaPath)
-		r.managedRepairLoop(hosts)
-
-		// Call bubble once all chunks have been popped off heap
-		r.managedBubbleMetadata(dirSiaPath)
+		select {
+		case r.uploadHeap.repairNeeded <- struct{}{}:
+		default:
+		}
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
@@ -772,6 +769,13 @@ func (r *Renter) threadedStuckFileLoop() {
 				r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath, "to heap:", err)
 			}
 		}
+
+		// Call bubble before continuing on next iteration to ensure filesystem
+		// is up to date. We do not use the upload heap's channel since bubble
+		// is called when a chunk is done with its repair and since this loop
+		// only typically adds one chunk at a time call bubble before the next
+		// iteration is sufficient.
+		r.managedBubbleMetadata(dirSiaPath)
 	}
 }
 
