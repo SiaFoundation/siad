@@ -2,7 +2,6 @@ package siafile
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -17,7 +16,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -154,7 +152,7 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
-			StaticUniqueID:          SiafileUID(hex.EncodeToString(fastrand.Bytes(20))),
+			StaticUniqueID:          uniqueID(),
 		},
 		deps:        modules.ProdDependencies,
 		siaFilePath: siaFilePath,

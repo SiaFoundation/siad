@@ -75,6 +75,10 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 	if err := decoder.Decode(&sf.staticMetadata); err != nil {
 		return nil, errors.AddContext(err, "failed to decode metadata")
 	}
+	// COMPATv137 legacy files might not have a unique id.
+	if sf.staticMetadata.StaticUniqueID == "" {
+		sf.staticMetadata.StaticUniqueID = uniqueID()
+	}
 	// Create the erasure coder.
 	sf.staticMetadata.staticErasureCode, err = unmarshalErasureCoder(sf.staticMetadata.StaticErasureCodeType, sf.staticMetadata.StaticErasureCodeParams)
 	if err != nil {
