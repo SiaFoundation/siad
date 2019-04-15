@@ -381,7 +381,7 @@ again:
 	fmt.Println("Allowance canceled.")
 }
 
-// rentersetallowancecmd is the handler for `siac renter allowance`.
+// rentersetallowancecmd is the handler for `siac renter setallowance`.
 // set the allowance or modify individual allowance fields.
 func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	req := httpClient.RenterPostPartialAllowance()
