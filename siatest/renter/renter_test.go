@@ -261,6 +261,7 @@ func TestRenterThree(t *testing.T) {
 	subTests := []test{
 		{"TestAllowanceDefaultSet", testAllowanceDefaultSet},
 		{"TestFileAvailableAndRecoverable", testFileAvailableAndRecoverable},
+		{"TestSetFileStuck", testSetFileStuck},
 		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
 
@@ -4280,5 +4281,64 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSetFileStuck tests that manually setting the 'stuck' field of a file
+// works as expected.
+func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	r := tg.Renters()[0]
+
+	// Check if there are already uploaded file we can use.
+	rfg, err := r.RenterFilesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rfg.Files) == 0 {
+		// Set fileSize and redundancy for upload
+		fileSize := int(modules.SectorSize)
+		dataPieces := uint64(4)
+		parityPieces := uint64(len(tg.Hosts())) - dataPieces
+
+		// Upload file
+		_, _, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Get a file.
+	rfg, err = r.RenterFilesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := rfg.Files[0]
+	sp, err := modules.NewSiaPath(f.SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Set stuck to the opposite value it had before.
+	if err := r.RenterSetFileStuckPost(sp, !f.Stuck); err != nil {
+		t.Fatal(err)
+	}
+	// Check if it was set correctly.
+	fi, err := r.RenterFileGet(f.SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.File.Stuck == f.Stuck {
+		t.Fatalf("Stuck field should be %v but was %v", !f.Stuck, fi.File.Stuck)
+	}
+	// Set stuck to the original value.
+	if err := r.RenterSetFileStuckPost(sp, f.Stuck); err != nil {
+		t.Fatal(err)
+	}
+	// Check if it was set correctly.
+	fi, err = r.RenterFileGet(f.SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.File.Stuck != f.Stuck {
+		t.Fatalf("Stuck field should be %v but was %v", f.Stuck, fi.File.Stuck)
 	}
 }

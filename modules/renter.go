@@ -552,6 +552,9 @@ type Renter interface {
 	// contracts is in progress and if it is, the current progress of the scan.
 	RecoveryScanStatus() (bool, types.BlockHeight)
 
+	// SetFileStuck sets the 'stuck' status of a file.
+	SetFileStuck(siaPath SiaPath, stuck bool) error
+
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(siaPath SiaPath) error
 

@@ -372,6 +372,15 @@ func (c *Client) RenterSetRepairPathPost(siaPath, newPath string) (err error) {
 	return
 }
 
+// RenterSetFileStuckPost sets the 'stuck' field of the siafile at siaPath to
+// stuck.
+func (c *Client) RenterSetFileStuckPost(siaPath modules.SiaPath, stuck bool) (err error) {
+	values := url.Values{}
+	values.Set("stuck", fmt.Sprint(stuck))
+	err = c.post("/renter/file/"+siaPath.String(), values.Encode(), nil)
+	return
+}
+
 // RenterUploadPost uses the /renter/upload endpoint to upload a file
 func (c *Client) RenterUploadPost(path, siaPath string, dataPieces, parityPieces uint64) (err error) {
 	return c.RenterUploadForcePost(path, siaPath, dataPieces, parityPieces, false)

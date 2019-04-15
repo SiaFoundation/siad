@@ -169,6 +169,22 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	return nil
 }
 
+// SetFileStuck sets the Stuck field of the whole siafile to stuck.
+func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	// Open the file.
+	entry, err := r.staticFileSet.Open(siaPath)
+	if err != nil {
+		return err
+	}
+	defer entry.Close()
+	// Update the file.
+	return entry.SetAllStuck(stuck)
+}
+
 // fileInfo returns information on a siafile. As a performance optimization, the
 // fileInfo takes the maps returned by renter.managedContractUtilityMaps as
 // many files at once.

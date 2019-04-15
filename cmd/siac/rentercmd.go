@@ -119,6 +119,13 @@ var (
 		Run:     wrap(renterfilesrenamecmd),
 	}
 
+	renterFilesUnstuckCmd = &cobra.Command{
+		Use:   "unstuckall",
+		Short: "Set all files to unstuck",
+		Long:  "Set the 'stuck' status of every chunk in every file uploaded to the renter to 'false'.",
+		Run:   wrap(renterfilesunstuckcmd),
+	}
+
 	renterFilesUploadCmd = &cobra.Command{
 		Use:   "upload [source] [path]",
 		Short: "Upload a file or folder",
@@ -1003,6 +1010,26 @@ func renterfilesrenamecmd(path, newpath string) {
 		die("Could not rename file:", err)
 	}
 	fmt.Printf("Renamed %s to %s\n", path, newpath)
+}
+
+// renterfilesunstuckcmd is the handler for the command `siac renter
+// unstuckall`. Sets all files to unstuck.
+func renterfilesunstuckcmd() {
+	rfg, err := httpClient.RenterFilesGet()
+	if err != nil {
+		die("Couldn't get list of all files:", err)
+	}
+	for _, f := range rfg.Files {
+		siaPath, err := modules.NewSiaPath(f.SiaPath)
+		if err != nil {
+			die(fmt.Printf("Couldn't parse siaPath %v: %v", siaPath, err))
+		}
+		err = httpClient.RenterSetFileStuckPost(siaPath, false)
+		if err != nil {
+			die(fmt.Sprintf("Couldn't set %v to unstuck: %v", f.SiaPath, err))
+		}
+	}
+	fmt.Printf("Set all files to 'unstuck'")
 }
 
 // renterfilesuploadcmd is the handler for the command `siac renter upload
