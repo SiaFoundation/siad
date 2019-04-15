@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -200,17 +201,23 @@ func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 }
 
 // newSiaFileSetEntry initializes and returns a siaFileSetEntry
-func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) *siaFileSetEntry {
+func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) (*siaFileSetEntry, error) {
 	threads := make(map[uint64]threadInfo)
 	entry := &siaFileSetEntry{
 		SiaFile:    sf,
 		siaFileSet: sfs,
 		threadMap:  threads,
 	}
-	// Add entry to siaFileMap and siapathToUID map.
+	// Add entry to siaFileMap and siapathToUID map. Sanity check that the UID is
+	// in fact unique.
+	if _, exists := sfs.siaFileMap[entry.UID()]; exists {
+		err := errors.New("siafile was already loaded")
+		build.Critical(err)
+		return nil, err
+	}
 	sfs.siaFileMap[entry.UID()] = entry
 	sfs.siapathToUID[sfs.siaPath(entry)] = entry.UID()
-	return entry
+	return entry, nil
 }
 
 // open will return the siaFileSetEntry in memory or load it from disk
@@ -233,7 +240,10 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 			build.Critical(err)
 			return nil, err
 		}
-		entry = sfs.newSiaFileSetEntry(sf)
+		entry, err = sfs.newSiaFileSetEntry(sf)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
@@ -298,7 +308,10 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 	if err != nil {
 		return nil, err
 	}
-	entry := sfs.newSiaFileSetEntry(sf)
+	entry, err := sfs.newSiaFileSetEntry(sf)
+	if err != nil {
+		return nil, err
+	}
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
 	return &SiaFileSetEntry{
