@@ -119,6 +119,8 @@ func gatewaylistcmd() {
 }
 
 // gatewayratelimitcmd is the handler for the command `siac gateway ratelimit`.
+// sets the maximum upload & download bandwidth the gateway module is permitted
+// to use.
 func gatewayratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 	downloadSpeedInt, err := strconv.ParseInt(downloadSpeedStr, 10, 64)
 	if err != nil {
