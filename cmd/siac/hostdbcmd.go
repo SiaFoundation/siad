@@ -61,6 +61,8 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 	w.Flush()
 }
 
+// hostdbcmd is the handler for the command `siac hostdb`.
+// Lists hosts known to the hostdb
 func hostdbcmd() {
 	if !hostdbVerbose {
 		info, err := httpClient.HostDbActiveGet()
@@ -287,6 +289,8 @@ func hostdbcmd() {
 	}
 }
 
+// hostdbfiltermodecmd is the handler for the command `siac hostdb filtermode`.
+// sets the hostdb filtermode (whitelist, blacklist, disable)
 func hostdbfiltermodecmd(filtermodeStr, hostsStr string) {
 	var fm modules.FilterMode
 	err := fm.FromString(filtermodeStr)
@@ -309,6 +313,8 @@ func hostdbfiltermodecmd(filtermodeStr, hostsStr string) {
 	fmt.Println("Set filtermode to ", filtermodeStr, " with hosts ", hostsStr)
 }
 
+// hostdbviewcmd is the handler for the command `siac hostdb view`.
+// shows detailed information about a host in the hostdb.
 func hostdbviewcmd(pubkey string) {
 	var publicKey types.SiaPublicKey
 	publicKey.LoadString(pubkey)

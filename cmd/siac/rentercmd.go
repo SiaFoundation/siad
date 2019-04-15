@@ -279,7 +279,8 @@ func renterdownloadscmd() {
 	}
 }
 
-// renterallowancecmd displays the current allowance.
+// renterallowancecmd is the handler for the command `siac renter allowance`.
+// displays the current allowance.
 func renterallowancecmd() {
 	rg, err := httpClient.RenterGet()
 	if err != nil {
@@ -355,7 +356,8 @@ Spending:
 	}
 }
 
-// renterallowancecancelcmd cancels the current allowance.
+// renterallowancecancelcmd is the handler for `siac renter allowance cancel`.
+// cancels the current allowance.
 func renterallowancecancelcmd() {
 	fmt.Println(`Canceling your allowance will disable uploading new files,
 repairing existing files, and renewing existing files. All files will cease
@@ -379,8 +381,8 @@ again:
 	fmt.Println("Allowance canceled.")
 }
 
-// rentersetallowancecmd allows the user to set the allowance or modify
-// individual fields of it.
+// rentersetallowancecmd is the handler for `siac renter allowance`.
+// set the allowance or modify individual allowance fields.
 func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	req := httpClient.RenterPostPartialAllowance()
 	changedFields := 0
