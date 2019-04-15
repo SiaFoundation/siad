@@ -3,6 +3,7 @@ package modules
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 )
@@ -126,6 +127,18 @@ func (sp SiaPath) SiaFileSysPath(dir string) string {
 // String returns the SiaPath's path
 func (sp SiaPath) String() string {
 	return sp.Path
+}
+
+// FromSysPath creates a SiaPath from a siaFilePath and corresponding root files
+// dir.
+func (sp *SiaPath) FromSysPath(siaFilePath, dir string) (err error) {
+	if !strings.HasPrefix(siaFilePath, dir) {
+		return fmt.Errorf("SiaFilePath %v is not within dir %v", siaFilePath, dir)
+	}
+	relPath := strings.TrimPrefix(siaFilePath, dir)
+	relPath = strings.TrimSuffix(relPath, SiaFileExtension)
+	*sp, err = newSiaPath(relPath)
+	return
 }
 
 // validate checks that a Siapath is a legal filename. ../ is disallowed to

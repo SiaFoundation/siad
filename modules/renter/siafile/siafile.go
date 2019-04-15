@@ -2,7 +2,6 @@ package siafile
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -17,7 +16,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -52,11 +50,10 @@ type (
 		staticChunks []chunk
 
 		// utility fields. These are not persisted.
-		deleted        bool
-		deps           modules.Dependencies
-		mu             sync.RWMutex
-		staticUniqueID string
-		wal            *writeaheadlog.WAL // the wal that is used for SiaFiles
+		deleted bool
+		deps    modules.Dependencies
+		mu      sync.RWMutex
+		wal     *writeaheadlog.WAL // the wal that is used for SiaFiles
 
 		// siaFilePath is the path to the .sia file on disk.
 		siaFilePath string
@@ -109,6 +106,13 @@ func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 	return e.Err()
 }
 
+// SiaFilePath returns the siaFilePath field of the SiaFile.
+func (sf *SiaFile) SiaFilePath() string {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.siaFilePath
+}
+
 // UnmarshalSia implements the encoding.SiaUnmarshaler interface.
 func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
@@ -148,12 +152,11 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
-			SiaPath:                 siaPath,
+			StaticUniqueID:          uniqueID(),
 		},
-		deps:           modules.ProdDependencies,
-		siaFilePath:    siaFilePath,
-		staticUniqueID: hex.EncodeToString(fastrand.Bytes(20)),
-		wal:            wal,
+		deps:        modules.ProdDependencies,
+		siaFilePath: siaFilePath,
+		wal:         wal,
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()
@@ -656,8 +659,8 @@ func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
 }
 
 // UID returns a unique identifier for this file.
-func (sf *SiaFile) UID() string {
-	return sf.staticUniqueID
+func (sf *SiaFile) UID() SiafileUID {
+	return sf.staticMetadata.StaticUniqueID
 }
 
 // UploadedBytes indicates how many bytes of the file have been uploaded via
@@ -783,7 +786,6 @@ func (sf *SiaFile) pruneHosts() {
 				if exists {
 					pieceSet[i].HostTableOffset = newOffset
 					newPieceSet = append(newPieceSet, pieceSet[i])
-
 				}
 			}
 			sf.staticChunks[chunkIndex].Pieces[pieceIndex] = newPieceSet
@@ -804,6 +806,13 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 		foundGoodForRenew := false
 		foundOnline := false
 		for _, piece := range pieceSet {
+			// Add dummy hostkeys to the table in case of siafile corruption and mark
+			// them as unused. The next time the table is pruned, the keys will be
+			// removed which is fine. This doesn't fix heavy corruption and the file but
+			// still be lost but it's better than crashing.
+			for piece.HostTableOffset >= uint32(len(sf.pubKeyTable)) {
+				sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+			}
 			offline, exists1 := offlineMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
 			goodForRenew, exists2 := goodForRenewMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
 			if exists1 != exists2 {

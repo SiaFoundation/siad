@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,7 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -62,10 +60,9 @@ func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) er
 func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
 	// Create the SiaFile
 	sf := &SiaFile{
-		deps:           deps,
-		staticUniqueID: hex.EncodeToString(fastrand.Bytes(8)),
-		siaFilePath:    path,
-		wal:            wal,
+		deps:        deps,
+		siaFilePath: path,
+		wal:         wal,
 	}
 	// Open the file.
 	f, err := sf.deps.Open(path)
@@ -77,6 +74,10 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 	decoder := json.NewDecoder(f)
 	if err := decoder.Decode(&sf.staticMetadata); err != nil {
 		return nil, errors.AddContext(err, "failed to decode metadata")
+	}
+	// COMPATv137 legacy files might not have a unique id.
+	if sf.staticMetadata.StaticUniqueID == "" {
+		sf.staticMetadata.StaticUniqueID = uniqueID()
 	}
 	// Create the erasure coder.
 	sf.staticMetadata.staticErasureCode, err = unmarshalErasureCoder(sf.staticMetadata.StaticErasureCodeType, sf.staticMetadata.StaticErasureCodeParams)

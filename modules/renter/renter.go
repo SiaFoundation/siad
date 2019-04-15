@@ -210,7 +210,8 @@ type Renter struct {
 	downloadHistoryMu sync.Mutex
 
 	// Upload management.
-	uploadHeap uploadHeap
+	uploadHeap    uploadHeap
+	directoryHeap directoryHeap
 
 	// List of workers that can be used for uploading and/or downloading.
 	memoryManager *memoryManager
@@ -751,12 +752,17 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		downloadHeap: new(downloadChunkHeap),
 
 		uploadHeap: uploadHeap{
-			heapChunks:        make(map[uploadChunkID]struct{}),
 			repairingChunks:   make(map[uploadChunkID]struct{}),
+			stuckHeapChunks:   make(map[uploadChunkID]struct{}),
+			unstuckHeapChunks: make(map[uploadChunkID]struct{}),
+
 			newUploads:        make(chan struct{}, 1),
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
 			stuckChunkSuccess: make(chan modules.SiaPath, 1),
+		},
+		directoryHeap: directoryHeap{
+			heapDirectories: make(map[modules.SiaPath]struct{}),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),

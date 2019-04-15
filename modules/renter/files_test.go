@@ -587,7 +587,7 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 	// Delete the file.
-	siapath := entry.SiaPath()
+	siapath := rt.renter.staticFileSet.SiaPath(entry)
 	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -618,11 +618,11 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir)) // set name to "1"
+	err = rt.renter.RenameFile(rt.renter.staticFileSet.SiaPath(entry2), siaPath1) // set name to "1"
 	if err != nil {
 		t.Fatal(err)
 	}
-	siapath2 := entry2.SiaPath()
+	siapath2 := rt.renter.staticFileSet.SiaPath(entry2)
 	err = entry2.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -687,7 +687,7 @@ func TestRenterFileList(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatal("FileList is not returning the only file in the renter")
 	}
-	if files[0].SiaPath != entry1.SiaPath().String() {
+	if files[0].SiaPath != rt.renter.staticFileSet.SiaPath(entry1).String() {
 		t.Error("FileList is not returning the correct filename for the only file")
 	}
 
@@ -704,13 +704,13 @@ func TestRenterFileList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !((files[0].SiaPath == entry1.SiaPath().String() || files[0].SiaPath == entry2.SiaPath().String()) &&
-		(files[1].SiaPath == entry1.SiaPath().String() || files[1].SiaPath == entry2.SiaPath().String()) &&
+	if !((files[0].SiaPath == rt.renter.staticFileSet.SiaPath(entry1).String() || files[0].SiaPath == rt.renter.staticFileSet.SiaPath(entry2).String()) &&
+		(files[1].SiaPath == rt.renter.staticFileSet.SiaPath(entry1).String() || files[1].SiaPath == rt.renter.staticFileSet.SiaPath(entry2).String()) &&
 		(files[0].SiaPath != files[1].SiaPath)) {
 		t.Log("files[0].SiaPath", files[0].SiaPath)
 		t.Log("files[1].SiaPath", files[1].SiaPath)
-		t.Log("file1.SiaPath()", entry1.SiaPath().String())
-		t.Log("file2.SiaPath()", entry2.SiaPath().String())
+		t.Log("file1.SiaPath()", rt.renter.staticFileSet.SiaPath(entry1).String())
+		t.Log("file2.SiaPath()", rt.renter.staticFileSet.SiaPath(entry2).String())
 		t.Error("FileList is returning wrong names for the files")
 	}
 }
@@ -740,9 +740,12 @@ func TestRenterRenameFile(t *testing.T) {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
+	// Get the fileset.
+	sfs := rt.renter.staticFileSet
+
 	// Rename a file that does exist.
 	entry, _ := rt.renter.newRenterTestFile()
-	err = entry.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir))
+	err = rt.renter.RenameFile(sfs.SiaPath(entry), siaPath1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -775,7 +778,7 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir))
+	err = rt.renter.RenameFile(rt.renter.staticFileSet.SiaPath(entry2), siaPath1) // Rename to "1"
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -802,6 +805,29 @@ func TestRenterRenameFile(t *testing.T) {
 	err = rt.renter.RenameFile(siaPath1, siaPath1b)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Rename file that would create a directory
+	siaPathWithDir, err := modules.NewSiaPath("new/name/with/dir/test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.RenameFile(siaPath1b, siaPathWithDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm directory metadatas exist
+	dirSiaPath := siaPathWithDir
+	for !dirSiaPath.Equals(modules.RootSiaPath()) {
+		dirSiaPath, err = dirSiaPath.Dir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = rt.renter.staticDirSet.Open(dirSiaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

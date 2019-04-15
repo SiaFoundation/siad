@@ -2,6 +2,7 @@ package renter
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 
@@ -109,7 +110,9 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	}
 
 	// Call buildUnfinishedChunks as not stuck loop, all un stuck chunks should be returned
+	id := rt.renter.mu.Lock()
 	uucs := rt.renter.buildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
+	rt.renter.mu.Unlock(id)
 	if len(uucs) != int(f.NumChunks())-1 {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", int(f.NumChunks())-1, len(uucs))
 	}
@@ -120,7 +123,9 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	}
 
 	// Call buildUnfinishedChunks as stuck loop, all stuck chunks should be returned
+	id = rt.renter.mu.Lock()
 	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
+	rt.renter.mu.Unlock(id)
 	if len(uucs) != 1 {
 		t.Fatalf("Incorrect number of chunks returned, expected 1 got %v", len(uucs))
 	}
@@ -136,7 +141,9 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Call buildUnfinishedChunks as not stuck loop, since the file is now not
 	// downloadable it should return no chunks
+	id = rt.renter.mu.Lock()
 	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
+	rt.renter.mu.Unlock(id)
 	if len(uucs) != 0 {
 		t.Fatalf("Incorrect number of chunks returned, expected 0 got %v", len(uucs))
 	}
@@ -144,7 +151,9 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	// Call buildUnfinishedChunks as stuck loop, all chunks should be returned
 	// because they should have been marked as stuck by the previous call and
 	// stuck chunks should still be returned if the file is not downloadable
+	id = rt.renter.mu.Lock()
 	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
+	rt.renter.mu.Unlock(id)
 	if len(uucs) != int(f.NumChunks()) {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", f.NumChunks(), len(uucs))
 	}
@@ -214,14 +223,19 @@ func TestBuildChunkHeap(t *testing.T) {
 
 	// Call managedBuildChunkHeap again as the stuck loop, since the previous
 	// call saw all the chunks as not downloadable it will have marked them as
-	// stuck so we should now see one chunk in the heap
+	// stuck.
+	//
+	// For the stuck loop managedBuildChunkHeap will randomly grab one chunk
+	// from maxChunksInHeap files to add to the heap. There are two files
+	// created in the test so we would expect 2 or maxStuckChunksInHeap,
+	// whichever is less, chunks to be added to the heap
 	rt.renter.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetStuckChunks)
-	if rt.renter.uploadHeap.managedLen() != 1 {
-		t.Fatalf("Expected heap length of %v but got %v", 1, rt.renter.uploadHeap.managedLen())
+	expectedChunks := math.Min(2, float64(maxStuckChunksInHeap))
+	if rt.renter.uploadHeap.managedLen() != int(expectedChunks) {
+		t.Fatalf("Expected heap length of %v but got %v", expectedChunks, rt.renter.uploadHeap.managedLen())
 	}
 
-	// Pop all chunks off and confirm they are not stuck and not marked as
-	// stuckRepair
+	// Pop all chunks off and confirm they are stuck and marked as stuckRepair
 	chunk := rt.renter.uploadHeap.managedPop()
 	for chunk != nil {
 		if !chunk.stuck || !chunk.stuckRepair {

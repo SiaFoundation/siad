@@ -111,6 +111,13 @@ func (cs *ConsensusSet) createConsensusDB(tx *bolt.Tx) error {
 		return err
 	}
 
+	// Update the siacoin output diffs map for the genesis block on disk. This
+	// needs to happen between the database being opened/initilized and the
+	// consensus set hash being calculated
+	for _, scod := range cs.blockRoot.SiacoinOutputDiffs {
+		commitSiacoinOutputDiff(tx, scod, modules.DiffApply)
+	}
+
 	// Set the siafund pool to 0.
 	setSiafundPool(tx, types.NewCurrency64(0))
 

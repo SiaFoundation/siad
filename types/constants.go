@@ -79,6 +79,9 @@ var (
 	// redundant computation.
 	GenesisID BlockID
 
+	// GenesisSiacoinAllocation is the set of SiacoinOutputs created in the Genesis
+	// block
+	GenesisSiacoinAllocation []SiacoinOutput
 	// GenesisSiafundAllocation is the set of SiafundOutputs created in the Genesis
 	// block.
 	GenesisSiafundAllocation []SiafundOutput
@@ -207,6 +210,14 @@ func init() {
 		OakMaxRise = big.NewRat(102, 100)
 		OakMaxDrop = big.NewRat(100, 102)
 
+		// Populate the void address with 1 billion siacoins in the genesis block.
+		GenesisSiacoinAllocation = []SiacoinOutput{
+			{
+				Value:      NewCurrency64(1000000000).Mul(SiacoinPrecision),
+				UnlockHash: UnlockHash{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			},
+		}
+
 		GenesisSiafundAllocation = []SiafundOutput{
 			{
 				Value:      NewCurrency64(2000),
@@ -254,6 +265,14 @@ func init() {
 		OakMaxBlockShift = 3
 		OakMaxRise = big.NewRat(10001, 10e3)
 		OakMaxDrop = big.NewRat(10e3, 10001)
+
+		// Populate the void address with 1 billion siacoins in the genesis block.
+		GenesisSiacoinAllocation = []SiacoinOutput{
+			{
+				Value:      NewCurrency64(1000000000).Mul(SiacoinPrecision),
+				UnlockHash: UnlockHash{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			},
+		}
 
 		GenesisSiafundAllocation = []SiafundOutput{
 			{
@@ -378,6 +397,8 @@ func init() {
 		// can get lucky and fake a ton of work.
 		OakMaxRise = big.NewRat(1004, 1e3)
 		OakMaxDrop = big.NewRat(1e3, 1004)
+
+		GenesisSiacoinAllocation = []SiacoinOutput{}
 
 		GenesisSiafundAllocation = []SiafundOutput{
 			{

@@ -365,15 +365,17 @@ func TestRename(t *testing.T) {
 	t.Parallel()
 
 	// Create SiaFileSet with SiaFile
-	entry, _, _ := newTestSiaFileSetWithFile()
+	entry, sfs, _ := newTestSiaFileSetWithFile()
 
 	// Create new paths for the file.
-	oldSiaPathStr := entry.staticMetadata.SiaPath.String()
+	sfs.mu.Lock()
+	oldSiaPathStr := sfs.siaPath(entry.siaFileSetEntry).String()
+	sfs.mu.Unlock()
 	newSiaPath, err := modules.NewSiaPath(oldSiaPathStr + "1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	newSiaFilePath := entry.siaFilePath + "1"
+	newSiaFilePath := newSiaPath.SiaFileSysPath(sfs.siaFileDir)
 	oldSiaFilePath := entry.siaFilePath
 
 	// Rename file
@@ -396,9 +398,12 @@ func TestRename(t *testing.T) {
 	if entry.siaFilePath != newSiaFilePath {
 		t.Fatal("SiaFilePath wasn't updated correctly")
 	}
-	if entry.staticMetadata.SiaPath != newSiaPath {
-		t.Fatal("SiaPath wasn't updated correctly")
+	sfs.mu.Lock()
+	siaPath := sfs.siaPath(entry.siaFileSetEntry)
+	if !siaPath.Equals(newSiaPath) {
+		t.Fatal("SiaPath wasn't updated correctly", siaPath, newSiaPath)
 	}
+	sfs.mu.Unlock()
 }
 
 // TestApplyUpdates tests a variety of functions that are used to apply
@@ -723,5 +728,35 @@ func TestSaveChunk(t *testing.T) {
 	// The marshaled chunk should equal the chunk we read from disk.
 	if !bytes.Equal(readChunk, marshaledChunk) {
 		t.Fatal("marshaled chunk doesn't equal chunk on disk")
+	}
+}
+
+// TestUniqueIDMissing makes sure that loading a siafile sets the unique id in
+// the metadata if it wasn't set before.
+func TestUniqueIDMissing(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a new file.
+	sf, wal, _ := newBlankTestFileAndWAL()
+	// It should have a UID.
+	if sf.staticMetadata.StaticUniqueID == "" {
+		t.Fatal("unique ID wasn't set")
+	}
+	// Set the UID to a blank string and save the file.
+	sf.staticMetadata.StaticUniqueID = ""
+	if err := sf.saveFile(); err != nil {
+		t.Fatal(err)
+	}
+	// Load the file again.
+	sf, err := LoadSiaFile(sf.siaFilePath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// It should have a UID now.
+	if sf.staticMetadata.StaticUniqueID == "" {
+		t.Fatal("unique ID wasn't set after loading file")
 	}
 }
