@@ -401,8 +401,8 @@ func (sfs *SiaFileSet) FileList(offlineMap map[string]bool, goodForRenewMap map[
 		}
 		wg.Done()
 	}
-	// spin up 20 threads
-	for i := 0; i < 20; i++ {
+	// spin up some threads
+	for i := 0; i < fileListRoutines; i++ {
 		wg.Add(1)
 		go worker()
 	}
