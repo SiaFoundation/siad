@@ -31,6 +31,7 @@ func calculateWeightFromUInt64Price(price, collateral uint64) (weight types.Curr
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
+	entry.MaxDuration = 100e3
 	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
 	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
 	entry.StoragePrice = types.NewCurrency64(price).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
@@ -166,6 +167,7 @@ func TestHostWeightCollateralDifferences(t *testing.T) {
 	hdb := bareHostDB()
 	var entry modules.HostDBEntry
 	entry.RemainingStorage = 250e3
+	entry.MaxDuration = 100e3
 	entry.StoragePrice = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
 	entry.Collateral = types.NewCurrency64(1000).Mul(types.SiacoinPrecision)
 	entry2 := entry
@@ -188,6 +190,7 @@ func TestHostWeightStorageRemainingDifferences(t *testing.T) {
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
+	entry.MaxDuration = 100e3
 	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
 	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
 	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
@@ -215,6 +218,7 @@ func TestHostWeightVersionDifferences(t *testing.T) {
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
+	entry.MaxDuration = 100e3
 	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
 	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
 	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
@@ -243,6 +247,7 @@ func TestHostWeightLifetimeDifferences(t *testing.T) {
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
+	entry.MaxDuration = 100e3
 	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
 	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
 	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
@@ -271,6 +276,7 @@ func TestHostWeightUptimeDifferences(t *testing.T) {
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
+	entry.MaxDuration = 100e3
 	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
 	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
 	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
@@ -312,6 +318,7 @@ func TestHostWeightUptimeDifferences2(t *testing.T) {
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
+	entry.MaxDuration = 100e3
 	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
 	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
 	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
@@ -351,6 +358,7 @@ func TestHostWeightUptimeDifferences3(t *testing.T) {
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
+	entry.MaxDuration = 100e3
 	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
 	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
 	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
@@ -390,6 +398,7 @@ func TestHostWeightUptimeDifferences4(t *testing.T) {
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
+	entry.MaxDuration = 100e3
 	entry.MaxCollateral = types.NewCurrency64(1e3).Mul(types.SiacoinPrecision)
 	entry.ContractPrice = types.NewCurrency64(5).Mul(types.SiacoinPrecision)
 	entry.StoragePrice = types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
@@ -450,6 +459,7 @@ func TestHostWeightConstants(t *testing.T) {
 	var entry modules.HostDBEntry
 	entry.Version = build.Version
 	entry.RemainingStorage = 250e3
+	entry.MaxDuration = 100e3
 	entry.MaxCollateral = types.NewCurrency64(100e3).Mul(types.SiacoinPrecision)
 	entry.ContractPrice = types.NewCurrency64(50e3)
 	entry.StoragePrice = types.NewCurrency64(100e3).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)

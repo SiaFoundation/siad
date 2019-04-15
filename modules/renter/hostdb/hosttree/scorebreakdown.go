@@ -10,7 +10,7 @@ import (
 // ScoreBreakdown is an interface that allows us to mock the hostAdjustments
 // during testing.
 type ScoreBreakdown interface {
-	HostScoreBreakdown(totalScore types.Currency, ignoreAge, ignoreUptime bool) modules.HostScoreBreakdown
+	HostScoreBreakdown(totalScore types.Currency, ignoreAge, ignoreDuration, ignoreUptime bool) modules.HostScoreBreakdown
 	Score() types.Currency
 }
 
@@ -20,6 +20,7 @@ type HostAdjustments struct {
 	AgeAdjustment              float64
 	BurnAdjustment             float64
 	CollateralAdjustment       float64
+	DurationAdjustment         float64
 	InteractionAdjustment      float64
 	PriceAdjustment            float64
 	StorageRemainingAdjustment float64
@@ -49,13 +50,16 @@ func conversionRate(score, totalScore types.Currency) float64 {
 
 // HostScoreBreakdown converts a HostAdjustments object into a
 // modules.HostScoreBreakdown.
-func (h HostAdjustments) HostScoreBreakdown(totalScore types.Currency, ignoreAge, ignoreUptime bool) modules.HostScoreBreakdown {
+func (h HostAdjustments) HostScoreBreakdown(totalScore types.Currency, ignoreAge, ignoreDuration, ignoreUptime bool) modules.HostScoreBreakdown {
 	// Set the ignored fields to 1.
 	if ignoreAge {
 		h.AgeAdjustment = 1.0
 	}
 	if ignoreUptime {
 		h.UptimeAdjustment = 1.0
+	}
+	if ignoreDuration {
+		h.DurationAdjustment = 1.0
 	}
 	// Create the breakdown.
 	score := h.Score()
@@ -66,6 +70,7 @@ func (h HostAdjustments) HostScoreBreakdown(totalScore types.Currency, ignoreAge
 		AgeAdjustment:              h.AgeAdjustment,
 		BurnAdjustment:             h.BurnAdjustment,
 		CollateralAdjustment:       h.CollateralAdjustment,
+		DurationAdjustment:         h.DurationAdjustment,
 		InteractionAdjustment:      h.InteractionAdjustment,
 		PriceAdjustment:            h.PriceAdjustment,
 		StorageRemainingAdjustment: h.StorageRemainingAdjustment,
@@ -78,8 +83,8 @@ func (h HostAdjustments) HostScoreBreakdown(totalScore types.Currency, ignoreAge
 // score.
 func (h HostAdjustments) Score() types.Currency {
 	// Combine the adjustments.
-	fullPenalty := h.BurnAdjustment * h.CollateralAdjustment * h.InteractionAdjustment * h.AgeAdjustment *
-		h.PriceAdjustment * h.StorageRemainingAdjustment * h.UptimeAdjustment * h.VersionAdjustment
+	fullPenalty := h.BurnAdjustment * h.CollateralAdjustment * h.DurationAdjustment * h.InteractionAdjustment *
+		h.AgeAdjustment * h.PriceAdjustment * h.StorageRemainingAdjustment * h.UptimeAdjustment * h.VersionAdjustment
 
 	// Return a types.Currency.
 	weight := baseWeight.MulFloat(fullPenalty)
