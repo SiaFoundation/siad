@@ -100,6 +100,12 @@ const (
 )
 
 // Constants that tune the health and repair processes.
+const (
+	// maxStuckChunksInHeap is the maximum number of stuck chunks that the
+	// repair code will add to the heap at a time
+	maxStuckChunksInHeap = 5
+)
+
 var (
 	// fileRepairInterval defines how long the renter should wait before
 	// continuing to repair a file that was recently repaired.

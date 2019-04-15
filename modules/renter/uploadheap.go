@@ -69,8 +69,9 @@ type uploadHeap struct {
 	//
 	// repairingChunks is a map containing all the chunks are that currently
 	// assigned to workers and are being repaired/worked on.
-	heapChunks      map[uploadChunkID]struct{}
-	repairingChunks map[uploadChunkID]struct{}
+	repairingChunks   map[uploadChunkID]struct{}
+	stuckHeapChunks   map[uploadChunkID]struct{}
+	unstuckHeapChunks map[uploadChunkID]struct{}
 
 	// Control channels
 	newUploads        chan struct{}
@@ -92,14 +93,27 @@ func (uh *uploadHeap) managedLen() int {
 // managedPush will try and add a chunk to the upload heap. If the chunk is
 // added it will return true otherwise it will return false
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
-	// Check whether this chunk is already being repaired. If not, add it to the
-	// upload chunk heap.
 	var added bool
+	// Grab chunk stuck status
+	uuc.mu.Lock()
+	chunkStuck := uuc.stuck
+	uuc.mu.Unlock()
+
+	// Check if chunk is in any of the heap maps
 	uh.mu.Lock()
-	_, exists1 := uh.heapChunks[uuc.id]
-	_, exists2 := uh.repairingChunks[uuc.id]
-	if !exists1 && !exists2 {
-		uh.heapChunks[uuc.id] = struct{}{}
+	_, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
+	_, existsRepairing := uh.repairingChunks[uuc.id]
+	_, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
+
+	// Check if the chunk can be added to the heap
+	canAddStuckChunk := chunkStuck && !existsStuckHeap && !existsRepairing && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
+	canAddUnstuckChunk := !chunkStuck && !existsUnstuckHeap && !existsRepairing
+	if canAddStuckChunk {
+		uh.stuckHeapChunks[uuc.id] = struct{}{}
+		heap.Push(&uh.heap, uuc)
+		added = true
+	} else if canAddUnstuckChunk {
+		uh.unstuckHeapChunks[uuc.id] = struct{}{}
 		heap.Push(&uh.heap, uuc)
 		added = true
 	}
@@ -112,7 +126,8 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 	uh.mu.Lock()
 	if len(uh.heap) > 0 {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
-		delete(uh.heapChunks, uc.id)
+		delete(uh.unstuckHeapChunks, uc.id)
+		delete(uh.stuckHeapChunks, uc.id)
 	}
 	uh.mu.Unlock()
 	return uc
@@ -301,43 +316,51 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 	return incompleteChunks
 }
 
-// managedBuildAndPushRandomChunk randomly selects a file and builds the
-// unfinished chunks, then randomly adds one chunk to the upload heap
-func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
+// managedBuildAndPushRandomChunks randomly selects a file and builds the
+// unfinished chunks, then randomly adds chunksToAdd chunks to the upload heap
+func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry, chunksToAdd int, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
 	// Sanity check that there are files
 	if len(files) == 0 {
 		return
 	}
-	// Grab a random file
-	randFileIndex := fastrand.Intn(len(files))
-	file := files[randFileIndex]
-	id := r.mu.Lock()
-	// Build the unfinished stuck chunks from the file
-	unfinishedUploadChunks := r.buildUnfinishedChunks(file, hosts, target, offline, goodForRenew)
-	r.mu.Unlock(id)
-	// Sanity check that there are stuck chunks
-	if len(unfinishedUploadChunks) == 0 {
-		r.log.Println("WARN: no stuck unfinishedUploadChunks returned from buildUnfinishedChunks, so no stuck chunks will be added to the heap")
-		return
-	}
-	// Add a random stuck chunk to the upload heap and set its stuckRepair field
-	// to true
-	randChunkIndex := fastrand.Intn(len(unfinishedUploadChunks))
-	randChunk := unfinishedUploadChunks[randChunkIndex]
-	randChunk.stuckRepair = true
-	if !r.uploadHeap.managedPush(randChunk) {
-		// Chunk wasn't added to the heap. Close the file
-		err := randChunk.fileEntry.Close()
-		if err != nil {
-			r.log.Println("WARN: unable to close file:", err)
+
+	// Create random indices for files
+	p := fastrand.Perm(len(files))
+	for i := 0; i < chunksToAdd && i < len(files); i++ {
+		// Grab random file
+		file := files[p[i]]
+
+		// Build the unfinished stuck chunks from the file
+		id := r.mu.Lock()
+		unfinishedUploadChunks := r.buildUnfinishedChunks(file, hosts, target, offline, goodForRenew)
+		r.mu.Unlock(id)
+
+		// Sanity check that there are stuck chunks
+		if len(unfinishedUploadChunks) == 0 {
+			r.log.Debugln("WARN: no stuck unfinishedUploadChunks returned from buildUnfinishedChunks for", file.SiaPath())
+			continue
 		}
-	}
-	// Close the unused unfinishedUploadChunks
-	unfinishedUploadChunks = append(unfinishedUploadChunks[:randChunkIndex], unfinishedUploadChunks[randChunkIndex+1:]...)
-	for _, chunk := range unfinishedUploadChunks {
-		err := chunk.fileEntry.Close()
-		if err != nil {
-			r.log.Println("WARN: unable to close file:", err)
+
+		// Add random stuck chunks to the upload heap and set its stuckRepair field
+		// to true
+		randChunkIndex := fastrand.Intn(len(unfinishedUploadChunks))
+		randChunk := unfinishedUploadChunks[randChunkIndex]
+		randChunk.stuckRepair = true
+		if !r.uploadHeap.managedPush(randChunk) {
+			// Chunk wasn't added to the heap. Close the file
+			r.log.Debugln("WARN: stuck chunk", randChunk.id, "wasn't added to heap")
+			err := randChunk.fileEntry.Close()
+			if err != nil {
+				r.log.Println("WARN: unable to close file:", err)
+			}
+		}
+		unfinishedUploadChunks = append(unfinishedUploadChunks[:randChunkIndex], unfinishedUploadChunks[randChunkIndex+1:]...)
+		// Close the unused unfinishedUploadChunks
+		for _, chunk := range unfinishedUploadChunks {
+			err := chunk.fileEntry.Close()
+			if err != nil {
+				r.log.Println("WARN: unable to close file:", err)
+			}
 		}
 	}
 	return
@@ -438,7 +461,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	switch target {
 	case targetStuckChunks:
 		r.log.Debugln("Adding stuck chunk to heap")
-		r.managedBuildAndPushRandomChunk(files, hosts, target, offline, goodForRenew)
+		r.managedBuildAndPushRandomChunk(files, maxStuckChunksInHeap, hosts, target, offline, goodForRenew)
 	case targetUnstuckChunks:
 		r.log.Debugln("Adding chunks to heap")
 		r.managedBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
