@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -26,6 +27,15 @@ var (
 		Short: "Interact with the renter's host database.",
 		Long:  "View the list of active hosts, the list of all hosts, or query specific hosts.\nIf the '-v' flag is set, a list of recent scans will be provided, with the most\nrecent scan on the right. a '0' indicates that the host was offline, and a '1'\nindicates that the host was online.",
 		Run:   wrap(hostdbcmd),
+	}
+
+	hostdbFiltermodeCmd = &cobra.Command{
+		Use:   "filtermode [filtermode] [hosts]",
+		Short: "Set the filtermode.",
+		Long: `Set the hostdb filtermode and specify hosts.
+        [filtermode] can be whitelist, blacklist, or disable.
+        [hosts] must be a comma separated list of host public keys.`,
+		Run: wrap(hostdbfiltermodecmd),
 	}
 
 	hostdbViewCmd = &cobra.Command{
@@ -275,6 +285,28 @@ func hostdbcmd() {
 		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tScore\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
 		w.Flush()
 	}
+}
+
+func hostdbfiltermodecmd(filtermodeStr, hostsStr string) {
+	var fm modules.FilterMode
+	err := fm.FromString(filtermodeStr)
+	if err != nil {
+		fmt.Println("Could not parse filtermode: ", err)
+	}
+
+	var host types.SiaPublicKey
+	var hosts []types.SiaPublicKey
+
+	for _, h := range strings.Split(hostsStr, ",") {
+		host.LoadString(string(h))
+		hosts = append(hosts, host)
+	}
+
+	err = httpClient.HostDbFilterModePost(fm, hosts)
+	if err != nil {
+		fmt.Println("Could not set hostdb filtermode: ", err)
+	}
+	fmt.Println("Set filtermode to ", filtermodeStr, " with hosts ", hostsStr)
 }
 
 func hostdbviewcmd(pubkey string) {
