@@ -158,6 +158,9 @@ type hostContractor interface {
 	// allowing the retrieval of sectors.
 	Downloader(types.SiaPublicKey, <-chan struct{}) (contractor.Downloader, error)
 
+	// Session creates a Session from the specified contract ID.
+	Session(types.SiaPublicKey, <-chan struct{}) (contractor.Session, error)
+
 	// RecoverableContracts returns the contracts that the contractor deems
 	// recoverable. That means they are not expired yet and also not part of the
 	// active contracts. Usually this should return an empty slice unless the host
