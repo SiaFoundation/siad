@@ -104,10 +104,10 @@ var (
 	}
 
 	renterFilesListCmd = &cobra.Command{
-		Use:     "list",
+		Use:     "ls [path]",
 		Aliases: []string{"ls"},
-		Short:   "List the status of all files",
-		Long:    "List the status of all files known to the renter on the Sia network.",
+		Short:   "List the status of all files within specified dir",
+		Long:    "List the status of all files known to the renter within the specified folder on the Sia network.",
 		Run:     wrap(renterfileslistcmd),
 	}
 
@@ -207,9 +207,6 @@ func rentercmd() {
 `, currencyUnits(rg.Settings.Allowance.Funds),
 			currencyUnits(totalSpent), currencyUnits(fm.Unspent))
 	}
-
-	// also list files
-	renterfileslistcmd()
 }
 
 // renteruploadscmd is the handler for the command `siac renter uploads`.
@@ -238,7 +235,7 @@ func renteruploadscmd() {
 	}
 	fmt.Println("Uploading", len(filteredFiles), "files:")
 	for _, file := range filteredFiles {
-		fmt.Printf("%13s  %s (uploading, %0.2f%%)\n", filesizeUnits(int64(file.Filesize)), file.SiaPath, file.UploadProgress)
+		fmt.Printf("%13s  %s (uploading, %0.2f%%)\n", filesizeUnits(file.Filesize), file.SiaPath, file.UploadProgress)
 	}
 }
 
@@ -311,8 +308,8 @@ Expectations for period:
 	Expected Upload:      %v
 	Expected Download:    %v
 	Expected Redundancy:  %v
-`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, filesizeUnits(int64(allowance.ExpectedStorage)),
-		filesizeUnits(int64(allowance.ExpectedUpload)), filesizeUnits(int64(allowance.ExpectedDownload)), allowance.ExpectedRedundancy)
+`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, filesizeUnits(allowance.ExpectedStorage),
+		filesizeUnits(allowance.ExpectedUpload), filesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy)
 
 	// Show spending detail
 	fm := rg.FinancialMetrics
@@ -582,7 +579,7 @@ func rentercontractscmd() {
   Total Spent:          %v
   Total Fees:           %v
 
-`, len(rc.ActiveContracts), filesizeUnits(int64(activeTotalStored)),
+`, len(rc.ActiveContracts), filesizeUnits(activeTotalStored),
 			currencyUnits(activeTotalRemaining), currencyUnits(activeTotalSpent), currencyUnits(activeTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
@@ -599,7 +596,7 @@ func rentercontractscmd() {
 				currencyUnits(c.RenterFunds),
 				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
 				currencyUnits(c.Fees),
-				filesizeUnits(int64(c.Size)),
+				filesizeUnits(c.Size),
 				c.EndHeight,
 				c.ID,
 				c.GoodForUpload,
@@ -630,7 +627,7 @@ func rentercontractscmd() {
   Total Spent:          %v
   Total Fees:           %v
 
-`, len(rc.InactiveContracts), filesizeUnits(int64(inactiveTotalStored)), currencyUnits(inactiveTotalRemaining), currencyUnits(inactiveTotalSpent), currencyUnits(inactiveTotalFees))
+`, len(rc.InactiveContracts), filesizeUnits(inactiveTotalStored), currencyUnits(inactiveTotalRemaining), currencyUnits(inactiveTotalSpent), currencyUnits(inactiveTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.InactiveContracts {
@@ -646,7 +643,7 @@ func rentercontractscmd() {
 				currencyUnits(c.RenterFunds),
 				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
 				currencyUnits(c.Fees),
-				filesizeUnits(int64(c.Size)),
+				filesizeUnits(c.Size),
 				c.EndHeight,
 				c.ID,
 				c.GoodForUpload,
@@ -680,7 +677,7 @@ func rentercontractscmd() {
 	Total Spent:          %v
 	Total Fees:           %v
 			
-	`, len(rce.ExpiredContracts), filesizeUnits(int64(expiredTotalStored)), currencyUnits(expiredTotalWithheld), currencyUnits(expiredTotalSpent), currencyUnits(expiredTotalFees))
+	`, len(rce.ExpiredContracts), filesizeUnits(expiredTotalStored), currencyUnits(expiredTotalWithheld), currencyUnits(expiredTotalSpent), currencyUnits(expiredTotalFees))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "  Host\tHost Version\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 			for _, c := range rce.ExpiredContracts {
@@ -696,7 +693,7 @@ func rentercontractscmd() {
 					currencyUnits(c.RenterFunds),
 					currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
 					currencyUnits(c.Fees),
-					filesizeUnits(int64(c.Size)),
+					filesizeUnits(c.Size),
 					c.EndHeight,
 					c.ID,
 					c.GoodForUpload,
@@ -752,7 +749,7 @@ Contract %v
 				currencyUnits(rc.StorageSpending),
 				currencyUnits(rc.DownloadSpending),
 				currencyUnits(rc.RenterFunds),
-				filesizeUnits(int64(rc.Size)))
+				filesizeUnits(rc.Size))
 
 			printScoreBreakdown(&hostInfo)
 			return
@@ -1066,7 +1063,7 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 			elapsed := time.Since(d.StartTime)
 			elapsed -= elapsed % time.Second // round to nearest second
 
-			progressStr := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, filesizeUnits(int64(d.Filesize)), elapsed, speed)
+			progressStr := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, filesizeUnits(d.Filesize), elapsed, speed)
 			if tfIdx < len(tfs)-1 {
 				fmt.Println(progressStr)
 			} else {
@@ -1088,29 +1085,28 @@ func (s bySiaPath) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].Sia
 
 // renterfileslistcmd is the handler for the command `siac renter list`.
 // Lists files known to the renter on the network.
-func renterfileslistcmd() {
-	var rf api.RenterFiles
-	rf, err := httpClient.RenterFilesGet()
+func renterfileslistcmd(path string) {
+	rgd, err := httpClient.RenterGetDir(path)
 	if err != nil {
 		die("Could not get file list:", err)
 	}
-	if len(rf.Files) == 0 {
+	if len(rgd.Files) == 0 {
 		fmt.Println("No files have been uploaded.")
 		return
 	}
-	fmt.Print("\nTracking ", len(rf.Files), " files:")
+	fmt.Print("\nTracking ", len(rgd.Files), " files:")
 	var totalStored uint64
-	for _, file := range rf.Files {
+	for _, file := range rgd.Files {
 		totalStored += file.Filesize
 	}
-	fmt.Printf(" %9s\n", filesizeUnits(int64(totalStored)))
+	fmt.Printf(" %9s\n", filesizeUnits(totalStored))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if renterListVerbose {
 		fmt.Fprintln(w, "  File size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tOn Disk\tRecoverable\tSia path")
 	}
-	sort.Sort(bySiaPath(rf.Files))
-	for _, file := range rf.Files {
-		fmt.Fprintf(w, "  %9s", filesizeUnits(int64(file.Filesize)))
+	sort.Sort(bySiaPath(rgd.Files))
+	for _, file := range rgd.Files {
+		fmt.Fprintf(w, "  %9s", filesizeUnits(file.Filesize))
 		if renterListVerbose {
 			availableStr := yesNo(file.Available)
 			renewingStr := yesNo(file.Renewing)
@@ -1126,7 +1122,7 @@ func renterfileslistcmd() {
 			onDiskStr := yesNo(file.OnDisk)
 			recoverableStr := yesNo(file.Recoverable)
 			stuckStr := yesNo(file.Stuck)
-			fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(int64(file.UploadedBytes)), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
+			fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
 		}
 		fmt.Fprintf(w, "\t%s", file.SiaPath)
 		if !renterListVerbose && !file.Available {

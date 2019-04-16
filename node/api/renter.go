@@ -1067,7 +1067,7 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 	var siaPath modules.SiaPath
 	var err error
 	str := ps.ByName("siapath")
-	if str == "" || str == "/" {
+	if str == "." || str == "" || str == "/" {
 		siaPath = modules.RootSiaPath()
 	} else {
 		siaPath, err = modules.NewSiaPath(str)
