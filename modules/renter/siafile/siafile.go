@@ -178,7 +178,10 @@ func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 	defer sf.mu.Unlock()
 	// Check if we need to grow the file.
 	if uint64(len(sf.chunks)) >= numChunks {
-		return nil // nothing to do
+		// Handle edge case where file has 1 chunk but has a size of 0. When we grow
+		// such a file to 1 chunk we want to increment the size to >0.
+		sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(len(sf.chunks)))
+		return nil
 	}
 	// Update the chunks.
 	var updates []writeaheadlog.Update
