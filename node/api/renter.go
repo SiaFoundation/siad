@@ -61,6 +61,14 @@ var (
 	//BackupKeySpecifier is the specifier used for deriving the secret used to
 	//encrypt a backup from the RenterSeed.
 	backupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
+
+	// defaultDataPieces is the number of data pieces used for uploading a file if
+	// no values were specified by the user.
+	defaultDataPieces = 10
+
+	// defaultParityPieces is the number of parity pieces used for uploading a file
+	// if no values were specified by the user.
+	defaultParityPieces = 20
 )
 
 type (
@@ -258,7 +266,6 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 // defaults.
 func parseErasureCodingParameters(strDataPieces, strParityPieces string) (modules.ErasureCoder, error) {
 	// Check whether the erasure coding parameters have been supplied.
-	var ec modules.ErasureCoder
 	if strDataPieces != "" || strParityPieces != "" {
 		// Check that both values have been supplied.
 		if strDataPieces == "" || strParityPieces == "" {
@@ -292,12 +299,10 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 		}
 
 		// Create the erasure coder.
-		ec, err = siafile.NewRSCode(dataPieces, parityPieces)
-		if err != nil {
-			return nil, err
-		}
+		return siafile.NewRSCode(dataPieces, parityPieces)
 	}
-	return ec, nil
+	// Return the default erasure coder.
+	return siafile.NewRSCode(defaultDataPieces, defaultParityPieces)
 }
 
 // renterHandlerGET handles the API call to /renter.
@@ -1053,7 +1058,6 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	fmt.Println("ec", ec)
 	up := modules.FileUploadParams{
 		SiaPath:     siaPath,
 		ErasureCode: ec,
