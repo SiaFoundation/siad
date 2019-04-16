@@ -1161,11 +1161,7 @@ func renterfilesunstuckcmd() {
 		die("Couldn't get list of all files:", err)
 	}
 	for _, f := range rfg.Files {
-		siaPath, err := modules.NewSiaPath(f.SiaPath)
-		if err != nil {
-			die(fmt.Printf("Couldn't parse siaPath %v: %v", siaPath, err))
-		}
-		err = httpClient.RenterSetFileStuckPost(siaPath, false)
+		err = httpClient.RenterSetFileStuckPost(f.SiaPath, false)
 		if err != nil {
 			die(fmt.Sprintf("Couldn't set %v to unstuck: %v", f.SiaPath, err))
 		}

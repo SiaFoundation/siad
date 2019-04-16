@@ -4330,12 +4330,8 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	f := rfg.Files[0]
-	sp, err := modules.NewSiaPath(f.SiaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Set stuck to the opposite value it had before.
-	if err := r.RenterSetFileStuckPost(sp, !f.Stuck); err != nil {
+	if err := r.RenterSetFileStuckPost(f.SiaPath, !f.Stuck); err != nil {
 		t.Fatal(err)
 	}
 	// Check if it was set correctly.
@@ -4347,7 +4343,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Stuck field should be %v but was %v", !f.Stuck, fi.File.Stuck)
 	}
 	// Set stuck to the original value.
-	if err := r.RenterSetFileStuckPost(sp, f.Stuck); err != nil {
+	if err := r.RenterSetFileStuckPost(f.SiaPath, f.Stuck); err != nil {
 		t.Fatal(err)
 	}
 	// Check if it was set correctly.
