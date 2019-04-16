@@ -61,14 +61,6 @@ var (
 	//BackupKeySpecifier is the specifier used for deriving the secret used to
 	//encrypt a backup from the RenterSeed.
 	backupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
-
-	// defaultDataPieces is the number of data pieces used for uploading a file if
-	// no values were specified by the user.
-	defaultDataPieces = 10
-
-	// defaultParityPieces is the number of parity pieces used for uploading a file
-	// if no values were specified by the user.
-	defaultParityPieces = 20
 )
 
 type (
@@ -301,8 +293,7 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 		// Create the erasure coder.
 		return siafile.NewRSCode(dataPieces, parityPieces)
 	}
-	// Return the default erasure coder.
-	return siafile.NewRSCode(defaultDataPieces, defaultParityPieces)
+	return nil, nil
 }
 
 // renterHandlerGET handles the API call to /renter.
