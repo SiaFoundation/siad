@@ -2390,6 +2390,32 @@ The number of parity pieces to use when erasure coding the file. Total redundanc
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /renter/uploadstream/*siapath* [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/upload/myfile" --data-binary @myfile.dat
+```
+
+uploads a file to the network using a stream.
+
+### Path Parameters
+#### REQUIRED
+**siapath** | string
+Location where the file will reside in the renter on the network. The path must be non-empty, may not include any path traversal strings ("./", "../"), and may not begin with a forward-slash character.  
+
+### Query String Parameters
+#### OPTIONAL
+**datapieces** | int  
+The number of data pieces to use when erasure coding the file.  
+
+**paritypieces** | int  
+The number of parity pieces to use when erasure coding the file. Total redundancy of the file is (datapieces+paritypieces)/datapieces.  
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
 # Transaction Pool
 
 ## /tpool/confirmed/:id [GET]

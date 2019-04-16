@@ -1053,6 +1053,7 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	fmt.Println("ec", ec)
 	up := modules.FileUploadParams{
 		SiaPath:     siaPath,
 		ErasureCode: ec,
