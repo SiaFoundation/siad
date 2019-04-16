@@ -167,6 +167,15 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 // SiaFile for the upload.
 func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.SiaFileSetEntry, error) {
 	siaPath, ec, force := up.SiaPath, up.ErasureCode, up.Force
+	// Check if ec was set. If not use defaults.
+	var err error
+	if ec == nil {
+		up.ErasureCode, err = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, 64)
+		if err != nil {
+			return nil, err
+		}
+		ec = up.ErasureCode
+	}
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if force {
