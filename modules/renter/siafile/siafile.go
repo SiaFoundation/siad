@@ -834,6 +834,11 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 			// them as unused. The next time the table is pruned, the keys will be
 			// removed which is fine. This doesn't fix heavy corruption and the file but
 			// still be lost but it's better than crashing.
+			if piece.HostTableOffset >= uint32(len(sf.pubKeyTable)) {
+				// Causes tests to fail. The following for loop will try to fix the
+				// corruption on release builds.
+				build.Critical("piece.HostTableOffset >= len(sf.pubKeyTable)")
+			}
 			for piece.HostTableOffset >= uint32(len(sf.pubKeyTable)) {
 				sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
 			}
