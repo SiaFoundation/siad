@@ -209,8 +209,10 @@ func (d *download) markComplete() {
 func (d *download) onComplete(f downloadCompleteFunc) {
 	select {
 	case <-d.completeChan:
-		err := f(d.err)
-		d.log.Println("Failed to execute downloadCompleteFunc", err)
+		if err := f(d.err); err != nil {
+			d.log.Println("Failed to execute at least one downloadCompleteFunc", err)
+		}
+		return
 	default:
 	}
 	d.downloadCompleteFuncs = append(d.downloadCompleteFuncs, f)

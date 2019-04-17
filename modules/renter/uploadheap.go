@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -36,6 +37,14 @@ type uploadChunkHeap []*unfinishedUploadChunk
 // Implementation of heap.Interface for uploadChunkHeap.
 func (uch uploadChunkHeap) Len() int { return len(uch) }
 func (uch uploadChunkHeap) Less(i, j int) bool {
+	// If chunk i is high priority, return true to prioritize it.
+	if uch[i].priority {
+		return true
+	}
+	// If chunk j is high priority, return false to prioritize it.
+	if uch[j].priority {
+		return false
+	}
 	// If the chunks have the same stuck status, check which chunk has the lower
 	// completion percentage.
 	if uch[i].stuck == uch[j].stuck {
@@ -133,6 +142,92 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 	return uc
 }
 
+// buildUnfinishedChunk will pull out a single unfinished chunk of a file.
+func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool) *unfinishedUploadChunk {
+	uuc := &unfinishedUploadChunk{
+		fileEntry: entry.CopyEntry(),
+
+		id: uploadChunkID{
+			fileUID: entry.UID(),
+			index:   chunkIndex,
+		},
+
+		index:    chunkIndex,
+		length:   entry.ChunkSize(),
+		offset:   int64(chunkIndex * entry.ChunkSize()),
+		priority: priority,
+
+		// memoryNeeded has to also include the logical data, and also
+		// include the overhead for encryption.
+		//
+		// TODO / NOTE: If we adjust the file to have a flexible encryption
+		// scheme, we'll need to adjust the overhead stuff too.
+		//
+		// TODO: Currently we request memory for all of the pieces as well
+		// as the minimum pieces, but we perhaps don't need to request all
+		// of that.
+		memoryNeeded:  entry.PieceSize()*uint64(entry.ErasureCode().NumPieces()+entry.ErasureCode().MinPieces()) + uint64(entry.ErasureCode().NumPieces())*entry.MasterKey().Type().Overhead(),
+		minimumPieces: entry.ErasureCode().MinPieces(),
+		piecesNeeded:  entry.ErasureCode().NumPieces(),
+		stuck:         entry.StuckChunkByIndex(chunkIndex),
+
+		physicalChunkData: make([][]byte, entry.ErasureCode().NumPieces()),
+
+		pieceUsage:  make([]bool, entry.ErasureCode().NumPieces()),
+		unusedHosts: make(map[string]struct{}),
+	}
+	// Every chunk can have a different set of unused hosts.
+	for host := range hosts {
+		uuc.unusedHosts[host] = struct{}{}
+	}
+
+	// Iterate through the pieces of all chunks of the file and mark which
+	// hosts are already in use for a particular chunk. As you delete hosts
+	// from the 'unusedHosts' map, also increment the 'piecesCompleted' value.
+	pieces, err := entry.Pieces(chunkIndex)
+	if err != nil {
+		r.log.Println("failed to get pieces for building incomplete chunks", err)
+		if err := entry.SetStuck(chunkIndex, true); err != nil {
+			r.log.Printf("failed to set chunk %v stuck: %v", chunkIndex, err)
+		}
+		return nil
+	}
+	for pieceIndex, pieceSet := range pieces {
+		for _, piece := range pieceSet {
+			// Get the contract for the piece.
+			contractUtility, exists := r.hostContractor.ContractUtility(piece.HostPubKey)
+			if !exists {
+				// File contract does not seem to be part of the host anymore.
+				continue
+			}
+			if !contractUtility.GoodForRenew {
+				// We are no longer renewing with this contract, so it does not
+				// count for redundancy.
+				continue
+			}
+
+			// Mark the chunk set based on the pieces in this contract.
+			_, exists = uuc.unusedHosts[piece.HostPubKey.String()]
+			redundantPiece := uuc.pieceUsage[pieceIndex]
+			if exists && !redundantPiece {
+				uuc.pieceUsage[pieceIndex] = true
+				uuc.piecesCompleted++
+				delete(uuc.unusedHosts, piece.HostPubKey.String())
+			} else if exists {
+				// This host has a piece, but it is the same piece another
+				// host has. We should still remove the host from the
+				// unusedHosts since one host having multiple pieces of a
+				// chunk might lead to unexpected issues. e.g. if a host
+				// has multiple pieces and another host with redundant
+				// pieces goes offline, we end up with false redundancy
+				// reporting.
+				delete(uuc.unusedHosts, piece.HostPubKey.String())
+			}
+		}
+	}
+	return uuc
+}
+
 // buildUnfinishedChunks will pull all of the unfinished chunks out of a file.
 //
 // NOTE: each unfinishedUploadChunk needs its own SiaFileSetEntry. This is due
@@ -183,6 +278,12 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		return nil
 	}
 
+	// Build a map of host public keys. We assume that all entrys are the same.
+	pks := make(map[string]types.SiaPublicKey)
+	for _, pk := range entry.HostPublicKeys() {
+		pks[string(pk.Key)] = pk
+	}
+
 	// Assemble the set of chunks.
 	//
 	// TODO / NOTE: Future files may have a different method for determining the
@@ -196,90 +297,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		}
 
 		// Create unfinishedUploadChunk
-		newUnfinishedChunks[i] = &unfinishedUploadChunk{
-			fileEntry: entry.CopyEntry(),
-
-			id: uploadChunkID{
-				fileUID: entry.UID(),
-				index:   uint64(index),
-			},
-
-			index:  uint64(index),
-			length: entry.ChunkSize(),
-			offset: int64(uint64(index) * entry.ChunkSize()),
-
-			// memoryNeeded has to also include the logical data, and also
-			// include the overhead for encryption.
-			//
-			// TODO / NOTE: If we adjust the file to have a flexible encryption
-			// scheme, we'll need to adjust the overhead stuff too.
-			//
-			// TODO: Currently we request memory for all of the pieces as well
-			// as the minimum pieces, but we perhaps don't need to request all
-			// of that.
-			memoryNeeded:  entry.PieceSize()*uint64(entry.ErasureCode().NumPieces()+entry.ErasureCode().MinPieces()) + uint64(entry.ErasureCode().NumPieces())*entry.MasterKey().Type().Overhead(),
-			minimumPieces: entry.ErasureCode().MinPieces(),
-			piecesNeeded:  entry.ErasureCode().NumPieces(),
-			stuck:         entry.StuckChunkByIndex(uint64(index)),
-
-			physicalChunkData: make([][]byte, entry.ErasureCode().NumPieces()),
-
-			pieceUsage:  make([]bool, entry.ErasureCode().NumPieces()),
-			unusedHosts: make(map[string]struct{}),
-		}
-		// Every chunk can have a different set of unused hosts.
-		for host := range hosts {
-			newUnfinishedChunks[i].unusedHosts[host] = struct{}{}
-		}
-	}
-
-	// Iterate through the pieces of all chunks of the file and mark which
-	// hosts are already in use for a particular chunk. As you delete hosts
-	// from the 'unusedHosts' map, also increment the 'piecesCompleted' value.
-	for i, index := range chunkIndexes {
-		pieces, err := entry.Pieces(uint64(index))
-		if err != nil {
-			r.log.Println("failed to get pieces for building incomplete chunks")
-			for _, uc := range newUnfinishedChunks {
-				if err := uc.fileEntry.Close(); err != nil {
-					r.log.Println("failed to close file:", err)
-				}
-			}
-			return nil
-		}
-		for pieceIndex, pieceSet := range pieces {
-			for _, piece := range pieceSet {
-				// Get the contract for the piece.
-				contractUtility, exists := r.hostContractor.ContractUtility(piece.HostPubKey)
-				if !exists {
-					// File contract does not seem to be part of the host anymore.
-					continue
-				}
-				if !contractUtility.GoodForRenew {
-					// We are no longer renewing with this contract, so it does not
-					// count for redundancy.
-					continue
-				}
-
-				// Mark the chunk set based on the pieces in this contract.
-				_, exists = newUnfinishedChunks[i].unusedHosts[piece.HostPubKey.String()]
-				redundantPiece := newUnfinishedChunks[i].pieceUsage[pieceIndex]
-				if exists && !redundantPiece {
-					newUnfinishedChunks[i].pieceUsage[pieceIndex] = true
-					newUnfinishedChunks[i].piecesCompleted++
-					delete(newUnfinishedChunks[i].unusedHosts, piece.HostPubKey.String())
-				} else if exists {
-					// This host has a piece, but it is the same piece another
-					// host has. We should still remove the host from the
-					// unusedHosts since one host having multiple pieces of a
-					// chunk might lead to unexpected issues. e.g. if a host
-					// has multiple pieces and another host with redundant
-					// pieces goes offline, we end up with false redundancy
-					// reporting.
-					delete(newUnfinishedChunks[i].unusedHosts, piece.HostPubKey.String())
-				}
-			}
-		}
+		newUnfinishedChunks[i] = r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false)
 	}
 
 	// Iterate through the set of newUnfinishedChunks and remove any that are

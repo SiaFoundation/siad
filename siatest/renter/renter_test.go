@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -266,6 +267,7 @@ func TestRenterThree(t *testing.T) {
 		{"TestAllowanceDefaultSet", testAllowanceDefaultSet},
 		{"TestFileAvailableAndRecoverable", testFileAvailableAndRecoverable},
 		{"TestSetFileStuck", testSetFileStuck},
+		{"TestUploadStreaming", testUploadStreaming},
 		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
 
@@ -295,6 +297,56 @@ func testAllowanceDefaultSet(t *testing.T, tg *siatest.TestGroup) {
 		t.Log("Expected", string(expected))
 		t.Log("Was", string(was))
 		t.Fatal("Renter's allowance doesn't match siatest.DefaultAllowance")
+	}
+}
+
+// testUploadStreaming uploads random data using the upload streaming API.
+func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Renters()) == 0 {
+		t.Fatal("Test requires at least 1 renter")
+	}
+	// Create some random data to write.
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	data := fastrand.Bytes(fileSize)
+	d := bytes.NewReader(data)
+
+	// Upload the data.
+	siaPath := "/foo"
+	r := tg.Renters()[0]
+	err := r.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure the file reached full redundancy.
+	err = build.Retry(100, 200*time.Millisecond, func() error {
+		rfg, err := r.RenterFileGet(siaPath)
+		if err != nil {
+			return err
+		}
+		if rfg.File.Redundancy < float64(len(tg.Hosts())) {
+			return fmt.Errorf("expected redundancy %v but was %v",
+				len(tg.Hosts()), rfg.File.Redundancy)
+		}
+		if rfg.File.Filesize != uint64(len(data)) {
+			return fmt.Errorf("expected uploaded file to have size %v but was %v",
+				len(data), rfg.File.Filesize)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download the file again.
+	downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compare downloaded data to original one.
+	if !bytes.Equal([]byte(data), downloadedData) {
+		t.Log("originalData:", data)
+		t.Log("downloadedData:", downloadedData)
+		t.Fatal("Downloaded data doesn't match uploaded data")
 	}
 }
 

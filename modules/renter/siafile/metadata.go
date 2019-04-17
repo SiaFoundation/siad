@@ -24,7 +24,7 @@ type (
 
 		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
 		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
-		StaticFileSize      int64    `json:"filesize"`      // total size of the file
+		FileSize            int64    `json:"filesize"`      // total size of the file
 		StaticPieceSize     uint64   `json:"piecesize"`     // size of a single piece of the file
 		LocalPath           string   `json:"localpath"`     // file to the local copy of the file used for repairing
 
@@ -235,10 +235,7 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	}
 	updates = append(updates, headerUpdate...)
 	// Write the chunks to the new location.
-	chunksUpdates, err := sf.saveChunksUpdates()
-	if err != nil {
-		return err
-	}
+	chunksUpdates := sf.saveChunksUpdates()
 	updates = append(updates, chunksUpdates...)
 	// Apply updates.
 	return sf.createAndApplyTransaction(updates...)
@@ -276,7 +273,9 @@ func (sf *SiaFile) SetLocalPath(path string) error {
 
 // Size returns the file's size.
 func (sf *SiaFile) Size() uint64 {
-	return uint64(sf.staticMetadata.StaticFileSize)
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return uint64(sf.staticMetadata.FileSize)
 }
 
 // UpdateAccessTime updates the AccessTime timestamp to the current time.
@@ -314,7 +313,7 @@ func (sf *SiaFile) UpdateCachedHealthMetadata(metadata CachedHealthMetadata) err
 	defer sf.mu.Unlock()
 	// Update the number of stuck chunks
 	var numStuckChunks uint64
-	for _, chunk := range sf.staticChunks {
+	for _, chunk := range sf.chunks {
 		if chunk.Stuck {
 			numStuckChunks++
 		}

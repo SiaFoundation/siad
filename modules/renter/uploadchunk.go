@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -42,12 +43,17 @@ type unfinishedUploadChunk struct {
 	piecesNeeded   int    // number of pieces to achieve a 100% complete upload
 	stuck          bool   // indicates if the chunk was marked as stuck during last repair
 	stuckRepair    bool   // indicates if the chunk was identified for repair by the stuck loop
+	priority       bool   // indicates if the chunks is supposed to be repaird asap
 
 	// The logical data is the data that is presented to the user when the user
 	// requests the chunk. The physical data is all of the pieces that get
 	// stored across the network.
 	logicalChunkData  [][]byte
 	physicalChunkData [][]byte
+
+	// sourceReader is an optional source for the logical chunk data. If
+	// available it will be tried before the repair path or remote repair.
+	sourceReader io.ReadCloser
 
 	// Worker synchronization fields. The mutex only protects these fields.
 	//
@@ -335,6 +341,34 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	chunkHealth := 1 - (float64(chunk.piecesCompleted-chunk.minimumPieces) / numParityPieces)
 	download := chunkHealth >= siafile.RemoteRepairDownloadThreshold
 
+	// If a sourceReader is available, use it.
+	var err error
+	if chunk.sourceReader != nil {
+		// Read up to chunk.length bytes from the stream.
+		byteBuf := make([]byte, chunk.length)
+		n, err := io.ReadFull(chunk.sourceReader, byteBuf)
+		defer chunk.sourceReader.Close()
+		// Adjust the fileSize. Since we don't know the length of the stream
+		// beforehand we simply assume that a whole chunk will be added to the
+		// file. That's why we subtract the difference between the size of a
+		// chunk and n here.
+		adjustedSize := chunk.fileEntry.Size() - chunk.length + uint64(n)
+		if errSize := chunk.fileEntry.SetFileSize(adjustedSize); errSize != nil {
+			return errors.AddContext(errSize, "failed to adjust FileSize")
+		}
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return errors.AddContext(err, "failed to read chunk from sourceReader")
+		}
+		// Read the byteBuf into the sharded destination buffer.
+		buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
+		_, err = buf.ReadFrom(bytes.NewBuffer(byteBuf))
+		if err == nil || err == io.EOF || err == io.ErrUnexpectedEOF {
+			chunk.logicalChunkData = buf.buf
+			return nil
+		}
+		return errors.AddContext(err, "failed to get logicalChunkData from stream")
+	}
+
 	// Download the chunk if it's not on disk.
 	if chunk.fileEntry.LocalPath() == "" && download {
 		return r.managedDownloadLogicalChunkData(chunk)
@@ -359,8 +393,8 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// TODO: Once we have enabled support for small chunks, we should stop
 	// needing to ignore the EOF errors, because the chunk size should always
 	// match the tail end of the file. Until then, we ignore io.EOF.
-	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 	sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
+	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 	_, err = buf.ReadFrom(sr)
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF && download {
 		r.log.Debugln("failed to read file, downloading instead:", err)

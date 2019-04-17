@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"io"
 	"net/url"
 	"strconv"
 	"strings"
@@ -403,6 +404,20 @@ func (c *Client) RenterUploadDefaultPost(path string, siaPath modules.SiaPath) (
 	values.Set("source", path)
 	err = c.post(fmt.Sprintf("/renter/upload/%s", sp), values.Encode(), nil)
 	return
+}
+
+// RenterUploadStreamPost uploads data using a stream. It will return a
+// io.WriteCloser that can be used to write the data to the request body. The
+// writer needs to be closed when done for the whole file to be uploaded.
+func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath string, dataPieces, parityPieces uint64, force bool) error {
+	siaPath = escapeSiaPath(trimSiaPath(siaPath))
+	values := url.Values{}
+	values.Set("datapieces", strconv.FormatUint(dataPieces, 10))
+	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
+	values.Set("force", strconv.FormatBool(force))
+	values.Set("stream", strconv.FormatBool(true))
+	_, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", siaPath, values.Encode()), r)
+	return err
 }
 
 // RenterDirCreatePost uses the /renter/dir/ endpoint to create a directory for the
