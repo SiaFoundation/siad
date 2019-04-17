@@ -3,8 +3,9 @@ package renter
 import (
 	"fmt"
 	"io"
-	"os"
 	"sync"
+
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -197,19 +198,12 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.
 	if err != nil {
 		return nil, err
 	}
-	// Check if directory exists already
-	exists, err := r.staticDirSet.Exists(dirSiaPath)
-	if !os.IsNotExist(err) && err != nil {
+	// Create directory
+	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
+	if err != nil && err != siadir.ErrPathOverload {
 		return nil, err
 	}
-	if !exists {
-		// Create directory
-		siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
-		if err != nil {
-			return nil, err
-		}
-		siaDirEntry.Close()
-	}
+	defer siaDirEntry.Close()
 	// Create the Siafile and add to renter
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
 	entry, err := r.staticFileSet.NewSiaFile(up, sk, 0, 0700)

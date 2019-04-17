@@ -2394,7 +2394,7 @@ standard success or error response. See [standard responses](#standard-responses
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/upload/myfile" --data-binary @myfile.dat
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/upload/myfile?datapieces=10&paritypieces=20" --data-binary @myfile.dat
 ```
 
 uploads a file to the network using a stream.

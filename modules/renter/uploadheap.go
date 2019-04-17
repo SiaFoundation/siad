@@ -186,7 +186,10 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 	// from the 'unusedHosts' map, also increment the 'piecesCompleted' value.
 	pieces, err := entry.Pieces(chunkIndex)
 	if err != nil {
-		r.log.Println("failed to get pieces for building incomplete chunks")
+		r.log.Println("failed to get pieces for building incomplete chunks", err)
+		if err := entry.SetStuck(chunkIndex, true); err != nil {
+			r.log.Printf("failed to set chunk %v stuck: %v", chunkIndex, err)
+		}
 		return nil
 	}
 	for pieceIndex, pieceSet := range pieces {

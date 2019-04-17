@@ -366,7 +366,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 			chunk.logicalChunkData = buf.buf
 			return nil
 		}
-		return errors.AddContext(err, "Failed to get logicalChunkData from stream")
+		return errors.AddContext(err, "failed to get logicalChunkData from stream")
 	}
 
 	// Download the chunk if it's not on disk.
