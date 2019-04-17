@@ -1111,11 +1111,13 @@ func renterfileslistcmd(path string) {
 	fmt.Fprintf(w, "/%v\n", rgd.Directories[0].SiaPath)
 	// Print dirs.
 	for i := 1; i < len(rgd.Directories); i++ {
-		fmt.Fprintf(w, "  /%v\n", rgd.Directories[i].SiaPath)
+		_, name := filepath.Split(rgd.Directories[i].SiaPath)
+		fmt.Fprintf(w, "  /%v\n", name)
 	}
 	// Print files.
 	for _, file := range rgd.Files {
-		fmt.Fprintf(w, "  %s", file.SiaPath)
+		_, name := filepath.Split(file.SiaPath)
+		fmt.Fprintf(w, "  %s", name)
 		fmt.Fprintf(w, "\t%9s", filesizeUnits(file.Filesize))
 		if renterListVerbose {
 			availableStr := yesNo(file.Available)
