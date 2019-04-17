@@ -207,7 +207,7 @@ func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 // readLockFileInfo returns information on a siafile. As a performance
 // optimization, the fileInfo takes the maps returned by
 // renter.managedContractUtilityMaps for many files at once.
-func (sfs *SiaFileSet) readLockFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Get the file's metadata and its contracts
 	md, err := sfs.readLockMetadata(siaPath)
 	if err != nil {
@@ -232,7 +232,7 @@ func (sfs *SiaFileSet) readLockFileInfo(siaPath modules.SiaPath, offline map[str
 		Health:           md.CachedHealth,
 		LocalPath:        localPath,
 		MaxHealth:        math.Max(md.CachedHealth, md.CachedStuckHealth),
-		MaxHealthPercent: md.HealthPercentage(),
+		MaxHealthPercent: healthPercentage(md.CachedHealth, md.CachedStuckHealth, md.staticErasureCode),
 		ModTime:          md.ModTime,
 		NumStuckChunks:   md.NumStuckChunks,
 		OnDisk:           onDisk,
@@ -245,7 +245,6 @@ func (sfs *SiaFileSet) readLockFileInfo(siaPath modules.SiaPath, offline map[str
 		UploadedBytes:    md.CachedUploadedBytes,
 		UploadProgress:   md.CachedUploadProgress,
 	}
-
 	return fileInfo, nil
 }
 
@@ -367,10 +366,60 @@ func (sfs *SiaFileSet) Exists(siaPath modules.SiaPath) bool {
 func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.readLockFileInfo(siaPath, offline, goodForRenew, contracts)
+
+	entry, err := sfs.open(siaPath)
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+	defer entry.Close()
+
+	// Build the FileInfo
+	var onDisk bool
+	localPath := entry.LocalPath()
+	if localPath != "" {
+		_, err = os.Stat(localPath)
+		onDisk = err == nil
+	}
+	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
+	redundancy := entry.Redundancy(offline, goodForRenew)
+	uploadProgress, uploadedBytes := entry.UploadProgressAndBytes()
+	fileInfo := modules.FileInfo{
+		AccessTime:       entry.AccessTime(),
+		Available:        redundancy >= 1,
+		ChangeTime:       entry.ChangeTime(),
+		CipherType:       entry.MasterKey().Type().String(),
+		CreateTime:       entry.CreateTime(),
+		Expiration:       entry.Expiration(contracts),
+		Filesize:         entry.Size(),
+		Health:           health,
+		LocalPath:        localPath,
+		MaxHealth:        math.Max(health, stuckHealth),
+		MaxHealthPercent: healthPercentage(health, stuckHealth, entry.ErasureCode()),
+		ModTime:          entry.ModTime(),
+		NumStuckChunks:   numStuckChunks,
+		OnDisk:           onDisk,
+		Recoverable:      onDisk || redundancy >= 1,
+		Redundancy:       redundancy,
+		Renewing:         true,
+		SiaPath:          siaPath.String(),
+		Stuck:            numStuckChunks > 0,
+		StuckHealth:      stuckHealth,
+		UploadedBytes:    uploadedBytes,
+		UploadProgress:   uploadProgress,
+	}
+	return fileInfo, nil
 }
 
-// FileList returns all of the files that the renter has.
+// CachedFileInfo returns a modules.FileInfo for a given file like FileInfo but
+// instead of computing redundancy, health etc. it uses cached values.
+func (sfs *SiaFileSet) CachedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.readLockCachedFileInfo(siaPath, offline, goodForRenew, contracts)
+}
+
+// FileList returns all of the files that the renter has. This method will used
+// cached values for health, redundancy etc.
 func (sfs *SiaFileSet) FileList(offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, error) {
 	// Guarantee that no other thread is writing to sfs.
 	sfs.mu.Lock()
@@ -388,7 +437,7 @@ func (sfs *SiaFileSet) FileList(offlineMap map[string]bool, goodForRenewMap map[
 			if err := siaPath.LoadSysPath(sfs.siaFileDir, path); err != nil {
 				continue
 			}
-			file, err := sfs.readLockFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+			file, err := sfs.readLockCachedFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
 			if os.IsNotExist(err) || err == ErrUnknownPath {
 				continue
 			}
@@ -497,4 +546,14 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 
 	// Update the siafile to have a new name.
 	return entry.Rename(newSiaPath, newSiaPath.SiaFileSysPath(sfs.siaFileDir))
+}
+
+// healthPercentage returns the health in a more human understandable format out
+// of 100%
+func healthPercentage(h, sh float64, ec modules.ErasureCoder) float64 {
+	health := math.Max(h, sh)
+	dataPieces := ec.MinPieces()
+	parityPieces := ec.NumPieces() - dataPieces
+	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
+	return 100 * ((worstHealth - health) / worstHealth)
 }

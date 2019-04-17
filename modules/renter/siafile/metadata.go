@@ -2,7 +2,6 @@ package siafile
 
 import (
 	"encoding/hex"
-	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -186,16 +185,6 @@ func (sf *SiaFile) CreateTime() time.Time {
 // ChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) ChunkSize() uint64 {
 	return sf.staticChunkSize()
-}
-
-// HealthPercentage returns the health in a more human understandable format out
-// of 100%
-func (md Metadata) HealthPercentage() float64 {
-	health := math.Max(md.CachedHealth, md.CachedStuckHealth)
-	dataPieces := md.staticErasureCode.MinPieces()
-	parityPieces := md.staticErasureCode.NumPieces() - dataPieces
-	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
-	return 100 * ((worstHealth - health) / worstHealth)
 }
 
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file

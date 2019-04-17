@@ -759,7 +759,7 @@ func TestFileExpiration(t *testing.T) {
 	}
 	f := newBlankTestFile()
 	contracts := make(map[string]modules.RenterContract)
-	f.UpdateExpiration(contracts)
+	_ = f.Expiration(contracts)
 	if f.staticMetadata.CachedExpiration != 0 {
 		t.Error("file with no pieces should report as having no time remaining")
 	}
@@ -780,7 +780,7 @@ func TestFileExpiration(t *testing.T) {
 	fc := modules.RenterContract{}
 	fc.EndHeight = 100
 	contracts[pk1.String()] = fc
-	f.UpdateExpiration(contracts)
+	_ = f.Expiration(contracts)
 	if f.staticMetadata.CachedExpiration != 100 {
 		t.Error("file did not report lowest WindowStart")
 	}
@@ -788,7 +788,7 @@ func TestFileExpiration(t *testing.T) {
 	// Add a contract with a lower WindowStart.
 	fc.EndHeight = 50
 	contracts[pk2.String()] = fc
-	f.UpdateExpiration(contracts)
+	_ = f.Expiration(contracts)
 	if f.staticMetadata.CachedExpiration != 50 {
 		t.Error("file did not report lowest WindowStart")
 	}
@@ -796,7 +796,7 @@ func TestFileExpiration(t *testing.T) {
 	// Add a contract with a higher WindowStart.
 	fc.EndHeight = 75
 	contracts[pk3.String()] = fc
-	f.UpdateExpiration(contracts)
+	_ = f.Expiration(contracts)
 	if f.staticMetadata.CachedExpiration != 50 {
 		t.Error("file did not report lowest WindowStart")
 	}

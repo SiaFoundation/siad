@@ -511,7 +511,7 @@ func (r *Renter) managedRenterContractsAndUtilities(entrys []*siafile.SiaFileSet
 	}
 	// Update the cached expiration of the siafiles.
 	for _, e := range entrys {
-		e.UpdateExpiration(contracts)
+		_ = e.Expiration(contracts)
 	}
 	return offline, goodForRenew, contracts
 }

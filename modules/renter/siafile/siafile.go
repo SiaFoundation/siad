@@ -233,7 +233,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	}
 
 	// Update cache.
-	defer sf.updateUploadProgressAndBytes()
+	defer sf.UploadProgressAndBytes()
 
 	// Get the index of the host in the public key table.
 	tableIndex := -1
@@ -376,14 +376,14 @@ func (sf *SiaFile) Save() error {
 	return sf.saveFile()
 }
 
-// UpdateExpiration updates CachedExpiration with the lowest height at which any
-// of the file's contracts will expire.
-func (sf *SiaFile) UpdateExpiration(contracts map[string]modules.RenterContract) {
+// Expiration updates CachedExpiration with the lowest height at which any of
+// the file's contracts will expire and returns the new value.
+func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types.BlockHeight {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if len(sf.pubKeyTable) == 0 {
 		sf.staticMetadata.CachedExpiration = 0
-		return
+		return 0
 	}
 
 	lowest := ^types.BlockHeight(0)
@@ -397,6 +397,7 @@ func (sf *SiaFile) UpdateExpiration(contracts map[string]modules.RenterContract)
 		}
 	}
 	sf.staticMetadata.CachedExpiration = lowest
+	return lowest
 }
 
 // Health calculates the health of the file to be used in determining repair
@@ -891,21 +892,22 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 	return numPiecesGoodForRenew, numPiecesGoodForUpload
 }
 
-// updateUploadProgressAndBytes updates the CachedUploadProgress and
+// UploadProgressAndBytes updates the CachedUploadProgress and
 // CachedUploadedBytes fields to indicate what percentage of the file has been
 // uploaded based on the unique pieces that have been uploaded and also how many
 // bytes have been uploaded of that file in total. Note that a file may be
 // Available long before UploadProgress reaches 100%.
-func (sf *SiaFile) updateUploadProgressAndBytes() {
+func (sf *SiaFile) UploadProgressAndBytes() (float64, uint64) {
 	_, uploaded := sf.uploadedBytes()
 	if sf.staticMetadata.FileSize == 0 {
 		// Update cache.
 		sf.staticMetadata.CachedUploadProgress = 100
-		return
+		return 100, uploaded
 	}
 	desired := uint64(len(sf.chunks)) * modules.SectorSize * uint64(sf.staticMetadata.staticErasureCode.NumPieces())
 	// Update cache.
 	sf.staticMetadata.CachedUploadProgress = math.Min(100*(float64(uploaded)/float64(desired)), 100)
+	return sf.staticMetadata.CachedUploadProgress, uploaded
 }
 
 // uploadedBytes indicates how many bytes of the file have been uploaded via
