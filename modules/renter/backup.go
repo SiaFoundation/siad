@@ -415,6 +415,68 @@ func (r *Renter) UploadBackup(name string, dotSia []byte) error {
 	return nil
 }
 
+// DownloadBackup downloads the specified backup.
+func (r *Renter) DownloadBackup(m SnapshotMetadata) (dotSia []byte, err error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
+	contracts := r.hostContractor.Contracts()
+
+	// try each host individually
+	for i := range contracts {
+		err := func() error {
+			host, err := r.hostContractor.Session(contracts[i].HostPublicKey, r.tg.StopChan())
+			if err != nil {
+				return err
+			}
+			// download the entry table
+			tableSector, err := host.DownloadIndex(0, 0, uint32(modules.SectorSize))
+			if err != nil {
+				return err
+			}
+			var entryTable []snapshotEntry
+			if err := encoding.Unmarshal(tableSector, &entryTable); err != nil {
+				return err
+			}
+			// search for the desired snapshot
+			var entry *snapshotEntry
+			for j := range entryTable {
+				if entryTable[j].Meta.UID == m.UID {
+					entry = &entryTable[j]
+					break
+				}
+			}
+			if entry == nil {
+				return errors.New("entry table does not contain snapshot")
+			}
+			// download the entry
+			dotSia = nil
+			rem := entry.Meta.Size
+			for _, root := range entry.DataSectors {
+				size := rem
+				if size > modules.SectorSize {
+					size = modules.SectorSize
+				}
+				data, err := host.Download(root, 0, uint32(size))
+				if err != nil {
+					return err
+				}
+				dotSia = append(dotSia, data...)
+				rem -= size
+			}
+			return nil
+		}()
+		if err != nil {
+			r.log.Printf("Downloading backup from host %v failed: %v", contracts[i].HostPublicKey, err)
+			continue
+		}
+		return dotSia, nil
+	}
+	return nil, errors.New("could not download backup from any host")
+}
+
 // AvailableBackups returns the snapshot backups that the renter can download.
 func (r *Renter) AvailableBackups() ([]SnapshotMetadata, error) {
 	if err := r.tg.Add(); err != nil {
