@@ -569,7 +569,7 @@ func (r *Renter) DownloadHistory() []modules.DownloadInfo {
 			DestinationType: d.staticDestinationType,
 			Length:          d.staticLength,
 			Offset:          d.staticOffset,
-			SiaPath:         d.staticSiaPath.String(),
+			SiaPath:         d.staticSiaPath,
 
 			Completed:            d.staticComplete(),
 			EndTime:              d.endTime,

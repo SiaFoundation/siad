@@ -212,8 +212,12 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	// Get the time before renaming.
 	beforeRenameTime := time.Now()
 
+	newSiaPath, err := modules.NewSiaPath("newsiapath")
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Rename the file and check that only the ChangeTime changed.
-	rf, err = r.Rename(rf, "newsiapath")
+	rf, err = r.Rename(rf, newSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -556,7 +560,10 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check directory that file was uploaded to
-	siaPath := filepath.Dir(rf.SiaPath())
+	siaPath, err := rf.SiaPath().Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	rgd, err = r.RenterGetDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
@@ -570,7 +577,10 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check parent directory
-	siaPath = filepath.Dir(siaPath)
+	siaPath, err = siaPath.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	rgd, err = r.RenterGetDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
@@ -589,7 +599,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check that siadir was deleted from disk
-	_, err = os.Stat(filepath.Join(r.RenterFilesDir(), rd.SiaPath()))
+	_, err = os.Stat(rd.SiaPath().SiaDirSysPath(r.RenterFilesDir()))
 	if !os.IsNotExist(err) {
 		t.Fatal("Expected IsNotExist err, but got err:", err)
 	}
@@ -3629,7 +3639,10 @@ func TestSiafileCompatCode(t *testing.T) {
 	testDir := renterTestDir(t.Name())
 
 	// The siapath stored in the legacy file.
-	expectedSiaPath := "sub1/sub2/testfile"
+	expectedSiaPath, err := modules.NewSiaPath("sub1/sub2/testfile")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Copying legacy file to test directory
 	renterDir := filepath.Join(testDir, "renter")
@@ -3969,7 +3982,11 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.RenterFileGet(rf.SiaPath() + "_1")
+	sp, err := modules.NewSiaPath(rf.SiaPath().String() + "_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileGet(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4313,12 +4330,8 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	f := rfg.Files[0]
-	sp, err := modules.NewSiaPath(f.SiaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Set stuck to the opposite value it had before.
-	if err := r.RenterSetFileStuckPost(sp, !f.Stuck); err != nil {
+	if err := r.RenterSetFileStuckPost(f.SiaPath, !f.Stuck); err != nil {
 		t.Fatal(err)
 	}
 	// Check if it was set correctly.
@@ -4330,7 +4343,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Stuck field should be %v but was %v", !f.Stuck, fi.File.Stuck)
 	}
 	// Set stuck to the original value.
-	if err := r.RenterSetFileStuckPost(sp, f.Stuck); err != nil {
+	if err := r.RenterSetFileStuckPost(f.SiaPath, f.Stuck); err != nil {
 		t.Fatal(err)
 	}
 	// Check if it was set correctly.

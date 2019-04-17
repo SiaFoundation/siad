@@ -169,12 +169,12 @@ type (
 
 	// DownloadInfo contains all client-facing information of a file.
 	DownloadInfo struct {
-		Destination     string `json:"destination"`     // The destination of the download.
-		DestinationType string `json:"destinationtype"` // Can be "file", "memory buffer", or "http stream".
-		Filesize        uint64 `json:"filesize"`        // DEPRECATED. Same as 'Length'.
-		Length          uint64 `json:"length"`          // The length requested for the download.
-		Offset          uint64 `json:"offset"`          // The offset within the siafile requested for the download.
-		SiaPath         string `json:"siapath"`         // The siapath of the file used for the download.
+		Destination     string          `json:"destination"`     // The destination of the download.
+		DestinationType string          `json:"destinationtype"` // Can be "file", "memory buffer", or "http stream".
+		Filesize        uint64          `json:"filesize"`        // DEPRECATED. Same as 'Length'.
+		Length          uint64          `json:"length"`          // The length requested for the download.
+		Offset          uint64          `json:"offset"`          // The offset within the siafile requested for the download.
+		SiaPath         modules.SiaPath `json:"siapath"`         // The siapath of the file used for the download.
 
 		Completed            bool      `json:"completed"`            // Whether or not the download has completed.
 		EndTime              time.Time `json:"endtime"`              // The time when the download fully completed.

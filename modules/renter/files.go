@@ -223,7 +223,7 @@ func (r *Renter) fileInfo(siaPath modules.SiaPath, offline map[string]bool, good
 		Recoverable:      onDisk || redundancy >= 1,
 		Redundancy:       redundancy,
 		Renewing:         true,
-		SiaPath:          r.staticFileSet.SiaPath(entry).String(),
+		SiaPath:          r.staticFileSet.SiaPath(entry),
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
 		UploadedBytes:    entry.UploadedBytes(),

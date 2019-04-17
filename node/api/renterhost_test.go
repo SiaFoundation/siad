@@ -966,7 +966,7 @@ func TestRenterParallelDelete(t *testing.T) {
 	}
 	// Only the second file should be present
 	st.getAPI("/renter/files", &rf)
-	if len(rf.Files) != 1 || rf.Files[0].SiaPath != "test2" {
+	if len(rf.Files) != 1 || rf.Files[0].SiaPath.String() != "test2" {
 		t.Fatal("file was not deleted properly:", rf.Files)
 	}
 

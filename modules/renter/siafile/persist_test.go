@@ -164,7 +164,7 @@ func newTestFileParams() (string, modules.SiaPath, string, modules.ErasureCoder,
 	// Create arguments for new file.
 	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
 	pieceSize := modules.SectorSize - sk.Type().Overhead()
-	siaPath := newRandSiaPath()
+	siaPath := modules.RandomSiaPath()
 	rc, err := NewRSCode(10, 20)
 	if err != nil {
 		panic(err)

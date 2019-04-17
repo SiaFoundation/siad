@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -236,6 +237,11 @@ func (tn *TestNode) initRootDirs() error {
 
 // SiaPath returns the siapath of a local file or directory to be used for
 // uploading
-func (tn *TestNode) SiaPath(path string) string {
-	return strings.TrimPrefix(path, tn.filesDir.path+string(filepath.Separator))
+func (tn *TestNode) SiaPath(path string) modules.SiaPath {
+	s := strings.TrimPrefix(path, tn.filesDir.path+string(filepath.Separator))
+	sp, err := modules.NewSiaPath(s)
+	if err != nil {
+		build.Critical("This shouldn't happen", err)
+	}
+	return sp
 }

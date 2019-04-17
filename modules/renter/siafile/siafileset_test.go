@@ -1,23 +1,12 @@
 package siafile
 
 import (
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/fastrand"
 )
-
-// newRandSiaPath creates a new SiaPath type with a random path.
-func newRandSiaPath() modules.SiaPath {
-	siaPath, err := modules.NewSiaPath(hex.EncodeToString(fastrand.Bytes(4)))
-	if err != nil {
-		panic(err)
-	}
-	return siaPath
-}
 
 // newTestSiaFileSetWithFile creates a new SiaFileSet and SiaFile and makes sure
 // that they are linked
@@ -268,7 +257,7 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
 	}
 	// Rename second instance
-	newSiaPath := newRandSiaPath()
+	newSiaPath := modules.RandomSiaPath()
 	err = sfs.Rename(siaPath, newSiaPath)
 	if err != nil {
 		t.Fatal(err)

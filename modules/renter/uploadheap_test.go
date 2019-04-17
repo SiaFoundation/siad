@@ -182,14 +182,14 @@ func TestBuildChunkHeap(t *testing.T) {
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
-		SiaPath:     newRandSiaPath(),
+		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
 	f1, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
 	if err != nil {
 		t.Fatal(err)
 	}
-	up.SiaPath = newRandSiaPath()
+	up.SiaPath = modules.RandomSiaPath()
 	f2, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
 	if err != nil {
 		t.Fatal(err)
