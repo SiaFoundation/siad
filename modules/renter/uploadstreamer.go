@@ -203,8 +203,9 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.
 	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
 	if err != nil && err != siadir.ErrPathOverload {
 		return nil, err
+	} else if err == nil {
+		siaDirEntry.Close()
 	}
-	defer siaDirEntry.Close()
 	// Create the Siafile and add to renter
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
 	entry, err := r.staticFileSet.NewSiaFile(up, sk, 0, 0700)
