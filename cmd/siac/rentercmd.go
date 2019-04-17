@@ -1096,7 +1096,7 @@ func renterfileslistcmd(path string) {
 		fmt.Println("No files/dirs have been uploaded.")
 		return
 	}
-	fmt.Printf("\nListing %v files/dirs:", len(rgd.Files)-len(rgd.Directories))
+	fmt.Printf("\nListing %v files/dirs:", len(rgd.Files)+len(rgd.Directories)-1)
 	var totalStored uint64
 	for _, file := range rgd.Files {
 		totalStored += file.Filesize
