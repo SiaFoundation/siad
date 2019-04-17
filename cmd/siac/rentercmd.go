@@ -104,11 +104,10 @@ var (
 	}
 
 	renterFilesListCmd = &cobra.Command{
-		Use:     "ls [path]",
-		Aliases: []string{"ls"},
-		Short:   "List the status of all files within specified dir",
-		Long:    "List the status of all files known to the renter within the specified folder on the Sia network.",
-		Run:     wrap(renterfileslistcmd),
+		Use:   "ls [path]",
+		Short: "List the status of all files within specified dir",
+		Long:  "List the status of all files known to the renter within the specified folder on the Sia network.",
+		Run:   wrap(renterfileslistcmd),
 	}
 
 	renterFilesRenameCmd = &cobra.Command{
