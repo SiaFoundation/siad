@@ -1085,6 +1085,9 @@ func (s bySiaPath) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].Sia
 // renterfileslistcmd is the handler for the command `siac renter list`.
 // Lists files known to the renter on the network.
 func renterfileslistcmd(path string) {
+	if path == "." {
+		path = ""
+	}
 	rgd, err := httpClient.RenterGetDir(path)
 	if err != nil {
 		die("Could not get file list:", err)
@@ -1093,7 +1096,7 @@ func renterfileslistcmd(path string) {
 		fmt.Println("No files have been uploaded.")
 		return
 	}
-	fmt.Print("\nTracking ", len(rgd.Files), " files:")
+	fmt.Printf("\nListing %v files in '%v':", len(rgd.Files), path)
 	var totalStored uint64
 	for _, file := range rgd.Files {
 		totalStored += file.Filesize
