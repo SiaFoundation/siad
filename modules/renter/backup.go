@@ -14,7 +14,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/twofish"
@@ -316,4 +318,110 @@ func wrapReaderInCipher(r io.Reader, bh backupHeader, secret []byte) (io.Reader,
 	default:
 		return nil, errors.New("unknown cipher")
 	}
+}
+
+// SnapshotMetadata contains metadata about a snapshot backup.
+type SnapshotMetadata struct {
+	Name         [96]byte
+	UID          [16]byte
+	CreationDate types.Timestamp
+	Size         uint64 // size of snapshot .sia file
+}
+
+type snapshotEntry struct {
+	Meta        SnapshotMetadata
+	DataSectors [4]crypto.Hash // pointers to sectors containing snapshot .sia file
+}
+
+// UploadBackup uploads a snapshot .sia file to all hosts.
+func (r *Renter) UploadBackup(name string, dotSia []byte) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+
+	meta := SnapshotMetadata{
+		CreationDate: types.CurrentTimestamp(),
+		Size:         uint64(len(dotSia)),
+	}
+	copy(meta.Name[:], name)
+	fastrand.Read(meta.UID[:])
+
+	contracts := r.hostContractor.Contracts()
+
+	// split the snapshot .sia file into sectors
+	var sectors [][]byte
+	for buf := bytes.NewBuffer(dotSia); buf.Len() > 0; {
+		sectors = append(sectors, buf.Next(int(modules.SectorSize)))
+	}
+	if len(sectors) > 4 {
+		return errors.New("snapshot is too large")
+	}
+
+	// upload the siafile and update the entry table for each host
+	var numSuccessful int
+	for i := range contracts {
+		err := func() error {
+			host, err := r.hostContractor.Session(contracts[i].HostPublicKey, r.tg.StopChan())
+			if err != nil {
+				return err
+			}
+			// upload the siafile, creating a snapshotEntry
+			entry := snapshotEntry{Meta: meta}
+			for j, piece := range sectors {
+				root, err := host.Upload(piece)
+				if err != nil {
+					return err
+				}
+				entry.DataSectors[j] = root
+			}
+
+			// download the current entry table
+			tableSector, err := host.DownloadIndex(0, 0, uint32(modules.SectorSize))
+			if err != nil {
+				return err
+			}
+			// update the entry table
+			var entryTable []snapshotEntry
+			if err := encoding.Unmarshal(tableSector, &entryTable); err != nil {
+				return err
+			}
+			entryTable = append(entryTable, entry)
+			// if entryTable is too large to fit in a sector, remove old entries until it fits
+			for len(encoding.Marshal(entryTable)) > int(modules.SectorSize) {
+				entryTable = entryTable[1:]
+			}
+			tableSector = encoding.Marshal(entryTable)
+			// replace the new entry table
+			if _, err := host.Replace(tableSector, 0); err != nil {
+				return err
+			}
+			return nil
+		}()
+		if err != nil {
+			r.log.Printf("Uploading backup to host %v failed: %v", contracts[i].HostPublicKey, err)
+			continue
+		}
+		numSuccessful++
+	}
+	if numSuccessful == 0 {
+		return errors.New("failed to upload to at least one host")
+	}
+	r.persist.Snapshots = append(r.persist.Snapshots, meta)
+	if err := r.saveSync(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AvailableBackups returns the snapshot backups that the renter can download.
+func (r *Renter) AvailableBackups() ([]SnapshotMetadata, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+	id := r.mu.RLock()
+	defer r.mu.RUnlock(id)
+	return r.persist.Snapshots, nil
 }

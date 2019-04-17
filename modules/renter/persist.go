@@ -62,6 +62,7 @@ type (
 	persistence struct {
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
+		Snapshots        []SnapshotMetadata
 	}
 )
 
