@@ -82,9 +82,9 @@ dev-race:
 
 # release builds and installs release binaries.
 release:
-	go install -tags='netgo' -a -ldflags='-s -w $(ldflags)' $(pkgs)
+	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
 release-race:
-	go install -race -tags='netgo' -a -ldflags='-s -w $(ldflags)' $(pkgs)
+	go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
 
 # clean removes all directories that get automatically created during
 # development.

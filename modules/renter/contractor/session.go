@@ -29,12 +29,19 @@ type Session interface {
 	// Download requests the specified sector data.
 	Download(root crypto.Hash, offset, length uint32) ([]byte, error)
 
+	// DownloadIndex requests data from the sector with the specified index
+	// within the contract.
+	DownloadIndex(index uint64, offset, length uint32) ([]byte, error)
+
 	// EndHeight returns the height at which the contract ends.
 	EndHeight() types.BlockHeight
 
 	// Upload revises the underlying contract to store the new data. It
 	// returns the Merkle root of the data.
 	Upload(data []byte) (crypto.Hash, error)
+
+	// Replace replaces the sector at the specified index with data.
+	Replace(data []byte, sectorIndex uint64) (crypto.Hash, error)
 }
 
 // A hostSession modifies a Contract via the renter-host RPC loop. It
@@ -111,6 +118,31 @@ func (hs *hostSession) Download(root crypto.Hash, offset, length uint32) ([]byte
 	return data, nil
 }
 
+// DownloadIndex retrieves the sector with the specified index.
+func (hs *hostSession) DownloadIndex(index uint64, offset, length uint32) ([]byte, error) {
+	hs.mu.Lock()
+	defer hs.mu.Unlock()
+	if hs.invalid {
+		return nil, errInvalidSession
+	}
+
+	// Retrieve the Merkle root for the index.
+	_, roots, err := hs.session.SectorRoots(modules.LoopSectorRootsRequest{
+		RootOffset: index,
+		NumRoots:   1,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Download the data.
+	_, data, err := hs.session.ReadSection(roots[0], offset, length)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // EndHeight returns the height at which the host is no longer obligated to
 // store the file.
 func (hs *hostSession) EndHeight() types.BlockHeight { return hs.endHeight }
@@ -125,6 +157,21 @@ func (hs *hostSession) Upload(data []byte) (crypto.Hash, error) {
 
 	// Perform the upload.
 	_, sectorRoot, err := hs.session.Append(data)
+	if err != nil {
+		return crypto.Hash{}, err
+	}
+	return sectorRoot, nil
+}
+
+// Replace replaces the sector at the specified index with data.
+func (hs *hostSession) Replace(data []byte, sectorIndex uint64) (crypto.Hash, error) {
+	hs.mu.Lock()
+	defer hs.mu.Unlock()
+	if hs.invalid {
+		return crypto.Hash{}, errInvalidSession
+	}
+
+	_, sectorRoot, err := hs.session.Replace(data, sectorIndex)
 	if err != nil {
 		return crypto.Hash{}, err
 	}

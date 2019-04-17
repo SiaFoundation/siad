@@ -113,15 +113,41 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	return rc, crypto.MerkleRoot(data), err
 }
 
+// Replace calls the Write RPC with a series of actions that replace the sector
+// at the specified index with data, returning the updated contract and the
+// Merkle root of the new sector.
+func (s *Session) Replace(data []byte, sectorIndex uint64) (_ modules.RenterContract, _ crypto.Hash, err error) {
+	sc, haveContract := s.contractSet.Acquire(s.contractID)
+	if !haveContract {
+		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract not present in contract set")
+	}
+	defer s.contractSet.Return(sc)
+	// get current number of sectors
+	numSectors := sc.header.LastRevision().NewFileSize / modules.SectorSize
+
+	rc, err := s.write(sc, []modules.LoopWriteAction{
+		// append the new sector
+		{Type: modules.WriteActionAppend, Data: data},
+		// swap the new sector with the old sector
+		{Type: modules.WriteActionSwap, A: 0, B: numSectors},
+		// delete the old sector
+		{Type: modules.WriteActionTrim, A: 1},
+	})
+	return rc, crypto.MerkleRoot(data), err
+}
+
 // Write implements the Write RPC, except for ActionUpdate. A Merkle proof is
 // always requested.
 func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterContract, err error) {
-	// Acquire the contract.
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
 		return modules.RenterContract{}, errors.New("contract not present in contract set")
 	}
 	defer s.contractSet.Return(sc)
+	return s.write(sc, actions)
+}
+
+func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ modules.RenterContract, err error) {
 	contract := sc.header // for convenience
 
 	// calculate price per sector
