@@ -1092,11 +1092,11 @@ func renterfileslistcmd(path string) {
 	if err != nil {
 		die("Could not get file list:", err)
 	}
-	if len(rgd.Files) == 0 {
-		fmt.Println("No files have been uploaded.")
+	if len(rgd.Files)+len(rgd.Directories) <= 1 {
+		fmt.Println("No files/dirs have been uploaded.")
 		return
 	}
-	fmt.Printf("\nListing %v files in '%v':", len(rgd.Files), path)
+	fmt.Printf("\nListing %v files/dirs:", len(rgd.Files)-len(rgd.Directories))
 	var totalStored uint64
 	for _, file := range rgd.Files {
 		totalStored += file.Filesize
@@ -1104,11 +1104,19 @@ func renterfileslistcmd(path string) {
 	fmt.Printf(" %9s\n", filesizeUnits(totalStored))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if renterListVerbose {
-		fmt.Fprintln(w, "  File size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tOn Disk\tRecoverable\tSia path")
+		fmt.Fprintln(w, "  Name\tFile size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tOn Disk\tRecoverable")
 	}
 	sort.Sort(bySiaPath(rgd.Files))
+	// Print root dir.
+	fmt.Fprintf(w, "/%v\n", rgd.Directories[0].SiaPath)
+	// Print dirs.
+	for i := 1; i < len(rgd.Directories); i++ {
+		fmt.Fprintf(w, "  /%v\n", rgd.Directories[i].SiaPath)
+	}
+	// Print files.
 	for _, file := range rgd.Files {
-		fmt.Fprintf(w, "  %9s", filesizeUnits(file.Filesize))
+		fmt.Fprintf(w, "  %s", file.SiaPath)
+		fmt.Fprintf(w, "\t%9s", filesizeUnits(file.Filesize))
 		if renterListVerbose {
 			availableStr := yesNo(file.Available)
 			renewingStr := yesNo(file.Renewing)
@@ -1126,7 +1134,6 @@ func renterfileslistcmd(path string) {
 			stuckStr := yesNo(file.Stuck)
 			fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
 		}
-		fmt.Fprintf(w, "\t%s", file.SiaPath)
 		if !renterListVerbose && !file.Available {
 			fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
 		}
