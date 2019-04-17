@@ -171,10 +171,11 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.
 	// Check if ec was set. If not use defaults.
 	var err error
 	if ec == nil {
-		ec, err = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, 64)
+		up.ErasureCode, err = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, 64)
 		if err != nil {
 			return nil, err
 		}
+		ec = up.ErasureCode
 	}
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
