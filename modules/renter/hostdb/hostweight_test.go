@@ -174,8 +174,8 @@ func TestHostWeightWithNoCollateral(t *testing.T) {
 	}
 }
 
-// TestHostWeightMaxDuration checks that the host with more collateral has more
-// weight.
+// TestHostWeightMaxDuration checks that the host with an unacceptable duration
+// has a lower score.
 func TestHostWeightMaxDuration(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -208,7 +208,7 @@ func TestHostWeightCollateralDifferences(t *testing.T) {
 
 	w1 := hdb.weightFunc(entry).Score()
 	w2 := hdb.weightFunc(entry2).Score()
-	if w1.Cmp(w2) < 0 {
+	if w1.Cmp(w2) <= 0 {
 		t.Error("Larger collateral should have more weight")
 	}
 }
@@ -306,16 +306,17 @@ func TestHostWeightUptimeDifferences(t *testing.T) {
 	w1 := hdb.weightFunc(entry).Score()
 	w2 := hdb.weightFunc(entry2).Score()
 
-	if w1.Cmp(w2) < 0 {
+	if w1.Cmp(w2) <= 0 {
 		t.Log(w1)
 		t.Log(w2)
-		t.Error("Been around longer should have more weight")
+		t.Error("A host with recorded downtime should have a lower score")
 	}
 }
 
 // TestHostWeightUptimeDifferences2 checks that hosts with poorer uptimes have
 // lower weights.
 func TestHostWeightUptimeDifferences2(t *testing.T) {
+	t.Skip("Hostdb is not currently doing exponentiation on uptime")
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -324,6 +325,11 @@ func TestHostWeightUptimeDifferences2(t *testing.T) {
 
 	entry := DefaultHostDBEntry
 	entry.ScanHistory = modules.HostDBScans{
+		{Timestamp: time.Now().Add(time.Hour * -200), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -180), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -160), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -140), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -120), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -100), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -80), Success: false},
 		{Timestamp: time.Now().Add(time.Hour * -60), Success: true},
@@ -333,6 +339,11 @@ func TestHostWeightUptimeDifferences2(t *testing.T) {
 
 	entry2 := entry
 	entry2.ScanHistory = modules.HostDBScans{
+		{Timestamp: time.Now().Add(time.Hour * -200), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -180), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -160), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -140), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -120), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -100), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -80), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -60), Success: true},
@@ -342,8 +353,10 @@ func TestHostWeightUptimeDifferences2(t *testing.T) {
 	w1 := hdb.weightFunc(entry).Score()
 	w2 := hdb.weightFunc(entry2).Score()
 
-	if w1.Cmp(w2) < 0 {
-		t.Errorf("Been around longer should have more weight\n\t%v\n\t%v", w1, w2)
+	if w1.Cmp(w2) <= 0 {
+		t.Log(w1)
+		t.Log(w2)
+		t.Errorf("Downtime that's further in the past should be penalized less")
 	}
 }
 
@@ -358,6 +371,11 @@ func TestHostWeightUptimeDifferences3(t *testing.T) {
 
 	entry := DefaultHostDBEntry
 	entry.ScanHistory = modules.HostDBScans{
+		{Timestamp: time.Now().Add(time.Hour * -200), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -180), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -160), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -140), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -120), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -100), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -80), Success: false},
 		{Timestamp: time.Now().Add(time.Hour * -60), Success: true},
@@ -367,6 +385,11 @@ func TestHostWeightUptimeDifferences3(t *testing.T) {
 
 	entry2 := entry
 	entry2.ScanHistory = modules.HostDBScans{
+		{Timestamp: time.Now().Add(time.Hour * -200), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -180), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -160), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -140), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -120), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -100), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -80), Success: false},
 		{Timestamp: time.Now().Add(time.Hour * -60), Success: false},
@@ -376,8 +399,10 @@ func TestHostWeightUptimeDifferences3(t *testing.T) {
 	w1 := hdb.weightFunc(entry).Score()
 	w2 := hdb.weightFunc(entry2).Score()
 
-	if w1.Cmp(w2) < 0 {
-		t.Error("Been around longer should have more weight")
+	if w1.Cmp(w2) <= 0 {
+		t.Log(w1)
+		t.Log(w2)
+		t.Error("A host with longer downtime should have a lower score")
 	}
 }
 
@@ -392,6 +417,11 @@ func TestHostWeightUptimeDifferences4(t *testing.T) {
 
 	entry := DefaultHostDBEntry
 	entry.ScanHistory = modules.HostDBScans{
+		{Timestamp: time.Now().Add(time.Hour * -200), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -180), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -160), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -140), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -120), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -100), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -80), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -60), Success: true},
@@ -401,6 +431,11 @@ func TestHostWeightUptimeDifferences4(t *testing.T) {
 
 	entry2 := entry
 	entry2.ScanHistory = modules.HostDBScans{
+		{Timestamp: time.Now().Add(time.Hour * -200), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -180), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -160), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -140), Success: true},
+		{Timestamp: time.Now().Add(time.Hour * -120), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -100), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -80), Success: true},
 		{Timestamp: time.Now().Add(time.Hour * -60), Success: true},
@@ -410,8 +445,10 @@ func TestHostWeightUptimeDifferences4(t *testing.T) {
 	w1 := hdb.weightFunc(entry).Score()
 	w2 := hdb.weightFunc(entry2).Score()
 
-	if w1.Cmp(w2) < 0 {
-		t.Error("Been around longer should have more weight")
+	if w1.Cmp(w2) <= 0 {
+		t.Log(w1)
+		t.Log(w2)
+		t.Error("longer tail downtime should have a lower score")
 	}
 }
 

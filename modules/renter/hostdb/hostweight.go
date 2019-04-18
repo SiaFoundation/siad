@@ -3,6 +3,7 @@ package hostdb
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -396,6 +397,11 @@ func (hdb *HostDB) lifetimeAdjustments(entry modules.HostDBEntry) float64 {
 // new host to give the host some initial uptime or downtime. Modification of
 // this function needs to be made paying attention to the structure of that
 // function.
+//
+// TODO: This function doesn't correctly handle situations where the user's
+// clock goes back in time. If the user adjusts their system clock to be in the
+// past, we'll get timestamping that's out of order, and this will cause erratic
+// / improper / untested behavior.
 func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 	// Special case: if we have scanned the host twice or fewer, don't perform
 	// uptime math.
@@ -429,7 +435,7 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 			if build.DEBUG {
 				hdb.log.Critical("Host entry scan history not sorted.")
 			} else {
-				hdb.log.Print("WARNING: Host entry scan history not sorted.")
+				hdb.log.Print("WARN: Host entry scan history not sorted.")
 			}
 			// Ignore the unsorted scan entry.
 			continue
@@ -442,8 +448,19 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 		recentTime = scan.Timestamp
 		recentSuccess = scan.Success
 	}
+
+	// One more check to incorporate the uptime or downtime of the most recent
+	// scan, we assume that if we scanned them right now, their uptime /
+	// downtime status would be equal to what it currently is.
+	if recentSuccess {
+		uptime += time.Now().Sub(recentTime)
+	} else {
+		downtime += time.Now().Sub(recentTime)
+	}
+
 	// Sanity check against 0 total time.
 	if uptime == 0 && downtime == 0 {
+		build.Critical("uptime and downtime are zero for this host, should have been caught in earlier logic")
 		return 0.001 // Shouldn't happen.
 	}
 
