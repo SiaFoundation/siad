@@ -543,67 +543,6 @@ func (r *Renter) managedSubDirectories(siaPath modules.SiaPath) ([]modules.SiaPa
 	return folders, nil
 }
 
-// managedWorstHealthDirectory follows the path of worst health to the lowest
-// level possible
-func (r *Renter) managedWorstHealthDirectory() (modules.SiaPath, float64, error) {
-	// Check the health of the root files directory
-	siaPath := modules.RootSiaPath()
-	health, err := r.managedDirectoryMetadata(siaPath)
-	if err != nil {
-		return modules.SiaPath{}, 0, err
-	}
-
-	// Follow the path of worst health to the lowest level. We only want to find
-	// directories with a health worse than the repairHealthThreshold to save
-	// resources
-	for health.Health >= siafile.RemoteRepairDownloadThreshold {
-		// Check to make sure renter hasn't been shutdown
-		select {
-		case <-r.tg.StopChan():
-			return modules.SiaPath{}, 0, errors.New("could not find worst health directory due to shutdown")
-		default:
-		}
-		// Check for subdirectories
-		subDirSiaPaths, err := r.managedSubDirectories(siaPath)
-		if err != nil {
-			return modules.SiaPath{}, 0, err
-		}
-		// If there are no sub directories, return
-		if len(subDirSiaPaths) == 0 {
-			return siaPath, health.Health, nil
-		}
-
-		// Check sub directory healths to find the worst health
-		updated := false
-		for _, subDirPath := range subDirSiaPaths {
-			// Check health of sub directory
-			subHealth, err := r.managedDirectoryMetadata(subDirPath)
-			if err != nil {
-				return modules.SiaPath{}, 0, err
-			}
-
-			// If the health of the sub directory is better than the current
-			// worst health continue
-			if subHealth.Health < health.Health {
-				continue
-			}
-
-			// Update Health and worst health path
-			updated = true
-			health.Health = subHealth.Health
-			siaPath = subDirPath
-		}
-
-		// If the values were never updated with any of the sub directory values
-		// then return as we are in the directory we are looking for
-		if !updated {
-			return siaPath, health.Health, nil
-		}
-	}
-
-	return siaPath, health.Health, nil
-}
-
 // threadedBubbleMetadata is the thread safe method used to call
 // managedBubbleMetadata when the call does not need to be blocking
 func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {

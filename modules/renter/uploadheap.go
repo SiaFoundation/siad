@@ -335,12 +335,18 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 // health directory found is sufficiently healthy then no chunks will be added
 // to the heap
 func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (modules.SiaPath, float64, error) {
-	// Find the lowest health directory to queue for repairs.
-	dirSiaPath, dirHealth, err := r.managedWorstHealthDirectory()
+	// Pop an explored directory off of the directory heap
+	dir, err := r.managedNextExploredDirectory()
 	if err != nil {
-		r.log.Println("WARN: error getting worst health directory:", err)
+		r.log.Println("WARN: error getting explored directory:", err)
 		return modules.SiaPath{}, 0, err
 	}
+
+	// Grab health and siaPath of the directory
+	dir.mu.Lock()
+	dirHealth := dir.health
+	dirSiaPath := dir.siaPath
+	dir.mu.Unlock()
 
 	// If the lowest health directory is healthy then return
 	if dirHealth < siafile.RemoteRepairDownloadThreshold {
