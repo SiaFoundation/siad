@@ -361,8 +361,13 @@ func (r *Renter) UploadBackup(name string, dotSia []byte) error {
 	// upload the siafile and update the entry table for each host
 	var numSuccessful int
 	for i := range contracts {
+		hostKey := contracts[i].HostPublicKey
+		utility, ok := r.hostContractor.ContractUtility(hostKey)
+		if !ok || !utility.GoodForUpload {
+			continue
+		}
 		err := func() error {
-			host, err := r.hostContractor.Session(contracts[i].HostPublicKey, r.tg.StopChan())
+			host, err := r.hostContractor.Session(hostKey, r.tg.StopChan())
 			if err != nil {
 				return err
 			}
@@ -399,7 +404,7 @@ func (r *Renter) UploadBackup(name string, dotSia []byte) error {
 			return nil
 		}()
 		if err != nil {
-			r.log.Printf("Uploading backup to host %v failed: %v", contracts[i].HostPublicKey, err)
+			r.log.Printf("Uploading backup to host %v failed: %v", hostKey, err)
 			continue
 		}
 		numSuccessful++
