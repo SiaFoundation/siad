@@ -720,6 +720,11 @@ func (r *Renter) threadedUploadAndRepair() {
 			case <-r.tg.StopChan():
 				return
 			}
+			// Refresh directory heap
+			err = r.managedResetDirectoryHeap()
+			if err != nil {
+				r.log.Panicln("WARN: there was an error reseting the directory heap:", err)
+			}
 			// Make sure that the hosts and workers are updated before
 			// continuing to the repair loop
 			hosts = r.managedRefreshHostsAndWorkers()

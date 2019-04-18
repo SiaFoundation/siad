@@ -32,17 +32,35 @@ func TestDirectoryHeap(t *testing.T) {
 		if !rt.renter.directoryHeap.managedPush(d) {
 			t.Fatal("directory not added")
 		}
+		// For the last element, mark it as explored
+		if i == 5 {
+			siaPath, err = modules.NewSiaPath(fmt.Sprint(i) + "explored")
+			if err != nil {
+				t.Fatal(err)
+			}
+			d = &directory{
+				explored: true,
+				health:   float64(i),
+				siaPath:  siaPath,
+			}
+			if !rt.renter.directoryHeap.managedPush(d) {
+				t.Fatal("directory not added")
+			}
+		}
 	}
 
 	// Confirm all elements added
-	if rt.renter.directoryHeap.managedLen() != 6 {
-		t.Fatal("heap should have length of 6 but was", rt.renter.directoryHeap.managedLen())
+	if rt.renter.directoryHeap.managedLen() != 7 {
+		t.Fatal("heap should have length of 7 but was", rt.renter.directoryHeap.managedLen())
 	}
 
-	// Pop off top element, should have a health of 5
+	// Pop off top element, should have a health of 5 and it should be explored
 	d := rt.renter.directoryHeap.managedPop()
 	if d.health != float64(5) {
 		t.Fatal("Expected Health of 5, got", d.health)
+	}
+	if !d.explored {
+		t.Fatal("Expected the directory to be explored")
 	}
 
 	// Reset Direcotry heap

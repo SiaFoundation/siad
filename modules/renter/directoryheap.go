@@ -39,6 +39,13 @@ type repairDirectoryHeap []*directory
 // Implementation of heap.Interface for repairDirectoryHeap.
 func (rdh repairDirectoryHeap) Len() int { return len(rdh) }
 func (rdh repairDirectoryHeap) Less(i, j int) bool {
+	// Prioritize explored directories if the health is the same
+	if rdh[i].health == rdh[j].health && rdh[i].explored {
+		return true
+	}
+	if rdh[i].health == rdh[j].health && rdh[j].explored {
+		return false
+	}
 	// Since a higher health is worse we use the > operator
 	return rdh[i].health > rdh[j].health
 }
