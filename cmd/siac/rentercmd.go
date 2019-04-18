@@ -1085,10 +1085,17 @@ func (s bySiaPath) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].Sia
 // renterfileslistcmd is the handler for the command `siac renter list`.
 // Lists files known to the renter on the network.
 func renterfileslistcmd(path string) {
-	if path == "." {
-		path = ""
+	var sp modules.SiaPath
+	var err error
+	if path == "." || path == "" || path == "/" {
+		sp = modules.RootSiaPath()
+	} else {
+		sp, err = modules.NewSiaPath(path)
+		if err != nil {
+			die("could not parse siapath:", err)
+		}
 	}
-	rgd, err := httpClient.RenterGetDir(path)
+	rgd, err := httpClient.RenterGetDir(sp)
 	if err != nil {
 		die("Could not get file list:", err)
 	}
@@ -1111,12 +1118,12 @@ func renterfileslistcmd(path string) {
 	fmt.Fprintf(w, "%v/\n", rgd.Directories[0].SiaPath)
 	// Print dirs.
 	for i := 1; i < len(rgd.Directories); i++ {
-		_, name := filepath.Split(rgd.Directories[i].SiaPath)
+		name := rgd.Directories[i].SiaPath.Name()
 		fmt.Fprintf(w, "  %v/\n", name)
 	}
 	// Print files.
 	for _, file := range rgd.Files {
-		_, name := filepath.Split(file.SiaPath)
+		name := file.SiaPath.Name()
 		fmt.Fprintf(w, "  %s", name)
 		fmt.Fprintf(w, "\t%9s", filesizeUnits(file.Filesize))
 		if renterListVerbose {
