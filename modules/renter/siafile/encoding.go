@@ -54,7 +54,7 @@ func marshalErasureCoder(ec modules.ErasureCoder) ([4]byte, [8]byte) {
 }
 
 // marshalMetadata marshals the metadata of the SiaFile using json encoding.
-func marshalMetadata(md metadata) ([]byte, error) {
+func marshalMetadata(md Metadata) ([]byte, error) {
 	return json.Marshal(md)
 }
 
@@ -153,7 +153,7 @@ func unmarshalErasureCoder(ecType [4]byte, ecParams [8]byte) (modules.ErasureCod
 }
 
 // unmarshalMetadata unmarshals the json encoded metadata of the SiaFile.
-func unmarshalMetadata(raw []byte) (md metadata, err error) {
+func unmarshalMetadata(raw []byte) (md Metadata, err error) {
 	err = json.Unmarshal(raw, &md)
 
 	// We also need to create the erasure coder object.

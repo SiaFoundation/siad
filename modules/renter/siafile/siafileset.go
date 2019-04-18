@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
 
+	"github.com/karrick/godirwalk"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -147,15 +149,16 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	// and then a new/different file was uploaded with the same siapath.
 	//
 	// If they are not the same entry, there is nothing more to do.
-	currentEntry := sfs.siaFileMap[entry.staticMetadata.StaticUniqueID]
+	currentEntry := sfs.siaFileMap[entry.Metadata().StaticUniqueID]
 	if currentEntry != entry.siaFileSetEntry {
 		return
 	}
 
-	// If there are no more threads that have the current entry open, delete
-	// this entry from the set cache.
+	// If there are no more threads that have the current entry open, delete this
+	// entry from the set cache and save the file to make sure all changes are
+	// persisted.
 	if len(currentEntry.threadMap) == 0 {
-		delete(sfs.siaFileMap, entry.staticMetadata.StaticUniqueID)
+		delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	}
 }
@@ -198,6 +201,50 @@ func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file on disk
 	_, err := os.Stat(siaPath.SiaFileSysPath(sfs.siaFileDir))
 	return !os.IsNotExist(err)
+}
+
+// readLockFileInfo returns information on a siafile. As a performance
+// optimization, the fileInfo takes the maps returned by
+// renter.managedContractUtilityMaps for many files at once.
+func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	// Get the file's metadata and its contracts
+	md, err := sfs.readLockMetadata(siaPath)
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+
+	// Build the FileInfo
+	var onDisk bool
+	localPath := md.LocalPath
+	if localPath != "" {
+		_, err = os.Stat(localPath)
+		onDisk = err == nil
+	}
+	fileInfo := modules.FileInfo{
+		AccessTime:       md.AccessTime,
+		Available:        md.CachedRedundancy >= 1,
+		ChangeTime:       md.ChangeTime,
+		CipherType:       md.StaticMasterKeyType.String(),
+		CreateTime:       md.CreateTime,
+		Expiration:       md.CachedExpiration,
+		Filesize:         uint64(md.FileSize),
+		Health:           md.CachedHealth,
+		LocalPath:        localPath,
+		MaxHealth:        math.Max(md.CachedHealth, md.CachedStuckHealth),
+		MaxHealthPercent: healthPercentage(md.CachedHealth, md.CachedStuckHealth, md.staticErasureCode),
+		ModTime:          md.ModTime,
+		NumStuckChunks:   md.NumStuckChunks,
+		OnDisk:           onDisk,
+		Recoverable:      onDisk || md.CachedRedundancy >= 1,
+		Redundancy:       md.CachedRedundancy,
+		Renewing:         true,
+		SiaPath:          siaPath,
+		Stuck:            md.NumStuckChunks > 0,
+		StuckHealth:      md.CachedStuckHealth,
+		UploadedBytes:    md.CachedUploadedBytes,
+		UploadProgress:   md.CachedUploadProgress,
+	}
+	return fileInfo, nil
 }
 
 // newSiaFileSetEntry initializes and returns a siaFileSetEntry
@@ -258,6 +305,29 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	}, nil
 }
 
+// readLockMetadata returns the metadata of the SiaFile at siaPath. NOTE: The
+// 'readLock' prefix in this case is used to indicate that it's safe to call
+// this method with other 'readLock' methods without locking since is doesn't
+// write to any fields. This guarantee can be made by locking sfs.mu and then
+// spawning multiple threads which call 'readLock' methods in parallel.
+func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, error) {
+	var entry *siaFileSetEntry
+	entry, _, exists := sfs.siaPathToEntryAndUID(siaPath)
+	if exists {
+		// Get metadata from entry.
+		return entry.Metadata(), nil
+	}
+	// Try and Load Metadata from disk
+	md, err := LoadSiaFileMetadata(siaPath.SiaFileSysPath(sfs.siaFileDir))
+	if os.IsNotExist(err) {
+		return Metadata{}, ErrUnknownPath
+	}
+	if err != nil {
+		return Metadata{}, err
+	}
+	return md, nil
+}
+
 // Delete deletes the SiaFileSetEntry's SiaFile
 func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	sfs.mu.Lock()
@@ -276,7 +346,7 @@ func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 
 	// Remove the siafile from the set maps so that other threads can't find
 	// it.
-	delete(sfs.siaFileMap, entry.staticMetadata.StaticUniqueID)
+	delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
 	delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	return nil
 }
@@ -287,6 +357,115 @@ func (sfs *SiaFileSet) Exists(siaPath modules.SiaPath) bool {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.exists(siaPath)
+}
+
+// FileInfo returns information on a siafile. As a performance optimization, the
+// fileInfo takes the maps returned by renter.managedContractUtilityMaps for
+// many files at once.
+func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	entry, err := sfs.Open(siaPath)
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+	defer entry.Close()
+
+	// Build the FileInfo
+	var onDisk bool
+	localPath := entry.LocalPath()
+	if localPath != "" {
+		_, err = os.Stat(localPath)
+		onDisk = err == nil
+	}
+	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
+	redundancy := entry.Redundancy(offline, goodForRenew)
+	uploadProgress, uploadedBytes := entry.UploadProgressAndBytes()
+	fileInfo := modules.FileInfo{
+		AccessTime:       entry.AccessTime(),
+		Available:        redundancy >= 1,
+		ChangeTime:       entry.ChangeTime(),
+		CipherType:       entry.MasterKey().Type().String(),
+		CreateTime:       entry.CreateTime(),
+		Expiration:       entry.Expiration(contracts),
+		Filesize:         entry.Size(),
+		Health:           health,
+		LocalPath:        localPath,
+		MaxHealth:        math.Max(health, stuckHealth),
+		MaxHealthPercent: healthPercentage(health, stuckHealth, entry.ErasureCode()),
+		ModTime:          entry.ModTime(),
+		NumStuckChunks:   numStuckChunks,
+		OnDisk:           onDisk,
+		Recoverable:      onDisk || redundancy >= 1,
+		Redundancy:       redundancy,
+		Renewing:         true,
+		SiaPath:          siaPath,
+		Stuck:            numStuckChunks > 0,
+		StuckHealth:      stuckHealth,
+		UploadedBytes:    uploadedBytes,
+		UploadProgress:   uploadProgress,
+	}
+	return fileInfo, nil
+}
+
+// CachedFileInfo returns a modules.FileInfo for a given file like FileInfo but
+// instead of computing redundancy, health etc. it uses cached values.
+func (sfs *SiaFileSet) CachedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.readLockCachedFileInfo(siaPath, offline, goodForRenew, contracts)
+}
+
+// FileList returns all of the files that the renter has. This method will used
+// cached values for health, redundancy etc.
+func (sfs *SiaFileSet) FileList(offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, error) {
+	// Guarantee that no other thread is writing to sfs.
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	// Declare a worker method to spawn workers which keep loading files from disk
+	// until the loadChan is closed.
+	fileList := []modules.FileInfo{}
+	var fileListMu sync.Mutex
+	loadChan := make(chan string)
+	var wg sync.WaitGroup
+	worker := func() {
+		for path := range loadChan {
+			// Load the Siafile.
+			var siaPath modules.SiaPath
+			if err := siaPath.LoadSysPath(sfs.siaFileDir, path); err != nil {
+				continue
+			}
+			file, err := sfs.readLockCachedFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+			if os.IsNotExist(err) || err == ErrUnknownPath {
+				continue
+			}
+			if err != nil {
+				continue
+			}
+			fileListMu.Lock()
+			fileList = append(fileList, file)
+			fileListMu.Unlock()
+		}
+		wg.Done()
+	}
+	// spin up some threads
+	for i := 0; i < fileListRoutines; i++ {
+		wg.Add(1)
+		go worker()
+	}
+	// Walk over the whole tree.
+	err := godirwalk.Walk(sfs.siaFileDir, &godirwalk.Options{
+		Unsorted: true,
+		Callback: func(path string, info *godirwalk.Dirent) error {
+			// Skip folders and non-sia files.
+			if info.IsDir() || filepath.Ext(path) != modules.SiaFileExtension {
+				return nil
+			}
+			loadChan <- path
+			return nil
+		},
+	})
+	close(loadChan)
+	wg.Wait()
+	return fileList, err
 }
 
 // NewSiaFile create a new SiaFile, adds it to the SiaFileSet, adds the thread
@@ -329,6 +508,13 @@ func (sfs *SiaFileSet) Open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	return sfs.open(siaPath)
 }
 
+// Metadata returns the metadata of a SiaFile.
+func (sfs *SiaFileSet) Metadata(siaPath modules.SiaPath) (Metadata, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.readLockMetadata(siaPath)
+}
+
 // Rename will move a siafile from one path to a new path. Existing entries that
 // are already open at the old path will continue to be valid.
 func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
@@ -356,4 +542,14 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 
 	// Update the siafile to have a new name.
 	return entry.Rename(newSiaPath, newSiaPath.SiaFileSysPath(sfs.siaFileDir))
+}
+
+// healthPercentage returns the health in a more human understandable format out
+// of 100%
+func healthPercentage(h, sh float64, ec modules.ErasureCoder) float64 {
+	health := math.Max(h, sh)
+	dataPieces := ec.MinPieces()
+	parityPieces := ec.NumPieces() - dataPieces
+	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
+	return 100 * ((worstHealth - health) / worstHealth)
 }

@@ -49,7 +49,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		return &SiaFileSetEntry{}, err
 	}
 	file := &SiaFile{
-		staticMetadata: metadata{
+		staticMetadata: Metadata{
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
@@ -110,5 +110,9 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
 	}
+
+	// Update the cached fields for progress and uploaded bytes.
+	_, _ = file.UploadProgressAndBytes()
+
 	return sfse, errors.AddContext(file.saveFile(), "unable to save file")
 }

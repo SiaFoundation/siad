@@ -70,6 +70,8 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, []mo
 	}
 	defer r.tg.Done()
 
+	// Get utility maps.
+	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
 	var dirs []modules.DirectoryInfo
 	var files []modules.FileInfo
 	// Get DirectoryInfo
@@ -108,7 +110,7 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, []mo
 		if err != nil {
 			return nil, nil, err
 		}
-		file, err := r.File(fileSiaPath)
+		file, err := r.staticFileSet.CachedFileInfo(fileSiaPath, offline, goodForRenew, contracts)
 		if err != nil {
 			return nil, nil, err
 		}

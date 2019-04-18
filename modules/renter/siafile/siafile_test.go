@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -303,6 +304,12 @@ func TestDefragChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 		duration += time.Since(before)
+	}
+
+	// Save the file to disk again to make sure cached fields are persisted.
+	err = sf.saveFile()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Finally load the file from disk again and compare it to the original.
@@ -702,6 +709,9 @@ func TestStuckChunks(t *testing.T) {
 // TestUploadedBytes tests that uploadedBytes() returns the expected values for
 // total and unique uploaded bytes.
 func TestUploadedBytes(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	// Create a new blank test file
 	f := newBlankTestFile()
 	// Add multiple pieces to the first pieceSet of the first piece of the first
@@ -714,9 +724,80 @@ func TestUploadedBytes(t *testing.T) {
 	}
 	totalBytes, uniqueBytes := f.uploadedBytes()
 	if totalBytes != 4*modules.SectorSize {
-		t.Errorf("expected totalBytes to be %v, got %v", 4*modules.SectorSize, f.UploadedBytes())
+		t.Errorf("expected totalBytes to be %v, got %v", 4*modules.SectorSize, totalBytes)
 	}
 	if uniqueBytes != modules.SectorSize {
-		t.Errorf("expected uploadedBytes to be %v, got %v", modules.SectorSize, f.UploadedBytes())
+		t.Errorf("expected uploadedBytes to be %v, got %v", modules.SectorSize, uniqueBytes)
+	}
+}
+
+// TestFileUploadProgressPinning verifies that uploadProgress() returns at most
+// 100%, even if more pieces have been uploaded,
+func TestFileUploadProgressPinning(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	f := newBlankTestFile()
+	for chunkIndex := uint64(0); chunkIndex < f.NumChunks(); chunkIndex++ {
+		for pieceIndex := uint64(0); pieceIndex < uint64(f.ErasureCode().NumPieces()); pieceIndex++ {
+			err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, chunkIndex, pieceIndex, crypto.Hash{})
+			err2 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(1)}}, chunkIndex, pieceIndex, crypto.Hash{})
+			if err := errors.Compose(err1, err2); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if f.staticMetadata.CachedUploadProgress != 100 {
+		t.Fatal("expected uploadProgress to report 100% but was", f.staticMetadata.CachedUploadProgress)
+	}
+}
+
+// TestFileExpiration probes the expiration method of the file type.
+func TestFileExpiration(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	f := newBlankTestFile()
+	contracts := make(map[string]modules.RenterContract)
+	_ = f.Expiration(contracts)
+	if f.staticMetadata.CachedExpiration != 0 {
+		t.Error("file with no pieces should report as having no time remaining")
+	}
+	// Create 3 public keys
+	pk1 := types.SiaPublicKey{Key: []byte{0}}
+	pk2 := types.SiaPublicKey{Key: []byte{1}}
+	pk3 := types.SiaPublicKey{Key: []byte{2}}
+
+	// Add a piece for each key to the file.
+	err1 := f.AddPiece(pk1, 0, 0, crypto.Hash{})
+	err2 := f.AddPiece(pk2, 0, 1, crypto.Hash{})
+	err3 := f.AddPiece(pk3, 0, 2, crypto.Hash{})
+	if err := errors.Compose(err1, err2, err3); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a contract.
+	fc := modules.RenterContract{}
+	fc.EndHeight = 100
+	contracts[pk1.String()] = fc
+	_ = f.Expiration(contracts)
+	if f.staticMetadata.CachedExpiration != 100 {
+		t.Error("file did not report lowest WindowStart")
+	}
+
+	// Add a contract with a lower WindowStart.
+	fc.EndHeight = 50
+	contracts[pk2.String()] = fc
+	_ = f.Expiration(contracts)
+	if f.staticMetadata.CachedExpiration != 50 {
+		t.Error("file did not report lowest WindowStart")
+	}
+
+	// Add a contract with a higher WindowStart.
+	fc.EndHeight = 75
+	contracts[pk3.String()] = fc
+	_ = f.Expiration(contracts)
+	if f.staticMetadata.CachedExpiration != 50 {
+		t.Error("file did not report lowest WindowStart")
 	}
 }

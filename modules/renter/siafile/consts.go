@@ -39,6 +39,10 @@ const (
 	// threadDepth is how deep the ThreadType will track calling files and
 	// calling lines
 	threadDepth = 3
+
+	// fileListRoutines is the number of goroutines used in FileList to load
+	// siafile metadata from disk
+	fileListRoutines = 20
 )
 
 var (
