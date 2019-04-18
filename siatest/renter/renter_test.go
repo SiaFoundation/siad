@@ -1870,12 +1870,20 @@ func TestRenterContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Renter should be ReadyToUpload
+	rg, err = r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rg.ReadyToUpload {
+		t.Fatal("Expected renter to be ReadyToUpload")
+	}
+
+	// Confirm contract end heights were set properly
 	rc, err := r.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Confirm contract end heights were set properly
 	for _, c := range rc.ActiveContracts {
 		if c.EndHeight != currentPeriodStart+period+renewWindow {
 			t.Log("Endheight:", c.EndHeight)

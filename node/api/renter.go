@@ -22,6 +22,16 @@ import (
 )
 
 var (
+	// requiredContracts specifies the minimum number of contracts that the
+	// renter should have before uploading. This is not meant to prevent a user
+	// from uploading, it is merely an indicator of whether or not an upload
+	// will be successful if submitted
+	requiredContracts = build.Select(build.Var{
+		Standard: int(30),
+		Dev:      int(1),
+		Testing:  int(1),
+	}).(int)
+
 	// requiredHosts specifies the minimum number of hosts that must be set in
 	// the renter settings for the renter settings to be valid. This minimum is
 	// there to prevent users from shooting themselves in the foot.
@@ -69,6 +79,7 @@ type (
 		Settings         modules.RenterSettings     `json:"settings"`
 		FinancialMetrics modules.ContractorSpending `json:"financialmetrics"`
 		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
+		ReadyToUpload    bool                       `json:"readytoupload"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -298,12 +309,12 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 
 // renterHandlerGET handles the API call to /renter.
 func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	settings := api.renter.Settings()
-	periodStart := api.renter.CurrentPeriod()
+	activeContracts, _, _ := api.parseRenterContracts(false)
 	WriteJSON(w, RenterGET{
-		Settings:         settings,
+		Settings:         api.renter.Settings(),
 		FinancialMetrics: api.renter.PeriodSpending(),
-		CurrentPeriod:    periodStart,
+		CurrentPeriod:    api.renter.CurrentPeriod(),
+		ReadyToUpload:    len(activeContracts) >= requiredContracts,
 	})
 }
 
@@ -502,14 +513,34 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 		}
 	}
 
-	// Get current block height for reference
-	blockHeight := api.cs.Height()
-
 	// Get active contracts
-	contracts := []RenterContract{}
-	activeContracts := []RenterContract{}
-	inactiveContracts := []RenterContract{}
+	activeContracts, inactiveContracts, contracts := api.parseRenterContracts(inactive)
+
+	// Get expired contracts
 	expiredContracts := []RenterContract{}
+	if expired || inactive {
+		var iac []RenterContract
+		iac, expiredContracts = api.parseRenterOldContracts(inactive, expired)
+		inactiveContracts = append(inactiveContracts, iac...)
+	}
+
+	var recoverableContracts []modules.RecoverableContract
+	if recoverable {
+		recoverableContracts = api.renter.RecoverableContracts()
+	}
+
+	WriteJSON(w, RenterContracts{
+		Contracts:            contracts,
+		ActiveContracts:      activeContracts,
+		InactiveContracts:    inactiveContracts,
+		ExpiredContracts:     expiredContracts,
+		RecoverableContracts: recoverableContracts,
+	})
+}
+
+// parseRenterContracts pulls out the active and inactive contracts from the
+// Renter's Contracts(), contracts are returned for compatibility
+func (api *API) parseRenterContracts(inactive bool) (activeContracts, inactiveContracts, contracts []RenterContract) {
 	for _, c := range api.renter.Contracts() {
 		var size uint64
 		if len(c.Transaction.FileContractRevisions) != 0 {
@@ -550,61 +581,54 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 		}
 		contracts = append(contracts, contract)
 	}
+	return
+}
 
-	// Get expired contracts
-	if expired || inactive {
-		for _, c := range api.renter.OldContracts() {
-			var size uint64
-			if len(c.Transaction.FileContractRevisions) != 0 {
-				size = c.Transaction.FileContractRevisions[0].NewFileSize
-			}
+// parseRenterOldContracts pulls out the inactive and expired contracts from the
+// Renter's OldContracts()
+func (api *API) parseRenterOldContracts(inactive, expired bool) (inactiveContracts, expiredContracts []RenterContract) {
+	// Get current block height for reference
+	blockHeight := api.cs.Height()
 
-			// Fetch host address
-			var netAddress modules.NetAddress
-			hdbe, exists := api.renter.Host(c.HostPublicKey)
-			if exists {
-				netAddress = hdbe.NetAddress
-			}
+	for _, c := range api.renter.OldContracts() {
+		var size uint64
+		if len(c.Transaction.FileContractRevisions) != 0 {
+			size = c.Transaction.FileContractRevisions[0].NewFileSize
+		}
 
-			contract := RenterContract{
-				DownloadSpending:          c.DownloadSpending,
-				EndHeight:                 c.EndHeight,
-				Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
-				GoodForUpload:             c.Utility.GoodForUpload,
-				GoodForRenew:              c.Utility.GoodForRenew,
-				HostPublicKey:             c.HostPublicKey,
-				HostVersion:               hdbe.Version,
-				ID:                        c.ID,
-				LastTransaction:           c.Transaction,
-				NetAddress:                netAddress,
-				RenterFunds:               c.RenterFunds,
-				Size:                      size,
-				StartHeight:               c.StartHeight,
-				StorageSpending:           c.StorageSpending,
-				StorageSpendingDeprecated: c.StorageSpending,
-				TotalCost:                 c.TotalCost,
-				UploadSpending:            c.UploadSpending,
-			}
-			if expired && c.EndHeight < blockHeight {
-				expiredContracts = append(expiredContracts, contract)
-			} else if inactive && c.EndHeight >= blockHeight {
-				inactiveContracts = append(inactiveContracts, contract)
-			}
+		// Fetch host address
+		var netAddress modules.NetAddress
+		hdbe, exists := api.renter.Host(c.HostPublicKey)
+		if exists {
+			netAddress = hdbe.NetAddress
+		}
+
+		contract := RenterContract{
+			DownloadSpending:          c.DownloadSpending,
+			EndHeight:                 c.EndHeight,
+			Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
+			GoodForUpload:             c.Utility.GoodForUpload,
+			GoodForRenew:              c.Utility.GoodForRenew,
+			HostPublicKey:             c.HostPublicKey,
+			HostVersion:               hdbe.Version,
+			ID:                        c.ID,
+			LastTransaction:           c.Transaction,
+			NetAddress:                netAddress,
+			RenterFunds:               c.RenterFunds,
+			Size:                      size,
+			StartHeight:               c.StartHeight,
+			StorageSpending:           c.StorageSpending,
+			StorageSpendingDeprecated: c.StorageSpending,
+			TotalCost:                 c.TotalCost,
+			UploadSpending:            c.UploadSpending,
+		}
+		if expired && c.EndHeight < blockHeight {
+			expiredContracts = append(expiredContracts, contract)
+		} else if inactive && c.EndHeight >= blockHeight {
+			inactiveContracts = append(inactiveContracts, contract)
 		}
 	}
-
-	var recoverableContracts []modules.RecoverableContract
-	if recoverable {
-		recoverableContracts = api.renter.RecoverableContracts()
-	}
-
-	WriteJSON(w, RenterContracts{
-		Contracts:            contracts,
-		ActiveContracts:      activeContracts,
-		InactiveContracts:    inactiveContracts,
-		ExpiredContracts:     expiredContracts,
-		RecoverableContracts: recoverableContracts,
-	})
+	return
 }
 
 // renterClearDownloadsHandler handles the API call to request to clear the download queue.
