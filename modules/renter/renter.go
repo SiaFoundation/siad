@@ -48,6 +48,7 @@ var (
 	errNilGateway    = errors.New("cannot create hostdb with nil gateway")
 	errNilHdb        = errors.New("cannot create renter with nil hostdb")
 	errNilTpool      = errors.New("cannot create renter with nil transaction pool")
+	errNilWallet     = errors.New("cannot create renter with nil wallet")
 )
 
 // A hostDB is a database of hosts that the renter can use for figuring out who
@@ -237,6 +238,7 @@ type Renter struct {
 	cs             modules.ConsensusSet
 	deps           modules.Dependencies
 	g              modules.Gateway
+	w              modules.Wallet
 	hostContractor hostContractor
 	hostDB         hostDB
 	log            *persist.Logger
@@ -731,7 +733,7 @@ func (r *Renter) SetIPViolationCheck(enabled bool) {
 var _ modules.Renter = (*Renter)(nil)
 
 // NewCustomRenter initializes a renter and returns it.
-func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, hc hostContractor, persistDir string, deps modules.Dependencies) (*Renter, error) {
+func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, persistDir string, deps modules.Dependencies) (*Renter, error) {
 	if g == nil {
 		return nil, errNilGateway
 	}
@@ -746,6 +748,9 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 	if hdb == nil && build.Release != "testing" {
 		return nil, errNilHdb
+	}
+	if w == nil {
+		return nil, errNilWallet
 	}
 
 	r := &Renter{
@@ -778,6 +783,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		cs:             cs,
 		deps:           deps,
 		g:              g,
+		w:              w,
 		hostDB:         hdb,
 		hostContractor: hc,
 		persistDir:     persistDir,
@@ -833,5 +839,5 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 	if err != nil {
 		return nil, err
 	}
-	return NewCustomRenter(g, cs, tpool, hdb, hc, persistDir, modules.ProdDependencies)
+	return NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, modules.ProdDependencies)
 }

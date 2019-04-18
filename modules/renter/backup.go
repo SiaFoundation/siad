@@ -43,7 +43,12 @@ func (r *Renter) CreateBackup(dst string, secret []byte) error {
 		return err
 	}
 	defer r.tg.Done()
+	return r.managedCreateBackup(dst, secret)
+}
 
+// managedCreateBackup creates a backup of the renter's siafiles. If a secret is
+// not nil, the backup will be encrypted using the provided secret.
+func (r *Renter) managedCreateBackup(dst string, secret []byte) error {
 	// Create the gzip file.
 	f, err := os.Create(dst)
 	if err != nil {

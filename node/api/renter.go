@@ -1155,3 +1155,9 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	WriteError(w, Error{"no calls were made, please check your submission and try again"}, http.StatusInternalServerError)
 	return
 }
+
+// renterSnapshotHandler handles API calls to /renter/snapshot which create
+// snapshots that can be recovered with only the seed.
+func (api *API) renterSnapshotHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Create the snapshot.
+}
