@@ -106,7 +106,7 @@ var (
 	renterFilesListCmd = &cobra.Command{
 		Use:   "ls [path]",
 		Short: "List the status of all files within specified dir",
-		Long:  "List the status of all files known to the renter within the specified folder on the Sia network.",
+		Long:  "List the status of all files known to the renter within the specified folder on the Sia network. To query the root dir either '\"\"', '/' or '.' can be supplied",
 		Run:   wrap(renterfileslistcmd),
 	}
 
@@ -1108,11 +1108,11 @@ func renterfileslistcmd(path string) {
 	}
 	sort.Sort(bySiaPath(rgd.Files))
 	// Print root dir.
-	fmt.Fprintf(w, "/%v\n", rgd.Directories[0].SiaPath)
+	fmt.Fprintf(w, "%v/\n", rgd.Directories[0].SiaPath)
 	// Print dirs.
 	for i := 1; i < len(rgd.Directories); i++ {
 		_, name := filepath.Split(rgd.Directories[i].SiaPath)
-		fmt.Fprintf(w, "  /%v\n", name)
+		fmt.Fprintf(w, "  %v/\n", name)
 	}
 	// Print files.
 	for _, file := range rgd.Files {
