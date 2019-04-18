@@ -2,6 +2,7 @@ package renter
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -34,6 +35,7 @@ func (r *Renter) CreateSnapshot() error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
+	defer r.tg.Done()
 	return r.managedCreateSnapshot()
 }
 
@@ -50,12 +52,13 @@ func (r *Renter) managedCreateSnapshot() error {
 	secret := crypto.HashAll(rs, snapshotKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Get a temporary location for the backup.
-	backupName := fmt.Sprint(time.Now().Unix)
+	backupName := fmt.Sprint(time.Now().Unix())
 	backupDst := filepath.Join(os.TempDir(), backupName)
-	// Create the backup.
+	// Create the backup and delte it afterwards.
 	if err := r.managedCreateBackup(backupDst, secret[:32]); err != nil {
 		return errors.AddContext(err, "failed to create backup for snapshot")
 	}
+	defer os.Remove(backupDst)
 	// Open the backup for uploading.
 	backup, err := os.Open(backupDst)
 	if err != nil {
@@ -78,9 +81,25 @@ func (r *Renter) managedCreateSnapshot() error {
 		Force:       false,
 	}
 	// Upload the backup.
-	if err := r.UploadStreamFromReader(up, backup); err != nil {
+	if err := r.managedUploadStreamFromReader(up, backup, true); err != nil {
 		return errors.AddContext(err, "failed to upload backup")
 	}
-	panic("not implemented yet")
-	return nil
+	// Grab the entry for the uploaded backup's siafile.
+	entry, err := r.staticBackupFileSet.Open(sp)
+	if err != nil {
+		return errors.AddContext(err, "failed to get entry for snapshot")
+	}
+	defer entry.Close()
+	// Read the siafile from disk.
+	sr, err := entry.SnapshotReader()
+	if err != nil {
+		return err
+	}
+	defer sr.Close()
+	dotSia, err := ioutil.ReadAll(sr)
+	if err != nil {
+		return err
+	}
+	// Upload the snapshot to the network.
+	return r.UploadBackup(sp.String(), dotSia)
 }

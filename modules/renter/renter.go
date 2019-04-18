@@ -193,11 +193,13 @@ type hostContractor interface {
 type Renter struct {
 	// File management.
 	//
-	staticFileSet *siafile.SiaFileSet
+	staticFileSet       *siafile.SiaFileSet
+	staticBackupFileSet *siafile.SiaFileSet
 
 	// Directory Management
 	//
-	staticDirSet *siadir.SiaDirSet
+	staticDirSet       *siadir.SiaDirSet
+	staticBackupDirSet *siadir.SiaDirSet
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -235,20 +237,21 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
-	cs             modules.ConsensusSet
-	deps           modules.Dependencies
-	g              modules.Gateway
-	w              modules.Wallet
-	hostContractor hostContractor
-	hostDB         hostDB
-	log            *persist.Logger
-	persist        persistence
-	persistDir     string
-	staticFilesDir string
-	mu             *siasync.RWMutex
-	tg             threadgroup.ThreadGroup
-	tpool          modules.TransactionPool
-	wal            *writeaheadlog.WAL
+	cs               modules.ConsensusSet
+	deps             modules.Dependencies
+	g                modules.Gateway
+	w                modules.Wallet
+	hostContractor   hostContractor
+	hostDB           hostDB
+	log              *persist.Logger
+	persist          persistence
+	persistDir       string
+	staticFilesDir   string
+	staticBackupsDir string
+	mu               *siasync.RWMutex
+	tg               threadgroup.ThreadGroup
+	tpool            modules.TransactionPool
+	wal              *writeaheadlog.WAL
 }
 
 // Close closes the Renter and its dependencies
@@ -780,16 +783,17 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 
 		bubbleUpdates: make(map[string]bubbleStatus),
 
-		cs:             cs,
-		deps:           deps,
-		g:              g,
-		w:              w,
-		hostDB:         hdb,
-		hostContractor: hc,
-		persistDir:     persistDir,
-		staticFilesDir: filepath.Join(persistDir, modules.SiapathRoot),
-		mu:             siasync.New(modules.SafeMutexDelay, 1),
-		tpool:          tpool,
+		cs:               cs,
+		deps:             deps,
+		g:                g,
+		w:                w,
+		hostDB:           hdb,
+		hostContractor:   hc,
+		persistDir:       persistDir,
+		staticFilesDir:   filepath.Join(persistDir, modules.SiapathRoot),
+		staticBackupsDir: filepath.Join(persistDir, modules.BackupRoot),
+		mu:               siasync.New(modules.SafeMutexDelay, 1),
+		tpool:            tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 
