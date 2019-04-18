@@ -352,7 +352,9 @@ func (r *Renter) UploadBackup(name string, dotSia []byte) error {
 	// split the snapshot .sia file into sectors
 	var sectors [][]byte
 	for buf := bytes.NewBuffer(dotSia); buf.Len() > 0; {
-		sectors = append(sectors, buf.Next(int(modules.SectorSize)))
+		sector := make([]byte, modules.SectorSize)
+		copy(sector, buf.Next(len(sector)))
+		sectors = append(sectors, sector)
 	}
 	if len(sectors) > 4 {
 		return errors.New("snapshot is too large")
@@ -396,7 +398,7 @@ func (r *Renter) UploadBackup(name string, dotSia []byte) error {
 			for len(encoding.Marshal(entryTable)) > int(modules.SectorSize) {
 				entryTable = entryTable[1:]
 			}
-			tableSector = encoding.Marshal(entryTable)
+			copy(tableSector, encoding.Marshal(entryTable))
 			// replace the new entry table
 			if _, err := host.Replace(tableSector, 0); err != nil {
 				return err
