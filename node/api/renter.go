@@ -291,7 +291,7 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 		}
 
 		// Create the erasure coder.
-		return siafile.NewRSCode(dataPieces, parityPieces)
+		return siafile.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
 	}
 	return nil, nil
 }
