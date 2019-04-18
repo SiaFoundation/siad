@@ -160,7 +160,6 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	if len(currentEntry.threadMap) == 0 {
 		delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
-		_ = entry.Save() // TODO: add logging
 	}
 }
 
@@ -401,7 +400,7 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		Recoverable:      onDisk || redundancy >= 1,
 		Redundancy:       redundancy,
 		Renewing:         true,
-		SiaPath:          siaPath.String(),
+		SiaPath:          siaPath,
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
 		UploadedBytes:    uploadedBytes,
