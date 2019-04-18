@@ -1347,6 +1347,7 @@ func TestRenterAddNodes(t *testing.T) {
 	// Specify subtests to run
 	subTests := []test{
 		{"TestRedundancyReporting", testRedundancyReporting}, // Put first because it pulls the original tg renter
+		{"TestOverspendAllowance", testOverspendAllowance},
 		{"TestRenterCancelAllowance", testRenterCancelAllowance},
 		{"TestRenewFailing", testRenewFailing}, // Put last because it impacts a host
 	}
@@ -1790,6 +1791,91 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testOverspendAllowance tests that setting a small allowance and trying to
+// form contracts will not result in overspending the allowance
+func testOverspendAllowance(t *testing.T, tg *siatest.TestGroup) {
+	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
+	renterParams.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Set the allowance with only 4SC
+	allowance := siatest.DefaultAllowance
+	allowance.Funds = types.SiacoinPrecision.Mul64(4)
+	if err := renter.RenterPostAllowance(allowance); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine a block to start the threadedContractMaintenance.
+	if err := tg.Miners()[0].MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try and form multiple sets of contracts by canceling any contracts that
+	// form
+	count := 0
+	times := 0
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		// Mine Blocks every 5 iterations to ensure that contracts are
+		// continually trying to be created
+		count++
+		if count%5 == 0 {
+			if err := tg.Miners()[0].MineBlock(); err != nil {
+				return err
+			}
+		}
+		// Get contracts
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		// Check if any contracts have formed
+		if len(rc.ActiveContracts) == 0 {
+			times++
+			// Return if there have been 20 consecutive iterations with no new
+			// contracts
+			if times > 20 {
+				return nil
+			}
+			return errors.New("no contracts to cancel")
+		}
+		times = 0
+		// Cancel any active contracts
+		for _, contract := range rc.ActiveContracts {
+			err = renter.RenterContractCancelPost(contract.ID)
+			if err != nil {
+				return err
+			}
+		}
+		return errors.New("contracts still forming")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm that contracts were formed
+	rc, err := renter.RenterInactiveContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) == 0 && len(rc.InactiveContracts) == 0 {
+		t.Fatal("No Contracts formed")
+	}
+
+	// Confirm that the total allocated did not exceed the allowance funds
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	funds := rg.Settings.Allowance.Funds
+	allocated := rg.FinancialMetrics.TotalAllocated
+	if funds.Cmp(allocated) < 0 {
+		t.Fatalf("%v allocated exceeds allowance of %v", allocated, funds)
 	}
 }
 
