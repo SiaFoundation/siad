@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -25,21 +26,31 @@ var (
 
 	// Redundancy settings for uploading snapshots. They are supposed to have a
 	// high redundancy.
-	snapshotDataPieces   = 1
-	snapshotParityPieces = 40
+	snapshotDataPieces = build.Select(build.Var{
+		Dev:      1,
+		Standard: 1,
+		Testing:  1,
+	}).(int)
+	snapshotParityPieces = build.Select(build.Var{
+		Dev:      1,
+		Standard: 39,
+		Testing:  1,
+	}).(int)
 )
 
-// CreateSnapshot creates a backup of the renter which is uploaded to the sia
+// TakeSnapshot creates a backup of the renter which is uploaded to the sia
 // network as a snapshot and can be retrieved using only the seed.
-func (r *Renter) CreateSnapshot() error {
+func (r *Renter) TakeSnapshot() error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	return r.managedCreateSnapshot()
+	return r.managedTakeSnapshot()
 }
 
-func (r *Renter) managedCreateSnapshot() error {
+// managedTakeSnapshot creates a backup of the renter which is uploaded to the
+// sia network as a snapshot and can be retrieved using only the seed.
+func (r *Renter) managedTakeSnapshot() error {
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
 	if err != nil {

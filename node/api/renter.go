@@ -1160,4 +1160,10 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 // snapshots that can be recovered with only the seed.
 func (api *API) renterSnapshotHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Create the snapshot.
+	err := api.renter.TakeSnapshot()
+	if err != nil {
+		WriteError(w, Error{"Failed to create snapshot:" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteSuccess(w)
 }

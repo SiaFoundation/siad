@@ -4558,3 +4558,56 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 }
+
+// TestTakeLoadSnapshot tests taking a snapshot of the renter and restoring from
+// it.
+func TestTakeLoadSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(len(tg.Hosts()) - 1)
+	parityPieces := uint64(1)
+	_, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Create a snapshot.
+	if err := r.TakeSnapshot(); err != nil {
+		t.Fatal(err)
+	}
+	// TODO (followup): Delete first file and upload another file.
+	// TODO (followup): Take another snapshot.
+	// TODO (followup): Make sure there are 2 snapshots.
+	// TODO (followup): restore both snapshots into different renters.
+	// TODO (followup): check that files match
+}

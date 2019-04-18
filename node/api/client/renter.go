@@ -456,3 +456,10 @@ func (c *Client) RenterGetDir(siaPath modules.SiaPath) (rd api.RenterDirectory, 
 	err = c.get(fmt.Sprintf("/renter/dir/%s", siaPath.String()), &rd)
 	return
 }
+
+// TakeSnapshot creates a new snapshot of the renter on the sia network which
+// can be used to restore the renter.
+func (c *Client) TakeSnapshot() (err error) {
+	err = c.post("/renter/snapshot", "", nil)
+	return
+}

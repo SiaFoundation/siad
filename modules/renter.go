@@ -562,6 +562,10 @@ type Renter interface {
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
 
+	// TakeSnapshot creates a backup of the renter which is uploaded to the sia
+	// network as a snapshot and can be retrieved using only the seed.
+	TakeSnapshot() error
+
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(siaPath SiaPath) error
 
