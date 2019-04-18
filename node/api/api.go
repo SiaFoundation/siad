@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -98,12 +99,31 @@ type API struct {
 	wallet   modules.Wallet
 
 	router   http.Handler
-	Shutdown func() error
+	routerMu sync.RWMutex
+
+	requiredUserAgent string
+	requiredPassword  string
+	Shutdown          func() error
 }
 
 // api.ServeHTTP implements the http.Handler interface.
 func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	api.routerMu.RLock()
 	api.router.ServeHTTP(w, r)
+	api.routerMu.RUnlock()
+}
+
+// SetModules allows for replacing the modules in the API at runtime.
+func (api *API) SetModules(cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) {
+	api.cs = cs
+	api.explorer = e
+	api.gateway = g
+	api.host = h
+	api.miner = m
+	api.renter = r
+	api.tpool = tp
+	api.wallet = w
+	api.buildHTTPRoutes()
 }
 
 // New creates a new Sia API from the provided modules.  The API will require
@@ -111,18 +131,20 @@ func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // password is not the empty string.  Usernames are ignored for authentication.
 func New(requiredUserAgent string, requiredPassword string, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) *API {
 	api := &API{
-		cs:       cs,
-		explorer: e,
-		gateway:  g,
-		host:     h,
-		miner:    m,
-		renter:   r,
-		tpool:    tp,
-		wallet:   w,
+		cs:                cs,
+		explorer:          e,
+		gateway:           g,
+		host:              h,
+		miner:             m,
+		renter:            r,
+		tpool:             tp,
+		wallet:            w,
+		requiredUserAgent: requiredUserAgent,
+		requiredPassword:  requiredPassword,
 	}
 
 	// Register API handlers
-	api.buildHTTPRoutes(requiredUserAgent, requiredPassword)
+	api.buildHTTPRoutes()
 
 	return api
 }
