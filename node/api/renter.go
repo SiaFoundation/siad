@@ -130,6 +130,7 @@ type (
 	RenterContracts struct {
 		Contracts            []RenterContract              `json:"contracts"`
 		ActiveContracts      []RenterContract              `json:"activecontracts"`
+		RenewedContracts     []RenterContract              `json:"renewedcontracts"`
 		InactiveContracts    []RenterContract              `json:"inactivecontracts"`
 		ExpiredContracts     []RenterContract              `json:"expiredcontracts"`
 		RecoverableContracts []modules.RecoverableContract `json:"recoverablecontracts"`
@@ -309,7 +310,7 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 
 // renterHandlerGET handles the API call to /renter.
 func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	activeContracts, _, _ := api.parseRenterContracts(false)
+	activeContracts, _, _, _, _ := api.parseRenterContracts(false)
 	WriteJSON(w, RenterGET{
 		Settings:         api.renter.Settings(),
 		FinancialMetrics: api.renter.PeriodSpending(),
@@ -514,13 +515,14 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 	}
 
 	// Get active contracts
-	activeContracts, inactiveContracts, contracts := api.parseRenterContracts(inactive)
+	activeContracts, renewedContracts, inactiveContracts, contracts, activeHosts := api.parseRenterContracts(inactive)
 
 	// Get expired contracts
 	expiredContracts := []RenterContract{}
 	if expired || inactive {
-		var iac []RenterContract
-		iac, expiredContracts = api.parseRenterOldContracts(inactive, expired)
+		var rc, iac []RenterContract
+		rc, iac, expiredContracts = api.parseRenterOldContracts(activeHosts, inactive, expired)
+		renewedContracts = append(renewedContracts, rc...)
 		inactiveContracts = append(inactiveContracts, iac...)
 	}
 
@@ -532,6 +534,7 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 	WriteJSON(w, RenterContracts{
 		Contracts:            contracts,
 		ActiveContracts:      activeContracts,
+		RenewedContracts:     renewedContracts,
 		InactiveContracts:    inactiveContracts,
 		ExpiredContracts:     expiredContracts,
 		RecoverableContracts: recoverableContracts,
@@ -540,7 +543,10 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 
 // parseRenterContracts pulls out the active and inactive contracts from the
 // Renter's Contracts(), contracts are returned for compatibility
-func (api *API) parseRenterContracts(inactive bool) (activeContracts, inactiveContracts, contracts []RenterContract) {
+func (api *API) parseRenterContracts(inactive bool) (activeContracts, renewedContracts, inactiveContracts, contracts []RenterContract, activeHosts map[string]struct{}) {
+	// Build activeContracts,nonActiveContracts, and contracts
+	var nonActiveContracts []RenterContract
+	activeHosts = make(map[string]struct{})
 	for _, c := range api.renter.Contracts() {
 		var size uint64
 		if len(c.Transaction.FileContractRevisions) != 0 {
@@ -574,22 +580,32 @@ func (api *API) parseRenterContracts(inactive bool) (activeContracts, inactiveCo
 			TotalCost:                 c.TotalCost,
 			UploadSpending:            c.UploadSpending,
 		}
+		// A contract is active if it is GoodForRenew
 		if c.Utility.GoodForRenew {
 			activeContracts = append(activeContracts, contract)
+			activeHosts[contract.HostPublicKey.String()] = struct{}{}
 		} else if inactive && !c.Utility.GoodForRenew {
-			inactiveContracts = append(inactiveContracts, contract)
+			nonActiveContracts = append(nonActiveContracts, contract)
 		}
 		contracts = append(contracts, contract)
+	}
+
+	// From nonActiveContracts build renewedContracts and inactiveContracts
+	for _, contract := range nonActiveContracts {
+		if _, ok := activeHosts[contract.HostPublicKey.String()]; ok {
+			renewedContracts = append(renewedContracts, contract)
+			continue
+		}
+		inactiveContracts = append(inactiveContracts, contract)
 	}
 	return
 }
 
 // parseRenterOldContracts pulls out the inactive and expired contracts from the
 // Renter's OldContracts()
-func (api *API) parseRenterOldContracts(inactive, expired bool) (inactiveContracts, expiredContracts []RenterContract) {
+func (api *API) parseRenterOldContracts(activeHosts map[string]struct{}, inactive, expired bool) (renewedContracts, inactiveContracts, expiredContracts []RenterContract) {
 	// Get current block height for reference
 	blockHeight := api.cs.Height()
-
 	for _, c := range api.renter.OldContracts() {
 		var size uint64
 		if len(c.Transaction.FileContractRevisions) != 0 {
@@ -622,11 +638,25 @@ func (api *API) parseRenterOldContracts(inactive, expired bool) (inactiveContrac
 			TotalCost:                 c.TotalCost,
 			UploadSpending:            c.UploadSpending,
 		}
+		// Contract is expired if the endheight is less than the current
+		// blockheight. Gather expired contracts if expired is set to true
 		if expired && c.EndHeight < blockHeight {
 			expiredContracts = append(expiredContracts, contract)
-		} else if inactive && c.EndHeight >= blockHeight {
-			inactiveContracts = append(inactiveContracts, contract)
+			continue
 		}
+		// A contract is inactive if the endheight is greater than or equal to
+		// the blockheight. Continue if inactive is set to false or the
+		// endheight is less than the blockheight
+		if !inactive || c.EndHeight < blockHeight {
+			continue
+		}
+		// If there is an active contract with the host then this contract was
+		// renewed, otherwise it is inactive
+		if _, ok := activeHosts[contract.HostPublicKey.String()]; ok {
+			renewedContracts = append(renewedContracts, contract)
+			continue
+		}
+		inactiveContracts = append(inactiveContracts, contract)
 	}
 	return
 }
