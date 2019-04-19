@@ -215,8 +215,8 @@ func New(params NodeParams) (*Node, error) {
 	dir := params.Dir
 
 	numModules := params.NumModules()
-	i := 0
-	printfRelease("(0/%d) Loading siad...\n", numModules-1)
+	i := 1
+	printfRelease("(%d/%d) Loading siad...\n", i, numModules)
 	// Gateway.
 	g, err := func() (modules.Gateway, error) {
 		if params.CreateGateway && params.Gateway != nil {
@@ -232,7 +232,7 @@ func New(params NodeParams) (*Node, error) {
 			params.RPCAddress = "localhost:0"
 		}
 		i++
-		printfRelease("(%d/%d) Loading gateway...\n", i, numModules-1)
+		printfRelease("(%d/%d) Loading gateway...\n", i, numModules)
 		return gateway.New(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir))
 	}()
 	if err != nil {
@@ -251,7 +251,7 @@ func New(params NodeParams) (*Node, error) {
 			return nil, nil
 		}
 		i++
-		printfRelease("(%d/%d) Loading consensus...\n", i, numModules-1)
+		printfRelease("(%d/%d) Loading consensus...\n", i, numModules)
 		return consensus.New(g, params.Bootstrap, filepath.Join(dir, modules.ConsensusDir))
 	}()
 	if err != nil {
@@ -274,7 +274,7 @@ func New(params NodeParams) (*Node, error) {
 			return nil, err
 		}
 		i++
-		printfRelease("(%d/%d) Loading explorer...\n", i, numModules-1)
+		printfRelease("(%d/%d) Loading explorer...\n", i, numModules)
 		return e, nil
 	}()
 	if err != nil {
@@ -293,7 +293,7 @@ func New(params NodeParams) (*Node, error) {
 			return nil, nil
 		}
 		i++
-		printfRelease("(%d/%d) Loading transaction pool...\n", i, numModules-1)
+		printfRelease("(%d/%d) Loading transaction pool...\n", i, numModules)
 		return transactionpool.New(cs, g, filepath.Join(dir, modules.TransactionPoolDir))
 	}()
 	if err != nil {
@@ -316,7 +316,7 @@ func New(params NodeParams) (*Node, error) {
 			walletDeps = modules.ProdDependencies
 		}
 		i++
-		printfRelease("(%d/%d) Loading wallet...\n", i, numModules-1)
+		printfRelease("(%d/%d) Loading wallet...\n", i, numModules)
 		return wallet.NewCustomWallet(cs, tp, filepath.Join(dir, modules.WalletDir), walletDeps)
 	}()
 	if err != nil {
@@ -335,7 +335,7 @@ func New(params NodeParams) (*Node, error) {
 			return nil, nil
 		}
 		i++
-		printfRelease("(%d/%d) Loading miner...\n", i, numModules-1)
+		printfRelease("(%d/%d) Loading miner...\n", i, numModules)
 		m, err := miner.New(cs, tp, w, filepath.Join(dir, modules.MinerDir))
 		if err != nil {
 			return nil, err
@@ -361,7 +361,7 @@ func New(params NodeParams) (*Node, error) {
 			params.HostAddress = "localhost:0"
 		}
 		i++
-		printfRelease("(%d/%d) Loading host...\n", i, numModules-1)
+		printfRelease("(%d/%d) Loading host...\n", i, numModules)
 		return host.New(cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
 	}()
 	if err != nil {
@@ -398,7 +398,7 @@ func New(params NodeParams) (*Node, error) {
 		persistDir := filepath.Join(dir, modules.RenterDir)
 
 		i++
-		printfRelease("(%d/%d) Loading renter...\n", i, numModules-1)
+		printfRelease("(%d/%d) Loading renter...\n", i, numModules)
 
 		// HostDB
 		hdb, err := hostdb.NewCustomHostDB(g, cs, tp, persistDir, hostDBDeps)
