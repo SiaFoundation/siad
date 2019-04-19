@@ -807,7 +807,7 @@ func (sf *SiaFile) defragChunk(chunk *chunk) {
 	}
 }
 
-// hostKey fetches a host's key from the map. It also checks an offset agains
+// hostKey fetches a host's key from the map. It also checks an offset against
 // the hostTable to make sure it's not out of bounds. If it is, build.Critical
 // is called and to avoid a crash in production, dummy hosts are added.
 func (sf *SiaFile) hostKey(offset uint32) HostPublicKey {
