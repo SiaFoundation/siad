@@ -1348,6 +1348,7 @@ Example Pubkey: ed25519:1234567890abcdef1234567890abcdef1234567890abcdef12345678
     "ageadjustment":              0.1234,   // float64
     "burnadjustment":             0.1234,   // float64
     "collateraladjustment":       23.456,   // float64
+	"durationadjustment":         1,        // float64
     "interactionadjustment":      0.1234,   // float64
     "priceadjustment":            0.1234,   // float64
     "storageremainingadjustment": 0.1234,   // float64
@@ -1375,6 +1376,9 @@ The multiplier that gets applied to the host based on how much proof-of-burn the
 
 **collateraladjustment** | float64 
 The multiplier that gets applied to a host based on how much collateral the host is offering. More collateral is typically better, though above a point it can be detrimental.  
+
+**durationadjustment** | float64
+The multiplier that gets applied to a host based on the max duration it accepts for file contracts. Typically '1' for hosts with an acceptable max duration, and '0' for hosts that have a max duration which is not long enough.
 
 **interactionadjustment** | float64 
 The multipler that gets applied to a host based on previous interactions with the host. A high ratio of successful interactions will improve this hosts score, and a high ratio of failed interactions will hurt this hosts score. This adjustment helps account for hosts that are on unstable connections, don't keep their wallets unlocked, ran out of funds, etc.  

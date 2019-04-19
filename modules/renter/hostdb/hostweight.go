@@ -3,6 +3,7 @@ package hostdb
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -178,6 +179,16 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	smallWeight := math.Pow(cutoff64, collateralExponentiationSmall)
 	largeWeight := math.Pow(ratio, collateralExponentiationLarge)
 	return smallWeight * largeWeight
+}
+
+// durationAdjustments checks that the host has a maxduration which is larger
+// than the period of the allowance. The host's score is heavily minimized if
+// not.
+func (hdb *HostDB) durationAdjustments(entry modules.HostDBEntry, allowance modules.Allowance) float64 {
+	if entry.MaxDuration < allowance.Period {
+		return math.SmallestNonzeroFloat64
+	}
+	return 1
 }
 
 // interactionAdjustments determine the penalty to be applied to a host for the
@@ -386,6 +397,11 @@ func (hdb *HostDB) lifetimeAdjustments(entry modules.HostDBEntry) float64 {
 // new host to give the host some initial uptime or downtime. Modification of
 // this function needs to be made paying attention to the structure of that
 // function.
+//
+// TODO: This function doesn't correctly handle situations where the user's
+// clock goes back in time. If the user adjusts their system clock to be in the
+// past, we'll get timestamping that's out of order, and this will cause erratic
+// / improper / untested behavior.
 func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 	// Special case: if we have scanned the host twice or fewer, don't perform
 	// uptime math.
@@ -419,7 +435,7 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 			if build.DEBUG {
 				hdb.log.Critical("Host entry scan history not sorted.")
 			} else {
-				hdb.log.Print("WARNING: Host entry scan history not sorted.")
+				hdb.log.Print("WARN: Host entry scan history not sorted.")
 			}
 			// Ignore the unsorted scan entry.
 			continue
@@ -432,8 +448,19 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 		recentTime = scan.Timestamp
 		recentSuccess = scan.Success
 	}
+
+	// One more check to incorporate the uptime or downtime of the most recent
+	// scan, we assume that if we scanned them right now, their uptime /
+	// downtime status would be equal to what it currently is.
+	if recentSuccess {
+		uptime += time.Now().Sub(recentTime)
+	} else {
+		downtime += time.Now().Sub(recentTime)
+	}
+
 	// Sanity check against 0 total time.
 	if uptime == 0 && downtime == 0 {
+		build.Critical("uptime and downtime are zero for this host, should have been caught in earlier logic")
 		return 0.001 // Shouldn't happen.
 	}
 
@@ -478,6 +505,7 @@ func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hos
 		return hosttree.HostAdjustments{
 			BurnAdjustment:             1,
 			CollateralAdjustment:       hdb.collateralAdjustments(entry, allowance),
+			DurationAdjustment:         hdb.durationAdjustments(entry, allowance),
 			InteractionAdjustment:      hdb.interactionAdjustments(entry),
 			AgeAdjustment:              hdb.lifetimeAdjustments(entry),
 			PriceAdjustment:            hdb.priceAdjustments(entry, allowance, txnFees),
@@ -495,7 +523,7 @@ func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance module
 		return modules.HostScoreBreakdown{}, err
 	}
 	defer hdb.tg.Done()
-	return hdb.managedScoreBreakdown(entry, true, true), nil
+	return hdb.managedScoreBreakdown(entry, true, true, true), nil
 }
 
 // ScoreBreakdown provdes a detailed set of scalars and bools indicating
@@ -505,12 +533,12 @@ func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) (modules.HostScoreB
 		return modules.HostScoreBreakdown{}, err
 	}
 	defer hdb.tg.Done()
-	return hdb.managedScoreBreakdown(entry, false, false), nil
+	return hdb.managedScoreBreakdown(entry, false, false, false), nil
 }
 
 // managedScoreBreakdown computes the score breakdown of a host. Certain
 // adjustments can be ignored.
-func (hdb *HostDB) managedScoreBreakdown(entry modules.HostDBEntry, ignoreAge, ignoreUptime bool) modules.HostScoreBreakdown {
+func (hdb *HostDB) managedScoreBreakdown(entry modules.HostDBEntry, ignoreAge, ignoreDuration, ignoreUptime bool) modules.HostScoreBreakdown {
 	hosts := hdb.ActiveHosts()
 
 	// Compute the totalScore.
@@ -521,5 +549,5 @@ func (hdb *HostDB) managedScoreBreakdown(entry modules.HostDBEntry, ignoreAge, i
 		totalScore = totalScore.Add(hdb.weightFunc(host).Score())
 	}
 	// Compute the breakdown.
-	return hdb.weightFunc(entry).HostScoreBreakdown(totalScore, ignoreAge, ignoreUptime)
+	return hdb.weightFunc(entry).HostScoreBreakdown(totalScore, ignoreAge, ignoreDuration, ignoreUptime)
 }

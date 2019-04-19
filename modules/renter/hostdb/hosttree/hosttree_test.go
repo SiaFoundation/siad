@@ -28,7 +28,7 @@ func (sb customScoreBreakdown) Score() types.Currency {
 func (sb customScoreBreakdown) ConversionRate(_ types.Currency) float64 {
 	return 0.0
 }
-func (sb customScoreBreakdown) HostScoreBreakdown(_ types.Currency, _, _ bool) modules.HostScoreBreakdown {
+func (sb customScoreBreakdown) HostScoreBreakdown(_ types.Currency, _, _, _ bool) modules.HostScoreBreakdown {
 	return modules.HostScoreBreakdown{}
 }
 func newCustomScoreBreakdown(score types.Currency) ScoreBreakdown {
