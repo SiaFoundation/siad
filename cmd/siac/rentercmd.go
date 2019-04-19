@@ -1112,6 +1112,49 @@ func (s bySiaPath) Len() int           { return len(s) }
 func (s bySiaPath) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s bySiaPath) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].SiaPath.String() }
 
+type directoryInfo struct {
+	dir   modules.DirectoryInfo
+	files []modules.FileInfo
+}
+
+// byDirectoryInfo implements sort.Interface for []directoryInfo based on the
+// SiaPath field.
+type byDirectoryInfo []directoryInfo
+
+func (s byDirectoryInfo) Len() int      { return len(s) }
+func (s byDirectoryInfo) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s byDirectoryInfo) Less(i, j int) bool {
+	return s[i].dir.SiaPath.String() < s[j].dir.SiaPath.String()
+}
+
+// getDir returns the directory info for the directory at siaPath and its
+// subdirs.
+func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
+	rgd, err := httpClient.RenterGetDir(siaPath)
+	if err != nil && !strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+		die("failed to get dir info:", err)
+	}
+	dir := rgd.Directories[0]
+	subDirs := rgd.Directories[1:]
+
+	// Append directory to dirs.
+	dirs = append(dirs, directoryInfo{
+		dir:   dir,
+		files: rgd.Files,
+	})
+
+	// If -R isn't set we are done.
+	if !renterListRecursive {
+		return
+	}
+	// Call getDir on subdirs.
+	for _, subDir := range subDirs {
+		rdirs := getDir(subDir.SiaPath)
+		dirs = append(dirs, rdirs...)
+	}
+	return
+}
+
 // renterfileslistcmd is the handler for the command `siac renter list`.
 // Lists files known to the renter on the network.
 func renterfileslistcmd(path string) {
@@ -1125,58 +1168,61 @@ func renterfileslistcmd(path string) {
 			die("could not parse siapath:", err)
 		}
 	}
-	rgd, err := httpClient.RenterGetDir(sp)
-	if err != nil {
-		die("Could not get file list:", err)
+	// Get dirs with their corresponding files.
+	dirs := getDir(sp)
+	numFiles := 0
+	var totalStored uint64
+	for _, dir := range dirs {
+		for _, file := range dir.files {
+			totalStored += file.Filesize
+		}
+		numFiles += len(dir.files)
 	}
-	if len(rgd.Files)+len(rgd.Directories) <= 1 {
+	if numFiles+len(dirs) <= 1 {
 		fmt.Println("No files/dirs have been uploaded.")
 		return
 	}
-	fmt.Printf("\nListing %v files/dirs:", len(rgd.Files)+len(rgd.Directories)-1)
-	var totalStored uint64
-	for _, file := range rgd.Files {
-		totalStored += file.Filesize
-	}
+	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
 	fmt.Printf(" %9s\n", filesizeUnits(totalStored))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if renterListVerbose {
 		fmt.Fprintln(w, "  Name\tFile size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tOn Disk\tRecoverable")
 	}
-	sort.Sort(bySiaPath(rgd.Files))
+	sort.Sort(byDirectoryInfo(dirs))
 	// Print root dir.
-	fmt.Fprintf(w, "%v/\n", rgd.Directories[0].SiaPath)
+	fmt.Fprintf(w, "%v/\n", dirs[0].dir.SiaPath)
 	// Print dirs.
-	for i := 1; i < len(rgd.Directories); i++ {
-		name := rgd.Directories[i].SiaPath.Name()
+	for _, dir := range dirs[1:] {
+		name := dir.dir.SiaPath.Name()
 		fmt.Fprintf(w, "  %v/\n", name)
-	}
-	// Print files.
-	for _, file := range rgd.Files {
-		name := file.SiaPath.Name()
-		fmt.Fprintf(w, "  %s", name)
-		fmt.Fprintf(w, "\t%9s", filesizeUnits(file.Filesize))
-		if renterListVerbose {
-			availableStr := yesNo(file.Available)
-			renewingStr := yesNo(file.Renewing)
-			redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
-			if file.Redundancy == -1 {
-				redundancyStr = "-"
+
+		// Print files.
+		for _, file := range dir.files {
+			name := file.SiaPath.Name()
+			fmt.Fprintf(w, "  %s", name)
+			fmt.Fprintf(w, "\t%9s", filesizeUnits(file.Filesize))
+			if renterListVerbose {
+				availableStr := yesNo(file.Available)
+				renewingStr := yesNo(file.Renewing)
+				redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
+				if file.Redundancy == -1 {
+					redundancyStr = "-"
+				}
+				healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
+				uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
+				if file.UploadProgress == -1 {
+					uploadProgressStr = "-"
+				}
+				onDiskStr := yesNo(file.OnDisk)
+				recoverableStr := yesNo(file.Recoverable)
+				stuckStr := yesNo(file.Stuck)
+				fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
 			}
-			healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
-			uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
-			if file.UploadProgress == -1 {
-				uploadProgressStr = "-"
+			if !renterListVerbose && !file.Available {
+				fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
 			}
-			onDiskStr := yesNo(file.OnDisk)
-			recoverableStr := yesNo(file.Recoverable)
-			stuckStr := yesNo(file.Stuck)
-			fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
+			fmt.Fprintln(w, "")
 		}
-		if !renterListVerbose && !file.Available {
-			fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
-		}
-		fmt.Fprintln(w, "")
 	}
 	w.Flush()
 }
