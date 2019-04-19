@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"os"
 	"path/filepath"
 	"time"
 
@@ -19,9 +18,6 @@ const (
 
 	// persistFilename is the filename to be used when persisting gateway information to a JSON file
 	persistFilename = "gateway.json"
-
-	// blacklistFile is the name of the file that contains all blacklisted nodes.
-	blacklistFile = "blacklist.json"
 )
 
 // nodePersistMetadata contains the header and version strings that identify the
@@ -53,6 +49,9 @@ type (
 		// rate limit settings
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
+
+		// blacklisted IPs
+		Blacklist []string
 	}
 )
 
@@ -60,15 +59,6 @@ type (
 func (g *Gateway) nodePersistData() (nodes []*node) {
 	for _, node := range g.nodes {
 		nodes = append(nodes, node)
-	}
-	return
-}
-
-// persistDataBlacklist returns the data of the blacklist that will be saved to
-// disk.
-func (g *Gateway) persistDataBlacklist() (ips []string) {
-	for ip := range g.blacklist {
-		ips = append(ips, ip)
 	}
 	return
 }
@@ -91,8 +81,8 @@ func (g *Gateway) load() error {
 		g.nodes[nodes[i].NetAddress] = nodes[i]
 	}
 
-	// If we were loading a 1.3.0 gateway we are done. Neither does it have a
-	// gateway.json nor a blacklist.json.
+	// If we were loading a 1.3.0 gateway we are done. It doesn't have a
+	// gateway.json.
 	if v130 {
 		return nil
 	}
@@ -102,23 +92,11 @@ func (g *Gateway) load() error {
 	if err != nil {
 		return errors.AddContext(err, "failed to load gateway persistence")
 	}
-
-	// load blacklist if available.
-	var ips []string
-	err = persist.LoadJSON(persistMetadataBlacklist, &ips, filepath.Join(g.persistDir, blacklistFile))
-	if err != nil && !os.IsNotExist(err) {
-		return errors.AddContext(err, "failed to load blacklist")
-	}
-	for _, ip := range ips {
+	// create map from blacklist
+	for _, ip := range g.persist.Blacklist {
 		g.blacklist[ip] = struct{}{}
 	}
 	return nil
-}
-
-// saveBlacklist stores the Gateway's blacklisted ips on disk and then syncs to
-// disk to minimize the possibility of data loss.
-func (g *Gateway) saveBlacklist() error {
-	return persist.SaveJSON(persistMetadataBlacklist, g.persistDataBlacklist(), filepath.Join(g.persistDir, blacklistFile))
 }
 
 // saveSync stores the Gateway's persistent data on disk, and then syncs to
@@ -156,6 +134,15 @@ func (g *Gateway) threadedSaveLoop() {
 				g.log.Println("ERROR: Unable to save gateway nodes:", err)
 			}
 		}()
+	}
+}
+
+// updateBlacklistPersistData updates g.persist.Blacklist to match the blacklist
+// map.
+func (g *Gateway) updateBlacklistPersistData() {
+	g.persist.Blacklist = make([]string, 0, len(g.blacklist))
+	for ip := range g.blacklist {
+		g.persist.Blacklist = append(g.persist.Blacklist, ip)
 	}
 }
 
