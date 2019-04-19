@@ -604,7 +604,7 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 		pieces[pieceIndex] = make([]Piece, len(sf.chunks[chunkIndex].Pieces[pieceIndex]))
 		for i, piece := range sf.chunks[chunkIndex].Pieces[pieceIndex] {
 			pieces[pieceIndex][i] = Piece{
-				HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
+				HostPubKey: sf.hostKey(piece.HostTableOffset).PublicKey,
 				MerkleRoot: piece.MerkleRoot,
 			}
 		}
@@ -799,12 +799,31 @@ func (sf *SiaFile) defragChunk(chunk *chunk) {
 			if int64(len(newPieceSet)) == maxPiecesPerSet {
 				break
 			}
-			if sf.pubKeyTable[piece.HostTableOffset].Used {
+			if sf.hostKey(piece.HostTableOffset).Used {
 				newPieceSet = append(newPieceSet, piece)
 			}
 		}
 		chunk.Pieces[i] = newPieceSet
 	}
+}
+
+// hostKey fetches a host's key from the map. It also checks an offset agains
+// the hostTable to make sure it's not out of bounds. If it is, build.Critical
+// is called and to avoid a crash in production, dummy hosts are added.
+func (sf *SiaFile) hostKey(offset uint32) HostPublicKey {
+	// Add dummy hostkeys to the table in case of siafile corruption and mark
+	// them as unused. The next time the table is pruned, the keys will be
+	// removed which is fine. This doesn't fix heavy corruption and the file but
+	// still be lost but it's better than crashing.
+	if offset >= uint32(len(sf.pubKeyTable)) {
+		// Causes tests to fail. The following for loop will try to fix the
+		// corruption on release builds.
+		build.Critical("piece.HostTableOffset >= len(sf.pubKeyTable)")
+	}
+	for offset >= uint32(len(sf.pubKeyTable)) {
+		sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+	}
+	return sf.pubKeyTable[offset]
 }
 
 // pruneHosts prunes the unused hostkeys from the file, updates the
@@ -852,20 +871,8 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 		foundGoodForRenew := false
 		foundOnline := false
 		for _, piece := range pieceSet {
-			// Add dummy hostkeys to the table in case of siafile corruption and mark
-			// them as unused. The next time the table is pruned, the keys will be
-			// removed which is fine. This doesn't fix heavy corruption and the file but
-			// still be lost but it's better than crashing.
-			if piece.HostTableOffset >= uint32(len(sf.pubKeyTable)) {
-				// Causes tests to fail. The following for loop will try to fix the
-				// corruption on release builds.
-				build.Critical("piece.HostTableOffset >= len(sf.pubKeyTable)")
-			}
-			for piece.HostTableOffset >= uint32(len(sf.pubKeyTable)) {
-				sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
-			}
-			offline, exists1 := offlineMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
-			goodForRenew, exists2 := goodForRenewMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
+			offline, exists1 := offlineMap[sf.hostKey(piece.HostTableOffset).PublicKey.String()]
+			goodForRenew, exists2 := goodForRenewMap[sf.hostKey(piece.HostTableOffset).PublicKey.String()]
 			if exists1 != exists2 {
 				build.Critical("contract can't be in one map but not in the other")
 			}
