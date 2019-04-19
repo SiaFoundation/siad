@@ -1104,17 +1104,26 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 	return nil
 }
 
-// bySiaPath implements sort.Interface for [] modules.FileInfo based on the
+// bySiaPathFile implements sort.Interface for [] modules.FileInfo based on the
 // SiaPath field.
-type bySiaPath []modules.FileInfo
+type bySiaPathFile []modules.FileInfo
 
-func (s bySiaPath) Len() int           { return len(s) }
-func (s bySiaPath) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s bySiaPath) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].SiaPath.String() }
+func (s bySiaPathFile) Len() int           { return len(s) }
+func (s bySiaPathFile) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s bySiaPathFile) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].SiaPath.String() }
+
+// bySiaPathDir implements sort.Interface for [] modules.DirectoryInfo based on the
+// SiaPath field.
+type bySiaPathDir []modules.DirectoryInfo
+
+func (s bySiaPathDir) Len() int           { return len(s) }
+func (s bySiaPathDir) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s bySiaPathDir) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].SiaPath.String() }
 
 type directoryInfo struct {
-	dir   modules.DirectoryInfo
-	files []modules.FileInfo
+	dir     modules.DirectoryInfo
+	files   []modules.FileInfo
+	subDirs []modules.DirectoryInfo
 }
 
 // byDirectoryInfo implements sort.Interface for []directoryInfo based on the
@@ -1139,8 +1148,9 @@ func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
 
 	// Append directory to dirs.
 	dirs = append(dirs, directoryInfo{
-		dir:   dir,
-		files: rgd.Files,
+		dir:     dir,
+		files:   rgd.Files,
+		subDirs: subDirs,
 	})
 
 	// If -R isn't set we are done.
@@ -1189,14 +1199,17 @@ func renterfileslistcmd(path string) {
 		fmt.Fprintln(w, "  Name\tFile size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tOn Disk\tRecoverable")
 	}
 	sort.Sort(byDirectoryInfo(dirs))
-	// Print root dir.
-	fmt.Fprintf(w, "%v/\n", dirs[0].dir.SiaPath)
 	// Print dirs.
-	for _, dir := range dirs[1:] {
-		name := dir.dir.SiaPath.Name()
-		fmt.Fprintf(w, "  %v/\n", name)
+	for _, dir := range dirs {
+		fmt.Fprintf(w, "%v/\t\t\t\t\t\t\t\t\t\t\n", dir.dir.SiaPath)
+		// Print subdirs.
+		sort.Sort(bySiaPathDir(dir.subDirs))
+		for _, subDir := range dir.subDirs {
+			fmt.Fprintf(w, "  %v/\t\t\t\t\t\t\t\t\t\t\n", subDir.SiaPath.Name())
+		}
 
 		// Print files.
+		sort.Sort(bySiaPathFile(dir.files))
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
 			fmt.Fprintf(w, "  %s", name)
@@ -1221,8 +1234,9 @@ func renterfileslistcmd(path string) {
 			if !renterListVerbose && !file.Available {
 				fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
 			}
-			fmt.Fprintln(w, "")
+			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 		}
+		fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 	}
 	w.Flush()
 }
