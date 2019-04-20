@@ -758,6 +758,60 @@ Contract %v
 	fmt.Println("Contract not found")
 }
 
+// downloadDir downloads the dir at the specified siaPath to the specified
+// location. It returns all the files for which a download was initialized as
+// tracked files and the ones which were ignored as skipped. Errors are composed
+// into a single error.
+func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, err error) {
+	// Get dir info.
+	rd, err := httpClient.RenterGetDir(siaPath)
+	if err != nil {
+		err = errors.AddContext(err, "failed to get dir info")
+		return
+	}
+	// Create destination on disk.
+	if err = os.MkdirAll(destination, 0755); err != nil {
+		err = errors.AddContext(err, "failed to create destination dir")
+		return
+	}
+	// Download files.
+	for _, file := range rd.Files {
+		// Skip files that already exist.
+		dst := filepath.Join(destination, file.SiaPath.Name())
+		if _, err = os.Stat(dst); err == nil {
+			skipped = append(skipped, dst)
+			continue
+		} else if !os.IsNotExist(err) {
+			err = errors.AddContext(err, "failed to get file stats")
+			return
+		}
+		// Download file.
+		err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		if err != nil {
+			err = errors.AddContext(err, "Failed to start download")
+			return
+		}
+		// Append file to tracked files.
+		tfs = append(tfs, trackedFile{
+			siaPath: file.SiaPath,
+			dst:     dst,
+		})
+	}
+	// If the download isn't recursive we are done.
+	if !renterDownloadRecursive {
+		return
+	}
+	// Call downloadDir on all subdirs.
+	for i := 1; i < len(rd.Directories); i++ {
+		subDir := rd.Directories[i]
+		rtfs, rskipped, rerr := downloadDir(subDir.SiaPath, filepath.Join(destination, subDir.SiaPath.Name()))
+		tfs = append(tfs, rtfs...)
+		skipped = append(skipped, rskipped...)
+		err = errors.Compose(err, rerr)
+	}
+	return
+}
+
 // renterfilesdownload downloads the dir at the given path from the Sia network
 // to the local specified destination.
 func renterdirdownload(path, destination string) {
@@ -767,37 +821,10 @@ func renterdirdownload(path, destination string) {
 	if err != nil {
 		die("Failed to parse SiaPath:", err)
 	}
-	// Get dir info.
-	rd, err := httpClient.RenterGetDir(siaPath)
-	if err != nil {
-		die("Failed to get dir info:", err)
-	}
-	// Create destination on disk.
-	if err := os.MkdirAll(destination, 0755); err != nil {
-		die("Failed to create destination dir:", err)
-	}
-	// Download files.
-	tfs := make([]trackedFile, 0, len(rd.Files))
-	var skipped []string
-	for _, file := range rd.Files {
-		// Skip files that already exist.
-		dst := filepath.Join(destination, file.SiaPath.Name())
-		if _, err := os.Stat(dst); err == nil {
-			skipped = append(skipped, dst)
-			continue
-		} else if !os.IsNotExist(err) {
-			die("Failed to get file stats:", err)
-		}
-		// Download file.
-		err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
-		if err != nil {
-			die("Failed to start download:", err)
-		}
-		// Append file to tracked files.
-		tfs = append(tfs, trackedFile{
-			siaPath: file.SiaPath,
-			dst:     dst,
-		})
+	// Download dir.
+	tfs, skipped, downloadErr := downloadDir(siaPath, destination)
+	if renterDownloadAsync && downloadErr != nil {
+		fmt.Println("At least one error occured when initializing the download:", downloadErr)
 	}
 	// If the download is async, report success.
 	if renterDownloadAsync {
@@ -816,6 +843,9 @@ func renterdirdownload(path, destination string) {
 		os.Exit(0)
 	}
 	// Print errors.
+	if downloadErr != nil {
+		fmt.Println("At least one error occured when initializing the download:", downloadErr)
+	}
 	for _, fd := range failedDownloads {
 		fmt.Printf("Download of file '%v' to destination '%v' failed: %v\n", fd.SiaPath, fd.Destination, fd.Error)
 	}
