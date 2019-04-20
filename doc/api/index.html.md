@@ -715,7 +715,11 @@ The maximum amount of collateral that the host will put into a
 single file contract.
 
 **minbaserpcprice** | hastings  
-The minimum price that the host will demand from a renter for interacting with the host. This is charged for every interaction a renter has with a host to pay for resources consumed during the interaction. It is added to the `mindownloadbandwidthprice` and `minuploadbandwidthprice` when uploading or downloading files from the host.
+The minimum price that the host will demand from a renter for interacting with
+the host. This is charged for every interaction a renter has with a host to pay
+for resources consumed during the interaction. It is added to the
+`mindownloadbandwidthprice` and `minuploadbandwidthprice` when uploading or
+downloading files from the host.
 
 **mincontractprice** | hastings  
 The minimum price that the host will demand from a renter when forming a contract. Typically this price is to cover transaction fees on the file contract revision and storage proof, but can also be used if the host has a low amount of collateral. The price is a minimum because the host may automatically adjust the price upwards in times of high demand.  
@@ -724,7 +728,12 @@ The minimum price that the host will demand from a renter when forming a contrac
 The minimum price that the host will demand from a renter when the renter is downloading data. If the host is saturated, the host may increase the price from the minimum.
 
 **minsectoraccessprice** | hastings  
-The minimum price that the host will demand from a renter for accessing a sector of data on disk. Since the host has to read at least a full 4MB sector from disk regardless of how much the renter intendeds to download this is charged to pay for the physical disk resources the host uses. It is multiplied by the number of sectors read then added to the `mindownloadbandwidthprice` when downloading a file.
+The minimum price that the host will demand from a renter for accessing a sector
+of data on disk. Since the host has to read at least a full 4MB sector from disk
+regardless of how much the renter intends to download this is charged to pay for
+the physical disk resources the host uses. It is multiplied by the number of
+sectors read then added to the `mindownloadbandwidthprice` when downloading a
+file.
 
 **minstorageprice** | hastings / byte / block  
 The minimum price that the host will demand when storing data for extended periods of time. If the host is low on space, the price of storage may be set higher than the minimum.  
@@ -801,13 +810,22 @@ The total amount of money that the host will allocate to collateral across all f
 The maximum amount of collateral that the host will put into a single file contract.  
 
 **minbaserpcprice** | hastings  
-The minimum price that the host will demand from a renter for interacting with the host. This is charged for every interaction a renter has with a host to pay for resources consumed during the interaction. It is added to the `mindownloadbandwidthprice` and `minuploadbandwidthprice` when uploading or downloading files from the host.
+The minimum price that the host will demand from a renter for interacting with
+the host. This is charged for every interaction a renter has with a host to pay
+for resources consumed during the interaction. It is added to the
+`mindownloadbandwidthprice` and `minuploadbandwidthprice` when uploading or
+downloading files from the host.
 
 **mincontractprice** | hastings
 The minimum price that the host will demand from a renter when forming a contract. Typically this price is to cover transaction fees on the file contract revision and storage proof, but can also be used if the host has a low amount of collateral. The price is a minimum because the host may automatically adjust the price upwards in times of high demand.  
 
 **minsectoraccessprice** | hastings  
-The minimum price that the host will demand from a renter for accessing a sector of data on disk. Since the host has to read at least a full 4MB sector from disk regardless of how much the renter intendeds to download this is charged to pay for the physical disk resources the host uses. It is multiplied by the number of sectors read then added to the `mindownloadbandwidthprice` when downloading a file.
+The minimum price that the host will demand from a renter for accessing a sector
+of data on disk. Since the host has to read at least a full 4MB sector from disk
+regardless of how much the renter intends to download this is charged to pay for
+the physical disk resources the host uses. It is multiplied by the number of
+sectors read then added to the `mindownloadbandwidthprice` when downloading a
+file.
 
 **mindownloadbandwidthprice** | hastings / byte
 The minimum price that the host will demand from a renter when the renter is downloading data. If the host is saturated, the host may increase the price from the minimum.  
