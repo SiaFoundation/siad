@@ -8,13 +8,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-
-	"gitlab.com/NebulousLabs/Sia/modules"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -24,6 +22,10 @@ var (
 	// SnapshotKeySpecifier is the specifier used for deriving the secret used to
 	// encrypt a snapshot from the RenterSeed.
 	snapshotKeySpecifier = types.Specifier{'s', 'n', 'a', 'p', 's', 'h', 'o', 't'}
+
+	// snapshotTableSpecifier is the specifier used to identify a snapshot entry
+	// table stored in a sector.
+	snapshotTableSpecifier = types.Specifier{'S', 'n', 'a', 'p', 's', 'h', 'o', 't', 'T', 'a', 'b', 'l', 'e'}
 )
 
 // TakeSnapshot creates a backup of the renter which is uploaded to the sia
@@ -180,19 +182,28 @@ func (r *Renter) UploadSnapshot(name string, dotSia []byte) error {
 			if err != nil {
 				return err
 			}
+			// check that the sector actually contains an entry table. If so, we
+			// should replace the old table; if not, we should swap the old
+			// sector to the end, but not delete it.
+			haveValidTable := bytes.Equal(tableSector[:16], snapshotTableSpecifier[:])
+
 			// update the entry table
 			var entryTable []snapshotEntry
-			if err := encoding.Unmarshal(tableSector, &entryTable); err != nil {
-				return err
+			if haveValidTable {
+				if err := encoding.Unmarshal(tableSector[16:], &entryTable); err != nil {
+					return err
+				}
 			}
 			entryTable = append(entryTable, entry)
 			// if entryTable is too large to fit in a sector, remove old entries until it fits
-			for len(encoding.Marshal(entryTable)) > int(modules.SectorSize) {
+			for 16+len(encoding.Marshal(entryTable)) > int(modules.SectorSize) {
 				entryTable = entryTable[1:]
 			}
-			copy(tableSector, encoding.Marshal(entryTable))
-			// replace the new entry table
-			if _, err := host.Replace(tableSector, 0); err != nil {
+			copy(tableSector[:16], snapshotTableSpecifier[:])
+			copy(tableSector[16:], encoding.Marshal(entryTable))
+			// swap the new entry table into index 0 and delete the old one
+			// (unless it wasn't an entry table)
+			if _, err := host.Replace(tableSector, 0, haveValidTable); err != nil {
 				return err
 			}
 			return nil
