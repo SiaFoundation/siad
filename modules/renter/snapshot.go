@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 
@@ -25,19 +24,6 @@ var (
 	// SnapshotKeySpecifier is the specifier used for deriving the secret used to
 	// encrypt a snapshot from the RenterSeed.
 	snapshotKeySpecifier = types.Specifier{'s', 'n', 'a', 'p', 's', 'h', 'o', 't'}
-
-	// Redundancy settings for uploading snapshots. They are supposed to have a
-	// high redundancy.
-	snapshotDataPieces = build.Select(build.Var{
-		Dev:      1,
-		Standard: 1,
-		Testing:  1,
-	}).(int)
-	snapshotParityPieces = build.Select(build.Var{
-		Dev:      1,
-		Standard: 39,
-		Testing:  1,
-	}).(int)
 )
 
 // TakeSnapshot creates a backup of the renter which is uploaded to the sia
@@ -84,7 +70,13 @@ func (r *Renter) managedTakeSnapshot() error {
 		return err
 	}
 	// Create upload params with high redundancy.
-	ec, err := siafile.NewRSSubCode(snapshotDataPieces, snapshotParityPieces, crypto.SegmentSize)
+	allowance := r.hostContractor.Allowance()
+	dataPieces := allowance.Hosts / 10
+	if dataPieces == 0 {
+		dataPieces = 1
+	}
+	parityPieces := allowance.Hosts - dataPieces
+	ec, err := siafile.NewRSSubCode(int(dataPieces), int(parityPieces), crypto.SegmentSize)
 	if err != nil {
 		return err
 	}
