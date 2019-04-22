@@ -233,7 +233,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	}
 
 	// Update cache.
-	defer sf.UploadProgressAndBytes()
+	defer sf.uploadProgressAndBytes()
 
 	// Get the index of the host in the public key table.
 	tableIndex := -1
@@ -892,12 +892,19 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 	return numPiecesGoodForRenew, numPiecesGoodForUpload
 }
 
-// UploadProgressAndBytes updates the CachedUploadProgress and
+// UploadProgressAndBytes is the exported wrapped for uploadProgressAndBytes.
+func (sf *SiaFile) UploadProgressAndBytes() (float64, uint64) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.uploadProgressAndBytes()
+}
+
+// uploadProgressAndBytes updates the CachedUploadProgress and
 // CachedUploadedBytes fields to indicate what percentage of the file has been
 // uploaded based on the unique pieces that have been uploaded and also how many
 // bytes have been uploaded of that file in total. Note that a file may be
 // Available long before UploadProgress reaches 100%.
-func (sf *SiaFile) UploadProgressAndBytes() (float64, uint64) {
+func (sf *SiaFile) uploadProgressAndBytes() (float64, uint64) {
 	_, uploaded := sf.uploadedBytes()
 	if sf.staticMetadata.FileSize == 0 {
 		// Update cache.
