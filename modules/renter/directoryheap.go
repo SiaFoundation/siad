@@ -40,11 +40,15 @@ type repairDirectoryHeap []*directory
 // Implementation of heap.Interface for repairDirectoryHeap.
 func (rdh repairDirectoryHeap) Len() int { return len(rdh) }
 func (rdh repairDirectoryHeap) Less(i, j int) bool {
-	// Prioritization: Health is the main prioritization. If a directory is
-	// explored then we should use the Health of the Directory If a directory is
-	// unexplored then we should use the AggregateHealth of the Directory. This
-	// will ensure we are following the path of lowest health as well as
-	// evaluating each directory on its own merit.
+	// Prioritization: If a directory is explored then we should use the Health
+	// of the Directory. If a directory is unexplored then we should use the
+	// AggregateHealth of the Directory. This will ensure we are following the
+	// path of lowest health as well as evaluating each directory on its own
+	// merit.
+	//
+	// Note: we are using the > operator and not >= which means that the element
+	// added to the heap first will be prioritized in the event that the healths
+	// are equal
 
 	// Prioritize higher health if both are explored
 	if rdh[i].explored && rdh[j].explored {
