@@ -141,15 +141,16 @@ func (r *Renter) managedBubbleNeeded(siaPath modules.SiaPath) (bool, error) {
 func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
 	// Set default metadata values to start
 	metadata := siadir.Metadata{
+		AggregateHealth:     siadir.DefaultDirHealth,
 		AggregateNumFiles:   uint64(0),
+		AggregateSize:       uint64(0),
 		Health:              siadir.DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
-		ModTime:             time.Time{},
 		MinRedundancy:       math.MaxFloat64,
+		ModTime:             time.Time{},
 		NumFiles:            uint64(0),
 		NumStuckChunks:      uint64(0),
 		NumSubDirs:          uint64(0),
-		AggregateSize:       uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
 	}
 	// Read directory
@@ -168,9 +169,10 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		default:
 		}
 
-		var health, stuckHealth, redundancy float64
+		var aggregateHealth, stuckHealth, redundancy float64
 		var numStuckChunks uint64
 		var lastHealthCheckTime, modTime time.Time
+		var fileMetadata siafile.BubbledMetadata
 		ext := filepath.Ext(fi.Name())
 		// Check for SiaFiles and Directories
 		if ext == modules.SiaFileExtension {
@@ -180,7 +182,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			if err != nil {
 				return siadir.Metadata{}, err
 			}
-			fileMetadata, err := r.managedCalculateFileMetadata(fileSiaPath)
+			fileMetadata, err = r.managedCalculateFileMetadata(fileSiaPath)
 			if err != nil {
 				r.log.Printf("failed to calculate file metadata %v: %v", fi.Name(), err)
 				continue
@@ -188,7 +190,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			if time.Since(fileMetadata.RecentRepairTime) >= fileRepairInterval {
 				// If the file has not recently been repaired then consider the
 				// health of the file
-				health = fileMetadata.Health
+				aggregateHealth = fileMetadata.Health
 			}
 			lastHealthCheckTime = fileMetadata.LastHealthCheckTime
 			modTime = fileMetadata.ModTime
@@ -210,7 +212,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			if err != nil {
 				return siadir.Metadata{}, err
 			}
-			health = dirMetadata.Health
+			aggregateHealth = math.Max(dirMetadata.AggregateHealth, dirMetadata.Health)
 			lastHealthCheckTime = dirMetadata.LastHealthCheckTime
 			modTime = dirMetadata.ModTime
 			numStuckChunks = dirMetadata.NumStuckChunks
@@ -226,10 +228,15 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			// Ignore everything that is not a SiaFile or a directory
 			continue
 		}
-		// Update Health and Stuck Health
-		if health > metadata.Health {
-			metadata.Health = health
+		// Update the Health of the directory based on the file Health
+		if fileMetadata.Health > metadata.Health {
+			metadata.Health = fileMetadata.Health
 		}
+		// Update the AggregateHealth
+		if aggregateHealth > metadata.AggregateHealth {
+			metadata.AggregateHealth = aggregateHealth
+		}
+		// Update Stuck Health
 		if stuckHealth > metadata.StuckHealth {
 			metadata.StuckHealth = stuckHealth
 		}
@@ -617,7 +624,7 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 		// loop. This is only done at the root directory as the repair and stuck
 		// loops start at the root directory so there is no point triggering
 		// them until the root directory is updated
-		if metadata.Health >= siafile.RemoteRepairDownloadThreshold {
+		if metadata.AggregateHealth >= siafile.RemoteRepairDownloadThreshold {
 			select {
 			case r.uploadHeap.repairNeeded <- struct{}{}:
 			default:

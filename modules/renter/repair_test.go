@@ -19,6 +19,10 @@ import (
 // equalBubbledMetadata is a helper that checks for equality in the siadir
 // metadata that gets bubbled
 func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
+	// Check AggregateHealth
+	if md1.AggregateHealth != md2.AggregateHealth {
+		return fmt.Errorf("AggregateHealth not equal, %v and %v", md1.AggregateHealth, md2.AggregateHealth)
+	}
 	// Check AggregateNumFiles
 	if md1.AggregateNumFiles != md2.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md1.AggregateNumFiles, md2.AggregateNumFiles)
@@ -78,8 +82,12 @@ func TestBubbleHealth(t *testing.T) {
 	}
 
 	// Check to make sure bubble doesn't error on an empty directory
-	rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+	err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	defaultMetadata := siadir.Metadata{
+		AggregateHealth:     siadir.DefaultDirHealth,
 		Health:              siadir.DefaultDirHealth,
 		StuckHealth:         siadir.DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
@@ -139,6 +147,7 @@ func TestBubbleHealth(t *testing.T) {
 	var siaPath modules.SiaPath
 	checkTime := time.Now()
 	metadataUpdate := siadir.Metadata{
+		AggregateHealth:     1,
 		Health:              1,
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
@@ -281,7 +290,7 @@ func TestBubbleHealth(t *testing.T) {
 	if err := f.UpdateRecentRepairTime(); err != nil {
 		t.Fatal(err)
 	}
-	expectedHealth.Health = 0
+	expectedHealth.AggregateHealth = 0
 	rt.renter.managedBubbleMetadata(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
@@ -313,6 +322,7 @@ func TestBubbleHealth(t *testing.T) {
 	}
 	// Reset metadataUpdate with expected values
 	expectedHealth = siadir.Metadata{
+		AggregateHealth:     4,
 		Health:              4,
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
