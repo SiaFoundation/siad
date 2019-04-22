@@ -33,6 +33,12 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	return loadSiaFile(path, wal, modules.ProdDependencies)
 }
 
+// LoadSiaFileMetadata is a wrapper for loadSiaFileMetadata that uses the
+// production dependencies.
+func LoadSiaFileMetadata(path string) (Metadata, error) {
+	return loadSiaFileMetadata(path, modules.ProdDependencies)
+}
+
 // applyUpdates applies a number of writeaheadlog updates to the corresponding
 // SiaFile. This method can apply updates from different SiaFiles and should
 // only be run before the SiaFiles are loaded from disk right after the startup
@@ -122,6 +128,27 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		sf.chunks = append(sf.chunks, chunk)
 	}
 	return sf, nil
+}
+
+// loadSiaFileMetadata loads only the metadata of a SiaFile from disk.
+func loadSiaFileMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
+	// Open the file.
+	f, err := deps.Open(path)
+	if err != nil {
+		return Metadata{}, err
+	}
+	defer f.Close()
+	// Load the metadata.
+	decoder := json.NewDecoder(f)
+	if err = decoder.Decode(&md); err != nil {
+		return
+	}
+	// Create the erasure coder.
+	md.staticErasureCode, err = unmarshalErasureCoder(md.StaticErasureCodeType, md.StaticErasureCodeParams)
+	if err != nil {
+		return
+	}
+	return
 }
 
 // readAndApplyDeleteUpdate reads the delete update and applies it. This helper

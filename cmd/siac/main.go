@@ -15,17 +15,18 @@ import (
 
 var (
 	// Flags.
-	dictionaryLanguage     string // dictionary for seed utils
-	hostContractOutputType string // output type for host contracts
-	hostVerbose            bool   // display additional host info
-	initForce              bool   // destroy and re-encrypt the wallet on init if it already exists
-	initPassword           bool   // supply a custom password when creating a wallet
-	renterAllContracts     bool   // Show all active and expired contracts
-	renterDownloadAsync    bool   // Downloads files asynchronously
-	renterListVerbose      bool   // Show additional info about uploaded files.
-	renterShowHistory      bool   // Show download history in addition to download queue.
-	siaDir                 string // Path to sia data dir
-	walletRawTxn           bool   // Encode/decode transactions in base64-encoded binary.
+	dictionaryLanguage      string // dictionary for seed utils
+	hostContractOutputType  string // output type for host contracts
+	hostVerbose             bool   // display additional host info
+	initForce               bool   // destroy and re-encrypt the wallet on init if it already exists
+	initPassword            bool   // supply a custom password when creating a wallet
+	renterAllContracts      bool   // Show all active and expired contracts
+	renterDownloadAsync     bool   // Downloads files asynchronously
+	renterDownloadRecursive bool   // Downloads folders recursively.
+	renterListVerbose       bool   // Show additional info about uploaded files.
+	renterShowHistory       bool   // Show download history in addition to download queue.
+	siaDir                  string // Path to sia data dir
+	walletRawTxn            bool   // Encode/decode transactions in base64-encoded binary.
 
 	allowanceFunds              string // amount of money to be used within a period
 	allowancePeriod             string // length of period
@@ -147,6 +148,7 @@ func main() {
 	renterContractsCmd.Flags().BoolVarP(&renterAllContracts, "all", "A", false, "Show all expired contracts in addition to active contracts")
 	renterDownloadsCmd.Flags().BoolVarP(&renterShowHistory, "history", "H", false, "Show download history in addition to the download queue")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadAsync, "async", "A", false, "Download file asynchronously")
+	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadRecursive, "recursive", "R", false, "Download folder recursively")
 	renterFilesListCmd.Flags().BoolVarP(&renterListVerbose, "verbose", "v", false, "Show additional file info such as redundancy")
 	renterExportCmd.AddCommand(renterExportContractTxnsCmd)
 

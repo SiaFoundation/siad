@@ -103,6 +103,17 @@ func (sp *SiaPath) LoadString(s string) error {
 	return sp.validate(false)
 }
 
+// LoadSysPath loads a SiaPath from a given system path by trimming the dir at
+// the front of the path, the extension at the back and returning the remaining
+// path as a SiaPath.
+func (sp *SiaPath) LoadSysPath(dir, path string) error {
+	if !strings.HasPrefix(path, dir) {
+		return fmt.Errorf("%v is not a prefix of %v", dir, path)
+	}
+	path = strings.TrimSuffix(strings.TrimPrefix(path, dir), SiaFileExtension)
+	return sp.LoadString(path)
+}
+
 // MarshalJSON marshales a SiaPath as a string.
 func (sp SiaPath) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sp.String())
