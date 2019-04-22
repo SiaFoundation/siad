@@ -25,7 +25,7 @@ func newTestSiaDirSetWithDir() (*SiaDirSetEntry, *SiaDirSet, error) {
 	// Create SiaDirSet and SiaDirSetEntry
 	wal, _ := newTestWAL()
 	sds := NewSiaDirSet(dir, wal)
-	entry, err := sds.NewSiaDir(newRandSiaPath())
+	entry, err := sds.NewSiaDir(modules.RandomSiaPath())
 	if err != nil {
 		return nil, nil, err
 	}

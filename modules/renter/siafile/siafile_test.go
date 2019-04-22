@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -57,6 +58,80 @@ func randomPiece() piece {
 	return piece
 }
 
+// TestGrowNumChunks is a unit test for the SiaFile's GrowNumChunks method.
+func TestGrowNumChunks(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a blank file.
+	sf, wal, _ := newBlankTestFileAndWAL()
+	expectedChunks := sf.NumChunks()
+	expectedSize := sf.Size()
+
+	// Declare a check method.
+	checkFile := func(sf *SiaFile, numChunks, size uint64) {
+		if numChunks != sf.NumChunks() {
+			t.Fatalf("Expected %v chunks but was %v", numChunks, sf.NumChunks())
+		}
+		if size != sf.Size() {
+			t.Fatalf("Expected size to be %v but was %v", size, sf.Size())
+		}
+	}
+
+	// Increase the size of the file by 1 chunk.
+	expectedChunks++
+	expectedSize += sf.ChunkSize()
+	err := sf.GrowNumChunks(expectedChunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check the file after growing the chunks.
+	checkFile(sf, expectedChunks, expectedSize)
+	// Load the file from disk again to also check that persistence works.
+	sf, err = LoadSiaFile(sf.siaFilePath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that size and chunks still match.
+	checkFile(sf, expectedChunks, expectedSize)
+
+	// Call GrowNumChunks with the same argument again. This should be a no-op.
+	err = sf.GrowNumChunks(expectedChunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check the file after growing the chunks.
+	checkFile(sf, expectedChunks, expectedSize)
+	// Load the file from disk again to also check that no wrong persistence
+	// happened.
+	sf, err = LoadSiaFile(sf.siaFilePath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that size and chunks still match.
+	checkFile(sf, expectedChunks, expectedSize)
+
+	// Grow the file by 2 chunks to see if multiple chunks also work.
+	expectedChunks += 2
+	expectedSize += 2 * sf.ChunkSize()
+	err = sf.GrowNumChunks(expectedChunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check the file after growing the chunks.
+	checkFile(sf, expectedChunks, expectedSize)
+	// Load the file from disk again to also check that persistence works.
+	sf, err = LoadSiaFile(sf.siaFilePath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that size and chunks still match.
+	checkFile(sf, expectedChunks, expectedSize)
+}
+
+// TestPruneHosts is a unit test for the pruneHosts method.
 func TestPruneHosts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -75,7 +150,7 @@ func TestPruneHosts(t *testing.T) {
 
 	// Add one piece for every host to every pieceSet of the SiaFile.
 	for _, hk := range sf.HostPublicKeys() {
-		for chunkIndex, chunk := range sf.staticChunks {
+		for chunkIndex, chunk := range sf.chunks {
 			for pieceIndex := range chunk.Pieces {
 				if err := sf.AddPiece(hk, uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
 					t.Fatal(err)
@@ -103,8 +178,8 @@ func TestPruneHosts(t *testing.T) {
 	// Loop over all the pieces and make sure that the pieces with missing
 	// hosts were pruned and that the remaining pieces have the correct offset
 	// now.
-	for chunkIndex := range sf.staticChunks {
-		for _, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+	for chunkIndex := range sf.chunks {
+		for _, pieceSet := range sf.chunks[chunkIndex].Pieces {
 			if len(pieceSet) != 1 {
 				t.Fatalf("Expected 1 piece in the set but was %v", len(pieceSet))
 			}
@@ -147,7 +222,7 @@ func TestDefragChunk(t *testing.T) {
 	sf := newBlankTestFile()
 
 	// Use the first chunk of the file for testing.
-	chunk := &sf.staticChunks[0]
+	chunk := &sf.chunks[0]
 
 	// Add 100 pieces to each set of pieces, all belonging to the same unused
 	// host.
@@ -223,12 +298,18 @@ func TestDefragChunk(t *testing.T) {
 	var duration time.Duration
 	for i := 0; i < 50; i++ {
 		pk := sf.pubKeyTable[fastrand.Intn(len(sf.pubKeyTable))].PublicKey
-		pieceIndex := fastrand.Intn(len(sf.staticChunks[0].Pieces))
+		pieceIndex := fastrand.Intn(len(sf.chunks[0].Pieces))
 		before := time.Now()
 		if err := sf.AddPiece(pk, 0, uint64(pieceIndex), crypto.Hash{}); err != nil {
 			t.Fatal(err)
 		}
 		duration += time.Since(before)
+	}
+
+	// Save the file to disk again to make sure cached fields are persisted.
+	err = sf.saveFile()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Finally load the file from disk again and compare it to the original.
@@ -266,7 +347,7 @@ func TestChunkHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check that the number of chunks in the file is correct.
-	if len(sf.staticChunks) != numChunks {
+	if len(sf.chunks) != numChunks {
 		t.Fatal("newTestFile didn't create the expected number of chunks")
 	}
 
@@ -283,7 +364,7 @@ func TestChunkHealth(t *testing.T) {
 
 	// Since we are using a pre set offlineMap, all the chunks should have the
 	// same health as the file
-	for i := range sf.staticChunks {
+	for i := range sf.chunks {
 		chunkHealth := sf.chunkHealth(i, offlineMap, goodForRenewMap)
 		if chunkHealth != fileHealth {
 			t.Log("ChunkHealth:", chunkHealth)
@@ -330,7 +411,7 @@ func TestChunkHealth(t *testing.T) {
 
 	// Mark Chunk at index 1 as stuck and confirm that doesn't impact the result
 	// of chunkHealth
-	sf.staticChunks[1].Stuck = true
+	sf.chunks[1].Stuck = true
 	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != newHealth {
 		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
 	}
@@ -361,7 +442,7 @@ func TestMarkHealthyChunksAsUnstuck(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check that the number of chunks in the file is correct.
-	if len(sf.staticChunks) != numChunks {
+	if len(sf.chunks) != numChunks {
 		t.Fatal("newTestFile didn't create the expected number of chunks")
 	}
 
@@ -389,7 +470,7 @@ func TestMarkHealthyChunksAsUnstuck(t *testing.T) {
 	}
 
 	// Add good pieces to first chunk
-	for pieceIndex := range sf.staticChunks[0].Pieces {
+	for pieceIndex := range sf.chunks[0].Pieces {
 		host := fmt.Sprintln("host", 0, pieceIndex)
 		spk := types.SiaPublicKey{}
 		spk.LoadString(host)
@@ -416,7 +497,7 @@ func TestMarkHealthyChunksAsUnstuck(t *testing.T) {
 	goodForRenewMap = make(map[string]bool)
 
 	// Add good pieces to all chunks
-	for chunkIndex, chunk := range sf.staticChunks {
+	for chunkIndex, chunk := range sf.chunks {
 		for pieceIndex := range chunk.Pieces {
 			host := fmt.Sprintln("host", chunkIndex, pieceIndex)
 			spk := types.SiaPublicKey{}
@@ -465,7 +546,7 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check that the number of chunks in the file is correct.
-	if len(sf.staticChunks) != numChunks {
+	if len(sf.chunks) != numChunks {
 		t.Fatal("newTestFile didn't create the expected number of chunks")
 	}
 
@@ -485,14 +566,14 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	}
 
 	// Reset chunk stuck status
-	for chunkIndex := range sf.staticChunks {
+	for chunkIndex := range sf.chunks {
 		if err := sf.SetStuck(uint64(chunkIndex), false); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Add good pieces to first chunk
-	for pieceIndex := range sf.staticChunks[0].Pieces {
+	for pieceIndex := range sf.chunks[0].Pieces {
 		host := fmt.Sprintln("host", 0, pieceIndex)
 		spk := types.SiaPublicKey{}
 		spk.LoadString(host)
@@ -515,7 +596,7 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	}
 
 	// Reset chunk stuck status
-	for chunkIndex := range sf.staticChunks {
+	for chunkIndex := range sf.chunks {
 		if err := sf.SetStuck(uint64(chunkIndex), false); err != nil {
 			t.Fatal(err)
 		}
@@ -526,7 +607,7 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	goodForRenewMap = make(map[string]bool)
 
 	// Add good pieces to all chunks
-	for chunkIndex, chunk := range sf.staticChunks {
+	for chunkIndex, chunk := range sf.chunks {
 		for pieceIndex := range chunk.Pieces {
 			host := fmt.Sprintln("host", chunkIndex, pieceIndex)
 			spk := types.SiaPublicKey{}
@@ -567,7 +648,7 @@ func TestStuckChunks(t *testing.T) {
 
 	// Mark every other chunk as stuck
 	expectedStuckChunks := 0
-	for i := range sf.staticChunks {
+	for i := range sf.chunks {
 		if (i % 2) != 0 {
 			continue
 		}
@@ -612,7 +693,7 @@ func TestStuckChunks(t *testing.T) {
 	}
 
 	// Check chunks and Stuck Chunk Table
-	for i, chunk := range sf.staticChunks {
+	for i, chunk := range sf.chunks {
 		if i%2 != 0 {
 			if chunk.Stuck {
 				t.Fatal("Found stuck chunk when un-stuck chunk was expected")
@@ -628,6 +709,9 @@ func TestStuckChunks(t *testing.T) {
 // TestUploadedBytes tests that uploadedBytes() returns the expected values for
 // total and unique uploaded bytes.
 func TestUploadedBytes(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	// Create a new blank test file
 	f := newBlankTestFile()
 	// Add multiple pieces to the first pieceSet of the first piece of the first
@@ -640,9 +724,80 @@ func TestUploadedBytes(t *testing.T) {
 	}
 	totalBytes, uniqueBytes := f.uploadedBytes()
 	if totalBytes != 4*modules.SectorSize {
-		t.Errorf("expected totalBytes to be %v, got %v", 4*modules.SectorSize, f.UploadedBytes())
+		t.Errorf("expected totalBytes to be %v, got %v", 4*modules.SectorSize, totalBytes)
 	}
 	if uniqueBytes != modules.SectorSize {
-		t.Errorf("expected uploadedBytes to be %v, got %v", modules.SectorSize, f.UploadedBytes())
+		t.Errorf("expected uploadedBytes to be %v, got %v", modules.SectorSize, uniqueBytes)
+	}
+}
+
+// TestFileUploadProgressPinning verifies that uploadProgress() returns at most
+// 100%, even if more pieces have been uploaded,
+func TestFileUploadProgressPinning(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	f := newBlankTestFile()
+	for chunkIndex := uint64(0); chunkIndex < f.NumChunks(); chunkIndex++ {
+		for pieceIndex := uint64(0); pieceIndex < uint64(f.ErasureCode().NumPieces()); pieceIndex++ {
+			err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, chunkIndex, pieceIndex, crypto.Hash{})
+			err2 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(1)}}, chunkIndex, pieceIndex, crypto.Hash{})
+			if err := errors.Compose(err1, err2); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if f.staticMetadata.CachedUploadProgress != 100 {
+		t.Fatal("expected uploadProgress to report 100% but was", f.staticMetadata.CachedUploadProgress)
+	}
+}
+
+// TestFileExpiration probes the expiration method of the file type.
+func TestFileExpiration(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	f := newBlankTestFile()
+	contracts := make(map[string]modules.RenterContract)
+	_ = f.Expiration(contracts)
+	if f.staticMetadata.CachedExpiration != 0 {
+		t.Error("file with no pieces should report as having no time remaining")
+	}
+	// Create 3 public keys
+	pk1 := types.SiaPublicKey{Key: []byte{0}}
+	pk2 := types.SiaPublicKey{Key: []byte{1}}
+	pk3 := types.SiaPublicKey{Key: []byte{2}}
+
+	// Add a piece for each key to the file.
+	err1 := f.AddPiece(pk1, 0, 0, crypto.Hash{})
+	err2 := f.AddPiece(pk2, 0, 1, crypto.Hash{})
+	err3 := f.AddPiece(pk3, 0, 2, crypto.Hash{})
+	if err := errors.Compose(err1, err2, err3); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a contract.
+	fc := modules.RenterContract{}
+	fc.EndHeight = 100
+	contracts[pk1.String()] = fc
+	_ = f.Expiration(contracts)
+	if f.staticMetadata.CachedExpiration != 100 {
+		t.Error("file did not report lowest WindowStart")
+	}
+
+	// Add a contract with a lower WindowStart.
+	fc.EndHeight = 50
+	contracts[pk2.String()] = fc
+	_ = f.Expiration(contracts)
+	if f.staticMetadata.CachedExpiration != 50 {
+		t.Error("file did not report lowest WindowStart")
+	}
+
+	// Add a contract with a higher WindowStart.
+	fc.EndHeight = 75
+	contracts[pk3.String()] = fc
+	_ = f.Expiration(contracts)
+	if f.staticMetadata.CachedExpiration != 50 {
+		t.Error("file did not report lowest WindowStart")
 	}
 }

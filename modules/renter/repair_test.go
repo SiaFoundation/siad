@@ -469,7 +469,7 @@ func TestNumFiles(t *testing.T) {
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
-		SiaPath:     newRandSiaPath(),
+		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
 	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
@@ -549,7 +549,7 @@ func TestDirectorySize(t *testing.T) {
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
-		SiaPath:     newRandSiaPath(),
+		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
 	fileSize := uint64(100)
@@ -626,7 +626,7 @@ func TestDirectoryModTime(t *testing.T) {
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
-		SiaPath:     newRandSiaPath(),
+		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
 	fileSize := uint64(100)
@@ -711,7 +711,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
-		SiaPath:     newRandSiaPath(),
+		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
 	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)

@@ -49,12 +49,12 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		return &SiaFileSetEntry{}, err
 	}
 	file := &SiaFile{
-		staticMetadata: metadata{
+		staticMetadata: Metadata{
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
 			CreateTime:              currentTime,
-			StaticFileSize:          int64(fd.FileSize),
+			FileSize:                int64(fd.FileSize),
 			LocalPath:               fd.RepairPath,
 			StaticMasterKey:         mk.Key(),
 			StaticMasterKeyType:     mk.Type(),
@@ -72,9 +72,9 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		deleted:     fd.Deleted,
 		wal:         sfs.wal,
 	}
-	file.staticChunks = make([]chunk, len(fd.Chunks))
-	for i := range file.staticChunks {
-		file.staticChunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
+	file.chunks = make([]chunk, len(fd.Chunks))
+	for i := range file.chunks {
+		file.chunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
 	}
 
 	// Populate the pubKeyTable of the file and add the pieces.
@@ -93,7 +93,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 					})
 				}
 				// Add the piece to the SiaFile.
-				file.staticChunks[chunkIndex].Pieces[pieceIndex] = append(file.staticChunks[chunkIndex].Pieces[pieceIndex], piece{
+				file.chunks[chunkIndex].Pieces[pieceIndex] = append(file.chunks[chunkIndex].Pieces[pieceIndex], piece{
 					HostTableOffset: tableOffset,
 					MerkleRoot:      p.MerkleRoot,
 				})
@@ -110,5 +110,9 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
 	}
+
+	// Update the cached fields for progress and uploaded bytes.
+	_, _ = file.UploadProgressAndBytes()
+
 	return sfse, errors.AddContext(file.saveFile(), "unable to save file")
 }

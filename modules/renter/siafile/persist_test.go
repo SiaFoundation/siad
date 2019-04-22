@@ -68,10 +68,10 @@ func equalFiles(sf, sf2 *SiaFile) error {
 		fmt.Println(sf2.pubKeyTable)
 		return errors.New("sf pubKeyTable doesn't equal sf2 pubKeyTable")
 	}
-	if !reflect.DeepEqual(sf.staticChunks, sf2.staticChunks) {
-		fmt.Println(len(sf.staticChunks), len(sf2.staticChunks))
-		fmt.Println("sf1", sf.staticChunks)
-		fmt.Println("sf2", sf2.staticChunks)
+	if !reflect.DeepEqual(sf.chunks, sf2.chunks) {
+		fmt.Println(len(sf.chunks), len(sf2.chunks))
+		fmt.Println("sf1", sf.chunks)
+		fmt.Println("sf2", sf2.chunks)
 		return errors.New("sf chunks don't equal sf2 chunks")
 	}
 	if sf.siaFilePath != sf2.siaFilePath {
@@ -124,7 +124,7 @@ func newBlankTestFileAndWAL() (*SiaFile, *writeaheadlog.WAL, string) {
 		panic(err)
 	}
 	// Check that the number of chunks in the file is correct.
-	if len(sf.staticChunks) != numChunks {
+	if len(sf.chunks) != numChunks {
 		panic("newTestFile didn't create the expected number of chunks")
 	}
 	return sf, wal, walPath
@@ -142,7 +142,7 @@ func newBlankTestFile() *SiaFile {
 func newTestFile() *SiaFile {
 	sf := newBlankTestFile()
 	// Add pieces to each chunk.
-	for chunkIndex := range sf.staticChunks {
+	for chunkIndex := range sf.chunks {
 		for pieceIndex := 0; pieceIndex < sf.ErasureCode().NumPieces(); pieceIndex++ {
 			numPieces := fastrand.Intn(3) // up to 2 hosts for each piece
 			for i := 0; i < numPieces; i++ {
@@ -164,7 +164,7 @@ func newTestFileParams() (string, modules.SiaPath, string, modules.ErasureCoder,
 	// Create arguments for new file.
 	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
 	pieceSize := modules.SectorSize - sk.Type().Overhead()
-	siaPath := newRandSiaPath()
+	siaPath := modules.RandomSiaPath()
 	rc, err := NewRSCode(10, 20)
 	if err != nil {
 		panic(err)
@@ -224,9 +224,14 @@ func TestNewFile(t *testing.T) {
 	}
 	// Marshal the chunks.
 	var chunks [][]byte
-	for _, chunk := range sf.staticChunks {
+	for _, chunk := range sf.chunks {
 		c := marshalChunk(chunk)
 		chunks = append(chunks, c)
+	}
+
+	// Save the SiaFile to make sure cached fields are persisted too.
+	if err := sf.saveFile(); err != nil {
+		t.Fatal(err)
 	}
 
 	// Open the file.
@@ -241,7 +246,7 @@ func TestNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Size() != sf.chunkOffset(len(sf.staticChunks)-1)+int64(len(chunks[len(chunks)-1])) {
+	if fi.Size() != sf.chunkOffset(len(sf.chunks)-1)+int64(len(chunks[len(chunks)-1])) {
 		t.Fatal("file doesn't have right size")
 	}
 	// Compare the metadata to the on-disk metadata.
@@ -264,7 +269,7 @@ func TestNewFile(t *testing.T) {
 	}
 	// Compare the chunks to the on-disk chunks one-by-one.
 	readChunk := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
-	for chunkIndex := range sf.staticChunks {
+	for chunkIndex := range sf.chunks {
 		_, err := f.ReadAt(readChunk, sf.chunkOffset(chunkIndex))
 		if err != nil && err != io.EOF {
 			t.Fatal(err)
@@ -697,15 +702,12 @@ func TestSaveChunk(t *testing.T) {
 	sf := newTestFile()
 
 	// Choose a random chunk from the file and replace it.
-	chunkIndex := fastrand.Intn(len(sf.staticChunks))
+	chunkIndex := fastrand.Intn(len(sf.chunks))
 	chunk := randomChunk()
-	sf.staticChunks[chunkIndex] = chunk
+	sf.chunks[chunkIndex] = chunk
 
 	// Write the chunk to disk using saveChunk.
-	update, err := sf.saveChunkUpdate(chunkIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
+	update := sf.saveChunkUpdate(chunkIndex)
 	if err := sf.createAndApplyTransaction(update); err != nil {
 		t.Fatal(err)
 	}

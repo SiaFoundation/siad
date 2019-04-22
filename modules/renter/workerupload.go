@@ -86,7 +86,6 @@ func (w *worker) managedQueueUploadChunk(uc *unfinishedUploadChunk) {
 		// The worker should not be uploading, remove the chunk.
 		w.mu.Unlock()
 		w.managedDropChunk(uc)
-		w.renter.log.Debugln("Dropping chunk before putting into queue", !goodForUpload, uploadTerminated, onCooldown, w.hostPubKey)
 		return
 	}
 	w.unprocessedChunks = append(w.unprocessedChunks, uc)
@@ -222,7 +221,9 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 		w.mu.Lock()
 		w.uploadRecentFailure = time.Now()
 		w.uploadConsecutiveFailures++
+		failures := w.uploadConsecutiveFailures
 		w.mu.Unlock()
+		w.renter.log.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v", w.hostPubKey, failures, uc.id)
 	}
 
 	// Unregister the piece from the chunk and hunt for a replacement.

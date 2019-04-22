@@ -73,15 +73,6 @@ func equalMetadatas(md, md2 Metadata) error {
 	return nil
 }
 
-// newRandSiaPath creates a new SiaPath type with a random path.
-func newRandSiaPath() modules.SiaPath {
-	siaPath, err := modules.NewSiaPath(hex.EncodeToString(fastrand.Bytes(4)))
-	if err != nil {
-		panic(err)
-	}
-	return siaPath
-}
-
 // newTestDir creates a new SiaDir for testing, the test Name should be passed
 // in as the rootDir
 func newTestDir(rootDir string) (*SiaDir, error) {
@@ -90,7 +81,7 @@ func newTestDir(rootDir string) (*SiaDir, error) {
 		return nil, err
 	}
 	wal, _ := newTestWAL()
-	return New(newRandSiaPath(), rootPath, wal)
+	return New(modules.RandomSiaPath(), rootPath, wal)
 }
 
 // newTestWal is a helper method to create a WAL for testing.

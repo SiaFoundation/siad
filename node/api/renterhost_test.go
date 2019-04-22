@@ -966,7 +966,7 @@ func TestRenterParallelDelete(t *testing.T) {
 	}
 	// Only the second file should be present
 	st.getAPI("/renter/files", &rf)
-	if len(rf.Files) != 1 || rf.Files[0].SiaPath != "test2" {
+	if len(rf.Files) != 1 || rf.Files[0].SiaPath.String() != "test2" {
 		t.Fatal("file was not deleted properly:", rf.Files)
 	}
 
@@ -1674,14 +1674,23 @@ func TestUploadedBytesReporting(t *testing.T) {
 	}
 
 	// Upload progress should be 100% and redundancy should reach 2
-	if len(rf.Files) != 1 {
-		t.Fatal("Expected 1 file but got", len(rf.Files))
-	}
-	if rf.Files[0].UploadProgress < 100 {
-		t.Fatal("Expected UploadProgress to be 100 but was", rf.Files[0].UploadProgress)
-	}
-	if rf.Files[0].Redundancy != 2 {
-		t.Fatal("Expected Redundancy to be 2 but was", rf.Files[0].Redundancy)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if err := st.getAPI("/renter/files", &rf); err != nil {
+			return err
+		}
+		if len(rf.Files) != 1 {
+			return fmt.Errorf("Expected 1 file but got %v", len(rf.Files))
+		}
+		if rf.Files[0].UploadProgress < 100 {
+			return fmt.Errorf("Expected UploadProgress to be 100 but was %v", rf.Files[0].UploadProgress)
+		}
+		if rf.Files[0].Redundancy != 2 {
+			return fmt.Errorf("Expected Redundancy to be 2 but was %v", rf.Files[0].Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// When the file is fully redundantly uploaded, UploadedBytes should

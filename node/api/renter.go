@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -169,12 +170,12 @@ type (
 
 	// DownloadInfo contains all client-facing information of a file.
 	DownloadInfo struct {
-		Destination     string `json:"destination"`     // The destination of the download.
-		DestinationType string `json:"destinationtype"` // Can be "file", "memory buffer", or "http stream".
-		Filesize        uint64 `json:"filesize"`        // DEPRECATED. Same as 'Length'.
-		Length          uint64 `json:"length"`          // The length requested for the download.
-		Offset          uint64 `json:"offset"`          // The offset within the siafile requested for the download.
-		SiaPath         string `json:"siapath"`         // The siapath of the file used for the download.
+		Destination     string          `json:"destination"`     // The destination of the download.
+		DestinationType string          `json:"destinationtype"` // Can be "file", "memory buffer", or "http stream".
+		Filesize        uint64          `json:"filesize"`        // DEPRECATED. Same as 'Length'.
+		Length          uint64          `json:"length"`          // The length requested for the download.
+		Offset          uint64          `json:"offset"`          // The offset within the siafile requested for the download.
+		SiaPath         modules.SiaPath `json:"siapath"`         // The siapath of the file used for the download.
 
 		Completed            bool      `json:"completed"`            // Whether or not the download has completed.
 		EndTime              time.Time `json:"endtime"`              // The time when the download fully completed.
@@ -250,6 +251,49 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 	WriteSuccess(w)
+}
+
+// parseErasureCodingParameters parses the supplied string values and creates
+// an erasure coder. If values haven't been supplied it will fill in sane
+// defaults.
+func parseErasureCodingParameters(strDataPieces, strParityPieces string) (modules.ErasureCoder, error) {
+	// Check whether the erasure coding parameters have been supplied.
+	if strDataPieces != "" || strParityPieces != "" {
+		// Check that both values have been supplied.
+		if strDataPieces == "" || strParityPieces == "" {
+			err := errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
+			return nil, err
+		}
+
+		// Parse the erasure coding parameters.
+		var dataPieces, parityPieces int
+		_, err := fmt.Sscan(strDataPieces, &dataPieces)
+		if err != nil {
+			err = errors.AddContext(err, "unable to read parameter 'datapieces'")
+			return nil, err
+		}
+		_, err = fmt.Sscan(strParityPieces, &parityPieces)
+		if err != nil {
+			err = errors.AddContext(err, "unable to read parameter 'paritypieces'")
+			return nil, err
+		}
+
+		// Verify that sane values for parityPieces and redundancy are being
+		// supplied.
+		if parityPieces < requiredParityPieces {
+			err := fmt.Errorf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)
+			return nil, err
+		}
+		redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
+		if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
+			err := fmt.Errorf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)
+			return nil, err
+		}
+
+		// Create the erasure coder.
+		return siafile.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
+	}
+	return nil, nil
 }
 
 // renterHandlerGET handles the API call to /renter.
@@ -931,7 +975,9 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 
 // renterUploadHandler handles the API call to upload a file.
 func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Get the source path.
 	source := req.FormValue("source")
+	// Source must be absolute path.
 	if !filepath.IsAbs(source) {
 		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
 		return
@@ -946,47 +992,11 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 			return
 		}
 	}
-
-	// Check whether the erasure coding parameters have been supplied.
-	var ec modules.ErasureCoder
-	if req.FormValue("datapieces") != "" || req.FormValue("paritypieces") != "" {
-		// Check that both values have been supplied.
-		if req.FormValue("datapieces") == "" || req.FormValue("paritypieces") == "" {
-			WriteError(w, Error{"must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters"}, http.StatusBadRequest)
-			return
-		}
-
-		// Parse the erasure coding parameters.
-		var dataPieces, parityPieces int
-		_, err := fmt.Sscan(req.FormValue("datapieces"), &dataPieces)
-		if err != nil {
-			WriteError(w, Error{"unable to read parameter 'datapieces': " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(req.FormValue("paritypieces"), &parityPieces)
-		if err != nil {
-			WriteError(w, Error{"unable to read parameter 'paritypieces': " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-
-		// Verify that sane values for parityPieces and redundancy are being
-		// supplied.
-		if parityPieces < requiredParityPieces {
-			WriteError(w, Error{fmt.Sprintf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)}, http.StatusBadRequest)
-			return
-		}
-		redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
-		if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
-			WriteError(w, Error{fmt.Sprintf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)}, http.StatusBadRequest)
-			return
-		}
-
-		// Create the erasure coder.
-		ec, err = siafile.NewRSSubCode(dataPieces, parityPieces, 64)
-		if err != nil {
-			WriteError(w, Error{"unable to encode file using the provided parameters: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
+	// Parse the erasure coder.
+	ec, err := parseErasureCodingParameters(req.FormValue("datapieces"), req.FormValue("paritypieces"))
+	if err != nil {
+		WriteError(w, Error{"unable to parse erasure code settings" + err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Call the renter to upload the file.
@@ -1001,6 +1011,50 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		ErasureCode: ec,
 		Force:       force,
 	})
+	if err != nil {
+		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterUploadStreamHandler handles the API call to upload a file using a
+// stream.
+func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+	// Check whether existing file should be overwritten
+	force := false
+	if f := queryForm.Get("force"); f != "" {
+		force, err = strconv.ParseBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	// Parse the erasure coder.
+	ec, err := parseErasureCodingParameters(queryForm.Get("datapieces"), queryForm.Get("paritypieces"))
+	if err != nil {
+		WriteError(w, Error{"unable to parse erasure code settings" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Call the renter to upload the file.
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	up := modules.FileUploadParams{
+		SiaPath:     siaPath,
+		ErasureCode: ec,
+		Force:       force,
+	}
+	err = api.renter.UploadStreamFromReader(up, req.Body)
 	if err != nil {
 		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)
 		return

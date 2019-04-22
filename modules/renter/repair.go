@@ -508,7 +508,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 			// If we are on the last iteration and the directory does have files
 			// then return the current directory
 			if i == 0 {
-				siaPath.LoadString(directories[0].SiaPath)
+				siaPath = directories[0].SiaPath
 				return siaPath, nil
 			}
 
@@ -518,7 +518,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 			}
 
 			rand = rand - int(directories[i].AggregateNumStuckChunks)
-			siaPath.LoadString(directories[i].SiaPath)
+			siaPath = directories[i].SiaPath
 			// If rand is less than 0 break out of the loop and continue into
 			// that directory
 			if rand <= 0 {

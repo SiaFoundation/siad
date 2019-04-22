@@ -242,8 +242,8 @@ RPC Stats:
 			es.Version,
 
 			yesNo(is.AcceptingContracts), periodUnits(is.MaxDuration),
-			filesizeUnits(int64(is.MaxDownloadBatchSize)),
-			filesizeUnits(int64(is.MaxReviseBatchSize)), netaddr,
+			filesizeUnits(is.MaxDownloadBatchSize),
+			filesizeUnits(is.MaxReviseBatchSize), netaddr,
 			is.WindowSize/6,
 
 			currencyUnits(is.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)),
@@ -289,8 +289,8 @@ RPC Stats:
 `,
 			connectabilityString,
 
-			filesizeUnits(int64(totalstorage)),
-			filesizeUnits(int64(totalstorage-storageremaining)), price,
+			filesizeUnits(totalstorage),
+			filesizeUnits(totalstorage-storageremaining), price,
 			periodUnits(is.MaxDuration),
 
 			yesNo(is.AcceptingContracts), currencyUnits(totalPotentialRevenue),
@@ -322,7 +322,7 @@ RPC Stats:
 	for _, folder := range sg.Folders {
 		curSize := int64(folder.Capacity - folder.CapacityRemaining)
 		pctUsed := 100 * (float64(curSize) / float64(folder.Capacity))
-		fmt.Fprintf(w, "\t%s\t%s\t%.2f\t%s\n", filesizeUnits(curSize), filesizeUnits(int64(folder.Capacity)), pctUsed, folder.Path)
+		fmt.Fprintf(w, "\t%s\t%s\t%.2f\t%s\n", filesizeUnits(uint64(curSize)), filesizeUnits(folder.Capacity), pctUsed, folder.Path)
 	}
 	w.Flush()
 }

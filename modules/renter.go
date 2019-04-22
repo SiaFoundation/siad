@@ -207,17 +207,17 @@ type DirectoryInfo struct {
 	Health     float64 `json:"health"`
 	NumFiles   uint64  `json:"numfiles"`
 	NumSubDirs uint64  `json:"numsubdirs"`
-	SiaPath    string  `json:"siapath"`
+	SiaPath    SiaPath `json:"siapath"`
 }
 
 // DownloadInfo provides information about a file that has been requested for
 // download.
 type DownloadInfo struct {
-	Destination     string `json:"destination"`     // The destination of the download.
-	DestinationType string `json:"destinationtype"` // Can be "file", "memory buffer", or "http stream".
-	Length          uint64 `json:"length"`          // The length requested for the download.
-	Offset          uint64 `json:"offset"`          // The offset within the siafile requested for the download.
-	SiaPath         string `json:"siapath"`         // The siapath of the file used for the download.
+	Destination     string  `json:"destination"`     // The destination of the download.
+	DestinationType string  `json:"destinationtype"` // Can be "file", "memory buffer", or "http stream".
+	Length          uint64  `json:"length"`          // The length requested for the download.
+	Offset          uint64  `json:"offset"`          // The offset within the siafile requested for the download.
+	SiaPath         SiaPath `json:"siapath"`         // The siapath of the file used for the download.
 
 	Completed            bool      `json:"completed"`            // Whether or not the download has completed.
 	EndTime              time.Time `json:"endtime"`              // The time when the download fully completed.
@@ -256,7 +256,7 @@ type FileInfo struct {
 	Recoverable      bool              `json:"recoverable"`
 	Redundancy       float64           `json:"redundancy"`
 	Renewing         bool              `json:"renewing"`
-	SiaPath          string            `json:"siapath"`
+	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
 	UploadedBytes    uint64            `json:"uploadedbytes"`
@@ -319,6 +319,7 @@ type HostScoreBreakdown struct {
 	AgeAdjustment              float64 `json:"ageadjustment"`
 	BurnAdjustment             float64 `json:"burnadjustment"`
 	CollateralAdjustment       float64 `json:"collateraladjustment"`
+	DurationAdjustment         float64 `json:"durationadjustment"`
 	InteractionAdjustment      float64 `json:"interactionadjustment"`
 	PriceAdjustment            float64 `json:"pricesmultiplier"`
 	StorageRemainingAdjustment float64 `json:"storageremainingadjustment"`
@@ -622,6 +623,10 @@ type Renter interface {
 
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
+
+	// UploadStreamFromReader reads from the provided reader until io.EOF is reached and
+	// upload the data to the Sia network.
+	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
 
 	// CreateDir creates a directory for the renter
 	CreateDir(siaPath SiaPath) error

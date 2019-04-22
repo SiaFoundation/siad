@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -72,7 +71,10 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
-			sp := filepath.Join(dir, persist.RandomSuffix())
+			sp, err := dir.Join(persist.RandomSuffix())
+			if err != nil {
+				t.Fatal(err)
+			}
 			// 30% chance for the file to be a 0-byte file.
 			size := int(modules.SectorSize) + siatest.Fuzz()
 			if fastrand.Intn(3) == 0 {
@@ -156,7 +158,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
-			err = r.RenterRenamePost(sp, persist.RandomSuffix())
+			err = r.RenterRenamePost(sp, modules.RandomSiaPath())
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
@@ -224,7 +226,10 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
-			sp := filepath.Join(dir, persist.RandomSuffix())
+			sp, err := dir.Join(persist.RandomSuffix())
+			if err != nil {
+				t.Fatal(err)
+			}
 			if err := r.RenterDirCreatePost(sp); err != nil {
 				t.Fatal(err)
 			}
