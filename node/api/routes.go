@@ -12,8 +12,10 @@ import (
 // buildHttpRoutes sets up and returns an * httprouter.Router.
 // it connected the Router to the given api using the required
 // parameters: requiredUserAgent and requiredPassword
-func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword string) {
+func (api *API) buildHTTPRoutes() {
 	router := httprouter.New()
+	requiredPassword := api.requiredPassword
+	requiredUserAgent := api.requiredUserAgent
 
 	router.NotFound = http.HandlerFunc(UnrecognizedCallHandler)
 	router.RedirectTrailingSlash = false
@@ -160,7 +162,9 @@ func (api *API) buildHTTPRoutes(requiredUserAgent string, requiredPassword strin
 	}
 
 	// Apply UserAgent middleware and return the Router
+	api.routerMu.Lock()
 	api.router = cleanCloseHandler(RequireUserAgent(router, requiredUserAgent))
+	api.routerMu.Unlock()
 	return
 }
 
