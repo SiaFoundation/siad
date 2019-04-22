@@ -2,11 +2,14 @@ package renter
 
 import (
 	"bytes"
+	"crypto/cipher"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
+
+	"golang.org/x/crypto/twofish"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -141,6 +144,18 @@ func (r *Renter) UploadSnapshot(name string, dotSia []byte) error {
 	copy(meta.Name[:], name)
 	fastrand.Read(meta.UID[:])
 
+	// Get the wallet seed.
+	ws, _, err := r.w.PrimarySeed()
+	if err != nil {
+		return errors.AddContext(err, "failed to get wallet's primary seed")
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, snapshotKeySpecifier)
+	defer fastrand.Read(secret[:])
+
 	contracts := r.hostContractor.Contracts()
 
 	// split the snapshot .sia file into sectors
@@ -182,25 +197,35 @@ func (r *Renter) UploadSnapshot(name string, dotSia []byte) error {
 			if err != nil {
 				return err
 			}
+			// decrypt the table
+			c, err := twofish.NewCipher(secret[:])
+			aead, err := cipher.NewGCM(c)
+			if err != nil {
+				return err
+			}
+			encTable, err := crypto.DecryptWithNonce(tableSector, aead)
 			// check that the sector actually contains an entry table. If so, we
 			// should replace the old table; if not, we should swap the old
 			// sector to the end, but not delete it.
-			haveValidTable := bytes.Equal(tableSector[:16], snapshotTableSpecifier[:])
+			haveValidTable := err == nil && bytes.Equal(encTable[:16], snapshotTableSpecifier[:])
 
 			// update the entry table
 			var entryTable []snapshotEntry
 			if haveValidTable {
-				if err := encoding.Unmarshal(tableSector[16:], &entryTable); err != nil {
+				if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
 					return err
 				}
 			}
 			entryTable = append(entryTable, entry)
 			// if entryTable is too large to fit in a sector, remove old entries until it fits
-			for 16+len(encoding.Marshal(entryTable)) > int(modules.SectorSize) {
+			overhead := types.SpecifierLen + aead.Overhead() + aead.NonceSize()
+			for len(encoding.Marshal(entryTable))+overhead > int(modules.SectorSize) {
 				entryTable = entryTable[1:]
 			}
-			copy(tableSector[:16], snapshotTableSpecifier[:])
-			copy(tableSector[16:], encoding.Marshal(entryTable))
+			newTable := make([]byte, modules.SectorSize-uint64(aead.Overhead()+aead.NonceSize()))
+			copy(newTable[:16], snapshotTableSpecifier[:])
+			copy(newTable[16:], encoding.Marshal(entryTable))
+			tableSector = crypto.EncryptWithNonce(newTable, aead)
 			// swap the new entry table into index 0 and delete the old one
 			// (unless it wasn't an entry table)
 			if _, err := host.Replace(tableSector, 0, haveValidTable); err != nil {
@@ -232,6 +257,18 @@ func (r *Renter) DownloadSnapshot(m SnapshotMetadata) (dotSia []byte, err error)
 	}
 	defer r.tg.Done()
 
+	// Get the wallet seed.
+	ws, _, err := r.w.PrimarySeed()
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to get wallet's primary seed")
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, snapshotKeySpecifier)
+	defer fastrand.Read(secret[:])
+
 	contracts := r.hostContractor.Contracts()
 
 	// try each host individually
@@ -246,8 +283,21 @@ func (r *Renter) DownloadSnapshot(m SnapshotMetadata) (dotSia []byte, err error)
 			if err != nil {
 				return err
 			}
+			// decrypt the table
+			c, err := twofish.NewCipher(secret[:])
+			aead, err := cipher.NewGCM(c)
+			if err != nil {
+				return err
+			}
+			encTable, err := crypto.DecryptWithNonce(tableSector, aead)
+			if err != nil {
+				return err
+			} else if !bytes.Equal(encTable[:16], snapshotTableSpecifier[:]) {
+				return errors.New("index 0 sector does not contain a snapshot table")
+			}
+
 			var entryTable []snapshotEntry
-			if err := encoding.Unmarshal(tableSector, &entryTable); err != nil {
+			if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
 				return err
 			}
 			// search for the desired snapshot
