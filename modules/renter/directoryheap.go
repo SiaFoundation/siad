@@ -13,9 +13,10 @@ import (
 // directory is a helper struct that represents a siadir in the
 // repairDirectoryHeap
 type directory struct {
-	explored bool
-	health   float64
-	siaPath  modules.SiaPath
+	aggregateHealth float64
+	health          float64
+	explored        bool
+	siaPath         modules.SiaPath
 
 	mu sync.Mutex
 }
@@ -39,15 +40,28 @@ type repairDirectoryHeap []*directory
 // Implementation of heap.Interface for repairDirectoryHeap.
 func (rdh repairDirectoryHeap) Len() int { return len(rdh) }
 func (rdh repairDirectoryHeap) Less(i, j int) bool {
-	// Prioritize explored directories if the health is the same
-	if rdh[i].health == rdh[j].health && rdh[i].explored {
-		return true
+	// Prioritization: Health is the main prioritization. If a directory is
+	// explored then we should use the Health of the Directory If a directory is
+	// unexplored then we should use the AggregateHealth of the Directory. This
+	// will ensure we are following the path of lowest health as well as
+	// evaluating each directory on its own merit.
+
+	// Prioritize higher health if both are explored
+	if rdh[i].explored && rdh[j].explored {
+		return rdh[i].health > rdh[j].health
 	}
-	if rdh[i].health == rdh[j].health && rdh[j].explored {
-		return false
+
+	// Prioritize higher aggregate health if both are unexplored
+	if !rdh[i].explored && !rdh[j].explored {
+		return rdh[i].aggregateHealth > rdh[j].aggregateHealth
 	}
-	// Since a higher health is worse we use the > operator
-	return rdh[i].health > rdh[j].health
+
+	// If one is explored and one is unexplored we want to prioritize based on
+	// unexplored aggregate health compared with explored health
+	if rdh[i].explored {
+		return rdh[i].health > rdh[j].aggregateHealth
+	}
+	return rdh[i].aggregateHealth > rdh[j].health
 }
 func (rdh repairDirectoryHeap) Swap(i, j int)       { rdh[i], rdh[j] = rdh[j], rdh[i] }
 func (rdh *repairDirectoryHeap) Push(x interface{}) { *rdh = append(*rdh, x.(*directory)) }
@@ -106,10 +120,11 @@ func (dh *directoryHeap) managedPush(d *directory) bool {
 
 // managedPushUnexploredDirectory adds an unexplored directory to the directory
 // heap
-func (dh *directoryHeap) managedPushUnexploredDirectory(siaPath modules.SiaPath, health float64) error {
+func (dh *directoryHeap) managedPushUnexploredDirectory(siaPath modules.SiaPath, aggregateHealth, health float64) error {
 	d := &directory{
-		health:  health,
-		siaPath: siaPath,
+		aggregateHealth: aggregateHealth,
+		health:          health,
+		siaPath:         siaPath,
 	}
 	if !dh.managedPush(d) {
 		return errors.New("failed to push unexplored directory onto heap")
@@ -200,7 +215,7 @@ func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
 	metadata := siaDir.Metadata()
 
 	// Push unexplored root onto heap
-	return r.directoryHeap.managedPushUnexploredDirectory(siaPath, metadata.Health)
+	return r.directoryHeap.managedPushUnexploredDirectory(siaPath, metadata.AggregateHealth, metadata.Health)
 }
 
 // managedResetDirectoryHeap resets the directory heap by clearing it and then
