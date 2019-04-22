@@ -4605,6 +4605,21 @@ func TestTakeLoadSnapshot(t *testing.T) {
 	if err := r.TakeSnapshot(); err != nil {
 		t.Fatal(err)
 	}
+
+	// Upload another file and take another snapshot.
+	lf2, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	_, err = r.UploadBlocking(lf2, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	if err := r.TakeSnapshot(); err != nil {
+		t.Fatal(err)
+	}
+
 	// TODO (followup): Delete first file and upload another file.
 	// TODO (followup): Take another snapshot.
 	// TODO (followup): Make sure there are 2 snapshots.
