@@ -163,6 +163,32 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	}
 }
 
+// createAndApplyTransaction is a helper method that creates a writeaheadlog
+// transaction and applies it.
+func (sfs *SiaFileSet) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	// Create the writeaheadlog transaction.
+	txn, err := sfs.wal.NewTransaction(updates)
+	if err != nil {
+		return errors.AddContext(err, "failed to create wal txn")
+	}
+	// No extra setup is required. Signal that it is done.
+	if err := <-txn.SignalSetupComplete(); err != nil {
+		return errors.AddContext(err, "failed to signal setup completion")
+	}
+	// Apply the updates.
+	if err := applyUpdates(modules.ProdDependencies, updates...); err != nil {
+		return errors.AddContext(err, "failed to apply updates")
+	}
+	// Updates are applied. Let the writeaheadlog know.
+	if err := txn.SignalUpdatesApplied(); err != nil {
+		return errors.AddContext(err, "failed to signal that updates are applied")
+	}
+	return nil
+}
+
 // siaPath is a convenience wrapper around FromSysPath. Since the files are
 // loaded from disk, the siapaths should always be correct. It's argument is
 // also an entry instead of the path and dir.
@@ -334,20 +360,38 @@ func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	defer sfs.mu.Unlock()
 
 	// Fetch the corresponding siafile and call delete.
-	entry, err := sfs.open(siaPath)
-	if err != nil {
-		return err
-	}
-	defer sfs.closeEntry(entry)
-	err = entry.Delete()
-	if err != nil {
-		return err
+	//
+	// NOTE: since we are just accessing the entry directly from the map while
+	// holding the SiaFileSet lock we are not creating a new threadUID and
+	// therefore do not need to call close on this entry
+	entry, _, exists := sfs.siaPathToEntryAndUID(siaPath)
+	if !exists {
+		// Check if the file exists on disk
+		siaFilePath := siaPath.SiaFileSysPath(sfs.siaFileDir)
+		_, err := os.Stat(siaFilePath)
+		if os.IsNotExist(err) {
+			return ErrUnknownPath
+		}
+		// If the entry does not exists then we want to just remove the entry
+		// from disk without loading it from disk to avoid errors due to corrupt
+		// siafiles
+		update := createDeleteUpdate(siaFilePath)
+		return sfs.createAndApplyTransaction(update)
 	}
 
+	// Check if entry as already been deleted by another thread
+	if entry.Deleted() {
+		return nil
+	}
+	// Delete SiaFile
+	err := entry.Delete()
+	if err != nil {
+		return err
+	}
 	// Remove the siafile from the set maps so that other threads can't find
 	// it.
 	delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
-	delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
+	delete(sfs.siapathToUID, sfs.siaPath(entry))
 	return nil
 }
 
