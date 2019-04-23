@@ -31,6 +31,17 @@ var (
 	snapshotTableSpecifier = types.Specifier{'S', 'n', 'a', 'p', 's', 'h', 'o', 't', 'T', 'a', 'b', 'l', 'e'}
 )
 
+// AvailableSnapshots returns the snapshots that the renter can download.
+func (r *Renter) AvailableSnapshots() ([]SnapshotMetadata, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+	id := r.mu.RLock()
+	defer r.mu.RUnlock(id)
+	return r.persist.Snapshots, nil
+}
+
 // TakeSnapshot creates a backup of the renter which is uploaded to the sia
 // network as a snapshot and can be retrieved using only the seed.
 func (r *Renter) TakeSnapshot() error {
@@ -111,7 +122,44 @@ func (r *Renter) managedTakeSnapshot() error {
 		return err
 	}
 	// Upload the snapshot to the network.
-	return r.UploadSnapshot(sp.String(), dotSia)
+	return r.uploadSnapshot(sp.String(), dotSia)
+}
+
+// RestoreSnapshot downloads and restores the specified snapshot.
+func (r *Renter) RestoreSnapshot(m SnapshotMetadata) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.managedRestoreSnapshot(m)
+}
+
+// managedRestoreSnapshot downloads and restores the specified snapshot.
+func (r *Renter) managedRestoreSnapshot(m SnapshotMetadata) error {
+	// Download the snapshot and write it to a temporary file on disk.
+	dotSia, err := r.downloadSnapshot(m)
+	if err != nil {
+		return err
+	}
+	if err := ioutil.WriteFile("/tmp/foo", dotSia, 0666); err != nil {
+		return err
+	}
+	// Get the wallet seed.
+	ws, _, err := r.w.PrimarySeed()
+	if err != nil {
+		return errors.AddContext(err, "failed to get wallet's primary seed")
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, snapshotKeySpecifier)
+	defer fastrand.Read(secret[:])
+
+	if err := r.LoadBackup("/tmp/foo", secret[:32]); err != nil {
+		return err
+	}
+	return nil
 }
 
 // SnapshotMetadata contains metadata about a snapshot backup.
@@ -130,13 +178,8 @@ type snapshotEntry struct {
 	DataSectors [4]crypto.Hash // pointers to sectors containing snapshot .sia file
 }
 
-// UploadSnapshot uploads a snapshot .sia file to all hosts.
-func (r *Renter) UploadSnapshot(name string, dotSia []byte) error {
-	if err := r.tg.Add(); err != nil {
-		return err
-	}
-	defer r.tg.Done()
-
+// uploadSnapshot uploads a snapshot .sia file to all hosts.
+func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
 	meta := SnapshotMetadata{
 		CreationDate: types.CurrentTimestamp(),
 		Size:         uint64(len(dotSia)),
@@ -250,8 +293,8 @@ func (r *Renter) UploadSnapshot(name string, dotSia []byte) error {
 	return nil
 }
 
-// DownloadSnapshot downloads the specified snapshot.
-func (r *Renter) DownloadSnapshot(m SnapshotMetadata) (dotSia []byte, err error) {
+// downloadSnapshot downloads and returns the specified snapshot.
+func (r *Renter) downloadSnapshot(m SnapshotMetadata) (dotSia []byte, err error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
@@ -335,15 +378,4 @@ func (r *Renter) DownloadSnapshot(m SnapshotMetadata) (dotSia []byte, err error)
 		return dotSia, nil
 	}
 	return nil, errors.New("could not download backup from any host")
-}
-
-// AvailableSnapshot returns the snapshots that the renter can download.
-func (r *Renter) AvailableSnapshot() ([]SnapshotMetadata, error) {
-	if err := r.tg.Add(); err != nil {
-		return nil, err
-	}
-	defer r.tg.Done()
-	id := r.mu.RLock()
-	defer r.mu.RUnlock(id)
-	return r.persist.Snapshots, nil
 }
