@@ -7,11 +7,30 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
+// updateSiaDirHealth is a helper method to update the health and the aggregate
+// health of a siadir
+func (r *Renter) updateSiaDirHealth(siaPath modules.SiaPath, health, aggregateHealth float64) error {
+	siaDir, err := r.staticDirSet.Open(siaPath)
+	if err != nil {
+		return err
+	}
+	defer siaDir.Close()
+	metadata := siaDir.Metadata()
+	metadata.Health = health
+	metadata.AggregateHealth = aggregateHealth
+	err = siaDir.UpdateMetadata(metadata)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // TestDirectoryHeap probes the directory heap implementation
 func TestDirectoryHeap(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Create renter
 	rt, err := newRenterTester(t.Name())
@@ -82,5 +101,239 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 	if d.explored {
 		t.Fatal("Expected root directory to be unexplored")
+	}
+}
+
+// TestPushSubDirectories probes the methods that add sub directories to the
+// heap. This in turn tests the methods for adding unexplored directories
+func TestPushSubDirectories(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a test directory with the following healths
+	//
+	// root/ 1
+	// root/SubDir1/ 2
+	// root/SubDir2/ 3
+
+	// Create directory tree
+	siaPath1, err := modules.NewSiaPath("SubDir1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath2, err := modules.NewSiaPath("SubDir2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(siaPath1); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(siaPath2); err != nil {
+		t.Fatal(err)
+	}
+
+	// Update metadata
+	err = rt.renter.updateSiaDirHealth(siaPath1, float64(2), float64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rt.renter.updateSiaDirHealth(siaPath2, float64(3), float64(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure we are starting with an empty heap
+	rt.renter.directoryHeap.managedEmpty()
+
+	// Add root sub directories
+	d := &directory{
+		siaPath: modules.RootSiaPath(),
+	}
+	err = rt.renter.managedPushSubDirectories(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Heap should have a length of 2
+	if rt.renter.directoryHeap.managedLen() != 2 {
+		t.Fatal("Heap should have length of 2 but was", rt.renter.directoryHeap.managedLen())
+	}
+
+	// Pop off elements and confirm the are correct
+	d = rt.renter.directoryHeap.managedPop()
+	if !d.siaPath.Equals(siaPath2) {
+		t.Fatalf("Expected directory %v but found %v", siaPath2.String(), d.siaPath.String())
+	}
+	if d.aggregateHealth != float64(3) {
+		t.Fatal("Expected AggregateHealth to be 3 but was", d.aggregateHealth)
+	}
+	if d.health != float64(3) {
+		t.Fatal("Expected Health to be 3 but was", d.health)
+	}
+	if d.explored {
+		t.Fatal("Expected directory to be unexplored")
+	}
+	d = rt.renter.directoryHeap.managedPop()
+	if !d.siaPath.Equals(siaPath1) {
+		t.Fatalf("Expected directory %v but found %v", siaPath1.String(), d.siaPath.String())
+	}
+	if d.aggregateHealth != float64(2) {
+		t.Fatal("Expected AggregateHealth to be 2 but was", d.aggregateHealth)
+	}
+	if d.health != float64(2) {
+		t.Fatal("Expected Health to be 2 but was", d.health)
+	}
+	if d.explored {
+		t.Fatal("Expected directory to be unexplored")
+	}
+}
+
+// TestNextUnexploredDirectory probes managedNextUnexploredDirectory to ensure
+// that the directory traverses the filesystem as expected
+func TestNextUnexploredDirectory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a test directory with the following healths/aggregateHealths
+	//
+	// root/ 0/3
+	// root/SubDir1/ 1/2
+	// root/SubDir1/SubDir1/ 1/1
+	// root/SubDir1/SubDir2/ 2/2
+	// root/SubDir2/ 1/3
+	// root/SubDir2/SubDir1/ 1/1
+	// root/SubDir2/SubDir2/ 3/3
+	//
+	// Overall we would expect to see root/SubDir2/SubDir2 popped first followed
+	// by root/SubDir1/SubDir2
+
+	// Create SiaPaths
+	siaPath1, err := modules.NewSiaPath("SubDir1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath2, err := modules.NewSiaPath("SubDir2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath1_1, err := siaPath1.Join("SubDir1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath1_2, err := siaPath1.Join("SubDir2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath2_1, err := siaPath2.Join("SubDir1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath2_2, err := siaPath2.Join("SubDir2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create Directories
+	if err := rt.renter.CreateDir(siaPath1_1); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(siaPath1_2); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(siaPath2_1); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(siaPath2_2); err != nil {
+		t.Fatal(err)
+	}
+
+	// Update metadata
+	err = rt.renter.updateSiaDirHealth(modules.RootSiaPath(), float64(0), float64(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.updateSiaDirHealth(siaPath1, float64(1), float64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.updateSiaDirHealth(siaPath1_1, float64(1), float64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.updateSiaDirHealth(siaPath1_2, float64(2), float64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.updateSiaDirHealth(siaPath2, float64(1), float64(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.updateSiaDirHealth(siaPath2_1, float64(1), float64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.updateSiaDirHealth(siaPath2_2, float64(3), float64(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure we are starting with an empty heap, this helps with ndfs and
+	// tests proper handling of empty heaps
+	rt.renter.directoryHeap.managedEmpty()
+
+	// Pop off next explored directory
+	d, err := rt.renter.managedNextExploredDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Directory should be root/SubDir2/SubDir2
+	if !d.siaPath.Equals(siaPath2_2) {
+		t.Fatalf("Expected directory %v but found %v", siaPath2_2.String(), d.siaPath.String())
+	}
+	if d.aggregateHealth != float64(3) {
+		t.Fatal("Expected AggregateHealth to be 3 but was", d.aggregateHealth)
+	}
+	if d.health != float64(3) {
+		t.Fatal("Expected Health to be 3 but was", d.health)
+	}
+	if !d.explored {
+		t.Fatal("Expected directory to be explored")
+	}
+
+	// Pop off next explored directory
+	d, err = rt.renter.managedNextExploredDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Directory should be root/SubDir1/SubDir2
+	if !d.siaPath.Equals(siaPath1_2) {
+		t.Fatalf("Expected directory %v but found %v", siaPath1_2.String(), d.siaPath.String())
+	}
+	if d.aggregateHealth != float64(2) {
+		t.Fatal("Expected AggregateHealth to be 2 but was", d.aggregateHealth)
+	}
+	if d.health != float64(2) {
+		t.Fatal("Expected Health to be 2 but was", d.health)
+	}
+	if !d.explored {
+		t.Fatal("Expected directory to be explored")
 	}
 }

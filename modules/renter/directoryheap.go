@@ -50,22 +50,22 @@ func (rdh repairDirectoryHeap) Less(i, j int) bool {
 	// added to the heap first will be prioritized in the event that the healths
 	// are equal
 
-	// Prioritize higher health if both are explored
-	if rdh[i].explored && rdh[j].explored {
-		return rdh[i].health > rdh[j].health
-	}
-
-	// Prioritize higher aggregate health if both are unexplored
-	if !rdh[i].explored && !rdh[j].explored {
-		return rdh[i].aggregateHealth > rdh[j].aggregateHealth
-	}
-
-	// If one is explored and one is unexplored we want to prioritize based on
-	// unexplored aggregate health compared with explored health
+	// Determine health of each element to used based on whether or not the
+	// element is explored
+	var iHealth, jHealth float64
 	if rdh[i].explored {
-		return rdh[i].health > rdh[j].aggregateHealth
+		iHealth = rdh[i].health
+	} else {
+		iHealth = rdh[i].aggregateHealth
 	}
-	return rdh[i].aggregateHealth > rdh[j].health
+	if rdh[j].explored {
+		jHealth = rdh[j].health
+	} else {
+		jHealth = rdh[j].aggregateHealth
+	}
+
+	// Prioritize higher health
+	return iHealth > jHealth
 }
 func (rdh repairDirectoryHeap) Swap(i, j int)       { rdh[i], rdh[j] = rdh[j], rdh[i] }
 func (rdh *repairDirectoryHeap) Push(x interface{}) { *rdh = append(*rdh, x.(*directory)) }
@@ -163,7 +163,8 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 
 		// Sanity check that we are still popping off directories
 		if d == nil {
-			return nil, errors.New("no more directories to pop of heap")
+			build.Critical("no more directories to pop off heap, this should never happen")
+			return nil, errors.New("no more directories to pop off heap")
 		}
 
 		// Check if explored
