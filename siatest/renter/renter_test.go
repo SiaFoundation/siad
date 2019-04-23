@@ -785,16 +785,6 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
-	// Mine a block to trigger the repair loop so the chunk is marked as stuck
-	m := tg.Miners()[0]
-	if err := m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-	// Check to see if a chunk got marked as stuck
-	err = renter.WaitForStuckChunksToBubble()
-	if err != nil {
-		t.Fatal(err)
-	}
 	// We should still be able to download
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
@@ -863,16 +853,6 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	expectedRedundancy := float64(dataPieces+parityPieces-1) / float64(dataPieces)
 	if err := r.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
-	}
-	// Mine a block to trigger the repair loop so the chunk is marked as stuck
-	m := tg.Miners()[0]
-	if err := m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-	// Check to see if a chunk got marked as stuck
-	err = r.WaitForStuckChunksToBubble()
-	if err != nil {
-		t.Fatal(err)
 	}
 	// We should still be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {
