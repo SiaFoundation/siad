@@ -34,13 +34,6 @@ var persistMetadata = persist.Metadata{
 	Version: "1.3.5",
 }
 
-// persistMetadataBlacklist contains the header and version strings that
-// identify the gateway persist file.
-var persistMetadataBlacklist = persist.Metadata{
-	Header:  "Sia Node Blacklist",
-	Version: "1.4.1",
-}
-
 type (
 	// persist contains all of the persistent gateway data.
 	persistence struct {
