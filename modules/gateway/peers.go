@@ -537,7 +537,6 @@ func (g *Gateway) ConnectManual(addr modules.NetAddress) error {
 	var err error
 	if _, exists := g.blacklist[addr.Host()]; exists {
 		delete(g.blacklist, addr.Host())
-		g.updateBlacklistPersistData()
 		err = g.saveSync()
 	}
 	g.mu.Unlock()
@@ -552,7 +551,6 @@ func (g *Gateway) DisconnectManual(addr modules.NetAddress) error {
 	if err == nil {
 		g.mu.Lock()
 		g.blacklist[addr.Host()] = struct{}{}
-		g.updateBlacklistPersistData()
 		err = g.saveSync()
 		g.mu.Unlock()
 	}

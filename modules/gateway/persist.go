@@ -102,6 +102,10 @@ func (g *Gateway) load() error {
 // saveSync stores the Gateway's persistent data on disk, and then syncs to
 // disk to minimize the possibility of data loss.
 func (g *Gateway) saveSync() error {
+	g.persist.Blacklist = make([]string, 0, len(g.blacklist))
+	for ip := range g.blacklist {
+		g.persist.Blacklist = append(g.persist.Blacklist, ip)
+	}
 	return persist.SaveJSON(persistMetadata, g.persist, filepath.Join(g.persistDir, persistFilename))
 }
 
@@ -134,15 +138,6 @@ func (g *Gateway) threadedSaveLoop() {
 				g.log.Println("ERROR: Unable to save gateway nodes:", err)
 			}
 		}()
-	}
-}
-
-// updateBlacklistPersistData updates g.persist.Blacklist to match the blacklist
-// map.
-func (g *Gateway) updateBlacklistPersistData() {
-	g.persist.Blacklist = make([]string, 0, len(g.blacklist))
-	for ip := range g.blacklist {
-		g.persist.Blacklist = append(g.persist.Blacklist, ip)
 	}
 }
 
