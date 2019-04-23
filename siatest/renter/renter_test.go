@@ -4596,7 +4596,7 @@ func TestRemoteBackup(t *testing.T) {
 	// Upload the file.
 	dataPieces := uint64(len(tg.Hosts()) - 1)
 	parityPieces := uint64(1)
-	_, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
@@ -4610,14 +4610,33 @@ func TestRemoteBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Upload the file.
-	_, err = r.UploadBlocking(lf2, dataPieces, parityPieces, false)
+	rf2, err := r.UploadBlocking(lf2, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	if err := r.RenterCreateBackupPost("bar", true); err != nil {
 		t.Fatal(err)
 	}
+
+	// Both snapshots should be listed.
+	ubs, err := r.RenterUploadedBackups()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(ubs) != 2 {
+		t.Fatal("expected two backups, got", len(ubs))
+	}
+
+	// Delete both files and restore the first snapshot.
+	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RenterDeletePost(rf2.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RenterRecoverBackupPost("foo", true); err != nil {
+		t.Fatal(err)
+	}
+	// We should be able to download the first file.
 
 	// TODO (followup): Delete first file and upload another file.
 	// TODO (followup): Take another snapshot.

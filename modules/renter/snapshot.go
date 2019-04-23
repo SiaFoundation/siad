@@ -328,18 +328,16 @@ func (r *Renter) downloadSnapshot(uid [16]byte) (dotSia []byte, err error) {
 			}
 			// download the entry
 			dotSia = nil
-			rem := entry.Meta.Size
 			for _, root := range entry.DataSectors {
-				size := rem
-				if size > modules.SectorSize {
-					size = modules.SectorSize
-				}
-				data, err := host.Download(root, 0, uint32(size))
+				data, err := host.Download(root, 0, uint32(modules.SectorSize))
 				if err != nil {
 					return err
 				}
 				dotSia = append(dotSia, data...)
-				rem -= size
+				if uint64(len(dotSia)) >= entry.Meta.Size {
+					dotSia = dotSia[:entry.Meta.Size]
+					break
+				}
 			}
 			return nil
 		}()

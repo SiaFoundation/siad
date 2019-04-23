@@ -197,6 +197,12 @@ func (c *Client) RenterRecoverBackupPost(src string, remote bool) (err error) {
 	return
 }
 
+// RenterUploadedBackups lists the backups the renter has uploaded to hosts.
+func (c *Client) RenterUploadedBackups() (ubs []modules.UploadedBackup, err error) {
+	err = c.get("/renter/uploadedbackups", &ubs)
+	return
+}
+
 // RenterDownloadFullGet uses the /renter/download endpoint to download a full
 // file.
 func (c *Client) RenterDownloadFullGet(siaPath modules.SiaPath, destination string, async bool) (err error) {

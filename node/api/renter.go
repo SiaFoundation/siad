@@ -296,7 +296,7 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 	defer fastrand.Read(secret[:])
 	// Load the backup.
 	if err := api.renter.LoadBackup(backupPath, secret[:32]); err != nil {
-		WriteError(w, Error{"failed to load backup" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to load backup: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
