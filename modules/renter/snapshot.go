@@ -3,11 +3,8 @@ package renter
 import (
 	"bytes"
 	"crypto/cipher"
-	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
-	"time"
 
 	"golang.org/x/crypto/twofish"
 
@@ -31,57 +28,40 @@ var (
 	snapshotTableSpecifier = types.Specifier{'S', 'n', 'a', 'p', 's', 'h', 'o', 't', 'T', 'a', 'b', 'l', 'e'}
 )
 
-// AvailableSnapshots returns the snapshots that the renter can download.
-func (r *Renter) AvailableSnapshots() ([]SnapshotMetadata, error) {
+// UploadedBackups returns the backups that the renter can download.
+func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer r.tg.Done()
 	id := r.mu.RLock()
 	defer r.mu.RUnlock(id)
-	return r.persist.Snapshots, nil
+	return r.persist.UploadedBackups, nil
 }
 
-// TakeSnapshot creates a backup of the renter which is uploaded to the sia
+// UploadBackup creates a backup of the renter which is uploaded to the sia
 // network as a snapshot and can be retrieved using only the seed.
-func (r *Renter) TakeSnapshot() error {
+func (r *Renter) UploadBackup(src, name string) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	return r.managedTakeSnapshot()
+	return r.managedUploadBackup(src, name)
 }
 
-// managedTakeSnapshot creates a backup of the renter which is uploaded to the
+// managedUploadBackup creates a backup of the renter which is uploaded to the
 // sia network as a snapshot and can be retrieved using only the seed.
-func (r *Renter) managedTakeSnapshot() error {
-	// Get the wallet seed.
-	ws, _, err := r.w.PrimarySeed()
-	if err != nil {
-		return errors.AddContext(err, "failed to get wallet's primary seed")
-	}
-	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := proto.DeriveRenterSeed(ws)
-	defer fastrand.Read(rs[:])
-	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, snapshotKeySpecifier)
-	defer fastrand.Read(secret[:])
-	// Get a temporary location for the backup.
-	backupName := fmt.Sprint(time.Now().Unix())
-	backupDst := filepath.Join(os.TempDir(), backupName)
-	// Create the backup and delte it afterwards.
-	if err := r.managedCreateBackup(backupDst, secret[:32]); err != nil {
-		return errors.AddContext(err, "failed to create backup for snapshot")
-	}
-	defer os.Remove(backupDst)
+func (r *Renter) managedUploadBackup(src, name string) error {
 	// Open the backup for uploading.
-	backup, err := os.Open(backupDst)
+	backup, err := os.Open(src)
 	if err != nil {
 		return errors.AddContext(err, "failed to open backup for uploading")
 	}
 	defer backup.Close()
+	// TODO: verify that src is actually a backup file
+
 	// Prepare the siapath.
-	sp, err := modules.NewSiaPath(backupName)
+	sp, err := modules.NewSiaPath(name)
 	if err != nil {
 		return err
 	}
@@ -122,67 +102,59 @@ func (r *Renter) managedTakeSnapshot() error {
 		return err
 	}
 	// Upload the snapshot to the network.
-	return r.uploadSnapshot(sp.String(), dotSia)
+	return r.uploadSnapshot(name, dotSia)
 }
 
-// RestoreSnapshot downloads and restores the specified snapshot.
-func (r *Renter) RestoreSnapshot(m SnapshotMetadata) error {
+// DownloadBackup downloads the specified backup.
+func (r *Renter) DownloadBackup(dst string, name string) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	return r.managedRestoreSnapshot(m)
-}
-
-// managedRestoreSnapshot downloads and restores the specified snapshot.
-func (r *Renter) managedRestoreSnapshot(m SnapshotMetadata) error {
-	// Download the snapshot and write it to a temporary file on disk.
-	dotSia, err := r.downloadSnapshot(m)
+	// search for backup
+	if len(name) > 96 {
+		return errors.New("no record of a backup with that name")
+	}
+	var encName [96]byte
+	copy(encName[:], name)
+	var uid [16]byte
+	var found bool
+	for _, b := range r.persist.UploadedBackups {
+		if b.Name == encName {
+			uid = b.UID
+			found = true
+			break
+		}
+	}
+	if !found {
+		return errors.New("no record of a backup with that name")
+	}
+	dotSia, err := r.downloadSnapshot(uid)
 	if err != nil {
 		return err
 	}
-	if err := ioutil.WriteFile("/tmp/foo", dotSia, 0666); err != nil {
-		return err
-	}
-	// Get the wallet seed.
-	ws, _, err := r.w.PrimarySeed()
-	if err != nil {
-		return errors.AddContext(err, "failed to get wallet's primary seed")
-	}
-	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := proto.DeriveRenterSeed(ws)
-	defer fastrand.Read(rs[:])
-	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, snapshotKeySpecifier)
-	defer fastrand.Read(secret[:])
-
-	if err := r.LoadBackup("/tmp/foo", secret[:32]); err != nil {
+	if err := ioutil.WriteFile(dst, dotSia, 0666); err != nil {
 		return err
 	}
 	return nil
-}
-
-// SnapshotMetadata contains metadata about a snapshot backup.
-type SnapshotMetadata struct {
-	Name         [96]byte
-	UID          [16]byte
-	CreationDate types.Timestamp
-	Size         uint64 // size of snapshot .sia file
 }
 
 // A snapshotEntry is an entry within the snapshot table, identifying both the
 // snapshot metadata and the other sectors on the host storing the snapshot
 // data.
 type snapshotEntry struct {
-	Meta        SnapshotMetadata
+	Meta        modules.UploadedBackup
 	DataSectors [4]crypto.Hash // pointers to sectors containing snapshot .sia file
 }
 
 // uploadSnapshot uploads a snapshot .sia file to all hosts.
 func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
-	meta := SnapshotMetadata{
+	meta := modules.UploadedBackup{
 		CreationDate: types.CurrentTimestamp(),
 		Size:         uint64(len(dotSia)),
+	}
+	if len(name) > len(meta.Name) {
+		return errors.New("name is too long")
 	}
 	copy(meta.Name[:], name)
 	fastrand.Read(meta.UID[:])
@@ -285,7 +257,7 @@ func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
 	if numSuccessful == 0 {
 		return errors.New("failed to upload to at least one host")
 	}
-	r.persist.Snapshots = append(r.persist.Snapshots, meta)
+	r.persist.UploadedBackups = append(r.persist.UploadedBackups, meta)
 	if err := r.saveSync(); err != nil {
 		return err
 	}
@@ -294,7 +266,7 @@ func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
 }
 
 // downloadSnapshot downloads and returns the specified snapshot.
-func (r *Renter) downloadSnapshot(m SnapshotMetadata) (dotSia []byte, err error) {
+func (r *Renter) downloadSnapshot(uid [16]byte) (dotSia []byte, err error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
@@ -346,7 +318,7 @@ func (r *Renter) downloadSnapshot(m SnapshotMetadata) (dotSia []byte, err error)
 			// search for the desired snapshot
 			var entry *snapshotEntry
 			for j := range entryTable {
-				if entryTable[j].Meta.UID == m.UID {
+				if entryTable[j].Meta.UID == uid {
 					entry = &entryTable[j]
 					break
 				}

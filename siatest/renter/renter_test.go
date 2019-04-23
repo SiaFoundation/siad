@@ -4082,7 +4082,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Create a backup.
 	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
-	err = r.RenterCreateBackupPost(backupPath)
+	err = r.RenterCreateBackupPost(backupPath, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4104,7 +4104,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	r = nodes[0]
 	// Recover the backup.
-	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
 		t.Fatal(err)
 	}
 	// The file should be available and ready for download again.
@@ -4113,7 +4113,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Recover the backup again. Now there should be another file with a suffix
 	// at the end.
-	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
 		t.Fatal(err)
 	}
 	sp, err := modules.NewSiaPath(rf.SiaPath().String() + "_1")
@@ -4559,9 +4559,8 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// TestTakeLoadSnapshot tests taking a snapshot of the renter and restoring from
-// it.
-func TestTakeLoadSnapshot(t *testing.T) {
+// TestRemoteBackup tests creating and loading remote backups.
+func TestRemoteBackup(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -4602,7 +4601,7 @@ func TestTakeLoadSnapshot(t *testing.T) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	// Create a snapshot.
-	if err := r.TakeSnapshot(); err != nil {
+	if err := r.RenterCreateBackupPost("foo", true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -4616,7 +4615,7 @@ func TestTakeLoadSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
-	if err := r.TakeSnapshot(); err != nil {
+	if err := r.RenterCreateBackupPost("bar", true); err != nil {
 		t.Fatal(err)
 	}
 

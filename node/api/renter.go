@@ -2,8 +2,10 @@ package api
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -189,16 +191,34 @@ type (
 
 // renterBackupHandlerPOST handles the API calls to /renter/backup
 func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	upload, err := scanBool(req.FormValue("remote"))
+	if err != nil {
+		WriteError(w, Error{"invalid remote param:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	// Check that destination was specified.
 	dst := req.FormValue("destination")
 	if dst == "" {
 		WriteError(w, Error{"destination not specified"}, http.StatusBadRequest)
 		return
 	}
-	// The destination needs to be an absolute path.
-	if !filepath.IsAbs(dst) {
-		WriteError(w, Error{"destination must be an absolute path"}, http.StatusBadRequest)
-		return
+	var backupPath string
+	if upload {
+		// Write the backup to a temporary file and delete it after uploading.
+		tmpDir, err := ioutil.TempDir("", "sia-backup")
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		defer os.RemoveAll(tmpDir)
+		backupPath = filepath.Join(tmpDir, dst)
+	} else {
+		backupPath = dst
+		// The destination needs to be an absolute path.
+		if !filepath.IsAbs(backupPath) {
+			WriteError(w, Error{"destination must be an absolute path"}, http.StatusBadRequest)
+			return
+		}
 	}
 	// Get the wallet seed.
 	ws, _, err := api.wallet.PrimarySeed()
@@ -213,25 +233,54 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 	secret := crypto.HashAll(rs, backupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Create the backup.
-	if err := api.renter.CreateBackup(dst, secret[:32]); err != nil {
+	if err := api.renter.CreateBackup(backupPath, secret[:32]); err != nil {
 		WriteError(w, Error{"failed to create backup" + err.Error()}, http.StatusBadRequest)
 		return
+	}
+	// Upload the backup if requested.
+	if upload {
+		if err := api.renter.UploadBackup(backupPath, dst); err != nil {
+			WriteError(w, Error{"failed to upload backup" + err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
 	WriteSuccess(w)
 }
 
 // renterBackupHandlerPOST handles the API calls to /renter/recoverbackup
 func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	download, err := scanBool(req.FormValue("remote"))
+	if err != nil {
+		WriteError(w, Error{"invalid remote param:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	// Check that source was specified.
 	src := req.FormValue("source")
 	if src == "" {
 		WriteError(w, Error{"source not specified"}, http.StatusBadRequest)
 		return
 	}
-	// The source needs to be an absolute path.
-	if !filepath.IsAbs(src) {
-		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
-		return
+	var backupPath string
+	if download {
+		// Write the backup to a temporary file and delete it after loading.
+		tmpDir, err := ioutil.TempDir("", "sia-backup")
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		defer os.RemoveAll(tmpDir)
+		backupPath = filepath.Join(tmpDir, src)
+		if err := api.renter.DownloadBackup(backupPath, src); err != nil {
+			WriteError(w, Error{"failed to download backup" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	} else {
+		backupPath = src
+		// The source needs to be an absolute path.
+		if !filepath.IsAbs(backupPath) {
+			WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
+			return
+		}
 	}
 	// Get the wallet seed.
 	ws, _, err := api.wallet.PrimarySeed()
@@ -246,11 +295,21 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 	secret := crypto.HashAll(rs, backupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Load the backup.
-	if err := api.renter.LoadBackup(src, secret[:32]); err != nil {
+	if err := api.renter.LoadBackup(backupPath, secret[:32]); err != nil {
 		WriteError(w, Error{"failed to load backup" + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
+}
+
+// renterUploadedBackupsHandlerGET handles the API calls to /renter/uploadedbackups
+func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	backups, err := api.renter.UploadedBackups()
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, backups)
 }
 
 // parseErasureCodingParameters parses the supplied string values and creates
@@ -1144,7 +1203,6 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 	if action == "rename" {
-		fmt.Println("rename")
 		// newsiapath := ps.ByName("newsiapath")
 		// TODO - implement
 		WriteError(w, Error{"not implemented"}, http.StatusNotImplemented)
@@ -1154,16 +1212,4 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	// Report that no calls were made
 	WriteError(w, Error{"no calls were made, please check your submission and try again"}, http.StatusInternalServerError)
 	return
-}
-
-// renterSnapshotHandler handles API calls to /renter/snapshot which create
-// snapshots that can be recovered with only the seed.
-func (api *API) renterSnapshotHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Create the snapshot.
-	err := api.renter.TakeSnapshot()
-	if err != nil {
-		WriteError(w, Error{"Failed to create snapshot:" + err.Error()}, http.StatusInternalServerError)
-		return
-	}
-	WriteSuccess(w)
 }

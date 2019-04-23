@@ -180,17 +180,19 @@ func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, 
 }
 
 // RenterCreateBackupPost creates a backup of the SiaFiles of the renter.
-func (c *Client) RenterCreateBackupPost(dst string) (err error) {
+func (c *Client) RenterCreateBackupPost(dst string, remote bool) (err error) {
 	values := url.Values{}
 	values.Set("destination", dst)
+	values.Set("remote", fmt.Sprint(remote))
 	err = c.post("/renter/backup", values.Encode(), nil)
 	return
 }
 
 // RenterRecoverBackupPost loads a backup of the SiaFiles of the renter.
-func (c *Client) RenterRecoverBackupPost(src string) (err error) {
+func (c *Client) RenterRecoverBackupPost(src string, remote bool) (err error) {
 	values := url.Values{}
 	values.Set("source", src)
+	values.Set("remote", fmt.Sprint(remote))
 	err = c.post("/renter/recoverbackup", values.Encode(), nil)
 	return
 }
@@ -454,12 +456,5 @@ func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err e
 // RenterGetDir uses the /renter/dir/ endpoint to query a directory
 func (c *Client) RenterGetDir(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
 	err = c.get(fmt.Sprintf("/renter/dir/%s", siaPath.String()), &rd)
-	return
-}
-
-// TakeSnapshot creates a new snapshot of the renter on the sia network which
-// can be used to restore the renter.
-func (c *Client) TakeSnapshot() (err error) {
-	err = c.post("/renter/snapshot", "", nil)
 	return
 }

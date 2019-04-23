@@ -499,6 +499,14 @@ type ContractorSpending struct {
 	PreviousSpending types.Currency `json:"previousspending"`
 }
 
+// UploadedBackup contains metadata about an uploaded backup.
+type UploadedBackup struct {
+	Name         [96]byte
+	UID          [16]byte
+	CreationDate types.Timestamp
+	Size         uint64 // size of snapshot .sia file
+}
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -562,9 +570,15 @@ type Renter interface {
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
 
-	// TakeSnapshot creates a backup of the renter which is uploaded to the sia
-	// network as a snapshot and can be retrieved using only the seed.
-	TakeSnapshot() error
+	// UploadBackup uploads a backup to hosts, such that it can be retrieved
+	// using only the seed.
+	UploadBackup(src string, name string) error
+
+	// DownloadBackup downloads a backup previously uploaded to hosts.
+	DownloadBackup(dst string, name string) error
+
+	// UploadedBackups returns a list of backups previously uploaded to hosts.
+	UploadedBackups() ([]UploadedBackup, error)
 
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(siaPath SiaPath) error

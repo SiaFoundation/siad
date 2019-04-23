@@ -550,7 +550,7 @@ func renterbackupcreatecmd(path string) {
 		path = filepath.Join(path, fmt.Sprintf("%v.backup", time.Now().Unix()))
 	}
 	// Create backup.
-	err = httpClient.RenterCreateBackupPost(path)
+	err = httpClient.RenterCreateBackupPost(path, false)
 	if err != nil {
 		die("Failed to create backup", err)
 	}
@@ -561,7 +561,7 @@ func renterbackupcreatecmd(path string) {
 func renterbackuploadcmd(path string) {
 	path = abs(path)
 
-	err := httpClient.RenterRecoverBackupPost(path)
+	err := httpClient.RenterRecoverBackupPost(path, false)
 	if err != nil {
 		die("Failed to load backup", err)
 	}
