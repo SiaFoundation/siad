@@ -3,8 +3,10 @@ package renter
 import (
 	"bytes"
 	"crypto/cipher"
+	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"golang.org/x/crypto/twofish"
 
@@ -111,6 +113,12 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 		return err
 	}
 	defer r.tg.Done()
+	// Open the destination.
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
 	// search for backup
 	if len(name) > 96 {
 		return errors.New("no record of a backup with that name")
@@ -129,14 +137,30 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	if !found {
 		return errors.New("no record of a backup with that name")
 	}
+	// Download snapshot's .sia file.
 	dotSia, err := r.downloadSnapshot(uid)
 	if err != nil {
 		return err
 	}
-	if err := ioutil.WriteFile(dst, dotSia, 0666); err != nil {
+	// Store it in the backup file set.
+	if err := ioutil.WriteFile(filepath.Join(r.staticBackupsDir, name), dotSia, 0666); err != nil {
 		return err
 	}
-	return nil
+	// Load the .sia file.
+	siaPath, err := modules.NewSiaPath(name)
+	if err != nil {
+		return err
+	}
+	entry, err := r.staticBackupFileSet.Open(siaPath)
+	if err != nil {
+		return err
+	}
+	defer entry.Close()
+	// Use .sia file to download snapshot.
+	s := r.managedStreamer(entry.Snapshot())
+	defer s.Close()
+	_, err = io.Copy(dstFile, s)
+	return err
 }
 
 // A snapshotEntry is an entry within the snapshot table, identifying both the
