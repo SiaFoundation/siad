@@ -37,6 +37,9 @@ type (
 	SiaDir struct {
 		metadata Metadata
 
+		// siaPath is the path to the siadir on the sia network
+		siaPath modules.SiaPath
+
 		// Utility fields
 		deleted bool
 		deps    modules.Dependencies
@@ -82,9 +85,6 @@ type (
 
 		// RootDir is the path to the root directory on disk
 		RootDir string `json:"rootdir"`
-
-		// SiaPath is the path to the siadir on the sia network
-		SiaPath modules.SiaPath `json:"siapath"`
 
 		// StuckHealth is the health of the most in need file in the directory
 		// or any of the sub directories, stuck or not stuck
@@ -136,17 +136,18 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 		ModTime:     time.Now(),
 		StuckHealth: DefaultDirHealth,
 		RootDir:     rootDir,
-		SiaPath:     siaPath,
 	}
-	update, err := createMetadataUpdate(md)
+	path := siaPath.SiaDirMetadataSysPath(rootDir)
+	update, err := createMetadataUpdate(path, md)
 	return md, update, err
 }
 
 // LoadSiaDir loads the directory metadata from disk
 func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	sd := &SiaDir{
-		deps: deps,
-		wal:  wal,
+		deps:    deps,
+		siaPath: siaPath,
+		wal:     wal,
 	}
 	// Open the file.
 	file, err := sd.deps.Open(siaPath.SiaDirMetadataSysPath(rootDir))
@@ -196,7 +197,7 @@ func (sd *SiaDir) Metadata() Metadata {
 func (sd *SiaDir) SiaPath() modules.SiaPath {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
-	return sd.metadata.SiaPath
+	return sd.siaPath
 }
 
 // UpdateMetadata updates the SiaDir metadata on disk
