@@ -4637,10 +4637,23 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// We should be able to download the first file.
+	if _, err := r.DownloadToDisk(rf, false); err != nil {
+		t.Fatal(err)
+	}
+	// The second file should still fail.
+	if _, err := r.DownloadToDisk(rf2, false); err == nil {
+		t.Fatal("expected second file to be unavailable")
+	}
 
-	// TODO (followup): Delete first file and upload another file.
-	// TODO (followup): Take another snapshot.
-	// TODO (followup): Make sure there are 2 snapshots.
-	// TODO (followup): restore both snapshots into different renters.
-	// TODO (followup): check that files match
+	// Restore the second snapshot.
+	if err := r.RenterRecoverBackupPost("bar", true); err != nil {
+		t.Fatal(err)
+	}
+	// We should be able to download both files now.
+	if _, err := r.DownloadToDisk(rf, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.DownloadToDisk(rf2, false); err != nil {
+		t.Fatal(err)
+	}
 }
