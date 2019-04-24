@@ -197,9 +197,9 @@ func TestPushSubDirectories(t *testing.T) {
 	}
 }
 
-// TestNextUnexploredDirectory probes managedNextUnexploredDirectory to ensure
-// that the directory traverses the filesystem as expected
-func TestNextUnexploredDirectory(t *testing.T) {
+// TestNextExploredDirectory probes managedNextExploredDirectory to ensure that
+// the directory traverses the filesystem as expected
+func TestNextExploredDirectory(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}

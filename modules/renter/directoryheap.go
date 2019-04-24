@@ -167,9 +167,12 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 			return nil, errors.New("no more directories to pop off heap")
 		}
 
-		// Check if explored
+		// Check if explored and mark as explored if unexplored
 		d.mu.Lock()
 		explored := d.explored
+		if !explored {
+			d.explored = true
+		}
 		d.mu.Unlock()
 		if explored {
 			return d, nil
@@ -181,10 +184,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 			return nil, err
 		}
 
-		// Mark directory as explored and add back to heap
-		d.mu.Lock()
-		d.explored = true
-		d.mu.Unlock()
+		// Add popped directory back to heap
 		added := r.directoryHeap.managedPush(d)
 		if !added {
 			return nil, fmt.Errorf("could not push directory %v onto heap", d.siaPath.String())
@@ -219,7 +219,7 @@ func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
 	defer siaDir.Close()
 	metadata := siaDir.Metadata()
 
-	// Push unexplored root onto heap
+	// Push unexplored directory onto heap
 	return r.directoryHeap.managedPushUnexploredDirectory(siaPath, metadata.AggregateHealth, metadata.Health)
 }
 
