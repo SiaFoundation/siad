@@ -17,7 +17,7 @@ func TestIsSiaDirUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := sd.siaPath.SiaDirMetadataSysPath(sd.metadata.RootDir)
+	path := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
 	metadataUpdate, err := createMetadataUpdate(path, Metadata{})
 	if err != nil {
 		t.Fatal(err)

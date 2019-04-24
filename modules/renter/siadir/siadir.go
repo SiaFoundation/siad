@@ -40,6 +40,9 @@ type (
 		// siaPath is the path to the siadir on the sia network
 		siaPath modules.SiaPath
 
+		// rootDir is the path to the root directory on disk
+		rootDir string
+
 		// Utility fields
 		deleted bool
 		deps    modules.Dependencies
@@ -83,9 +86,6 @@ type (
 		// NumSubDirs is the number of subdirectories in a directory
 		NumSubDirs uint64 `json:"numsubdirs"`
 
-		// RootDir is the path to the root directory on disk
-		RootDir string `json:"rootdir"`
-
 		// StuckHealth is the health of the most in need file in the directory
 		// or any of the sub directories, stuck or not stuck
 		StuckHealth float64 `json:"stuckhealth"`
@@ -114,6 +114,8 @@ func New(siaPath modules.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaD
 	sd := &SiaDir{
 		metadata: md,
 		deps:     modules.ProdDependencies,
+		siaPath:  siaPath,
+		rootDir:  rootDir,
 		wal:      wal,
 	}
 
@@ -135,7 +137,6 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 		Health:      DefaultDirHealth,
 		ModTime:     time.Now(),
 		StuckHealth: DefaultDirHealth,
-		RootDir:     rootDir,
 	}
 	path := siaPath.SiaDirMetadataSysPath(rootDir)
 	update, err := createMetadataUpdate(path, md)
@@ -147,6 +148,7 @@ func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependenci
 	sd := &SiaDir{
 		deps:    deps,
 		siaPath: siaPath,
+		rootDir: rootDir,
 		wal:     wal,
 	}
 	// Open the file.
