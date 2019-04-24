@@ -379,10 +379,6 @@ func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 		return sfs.createAndApplyTransaction(update)
 	}
 
-	// Check if entry as already been deleted by another thread
-	if entry.Deleted() {
-		return nil
-	}
 	// Delete SiaFile
 	err := entry.Delete()
 	if err != nil {
