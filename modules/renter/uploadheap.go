@@ -672,7 +672,7 @@ func (r *Renter) threadedUploadAndRepair() {
 	}
 	defer r.tg.Done()
 
-	if r.deps.Disrupt("InterruptRepairAndStuckLoops") {
+	if r.deps.Disrupt("DisableRepairAndStuckLoops") {
 		return
 	}
 
