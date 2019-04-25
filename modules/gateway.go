@@ -4,19 +4,12 @@ import (
 	"net"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 const (
 	// GatewayDir is the name of the directory used to store the gateway's
 	// persistent data.
 	GatewayDir = "gateway"
-)
-
-var (
-	// GlobalRateLimits is the global object for regulating ratelimits
-	// throughout siad. It is set using the gateway module.
-	GlobalRateLimits = ratelimit.NewRateLimit(0, 0, 0)
 )
 
 var (

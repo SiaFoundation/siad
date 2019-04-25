@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"errors"
 	"os"
 
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -21,6 +22,10 @@ type (
 )
 
 var (
+	// GlobalRateLimits is the global object for regulating ratelimits
+	// throughout siad. It is set using the gateway module.
+	GlobalRateLimits = ratelimit.NewRateLimit(0, 0, 0)
+
 	configMetadata = persist.Metadata{
 		Header:  "siad.config",
 		Version: "1.0.0",
@@ -29,16 +34,20 @@ var (
 
 // SetRatelimit sets the ratelimit related fields in the config and persists it
 // to disk.
-func (cfg *SiadConfig) SetRatelimit(readBPS, writeBPS int64, packetSize uint64) error {
-	cfg.ReadBPS = readBPS
-	cfg.WriteBPS = writeBPS
-	cfg.PacketSize = packetSize
+func (cfg *SiadConfig) SetRatelimit(readBPS, writeBPS int64) error {
+	// Input validation.
+	if readBPS < 0 || writeBPS < 0 {
+		return errors.New("download/upload rate can't be below 0")
+	}
+	// Check for sentinel "no limits" value.
+	if readBPS == 0 && writeBPS == 0 {
+		GlobalRateLimits.SetLimits(0, 0, 0)
+	} else {
+		GlobalRateLimits.SetLimits(readBPS, writeBPS, 4*4096)
+	}
+	// Persist settings.
+	cfg.ReadBPS, cfg.WriteBPS, cfg.PacketSize = GlobalRateLimits.Limits()
 	return cfg.save()
-}
-
-// Ratelimit returns the ratelimit stored in the config.
-func (cfg *SiadConfig) Ratelimit() *ratelimit.RateLimit {
-	return ratelimit.NewRateLimit(cfg.ReadBPS, cfg.WriteBPS, cfg.PacketSize)
 }
 
 // save saves the config to disk.
@@ -58,14 +67,15 @@ func NewConfig(path string) (*SiadConfig, error) {
 	cfg.path = path
 	// Try loading the config from disk first.
 	err := cfg.load(cfg.path)
-	if err == nil {
-		return &cfg, nil
-	} else if err != nil && !os.IsNotExist(err) {
+	if err != nil && !os.IsNotExist(err) {
 		return nil, err
+	} else if os.IsNotExist(err) {
+		// Otherwise init with default values.
+		cfg.ReadBPS = 0           // unlimited
+		cfg.WriteBPS = 0          // unlimited
+		cfg.PacketSize = 4 * 4096 // 16 kib
 	}
-	// Otherwise init with default values.
-	cfg.ReadBPS = 0    // unlimited
-	cfg.WriteBPS = 0   // unlimited
-	cfg.PacketSize = 0 // unlimited
+	// Init the global ratelimit.
+	GlobalRateLimits = ratelimit.NewRateLimit(cfg.ReadBPS, cfg.WriteBPS, cfg.PacketSize)
 	return &cfg, nil
 }
