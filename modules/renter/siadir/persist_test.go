@@ -49,14 +49,6 @@ func equalMetadatas(md, md2 Metadata) error {
 	if md.NumSubDirs != md2.NumSubDirs {
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, md2.NumSubDirs)
 	}
-	// Check RootDir
-	if md.RootDir != md2.RootDir {
-		return fmt.Errorf("rootDirs not equal, %v and %v", md.RootDir, md2.RootDir)
-	}
-	// Check SiaPath
-	if !md.SiaPath.Equals(md2.SiaPath) {
-		return fmt.Errorf("siapaths not equal, %v and %v", md.SiaPath, md2.SiaPath)
-	}
 	// Check Size
 	if md.AggregateSize != md2.AggregateSize {
 		return fmt.Errorf("aggregate sizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
@@ -108,7 +100,8 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create metadata update
-	update, err := createMetadataUpdate(sd.metadata)
+	path := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
+	update, err := createMetadataUpdate(path, sd.metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +113,7 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 	}
 
 	// Check path
-	path2 := sd.metadata.SiaPath.SiaDirMetadataSysPath(sd.metadata.RootDir)
+	path2 := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
 	if path != path2 {
 		t.Fatalf("Path not correct: expected %v got %v", path2, path)
 	}
@@ -162,7 +155,7 @@ func TestCreateReadDeleteUpdate(t *testing.T) {
 	// Read update
 	path := readDeleteUpdate(update)
 	// Compare values
-	siaDirPath := sd.metadata.SiaPath.SiaDirSysPath(sd.metadata.RootDir)
+	siaDirPath := sd.siaPath.SiaDirSysPath(sd.rootDir)
 	if path != siaDirPath {
 		t.Error("paths don't match")
 	}
@@ -204,7 +197,8 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 	// Create an update to the metadata
 	metadata := siadir.metadata
 	metadata.Health = 1.0
-	update, err := createMetadataUpdate(metadata)
+	path := siadir.siaPath.SiaDirMetadataSysPath(siadir.rootDir)
+	update, err := createMetadataUpdate(path, metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +208,7 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 		t.Fatal("Failed to apply update", err)
 	}
 	// Open file.
-	sd, err := LoadSiaDir(metadata.RootDir, metadata.SiaPath, modules.ProdDependencies, siadir.wal)
+	sd, err := LoadSiaDir(siadir.rootDir, siadir.siaPath, modules.ProdDependencies, siadir.wal)
 	if err != nil {
 		t.Fatal("Failed to load siadir", err)
 	}
@@ -248,7 +242,8 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 	// Create an update to the metadata
 	metadata := siadir.metadata
 	metadata.Health = 1.0
-	update, err := createMetadataUpdate(metadata)
+	path := siadir.siaPath.SiaDirMetadataSysPath(siadir.rootDir)
+	update, err := createMetadataUpdate(path, metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +253,7 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 		t.Fatal("Failed to apply update", err)
 	}
 	// Open file.
-	sd, err := LoadSiaDir(metadata.RootDir, metadata.SiaPath, modules.ProdDependencies, siadir.wal)
+	sd, err := LoadSiaDir(siadir.rootDir, siadir.siaPath, modules.ProdDependencies, siadir.wal)
 	if err != nil {
 		t.Fatal("Failed to load siadir", err)
 	}
