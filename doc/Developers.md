@@ -148,6 +148,19 @@ an appropriate error. This is important for export methods that are either
 returning a status that another modules will act on or performing a action that
 will alter the module in some way.
 
+File Ordering
+-------------
+
+Each tracked file in the repository should be laid out in the following order.
+
+1. Vars
+2. Types
+3. Functions
+4. Methods
+
+Ordering should be: category (vars, types, etc) -> exported then non-exported 
+-> alphabetical
+
 Control Flow
 ------------
 
