@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -31,7 +32,7 @@ func TestInitialScanComplete(t *testing.T) {
 
 	// Create a group. The renter should block the scanning thread using a
 	// dependency.
-	deps := &dependencyBlockScan{}
+	deps := &dependencies.DependencyBlockScan{}
 	renterTemplate := node.Renter(filepath.Join(testDir, "renter"))
 	renterTemplate.SkipSetAllowance = true
 	renterTemplate.SkipHostDiscovery = true
@@ -160,7 +161,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 
 	// Add a renter with a custom resolver to the group.
 	renterTemplate := node.Renter(testDir + "/renter")
-	renterTemplate.HostDBDeps = siatest.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
+	renterTemplate.HostDBDeps = dependencies.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1.com":
 			return []net.IP{{128, 0, 0, 1}}, nil
@@ -342,7 +343,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 
 	// Add a renter with a custom resolver to the group.
 	renterTemplate := node.Renter(testDir + "/renter")
-	renterTemplate.HostDBDeps = siatest.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
+	renterTemplate.HostDBDeps = dependencies.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1.com":
 			return []net.IP{{128, 0, 0, 1}}, nil
@@ -510,7 +511,7 @@ func TestDisableIPViolationCheck(t *testing.T) {
 
 	// Add a renter with a custom resolver to the group.
 	renterTemplate := node.Renter(testDir + "/renter")
-	renterTemplate.HostDBDeps = siatest.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
+	renterTemplate.HostDBDeps = dependencies.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1.com":
 			return []net.IP{{128, 0, 0, 1}}, nil

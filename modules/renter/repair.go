@@ -649,7 +649,7 @@ func (r *Renter) threadedStuckFileLoop() {
 	}
 	defer r.tg.Done()
 
-	if r.deps.Disrupt("InterruptRepairAndStuckLoops") {
+	if r.deps.Disrupt("DisableRepairAndStuckLoops") {
 		return
 	}
 

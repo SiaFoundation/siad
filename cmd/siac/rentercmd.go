@@ -183,8 +183,7 @@ func abs(path string) string {
 	return abspath
 }
 
-// rentercmd displays the renter's financial metrics and lists the files it is
-// tracking.
+// rentercmd displays the renter's financial metrics and high level renter info
 func rentercmd() {
 	rg, err := httpClient.RenterGet()
 	if err != nil {
@@ -194,11 +193,19 @@ func rentercmd() {
 	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
 		Add(fm.DownloadSpending).Add(fm.StorageSpending)
 
-	fmt.Printf(`Renter Info:
-  Allowance:`)
+	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
+	if err != nil {
+		die("Could not get renter files:", err)
+	}
+	rc, err := httpClient.RenterInactiveContractsGet()
+	if err != nil {
+		die("Could not get contracts:", err)
+	}
+
+	fmt.Printf(`Allowance:`)
 
 	if rg.Settings.Allowance.Funds.IsZero() {
-		fmt.Printf("\n    No current allowance.\n")
+		fmt.Printf("      0 SC (No current allowance)\n")
 	} else {
 		fmt.Printf(`       %v
   Spent Funds:     %v
@@ -206,6 +213,11 @@ func rentercmd() {
 `, currencyUnits(rg.Settings.Allowance.Funds),
 			currencyUnits(totalSpent), currencyUnits(fm.Unspent))
 	}
+	fmt.Printf(`Total Files:    %v
+Total Stored:   %v
+Min Redundancy: %v
+Contracts:      %v
+`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].MinRedundancy, len(rc.ActiveContracts))
 }
 
 // renteruploadscmd is the handler for the command `siac renter uploads`.

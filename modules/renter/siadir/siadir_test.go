@@ -263,7 +263,7 @@ func TestDelete(t *testing.T) {
 	if !entry.Deleted() {
 		t.Fatal("Deleted flag was not set correctly")
 	}
-	siaDirPath := entry.metadata.SiaPath.SiaDirSysPath(entry.metadata.RootDir)
+	siaDirPath := entry.siaPath.SiaDirSysPath(entry.rootDir)
 	if _, err := os.Open(siaDirPath); !os.IsNotExist(err) {
 		t.Fatal("Expected a siadir doesn't exist error but got", err)
 	}

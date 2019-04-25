@@ -148,13 +148,12 @@ func createDirMetadataAll(siaPath modules.SiaPath, rootDir string) ([]writeahead
 
 // createMetadataUpdate is a helper method which creates a writeaheadlog update for
 // updating the siaDir metadata
-func createMetadataUpdate(metadata Metadata) (writeaheadlog.Update, error) {
+func createMetadataUpdate(path string, metadata Metadata) (writeaheadlog.Update, error) {
 	// Encode metadata
 	data, err := json.Marshal(metadata)
 	if err != nil {
 		return writeaheadlog.Update{}, err
 	}
-	path := metadata.SiaPath.SiaDirMetadataSysPath(metadata.RootDir)
 
 	// Create update
 	return writeaheadlog.Update{
@@ -200,7 +199,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 	}
 
 	// Open the file
-	siaDirPath := sd.metadata.SiaPath.SiaDirMetadataSysPath(sd.metadata.RootDir)
+	siaDirPath := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
 	file, err := sd.deps.OpenFile(siaDirPath, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
 	if err != nil {
 		return err
@@ -267,7 +266,7 @@ func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) err
 func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
 	return writeaheadlog.Update{
 		Name:         updateDeleteName,
-		Instructions: []byte(sd.metadata.SiaPath.SiaDirSysPath(sd.metadata.RootDir)),
+		Instructions: []byte(sd.siaPath.SiaDirSysPath(sd.rootDir)),
 	}
 }
 
@@ -281,7 +280,7 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 	}
 
 	// Sanity check path belongs to siadir
-	siaDirPath := sd.metadata.SiaPath.SiaDirMetadataSysPath(sd.metadata.RootDir)
+	siaDirPath := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
 	if path != siaDirPath {
 		build.Critical(fmt.Sprintf("can't apply update for file %s to SiaDir %s", path, siaDirPath))
 		return nil
@@ -309,5 +308,6 @@ func (sd *SiaDir) saveDir() error {
 
 // saveMetadataUpdate saves the metadata of the SiaDir
 func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
-	return createMetadataUpdate(sd.metadata)
+	path := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
+	return createMetadataUpdate(path, sd.metadata)
 }
