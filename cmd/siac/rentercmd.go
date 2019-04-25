@@ -920,7 +920,7 @@ func renterfilesdownload(path, destination string) {
 		die("Couldn't parse SiaPath:", err)
 	}
 	// If the destination is a folder, download the file to that folder.
-	fi, err := os.Stat(path)
+	fi, err := os.Stat(destination)
 	if err == nil && fi.IsDir() {
 		destination = filepath.Join(destination, siaPath.Name())
 	}
