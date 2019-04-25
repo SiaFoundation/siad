@@ -125,6 +125,19 @@ func (sp SiaPath) Name() string {
 	return name
 }
 
+// Rebase changes the base of a siapath from oldBase to newBase and returns a new SiaPath.
+// e.g. rebasing 'a/b/myfile' from oldBase 'a/b/' to 'a/' would result in 'a/myfile'
+func (sp SiaPath) Rebase(oldBase, newBase SiaPath) (SiaPath, error) {
+	if !strings.HasPrefix(sp.Path, oldBase.Path) {
+		return SiaPath{}, fmt.Errorf("'%v' isn't the base of '%v'", oldBase.Path, sp.Path)
+	}
+	relPath := strings.TrimPrefix(sp.Path, oldBase.Path)
+	if relPath == "" {
+		return newBase, nil
+	}
+	return newBase.Join(relPath)
+}
+
 // UnmarshalJSON unmarshals a siapath into a SiaPath object.
 func (sp *SiaPath) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &sp.Path); err != nil {

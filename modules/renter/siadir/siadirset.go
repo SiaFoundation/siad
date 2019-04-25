@@ -4,10 +4,13 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -285,4 +288,54 @@ func (sds *SiaDirSet) UpdateMetadata(siaPath modules.SiaPath, metadata Metadata)
 	}
 	defer sds.closeEntry(entry)
 	return entry.UpdateMetadata(metadata)
+}
+
+// A RenameDirFunc is a function that can be used to rename a SiaDir. It's
+// passed to the SiaFileSet to rename the direcory after already loaded SiaFiles
+// are locked.
+type RenameDirFunc func(oldPath, newPath modules.SiaPath) error
+
+// Rename renames a SiaDir on disk atomically by locking all the already loaded,
+// affected dirs and renaming the root.
+func (sds *SiaDirSet) Rename(oldPath, newPath modules.SiaPath) error {
+	if oldPath.Equals(modules.RootSiaPath()) {
+		return errors.New("can't rename root dir")
+	}
+	// Prevent new dirs from being opened.
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	// Lock loaded files to prevent persistence from happening and unlock them when
+	// we are done renaming the dir.
+	var lockedDirs []*siaDirSetEntry
+	defer func() {
+		for _, entry := range lockedDirs {
+			entry.mu.Unlock()
+		}
+	}()
+	for key, entry := range sds.siaDirMap {
+		if strings.HasPrefix(key.String(), oldPath.String()) {
+			entry.mu.Lock()
+			lockedDirs = append(lockedDirs, entry)
+		}
+	}
+	// Rename the root dir.
+	oldPathDisk := oldPath.SiaDirSysPath(sds.rootDir)
+	newPathDisk := newPath.SiaDirSysPath(sds.rootDir)
+	err := os.Rename(oldPathDisk, newPathDisk) // TODO: use wal
+	if err != nil {
+		return errors.AddContext(err, "failed to rename folder")
+	}
+	// Renaming the root dir was successful. Rename the open dirs.
+	for _, entry := range lockedDirs {
+		sp, err := entry.siaPath.Rebase(oldPath, newPath)
+		if err != nil {
+			build.Critical("Joining siapaths shouldn't fail", err)
+			break
+		}
+		// Update the siapath of the entry and the siaDirMap.
+		delete(sds.siaDirMap, entry.siaPath)
+		entry.siaPath = sp
+		sds.siaDirMap[sp] = entry
+	}
+	return err
 }
