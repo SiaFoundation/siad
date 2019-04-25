@@ -318,14 +318,14 @@ func (sds *SiaDirSet) Rename(oldPath, newPath modules.SiaPath) error {
 			lockedDirs = append(lockedDirs, entry)
 		}
 	}
-	// Rename the root dir.
+	// Rename the target dir.
 	oldPathDisk := oldPath.SiaDirSysPath(sds.rootDir)
 	newPathDisk := newPath.SiaDirSysPath(sds.rootDir)
 	err := os.Rename(oldPathDisk, newPathDisk) // TODO: use wal
 	if err != nil {
 		return errors.AddContext(err, "failed to rename folder")
 	}
-	// Renaming the root dir was successful. Rename the open dirs.
+	// Renaming the target dir was successful. Rename the open dirs.
 	for _, entry := range lockedDirs {
 		sp, err := entry.siaPath.Rebase(oldPath, newPath)
 		if err != nil {
