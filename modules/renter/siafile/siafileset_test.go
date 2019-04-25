@@ -1,11 +1,13 @@
 package siafile
 
 import (
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // newTestSiaFileSetWithFile creates a new SiaFileSet and SiaFile and makes sure
@@ -352,5 +354,49 @@ func TestDeleteFileInMemory(t *testing.T) {
 	// Confirm renter has no files in memory
 	if len(sfs.siaFileMap) != 0 {
 		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
+	}
+}
+
+// TestDeleteCorruptSiaFile confirms that the siafileset will delete a siafile
+// even if it cannot be opened
+func TestDeleteCorruptSiaFile(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create siafileset
+	_, sfs, err := newTestSiaFileSetWithFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create siafile on disk with random bytes
+	siaPath, err := modules.NewSiaPath("badFile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaFilePath := siaPath.SiaFileSysPath(sfs.siaFileDir)
+	err = ioutil.WriteFile(siaFilePath, fastrand.Bytes(100), 0666)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm the siafile cannot be opened
+	_, err = sfs.Open(siaPath)
+	if err == nil || err == ErrUnknownPath {
+		t.Fatal("expected open to fail for read error but instead got:", err)
+	}
+
+	// Delete the siafile
+	err = sfs.Delete(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm the file is no longer on disk
+	_, err = os.Stat(siaFilePath)
+	if !os.IsNotExist(err) {
+		t.Fatal("Expected err to be that file does not exists but was:", err)
 	}
 }
