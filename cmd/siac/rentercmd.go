@@ -532,7 +532,7 @@ func (s byValue) Less(i, j int) bool {
 // createbackup`.
 func renterbackupcreatecmd(path string) {
 	path = abs(path)
-	// If the destination is a create the backup in the folder.
+	// If the destination is a folder, create the backup in the folder.
 	fi, err := os.Stat(path)
 	if err == nil && fi.IsDir() {
 		path = filepath.Join(path, fmt.Sprintf("%v.backup", time.Now().Unix()))
