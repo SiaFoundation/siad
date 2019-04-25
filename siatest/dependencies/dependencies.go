@@ -39,9 +39,11 @@ type (
 		modules.ProductionDependencies
 	}
 
-	// DependencyDisableRepairAndStuckLoops prevents the repair and stuck loops
-	// from running
-	DependencyDisableRepairAndStuckLoops struct {
+	// DependencyDisableRepairAndHealthLoops prevents the background loops for
+	// repairs and updating directory metadata from running. This includes
+	// threadedUploadAndRepair, threadedStuckLoop, and
+	// threadedUpdateRenterHealth
+	DependencyDisableRepairAndHealthLoops struct {
 		modules.ProductionDependencies
 	}
 
@@ -169,9 +171,9 @@ func (d *DependencyDisableRenewal) Disrupt(s string) bool {
 	return s == "disableRenew"
 }
 
-// Disrupt will prevent the repair and stuck loops from running
-func (d *DependencyDisableRepairAndStuckLoops) Disrupt(s string) bool {
-	return s == "DisableRepairAndStuckLoops"
+// Disrupt will prevent the repair and health loops from running
+func (d *DependencyDisableRepairAndHealthLoops) Disrupt(s string) bool {
+	return s == "DisableRepairAndHealthLoops"
 }
 
 // Scan resumes the blocked scan.

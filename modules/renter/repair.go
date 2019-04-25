@@ -703,7 +703,7 @@ func (r *Renter) threadedStuckFileLoop() {
 	}
 	defer r.tg.Done()
 
-	if r.deps.Disrupt("DisableRepairAndStuckLoops") {
+	if r.deps.Disrupt("DisableRepairAndHealthLoops") {
 		return
 	}
 
@@ -787,6 +787,11 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		return
 	}
 	defer r.tg.Done()
+
+	if r.deps.Disrupt("DisableRepairAndHealthLoops") {
+		return
+	}
+
 	// Loop until the renter has shutdown or until the renter's top level files
 	// directory has a LasHealthCheckTime within the healthCheckInterval
 	for {
@@ -796,6 +801,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			return
 		default:
 		}
+
 		// Follow path of oldest time, return directory and timestamp
 		siaPath, lastHealthCheckTime, err := r.managedOldestHealthCheckTime()
 		if err != nil {
