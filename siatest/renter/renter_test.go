@@ -2313,12 +2313,12 @@ func TestRenterLosingHosts(t *testing.T) {
 	}
 
 	// File should be at redundancy of 1.5
-	files, err := r.RenterFilesGet()
+	file, err := r.RenterFileGet(rf.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files.Files[0].Redundancy != 1.5 {
-		t.Fatal("Expected filed redundancy to be 1.5 but was", files.Files[0].Redundancy)
+	if file.File.Redundancy != 1.5 {
+		t.Fatal("Expected filed redundancy to be 1.5 but was", file.File.Redundancy)
 	}
 
 	// Verify we can download the file
@@ -2378,15 +2378,12 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		files, err := r.RenterFilesGet()
+		file, err := r.RenterFileGet(rf.SiaPath())
 		if err != nil {
 			return err
 		}
-		if len(files.Files) == 0 {
-			return errors.New("renter has no files")
-		}
-		if files.Files[0].Redundancy != 1.5 {
-			return fmt.Errorf("Expected redundancy to be 1.5 but was %v", files.Files[0].Redundancy)
+		if file.File.Redundancy != 1.5 {
+			return fmt.Errorf("Expected redundancy to be 1.5 but was %v", file.File.Redundancy)
 		}
 		return nil
 	})
@@ -2420,12 +2417,12 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Now that the renter has fewer hosts online than needed the redundancy
 	// should drop to 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		files, err := r.RenterFilesGet()
+		file, err := r.RenterFileGet(rf.SiaPath())
 		if err != nil {
 			return err
 		}
-		if files.Files[0].Redundancy != 1 {
-			return fmt.Errorf("Expected redundancy to be 1 but was %v", files.Files[0].Redundancy)
+		if file.File.Redundancy != 1 {
+			return fmt.Errorf("Expected redundancy to be 1 but was %v", file.File.Redundancy)
 		}
 		return nil
 	})
@@ -2435,7 +2432,7 @@ func TestRenterLosingHosts(t *testing.T) {
 
 	// Verify that renter can still download file
 	if _, err = r.DownloadToDisk(rf, false); err != nil {
-		r.PrintDebugInfo(t, true, false, true)
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
