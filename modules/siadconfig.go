@@ -3,6 +3,7 @@ package modules
 import (
 	"errors"
 	"os"
+	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/ratelimit"
@@ -18,6 +19,7 @@ type (
 
 		// path of config on disk.
 		path string
+		mu   sync.Mutex
 	}
 )
 
@@ -35,6 +37,8 @@ var (
 // SetRatelimit sets the ratelimit related fields in the config and persists it
 // to disk.
 func (cfg *SiadConfig) SetRatelimit(readBPS, writeBPS int64) error {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
 	// Input validation.
 	if readBPS < 0 || writeBPS < 0 {
 		return errors.New("download/upload rate can't be below 0")
@@ -51,7 +55,7 @@ func (cfg *SiadConfig) SetRatelimit(readBPS, writeBPS int64) error {
 }
 
 // save saves the config to disk.
-func (cfg SiadConfig) save() error {
+func (cfg *SiadConfig) save() error {
 	return persist.SaveJSON(configMetadata, cfg, cfg.path)
 }
 
@@ -76,6 +80,6 @@ func NewConfig(path string) (*SiadConfig, error) {
 		cfg.PacketSize = 4 * 4096 // 16 kib
 	}
 	// Init the global ratelimit.
-	GlobalRateLimits = ratelimit.NewRateLimit(cfg.ReadBPS, cfg.WriteBPS, cfg.PacketSize)
+	GlobalRateLimits.SetLimits(cfg.ReadBPS, cfg.WriteBPS, cfg.PacketSize)
 	return &cfg, nil
 }
