@@ -21,7 +21,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	t.Parallel()
 
 	// Create Renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	t.Parallel()
 
 	// Create Renter
-	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndStuckLoops{})
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
 // TestRenterCreateDirectories checks that the renter properly created metadata files
@@ -15,7 +16,7 @@ func TestRenterCreateDirectories(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +96,7 @@ func TestDirInfo(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +145,7 @@ func TestRenterListDirectory(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
