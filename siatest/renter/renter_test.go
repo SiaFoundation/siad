@@ -278,6 +278,32 @@ func TestRenterThree(t *testing.T) {
 	}
 }
 
+// TestRenterFour executes a number of subtests using the same TestGroup to
+// save time on initialization
+func TestRenterFour(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for the subtests
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+
+	// Specify subtests to run
+	subTests := []test{
+		{"TestStreamRepair", testStreamRepair},
+	}
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // testAllowanceDefaultSet tests that a renter's allowance is correctly set to
 // the defaults after creating it and therefore confirming that the API
 // endpoint and siatest package both work.
@@ -317,7 +343,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	r := tg.Renters()[0]
-	err = r.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false)
+	err = r.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4461,5 +4487,74 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if fi.File.Stuck != f.Stuck {
 		t.Fatalf("Stuck field should be %v but was %v", f.Stuck, fi.File.Stuck)
+	}
+}
+
+// testStreamRepair tests if repairing a file using the streaming endpoint
+// works.
+func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	r := tg.Renters()[0]
+
+	// Check that we have enough hosts for this test.
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
+
+	// Set fileSize and redundancy for upload
+	fileSize := int(5 * modules.SectorSize)
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+
+	// Upload file
+	localFile, remoteFile, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Move the file locally to make sure the repair loop can't find it.
+	if err := localFile.Move(); err != nil {
+		t.Fatal("failed to delete local file", err)
+	}
+
+	// Take down all of the hosts and check if redundancy decreases.
+	hostsRemoved := 0
+	for i := uint64(0); i < parityPieces+dataPieces; i++ {
+		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
+			t.Fatal("Failed to shutdown host", err)
+		}
+		hostsRemoved++
+	}
+	if err := r.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
+		t.Fatal("Redundancy isn't decreasing", err)
+	}
+	// Bring up hosts to replace the ones that went offline.
+	for hostsRemoved > 0 {
+		hostsRemoved--
+		_, err = tg.AddNodes(node.HostTemplate)
+		if err != nil {
+			t.Fatal("Failed to create a new host", err)
+		}
+	}
+	// Use the streaming endpoint to repair the file. It should always reach 100%.
+	b, err := ioutil.ReadFile(localFile.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RenterUploadStreamPost(bytes.NewReader(b), remoteFile.SiaPath(), dataPieces, parityPieces, false, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.WaitForUploadRedundancy(remoteFile, float64(dataPieces+parityPieces)/float64(dataPieces)); err != nil {
+		t.Fatal("File wasn't repaired", err)
+	}
+	// We should be able to download
+	if _, err := r.DownloadByStream(remoteFile); err != nil {
+		t.Fatal("Failed to download file", err)
+	}
+	// Repair the file again to make sure we don't get stuck on chunks that are
+	// already repaired. Datapieces and paritypieces can be set to 0 as long as
+	// repair is true.
+	if err := r.RenterUploadStreamPost(bytes.NewReader(b), remoteFile.SiaPath(), 0, 0, false, true); err != nil {
+		t.Fatal(err)
 	}
 }

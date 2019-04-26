@@ -1045,9 +1045,18 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 			return
 		}
 	}
+	// Check whether existing file should be repaired
+	repair := false
+	if r := queryForm.Get("repair"); r != "" {
+		repair, err = strconv.ParseBool(r)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'repair' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
 	// Parse the erasure coder.
 	ec, err := parseErasureCodingParameters(queryForm.Get("datapieces"), queryForm.Get("paritypieces"))
-	if err != nil {
+	if err != nil && !repair {
 		WriteError(w, Error{"unable to parse erasure code settings" + err.Error()}, http.StatusBadRequest)
 		return
 	}
@@ -1062,6 +1071,7 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 		SiaPath:     siaPath,
 		ErasureCode: ec,
 		Force:       force,
+		Repair:      repair,
 	}
 	err = api.renter.UploadStreamFromReader(up, req.Body)
 	if err != nil {
