@@ -544,8 +544,13 @@ func (s byValue) Less(i, j int) bool {
 // createbackup`.
 func renterbackupcreatecmd(path string) {
 	path = abs(path)
-
-	err := httpClient.RenterCreateBackupPost(path)
+	// If the destination is a folder, create the backup in the folder.
+	fi, err := os.Stat(path)
+	if err == nil && fi.IsDir() {
+		path = filepath.Join(path, fmt.Sprintf("%v.backup", time.Now().Unix()))
+	}
+	// Create backup.
+	err = httpClient.RenterCreateBackupPost(path)
 	if err != nil {
 		die("Failed to create backup", err)
 	}
@@ -925,6 +930,11 @@ func renterfilesdownload(path, destination string) {
 	siaPath, err := modules.NewSiaPath(path)
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
+	}
+	// If the destination is a folder, download the file to that folder.
+	fi, err := os.Stat(destination)
+	if err == nil && fi.IsDir() {
+		destination = filepath.Join(destination, siaPath.Name())
 	}
 	// Queue the download. An error will be returned if the queueing failed, but
 	// the call will return before the download has completed. The call is made
