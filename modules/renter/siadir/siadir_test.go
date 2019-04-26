@@ -20,6 +20,9 @@ func checkMetadataInit(md Metadata) error {
 	if md.ModTime.IsZero() {
 		return errors.New("ModTime not initialized")
 	}
+	if !md.LastHealthCheckTime.IsZero() {
+		return fmt.Errorf("LastHealthCheckTime should be a zero timestamp: %v", md.LastHealthCheckTime)
+	}
 	if md.NumStuckChunks != 0 {
 		return fmt.Errorf("SiaDir NumStuckChunks not initialized properly, expected 0, got %v", md.NumStuckChunks)
 	}

@@ -123,6 +123,15 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
+	// healthLoopErrorSleepDuration indicates how long the health loop should
+	// sleep before retrying if there is an error fetching the oldest
+	// lastHealthCheckTime
+	healthLoopErrorSleepDuration = build.Select(build.Var{
+		Dev:      10 * time.Second,
+		Standard: 30 * time.Second,
+		Testing:  3 * time.Second,
+	}).(time.Duration)
+
 	// minUploadHeapSize is the minimum number of chunks we want in the upload
 	// heap before trying to add more in order to maintain back pressure on the
 	// workers, repairs, and uploads

@@ -190,6 +190,11 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				// health of the file
 				health = fileMetadata.Health
 			}
+			// Sanity check that LastHealthCheckTime of the file is not zero
+			if fileMetadata.LastHealthCheckTime.IsZero() {
+				build.Critical("LastHealthCheckTime of the file is zero, this should never happen", fileSiaPath.String())
+				fileMetadata.LastHealthCheckTime = time.Now()
+			}
 			lastHealthCheckTime = fileMetadata.LastHealthCheckTime
 			modTime = fileMetadata.ModTime
 			numStuckChunks = fileMetadata.NumStuckChunks
@@ -243,8 +248,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		if redundancy < metadata.MinRedundancy {
 			metadata.MinRedundancy = redundancy
 		}
-		// Update LastHealthCheckTime
-		if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
+		// Update LastHealthCheckTime if the file or sub directory
+		// lastHealthCheckTime is older (before) the current lastHealthCheckTime
+		if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) || lastHealthCheckTime.Equal(metadata.LastHealthCheckTime) {
 			metadata.LastHealthCheckTime = lastHealthCheckTime
 		}
 		metadata.NumStuckChunks += numStuckChunks
@@ -378,23 +384,23 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 	return siaDir.Metadata(), nil
 }
 
-// managedOldestHealthCheckTime finds the lowest level directory that has a
-// LastHealthCheckTime that is outside the healthCheckInterval
+// managedOldestHealthCheckTime finds the lowest level directory with the oldest
+// LastHealthCheckTime
 func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, error) {
 	// Check the siadir metadata for the root files directory
 	siaPath := modules.RootSiaPath()
-	health, err := r.managedDirectoryMetadata(siaPath)
+	metadata, err := r.managedDirectoryMetadata(siaPath)
 	if err != nil {
 		return modules.SiaPath{}, time.Time{}, err
 	}
 
-	// Find the lowest level directory that has a LastHealthCheckTime outside
-	// the healthCheckInterval
-	for time.Since(health.LastHealthCheckTime) > healthCheckInterval {
+	// Follow the path of oldest LastHealthCheckTime to the lowest level
+	// directory
+	for metadata.NumSubDirs > 0 {
 		// Check to make sure renter hasn't been shutdown
 		select {
 		case <-r.tg.StopChan():
-			return modules.SiaPath{}, time.Time{}, err
+			return modules.SiaPath{}, time.Time{}, errors.New("Renter shutdown before oldestHealthCheckTime could be found")
 		default:
 		}
 
@@ -403,40 +409,44 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 		if err != nil {
 			return modules.SiaPath{}, time.Time{}, err
 		}
-		// If there are no sub directories, return
-		if len(subDirSiaPaths) == 0 {
-			return siaPath, health.LastHealthCheckTime, nil
-		}
 
 		// Find the oldest LastHealthCheckTime of the sub directories
 		updated := false
 		for _, subDirPath := range subDirSiaPaths {
+			// Check to make sure renter hasn't been shutdown
+			select {
+			case <-r.tg.StopChan():
+				return modules.SiaPath{}, time.Time{}, errors.New("Renter shutdown before oldestHealthCheckTime could be found")
+			default:
+			}
+
 			// Check lastHealthCheckTime of sub directory
-			subHealth, err := r.managedDirectoryMetadata(subDirPath)
+			subMetadata, err := r.managedDirectoryMetadata(subDirPath)
 			if err != nil {
 				return modules.SiaPath{}, time.Time{}, err
 			}
 
-			// If lastCheck is after current lastHealthCheckTime continue since
-			// we are already in a directory with an older timestamp
-			if subHealth.LastHealthCheckTime.After(health.LastHealthCheckTime) {
+			// If the LastHealthCheckTime is after current LastHealthCheckTime
+			// continue since we are already in a directory with an older
+			// timestamp
+			if subMetadata.LastHealthCheckTime.After(metadata.LastHealthCheckTime) {
 				continue
 			}
 
-			// Update lastHealthCheckTime and follow older path
+			// Update LastHealthCheckTime and follow older path
 			updated = true
-			health.LastHealthCheckTime = subHealth.LastHealthCheckTime
+			metadata = subMetadata
 			siaPath = subDirPath
 		}
 
 		// If the values were never updated with any of the sub directory values
 		// then return as we are in the directory we are looking for
 		if !updated {
-			return siaPath, health.LastHealthCheckTime, nil
+			return siaPath, metadata.LastHealthCheckTime, nil
 		}
 	}
 
-	return siaPath, health.LastHealthCheckTime, nil
+	return siaPath, metadata.LastHealthCheckTime, nil
 }
 
 // managedStuckDirectory randomly finds a directory that contains stuck chunks
@@ -805,7 +815,14 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		// Follow path of oldest time, return directory and timestamp
 		siaPath, lastHealthCheckTime, err := r.managedOldestHealthCheckTime()
 		if err != nil {
+			// If there is an error getting the lastHealthCheckTime sleep for a
+			// little bit before continuing
 			r.log.Debug("WARN: Could not find oldest health check time:", err)
+			select {
+			case <-time.After(healthLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
 			continue
 		}
 
