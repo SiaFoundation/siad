@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -72,7 +73,7 @@ func TestBubbleHealth(t *testing.T) {
 	t.Parallel()
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +355,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	// root/SubDir2/
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +433,7 @@ func TestWorstHealthDirectory(t *testing.T) {
 	// root/SubDir2/
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,7 +594,7 @@ func TestNumFiles(t *testing.T) {
 	// root/SubDir1/SubDir2/ file
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,7 +674,7 @@ func TestDirectorySize(t *testing.T) {
 	// root/SubDir1/SubDir2/ file
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -750,7 +751,7 @@ func TestDirectoryModTime(t *testing.T) {
 	// root/SubDir1/SubDir2/ file
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -822,7 +823,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	t.Parallel()
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
