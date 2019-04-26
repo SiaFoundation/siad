@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
 // updateSiaDirHealth is a helper method to update the health and the aggregate
@@ -33,7 +34,7 @@ func TestDirectoryHeap(t *testing.T) {
 	t.Parallel()
 
 	// Create renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +114,7 @@ func TestPushSubDirectories(t *testing.T) {
 	t.Parallel()
 
 	// Create renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +207,7 @@ func TestNextExploredDirectory(t *testing.T) {
 	t.Parallel()
 
 	// Create renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
