@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"os"
 	"path/filepath"
 	"time"
 
@@ -82,6 +83,10 @@ func (g *Gateway) load() error {
 
 	// load g.persist
 	err = persist.LoadJSON(persistMetadata, &g.persist, filepath.Join(g.persistDir, persistFilename))
+	if os.IsNotExist(err) {
+		// There is no gateway.json, nothing to load.
+		return nil
+	}
 	if err != nil {
 		return errors.AddContext(err, "failed to load gateway persistence")
 	}
