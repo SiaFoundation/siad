@@ -826,22 +826,21 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			continue
 		}
 
-		// If lastHealthCheckTime is within the healthCheckInterval block
-		// until it is time to check again
-		var nextCheckTime time.Duration
+		// Check if the time since the last check on the least recently checked
+		// folder is inside the health check interval. If so, the whole
+		// filesystem has been checked recently, and we can sleep until the
+		// least recent check is outside the check interval.
 		timeSinceLastCheck := time.Since(lastHealthCheckTime)
-		if timeSinceLastCheck > healthCheckInterval { // Check for underflow
-			nextCheckTime = 0
-		} else {
-			nextCheckTime = healthCheckInterval - timeSinceLastCheck
+		if timeSinceLastCheck < healthCheckInterval {
+			// Sleep unitl the least recent check is outside the check interval.
+			sleepDuration := healthCheckInterfval - timeSinceLastCheck
+			wakeSignal := time.After(sleepDuration)
+			select {
+			case <-r.tg.StopChan():
+				return
+			case <-wakeSignal:
+			}
 		}
-		healthCheckSignal := time.After(nextCheckTime)
-		select {
-		case <-r.tg.StopChan():
-			return
-		case <-healthCheckSignal:
-			// Bubble directory
-			r.managedBubbleMetadata(siaPath)
-		}
+		r.managedBubbleMetadata(siaPath)
 	}
 }
