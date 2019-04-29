@@ -184,7 +184,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 			return nil, err
 		}
 
-		// Add popped directory back to heap
+		// Add popped directory back to heap with explored now set to true
 		added := r.directoryHeap.managedPush(d)
 		if !added {
 			return nil, fmt.Errorf("could not push directory %v onto heap", d.siaPath.String())
