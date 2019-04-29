@@ -90,7 +90,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 	return r.managedUploadStreamFromReader(up, reader, false)
 }
 
-// managedInitUploadStream  verifies the upload parameters and prepares an empty
+// managedInitUploadStream verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
 func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*siafile.SiaFileSetEntry, error) {
 	siaPath, ec, force, repair := up.SiaPath, up.ErasureCode, up.Force, up.Repair
