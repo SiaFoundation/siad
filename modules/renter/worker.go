@@ -45,6 +45,7 @@ type worker struct {
 	uploadChan                chan struct{}            // Notifications of new work.
 	uploadConsecutiveFailures int                      // How many times in a row uploading has failed.
 	uploadRecentFailure       time.Time                // How recent was the last failure?
+	uploadRecentFailureErr    error                    // What was the reason for the last failure?
 	uploadTerminated          bool                     // Have we stopped uploading?
 
 	// Utilities.
@@ -97,16 +98,16 @@ func (r *Renter) managedUpdateWorkerPool() {
 	lockID := r.mu.Lock()
 	totalCoolDown := 0
 	for id, worker := range r.workerPool {
-		_, exists := contractMap[id]
+		contract, exists := contractMap[id]
 		if !exists {
 			delete(r.workerPool, id)
 			close(worker.killChan)
 		}
-		onCoolDown := worker.onUploadCooldown()
+		onCoolDown, coolDownTime := worker.onUploadCooldown()
 		if onCoolDown {
 			totalCoolDown++
 		}
-		r.log.Debugf("Worker %v is on uploadCooldown: %v", worker.hostPubKey, onCoolDown)
+		r.log.Debugf("Worker %v is GoodForUpload %v and is on uploadCooldown %v for %v because of %v", worker.hostPubKey, contract.Utility.GoodForUpload, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
 	}
 	r.log.Debugf("Refreshed Worker Pool has %v total workers and %v are on cooldown", len(r.workerPool), totalCoolDown)
 	r.mu.Unlock(lockID)
