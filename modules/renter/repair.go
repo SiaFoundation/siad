@@ -186,11 +186,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				r.log.Printf("failed to calculate file metadata %v: %v", fi.Name(), err)
 				continue
 			}
-			// Sanity check that LastHealthCheckTime of the file is not zero
-			if fileMetadata.LastHealthCheckTime.IsZero() {
-				build.Critical("LastHealthCheckTime of the file is zero, this should never happen", fileSiaPath.String())
-				fileMetadata.LastHealthCheckTime = time.Now()
-			}
 			lastHealthCheckTime = fileMetadata.LastHealthCheckTime
 			modTime = fileMetadata.ModTime
 			numStuckChunks = fileMetadata.NumStuckChunks
