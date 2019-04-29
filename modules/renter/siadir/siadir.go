@@ -52,6 +52,10 @@ type (
 
 	// Metadata is the metadata that is saved to disk as a .siadir file
 	Metadata struct {
+		// AggregateHealth is the health of the most in need file in the
+		// directory or any of the sub directories that are not stuck
+		AggregateHealth float64 `json:"aggregatehealth"`
+
 		// AggregateNumFiles is the total number of files in a directory and any
 		// sub directory
 		AggregateNumFiles uint64 `json:"aggregatenumfiles"`
@@ -60,8 +64,8 @@ type (
 		// directories
 		AggregateSize uint64 `json:"aggregatesize"`
 
-		// Health is the health of the most in need file in the directory or any
-		// of the sub directories that are not stuck
+		// Health is the health of the most in need file in the directory that
+		// is not stuck
 		Health float64 `json:"health"`
 
 		// LastHealthCheckTime is the oldest LastHealthCheckTime of any of the
@@ -135,9 +139,10 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 	// empty directories won't be viewed as being the most in need. Initialize
 	// ModTime.
 	md := Metadata{
-		Health:      DefaultDirHealth,
-		ModTime:     time.Now(),
-		StuckHealth: DefaultDirHealth,
+		AggregateHealth: DefaultDirHealth,
+		Health:          DefaultDirHealth,
+		ModTime:         time.Now(),
+		StuckHealth:     DefaultDirHealth,
 	}
 	path := siaPath.SiaDirMetadataSysPath(rootDir)
 	update, err := createMetadataUpdate(path, md)
@@ -207,6 +212,7 @@ func (sd *SiaDir) SiaPath() modules.SiaPath {
 func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
+	sd.metadata.AggregateHealth = metadata.AggregateHealth
 	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
 	sd.metadata.AggregateSize = metadata.AggregateSize
 	sd.metadata.Health = metadata.Health

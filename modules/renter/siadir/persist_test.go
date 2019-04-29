@@ -17,9 +17,17 @@ import (
 // function to check persistence the time fields should be checked in the test
 // itself as well and reset due to how time is persisted
 func equalMetadatas(md, md2 Metadata) error {
+	// Check AggregateHealth
+	if md.AggregateHealth != md2.AggregateHealth {
+		return fmt.Errorf("aggregatehealths not equal, %v and %v", md.AggregateHealth, md2.AggregateHealth)
+	}
 	// Check AggregateNumFiles
 	if md.AggregateNumFiles != md2.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, md2.AggregateNumFiles)
+	}
+	// Check AggregateSize
+	if md.AggregateSize != md2.AggregateSize {
+		return fmt.Errorf("aggregate sizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
 	}
 	// Check Health
 	if md.Health != md2.Health {
@@ -48,10 +56,6 @@ func equalMetadatas(md, md2 Metadata) error {
 	// Check NumSubDirs
 	if md.NumSubDirs != md2.NumSubDirs {
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, md2.NumSubDirs)
-	}
-	// Check Size
-	if md.AggregateSize != md2.AggregateSize {
-		return fmt.Errorf("aggregate sizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
 	}
 	// Check StuckHealth
 	if md.StuckHealth != md2.StuckHealth {

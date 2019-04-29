@@ -14,17 +14,38 @@ import (
 // checkMetadataInit is a helper that verifies that the metadata was initialized
 // properly
 func checkMetadataInit(md Metadata) error {
+	if md.AggregateHealth != DefaultDirHealth {
+		return fmt.Errorf("SiaDir AggregateHealth not set properly: got %v expected %v", md.AggregateHealth, DefaultDirHealth)
+	}
+	if md.AggregateNumFiles != 0 {
+		return fmt.Errorf("SiaDir AggregateNumFiles not set properly: got %v expected 0", md.AggregateNumFiles)
+	}
+	if md.AggregateSize != 0 {
+		return fmt.Errorf("SiaDir AggregateSize not set properly: got %v expected 0", md.AggregateSize)
+	}
 	if md.Health != DefaultDirHealth {
-		return fmt.Errorf("SiaDir health not set properly: got %v expected %v", md.Health, DefaultDirHealth)
+		return fmt.Errorf("SiaDir Health not set properly: got %v expected %v", md.Health, DefaultDirHealth)
+	}
+	if !md.LastHealthCheckTime.IsZero() {
+		return fmt.Errorf("LastHealthCheckTime should be zero but was %v", md.LastHealthCheckTime)
+	}
+	if md.MinRedundancy != 0 {
+		return fmt.Errorf("SiaDir MinRedundancy not set properly: got %v expected 0", md.MinRedundancy)
 	}
 	if md.ModTime.IsZero() {
 		return errors.New("ModTime not initialized")
+	}
+	if md.NumFiles != 0 {
+		return fmt.Errorf("SiaDir NumFiles not initialized properly, expected 0, got %v", md.NumFiles)
 	}
 	if !md.LastHealthCheckTime.IsZero() {
 		return fmt.Errorf("LastHealthCheckTime should be a zero timestamp: %v", md.LastHealthCheckTime)
 	}
 	if md.NumStuckChunks != 0 {
 		return fmt.Errorf("SiaDir NumStuckChunks not initialized properly, expected 0, got %v", md.NumStuckChunks)
+	}
+	if md.NumSubDirs != 0 {
+		return fmt.Errorf("SiaDir NumSubDirs not initialized properly, expected 0, got %v", md.NumSubDirs)
 	}
 	if md.StuckHealth != DefaultDirHealth {
 		return fmt.Errorf("SiaDir stuck health not set properly: got %v expected %v", md.StuckHealth, DefaultDirHealth)
@@ -180,10 +201,17 @@ func TestUpdateMetadata(t *testing.T) {
 	// Set the metadata
 	checkTime := time.Now()
 	metadataUpdate := md
+	metadataUpdate.AggregateHealth = 4
+	metadataUpdate.AggregateNumFiles = 3
+	metadataUpdate.AggregateSize = 500
 	metadataUpdate.Health = 4
-	metadataUpdate.StuckHealth = 2
 	metadataUpdate.LastHealthCheckTime = checkTime
+	metadataUpdate.MinRedundancy = 2
+	metadataUpdate.ModTime = checkTime
+	metadataUpdate.NumFiles = 2
 	metadataUpdate.NumStuckChunks = 5
+	metadataUpdate.NumSubDirs = 5
+	metadataUpdate.StuckHealth = 2
 
 	err = siaDir.UpdateMetadata(metadataUpdate)
 	if err != nil {

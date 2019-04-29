@@ -786,16 +786,6 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
-	// Mine a block to trigger the repair loop so the chunk is marked as stuck
-	m := tg.Miners()[0]
-	if err := m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-	// Check to see if a chunk got marked as stuck
-	err = renter.WaitForStuckChunksToBubble()
-	if err != nil {
-		t.Fatal(err)
-	}
 	// We should still be able to download
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
@@ -865,16 +855,6 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := r.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
-	// Mine a block to trigger the repair loop so the chunk is marked as stuck
-	m := tg.Miners()[0]
-	if err := m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-	// Check to see if a chunk got marked as stuck
-	err = r.WaitForStuckChunksToBubble()
-	if err != nil {
-		t.Fatal(err)
-	}
 	// We should still be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {
 		t.Error("Failed to download file", err)
@@ -917,50 +897,44 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 
+	// Get all files from Renter
 	files, err := renter.Files()
 	if err != nil {
 		t.Fatal("Failed to get renter files: ", err)
 	}
 
-	checks := 0
-	for _, f := range files {
-		// Only request files if file was fully uploaded for first API request
-		if f.UploadProgress < 100 {
-			continue
-		}
-		checks++
-		rf, err := renter.RenterFileGet(f.SiaPath)
-		if err != nil {
-			t.Fatal("Failed to request single file", err)
-		}
+	// Loop over files. Files should be returned in the same order due to how
+	// the renter directory is traversed to read all the files which allows us
+	// to use the index of the file.
+	for i := range files {
+		// The comparison between the File and the Files endpoint need to be in
+		// a build.Retry due to the Files endpoint using cached values. These
+		// cached values are updated by background loops so if they do not match
+		// the values returned by the File endpoint then they should be updated
+		// to match soon.
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			// Get Single File
+			rf, err := renter.RenterFileGet(files[i].SiaPath)
+			if err != nil {
+				return err
+			}
 
-		// Can't use reflect.DeepEqual because certain fields are too dynamic,
-		// however those fields are also not indicative of whether or not the
-		// files are the same.  Not checking Redundancy, Available, Renewing
-		// ,UploadProgress, UploadedBytes, or Renewing
-		if f.Expiration != rf.File.Expiration {
-			t.Log("File from Files() Expiration:", f.Expiration)
-			t.Log("File from File() Expiration:", rf.File.Expiration)
-			t.Fatal("Single file queries does not match file previously requested.")
+			// Compare File result and Files Results
+			if reflect.DeepEqual(files[i], rf.File) {
+				return nil
+			}
+			errMessage := fmt.Errorf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
+
+			// Entries not equal get files again
+			files, err = renter.Files()
+			if err != nil {
+				errMessage = errors.Compose(err, errMessage)
+			}
+			return errMessage
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-		if f.Filesize != rf.File.Filesize {
-			t.Log("File from Files() Filesize:", f.Filesize)
-			t.Log("File from File() Filesize:", rf.File.Filesize)
-			t.Fatal("Single file queries does not match file previously requested.")
-		}
-		if f.LocalPath != rf.File.LocalPath {
-			t.Log("File from Files() LocalPath:", f.LocalPath)
-			t.Log("File from File() LocalPath:", rf.File.LocalPath)
-			t.Fatal("Single file queries does not match file previously requested.")
-		}
-		if f.SiaPath != rf.File.SiaPath {
-			t.Log("File from Files() SiaPath:", f.SiaPath)
-			t.Log("File from File() SiaPath:", rf.File.SiaPath)
-			t.Fatal("Single file queries does not match file previously requested.")
-		}
-	}
-	if checks == 0 {
-		t.Fatal("No files checks through single file endpoint.")
 	}
 }
 
@@ -2334,12 +2308,12 @@ func TestRenterLosingHosts(t *testing.T) {
 	}
 
 	// File should be at redundancy of 1.5
-	files, err := r.RenterFilesGet()
+	file, err := r.RenterFileGet(rf.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files.Files[0].Redundancy != 1.5 {
-		t.Fatal("Expected filed redundancy to be 1.5 but was", files.Files[0].Redundancy)
+	if file.File.Redundancy != 1.5 {
+		t.Fatal("Expected filed redundancy to be 1.5 but was", file.File.Redundancy)
 	}
 
 	// Verify we can download the file
@@ -2399,15 +2373,12 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		files, err := r.RenterFilesGet()
+		file, err := r.RenterFileGet(rf.SiaPath())
 		if err != nil {
 			return err
 		}
-		if len(files.Files) == 0 {
-			return errors.New("renter has no files")
-		}
-		if files.Files[0].Redundancy != 1.5 {
-			return fmt.Errorf("Expected redundancy to be 1.5 but was %v", files.Files[0].Redundancy)
+		if file.File.Redundancy != 1.5 {
+			return fmt.Errorf("Expected redundancy to be 1.5 but was %v", file.File.Redundancy)
 		}
 		return nil
 	})
@@ -2441,12 +2412,12 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Now that the renter has fewer hosts online than needed the redundancy
 	// should drop to 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		files, err := r.RenterFilesGet()
+		file, err := r.RenterFileGet(rf.SiaPath())
 		if err != nil {
 			return err
 		}
-		if files.Files[0].Redundancy != 1 {
-			return fmt.Errorf("Expected redundancy to be 1 but was %v", files.Files[0].Redundancy)
+		if file.File.Redundancy != 1 {
+			return fmt.Errorf("Expected redundancy to be 1 but was %v", file.File.Redundancy)
 		}
 		return nil
 	})
@@ -2456,7 +2427,7 @@ func TestRenterLosingHosts(t *testing.T) {
 
 	// Verify that renter can still download file
 	if _, err = r.DownloadToDisk(rf, false); err != nil {
-		r.PrintDebugInfo(t, true, false, true)
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
