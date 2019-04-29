@@ -279,6 +279,9 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath) (siafile.
 
 	// Mark sure that healthy chunks are not marked as stuck
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	// TODO: This 'MarkAllHealthyChunksAsUnstuck' function may not be necessary
+	// in the long term. I believe that it was/is useful because other parts of
+	// the process for marking and handling stuck chunks was not complete.
 	err = sf.MarkAllHealthyChunksAsUnstuck(hostOfflineMap, hostGoodForRenewMap)
 	if err != nil {
 		return siafile.BubbledMetadata{}, errors.AddContext(err, "unable to mark healthy chunks as unstuck")
@@ -676,14 +679,12 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 		}
 	}
 
-	// If siaPath is equal to "" then return as we are in the root files
-	// directory of the renter
+	// If we are at the root directory then check if any files were found in
+	// need of repair or and stuck chunks and trigger the appropriate repair
+	// loop. This is only done at the root directory as the repair and stuck
+	// loops start at the root directory so there is no point triggering them
+	// until the root directory is updated
 	if siaPath.IsRoot() {
-		// If we are at the root directory then check if any files were found in
-		// need of repair or and stuck chunks and trigger the appropriate repair
-		// loop. This is only done at the root directory as the repair and stuck
-		// loops start at the root directory so there is no point triggering
-		// them until the root directory is updated
 		if metadata.Health >= siafile.RemoteRepairDownloadThreshold {
 			select {
 			case r.uploadHeap.repairNeeded <- struct{}{}:

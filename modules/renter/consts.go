@@ -116,8 +116,7 @@ var (
 	}).(time.Duration)
 
 	// healthLoopErrorSleepDuration indicates how long the health loop should
-	// sleep before retrying if there is an error fetching the oldest
-	// lastHealthCheckTime
+	// sleep before retrying if there is an error preventing progress.
 	healthLoopErrorSleepDuration = build.Select(build.Var{
 		Dev:      10 * time.Second,
 		Standard: 30 * time.Second,
