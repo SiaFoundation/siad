@@ -243,7 +243,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		metadata.NumStuckChunks += numStuckChunks
 		// Update LastHealthCheckTime if the file or sub directory
 		// lastHealthCheckTime is older (before) the current lastHealthCheckTime
-		if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) || lastHealthCheckTime.Equal(metadata.LastHealthCheckTime) {
+		if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
 			metadata.LastHealthCheckTime = lastHealthCheckTime
 		}
 		metadata.NumStuckChunks += numStuckChunks
