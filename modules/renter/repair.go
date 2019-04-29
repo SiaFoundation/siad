@@ -178,27 +178,24 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
 			fileSiaPath, err := siaPath.Join(fName)
 			if err != nil {
-				return siadir.Metadata{}, err
+				r.log.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
+				continue
 			}
 			fileMetadata, err := r.managedCalculateFileMetadata(fileSiaPath)
 			if err != nil {
 				r.log.Printf("failed to calculate file metadata %v: %v", fi.Name(), err)
 				continue
 			}
-			if time.Since(fileMetadata.RecentRepairTime) >= fileRepairInterval {
-				// If the file has not recently been repaired then consider the
-				// health of the file
-				health = fileMetadata.Health
-			}
-			lastHealthCheckTime = fileMetadata.LastHealthCheckTime
-			modTime = fileMetadata.ModTime
-			numStuckChunks = fileMetadata.NumStuckChunks
-			redundancy = fileMetadata.Redundancy
+
+			health = fileMetadata.Health
 			stuckHealth = fileMetadata.StuckHealth
-			// Update NumFiles and AggregateNumFiles
+			redundancy = fileMetadata.Redundancy
+			numStuckChunks = fileMetadata.NumStuckChunks
+			modTime = fileMetadata.ModTime
+
+			// Update aggregate fields.
 			metadata.NumFiles++
 			metadata.AggregateNumFiles++
-			// Update Size
 			metadata.AggregateSize += fileMetadata.Size
 		} else if fi.IsDir() {
 			// Directory is found, read the directory metadata file
@@ -210,22 +207,23 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			if err != nil {
 				return siadir.Metadata{}, err
 			}
+
 			health = dirMetadata.Health
+			stuckHealth = dirMetadata.StuckHealth
+			redundancy = dirMetadata.MinRedundancy
+			numStuckChunks = dirMetadata.NumStuckChunks
 			lastHealthCheckTime = dirMetadata.LastHealthCheckTime
 			modTime = dirMetadata.ModTime
-			numStuckChunks = dirMetadata.NumStuckChunks
-			redundancy = dirMetadata.MinRedundancy
-			stuckHealth = dirMetadata.StuckHealth
-			// Update AggregateNumFiles
+
+			// Update aggregate fields.
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
-			// Update NumSubDirs
-			metadata.NumSubDirs++
-			// Update Size
 			metadata.AggregateSize += dirMetadata.AggregateSize
+			metadata.NumSubDirs++
 		} else {
 			// Ignore everything that is not a SiaFile or a directory
 			continue
 		}
+
 		// Update Health and Stuck Health
 		if health > metadata.Health {
 			metadata.Health = health
@@ -233,17 +231,18 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		if stuckHealth > metadata.StuckHealth {
 			metadata.StuckHealth = stuckHealth
 		}
+		// Update MinRedundancy
+		if redundancy < metadata.MinRedundancy {
+			metadata.MinRedundancy = redundancy
+		}
 		// Update ModTime
 		if modTime.After(metadata.ModTime) {
 			metadata.ModTime = modTime
 		}
 		// Increment NumStuckChunks
 		metadata.NumStuckChunks += numStuckChunks
-		// Update MinRedundancy
-		if redundancy < metadata.MinRedundancy {
-			metadata.MinRedundancy = redundancy
-		}
-		// Update LastHealthCheckTime
+		// Update LastHealthCheckTime if the file or sub directory
+		// lastHealthCheckTime is older (before) the current lastHealthCheckTime
 		if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
 			metadata.LastHealthCheckTime = lastHealthCheckTime
 		}
@@ -277,6 +276,9 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath) (siafile.
 
 	// Mark sure that healthy chunks are not marked as stuck
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	// TODO: This 'MarkAllHealthyChunksAsUnstuck' function may not be necessary
+	// in the long term. I believe that it was/is useful because other parts of
+	// the process for marking and handling stuck chunks was not complete.
 	err = sf.MarkAllHealthyChunksAsUnstuck(hostOfflineMap, hostGoodForRenewMap)
 	if err != nil {
 		return siafile.BubbledMetadata{}, errors.AddContext(err, "unable to mark healthy chunks as unstuck")
@@ -378,23 +380,23 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 	return siaDir.Metadata(), nil
 }
 
-// managedOldestHealthCheckTime finds the lowest level directory that has a
-// LastHealthCheckTime that is outside the healthCheckInterval
+// managedOldestHealthCheckTime finds the lowest level directory with the oldest
+// LastHealthCheckTime
 func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, error) {
 	// Check the siadir metadata for the root files directory
 	siaPath := modules.RootSiaPath()
-	health, err := r.managedDirectoryMetadata(siaPath)
+	metadata, err := r.managedDirectoryMetadata(siaPath)
 	if err != nil {
 		return modules.SiaPath{}, time.Time{}, err
 	}
 
-	// Find the lowest level directory that has a LastHealthCheckTime outside
-	// the healthCheckInterval
-	for time.Since(health.LastHealthCheckTime) > healthCheckInterval {
+	// Follow the path of oldest LastHealthCheckTime to the lowest level
+	// directory
+	for metadata.NumSubDirs > 0 {
 		// Check to make sure renter hasn't been shutdown
 		select {
 		case <-r.tg.StopChan():
-			return modules.SiaPath{}, time.Time{}, err
+			return modules.SiaPath{}, time.Time{}, errors.New("Renter shutdown before oldestHealthCheckTime could be found")
 		default:
 		}
 
@@ -403,40 +405,44 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 		if err != nil {
 			return modules.SiaPath{}, time.Time{}, err
 		}
-		// If there are no sub directories, return
-		if len(subDirSiaPaths) == 0 {
-			return siaPath, health.LastHealthCheckTime, nil
-		}
 
 		// Find the oldest LastHealthCheckTime of the sub directories
 		updated := false
 		for _, subDirPath := range subDirSiaPaths {
+			// Check to make sure renter hasn't been shutdown
+			select {
+			case <-r.tg.StopChan():
+				return modules.SiaPath{}, time.Time{}, errors.New("Renter shutdown before oldestHealthCheckTime could be found")
+			default:
+			}
+
 			// Check lastHealthCheckTime of sub directory
-			subHealth, err := r.managedDirectoryMetadata(subDirPath)
+			subMetadata, err := r.managedDirectoryMetadata(subDirPath)
 			if err != nil {
 				return modules.SiaPath{}, time.Time{}, err
 			}
 
-			// If lastCheck is after current lastHealthCheckTime continue since
-			// we are already in a directory with an older timestamp
-			if subHealth.LastHealthCheckTime.After(health.LastHealthCheckTime) {
+			// If the LastHealthCheckTime is after current LastHealthCheckTime
+			// continue since we are already in a directory with an older
+			// timestamp
+			if subMetadata.LastHealthCheckTime.After(metadata.LastHealthCheckTime) {
 				continue
 			}
 
-			// Update lastHealthCheckTime and follow older path
+			// Update LastHealthCheckTime and follow older path
 			updated = true
-			health.LastHealthCheckTime = subHealth.LastHealthCheckTime
+			metadata = subMetadata
 			siaPath = subDirPath
 		}
 
 		// If the values were never updated with any of the sub directory values
 		// then return as we are in the directory we are looking for
 		if !updated {
-			return siaPath, health.LastHealthCheckTime, nil
+			return siaPath, metadata.LastHealthCheckTime, nil
 		}
 	}
 
-	return siaPath, health.LastHealthCheckTime, nil
+	return siaPath, metadata.LastHealthCheckTime, nil
 }
 
 // managedStuckDirectory randomly finds a directory that contains stuck chunks
@@ -670,14 +676,12 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 		}
 	}
 
-	// If siaPath is equal to "" then return as we are in the root files
-	// directory of the renter
+	// If we are at the root directory then check if any files were found in
+	// need of repair or and stuck chunks and trigger the appropriate repair
+	// loop. This is only done at the root directory as the repair and stuck
+	// loops start at the root directory so there is no point triggering them
+	// until the root directory is updated
 	if siaPath.IsRoot() {
-		// If we are at the root directory then check if any files were found in
-		// need of repair or and stuck chunks and trigger the appropriate repair
-		// loop. This is only done at the root directory as the repair and stuck
-		// loops start at the root directory so there is no point triggering
-		// them until the root directory is updated
 		if metadata.Health >= siafile.RemoteRepairDownloadThreshold {
 			select {
 			case r.uploadHeap.repairNeeded <- struct{}{}:
@@ -805,26 +809,32 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		// Follow path of oldest time, return directory and timestamp
 		siaPath, lastHealthCheckTime, err := r.managedOldestHealthCheckTime()
 		if err != nil {
+			// If there is an error getting the lastHealthCheckTime sleep for a
+			// little bit before continuing
 			r.log.Debug("WARN: Could not find oldest health check time:", err)
+			select {
+			case <-time.After(healthLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
 			continue
 		}
 
-		// If lastHealthCheckTime is within the healthCheckInterval block
-		// until it is time to check again
-		var nextCheckTime time.Duration
+		// Check if the time since the last check on the least recently checked
+		// folder is inside the health check interval. If so, the whole
+		// filesystem has been checked recently, and we can sleep until the
+		// least recent check is outside the check interval.
 		timeSinceLastCheck := time.Since(lastHealthCheckTime)
-		if timeSinceLastCheck > healthCheckInterval { // Check for underflow
-			nextCheckTime = 0
-		} else {
-			nextCheckTime = healthCheckInterval - timeSinceLastCheck
+		if timeSinceLastCheck < healthCheckInterval {
+			// Sleep unitl the least recent check is outside the check interval.
+			sleepDuration := healthCheckInterval - timeSinceLastCheck
+			wakeSignal := time.After(sleepDuration)
+			select {
+			case <-r.tg.StopChan():
+				return
+			case <-wakeSignal:
+			}
 		}
-		healthCheckSignal := time.After(nextCheckTime)
-		select {
-		case <-r.tg.StopChan():
-			return
-		case <-healthCheckSignal:
-			// Bubble directory
-			r.managedBubbleMetadata(siaPath)
-		}
+		r.managedBubbleMetadata(siaPath)
 	}
 }

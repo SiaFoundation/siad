@@ -132,7 +132,8 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 	}
 
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
-	// empty directories won't be viewed as being the most in need
+	// empty directories won't be viewed as being the most in need. Initialize
+	// ModTime.
 	md := Metadata{
 		Health:      DefaultDirHealth,
 		ModTime:     time.Now(),

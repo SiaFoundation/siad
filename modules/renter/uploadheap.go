@@ -487,16 +487,6 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 			}
 			continue
 		}
-
-		// For normal repairs, ignore files that have been recently repaired
-		if target == targetUnstuckChunks && time.Since(file.RecentRepairTime()) < fileRepairInterval {
-			// Close unneeded files
-			err := file.Close()
-			if err != nil {
-				r.log.Println("WARN: Could not close file:", err)
-			}
-			continue
-		}
 		// For normal repairs, ignore files that don't have any unstuck chunks
 		if target == targetUnstuckChunks && file.NumChunks() == file.NumStuckChunks() {
 			err := file.Close()

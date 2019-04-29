@@ -81,6 +81,9 @@ func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	if metadata.StuckHealth != siadir.DefaultDirHealth {
 		return fmt.Errorf("StuckHealth not initialized properly: have %v expected %v", metadata.StuckHealth, siadir.DefaultDirHealth)
 	}
+	if !metadata.LastHealthCheckTime.IsZero() {
+		return fmt.Errorf("LastHealthCheckTime should be a zero timestamp: %v", metadata.LastHealthCheckTime)
+	}
 	if metadata.ModTime.IsZero() {
 		return fmt.Errorf("ModTime not initialized: %v", metadata.ModTime)
 	}
