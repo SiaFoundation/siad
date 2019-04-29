@@ -185,11 +185,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				r.log.Printf("failed to calculate file metadata %v: %v", fi.Name(), err)
 				continue
 			}
-			if time.Since(fileMetadata.RecentRepairTime) >= fileRepairInterval {
-				// If the file has not recently been repaired then consider the
-				// health of the file
-				health = fileMetadata.Health
-			}
 			// Sanity check that LastHealthCheckTime of the file is not zero
 			if fileMetadata.LastHealthCheckTime.IsZero() {
 				build.Critical("LastHealthCheckTime of the file is zero, this should never happen", fileSiaPath.String())
@@ -199,6 +194,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			modTime = fileMetadata.ModTime
 			numStuckChunks = fileMetadata.NumStuckChunks
 			redundancy = fileMetadata.Redundancy
+			health = fileMetadata.Health
 			stuckHealth = fileMetadata.StuckHealth
 			// Update NumFiles and AggregateNumFiles
 			metadata.NumFiles++
