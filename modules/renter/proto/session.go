@@ -811,7 +811,8 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 	// Perform the handshake and create the session object.
 	aead, challenge, err := performSessionHandshake(conn, host.PublicKey)
 	if err != nil {
-		return nil, err
+		conn.Close()
+		return nil, errors.AddContext(err, "session handshake failed")
 	}
 	s := &Session{
 		aead:        aead,
