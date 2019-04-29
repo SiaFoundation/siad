@@ -294,13 +294,17 @@ func (ht *HostTree) Select(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 
 // SelectRandom grabs a random n hosts from the tree. There will be no repeats,
 // but the length of the slice returned may be less than n, and may even be
-// zero.  The hosts that are returned first have the higher priority. Hosts
-// passed to 'blacklist' will not be considered; pass `nil` if no blacklist is
-// desired. 'addressBlacklist' is similar to 'blacklist' but instead of not
-// considering the hosts in the list, hosts that use the same IP subnet as
-// those hosts will be ignored. In most cases those blacklists contain the same
-// elements but sometimes it is useful to block a host without blocking its IP
-// range.
+// zero.  The hosts that are returned first have the higher priority.
+//
+// Hosts passed to 'blacklist' will not be considered; pass `nil` if no
+// blacklist is desired. 'addressBlacklist' is similar to 'blacklist' but
+// instead of not considering the hosts in the list, hosts that use the same IP
+// subnet as those hosts will be ignored. In most cases those blacklists contain
+// the same elements but sometimes it is useful to block a host without blocking
+// its IP range.
+//
+// Hosts with a score of 1 will be ignored, as it is assumed that these hosts
+// are meant to be unreachable.
 func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaPublicKey) []modules.HostDBEntry {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
@@ -339,11 +343,13 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 	for len(hosts) < n && len(ht.hosts) > 0 {
 		randWeight := fastrand.BigIntn(ht.root.weight.Big())
 		node := ht.root.nodeAtWeight(types.NewCurrency(randWeight))
+		weightOne := types.NewCurrency64(1)
 
 		if node.entry.AcceptingContracts &&
 			len(node.entry.ScanHistory) > 0 &&
 			node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success &&
-			!filter.Filtered(node.entry.NetAddress) {
+			!filter.Filtered(node.entry.NetAddress) &&
+			node.weight.Cmp(weightOne) > 0 {
 			// The host must be online and accepting contracts to be returned
 			// by the random function. It also has to pass the addressFilter
 			// check.
