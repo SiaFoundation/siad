@@ -186,16 +186,16 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				r.log.Printf("failed to calculate file metadata %v: %v", fi.Name(), err)
 				continue
 			}
-			lastHealthCheckTime = fileMetadata.LastHealthCheckTime
-			modTime = fileMetadata.ModTime
-			numStuckChunks = fileMetadata.NumStuckChunks
-			redundancy = fileMetadata.Redundancy
+
 			health = fileMetadata.Health
 			stuckHealth = fileMetadata.StuckHealth
-			// Update NumFiles and AggregateNumFiles
+			redundancy = fileMetadata.Redundancy
+			numStuckChunks = fileMetadata.NumStuckChunks
+			modTime = fileMetadata.ModTime
+
+			// Update aggregate fields.
 			metadata.NumFiles++
 			metadata.AggregateNumFiles++
-			// Update Size
 			metadata.AggregateSize += fileMetadata.Size
 		} else if fi.IsDir() {
 			// Directory is found, read the directory metadata file
@@ -207,22 +207,23 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			if err != nil {
 				return siadir.Metadata{}, err
 			}
+
 			health = dirMetadata.Health
+			stuckHealth = dirMetadata.StuckHealth
+			redundancy = dirMetadata.MinRedundancy
+			numStuckChunks = dirMetadata.NumStuckChunks
 			lastHealthCheckTime = dirMetadata.LastHealthCheckTime
 			modTime = dirMetadata.ModTime
-			numStuckChunks = dirMetadata.NumStuckChunks
-			redundancy = dirMetadata.MinRedundancy
-			stuckHealth = dirMetadata.StuckHealth
-			// Update AggregateNumFiles
+
+			// Update aggregate fields.
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
-			// Update NumSubDirs
-			metadata.NumSubDirs++
-			// Update Size
 			metadata.AggregateSize += dirMetadata.AggregateSize
+			metadata.NumSubDirs++
 		} else {
 			// Ignore everything that is not a SiaFile or a directory
 			continue
 		}
+
 		// Update Health and Stuck Health
 		if health > metadata.Health {
 			metadata.Health = health
@@ -230,16 +231,16 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		if stuckHealth > metadata.StuckHealth {
 			metadata.StuckHealth = stuckHealth
 		}
+		// Update MinRedundancy
+		if redundancy < metadata.MinRedundancy {
+			metadata.MinRedundancy = redundancy
+		}
 		// Update ModTime
 		if modTime.After(metadata.ModTime) {
 			metadata.ModTime = modTime
 		}
 		// Increment NumStuckChunks
 		metadata.NumStuckChunks += numStuckChunks
-		// Update MinRedundancy
-		if redundancy < metadata.MinRedundancy {
-			metadata.MinRedundancy = redundancy
-		}
 		// Update LastHealthCheckTime if the file or sub directory
 		// lastHealthCheckTime is older (before) the current lastHealthCheckTime
 		if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) || lastHealthCheckTime.Equal(metadata.LastHealthCheckTime) {
