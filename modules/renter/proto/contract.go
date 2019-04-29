@@ -393,7 +393,9 @@ func (c *SafeContract) unappliedHeader() (h contractHeader) {
 
 // syncRevision checks whether rev accords with the SafeContract's most recent
 // revision; if it does not, syncRevision attempts to synchronize with rev by
-// committing any uncommitted WAL transactions.
+// committing any uncommitted WAL transactions. If the revisions still do not
+// match, and the host's revision is ahead of the renter's, syncRevision uses
+// the host's revision.
 func (c *SafeContract) syncRevision(rev types.FileContractRevision) error {
 	ourRev := c.header.LastRevision()
 	if rev.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
@@ -405,7 +407,13 @@ func (c *SafeContract) syncRevision(rev types.FileContractRevision) error {
 			return errors.AddContext(err, "failed to commit transactions")
 		}
 		ourRev = c.header.LastRevision()
-		if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
+		if rev.NewRevisionNumber >= ourRev.NewRevisionNumber {
+			// If the host's revision is ahead of ours, just use it. This isn't
+			// ideal, but the alternative is not being able to use the contract
+			// at all, and we *did* sign this revision, so there isn't much the
+			// host can do to exploit this.
+			c.header.Transaction.FileContractRevisions[0] = rev
+		} else {
 			return &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
 		}
 	}
