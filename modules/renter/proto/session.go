@@ -812,7 +812,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 	aead, challenge, err := performSessionHandshake(conn, host.PublicKey)
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return nil, errors.AddContext(err, "session handshake failed")
 	}
 	s := &Session{
 		aead:        aead,
