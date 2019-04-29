@@ -178,7 +178,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
 			fileSiaPath, err := siaPath.Join(fName)
 			if err != nil {
-				return siadir.Metadata{}, err
+				r.log.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
+				continue
 			}
 			fileMetadata, err := r.managedCalculateFileMetadata(fileSiaPath)
 			if err != nil {
