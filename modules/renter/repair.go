@@ -833,7 +833,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		timeSinceLastCheck := time.Since(lastHealthCheckTime)
 		if timeSinceLastCheck < healthCheckInterval {
 			// Sleep unitl the least recent check is outside the check interval.
-			sleepDuration := healthCheckInterfval - timeSinceLastCheck
+			sleepDuration := healthCheckInterval - timeSinceLastCheck
 			wakeSignal := time.After(sleepDuration)
 			select {
 			case <-r.tg.StopChan():
