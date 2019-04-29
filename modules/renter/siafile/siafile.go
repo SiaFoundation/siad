@@ -819,9 +819,9 @@ func (sf *SiaFile) hostKey(offset uint32) HostPublicKey {
 		// Causes tests to fail. The following for loop will try to fix the
 		// corruption on release builds.
 		build.Critical("piece.HostTableOffset >= len(sf.pubKeyTable)")
-	}
-	for offset >= uint32(len(sf.pubKeyTable)) {
-		sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+		for offset >= uint32(len(sf.pubKeyTable)) {
+			sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+		}
 	}
 	return sf.pubKeyTable[offset]
 }
