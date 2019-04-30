@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -232,6 +233,20 @@ func (c *SafeContract) makeUpdateSetRoot(root crypto.Hash, index int) writeahead
 }
 
 func (c *SafeContract) applySetHeader(h contractHeader) error {
+	if build.DEBUG {
+		// read the existing header on disk, to make sure we aren't overwriting
+		// it with an older revision
+		var oldHeader contractHeader
+		headerBytes := make([]byte, contractHeaderSize)
+		if _, err := c.headerFile.ReadAt(headerBytes, 0); err == nil {
+			if err := encoding.Unmarshal(headerBytes, &oldHeader); err == nil {
+				if oldHeader.LastRevision().NewRevisionNumber > h.LastRevision().NewRevisionNumber {
+					build.Critical("overwriting a newer revision:", oldHeader.LastRevision().NewRevisionNumber, h.LastRevision().NewRevisionNumber)
+				}
+			}
+		}
+	}
+
 	headerBytes := make([]byte, contractHeaderSize)
 	copy(headerBytes, encoding.Marshal(h))
 	if _, err := c.headerFile.WriteAt(headerBytes, 0); err != nil {
