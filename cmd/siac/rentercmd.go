@@ -859,7 +859,7 @@ func renterdirdownload(path, destination string) {
 	}
 	// Handle potential errors.
 	if len(failedDownloads) == 0 {
-		fmt.Printf("\nDownloaded '%s' to '%s - %v in %.2v'.\n", path, abs(destination), filesizeUnits(totalSize), time.Since(start))
+		fmt.Printf("\nDownloaded '%s' to '%s - %v in %.2v'.\n", path, abs(destination), filesizeUnits(totalSize), time.Since(start).Round(time.Millisecond))
 		return
 	}
 	// Print errors.
@@ -966,7 +966,7 @@ func renterfilesdownload(path, destination string) {
 	if len(failedDownloads) > 0 {
 		die("\nDownload could not be completed:", failedDownloads[0].Error)
 	}
-	fmt.Printf("\nDownloaded '%s' to '%s - %v in %.2v'.\n", path, abs(destination), filesizeUnits(file.File.Filesize), time.Since(start))
+	fmt.Printf("\nDownloaded '%s' to '%s - %v in %.2v'.\n", path, abs(destination), filesizeUnits(file.File.Filesize), time.Since(start).Round(time.Millisecond))
 }
 
 // rentertriggercontractrecoveryrescancmd starts a new scan for recoverable
