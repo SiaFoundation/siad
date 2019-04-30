@@ -314,6 +314,8 @@ func TestSiaDirRename(t *testing.T) {
 		if fastrand.Intn(2) == 0 {
 			wg.Add(1)
 			go f(entry)
+		} else {
+			entry.Close()
 		}
 	}
 	// Wait a second for the goroutines to write to disk a few times.
