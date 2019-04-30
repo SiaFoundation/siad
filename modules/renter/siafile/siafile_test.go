@@ -20,10 +20,10 @@ func dummyEntry(s *SiaFile) *siaFileSetEntry {
 	return &siaFileSetEntry{
 		SiaFile: s,
 		siaFileSet: &SiaFileSet{
-			siaFileDir:   filepath.Dir(s.SiaFilePath()),
-			siaFileMap:   make(map[SiafileUID]*siaFileSetEntry),
-			siapathToUID: make(map[modules.SiaPath]SiafileUID),
-			wal:          nil,
+			staticSiaFileDir: filepath.Dir(s.SiaFilePath()),
+			siaFileMap:       make(map[SiafileUID]*siaFileSetEntry),
+			siapathToUID:     make(map[modules.SiaPath]SiafileUID),
+			wal:              nil,
 		},
 		threadMap: make(map[uint64]threadInfo),
 	}

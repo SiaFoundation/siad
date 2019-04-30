@@ -76,13 +76,13 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 }
 
 // FileList returns all of the files that the renter has.
-func (r *Renter) FileList() ([]modules.FileInfo, error) {
+func (r *Renter) FileList(cached bool) ([]modules.FileInfo, error) {
 	if err := r.tg.Add(); err != nil {
 		return []modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	return r.staticFileSet.FileList(offlineMap, goodForRenewMap, contractsMap)
+	return r.staticFileSet.FileList(cached, offlineMap, goodForRenewMap, contractsMap)
 }
 
 // File returns file from siaPath queried by user.

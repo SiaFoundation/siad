@@ -380,7 +380,7 @@ func TestRename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newSiaFilePath := newSiaPath.SiaFileSysPath(sfs.siaFileDir)
+	newSiaFilePath := newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir)
 	oldSiaFilePath := entry.siaFilePath
 
 	// Rename file
