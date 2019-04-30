@@ -223,7 +223,7 @@ Contracts:      %v
 // renteruploadscmd is the handler for the command `siac renter uploads`.
 // Lists files currently uploading.
 func renteruploadscmd() {
-	rf, err := httpClient.RenterFilesGet()
+	rf, err := httpClient.RenterFilesGet(false)
 	if err != nil {
 		die("Could not get upload queue:", err)
 	}
@@ -1282,7 +1282,7 @@ func renterfilesrenamecmd(path, newpath string) {
 // renterfilesunstuckcmd is the handler for the command `siac renter
 // unstuckall`. Sets all files to unstuck.
 func renterfilesunstuckcmd() {
-	rfg, err := httpClient.RenterFilesGet()
+	rfg, err := httpClient.RenterFilesGet(false)
 	if err != nil {
 		die("Couldn't get list of all files:", err)
 	}
