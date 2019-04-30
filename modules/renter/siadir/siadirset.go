@@ -52,8 +52,9 @@ type (
 	}
 
 	// A RenameDirFunc is a function that can be used to rename a SiaDir. It's
-	// passed to the SiaFileSet to rename the direcory after already loaded SiaFiles
-	// are locked.
+	// passed to the SiaFileSet to rename the direcory after already loaded
+	// SiaFiles are locked. A RenameDirFunc is assumed to lock the SiaDirSet and
+	// can therefore not be called from a locked SiaDirSet.
 	RenameDirFunc func(oldPath, newPath modules.SiaPath) error
 )
 
@@ -331,8 +332,8 @@ func (sds *SiaDirSet) Rename(oldPath, newPath modules.SiaPath) error {
 	for _, entry := range lockedDirs {
 		sp, err := entry.siaPath.Rebase(oldPath, newPath)
 		if err != nil {
-			build.Critical("Joining siapaths shouldn't fail", err)
-			break
+			build.Critical("Rebasing siapaths shouldn't fail", err)
+			continue
 		}
 		// Update the siapath of the entry and the siaDirMap.
 		delete(sds.siaDirMap, entry.siaPath)
