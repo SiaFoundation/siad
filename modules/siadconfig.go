@@ -47,7 +47,7 @@ func (cfg *SiadConfig) SetRatelimit(readBPS, writeBPS int64) error {
 	if readBPS == 0 && writeBPS == 0 {
 		GlobalRateLimits.SetLimits(0, 0, 0)
 	} else {
-		GlobalRateLimits.SetLimits(readBPS, writeBPS, 4*4096)
+		GlobalRateLimits.SetLimits(readBPS, writeBPS, 0)
 	}
 	// Persist settings.
 	cfg.ReadBPS, cfg.WriteBPS, cfg.PacketSize = GlobalRateLimits.Limits()
@@ -75,9 +75,9 @@ func NewConfig(path string) (*SiadConfig, error) {
 		return nil, err
 	} else if os.IsNotExist(err) {
 		// Otherwise init with default values.
-		cfg.ReadBPS = 0           // unlimited
-		cfg.WriteBPS = 0          // unlimited
-		cfg.PacketSize = 4 * 4096 // 16 kib
+		cfg.ReadBPS = 0    // unlimited
+		cfg.WriteBPS = 0   // unlimited
+		cfg.PacketSize = 0 // unlimited
 	}
 	// Init the global ratelimit.
 	GlobalRateLimits.SetLimits(cfg.ReadBPS, cfg.WriteBPS, cfg.PacketSize)

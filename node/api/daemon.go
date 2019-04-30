@@ -316,13 +316,15 @@ type DaemonSettingsGet struct {
 	MaxUploadSpeed   int64 `json:"maxuploadspeed"`
 }
 
-// gatewayHandlerGET handles the API call asking for the gatway status.
+// daemonSettingsHandlerGET handles the API call asking for the daemon's
+// settings.
 func (api *API) daemonSettingsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	gmds, gmus, _ := modules.GlobalRateLimits.Limits()
 	WriteJSON(w, DaemonSettingsGet{gmds, gmus})
 }
 
-// gatewayHandlerPOST handles the API call changing gateway specific settings.
+// daemonSettingsHandlerPOST handles the API call changing daemon specific
+// settings.
 func (api *API) daemonSettingsHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	maxDownloadSpeed, maxUploadSpeed, _ := modules.GlobalRateLimits.Limits()
 	// Scan the download speed limit. (optional parameter)
