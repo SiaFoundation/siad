@@ -301,6 +301,17 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 	return incompleteChunks
 }
 
+// managedBlockUntilSynced will block until the contractor is synced with the
+// peer-to-peer network.
+func (r *Renter) managedBlockUntilSynced() bool {
+	select {
+	case <-r.tg.StopChan():
+		return false
+	case <-r.hostContractor.Synced():
+		return true
+	}
+}
+
 // managedBuildAndPushRandomChunk randomly selects a file and builds the
 // unfinished chunks, then randomly adds one chunk to the upload heap
 func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
@@ -642,6 +653,12 @@ func (r *Renter) threadedUploadAndRepair() {
 		case <-r.tg.StopChan():
 			return
 		default:
+		}
+
+		// Wait until the contractor is synced.
+		if !r.managedBlockUntilSynced() {
+			// The renter shut down before the contract was synced.
+			return
 		}
 
 		// Wait until the renter is online to proceed. This function will return
