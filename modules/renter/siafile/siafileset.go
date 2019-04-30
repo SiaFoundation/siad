@@ -27,9 +27,9 @@ type (
 	// SiaFileSet is a helper struct responsible for managing the renter's
 	// siafiles in memory
 	SiaFileSet struct {
-		siaFileDir   string
-		siaFileMap   map[SiafileUID]*siaFileSetEntry
-		siapathToUID map[modules.SiaPath]SiafileUID
+		staticSiaFileDir string
+		siaFileMap       map[SiafileUID]*siaFileSetEntry
+		siapathToUID     map[modules.SiaPath]SiafileUID
 
 		// utilities
 		mu  sync.Mutex
@@ -65,10 +65,10 @@ type (
 // NewSiaFileSet initializes and returns a SiaFileSet
 func NewSiaFileSet(filesDir string, wal *writeaheadlog.WAL) *SiaFileSet {
 	return &SiaFileSet{
-		siaFileDir:   filesDir,
-		siaFileMap:   make(map[SiafileUID]*siaFileSetEntry),
-		siapathToUID: make(map[modules.SiaPath]SiafileUID),
-		wal:          wal,
+		staticSiaFileDir: filesDir,
+		siaFileMap:       make(map[SiafileUID]*siaFileSetEntry),
+		siapathToUID:     make(map[modules.SiaPath]SiafileUID),
+		wal:              wal,
 	}
 }
 
@@ -193,7 +193,7 @@ func (sfs *SiaFileSet) createAndApplyTransaction(updates ...writeaheadlog.Update
 // loaded from disk, the siapaths should always be correct. It's argument is
 // also an entry instead of the path and dir.
 func (sfs *SiaFileSet) siaPath(entry *siaFileSetEntry) (sp modules.SiaPath) {
-	if err := sp.FromSysPath(entry.SiaFilePath(), sfs.siaFileDir); err != nil {
+	if err := sp.FromSysPath(entry.SiaFilePath(), sfs.staticSiaFileDir); err != nil {
 		build.Critical("Siapath of entry is corrupted. This shouldn't happen within the SiaFileSet", err)
 	}
 	return
@@ -225,7 +225,7 @@ func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 		return true
 	}
 	// Check for file on disk
-	_, err := os.Stat(siaPath.SiaFileSysPath(sfs.siaFileDir))
+	_, err := os.Stat(siaPath.SiaFileSysPath(sfs.staticSiaFileDir))
 	return !os.IsNotExist(err)
 }
 
@@ -300,7 +300,7 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)
 	if !exists {
 		// Try and Load File from disk
-		sf, err := LoadSiaFile(siaPath.SiaFileSysPath(sfs.siaFileDir), sfs.wal)
+		sf, err := LoadSiaFile(siaPath.SiaFileSysPath(sfs.staticSiaFileDir), sfs.wal)
 		if os.IsNotExist(err) {
 			return nil, ErrUnknownPath
 		}
@@ -344,7 +344,7 @@ func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, erro
 		return entry.Metadata(), nil
 	}
 	// Try and Load Metadata from disk
-	md, err := LoadSiaFileMetadata(siaPath.SiaFileSysPath(sfs.siaFileDir))
+	md, err := LoadSiaFileMetadata(siaPath.SiaFileSysPath(sfs.staticSiaFileDir))
 	if os.IsNotExist(err) {
 		return Metadata{}, ErrUnknownPath
 	}
@@ -367,7 +367,7 @@ func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	entry, _, exists := sfs.siaPathToEntryAndUID(siaPath)
 	if !exists {
 		// Check if the file exists on disk
-		siaFilePath := siaPath.SiaFileSysPath(sfs.siaFileDir)
+		siaFilePath := siaPath.SiaFileSysPath(sfs.staticSiaFileDir)
 		_, err := os.Stat(siaFilePath)
 		if os.IsNotExist(err) {
 			return ErrUnknownPath
@@ -466,9 +466,13 @@ func (sfs *SiaFileSet) CachedFileInfo(siaPath modules.SiaPath, offline map[strin
 // FileList returns all of the files that the renter has. This method will used
 // cached values for health, redundancy etc.
 func (sfs *SiaFileSet) FileList(cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, error) {
-	// Guarantee that no other thread is writing to sfs.
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
+	// Guarantee that no other thread is writing to sfs. This is only necessary
+	// when 'cached' is true since it allows us to call 'readLockCachedFileInfo'.
+	// Otherwise we need to hold the lock for every call to 'fileInfo' anyway.
+	if cached {
+		sfs.mu.Lock()
+		defer sfs.mu.Unlock()
+	}
 	// Declare a worker method to spawn workers which keep loading files from disk
 	// until the loadChan is closed.
 	fileList := []modules.FileInfo{}
@@ -479,7 +483,7 @@ func (sfs *SiaFileSet) FileList(cached bool, offlineMap map[string]bool, goodFor
 		for path := range loadChan {
 			// Load the Siafile.
 			var siaPath modules.SiaPath
-			if err := siaPath.LoadSysPath(sfs.siaFileDir, path); err != nil {
+			if err := siaPath.LoadSysPath(sfs.staticSiaFileDir, path); err != nil {
 				continue
 			}
 			var file modules.FileInfo
@@ -487,7 +491,9 @@ func (sfs *SiaFileSet) FileList(cached bool, offlineMap map[string]bool, goodFor
 			if cached {
 				file, err = sfs.readLockCachedFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
 			} else {
+				sfs.mu.Lock()
 				file, err = sfs.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+				sfs.mu.Unlock()
 			}
 			if os.IsNotExist(err) || err == ErrUnknownPath {
 				continue
@@ -507,7 +513,7 @@ func (sfs *SiaFileSet) FileList(cached bool, offlineMap map[string]bool, goodFor
 		go worker()
 	}
 	// Walk over the whole tree.
-	err := godirwalk.Walk(sfs.siaFileDir, &godirwalk.Options{
+	err := godirwalk.Walk(sfs.staticSiaFileDir, &godirwalk.Options{
 		Unsorted: true,
 		Callback: func(path string, info *godirwalk.Dirent) error {
 			// Skip folders and non-sia files.
@@ -537,7 +543,7 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 		return nil, ErrPathOverload
 	}
 	// Make sure there are no leading slashes
-	siaFilePath := up.SiaPath.SiaFileSysPath(sfs.siaFileDir)
+	siaFilePath := up.SiaPath.SiaFileSysPath(sfs.staticSiaFileDir)
 	sf, err := New(up.SiaPath, siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode)
 	if err != nil {
 		return nil, err
@@ -596,7 +602,7 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 	delete(sfs.siapathToUID, siaPath)
 
 	// Update the siafile to have a new name.
-	return entry.Rename(newSiaPath, newSiaPath.SiaFileSysPath(sfs.siaFileDir))
+	return entry.Rename(newSiaPath, newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir))
 }
 
 // healthPercentage returns the health in a more human understandable format out

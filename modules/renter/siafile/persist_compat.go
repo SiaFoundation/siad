@@ -67,7 +67,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticPieceSize:         fd.PieceSize,
 			StaticUniqueID:          SiafileUID(fd.UID),
 		},
-		siaFilePath: siaPath.SiaFileSysPath(sfs.siaFileDir),
+		siaFilePath: siaPath.SiaFileSysPath(sfs.staticSiaFileDir),
 		deps:        modules.ProdDependencies,
 		deleted:     fd.Deleted,
 		wal:         sfs.wal,
