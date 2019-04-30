@@ -403,15 +403,6 @@ func (sfs *SiaFileSet) Exists(siaPath modules.SiaPath) bool {
 // fileInfo takes the maps returned by renter.managedContractUtilityMaps for
 // many files at once.
 func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
-	// 	sfs.mu.Lock()
-	// 	defer sfs.mu.Unlock()
-	// 	return sfs.fileInfo(siaPath, offline, goodForRenew, contracts)
-	// }
-
-	// // fileInfo returns information on a siafile. As a performance optimization, the
-	// // fileInfo takes the maps returned by renter.managedContractUtilityMaps for
-	// // many files at once.
-	// func (sfs *SiaFileSet) fileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	entry, err := sfs.Open(siaPath)
 	if err != nil {
 		return modules.FileInfo{}, err
