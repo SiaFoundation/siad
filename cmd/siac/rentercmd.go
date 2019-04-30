@@ -822,10 +822,10 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 	// Call downloadDir on all subdirs.
 	for i := 1; i < len(rd.Directories); i++ {
 		subDir := rd.Directories[i]
-		rtfs, rskipped, totalSize, rerr := downloadDir(subDir.SiaPath, filepath.Join(destination, subDir.SiaPath.Name()))
+		rtfs, rskipped, totalSubSize, rerr := downloadDir(subDir.SiaPath, filepath.Join(destination, subDir.SiaPath.Name()))
 		tfs = append(tfs, rtfs...)
 		skipped = append(skipped, rskipped...)
-		totalSize += totalSize
+		totalSize += totalSubSize
 		err = errors.Compose(err, rerr)
 	}
 	return
@@ -954,7 +954,6 @@ func renterfilesdownload(path, destination string) {
 		fmt.Printf("Queued Download '%s' to %s.\n", siaPath.String(), abs(destination))
 		return
 	}
-
 
 	// If the download is blocking, display progress as the file downloads.
 	file, err := httpClient.RenterFileGet(siaPath)
