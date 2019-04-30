@@ -428,7 +428,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 	numDownloads := 10
 	if len(rdg.Downloads) < numDownloads {
 		remainingDownloads := numDownloads - len(rdg.Downloads)
-		rf, err := r.RenterFilesGet()
+		rf, err := r.RenterFilesGet(false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -442,7 +442,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 			if err != nil {
 				t.Fatal("Failed to upload a file for testing: ", err)
 			}
-			rf, err = r.RenterFilesGet()
+			rf, err = r.RenterFilesGet(false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1699,7 +1699,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	time.Sleep(time.Second)
 
 	// Redundancy should still be 0.
-	renterFiles, err := renter.RenterFilesGet()
+	renterFiles, err := renter.RenterFilesGet(false)
 	if err != nil {
 		t.Fatal("Failed to get files")
 	}
@@ -1755,7 +1755,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 
 	// The uploaded files should have 0x redundancy now.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rf, err := renter.RenterFilesGet()
+		rf, err := renter.RenterFilesGet(false)
 		if err != nil {
 			return errors.New("Failed to get files")
 		}
@@ -2450,7 +2450,7 @@ func TestRenterLosingHosts(t *testing.T) {
 
 	// Now that the renter only has one host online the redundancy should be 0.5
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		files, err := r.RenterFilesGet()
+		files, err := r.RenterFilesGet(false)
 		if err != nil {
 			return err
 		}
@@ -2527,7 +2527,7 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	}
 
 	// File should be at redundancy of 1.5
-	files, err := r.RenterFilesGet()
+	files, err := r.RenterFilesGet(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2584,7 +2584,7 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		files, err := r.RenterFilesGet()
+		files, err := r.RenterFilesGet(false)
 		if err != nil {
 			return err
 		}
@@ -4432,7 +4432,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Check if there are already uploaded file we can use.
-	rfg, err := r.RenterFilesGet()
+	rfg, err := r.RenterFilesGet(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4449,7 +4449,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 	// Get a file.
-	rfg, err = r.RenterFilesGet()
+	rfg, err = r.RenterFilesGet(false)
 	if err != nil {
 		t.Fatal(err)
 	}
