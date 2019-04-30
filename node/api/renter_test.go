@@ -1805,7 +1805,7 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		files, err := st.renter.FileList()
+		files, err := st.renter.FileList(false)
 		if err != nil {
 			return err
 		}

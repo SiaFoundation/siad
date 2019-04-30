@@ -578,8 +578,9 @@ type Renter interface {
 	// File returns information on specific file queried by user
 	File(siaPath SiaPath) (FileInfo, error)
 
-	// FileList returns information on all of the files stored by the renter.
-	FileList() ([]FileInfo, error)
+	// FileList returns information on all of the files stored by the renter. The
+	// 'cached' argument specifies whether cached values should be returned or not.
+	FileList(cached bool) ([]FileInfo, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
 	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error

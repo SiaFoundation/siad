@@ -268,8 +268,8 @@ func (c *Client) RenterFileGet(siaPath modules.SiaPath) (rf api.RenterFile, err 
 }
 
 // RenterFilesGet requests the /renter/files resource.
-func (c *Client) RenterFilesGet() (rf api.RenterFiles, err error) {
-	err = c.get("/renter/files", &rf)
+func (c *Client) RenterFilesGet(cached bool) (rf api.RenterFiles, err error) {
+	err = c.get("/renter/files?cached="+fmt.Sprint(cached), &rf)
 	return
 }
 
