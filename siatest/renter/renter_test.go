@@ -903,37 +903,17 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to get renter files: ", err)
 	}
 
-	// Loop over files. Files should be returned in the same order due to how
-	// the renter directory is traversed to read all the files which allows us
-	// to use the index of the file.
+	// Loop over files and compare against single file endpoint
 	for i := range files {
-		// The comparison between the File and the Files endpoint need to be in
-		// a build.Retry due to the Files endpoint using cached values. These
-		// cached values are updated by background loops so if they do not match
-		// the values returned by the File endpoint then they should be updated
-		// to match soon.
-		err = build.Retry(100, 100*time.Millisecond, func() error {
-			// Get Single File
-			rf, err := renter.RenterFileGet(files[i].SiaPath)
-			if err != nil {
-				return err
-			}
-
-			// Compare File result and Files Results
-			if reflect.DeepEqual(files[i], rf.File) {
-				return nil
-			}
-			errMessage := fmt.Errorf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
-
-			// Entries not equal get files again
-			files, err = renter.Files()
-			if err != nil {
-				errMessage = errors.Compose(err, errMessage)
-			}
-			return errMessage
-		})
+		// Get Single File
+		rf, err := renter.RenterFileGet(files[i].SiaPath)
 		if err != nil {
 			t.Fatal(err)
+		}
+
+		// Compare File result and Files Results
+		if !reflect.DeepEqual(files[i], rf.File) {
+			t.Fatalf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
 		}
 	}
 }
