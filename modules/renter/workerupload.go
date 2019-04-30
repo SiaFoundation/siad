@@ -156,7 +156,7 @@ func (w *worker) onUploadCooldown() (bool, time.Duration) {
 	for i := 0; i < w.uploadConsecutiveFailures && i < maxConsecutivePenalty; i++ {
 		requiredCooldown *= 2
 	}
-	return time.Now().Before(w.uploadRecentFailure.Add(requiredCooldown)), time.Since(w.uploadRecentFailure.Add(requiredCooldown))
+	return time.Now().Before(w.uploadRecentFailure.Add(requiredCooldown)), w.uploadRecentFailure.Add(requiredCooldown).Sub(time.Now())
 }
 
 // managedProcessUploadChunk will process a chunk from the worker chunk queue.
