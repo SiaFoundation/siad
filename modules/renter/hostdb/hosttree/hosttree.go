@@ -303,8 +303,11 @@ func (ht *HostTree) Select(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 // the same elements but sometimes it is useful to block a host without blocking
 // its IP range.
 //
-// Hosts with a score of 1 will be ignored, as it is assumed that these hosts
-// are meant to be unreachable.
+// Hosts with a score of 1 will be ignored. 1 is the lowest score possible, at
+// which point it's impossible to distinguish between hosts. Any sane scoring
+// system should always have scores greater than 1 unless the host is
+// intentionally being given a low score to indicate that the host should not be
+// used.
 func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaPublicKey) []modules.HostDBEntry {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
@@ -349,7 +352,7 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 			len(node.entry.ScanHistory) > 0 &&
 			node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success &&
 			!filter.Filtered(node.entry.NetAddress) &&
-			node.weight.Cmp(weightOne) > 0 {
+			node.entry.weight.Cmp(weightOne) > 0 {
 			// The host must be online and accepting contracts to be returned
 			// by the random function. It also has to pass the addressFilter
 			// check.
