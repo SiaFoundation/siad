@@ -210,7 +210,7 @@ func (tn *TestNode) File(rf *RemoteFile) (modules.FileInfo, error) {
 
 // Files lists the files tracked by the renter
 func (tn *TestNode) Files() ([]modules.FileInfo, error) {
-	rf, err := tn.RenterFilesGet()
+	rf, err := tn.RenterFilesGet(false)
 	if err != nil {
 		return nil, err
 	}

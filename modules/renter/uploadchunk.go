@@ -563,7 +563,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	if err != nil {
 		return
 	}
-	r.managedBubbleMetadata(dirSiaPath)
+	go r.threadedBubbleMetadata(dirSiaPath)
 
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop
