@@ -403,15 +403,15 @@ func (sfs *SiaFileSet) Exists(siaPath modules.SiaPath) bool {
 // fileInfo takes the maps returned by renter.managedContractUtilityMaps for
 // many files at once.
 func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	return sfs.fileInfo(siaPath, offline, goodForRenew, contracts)
-}
+	// 	sfs.mu.Lock()
+	// 	defer sfs.mu.Unlock()
+	// 	return sfs.fileInfo(siaPath, offline, goodForRenew, contracts)
+	// }
 
-// fileInfo returns information on a siafile. As a performance optimization, the
-// fileInfo takes the maps returned by renter.managedContractUtilityMaps for
-// many files at once.
-func (sfs *SiaFileSet) fileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	// // fileInfo returns information on a siafile. As a performance optimization, the
+	// // fileInfo takes the maps returned by renter.managedContractUtilityMaps for
+	// // many files at once.
+	// func (sfs *SiaFileSet) fileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	entry, err := sfs.Open(siaPath)
 	if err != nil {
 		return modules.FileInfo{}, err
@@ -491,9 +491,10 @@ func (sfs *SiaFileSet) FileList(cached bool, offlineMap map[string]bool, goodFor
 			if cached {
 				file, err = sfs.readLockCachedFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
 			} else {
-				sfs.mu.Lock()
-				file, err = sfs.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
-				sfs.mu.Unlock()
+				// It is ok to call an Exported method here because we only
+				// acquire the siaFileSet lock if we are requesting the cached
+				// values
+				file, err = sfs.FileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
 			}
 			if os.IsNotExist(err) || err == ErrUnknownPath {
 				continue
