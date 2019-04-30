@@ -85,7 +85,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 
 	var renterSeed proto.RenterSeed
 	if haveSeed {
-		renterSeed := proto.DeriveRenterSeed(s)
+		renterSeed = proto.DeriveRenterSeed(s)
 		defer fastrand.Read(renterSeed[:])
 	}
 
