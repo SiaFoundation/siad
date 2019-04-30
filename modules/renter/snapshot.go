@@ -20,6 +20,14 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// A snapshotEntry is an entry within the snapshot table, identifying both the
+// snapshot metadata and the other sectors on the host storing the snapshot
+// data.
+type snapshotEntry struct {
+	Meta        modules.UploadedBackup
+	DataSectors [4]crypto.Hash // pointers to sectors containing snapshot .sia file
+}
+
 var (
 	// SnapshotKeySpecifier is the specifier used for deriving the secret used to
 	// encrypt a snapshot from the RenterSeed.
@@ -161,14 +169,6 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	defer s.Close()
 	_, err = io.Copy(dstFile, s)
 	return err
-}
-
-// A snapshotEntry is an entry within the snapshot table, identifying both the
-// snapshot metadata and the other sectors on the host storing the snapshot
-// data.
-type snapshotEntry struct {
-	Meta        modules.UploadedBackup
-	DataSectors [4]crypto.Hash // pointers to sectors containing snapshot .sia file
 }
 
 // uploadSnapshot uploads a snapshot .sia file to all hosts.

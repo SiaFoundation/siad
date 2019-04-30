@@ -179,7 +179,10 @@ func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, 
 	return
 }
 
-// RenterCreateBackupPost creates a backup of the SiaFiles of the renter.
+// RenterCreateBackupPost creates a backup of the SiaFiles of the renter. If the
+// remote flag is set, the backup is uploaded to hosts, and dst is used as the
+// backup's name. Otherwise, dst is the absolute path on disk where the backup
+// is stored.
 func (c *Client) RenterCreateBackupPost(dst string, remote bool) (err error) {
 	values := url.Values{}
 	values.Set("destination", dst)
@@ -188,7 +191,9 @@ func (c *Client) RenterCreateBackupPost(dst string, remote bool) (err error) {
 	return
 }
 
-// RenterRecoverBackupPost loads a backup of the SiaFiles of the renter.
+// RenterRecoverBackupPost loads a backup of the SiaFiles of the renter. If the
+// remote flag is set, the backup is downloaded from host, and src must match
+// the name used when the backup was uploaded.
 func (c *Client) RenterRecoverBackupPost(src string, remote bool) (err error) {
 	values := url.Values{}
 	values.Set("source", src)
@@ -198,7 +203,7 @@ func (c *Client) RenterRecoverBackupPost(src string, remote bool) (err error) {
 }
 
 // RenterUploadedBackups lists the backups the renter has uploaded to hosts.
-func (c *Client) RenterUploadedBackups() (ubs []modules.UploadedBackup, err error) {
+func (c *Client) RenterUploadedBackups() (ubs []api.RenterUploadedBackup, err error) {
 	err = c.get("/renter/uploadedbackups", &ubs)
 	return
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -170,6 +171,13 @@ type (
 		ASCIIsia string `json:"asciisia"`
 	}
 
+	// RenterUploadedBackup describes an uploaded backup.
+	RenterUploadedBackup struct {
+		Name         string          `json:"name"`
+		CreationDate types.Timestamp `json:"creationdate"`
+		Size         uint64          `json:"size"`
+	}
+
 	// DownloadInfo contains all client-facing information of a file.
 	DownloadInfo struct {
 		Destination     string          `json:"destination"`     // The destination of the download.
@@ -309,7 +317,15 @@ func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	WriteJSON(w, backups)
+	rups := make([]RenterUploadedBackup, len(backups))
+	for i, b := range backups {
+		rups[i] = RenterUploadedBackup{
+			Name:         string(bytes.TrimRight(b.Name[:], string(0))),
+			CreationDate: b.CreationDate,
+			Size:         b.Size,
+		}
+	}
+	WriteJSON(w, rups)
 }
 
 // parseErasureCodingParameters parses the supplied string values and creates
