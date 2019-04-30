@@ -403,6 +403,15 @@ func (sfs *SiaFileSet) Exists(siaPath modules.SiaPath) bool {
 // fileInfo takes the maps returned by renter.managedContractUtilityMaps for
 // many files at once.
 func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.fileInfo(siaPath, offline, goodForRenew, contracts)
+}
+
+// fileInfo returns information on a siafile. As a performance optimization, the
+// fileInfo takes the maps returned by renter.managedContractUtilityMaps for
+// many files at once.
+func (sfs *SiaFileSet) fileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	entry, err := sfs.Open(siaPath)
 	if err != nil {
 		return modules.FileInfo{}, err
@@ -456,7 +465,7 @@ func (sfs *SiaFileSet) CachedFileInfo(siaPath modules.SiaPath, offline map[strin
 
 // FileList returns all of the files that the renter has. This method will used
 // cached values for health, redundancy etc.
-func (sfs *SiaFileSet) FileList(offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, error) {
+func (sfs *SiaFileSet) FileList(cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, error) {
 	// Guarantee that no other thread is writing to sfs.
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
@@ -473,7 +482,13 @@ func (sfs *SiaFileSet) FileList(offlineMap map[string]bool, goodForRenewMap map[
 			if err := siaPath.LoadSysPath(sfs.siaFileDir, path); err != nil {
 				continue
 			}
-			file, err := sfs.readLockCachedFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+			var file modules.FileInfo
+			var err error
+			if cached {
+				file, err = sfs.readLockCachedFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+			} else {
+				file, err = sfs.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+			}
 			if os.IsNotExist(err) || err == ErrUnknownPath {
 				continue
 			}
