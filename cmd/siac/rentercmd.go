@@ -779,7 +779,7 @@ Contract %v
 // location. It returns all the files for which a download was initialized as
 // tracked files and the ones which were ignored as skipped. Errors are composed
 // into a single error.
-func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, err error) {
+func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
 	rd, err := httpClient.RenterGetDir(siaPath)
 	if err != nil {
@@ -803,6 +803,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 			return
 		}
 		// Download file.
+		totalSize += file.Filesize
 		err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
@@ -821,9 +822,10 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 	// Call downloadDir on all subdirs.
 	for i := 1; i < len(rd.Directories); i++ {
 		subDir := rd.Directories[i]
-		rtfs, rskipped, rerr := downloadDir(subDir.SiaPath, filepath.Join(destination, subDir.SiaPath.Name()))
+		rtfs, rskipped, totalSize, rerr := downloadDir(subDir.SiaPath, filepath.Join(destination, subDir.SiaPath.Name()))
 		tfs = append(tfs, rtfs...)
 		skipped = append(skipped, rskipped...)
+		totalSize += totalSize
 		err = errors.Compose(err, rerr)
 	}
 	return
@@ -839,7 +841,8 @@ func renterdirdownload(path, destination string) {
 		die("Failed to parse SiaPath:", err)
 	}
 	// Download dir.
-	tfs, skipped, downloadErr := downloadDir(siaPath, destination)
+	start := time.Now()
+	tfs, skipped, totalSize, downloadErr := downloadDir(siaPath, destination)
 	if renterDownloadAsync && downloadErr != nil {
 		fmt.Println("At least one error occured when initializing the download:", downloadErr)
 	}
@@ -856,8 +859,8 @@ func renterdirdownload(path, destination string) {
 	}
 	// Handle potential errors.
 	if len(failedDownloads) == 0 {
-		fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
-		os.Exit(0)
+		fmt.Printf("\nDownloaded '%s' to '%s - %v bytes in %v'.\n", path, abs(destination), totalSize, time.Since(start))
+		return
 	}
 	// Print errors.
 	if downloadErr != nil {
@@ -936,9 +939,11 @@ func renterfilesdownload(path, destination string) {
 	if err == nil && fi.IsDir() {
 		destination = filepath.Join(destination, siaPath.Name())
 	}
+
 	// Queue the download. An error will be returned if the queueing failed, but
 	// the call will return before the download has completed. The call is made
 	// as an async call.
+	start := time.Now()
 	err = httpClient.RenterDownloadFullGet(siaPath, destination, true)
 	if err != nil {
 		die("Download could not be started:", err)
@@ -950,12 +955,18 @@ func renterfilesdownload(path, destination string) {
 		return
 	}
 
+
 	// If the download is blocking, display progress as the file downloads.
+	file, err := httpClient.RenterFileGet(siaPath)
+	if err != nil {
+		// Error ignored.
+	}
+
 	failedDownloads := downloadprogress([]trackedFile{{siaPath: siaPath, dst: destination}})
 	if len(failedDownloads) > 0 {
 		die("\nDownload could not be completed:", failedDownloads[0].Error)
 	}
-	fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
+	fmt.Printf("\nDownloaded '%s' to '%s - %v bytes in %v'.\n", path, abs(destination), file.File.Filesize, time.Since(start))
 }
 
 // rentertriggercontractrecoveryrescancmd starts a new scan for recoverable
