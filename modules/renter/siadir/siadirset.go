@@ -50,6 +50,11 @@ type (
 		callingLines []int
 		lockTime     time.Time
 	}
+
+	// A RenameDirFunc is a function that can be used to rename a SiaDir. It's
+	// passed to the SiaFileSet to rename the direcory after already loaded SiaFiles
+	// are locked.
+	RenameDirFunc func(oldPath, newPath modules.SiaPath) error
 )
 
 // newThreadType created a threadInfo entry for the threadMap
@@ -290,13 +295,10 @@ func (sds *SiaDirSet) UpdateMetadata(siaPath modules.SiaPath, metadata Metadata)
 	return entry.UpdateMetadata(metadata)
 }
 
-// A RenameDirFunc is a function that can be used to rename a SiaDir. It's
-// passed to the SiaFileSet to rename the direcory after already loaded SiaFiles
-// are locked.
-type RenameDirFunc func(oldPath, newPath modules.SiaPath) error
-
 // Rename renames a SiaDir on disk atomically by locking all the already loaded,
 // affected dirs and renaming the root.
+// NOTE: This shouldn't be called directly but instead be passed to
+// siafileset.RenameDir as an argument.
 func (sds *SiaDirSet) Rename(oldPath, newPath modules.SiaPath) error {
 	if oldPath.Equals(modules.RootSiaPath()) {
 		return errors.New("can't rename root dir")
