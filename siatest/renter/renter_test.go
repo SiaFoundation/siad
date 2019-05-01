@@ -2121,26 +2121,26 @@ func TestRenterContracts(t *testing.T) {
 			return err
 		}
 
-		// Confirm active and inactive contracts
-		inactiveContractIDMap := make(map[types.FileContractID]struct{})
-		for _, c := range rc.InactiveContracts {
-			inactiveContractIDMap[c.ID] = struct{}{}
+		// Confirm active and renewed contracts
+		renewedContractIDMap := make(map[types.FileContractID]struct{})
+		for _, c := range rc.RenewedContracts {
+			renewedContractIDMap[c.ID] = struct{}{}
 		}
 		for _, c := range activeContracts {
-			if _, ok := inactiveContractIDMap[c.ID]; !ok && c.UploadSpending.Cmp(startingUploadSpend) <= 0 {
-				return errors.New("ID from activeContacts not found in rc")
+			if _, ok := renewedContractIDMap[c.ID]; !ok && c.UploadSpending.Cmp(startingUploadSpend) <= 0 {
+				return errors.New("ID from activeContacts not found in renewedContracts")
 			}
 		}
 
-		// Check that there are inactive contracts, and that the inactive
+		// Check that there are renewed contracts, and that the renewed
 		// contracts correctly mark the GoodForUpload and GoodForRenew fields as
 		// false.
-		if len(rc.InactiveContracts) == 0 {
-			return errors.New("no reported inactive contracts")
+		if len(rc.RenewedContracts) == 0 {
+			return errors.New("no reported renewed contracts")
 		}
-		for _, c := range rc.InactiveContracts {
+		for _, c := range rc.RenewedContracts {
 			if c.GoodForUpload || c.GoodForRenew {
-				return errors.New("an inactive contract is being reported as either good for upload or good for renew")
+				return errors.New("an renewed contract is being reported as either good for upload or good for renew")
 			}
 		}
 
@@ -2192,7 +2192,7 @@ func TestRenterContracts(t *testing.T) {
 			return err
 		}
 		// checkContracts will confirm correct number of inactive and active contracts
-		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.RenewedContracts, append(rc.InactiveContracts, rcExpired.ExpiredContracts...)...), rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
