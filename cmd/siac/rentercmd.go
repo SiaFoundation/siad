@@ -107,7 +107,7 @@ var (
 		Use:   "ls [path]",
 		Short: "List the status of all files within specified dir",
 		Long:  "List the status of all files known to the renter within the specified folder on the Sia network. To query the root dir either '\"\"', '/' or '.' can be supplied",
-		Run:   wrap(renterfileslistcmd),
+		Run:   renterfileslistcmd,
 	}
 
 	renterFilesRenameCmd = &cobra.Command{
@@ -1199,7 +1199,18 @@ func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
 
 // renterfileslistcmd is the handler for the command `siac renter list`.
 // Lists files known to the renter on the network.
-func renterfileslistcmd(path string) {
+func renterfileslistcmd(cmd *cobra.Command, args []string) {
+	var path string
+	switch len(args) {
+	case 0:
+		path = "."
+	case 1:
+		path = args[0]
+	default:
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+	// Parse the input siapath.
 	var sp modules.SiaPath
 	var err error
 	if path == "." || path == "" || path == "/" {
