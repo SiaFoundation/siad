@@ -463,8 +463,11 @@ func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types
 				if err := c.headerFile.Sync(); err != nil {
 					return err
 				}
-				if err := t.SignalUpdatesApplied(); err != nil {
-					return err
+				// drop all unapplied transactions
+				for _, t := range c.unappliedTxns {
+					if err := t.SignalUpdatesApplied(); err != nil {
+						return err
+					}
 				}
 				c.unappliedTxns = nil
 				return nil
@@ -480,6 +483,13 @@ func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types
 	// will be incorrect.
 	c.header.Transaction.FileContractRevisions[0] = rev
 	c.header.Transaction.TransactionSignatures = sigs
+	// Drop the WAL transactions, since they can't conceivably help us.
+	for _, t := range c.unappliedTxns {
+		if err := t.SignalUpdatesApplied(); err != nil {
+			return err
+		}
+	}
+	c.unappliedTxns = nil
 	return nil
 }
 
