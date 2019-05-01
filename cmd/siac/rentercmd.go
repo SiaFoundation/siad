@@ -1162,10 +1162,7 @@ func (s byDirectoryInfo) Less(i, j int) bool {
 // subdirs.
 func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
 	rgd, err := httpClient.RenterGetDir(siaPath)
-	if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
-		die("no such directory")
-	}
-	if err != nil && !strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+	if err != nil {
 		die("failed to get dir info:", err)
 	}
 	dir := rgd.Directories[0]
