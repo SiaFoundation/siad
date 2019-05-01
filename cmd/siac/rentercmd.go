@@ -621,7 +621,7 @@ func rentercontractscmd() {
 		w.Flush()
 	}
 
-	fmt.Println("Renewed Contracts:")
+	fmt.Println("\nRenewed Contracts:")
 	if len(rc.RenewedContracts) == 0 {
 		fmt.Println("  No renewed contracts.")
 	} else {
