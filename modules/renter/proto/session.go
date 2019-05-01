@@ -20,6 +20,8 @@ import (
 )
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
+//
+// TODO: The session type needs access to a logger. Probably the renter logger.
 type Session struct {
 	aead        cipher.AEAD
 	challenge   [16]byte
@@ -189,7 +191,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	bandwidthPrice = bandwidthPrice.Add(s.host.DownloadBandwidthPrice.Mul64(uint64(proofSize)))
 
 	// to mitigate small errors (e.g. differing block heights), fudge the
-	// price and collateral by 0.2%.
+	// price and collateral by hostPriceLeeway.
 	cost := s.host.BaseRPCPrice.Add(bandwidthPrice).Add(storagePrice).MulFloat(1 + hostPriceLeeway)
 	collateral = collateral.MulFloat(1 - hostPriceLeeway)
 
@@ -198,7 +200,25 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 		return modules.RenterContract{}, errors.New("contract has insufficient funds to support upload")
 	}
 	if contract.LastRevision().NewMissedProofOutputs[1].Value.Cmp(collateral) < 0 {
-		return modules.RenterContract{}, errors.New("contract has insufficient collateral to support upload")
+		// The contract doesn't have enough value in it to supply the
+		// collateral. Instead of giving up, have the host put up everything
+		// that remains, even if that is zero. The renter was aware when the
+		// contract was formed that there may not be enough collateral in the
+		// contract to cover the full storage needs for the renter, yet the
+		// renter formed the contract anyway. Therefore the renter must think
+		// that it's sufficient.
+		//
+		// TODO: log.Debugln here to indicate that the host is having issues
+		// supplying collateral.
+		//
+		// TODO: We may in the future want to have the renter perform a renewal
+		// on this contract so that the host can refill the collateral. That's a
+		// concern at the renter level though, not at the session level. The
+		// session should still be assuming that if the renter is willing to use
+		// this contract, the renter is aware that there isn't enough collateral
+		// remaining and is happy to use the contract anyway. Therefore this
+		// TODO should be moved to a different part of the codebase.
+		collateral = contract.LastRevision().NewMissedProofOutputs[1].Value
 	}
 
 	// create the revision; we will update the Merkle root later
