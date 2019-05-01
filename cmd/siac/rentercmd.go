@@ -621,6 +621,52 @@ func rentercontractscmd() {
 		w.Flush()
 	}
 
+	fmt.Println("Renewed Contracts:")
+	if len(rc.RenewedContracts) == 0 {
+		fmt.Println("  No renewed contracts.")
+	} else {
+		// Display Renewed Contracts
+		sort.Sort(byValue(rc.RenewedContracts))
+		var renewedTotalStored uint64
+		var renewedTotalRemaining, renewedTotalSpent, renewedTotalFees types.Currency
+		for _, c := range rc.RenewedContracts {
+			renewedTotalStored += c.Size
+			renewedTotalRemaining = renewedTotalRemaining.Add(c.RenterFunds)
+			renewedTotalSpent = renewedTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
+			renewedTotalFees = renewedTotalFees.Add(c.Fees)
+		}
+		fmt.Printf(`  Number of Contracts:  %v
+  Total stored:         %s
+  Total Remaining:      %v
+  Total Spent:          %v
+  Total Fees:           %v
+
+`, len(rc.RenewedContracts), filesizeUnits(renewedTotalStored),
+			currencyUnits(renewedTotalRemaining), currencyUnits(renewedTotalSpent), currencyUnits(renewedTotalFees))
+		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		for _, c := range rc.RenewedContracts {
+			address := c.NetAddress
+			hostVersion := c.HostVersion
+			if address == "" {
+				address = "Host Removed"
+				hostVersion = ""
+			}
+			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+				address,
+				hostVersion,
+				currencyUnits(c.RenterFunds),
+				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+				currencyUnits(c.Fees),
+				filesizeUnits(c.Size),
+				c.EndHeight,
+				c.ID,
+				c.GoodForUpload,
+				c.GoodForRenew)
+		}
+		w.Flush()
+	}
+
 	fmt.Println("\nInactive Contracts:")
 	if len(rc.InactiveContracts) == 0 {
 		fmt.Println("  No inactive contracts.")
