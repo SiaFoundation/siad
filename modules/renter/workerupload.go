@@ -150,7 +150,7 @@ func (w *worker) managedUpload(uc *unfinishedUploadChunk, pieceIndex uint64) {
 }
 
 // onUploadCooldown returns true if the worker is on cooldown from failed
-// uploads.
+// uploads and the amount of cooldown time remaining for the worker.
 func (w *worker) onUploadCooldown() (bool, time.Duration) {
 	requiredCooldown := uploadFailureCooldown
 	for i := 0; i < w.uploadConsecutiveFailures && i < maxConsecutivePenalty; i++ {
