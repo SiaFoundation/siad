@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -79,7 +80,6 @@ type (
 		Settings         modules.RenterSettings     `json:"settings"`
 		FinancialMetrics modules.ContractorSpending `json:"financialmetrics"`
 		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
-		ReadyToUpload    bool                       `json:"readytoupload"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -179,6 +179,22 @@ type (
 		ASCIIsia string `json:"asciisia"`
 	}
 
+	// RenterUploadReady lists the upload ready status of the renter
+	RenterUploadReady struct {
+		// Ready indicates whether of not the renter is ready to successfully
+		// upload to full redundancy based on the erasure coding provided and
+		// the number of contracts
+		Ready bool `json:"ready"`
+
+		// Contract information
+		ContractsNeeded    int `json:"contractsneeded"`
+		NumActiveContracts int `json:"numactivecontracts"`
+
+		// Erasure Coding information
+		DataPieces   int `json:"datapieces"`
+		ParityPieces int `json:"paritypieces"`
+	}
+
 	// DownloadInfo contains all client-facing information of a file.
 	DownloadInfo struct {
 		Destination     string          `json:"destination"`     // The destination of the download.
@@ -270,22 +286,8 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 func parseErasureCodingParameters(strDataPieces, strParityPieces string) (modules.ErasureCoder, error) {
 	// Check whether the erasure coding parameters have been supplied.
 	if strDataPieces != "" || strParityPieces != "" {
-		// Check that both values have been supplied.
-		if strDataPieces == "" || strParityPieces == "" {
-			err := errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
-			return nil, err
-		}
-
-		// Parse the erasure coding parameters.
-		var dataPieces, parityPieces int
-		_, err := fmt.Sscan(strDataPieces, &dataPieces)
+		dataPieces, parityPieces, err := parseDataAndParityPieces(strDataPieces, strParityPieces)
 		if err != nil {
-			err = errors.AddContext(err, "unable to read parameter 'datapieces'")
-			return nil, err
-		}
-		_, err = fmt.Sscan(strParityPieces, &parityPieces)
-		if err != nil {
-			err = errors.AddContext(err, "unable to read parameter 'paritypieces'")
 			return nil, err
 		}
 
@@ -307,14 +309,35 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 	return nil, nil
 }
 
+// parseDataAndParityPieces parse the numeric values for dataPieces and
+// parityPieces from the input strings
+func parseDataAndParityPieces(strDataPieces, strParityPieces string) (dataPieces, parityPieces int, err error) {
+	// Check that both values have been supplied.
+	if strDataPieces == "" || strParityPieces == "" {
+		err = errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
+		return 0, 0, err
+	}
+
+	// Parse dataPieces and Parity Pieces.
+	_, err = fmt.Sscan(strDataPieces, &dataPieces)
+	if err != nil {
+		err = errors.AddContext(err, "unable to read parameter 'datapieces'")
+		return 0, 0, err
+	}
+	_, err = fmt.Sscan(strParityPieces, &parityPieces)
+	if err != nil {
+		err = errors.AddContext(err, "unable to read parameter 'paritypieces'")
+		return 0, 0, err
+	}
+	return dataPieces, parityPieces, nil
+}
+
 // renterHandlerGET handles the API call to /renter.
 func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	activeContracts, _, _ := api.parseRenterContracts(false)
 	WriteJSON(w, RenterGET{
 		Settings:         api.renter.Settings(),
 		FinancialMetrics: api.renter.PeriodSpending(),
 		CurrentPeriod:    api.renter.CurrentPeriod(),
-		ReadyToUpload:    len(activeContracts) >= requiredContracts,
 	})
 }
 
@@ -1040,6 +1063,39 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		return
 	}
 	WriteSuccess(w)
+}
+
+// renterUploadReadyHandler handles the API call to check whether or not the
+// renter is ready to upload files
+func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Gather params
+	dataPiecesStr := req.FormValue("datapieces")
+	parityPiecesStr := req.FormValue("paritypieces")
+
+	// Check params
+	var dataPieces, parityPieces int
+	if dataPiecesStr == "" && parityPiecesStr == "" {
+		// Set to defaults
+		dataPieces = renter.DefaultDataPieces
+		parityPieces = renter.DefaultParityPieces
+	} else {
+		var err error
+		dataPieces, parityPieces, err = parseDataAndParityPieces(dataPiecesStr, parityPiecesStr)
+		if err != nil {
+			WriteError(w, Error{"failed to parse query params" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Get contracts - compare against data and parity pieces
+	activeContracts, _, _ := api.parseRenterContracts(false)
+	WriteJSON(w, RenterUploadReady{
+		Ready:              len(activeContracts) >= dataPieces+parityPieces,
+		ContractsNeeded:    dataPieces + parityPieces,
+		NumActiveContracts: len(activeContracts),
+		DataPieces:         dataPieces,
+		ParityPieces:       parityPieces,
+	})
 }
 
 // renterUploadStreamHandler handles the API call to upload a file using a

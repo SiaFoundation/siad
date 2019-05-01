@@ -104,6 +104,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/rename/*siapath", RequirePassword(api.renterRenameHandler, requiredPassword))
 		router.GET("/renter/stream/*siapath", api.renterStreamHandler)
 		router.POST("/renter/upload/*siapath", RequirePassword(api.renterUploadHandler, requiredPassword))
+		router.GET("/renter/uploadready", api.renterUploadReadyHandler)
 		router.POST("/renter/uploadstream/*siapath", RequirePassword(api.renterUploadStreamHandler, requiredPassword))
 		router.POST("/renter/file/*siapath", RequirePassword(api.renterFileHandlerPOST, requiredPassword))
 
