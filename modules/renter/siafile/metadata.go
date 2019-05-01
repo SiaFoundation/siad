@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -18,8 +19,8 @@ type (
 	// siafiles even after renaming them.
 	SiafileUID string
 
-	// metadata is the metadata of a SiaFile and is JSON encoded.
-	metadata struct {
+	// Metadata is the metadata of a SiaFile and is JSON encoded.
+	Metadata struct {
 		StaticUniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
 
 		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
@@ -39,6 +40,39 @@ type (
 		ChangeTime time.Time `json:"changetime"` // time of last metadata modification
 		AccessTime time.Time `json:"accesstime"` // time of last access
 		CreateTime time.Time `json:"createtime"` // time of file creation
+
+		// Cached fields. These fields are cached fields and are only meant to be used
+		// to create FileInfos for file related API endpoints. There is no guarantee
+		// that these fields are up-to-date. Neither in memory nor on disk. Updates to
+		// these fields aren't persisted immediately. Instead they will only be
+		// persisted whenever another method persists the metadata or when the SiaFile
+		// is closed.
+		//
+		// CachedRedundancy is the redundancy of the file on the network and is
+		// updated within the 'Redundancy' method which is periodically called by the
+		// repair code.
+		//
+		// CachedHealth is the health of the file on the network and is also
+		// periodically updated by the health check loop whenever 'Health' is called.
+		//
+		// CachedStuckHealth is the health of the stuck chunks of the file. It is
+		// updated by the health check loop. CachedExpiration is the lowest height at
+		// which any of the file's contracts will expire. Also updated periodically by
+		// the health check loop whenever 'Health' is called.
+		//
+		// CachedUploadedBytes is the number of bytes of the file that have been
+		// uploaded to the network so far. Is updated every time a piece is added to
+		// the siafile.
+		//
+		// CachedUploadProgress is the upload progress of the file and is updated
+		// every time a piece is added to the siafile.
+		//
+		CachedRedundancy     float64           `json:"cachedredundancy"`
+		CachedHealth         float64           `json:"cachedhealth"`
+		CachedStuckHealth    float64           `json:"cachedstuckhealth"`
+		CachedExpiration     types.BlockHeight `json:"cachedexpiration"`
+		CachedUploadedBytes  uint64            `json:"cacheduploadedbytes"`
+		CachedUploadProgress float64           `json:"cacheduploadprogress"`
 
 		// Repair loop fields
 		//
@@ -177,6 +211,13 @@ func (sf *SiaFile) MasterKey() crypto.CipherKey {
 		panic(errors.AddContext(err, "failed to create masterkey of siafile"))
 	}
 	return sk
+}
+
+// Metadata returns the metadata of the SiaFile.
+func (sf *SiaFile) Metadata() Metadata {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata
 }
 
 // Mode returns the FileMode of the SiaFile.

@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
 // TestRenterCreateDirectories checks that the renter properly created metadata files
@@ -15,7 +16,7 @@ func TestRenterCreateDirectories(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +81,9 @@ func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	if metadata.StuckHealth != siadir.DefaultDirHealth {
 		return fmt.Errorf("StuckHealth not initialized properly: have %v expected %v", metadata.StuckHealth, siadir.DefaultDirHealth)
 	}
+	if !metadata.LastHealthCheckTime.IsZero() {
+		return fmt.Errorf("LastHealthCheckTime should be a zero timestamp: %v", metadata.LastHealthCheckTime)
+	}
 	if metadata.ModTime.IsZero() {
 		return fmt.Errorf("ModTime not initialized: %v", metadata.ModTime)
 	}
@@ -95,7 +99,7 @@ func TestDirInfo(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +148,7 @@ func TestRenterListDirectory(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,8 +241,8 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, di.NumSubDirs)
 	}
 	// Check SiaPath
-	if !md.SiaPath.Equals(di.SiaPath) {
-		return fmt.Errorf("siapaths not equal, %v and %v", md.SiaPath, di.SiaPath)
+	if !siaDir.SiaPath().Equals(di.SiaPath) {
+		return fmt.Errorf("siapaths not equal, %v and %v", siaDir.SiaPath(), di.SiaPath)
 	}
 	// Check StuckHealth
 	if md.StuckHealth != di.StuckHealth {

@@ -33,6 +33,12 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	return loadSiaFile(path, wal, modules.ProdDependencies)
 }
 
+// LoadSiaFileMetadata is a wrapper for loadSiaFileMetadata that uses the
+// production dependencies.
+func LoadSiaFileMetadata(path string) (Metadata, error) {
+	return loadSiaFileMetadata(path, modules.ProdDependencies)
+}
+
 // applyUpdates applies a number of writeaheadlog updates to the corresponding
 // SiaFile. This method can apply updates from different SiaFiles and should
 // only be run before the SiaFiles are loaded from disk right after the startup
@@ -54,6 +60,15 @@ func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) er
 		}
 	}
 	return nil
+}
+
+// createDeleteUpdate is a helper method that creates a writeaheadlog for
+// deleting a file.
+func createDeleteUpdate(path string) writeaheadlog.Update {
+	return writeaheadlog.Update{
+		Name:         updateDeleteName,
+		Instructions: []byte(path),
+	}
 }
 
 // loadSiaFile loads a SiaFile from disk.
@@ -122,6 +137,27 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		sf.chunks = append(sf.chunks, chunk)
 	}
 	return sf, nil
+}
+
+// loadSiaFileMetadata loads only the metadata of a SiaFile from disk.
+func loadSiaFileMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
+	// Open the file.
+	f, err := deps.Open(path)
+	if err != nil {
+		return Metadata{}, err
+	}
+	defer f.Close()
+	// Load the metadata.
+	decoder := json.NewDecoder(f)
+	if err = decoder.Decode(&md); err != nil {
+		return
+	}
+	// Create the erasure coder.
+	md.staticErasureCode, err = unmarshalErasureCoder(md.StaticErasureCodeType, md.StaticErasureCodeParams)
+	if err != nil {
+		return
+	}
+	return
 }
 
 // readAndApplyDeleteUpdate reads the delete update and applies it. This helper
@@ -300,10 +336,6 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	if len(updates) == 0 {
 		return nil
 	}
-	// This should never be called on a deleted file.
-	if sf.deleted {
-		return errors.New("shouldn't apply updates on deleted file")
-	}
 	// Create the writeaheadlog transaction.
 	txn, err := sf.wal.NewTransaction(updates)
 	if err != nil {
@@ -327,10 +359,7 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 // createDeleteUpdate is a helper method that creates a writeaheadlog for
 // deleting a file.
 func (sf *SiaFile) createDeleteUpdate() writeaheadlog.Update {
-	return writeaheadlog.Update{
-		Name:         updateDeleteName,
-		Instructions: []byte(sf.siaFilePath),
-	}
+	return createDeleteUpdate(sf.siaFilePath)
 }
 
 // createInsertUpdate is a helper method which creates a writeaheadlog update for

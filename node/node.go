@@ -215,8 +215,8 @@ func New(params NodeParams) (*Node, error) {
 	dir := params.Dir
 
 	numModules := params.NumModules()
-	i := 0
-	printfRelease("(0/%d) Loading siad...\n", numModules)
+	i := 1
+	printfRelease("(%d/%d) Loading siad...\n", i, numModules)
 	// Gateway.
 	g, err := func() (modules.Gateway, error) {
 		if params.CreateGateway && params.Gateway != nil {

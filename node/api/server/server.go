@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -33,6 +34,8 @@ type Server struct {
 	requiredUserAgent string
 	serveErr          error
 	Dir               string
+
+	closeMu sync.Mutex
 }
 
 // serve listens for and handles API calls. It is a blocking function.
@@ -49,6 +52,8 @@ func (srv *Server) serve() error {
 
 // Close closes the Server's listener, causing the HTTP server to shut down.
 func (srv *Server) Close() error {
+	srv.closeMu.Lock()
+	defer srv.closeMu.Unlock()
 	// Stop accepting API requests.
 	err := srv.apiServer.Shutdown(context.Background())
 	// Wait for serve() to return and capture its error.
@@ -57,7 +62,9 @@ func (srv *Server) Close() error {
 		err = errors.Compose(err, srv.serveErr)
 	}
 	// Shutdown modules.
-	err = errors.Compose(err, srv.node.Close())
+	if srv.node != nil {
+		err = errors.Compose(err, srv.node.Close())
+	}
 	return errors.AddContext(err, "error while closing server")
 }
 
@@ -126,17 +133,8 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 		return nil, err
 	}
 
-	// Create the Sia node for the server.
-	node, err := node.New(nodeParams)
-	if err != nil {
-		if isAddrInUseErr(err) {
-			return nil, fmt.Errorf("%v; are you running another instance of siad?", err.Error())
-		}
-		return nil, errors.AddContext(err, "server is unable to create the Sia node")
-	}
-
 	// Create the api for the server.
-	api := api.New(requiredUserAgent, requiredPassword, node.ConsensusSet, node.Explorer, node.Gateway, node.Host, node.Miner, node.Renter, node.TransactionPool, node.Wallet)
+	api := api.New(requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := &Server{
 		api: api,
 		apiServer: &http.Server{
@@ -161,7 +159,6 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 		},
 		done:              make(chan struct{}),
 		listener:          listener,
-		node:              node,
 		requiredUserAgent: requiredUserAgent,
 		Dir:               nodeParams.Dir,
 	}
@@ -175,6 +172,28 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 		srv.serveErr = srv.serve()
 		close(srv.done)
 	}()
+
+	// Create the Sia node for the server after the server was started.
+	node, err := node.New(nodeParams)
+	if err != nil {
+		if isAddrInUseErr(err) {
+			return nil, fmt.Errorf("%v; are you running another instance of siad?", err.Error())
+		}
+		return nil, errors.AddContext(err, "server is unable to create the Sia node")
+	}
+
+	// Make sure that the server wasn't shut down while loading the modules.
+	srv.closeMu.Lock()
+	defer srv.closeMu.Unlock()
+	select {
+	case <-srv.done:
+		// Server was shut down. Close node and exit.
+		return srv, node.Close()
+	default:
+	}
+	// Server wasn't shut down. Add node and replace modules.
+	srv.node = node
+	api.SetModules(node.ConsensusSet, node.Explorer, node.Gateway, node.Host, node.Miner, node.Renter, node.TransactionPool, node.Wallet)
 
 	return srv, nil
 }

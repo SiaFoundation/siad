@@ -229,6 +229,11 @@ func TestNewFile(t *testing.T) {
 		chunks = append(chunks, c)
 	}
 
+	// Save the SiaFile to make sure cached fields are persisted too.
+	if err := sf.saveFile(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Open the file.
 	f, err := os.OpenFile(sf.siaFilePath, os.O_RDWR, 777)
 	if err != nil {
@@ -375,7 +380,7 @@ func TestRename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newSiaFilePath := newSiaPath.SiaFileSysPath(sfs.siaFileDir)
+	newSiaFilePath := newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir)
 	oldSiaFilePath := entry.siaFilePath
 
 	// Rename file

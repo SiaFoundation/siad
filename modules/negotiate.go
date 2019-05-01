@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -867,7 +868,8 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 	}
 	// Underflow check.
 	if funding.Cmp(host.ContractPrice.Add(txnFee)) <= 0 {
-		err = errors.New("underflow detected, funding < contractPrice + txnFee")
+		err = fmt.Errorf("contract price (%v) plus transaction fee (%v) exceeds funding (%v)",
+			host.ContractPrice.HumanString(), txnFee.HumanString(), funding.HumanString())
 		return
 	}
 	// Calculate renterPayout.

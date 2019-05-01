@@ -103,6 +103,17 @@ func (sp *SiaPath) LoadString(s string) error {
 	return sp.validate(false)
 }
 
+// LoadSysPath loads a SiaPath from a given system path by trimming the dir at
+// the front of the path, the extension at the back and returning the remaining
+// path as a SiaPath.
+func (sp *SiaPath) LoadSysPath(dir, path string) error {
+	if !strings.HasPrefix(path, dir) {
+		return fmt.Errorf("%v is not a prefix of %v", dir, path)
+	}
+	path = strings.TrimSuffix(strings.TrimPrefix(path, dir), SiaFileExtension)
+	return sp.LoadString(path)
+}
+
 // MarshalJSON marshales a SiaPath as a string.
 func (sp SiaPath) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sp.String())
@@ -112,6 +123,19 @@ func (sp SiaPath) MarshalJSON() ([]byte, error) {
 func (sp SiaPath) Name() string {
 	_, name := filepath.Split(sp.Path)
 	return name
+}
+
+// Rebase changes the base of a siapath from oldBase to newBase and returns a new SiaPath.
+// e.g. rebasing 'a/b/myfile' from oldBase 'a/b/' to 'a/' would result in 'a/myfile'
+func (sp SiaPath) Rebase(oldBase, newBase SiaPath) (SiaPath, error) {
+	if !strings.HasPrefix(sp.Path, oldBase.Path) {
+		return SiaPath{}, fmt.Errorf("'%v' isn't the base of '%v'", oldBase.Path, sp.Path)
+	}
+	relPath := strings.TrimPrefix(sp.Path, oldBase.Path)
+	if relPath == "" {
+		return newBase, nil
+	}
+	return newBase.Join(relPath)
 }
 
 // UnmarshalJSON unmarshals a siapath into a SiaPath object.

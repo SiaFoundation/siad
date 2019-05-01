@@ -12,7 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -136,49 +135,12 @@ func TestFileNumChunks(t *testing.T) {
 	}
 }
 
-// TestFileUploadedBytes tests that uploadedBytes() returns a value equal to
-// the number of sectors stored via contract times the size of each sector.
-func TestFileUploadedBytes(t *testing.T) {
-	// ensure that a piece fits within a sector
-	rsc, _ := siafile.NewRSCode(1, 3)
-	f, err := newFileTesting(t.Name(), newTestingWal(), rsc, 1000, 0777, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := uint64(0); i < 4; i++ {
-		err := f.AddPiece(types.SiaPublicKey{}, uint64(0), i, crypto.Hash{})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if f.UploadedBytes() != 4*modules.SectorSize {
-		t.Errorf("expected uploadedBytes to be 8, got %v", f.UploadedBytes())
-	}
-}
-
-// TestFileUploadProgressPinning verifies that uploadProgress() returns at most
-// 100%, even if more pieces have been uploaded,
-func TestFileUploadProgressPinning(t *testing.T) {
-	rsc, _ := siafile.NewRSCode(1, 1)
-	f, err := newFileTesting(t.Name(), newTestingWal(), rsc, 4, 0777, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := uint64(0); i < 2; i++ {
-		err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, uint64(0), i, crypto.Hash{})
-		err2 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(1)}}, uint64(0), i, crypto.Hash{})
-		if err := errors.Compose(err1, err2); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if f.UploadProgress() != 100 {
-		t.Fatal("expected uploadProgress to report 100% but was", f.UploadProgress())
-	}
-}
-
 // TestFileRedundancy tests that redundancy is correctly calculated for files
 // with varying number of filecontracts and erasure code settings.
 func TestFileRedundancy(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	nDatas := []int{1, 2, 10}
 	neverOffline := make(map[string]bool)
 	goodForRenew := make(map[string]bool)
@@ -463,56 +425,6 @@ func TestFileHealth(t *testing.T) {
 	}
 }
 
-// TestFileExpiration probes the expiration method of the file type.
-func TestFileExpiration(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	rsc, _ := siafile.NewRSCode(1, 2)
-	f, err := newFileTesting(t.Name(), newTestingWal(), rsc, 1000, 0777, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	contracts := make(map[string]modules.RenterContract)
-	if f.Expiration(contracts) != 0 {
-		t.Error("file with no pieces should report as having no time remaining")
-	}
-	// Create 3 public keys
-	pk1 := types.SiaPublicKey{Key: []byte{0}}
-	pk2 := types.SiaPublicKey{Key: []byte{1}}
-	pk3 := types.SiaPublicKey{Key: []byte{2}}
-
-	// Add a piece for each key to the file.
-	err1 := f.AddPiece(pk1, 0, 0, crypto.Hash{})
-	err2 := f.AddPiece(pk2, 0, 1, crypto.Hash{})
-	err3 := f.AddPiece(pk3, 0, 2, crypto.Hash{})
-	if err := errors.Compose(err1, err2, err3); err != nil {
-		t.Fatal(err)
-	}
-
-	// Add a contract.
-	fc := modules.RenterContract{}
-	fc.EndHeight = 100
-	contracts[pk1.String()] = fc
-	if f.Expiration(contracts) != 100 {
-		t.Error("file did not report lowest WindowStart")
-	}
-
-	// Add a contract with a lower WindowStart.
-	fc.EndHeight = 50
-	contracts[pk2.String()] = fc
-	if f.Expiration(contracts) != 50 {
-		t.Error("file did not report lowest WindowStart")
-	}
-
-	// Add a contract with a higher WindowStart.
-	fc.EndHeight = 75
-	contracts[pk3.String()] = fc
-	if f.Expiration(contracts) != 50 {
-		t.Error("file did not report lowest WindowStart")
-	}
-}
-
 // TestRenterFileListLocalPath verifies that FileList() returns the correct
 // local path information for an uploaded file.
 func TestRenterFileListLocalPath(t *testing.T) {
@@ -530,7 +442,7 @@ func TestRenterFileListLocalPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt.renter.mu.Unlock(id)
-	files, err := rt.renter.FileList()
+	files, err := rt.renter.FileList(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +499,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	files, err := rt.renter.FileList()
+	files, err := rt.renter.FileList(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -661,7 +573,7 @@ func TestRenterFileList(t *testing.T) {
 	defer rt.Close()
 
 	// Get the file list of an empty renter.
-	files, err := rt.renter.FileList()
+	files, err := rt.renter.FileList(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -671,7 +583,7 @@ func TestRenterFileList(t *testing.T) {
 
 	// Put a file in the renter.
 	entry1, _ := rt.renter.newRenterTestFile()
-	files, err = rt.renter.FileList()
+	files, err = rt.renter.FileList(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,14 +596,14 @@ func TestRenterFileList(t *testing.T) {
 
 	// Put multiple files in the renter.
 	entry2, _ := rt.renter.newRenterTestFile()
-	files, err = rt.renter.FileList()
+	files, err = rt.renter.FileList(false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 2 {
 		t.Fatalf("Expected %v files, got %v", 2, len(files))
 	}
-	files, err = rt.renter.FileList()
+	files, err = rt.renter.FileList(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -744,7 +656,7 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := rt.renter.FileList()
+	files, err := rt.renter.FileList(false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1656,17 +1656,16 @@ func TestUploadedBytesReporting(t *testing.T) {
 
 	// Monitor the file as it uploads. Ensure that the UploadProgress times
 	// the fully redundant file size always equals UploadedBytes reported
-	var rf RenterFiles
-	for i := 0; i < 60 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 100); i++ {
-		st.getAPI("/renter/files", &rf)
-		if len(rf.Files) >= 1 {
-			uploadProgressBytes := uint64(float64(fullyRedundantSize(rf.Files[0].CipherType)) * rf.Files[0].UploadProgress / 100.0)
-			// Note: in Go 1.10 we will be able to write Math.Round(uploadProgressBytes) != rf.Files[0].UploadedBytes
-			if uploadProgressBytes != rf.Files[0].UploadedBytes && (uploadProgressBytes+1) != rf.Files[0].UploadedBytes {
-				t.Fatalf("api reports having uploaded %v bytes when upload progress is %v%%, but the actual uploaded bytes count should be %v\n",
-					rf.Files[0].UploadedBytes, rf.Files[0].UploadProgress, uploadProgressBytes)
-			}
+	var rf RenterFile
+	for i := 0; i < 60 && rf.File.UploadProgress < 100; i++ {
+		st.getAPI("/renter/file/test", &rf)
+		uploadProgressBytes := uint64(float64(fullyRedundantSize(rf.File.CipherType)) * rf.File.UploadProgress / 100.0)
+		// Note: in Go 1.10 we will be able to write Math.Round(uploadProgressBytes) != rf.Files[0].UploadedBytes
+		if uploadProgressBytes != rf.File.UploadedBytes && (uploadProgressBytes+1) != rf.File.UploadedBytes {
+			t.Fatalf("api reports having uploaded %v bytes when upload progress is %v%%, but the actual uploaded bytes count should be %v\n",
+				rf.File.UploadedBytes, rf.File.UploadProgress, uploadProgressBytes)
 		}
+
 		time.Sleep(time.Second)
 	}
 	if err != nil {
@@ -1674,21 +1673,27 @@ func TestUploadedBytesReporting(t *testing.T) {
 	}
 
 	// Upload progress should be 100% and redundancy should reach 2
-	if len(rf.Files) != 1 {
-		t.Fatal("Expected 1 file but got", len(rf.Files))
-	}
-	if rf.Files[0].UploadProgress < 100 {
-		t.Fatal("Expected UploadProgress to be 100 but was", rf.Files[0].UploadProgress)
-	}
-	if rf.Files[0].Redundancy != 2 {
-		t.Fatal("Expected Redundancy to be 2 but was", rf.Files[0].Redundancy)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if err := st.getAPI("/renter/file/test", &rf); err != nil {
+			return err
+		}
+		if rf.File.UploadProgress < 100 {
+			return fmt.Errorf("Expected UploadProgress to be 100 but was %v", rf.File.UploadProgress)
+		}
+		if rf.File.Redundancy != 2 {
+			return fmt.Errorf("Expected Redundancy to be 2 but was %v", rf.File.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// When the file is fully redundantly uploaded, UploadedBytes should
 	// equal the file's fully redundant size
-	if rf.Files[0].UploadedBytes != fullyRedundantSize(rf.Files[0].CipherType) {
+	if rf.File.UploadedBytes != fullyRedundantSize(rf.File.CipherType) {
 		t.Fatalf("api reports having uploaded %v bytes when upload progress is 100%%, but the actual fully redundant file size is %v\n",
-			rf.Files[0].UploadedBytes, fullyRedundantSize(rf.Files[0].CipherType))
+			rf.File.UploadedBytes, fullyRedundantSize(rf.File.CipherType))
 	}
 
 }

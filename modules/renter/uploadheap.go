@@ -353,12 +353,18 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 // health directory found is sufficiently healthy then no chunks will be added
 // to the heap
 func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (modules.SiaPath, float64, error) {
-	// Find the lowest health directory to queue for repairs.
-	dirSiaPath, dirHealth, err := r.managedWorstHealthDirectory()
+	// Pop an explored directory off of the directory heap
+	dir, err := r.managedNextExploredDirectory()
 	if err != nil {
-		r.log.Println("WARN: error getting worst health directory:", err)
+		r.log.Println("WARN: error getting explored directory:", err)
 		return modules.SiaPath{}, 0, err
 	}
+
+	// Grab health and siaPath of the directory
+	dir.mu.Lock()
+	dirHealth := dir.health
+	dirSiaPath := dir.siaPath
+	dir.mu.Unlock()
 
 	// If the lowest health directory is healthy then return
 	if dirHealth < siafile.RemoteRepairDownloadThreshold {
@@ -480,16 +486,6 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 
 		// For stuck chunk repairs, check to see if file has stuck chunks
 		if target == targetStuckChunks && file.NumStuckChunks() == 0 {
-			// Close unneeded files
-			err := file.Close()
-			if err != nil {
-				r.log.Println("WARN: Could not close file:", err)
-			}
-			continue
-		}
-
-		// For normal repairs, ignore files that have been recently repaired
-		if target == targetUnstuckChunks && time.Since(file.RecentRepairTime()) < fileRepairInterval {
 			// Close unneeded files
 			err := file.Close()
 			if err != nil {
@@ -672,7 +668,7 @@ func (r *Renter) threadedUploadAndRepair() {
 	}
 	defer r.tg.Done()
 
-	if r.deps.Disrupt("InterruptRepairAndStuckLoops") {
+	if r.deps.Disrupt("DisableRepairAndHealthLoops") {
 		return
 	}
 
@@ -731,6 +727,11 @@ func (r *Renter) threadedUploadAndRepair() {
 				// filesystem so the filesystem will still appear to be healthy.
 			case <-r.tg.StopChan():
 				return
+			}
+			// Refresh directory heap
+			err = r.managedResetDirectoryHeap()
+			if err != nil {
+				r.log.Panicln("WARN: there was an error reseting the directory heap:", err)
 			}
 			// Make sure that the hosts and workers are updated before
 			// continuing to the repair loop

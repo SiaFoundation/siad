@@ -37,6 +37,12 @@ type (
 	SiaDir struct {
 		metadata Metadata
 
+		// siaPath is the path to the siadir on the sia network
+		siaPath modules.SiaPath
+
+		// rootDir is the path to the root directory on disk
+		rootDir string
+
 		// Utility fields
 		deleted bool
 		deps    modules.Dependencies
@@ -46,6 +52,10 @@ type (
 
 	// Metadata is the metadata that is saved to disk as a .siadir file
 	Metadata struct {
+		// AggregateHealth is the health of the most in need file in the
+		// directory or any of the sub directories that are not stuck
+		AggregateHealth float64 `json:"aggregatehealth"`
+
 		// AggregateNumFiles is the total number of files in a directory and any
 		// sub directory
 		AggregateNumFiles uint64 `json:"aggregatenumfiles"`
@@ -54,8 +64,8 @@ type (
 		// directories
 		AggregateSize uint64 `json:"aggregatesize"`
 
-		// Health is the health of the most in need file in the directory or any
-		// of the sub directories that are not stuck
+		// Health is the health of the most in need file in the directory that
+		// is not stuck
 		Health float64 `json:"health"`
 
 		// LastHealthCheckTime is the oldest LastHealthCheckTime of any of the
@@ -79,12 +89,6 @@ type (
 
 		// NumSubDirs is the number of subdirectories in a directory
 		NumSubDirs uint64 `json:"numsubdirs"`
-
-		// RootDir is the path to the root directory on disk
-		RootDir string `json:"rootdir"`
-
-		// SiaPath is the path to the siadir on the sia network
-		SiaPath modules.SiaPath `json:"siapath"`
 
 		// StuckHealth is the health of the most in need file in the directory
 		// or any of the sub directories, stuck or not stuck
@@ -114,6 +118,8 @@ func New(siaPath modules.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaD
 	sd := &SiaDir{
 		metadata: md,
 		deps:     modules.ProdDependencies,
+		siaPath:  siaPath,
+		rootDir:  rootDir,
 		wal:      wal,
 	}
 
@@ -130,23 +136,26 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 	}
 
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
-	// empty directories won't be viewed as being the most in need
+	// empty directories won't be viewed as being the most in need. Initialize
+	// ModTime.
 	md := Metadata{
-		Health:      DefaultDirHealth,
-		ModTime:     time.Now(),
-		StuckHealth: DefaultDirHealth,
-		RootDir:     rootDir,
-		SiaPath:     siaPath,
+		AggregateHealth: DefaultDirHealth,
+		Health:          DefaultDirHealth,
+		ModTime:         time.Now(),
+		StuckHealth:     DefaultDirHealth,
 	}
-	update, err := createMetadataUpdate(md)
+	path := siaPath.SiaDirMetadataSysPath(rootDir)
+	update, err := createMetadataUpdate(path, md)
 	return md, update, err
 }
 
 // LoadSiaDir loads the directory metadata from disk
 func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	sd := &SiaDir{
-		deps: deps,
-		wal:  wal,
+		deps:    deps,
+		siaPath: siaPath,
+		rootDir: rootDir,
+		wal:     wal,
 	}
 	// Open the file.
 	file, err := sd.deps.Open(siaPath.SiaDirMetadataSysPath(rootDir))
@@ -196,13 +205,14 @@ func (sd *SiaDir) Metadata() Metadata {
 func (sd *SiaDir) SiaPath() modules.SiaPath {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
-	return sd.metadata.SiaPath
+	return sd.siaPath
 }
 
 // UpdateMetadata updates the SiaDir metadata on disk
 func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
+	sd.metadata.AggregateHealth = metadata.AggregateHealth
 	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
 	sd.metadata.AggregateSize = metadata.AggregateSize
 	sd.metadata.Health = metadata.Health
