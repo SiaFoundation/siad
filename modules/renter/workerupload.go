@@ -178,7 +178,6 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 		// This worker no longer needs to track this chunk.
 		uc.mu.Unlock()
 		w.managedDropChunk(uc)
-		w.renter.log.Debugln("Worker dropping a chunk while processing", chunkComplete, !candidateHost, !goodForUpload, onCooldown, w.hostPubKey)
 		return nil, 0
 	}
 

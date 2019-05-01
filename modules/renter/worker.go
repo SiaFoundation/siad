@@ -137,21 +137,16 @@ func (w *worker) threadedWorkLoop() {
 		// Perform one step of processing upload work.
 		chunk, pieceIndex := w.managedNextUploadChunk()
 		if chunk != nil {
-			start := time.Now()
 			w.managedUpload(chunk, pieceIndex)
-			w.renter.log.Debugf("It took worker %v %v to upload chunk %v pieceIndex %v", w.hostPubKey, time.Since(start), chunk.id, pieceIndex)
 			continue
 		}
 
 		// Block until new work is received via the upload or download channels,
 		// or until a kill or stop signal is received.
-		w.renter.log.Debugf("Worker %v waiting idle for more work", w.hostPubKey)
 		select {
 		case <-w.downloadChan:
-			w.renter.log.Debugf("Worker %v starting up as it has download work to do", w.hostPubKey)
 			continue
 		case <-w.uploadChan:
-			w.renter.log.Debugf("Worker %v starting up as it has upload work to do", w.hostPubKey)
 			continue
 		case <-w.killChan:
 			return
