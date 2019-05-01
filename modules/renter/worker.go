@@ -103,11 +103,13 @@ func (r *Renter) managedUpdateWorkerPool() {
 			delete(r.workerPool, id)
 			close(worker.killChan)
 		}
+		worker.mu.Lock()
 		onCoolDown, coolDownTime := worker.onUploadCooldown()
 		if onCoolDown {
 			totalCoolDown++
 		}
-		r.log.Debugf("Worker %v is GoodForUpload %v and is on uploadCooldown %v for %v because of %v", worker.hostPubKey, contract.Utility.GoodForUpload, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
+		r.log.Debugf("Worker %v is GoodForUpload %v for contract %v\n    and is on uploadCooldown %v for %v because of %v", worker.hostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
+		worker.mu.Unlock()
 	}
 	r.log.Debugf("Refreshed Worker Pool has %v total workers and %v are on cooldown", len(r.workerPool), totalCoolDown)
 	r.mu.Unlock(lockID)
