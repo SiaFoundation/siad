@@ -1404,10 +1404,14 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 1)
-	renterParams.Allowance.Period = 100
-	renterParams.Allowance.RenewWindow = 50
+	renterParams.Allowance.Period = 200
+	renterParams.Allowance.RenewWindow = 100
 	nodes, err := tg.AddNodes(renterParams)
-	if err != nil {
+	if err != nil && len(nodes) > 0 {
+		renter := nodes[0]
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	} else if err != nil {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
