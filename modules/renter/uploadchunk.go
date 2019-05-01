@@ -544,14 +544,20 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	if !successfulRepair {
 		r.log.Debugln("WARN: repair unsuccessful, marking chunk", uc.id, "as stuck", float64(piecesCompleted)/float64(piecesNeeded))
 	} else {
-		r.log.Debugln("SUCCESS: repair successsful, marking chunk as non-stuck:", uc.id)
+		r.log.Debugln("SUCCESS: repair successful, marking chunk as non-stuck:", uc.id)
 	}
 	// Update chunk stuck status
 	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
 		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
 
-	// Bubble the updated information.
+	// Bubble the updated information. We call this in a blocking fashion as the
+	// next step potentially triggers the stuck loop to add the rest of the
+	// stuck files to the heap and then find the next stuck chunk. By ensuring
+	// that the directory has been updated we eliminate the possibility that the
+	// same chunk is found by the stuck loop and re-added to the repair heap
+	//
+	// TODO - consider making this non blocking
 	siaPath := r.staticFileSet.SiaPath(uc.fileEntry)
 	dirSiaPath, err := siaPath.Dir()
 	if err != nil {
