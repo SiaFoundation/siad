@@ -82,7 +82,7 @@ func (r *Renter) FileList(cached bool) ([]modules.FileInfo, error) {
 	}
 	defer r.tg.Done()
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	return r.staticFileSet.FileList(cached, offlineMap, goodForRenewMap, contractsMap)
+	return r.staticFileSet.FileList(modules.RootSiaPath(), true, cached, offlineMap, goodForRenewMap, contractsMap)
 }
 
 // File returns file from siaPath queried by user.
