@@ -99,7 +99,7 @@ type API struct {
 	wallet   modules.Wallet
 
 	downloadMu sync.Mutex
-	downloads  map[string]modules.DownloadCancelFunc
+	downloads  map[string]func()
 	router     http.Handler
 	routerMu   sync.RWMutex
 
@@ -141,7 +141,7 @@ func New(requiredUserAgent string, requiredPassword string, cs modules.Consensus
 		renter:            r,
 		tpool:             tp,
 		wallet:            w,
-		downloads:         make(map[string]modules.DownloadCancelFunc),
+		downloads:         make(map[string]func()),
 		requiredUserAgent: requiredUserAgent,
 		requiredPassword:  requiredPassword,
 	}

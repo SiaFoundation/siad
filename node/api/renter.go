@@ -901,7 +901,7 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 		return
 	}
 	if params.Async {
-		var cancel modules.DownloadCancelFunc
+		var cancel func()
 		id := hex.EncodeToString(fastrand.Bytes(16))
 		cancel, err = api.renter.DownloadAsync(params, func(_ error) error {
 			api.downloadMu.Lock()

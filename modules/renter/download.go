@@ -105,7 +105,7 @@ type (
 
 		// downloadCompleteFunc is a slice of functions which are called when
 		// completeChan is closed.
-		downloadCompleteFuncs []modules.DownloadCompleteFunc
+		downloadCompleteFuncs []func(error) error
 
 		// Timestamp information.
 		endTime         time.Time // Set immediately before closing 'completeChan'.
@@ -206,7 +206,7 @@ func (d *download) markComplete() {
 // functions are executed in the same order as they are registered and waiting
 // for the download's completeChan to be closed implies that the registered
 // functions were executed.
-func (d *download) onComplete(f modules.DownloadCompleteFunc) {
+func (d *download) onComplete(f func(error) error) {
 	select {
 	case <-d.completeChan:
 		if err := f(d.err); err != nil {
@@ -242,7 +242,7 @@ func (d *download) Err() (err error) {
 // functions are executed in the same order as they are registered and waiting
 // for the download's completeChan to be closed implies that the registered
 // functions were executed.
-func (d *download) OnComplete(f modules.DownloadCompleteFunc) {
+func (d *download) OnComplete(f func(error) error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.onComplete(f)
@@ -270,7 +270,7 @@ func (r *Renter) Download(p modules.RenterDownloadParameters) error {
 
 // DownloadAsync performs a file download using the passed parameters without
 // blocking until the download is finished.
-func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f modules.DownloadCompleteFunc) (modules.DownloadCancelFunc, error) {
+func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error) error) (cancel func(), err error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
