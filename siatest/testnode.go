@@ -76,7 +76,13 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 		}
 		t.Log("Active Hosts from HostDB")
 		for _, host := range hdbag.Hosts {
+			hostInfo, err := tn.HostDbHostsGet(host.PublicKey)
+			if err != nil {
+				t.Log(err)
+			}
 			t.Log("    Host:", host.NetAddress)
+			t.Log("        score", hostInfo.ScoreBreakdown.Score)
+			t.Log("        breakdown", hostInfo.ScoreBreakdown)
 			t.Log("        pk", host.PublicKey)
 			t.Log("        Accepting Contracts", host.HostExternalSettings.AcceptingContracts)
 			t.Log("        Filtered", host.Filtered)

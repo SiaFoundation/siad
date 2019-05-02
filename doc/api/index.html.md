@@ -2087,8 +2087,13 @@ The allowance settings used for the estimation are also returned, see the fields
 > curl example  
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/renter/files"
+curl -A "Sia-Agent" "localhost:9980/renter/files?cached=false"
 ```
+
+### Query String Parameters
+#### OPTIONAL
+**cached** | boolean
+determines whether cached values should be returned or if the latest values should be computed. Cached values speed the endpoint up significantly. The default value is 'false'.
 
 lists the status of all files.
 

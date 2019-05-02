@@ -51,10 +51,9 @@ func bareHostDB() *HostDB {
 
 // makeHostDBEntry makes a new host entry with a random public key
 func makeHostDBEntry() modules.HostDBEntry {
-	dbe := modules.HostDBEntry{}
+	dbe := DefaultHostDBEntry
 	_, pk := crypto.GenerateKeyPair()
 
-	dbe.AcceptingContracts = true
 	dbe.PublicKey = types.Ed25519PublicKey(pk)
 	dbe.ScanHistory = modules.HostDBScans{{
 		Timestamp: time.Now(),

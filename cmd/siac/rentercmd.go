@@ -107,7 +107,7 @@ var (
 		Use:   "ls [path]",
 		Short: "List the status of all files within specified dir",
 		Long:  "List the status of all files known to the renter within the specified folder on the Sia network. To query the root dir either '\"\"', '/' or '.' can be supplied",
-		Run:   wrap(renterfileslistcmd),
+		Run:   renterfileslistcmd,
 	}
 
 	renterFilesRenameCmd = &cobra.Command{
@@ -183,8 +183,7 @@ func abs(path string) string {
 	return abspath
 }
 
-// rentercmd displays the renter's financial metrics and lists the files it is
-// tracking.
+// rentercmd displays the renter's financial metrics and high level renter info
 func rentercmd() {
 	rg, err := httpClient.RenterGet()
 	if err != nil {
@@ -194,11 +193,19 @@ func rentercmd() {
 	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
 		Add(fm.DownloadSpending).Add(fm.StorageSpending)
 
-	fmt.Printf(`Renter Info:
-  Allowance:`)
+	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
+	if err != nil {
+		die("Could not get renter files:", err)
+	}
+	rc, err := httpClient.RenterInactiveContractsGet()
+	if err != nil {
+		die("Could not get contracts:", err)
+	}
+
+	fmt.Printf(`Allowance:`)
 
 	if rg.Settings.Allowance.Funds.IsZero() {
-		fmt.Printf("\n    No current allowance.\n")
+		fmt.Printf("      0 SC (No current allowance)\n")
 	} else {
 		fmt.Printf(`       %v
   Spent Funds:     %v
@@ -206,12 +213,17 @@ func rentercmd() {
 `, currencyUnits(rg.Settings.Allowance.Funds),
 			currencyUnits(totalSpent), currencyUnits(fm.Unspent))
 	}
+	fmt.Printf(`Total Files:    %v
+Total Stored:   %v
+Min Redundancy: %v
+Contracts:      %v
+`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].MinRedundancy, len(rc.ActiveContracts))
 }
 
 // renteruploadscmd is the handler for the command `siac renter uploads`.
 // Lists files currently uploading.
 func renteruploadscmd() {
-	rf, err := httpClient.RenterFilesGet()
+	rf, err := httpClient.RenterFilesGet(false)
 	if err != nil {
 		die("Could not get upload queue:", err)
 	}
@@ -532,8 +544,13 @@ func (s byValue) Less(i, j int) bool {
 // createbackup`.
 func renterbackupcreatecmd(path string) {
 	path = abs(path)
-
-	err := httpClient.RenterCreateBackupPost(path)
+	// If the destination is a folder, create the backup in the folder.
+	fi, err := os.Stat(path)
+	if err == nil && fi.IsDir() {
+		path = filepath.Join(path, fmt.Sprintf("%v.backup", time.Now().Unix()))
+	}
+	// Create backup.
+	err = httpClient.RenterCreateBackupPost(path)
 	if err != nil {
 		die("Failed to create backup", err)
 	}
@@ -762,7 +779,7 @@ Contract %v
 // location. It returns all the files for which a download was initialized as
 // tracked files and the ones which were ignored as skipped. Errors are composed
 // into a single error.
-func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, err error) {
+func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
 	rd, err := httpClient.RenterGetDir(siaPath)
 	if err != nil {
@@ -786,6 +803,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 			return
 		}
 		// Download file.
+		totalSize += file.Filesize
 		err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
@@ -804,9 +822,10 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 	// Call downloadDir on all subdirs.
 	for i := 1; i < len(rd.Directories); i++ {
 		subDir := rd.Directories[i]
-		rtfs, rskipped, rerr := downloadDir(subDir.SiaPath, filepath.Join(destination, subDir.SiaPath.Name()))
+		rtfs, rskipped, totalSubSize, rerr := downloadDir(subDir.SiaPath, filepath.Join(destination, subDir.SiaPath.Name()))
 		tfs = append(tfs, rtfs...)
 		skipped = append(skipped, rskipped...)
+		totalSize += totalSubSize
 		err = errors.Compose(err, rerr)
 	}
 	return
@@ -822,7 +841,8 @@ func renterdirdownload(path, destination string) {
 		die("Failed to parse SiaPath:", err)
 	}
 	// Download dir.
-	tfs, skipped, downloadErr := downloadDir(siaPath, destination)
+	start := time.Now()
+	tfs, skipped, totalSize, downloadErr := downloadDir(siaPath, destination)
 	if renterDownloadAsync && downloadErr != nil {
 		fmt.Println("At least one error occured when initializing the download:", downloadErr)
 	}
@@ -839,8 +859,8 @@ func renterdirdownload(path, destination string) {
 	}
 	// Handle potential errors.
 	if len(failedDownloads) == 0 {
-		fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
-		os.Exit(0)
+		fmt.Printf("\nDownloaded '%s' to '%s - %v in %v'.\n", path, abs(destination), filesizeUnits(totalSize), time.Since(start).Round(time.Millisecond))
+		return
 	}
 	// Print errors.
 	if downloadErr != nil {
@@ -914,9 +934,16 @@ func renterfilesdownload(path, destination string) {
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
+	// If the destination is a folder, download the file to that folder.
+	fi, err := os.Stat(destination)
+	if err == nil && fi.IsDir() {
+		destination = filepath.Join(destination, siaPath.Name())
+	}
+
 	// Queue the download. An error will be returned if the queueing failed, but
 	// the call will return before the download has completed. The call is made
 	// as an async call.
+	start := time.Now()
 	err = httpClient.RenterDownloadFullGet(siaPath, destination, true)
 	if err != nil {
 		die("Download could not be started:", err)
@@ -929,11 +956,16 @@ func renterfilesdownload(path, destination string) {
 	}
 
 	// If the download is blocking, display progress as the file downloads.
+	file, err := httpClient.RenterFileGet(siaPath)
+	if err != nil {
+		// Error ignored.
+	}
+
 	failedDownloads := downloadprogress([]trackedFile{{siaPath: siaPath, dst: destination}})
 	if len(failedDownloads) > 0 {
 		die("\nDownload could not be completed:", failedDownloads[0].Error)
 	}
-	fmt.Printf("\nDownloaded '%s' to '%s'.\n", path, abs(destination))
+	fmt.Printf("\nDownloaded '%s' to '%s - %v in %v'.\n", path, abs(destination), filesizeUnits(file.File.Filesize), time.Since(start).Round(time.Millisecond))
 }
 
 // rentertriggercontractrecoveryrescancmd starts a new scan for recoverable
@@ -1104,17 +1136,81 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 	return nil
 }
 
-// bySiaPath implements sort.Interface for [] modules.FileInfo based on the
+// bySiaPathFile implements sort.Interface for [] modules.FileInfo based on the
 // SiaPath field.
-type bySiaPath []modules.FileInfo
+type bySiaPathFile []modules.FileInfo
 
-func (s bySiaPath) Len() int           { return len(s) }
-func (s bySiaPath) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s bySiaPath) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].SiaPath.String() }
+func (s bySiaPathFile) Len() int           { return len(s) }
+func (s bySiaPathFile) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s bySiaPathFile) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].SiaPath.String() }
+
+// bySiaPathDir implements sort.Interface for [] modules.DirectoryInfo based on the
+// SiaPath field.
+type bySiaPathDir []modules.DirectoryInfo
+
+func (s bySiaPathDir) Len() int           { return len(s) }
+func (s bySiaPathDir) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s bySiaPathDir) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].SiaPath.String() }
+
+type directoryInfo struct {
+	dir     modules.DirectoryInfo
+	files   []modules.FileInfo
+	subDirs []modules.DirectoryInfo
+}
+
+// byDirectoryInfo implements sort.Interface for []directoryInfo based on the
+// SiaPath field.
+type byDirectoryInfo []directoryInfo
+
+func (s byDirectoryInfo) Len() int      { return len(s) }
+func (s byDirectoryInfo) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s byDirectoryInfo) Less(i, j int) bool {
+	return s[i].dir.SiaPath.String() < s[j].dir.SiaPath.String()
+}
+
+// getDir returns the directory info for the directory at siaPath and its
+// subdirs.
+func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
+	rgd, err := httpClient.RenterGetDir(siaPath)
+	if err != nil {
+		die("failed to get dir info:", err)
+	}
+	dir := rgd.Directories[0]
+	subDirs := rgd.Directories[1:]
+
+	// Append directory to dirs.
+	dirs = append(dirs, directoryInfo{
+		dir:     dir,
+		files:   rgd.Files,
+		subDirs: subDirs,
+	})
+
+	// If -R isn't set we are done.
+	if !renterListRecursive {
+		return
+	}
+	// Call getDir on subdirs.
+	for _, subDir := range subDirs {
+		rdirs := getDir(subDir.SiaPath)
+		dirs = append(dirs, rdirs...)
+	}
+	return
+}
 
 // renterfileslistcmd is the handler for the command `siac renter list`.
 // Lists files known to the renter on the network.
-func renterfileslistcmd(path string) {
+func renterfileslistcmd(cmd *cobra.Command, args []string) {
+	var path string
+	switch len(args) {
+	case 0:
+		path = "."
+	case 1:
+		path = args[0]
+	default:
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+	// Parse the input siapath.
 	var sp modules.SiaPath
 	var err error
 	if path == "." || path == "" || path == "/" {
@@ -1125,58 +1221,70 @@ func renterfileslistcmd(path string) {
 			die("could not parse siapath:", err)
 		}
 	}
-	rgd, err := httpClient.RenterGetDir(sp)
-	if err != nil {
-		die("Could not get file list:", err)
+
+	// TODO: Currently the list command can only look at directories. We
+	// probably want to add support for looking at specific files as well
+	// though.
+
+	// Get dirs with their corresponding files.
+	dirs := getDir(sp)
+	numFiles := 0
+	var totalStored uint64
+	for _, dir := range dirs {
+		for _, file := range dir.files {
+			totalStored += file.Filesize
+		}
+		numFiles += len(dir.files)
 	}
-	if len(rgd.Files)+len(rgd.Directories) <= 1 {
+	if numFiles+len(dirs) < 1 {
 		fmt.Println("No files/dirs have been uploaded.")
 		return
 	}
-	fmt.Printf("\nListing %v files/dirs:", len(rgd.Files)+len(rgd.Directories)-1)
-	var totalStored uint64
-	for _, file := range rgd.Files {
-		totalStored += file.Filesize
-	}
+	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
 	fmt.Printf(" %9s\n", filesizeUnits(totalStored))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if renterListVerbose {
 		fmt.Fprintln(w, "  Name\tFile size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tOn Disk\tRecoverable")
 	}
-	sort.Sort(bySiaPath(rgd.Files))
-	// Print root dir.
-	fmt.Fprintf(w, "%v/\n", rgd.Directories[0].SiaPath)
+	sort.Sort(byDirectoryInfo(dirs))
 	// Print dirs.
-	for i := 1; i < len(rgd.Directories); i++ {
-		name := rgd.Directories[i].SiaPath.Name()
-		fmt.Fprintf(w, "  %v/\n", name)
-	}
-	// Print files.
-	for _, file := range rgd.Files {
-		name := file.SiaPath.Name()
-		fmt.Fprintf(w, "  %s", name)
-		fmt.Fprintf(w, "\t%9s", filesizeUnits(file.Filesize))
-		if renterListVerbose {
-			availableStr := yesNo(file.Available)
-			renewingStr := yesNo(file.Renewing)
-			redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
-			if file.Redundancy == -1 {
-				redundancyStr = "-"
-			}
-			healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
-			uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
-			if file.UploadProgress == -1 {
-				uploadProgressStr = "-"
-			}
-			onDiskStr := yesNo(file.OnDisk)
-			recoverableStr := yesNo(file.Recoverable)
-			stuckStr := yesNo(file.Stuck)
-			fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
+	for _, dir := range dirs {
+		fmt.Fprintf(w, "%v/\t\t\t\t\t\t\t\t\t\t\n", dir.dir.SiaPath)
+		// Print subdirs.
+		sort.Sort(bySiaPathDir(dir.subDirs))
+		for _, subDir := range dir.subDirs {
+			fmt.Fprintf(w, "  %v/\t\t\t\t\t\t\t\t\t\t\n", subDir.SiaPath.Name())
 		}
-		if !renterListVerbose && !file.Available {
-			fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
+
+		// Print files.
+		sort.Sort(bySiaPathFile(dir.files))
+		for _, file := range dir.files {
+			name := file.SiaPath.Name()
+			fmt.Fprintf(w, "  %s", name)
+			fmt.Fprintf(w, "\t%9s", filesizeUnits(file.Filesize))
+			if renterListVerbose {
+				availableStr := yesNo(file.Available)
+				renewingStr := yesNo(file.Renewing)
+				redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
+				if file.Redundancy == -1 {
+					redundancyStr = "-"
+				}
+				healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
+				uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
+				if file.UploadProgress == -1 {
+					uploadProgressStr = "-"
+				}
+				onDiskStr := yesNo(file.OnDisk)
+				recoverableStr := yesNo(file.Recoverable)
+				stuckStr := yesNo(file.Stuck)
+				fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
+			}
+			if !renterListVerbose && !file.Available {
+				fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
+			}
+			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 		}
-		fmt.Fprintln(w, "")
+		fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 	}
 	w.Flush()
 }
@@ -1200,7 +1308,7 @@ func renterfilesrenamecmd(path, newpath string) {
 // renterfilesunstuckcmd is the handler for the command `siac renter
 // unstuckall`. Sets all files to unstuck.
 func renterfilesunstuckcmd() {
-	rfg, err := httpClient.RenterFilesGet()
+	rfg, err := httpClient.RenterFilesGet(false)
 	if err != nil {
 		die("Couldn't get list of all files:", err)
 	}

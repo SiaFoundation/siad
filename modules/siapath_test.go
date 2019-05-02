@@ -2,6 +2,8 @@ package modules
 
 import (
 	"testing"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSiapathValidate verifies that the validate function correctly validates
@@ -115,6 +117,50 @@ func TestSiapath(t *testing.T) {
 		}
 		if err == nil && !pathtest.valid {
 			t.Fatal("validateSiapath succeeded on invalid path: ", pathtest.in)
+		}
+	}
+}
+
+// TestSiapathRebase tests the SiaPath.Rebase method.
+func TestSiapathRebase(t *testing.T) {
+	var rebasetests = []struct {
+		oldBase string
+		newBase string
+		siaPath string
+		result  string
+	}{
+		{"a/b", "a", "a/b/myfile", "a/myfile"}, // basic rebase
+		{"a/b", "", "a/b/myfile", "myfile"},    // newBase is root
+		{"", "b", "myfile", "b/myfile"},        // oldBase is root
+		{"a/a", "a/b", "a/a", "a/b"},           // folder == oldBase
+	}
+
+	for _, test := range rebasetests {
+		var oldBase, newBase SiaPath
+		var err1, err2 error
+		if test.oldBase == "" {
+			oldBase = RootSiaPath()
+		} else {
+			oldBase, err1 = newSiaPath(test.oldBase)
+		}
+		if test.newBase == "" {
+			newBase = RootSiaPath()
+		} else {
+			newBase, err2 = newSiaPath(test.newBase)
+		}
+		file, err3 := newSiaPath(test.siaPath)
+		expectedPath, err4 := newSiaPath(test.result)
+		if err := errors.Compose(err1, err2, err3, err4); err != nil {
+			t.Fatal(err)
+		}
+		// Rebase the path
+		res, err := file.Rebase(oldBase, newBase)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Check result.
+		if !res.Equals(expectedPath) {
+			t.Fatalf("'%v' doesn't match '%v'", res.String(), expectedPath.String())
 		}
 	}
 }

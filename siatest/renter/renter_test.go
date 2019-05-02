@@ -26,6 +26,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -427,7 +428,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 	numDownloads := 10
 	if len(rdg.Downloads) < numDownloads {
 		remainingDownloads := numDownloads - len(rdg.Downloads)
-		rf, err := r.RenterFilesGet()
+		rf, err := r.RenterFilesGet(false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -441,7 +442,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 			if err != nil {
 				t.Fatal("Failed to upload a file for testing: ", err)
 			}
-			rf, err = r.RenterFilesGet()
+			rf, err = r.RenterFilesGet(false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -785,16 +786,6 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
-	// Mine a block to trigger the repair loop so the chunk is marked as stuck
-	m := tg.Miners()[0]
-	if err := m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-	// Check to see if a chunk got marked as stuck
-	err = renter.WaitForStuckChunksToBubble()
-	if err != nil {
-		t.Fatal(err)
-	}
 	// We should still be able to download
 	if _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
@@ -864,16 +855,6 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := r.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
-	// Mine a block to trigger the repair loop so the chunk is marked as stuck
-	m := tg.Miners()[0]
-	if err := m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-	// Check to see if a chunk got marked as stuck
-	err = r.WaitForStuckChunksToBubble()
-	if err != nil {
-		t.Fatal(err)
-	}
 	// We should still be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {
 		t.Error("Failed to download file", err)
@@ -916,50 +897,24 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 
+	// Get all files from Renter
 	files, err := renter.Files()
 	if err != nil {
 		t.Fatal("Failed to get renter files: ", err)
 	}
 
-	checks := 0
-	for _, f := range files {
-		// Only request files if file was fully uploaded for first API request
-		if f.UploadProgress < 100 {
-			continue
-		}
-		checks++
-		rf, err := renter.RenterFileGet(f.SiaPath)
+	// Loop over files and compare against single file endpoint
+	for i := range files {
+		// Get Single File
+		rf, err := renter.RenterFileGet(files[i].SiaPath)
 		if err != nil {
-			t.Fatal("Failed to request single file", err)
+			t.Fatal(err)
 		}
 
-		// Can't use reflect.DeepEqual because certain fields are too dynamic,
-		// however those fields are also not indicative of whether or not the
-		// files are the same.  Not checking Redundancy, Available, Renewing
-		// ,UploadProgress, UploadedBytes, or Renewing
-		if f.Expiration != rf.File.Expiration {
-			t.Log("File from Files() Expiration:", f.Expiration)
-			t.Log("File from File() Expiration:", rf.File.Expiration)
-			t.Fatal("Single file queries does not match file previously requested.")
+		// Compare File result and Files Results
+		if !reflect.DeepEqual(files[i], rf.File) {
+			t.Fatalf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
 		}
-		if f.Filesize != rf.File.Filesize {
-			t.Log("File from Files() Filesize:", f.Filesize)
-			t.Log("File from File() Filesize:", rf.File.Filesize)
-			t.Fatal("Single file queries does not match file previously requested.")
-		}
-		if f.LocalPath != rf.File.LocalPath {
-			t.Log("File from Files() LocalPath:", f.LocalPath)
-			t.Log("File from File() LocalPath:", rf.File.LocalPath)
-			t.Fatal("Single file queries does not match file previously requested.")
-		}
-		if f.SiaPath != rf.File.SiaPath {
-			t.Log("File from Files() SiaPath:", f.SiaPath)
-			t.Log("File from File() SiaPath:", rf.File.SiaPath)
-			t.Fatal("Single file queries does not match file previously requested.")
-		}
-	}
-	if checks == 0 {
-		t.Fatal("No files checks through single file endpoint.")
 	}
 }
 
@@ -1079,39 +1034,39 @@ func TestRenterInterrupt(t *testing.T) {
 // a dependency that interrupts the download after sending the signed revision
 // to the host.
 func testContractInterruptedSaveToDiskAfterDeletion(t *testing.T, tg *siatest.TestGroup) {
-	testContractInterrupted(t, tg, newDependencyInterruptContractSaveToDiskAfterDeletion())
+	testContractInterrupted(t, tg, dependencies.NewDependencyInterruptContractSaveToDiskAfterDeletion())
 }
 
 // testDownloadInterruptedAfterSendingRevision runs testDownloadInterrupted with
 // a dependency that interrupts the download after sending the signed revision
 // to the host.
 func testDownloadInterruptedAfterSendingRevision(t *testing.T, tg *siatest.TestGroup) {
-	testDownloadInterrupted(t, tg, newDependencyInterruptDownloadAfterSendingRevision())
+	testDownloadInterrupted(t, tg, dependencies.NewDependencyInterruptDownloadAfterSendingRevision())
 }
 
 // testDownloadInterruptedBeforeSendingRevision runs testDownloadInterrupted
 // with a dependency that interrupts the download before sending the signed
 // revision to the host.
 func testDownloadInterruptedBeforeSendingRevision(t *testing.T, tg *siatest.TestGroup) {
-	testDownloadInterrupted(t, tg, newDependencyInterruptDownloadBeforeSendingRevision())
+	testDownloadInterrupted(t, tg, dependencies.NewDependencyInterruptDownloadBeforeSendingRevision())
 }
 
 // testUploadInterruptedAfterSendingRevision runs testUploadInterrupted with a
 // dependency that interrupts the upload after sending the signed revision to
 // the host.
 func testUploadInterruptedAfterSendingRevision(t *testing.T, tg *siatest.TestGroup) {
-	testUploadInterrupted(t, tg, newDependencyInterruptUploadAfterSendingRevision())
+	testUploadInterrupted(t, tg, dependencies.NewDependencyInterruptUploadAfterSendingRevision())
 }
 
 // testUploadInterruptedBeforeSendingRevision runs testUploadInterrupted with a
 // dependency that interrupts the upload before sending the signed revision to
 // the host.
 func testUploadInterruptedBeforeSendingRevision(t *testing.T, tg *siatest.TestGroup) {
-	testUploadInterrupted(t, tg, newDependencyInterruptUploadBeforeSendingRevision())
+	testUploadInterrupted(t, tg, dependencies.NewDependencyInterruptUploadBeforeSendingRevision())
 }
 
 // testContractInterrupted interrupts a download using the provided dependencies.
-func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.DependencyInterruptOnceOnKeyword) {
+func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyInterruptOnceOnKeyword) {
 	// Add Renter
 	testDir := renterTestDir(t.Name())
 	renterTemplate := node.Renter(testDir + "/renter")
@@ -1207,7 +1162,7 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 }
 
 // testDownloadInterrupted interrupts a download using the provided dependencies.
-func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.DependencyInterruptOnceOnKeyword) {
+func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyInterruptOnceOnKeyword) {
 	// Add Renter
 	testDir := renterTestDir(t.Name())
 	renterTemplate := node.Renter(testDir + "/renter")
@@ -1265,7 +1220,7 @@ func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.
 
 // testUploadInterrupted let's the upload fail using the provided dependencies
 // and makes sure that this doesn't corrupt the contract.
-func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *siatest.DependencyInterruptOnceOnKeyword) {
+func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyInterruptOnceOnKeyword) {
 	// Add Renter
 	testDir := renterTestDir(t.Name())
 	renterTemplate := node.Renter(testDir + "/renter")
@@ -1449,10 +1404,14 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 1)
-	renterParams.Allowance.Period = 100
-	renterParams.Allowance.RenewWindow = 50
+	renterParams.Allowance.Period = 200
+	renterParams.Allowance.RenewWindow = 100
 	nodes, err := tg.AddNodes(renterParams)
-	if err != nil {
+	if err != nil && len(nodes) > 0 {
+		renter := nodes[0]
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	} else if err != nil {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
@@ -1724,7 +1683,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	time.Sleep(time.Second)
 
 	// Redundancy should still be 0.
-	renterFiles, err := renter.RenterFilesGet()
+	renterFiles, err := renter.RenterFilesGet(false)
 	if err != nil {
 		t.Fatal("Failed to get files")
 	}
@@ -1780,7 +1739,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 
 	// The uploaded files should have 0x redundancy now.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rf, err := renter.RenterFilesGet()
+		rf, err := renter.RenterFilesGet(false)
 		if err != nil {
 			return errors.New("Failed to get files")
 		}
@@ -2341,12 +2300,12 @@ func TestRenterLosingHosts(t *testing.T) {
 	}
 
 	// File should be at redundancy of 1.5
-	files, err := r.RenterFilesGet()
+	file, err := r.RenterFileGet(rf.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files.Files[0].Redundancy != 1.5 {
-		t.Fatal("Expected filed redundancy to be 1.5 but was", files.Files[0].Redundancy)
+	if file.File.Redundancy != 1.5 {
+		t.Fatal("Expected filed redundancy to be 1.5 but was", file.File.Redundancy)
 	}
 
 	// Verify we can download the file
@@ -2406,15 +2365,12 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		files, err := r.RenterFilesGet()
+		file, err := r.RenterFileGet(rf.SiaPath())
 		if err != nil {
 			return err
 		}
-		if len(files.Files) == 0 {
-			return errors.New("renter has no files")
-		}
-		if files.Files[0].Redundancy != 1.5 {
-			return fmt.Errorf("Expected redundancy to be 1.5 but was %v", files.Files[0].Redundancy)
+		if file.File.Redundancy != 1.5 {
+			return fmt.Errorf("Expected redundancy to be 1.5 but was %v", file.File.Redundancy)
 		}
 		return nil
 	})
@@ -2448,12 +2404,12 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Now that the renter has fewer hosts online than needed the redundancy
 	// should drop to 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		files, err := r.RenterFilesGet()
+		file, err := r.RenterFileGet(rf.SiaPath())
 		if err != nil {
 			return err
 		}
-		if files.Files[0].Redundancy != 1 {
-			return fmt.Errorf("Expected redundancy to be 1 but was %v", files.Files[0].Redundancy)
+		if file.File.Redundancy != 1 {
+			return fmt.Errorf("Expected redundancy to be 1 but was %v", file.File.Redundancy)
 		}
 		return nil
 	})
@@ -2463,7 +2419,7 @@ func TestRenterLosingHosts(t *testing.T) {
 
 	// Verify that renter can still download file
 	if _, err = r.DownloadToDisk(rf, false); err != nil {
-		r.PrintDebugInfo(t, true, false, true)
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2486,7 +2442,7 @@ func TestRenterLosingHosts(t *testing.T) {
 
 	// Now that the renter only has one host online the redundancy should be 0.5
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		files, err := r.RenterFilesGet()
+		files, err := r.RenterFilesGet(false)
 		if err != nil {
 			return err
 		}
@@ -2563,7 +2519,7 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	}
 
 	// File should be at redundancy of 1.5
-	files, err := r.RenterFilesGet()
+	files, err := r.RenterFilesGet(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2620,7 +2576,7 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		files, err := r.RenterFilesGet()
+		files, err := r.RenterFilesGet(false)
 		if err != nil {
 			return err
 		}
@@ -3597,7 +3553,7 @@ func TestUploadAfterDelete(t *testing.T) {
 
 	// Add a Renter node
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.RenterDeps = &dependencyDisableCloseUploadEntry{}
+	renterParams.RenterDeps = &dependencies.DependencyDisableCloseUploadEntry{}
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -3937,7 +3893,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 
 	// Add a Renter node
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.ContractorDeps = &dependencyDisableRecoveryStatusReset{}
+	renterParams.ContractorDeps = &dependencies.DependencyDisableRecoveryStatusReset{}
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -4213,7 +4169,7 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 	renterParams.Allowance = modules.DefaultAllowance
 	renterParams.Allowance.Hosts = 2
 	renterParams.PrimarySeed = seed
-	renterParams.ContractorDeps = &dependencyDisableContractRecovery{}
+	renterParams.ContractorDeps = &dependencies.DependencyDisableContractRecovery{}
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -4410,7 +4366,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	// Add a renter with a dependency that prevents contract renewals due to
 	// low funds.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.RenterDeps = &dependencyDisableRenewal{}
+	renterParams.RenterDeps = &dependencies.DependencyDisableRenewal{}
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -4468,7 +4424,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Check if there are already uploaded file we can use.
-	rfg, err := r.RenterFilesGet()
+	rfg, err := r.RenterFilesGet(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4485,7 +4441,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 	// Get a file.
-	rfg, err = r.RenterFilesGet()
+	rfg, err = r.RenterFilesGet(false)
 	if err != nil {
 		t.Fatal(err)
 	}

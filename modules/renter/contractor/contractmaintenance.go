@@ -1061,6 +1061,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Println("WARN: not forming new contracts:", err)
 		return
 	}
+	c.log.Debugln("trying to form contracts with hosts, pulled this many hosts from hostdb:", len(hosts))
 
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.

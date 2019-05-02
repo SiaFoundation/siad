@@ -70,7 +70,7 @@ var (
 	// time of writing we don't have an easy way to get that information.
 	maxStreamerCacheSize = build.Select(build.Var{
 		Dev:      int64(1 << 20), // 1 MiB
-		Standard: int64(1 << 16), // 16 MiB
+		Standard: int64(1 << 24), // 16 MiB
 		Testing:  int64(1 << 13), // 8 KiB
 	}).(int64)
 )
@@ -107,20 +107,20 @@ const (
 )
 
 var (
-	// fileRepairInterval defines how long the renter should wait before
-	// continuing to repair a file that was recently repaired.
-	fileRepairInterval = build.Select(build.Var{
-		Dev:      30 * time.Second,
-		Standard: 5 * time.Minute,
-		Testing:  1 * time.Second,
-	}).(time.Duration)
-
 	// healthCheckInterval defines the maximum amount of time that should pass
 	// in between checking the health of a file or directory.
 	healthCheckInterval = build.Select(build.Var{
 		Dev:      15 * time.Minute,
 		Standard: 1 * time.Hour,
 		Testing:  5 * time.Second,
+	}).(time.Duration)
+
+	// healthLoopErrorSleepDuration indicates how long the health loop should
+	// sleep before retrying if there is an error preventing progress.
+	healthLoopErrorSleepDuration = build.Select(build.Var{
+		Dev:      10 * time.Second,
+		Standard: 30 * time.Second,
+		Testing:  3 * time.Second,
 	}).(time.Duration)
 
 	// minUploadHeapSize is the minimum number of chunks we want in the upload

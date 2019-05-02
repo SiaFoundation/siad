@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -80,7 +81,7 @@ func (w *worker) managedQueueUploadChunk(uc *unfinishedUploadChunk) {
 	utility, exists := w.renter.hostContractor.ContractUtility(w.contract.HostPublicKey)
 	goodForUpload := exists && utility.GoodForUpload
 	w.mu.Lock()
-	onCooldown := w.onUploadCooldown()
+	onCooldown, _ := w.onUploadCooldown()
 	uploadTerminated := w.uploadTerminated
 	if !goodForUpload || uploadTerminated || onCooldown {
 		// The worker should not be uploading, remove the chunk.
@@ -103,8 +104,9 @@ func (w *worker) managedUpload(uc *unfinishedUploadChunk, pieceIndex uint64) {
 	// Open an editing connection to the host.
 	e, err := w.renter.hostContractor.Editor(w.contract.HostPublicKey, w.renter.tg.StopChan())
 	if err != nil {
-		w.renter.log.Debugln("Worker failed to acquire an editor:", err)
-		w.managedUploadFailed(uc, pieceIndex)
+		failureErr := fmt.Errorf("Worker failed to acquire an editor: %v", err)
+		w.renter.log.Debugln(failureErr)
+		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
 	defer e.Close()
@@ -113,8 +115,9 @@ func (w *worker) managedUpload(uc *unfinishedUploadChunk, pieceIndex uint64) {
 	// the upload attempt.
 	root, err := e.Upload(uc.physicalChunkData[pieceIndex])
 	if err != nil {
-		w.renter.log.Debugln("Worker failed to upload via the editor:", err)
-		w.managedUploadFailed(uc, pieceIndex)
+		failureErr := fmt.Errorf("Worker failed to upload via the editor: %v", err)
+		w.renter.log.Debugln(failureErr)
+		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
 	w.mu.Lock()
@@ -124,8 +127,9 @@ func (w *worker) managedUpload(uc *unfinishedUploadChunk, pieceIndex uint64) {
 	// Add piece to renterFile
 	err = uc.fileEntry.AddPiece(w.contract.HostPublicKey, uc.index, pieceIndex, root)
 	if err != nil {
-		w.renter.log.Debugln("Worker failed to add new piece to SiaFile:", err)
-		w.managedUploadFailed(uc, pieceIndex)
+		failureErr := fmt.Errorf("Worker failed to add new piece to SiaFile: %v", err)
+		w.renter.log.Debugln(failureErr)
+		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
 
@@ -146,13 +150,13 @@ func (w *worker) managedUpload(uc *unfinishedUploadChunk, pieceIndex uint64) {
 }
 
 // onUploadCooldown returns true if the worker is on cooldown from failed
-// uploads.
-func (w *worker) onUploadCooldown() bool {
+// uploads and the amount of cooldown time remaining for the worker.
+func (w *worker) onUploadCooldown() (bool, time.Duration) {
 	requiredCooldown := uploadFailureCooldown
 	for i := 0; i < w.uploadConsecutiveFailures && i < maxConsecutivePenalty; i++ {
 		requiredCooldown *= 2
 	}
-	return time.Now().Before(w.uploadRecentFailure.Add(requiredCooldown))
+	return time.Now().Before(w.uploadRecentFailure.Add(requiredCooldown)), w.uploadRecentFailure.Add(requiredCooldown).Sub(time.Now())
 }
 
 // managedProcessUploadChunk will process a chunk from the worker chunk queue.
@@ -161,7 +165,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 	utility, exists := w.renter.hostContractor.ContractUtility(w.contract.HostPublicKey)
 	goodForUpload := exists && utility.GoodForUpload
 	w.mu.Lock()
-	onCooldown := w.onUploadCooldown()
+	onCooldown, _ := w.onUploadCooldown()
 	w.mu.Unlock()
 
 	// Determine what sort of help this chunk needs.
@@ -174,7 +178,6 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 		// This worker no longer needs to track this chunk.
 		uc.mu.Unlock()
 		w.managedDropChunk(uc)
-		w.renter.log.Debugln("Worker dropping a chunk while processing", chunkComplete, !candidateHost, !goodForUpload, onCooldown, w.hostPubKey)
 		return nil, 0
 	}
 
@@ -214,12 +217,13 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 
 // managedUploadFailed is called if a worker failed to upload part of an unfinished
 // chunk.
-func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint64) {
+func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint64, failureErr error) {
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
 	if w.renter.g.Online() {
 		w.mu.Lock()
 		w.uploadRecentFailure = time.Now()
+		w.uploadRecentFailureErr = failureErr
 		w.uploadConsecutiveFailures++
 		failures := w.uploadConsecutiveFailures
 		w.mu.Unlock()

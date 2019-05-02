@@ -3,6 +3,7 @@ package hostdb
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -251,10 +252,17 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	contractTxnFees := txnFees.Mul64(modules.EstimatedFileContractTransactionSetSize)
 	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, contractExpectedFunds, contractTxnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, contractExpectedStorage)
 	if err != nil {
-		info := fmt.Sprintf("Error while estimating collateral for host: Host %v, ContractPrice %v, TxnFees %v, Funds %v",
-			entry.PublicKey.String(), entry.ContractPrice.HumanString(), txnFees.HumanString(), allowance.Funds.HumanString())
-		hdb.log.Debugln(errors.AddContext(err, info))
-		return 0
+		// Errors containing 'exceeds funding' are not logged. All it means is
+		// that the contract price (or some other price) of the host is too high
+		// for us to be able to form a contract with it, so this host is
+		// strictly not valuable given our allowance and it's pricing. This is
+		// common enough and expected enough that we don't need to log when it
+		// happens.
+		if !strings.Contains(err.Error(), "exceeds funding") {
+			info := fmt.Sprintf("Error while estimating collateral for host: Host %v, ContractPrice %v, TxnFees %v, Funds %v", entry.PublicKey.String(), entry.ContractPrice.HumanString(), txnFees.HumanString(), allowance.Funds.HumanString())
+			hdb.log.Debugln(errors.AddContext(err, info))
+		}
+		return math.SmallestNonzeroFloat64
 	}
 
 	// Determine the pricing for each type of resource in the contract. We have
@@ -348,6 +356,10 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	base := float64(1)
 	if build.VersionCmp(entry.Version, "1.4.2") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
+	}
+	// Light penalty for hosts below 1.4.1
+	if build.VersionCmp(entry.Version, "1.4.1") < 0 {
+		base = base * 0.7
 	}
 	// Heavy penalty for hosts below v1.4.0
 	if build.VersionCmp(entry.Version, "1.4.0") < 0 {
@@ -461,7 +473,7 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 	// Sanity check against 0 total time.
 	if uptime == 0 && downtime == 0 {
 		build.Critical("uptime and downtime are zero for this host, should have been caught in earlier logic")
-		return 0.001 // Shouldn't happen.
+		return math.SmallestNonzeroFloat64
 	}
 
 	// Compute the uptime ratio, but shift by 0.02 to acknowledge fully that

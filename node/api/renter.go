@@ -800,7 +800,16 @@ func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, 
 
 // renterFilesHandler handles the API call to list all of the files.
 func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	files, err := api.renter.FileList()
+	var c bool
+	var err error
+	if cached := req.FormValue("cached"); cached != "" {
+		c, err = strconv.ParseBool(cached)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'cached' arg"}, http.StatusBadRequest)
+			return
+		}
+	}
+	files, err := api.renter.FileList(c)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

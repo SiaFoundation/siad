@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -19,6 +20,10 @@ import (
 // equalBubbledMetadata is a helper that checks for equality in the siadir
 // metadata that gets bubbled
 func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
+	// Check AggregateHealth
+	if md1.AggregateHealth != md2.AggregateHealth {
+		return fmt.Errorf("AggregateHealth not equal, %v and %v", md1.AggregateHealth, md2.AggregateHealth)
+	}
 	// Check AggregateNumFiles
 	if md1.AggregateNumFiles != md2.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md1.AggregateNumFiles, md2.AggregateNumFiles)
@@ -72,14 +77,18 @@ func TestBubbleHealth(t *testing.T) {
 	t.Parallel()
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Check to make sure bubble doesn't error on an empty directory
-	rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+	err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	defaultMetadata := siadir.Metadata{
+		AggregateHealth:     siadir.DefaultDirHealth,
 		Health:              siadir.DefaultDirHealth,
 		StuckHealth:         siadir.DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
@@ -139,6 +148,7 @@ func TestBubbleHealth(t *testing.T) {
 	var siaPath modules.SiaPath
 	checkTime := time.Now()
 	metadataUpdate := siadir.Metadata{
+		AggregateHealth:     1,
 		Health:              1,
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
@@ -281,7 +291,7 @@ func TestBubbleHealth(t *testing.T) {
 	if err := f.UpdateRecentRepairTime(); err != nil {
 		t.Fatal(err)
 	}
-	expectedHealth.Health = 0
+	expectedHealth.AggregateHealth = 0
 	rt.renter.managedBubbleMetadata(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
@@ -313,6 +323,7 @@ func TestBubbleHealth(t *testing.T) {
 	}
 	// Reset metadataUpdate with expected values
 	expectedHealth = siadir.Metadata{
+		AggregateHealth:     4,
 		Health:              4,
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
@@ -354,7 +365,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	// root/SubDir2/
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,168 +427,6 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	}
 }
 
-// TestWorstHealthDirectory verifies that managedWorstHealthDirectory returns
-// the correct directory
-func TestWorstHealthDirectory(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a test directory with sub folders
-	//
-	// root/ 1
-	// root/SubDir1/
-	// root/SubDir1/SubDir2/
-	// root/SubDir2/
-
-	// Create test renter
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create directory tree
-	subDir1, err := modules.NewSiaPath("SubDir1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	subDir2, err := modules.NewSiaPath("SubDir2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.renter.CreateDir(subDir1); err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.renter.CreateDir(subDir2); err != nil {
-		t.Fatal(err)
-	}
-	subDir1_2, err := subDir1.Join(subDir2.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.renter.CreateDir(subDir1_2); err != nil {
-		t.Fatal(err)
-	}
-
-	// Confirm worst health directory is the top level directory since all
-	// directories should be at the default health which is 0 or full health
-	rt.renter.managedBubbleMetadata(subDir1)
-	build.Retry(100, 100*time.Millisecond, func() error {
-		dir, health, err := rt.renter.managedWorstHealthDirectory()
-		if err != nil {
-			return err
-		}
-		if dir.Equals(modules.RootSiaPath()) {
-			return fmt.Errorf("Expected to find top level directory but found %v", dir.String())
-		}
-		if health != 0 {
-			return fmt.Errorf("Expected to find health of %v but found %v", 0, health)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Set the Health of SubDir1/SubDir2 to be the worst
-	worstHealth := float64(10)
-	worstHealthUpdate := siadir.Metadata{
-		Health:              worstHealth,
-		StuckHealth:         0,
-		LastHealthCheckTime: time.Now(),
-	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(subDir1_2, worstHealthUpdate); err != nil {
-		t.Fatal(err)
-	}
-
-	// Bubble the health of SubDir1 so that the worst health of
-	// SubDir1/SubDir2 gets bubbled up
-	rt.renter.managedBubbleMetadata(subDir1)
-
-	// Find the worst health directory, should be SubDir1/SubDir2
-	build.Retry(100, 100*time.Millisecond, func() error {
-		dir, health, err := rt.renter.managedWorstHealthDirectory()
-		if err != nil {
-			return err
-		}
-		if dir.Equals(subDir1_2) {
-			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
-		}
-		if health != worstHealth {
-			return fmt.Errorf("Expected to find health of %v but found %v", worstHealth, health)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Add file to SubDir1/SubDir2
-	rsc, _ := siafile.NewRSCode(1, 1)
-	siaPath, err := subDir1_2.Join("test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	up := modules.FileUploadParams{
-		Source:      "",
-		SiaPath:     siaPath,
-		ErasureCode: rsc,
-	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Bubble health, confirm that the health worst directory is still
-	// SubDir1/SubDir2
-	rt.renter.managedBubbleMetadata(subDir1_2)
-
-	// Worst health with current erasure coding is 2 = (1 - (0-1)/1)
-	worstHealth = float64(2)
-	build.Retry(100, 100*time.Millisecond, func() error {
-		dir, health, err := rt.renter.managedWorstHealthDirectory()
-		if err != nil {
-			return err
-		}
-		if dir.Equals(subDir1_2) {
-			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
-		}
-		if health != worstHealth {
-			return fmt.Errorf("Expected to find health of %v but found %v", worstHealth, health)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Update file's recent repair time
-	if err := f.UpdateRecentRepairTime(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Bubble Health and confirm that the worst directory is now the top level
-	// directory
-	rt.renter.managedBubbleMetadata(siaPath)
-	build.Retry(100, 100*time.Millisecond, func() error {
-		dir, health, err := rt.renter.managedWorstHealthDirectory()
-		if err != nil {
-			return err
-		}
-		if dir != siaPath {
-			return fmt.Errorf("Expected to find %v but found %v", siaPath, dir)
-		}
-		if health != float64(0) {
-			return fmt.Errorf("Expected to find health of %v but found %v", float64(0), health)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 // TestNumFiles verifies that the number of files and aggregate number of files
 // is accurately reported
 func TestNumFiles(t *testing.T) {
@@ -593,7 +442,7 @@ func TestNumFiles(t *testing.T) {
 	// root/SubDir1/SubDir2/ file
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,7 +522,7 @@ func TestDirectorySize(t *testing.T) {
 	// root/SubDir1/SubDir2/ file
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -750,7 +599,7 @@ func TestDirectoryModTime(t *testing.T) {
 	// root/SubDir1/SubDir2/ file
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -822,7 +671,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	t.Parallel()
 
 	// Create test renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -133,6 +133,9 @@ type (
 		// Connect establishes a persistent connection to a peer.
 		Connect(NetAddress) error
 
+		// ConnectManual is a Connect wrapper for a user-initiated Connect
+		ConnectManual(NetAddress) error
+
 		// Disconnect terminates a connection to a peer.
 		Disconnect(NetAddress) error
 
@@ -145,6 +148,9 @@ type (
 		// ForwardPort adds a port mapping to the router. It will block until
 		// the mapping is established or until it is interrupted by a shutdown.
 		ForwardPort(port string) error
+
+		// DisconnectManual is a Disconnect wrapper for a user-initiated disconnect
+		DisconnectManual(NetAddress) error
 
 		// Address returns the Gateway's address.
 		Address() NetAddress

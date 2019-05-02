@@ -45,9 +45,9 @@ var (
 		Period:      50,
 		RenewWindow: 24,
 
-		ExpectedStorage:    modules.SectorSize,
-		ExpectedUpload:     modules.SectorSize / 50,
-		ExpectedDownload:   modules.SectorSize / 50,
+		ExpectedStorage:    modules.SectorSize * 50e3,
+		ExpectedUpload:     modules.SectorSize * 5e3,
+		ExpectedDownload:   modules.SectorSize * 5e3,
 		ExpectedRedundancy: 5.0,
 	}
 
@@ -498,7 +498,7 @@ func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
 		randomNodeDir(tg.dir, &np)
 		node, err := NewCleanNode(np)
 		if err != nil {
-			return mapToSlice(newNodes), build.ExtendErr("failed to create host", err)
+			return mapToSlice(newNodes), build.ExtendErr("failed to create new clean node", err)
 		}
 		// Add node to nodes
 		tg.nodes[node] = struct{}{}
