@@ -440,6 +440,16 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 		return s.offset, errors.New("cannot seek to negative offset")
 	}
 
+	// Reset the target cache size upon seek to be the default again. This is in
+	// place because some programs will rapidly consume the cache to build up
+	// their own buffer. This can result in the cache growing very large, which
+	// hurts seek times. By resetting the cache size upon seek, we ensure that
+	// the user gets a consistent experience when seeking. In a perfect world,
+	// we'd have an easy way to measure the bitrate of the file being streamed,
+	// so that we could set a target cache size according to that, but at the
+	// moment we don't have an easy way to get that information.
+	s.targetCacheSize = initialStreamerCacheSize
+
 	// Update the offset of the stream and immediately send a thread to update
 	// the cache.
 	s.offset = newOffset
