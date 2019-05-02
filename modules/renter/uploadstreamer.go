@@ -113,6 +113,14 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
 	for chunkIndex := uint64(0); ; chunkIndex++ {
+		// Disrupt the upload by closing the reader and simulating losing connectivity
+		// during the upload.
+		if r.deps.Disrupt("DisruptUploadStream") {
+			c, ok := reader.(io.Closer)
+			if ok {
+				c.Close()
+			}
+		}
 		// Grow the SiaFile to the right size. Otherwise buildUnfinishedChunk
 		// won't realize that there are pieces which haven't been repaired yet.
 		if err := entry.SiaFile.GrowNumChunks(chunkIndex + 1); err != nil {
@@ -132,7 +140,12 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 		if uuc.piecesCompleted < uuc.piecesNeeded {
 			// Add the chunk to the upload heap.
 			if !r.uploadHeap.managedPush(uuc) {
-				return fmt.Errorf("failed to push chunk with idx %v of stream to uploadheap", chunkIndex)
+				// The chunk can't be added to the heap. It's probably already being
+				// repaired. Flush the shard and move on to the next one.
+				_, _ = io.ReadFull(ss, make([]byte, entry.ChunkSize()))
+				if err := ss.Close(); err != nil {
+					return err
+				}
 			}
 			// Notify the upload loop.
 			select {
@@ -145,6 +158,9 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 			// for the next chunkIndex. We don't need to check the error though
 			// since we check that anyway at the end of the loop.
 			_, _ = io.ReadFull(ss, make([]byte, entry.ChunkSize()))
+			if err := ss.Close(); err != nil {
+				return err
+			}
 		}
 		// Wait for the shard to be read.
 		select {
@@ -167,15 +183,22 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 // managedInitUploadStream  verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
 func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.SiaFileSetEntry, error) {
-	siaPath, ec, force := up.SiaPath, up.ErasureCode, up.Force
+	siaPath, ec, force, repair := up.SiaPath, up.ErasureCode, up.Force, up.Repair
 	// Check if ec was set. If not use defaults.
 	var err error
-	if ec == nil {
+	if ec == nil && !repair {
 		up.ErasureCode, err = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, 64)
 		if err != nil {
 			return nil, err
 		}
 		ec = up.ErasureCode
+	} else if ec != nil && repair {
+		return nil, errors.New("can't provide erasure code settings when doing repairs")
+	}
+
+	// Make sure that force and repair aren't both set.
+	if force && repair {
+		return nil, errors.New("'force' and 'repair' can't both be set")
 	}
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
@@ -183,6 +206,14 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.
 		if err := r.DeleteFile(siaPath); err != nil && err != siafile.ErrUnknownPath {
 			return nil, err
 		}
+	}
+	// If repair is set open the existing file.
+	if repair {
+		entry, err := r.staticFileSet.Open(up.SiaPath)
+		if err != nil {
+			return nil, err
+		}
+		return entry, nil
 	}
 	// Check that we have contracts to upload to. We need at least data +
 	// parity/2 contracts. NumPieces is equal to data+parity, and min pieces is
