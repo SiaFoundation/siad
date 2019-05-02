@@ -269,6 +269,7 @@ func (c *SafeContract) recordUploadIntent(rev types.FileContractRevision, root c
 	newHeader := c.header
 	c.headerMu.Unlock()
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
+	newHeader.Transaction.TransactionSignatures = nil
 	newHeader.StorageSpending = newHeader.StorageSpending.Add(storageCost)
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
 
@@ -318,6 +319,7 @@ func (c *SafeContract) recordDownloadIntent(rev types.FileContractRevision, band
 	newHeader := c.header
 	c.headerMu.Unlock()
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
+	newHeader.Transaction.TransactionSignatures = nil
 	newHeader.DownloadSpending = newHeader.DownloadSpending.Add(bandwidthCost)
 
 	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
@@ -411,27 +413,83 @@ func (c *SafeContract) unappliedHeader() (h contractHeader) {
 // committing any uncommitted WAL transactions. If the revisions still do not
 // match, and the host's revision is ahead of the renter's, syncRevision uses
 // the host's revision.
-func (c *SafeContract) syncRevision(rev types.FileContractRevision) error {
+func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) error {
+	// Our current revision should always be signed. If it isn't, we have no
+	// choice but to accept the host's revision.
+	if len(c.header.Transaction.TransactionSignatures) == 0 {
+		c.header.Transaction.FileContractRevisions[0] = rev
+		c.header.Transaction.TransactionSignatures = sigs
+		return nil
+	}
+
 	ourRev := c.header.LastRevision()
-	if rev.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
-		return errors.New("unlock conditions do not match")
-	} else if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
-		// If the revision number doesn't match, try to commit potential
-		// unapplied transactions and check again.
-		if err := c.commitTxns(); err != nil {
-			return errors.AddContext(err, "failed to commit transactions")
-		}
-		ourRev = c.header.LastRevision()
-		if rev.NewRevisionNumber >= ourRev.NewRevisionNumber {
-			// If the host's revision is ahead of ours, just use it. This isn't
-			// ideal, but the alternative is not being able to use the contract
-			// at all, and we *did* sign this revision, so there isn't much the
-			// host can do to exploit this.
-			c.header.Transaction.FileContractRevisions[0] = rev
-		} else {
-			return &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
+
+	// If the revision number and Merkle root match, we don't need to do anything.
+	if rev.NewRevisionNumber == ourRev.NewRevisionNumber && rev.NewFileMerkleRoot == ourRev.NewFileMerkleRoot {
+		return nil
+	}
+
+	// The host should never report a lower revision number than ours. If they
+	// do, it may mean they are intentionally (and maliciously) trying to
+	// "rewind" the contract to an earlier state. Even if the host does not have
+	// ill intent, this would mean that they failed to commit one or more
+	// revisions to durable storage, which reflects very poorly on them.
+	if rev.NewRevisionNumber < ourRev.NewRevisionNumber {
+		return &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
+	}
+
+	// At this point, we know that either the host's revision number is above
+	// ours, or their Merkle root differs. Search our unapplied WAL transactions
+	// for one that might synchronize us with the host.
+	for _, t := range c.unappliedTxns {
+		for _, update := range t.Updates {
+			if update.Name == updateNameSetHeader {
+				var u updateSetHeader
+				if err := unmarshalHeader(update.Instructions, &u); err != nil {
+					return err
+				}
+				unappliedRev := u.Header.LastRevision()
+				if unappliedRev.NewRevisionNumber != rev.NewRevisionNumber || unappliedRev.NewFileMerkleRoot != rev.NewFileMerkleRoot {
+					continue
+				}
+				// found a matching header, but it still won't have the host's
+				// signatures, since those aren't added until the transaction is
+				// commited. Add the signatures supplied by the host and commit
+				// the header.
+				u.Header.Transaction.TransactionSignatures = sigs
+				if err := c.applySetHeader(u.Header); err != nil {
+					return err
+				}
+				if err := c.headerFile.Sync(); err != nil {
+					return err
+				}
+				// drop all unapplied transactions
+				for _, t := range c.unappliedTxns {
+					if err := t.SignalUpdatesApplied(); err != nil {
+						return err
+					}
+				}
+				c.unappliedTxns = nil
+				return nil
+			}
 		}
 	}
+
+	// The host's revision is still different, and we have no unapplied
+	// transactions containing their revision. At this point, the best we can do
+	// is accept their revision. This isn't ideal, but at least there's no
+	// security risk, since we *did* sign the revision that the host is
+	// claiming. Worst case, certain contract metadata (e.g. UploadSpending)
+	// will be incorrect.
+	c.header.Transaction.FileContractRevisions[0] = rev
+	c.header.Transaction.TransactionSignatures = sigs
+	// Drop the WAL transactions, since they can't conceivably help us.
+	for _, t := range c.unappliedTxns {
+		if err := t.SignalUpdatesApplied(); err != nil {
+			return err
+		}
+	}
+	c.unappliedTxns = nil
 	return nil
 }
 

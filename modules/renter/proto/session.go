@@ -83,6 +83,21 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	}
 	// Set the new Session contract.
 	s.contractID = id
+	// Verify the public keys in the claimed revision.
+	expectedUnlockConditions := types.UnlockConditions{
+		PublicKeys: []types.SiaPublicKey{
+			types.Ed25519PublicKey(secretKey.PublicKey()),
+			s.host.PublicKey,
+		},
+		SignaturesRequired: 2,
+	}
+	if resp.Revision.UnlockConditions.UnlockHash() != expectedUnlockConditions.UnlockHash() {
+		return resp.Revision, resp.Signatures, errors.New("host's claimed revision has wrong unlock conditions")
+	}
+	// Verify the claimed signatures.
+	if err := modules.VerifyFileContractRevisionTransactionSignatures(resp.Revision, resp.Signatures, s.height); err != nil {
+		return resp.Revision, resp.Signatures, err
+	}
 	return resp.Revision, resp.Signatures, nil
 }
 
@@ -782,11 +797,11 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		return nil, err
 	}
 	// Lock the contract and resynchronize if necessary
-	rev, _, err := s.Lock(id, sc.header.SecretKey)
+	rev, sigs, err := s.Lock(id, sc.header.SecretKey)
 	if err != nil {
 		s.Close()
 		return nil, err
-	} else if err := sc.syncRevision(rev); err != nil {
+	} else if err := sc.syncRevision(rev, sigs); err != nil {
 		s.Close()
 		return nil, err
 	}
