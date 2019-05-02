@@ -406,16 +406,25 @@ func (c *Client) RenterUploadDefaultPost(path string, siaPath modules.SiaPath) (
 	return
 }
 
-// RenterUploadStreamPost uploads data using a stream. It will return a
-// io.WriteCloser that can be used to write the data to the request body. The
-// writer needs to be closed when done for the whole file to be uploaded.
-func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath modules.SiaPath, dataPieces, parityPieces uint64, force, repair bool) error {
+// RenterUploadStreamPost uploads data using a stream.
+func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath modules.SiaPath, dataPieces, parityPieces uint64, force bool) error {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("datapieces", strconv.FormatUint(dataPieces, 10))
 	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
 	values.Set("force", strconv.FormatBool(force))
-	values.Set("repair", strconv.FormatBool(repair))
+	values.Set("stream", strconv.FormatBool(true))
+	_, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
+	return err
+}
+
+// RenterUploadStreamRepairPost a siafile using a stream. If the data provided
+// by r is not the same as the previously uploaded data, the data will be
+// corrupted.
+func (c *Client) RenterUploadStreamRepairPost(r io.Reader, siaPath modules.SiaPath) error {
+	sp := escapeSiaPath(siaPath)
+	values := url.Values{}
+	values.Set("repair", strconv.FormatBool(true))
 	values.Set("stream", strconv.FormatBool(true))
 	_, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
 	return err

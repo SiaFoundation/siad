@@ -343,7 +343,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	r := tg.Renters()[0]
-	err = r.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false, false)
+	err = r.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4541,7 +4541,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.RenterUploadStreamPost(bytes.NewReader(b), remoteFile.SiaPath(), dataPieces, parityPieces, false, true); err != nil {
+	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(b), remoteFile.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.WaitForUploadRedundancy(remoteFile, float64(dataPieces+parityPieces)/float64(dataPieces)); err != nil {
@@ -4554,7 +4554,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Repair the file again to make sure we don't get stuck on chunks that are
 	// already repaired. Datapieces and paritypieces can be set to 0 as long as
 	// repair is true.
-	if err := r.RenterUploadStreamPost(bytes.NewReader(b), remoteFile.SiaPath(), 0, 0, false, true); err != nil {
+	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(b), remoteFile.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
 }

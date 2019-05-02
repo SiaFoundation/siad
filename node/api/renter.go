@@ -1060,6 +1060,10 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 		WriteError(w, Error{"unable to parse erasure code settings" + err.Error()}, http.StatusBadRequest)
 		return
 	}
+	if repair && ec != nil {
+		WriteError(w, Error{"can't provide erasure code settings when doing a repair"}, http.StatusBadRequest)
+		return
+	}
 
 	// Call the renter to upload the file.
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))

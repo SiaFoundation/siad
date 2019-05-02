@@ -113,6 +113,14 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
 	for chunkIndex := uint64(0); ; chunkIndex++ {
+		// Disrupt the upload by closing the reader and simulating losing connectivity
+		// during the upload.
+		if r.deps.Disrupt("DisruptUploadStream") {
+			c, ok := reader.(io.Closer)
+			if ok {
+				c.Close()
+			}
+		}
 		// Grow the SiaFile to the right size. Otherwise buildUnfinishedChunk
 		// won't realize that there are pieces which haven't been repaired yet.
 		if err := entry.SiaFile.GrowNumChunks(chunkIndex + 1); err != nil {
@@ -184,6 +192,8 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.
 			return nil, err
 		}
 		ec = up.ErasureCode
+	} else if ec != nil && repair {
+		return nil, errors.New("can't provide erasure code settings when doing repairs")
 	}
 
 	// Make sure that force and repair aren't both set.
