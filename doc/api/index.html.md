@@ -2427,6 +2427,9 @@ The number of data pieces to use when erasure coding the file.
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file. Total redundancy of the file is (datapieces+paritypieces)/datapieces.  
 
+**force** | boolean
+Delete potential existing file at siapath.
+
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
@@ -2435,7 +2438,7 @@ standard success or error response. See [standard responses](#standard-responses
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/upload/myfile?datapieces=10&paritypieces=20" --data-binary @myfile.dat
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadstream/myfile?datapieces=10&paritypieces=20" --data-binary @myfile.dat
 ```
 
 uploads a file to the network using a stream.
@@ -2452,6 +2455,12 @@ The number of data pieces to use when erasure coding the file.
 
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file. Total redundancy of the file is (datapieces+paritypieces)/datapieces.  
+
+**force**
+Delete potential existing file at siapath.
+
+**repair**
+Repair existing file from stream. Can't be specified together with datapieces, paritypieces and force.
 
 ### Response
 
