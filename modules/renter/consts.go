@@ -52,7 +52,7 @@ var (
 	// growth.
 	initialStreamerCacheSize = build.Select(build.Var{
 		Dev:      int64(1 << 13), // 8 KiB
-		Standard: int64(1 << 20), // 1 MiB
+		Standard: int64(1 << 19), // 512 KiB
 		Testing:  int64(1 << 10), // 1 KiB
 	}).(int64)
 
@@ -70,7 +70,7 @@ var (
 	// time of writing we don't have an easy way to get that information.
 	maxStreamerCacheSize = build.Select(build.Var{
 		Dev:      int64(1 << 20), // 1 MiB
-		Standard: int64(1 << 28), // 256 MiB
+		Standard: int64(1 << 25), // 32 MiB
 		Testing:  int64(1 << 13), // 8 KiB
 	}).(int64)
 )
