@@ -70,7 +70,7 @@ var (
 	// time of writing we don't have an easy way to get that information.
 	maxStreamerCacheSize = build.Select(build.Var{
 		Dev:      int64(1 << 20), // 1 MiB
-		Standard: int64(1 << 16), // 16 MiB
+		Standard: int64(1 << 24), // 16 MiB
 		Testing:  int64(1 << 13), // 8 KiB
 	}).(int64)
 )

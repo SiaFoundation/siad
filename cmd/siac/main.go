@@ -52,8 +52,6 @@ const (
 	exitCodeUsage   = 64 // EX_USAGE in sysexits.h
 )
 
-// post makes an API call and discards the response. An error is returned if
-// the response status is not 2xx.
 // wrap wraps a generic command with a check that the command has been
 // passed the correct number of arguments. The command must take only strings
 // as arguments.

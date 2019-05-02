@@ -1404,10 +1404,14 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 1)
-	renterParams.Allowance.Period = 100
-	renterParams.Allowance.RenewWindow = 50
+	renterParams.Allowance.Period = 200
+	renterParams.Allowance.RenewWindow = 100
 	nodes, err := tg.AddNodes(renterParams)
-	if err != nil {
+	if err != nil && len(nodes) > 0 {
+		renter := nodes[0]
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	} else if err != nil {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
@@ -1914,15 +1918,6 @@ func TestRenterContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Renter should be ReadyToUpload
-	rg, err = r.RenterGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !rg.ReadyToUpload {
-		t.Fatal("Expected renter to be ReadyToUpload")
-	}
-
 	// Confirm contract end heights were set properly
 	rc, err := r.RenterContractsGet()
 	if err != nil {
@@ -2061,8 +2056,6 @@ func TestRenterContracts(t *testing.T) {
 	// Renewing contracts by spending is very time consuming, the rest of the
 	// test is only run during vlong so the rest of the test package doesn't
 	// time out
-	//
-	// TODO - need to continue updating test from here
 	if !build.VLONG {
 		return
 	}
