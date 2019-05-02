@@ -649,7 +649,7 @@ func (sfs *SiaFileSet) RenameDir(oldPath, newPath modules.SiaPath, rename siadir
 	for _, entry := range lockedFiles {
 		// Get old SiaPath.
 		var oldSiaPath modules.SiaPath
-		if err := oldSiaPath.LoadSysPath(sfs.siaFileDir, entry.siaFilePath); err != nil {
+		if err := oldSiaPath.LoadSysPath(sfs.staticSiaFileDir, entry.siaFilePath); err != nil {
 			build.Critical("Getting the siaPath shouldn't fail")
 			continue
 		}
@@ -662,7 +662,7 @@ func (sfs *SiaFileSet) RenameDir(oldPath, newPath modules.SiaPath, rename siadir
 		// Update the siafilepath of the entry and the siafileToUIDMap.
 		delete(sfs.siapathToUID, oldSiaPath)
 		sfs.siapathToUID[sp] = entry.staticMetadata.StaticUniqueID
-		entry.siaFilePath = sp.SiaFileSysPath(sfs.siaFileDir)
+		entry.siaFilePath = sp.SiaFileSysPath(sfs.staticSiaFileDir)
 	}
 	return nil
 }
