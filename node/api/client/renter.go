@@ -265,11 +265,7 @@ func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, 
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("httpresp", fmt.Sprint(true))
-<<<<<<< HEAD
-	resp, err = c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
-=======
-	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", siaPath, values.Encode()))
->>>>>>> add siatest
+	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
 	return
 }
 
@@ -359,15 +355,9 @@ func (c *Client) RenterSetCheckIPViolationPost(enabled bool) (err error) {
 
 // RenterStreamGet uses the /renter/stream endpoint to download data as a
 // stream.
-<<<<<<< HEAD
 func (c *Client) RenterStreamGet(siaPath modules.SiaPath) (resp []byte, err error) {
 	sp := escapeSiaPath(siaPath)
-	resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s", sp))
-=======
-func (c *Client) RenterStreamGet(siaPath string) (resp []byte, err error) {
-	siaPath = escapeSiaPath(trimSiaPath(siaPath))
-	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s", siaPath))
->>>>>>> add siatest
+	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s", sp))
 	return
 }
 
