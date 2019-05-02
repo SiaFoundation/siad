@@ -1302,6 +1302,7 @@ func TestRenterAddNodes(t *testing.T) {
 	// Specify subtests to run
 	subTests := []test{
 		{"TestRedundancyReporting", testRedundancyReporting}, // Put first because it pulls the original tg renter
+		{"TestUploadReady", testUploadReady},
 		{"TestOverspendAllowance", testOverspendAllowance},
 		{"TestRenterCancelAllowance", testRenterCancelAllowance},
 		{"TestRenewFailing", testRenewFailing}, // Put last because it impacts a host
@@ -1753,6 +1754,81 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testUploadReady tests that the RenterUploadReady endpoint returns as expected
+func testUploadReady(t *testing.T, tg *siatest.TestGroup) {
+	// Add a renter that skips setting the allowance
+	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
+	renterParams.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Renter should not be ready for upload
+	rur, err := renter.RenterUploadReadyGet(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rur.Ready {
+		t.Fatal("Renter should not be ready for upload")
+	}
+
+	// Check submitting only 1 variable set
+	_, err = renter.RenterUploadReadyGet(1, 0)
+	if err == nil {
+		t.Fatal("Err should have been returned for only setting datapieces")
+	}
+	_, err = renter.RenterUploadReadyGet(0, 1)
+	if err == nil {
+		t.Fatal("Err should have been returned for only setting paritypieces")
+	}
+
+	// Set the allowance
+	if err := renter.RenterPostAllowance(siatest.DefaultAllowance); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine a block to start the threadedContractMaintenance.
+	if err := tg.Miners()[0].MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm there are enough contracts
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("Not enough contracts, have %v expected %v", len(rc.ActiveContracts), len(tg.Hosts()))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Renter should be ready for upload
+	rur, err = renter.RenterUploadReadyGet(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rur.Ready {
+		t.Fatal("Renter is not ready for upload", rur)
+	}
+
+	// Renter should not be viewed as ready if data and parity pieces are larger
+	// than defaults
+	rur, err = renter.RenterUploadReadyGet(15, 35)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rur.Ready {
+		t.Fatal("Expected renter to not be ready for upload", rur)
+	}
+}
+
 // testOverspendAllowance tests that setting a small allowance and trying to
 // form contracts will not result in overspending the allowance
 func testOverspendAllowance(t *testing.T, tg *siatest.TestGroup) {
@@ -1913,15 +1989,6 @@ func TestRenterContracts(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// Renter should be ReadyToUpload
-	rg, err = r.RenterGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !rg.ReadyToUpload {
-		t.Fatal("Expected renter to be ReadyToUpload")
 	}
 
 	// Confirm contract end heights were set properly

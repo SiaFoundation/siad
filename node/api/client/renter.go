@@ -446,3 +446,21 @@ func (c *Client) RenterGetDir(siaPath modules.SiaPath) (rd api.RenterDirectory, 
 	err = c.get(fmt.Sprintf("/renter/dir/%s", siaPath.String()), &rd)
 	return
 }
+
+// RenterUploadReadyGet uses the /renter/uploadready endpoint to determine if
+// the renter is ready for upload. Set dataPieces and parityPieces to 0 to use
+// default values
+func (c *Client) RenterUploadReadyGet(dataPieces, parityPieces uint64) (rur api.RenterUploadReady, err error) {
+	strDataPieces := strconv.FormatUint(dataPieces, 10)
+	strParityPieces := strconv.FormatUint(parityPieces, 10)
+	if dataPieces == 0 {
+		strDataPieces = ""
+	}
+	if parityPieces == 0 {
+		strParityPieces = ""
+	}
+	query := fmt.Sprintf("?datapieces=%v&paritypieces=%v",
+		strDataPieces, strParityPieces)
+	err = c.get("/renter/uploadready"+query, &rur)
+	return
+}

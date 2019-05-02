@@ -27,7 +27,7 @@ var (
 	DefaultParityPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 20,
-		Testing:  8,
+		Testing:  4,
 	}).(int)
 )
 
