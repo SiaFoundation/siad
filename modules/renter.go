@@ -609,9 +609,10 @@ type Renter interface {
 	// File returns information on specific file queried by user
 	File(siaPath SiaPath) (FileInfo, error)
 
-	// FileList returns information on all of the files stored by the renter. The
-	// 'cached' argument specifies whether cached values should be returned or not.
-	FileList(cached bool) ([]FileInfo, error)
+	// FileList returns information on all of the files stored by the renter at the
+	// specified folder. The 'cached' argument specifies whether cached values
+	// should be returned or not.
+	FileList(siaPath SiaPath, recursive, cached bool) ([]FileInfo, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
 	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error
@@ -669,8 +670,8 @@ type Renter interface {
 	// DeleteDir deletes a directory from the renter
 	DeleteDir(siaPath SiaPath) error
 
-	// DirList lists the directories and the files stored in a siadir
-	DirList(siaPath SiaPath) ([]DirectoryInfo, []FileInfo, error)
+	// DirList lists the directories in a siadir
+	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

@@ -478,7 +478,6 @@ func (sfs *SiaFileSet) FileList(siaPath modules.SiaPath, recursive, cached bool,
 	fileList := []modules.FileInfo{}
 	var fileListMu sync.Mutex
 	loadChan := make(chan string)
-	var wg sync.WaitGroup
 	worker := func() {
 		for path := range loadChan {
 			// Load the Siafile.
@@ -506,12 +505,15 @@ func (sfs *SiaFileSet) FileList(siaPath modules.SiaPath, recursive, cached bool,
 			fileList = append(fileList, file)
 			fileListMu.Unlock()
 		}
-		wg.Done()
 	}
 	// spin up some threads
+	var wg sync.WaitGroup
 	for i := 0; i < fileListRoutines; i++ {
 		wg.Add(1)
-		go worker()
+		go func() {
+			worker()
+			wg.Done()
+		}()
 	}
 	// Walk over the whole tree if recursive is specified.
 	folder := siaPath.SiaDirSysPath(sfs.staticSiaFileDir)

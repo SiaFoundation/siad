@@ -1805,7 +1805,7 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		files, err := st.renter.FileList(false)
+		files, err := st.renter.FileList(modules.RootSiaPath(), true, false)
 		if err != nil {
 			return err
 		}

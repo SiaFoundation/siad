@@ -132,11 +132,11 @@ func TestDirInfo(t *testing.T) {
 	}
 
 	// Check that DirInfo returns the same information as stored in the metadata
-	fooDirInfo, err := rt.renter.DirInfo(siaPath)
+	fooDirInfo, err := rt.renter.staticDirSet.DirInfo(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootDirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
+	rootDirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,10 +187,11 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Confirm that DirList returns 1 FileInfo and 2 DirectoryInfos
-	directories, files, err := rt.renter.DirList(modules.RootSiaPath())
+	directories, err := rt.renter.DirList(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
+	files, err := rt.renter.FileList(modules.RootSiaPath(), false, false)
 	if len(directories) != 2 {
 		t.Fatal("Expected 2 DirectoryInfos but got", len(directories))
 	}

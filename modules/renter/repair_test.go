@@ -467,7 +467,7 @@ func TestNumFiles(t *testing.T) {
 	// of files and aggregate number of files
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -547,7 +547,7 @@ func TestDirectorySize(t *testing.T) {
 	// Call bubble on lowest lever and confirm top level reports accurate size
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -625,7 +625,7 @@ func TestDirectoryModTime(t *testing.T) {
 	// update time
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}

@@ -1,8 +1,10 @@
 package siadir
 
 import (
+	"io/ioutil"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -188,6 +190,50 @@ func (sds *SiaDirSet) closeEntry(entry *SiaDirSetEntry) {
 	}
 }
 
+// DirInfo returns the Directory Information of the siadir. NOTE: The 'readLock'
+// prefix in this case is used to indicate that it's safe to call this method
+// with other 'readLock' methods without locking since is doesn't write to any
+// fields. This guarantee can be made by locking sfs.mu and then spawning
+// multiple threads which call 'readLock' methods in parallel.
+func (sds *SiaDirSet) readlockDirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
+	// Grab the siadir entry
+	entry, err := sds.open(siaPath)
+	if err != nil {
+		return modules.DirectoryInfo{}, err
+	}
+	defer entry.Close()
+	// Grab the health information and return the Directory Info, the worst
+	// health will be returned. Depending on the directory and its contents that
+	// could either be health or stuckHealth
+	metadata := entry.Metadata()
+	return modules.DirectoryInfo{
+		// Aggregate Fields
+		AggregateHealth:              metadata.AggregateHealth,
+		AggregateLastHealthCheckTime: metadata.AggregateLastHealthCheckTime,
+		AggregateMaxHealth:           math.Max(metadata.AggregateHealth, metadata.AggregateStuckHealth),
+		AggregateMinRedundancy:       metadata.AggregateMinRedundancy,
+		AggregateMostRecentModTime:   metadata.AggregateModTime,
+		AggregateNumFiles:            metadata.AggregateNumFiles,
+		AggregateNumStuckChunks:      metadata.AggregateNumStuckChunks,
+		AggregateNumSubDirs:          metadata.AggregateNumSubDirs,
+		AggregateSize:                metadata.AggregateSize,
+		AggregateStuckHealth:         metadata.AggregateStuckHealth,
+
+		// SiaDir Fields
+		Health:              metadata.Health,
+		LastHealthCheckTime: metadata.LastHealthCheckTime,
+		MaxHealth:           math.Max(metadata.Health, metadata.StuckHealth),
+		MinRedundancy:       metadata.MinRedundancy,
+		MostRecentModTime:   metadata.ModTime,
+		NumFiles:            metadata.NumFiles,
+		NumStuckChunks:      metadata.NumStuckChunks,
+		NumSubDirs:          metadata.NumSubDirs,
+		SiaPath:             siaPath,
+		Size:                metadata.Size,
+		StuckHealth:         metadata.StuckHealth,
+	}, nil
+}
+
 // Delete deletes the SiaDir that belongs to the siaPath
 func (sds *SiaDirSet) Delete(siaPath modules.SiaPath) error {
 	sds.mu.Lock()
@@ -240,6 +286,72 @@ func (sds *SiaDirSet) InitRootDir() error {
 	}
 	_, err = New(rootSiaDir, sds.rootDir, sds.wal)
 	return err
+}
+
+// DirInfo returns the Directory Information of the siadir
+func (sds *SiaDirSet) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	return sds.readlockDirInfo(siaPath)
+}
+
+// DirList returns directories and files stored in the siadir as well as the
+// DirectoryInfo of the siadir
+func (sds *SiaDirSet) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, error) {
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+
+	// Get DirectoryInfo
+	di, err := sds.readlockDirInfo(siaPath)
+	if err != nil {
+		return nil, err
+	}
+	dirs := []modules.DirectoryInfo{di}
+	var dirsMu sync.Mutex
+	loadChan := make(chan string)
+	worker := func() {
+		for path := range loadChan {
+			// Load the dir info.
+			var siaPath modules.SiaPath
+			if err := siaPath.LoadSysPath(sds.rootDir, path); err != nil {
+				continue
+			}
+			var dir modules.DirectoryInfo
+			var err error
+			dir, err = sds.readlockDirInfo(siaPath)
+			if os.IsNotExist(err) || err == ErrUnknownPath {
+				continue
+			}
+			if err != nil {
+				continue
+			}
+			dirsMu.Lock()
+			dirs = append(dirs, dir)
+			dirsMu.Unlock()
+		}
+	}
+	// spin up some threads
+	var wg sync.WaitGroup
+	for i := 0; i < dirListRoutines; i++ {
+		wg.Add(1)
+		go func() {
+			worker()
+			wg.Done()
+		}()
+	}
+	// Read Directory
+	folder := siaPath.SiaDirSysPath(sds.rootDir)
+	fileInfos, err := ioutil.ReadDir(folder)
+	if err != nil {
+		return nil, err
+	}
+	for _, fi := range fileInfos {
+		// Check for directories
+		if fi.IsDir() {
+			loadChan <- filepath.Join(folder, fi.Name())
+		}
+	}
+	return dirs, nil
 }
 
 // NewSiaDir creates a new SiaDir and returns a SiaDirSetEntry
