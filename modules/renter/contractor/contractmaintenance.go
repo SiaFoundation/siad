@@ -765,6 +765,9 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 // blockchain for recoverable contracts if the wallet has been locked during the
 // last scan.
 func (c *Contractor) managedFindRecoverableContracts() {
+	if c.staticDeps.Disrupt("disableAutomaticContractRecoveryScan") {
+		return
+	}
 	c.mu.RLock()
 	cc := c.lowestRecoveryChange
 	c.mu.RUnlock()

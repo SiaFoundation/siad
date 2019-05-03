@@ -357,7 +357,9 @@ func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID
 		}
 		atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
 		// Save the renter.
+		c.mu.Lock()
 		c.save()
+		c.mu.Unlock()
 	}()
 	return nil
 }

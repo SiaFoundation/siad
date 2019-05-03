@@ -49,24 +49,35 @@ func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.Conse
 		return err
 	}
 	defer rs.c.tg.Done()
-	// Subscribe to the consensus set from the beginning.
+	// We are about to start a scan. If the scanStart equals the
+	// lowestRecoveryChange we can reset it to nil.
+	rs.c.mu.Lock()
+	if rs.c.lowestRecoveryChange != nil && *rs.c.lowestRecoveryChange == scanStart {
+		rs.c.lowestRecoveryChange = nil
+	}
+	rs.c.mu.Unlock()
+	// Subscribe to the consensus set from scanStart.
 	err := cs.ConsensusSetSubscribe(rs, scanStart, cancel)
 	if err != nil {
 		return err
 	}
 	// Unsubscribe once done.
 	cs.Unsubscribe(rs)
+	// If cancel is closed we need to assume that the scan didn't finish. Just to
+	// be safe we reset it to scanStart.
+	select {
+	case <-cancel:
+		rs.c.mu.Lock()
+		rs.c.lowestRecoveryChange = &scanStart
+		rs.c.mu.Unlock()
+	default:
+	}
 	return nil
 }
 
 // ProcessConsensusChange scans the blockchain for information relevant to the
 // recoveryScanner.
 func (rs *recoveryScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
-	// If we are continuing from the lowest change we missed we can reset the
-	// lowestRecoveryChange field.
-	if rs.c.lowestRecoveryChange != nil && *rs.c.lowestRecoveryChange == cc.ID {
-		rs.c.lowestRecoveryChange = nil
-	}
 	for _, block := range cc.AppliedBlocks {
 		// Find lost contracts for recovery.
 		rs.c.findRecoverableContracts(rs.rs, block)

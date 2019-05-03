@@ -161,9 +161,10 @@ func (d *DependencyDisableCloseUploadEntry) Disrupt(s string) bool {
 }
 
 // Disrupt will prevent the fields scanInProgress and atomicRecoveryScanHeight
-// from being reset after the scan is done.
+// from being reset after the scan is done and also prevent automatic contract
+// recovery scans from being triggered.
 func (d *DependencyDisableRecoveryStatusReset) Disrupt(s string) bool {
-	return s == "disableRecoveryStatusReset"
+	return s == "disableRecoveryStatusReset" || s == "disableAutomaticContractRecoveryScan"
 }
 
 // Disrupt will prevent contracts from being renewed.
