@@ -200,7 +200,7 @@ func (sds *SiaDirSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, error
 	entry, exists := sds.siaDirMap[siaPath]
 	if exists {
 		// Get metadata from entry.
-		return entry.metadata, nil
+		return entry.Metadata(), nil
 	}
 	// Load metadat from disk.
 	md, err := loadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(sds.staticRootDir), modules.ProdDependencies)
@@ -363,6 +363,8 @@ func (sds *SiaDirSet) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo,
 			loadChan <- filepath.Join(folder, fi.Name())
 		}
 	}
+	close(loadChan)
+	wg.Wait()
 	return dirs, nil
 }
 
