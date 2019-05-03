@@ -46,20 +46,30 @@ func (r *Renter) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error)
 	// could either be health or stuckHealth
 	metadata := entry.Metadata()
 	return modules.DirectoryInfo{
-		AggregateHealth:         metadata.AggregateHealth,
-		AggregateNumFiles:       metadata.AggregateNumFiles,
-		AggregateNumStuckChunks: metadata.NumStuckChunks,
-		AggregateSize:           metadata.AggregateSize,
-		Health:                  metadata.Health,
-		LastHealthCheckTime:     metadata.LastHealthCheckTime,
-		MaxHealth:               math.Max(metadata.AggregateHealth, metadata.StuckHealth),
-		MinRedundancy:           metadata.MinRedundancy,
-		MostRecentModTime:       metadata.ModTime,
-		StuckHealth:             metadata.StuckHealth,
+		// Aggregate Fields
+		AggregateHealth:              metadata.AggregateHealth,
+		AggregateLastHealthCheckTime: metadata.AggregateLastHealthCheckTime,
+		AggregateMaxHealth:           math.Max(metadata.AggregateHealth, metadata.AggregateStuckHealth),
+		AggregateMinRedundancy:       metadata.AggregateMinRedundancy,
+		AggregateMostRecentModTime:   metadata.AggregateModTime,
+		AggregateNumFiles:            metadata.AggregateNumFiles,
+		AggregateNumStuckChunks:      metadata.AggregateNumStuckChunks,
+		AggregateNumSubDirs:          metadata.AggregateNumSubDirs,
+		AggregateSize:                metadata.AggregateSize,
+		AggregateStuckHealth:         metadata.AggregateStuckHealth,
 
-		NumFiles:   metadata.NumFiles,
-		NumSubDirs: metadata.NumSubDirs,
-		SiaPath:    siaPath,
+		// SiaDir Fields
+		Health:              metadata.Health,
+		LastHealthCheckTime: metadata.LastHealthCheckTime,
+		MaxHealth:           math.Max(metadata.Health, metadata.StuckHealth),
+		MinRedundancy:       metadata.MinRedundancy,
+		MostRecentModTime:   metadata.ModTime,
+		NumFiles:            metadata.NumFiles,
+		NumStuckChunks:      metadata.NumStuckChunks,
+		NumSubDirs:          metadata.NumSubDirs,
+		SiaPath:             siaPath,
+		Size:                metadata.Size,
+		StuckHealth:         metadata.StuckHealth,
 	}, nil
 }
 

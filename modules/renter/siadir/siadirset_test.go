@@ -233,10 +233,26 @@ func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	// Update the metadata of the entry
 	checkTime := time.Now()
 	metadataUpdate := md
+	// Aggregate fields
+	metadataUpdate.AggregateHealth = 7
+	metadataUpdate.AggregateLastHealthCheckTime = checkTime
+	metadataUpdate.AggregateMinRedundancy = 2.2
+	metadataUpdate.AggregateModTime = checkTime
+	metadataUpdate.AggregateNumFiles = 11
+	metadataUpdate.AggregateNumStuckChunks = 15
+	metadataUpdate.AggregateNumSubDirs = 5
+	metadataUpdate.AggregateSize = 2432
+	metadataUpdate.AggregateStuckHealth = 5
+	// SiaDir fields
 	metadataUpdate.Health = 4
-	metadataUpdate.StuckHealth = 2
 	metadataUpdate.LastHealthCheckTime = checkTime
-	metadataUpdate.NumStuckChunks = 5
+	metadataUpdate.MinRedundancy = 2
+	metadataUpdate.ModTime = checkTime
+	metadataUpdate.NumFiles = 5
+	metadataUpdate.NumStuckChunks = 6
+	metadataUpdate.NumSubDirs = 4
+	metadataUpdate.Size = 223
+	metadataUpdate.StuckHealth = 2
 
 	err = sds.UpdateMetadata(siaPath, metadataUpdate)
 	if err != nil {
