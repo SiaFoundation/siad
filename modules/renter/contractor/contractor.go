@@ -55,6 +55,8 @@ type Contractor struct {
 	currentPeriod types.BlockHeight
 	lastChange    modules.ConsensusChangeID
 
+	lowestRecoveryChange *modules.ConsensusChangeID
+
 	downloaders         map[types.FileContractID]*hostDownloader
 	editors             map[types.FileContractID]*hostEditor
 	sessions            map[types.FileContractID]*hostSession
@@ -85,43 +87,7 @@ func (c *Contractor) InitRecoveryScan() (err error) {
 		return err
 	}
 	defer c.tg.Done()
-	// Check if we are already scanning the blockchain.
-	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
-		return errors.New("scan for recoverable contracts is already in progress")
-	}
-	// Reset the progress and status if there was an error.
-	defer func() {
-		if err != nil {
-			atomic.StoreUint32(&c.atomicScanInProgress, 0)
-			atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
-		}
-	}()
-	// Get the wallet seed.
-	s, _, err := c.wallet.PrimarySeed()
-	if err != nil {
-		return err
-	}
-	// Get the renter seed and wipe it once done.
-	rs := proto.DeriveRenterSeed(s)
-	// Reset the scan progress before starting the scan.
-	atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
-	// Create the scanner.
-	scanner := c.newRecoveryScanner(rs)
-	// Start the scan.
-	go func() {
-		if err := scanner.threadedScan(c.cs, c.tg.StopChan()); err != nil {
-			c.log.Println("Scan failed", err)
-		}
-		if c.staticDeps.Disrupt("disableRecoveryStatusReset") {
-			return
-		}
-		// Reset the scan related fields.
-		if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 1, 0) {
-			build.Critical("finished recovery scan but scanInProgress was already set to 0")
-		}
-		atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
-	}()
-	return nil
+	return c.managedInitRecoveryScan(modules.ConsensusChangeBeginning)
 }
 
 // PeriodSpending returns the amount spent on contracts during the current
@@ -344,4 +310,54 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		return nil, err
 	}
 	return c, nil
+}
+
+// managedInitRecoveryScan starts scanning the whole blockchain at a certain
+// ChangeID for recoverable contracts within a separate thread.
+func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
+	// Check if we are already scanning the blockchain.
+	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
+		return errors.New("scan for recoverable contracts is already in progress")
+	}
+	// Reset the progress and status if there was an error.
+	defer func() {
+		if err != nil {
+			atomic.StoreUint32(&c.atomicScanInProgress, 0)
+			atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
+		}
+	}()
+	// Get the wallet seed.
+	s, _, err := c.wallet.PrimarySeed()
+	if err != nil {
+		return err
+	}
+	// Get the renter seed and wipe it once done.
+	rs := proto.DeriveRenterSeed(s)
+	// Reset the scan progress before starting the scan.
+	atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
+	// Create the scanner.
+	scanner := c.newRecoveryScanner(rs)
+	// Start the scan.
+	go func() {
+		// Add scanning thread to threadgroup.
+		if err := c.tg.Add(); err != nil {
+			return
+		}
+		defer c.tg.Done()
+		// Scan blockchain.
+		if err := scanner.threadedScan(c.cs, scanStart, c.tg.StopChan()); err != nil {
+			c.log.Println("Scan failed", err)
+		}
+		if c.staticDeps.Disrupt("disableRecoveryStatusReset") {
+			return
+		}
+		// Reset the scan related fields.
+		if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 1, 0) {
+			build.Critical("finished recovery scan but scanInProgress was already set to 0")
+		}
+		atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
+		// Save the renter.
+		c.save()
+	}()
+	return nil
 }

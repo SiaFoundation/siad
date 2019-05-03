@@ -44,13 +44,13 @@ func (c *Contractor) newRecoveryScanner(rs proto.RenterSeed) *recoveryScanner {
 // filecontracts belonging to the wallet's seed. Once done, all recoverable
 // contracts should be known to the contractor after which it will periodically
 // try to recover them.
-func (rs *recoveryScanner) threadedScan(cs consensusSet, cancel <-chan struct{}) error {
+func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.ConsensusChangeID, cancel <-chan struct{}) error {
 	if err := rs.c.tg.Add(); err != nil {
 		return err
 	}
 	defer rs.c.tg.Done()
 	// Subscribe to the consensus set from the beginning.
-	err := cs.ConsensusSetSubscribe(rs, modules.ConsensusChangeBeginning, cancel)
+	err := cs.ConsensusSetSubscribe(rs, scanStart, cancel)
 	if err != nil {
 		return err
 	}
@@ -62,6 +62,11 @@ func (rs *recoveryScanner) threadedScan(cs consensusSet, cancel <-chan struct{})
 // ProcessConsensusChange scans the blockchain for information relevant to the
 // recoveryScanner.
 func (rs *recoveryScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
+	// If we are continuing from the lowest change we missed we can reset the
+	// lowestRecoveryChange field.
+	if rs.c.lowestRecoveryChange != nil && *rs.c.lowestRecoveryChange == cc.ID {
+		rs.c.lowestRecoveryChange = nil
+	}
 	for _, block := range cc.AppliedBlocks {
 		// Find lost contracts for recovery.
 		rs.c.findRecoverableContracts(rs.rs, block)

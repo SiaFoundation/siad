@@ -77,12 +77,12 @@ func (c *Contractor) managedArchiveContracts() {
 func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Get the wallet's seed for contract recovery.
 	haveSeed := true
+	missedRecovery := false
 	s, _, err := c.wallet.PrimarySeed()
 	if err != nil {
 		haveSeed = false
 	}
 	// Get the master renter seed and wipe it once we are done with it.
-
 	var renterSeed proto.RenterSeed
 	if haveSeed {
 		renterSeed = proto.DeriveRenterSeed(s)
@@ -101,11 +101,17 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 		if block.ID() != types.GenesisID {
 			c.blockHeight++
 		}
-
 		// Find lost contracts for recovery.
 		if haveSeed {
 			c.findRecoverableContracts(renterSeed, block)
+		} else {
+			missedRecovery = true
 		}
+	}
+	// Remember that we weren't able to call findRecoverableContracts on the blocks
+	// in this change.
+	if missedRecovery && c.lowestRecoveryChange == nil {
+		*c.lowestRecoveryChange = cc.ID
 	}
 
 	// If we have entered the next period, update currentPeriod

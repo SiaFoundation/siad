@@ -761,6 +761,23 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	return amount, nil
 }
 
+// managedFindRecoverableContracts will spawn a thread to rescan parts of the
+// blockchain for recoverable contracts if the wallet has been locked during the
+// last scan.
+func (c *Contractor) managedFindRecoverableContracts() {
+	c.mu.RLock()
+	cc := c.lowestRecoveryChange
+	c.mu.RUnlock()
+	if cc == nil {
+		// No missing change. Nothing to do.
+		return
+	}
+	if err := c.managedInitRecoveryScan(*cc); err != nil {
+		c.log.Debug(err)
+		return
+	}
+}
+
 // threadedContractMaintenance checks the set of contracts that the contractor
 // has against the allownace, renewing any contracts that need to be renewed,
 // dropping contracts which are no longer worthwhile, and adding contracts if
@@ -793,6 +810,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Perform general cleanup of the contracts. This includes recovering lost
 	// contracts, archiving contracts, and other cleanup work. This should all
 	// happen before the rest of the maintenance.
+	c.managedFindRecoverableContracts()
 	c.managedRecoverContracts()
 	c.managedArchiveContracts()
 	c.managedCheckForDuplicates()
