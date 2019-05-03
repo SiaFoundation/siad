@@ -137,6 +137,10 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
 		delete(uh.unstuckHeapChunks, uc.id)
 		delete(uh.stuckHeapChunks, uc.id)
+		if _, exists := uh.repairingChunks[uc.id]; exists {
+			build.Critical("There should not be a chunk in the heap that can be popped that is currently being repaired")
+		}
+		uh.repairingChunks[uc.id] = struct{}{}
 	}
 	uh.mu.Unlock()
 	return uc
@@ -633,6 +637,10 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			if err != nil {
 				r.log.Debugln("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
 			}
+			// Remove the chunk from the repairingChunks map
+			r.uploadHeap.mu.Lock()
+			delete(r.uploadHeap.repairingChunks, nextChunk.id)
+			r.uploadHeap.mu.Unlock()
 			continue
 		}
 
@@ -650,6 +658,10 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			if err != nil {
 				r.log.Debugln("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
 			}
+			// Remove the chunk from the repairingChunks map
+			r.uploadHeap.mu.Lock()
+			delete(r.uploadHeap.repairingChunks, nextChunk.id)
+			r.uploadHeap.mu.Unlock()
 			continue
 		}
 	}

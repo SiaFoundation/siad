@@ -127,14 +127,6 @@ func (uc *unfinishedUploadChunk) chunkComplete() bool {
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
 // physical data and distribute it to the worker pool.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
-	// Add chunk to repairingChunks map
-	r.uploadHeap.mu.Lock()
-	_, exists := r.uploadHeap.repairingChunks[uc.id]
-	if !exists {
-		r.uploadHeap.repairingChunks[uc.id] = struct{}{}
-	}
-	r.uploadHeap.mu.Unlock()
-
 	// Give the chunk to each worker, marking the number of workers that have
 	// received the chunk. The workers cannot be interacted with while the
 	// renter is holding a lock, so we need to build a list of workers while
