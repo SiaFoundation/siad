@@ -832,7 +832,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	recentRepairTime := sf.RecentRepairTime()
 
 	// Check calculated metadata
-	fileMetadata, err := rt.renter.managedCalculateFileMetadata(up.SiaPath)
+	fileMetadata, err := rt.renter.managedCalculateAndUpdateFileMetadata(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}

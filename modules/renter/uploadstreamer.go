@@ -83,8 +83,93 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 // UploadStreamFromReader reads from the provided reader until io.EOF is reached and
 // upload the data to the Sia network.
 func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.Reader) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.managedUploadStreamFromReader(up, reader, false)
+}
+
+// managedInitUploadStream verifies the upload parameters and prepares an empty
+// SiaFile for the upload.
+func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*siafile.SiaFileSetEntry, error) {
+	siaPath, ec, force, repair := up.SiaPath, up.ErasureCode, up.Force, up.Repair
+	// Check if ec was set. If not use defaults.
+	var err error
+	if ec == nil && !repair {
+		up.ErasureCode, err = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, 64)
+		if err != nil {
+			return nil, err
+		}
+		ec = up.ErasureCode
+	} else if ec != nil && repair {
+		return nil, errors.New("can't provide erasure code settings when doing repairs")
+	}
+
+	// Make sure that force and repair aren't both set.
+	if force && repair {
+		return nil, errors.New("'force' and 'repair' can't both be set")
+	}
+
+	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
+	if force {
+		if err := r.DeleteFile(siaPath); err != nil && err != siafile.ErrUnknownPath {
+			return nil, err
+		}
+	}
+	// If repair is set open the existing file.
+	if repair {
+		entry, err := r.staticFileSet.Open(up.SiaPath)
+		if err != nil {
+			return nil, err
+		}
+		return entry, nil
+	}
+	// Check that we have contracts to upload to. We need at least data +
+	// parity/2 contracts. NumPieces is equal to data+parity, and min pieces is
+	// equal to parity. Therefore (NumPieces+MinPieces)/2 = (data+data+parity)/2
+	// = data+parity/2.
+	numContracts := len(r.hostContractor.Contracts())
+	requiredContracts := (ec.NumPieces() + ec.MinPieces()) / 2
+	if numContracts < requiredContracts && build.Release != "testing" {
+		return nil, fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (ec.NumPieces()+ec.MinPieces())/2)
+	}
+	// Create the directory path on disk. Renter directory is already present so
+	// only files not in top level directory need to have directories created
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		return nil, err
+	}
+	// Choose the right file and dir sets.
+	sfs := r.staticFileSet
+	sds := r.staticDirSet
+	if backup {
+		sfs = r.staticBackupFileSet
+		sds = r.staticBackupDirSet
+	}
+	// Create directory
+	siaDirEntry, err := sds.NewSiaDir(dirSiaPath)
+	if err != nil && err != siadir.ErrPathOverload {
+		return nil, err
+	} else if err == nil {
+		siaDirEntry.Close()
+	}
+	// Create the Siafile and add to renter
+	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
+	entry, err := sfs.NewSiaFile(up, sk, 0, 0700)
+	if err != nil {
+		return nil, err
+	}
+	return entry, nil
+}
+
+// managedUploadStreamFromReader reads from the provided reader until io.EOF is
+// reached and upload the data to the Sia network. Depending on whether backup
+// is true or false, the siafile for the upload will be stored in the siafileset
+// or backupfileset.
+func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) error {
 	// Check the upload params first.
-	entry, err := r.managedInitUploadStream(up)
+	entry, err := r.managedInitUploadStream(up, backup)
 	if err != nil {
 		return err
 	}
@@ -178,70 +263,4 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 			return ss.err
 		}
 	}
-}
-
-// managedInitUploadStream  verifies the upload parameters and prepares an empty
-// SiaFile for the upload.
-func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*siafile.SiaFileSetEntry, error) {
-	siaPath, ec, force, repair := up.SiaPath, up.ErasureCode, up.Force, up.Repair
-	// Check if ec was set. If not use defaults.
-	var err error
-	if ec == nil && !repair {
-		up.ErasureCode, err = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, 64)
-		if err != nil {
-			return nil, err
-		}
-		ec = up.ErasureCode
-	} else if ec != nil && repair {
-		return nil, errors.New("can't provide erasure code settings when doing repairs")
-	}
-
-	// Make sure that force and repair aren't both set.
-	if force && repair {
-		return nil, errors.New("'force' and 'repair' can't both be set")
-	}
-
-	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
-	if force {
-		if err := r.DeleteFile(siaPath); err != nil && err != siafile.ErrUnknownPath {
-			return nil, err
-		}
-	}
-	// If repair is set open the existing file.
-	if repair {
-		entry, err := r.staticFileSet.Open(up.SiaPath)
-		if err != nil {
-			return nil, err
-		}
-		return entry, nil
-	}
-	// Check that we have contracts to upload to. We need at least data +
-	// parity/2 contracts. NumPieces is equal to data+parity, and min pieces is
-	// equal to parity. Therefore (NumPieces+MinPieces)/2 = (data+data+parity)/2
-	// = data+parity/2.
-	numContracts := len(r.hostContractor.Contracts())
-	requiredContracts := (ec.NumPieces() + ec.MinPieces()) / 2
-	if numContracts < requiredContracts && build.Release != "testing" {
-		return nil, fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (ec.NumPieces()+ec.MinPieces())/2)
-	}
-	// Create the directory path on disk. Renter directory is already present so
-	// only files not in top level directory need to have directories created
-	dirSiaPath, err := siaPath.Dir()
-	if err != nil {
-		return nil, err
-	}
-	// Create directory
-	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
-	if err != nil && err != siadir.ErrPathOverload {
-		return nil, err
-	} else if err == nil {
-		siaDirEntry.Close()
-	}
-	// Create the Siafile and add to renter
-	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
-	entry, err := r.staticFileSet.NewSiaFile(up, sk, 0, 0700)
-	if err != nil {
-		return nil, err
-	}
-	return entry, nil
 }

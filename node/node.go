@@ -419,7 +419,7 @@ func New(params NodeParams) (*Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		return renter.NewCustomRenter(g, cs, tp, hdb, hc, persistDir, renterDeps)
+		return renter.NewCustomRenter(g, cs, tp, hdb, w, hc, persistDir, renterDeps)
 	}()
 	if err != nil {
 		return nil, errors.Extend(err, errors.New("unable to create renter"))

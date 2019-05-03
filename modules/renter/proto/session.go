@@ -133,7 +133,7 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 // Replace calls the Write RPC with a series of actions that replace the sector
 // at the specified index with data, returning the updated contract and the
 // Merkle root of the new sector.
-func (s *Session) Replace(data []byte, sectorIndex uint64) (_ modules.RenterContract, _ crypto.Hash, err error) {
+func (s *Session) Replace(data []byte, sectorIndex uint64, trim bool) (_ modules.RenterContract, _ crypto.Hash, err error) {
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
 		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract not present in contract set")
@@ -141,15 +141,18 @@ func (s *Session) Replace(data []byte, sectorIndex uint64) (_ modules.RenterCont
 	defer s.contractSet.Return(sc)
 	// get current number of sectors
 	numSectors := sc.header.LastRevision().NewFileSize / modules.SectorSize
-
-	rc, err := s.write(sc, []modules.LoopWriteAction{
+	actions := []modules.LoopWriteAction{
 		// append the new sector
 		{Type: modules.WriteActionAppend, Data: data},
 		// swap the new sector with the old sector
 		{Type: modules.WriteActionSwap, A: 0, B: numSectors},
+	}
+	if trim {
 		// delete the old sector
-		{Type: modules.WriteActionTrim, A: 1},
-	})
+		actions = append(actions, modules.LoopWriteAction{Type: modules.WriteActionTrim, A: 1})
+	}
+
+	rc, err := s.write(sc, actions)
 	return rc, crypto.MerkleRoot(data), err
 }
 
