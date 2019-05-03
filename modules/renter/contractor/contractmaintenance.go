@@ -83,7 +83,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 			// TODO: Ideally these two things would happen atomically, but I'm
 			// not completely certain that's feasible with our current
 			// architecture.
-			err := c.saveSync()
+			err := c.save()
 			if err != nil {
 				c.log.Println("Failed to save the contractor after updating renewed maps.")
 			}
@@ -751,7 +751,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// Store the contract in the record of historic contracts.
 	c.oldContracts[id] = oldContract.Metadata()
 	// Save the contractor.
-	err = c.saveSync()
+	err = c.save()
 	if err != nil {
 		c.log.Println("Failed to save the contractor after creating a new contract.")
 	}
@@ -1100,7 +1100,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			return
 		}
 		c.mu.Lock()
-		err = c.saveSync()
+		err = c.save()
 		c.mu.Unlock()
 		if err != nil {
 			c.log.Println("Unable to save the contractor:", err)

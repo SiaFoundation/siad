@@ -103,11 +103,6 @@ func (c *Contractor) save() error {
 	return c.persist.save(c.persistData())
 }
 
-// saveSync saves the Contractor persistence data to disk and then syncs to disk.
-func (c *Contractor) saveSync() error {
-	return c.persist.save(c.persistData())
-}
-
 // convertPersist converts the pre-v1.3.1 contractor persist formats to the new
 // formats.
 func convertPersist(dir string) error {
