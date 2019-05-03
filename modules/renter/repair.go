@@ -183,7 +183,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				r.log.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
 				continue
 			}
-			fileMetadata, err = r.managedCalculateFileMetadata(fileSiaPath)
+			fileMetadata, err = r.managedCalculateAndUpdateFileMetadata(fileSiaPath)
 			if err != nil {
 				r.log.Printf("failed to calculate file metadata %v: %v", fi.Name(), err)
 				continue
@@ -271,9 +271,10 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 	return metadata, nil
 }
 
-// managedCalculateFileMetadata calculates and returns the necessary metadata
-// information of a siafile that needs to be bubbled
-func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath) (siafile.BubbledMetadata, error) {
+// managedCalculateAndUpdateFileMetadata calculates and returns the necessary
+// metadata information of a siafile that needs to be bubbled. The calculated
+// metadata information is also updated and saved to disk
+func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) (siafile.BubbledMetadata, error) {
 	// Load the Siafile.
 	sf, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
