@@ -40,7 +40,7 @@ type (
 	// SiaFile and references to the SiaFile and the SiaFileSet
 	siaFileSetEntry struct {
 		*SiaFile
-		siaFileSet *SiaFileSet
+		staticSiaFileSet *SiaFileSet
 
 		threadMap   map[uint64]threadInfo
 		threadMapMu sync.Mutex
@@ -113,10 +113,15 @@ func (entry *SiaFileSetEntry) CopyEntry() *SiaFileSetEntry {
 // functions while holding a lock anyway, but this function is particularly
 // sensitive to that.
 func (entry *SiaFileSetEntry) Close() error {
-	entry.siaFileSet.mu.Lock()
-	entry.siaFileSet.closeEntry(entry)
-	entry.siaFileSet.mu.Unlock()
+	entry.staticSiaFileSet.mu.Lock()
+	entry.staticSiaFileSet.closeEntry(entry)
+	entry.staticSiaFileSet.mu.Unlock()
 	return nil
+}
+
+// FileSet returns the SiaFileSet of the entry.
+func (entry *SiaFileSetEntry) FileSet() *SiaFileSet {
+	return entry.staticSiaFileSet
 }
 
 // SiaPath returns the siapath of a siafile.
@@ -277,9 +282,9 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) (*siaFileSetEntry, error) {
 	threads := make(map[uint64]threadInfo)
 	entry := &siaFileSetEntry{
-		SiaFile:    sf,
-		siaFileSet: sfs,
-		threadMap:  threads,
+		SiaFile:          sf,
+		staticSiaFileSet: sfs,
+		threadMap:        threads,
 	}
 	// Add entry to siaFileMap and siapathToUID map. Sanity check that the UID is
 	// in fact unique.

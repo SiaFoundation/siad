@@ -1668,7 +1668,7 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&fu
 
 Modify settings that control the renter's behavior.
 
-### Query Response Parameters
+### Query String Parameters
 #### OPTIONAL
 Any of the renter settings can be set, see fields [here](#settings)
 
@@ -1706,11 +1706,16 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "destination=/home/backups/01-01-
 
 Creates a backup of all siafiles in the renter at the specified path.
 
-### Query Response Parameters
+### Query String Parameters
 #### REQUIRED
 **destination** | string
 The path on disk where the backup will be created. Needs to be an absolute
 path.
+
+#### OPTIONAL
+**remote** | boolean
+flag indicating if the backup should be stored on hosts. If true,
+**destination** is interpreted as the backup's name, not its path.
 
 ### Response
 
@@ -1727,15 +1732,54 @@ Recovers an existing backup from the specified path by adding all the siafiles
 contained within it to the renter. Should a siafile for a certain path already
 exist, a number will be added as a suffix. e.g. 'myfile_1.sia'
 
-### Query Response Parameters
+### Query String Parameters
 #### REQUIRED
 **source** | string
 The path on disk where the backup will be recovered from. Needs to be an
 absolute path.
 
+#### OPTIONAL
+**remote** | boolean
+flag indicating if the backup is stored on hosts. If true, **source** is
+interpreted as the backup's name, not its path.
+
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/uploadedbackups [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadedbackups"
+```
+
+Lists the backups that have been uploaded to hosts.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+[
+  {
+    "name": "foo",                             // string
+    "UID": "00112233445566778899aabbccddeeff", // string
+    "creationdate": 1234567890,                // Unix timestamp
+    "size": 8192                               // bytes
+  }
+]
+```
+**name** | string  
+The name of the backup.
+
+**UID** | string
+A unique identifier for the backup.
+
+**creationdate** | string
+Unix timestamp of when the backup was created.
+
+**size** 
+Size in bytes of the backup.
 
 ## /renter/contracts [GET]
 > curl example  

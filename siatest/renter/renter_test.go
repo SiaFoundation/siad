@@ -4082,7 +4082,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Create a backup.
 	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
-	err = r.RenterCreateBackupPost(backupPath)
+	err = r.RenterCreateBackupPost(backupPath, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4104,7 +4104,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	r = nodes[0]
 	// Recover the backup.
-	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
 		t.Fatal(err)
 	}
 	// The file should be available and ready for download again.
@@ -4113,7 +4113,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Recover the backup again. Now there should be another file with a suffix
 	// at the end.
-	if err := r.RenterRecoverBackupPost(backupPath); err != nil {
+	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
 		t.Fatal(err)
 	}
 	sp, err := modules.NewSiaPath(rf.SiaPath().String() + "_1")
@@ -4555,6 +4555,105 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	// already repaired. Datapieces and paritypieces can be set to 0 as long as
 	// repair is true.
 	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(b), remoteFile.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRemoteBackup tests creating and loading remote backups.
+func TestRemoteBackup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(len(tg.Hosts()) - 1)
+	parityPieces := uint64(1)
+	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Create a snapshot.
+	if err := r.RenterCreateBackupPost("foo", true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload another file and take another snapshot.
+	lf2, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf2, err := r.UploadBlocking(lf2, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	if err := r.RenterCreateBackupPost("bar", true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both snapshots should be listed.
+	ubs, err := r.RenterUploadedBackups()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(ubs) != 2 {
+		t.Fatal("expected two backups, got", len(ubs))
+	}
+
+	// Delete both files and restore the first snapshot.
+	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RenterDeletePost(rf2.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RenterRecoverBackupPost("foo", true); err != nil {
+		t.Fatal(err)
+	}
+	// We should be able to download the first file.
+	if _, err := r.DownloadToDisk(rf, false); err != nil {
+		t.Fatal(err)
+	}
+	// The second file should still fail.
+	if _, err := r.DownloadToDisk(rf2, false); err == nil {
+		t.Fatal("expected second file to be unavailable")
+	}
+
+	// Restore the second snapshot.
+	if err := r.RenterRecoverBackupPost("bar", true); err != nil {
+		t.Fatal(err)
+	}
+	// We should be able to download both files now.
+	if _, err := r.DownloadToDisk(rf, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.DownloadToDisk(rf2, false); err != nil {
 		t.Fatal(err)
 	}
 }

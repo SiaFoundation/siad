@@ -19,7 +19,7 @@ import (
 func dummyEntry(s *SiaFile) *siaFileSetEntry {
 	return &siaFileSetEntry{
 		SiaFile: s,
-		siaFileSet: &SiaFileSet{
+		staticSiaFileSet: &SiaFileSet{
 			staticSiaFileDir: filepath.Dir(s.SiaFilePath()),
 			siaFileMap:       make(map[SiafileUID]*siaFileSetEntry),
 			siapathToUID:     make(map[modules.SiaPath]SiafileUID),
