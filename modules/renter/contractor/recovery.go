@@ -80,7 +80,9 @@ func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.Conse
 func (rs *recoveryScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
 	for _, block := range cc.AppliedBlocks {
 		// Find lost contracts for recovery.
+		rs.c.mu.Lock()
 		rs.c.findRecoverableContracts(rs.rs, block)
+		rs.c.mu.Unlock()
 		atomic.AddInt64(&rs.c.atomicRecoveryScanHeight, 1)
 	}
 	for range cc.RevertedBlocks {

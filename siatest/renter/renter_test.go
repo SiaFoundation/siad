@@ -4035,23 +4035,14 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 		}
 	}()
 
-	// Add a Renter node
+	// Add a renter node that can't run the automatic contract recovery scan.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.ContractorDeps = &dependencies.DependencyDisableRecoveryStatusReset{}
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := tg.Renters()[0]
-
-	// Lock the renter's wallet.
-	if err := r.WalletLockPost(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Mine a block to make the renter realize that it missed a block.
-	if err := tg.Miners()[0].MineBlock(); err != nil {
-		t.Fatal(err)
-	}
 
 	// Upload a file to the renter.
 	dataPieces := uint64(1)
@@ -4088,8 +4079,10 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Start the renter again. This should also unlock it and force a rescan.
-	if err := tg.StartNode(r); err != nil {
+	// Start the renter again. This time it's unlocked and the automatic recovery
+	// scan isn't disabled.
+	println("starting")
+	if err := tg.StartNodeCleanDeps(r); err != nil {
 		t.Fatal(err)
 	}
 

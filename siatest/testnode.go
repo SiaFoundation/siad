@@ -142,6 +142,15 @@ func (tn *TestNode) StartNode() error {
 	return tn.WalletUnlockPost(tn.primarySeed)
 }
 
+// StartNodeCleanDeps restarts a node from an active group without its
+// previously assigned dependencies.
+func (tn *TestNode) StartNodeCleanDeps() error {
+	tn.params.ContractSetDeps = nil
+	tn.params.ContractorDeps = nil
+	tn.params.RenterDeps = nil
+	return tn.StartNode()
+}
+
 // StopNode stops a TestNode
 func (tn *TestNode) StopNode() error {
 	return errors.AddContext(tn.Close(), "failed to stop node")
