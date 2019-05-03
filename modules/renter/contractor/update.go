@@ -111,7 +111,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Remember that we weren't able to call findRecoverableContracts on the blocks
 	// in this change.
 	if missedRecovery && c.lowestRecoveryChange == nil {
-		*c.lowestRecoveryChange = cc.ID
+		c.lowestRecoveryChange = &cc.ID
 	}
 
 	// If we have entered the next period, update currentPeriod
