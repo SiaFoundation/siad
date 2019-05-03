@@ -304,6 +304,12 @@ func (sds *SiaDirSet) Rename(oldPath, newPath modules.SiaPath) error {
 	if oldPath.Equals(modules.RootSiaPath()) {
 		return errors.New("can't rename root dir")
 	}
+	if oldPath.Equals(newPath) {
+		return nil // nothing to do
+	}
+	if strings.HasPrefix(newPath.String(), oldPath.String()) {
+		return errors.New("can't rename folder into itself")
+	}
 	// Prevent new dirs from being opened.
 	sds.mu.Lock()
 	defer sds.mu.Unlock()

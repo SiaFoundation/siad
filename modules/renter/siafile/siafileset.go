@@ -620,6 +620,12 @@ func (sfs *SiaFileSet) RenameDir(oldPath, newPath modules.SiaPath, rename siadir
 	if oldPath.Equals(modules.RootSiaPath()) {
 		return errors.New("can't rename root dir")
 	}
+	if oldPath.Equals(newPath) {
+		return nil // nothing to do
+	}
+	if strings.HasPrefix(newPath.String(), oldPath.String()) {
+		return errors.New("can't rename folder into itself")
+	}
 	// Prevent new files from being opened.
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()

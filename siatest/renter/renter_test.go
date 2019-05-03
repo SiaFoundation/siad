@@ -675,13 +675,25 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected 0 files in directory but found:", len(rgd.Files))
 	}
 
+	// Test renaming directory
+	newSiaPath := modules.RandomSiaPath()
+	if err = r.RenterDirRenamePost(rd.SiaPath(), newSiaPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the old siadir was deleted from disk
+	_, err = os.Stat(rd.SiaPath().SiaDirSysPath(r.RenterFilesDir()))
+	if !os.IsNotExist(err) {
+		t.Fatal("Expected IsNotExist err, but got err:", err)
+	}
+
 	// Test deleting directory
-	if err = r.RenterDirDeletePost(rd.SiaPath()); err != nil {
+	if err = r.RenterDirDeletePost(newSiaPath); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check that siadir was deleted from disk
-	_, err = os.Stat(rd.SiaPath().SiaDirSysPath(r.RenterFilesDir()))
+	_, err = os.Stat(newSiaPath.SiaDirSysPath(r.RenterFilesDir()))
 	if !os.IsNotExist(err) {
 		t.Fatal("Expected IsNotExist err, but got err:", err)
 	}

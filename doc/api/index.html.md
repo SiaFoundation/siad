@@ -1991,9 +1991,13 @@ Location where the directory will reside in the renter on the network. The path 
 ### Query String Parameters
 #### REQUIRED
 **action** | string
-Action can be either `create` or `delete`.
+Action can be either `create`, `delete` or `rename`.
  - `create` will create an empty directory on the sia network
  - `delete` will remove a directory and its contents from the sia network
+ - `rename` will rename a directory on the sia network
+
+ **newsiapath** | string
+ The new siapath of the renamed folder. Only required for the `rename` action.
 
 ### Response
 
