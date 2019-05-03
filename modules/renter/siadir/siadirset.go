@@ -218,9 +218,6 @@ func (sds *SiaDirSet) readLockDirInfo(siaPath modules.SiaPath) (modules.Director
 	if err != nil {
 		return modules.DirectoryInfo{}, err
 	}
-	// Grab the health information and return the Directory Info, the worst
-	// health will be returned. Depending on the directory and its contents that
-	// could either be health or stuckHealth
 	return modules.DirectoryInfo{
 		// Aggregate Fields
 		AggregateHealth:              metadata.AggregateHealth,
@@ -310,8 +307,8 @@ func (sds *SiaDirSet) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 	return sds.readLockDirInfo(siaPath)
 }
 
-// DirList returns directories and files stored in the siadir as well as the
-// DirectoryInfo of the siadir
+// DirList returns directories stored in the siadir as well as the DirectoryInfo
+// of the siadir
 func (sds *SiaDirSet) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, error) {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()

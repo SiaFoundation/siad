@@ -1244,7 +1244,7 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 	WriteSuccess(w)
 }
 
-// renterDirHandlerGET handles the API call to create a directory
+// renterDirHandlerGET handles the API call to query a directory
 func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	var siaPath modules.SiaPath
 	var err error
@@ -1275,7 +1275,8 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 	return
 }
 
-// renterDirHandlerPOST handles the API call to create a directory
+// renterDirHandlerPOST handles the API call to create, delete and rename a
+// directory
 func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse action
 	action := req.FormValue("action")
