@@ -19,6 +19,7 @@ type contractorPersist struct {
 	BlockHeight          types.BlockHeight               `json:"blockheight"`
 	CurrentPeriod        types.BlockHeight               `json:"currentperiod"`
 	LastChange           modules.ConsensusChangeID       `json:"lastchange"`
+	LowestRecoveryChange *modules.ConsensusChangeID      `json:"lowestrecoverychange"`
 	OldContracts         []modules.RenterContract        `json:"oldcontracts"`
 	RecoverableContracts []modules.RecoverableContract   `json:"recoverablecontracts"`
 	RenewedFrom          map[string]types.FileContractID `json:"renewedfrom"`
@@ -28,12 +29,13 @@ type contractorPersist struct {
 // persistData returns the data in the Contractor that will be saved to disk.
 func (c *Contractor) persistData() contractorPersist {
 	data := contractorPersist{
-		Allowance:     c.allowance,
-		BlockHeight:   c.blockHeight,
-		CurrentPeriod: c.currentPeriod,
-		LastChange:    c.lastChange,
-		RenewedFrom:   make(map[string]types.FileContractID),
-		RenewedTo:     make(map[string]types.FileContractID),
+		Allowance:            c.allowance,
+		BlockHeight:          c.blockHeight,
+		CurrentPeriod:        c.currentPeriod,
+		LastChange:           c.lastChange,
+		LowestRecoveryChange: c.lowestRecoveryChange,
+		RenewedFrom:          make(map[string]types.FileContractID),
+		RenewedTo:            make(map[string]types.FileContractID),
 	}
 	for k, v := range c.renewedFrom {
 		data.RenewedFrom[k.String()] = v
@@ -75,6 +77,7 @@ func (c *Contractor) load() error {
 	c.blockHeight = data.BlockHeight
 	c.currentPeriod = data.CurrentPeriod
 	c.lastChange = data.LastChange
+	c.lowestRecoveryChange = data.LowestRecoveryChange
 	var fcid types.FileContractID
 	for k, v := range data.RenewedFrom {
 		if err := fcid.LoadString(k); err != nil {
