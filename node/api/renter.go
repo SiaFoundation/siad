@@ -117,10 +117,14 @@ type (
 
 	// RenterContracts contains the renter's contracts.
 	RenterContracts struct {
-		Contracts            []RenterContract              `json:"contracts"`
+		// Compatibility Fields
+		Contracts         []RenterContract `json:"contracts"`
+		InactiveContracts []RenterContract `json:"inactivecontracts"`
+
+		// Current Fields
 		ActiveContracts      []RenterContract              `json:"activecontracts"`
 		RenewedContracts     []RenterContract              `json:"renewedcontracts"`
-		InactiveContracts    []RenterContract              `json:"inactivecontracts"`
+		DisabledContracts    []RenterContract              `json:"disabledcontracts"`
 		ExpiredContracts     []RenterContract              `json:"expiredcontracts"`
 		RecoverableContracts []modules.RecoverableContract `json:"recoverablecontracts"`
 	}
@@ -465,26 +469,39 @@ func (api *API) renterContractCancelHandler(w http.ResponseWriter, req *http.Req
 }
 
 // renterContractsHandler handles the API call to request the Renter's
-// contracts.
+// contracts. Active and renewed contracts are returned by default
 //
-// Active contracts are contracts that the renter is actively using to store
-// data and can upload, download, and renew
-//
-// Renewed contracts are contracts that are not active or expired but the renter
-// has an active contract with the host
+// Contracts are returned for Compatibility and are the contracts returned from
+// renter.Contracts()
 //
 // Inactive contracts are contracts that are not currently being used by the
 // renter because they are !goodForRenew, but have endheights that are in the
 // future so could potentially become active again
 //
-// Expired contracts are contracts who's endheights are in the past
+// Active contracts are contracts that the renter is actively using to store
+// data and can upload, download, and renew.
+//
+// Renewed contracts are contracts that are not active or expired but the renter
+// has an active contract with the host because they were renewed.
+//
+// Disabled Contracts are contracts that are no longer active, were not renewed,
+// and have endheights in the current period.
+//
+// Expired contracts are contracts who's endheights are in the past.
 //
 // Recoverable contracts are contracts of the renter that are recovered from the
-// blockchain by using the renter's seed
+// blockchain by using the renter's seed.
 func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse flags
-	var inactive, expired, recoverable bool
+	var disabled, inactive, expired, recoverable bool
 	var err error
+	if s := req.FormValue("disabled"); s != "" {
+		disabled, err = scanBool(s)
+		if err != nil {
+			WriteError(w, Error{"unable to parse disabled:" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
 	if s := req.FormValue("inactive"); s != "" {
 		inactive, err = scanBool(s)
 		if err != nil {
@@ -509,7 +526,7 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 
 	// Get active, renewed, inactive, expired contracts. Contracts are for
 	// grabbed for compatibility
-	activeContracts, renewedContracts, inactiveContracts, expiredContracts, contracts := api.parseRenterContracts(inactive, expired)
+	contracts, inactiveContracts, activeContracts, renewedContracts, disabledContracts, expiredContracts := api.parseRenterContracts(disabled, inactive, expired)
 
 	// Get recoverable contracts
 	var recoverableContracts []modules.RecoverableContract
@@ -518,10 +535,12 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 	}
 
 	WriteJSON(w, RenterContracts{
-		Contracts:            contracts,
+		Contracts:         contracts,
+		InactiveContracts: inactiveContracts,
+
 		ActiveContracts:      activeContracts,
 		RenewedContracts:     renewedContracts,
-		InactiveContracts:    inactiveContracts,
+		DisabledContracts:    disabledContracts,
 		ExpiredContracts:     expiredContracts,
 		RecoverableContracts: recoverableContracts,
 	})
@@ -530,7 +549,7 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 // parseRenterContracts pulls out the active, renewed, inactive, and expired
 // contracts from the Renter's Contracts() and OldContracts(). For compatibility
 // contracts are returned
-func (api *API) parseRenterContracts(inactive, expired bool) (activeContracts, renewedContracts, inactiveContracts, expiredContracts, contracts []RenterContract) {
+func (api *API) parseRenterContracts(disabled, inactive, expired bool) (contracts, inactiveContracts, activeContracts, renewedContracts, disabledContracts, expiredContracts []RenterContract) {
 	// Build activeContracts,nonActiveContracts, and contracts
 	var nonActiveContracts []RenterContract
 	activeHosts := make(map[string]struct{})
@@ -577,14 +596,18 @@ func (api *API) parseRenterContracts(inactive, expired bool) (activeContracts, r
 		contracts = append(contracts, contract)
 	}
 
-	// From nonActiveContracts build renewedContracts and inactiveContracts
+	// From nonActiveContracts build renewedContracts, disabledContracts, and
+	// inactiveContracts
 	for _, contract := range nonActiveContracts {
+		if inactive {
+			inactiveContracts = append(inactiveContracts, contract)
+		}
 		if _, ok := activeHosts[contract.HostPublicKey.String()]; ok {
 			renewedContracts = append(renewedContracts, contract)
 			continue
 		}
-		if inactive {
-			inactiveContracts = append(inactiveContracts, contract)
+		if disabled {
+			disabledContracts = append(disabledContracts, contract)
 		}
 	}
 
@@ -628,18 +651,21 @@ func (api *API) parseRenterContracts(inactive, expired bool) (activeContracts, r
 			expiredContracts = append(expiredContracts, contract)
 			continue
 		}
-		// If there is an active contract with the host and the endheight is
-		// greater than or equal to the current blockheight, then this contract
-		// is a renewed contract
-		if _, ok := activeHosts[contract.HostPublicKey.String()]; ok && c.EndHeight >= blockHeight {
-			renewedContracts = append(renewedContracts, contract)
-			continue
-		}
-
 		// A contract is inactive if the endheight is greater than or equal to
 		// the blockheight
 		if inactive && c.EndHeight >= blockHeight {
 			inactiveContracts = append(inactiveContracts, contract)
+		}
+		// If there is an active contract with the host and the endheight is
+		// greater than or equal to the current blockheight, then this contract
+		// is a renewed contract, otherwise it is a disabled contract
+		_, ok := activeHosts[contract.HostPublicKey.String()]
+		if ok && c.EndHeight >= blockHeight {
+			renewedContracts = append(renewedContracts, contract)
+			continue
+		}
+		if disabled && !ok && c.EndHeight >= blockHeight {
+			disabledContracts = append(disabledContracts, contract)
 		}
 	}
 	return
