@@ -1506,7 +1506,7 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		// contract should be !goodForRenew now.
-		rc, err := renter.RenterInactiveContractsGet()
+		rc, err := renter.RenterDisabledContractsGet()
 		if err != nil {
 			return err
 		}
@@ -1516,8 +1516,8 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 		if len(rc.RenewedContracts) != len(tg.Hosts())-2 {
 			return fmt.Errorf("Expected %v renewed contracts, got %v", len(tg.Hosts())-2, len(rc.RenewedContracts))
 		}
-		if len(rc.InactiveContracts) != 1 {
-			return fmt.Errorf("Expected %v inactive contracts, got %v", 1, len(rc.InactiveContracts))
+		if len(rc.DisabledContracts) != 1 {
+			return fmt.Errorf("Expected %v disabled contracts, got %v", 1, len(rc.DisabledContracts))
 		}
 
 		// Check that the locked host is in inactive and not in active.
