@@ -1054,9 +1054,13 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 	// Periodically print measurements until download is done.
 	completed := make(map[string]struct{})
 	errMap := make(map[string]api.DownloadInfo)
+	failedDownloads := func() (fd []api.DownloadInfo) {
+		for _, di := range errMap {
+			fd = append(fd, di)
+		}
+		return
+	}
 	for range time.Tick(OutputRefreshRate) {
-		// Clear terminal.
-		fmt.Print("\033[H\033[2J")
 		// Get the list of downloads.
 		rdg, err := httpClient.RenterDownloadsGet()
 		if err != nil {
@@ -1071,7 +1075,10 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 				queue[key] = d
 			}
 		}
+		// Clear terminal.
+		clearStr := fmt.Sprint("\033[H\033[2J")
 		// Take new measurements for each tracked file.
+		progressStr := clearStr
 		for tfIdx, tf := range tfs {
 			// Search for the download in the list of downloads.
 			mapKey := tf.siaPath.String() + tf.dst
@@ -1096,7 +1103,7 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 				completed[mapKey] = struct{}{}
 				// Check if all downloads are done.
 				if len(completed) == len(tfs) {
-					return nil
+					return failedDownloads()
 				}
 				continue
 			}
@@ -1124,13 +1131,15 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 			elapsed := time.Since(d.StartTime)
 			elapsed -= elapsed % time.Second // round to nearest second
 
-			progressStr := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, filesizeUnits(d.Filesize), elapsed, speed)
+			progressLine := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, filesizeUnits(d.Filesize), elapsed, speed)
 			if tfIdx < len(tfs)-1 {
-				fmt.Println(progressStr)
+				progressStr += fmt.Sprintln(progressLine)
 			} else {
-				fmt.Print(progressStr)
+				progressStr += fmt.Sprint(progressLine)
 			}
 		}
+		print(progressStr)
+		progressStr = clearStr
 	}
 	// This code is unreachable, but the compiler requires this to be here.
 	return nil
