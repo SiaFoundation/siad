@@ -545,14 +545,6 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
 
-	// Bubble the updated information.
-	sfs := uc.fileEntry.FileSet()
-	dirSiaPath, err := sfs.SiaPath(uc.fileEntry).Dir()
-	if err != nil {
-		return
-	}
-	go r.threadedBubbleMetadata(dirSiaPath)
-
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop
 	if stuck && successfulRepair && stuckRepair {
