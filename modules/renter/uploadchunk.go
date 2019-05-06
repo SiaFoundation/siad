@@ -467,9 +467,8 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 				r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
 			}
 		}
-		r.uploadHeap.mu.Lock()
-		delete(r.uploadHeap.repairingChunks, uc.id)
-		r.uploadHeap.mu.Unlock()
+		// Remove the chunk from the repairingChunks map
+		r.uploadHeap.managedMarkRepairDone(uc.id)
 	}
 	// Sanity check - all memory should be released if the chunk is complete.
 	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
