@@ -494,12 +494,6 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	if err != nil {
 		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
-	siaPath := r.staticFileSet.SiaPath(uc.fileEntry)
-	dirSiaPath, err := siaPath.Dir()
-	if err != nil {
-		return err
-	}
-	go r.threadedBubbleMetadata(dirSiaPath)
 	// Close SiaFile
 	err = uc.fileEntry.Close()
 	if err != nil {
