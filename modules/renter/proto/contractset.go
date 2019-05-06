@@ -26,6 +26,7 @@ type ContractSet struct {
 	dir       string
 	mu        sync.Mutex
 	rl        *ratelimit.RateLimit
+	globalRL  *ratelimit.RateLimit
 	wal       *writeaheadlog.WAL
 }
 
