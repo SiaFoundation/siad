@@ -453,18 +453,26 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		if err != nil {
 			return err
 		}
-		// NOTE: we can't assign the result of Dial directly to conn, because if
-		// the Dial fails and conn is nil, then the deferred call to Close will
+		connCloseChan2 := make(chan struct{})
+		go func() {
+			select {
+			case <-hdb.tg.StopChan():
+			case <-connCloseChan2:
+			}
+			conn2.Close()
+		}()
+		defer close(connCloseChan2)
+		// NOTE: we can't assign the result of Dial directly to conn2, because if
+		// the Dial fails and conn2 is nil, then the deferred call to Close will
 		// segfault.
-		conn = conn2
-		err = encoding.WriteObject(conn, modules.RPCSettings)
+		err = encoding.WriteObject(conn2, modules.RPCSettings)
 		if err != nil {
 			return err
 		}
 		var pubkey crypto.PublicKey
 		copy(pubkey[:], pubKey.Key)
 		var oldSettings modules.HostOldExternalSettings
-		err = crypto.ReadSignedObject(conn, &oldSettings, maxSettingsLen, pubkey)
+		err = crypto.ReadSignedObject(conn2, &oldSettings, maxSettingsLen, pubkey)
 		if err != nil {
 			return err
 		}
