@@ -40,8 +40,10 @@ type Session interface {
 	// returns the Merkle root of the data.
 	Upload(data []byte) (crypto.Hash, error)
 
-	// Replace replaces the sector at the specified index with data.
-	Replace(data []byte, sectorIndex uint64) (crypto.Hash, error)
+	// Replace replaces the sector at the specified index with data. The old
+	// sector is swapped to the end of the contract data, and is deleted if the
+	// trim flag is set.
+	Replace(data []byte, sectorIndex uint64, trim bool) (crypto.Hash, error)
 }
 
 // A hostSession modifies a Contract via the renter-host RPC loop. It
@@ -164,14 +166,14 @@ func (hs *hostSession) Upload(data []byte) (crypto.Hash, error) {
 }
 
 // Replace replaces the sector at the specified index with data.
-func (hs *hostSession) Replace(data []byte, sectorIndex uint64) (crypto.Hash, error) {
+func (hs *hostSession) Replace(data []byte, sectorIndex uint64, trim bool) (crypto.Hash, error) {
 	hs.mu.Lock()
 	defer hs.mu.Unlock()
 	if hs.invalid {
 		return crypto.Hash{}, errInvalidSession
 	}
 
-	_, sectorRoot, err := hs.session.Replace(data, sectorIndex)
+	_, sectorRoot, err := hs.session.Replace(data, sectorIndex, trim)
 	if err != nil {
 		return crypto.Hash{}, err
 	}

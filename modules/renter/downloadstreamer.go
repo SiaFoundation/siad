@@ -478,15 +478,21 @@ func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, er
 	defer entry.Close()
 
 	// Create the streamer
+	s := r.managedStreamer(entry.Snapshot())
+	return r.staticFileSet.SiaPath(entry).String(), s, nil
+}
+
+// managedStreamer creates a streamer from a siafile snapshot and starts filling
+// its cache.
+func (r *Renter) managedStreamer(snapshot *siafile.Snapshot) modules.Streamer {
 	s := &streamer{
-		staticFile: entry.Snapshot(),
+		staticFile: snapshot,
 		r:          r,
 
 		activateCache:   make(chan struct{}),
 		cacheReady:      make(chan struct{}),
 		targetCacheSize: initialStreamerCacheSize,
 	}
-
 	go s.threadedFillCache()
-	return r.staticFileSet.SiaPath(entry).String(), s, nil
+	return s
 }

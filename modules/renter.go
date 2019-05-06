@@ -104,6 +104,10 @@ const (
 	// renter's siafiles.
 	SiapathRoot = "siafiles"
 
+	// BackupRoot is the name of the directory that is used to store the renter's
+	// snapshot siafiles.
+	BackupRoot = "snapshots"
+
 	// EstimatedFileContractTransactionSetSize is the estimated blockchain size
 	// of a transaction set between a renter and a host that contains a file
 	// contract. This transaction set will contain a setup transaction from each
@@ -503,6 +507,14 @@ type ContractorSpending struct {
 	PreviousSpending types.Currency `json:"previousspending"`
 }
 
+// UploadedBackup contains metadata about an uploaded backup.
+type UploadedBackup struct {
+	Name         [96]byte
+	UID          [16]byte
+	CreationDate types.Timestamp
+	Size         uint64 // size of snapshot .sia file
+}
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -565,6 +577,16 @@ type Renter interface {
 
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
+
+	// UploadBackup uploads a backup to hosts, such that it can be retrieved
+	// using only the seed.
+	UploadBackup(src string, name string) error
+
+	// DownloadBackup downloads a backup previously uploaded to hosts.
+	DownloadBackup(dst string, name string) error
+
+	// UploadedBackups returns a list of backups previously uploaded to hosts.
+	UploadedBackups() ([]UploadedBackup, error)
 
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(siaPath SiaPath) error

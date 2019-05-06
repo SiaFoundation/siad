@@ -284,7 +284,6 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 	if md.StuckHealth != di.StuckHealth {
 		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, di.StuckHealth)
 	}
-
 	if !siaDir.SiaPath().Equals(di.SiaPath) {
 		return fmt.Errorf("siapaths not equal, %v and %v", siaDir.SiaPath(), di.SiaPath)
 	}

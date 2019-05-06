@@ -747,14 +747,14 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// marked as stuck
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		// Get Root Directory Health
+		// Get Root Directory Metadata
 		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
-		// Check Health
-		if metadata.NumStuckChunks < uint64(2) {
-			return fmt.Errorf("Incorrect number of stuck chunks, should be at least 2")
+		// Check Aggregate number of stuck chunks
+		if metadata.AggregateNumStuckChunks != uint64(2) {
+			return fmt.Errorf("Incorrect number of stuck chunks, should be 2")
 		}
 		return nil
 	})
@@ -775,7 +775,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		dir, err := rt.renter.managedStuckDirectory()
 		if err != nil {
-			t.Log("Error with Directory", dir)
+			t.Log("Error with Directory `", dir, "` on iteration", i)
 			t.Fatal(err)
 		}
 		_, ok := stuckDirectories[dir]
@@ -832,7 +832,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	recentRepairTime := sf.RecentRepairTime()
 
 	// Check calculated metadata
-	fileMetadata, err := rt.renter.managedCalculateFileMetadata(up.SiaPath)
+	fileMetadata, err := rt.renter.managedCalculateAndUpdateFileMetadata(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
