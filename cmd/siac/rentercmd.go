@@ -197,7 +197,7 @@ func rentercmd() {
 	if err != nil {
 		die("Could not get renter files:", err)
 	}
-	rc, err := httpClient.RenterInactiveContractsGet()
+	rc, err := httpClient.RenterContractsGet()
 	if err != nil {
 		die("Could not get contracts:", err)
 	}
@@ -570,7 +570,7 @@ func renterbackuploadcmd(path string) {
 // rentercontractscmd is the handler for the comand `siac renter contracts`.
 // It lists the Renter's contracts.
 func rentercontractscmd() {
-	rc, err := httpClient.RenterInactiveContractsGet()
+	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
 		die("Could not get contracts:", err)
 	}
@@ -667,19 +667,19 @@ func rentercontractscmd() {
 		w.Flush()
 	}
 
-	fmt.Println("\nInactive Contracts:")
-	if len(rc.InactiveContracts) == 0 {
-		fmt.Println("  No inactive contracts.")
+	fmt.Println("\nDisabled Contracts:")
+	if len(rc.DisabledContracts) == 0 {
+		fmt.Println("  No disabled contracts.")
 	} else {
-		// Display Inactive Contracts
-		sort.Sort(byValue(rc.InactiveContracts))
-		var inactiveTotalStored uint64
-		var inactiveTotalRemaining, inactiveTotalSpent, inactiveTotalFees types.Currency
-		for _, c := range rc.InactiveContracts {
-			inactiveTotalStored += c.Size
-			inactiveTotalRemaining = inactiveTotalRemaining.Add(c.RenterFunds)
-			inactiveTotalSpent = inactiveTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
-			inactiveTotalFees = inactiveTotalFees.Add(c.Fees)
+		// Display Disabled Contracts
+		sort.Sort(byValue(rc.DisabledContracts))
+		var disabledTotalStored uint64
+		var disabledTotalRemaining, disabledTotalSpent, disabledTotalFees types.Currency
+		for _, c := range rc.DisabledContracts {
+			disabledTotalStored += c.Size
+			disabledTotalRemaining = disabledTotalRemaining.Add(c.RenterFunds)
+			disabledTotalSpent = disabledTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
+			disabledTotalFees = disabledTotalFees.Add(c.Fees)
 		}
 
 		fmt.Printf(`
@@ -689,7 +689,7 @@ func rentercontractscmd() {
   Total Spent:          %v
   Total Fees:           %v
 
-`, len(rc.InactiveContracts), filesizeUnits(inactiveTotalStored), currencyUnits(inactiveTotalRemaining), currencyUnits(inactiveTotalSpent), currencyUnits(inactiveTotalFees))
+`, len(rc.DisabledContracts), filesizeUnits(disabledTotalStored), currencyUnits(disabledTotalRemaining), currencyUnits(disabledTotalSpent), currencyUnits(disabledTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.InactiveContracts {
