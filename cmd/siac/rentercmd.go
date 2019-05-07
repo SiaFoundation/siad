@@ -692,7 +692,7 @@ func rentercontractscmd() {
 `, len(rc.DisabledContracts), filesizeUnits(disabledTotalStored), currencyUnits(disabledTotalRemaining), currencyUnits(disabledTotalSpent), currencyUnits(disabledTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
-		for _, c := range rc.InactiveContracts {
+		for _, c := range rc.DisabledContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
 			if address == "" {
