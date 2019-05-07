@@ -142,6 +142,15 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 	return uc
 }
 
+// managedReset will reset the slice and maps within the heap to free up memory.
+func (uh *uploadHeap) managedReset() {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	uh.unstuckHeapChunks = make(map[uploadChunkID]struct{})
+	uh.stuckHeapChunks = make(map[uploadChunkID]struct{})
+	uh.heap = uploadChunkHeap{}
+}
+
 // buildUnfinishedChunk will pull out a single unfinished chunk of a file.
 func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool) *unfinishedUploadChunk {
 	uuc := &unfinishedUploadChunk{
@@ -599,7 +608,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		// the heap.
 		nextChunk := r.uploadHeap.managedPop()
 		if nextChunk == nil {
-			// The heap is empty so return
+			// The heap is empty so reset it to free memory and return.
+			r.uploadHeap.managedReset()
 			return nil
 		}
 		r.log.Debugln("Sending next chunk to the workers", nextChunk.id)

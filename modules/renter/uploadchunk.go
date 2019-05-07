@@ -461,10 +461,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if piecesAvailable > 0 {
 		uc.managedNotifyStandbyWorkers()
 	}
-	// If required, return the memory to the renter.
-	if memoryReleased > 0 {
-		r.memoryManager.Return(memoryReleased)
-	}
 	// If required, remove the chunk from the set of repairing chunks.
 	if chunkComplete && !released {
 		r.managedUpdateUploadChunkStuckStatus(uc)
@@ -478,6 +474,13 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		r.uploadHeap.mu.Lock()
 		delete(r.uploadHeap.repairingChunks, uc.id)
 		r.uploadHeap.mu.Unlock()
+		// Signal garbage collector to free memory before returning it to the manager.
+		uc.logicalChunkData = nil
+		uc.physicalChunkData = nil
+	}
+	// If required, return the memory to the renter.
+	if memoryReleased > 0 {
+		r.memoryManager.Return(memoryReleased)
 	}
 	// Sanity check - all memory should be released if the chunk is complete.
 	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
@@ -505,6 +508,9 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	if err != nil {
 		return fmt.Errorf("WARN: unable to close siafile %v", r.staticFileSet.SiaPath(uc.fileEntry))
 	}
+	// Signal garbage collector to free memory.
+	uc.physicalChunkData = nil
+	uc.logicalChunkData = nil
 	return nil
 }
 
