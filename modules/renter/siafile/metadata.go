@@ -85,9 +85,6 @@ type (
 		// NumStuckChunks is the number of all the SiaFile's chunks that have
 		// been marked as stuck by the repair loop
 		//
-		// RecentRepairTime is the timestamp of the last time the file was added
-		// to the repair heap for repair
-		//
 		// Redundancy is the cached value of the last time the file's redundancy
 		// was checked
 		//
@@ -96,7 +93,6 @@ type (
 		Health              float64   `json:"health"`
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
-		RecentRepairTime    time.Time `json:"recentrepairtime"`
 		Redundancy          float64   `json:"redundancy"`
 		StuckHealth         float64   `json:"stuckhealth"`
 
@@ -146,7 +142,6 @@ type (
 		LastHealthCheckTime time.Time
 		ModTime             time.Time
 		NumStuckChunks      uint64
-		RecentRepairTime    time.Time
 		Redundancy          float64
 		Size                uint64
 		StuckHealth         float64
@@ -245,13 +240,6 @@ func (sf *SiaFile) NumStuckChunks() uint64 {
 // PieceSize returns the size of a single piece of the file.
 func (sf *SiaFile) PieceSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize
-}
-
-// RecentRepairTime returns  the RecentRepairTime timestamp of the file
-func (sf *SiaFile) RecentRepairTime() time.Time {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	return sf.staticMetadata.RecentRepairTime
 }
 
 // Rename changes the name of the file to a new one.
@@ -374,21 +362,6 @@ func (sf *SiaFile) UpdateCachedHealthMetadata(metadata CachedHealthMetadata) err
 	sf.staticMetadata.NumStuckChunks = numStuckChunks
 	sf.staticMetadata.Redundancy = metadata.Redundancy
 	sf.staticMetadata.StuckHealth = metadata.StuckHealth
-	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
-}
-
-// UpdateRecentRepairTime updates the RecentRepairTime timestamp to the current
-// time.
-func (sf *SiaFile) UpdateRecentRepairTime() error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	sf.staticMetadata.RecentRepairTime = time.Now()
-
 	// Save changes to metadata to disk.
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
