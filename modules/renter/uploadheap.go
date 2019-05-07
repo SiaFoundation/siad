@@ -366,7 +366,17 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (modules.SiaP
 	dir, err := r.managedNextExploredDirectory()
 	if err != nil {
 		r.log.Println("WARN: error getting explored directory:", err)
+		// Reset the directory heap to try and help address the error
+		err = errors.Compose(err, r.managedResetDirectoryHeap())
 		return modules.SiaPath{}, 0, err
+	}
+
+	// Sanity Check if directory was returned
+	if dir == nil {
+		// This should not happen very often or at all so a Println should be
+		// fine and not be spamming the logs.
+		r.log.Println("No directory returned from Directory Heap")
+		return modules.SiaPath{}, 0, nil
 	}
 
 	// Grab health and siaPath of the directory
@@ -697,6 +707,21 @@ func (r *Renter) threadedUploadAndRepair() {
 			return
 		}
 
+		// Check if there are directories in the directory heap, If not add an
+		// unexplored root.
+		if r.directoryHeap.managedLen() == 0 {
+			err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
+			if err != nil {
+				r.log.Println("WARN: error push unexplored root directory onto directory heap:", err)
+				select {
+				case <-time.After(uploadAndRepairErrorSleepDuration):
+				case <-r.tg.StopChan():
+					return
+				}
+				continue
+			}
+		}
+
 		// Refresh the worker pool and get the set of hosts that are currently
 		// useful for uploading.
 		hosts := r.managedRefreshHostsAndWorkers()
@@ -741,7 +766,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			// Refresh directory heap
 			err = r.managedResetDirectoryHeap()
 			if err != nil {
-				r.log.Panicln("WARN: there was an error reseting the directory heap:", err)
+				r.log.Println("WARN: there was an error reseting the directory heap:", err)
 			}
 			// Make sure that the hosts and workers are updated before
 			// continuing to the repair loop
