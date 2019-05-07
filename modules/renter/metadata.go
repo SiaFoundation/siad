@@ -206,30 +206,20 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 
 	// Mark sure that healthy chunks are not marked as stuck
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
-	// TODO: This 'MarkAllHealthyChunksAsUnstuck' function may not be necessary
-	// in the long term. I believe that it was/is useful because other parts of
-	// the process for marking and handling stuck chunks was not complete.
-	err = sf.MarkAllHealthyChunksAsUnstuck(hostOfflineMap, hostGoodForRenewMap)
-	if err != nil {
-		return siafile.BubbledMetadata{}, errors.AddContext(err, "unable to mark healthy chunks as unstuck")
-	}
+
 	// Calculate file health
 	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
-	// Update the LastHealthCheckTime
-	if err := sf.UpdateLastHealthCheckTime(); err != nil {
-		return siafile.BubbledMetadata{}, err
-	}
+
+	// Set the LastHealthCheckTime
+	sf.SetLastHealthCheckTime()
+
 	// Calculate file Redundancy and check if local file is missing and
 	// redundancy is less than one
 	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
 	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
 		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
 	}
-	metadata := siafile.CachedHealthMetadata{
-		Health:      health,
-		Redundancy:  redundancy,
-		StuckHealth: stuckHealth,
-	}
+
 	return siafile.BubbledMetadata{
 		Health:              health,
 		LastHealthCheckTime: sf.LastHealthCheckTime(),
@@ -238,7 +228,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 		Redundancy:          redundancy,
 		Size:                sf.Size(),
 		StuckHealth:         stuckHealth,
-	}, sf.UpdateCachedHealthMetadata(metadata)
+	}, sf.SaveMetadata()
 }
 
 // managedCompleteBubbleUpdate completes the bubble update and updates and/or
