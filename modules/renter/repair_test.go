@@ -286,29 +286,6 @@ func TestBubbleHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Update the RecentRepairTime of the file and confirm that the file's
-	// health is now ignored
-	if err := f.UpdateRecentRepairTime(); err != nil {
-		t.Fatal(err)
-	}
-	expectedHealth.AggregateHealth = 0
-	rt.renter.managedBubbleMetadata(siaPath)
-	build.Retry(100, 100*time.Millisecond, func() error {
-		// Get Root Directory Health
-		health, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
-		if err != nil {
-			return err
-		}
-		// Check Health
-		if err = equalBubbledMetadata(health, expectedHealth); err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Add a sub directory to the directory that contains the file that has a
 	// worst health than the file and confirm that health gets bubbled up.
 	//
@@ -829,7 +806,6 @@ func TestCalculateFileMetadata(t *testing.T) {
 	redundancy := sf.Redundancy(offline, goodForRenew)
 	lastHealthCheckTime := sf.LastHealthCheckTime()
 	modTime := sf.ModTime()
-	recentRepairTime := sf.RecentRepairTime()
 
 	// Check calculated metadata
 	fileMetadata, err := rt.renter.managedCalculateAndUpdateFileMetadata(up.SiaPath)
@@ -852,9 +828,6 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 	if fileMetadata.NumStuckChunks != numStuckChunks {
 		t.Fatalf("numstuckchunks incorrect, expected %v got %v", numStuckChunks, fileMetadata.NumStuckChunks)
-	}
-	if !fileMetadata.RecentRepairTime.Equal(recentRepairTime) {
-		t.Fatalf("Unexpected recentrepairtime, expected %v got %v", recentRepairTime, fileMetadata.RecentRepairTime)
 	}
 	if fileMetadata.LastHealthCheckTime.Equal(lastHealthCheckTime) || fileMetadata.LastHealthCheckTime.IsZero() {
 		t.Log("Initial lasthealthchecktime", lastHealthCheckTime)
