@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"testing"
@@ -288,7 +289,7 @@ func TestUploadHeap(t *testing.T) {
 }
 
 // TestAddChunksToHeap probes the managedAddChunksToHeap method to ensure it is
-// functioning as intented
+// functioning as intended
 func TestAddChunksToHeap(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -381,5 +382,138 @@ func TestAddChunksToHeap(t *testing.T) {
 	}
 	if rt.renter.uploadHeap.managedLen() != int(numChunks) {
 		t.Fatalf("Expected uploadHeap to have %v chunks but it has %v chunks", numChunks, rt.renter.uploadHeap.managedLen())
+	}
+}
+
+// TestAddDirectoryBackToHeap ensures that when not all the chunks in a
+// directory are added to the uploadHeap that the directory is added back to the
+// directoryHeap with an updated Health
+func TestAddDirectoryBackToHeap(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Renter with interrupt dependency
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create file
+	rsc, _ := siafile.NewRSCode(1, 1)
+	siaPath, err := modules.NewSiaPath("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	up := modules.FileUploadParams{
+		Source:      "",
+		SiaPath:     siaPath,
+		ErasureCode: rsc,
+	}
+	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create workers and hosts to have one chunk healthy and one unhealthy
+	// Add 1 piece to each chunk
+	hosts := make(map[string]struct{})
+	offline := make(map[string]bool)
+	goodForRenew := make(map[string]bool)
+	for i := uint64(0); i < f.NumChunks(); i++ {
+		host := fmt.Sprintf("host:0%v", i)
+		spk := types.SiaPublicKey{}
+		spk.LoadString(host)
+		hosts[spk.String()] = struct{}{}
+		goodForRenew[spk.String()] = true
+		offline[spk.String()] = false
+		if err := f.AddPiece(spk, i, 0, crypto.Hash{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Manually add workers to worker pool
+	for i := 0; i < int(f.NumChunks()); i++ {
+		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
+			downloadChan: make(chan struct{}, 1),
+			killChan:     make(chan struct{}),
+			uploadChan:   make(chan struct{}, 1),
+		}
+	}
+
+	// Confirm we are starting with an empty upload and directory heap
+	if rt.renter.uploadHeap.managedLen() != 0 {
+		t.Fatal("Expected upload heap to be empty but has length of", rt.renter.uploadHeap.managedLen())
+	}
+	if rt.renter.directoryHeap.managedLen() != 0 {
+		t.Fatal("Expected directory heap to be empty but has length of", rt.renter.directoryHeap.managedLen())
+	}
+
+	// Add chunks from file to uploadHeap
+	rt.renter.managedBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
+
+	// Upload heap should now have NumChunks chunks and directory heap should still be empty
+	if rt.renter.uploadHeap.managedLen() != int(f.NumChunks()) {
+		t.Fatalf("Expected upload heap to be of size %v but was %v", f.NumChunks(), rt.renter.uploadHeap.managedLen())
+	}
+	if rt.renter.directoryHeap.managedLen() != 0 {
+		t.Fatal("Expected directory heap to be empty but has length of", rt.renter.directoryHeap.managedLen())
+	}
+
+	// Empty uploadHeap
+	rt.renter.uploadHeap.managedReset()
+
+	// Fill upload heap with chunks that are a worse health than the chunks in
+	// the file
+	for i := 0; i <= maxUploadHeapChunks; i++ {
+		chunk := &unfinishedUploadChunk{
+			id: uploadChunkID{
+				fileUID: "chunk",
+				index:   uint64(i),
+			},
+			stuck:           false,
+			piecesCompleted: -1,
+			piecesNeeded:    1,
+		}
+		if !rt.renter.uploadHeap.managedPush(chunk) {
+			t.Fatal("Chunk should have been added to heap")
+		}
+	}
+
+	// Record length of upload heap
+	uploadHeapLen := rt.renter.uploadHeap.managedLen()
+
+	// Try and add chunks to upload heap again
+	rt.renter.managedBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
+
+	// No chunks should have been added to the upload heap
+	if rt.renter.uploadHeap.managedLen() != uploadHeapLen {
+		t.Fatalf("Expected upload heap to be of size %v but was %v", uploadHeapLen, rt.renter.uploadHeap.managedLen())
+	}
+	// There should be one directory in the directory heap now
+	if rt.renter.directoryHeap.managedLen() != 1 {
+		t.Fatal("Expected directory heap to have 1 element but has length of", rt.renter.directoryHeap.managedLen())
+	}
+	// The directory should be marked as explored
+	d := rt.renter.directoryHeap.managedPop()
+	if !d.explored {
+		t.Fatal("Directory should be explored")
+	}
+	// The directory should be the root directory as that is where we created
+	// the test file
+	if !d.siaPath.Equals(modules.RootSiaPath()) {
+		t.Fatal("Expected Directory siapath to be the root siaPath but was", d.siaPath.String())
+	}
+	// aggregateHealth is manually set to 0 when directory is added back to heap
+	// since it is explored and the aggregateHealth is no longer considered
+	if d.aggregateHealth != 0 {
+		t.Fatal("Expected aggregateHealth to be 0 but was", d.aggregateHealth)
+	}
+	// The directory health should be that of the file since none of the chunks
+	// were added
+	health, _, _ := f.Health(offline, goodForRenew)
+	if d.health != health {
+		t.Fatalf("Expected directory health to be %v but was %v", health, d.health)
 	}
 }

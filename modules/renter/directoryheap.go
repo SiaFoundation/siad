@@ -90,13 +90,20 @@ func (rdh *repairDirectoryHeap) Pop() interface{} {
 	return d
 }
 
-// managedReset clears the directory heap by recreating the heap and
-// heapDirectories.
-func (dh *directoryHeap) managedReset() {
+// managedHealth returns the current worst health of the directory heap
+func (dh *directoryHeap) managedHealth() float64 {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
-	dh.heapDirectories = make(map[modules.SiaPath]*directory)
-	dh.heap = repairDirectoryHeap{}
+	// If the heap is empty return 0 as that is the max health
+	if dh.heap.Len() == 0 {
+		return 0
+	}
+	// Pop off and then push back the top directory. We are not using the
+	// managed methods here as to avoid removing the directory from the map and
+	// having another thread push the directory onto the heap in between locks
+	d := heap.Pop(&dh.heap).(*directory)
+	heap.Push(&dh.heap, d)
+	return d.health
 }
 
 // managedLen returns the length of the heap
@@ -111,7 +118,8 @@ func (dh *directoryHeap) managedPop() (d *directory) {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
 	if dh.heap.Len() > 0 {
-		d = dh.pop()
+		d = heap.Pop(&dh.heap).(*directory)
+		delete(dh.heapDirectories, d.siaPath)
 	}
 	return d
 }
@@ -128,6 +136,15 @@ func (dh *directoryHeap) managedPush(d *directory) bool {
 	heap.Push(&dh.heap, d)
 	dh.heapDirectories[d.siaPath] = d
 	return true
+}
+
+// managedReset clears the directory heap by recreating the heap and
+// heapDirectories.
+func (dh *directoryHeap) managedReset() {
+	dh.mu.Lock()
+	defer dh.mu.Unlock()
+	dh.heapDirectories = make(map[modules.SiaPath]*directory)
+	dh.heap = repairDirectoryHeap{}
 }
 
 // managedUpdate will update the directory that is currently in the heap based
@@ -161,16 +178,9 @@ func (dh *directoryHeap) managedPushDirectory(siaPath modules.SiaPath, aggregate
 		siaPath:         siaPath,
 	}
 	if !dh.managedPush(d) {
-		return errors.New("failed to push unexplored directory onto heap")
+		return errors.New("failed to push directory onto heap")
 	}
 	return nil
-}
-
-// pop pulls off the top directory from the heap and deletes it from the map
-func (dh *directoryHeap) pop() (d *directory) {
-	d = heap.Pop(&dh.heap).(*directory)
-	delete(dh.heapDirectories, d.siaPath)
-	return d
 }
 
 // managedNextExploredDirectory pops directories off of the heap until it

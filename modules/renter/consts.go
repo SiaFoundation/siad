@@ -128,14 +128,14 @@ var (
 	// add to the upload heap which which will mean for small directories we
 	// will add multiple directories.
 	maxUploadHeapChunks = build.Select(build.Var{
-		Dev:      40,
-		Standard: 100,
+		Dev:      25,
+		Standard: 250,
 		Testing:  5,
 	}).(int)
 
 	// minUploadHeapSize is the minimum number of chunks we want in the upload
 	// heap before trying to add more in order to maintain back pressure on the
-	// workers, repairs, and uploads
+	// workers, repairs, and uploads.
 	minUploadHeapSize = build.Select(build.Var{
 		Dev:      5,
 		Standard: 20,
