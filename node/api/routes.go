@@ -26,6 +26,8 @@ func (api *API) buildHTTPRoutes() {
 	router.GET("/daemon/update", api.daemonUpdateHandlerGET)
 	router.POST("/daemon/update", api.daemonUpdateHandlerPOST)
 	router.GET("/daemon/stop", RequirePassword(api.daemonStopHandler, requiredPassword))
+	router.GET("/daemon/settings", api.daemonSettingsHandlerGET)
+	router.POST("/daemon/settings", api.daemonSettingsHandlerPOST)
 
 	// Consensus API Calls
 	if api.cs != nil {

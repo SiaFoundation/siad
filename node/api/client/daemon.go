@@ -1,10 +1,32 @@
 package client
 
-import "gitlab.com/NebulousLabs/Sia/node/api"
+import (
+	"net/url"
+	"strconv"
+
+	"gitlab.com/NebulousLabs/Sia/node/api"
+)
+
+// DaemonGlobalRateLimitPost uses the /daemon/settings endpoint to change the
+// siad's bandwidth rate limit. downloadSpeed and uploadSpeed are interpreted
+// as bytes/second.
+func (c *Client) DaemonGlobalRateLimitPost(downloadSpeed, uploadSpeed int64) (err error) {
+	values := url.Values{}
+	values.Set("maxdownloadspeed", strconv.FormatInt(downloadSpeed, 10))
+	values.Set("maxuploadspeed", strconv.FormatInt(uploadSpeed, 10))
+	err = c.post("/daemon/settings", values.Encode(), nil)
+	return
+}
 
 // DaemonVersionGet requests the /daemon/version resource
 func (c *Client) DaemonVersionGet() (dvg api.DaemonVersionGet, err error) {
 	err = c.get("/daemon/version", &dvg)
+	return
+}
+
+// DaemonSettingsGet requests the /daemon/settings api resource.
+func (c *Client) DaemonSettingsGet() (dsg api.DaemonSettingsGet, err error) {
+	err = c.get("/daemon/settings", &dsg)
 	return
 }
 

@@ -77,17 +77,13 @@ func (rdh *repairDirectoryHeap) Pop() interface{} {
 	return dir
 }
 
-// managedEmpty clears the directory heap by popping off all the directories and
-// ensuring that the map is empty
+// managedEmpty clears the directory heap by recreating the heap and
+// heapDirectories.
 func (dh *directoryHeap) managedEmpty() {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
-	for dh.heap.Len() > 0 {
-		_ = dh.pop()
-	}
-	if len(dh.heapDirectories) != 0 {
-		build.Critical("heapDirectories map is not empty after emptying the directory heap")
-	}
+	dh.heapDirectories = make(map[modules.SiaPath]struct{})
+	dh.heap = repairDirectoryHeap{}
 }
 
 // managedLen returns the length of the heap

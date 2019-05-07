@@ -453,10 +453,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if piecesAvailable > 0 {
 		uc.managedNotifyStandbyWorkers()
 	}
-	// If required, return the memory to the renter.
-	if memoryReleased > 0 {
-		r.memoryManager.Return(memoryReleased)
-	}
 	// If required, remove the chunk from the set of repairing chunks.
 	if chunkComplete && !released {
 		r.managedUpdateUploadChunkStuckStatus(uc)
@@ -469,6 +465,13 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		}
 		// Remove the chunk from the repairingChunks map
 		r.uploadHeap.managedMarkRepairDone(uc.id)
+		// Signal garbage collector to free memory before returning it to the manager.
+		uc.logicalChunkData = nil
+		uc.physicalChunkData = nil
+	}
+	// If required, return the memory to the renter.
+	if memoryReleased > 0 {
+		r.memoryManager.Return(memoryReleased)
 	}
 	// Sanity check - all memory should be released if the chunk is complete.
 	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
@@ -485,17 +488,14 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	if err != nil {
 		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
-	siaPath := r.staticFileSet.SiaPath(uc.fileEntry)
-	dirSiaPath, err := siaPath.Dir()
-	if err != nil {
-		return err
-	}
-	go r.threadedBubbleMetadata(dirSiaPath)
 	// Close SiaFile
 	err = uc.fileEntry.Close()
 	if err != nil {
 		return fmt.Errorf("WARN: unable to close siafile %v", r.staticFileSet.SiaPath(uc.fileEntry))
 	}
+	// Signal garbage collector to free memory.
+	uc.physicalChunkData = nil
+	uc.logicalChunkData = nil
 	return nil
 }
 
@@ -541,14 +541,6 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
 		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
-
-	// Bubble the updated information.
-	sfs := uc.fileEntry.FileSet()
-	dirSiaPath, err := sfs.SiaPath(uc.fileEntry).Dir()
-	if err != nil {
-		return
-	}
-	go r.threadedBubbleMetadata(dirSiaPath)
 
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop

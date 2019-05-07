@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -294,7 +295,13 @@ func startDaemonCmd(cmd *cobra.Command, _ []string) {
 	}
 
 	if profileCPU || profileMem || profileTrace {
-		go profile.StartContinuousProfile(globalConfig.Siad.ProfileDir, profileCPU, profileMem, profileTrace)
+		var profileDir string
+		if cmd.Root().Flag("profile-directory").Changed {
+			profileDir = globalConfig.Siad.ProfileDir
+		} else {
+			profileDir = filepath.Join(globalConfig.Siad.SiaDir, globalConfig.Siad.ProfileDir)
+		}
+		go profile.StartContinuousProfile(profileDir, profileCPU, profileMem, profileTrace)
 	}
 
 	// Start siad. startDaemon will only return when it is shutting down.

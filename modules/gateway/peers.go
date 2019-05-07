@@ -55,7 +55,10 @@ func (p *peer) open() (modules.PeerConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Apply the local ratelimit.
 	conn = ratelimit.NewRLConn(conn, p.rl, nil)
+	// Apply the global ratelimit.
+	conn = ratelimit.NewRLConn(conn, modules.GlobalRateLimits, nil)
 	return &peerConn{conn, p.NetAddress}, nil
 }
 

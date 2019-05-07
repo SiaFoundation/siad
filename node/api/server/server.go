@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -133,8 +134,14 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 		return nil, err
 	}
 
+	// Load the config file.
+	cfg, err := modules.NewConfig(filepath.Join(nodeParams.Dir, configName))
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to load siad config")
+	}
+
 	// Create the api for the server.
-	api := api.New(requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil)
+	api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := &Server{
 		api: api,
 		apiServer: &http.Server{

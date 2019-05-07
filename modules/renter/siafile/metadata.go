@@ -297,6 +297,17 @@ func (sf *SiaFile) SetMode(mode os.FileMode) error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
+// SetLastHealthCheckTime sets the LastHealthCheckTime in memory to the current
+// time but does not update and write to disk.
+//
+// NOTE: This call should be used in conjunction with a method that saves the
+// SiaFile metadata
+func (sf *SiaFile) SetLastHealthCheckTime() {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.LastHealthCheckTime = time.Now()
+}
+
 // SetLocalPath changes the local path of the file which is used to repair
 // the file from disk.
 func (sf *SiaFile) SetLocalPath(path string) error {
