@@ -52,7 +52,8 @@ func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.Conse
 	// We are about to start a scan. If the scanStart equals the
 	// recentRecoveryChange we can reset it to ConsensusChangeRecent.
 	rs.c.mu.Lock()
-	if rs.c.recentRecoveryChange != modules.ConsensusChangeRecent && rs.c.recentRecoveryChange == scanStart {
+	if rs.c.recentRecoveryChange != modules.ConsensusChangeRecent &&
+		(rs.c.recentRecoveryChange == scanStart || scanStart == modules.ConsensusChangeBeginning) {
 		rs.c.recentRecoveryChange = modules.ConsensusChangeRecent
 	}
 	rs.c.mu.Unlock()
