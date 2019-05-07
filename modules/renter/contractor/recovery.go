@@ -50,10 +50,10 @@ func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.Conse
 	}
 	defer rs.c.tg.Done()
 	// We are about to start a scan. If the scanStart equals the
-	// lowestRecoveryChange we can reset it to nil.
+	// recentRecoveryChange we can reset it to ConsensusChangeRecent.
 	rs.c.mu.Lock()
-	if rs.c.lowestRecoveryChange != nil && *rs.c.lowestRecoveryChange == scanStart {
-		rs.c.lowestRecoveryChange = nil
+	if rs.c.recentRecoveryChange != modules.ConsensusChangeRecent && rs.c.recentRecoveryChange == scanStart {
+		rs.c.recentRecoveryChange = modules.ConsensusChangeRecent
 	}
 	rs.c.mu.Unlock()
 	// Subscribe to the consensus set from scanStart.
@@ -68,7 +68,7 @@ func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.Conse
 	select {
 	case <-cancel:
 		rs.c.mu.Lock()
-		rs.c.lowestRecoveryChange = &scanStart
+		rs.c.recentRecoveryChange = scanStart
 		rs.c.mu.Unlock()
 	default:
 	}

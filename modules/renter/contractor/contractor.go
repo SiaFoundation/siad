@@ -55,7 +55,11 @@ type Contractor struct {
 	currentPeriod types.BlockHeight
 	lastChange    modules.ConsensusChangeID
 
-	lowestRecoveryChange *modules.ConsensusChangeID
+	// recentRecoveryChange is the first ConsensusChange that was missed while
+	// trying to find recoverable contracts. This is where we need to start
+	// rescanning the blockchain for recoverable contracts the next time the wallet
+	// is unlocked.
+	recentRecoveryChange modules.ConsensusChangeID
 
 	downloaders         map[types.FileContractID]*hostDownloader
 	editors             map[types.FileContractID]*hostEditor
