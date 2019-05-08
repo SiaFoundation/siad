@@ -7,17 +7,18 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-
-	"golang.org/x/crypto/twofish"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"golang.org/x/crypto/twofish"
 )
 
 // A snapshotEntry is an entry within the snapshot table, identifying both the
@@ -221,6 +222,7 @@ func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
 			if err != nil {
 				return err
 			}
+			defer host.Close()
 			// upload the siafile, creating a snapshotEntry
 			entry := snapshotEntry{Meta: meta}
 			for j, piece := range sectors {
@@ -289,6 +291,45 @@ func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
 	return nil
 }
 
+// managedDownloadSnapshotTable downloads the snapshot entry table from the specified host.
+func (r *Renter) managedDownloadSnapshotTable(host contractor.Session) ([]snapshotEntry, error) {
+	// Get the wallet seed.
+	ws, _, err := r.w.PrimarySeed()
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to get wallet's primary seed")
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, snapshotKeySpecifier)
+	defer fastrand.Read(secret[:])
+
+	// download the entry table
+	tableSector, err := host.DownloadIndex(0, 0, uint32(modules.SectorSize))
+	if err != nil {
+		return nil, err
+	}
+	// decrypt the table
+	c, err := twofish.NewCipher(secret[:])
+	aead, err := cipher.NewGCM(c)
+	if err != nil {
+		return nil, err
+	}
+	encTable, err := crypto.DecryptWithNonce(tableSector, aead)
+	if err != nil {
+		return nil, err
+	} else if !bytes.Equal(encTable[:16], snapshotTableSpecifier[:]) {
+		return nil, errors.New("index 0 sector does not contain a snapshot table")
+	}
+
+	var entryTable []snapshotEntry
+	if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
+		return nil, err
+	}
+	return entryTable, nil
+}
+
 // downloadSnapshot downloads and returns the specified snapshot.
 func (r *Renter) downloadSnapshot(uid [16]byte) (dotSia []byte, err error) {
 	if err := r.tg.Add(); err != nil {
@@ -317,26 +358,9 @@ func (r *Renter) downloadSnapshot(uid [16]byte) (dotSia []byte, err error) {
 			if err != nil {
 				return err
 			}
-			// download the entry table
-			tableSector, err := host.DownloadIndex(0, 0, uint32(modules.SectorSize))
+			defer host.Close()
+			entryTable, err := r.managedDownloadSnapshotTable(host)
 			if err != nil {
-				return err
-			}
-			// decrypt the table
-			c, err := twofish.NewCipher(secret[:])
-			aead, err := cipher.NewGCM(c)
-			if err != nil {
-				return err
-			}
-			encTable, err := crypto.DecryptWithNonce(tableSector, aead)
-			if err != nil {
-				return err
-			} else if !bytes.Equal(encTable[:16], snapshotTableSpecifier[:]) {
-				return errors.New("index 0 sector does not contain a snapshot table")
-			}
-
-			var entryTable []snapshotEntry
-			if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
 				return err
 			}
 			// search for the desired snapshot
@@ -372,4 +396,46 @@ func (r *Renter) downloadSnapshot(uid [16]byte) (dotSia []byte, err error) {
 		return dotSia, nil
 	}
 	return nil, errors.New("could not download backup from any host")
+}
+
+// threadedScanSnapshots continuously scans contracts for snapshots.
+func (r *Renter) threadedScanSnapshots() {
+	for {
+		select {
+		case <-time.After(time.Minute * 5):
+		case <-r.tg.StopChan():
+			return
+		}
+
+		var snapshots []modules.UploadedBackup
+		seenUIDs := make(map[[16]byte]struct{})
+		// scan current contracts
+		for _, contract := range r.hostContractor.Contracts() {
+			err := func() error {
+				host, err := r.hostContractor.Session(contract.HostPublicKey, r.tg.StopChan())
+				if err != nil {
+					return err
+				}
+				defer host.Close()
+				entryTable, err := r.managedDownloadSnapshotTable(host)
+				if err != nil {
+					return err
+				}
+				// merge table
+				for _, e := range entryTable {
+					if _, seen := seenUIDs[e.Meta.UID]; !seen {
+						snapshots = append(snapshots, e.Meta)
+						seenUIDs[e.Meta.UID] = struct{}{}
+					}
+				}
+				return nil
+			}()
+			if err != nil {
+				r.log.Println("Failed to scan host's snapshot table:", err)
+			}
+		}
+		id := r.mu.Lock()
+		r.persist.UploadedBackups = snapshots
+		r.mu.Unlock(id)
+	}
 }
