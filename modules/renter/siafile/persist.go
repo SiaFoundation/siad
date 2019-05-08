@@ -99,6 +99,15 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 	if err != nil {
 		return nil, err
 	}
+	// COMPATv140 legacy 0-byte files might not have correct cached fields since we
+	// never update them once they are created.
+	if sf.staticMetadata.FileSize == 0 {
+		ec := sf.staticMetadata.staticErasureCode
+		sf.staticMetadata.CachedHealth = 0
+		sf.staticMetadata.CachedStuckHealth = 0
+		sf.staticMetadata.CachedRedundancy = float64(ec.NumPieces()) / float64(ec.MinPieces())
+		sf.staticMetadata.CachedUploadProgress = 100
+	}
 	// Load the pubKeyTable.
 	pubKeyTableLen := sf.staticMetadata.ChunkOffset - sf.staticMetadata.PubKeyTableOffset
 	if pubKeyTableLen < 0 {

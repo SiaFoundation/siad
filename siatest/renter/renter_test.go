@@ -924,7 +924,7 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Get all files from Renter
-	files, err := renter.Files()
+	files, err := renter.Files(false)
 	if err != nil {
 		t.Fatal("Failed to get renter files: ", err)
 	}
@@ -3225,6 +3225,49 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	if rf.StuckHealth != 0 {
 		t.Fatalf("Expected stuck health to be 0, got %v", rf.StuckHealth)
 	}
+	// Get the same file using the /renter/files endpoint with 'cached' set to
+	// true.
+	rfs, err := r.Files(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rf2 modules.FileInfo
+	var found bool
+	for _, file := range rfs {
+		if file.SiaPath.Equals(rf.SiaPath) {
+			found = true
+			rf2 = file
+			break
+		}
+	}
+	if !found {
+		t.Fatal("couldn't find uploaded file using /renter/files endpoint")
+	}
+	// Compare the fields again.
+	if rf.Redundancy != rf2.Redundancy {
+		t.Fatalf("Expected redundancy to be %v, got %v", rf.Redundancy, rf2.Redundancy)
+	}
+	if rf.UploadProgress != rf2.UploadProgress {
+		t.Fatalf("Expected upload progress to be %v, got %v", rf.UploadProgress, rf2.UploadProgress)
+	}
+	if rf.Health != rf2.Health {
+		t.Fatalf("Expected health to be %v, got %v", rf.Health, rf2.Health)
+	}
+	if rf.MaxHealth != rf2.MaxHealth {
+		t.Fatalf("Expected max health to be %v, got %v", rf.MaxHealth, rf2.MaxHealth)
+	}
+	if rf.MaxHealthPercent != rf2.MaxHealthPercent {
+		t.Fatalf("Expected max health percentage to be %v, got %v", rf.MaxHealthPercent, rf2.MaxHealthPercent)
+	}
+	if rf.NumStuckChunks != rf2.NumStuckChunks {
+		t.Fatalf("Expected number of stuck chunks to be %v, got %v", rf.NumStuckChunks, rf2.NumStuckChunks)
+	}
+	if rf.Stuck != rf2.Stuck {
+		t.Fatalf("Expected stuck to be %v, got %v", rf.Stuck, rf2.Stuck)
+	}
+	if rf.StuckHealth != rf2.StuckHealth {
+		t.Fatalf("Expected stuck health to be %v, got %v", rf.StuckHealth, rf2.StuckHealth)
+	}
 
 	// Test uploading 1 byte file
 	_, oneRF, err := r.UploadNewFileBlocking(oneByteFile, dataPieces, parityPieces, false)
@@ -3814,7 +3857,7 @@ func TestSiafileCompatCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check that exactly 1 siafile exists and that it's the correct one.
-	fis, err := r.Files()
+	fis, err := r.Files(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3828,7 +3871,7 @@ func TestSiafileCompatCode(t *testing.T) {
 	// Check the other fields of the files in a loop since the cached fields might
 	// need some time to update.
 	err = build.Retry(100, time.Second, func() error {
-		fis, err := r.Files()
+		fis, err := r.Files(false)
 		if err != nil {
 			return err
 		}
@@ -4425,7 +4468,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Choose a random file and download it.
-	files, err := renter.Files()
+	files, err := renter.Files(false)
 	if err != nil {
 		t.Fatal(err)
 	}
