@@ -111,7 +111,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			default:
 			}
 			// Get existing files and choose one randomly.
-			files, err := r.Files()
+			files, err := r.Files(false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,7 +153,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			default:
 			}
 			// Get existing files and choose one randomly.
-			files, err := r.Files()
+			files, err := r.Files(false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -192,7 +192,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			default:
 			}
 			// Get existing files and choose one randomly.
-			files, err := r.Files()
+			files, err := r.Files(false)
 			if err != nil {
 				t.Fatal(err)
 			}

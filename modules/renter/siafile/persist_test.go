@@ -433,6 +433,63 @@ func TestApplyUpdates(t *testing.T) {
 	})
 }
 
+// TestZeroByteFileCompat checks that 0-byte siafiles that have been uploaded
+// before caching was introduced have the correct cached values after being
+// loaded.
+func TestZeroByteFileCompat(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Get new file params
+	siaFilePath, siaPath, source, rc, sk, _, _, fileMode := newTestFileParams()
+
+	// Create the path to the file.
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		panic(err)
+	}
+	// Create the file.
+	wal, _ := newTestWAL()
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, 0, fileMode)
+	if err != nil {
+		panic(err)
+	}
+	// Check that the number of chunks in the file is correct.
+	if len(sf.chunks) != 1 {
+		panic("newTestFile didn't create the expected number of chunks")
+	}
+	// Set the cached fields to 0 like they would be if the file was already
+	// uploaded before caching was introduced.
+	sf.staticMetadata.CachedHealth = 0
+	sf.staticMetadata.CachedStuckHealth = 0
+	sf.staticMetadata.CachedRedundancy = 0
+	sf.staticMetadata.CachedUploadProgress = 0
+	// Save the file and reload it.
+	if err := sf.Save(); err != nil {
+		t.Fatal(err)
+	}
+	sf, err = loadSiaFile(siaFilePath, wal, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the loaded file has the correct cached values.
+	if sf.staticMetadata.CachedHealth != 0 {
+		t.Fatalf("CachedHealth should be 0 but was %v", sf.staticMetadata.CachedHealth)
+	}
+	if sf.staticMetadata.CachedStuckHealth != 0 {
+		t.Fatalf("CachedStuckHealth should be 0 but was %v", sf.staticMetadata.CachedStuckHealth)
+	}
+	expectedRedundancy := float64(rc.NumPieces()) / float64(rc.MinPieces())
+	if sf.staticMetadata.CachedRedundancy != expectedRedundancy {
+		t.Fatalf("CachedRedundancy should be %v but was %v", expectedRedundancy, sf.staticMetadata.CachedRedundancy)
+	}
+	if sf.staticMetadata.CachedUploadProgress != 100 {
+		t.Fatalf("CachedUploadProgress should be 100 but was %v", sf.staticMetadata.CachedUploadProgress)
+	}
+}
+
 // TestSaveSmallHeader tests the saveHeader method for a header that is not big
 // enough to need more than a single page on disk.
 func TestSaveSmallHeader(t *testing.T) {
