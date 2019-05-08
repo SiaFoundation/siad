@@ -1,3 +1,5 @@
+// +build android dragonfly nacl plan9 solaris windows zos
+
 package godirwalk
 
 import (
