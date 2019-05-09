@@ -99,6 +99,19 @@ func (uh *uploadHeap) managedLen() int {
 	return uhLen
 }
 
+// managedMarkRepairDone removes the chunk from the repairingChunks map of the
+// uploadHeap. It also performs a sanity check that the chunk was in the map,
+// this is to ensure that we are adding and removing the chunks as expected
+func (uh *uploadHeap) managedMarkRepairDone(id uploadChunkID) {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	_, ok := uh.repairingChunks[id]
+	if !ok {
+		build.Critical("Chunk is not in the repair map, this means it was removed prematurely or was never added")
+	}
+	delete(uh.repairingChunks, id)
+}
+
 // managedPush will try and add a chunk to the upload heap. If the chunk is
 // added it will return true otherwise it will return false
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
@@ -137,6 +150,10 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
 		delete(uh.unstuckHeapChunks, uc.id)
 		delete(uh.stuckHeapChunks, uc.id)
+		if _, exists := uh.repairingChunks[uc.id]; exists {
+			build.Critical("There should not be a chunk in the heap that can be popped that is currently being repaired")
+		}
+		uh.repairingChunks[uc.id] = struct{}{}
 	}
 	uh.mu.Unlock()
 	return uc
@@ -653,6 +670,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			if err != nil {
 				r.log.Debugln("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
 			}
+			// Remove the chunk from the repairingChunks map
+			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
 			continue
 		}
 
@@ -670,6 +689,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			if err != nil {
 				r.log.Debugln("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
 			}
+			// Remove the chunk from the repairingChunks map
+			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
 			continue
 		}
 	}
