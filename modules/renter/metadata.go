@@ -63,9 +63,16 @@ func (r *Renter) managedBubbleNeeded(siaPath modules.SiaPath) (bool, error) {
 func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
 	// Set default metadata values to start
 	metadata := siadir.Metadata{
-		AggregateHealth:     siadir.DefaultDirHealth,
-		AggregateNumFiles:   uint64(0),
-		AggregateSize:       uint64(0),
+		AggregateHealth:              siadir.DefaultDirHealth,
+		AggregateLastHealthCheckTime: time.Now(),
+		AggregateMinRedundancy:       math.MaxFloat64,
+		AggregateModTime:             time.Time{},
+		AggregateNumFiles:            uint64(0),
+		AggregateNumStuckChunks:      uint64(0),
+		AggregateNumSubDirs:          uint64(0),
+		AggregateSize:                uint64(0),
+		AggregateStuckHealth:         siadir.DefaultDirHealth,
+
 		Health:              siadir.DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
 		MinRedundancy:       math.MaxFloat64,
@@ -73,6 +80,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		NumFiles:            uint64(0),
 		NumStuckChunks:      uint64(0),
 		NumSubDirs:          uint64(0),
+		Size:                uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
 	}
 	// Read directory
@@ -91,9 +99,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		default:
 		}
 
-		var aggregateHealth, stuckHealth, redundancy float64
-		var numStuckChunks uint64
-		var lastHealthCheckTime, modTime time.Time
+		// Aggregate Fields
+		var aggregateHealth, aggregateStuckHealth, aggregateMinRedundancy float64
+		var aggregateLastHealthCheckTime, aggregateModTime time.Time
 		var fileMetadata siafile.BubbledMetadata
 		ext := filepath.Ext(fi.Name())
 		// Check for SiaFiles and Directories
@@ -111,17 +119,31 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				continue
 			}
 
+			// Record Values that compare against sub directories
 			aggregateHealth = fileMetadata.Health
-			stuckHealth = fileMetadata.StuckHealth
-			redundancy = fileMetadata.Redundancy
-			numStuckChunks = fileMetadata.NumStuckChunks
-			lastHealthCheckTime = fileMetadata.LastHealthCheckTime
-			modTime = fileMetadata.ModTime
+			aggregateStuckHealth = fileMetadata.StuckHealth
+			aggregateMinRedundancy = fileMetadata.Redundancy
+			aggregateLastHealthCheckTime = fileMetadata.LastHealthCheckTime
+			aggregateModTime = fileMetadata.ModTime
 
 			// Update aggregate fields.
-			metadata.NumFiles++
 			metadata.AggregateNumFiles++
+			metadata.AggregateNumStuckChunks += fileMetadata.NumStuckChunks
 			metadata.AggregateSize += fileMetadata.Size
+
+			// Update siadir fields.
+			metadata.Health = math.Max(metadata.Health, fileMetadata.Health)
+			if fileMetadata.LastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
+				metadata.LastHealthCheckTime = fileMetadata.LastHealthCheckTime
+			}
+			metadata.MinRedundancy = math.Min(metadata.MinRedundancy, fileMetadata.Redundancy)
+			if fileMetadata.ModTime.After(metadata.ModTime) {
+				metadata.ModTime = fileMetadata.ModTime
+			}
+			metadata.NumFiles++
+			metadata.NumStuckChunks += fileMetadata.NumStuckChunks
+			metadata.Size += fileMetadata.Size
+			metadata.StuckHealth = math.Max(metadata.StuckHealth, fileMetadata.StuckHealth)
 		} else if fi.IsDir() {
 			// Directory is found, read the directory metadata file
 			dirSiaPath, err := siaPath.Join(fi.Name())
@@ -133,59 +155,54 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				return siadir.Metadata{}, err
 			}
 
-			aggregateHealth = math.Max(dirMetadata.AggregateHealth, dirMetadata.Health)
-			stuckHealth = dirMetadata.StuckHealth
-			redundancy = dirMetadata.MinRedundancy
-			numStuckChunks = dirMetadata.NumStuckChunks
-			lastHealthCheckTime = dirMetadata.LastHealthCheckTime
-			modTime = dirMetadata.ModTime
+			// Record Values that compare against files
+			aggregateHealth = dirMetadata.AggregateHealth
+			aggregateStuckHealth = dirMetadata.AggregateStuckHealth
+			aggregateMinRedundancy = dirMetadata.AggregateMinRedundancy
+			aggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
+			aggregateModTime = dirMetadata.AggregateModTime
 
 			// Update aggregate fields.
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
+			metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
+			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
 			metadata.AggregateSize += dirMetadata.AggregateSize
+
+			// Update siadir fields
 			metadata.NumSubDirs++
 		} else {
 			// Ignore everything that is not a SiaFile or a directory
 			continue
 		}
-		// Update the Health of the directory based on the file Health
-		if fileMetadata.Health > metadata.Health {
-			metadata.Health = fileMetadata.Health
-		}
-		// Update the AggregateHealth
-		if aggregateHealth > metadata.AggregateHealth {
-			metadata.AggregateHealth = aggregateHealth
-		}
-		// Update Stuck Health
-		if stuckHealth > metadata.StuckHealth {
-			metadata.StuckHealth = stuckHealth
-		}
-		// Update MinRedundancy
-		if redundancy < metadata.MinRedundancy {
-			metadata.MinRedundancy = redundancy
+		// Track the max value of AggregateHealth and Aggregate StuckHealth
+		metadata.AggregateHealth = math.Max(metadata.AggregateHealth, aggregateHealth)
+		metadata.AggregateStuckHealth = math.Max(metadata.AggregateStuckHealth, aggregateStuckHealth)
+		// Track the min value for AggregateMinRedundancy
+		metadata.AggregateMinRedundancy = math.Min(metadata.AggregateMinRedundancy, aggregateMinRedundancy)
+		// Update LastHealthCheckTime
+		if aggregateLastHealthCheckTime.Before(metadata.AggregateLastHealthCheckTime) {
+			metadata.AggregateLastHealthCheckTime = aggregateLastHealthCheckTime
 		}
 		// Update ModTime
-		if modTime.After(metadata.ModTime) {
-			metadata.ModTime = modTime
+		if aggregateModTime.After(metadata.AggregateModTime) {
+			metadata.AggregateModTime = aggregateModTime
 		}
-		// Increment NumStuckChunks
-		metadata.NumStuckChunks += numStuckChunks
-		// Update LastHealthCheckTime if the file or sub directory
-		// lastHealthCheckTime is older (before) the current lastHealthCheckTime
-		if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
-			metadata.LastHealthCheckTime = lastHealthCheckTime
-		}
-		metadata.NumStuckChunks += numStuckChunks
 	}
 	// Sanity check on ModTime. If mod time is still zero it means there were no
 	// files or subdirectories. Set ModTime to now since we just updated this
 	// directory
+	if metadata.AggregateModTime.IsZero() {
+		metadata.AggregateModTime = time.Now()
+	}
 	if metadata.ModTime.IsZero() {
 		metadata.ModTime = time.Now()
 	}
 
 	// Sanity check on Redundancy. If MinRedundancy is still math.MaxFloat64
 	// then set it to 0
+	if metadata.AggregateMinRedundancy == math.MaxFloat64 {
+		metadata.AggregateMinRedundancy = 0
+	}
 	if metadata.MinRedundancy == math.MaxFloat64 {
 		metadata.MinRedundancy = 0
 	}
@@ -378,7 +395,7 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 			default:
 			}
 		}
-		if metadata.NumStuckChunks > 0 {
+		if metadata.AggregateNumStuckChunks > 0 {
 			select {
 			case r.uploadHeap.stuckChunkFound <- struct{}{}:
 			default:

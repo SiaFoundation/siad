@@ -196,22 +196,30 @@ type DirectoryInfo struct {
 	// The following fields are aggregate values of the siadir. These values are
 	// the totals of the siadir and any sub siadirs, or are calculated based on
 	// all the values in the subtree
-	AggregateHealth         float64   `json:"aggregatehealth"`
-	AggregateNumFiles       uint64    `json:"aggregatenumfiles"`
-	AggregateNumStuckChunks uint64    `json:"aggregatenumstuckchunks"`
-	AggregateSize           uint64    `json:"aggregatesize"`
-	LastHealthCheckTime     time.Time `json:"lasthealthchecktime"`
-	MaxHealth               float64   `json:"maxhealth"`
-	MinRedundancy           float64   `json:"minredundancy"`
-	MostRecentModTime       time.Time `json:"mostrecentmodtime"`
-	StuckHealth             float64   `json:"stuckhealth"`
+	AggregateHealth              float64   `json:"aggregatehealth"`
+	AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
+	AggregateMaxHealth           float64   `json:"aggregatemaxhealth"`
+	AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
+	AggregateMostRecentModTime   time.Time `json:"aggregatemostrecentmodtime"`
+	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
+	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
+	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
+	AggregateSize                uint64    `json:"aggregatesize"`
+	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
-	Health     float64 `json:"health"`
-	NumFiles   uint64  `json:"numfiles"`
-	NumSubDirs uint64  `json:"numsubdirs"`
-	SiaPath    SiaPath `json:"siapath"`
+	Health              float64   `json:"health"`
+	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+	MaxHealth           float64   `json:"maxhealth"`
+	MinRedundancy       float64   `json:"minredundancy"`
+	MostRecentModTime   time.Time `json:"mostrecentmodtime"`
+	NumFiles            uint64    `json:"numfiles"`
+	NumStuckChunks      uint64    `json:"numstuckchunks"`
+	NumSubDirs          uint64    `json:"numsubdirs"`
+	SiaPath             SiaPath   `json:"siapath"`
+	Size                uint64    `json:"size"`
+	StuckHealth         float64   `json:"stuckhealth"`
 }
 
 // DownloadInfo provides information about a file that has been requested for
