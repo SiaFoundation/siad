@@ -47,7 +47,11 @@ func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, error) {
 	defer r.tg.Done()
 	id := r.mu.RLock()
 	defer r.mu.RUnlock(id)
-	return r.persist.UploadedBackups, nil
+	var backups []modules.UploadedBackup
+	for _, pb := range r.persist.UploadedBackups {
+		backups = append(backups, pb.UploadedBackup)
+	}
+	return backups, nil
 }
 
 // UploadBackup creates a backup of the renter which is uploaded to the sia
@@ -172,18 +176,7 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	return err
 }
 
-// uploadSnapshot uploads a snapshot .sia file to all hosts.
-func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
-	meta := modules.UploadedBackup{
-		CreationDate: types.CurrentTimestamp(),
-		Size:         uint64(len(dotSia)),
-	}
-	if len(name) > len(meta.Name) {
-		return errors.New("name is too long")
-	}
-	copy(meta.Name[:], name)
-	fastrand.Read(meta.UID[:])
-
+func (r *Renter) uploadSnapshotHost(meta modules.UploadedBackup, dotSia []byte, host contractor.Session) error {
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
 	if err != nil {
@@ -196,8 +189,6 @@ func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
 	secret := crypto.HashAll(rs, snapshotKeySpecifier)
 	defer fastrand.Read(secret[:])
 
-	contracts := r.hostContractor.Contracts()
-
 	// split the snapshot .sia file into sectors
 	var sectors [][]byte
 	for buf := bytes.NewBuffer(dotSia); buf.Len() > 0; {
@@ -209,8 +200,76 @@ func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
 		return errors.New("snapshot is too large")
 	}
 
+	// upload the siafile, creating a snapshotEntry
+	entry := snapshotEntry{Meta: meta}
+	for j, piece := range sectors {
+		root, err := host.Upload(piece)
+		if err != nil {
+			return err
+		}
+		entry.DataSectors[j] = root
+	}
+
+	// download the current entry table
+	tableSector, err := host.DownloadIndex(0, 0, uint32(modules.SectorSize))
+	if err != nil {
+		return err
+	}
+	// decrypt the table
+	c, err := twofish.NewCipher(secret[:])
+	aead, err := cipher.NewGCM(c)
+	if err != nil {
+		return err
+	}
+	encTable, err := crypto.DecryptWithNonce(tableSector, aead)
+	// check that the sector actually contains an entry table. If so, we
+	// should replace the old table; if not, we should swap the old
+	// sector to the end, but not delete it.
+	haveValidTable := err == nil && bytes.Equal(encTable[:16], snapshotTableSpecifier[:])
+
+	// update the entry table
+	var entryTable []snapshotEntry
+	if haveValidTable {
+		if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
+			return err
+		}
+	}
+	entryTable = append(entryTable, entry)
+	// if entryTable is too large to fit in a sector, remove old entries until it fits
+	overhead := types.SpecifierLen + aead.Overhead() + aead.NonceSize()
+	for len(encoding.Marshal(entryTable))+overhead > int(modules.SectorSize) {
+		entryTable = entryTable[1:]
+	}
+	newTable := make([]byte, modules.SectorSize-uint64(aead.Overhead()+aead.NonceSize()))
+	copy(newTable[:16], snapshotTableSpecifier[:])
+	copy(newTable[16:], encoding.Marshal(entryTable))
+	tableSector = crypto.EncryptWithNonce(newTable, aead)
+	// swap the new entry table into index 0 and delete the old one
+	// (unless it wasn't an entry table)
+	if _, err := host.Replace(tableSector, 0, haveValidTable); err != nil {
+		return err
+	}
+	return nil
+}
+
+// uploadSnapshot uploads a snapshot .sia file to all hosts.
+func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
+	meta := modules.UploadedBackup{
+		CreationDate: types.CurrentTimestamp(),
+		Size:         uint64(len(dotSia)),
+	}
+	if len(name) > len(meta.Name) {
+		return errors.New("name is too long")
+	}
+	copy(meta.Name[:], name)
+	fastrand.Read(meta.UID[:])
+
+	contracts := r.hostContractor.Contracts()
+
 	// upload the siafile and update the entry table for each host
-	var numSuccessful int
+	pb := persistBackup{
+		UploadedBackup: meta,
+	}
 	for i := range contracts {
 		hostKey := contracts[i].HostPublicKey
 		utility, ok := r.hostContractor.ContractUtility(hostKey)
@@ -223,67 +282,18 @@ func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
 				return err
 			}
 			defer host.Close()
-			// upload the siafile, creating a snapshotEntry
-			entry := snapshotEntry{Meta: meta}
-			for j, piece := range sectors {
-				root, err := host.Upload(piece)
-				if err != nil {
-					return err
-				}
-				entry.DataSectors[j] = root
-			}
-
-			// download the current entry table
-			tableSector, err := host.DownloadIndex(0, 0, uint32(modules.SectorSize))
-			if err != nil {
-				return err
-			}
-			// decrypt the table
-			c, err := twofish.NewCipher(secret[:])
-			aead, err := cipher.NewGCM(c)
-			if err != nil {
-				return err
-			}
-			encTable, err := crypto.DecryptWithNonce(tableSector, aead)
-			// check that the sector actually contains an entry table. If so, we
-			// should replace the old table; if not, we should swap the old
-			// sector to the end, but not delete it.
-			haveValidTable := err == nil && bytes.Equal(encTable[:16], snapshotTableSpecifier[:])
-
-			// update the entry table
-			var entryTable []snapshotEntry
-			if haveValidTable {
-				if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
-					return err
-				}
-			}
-			entryTable = append(entryTable, entry)
-			// if entryTable is too large to fit in a sector, remove old entries until it fits
-			overhead := types.SpecifierLen + aead.Overhead() + aead.NonceSize()
-			for len(encoding.Marshal(entryTable))+overhead > int(modules.SectorSize) {
-				entryTable = entryTable[1:]
-			}
-			newTable := make([]byte, modules.SectorSize-uint64(aead.Overhead()+aead.NonceSize()))
-			copy(newTable[:16], snapshotTableSpecifier[:])
-			copy(newTable[16:], encoding.Marshal(entryTable))
-			tableSector = crypto.EncryptWithNonce(newTable, aead)
-			// swap the new entry table into index 0 and delete the old one
-			// (unless it wasn't an entry table)
-			if _, err := host.Replace(tableSector, 0, haveValidTable); err != nil {
-				return err
-			}
-			return nil
+			return r.uploadSnapshotHost(meta, dotSia, host)
 		}()
 		if err != nil {
 			r.log.Printf("Uploading snapshot to host %v failed: %v", hostKey, err)
 			continue
 		}
-		numSuccessful++
+		pb.Hosts = append(pb.Hosts, hostKey)
 	}
-	if numSuccessful == 0 {
-		return errors.New("failed to upload to at least one host")
+	if len(pb.Hosts) == 0 {
+		r.log.Println("WARN: Failed to upload snapshot to at least one host")
 	}
-	r.persist.UploadedBackups = append(r.persist.UploadedBackups, meta)
+	r.persist.UploadedBackups = append(r.persist.UploadedBackups, pb)
 	if err := r.saveSync(); err != nil {
 		return err
 	}
@@ -398,8 +408,32 @@ func (r *Renter) downloadSnapshot(uid [16]byte) (dotSia []byte, err error) {
 	return nil, errors.New("could not download backup from any host")
 }
 
-// threadedScanSnapshots continuously scans contracts for snapshots.
-func (r *Renter) threadedScanSnapshots() {
+// threadedSynchronizeSnapshots continuously scans hosts to ensure that all
+// current hosts are storing all known snapshots.
+func (r *Renter) threadedSynchronizeSnapshots() {
+	calcMissingHosts := func(pb persistBackup, contracts []modules.RenterContract) []types.SiaPublicKey {
+		var missing []types.SiaPublicKey
+		for _, c := range contracts {
+			var found bool
+			for _, h := range pb.Hosts {
+				found = found || h.String() == c.HostPublicKey.String()
+			}
+			if !found {
+				missing = append(missing, c.HostPublicKey)
+			}
+		}
+		return missing
+	}
+
+	hasSnapshot := func(entryTable []snapshotEntry, uid [16]byte) bool {
+		for _, e := range entryTable {
+			if e.Meta.UID == uid {
+				return true
+			}
+		}
+		return false
+	}
+
 	for {
 		select {
 		case <-time.After(time.Minute * 5):
@@ -407,35 +441,92 @@ func (r *Renter) threadedScanSnapshots() {
 			return
 		}
 
-		var snapshots []modules.UploadedBackup
-		seenUIDs := make(map[[16]byte]struct{})
-		// scan current contracts
-		for _, contract := range r.hostContractor.Contracts() {
-			err := func() error {
-				host, err := r.hostContractor.Session(contract.HostPublicKey, r.tg.StopChan())
-				if err != nil {
-					return err
-				}
-				defer host.Close()
-				entryTable, err := r.managedDownloadSnapshotTable(host)
-				if err != nil {
-					return err
-				}
-				// merge table
-				for _, e := range entryTable {
-					if _, seen := seenUIDs[e.Meta.UID]; !seen {
-						snapshots = append(snapshots, e.Meta)
-						seenUIDs[e.Meta.UID] = struct{}{}
-					}
-				}
-				return nil
-			}()
-			if err != nil {
-				r.log.Println("Failed to scan host's snapshot table:", err)
-			}
-		}
+		// Build a set of the snapshots we already have.
+		known := make(map[[16]byte]struct{})
 		id := r.mu.Lock()
-		r.persist.UploadedBackups = snapshots
+		for _, pb := range r.persist.UploadedBackups {
+			known[pb.UID] = struct{}{}
+		}
 		r.mu.Unlock(id)
+
+		var newSnapshots []persistBackup
+		contracts := r.hostContractor.Contracts()
+		for _, pb := range r.persist.UploadedBackups {
+			// Calculate which of the hosts this snapshot is already stored on.
+			missingHosts := calcMissingHosts(pb, contracts)
+			if len(missingHosts) == 0 {
+				// The snapshot is already present on all hosts.
+				newSnapshots = append(newSnapshots, pb)
+				continue
+			} else if len(missingHosts) == len(contracts) {
+				// The snapshot is not on any current hosts, so delete it. (We can
+				// always get it back if we re-add the host at a later time.)
+				continue
+			}
+
+			// Download the snapshot. If we can't download it, delete it. (As
+			// before, we'll be able to recover it later, when we encounter it
+			// in a host's entryTable.)
+			dotSia, err := r.downloadSnapshot(pb.UID)
+			if err != nil {
+				r.log.Println("Failed to download snapshot for replication:", err)
+				continue
+			}
+
+			// Replicate the snapshot to each missing host.
+			for _, hostKey := range missingHosts {
+				err := func() error {
+					host, err := r.hostContractor.Session(hostKey, r.tg.StopChan())
+					if err != nil {
+						return err
+					}
+					defer host.Close()
+					entryTable, err := r.managedDownloadSnapshotTable(host)
+					if err != nil {
+						return err
+					}
+					// If the entry table has snapshots we don't know about,
+					// record them; they'll be replicated to other hosts on the
+					// next iteration.
+					for _, e := range entryTable {
+						if _, ok := known[e.Meta.UID]; !ok {
+							newSnapshots = append(newSnapshots, persistBackup{
+								UploadedBackup: e.Meta,
+								Hosts:          []types.SiaPublicKey{hostKey},
+							})
+							known[e.Meta.UID] = struct{}{}
+							r.log.Println("Located new snapshot", e.Meta.UID)
+						}
+					}
+					// Check that the entry table is indeed missing this
+					// snapshot; if so, upload it.
+					if !hasSnapshot(entryTable, pb.UID) {
+						if err := r.uploadSnapshotHost(pb.UploadedBackup, dotSia, host); err != nil {
+							return err
+						}
+					}
+
+					// Record that the snapshot is present on this host.
+					pb.Hosts = append(pb.Hosts, hostKey)
+					return nil
+				}()
+				if err != nil {
+					r.log.Println("Failed to add snapshot to host:", err)
+				}
+			}
+			newSnapshots = append(newSnapshots, pb)
+		}
+		// Save the new set of snapshots.
+		//
+		// NOTE: it's acceptable to delay this until the end of the loop,
+		// because even if we crash in the middle of the loop, the entryTables
+		// on the hosts will already have been updated. So when we resume, we'll
+		// download the table of host X and see that it already has snapshot Y,
+		// so we can skip reuploading snapshot Y.
+		r.persist.UploadedBackups = newSnapshots
+		if err := r.saveSync(); err != nil {
+			r.log.Println("Failed to save snapshot set:", err)
+		}
+		newSnapshots = nil
 	}
 }

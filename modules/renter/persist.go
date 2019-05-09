@@ -62,7 +62,13 @@ type (
 	persistence struct {
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
-		UploadedBackups  []modules.UploadedBackup
+		UploadedBackups  []persistBackup
+	}
+
+	// A persistBackup pairs an uploaded backup with the hosts it is stored on.
+	persistBackup struct {
+		modules.UploadedBackup
+		Hosts []types.SiaPublicKey
 	}
 )
 
