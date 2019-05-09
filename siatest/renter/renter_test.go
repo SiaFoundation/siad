@@ -636,7 +636,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
-	rf, err := r.Upload(lf, r.SiaPath(lf.Path()), dataPieces, parityPieces, false)
+	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,6 +673,62 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if len(rgd.Files) != 0 {
 		t.Fatal("Expected 0 files in directory but found:", len(rgd.Files))
+	}
+
+	// Test renaming subdirectory
+	subDir1, err := modules.NewSiaPath("subDir1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSiaPath := modules.RandomSiaPath()
+	if err = r.RenterDirRenamePost(subDir1, newSiaPath); err != nil {
+		t.Fatal(err)
+	}
+	// Renamed directory should have 0 files and 1 sub directory.
+	rgd, err = r.RenterGetDir(newSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rgd.Files) != 0 {
+		t.Fatalf("Renamed dir should have 0 files but had %v", len(rgd.Files))
+	}
+	if len(rgd.Directories) != 2 {
+		t.Fatalf("Renamed dir should have 1 sub directory but had %v",
+			len(rgd.Directories)-1)
+	}
+	// Subdir of renamed dir should have 0 files and 1 sub directory.
+	rgd, err = r.RenterGetDir(rgd.Directories[1].SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rgd.Files) != 0 {
+		t.Fatalf("Renamed dir should have 0 files but had %v", len(rgd.Files))
+	}
+	if len(rgd.Directories) != 2 {
+		t.Fatalf("Renamed dir should have 1 sub directory but had %v",
+			len(rgd.Directories)-1)
+	}
+	// SubSubdir of renamed dir should have 1 file and 0 sub directories.
+	rgd, err = r.RenterGetDir(rgd.Directories[1].SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rgd.Files) != 1 {
+		t.Fatalf("Renamed dir should have 1 file but had %v", len(rgd.Files))
+	}
+	if len(rgd.Directories) != 1 {
+		t.Fatalf("Renamed dir should have 0 sub directories but had %v",
+			len(rgd.Directories)-1)
+	}
+	// Try downloading the renamed file.
+	if _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the old siadir was deleted from disk
+	_, err = os.Stat(subDir1.SiaDirSysPath(r.RenterFilesDir()))
+	if !os.IsNotExist(err) {
+		t.Fatal("Expected IsNotExist err, but got err:", err)
 	}
 
 	// Test deleting directory

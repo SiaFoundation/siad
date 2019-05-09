@@ -630,6 +630,9 @@ type Renter interface {
 	// RenameFile changes the path of a file.
 	RenameFile(siaPath, newSiaPath SiaPath) error
 
+	// RenameDir changes the path of a dir.
+	RenameDir(oldPath, newPath SiaPath) error
+
 	// EstimateHostScore will return the score for a host with the provided
 	// settings, assuming perfect age and uptime adjustments
 	EstimateHostScore(entry HostDBEntry, allowance Allowance) (HostScoreBreakdown, error)

@@ -264,6 +264,10 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
+			// Make sure that dir isn't the root.
+			if dir.Equals(modules.RootSiaPath()) {
+				continue
+			}
 			if fastrand.Intn(2) == 0 {
 				// 50% chance to delete and recreate the directory.
 				if err := r.RenterDirDeletePost(dir); err != nil {
@@ -277,14 +281,19 @@ func TestStresstestSiaFileSet(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				// TODO uncomment this one rename is implemented
 				// 50% chance to rename the directory to be the child of a
 				// random existing directory.
-				//newParent := dirs[fastrand.Intn(len(dirs))]
-				//newDir := filepath.Join(newParent, persist.RandomSuffix())
-				//if err := r.RenterDirRenamePost(dir, newDir); err != nil {
-				//	t.Fatal(err)
-				//}
+				newParent := dirs[fastrand.Intn(len(dirs))]
+				newDir, err := newParent.Join(persist.RandomSuffix())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.HasPrefix(newDir.String(), dir.String()) {
+					continue // can't rename folder into itself
+				}
+				if err := r.RenterDirRenamePost(dir, newDir); err != nil {
+					t.Fatal(err)
+				}
 			}
 			time.Sleep(time.Duration(fastrand.Intn(500))*time.Millisecond + 500*time.Millisecond) // between 0.5s and 1s
 		}

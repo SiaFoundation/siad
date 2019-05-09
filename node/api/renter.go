@@ -1283,9 +1283,17 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 	if action == "rename" {
-		// newsiapath := ps.ByName("newsiapath")
-		// TODO - implement
-		WriteError(w, Error{"not implemented"}, http.StatusNotImplemented)
+		newSiaPath, err := modules.NewSiaPath(req.FormValue("newsiapath"))
+		if err != nil {
+			WriteError(w, Error{"failed to parse newsiapath: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		err = api.renter.RenameDir(siaPath, newSiaPath)
+		if err != nil {
+			WriteError(w, Error{"failed to rename directory: " + err.Error()}, http.StatusInternalServerError)
+			return
+		}
+		WriteSuccess(w)
 		return
 	}
 

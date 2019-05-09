@@ -469,7 +469,9 @@ func (c *Client) RenterDirDeletePost(siaPath modules.SiaPath) (err error) {
 // RenterDirRenamePost uses the /renter/dir/ endpoint to rename a directory for the
 // renter
 func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err error) {
-	err = c.post(fmt.Sprintf("/renter/dir/%s?newsiapath=%s", siaPath.String(), newSiaPath.String()), "action=rename", nil)
+	sp := escapeSiaPath(siaPath)
+	nsp := escapeSiaPath(newSiaPath)
+	err = c.post(fmt.Sprintf("/renter/dir/%s?newsiapath=%s", sp, nsp), "action=rename", nil)
 	return
 }
 

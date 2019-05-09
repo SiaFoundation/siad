@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -610,4 +612,63 @@ func healthPercentage(h, sh float64, ec modules.ErasureCoder) float64 {
 	parityPieces := ec.NumPieces() - dataPieces
 	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
 	return 100 * ((worstHealth - health) / worstHealth)
+}
+
+// RenameDir renames a siadir and all the siadirs and siafiles within it
+// recursively.
+func (sfs *SiaFileSet) RenameDir(oldPath, newPath modules.SiaPath, rename siadir.RenameDirFunc) error {
+	if oldPath.Equals(modules.RootSiaPath()) {
+		return errors.New("can't rename root dir")
+	}
+	if oldPath.Equals(newPath) {
+		return nil // nothing to do
+	}
+	if strings.HasPrefix(newPath.String(), oldPath.String()) {
+		return errors.New("can't rename folder into itself")
+	}
+	// Prevent new files from being opened.
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	var lockedFiles []*siaFileSetEntry
+	defer func() {
+		for _, entry := range lockedFiles {
+			entry.mu.Unlock()
+		}
+	}()
+	// Lock all files within the old dir.
+	for siaPath := range sfs.siapathToUID {
+		entry, _, exists := sfs.siaPathToEntryAndUID(siaPath)
+		if !exists {
+			continue
+		}
+		if strings.HasPrefix(siaPath.String(), oldPath.String()) {
+			entry.mu.Lock()
+			lockedFiles = append(lockedFiles, entry)
+		}
+	}
+	// Rename the dir using the provided rename function.
+	if err := rename(oldPath, newPath); err != nil {
+		return errors.AddContext(err, "failed to rename dir")
+	}
+	// Rename was successful. Rename the siafiles in memory before they are being
+	// unlocked again.
+	for _, entry := range lockedFiles {
+		// Get old SiaPath.
+		var oldSiaPath modules.SiaPath
+		if err := oldSiaPath.LoadSysPath(sfs.staticSiaFileDir, entry.siaFilePath); err != nil {
+			build.Critical("Getting the siaPath shouldn't fail")
+			continue
+		}
+		// Rebase path to new folder.
+		sp, err := oldSiaPath.Rebase(oldPath, newPath)
+		if err != nil {
+			build.Critical("Rebasing siapaths shouldn't fail")
+			continue
+		}
+		// Update the siafilepath of the entry and the siafileToUIDMap.
+		delete(sfs.siapathToUID, oldSiaPath)
+		sfs.siapathToUID[sp] = entry.staticMetadata.StaticUniqueID
+		entry.siaFilePath = sp.SiaFileSysPath(sfs.staticSiaFileDir)
+	}
+	return nil
 }
