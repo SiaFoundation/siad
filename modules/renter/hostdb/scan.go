@@ -413,6 +413,9 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		if err != nil {
 			return err
 		}
+		// Create go routine that will close the channel if the hostdb shuts
+		// down or when this method returns as signalled by closing the
+		// connCloseChan channel
 		connCloseChan := make(chan struct{})
 		go func() {
 			select {
@@ -448,23 +451,40 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 
 		// Failed to get settings with the new protocol; fall back to the old
 		// protocol, filling in the missing fields with default values.
+		//
+		// Close current connection
 		conn.Close()
+
+		// Start new connection. We cannot assign this to the first connection
+		// as it creates a Data Race and conflicts with the deferred channel
+		// closing. Additionally, we can't assign the result of Dial to conn,
+		// because if the Dial fails and conn is nil, then the deferred call to
+		// Close will segfault.
 		conn2, err := dialer.Dial("tcp", string(netAddr))
 		if err != nil {
 			return err
 		}
-		// NOTE: we can't assign the result of Dial directly to conn, because if
-		// the Dial fails and conn is nil, then the deferred call to Close will
-		// segfault.
-		conn = conn2
-		err = encoding.WriteObject(conn, modules.RPCSettings)
+		// Create go routine that will close this second channel if the hostdb
+		// shuts down or when this method returns as signalled by closing the
+		// connCloseChan2 channel
+		connCloseChan2 := make(chan struct{})
+		go func() {
+			select {
+			case <-hdb.tg.StopChan():
+			case <-connCloseChan2:
+			}
+			conn2.Close()
+		}()
+		defer close(connCloseChan2)
+
+		err = encoding.WriteObject(conn2, modules.RPCSettings)
 		if err != nil {
 			return err
 		}
 		var pubkey crypto.PublicKey
 		copy(pubkey[:], pubKey.Key)
 		var oldSettings modules.HostOldExternalSettings
-		err = crypto.ReadSignedObject(conn, &oldSettings, maxSettingsLen, pubkey)
+		err = crypto.ReadSignedObject(conn2, &oldSettings, maxSettingsLen, pubkey)
 		if err != nil {
 			return err
 		}

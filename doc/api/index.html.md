@@ -1785,15 +1785,20 @@ Size in bytes of the backup.
 > curl example  
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/renter/contracts?inactive=true&expired=true&recoverable=false"
+curl -A "Sia-Agent" "localhost:9980/renter/contracts?disabled=true&expired=true&recoverable=false"
 ```
 
-Returns the renter's contracts.  Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default. Inactive contracts are contracts that are in the current period but are marked as not good for renew, these contracts have the potential to become active again but currently are not storing data.  Expired contracts are contracts not in the current period, where not more data is being stored and excess funds have been released to the renter. Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
+Returns the renter's contracts.
+Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default.
+Renewed contracts are contracts that are being used to store and download data, but are not being uploaded to because they either ran out of storage or funds and required renewal. The Renter has an active contract with these hosts for uploading.
+Disabled contracts are contracts that are in the current period that are not being used for uploading as they were replaced instead of renewed.
+Expired contracts are contracts no in the current period, where not more data is being stored and excess funds have been released to the renter.
+Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
 
 ### Query String Parameters
 #### OPTIONAL
-**inactive** | boolean
-flag indicating if inactive contracts should be returned.
+**disabled** | boolean
+flag indicating if disabled contracts should be returned.
 
 **expired** | boolean
 flag indicating if expired contracts should be returned.
@@ -1829,7 +1834,8 @@ flag indicating if recoverable contracts should be returned.
       "goodforrenew":     false,            // boolean
     }
   ],
-  "inactivecontracts": [],
+  "renewedcontracts": [],
+  "disabledcontracts": [],
   "expiredcontracts": [],
   "recoverablecontracts": [],
 }

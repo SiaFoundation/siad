@@ -118,6 +118,15 @@ func (c *Client) RenterContractsGet() (rc api.RenterContracts, err error) {
 	return
 }
 
+// RenterDisabledContractsGet requests the /renter/contracts resource with the
+// disabled flag set to true
+func (c *Client) RenterDisabledContractsGet() (rc api.RenterContracts, err error) {
+	values := url.Values{}
+	values.Set("disabled", fmt.Sprint(true))
+	err = c.get("/renter/contracts?"+values.Encode(), &rc)
+	return
+}
+
 // RenterInactiveContractsGet requests the /renter/contracts resource with the
 // inactive flag set to true
 func (c *Client) RenterInactiveContractsGet() (rc api.RenterContracts, err error) {
