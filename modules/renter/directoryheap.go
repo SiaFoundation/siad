@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -144,14 +143,6 @@ func (dh *directoryHeap) pop() (d *directory) {
 // subdirectories are added to the heap and the directory is marked as explored
 // and pushed back onto the heap.
 func (r *Renter) managedNextExploredDirectory() (*directory, error) {
-	// Check if heap  is empty
-	if r.directoryHeap.managedLen() == 0 {
-		err := r.managedPushUnexploredDirectory(modules.RootSiaPath())
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	// Loop until we pop off an explored directory
 	for {
 		// Pop directory
@@ -159,8 +150,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 
 		// Sanity check that we are still popping off directories
 		if d == nil {
-			build.Critical("no more directories to pop off heap, this should never happen")
-			return nil, errors.New("no more directories to pop off heap")
+			return nil, nil
 		}
 
 		// Check if explored and mark as explored if unexplored

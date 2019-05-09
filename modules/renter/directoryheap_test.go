@@ -296,12 +296,18 @@ func TestNextExploredDirectory(t *testing.T) {
 
 	// Make sure we are starting with an empty heap, this helps with ndfs and
 	// tests proper handling of empty heaps
-	rt.renter.directoryHeap.managedEmpty()
+	err = rt.renter.managedResetDirectoryHeap()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Pop off next explored directory
 	d, err := rt.renter.managedNextExploredDirectory()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if d == nil {
+		t.Fatal("No directory popped off heap")
 	}
 
 	// Directory should be root/SubDir2/SubDir2
@@ -322,6 +328,9 @@ func TestNextExploredDirectory(t *testing.T) {
 	d, err = rt.renter.managedNextExploredDirectory()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if d == nil {
+		t.Fatal("No directory popped off heap")
 	}
 
 	// Directory should be root/SubDir1/SubDir2
