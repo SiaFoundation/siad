@@ -411,10 +411,10 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	}
 	defer s.Close()
 	// Lock the contract and resynchronize if necessary
-	rev, _, err := s.Lock(contract.ID(), contract.SecretKey)
+	rev, sigs, err := s.Lock(contract.ID(), contract.SecretKey)
 	if err != nil {
 		return modules.RenterContract{}, err
-	} else if err := oldContract.syncRevision(rev); err != nil {
+	} else if err := oldContract.syncRevision(rev, sigs); err != nil {
 		return modules.RenterContract{}, err
 	}
 

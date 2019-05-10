@@ -118,6 +118,15 @@ func (c *Client) RenterContractsGet() (rc api.RenterContracts, err error) {
 	return
 }
 
+// RenterDisabledContractsGet requests the /renter/contracts resource with the
+// disabled flag set to true
+func (c *Client) RenterDisabledContractsGet() (rc api.RenterContracts, err error) {
+	values := url.Values{}
+	values.Set("disabled", fmt.Sprint(true))
+	err = c.get("/renter/contracts?"+values.Encode(), &rc)
+	return
+}
+
 // RenterInactiveContractsGet requests the /renter/contracts resource with the
 // inactive flag set to true
 func (c *Client) RenterInactiveContractsGet() (rc api.RenterContracts, err error) {
@@ -179,19 +188,32 @@ func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, 
 	return
 }
 
-// RenterCreateBackupPost creates a backup of the SiaFiles of the renter.
-func (c *Client) RenterCreateBackupPost(dst string) (err error) {
+// RenterCreateBackupPost creates a backup of the SiaFiles of the renter. If the
+// remote flag is set, the backup is uploaded to hosts, and dst is used as the
+// backup's name. Otherwise, dst is the absolute path on disk where the backup
+// is stored.
+func (c *Client) RenterCreateBackupPost(dst string, remote bool) (err error) {
 	values := url.Values{}
 	values.Set("destination", dst)
+	values.Set("remote", fmt.Sprint(remote))
 	err = c.post("/renter/backup", values.Encode(), nil)
 	return
 }
 
-// RenterRecoverBackupPost loads a backup of the SiaFiles of the renter.
-func (c *Client) RenterRecoverBackupPost(src string) (err error) {
+// RenterRecoverBackupPost loads a backup of the SiaFiles of the renter. If the
+// remote flag is set, the backup is downloaded from host, and src must match
+// the name used when the backup was uploaded.
+func (c *Client) RenterRecoverBackupPost(src string, remote bool) (err error) {
 	values := url.Values{}
 	values.Set("source", src)
+	values.Set("remote", fmt.Sprint(remote))
 	err = c.post("/renter/recoverbackup", values.Encode(), nil)
+	return
+}
+
+// RenterUploadedBackups lists the backups the renter has uploaded to hosts.
+func (c *Client) RenterUploadedBackups() (ubs []api.RenterUploadedBackup, err error) {
+	err = c.get("/renter/uploadedbackups", &ubs)
 	return
 }
 
@@ -406,15 +428,25 @@ func (c *Client) RenterUploadDefaultPost(path string, siaPath modules.SiaPath) (
 	return
 }
 
-// RenterUploadStreamPost uploads data using a stream. It will return a
-// io.WriteCloser that can be used to write the data to the request body. The
-// writer needs to be closed when done for the whole file to be uploaded.
+// RenterUploadStreamPost uploads data using a stream.
 func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath modules.SiaPath, dataPieces, parityPieces uint64, force bool) error {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("datapieces", strconv.FormatUint(dataPieces, 10))
 	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
 	values.Set("force", strconv.FormatBool(force))
+	values.Set("stream", strconv.FormatBool(true))
+	_, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
+	return err
+}
+
+// RenterUploadStreamRepairPost a siafile using a stream. If the data provided
+// by r is not the same as the previously uploaded data, the data will be
+// corrupted.
+func (c *Client) RenterUploadStreamRepairPost(r io.Reader, siaPath modules.SiaPath) error {
+	sp := escapeSiaPath(siaPath)
+	values := url.Values{}
+	values.Set("repair", strconv.FormatBool(true))
 	values.Set("stream", strconv.FormatBool(true))
 	_, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
 	return err
@@ -437,7 +469,9 @@ func (c *Client) RenterDirDeletePost(siaPath modules.SiaPath) (err error) {
 // RenterDirRenamePost uses the /renter/dir/ endpoint to rename a directory for the
 // renter
 func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err error) {
-	err = c.post(fmt.Sprintf("/renter/dir/%s?newsiapath=%s", siaPath.String(), newSiaPath.String()), "action=rename", nil)
+	sp := escapeSiaPath(siaPath)
+	nsp := escapeSiaPath(newSiaPath)
+	err = c.post(fmt.Sprintf("/renter/dir/%s?newsiapath=%s", sp, nsp), "action=rename", nil)
 	return
 }
 

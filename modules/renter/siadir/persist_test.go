@@ -17,49 +17,62 @@ import (
 // function to check persistence the time fields should be checked in the test
 // itself as well and reset due to how time is persisted
 func equalMetadatas(md, md2 Metadata) error {
-	// Check AggregateHealth
+	// Check Aggregate Fields
 	if md.AggregateHealth != md2.AggregateHealth {
-		return fmt.Errorf("aggregatehealths not equal, %v and %v", md.AggregateHealth, md2.AggregateHealth)
+		return fmt.Errorf("AggregateHealths not equal, %v and %v", md.AggregateHealth, md2.AggregateHealth)
 	}
-	// Check AggregateNumFiles
+	if md.AggregateLastHealthCheckTime != md2.AggregateLastHealthCheckTime {
+		return fmt.Errorf("AggregateLastHealthCheckTimes not equal, %v and %v", md.AggregateLastHealthCheckTime, md2.AggregateLastHealthCheckTime)
+	}
+	if md.AggregateMinRedundancy != md2.AggregateMinRedundancy {
+		return fmt.Errorf("AggregateMinRedundancy not equal, %v and %v", md.AggregateMinRedundancy, md2.AggregateMinRedundancy)
+	}
+	if md.AggregateModTime != md2.AggregateModTime {
+		return fmt.Errorf("AggregateModTimes not equal, %v and %v", md.AggregateModTime, md2.AggregateModTime)
+	}
 	if md.AggregateNumFiles != md2.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, md2.AggregateNumFiles)
 	}
-	// Check AggregateSize
+	if md.AggregateNumStuckChunks != md2.AggregateNumStuckChunks {
+		return fmt.Errorf("AggregateNumStuckChunks not equal, %v and %v", md.AggregateNumStuckChunks, md2.AggregateNumStuckChunks)
+	}
+	if md.AggregateNumSubDirs != md2.AggregateNumSubDirs {
+		return fmt.Errorf("AggregateNumSubDirs not equal, %v and %v", md.AggregateNumSubDirs, md2.AggregateNumSubDirs)
+	}
 	if md.AggregateSize != md2.AggregateSize {
-		return fmt.Errorf("aggregate sizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
+		return fmt.Errorf("AggregateSizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
 	}
-	// Check Health
+	if md.AggregateStuckHealth != md2.AggregateStuckHealth {
+		return fmt.Errorf("AggregateStuckHealths not equal, %v and %v", md.AggregateStuckHealth, md2.AggregateStuckHealth)
+	}
+
+	// Check SiaDir Fields
 	if md.Health != md2.Health {
-		return fmt.Errorf("healths not equal, %v and %v", md.Health, md2.Health)
+		return fmt.Errorf("Healths not equal, %v and %v", md.Health, md2.Health)
 	}
-	// Check LastHealthCheckTime
 	if md.LastHealthCheckTime != md2.LastHealthCheckTime {
 		return fmt.Errorf("lasthealthchecktimes not equal, %v and %v", md.LastHealthCheckTime, md2.LastHealthCheckTime)
 	}
-	// Check MinRedundancy
 	if md.MinRedundancy != md2.MinRedundancy {
 		return fmt.Errorf("MinRedundancy not equal, %v and %v", md.MinRedundancy, md2.MinRedundancy)
 	}
-	// Check ModTimes
 	if md.ModTime != md2.ModTime {
 		return fmt.Errorf("ModTimes not equal, %v and %v", md.ModTime, md2.ModTime)
 	}
-	// Check NumFiles
 	if md.NumFiles != md2.NumFiles {
 		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, md2.NumFiles)
 	}
-	// Check NumStuckChunks
 	if md.NumStuckChunks != md2.NumStuckChunks {
 		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, md2.NumStuckChunks)
 	}
-	// Check NumSubDirs
 	if md.NumSubDirs != md2.NumSubDirs {
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, md2.NumSubDirs)
 	}
-	// Check StuckHealth
+	if md.Size != md2.Size {
+		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, md2.Size)
+	}
 	if md.StuckHealth != md2.StuckHealth {
-		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
+		return fmt.Errorf("StuckHealths not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
 	}
 
 	return nil
@@ -129,10 +142,18 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check Time separately due to how the time is persisted
+	if !metadata.AggregateLastHealthCheckTime.Equal(sd.metadata.AggregateLastHealthCheckTime) {
+		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", metadata.AggregateLastHealthCheckTime, sd.metadata.AggregateLastHealthCheckTime)
+	}
+	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
 	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
 		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
 	}
 	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	if !metadata.AggregateModTime.Equal(sd.metadata.AggregateModTime) {
+		t.Fatalf("AggregateModTimes not equal, got %v expected %v", metadata.AggregateModTime, sd.metadata.AggregateModTime)
+	}
+	sd.metadata.AggregateModTime = metadata.AggregateModTime
 	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
 		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
 	}
@@ -217,10 +238,18 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 		t.Fatal("Failed to load siadir", err)
 	}
 	// Check Time separately due to how the time is persisted
+	if !metadata.AggregateLastHealthCheckTime.Equal(sd.metadata.AggregateLastHealthCheckTime) {
+		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", metadata.AggregateLastHealthCheckTime, sd.metadata.AggregateLastHealthCheckTime)
+	}
+	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
 	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
 		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
 	}
 	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	if !metadata.AggregateModTime.Equal(sd.metadata.AggregateModTime) {
+		t.Fatalf("AggregateModTimes not equal, got %v expected %v", metadata.AggregateModTime, sd.metadata.AggregateModTime)
+	}
+	sd.metadata.AggregateModTime = metadata.AggregateModTime
 	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
 		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
 	}
@@ -262,10 +291,18 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 		t.Fatal("Failed to load siadir", err)
 	}
 	// Check Time separately due to how the time is persisted
+	if !metadata.AggregateLastHealthCheckTime.Equal(sd.metadata.AggregateLastHealthCheckTime) {
+		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", metadata.AggregateLastHealthCheckTime, sd.metadata.AggregateLastHealthCheckTime)
+	}
+	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
 	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
 		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
 	}
 	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	if !metadata.AggregateModTime.Equal(sd.metadata.AggregateModTime) {
+		t.Fatalf("AggregateModTimes not equal, got %v expected %v", metadata.AggregateModTime, sd.metadata.AggregateModTime)
+	}
+	sd.metadata.AggregateModTime = metadata.AggregateModTime
 	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
 		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
 	}

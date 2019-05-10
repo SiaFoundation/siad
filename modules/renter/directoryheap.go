@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -77,17 +76,13 @@ func (rdh *repairDirectoryHeap) Pop() interface{} {
 	return dir
 }
 
-// managedEmpty clears the directory heap by popping off all the directories and
-// ensuring that the map is empty
+// managedEmpty clears the directory heap by recreating the heap and
+// heapDirectories.
 func (dh *directoryHeap) managedEmpty() {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
-	for dh.heap.Len() > 0 {
-		_ = dh.pop()
-	}
-	if len(dh.heapDirectories) != 0 {
-		build.Critical("heapDirectories map is not empty after emptying the directory heap")
-	}
+	dh.heapDirectories = make(map[modules.SiaPath]struct{})
+	dh.heap = repairDirectoryHeap{}
 }
 
 // managedLen returns the length of the heap
@@ -148,14 +143,6 @@ func (dh *directoryHeap) pop() (d *directory) {
 // subdirectories are added to the heap and the directory is marked as explored
 // and pushed back onto the heap.
 func (r *Renter) managedNextExploredDirectory() (*directory, error) {
-	// Check if heap  is empty
-	if r.directoryHeap.managedLen() == 0 {
-		err := r.managedPushUnexploredDirectory(modules.RootSiaPath())
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	// Loop until we pop off an explored directory
 	for {
 		// Pop directory
@@ -163,8 +150,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 
 		// Sanity check that we are still popping off directories
 		if d == nil {
-			build.Critical("no more directories to pop off heap, this should never happen")
-			return nil, errors.New("no more directories to pop off heap")
+			return nil, nil
 		}
 
 		// Check if explored and mark as explored if unexplored

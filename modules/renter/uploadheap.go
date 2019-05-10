@@ -99,6 +99,19 @@ func (uh *uploadHeap) managedLen() int {
 	return uhLen
 }
 
+// managedMarkRepairDone removes the chunk from the repairingChunks map of the
+// uploadHeap. It also performs a sanity check that the chunk was in the map,
+// this is to ensure that we are adding and removing the chunks as expected
+func (uh *uploadHeap) managedMarkRepairDone(id uploadChunkID) {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	_, ok := uh.repairingChunks[id]
+	if !ok {
+		build.Critical("Chunk is not in the repair map, this means it was removed prematurely or was never added")
+	}
+	delete(uh.repairingChunks, id)
+}
+
 // managedPush will try and add a chunk to the upload heap. If the chunk is
 // added it will return true otherwise it will return false
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
@@ -137,9 +150,22 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
 		delete(uh.unstuckHeapChunks, uc.id)
 		delete(uh.stuckHeapChunks, uc.id)
+		if _, exists := uh.repairingChunks[uc.id]; exists {
+			build.Critical("There should not be a chunk in the heap that can be popped that is currently being repaired")
+		}
+		uh.repairingChunks[uc.id] = struct{}{}
 	}
 	uh.mu.Unlock()
 	return uc
+}
+
+// managedReset will reset the slice and maps within the heap to free up memory.
+func (uh *uploadHeap) managedReset() {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	uh.unstuckHeapChunks = make(map[uploadChunkID]struct{})
+	uh.stuckHeapChunks = make(map[uploadChunkID]struct{})
+	uh.heap = uploadChunkHeap{}
 }
 
 // buildUnfinishedChunk will pull out a single unfinished chunk of a file.
@@ -357,7 +383,17 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (modules.SiaP
 	dir, err := r.managedNextExploredDirectory()
 	if err != nil {
 		r.log.Println("WARN: error getting explored directory:", err)
+		// Reset the directory heap to try and help address the error
+		err = errors.Compose(err, r.managedResetDirectoryHeap())
 		return modules.SiaPath{}, 0, err
+	}
+
+	// Sanity Check if directory was returned
+	if dir == nil {
+		// This should not happen very often or at all so a Println should be
+		// fine and not be spamming the logs.
+		r.log.Println("No directory returned from Directory Heap")
+		return modules.SiaPath{}, 0, nil
 	}
 
 	// Grab health and siaPath of the directory
@@ -599,7 +635,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		// the heap.
 		nextChunk := r.uploadHeap.managedPop()
 		if nextChunk == nil {
-			// The heap is empty so return
+			// The heap is empty so reset it to free memory and return.
+			r.uploadHeap.managedReset()
 			return nil
 		}
 		r.log.Debugln("Sending next chunk to the workers", nextChunk.id)
@@ -633,6 +670,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			if err != nil {
 				r.log.Debugln("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
 			}
+			// Remove the chunk from the repairingChunks map
+			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
 			continue
 		}
 
@@ -650,6 +689,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			if err != nil {
 				r.log.Debugln("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
 			}
+			// Remove the chunk from the repairingChunks map
+			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
 			continue
 		}
 	}
@@ -685,6 +726,21 @@ func (r *Renter) threadedUploadAndRepair() {
 		// 'false' if the renter has shut down before being online.
 		if !r.managedBlockUntilOnline() {
 			return
+		}
+
+		// Check if there are directories in the directory heap, If not add an
+		// unexplored root.
+		if r.directoryHeap.managedLen() == 0 {
+			err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
+			if err != nil {
+				r.log.Println("WARN: error push unexplored root directory onto directory heap:", err)
+				select {
+				case <-time.After(uploadAndRepairErrorSleepDuration):
+				case <-r.tg.StopChan():
+					return
+				}
+				continue
+			}
 		}
 
 		// Refresh the worker pool and get the set of hosts that are currently
@@ -731,7 +787,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			// Refresh directory heap
 			err = r.managedResetDirectoryHeap()
 			if err != nil {
-				r.log.Panicln("WARN: there was an error reseting the directory heap:", err)
+				r.log.Println("WARN: there was an error reseting the directory heap:", err)
 			}
 			// Make sure that the hosts and workers are updated before
 			// continuing to the repair loop

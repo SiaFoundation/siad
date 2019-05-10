@@ -62,6 +62,7 @@ type (
 	persistence struct {
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
+		UploadedBackups  []modules.UploadedBackup
 	}
 )
 
@@ -302,6 +303,8 @@ func (r *Renter) managedInitPersist() error {
 	r.wal = wal
 	r.staticFileSet = siafile.NewSiaFileSet(r.staticFilesDir, wal)
 	r.staticDirSet = siadir.NewSiaDirSet(r.staticFilesDir, wal)
+	r.staticBackupFileSet = siafile.NewSiaFileSet(r.staticBackupsDir, wal)
+	r.staticBackupDirSet = siadir.NewSiaDirSet(r.staticBackupsDir, wal)
 	if err := r.staticDirSet.InitRootDir(); err != nil {
 		return err
 	}

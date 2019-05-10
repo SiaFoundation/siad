@@ -104,6 +104,10 @@ const (
 	// renter's siafiles.
 	SiapathRoot = "siafiles"
 
+	// BackupRoot is the name of the directory that is used to store the renter's
+	// snapshot siafiles.
+	BackupRoot = "snapshots"
+
 	// EstimatedFileContractTransactionSetSize is the estimated blockchain size
 	// of a transaction set between a renter and a host that contains a file
 	// contract. This transaction set will contain a setup transaction from each
@@ -192,22 +196,30 @@ type DirectoryInfo struct {
 	// The following fields are aggregate values of the siadir. These values are
 	// the totals of the siadir and any sub siadirs, or are calculated based on
 	// all the values in the subtree
-	AggregateHealth         float64   `json:"aggregatehealth"`
-	AggregateNumFiles       uint64    `json:"aggregatenumfiles"`
-	AggregateNumStuckChunks uint64    `json:"aggregatenumstuckchunks"`
-	AggregateSize           uint64    `json:"aggregatesize"`
-	LastHealthCheckTime     time.Time `json:"lasthealthchecktime"`
-	MaxHealth               float64   `json:"maxhealth"`
-	MinRedundancy           float64   `json:"minredundancy"`
-	MostRecentModTime       time.Time `json:"mostrecentmodtime"`
-	StuckHealth             float64   `json:"stuckhealth"`
+	AggregateHealth              float64   `json:"aggregatehealth"`
+	AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
+	AggregateMaxHealth           float64   `json:"aggregatemaxhealth"`
+	AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
+	AggregateMostRecentModTime   time.Time `json:"aggregatemostrecentmodtime"`
+	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
+	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
+	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
+	AggregateSize                uint64    `json:"aggregatesize"`
+	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
-	Health     float64 `json:"health"`
-	NumFiles   uint64  `json:"numfiles"`
-	NumSubDirs uint64  `json:"numsubdirs"`
-	SiaPath    SiaPath `json:"siapath"`
+	Health              float64   `json:"health"`
+	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+	MaxHealth           float64   `json:"maxhealth"`
+	MinRedundancy       float64   `json:"minredundancy"`
+	MostRecentModTime   time.Time `json:"mostrecentmodtime"`
+	NumFiles            uint64    `json:"numfiles"`
+	NumStuckChunks      uint64    `json:"numstuckchunks"`
+	NumSubDirs          uint64    `json:"numsubdirs"`
+	SiaPath             SiaPath   `json:"siapath"`
+	Size                uint64    `json:"size"`
+	StuckHealth         float64   `json:"stuckhealth"`
 }
 
 // DownloadInfo provides information about a file that has been requested for
@@ -235,6 +247,7 @@ type FileUploadParams struct {
 	SiaPath     SiaPath
 	ErasureCode ErasureCoder
 	Force       bool
+	Repair      bool
 }
 
 // FileInfo provides information about a file.
@@ -494,6 +507,14 @@ type ContractorSpending struct {
 	PreviousSpending types.Currency `json:"previousspending"`
 }
 
+// UploadedBackup contains metadata about an uploaded backup.
+type UploadedBackup struct {
+	Name         [96]byte
+	UID          [16]byte
+	CreationDate types.Timestamp
+	Size         uint64 // size of snapshot .sia file
+}
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -557,6 +578,16 @@ type Renter interface {
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
 
+	// UploadBackup uploads a backup to hosts, such that it can be retrieved
+	// using only the seed.
+	UploadBackup(src string, name string) error
+
+	// DownloadBackup downloads a backup previously uploaded to hosts.
+	DownloadBackup(dst string, name string) error
+
+	// UploadedBackups returns a list of backups previously uploaded to hosts.
+	UploadedBackups() ([]UploadedBackup, error)
+
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(siaPath SiaPath) error
 
@@ -598,6 +629,9 @@ type Renter interface {
 
 	// RenameFile changes the path of a file.
 	RenameFile(siaPath, newSiaPath SiaPath) error
+
+	// RenameDir changes the path of a dir.
+	RenameDir(oldPath, newPath SiaPath) error
 
 	// EstimateHostScore will return the score for a host with the provided
 	// settings, assuming perfect age and uptime adjustments

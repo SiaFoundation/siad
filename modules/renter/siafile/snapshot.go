@@ -168,19 +168,22 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 			Pieces: pieces,
 		})
 	}
+	// Get non-static metadata fields under lock.
+	fileSize := sf.staticMetadata.FileSize
+	mode := sf.staticMetadata.Mode
 	sf.mu.RUnlock()
 
-	sf.siaFileSet.mu.Lock()
-	sp := sf.siaFileSet.siaPath(sf)
-	sf.siaFileSet.mu.Unlock()
+	sf.staticSiaFileSet.mu.Lock()
+	sp := sf.staticSiaFileSet.siaPath(sf)
+	sf.staticSiaFileSet.mu.Unlock()
 
 	return &Snapshot{
 		staticChunks:      chunks,
-		staticFileSize:    sf.staticMetadata.FileSize,
+		staticFileSize:    fileSize,
 		staticPieceSize:   sf.staticMetadata.StaticPieceSize,
 		staticErasureCode: sf.staticMetadata.staticErasureCode,
 		staticMasterKey:   mk,
-		staticMode:        sf.staticMetadata.Mode,
+		staticMode:        mode,
 		staticPubKeyTable: pkt,
 		staticSiaPath:     sp,
 	}

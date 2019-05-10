@@ -26,6 +26,8 @@ func (api *API) buildHTTPRoutes() {
 	router.GET("/daemon/update", api.daemonUpdateHandlerGET)
 	router.POST("/daemon/update", api.daemonUpdateHandlerPOST)
 	router.GET("/daemon/stop", RequirePassword(api.daemonStopHandler, requiredPassword))
+	router.GET("/daemon/settings", api.daemonSettingsHandlerGET)
+	router.POST("/daemon/settings", api.daemonSettingsHandlerPOST)
 
 	// Consensus API Calls
 	if api.cs != nil {
@@ -81,6 +83,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter", RequirePassword(api.renterHandlerPOST, requiredPassword))
 		router.POST("/renter/backup", RequirePassword(api.renterBackupHandlerPOST, requiredPassword))
 		router.POST("/renter/recoverbackup", RequirePassword(api.renterLoadBackupHandlerPOST, requiredPassword))
+		router.GET("/renter/uploadedbackups", RequirePassword(api.renterUploadedBackupsHandlerGET, requiredPassword))
 		router.POST("/renter/contract/cancel", RequirePassword(api.renterContractCancelHandler, requiredPassword))
 		router.GET("/renter/contracts", api.renterContractsHandler)
 		router.GET("/renter/downloads", api.renterDownloadsHandler)

@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 )
 
@@ -86,12 +87,65 @@ func die(args ...interface{}) {
 	os.Exit(exitCodeGeneral)
 }
 
+// statuscmd is the handler for the command `siac`
+// prints basic information about Sia.
+func statuscmd() {
+
+	// Consensus Info
+	cg, err := httpClient.ConsensusGet()
+	if err != nil {
+		die("Could not get consensus status:", err)
+	}
+	fmt.Printf(`Consensus:
+  Synced: %v
+  Height: %v
+
+`, yesNo(cg.Synced), cg.Height)
+
+	// Wallet Info
+	walletStatus, err := httpClient.WalletGet()
+	if err != nil {
+		die("Could not get wallet status:", err)
+	}
+	if walletStatus.Unlocked {
+		fmt.Printf(`Wallet:
+  Status:          unlocked
+  Siacoin Balance: %v
+
+`, currencyUnits(walletStatus.ConfirmedSiacoinBalance))
+	} else {
+		fmt.Printf(`Wallet:
+  Status: Locked
+
+`)
+	}
+
+	// Renter Info
+	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
+	if err != nil {
+		die("Could not get renter files:", err)
+	}
+	rc, err := httpClient.RenterInactiveContractsGet()
+	if err != nil {
+		die("Could not get contracts:", err)
+	}
+
+	fmt.Printf(`Renter:
+  Files:          %v
+  Total Stored:   %v
+  Min Redundancy: %v
+  Contracts:      %v
+
+`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].MinRedundancy, len(rc.ActiveContracts))
+
+}
+
 func main() {
 	root := &cobra.Command{
 		Use:   os.Args[0],
 		Short: "Sia Client v" + build.Version,
 		Long:  "Sia Client v" + build.Version,
-		Run:   wrap(consensuscmd),
+		Run:   wrap(statuscmd),
 	}
 
 	rootCmd = root

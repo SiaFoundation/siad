@@ -127,14 +127,6 @@ func (uc *unfinishedUploadChunk) chunkComplete() bool {
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
 // physical data and distribute it to the worker pool.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
-	// Add chunk to repairingChunks map
-	r.uploadHeap.mu.Lock()
-	_, exists := r.uploadHeap.repairingChunks[uc.id]
-	if !exists {
-		r.uploadHeap.repairingChunks[uc.id] = struct{}{}
-	}
-	r.uploadHeap.mu.Unlock()
-
 	// Give the chunk to each worker, marking the number of workers that have
 	// received the chunk. The workers cannot be interacted with while the
 	// renter is holding a lock, so we need to build a list of workers while
@@ -461,10 +453,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if piecesAvailable > 0 {
 		uc.managedNotifyStandbyWorkers()
 	}
-	// If required, return the memory to the renter.
-	if memoryReleased > 0 {
-		r.memoryManager.Return(memoryReleased)
-	}
 	// If required, remove the chunk from the set of repairing chunks.
 	if chunkComplete && !released {
 		r.managedUpdateUploadChunkStuckStatus(uc)
@@ -475,9 +463,15 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 				r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
 			}
 		}
-		r.uploadHeap.mu.Lock()
-		delete(r.uploadHeap.repairingChunks, uc.id)
-		r.uploadHeap.mu.Unlock()
+		// Remove the chunk from the repairingChunks map
+		r.uploadHeap.managedMarkRepairDone(uc.id)
+		// Signal garbage collector to free memory before returning it to the manager.
+		uc.logicalChunkData = nil
+		uc.physicalChunkData = nil
+	}
+	// If required, return the memory to the renter.
+	if memoryReleased > 0 {
+		r.memoryManager.Return(memoryReleased)
 	}
 	// Sanity check - all memory should be released if the chunk is complete.
 	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
@@ -494,17 +488,14 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	if err != nil {
 		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
-	siaPath := r.staticFileSet.SiaPath(uc.fileEntry)
-	dirSiaPath, err := siaPath.Dir()
-	if err != nil {
-		return err
-	}
-	go r.threadedBubbleMetadata(dirSiaPath)
 	// Close SiaFile
 	err = uc.fileEntry.Close()
 	if err != nil {
 		return fmt.Errorf("WARN: unable to close siafile %v", r.staticFileSet.SiaPath(uc.fileEntry))
 	}
+	// Signal garbage collector to free memory.
+	uc.physicalChunkData = nil
+	uc.logicalChunkData = nil
 	return nil
 }
 
@@ -550,20 +541,6 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
 		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
-
-	// Bubble the updated information. We call this in a blocking fashion as the
-	// next step potentially triggers the stuck loop to add the rest of the
-	// stuck files to the heap and then find the next stuck chunk. By ensuring
-	// that the directory has been updated we eliminate the possibility that the
-	// same chunk is found by the stuck loop and re-added to the repair heap
-	//
-	// TODO - consider making this non blocking
-	siaPath := r.staticFileSet.SiaPath(uc.fileEntry)
-	dirSiaPath, err := siaPath.Dir()
-	if err != nil {
-		return
-	}
-	go r.threadedBubbleMetadata(dirSiaPath)
 
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop

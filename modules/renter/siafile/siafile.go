@@ -376,6 +376,17 @@ func (sf *SiaFile) Save() error {
 	return sf.saveFile()
 }
 
+// SaveMetadata saves the file's metadata to disk.
+func (sf *SiaFile) SaveMetadata() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
 // Expiration updates CachedExpiration with the lowest height at which any of
 // the file's contracts will expire and returns the new value.
 func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types.BlockHeight {

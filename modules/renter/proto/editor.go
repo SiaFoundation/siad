@@ -224,7 +224,10 @@ func initiateRevisionLoop(host modules.HostDBEntry, contract *SafeContract, rpc 
 	if err != nil {
 		return nil, nil, err
 	}
+	// Apply the local ratelimit.
 	conn := ratelimit.NewRLConn(c, rl, cancel)
+	// Apply the global ratelimit.
+	conn = ratelimit.NewRLConn(conn, modules.GlobalRateLimits, cancel)
 
 	closeChan := make(chan struct{})
 	go func() {

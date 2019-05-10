@@ -52,47 +52,60 @@ type (
 
 	// Metadata is the metadata that is saved to disk as a .siadir file
 	Metadata struct {
-		// AggregateHealth is the health of the most in need file in the
-		// directory or any of the sub directories that are not stuck
-		AggregateHealth float64 `json:"aggregatehealth"`
-
-		// AggregateNumFiles is the total number of files in a directory and any
-		// sub directory
-		AggregateNumFiles uint64 `json:"aggregatenumfiles"`
-
-		// AggregateSize is the total amount of data in the files and sub
-		// directories
-		AggregateSize uint64 `json:"aggregatesize"`
-
-		// Health is the health of the most in need file in the directory that
-		// is not stuck
-		Health float64 `json:"health"`
-
+		// For each field in the metadata there is an aggregate value and a
+		// siadir specific value. If a field has the aggregate prefix it means
+		// that the value takes into account all the siafiles and siadirs in the
+		// sub tree. The definition of aggregate and siadir specific values is
+		// otherwise the same.
+		//
+		// Health is the health of the most in need siafile that is not stuck
+		//
 		// LastHealthCheckTime is the oldest LastHealthCheckTime of any of the
-		// siafiles in the siadir or any of the sub directories
-		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
-
-		// MinRedundancy is the minimum redundancy of any of the files or sub
-		// directories
-		MinRedundancy float64 `json:"minredundancy"`
-
-		// ModTime is the last time any of the files or sub directories
-		// was updated
-		ModTime time.Time `json:"modtime"`
-
-		// NumFiles is the number of files in a directory
-		NumFiles uint64 `json:"numfiles"`
-
+		// siafiles in the siadir and is the last time the health was calculated
+		// by the health loop
+		//
+		// MinRedundancy is the minimum redundancy of any of the siafiles in the
+		// siadir
+		//
+		// ModTime is the last time any of the siafiles in the siadir was
+		// updated
+		//
+		// NumFiles is the total number of siafiles in a siadir
+		//
 		// NumStuckChunks is the sum of all the Stuck Chunks of any of the
-		// siafiles in the siadir or any of the sub directories
-		NumStuckChunks uint64 `json:"numstuckchunks"`
+		// siafiles in the siadir
+		//
+		// NumSubDirs is the number of sub-siadirs in a siadir
+		//
+		// Size is the total amount of data stored in the siafiles of the siadir
+		//
+		// StuckHealth is the health of the most in need siafile in the siadir,
+		// stuck or not stuck
 
-		// NumSubDirs is the number of subdirectories in a directory
-		NumSubDirs uint64 `json:"numsubdirs"`
+		// The following fields are aggregate values of the siadir. These values are
+		// the totals of the siadir and any sub siadirs, or are calculated based on
+		// all the values in the subtree
+		AggregateHealth              float64   `json:"aggregatehealth"`
+		AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
+		AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
+		AggregateModTime             time.Time `json:"aggregatemodtime"`
+		AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
+		AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
+		AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
+		AggregateSize                uint64    `json:"aggregatesize"`
+		AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 
-		// StuckHealth is the health of the most in need file in the directory
-		// or any of the sub directories, stuck or not stuck
-		StuckHealth float64 `json:"stuckhealth"`
+		// The following fields are information specific to the siadir that is not
+		// an aggregate of the entire sub directory tree
+		Health              float64   `json:"health"`
+		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+		MinRedundancy       float64   `json:"minredundancy"`
+		ModTime             time.Time `json:"modtime"`
+		NumFiles            uint64    `json:"numfiles"`
+		NumStuckChunks      uint64    `json:"numstuckchunks"`
+		NumSubDirs          uint64    `json:"numsubdirs"`
+		Size                uint64    `json:"size"`
+		StuckHealth         float64   `json:"stuckhealth"`
 	}
 )
 
@@ -137,12 +150,15 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
 	// empty directories won't be viewed as being the most in need. Initialize
-	// ModTime.
+	// ModTimes.
 	md := Metadata{
-		AggregateHealth: DefaultDirHealth,
-		Health:          DefaultDirHealth,
-		ModTime:         time.Now(),
-		StuckHealth:     DefaultDirHealth,
+		AggregateHealth:      DefaultDirHealth,
+		AggregateModTime:     time.Now(),
+		AggregateStuckHealth: DefaultDirHealth,
+
+		Health:      DefaultDirHealth,
+		ModTime:     time.Now(),
+		StuckHealth: DefaultDirHealth,
 	}
 	path := siaPath.SiaDirMetadataSysPath(rootDir)
 	update, err := createMetadataUpdate(path, md)
@@ -213,8 +229,15 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
 	sd.metadata.AggregateHealth = metadata.AggregateHealth
+	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
+	sd.metadata.AggregateMinRedundancy = metadata.AggregateMinRedundancy
+	sd.metadata.AggregateModTime = metadata.AggregateModTime
 	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
+	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
+	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
 	sd.metadata.AggregateSize = metadata.AggregateSize
+	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
+
 	sd.metadata.Health = metadata.Health
 	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
 	sd.metadata.MinRedundancy = metadata.MinRedundancy
@@ -222,6 +245,7 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 	sd.metadata.NumFiles = metadata.NumFiles
 	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
 	sd.metadata.NumSubDirs = metadata.NumSubDirs
+	sd.metadata.Size = metadata.Size
 	sd.metadata.StuckHealth = metadata.StuckHealth
 	return sd.saveDir()
 }

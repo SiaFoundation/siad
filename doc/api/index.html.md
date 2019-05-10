@@ -1668,7 +1668,7 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&fu
 
 Modify settings that control the renter's behavior.
 
-### Query Response Parameters
+### Query String Parameters
 #### OPTIONAL
 Any of the renter settings can be set, see fields [here](#settings)
 
@@ -1706,11 +1706,16 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "destination=/home/backups/01-01-
 
 Creates a backup of all siafiles in the renter at the specified path.
 
-### Query Response Parameters
+### Query String Parameters
 #### REQUIRED
 **destination** | string
 The path on disk where the backup will be created. Needs to be an absolute
 path.
+
+#### OPTIONAL
+**remote** | boolean
+flag indicating if the backup should be stored on hosts. If true,
+**destination** is interpreted as the backup's name, not its path.
 
 ### Response
 
@@ -1727,29 +1732,73 @@ Recovers an existing backup from the specified path by adding all the siafiles
 contained within it to the renter. Should a siafile for a certain path already
 exist, a number will be added as a suffix. e.g. 'myfile_1.sia'
 
-### Query Response Parameters
+### Query String Parameters
 #### REQUIRED
 **source** | string
 The path on disk where the backup will be recovered from. Needs to be an
 absolute path.
 
+#### OPTIONAL
+**remote** | boolean
+flag indicating if the backup is stored on hosts. If true, **source** is
+interpreted as the backup's name, not its path.
+
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/uploadedbackups [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadedbackups"
+```
+
+Lists the backups that have been uploaded to hosts.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+[
+  {
+    "name": "foo",                             // string
+    "UID": "00112233445566778899aabbccddeeff", // string
+    "creationdate": 1234567890,                // Unix timestamp
+    "size": 8192                               // bytes
+  }
+]
+```
+**name** | string  
+The name of the backup.
+
+**UID** | string
+A unique identifier for the backup.
+
+**creationdate** | string
+Unix timestamp of when the backup was created.
+
+**size** 
+Size in bytes of the backup.
 
 ## /renter/contracts [GET]
 > curl example  
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/renter/contracts?inactive=true&expired=true&recoverable=false"
+curl -A "Sia-Agent" "localhost:9980/renter/contracts?disabled=true&expired=true&recoverable=false"
 ```
 
-Returns the renter's contracts.  Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default. Inactive contracts are contracts that are in the current period but are marked as not good for renew, these contracts have the potential to become active again but currently are not storing data.  Expired contracts are contracts not in the current period, where not more data is being stored and excess funds have been released to the renter. Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
+Returns the renter's contracts.
+Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default.
+Renewed contracts are contracts that are being used to store and download data, but are not being uploaded to because they either ran out of storage or funds and required renewal. The Renter has an active contract with these hosts for uploading.
+Disabled contracts are contracts that are in the current period that are not being used for uploading as they were replaced instead of renewed.
+Expired contracts are contracts no in the current period, where not more data is being stored and excess funds have been released to the renter.
+Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
 
 ### Query String Parameters
 #### OPTIONAL
-**inactive** | boolean
-flag indicating if inactive contracts should be returned.
+**disabled** | boolean
+flag indicating if disabled contracts should be returned.
 
 **expired** | boolean
 flag indicating if expired contracts should be returned.
@@ -1785,7 +1834,8 @@ flag indicating if recoverable contracts should be returned.
       "goodforrenew":     false,            // boolean
     }
   ],
-  "inactivecontracts": [],
+  "renewedcontracts": [],
+  "disabledcontracts": [],
   "expiredcontracts": [],
   "recoverablecontracts": [],
 }
@@ -1947,9 +1997,13 @@ Location where the directory will reside in the renter on the network. The path 
 ### Query String Parameters
 #### REQUIRED
 **action** | string
-Action can be either `create` or `delete`.
+Action can be either `create`, `delete` or `rename`.
  - `create` will create an empty directory on the sia network
  - `delete` will remove a directory and its contents from the sia network
+ - `rename` will rename a directory on the sia network
+
+ **newsiapath** | string
+ The new siapath of the renamed folder. Only required for the `rename` action.
 
 ### Response
 
@@ -2427,6 +2481,9 @@ The number of data pieces to use when erasure coding the file.
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file. Total redundancy of the file is (datapieces+paritypieces)/datapieces.  
 
+**force** | boolean
+Delete potential existing file at siapath.
+
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
@@ -2435,7 +2492,7 @@ standard success or error response. See [standard responses](#standard-responses
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/upload/myfile?datapieces=10&paritypieces=20" --data-binary @myfile.dat
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadstream/myfile?datapieces=10&paritypieces=20" --data-binary @myfile.dat
 ```
 
 uploads a file to the network using a stream.
@@ -2452,6 +2509,12 @@ The number of data pieces to use when erasure coding the file.
 
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file. Total redundancy of the file is (datapieces+paritypieces)/datapieces.  
+
+**force**
+Delete potential existing file at siapath.
+
+**repair**
+Repair existing file from stream. Can't be specified together with datapieces, paritypieces and force.
 
 ### Response
 

@@ -197,7 +197,7 @@ func rentercmd() {
 	if err != nil {
 		die("Could not get renter files:", err)
 	}
-	rc, err := httpClient.RenterInactiveContractsGet()
+	rc, err := httpClient.RenterContractsGet()
 	if err != nil {
 		die("Could not get contracts:", err)
 	}
@@ -550,7 +550,7 @@ func renterbackupcreatecmd(path string) {
 		path = filepath.Join(path, fmt.Sprintf("%v.backup", time.Now().Unix()))
 	}
 	// Create backup.
-	err = httpClient.RenterCreateBackupPost(path)
+	err = httpClient.RenterCreateBackupPost(path, false)
 	if err != nil {
 		die("Failed to create backup", err)
 	}
@@ -561,7 +561,7 @@ func renterbackupcreatecmd(path string) {
 func renterbackuploadcmd(path string) {
 	path = abs(path)
 
-	err := httpClient.RenterRecoverBackupPost(path)
+	err := httpClient.RenterRecoverBackupPost(path, false)
 	if err != nil {
 		die("Failed to load backup", err)
 	}
@@ -570,7 +570,7 @@ func renterbackuploadcmd(path string) {
 // rentercontractscmd is the handler for the comand `siac renter contracts`.
 // It lists the Renter's contracts.
 func rentercontractscmd() {
-	rc, err := httpClient.RenterInactiveContractsGet()
+	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
 		die("Could not get contracts:", err)
 	}
@@ -621,19 +621,65 @@ func rentercontractscmd() {
 		w.Flush()
 	}
 
-	fmt.Println("\nInactive Contracts:")
-	if len(rc.InactiveContracts) == 0 {
-		fmt.Println("  No inactive contracts.")
+	fmt.Println("\nRenewed Contracts:")
+	if len(rc.RenewedContracts) == 0 {
+		fmt.Println("  No renewed contracts.")
 	} else {
-		// Display Inactive Contracts
-		sort.Sort(byValue(rc.InactiveContracts))
-		var inactiveTotalStored uint64
-		var inactiveTotalRemaining, inactiveTotalSpent, inactiveTotalFees types.Currency
-		for _, c := range rc.InactiveContracts {
-			inactiveTotalStored += c.Size
-			inactiveTotalRemaining = inactiveTotalRemaining.Add(c.RenterFunds)
-			inactiveTotalSpent = inactiveTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
-			inactiveTotalFees = inactiveTotalFees.Add(c.Fees)
+		// Display Renewed Contracts
+		sort.Sort(byValue(rc.RenewedContracts))
+		var renewedTotalStored uint64
+		var renewedTotalRemaining, renewedTotalSpent, renewedTotalFees types.Currency
+		for _, c := range rc.RenewedContracts {
+			renewedTotalStored += c.Size
+			renewedTotalRemaining = renewedTotalRemaining.Add(c.RenterFunds)
+			renewedTotalSpent = renewedTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
+			renewedTotalFees = renewedTotalFees.Add(c.Fees)
+		}
+		fmt.Printf(`  Number of Contracts:  %v
+  Total stored:         %s
+  Total Remaining:      %v
+  Total Spent:          %v
+  Total Fees:           %v
+
+`, len(rc.RenewedContracts), filesizeUnits(renewedTotalStored),
+			currencyUnits(renewedTotalRemaining), currencyUnits(renewedTotalSpent), currencyUnits(renewedTotalFees))
+		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		for _, c := range rc.RenewedContracts {
+			address := c.NetAddress
+			hostVersion := c.HostVersion
+			if address == "" {
+				address = "Host Removed"
+				hostVersion = ""
+			}
+			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+				address,
+				hostVersion,
+				currencyUnits(c.RenterFunds),
+				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+				currencyUnits(c.Fees),
+				filesizeUnits(c.Size),
+				c.EndHeight,
+				c.ID,
+				c.GoodForUpload,
+				c.GoodForRenew)
+		}
+		w.Flush()
+	}
+
+	fmt.Println("\nDisabled Contracts:")
+	if len(rc.DisabledContracts) == 0 {
+		fmt.Println("  No disabled contracts.")
+	} else {
+		// Display Disabled Contracts
+		sort.Sort(byValue(rc.DisabledContracts))
+		var disabledTotalStored uint64
+		var disabledTotalRemaining, disabledTotalSpent, disabledTotalFees types.Currency
+		for _, c := range rc.DisabledContracts {
+			disabledTotalStored += c.Size
+			disabledTotalRemaining = disabledTotalRemaining.Add(c.RenterFunds)
+			disabledTotalSpent = disabledTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
+			disabledTotalFees = disabledTotalFees.Add(c.Fees)
 		}
 
 		fmt.Printf(`
@@ -643,10 +689,10 @@ func rentercontractscmd() {
   Total Spent:          %v
   Total Fees:           %v
 
-`, len(rc.InactiveContracts), filesizeUnits(inactiveTotalStored), currencyUnits(inactiveTotalRemaining), currencyUnits(inactiveTotalSpent), currencyUnits(inactiveTotalFees))
+`, len(rc.DisabledContracts), filesizeUnits(disabledTotalStored), currencyUnits(disabledTotalRemaining), currencyUnits(disabledTotalSpent), currencyUnits(disabledTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
-		for _, c := range rc.InactiveContracts {
+		for _, c := range rc.DisabledContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
 			if address == "" {
@@ -1054,9 +1100,13 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 	// Periodically print measurements until download is done.
 	completed := make(map[string]struct{})
 	errMap := make(map[string]api.DownloadInfo)
+	failedDownloads := func() (fd []api.DownloadInfo) {
+		for _, di := range errMap {
+			fd = append(fd, di)
+		}
+		return
+	}
 	for range time.Tick(OutputRefreshRate) {
-		// Clear terminal.
-		fmt.Print("\033[H\033[2J")
 		// Get the list of downloads.
 		rdg, err := httpClient.RenterDownloadsGet()
 		if err != nil {
@@ -1071,7 +1121,10 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 				queue[key] = d
 			}
 		}
+		// Clear terminal.
+		clearStr := fmt.Sprint("\033[H\033[2J")
 		// Take new measurements for each tracked file.
+		progressStr := clearStr
 		for tfIdx, tf := range tfs {
 			// Search for the download in the list of downloads.
 			mapKey := tf.siaPath.String() + tf.dst
@@ -1096,7 +1149,7 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 				completed[mapKey] = struct{}{}
 				// Check if all downloads are done.
 				if len(completed) == len(tfs) {
-					return nil
+					return failedDownloads()
 				}
 				continue
 			}
@@ -1124,13 +1177,15 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 			elapsed := time.Since(d.StartTime)
 			elapsed -= elapsed % time.Second // round to nearest second
 
-			progressStr := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, filesizeUnits(d.Filesize), elapsed, speed)
+			progressLine := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, filesizeUnits(d.Filesize), elapsed, speed)
 			if tfIdx < len(tfs)-1 {
-				fmt.Println(progressStr)
+				progressStr += fmt.Sprintln(progressLine)
 			} else {
-				fmt.Print(progressStr)
+				progressStr += fmt.Sprint(progressLine)
 			}
 		}
+		print(progressStr)
+		progressStr = clearStr
 	}
 	// This code is unreachable, but the compiler requires this to be here.
 	return nil

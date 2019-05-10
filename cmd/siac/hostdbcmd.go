@@ -337,6 +337,7 @@ func hostdbviewcmd(pubkey string) {
 	fmt.Fprintln(w, "\t\tTotal Storage:\t", info.Entry.TotalStorage/1e9, "GB")
 	fmt.Fprintln(w, "\t\tRemaining Storage:\t", info.Entry.RemainingStorage/1e9, "GB")
 	fmt.Fprintln(w, "\t\tOffered Collateral (TB / Mo):\t", currencyUnits(info.Entry.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)))
+	fmt.Fprintln(w, "\t\tMax Collateral:\t", currencyUnits(info.Entry.MaxCollateral))
 	fmt.Fprintln(w, "\n\t\tContract Price:\t", currencyUnits(info.Entry.ContractPrice))
 	fmt.Fprintln(w, "\t\tStorage Price (TB / Mo):\t", currencyUnits(info.Entry.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)))
 	fmt.Fprintln(w, "\t\tDownload Price (1 TB):\t", currencyUnits(info.Entry.DownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)))

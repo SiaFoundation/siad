@@ -56,6 +56,15 @@ type (
 		mu  sync.Mutex
 		str string
 	}
+
+	// DependencyInterruptAfterNCalls is a generic dependency that behaves the same
+	// way as DependencyInterruptOnceOnKeyword, expect that after calling "Fail",
+	// "Disrupt" needs to be called n times for the actual disrupt to happen.
+	DependencyInterruptAfterNCalls struct {
+		DependencyInterruptOnceOnKeyword
+		n    int
+		cntr int
+	}
 )
 
 // NewDependencyCustomResolver creates a dependency from a given lookupIP
@@ -63,6 +72,13 @@ type (
 // method to resolve hostnames.
 func NewDependencyCustomResolver(lookupIP func(string) ([]net.IP, error)) modules.Dependencies {
 	return &dependencyCustomResolver{lookupIP: lookupIP}
+}
+
+// NewDependencyDisruptUploadStream creates a new dependency that closes the
+// reader used for upload streaming to simulate failing connection after
+// numChunks uploaded chunks.
+func NewDependencyDisruptUploadStream(numChunks int) *DependencyInterruptAfterNCalls {
+	return newDependencyInterruptAfterNCalls("DisruptUploadStream", numChunks)
 }
 
 // NewDependencyInterruptContractSaveToDiskAfterDeletion creates a new
@@ -108,6 +124,17 @@ func newDependencyInterruptOnceOnKeyword(str string) *DependencyInterruptOnceOnK
 	}
 }
 
+// newDependencyInterruptAfterNCalls creates a new
+// DependencyInterruptAfterNCalls from a given disrupt key and n.
+func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAfterNCalls {
+	return &DependencyInterruptAfterNCalls{
+		DependencyInterruptOnceOnKeyword: DependencyInterruptOnceOnKeyword{
+			str: str,
+		},
+		n: n,
+	}
+}
+
 // Disrupt returns true if the correct string is provided and if the flag was
 // set to true by calling fail on the dependency beforehand. After simulating a
 // crash the flag will be set to false and fail has to be called again for
@@ -118,6 +145,22 @@ func (d *DependencyInterruptOnceOnKeyword) Disrupt(s string) bool {
 	if d.f && s == d.str {
 		d.f = false
 		return true
+	}
+	return false
+}
+
+// Disrupt returns true if the correct string is provided, if the flag was set
+// to true by calling fail on the dependency and if Disrupt has been called n
+// times since fail was called.
+func (d *DependencyInterruptAfterNCalls) Disrupt(s string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.f && s == d.str && d.cntr == d.n {
+		d.f = false
+		d.cntr = 0
+		return true
+	} else if d.f && s == d.str && d.cntr < d.n {
+		d.cntr++
 	}
 	return false
 }

@@ -1,6 +1,9 @@
 package renter
 
 import (
+	"bytes"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -10,8 +13,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -106,7 +111,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			default:
 			}
 			// Get existing files and choose one randomly.
-			files, err := r.Files()
+			files, err := r.Files(false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -148,7 +153,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			default:
 			}
 			// Get existing files and choose one randomly.
-			files, err := r.Files()
+			files, err := r.Files(false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -187,7 +192,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			default:
 			}
 			// Get existing files and choose one randomly.
-			files, err := r.Files()
+			files, err := r.Files(false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -259,6 +264,10 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
+			// Make sure that dir isn't the root.
+			if dir.Equals(modules.RootSiaPath()) {
+				continue
+			}
 			if fastrand.Intn(2) == 0 {
 				// 50% chance to delete and recreate the directory.
 				if err := r.RenterDirDeletePost(dir); err != nil {
@@ -272,14 +281,19 @@ func TestStresstestSiaFileSet(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				// TODO uncomment this one rename is implemented
 				// 50% chance to rename the directory to be the child of a
 				// random existing directory.
-				//newParent := dirs[fastrand.Intn(len(dirs))]
-				//newDir := filepath.Join(newParent, persist.RandomSuffix())
-				//if err := r.RenterDirRenamePost(dir, newDir); err != nil {
-				//	t.Fatal(err)
-				//}
+				newParent := dirs[fastrand.Intn(len(dirs))]
+				newDir, err := newParent.Join(persist.RandomSuffix())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.HasPrefix(newDir.String(), dir.String()) {
+					continue // can't rename folder into itself
+				}
+				if err := r.RenterDirRenamePost(dir, newDir); err != nil {
+					t.Fatal(err)
+				}
 			}
 			time.Sleep(time.Duration(fastrand.Intn(500))*time.Millisecond + 500*time.Millisecond) // between 0.5s and 1s
 		}
@@ -309,4 +323,87 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	}()
 	// Wait until threads are done.
 	wg.Wait()
+}
+
+// TestUploadStreamFailAndRepair kills an upload stream halfway through and
+// repairs the file afterwards using the same endpoint.
+func TestUploadStreamFailAndRepair(t *testing.T) {
+	if testing.Short() || !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Add a renter with a dependency that causes an upload to fail after a certain
+	// number of chunks.
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	deps := dependencies.NewDependencyDisruptUploadStream(5)
+	renterParams.RenterDeps = deps
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Use upload streaming to upload a file. This should fail in the middle.
+	data := fastrand.Bytes(int(10 * modules.SectorSize))
+	sp := modules.RandomSiaPath()
+	deps.Fail()
+	err = renter.RenterUploadStreamPost(bytes.NewReader(data), sp, 1, 1, false)
+	deps.Disable()
+	if err == nil {
+		t.Fatal("upload streaming should fail but didn't")
+	}
+	// Redundancy should be 0 because the last chunk's upload was interrupted.
+	fi, err := renter.RenterFileGet(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.File.Redundancy != 0 {
+		t.Fatalf("Expected redundancy to be 0 but was %v", fi.File.Redundancy)
+	}
+	// Repair the file.
+	if err := renter.RenterUploadStreamRepairPost(bytes.NewReader(data), sp); err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fi, err = renter.RenterFileGet(sp)
+		if err != nil {
+			return err
+		}
+		// FileSize should be set correctly.
+		if fi.File.Filesize != uint64(len(data)) {
+			return fmt.Errorf("Filesize should be %v but was %v", len(data), fi.File.Filesize)
+		}
+		// Redundancy should be 2 after a successful repair.
+		if fi.File.Redundancy != 2.0 {
+			return fmt.Errorf("Expected redundancy to be 2.0 but was %v", fi.File.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure we can download the file.
+	downloadedData, err := renter.RenterDownloadHTTPResponseGet(sp, 0, uint64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, downloadedData) {
+		t.Fatal("downloaded data doesn't match uploaded data")
+	}
 }

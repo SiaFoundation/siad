@@ -149,7 +149,7 @@ func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet 
 	if err != nil {
 		return nil, err
 	}
-	return NewCustomRenter(g, cs, tpool, hdb, hc, persistDir, deps)
+	return NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, deps)
 }
 
 // stubHostDB is the minimal implementation of the hostDB interface. It can be

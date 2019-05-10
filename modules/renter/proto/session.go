@@ -83,6 +83,21 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	}
 	// Set the new Session contract.
 	s.contractID = id
+	// Verify the public keys in the claimed revision.
+	expectedUnlockConditions := types.UnlockConditions{
+		PublicKeys: []types.SiaPublicKey{
+			types.Ed25519PublicKey(secretKey.PublicKey()),
+			s.host.PublicKey,
+		},
+		SignaturesRequired: 2,
+	}
+	if resp.Revision.UnlockConditions.UnlockHash() != expectedUnlockConditions.UnlockHash() {
+		return resp.Revision, resp.Signatures, errors.New("host's claimed revision has wrong unlock conditions")
+	}
+	// Verify the claimed signatures.
+	if err := modules.VerifyFileContractRevisionTransactionSignatures(resp.Revision, resp.Signatures, s.height); err != nil {
+		return resp.Revision, resp.Signatures, err
+	}
 	return resp.Revision, resp.Signatures, nil
 }
 
@@ -118,7 +133,7 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 // Replace calls the Write RPC with a series of actions that replace the sector
 // at the specified index with data, returning the updated contract and the
 // Merkle root of the new sector.
-func (s *Session) Replace(data []byte, sectorIndex uint64) (_ modules.RenterContract, _ crypto.Hash, err error) {
+func (s *Session) Replace(data []byte, sectorIndex uint64, trim bool) (_ modules.RenterContract, _ crypto.Hash, err error) {
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
 		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract not present in contract set")
@@ -126,15 +141,18 @@ func (s *Session) Replace(data []byte, sectorIndex uint64) (_ modules.RenterCont
 	defer s.contractSet.Return(sc)
 	// get current number of sectors
 	numSectors := sc.header.LastRevision().NewFileSize / modules.SectorSize
-
-	rc, err := s.write(sc, []modules.LoopWriteAction{
+	actions := []modules.LoopWriteAction{
 		// append the new sector
 		{Type: modules.WriteActionAppend, Data: data},
 		// swap the new sector with the old sector
 		{Type: modules.WriteActionSwap, A: 0, B: numSectors},
+	}
+	if trim {
 		// delete the old sector
-		{Type: modules.WriteActionTrim, A: 1},
-	})
+		actions = append(actions, modules.LoopWriteAction{Type: modules.WriteActionTrim, A: 1})
+	}
+
+	rc, err := s.write(sc, actions)
 	return rc, crypto.MerkleRoot(data), err
 }
 
@@ -782,11 +800,11 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		return nil, err
 	}
 	// Lock the contract and resynchronize if necessary
-	rev, _, err := s.Lock(id, sc.header.SecretKey)
+	rev, sigs, err := s.Lock(id, sc.header.SecretKey)
 	if err != nil {
 		s.Close()
 		return nil, err
-	} else if err := sc.syncRevision(rev); err != nil {
+	} else if err := sc.syncRevision(rev, sigs); err != nil {
 		s.Close()
 		return nil, err
 	}

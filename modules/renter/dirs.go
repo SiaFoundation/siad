@@ -46,20 +46,30 @@ func (r *Renter) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error)
 	// could either be health or stuckHealth
 	metadata := entry.Metadata()
 	return modules.DirectoryInfo{
-		AggregateHealth:         metadata.AggregateHealth,
-		AggregateNumFiles:       metadata.AggregateNumFiles,
-		AggregateNumStuckChunks: metadata.NumStuckChunks,
-		AggregateSize:           metadata.AggregateSize,
-		Health:                  metadata.Health,
-		LastHealthCheckTime:     metadata.LastHealthCheckTime,
-		MaxHealth:               math.Max(metadata.AggregateHealth, metadata.StuckHealth),
-		MinRedundancy:           metadata.MinRedundancy,
-		MostRecentModTime:       metadata.ModTime,
-		StuckHealth:             metadata.StuckHealth,
+		// Aggregate Fields
+		AggregateHealth:              metadata.AggregateHealth,
+		AggregateLastHealthCheckTime: metadata.AggregateLastHealthCheckTime,
+		AggregateMaxHealth:           math.Max(metadata.AggregateHealth, metadata.AggregateStuckHealth),
+		AggregateMinRedundancy:       metadata.AggregateMinRedundancy,
+		AggregateMostRecentModTime:   metadata.AggregateModTime,
+		AggregateNumFiles:            metadata.AggregateNumFiles,
+		AggregateNumStuckChunks:      metadata.AggregateNumStuckChunks,
+		AggregateNumSubDirs:          metadata.AggregateNumSubDirs,
+		AggregateSize:                metadata.AggregateSize,
+		AggregateStuckHealth:         metadata.AggregateStuckHealth,
 
-		NumFiles:   metadata.NumFiles,
-		NumSubDirs: metadata.NumSubDirs,
-		SiaPath:    siaPath,
+		// SiaDir Fields
+		Health:              metadata.Health,
+		LastHealthCheckTime: metadata.LastHealthCheckTime,
+		MaxHealth:           math.Max(metadata.Health, metadata.StuckHealth),
+		MinRedundancy:       metadata.MinRedundancy,
+		MostRecentModTime:   metadata.ModTime,
+		NumFiles:            metadata.NumFiles,
+		NumStuckChunks:      metadata.NumStuckChunks,
+		NumSubDirs:          metadata.NumSubDirs,
+		SiaPath:             siaPath,
+		Size:                metadata.Size,
+		StuckHealth:         metadata.StuckHealth,
 	}, nil
 }
 
@@ -123,8 +133,10 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, []mo
 // RenameDir takes an existing directory and changes the path. The original
 // directory must exist, and there must not be any directory that already has
 // the replacement path.  All sia files within directory will also be renamed
-//
-// TODO: implement, need to rename directory and walk through and rename all sia
-// files within func (r *Renter) RenameDir(currentPath, newPath string) error {
-//  return nil
-// }
+func (r *Renter) RenameDir(oldPath, newPath modules.SiaPath) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticFileSet.RenameDir(oldPath, newPath, r.staticDirSet.Rename)
+}
