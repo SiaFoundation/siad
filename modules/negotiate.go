@@ -867,9 +867,9 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 		host.StoragePrice = types.NewCurrency64(1)
 	}
 	// Underflow check.
-	if funding.Cmp(host.ContractPrice.Add(txnFee)) <= 0 {
-		err = fmt.Errorf("contract price (%v) plus transaction fee (%v) exceeds funding (%v)",
-			host.ContractPrice.HumanString(), txnFee.HumanString(), funding.HumanString())
+	if funding.Cmp(host.ContractPrice.Add(txnFee).Add(basePrice)) <= 0 {
+		err = fmt.Errorf("contract price (%v) plus transaction fee (%v) plus base price (%v) exceeds funding (%v)",
+			host.ContractPrice.HumanString(), txnFee.HumanString(), basePrice.HumanString(), funding.HumanString())
 		return
 	}
 	// Calculate renterPayout.
