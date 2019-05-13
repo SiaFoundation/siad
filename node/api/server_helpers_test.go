@@ -221,7 +221,7 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 	// TODO: A more reasonable way of listening for server errors.
 	go func() {
 		listenErr := srv.Serve()
-		if listenErr != nil {
+		if listenErr != nil && !strings.Contains(listenErr.Error(), "ThreadGroup already stopped") {
 			panic(listenErr)
 		}
 	}()
