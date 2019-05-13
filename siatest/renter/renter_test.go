@@ -4224,10 +4224,34 @@ func TestCreateLoadBackup(t *testing.T) {
 	if _, err := r.DownloadByStream(rf); err != nil {
 		t.Fatal(err)
 	}
-	// Recover the backup again. Now there should be another file with a suffix
-	// at the end.
+	// Delete the file and upload another file to the same siapath. This one should
+	// have the same siapath but not the same UID.
+	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
+	subDir, err = r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err = subDir.NewFileWithName(lf.FileName(), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Recover the backup again. Now there should be another file with a suffix at
+	// the end.
 	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
 		t.Fatal(err)
+	}
+	fis, err := r.RenterFilesGet(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fis.Files) != 2 {
+		t.Fatalf("Expected 2 files but got %v", len(fis.Files))
 	}
 	sp, err := modules.NewSiaPath(rf.SiaPath().String() + "_1")
 	if err != nil {
@@ -4756,6 +4780,10 @@ func TestRemoteBackup(t *testing.T) {
 	// The second file should still fail.
 	if _, err := r.DownloadToDisk(rf2, false); err == nil {
 		t.Fatal("expected second file to be unavailable")
+	}
+	// Delete the first file again.
+	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+		t.Fatal(err)
 	}
 
 	// Restore the second snapshot.
