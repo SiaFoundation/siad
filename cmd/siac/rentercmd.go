@@ -217,7 +217,7 @@ func rentercmd() {
 Total Stored:   %v
 Min Redundancy: %v
 Contracts:      %v
-`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].MinRedundancy, len(rc.ActiveContracts))
+`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].AggregateMinRedundancy, len(rc.ActiveContracts))
 }
 
 // renteruploadscmd is the handler for the command `siac renter uploads`.
