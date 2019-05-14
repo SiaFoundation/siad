@@ -195,10 +195,10 @@ func rentercmd() {
 	fmt.Printf(`Allowance:`)
 	if rg.Settings.Allowance.Funds.IsZero() {
 		fmt.Printf("      0 SC (No current allowance)\n")
-		} else {
-			fm := rg.FinancialMetrics
-			totalSpent := fm.ContractFees.Add(fm.UploadSpending).
-				Add(fm.DownloadSpending).Add(fm.StorageSpending)
+	} else {
+		fm := rg.FinancialMetrics
+		totalSpent := fm.ContractFees.Add(fm.UploadSpending).
+			Add(fm.DownloadSpending).Add(fm.StorageSpending)
 		fmt.Printf(`       %v
   Spent Funds:     %v
   Unspent Funds:   %v
@@ -232,8 +232,8 @@ func renterFilesAndContractSummary() error {
   Contracts:      %v
 
 `, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].AggregateMinRedundancy, len(rc.ActiveContracts))
-	
-return nil
+
+	return nil
 }
 
 // renteruploadscmd is the handler for the command `siac renter uploads`.
