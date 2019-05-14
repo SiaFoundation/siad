@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 )
 
@@ -121,23 +120,11 @@ func statuscmd() {
 	}
 
 	// Renter Info
-	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
+	fmt.Printf(`Renter:`)
+	err = renterFilesAndContractSummary()
 	if err != nil {
-		die("Could not get renter files:", err)
+		die(err)
 	}
-	rc, err := httpClient.RenterInactiveContractsGet()
-	if err != nil {
-		die("Could not get contracts:", err)
-	}
-
-	fmt.Printf(`Renter:
-  Files:          %v
-  Total Stored:   %v
-  Min Redundancy: %v
-  Contracts:      %v
-
-`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].MinRedundancy, len(rc.ActiveContracts))
-
 }
 
 func main() {
