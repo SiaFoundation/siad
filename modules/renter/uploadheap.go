@@ -414,7 +414,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (modules.SiaP
 		r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
 		return dirSiaPath, dirHealth, nil
 	}
-	r.log.Println("Repairing", heapLen, "chunks from", dirSiaPath)
+	r.log.Println("Added", heapLen, "chunks from", dirSiaPath, "to the upload heap")
 
 	return dirSiaPath, dirHealth, nil
 }
@@ -474,12 +474,16 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	// Loop through the whole set of files and get a list of chunks to add to
 	// the heap.
 	for _, file := range files {
+		// Check if file needs repair
+		fileHealth, _, _ := file.Health(offline, goodForRenew)
+		if fileHealth < siafile.RemoteRepairDownloadThreshold {
+			continue
+		}
+
+		// Build unfinished chunks from file
 		id := r.mu.Lock()
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file, hosts, target, offline, goodForRenew)
 		r.mu.Unlock(id)
-		if len(unfinishedUploadChunks) == 0 {
-			continue
-		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			if !r.uploadHeap.managedPush(unfinishedUploadChunks[i]) {
 				// Chunk wasn't added to the heap. Close the file.
@@ -797,7 +801,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// The necessary conditions for performing an upload and repair have
 		// been met - perform the upload and repair by having the repair loop
 		// work through the chunks in the uploadheap
-		r.log.Debugln("Executing an upload and repair cycle")
+		r.log.Debugln("Executing an upload and repair cycle, uploadHeap has", r.uploadHeap.managedLen(), "chunks in it")
 		err = r.managedRepairLoop(hosts)
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit
