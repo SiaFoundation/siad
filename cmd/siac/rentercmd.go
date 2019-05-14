@@ -201,10 +201,12 @@ func rentercmd() {
 				Add(fm.DownloadSpending).Add(fm.StorageSpending)
 		fmt.Printf(`       %v
   Spent Funds:     %v
-	Unspent Funds:   %v`, currencyUnits(rg.Settings.Allowance.Funds), currencyUnits(totalSpent), currencyUnits(fm.Unspent))
+  Unspent Funds:   %v
+`, currencyUnits(rg.Settings.Allowance.Funds), currencyUnits(totalSpent), currencyUnits(fm.Unspent))
 	}
 
 	// File and Contract Data
+	fmt.Printf(`Data Storage:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
 		die(err)
