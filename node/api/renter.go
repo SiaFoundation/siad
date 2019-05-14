@@ -743,6 +743,26 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) (contract
 			disabledContracts = append(disabledContracts, contract)
 		}
 	}
+
+	// Nil slice check
+	if contracts == nil {
+		contracts = []RenterContract{}
+	}
+	if inactiveContracts == nil {
+		inactiveContracts = []RenterContract{}
+	}
+	if activeContracts == nil {
+		activeContracts = []RenterContract{}
+	}
+	if renewedContracts == nil {
+		renewedContracts = []RenterContract{}
+	}
+	if disabledContracts == nil {
+		disabledContracts = []RenterContract{}
+	}
+	if expiredContracts == nil {
+		expiredContracts = []RenterContract{}
+	}
 	return
 }
 
