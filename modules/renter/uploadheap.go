@@ -475,8 +475,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	// the heap.
 	for _, file := range files {
 		// Check if file needs repair
-		fileHealth, _, _ := file.Health(offline, goodForRenew)
-		if fileHealth < siafile.RemoteRepairDownloadThreshold {
+		if file.Metadata().CachedHealth < siafile.RemoteRepairDownloadThreshold {
 			continue
 		}
 
