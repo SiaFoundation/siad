@@ -185,39 +185,55 @@ func abs(path string) string {
 
 // rentercmd displays the renter's financial metrics and high level renter info
 func rentercmd() {
+	// Get Renter
 	rg, err := httpClient.RenterGet()
 	if err != nil {
 		die("Could not get renter info:", err)
 	}
-	fm := rg.FinancialMetrics
-	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
-		Add(fm.DownloadSpending).Add(fm.StorageSpending)
 
-	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
-	if err != nil {
-		die("Could not get renter files:", err)
-	}
-	rc, err := httpClient.RenterContractsGet()
-	if err != nil {
-		die("Could not get contracts:", err)
-	}
-
+	// Print Allowance info
 	fmt.Printf(`Allowance:`)
-
 	if rg.Settings.Allowance.Funds.IsZero() {
 		fmt.Printf("      0 SC (No current allowance)\n")
 	} else {
+		fm := rg.FinancialMetrics
+		totalSpent := fm.ContractFees.Add(fm.UploadSpending).
+			Add(fm.DownloadSpending).Add(fm.StorageSpending)
 		fmt.Printf(`       %v
   Spent Funds:     %v
   Unspent Funds:   %v
-`, currencyUnits(rg.Settings.Allowance.Funds),
-			currencyUnits(totalSpent), currencyUnits(fm.Unspent))
+`, currencyUnits(rg.Settings.Allowance.Funds), currencyUnits(totalSpent), currencyUnits(fm.Unspent))
 	}
-	fmt.Printf(`Total Files:    %v
-Total Stored:   %v
-Min Redundancy: %v
-Contracts:      %v
+
+	// File and Contract Data
+	fmt.Printf(`Data Storage:`)
+	err = renterFilesAndContractSummary()
+	if err != nil {
+		die(err)
+	}
+}
+
+// renterFilesAndContractSummary prints out a summary of what the renter is
+// storing
+func renterFilesAndContractSummary() error {
+	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
+	if err != nil {
+		return err
+	}
+	rc, err := httpClient.RenterContractsGet()
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf(`
+  Files:          %v
+  Total Stored:   %v
+  Min Redundancy: %v
+  Contracts:      %v
+
 `, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].AggregateMinRedundancy, len(rc.ActiveContracts))
+
+	return nil
 }
 
 // renteruploadscmd is the handler for the command `siac renter uploads`.
