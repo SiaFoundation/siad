@@ -830,6 +830,9 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil
 	})
 
+	// Spin up the snapshot synchronization thread.
+	go r.threadedSynchronizeSnapshots()
+
 	return r, nil
 }
 
