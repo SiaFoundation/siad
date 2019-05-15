@@ -47,10 +47,7 @@ func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, error) {
 	defer r.tg.Done()
 	id := r.mu.RLock()
 	defer r.mu.RUnlock(id)
-	var backups []modules.UploadedBackup
-	for _, pb := range r.persist.UploadedBackups {
-		backups = append(backups, pb.UploadedBackup)
-	}
+	backups := append([]modules.UploadedBackup(nil), r.persist.UploadedBackups...)
 	return backups, nil
 }
 
@@ -117,7 +114,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return err
 	}
 	// Upload the snapshot to the network.
-	return r.uploadSnapshot(name, dotSia)
+	return r.managedUploadSnapshot(name, dotSia)
 }
 
 // DownloadBackup downloads the specified backup.
@@ -140,6 +137,7 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	copy(encName[:], name)
 	var uid [16]byte
 	var found bool
+	id := r.mu.RLock()
 	for _, b := range r.persist.UploadedBackups {
 		if b.Name == encName {
 			uid = b.UID
@@ -147,11 +145,12 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 			break
 		}
 	}
+	r.mu.RUnlock(id)
 	if !found {
 		return errors.New("no record of a backup with that name")
 	}
 	// Download snapshot's .sia file.
-	dotSia, err := r.downloadSnapshot(uid)
+	_, dotSia, err := r.managedDownloadSnapshot(uid)
 	if err != nil {
 		return err
 	}
@@ -176,7 +175,7 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	return err
 }
 
-func (r *Renter) uploadSnapshotHost(meta modules.UploadedBackup, dotSia []byte, host contractor.Session) error {
+func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia []byte, host contractor.Session) error {
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
 	if err != nil {
@@ -252,8 +251,8 @@ func (r *Renter) uploadSnapshotHost(meta modules.UploadedBackup, dotSia []byte, 
 	return nil
 }
 
-// uploadSnapshot uploads a snapshot .sia file to all hosts.
-func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
+// managedUploadSnapshot uploads a snapshot .sia file to all hosts.
+func (r *Renter) managedUploadSnapshot(name string, dotSia []byte) error {
 	meta := modules.UploadedBackup{
 		CreationDate: types.CurrentTimestamp(),
 		Size:         uint64(len(dotSia)),
@@ -267,9 +266,7 @@ func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
 	contracts := r.hostContractor.Contracts()
 
 	// upload the siafile and update the entry table for each host
-	pb := persistBackup{
-		UploadedBackup: meta,
-	}
+	var numHosts int
 	for i := range contracts {
 		hostKey := contracts[i].HostPublicKey
 		utility, ok := r.hostContractor.ContractUtility(hostKey)
@@ -282,18 +279,21 @@ func (r *Renter) uploadSnapshot(name string, dotSia []byte) error {
 				return err
 			}
 			defer host.Close()
-			return r.uploadSnapshotHost(meta, dotSia, host)
+			return r.managedUploadSnapshotHost(meta, dotSia, host)
 		}()
 		if err != nil {
 			r.log.Printf("Uploading snapshot to host %v failed: %v", hostKey, err)
 			continue
 		}
-		pb.Hosts = append(pb.Hosts, hostKey)
+		numHosts++
 	}
-	if len(pb.Hosts) == 0 {
+	if numHosts == 0 {
 		r.log.Println("WARN: Failed to upload snapshot to at least one host")
 	}
-	r.persist.UploadedBackups = append(r.persist.UploadedBackups, pb)
+	// save the new snapshot
+	id := r.mu.RLock()
+	defer r.mu.RUnlock(id)
+	r.persist.UploadedBackups = append(r.persist.UploadedBackups, meta)
 	if err := r.saveSync(); err != nil {
 		return err
 	}
@@ -330,7 +330,9 @@ func (r *Renter) managedDownloadSnapshotTable(host contractor.Session) ([]snapsh
 	if err != nil {
 		return nil, err
 	} else if !bytes.Equal(encTable[:16], snapshotTableSpecifier[:]) {
-		return nil, errors.New("index 0 sector does not contain a snapshot table")
+		// not having a snapshot table is not an error; it just means that when
+		// we upload a snapshot, we'll have to create the table.
+		return nil, nil
 	}
 
 	var entryTable []snapshotEntry
@@ -340,17 +342,17 @@ func (r *Renter) managedDownloadSnapshotTable(host contractor.Session) ([]snapsh
 	return entryTable, nil
 }
 
-// downloadSnapshot downloads and returns the specified snapshot.
-func (r *Renter) downloadSnapshot(uid [16]byte) (dotSia []byte, err error) {
+// managedDownloadSnapshot downloads and returns the specified snapshot.
+func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBackup, dotSia []byte, err error) {
 	if err := r.tg.Add(); err != nil {
-		return nil, err
+		return modules.UploadedBackup{}, nil, err
 	}
 	defer r.tg.Done()
 
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to get wallet's primary seed")
+		return modules.UploadedBackup{}, nil, errors.AddContext(err, "failed to get wallet's primary seed")
 	}
 	// Derive the renter seed and wipe the memory once we are done using it.
 	rs := proto.DeriveRenterSeed(ws)
@@ -397,136 +399,149 @@ func (r *Renter) downloadSnapshot(uid [16]byte) (dotSia []byte, err error) {
 					break
 				}
 			}
+			ub = entry.Meta
 			return nil
 		}()
 		if err != nil {
 			r.log.Printf("Downloading backup from host %v failed: %v", contracts[i].HostPublicKey, err)
 			continue
 		}
-		return dotSia, nil
+		return ub, dotSia, nil
 	}
-	return nil, errors.New("could not download backup from any host")
+	return modules.UploadedBackup{}, nil, errors.New("could not download backup from any host")
 }
 
 // threadedSynchronizeSnapshots continuously scans hosts to ensure that all
 // current hosts are storing all known snapshots.
 func (r *Renter) threadedSynchronizeSnapshots() {
-	calcMissingHosts := func(pb persistBackup, contracts []modules.RenterContract) []types.SiaPublicKey {
-		var missing []types.SiaPublicKey
-		for _, c := range contracts {
-			var found bool
-			for _, h := range pb.Hosts {
-				found = found || h.String() == c.HostPublicKey.String()
-			}
-			if !found {
-				missing = append(missing, c.HostPublicKey)
-			}
+	// calcOverlap takes a host's entry table and the set of known snapshots,
+	// and calculates which snapshots the host is missing and which snapshots it
+	// has that we don't.
+	calcOverlap := func(entryTable []snapshotEntry, known map[[16]byte]struct{}) (unknown []modules.UploadedBackup, missing [][16]byte) {
+		missingMap := make(map[[16]byte]struct{}, len(known))
+		for uid := range known {
+			missingMap[uid] = struct{}{}
 		}
-		return missing
+		for _, e := range entryTable {
+			if _, ok := known[e.Meta.UID]; !ok {
+				unknown = append(unknown, e.Meta)
+			}
+			delete(missingMap, e.Meta.UID)
+		}
+		for uid := range missingMap {
+			missing = append(missing, uid)
+		}
+		return
 	}
 
-	hasSnapshot := func(entryTable []snapshotEntry, uid [16]byte) bool {
-		for _, e := range entryTable {
-			if e.Meta.UID == uid {
-				return true
-			}
-		}
-		return false
+	// Build a set of the snapshots we already have, and a set of which
+	// contracts are synced.
+	known := make(map[[16]byte]struct{})
+	syncedContracts := make(map[types.FileContractID]struct{})
+	id := r.mu.RLock()
+	for _, ub := range r.persist.UploadedBackups {
+		known[ub.UID] = struct{}{}
 	}
+	for _, fcid := range r.persist.SyncedContracts {
+		syncedContracts[fcid] = struct{}{}
+	}
+	r.mu.RUnlock(id)
 
 	for {
-		select {
-		case <-time.After(time.Minute * 5):
-		case <-r.tg.StopChan():
-			return
-		}
-
-		// Build a set of the snapshots we already have.
-		known := make(map[[16]byte]struct{})
-		id := r.mu.Lock()
-		for _, pb := range r.persist.UploadedBackups {
-			known[pb.UID] = struct{}{}
-		}
-		r.mu.Unlock(id)
-
-		var newSnapshots []persistBackup
+		// Select an unsynchronized host.
 		contracts := r.hostContractor.Contracts()
-		for _, pb := range r.persist.UploadedBackups {
-			// Calculate which of the hosts this snapshot is already stored on.
-			missingHosts := calcMissingHosts(pb, contracts)
-			if len(missingHosts) == 0 {
-				// The snapshot is already present on all hosts.
-				newSnapshots = append(newSnapshots, pb)
-				continue
-			} else if len(missingHosts) == len(contracts) {
-				// The snapshot is not on any current hosts, so delete it. (We can
-				// always get it back if we re-add the host at a later time.)
-				continue
+		var found bool
+		var c modules.RenterContract
+		for _, c = range contracts {
+			if _, ok := syncedContracts[c.ID]; !ok {
+				found = true
+				break
 			}
-
-			// Download the snapshot. If we can't download it, delete it. (As
-			// before, we'll be able to recover it later, when we encounter it
-			// in a host's entryTable.)
-			dotSia, err := r.downloadSnapshot(pb.UID)
-			if err != nil {
-				r.log.Println("Failed to download snapshot for replication:", err)
-				continue
-			}
-
-			// Replicate the snapshot to each missing host.
-			for _, hostKey := range missingHosts {
-				err := func() error {
-					host, err := r.hostContractor.Session(hostKey, r.tg.StopChan())
-					if err != nil {
-						return err
-					}
-					defer host.Close()
-					entryTable, err := r.managedDownloadSnapshotTable(host)
-					if err != nil {
-						return err
-					}
-					// If the entry table has snapshots we don't know about,
-					// record them; they'll be replicated to other hosts on the
-					// next iteration.
-					for _, e := range entryTable {
-						if _, ok := known[e.Meta.UID]; !ok {
-							newSnapshots = append(newSnapshots, persistBackup{
-								UploadedBackup: e.Meta,
-								Hosts:          []types.SiaPublicKey{hostKey},
-							})
-							known[e.Meta.UID] = struct{}{}
-							r.log.Println("Located new snapshot", e.Meta.UID)
-						}
-					}
-					// Check that the entry table is indeed missing this
-					// snapshot; if so, upload it.
-					if !hasSnapshot(entryTable, pb.UID) {
-						if err := r.uploadSnapshotHost(pb.UploadedBackup, dotSia, host); err != nil {
-							return err
-						}
-					}
-
-					// Record that the snapshot is present on this host.
-					pb.Hosts = append(pb.Hosts, hostKey)
-					return nil
-				}()
-				if err != nil {
-					r.log.Println("Failed to add snapshot to host:", err)
+		}
+		if !found {
+			// No unsychronized hosts; drop any irrelevant contracts, then sleep
+			// for a while before trying again
+			if len(contracts) != 0 {
+				syncedContracts = make(map[types.FileContractID]struct{})
+				for _, c := range contracts {
+					syncedContracts[c.ID] = struct{}{}
 				}
 			}
-			newSnapshots = append(newSnapshots, pb)
+			select {
+			case <-time.After(time.Minute * 5):
+			case <-r.tg.StopChan():
+				return
+			}
+			continue
 		}
-		// Save the new set of snapshots.
-		//
-		// NOTE: it's acceptable to delay this until the end of the loop,
-		// because even if we crash in the middle of the loop, the entryTables
-		// on the hosts will already have been updated. So when we resume, we'll
-		// download the table of host X and see that it already has snapshot Y,
-		// so we can skip reuploading snapshot Y.
-		r.persist.UploadedBackups = newSnapshots
+
+		// Synchronize the host.
+		err := func() error {
+			// Download the host's entry table.
+			host, err := r.hostContractor.Session(c.HostPublicKey, r.tg.StopChan())
+			if err != nil {
+				return err
+			}
+			defer host.Close()
+			entryTable, err := r.managedDownloadSnapshotTable(host)
+			if err != nil {
+				return err
+			}
+
+			// Calculate which snapshots the host doesn't have, and which
+			// snapshots it does have that we haven't seen before.
+			unknown, missing := calcOverlap(entryTable, known)
+
+			// If *any* snapshots are new, mark all other hosts as not
+			// synchronized.
+			if len(unknown) != 0 {
+				for fcid := range syncedContracts {
+					delete(syncedContracts, fcid)
+				}
+				// Record the new snapshots; they'll be replicated to the other
+				// hosts in subsequent iterations of the synchronization loop.
+				id := r.mu.Lock()
+				for _, ub := range unknown {
+					r.persist.UploadedBackups = append(r.persist.UploadedBackups, ub)
+					known[ub.UID] = struct{}{}
+					r.log.Println("Located new snapshot", ub.UID)
+				}
+				r.mu.Unlock(id)
+			}
+
+			// Upload any snapshots that the host is missing.
+			//
+			// TODO: instead of returning immediately upon encountering an
+			// error, we should probably continue trying to upload the other
+			// snapshots.
+			for _, uid := range missing {
+				ub, dotSia, err := r.managedDownloadSnapshot(uid)
+				if err != nil {
+					// TODO: if snapshot can't be found on any host, delete it
+					return err
+				}
+				if err := r.managedUploadSnapshotHost(ub, dotSia, host); err != nil {
+					return err
+				}
+			}
+			return nil
+		}()
+		if err != nil {
+			r.log.Println("Failed to synchronize snapshots on host:", err)
+			continue
+		}
+		// Mark the contract as synchronized.
+		syncedContracts[c.ID] = struct{}{}
+		// Commit the set of known snapshots and the set of synchronized
+		// hosts.
+		id := r.mu.Lock()
+		r.persist.SyncedContracts = r.persist.SyncedContracts[:0]
+		for fcid := range syncedContracts {
+			r.persist.SyncedContracts = append(r.persist.SyncedContracts, fcid)
+		}
 		if err := r.saveSync(); err != nil {
-			r.log.Println("Failed to save snapshot set:", err)
+			r.log.Println(err)
 		}
-		newSnapshots = nil
+		r.mu.Unlock(id)
 	}
 }
