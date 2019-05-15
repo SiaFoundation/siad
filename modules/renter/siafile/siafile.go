@@ -413,8 +413,13 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 
 // Health calculates the health of the file to be used in determining repair
 // priority. Health of the file is the lowest health of any of the chunks and is
-// defined as the percent of parity pieces remaining.  Additionally the
-// NumStuckChunks will be updated for the SiaFile and returned
+// defined as the percent of parity pieces remaining. The NumStuckChunks will be
+// calculated for the SiaFile and returned.
+//
+// NOTE: The cached values of the health and stuck health will be set but not
+// saved to disk as Health() does not write to disk. If the cached values need
+// to be updated on disk then a metadata save method should be called in
+// conjunction with Health()
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
