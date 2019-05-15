@@ -45,10 +45,10 @@ func (uch uploadChunkHeap) Less(i, j int) bool {
 	if uch[j].priority {
 		return false
 	}
-	// If the chunks have the same stuck status, check which chunk has the lower
-	// completion percentage.
+	// If the chunks have the same stuck status, check which chunk has the worse
+	// health. A higher health is a worse health
 	if uch[i].stuck == uch[j].stuck {
-		return float64(uch[i].piecesCompleted)/float64(uch[i].piecesNeeded) < float64(uch[j].piecesCompleted)/float64(uch[j].piecesNeeded)
+		return uch[i].health > uch[j].health
 	}
 	// If chunk i is stuck, return true to prioritize it.
 	if uch[i].stuck {
@@ -202,6 +202,7 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 		pieceUsage:  make([]bool, entry.ErasureCode().NumPieces()),
 		unusedHosts: make(map[string]struct{}),
 	}
+	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.minimumPieces) / float64(uuc.piecesNeeded-uuc.minimumPieces))
 	// Every chunk can have a different set of unused hosts.
 	for host := range hosts {
 		uuc.unusedHosts[host] = struct{}{}
@@ -336,16 +337,16 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		// amount of redundancy is missing. We only repair above a certain
 		// threshold of missing redundancy to minimize the amount of repair work
 		// that gets triggered by host churn.
-		chunkHealth := chunk.fileEntry.ChunkHealth(int(chunk.index), offline, goodForRenew)
-		_, err := os.Stat(chunk.fileEntry.LocalPath())
+		//
 		// While a file could be on disk as long as !os.IsNotExist(err), for the
 		// purposes of repairing a file is only considered on disk if it can be
 		// accessed without error. If there is an error accessing the file then
 		// it is likely that we can not read the file in which case it can not
 		// be used for repair.
+		_, err := os.Stat(chunk.fileEntry.LocalPath())
 		onDisk := err == nil
-		repairable := chunkHealth <= 1 || onDisk
-		needsRepair := chunkHealth >= siafile.RemoteRepairDownloadThreshold
+		repairable := chunk.health <= 1 || onDisk
+		needsRepair := chunk.health >= siafile.RemoteRepairDownloadThreshold
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
 		// repairable or if we are targetting stuck chunks
