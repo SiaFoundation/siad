@@ -262,6 +262,10 @@ func (r *Renter) managedInitPersist() error {
 	if err != nil {
 		return err
 	}
+	err = os.MkdirAll(r.staticBackupsDir, 0700)
+	if err != nil {
+		return err
+	}
 
 	// Initialize the logger.
 	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
