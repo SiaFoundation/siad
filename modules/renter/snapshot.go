@@ -327,11 +327,12 @@ func (r *Renter) managedDownloadSnapshotTable(host contractor.Session) ([]snapsh
 		return nil, err
 	}
 	encTable, err := crypto.DecryptWithNonce(tableSector, aead)
-	if err != nil {
-		return nil, err
-	} else if !bytes.Equal(encTable[:16], snapshotTableSpecifier[:]) {
-		// not having a snapshot table is not an error; it just means that when
-		// we upload a snapshot, we'll have to create the table.
+	if err != nil || !bytes.Equal(encTable[:16], snapshotTableSpecifier[:]) {
+		// either the first sector was not an entry table, or it got corrupted
+		// somehow; either way, it's not retrievable, so we'll treat this as
+		// equivalent to having no entry table at all. This is not an error; it
+		// just means that when we upload a snapshot, we'll have to create a new
+		// table.
 		return nil, nil
 	}
 
