@@ -97,6 +97,9 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	if err := r.managedUploadStreamFromReader(up, backup, true); err != nil {
 		return errors.AddContext(err, "failed to upload backup")
 	}
+	// Wait for the upload to finish.
+	time.Sleep(5 * time.Second)
+
 	// Grab the entry for the uploaded backup's siafile.
 	entry, err := r.staticBackupFileSet.Open(sp)
 	if err != nil {
