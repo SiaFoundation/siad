@@ -776,7 +776,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			stuckChunkSuccess: make(chan modules.SiaPath, 1),
 		},
 		directoryHeap: directoryHeap{
-			heapDirectories: make(map[modules.SiaPath]struct{}),
+			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),

@@ -84,6 +84,33 @@ func TestDirectoryHeap(t *testing.T) {
 		t.Fatal("Expected the directory to be unexplored")
 	}
 
+	// Push directory back on, then confirm a second push fails
+	if !rt.renter.directoryHeap.managedPush(d) {
+		t.Fatal("directory not added")
+	}
+	if rt.renter.directoryHeap.managedPush(d) {
+		t.Fatal("directory should not have been added")
+	}
+
+	// Now update directory and confirm it is not the top directory and the top
+	// element is as expected
+	d.aggregateHealth = 0
+	d.health = 0
+	d.explored = true
+	if !rt.renter.directoryHeap.managedUpdate(d) {
+		t.Fatal("directory not updated")
+	}
+	topDir := rt.renter.directoryHeap.managedPop()
+	if topDir.health != float64(4) {
+		t.Fatal("Expected Health of 4, got", topDir.health)
+	}
+	if topDir.aggregateHealth != float64(2) {
+		t.Fatal("Expected AggregateHealth of 2, got", topDir.aggregateHealth)
+	}
+	if !topDir.explored {
+		t.Fatal("Expected the directory to be explored")
+	}
+
 	// Reset Direcotry heap
 	err = rt.renter.managedResetDirectoryHeap()
 	if err != nil {
