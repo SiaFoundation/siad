@@ -435,20 +435,23 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		return
 	}
 
-	// Build a set of the snapshots we already have, and a set of which
-	// contracts are synced.
-	known := make(map[[16]byte]struct{})
+	// Build a set of which contracts are synced.
 	syncedContracts := make(map[types.FileContractID]struct{})
 	id := r.mu.RLock()
-	for _, ub := range r.persist.UploadedBackups {
-		known[ub.UID] = struct{}{}
-	}
 	for _, fcid := range r.persist.SyncedContracts {
 		syncedContracts[fcid] = struct{}{}
 	}
 	r.mu.RUnlock(id)
 
 	for {
+		// Build a set of the snapshots we already have.
+		known := make(map[[16]byte]struct{})
+		id := r.mu.RLock()
+		for _, ub := range r.persist.UploadedBackups {
+			known[ub.UID] = struct{}{}
+		}
+		r.mu.RUnlock(id)
+
 		// Select an unsynchronized host.
 		contracts := r.hostContractor.Contracts()
 		var found bool
@@ -542,7 +545,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		syncedContracts[c.ID] = struct{}{}
 		// Commit the set of known snapshots and the set of synchronized
 		// hosts.
-		id := r.mu.Lock()
+		id = r.mu.Lock()
 		r.persist.SyncedContracts = r.persist.SyncedContracts[:0]
 		for fcid := range syncedContracts {
 			r.persist.SyncedContracts = append(r.persist.SyncedContracts, fcid)
