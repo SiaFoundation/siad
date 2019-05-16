@@ -529,6 +529,13 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		}()
 		if err != nil {
 			r.log.Println("Failed to synchronize snapshots on host:", err)
+			// sleep for a bit to prevent retrying the same host repeatedly in a
+			// tight loop
+			select {
+			case <-time.After(time.Minute * 5):
+			case <-r.tg.StopChan():
+				return
+			}
 			continue
 		}
 		// Mark the contract as synchronized.
