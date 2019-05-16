@@ -159,6 +159,14 @@ var (
 		Standard: 15 * time.Minute,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
+
+	// snapshotSyncSleepDuration defines how long the return sleeps between
+	// trying to synchronize snapshots across hosts.
+	snapshotSyncSleepDuration = build.Select(build.Var{
+		Dev:      10 * time.Second,
+		Standard: 5 * time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
 
 // Constants that tune the worker swarm.

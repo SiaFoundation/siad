@@ -472,7 +472,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				}
 			}
 			select {
-			case <-time.After(time.Minute * 5):
+			case <-time.After(snapshotSyncSleepDuration):
 			case <-r.tg.StopChan():
 				return
 			}
@@ -535,7 +535,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			// sleep for a bit to prevent retrying the same host repeatedly in a
 			// tight loop
 			select {
-			case <-time.After(time.Minute * 5):
+			case <-time.After(snapshotSyncSleepDuration):
 			case <-r.tg.StopChan():
 				return
 			}
