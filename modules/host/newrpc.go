@@ -159,11 +159,11 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
-	h.mu.RLock()
+	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
 	settings := h.externalSettings()
-	h.mu.RUnlock()
+	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Process each action.
@@ -418,11 +418,11 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
-	h.mu.RLock()
+	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
 	settings := h.externalSettings()
-	h.mu.RUnlock()
+	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Validate the request.
@@ -742,11 +742,11 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
-	h.mu.RLock()
+	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
 	settings := h.externalSettings()
-	h.mu.RUnlock()
+	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Validate the request.
