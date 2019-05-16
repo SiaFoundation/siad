@@ -135,12 +135,17 @@ func (c *chunk) numPieces() (numPieces int) {
 func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
+	zeroHealth := float64(1 + erasureCode.MinPieces()/(erasureCode.NumPieces()-erasureCode.MinPieces()))
 	file := &SiaFile{
 		staticMetadata: Metadata{
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
 			CreateTime:              currentTime,
+			CachedHealth:            zeroHealth,
+			CachedStuckHealth:       0,
+			CachedRedundancy:        0,
+			CachedUploadProgress:    0,
 			FileSize:                int64(fileSize),
 			LocalPath:               source,
 			StaticMasterKey:         masterKey.Key(),
@@ -167,7 +172,7 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 	for i := range file.chunks {
 		file.chunks[i].Pieces = make([][]piece, erasureCode.NumPieces())
 	}
-	// Init cached fields for 0-Byte files.
+	// Updated cached fields for 0-Byte files.
 	if file.staticMetadata.FileSize == 0 {
 		file.staticMetadata.CachedHealth = 0
 		file.staticMetadata.CachedStuckHealth = 0
