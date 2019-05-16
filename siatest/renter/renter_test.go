@@ -4797,4 +4797,48 @@ func TestRemoteBackup(t *testing.T) {
 	if _, err := r.DownloadToDisk(rf2, false); err != nil {
 		t.Fatal(err)
 	}
+
+	// Delete the renter entirely and create a new renter with the same seed.
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := wsg.PrimarySeed
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.PrimarySeed = seed
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+
+	// Wait for the recovery process to complete.
+	err = build.Retry(60, time.Second, func() error {
+		// Both snapshots should be listed.
+		ubs, err = r.RenterUploadedBackups()
+		if err != nil {
+			return err
+		} else if len(ubs) != 2 {
+			return fmt.Errorf("expected two backups, got %v", len(ubs))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Restore the second snapshot.
+	if err := r.RenterRecoverBackupPost("bar", true); err != nil {
+		t.Fatal(err)
+	}
+	// We should be able to download both files now.
+	if _, err := r.DownloadToDisk(rf, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.DownloadToDisk(rf2, false); err != nil {
+		t.Fatal(err)
+	}
 }
