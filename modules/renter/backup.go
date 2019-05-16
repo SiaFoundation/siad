@@ -200,7 +200,8 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			return err
 		}
 		// Nothing to do for non-folders and non-siafiles.
-		if !info.IsDir() && filepath.Ext(path) != modules.SiaFileExtension {
+		if !info.IsDir() && filepath.Ext(path) != modules.SiaFileExtension &&
+			filepath.Ext(path) != modules.SiaDirExtension {
 			return nil
 		}
 		// Create the header for the file/dir.
