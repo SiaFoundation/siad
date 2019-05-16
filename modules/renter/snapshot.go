@@ -155,7 +155,7 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 		return err
 	}
 	// Store it in the backup file set.
-	if err := ioutil.WriteFile(filepath.Join(r.staticBackupsDir, name), dotSia, 0666); err != nil {
+	if err := ioutil.WriteFile(filepath.Join(r.staticBackupsDir, name+modules.SiaFileExtension), dotSia, 0666); err != nil {
 		return err
 	}
 	// Load the .sia file.
