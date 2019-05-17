@@ -1,7 +1,6 @@
 package contractor
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -334,7 +334,7 @@ func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID
 	// Get the wallet seed.
 	s, _, err := c.wallet.PrimarySeed()
 	if err != nil {
-		return err
+		return errors.AddContext(err, "failed to get wallet seed")
 	}
 	// Get the renter seed and wipe it once done.
 	rs := proto.DeriveRenterSeed(s)
