@@ -288,6 +288,7 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		// Reset the contractor consensus variables and try rescanning.
 		c.blockHeight = 0
 		c.lastChange = modules.ConsensusChangeBeginning
+		c.recentRecoveryChange = modules.ConsensusChangeBeginning
 		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
 	}
 	if err != nil {

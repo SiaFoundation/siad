@@ -108,9 +108,8 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 			missedRecovery = true
 		}
 	}
-	// Remember that we weren't able to call findRecoverableContracts on the blocks
-	// in this change.
-	if missedRecovery && c.recentRecoveryChange == modules.ConsensusChangeRecent {
+	// If we didn't miss the recover, we update the recentRecoverChange
+	if !missedRecovery && c.recentRecoveryChange == c.lastChange {
 		c.recentRecoveryChange = cc.ID
 	}
 

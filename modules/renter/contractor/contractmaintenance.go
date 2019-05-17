@@ -771,10 +771,6 @@ func (c *Contractor) managedFindRecoverableContracts() {
 	c.mu.RLock()
 	cc := c.recentRecoveryChange
 	c.mu.RUnlock()
-	if cc == modules.ConsensusChangeRecent {
-		// No missing change. Nothing to do.
-		return
-	}
 	if err := c.managedInitRecoveryScan(cc); err != nil {
 		c.log.Debug(err)
 		return

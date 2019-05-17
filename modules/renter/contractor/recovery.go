@@ -49,14 +49,13 @@ func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.Conse
 		return err
 	}
 	defer rs.c.tg.Done()
-	// We are about to start a scan. If the scanStart equals the
-	// recentRecoveryChange we can reset it to ConsensusChangeRecent.
-	rs.c.mu.Lock()
-	if rs.c.recentRecoveryChange != modules.ConsensusChangeRecent &&
-		(rs.c.recentRecoveryChange == scanStart || scanStart == modules.ConsensusChangeBeginning) {
-		rs.c.recentRecoveryChange = modules.ConsensusChangeRecent
+	// Check that the scanStart matches the recently missed change id.
+	rs.c.mu.RLock()
+	if scanStart != rs.c.recentRecoveryChange {
+		rs.c.mu.RUnlock()
+		return errors.New("scanStart doesn't match recentRecoveryChange")
 	}
-	rs.c.mu.Unlock()
+	rs.c.mu.RUnlock()
 	// Subscribe to the consensus set from scanStart.
 	err := cs.ConsensusSetSubscribe(rs, scanStart, cancel)
 	if err != nil {
@@ -89,6 +88,10 @@ func (rs *recoveryScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
 	for range cc.RevertedBlocks {
 		atomic.AddInt64(&rs.c.atomicRecoveryScanHeight, -1)
 	}
+	// Update the recentRecoveryChange
+	rs.c.mu.Lock()
+	rs.c.recentRecoveryChange = cc.ID
+	rs.c.mu.Unlock()
 }
 
 // findRecoverableContracts scans the block for contracts that could
