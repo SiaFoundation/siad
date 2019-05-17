@@ -51,7 +51,7 @@ func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.Conse
 	defer rs.c.tg.Done()
 	// Check that the scanStart matches the recently missed change id.
 	rs.c.mu.RLock()
-	if scanStart != rs.c.recentRecoveryChange {
+	if scanStart != rs.c.recentRecoveryChange && scanStart != modules.ConsensusChangeBeginning {
 		rs.c.mu.RUnlock()
 		return errors.New("scanStart doesn't match recentRecoveryChange")
 	}
