@@ -289,10 +289,16 @@ func untarDir(tr *tar.Reader, dstFolder string) error {
 			}
 			continue
 		}
-		// Add a suffix to the dst path if the file already exists.
-		dst = uniqueFilename(dst)
+		// Add a suffix to the dst path if the file already exists for siafiles.
+		uniqueName := filepath.Ext(dst) == modules.SiaFileExtension
+		if uniqueName {
+			dst = uniqueFilename(dst)
+		}
 		// Create file while preserving mode.
-		f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
+		f, err := os.OpenFile(dst, os.O_EXCL|os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
+		if !uniqueName && os.IsExist(err) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
