@@ -110,6 +110,27 @@ func TestDirectoryHeap(t *testing.T) {
 	if !topDir.explored {
 		t.Fatal("Expected the directory to be explored")
 	}
+	// Find Directory in heap and confirm that it was updated
+	found := false
+	for rt.renter.directoryHeap.managedLen() > 0 {
+		topDir = rt.renter.directoryHeap.managedPop()
+		if !topDir.siaPath.Equals(d.siaPath) {
+			continue
+		}
+		if found {
+			t.Fatal("Duplicate directory in heap")
+		}
+		found = true
+		if topDir.health != d.health {
+			t.Fatalf("Expected Health of %v, got %v", d.health, topDir.health)
+		}
+		if topDir.aggregateHealth != d.aggregateHealth {
+			t.Fatalf("Expected AggregateHealth of %v, got %v", d.aggregateHealth, topDir.aggregateHealth)
+		}
+		if !topDir.explored {
+			t.Fatal("Expected the directory to be explored")
+		}
+	}
 
 	// Reset Direcotry heap
 	err = rt.renter.managedResetDirectoryHeap()

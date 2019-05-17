@@ -73,8 +73,7 @@ func (rdh repairDirectoryHeap) Less(i, j int) bool {
 }
 func (rdh repairDirectoryHeap) Swap(i, j int) {
 	rdh[i], rdh[j] = rdh[j], rdh[i]
-	rdh[i].index = i
-	rdh[j].index = j
+	rdh[i].index, rdh[j].index = i, j
 }
 func (rdh *repairDirectoryHeap) Push(x interface{}) {
 	n := len(*rdh)
@@ -122,14 +121,13 @@ func (dh *directoryHeap) managedPop() (d *directory) {
 func (dh *directoryHeap) managedPush(d *directory) bool {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
-	var added bool
 	_, exists := dh.heapDirectories[d.siaPath]
-	if !exists {
-		heap.Push(&dh.heap, d)
-		dh.heapDirectories[d.siaPath] = d
-		added = true
+	if exists {
+		return false
 	}
-	return added
+	heap.Push(&dh.heap, d)
+	dh.heapDirectories[d.siaPath] = d
+	return true
 }
 
 // managedUpdate will update the directory that is currently in the heap based
@@ -140,22 +138,18 @@ func (dh *directoryHeap) managedPush(d *directory) bool {
 func (dh *directoryHeap) managedUpdate(d *directory) bool {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
-	var updated bool
 	heapDir, exists := dh.heapDirectories[d.siaPath]
-	if exists {
-		// Update the fields of the directory in the heap
-		heapDir.mu.Lock()
-		heapDir.aggregateHealth = math.Max(heapDir.aggregateHealth, d.aggregateHealth)
-		heapDir.health = math.Max(heapDir.health, d.health)
-		if d.explored {
-			heapDir.explored = d.explored
-		}
-		heapDir.mu.Unlock()
-		heap.Fix(&dh.heap, heapDir.index)
-		updated = true
+	if !exists {
+		return false
 	}
-
-	return updated
+	// Update the fields of the directory in the heap
+	heapDir.mu.Lock()
+	heapDir.aggregateHealth = math.Max(heapDir.aggregateHealth, d.aggregateHealth)
+	heapDir.health = math.Max(heapDir.health, d.health)
+	heapDir.explored = heapDir.explored || d.explored
+	heapDir.mu.Unlock()
+	heap.Fix(&dh.heap, heapDir.index)
+	return true
 }
 
 // managedPushDirectory adds a directory to the directory heap
