@@ -1858,6 +1858,13 @@ func testUploadReady(t *testing.T, tg *siatest.TestGroup) {
 	if rur.Ready {
 		t.Fatal("Renter should not be ready for upload")
 	}
+	rur, err = renter.RenterUploadReadyDefaultGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rur.Ready {
+		t.Fatal("Renter should not be ready for upload")
+	}
 
 	// Check submitting only 1 variable set
 	_, err = renter.RenterUploadReadyGet(1, 0)
@@ -1896,6 +1903,13 @@ func testUploadReady(t *testing.T, tg *siatest.TestGroup) {
 
 	// Renter should be ready for upload
 	rur, err = renter.RenterUploadReadyGet(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rur.Ready {
+		t.Fatal("Renter is not ready for upload", rur)
+	}
+	rur, err = renter.RenterUploadReadyDefaultGet()
 	if err != nil {
 		t.Fatal(err)
 	}

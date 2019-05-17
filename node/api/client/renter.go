@@ -498,3 +498,10 @@ func (c *Client) RenterUploadReadyGet(dataPieces, parityPieces uint64) (rur api.
 	err = c.get("/renter/uploadready"+query, &rur)
 	return
 }
+
+// RenterUploadReadyDefaultGet uses the /renter/uploadready endpoint to
+// determine if the renter is ready for upload.
+func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReady, err error) {
+	err = c.get("/renter/uploadready", &rur)
+	return
+}
