@@ -98,7 +98,21 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return errors.AddContext(err, "failed to upload backup")
 	}
 	// Wait for the upload to finish.
-	time.Sleep(5 * time.Second)
+	//
+	// TODO: do this without polling
+	for start := time.Now(); time.Since(start) < uploadPollTimeout; {
+		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+		info, err := r.staticBackupFileSet.FileInfo(sp, offlineMap, goodForRenewMap, contractsMap)
+		if err == nil && info.Available && info.Recoverable {
+			break
+		}
+		// sleep for a bit before trying again
+		select {
+		case <-time.After(uploadPollInterval):
+		case <-r.tg.StopChan():
+			return errors.New("interrupted by shutdown")
+		}
+	}
 
 	// Grab the entry for the uploaded backup's siafile.
 	entry, err := r.staticBackupFileSet.Open(sp)
