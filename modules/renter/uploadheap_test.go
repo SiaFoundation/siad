@@ -27,7 +27,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	}
 
 	// Create file on disk
-	path, err := rt.createTestFileOnDisk()
+	path, err := rt.createZeroByteFileOnDisk()
 	if err != nil {
 		t.Fatal(err)
 	}
