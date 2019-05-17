@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"io/ioutil"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -52,6 +54,17 @@ func (rt *renterTester) addRenter(r *Renter) error {
 		}
 	}
 	return nil
+}
+
+// createTestFileOnDisk creates a 0 byte file on disk so that a Stat of the
+// local path won't return an error
+func (rt *renterTester) createTestFileOnDisk() (string, error) {
+	path := filepath.Join(rt.renter.staticFilesDir, persist.RandomSuffix())
+	err := ioutil.WriteFile(path, []byte{}, 0600)
+	if err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // newRenterTester creates a ready-to-use renter tester with money in the

@@ -1,34 +1,16 @@
 package renter
 
 import (
-	"io/ioutil"
 	"math"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
-
-var (
-	renterTestDir = filepath.Join(os.TempDir(), filepath.Join("SiaTesting", "renter"))
-)
-
-// createTestFileOnDisk creates a 0 byte file on disk so that a Stat of the
-// local path won't return an error
-func createTestFileOnDisk(testName string) (string, error) {
-	path := filepath.Join(renterTestDir, filepath.Join(testName, persist.RandomSuffix()))
-	err := ioutil.WriteFile(path, []byte{}, 0600)
-	if err != nil {
-		return "", err
-	}
-	return path, nil
-}
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
 // correct chunks are being added to the heap
@@ -45,7 +27,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	}
 
 	// Create file on disk
-	path, err := createTestFileOnDisk(t.Name())
+	path, err := rt.createTestFileOnDisk()
 	if err != nil {
 		t.Fatal(err)
 	}
