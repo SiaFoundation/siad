@@ -219,24 +219,51 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		if info.IsDir() {
 			return nil
 		}
-		// Get the siafile.
-		siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
-		if err != nil {
-			return err
+		// Handle siafiles and siadirs differently.
+		var file io.ReadCloser
+		if filepath.Ext(path) == modules.SiaFileExtension {
+			// Get the siafile.
+			siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
+			if err != nil {
+				return err
+			}
+			entry, err := r.staticFileSet.Open(siaPath)
+			if err != nil {
+				return err
+			}
+			defer entry.Close()
+			// Get a reader to read from the siafile.
+			file, err = entry.SnapshotReader()
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+		} else if filepath.Ext(path) == modules.SiaDirExtension {
+			// Get the siadir.
+			var siaPath modules.SiaPath
+			siaPathStr := strings.TrimSuffix(relPath, modules.SiaDirExtension)
+			if siaPathStr == string(filepath.Separator) {
+				siaPath = modules.RootSiaPath()
+			} else {
+				siaPath, err = modules.NewSiaPath(siaPathStr)
+				if err != nil {
+					return err
+				}
+			}
+			entry, err := r.staticDirSet.Open(siaPath)
+			if err != nil {
+				return err
+			}
+			defer entry.Close()
+			// Get a reader to read from the siafile.
+			file, err = entry.DirReader()
+			if err != nil {
+				return err
+			}
+			defer file.Close()
 		}
-		entry, err := r.staticFileSet.Open(siaPath)
-		if err != nil {
-			return err
-		}
-		defer entry.Close()
-		// Get a reader to read from the siafile.
-		sr, err := entry.SnapshotReader()
-		if err != nil {
-			return err
-		}
-		defer sr.Close()
 		// Add the file to the archive.
-		_, err = io.Copy(tw, sr)
+		_, err = io.Copy(tw, file)
 		return err
 	})
 }
