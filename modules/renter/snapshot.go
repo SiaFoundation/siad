@@ -523,9 +523,18 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// hosts in subsequent iterations of the synchronization loop.
 				id := r.mu.Lock()
 				for _, ub := range unknown {
-					r.persist.UploadedBackups = append(r.persist.UploadedBackups, ub)
 					known[ub.UID] = struct{}{}
-					r.log.Println("Located new snapshot", ub.UID)
+					// It's possible that a new backup was created since we last
+					// updated known, so double-check before appending to
+					// UploadedBackups.
+					var found bool
+					for i := range r.persist.UploadedBackups {
+						found = found || r.persist.UploadedBackups[i].UID == ub.UID
+					}
+					if !found {
+						r.persist.UploadedBackups = append(r.persist.UploadedBackups, ub)
+						r.log.Println("Located new snapshot", ub.UID)
+					}
 				}
 				r.mu.Unlock(id)
 			}

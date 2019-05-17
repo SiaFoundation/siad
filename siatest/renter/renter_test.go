@@ -4760,7 +4760,7 @@ func TestRemoteBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	} else if len(ubs) != 2 {
-		t.Fatal("expected two backups, got", len(ubs))
+		t.Fatal("expected two backups, got", ubs)
 	}
 
 	// Delete both files and restore the first snapshot.
@@ -4822,7 +4822,7 @@ func TestRemoteBackup(t *testing.T) {
 		if err != nil {
 			return err
 		} else if len(ubs) != 2 {
-			return fmt.Errorf("expected two backups, got %v", len(ubs))
+			return fmt.Errorf("expected two backups, got %v", ubs)
 		}
 		return nil
 	})
