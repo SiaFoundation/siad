@@ -474,6 +474,10 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		var found bool
 		var c modules.RenterContract
 		for _, c = range contracts {
+			// ignore bad contracts
+			if !c.Utility.GoodForRenew || !c.Utility.GoodForUpload {
+				continue
+			}
 			if _, ok := syncedContracts[c.ID]; !ok {
 				found = true
 				break
