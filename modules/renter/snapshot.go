@@ -303,16 +303,32 @@ func (r *Renter) managedUploadSnapshot(name string, dotSia []byte) error {
 			continue
 		}
 		numHosts++
+
+		// Save the new snapshot as soon as it has been uploaded to any host.
+		// Since we'll execute this on every loop iteration, check for the
+		// snapshot first to ensure that we only append+save once.
+		//
+		// NOTE: looping through UploadedBackups is not the most efficient way
+		// to accomplish the "exactly once" behavior we want, but it's required
+		// for a different reason: it's technically possible that
+		// threadedSynchronizeSnapshots will find and download the snapshot we
+		// just uploaded before we have a chance to save it, which would lead to
+		// us saving the same snapshot twice.
+		id := r.mu.RLock()
+		var found bool
+		for _, ub := range r.persist.UploadedBackups {
+			found = found || ub.UID == meta.UID
+		}
+		if !found {
+			r.persist.UploadedBackups = append(r.persist.UploadedBackups, meta)
+			if err := r.saveSync(); err != nil {
+				return err
+			}
+		}
+		r.mu.RUnlock(id)
 	}
 	if numHosts == 0 {
 		r.log.Println("WARN: Failed to upload snapshot to at least one host")
-	}
-	// save the new snapshot
-	id := r.mu.RLock()
-	defer r.mu.RUnlock(id)
-	r.persist.UploadedBackups = append(r.persist.UploadedBackups, meta)
-	if err := r.saveSync(); err != nil {
-		return err
 	}
 
 	return nil
