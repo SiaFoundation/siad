@@ -83,7 +83,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 			// TODO: Ideally these two things would happen atomically, but I'm
 			// not completely certain that's feasible with our current
 			// architecture.
-			err := c.saveSync()
+			err := c.save()
 			if err != nil {
 				c.log.Println("Failed to save the contractor after updating renewed maps.")
 			}
@@ -751,7 +751,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// Store the contract in the record of historic contracts.
 	c.oldContracts[id] = oldContract.Metadata()
 	// Save the contractor.
-	err = c.saveSync()
+	err = c.save()
 	if err != nil {
 		c.log.Println("Failed to save the contractor after creating a new contract.")
 	}
@@ -759,6 +759,22 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// Delete the old contract.
 	c.staticContracts.Delete(oldContract)
 	return amount, nil
+}
+
+// managedFindRecoverableContracts will spawn a thread to rescan parts of the
+// blockchain for recoverable contracts if the wallet has been locked during the
+// last scan.
+func (c *Contractor) managedFindRecoverableContracts() {
+	if c.staticDeps.Disrupt("disableAutomaticContractRecoveryScan") {
+		return
+	}
+	c.mu.RLock()
+	cc := c.recentRecoveryChange
+	c.mu.RUnlock()
+	if err := c.managedInitRecoveryScan(cc); err != nil {
+		c.log.Debug(err)
+		return
+	}
 }
 
 // threadedContractMaintenance checks the set of contracts that the contractor
@@ -793,6 +809,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Perform general cleanup of the contracts. This includes recovering lost
 	// contracts, archiving contracts, and other cleanup work. This should all
 	// happen before the rest of the maintenance.
+	c.managedFindRecoverableContracts()
 	c.managedRecoverContracts()
 	c.managedArchiveContracts()
 	c.managedCheckForDuplicates()
@@ -1100,7 +1117,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			return
 		}
 		c.mu.Lock()
-		err = c.saveSync()
+		err = c.save()
 		c.mu.Unlock()
 		if err != nil {
 			c.log.Println("Unable to save the contractor:", err)

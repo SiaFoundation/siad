@@ -83,7 +83,7 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 		unlockContracts = true
 	}
 	c.allowance = a
-	err := c.saveSync()
+	err := c.save()
 	c.mu.Unlock()
 	if err != nil {
 		c.log.Println("Unable to save contractor after setting allowance:", err)
@@ -164,7 +164,7 @@ func (c *Contractor) managedCancelAllowance() error {
 	c.mu.Lock()
 	c.allowance = modules.Allowance{}
 	c.currentPeriod = 0
-	err := c.saveSync()
+	err := c.save()
 	c.mu.Unlock()
 	if err != nil {
 		return err

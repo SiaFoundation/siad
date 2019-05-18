@@ -664,6 +664,22 @@ func (tg *TestGroup) StartNode(tn *TestNode) error {
 	return synchronizationCheck(tg.nodes)
 }
 
+// StartNodeCleanDeps starts a node from the group that has previously been
+// stopped without its previously assigned dependencies.
+func (tg *TestGroup) StartNodeCleanDeps(tn *TestNode) error {
+	if _, exists := tg.nodes[tn]; !exists {
+		return errors.New("cannot start node that's not part of the group")
+	}
+	err := tn.StartNodeCleanDeps()
+	if err != nil {
+		return err
+	}
+	if err := fullyConnectNodes(tg.Nodes()); err != nil {
+		return err
+	}
+	return synchronizationCheck(tg.nodes)
+}
+
 // StopNode stops a node of a group.
 func (tg *TestGroup) StopNode(tn *TestNode) error {
 	if _, exists := tg.nodes[tn]; !exists {
