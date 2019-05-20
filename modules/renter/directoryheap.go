@@ -3,6 +3,7 @@ package renter
 import (
 	"container/heap"
 	"fmt"
+	"math"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -12,6 +13,10 @@ import (
 // directory is a helper struct that represents a siadir in the
 // repairDirectoryHeap
 type directory struct {
+	// Heap controlled fields
+	index int // The index of the item in the heap
+
+	// mu controlled fields
 	aggregateHealth float64
 	health          float64
 	explored        bool
@@ -27,7 +32,7 @@ type directoryHeap struct {
 
 	// heapDirectories is a map containing all the directories currently in the
 	// heap
-	heapDirectories map[modules.SiaPath]struct{}
+	heapDirectories map[modules.SiaPath]*directory
 
 	mu sync.Mutex
 }
@@ -66,14 +71,23 @@ func (rdh repairDirectoryHeap) Less(i, j int) bool {
 	// Prioritize higher health
 	return iHealth > jHealth
 }
-func (rdh repairDirectoryHeap) Swap(i, j int)       { rdh[i], rdh[j] = rdh[j], rdh[i] }
-func (rdh *repairDirectoryHeap) Push(x interface{}) { *rdh = append(*rdh, x.(*directory)) }
+func (rdh repairDirectoryHeap) Swap(i, j int) {
+	rdh[i], rdh[j] = rdh[j], rdh[i]
+	rdh[i].index, rdh[j].index = i, j
+}
+func (rdh *repairDirectoryHeap) Push(x interface{}) {
+	n := len(*rdh)
+	d := x.(*directory)
+	d.index = n
+	*rdh = append(*rdh, d)
+}
 func (rdh *repairDirectoryHeap) Pop() interface{} {
 	old := *rdh
 	n := len(old)
-	dir := old[n-1]
+	d := old[n-1]
+	d.index = -1 // for safety
 	*rdh = old[0 : n-1]
-	return dir
+	return d
 }
 
 // managedEmpty clears the directory heap by recreating the heap and
@@ -81,7 +95,7 @@ func (rdh *repairDirectoryHeap) Pop() interface{} {
 func (dh *directoryHeap) managedEmpty() {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
-	dh.heapDirectories = make(map[modules.SiaPath]struct{})
+	dh.heapDirectories = make(map[modules.SiaPath]*directory)
 	dh.heap = repairDirectoryHeap{}
 }
 
@@ -107,22 +121,43 @@ func (dh *directoryHeap) managedPop() (d *directory) {
 func (dh *directoryHeap) managedPush(d *directory) bool {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
-	var added bool
 	_, exists := dh.heapDirectories[d.siaPath]
-	if !exists {
-		heap.Push(&dh.heap, d)
-		dh.heapDirectories[d.siaPath] = struct{}{}
-		added = true
+	if exists {
+		return false
 	}
-	return added
+	heap.Push(&dh.heap, d)
+	dh.heapDirectories[d.siaPath] = d
+	return true
 }
 
-// managedPushUnexploredDirectory adds an unexplored directory to the directory
-// heap
-func (dh *directoryHeap) managedPushUnexploredDirectory(siaPath modules.SiaPath, aggregateHealth, health float64) error {
+// managedUpdate will update the directory that is currently in the heap based
+// on the directory pasted in.
+//
+// The worse health will be kept and explored will be prioritized over
+// unexplored
+func (dh *directoryHeap) managedUpdate(d *directory) bool {
+	dh.mu.Lock()
+	defer dh.mu.Unlock()
+	heapDir, exists := dh.heapDirectories[d.siaPath]
+	if !exists {
+		return false
+	}
+	// Update the fields of the directory in the heap
+	heapDir.mu.Lock()
+	heapDir.aggregateHealth = math.Max(heapDir.aggregateHealth, d.aggregateHealth)
+	heapDir.health = math.Max(heapDir.health, d.health)
+	heapDir.explored = heapDir.explored || d.explored
+	heapDir.mu.Unlock()
+	heap.Fix(&dh.heap, heapDir.index)
+	return true
+}
+
+// managedPushDirectory adds a directory to the directory heap
+func (dh *directoryHeap) managedPushDirectory(siaPath modules.SiaPath, aggregateHealth, health float64, explored bool) error {
 	d := &directory{
 		aggregateHealth: aggregateHealth,
 		health:          health,
+		explored:        explored,
 		siaPath:         siaPath,
 	}
 	if !dh.managedPush(d) {
@@ -206,7 +241,7 @@ func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
 	metadata := siaDir.Metadata()
 
 	// Push unexplored directory onto heap
-	return r.directoryHeap.managedPushUnexploredDirectory(siaPath, metadata.AggregateHealth, metadata.Health)
+	return r.directoryHeap.managedPushDirectory(siaPath, metadata.AggregateHealth, metadata.Health, false)
 }
 
 // managedResetDirectoryHeap resets the directory heap by clearing it and then
