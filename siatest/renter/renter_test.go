@@ -296,6 +296,7 @@ func TestRenterFour(t *testing.T) {
 	// Specify subtests to run
 	subTests := []test{
 		{"TestStreamRepair", testStreamRepair},
+		{"TestEscapeSiaPath", testEscapeSiaPath},
 	}
 
 	// Run tests
@@ -4994,5 +4995,75 @@ func TestRemoteBackup(t *testing.T) {
 	}
 	if _, err := r.DownloadToDisk(rf2, false); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testEscapeSiaPath tests that SiaPaths are escaped correctly to handle escape
+// characters
+func testEscapeSiaPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	r := tg.Renters()[0]
+
+	// Check that we have enough hosts for this test.
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
+
+	// Set fileSize and redundancy for upload
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+
+	// Create Local File
+	lf, err := r.FilesDir().NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File names to tests
+	names := []string{
+		"dollar$sign",
+		"and&sign",
+		"single`quote",
+		"full:colon",
+		"semi;colon",
+		"hash#tag",
+		"percent%sign",
+		"at@sign",
+		"less<than",
+		"greater>than",
+		"equal=to",
+		"question?mark",
+		"open[bracket",
+		"close]bracket",
+		"open{bracket",
+		"close}bracket",
+		"carrot^top",
+		"pipe|pipe",
+		"tilda~tilda",
+		"plus+sign",
+		"minus-sign",
+		"under_score",
+		"comma,comma",
+		"apostrophy's",
+		`quotation"marks`,
+	}
+	for _, s := range names {
+		// Create SiaPath
+		siaPath, err := modules.NewSiaPath(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Upload file
+		_, err = r.Upload(lf, siaPath, dataPieces, parityPieces, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Confirm we can get file
+		_, err = r.RenterFileGet(siaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
