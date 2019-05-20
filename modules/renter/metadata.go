@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -294,10 +293,6 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 	//  Open SiaDir
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil && err.Error() == siadir.ErrUnknownPath.Error() {
-		// Missing siadir files should be rare. Call severe error to trigger an
-		// investigation
-		build.Severe("siadir metadata file is missing for", siaPath.String())
-
 		// If siadir doesn't exist create one
 		siaDir, err = r.staticDirSet.NewSiaDir(siaPath)
 		if err != nil {
