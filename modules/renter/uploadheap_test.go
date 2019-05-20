@@ -1,8 +1,8 @@
 package renter
 
 import (
-	"fmt"
 	"math"
+	"os"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -26,6 +26,11 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Create file on disk
+	path, err := rt.createZeroByteFileOnDisk()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Create file with more than 1 chunk and mark the first chunk at stuck
 	rsc, _ := siafile.NewRSCode(1, 1)
 	siaPath, err := modules.NewSiaPath("stuckFile")
@@ -33,7 +38,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 	up := modules.FileUploadParams{
-		Source:      "",
+		Source:      path,
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
@@ -48,21 +53,10 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add 1 piece to each chunk
+	// Create maps to pass into methods
 	hosts := make(map[string]struct{})
 	offline := make(map[string]bool)
 	goodForRenew := make(map[string]bool)
-	for i := uint64(0); i < f.NumChunks(); i++ {
-		host := fmt.Sprintln("host", i)
-		spk := types.SiaPublicKey{}
-		spk.LoadString(host)
-		hosts[spk.String()] = struct{}{}
-		goodForRenew[spk.String()] = true
-		offline[spk.String()] = false
-		if err := f.AddPiece(spk, i, 0, crypto.Hash{}); err != nil {
-			t.Fatal(err)
-		}
-	}
 
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
@@ -99,12 +93,14 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		}
 	}
 
-	// Reset offline and goodForRenewMaps to make chunks seem not downloadable
-	goodForRenew = make(map[string]bool)
-	offline = make(map[string]bool)
+	// Remove file on disk to make file not repairable
+	err = os.Remove(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Call buildUnfinishedChunks as not stuck loop, since the file is now not
-	// downloadable it should return no chunks
+	// repairable it should return no chunks
 	id = rt.renter.mu.Lock()
 	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
 	rt.renter.mu.Unlock(id)
@@ -114,7 +110,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Call buildUnfinishedChunks as stuck loop, all chunks should be returned
 	// because they should have been marked as stuck by the previous call and
-	// stuck chunks should still be returned if the file is not downloadable
+	// stuck chunks should still be returned if the file is not repairable
 	id = rt.renter.mu.Lock()
 	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
 	rt.renter.mu.Unlock(id)

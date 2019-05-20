@@ -34,6 +34,7 @@ type unfinishedUploadChunk struct {
 	// to update these fields. Compatibility shouldn't be an issue because this
 	// struct is not persisted anywhere, it's always built from other
 	// structures.
+	health         float64
 	index          uint64
 	length         uint64
 	memoryNeeded   uint64 // memory needed in bytes
