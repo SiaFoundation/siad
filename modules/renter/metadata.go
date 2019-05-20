@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -292,24 +293,17 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 
 	//  Open SiaDir
 	siaDir, err := r.staticDirSet.Open(siaPath)
-	if os.IsNotExist(err) {
-		// Remember initial Error
-		initError := err
-		// Metadata file does not exists, check if directory is empty
-		fileInfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
+	if err != nil && err.Error() == siadir.ErrUnknownPath.Error() {
+		// Missing siadir files should be rare. Call severe error to trigger an
+		// investigation
+		build.Severe("siadir metadata file is missing for", siaPath.String())
+
+		// If siadir doesn't exist create one
+		siaDir, err = r.staticDirSet.NewSiaDir(siaPath)
 		if err != nil {
 			return siadir.Metadata{}, err
 		}
-		// If the directory is empty and is not the root directory, assume it
-		// was deleted so do not create a metadata file
-		if len(fileInfos) == 0 && !siaPath.IsRoot() {
-			return siadir.Metadata{}, initError
-		}
-		// If we are at the root directory or the directory is not empty, create
-		// a metadata file
-		siaDir, err = r.staticDirSet.NewSiaDir(siaPath)
-	}
-	if err != nil {
+	} else if err != nil {
 		return siadir.Metadata{}, err
 	}
 	defer siaDir.Close()
