@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -325,7 +324,7 @@ func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http
 	rups := make([]RenterUploadedBackup, len(backups))
 	for i, b := range backups {
 		rups[i] = RenterUploadedBackup{
-			Name:         string(bytes.TrimRight(b.Name[:], string(0))),
+			Name:         b.NameString(),
 			CreationDate: b.CreationDate,
 			Size:         b.Size,
 		}

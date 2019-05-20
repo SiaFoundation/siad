@@ -151,13 +151,11 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	if len(name) > 96 {
 		return errors.New("no record of a backup with that name")
 	}
-	var encName [96]byte
-	copy(encName[:], name)
 	var uid [16]byte
 	var found bool
 	id := r.mu.RLock()
 	for _, b := range r.persist.UploadedBackups {
-		if b.Name == encName {
+		if b.NameString() == name {
 			uid = b.UID
 			found = true
 			break
@@ -575,7 +573,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// Record the new snapshots; they'll be replicated to the other
 				// hosts in subsequent iterations of the synchronization loop.
 				for _, ub := range unknown {
-					r.log.Println("Located new snapshot", ub.UID)
+					r.log.Println("Located new snapshot", ub.NameString(), "on host", c.HostPublicKey)
 					known[ub.UID] = struct{}{}
 					if err := r.managedSaveNewSnapshot(ub); err != nil {
 						return err
@@ -612,6 +610,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			continue
 		}
 		// Mark the contract as synchronized.
+		r.log.Println("Synchronized snapshots on host", c.HostPublicKey)
 		syncedContracts[c.ID] = struct{}{}
 		// Commit the set of synchronized hosts.
 		id = r.mu.Lock()
@@ -620,7 +619,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			r.persist.SyncedContracts = append(r.persist.SyncedContracts, fcid)
 		}
 		if err := r.saveSync(); err != nil {
-			r.log.Println(err)
+			r.log.Println("Failed to update set of synced hosts:", err)
 		}
 		r.mu.Unlock(id)
 	}
