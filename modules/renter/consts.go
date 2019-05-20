@@ -163,8 +163,8 @@ var (
 	// uploadPollTimeout defines the maximum amount of time the renter will poll
 	// for an upload to complete.
 	uploadPollTimeout = build.Select(build.Var{
-		Dev:      30 * time.Second,
-		Standard: 5 * time.Minute,
+		Dev:      5 * time.Minute,
+		Standard: 60 * time.Minute,
 		Testing:  10 * time.Second,
 	}).(time.Duration)
 
