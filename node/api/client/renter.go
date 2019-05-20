@@ -385,18 +385,20 @@ func (c *Client) RenterStreamPartialGet(siaPath modules.SiaPath, start, end uint
 // RenterSetRepairPathPost uses the /renter/tracking endpoint to set the repair
 // path of a file to a new location. The file at newPath must exists.
 func (c *Client) RenterSetRepairPathPost(siaPath modules.SiaPath, newPath string) (err error) {
+	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("trackingpath", newPath)
-	err = c.post("/renter/file/"+siaPath.String(), values.Encode(), nil)
+	err = c.post(fmt.Sprintf("/renter/file/%v", sp), values.Encode(), nil)
 	return
 }
 
 // RenterSetFileStuckPost sets the 'stuck' field of the siafile at siaPath to
 // stuck.
 func (c *Client) RenterSetFileStuckPost(siaPath modules.SiaPath, stuck bool) (err error) {
+	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("stuck", fmt.Sprint(stuck))
-	err = c.post("/renter/file/"+siaPath.String(), values.Encode(), nil)
+	err = c.post(fmt.Sprintf("/renter/file/%v", sp), values.Encode(), nil)
 	return
 }
 
@@ -455,14 +457,16 @@ func (c *Client) RenterUploadStreamRepairPost(r io.Reader, siaPath modules.SiaPa
 // RenterDirCreatePost uses the /renter/dir/ endpoint to create a directory for the
 // renter
 func (c *Client) RenterDirCreatePost(siaPath modules.SiaPath) (err error) {
-	err = c.post(fmt.Sprintf("/renter/dir/%s", siaPath.String()), "action=create", nil)
+	sp := escapeSiaPath(siaPath)
+	err = c.post(fmt.Sprintf("/renter/dir/%s", sp), "action=create", nil)
 	return
 }
 
 // RenterDirDeletePost uses the /renter/dir/ endpoint to delete a directory for the
 // renter
 func (c *Client) RenterDirDeletePost(siaPath modules.SiaPath) (err error) {
-	err = c.post(fmt.Sprintf("/renter/dir/%s", siaPath.String()), "action=delete", nil)
+	sp := escapeSiaPath(siaPath)
+	err = c.post(fmt.Sprintf("/renter/dir/%s", sp), "action=delete", nil)
 	return
 }
 
@@ -477,6 +481,7 @@ func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err e
 
 // RenterGetDir uses the /renter/dir/ endpoint to query a directory
 func (c *Client) RenterGetDir(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
-	err = c.get(fmt.Sprintf("/renter/dir/%s", siaPath.String()), &rd)
+	sp := escapeSiaPath(siaPath)
+	err = c.get(fmt.Sprintf("/renter/dir/%s", sp), &rd)
 	return
 }
