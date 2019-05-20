@@ -4342,7 +4342,8 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err := tg.RemoveNode(r); err != nil {
 		t.Fatal(err)
 	}
-	// Start a new renter from the same seed.
+	// Start a new renter from the same seed Disable its health and repair loops to
+	// avoid updating the .siadir file.
 	rt := node.RenterTemplate
 	rt.PrimarySeed = wsg.PrimarySeed
 	nodes, err := tg.AddNodes(rt)
@@ -4353,6 +4354,16 @@ func TestCreateLoadBackup(t *testing.T) {
 	// Recover the backup.
 	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
 		t.Fatal(err)
+	}
+	// The .siadir file should also be recovered.
+	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, "subDir", modules.SiaDirExtension)
+	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
+		t.Fatal(".siadir file doesn't exist")
+	}
+	// There shouldn't be a .siadir_1 file as we don't replace existing .siadir
+	// files.
+	if _, err := os.Stat(dirMDPath + "_1"); !os.IsNotExist(err) {
+		t.Fatal(".siadir_1 file does exist")
 	}
 	// The file should be available and ready for download again.
 	if _, err := r.DownloadByStream(rf); err != nil {
@@ -4394,6 +4405,15 @@ func TestCreateLoadBackup(t *testing.T) {
 	_, err = r.RenterFileGet(sp)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The .siadir file should still exist.
+	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
+		t.Fatal(".siadir file doesn't exist")
+	}
+	// There shouldn't be a .siadir_1 file as we don't replace existing .siadir
+	// files.
+	if _, err := os.Stat(dirMDPath + "_1"); !os.IsNotExist(err) {
+		t.Fatal(".siadir_1 file does exist")
 	}
 }
 

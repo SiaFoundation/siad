@@ -200,7 +200,8 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			return err
 		}
 		// Nothing to do for non-folders and non-siafiles.
-		if !info.IsDir() && filepath.Ext(path) != modules.SiaFileExtension {
+		if !info.IsDir() && filepath.Ext(path) != modules.SiaFileExtension &&
+			filepath.Ext(path) != modules.SiaDirExtension {
 			return nil
 		}
 		// Create the header for the file/dir.
@@ -218,24 +219,51 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		if info.IsDir() {
 			return nil
 		}
-		// Get the siafile.
-		siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
-		if err != nil {
-			return err
+		// Handle siafiles and siadirs differently.
+		var file io.ReadCloser
+		if filepath.Ext(path) == modules.SiaFileExtension {
+			// Get the siafile.
+			siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
+			if err != nil {
+				return err
+			}
+			entry, err := r.staticFileSet.Open(siaPath)
+			if err != nil {
+				return err
+			}
+			defer entry.Close()
+			// Get a reader to read from the siafile.
+			file, err = entry.SnapshotReader()
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+		} else if filepath.Ext(path) == modules.SiaDirExtension {
+			// Get the siadir.
+			var siaPath modules.SiaPath
+			siaPathStr := strings.TrimSuffix(relPath, modules.SiaDirExtension)
+			if siaPathStr == string(filepath.Separator) {
+				siaPath = modules.RootSiaPath()
+			} else {
+				siaPath, err = modules.NewSiaPath(siaPathStr)
+				if err != nil {
+					return err
+				}
+			}
+			entry, err := r.staticDirSet.Open(siaPath)
+			if err != nil {
+				return err
+			}
+			defer entry.Close()
+			// Get a reader to read from the siafile.
+			file, err = entry.DirReader()
+			if err != nil {
+				return err
+			}
+			defer file.Close()
 		}
-		entry, err := r.staticFileSet.Open(siaPath)
-		if err != nil {
-			return err
-		}
-		defer entry.Close()
-		// Get a reader to read from the siafile.
-		sr, err := entry.SnapshotReader()
-		if err != nil {
-			return err
-		}
-		defer sr.Close()
 		// Add the file to the archive.
-		_, err = io.Copy(tw, sr)
+		_, err = io.Copy(tw, file)
 		return err
 	})
 }
@@ -261,10 +289,16 @@ func untarDir(tr *tar.Reader, dstFolder string) error {
 			}
 			continue
 		}
-		// Add a suffix to the dst path if the file already exists.
-		dst = uniqueFilename(dst)
+		// Add a suffix to the dst path if the file already exists for siafiles.
+		uniqueName := filepath.Ext(dst) == modules.SiaFileExtension
+		if uniqueName {
+			dst = uniqueFilename(dst)
+		}
 		// Create file while preserving mode.
-		f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
+		f, err := os.OpenFile(dst, os.O_EXCL|os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
+		if !uniqueName && os.IsExist(err) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
