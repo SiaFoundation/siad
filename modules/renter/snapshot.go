@@ -101,7 +101,8 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	// Wait for the upload to finish.
 	//
 	// TODO: do this without polling
-	for start := time.Now(); time.Since(start) < uploadPollTimeout; {
+	uploadStartTime := time.Now()
+	for {
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 		info, err := r.staticBackupFileSet.FileInfo(sp, offlineMap, goodForRenewMap, contractsMap)
 		if err == nil && info.Available && info.Recoverable {
@@ -110,6 +111,9 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		// sleep for a bit before trying again
 		select {
 		case <-time.After(uploadPollInterval):
+			if time.Since(uploadStartTime) > uploadPollTimeout {
+				return errors.New("backup upload timed out")
+			}
 		case <-r.tg.StopChan():
 			return errors.New("interrupted by shutdown")
 		}
