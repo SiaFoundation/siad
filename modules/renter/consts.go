@@ -172,7 +172,7 @@ var (
 	// file to upload.
 	uploadPollInterval = build.Select(build.Var{
 		Dev:      5 * time.Second,
-		Standard: 30 * time.Second,
+		Standard: 5 * time.Second,
 		Testing:  1 * time.Second,
 	}).(time.Duration)
 
