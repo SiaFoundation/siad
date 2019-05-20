@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -238,6 +239,7 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 		return err
 	}
 	encTable, err := crypto.DecryptWithNonce(tableSector, aead)
+
 	// check that the sector actually contains an entry table. If so, we
 	// should replace the old table; if not, we should swap the old
 	// sector to the end, but not delete it.
@@ -251,18 +253,65 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 		}
 	}
 	entryTable = append(entryTable, entry)
-	// if entryTable is too large to fit in a sector, remove old entries until it fits
+
+	// if entryTable is too large to fit in a sector, repeatedly remove the
+	// oldest entry until it fits
+	sort.Slice(r.persist.UploadedBackups, func(i, j int) bool {
+		return r.persist.UploadedBackups[i].CreationDate > r.persist.UploadedBackups[j].CreationDate
+	})
 	overhead := types.SpecifierLen + aead.Overhead() + aead.NonceSize()
 	for len(encoding.Marshal(entryTable))+overhead > int(modules.SectorSize) {
-		entryTable = entryTable[1:]
+		entryTable = entryTable[:len(entryTable)-1]
 	}
+
+	// encode and encrypt the table
 	newTable := make([]byte, modules.SectorSize-uint64(aead.Overhead()+aead.NonceSize()))
 	copy(newTable[:16], snapshotTableSpecifier[:])
 	copy(newTable[16:], encoding.Marshal(entryTable))
 	tableSector = crypto.EncryptWithNonce(newTable, aead)
+
 	// swap the new entry table into index 0 and delete the old one
 	// (unless it wasn't an entry table)
 	if _, err := host.Replace(tableSector, 0, haveValidTable); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Renter) managedSaveNewSnapshot(meta modules.UploadedBackup) error {
+	id := r.mu.RLock()
+	defer r.mu.RUnlock(id)
+	// Check whether we've already saved this snapshot.
+	for _, ub := range r.persist.UploadedBackups {
+		if ub.UID == meta.UID {
+			return nil
+		}
+	}
+	// Append the new snapshot.
+	r.persist.UploadedBackups = append(r.persist.UploadedBackups, meta)
+	// Trim the set of snapshots if necessary. Hosts can only store a finite
+	// number of snapshots, so if we exceed that number, we kick out the oldest
+	// snapshot. We check the size by encoding a slice of snapshotEntrys, adding
+	// the encryption overhead, and removing elements from the slice until the
+	// encoded size fits on the host.
+	//
+	// NOTE: snapshotEntrys are constant-size, so we don't need to initialize
+	// them beyond a simple 'make'.
+	entryTable := make([]snapshotEntry, len(r.persist.UploadedBackups))
+	c, _ := twofish.NewCipher(make([]byte, 32))
+	aead, _ := cipher.NewGCM(c)
+	overhead := types.SpecifierLen + aead.Overhead() + aead.NonceSize()
+	for len(encoding.Marshal(entryTable))+overhead > int(modules.SectorSize) {
+		entryTable = entryTable[1:]
+	}
+	// Sort by CreationDate (youngest-to-oldest) and remove excess elements from
+	// the end.
+	sort.Slice(r.persist.UploadedBackups, func(i, j int) bool {
+		return r.persist.UploadedBackups[i].CreationDate > r.persist.UploadedBackups[j].CreationDate
+	})
+	r.persist.UploadedBackups = r.persist.UploadedBackups[:len(entryTable)]
+	// Save the result.
+	if err := r.saveSync(); err != nil {
 		return err
 	}
 	return nil
@@ -302,30 +351,14 @@ func (r *Renter) managedUploadSnapshot(name string, dotSia []byte) error {
 			r.log.Printf("Uploading snapshot to host %v failed: %v", hostKey, err)
 			continue
 		}
-		numHosts++
 
 		// Save the new snapshot as soon as it has been uploaded to any host.
-		// Since we'll execute this on every loop iteration, check for the
-		// snapshot first to ensure that we only append+save once.
-		//
-		// NOTE: looping through UploadedBackups is not the most efficient way
-		// to accomplish the "exactly once" behavior we want, but it's required
-		// for a different reason: it's technically possible that
-		// threadedSynchronizeSnapshots will find and download the snapshot we
-		// just uploaded before we have a chance to save it, which would lead to
-		// us saving the same snapshot twice.
-		id := r.mu.RLock()
-		var found bool
-		for _, ub := range r.persist.UploadedBackups {
-			found = found || ub.UID == meta.UID
-		}
-		if !found {
-			r.persist.UploadedBackups = append(r.persist.UploadedBackups, meta)
-			if err := r.saveSync(); err != nil {
+		if numHosts == 0 {
+			if err := r.managedSaveNewSnapshot(meta); err != nil {
 				return err
 			}
 		}
-		r.mu.RUnlock(id)
+		numHosts++
 	}
 	if numHosts == 0 {
 		r.log.Println("WARN: Failed to upload snapshot to at least one host")
@@ -541,22 +574,13 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				}
 				// Record the new snapshots; they'll be replicated to the other
 				// hosts in subsequent iterations of the synchronization loop.
-				id := r.mu.Lock()
 				for _, ub := range unknown {
+					r.log.Println("Located new snapshot", ub.UID)
 					known[ub.UID] = struct{}{}
-					// It's possible that a new backup was created since we last
-					// updated known, so double-check before appending to
-					// UploadedBackups.
-					var found bool
-					for i := range r.persist.UploadedBackups {
-						found = found || r.persist.UploadedBackups[i].UID == ub.UID
-					}
-					if !found {
-						r.persist.UploadedBackups = append(r.persist.UploadedBackups, ub)
-						r.log.Println("Located new snapshot", ub.UID)
+					if err := r.managedSaveNewSnapshot(ub); err != nil {
+						return err
 					}
 				}
-				r.mu.Unlock(id)
 			}
 
 			// Upload any snapshots that the host is missing.
@@ -589,8 +613,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		}
 		// Mark the contract as synchronized.
 		syncedContracts[c.ID] = struct{}{}
-		// Commit the set of known snapshots and the set of synchronized
-		// hosts.
+		// Commit the set of synchronized hosts.
 		id = r.mu.Lock()
 		r.persist.SyncedContracts = r.persist.SyncedContracts[:0]
 		for fcid := range syncedContracts {
