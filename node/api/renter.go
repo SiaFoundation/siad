@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -206,7 +205,7 @@ type (
 func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	upload, err := scanBool(req.FormValue("remote"))
 	if err != nil {
-		WriteError(w, Error{"invalid remote param:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"invalid remote param: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	// Check that destination was specified.
@@ -247,13 +246,13 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 	defer fastrand.Read(secret[:])
 	// Create the backup.
 	if err := api.renter.CreateBackup(backupPath, secret[:32]); err != nil {
-		WriteError(w, Error{"failed to create backup" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to create backup: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	// Upload the backup if requested.
 	if upload {
 		if err := api.renter.UploadBackup(backupPath, dst); err != nil {
-			WriteError(w, Error{"failed to upload backup" + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"failed to upload backup: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -264,7 +263,7 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	download, err := scanBool(req.FormValue("remote"))
 	if err != nil {
-		WriteError(w, Error{"invalid remote param:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"invalid remote param: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	// Check that source was specified.
@@ -284,7 +283,7 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 		defer os.RemoveAll(tmpDir)
 		backupPath = filepath.Join(tmpDir, src)
 		if err := api.renter.DownloadBackup(backupPath, src); err != nil {
-			WriteError(w, Error{"failed to download backup" + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"failed to download backup: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	} else {
@@ -325,7 +324,7 @@ func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http
 	rups := make([]RenterUploadedBackup, len(backups))
 	for i, b := range backups {
 		rups[i] = RenterUploadedBackup{
-			Name:         string(bytes.TrimRight(b.Name[:], string(0))),
+			Name:         b.NameString(),
 			CreationDate: b.CreationDate,
 			Size:         b.Size,
 		}

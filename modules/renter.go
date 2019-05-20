@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -513,6 +514,11 @@ type UploadedBackup struct {
 	UID          [16]byte
 	CreationDate types.Timestamp
 	Size         uint64 // size of snapshot .sia file
+}
+
+// NameString returns the name of the backup with trailing zero bytes removed.
+func (ub *UploadedBackup) NameString() string {
+	return string(bytes.TrimRight(ub.Name[:], string(0)))
 }
 
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
