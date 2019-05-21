@@ -213,7 +213,7 @@ func tryAutoUnlock(srv *server.Server) {
 	if password := os.Getenv("SIA_WALLET_PASSWORD"); password != "" {
 		fmt.Println("Sia Wallet Password found, attempting to auto-unlock wallet")
 		if err := srv.Unlock(password); err != nil {
-			fmt.Println("Auto-unlock failed.")
+			fmt.Println("Auto-unlock failed:", err)
 		} else {
 			fmt.Println("Auto-unlock successful.")
 		}
