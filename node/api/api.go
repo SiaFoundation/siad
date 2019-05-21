@@ -98,8 +98,10 @@ type API struct {
 	tpool    modules.TransactionPool
 	wallet   modules.Wallet
 
-	router   http.Handler
-	routerMu sync.RWMutex
+	downloadMu sync.Mutex
+	downloads  map[string]func()
+	router     http.Handler
+	routerMu   sync.RWMutex
 
 	requiredUserAgent string
 	requiredPassword  string
@@ -140,6 +142,7 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 		renter:            r,
 		tpool:             tp,
 		wallet:            w,
+		downloads:         make(map[string]func()),
 		requiredUserAgent: requiredUserAgent,
 		requiredPassword:  requiredPassword,
 		siadConfig:        cfg,

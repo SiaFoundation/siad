@@ -31,6 +31,10 @@ var (
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
 
+	// ErrDownloadCancelled is the error set when a download was cancelled
+	// manually by the user.
+	ErrDownloadCancelled = errors.New("download was cancelled")
+
 	// PriceEstimationScope is the number of hosts that get queried by the
 	// renter when providing price estimates. Especially for the 'Standard'
 	// variable, there should be congruence with the number of contracts being
@@ -603,7 +607,7 @@ type Renter interface {
 
 	// Download performs a download according to the parameters passed without
 	// blocking, including downloads of `offset` and `length` type.
-	DownloadAsync(params RenterDownloadParameters) error
+	DownloadAsync(params RenterDownloadParameters, onComplete func(error) error) (cancel func(), err error)
 
 	// ClearDownloadHistory clears the download history of the renter
 	// inclusive for before and after times.

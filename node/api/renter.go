@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -1028,6 +1029,28 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 	WriteSuccess(w)
 }
 
+// renterCancelDownloadHandler handles the API call to cancel a download.
+func (api *API) renterCancelDownloadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Get the id.
+	id := req.FormValue("id")
+	if id == "" {
+		WriteError(w, Error{"id not specified"}, http.StatusBadRequest)
+		return
+	}
+	// Get the download from the map and delete it.
+	api.downloadMu.Lock()
+	cancel, ok := api.downloads[id]
+	delete(api.downloads, id)
+	api.downloadMu.Unlock()
+	if !ok {
+		WriteError(w, Error{"download for id not found"}, http.StatusBadRequest)
+		return
+	}
+	// Cancel download and delete it from the map.
+	cancel()
+	WriteSuccess(w)
+}
+
 // renterDownloadHandler handles the API call to download a file.
 func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	params, err := parseDownloadParameters(w, req, ps)
@@ -1036,7 +1059,20 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 		return
 	}
 	if params.Async {
-		err = api.renter.DownloadAsync(params)
+		var cancel func()
+		id := hex.EncodeToString(fastrand.Bytes(16))
+		cancel, err = api.renter.DownloadAsync(params, func(_ error) error {
+			api.downloadMu.Lock()
+			delete(api.downloads, id)
+			api.downloadMu.Unlock()
+			return nil
+		})
+		if err == nil {
+			w.Header().Set("ID", id)
+			api.downloadMu.Lock()
+			api.downloads[id] = cancel
+			api.downloadMu.Unlock()
+		}
 	} else {
 		err = api.renter.Download(params)
 	}

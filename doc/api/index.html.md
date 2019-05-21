@@ -2334,13 +2334,34 @@ If httresp is true, the data will be written to the http response.
 
 #### OPTIONAL
 **async** | boolean
-If async is true, the http request will be non blocking. Can't be used with:  
+If async is true, the http request will be non blocking. Can't be used with
+httpresp. An async download will also set the 'ID' field in the http response
+header to a unique identifier for the async download which can be used to
+cancel the download with the /renter/download/cancel endpoint.
 
 **length** | bytes
 Length of the requested data. Has to be <= filesize-offset.  
 
 **offset** | bytes
 Offset relative to the file start from where the download starts.  
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/download/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/download/cancel?id=<downloadid>"
+```
+
+cancels the download with the given id.
+
+### Query String Parameters
+**id** | string
+ID returned by the /renter/download/*siapath* endpoint when setting
+async=true. It is set in the http header's 'ID' field.
 
 ### Response
 
