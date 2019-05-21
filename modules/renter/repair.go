@@ -283,6 +283,12 @@ func (r *Renter) threadedStuckFileLoop() {
 		dirSiaPath, err := r.managedStuckDirectory()
 		if err != nil && err != errNoStuckFiles {
 			r.log.Debugln("WARN: error getting random stuck directory:", err)
+			// Sleep for a little bit before continuing
+			select {
+			case <-time.After(stuckLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
 			continue
 		}
 		if err == errNoStuckFiles {
@@ -298,7 +304,7 @@ func (r *Renter) threadedStuckFileLoop() {
 				// to the heap
 				err := r.managedAddStuckChunksToHeap(siaPath)
 				if err != nil {
-					r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath, "to heap:", err)
+					r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath.String(), "to heap:", err)
 				}
 			}
 			continue
@@ -310,7 +316,7 @@ func (r *Renter) threadedStuckFileLoop() {
 
 		// Add stuck chunk to upload heap and signal repair needed
 		r.managedBuildChunkHeap(dirSiaPath, hosts, targetStuckChunks)
-		r.log.Debugf("Attempting to repair stuck chunks from directory `%s`", dirSiaPath)
+		r.log.Debugf("Attempting to repair stuck chunks from directory `%s`", dirSiaPath.String())
 		select {
 		case r.uploadHeap.repairNeeded <- struct{}{}:
 		default:
@@ -327,9 +333,10 @@ func (r *Renter) threadedStuckFileLoop() {
 		case siaPath := <-r.uploadHeap.stuckChunkSuccess:
 			// Stuck chunk was successfully repaired. Add the rest of the file
 			// to the heap
+			r.log.Debugln("Stuck repair was successful adding stuck chunks from file", siaPath.String(), "to heap:", err)
 			err := r.managedAddStuckChunksToHeap(siaPath)
 			if err != nil {
-				r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath, "to heap:", err)
+				r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath.String(), "to heap:", err)
 			}
 		}
 
@@ -338,7 +345,15 @@ func (r *Renter) threadedStuckFileLoop() {
 		// is called when a chunk is done with its repair and since this loop
 		// only typically adds one chunk at a time call bubble before the next
 		// iteration is sufficient.
-		r.managedBubbleMetadata(dirSiaPath)
+		err = r.managedBubbleMetadata(dirSiaPath)
+		if err != nil {
+			r.log.Println("Error calling managedBubbleMetadata on `", dirSiaPath.String(), "`:", err)
+			select {
+			case <-time.After(stuckLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
+		}
 	}
 }
 
@@ -394,6 +409,14 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			case <-wakeSignal:
 			}
 		}
-		r.managedBubbleMetadata(siaPath)
+		err = r.managedBubbleMetadata(siaPath)
+		if err != nil {
+			r.log.Println("Error calling managedBubbleMetadata on `", siaPath.String(), "`:", err)
+			select {
+			case <-time.After(healthLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
+		}
 	}
 }

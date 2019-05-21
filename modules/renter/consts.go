@@ -151,6 +151,14 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
+	// stuckLoopErrorSleepDuration indicates how long the stuck loop should
+	// sleep before retrying if there is an error preventing progress.
+	stuckLoopErrorSleepDuration = build.Select(build.Var{
+		Dev:      10 * time.Second,
+		Standard: 30 * time.Second,
+		Testing:  3 * time.Second,
+	}).(time.Duration)
+
 	// uploadAndRepairErrorSleepDuration indicates how long a repair process
 	// should sleep before retrying if there is an error fetching the metadata
 	// of the root directory of the renter's filesystem.

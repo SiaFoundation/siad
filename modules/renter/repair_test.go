@@ -3,6 +3,7 @@ package renter
 import (
 	"encoding/hex"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -836,5 +837,51 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 	if !fileMetadata.ModTime.Equal(modTime) {
 		t.Fatalf("Unexpected modtime, expected %v got %v", modTime, fileMetadata.ModTime)
+	}
+}
+
+// TestCreateMissingSiaDir confirms that the repair code creates a siadir file
+// if one is not found
+func TestCreateMissingSiaDir(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm the siadir file is on disk
+	siaDirPath := modules.RootSiaPath().SiaDirMetadataSysPath(rt.renter.staticFilesDir)
+	_, err = os.Stat(siaDirPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Remove .siadir file on disk
+	err = os.Remove(siaDirPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm siadir is gone
+	_, err = os.Stat(siaDirPath)
+	if !os.IsNotExist(err) {
+		t.Fatal("Err should have been IsNotExist", err)
+	}
+
+	// Create siadir file with managedDirectoryMetadata
+	_, err = rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm it is on disk
+	_, err = os.Stat(siaDirPath)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
