@@ -5011,6 +5011,28 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Confirm siadir exists by querying directory
+	rd, err := r.RenterGetDir(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rd.Directories) != 2 {
+		t.Fatal("Expected root and 1 subdirectory but got", rd.Directories)
+	}
+	if len(rd.Files) != 0 {
+		t.Fatal("Expected 0 files but got", rd.Files)
+	}
+	rd, err = r.RenterGetDir(rd.Directories[1].SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rd.Directories) != 1 {
+		t.Fatal("expected only root directory but got", rd.Directories)
+	}
+	if len(rd.Files) != 2 {
+		t.Fatal("Expected 2 files but got", rd.Files)
+	}
+
 	// Delete the renter entirely and create a new renter with the same seed.
 	wsg, err := r.WalletSeedsGet()
 	if err != nil {
@@ -5053,6 +5075,28 @@ func TestRemoteBackup(t *testing.T) {
 	}
 	if _, err := r.DownloadToDisk(rf2, false); err != nil {
 		t.Fatal(err)
+	}
+
+	// Confirm siadir exists by querying directory
+	rd, err = r.RenterGetDir(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rd.Directories) != 2 {
+		t.Fatal("Expected root and 1 subdirectory but got", rd.Directories)
+	}
+	if len(rd.Files) != 0 {
+		t.Fatal("Expected 0 files but got", rd.Files)
+	}
+	rd, err = r.RenterGetDir(rd.Directories[1].SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rd.Directories) != 1 {
+		t.Fatal("expected only root directory but got", rd.Directories)
+	}
+	if len(rd.Files) != 2 {
+		t.Fatal("Expected 2 files but got", rd.Files)
 	}
 }
 
