@@ -95,6 +95,13 @@ var (
 		Run:   wrap(renterdownloadscmd),
 	}
 
+	renterDownloadCancelCmd = &cobra.Command{
+		Use:   "canceldownload [cancelID]",
+		Short: "Cancel async download",
+		Long:  "Cancels an ongoing async download.",
+		Run:   wrap(renterdownloadcancelcmd),
+	}
+
 	renterFilesDeleteCmd = &cobra.Command{
 		Use:     "delete [path]",
 		Aliases: []string{"rm"},
@@ -959,6 +966,15 @@ func renterdirdownload(path, destination string) {
 		fmt.Printf("Download of file '%v' to destination '%v' failed: %v\n", fd.SiaPath, fd.Destination, fd.Error)
 	}
 	os.Exit(1)
+}
+
+// renterdownloadcancelcmd is the handler for the command `siac renter download cancel [cancelID]`
+// Cancels the ongoing download.
+func renterdownloadcancelcmd(cancelID string) {
+	if err := httpClient.RenterCancelDownloadPost(cancelID); err != nil {
+		die("Couldn't cancel download:", err)
+	}
+	fmt.Println("Download canceled successfully")
 }
 
 // renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
