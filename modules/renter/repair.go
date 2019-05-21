@@ -166,7 +166,11 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		default:
 		}
 
-		directories, files, err := r.DirList(siaPath)
+		directories, err := r.DirList(siaPath)
+		if err != nil {
+			return modules.SiaPath{}, err
+		}
+		files, err := r.FileList(siaPath, false, false)
 		if err != nil {
 			return modules.SiaPath{}, err
 		}

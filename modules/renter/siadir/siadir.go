@@ -188,30 +188,35 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 	return md, update, err
 }
 
-// LoadSiaDir loads the directory metadata from disk
-func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (*SiaDir, error) {
-	sd := &SiaDir{
-		deps:    deps,
-		siaPath: siaPath,
-		rootDir: rootDir,
-		wal:     wal,
-	}
+// loadSiaDirMetadata loads the directory metadata from disk.
+func loadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
 	// Open the file.
-	file, err := sd.deps.Open(siaPath.SiaDirMetadataSysPath(rootDir))
+	file, err := deps.Open(path)
 	if err != nil {
-		return nil, err
+		return Metadata{}, err
 	}
 	defer file.Close()
 
 	// Read the file
 	bytes, err := ioutil.ReadAll(file)
 	if err != nil {
-		return nil, err
+		return Metadata{}, err
 	}
 
 	// Parse the json object.
-	err = json.Unmarshal(bytes, &sd.metadata)
+	err = json.Unmarshal(bytes, &md)
+	return
+}
 
+// LoadSiaDir loads the directory metadata from disk
+func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
+	sd = &SiaDir{
+		deps:    deps,
+		siaPath: siaPath,
+		rootDir: rootDir,
+		wal:     wal,
+	}
+	sd.metadata, err = loadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(rootDir), modules.ProdDependencies)
 	return sd, err
 }
 

@@ -921,7 +921,7 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 			return
 		}
 	}
-	files, err := api.renter.FileList(c)
+	files, err := api.renter.FileList(modules.RootSiaPath(), true, c)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1279,7 +1279,7 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 	WriteSuccess(w)
 }
 
-// renterDirHandlerGET handles the API call to create a directory
+// renterDirHandlerGET handles the API call to query a directory
 func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	var siaPath modules.SiaPath
 	var err error
@@ -1293,9 +1293,14 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	directories, files, err := api.renter.DirList(siaPath)
+	directories, err := api.renter.DirList(siaPath)
 	if err != nil {
 		WriteError(w, Error{"failed to get directory contents:" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	files, err := api.renter.FileList(siaPath, false, true)
+	if err != nil {
+		WriteError(w, Error{"failed to get file infos:" + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 	WriteJSON(w, RenterDirectory{
@@ -1305,7 +1310,8 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 	return
 }
 
-// renterDirHandlerPOST handles the API call to create a directory
+// renterDirHandlerPOST handles the API call to create, delete and rename a
+// directory
 func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse action
 	action := req.FormValue("action")

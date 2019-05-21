@@ -2,6 +2,7 @@ package siafile
 
 import (
 	"fmt"
+	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -461,9 +462,10 @@ func (sfs *SiaFileSet) CachedFileInfo(siaPath modules.SiaPath, offline map[strin
 	return sfs.readLockCachedFileInfo(siaPath, offline, goodForRenew, contracts)
 }
 
-// FileList returns all of the files that the renter has. This method will used
-// cached values for health, redundancy etc.
-func (sfs *SiaFileSet) FileList(cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, error) {
+// FileList returns all of the files that the renter has in the folder specified
+// by siaPath. If cached is true, this method will used cached values for
+// health, redundancy etc.
+func (sfs *SiaFileSet) FileList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, error) {
 	// Guarantee that no other thread is writing to sfs. This is only necessary
 	// when 'cached' is true since it allows us to call 'readLockCachedFileInfo'.
 	// Otherwise we need to hold the lock for every call to 'fileInfo' anyway.
@@ -476,7 +478,6 @@ func (sfs *SiaFileSet) FileList(cached bool, offlineMap map[string]bool, goodFor
 	fileList := []modules.FileInfo{}
 	var fileListMu sync.Mutex
 	loadChan := make(chan string)
-	var wg sync.WaitGroup
 	worker := func() {
 		for path := range loadChan {
 			// Load the Siafile.
@@ -504,28 +505,48 @@ func (sfs *SiaFileSet) FileList(cached bool, offlineMap map[string]bool, goodFor
 			fileList = append(fileList, file)
 			fileListMu.Unlock()
 		}
-		wg.Done()
 	}
 	// spin up some threads
+	var wg sync.WaitGroup
 	for i := 0; i < fileListRoutines; i++ {
 		wg.Add(1)
-		go worker()
+		go func() {
+			worker()
+			wg.Done()
+		}()
 	}
-	// Walk over the whole tree.
-	err := godirwalk.Walk(sfs.staticSiaFileDir, &godirwalk.Options{
-		Unsorted: true,
-		Callback: func(path string, info *godirwalk.Dirent) error {
-			// Skip folders and non-sia files.
-			if info.IsDir() || filepath.Ext(path) != modules.SiaFileExtension {
+	// Walk over the whole tree if recursive is specified.
+	folder := siaPath.SiaDirSysPath(sfs.staticSiaFileDir)
+	if recursive {
+		err := godirwalk.Walk(folder, &godirwalk.Options{
+			Unsorted: true,
+			Callback: func(path string, info *godirwalk.Dirent) error {
+				// Skip folders and non-sia files.
+				if info.IsDir() || filepath.Ext(path) != modules.SiaFileExtension {
+					return nil
+				}
+				loadChan <- path
 				return nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		fis, err := ioutil.ReadDir(folder)
+		if err != nil {
+			return nil, err
+		}
+		for _, info := range fis {
+			if info.IsDir() || filepath.Ext(info.Name()) != modules.SiaFileExtension {
+				continue
 			}
-			loadChan <- path
-			return nil
-		},
-	})
+			loadChan <- filepath.Join(folder, info.Name())
+		}
+	}
 	close(loadChan)
 	wg.Wait()
-	return fileList, err
+	return fileList, nil
 }
 
 // NewSiaFile create a new SiaFile, adds it to the SiaFileSet, adds the thread
