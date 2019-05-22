@@ -90,9 +90,9 @@ func (rdh *repairDirectoryHeap) Pop() interface{} {
 	return d
 }
 
-// managedEmpty clears the directory heap by recreating the heap and
+// managedReset clears the directory heap by recreating the heap and
 // heapDirectories.
-func (dh *directoryHeap) managedEmpty() {
+func (dh *directoryHeap) managedReset() {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
 	dh.heapDirectories = make(map[modules.SiaPath]*directory)
@@ -242,12 +242,4 @@ func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
 
 	// Push unexplored directory onto heap
 	return r.directoryHeap.managedPushDirectory(siaPath, metadata.AggregateHealth, metadata.Health, false)
-}
-
-// managedResetDirectoryHeap resets the directory heap by clearing it and then
-// adding an unexplored root directory to the heap.
-func (r *Renter) managedResetDirectoryHeap() error {
-	// Empty the directory heap
-	r.directoryHeap.managedEmpty()
-	return r.managedPushUnexploredDirectory(modules.RootSiaPath())
 }

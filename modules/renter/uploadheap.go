@@ -3,6 +3,7 @@ package renter
 import (
 	"container/heap"
 	"io/ioutil"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -377,50 +378,57 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 	return incompleteChunks
 }
 
-// managedAddChunksToHeap will add chunks to the upload heap from a directory
-// that is in need of repair. It does this by finding the worst health directory
-// and adding the chunks from that directory to the upload heap. If the worst
-// health directory found is sufficiently healthy then no chunks will be added
-// to the heap
-func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (modules.SiaPath, float64, error) {
-	// Pop an explored directory off of the directory heap
-	dir, err := r.managedNextExploredDirectory()
-	if err != nil {
-		r.log.Println("WARN: error getting explored directory:", err)
-		// Reset the directory heap to try and help address the error
-		err = errors.Compose(err, r.managedResetDirectoryHeap())
-		return modules.SiaPath{}, 0, err
+// managedAddChunksToHeap will add chunks to the upload heap one directory at a
+// time until the directory heap is empty of the uploadheap is full. It does
+// this by finding the worst health directory and adding the chunks from that
+// directory to the upload heap. If the worst health directory found is
+// sufficiently healthy then no chunks will be added to the heap.
+func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.SiaPath, float64, error) {
+	var siaPaths []modules.SiaPath
+	var health float64
+	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
+	// heap is empty
+	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
+		// Pop an explored directory off of the directory heap
+		dir, err := r.managedNextExploredDirectory()
+		if err != nil {
+			r.log.Println("WARN: error getting explored directory:", err)
+			// Reset the directory heap to try and help address the error
+			r.directoryHeap.managedReset()
+			return siaPaths, health, err
+		}
+
+		// Sanity Check if directory was returned
+		if dir == nil {
+			return siaPaths, health, nil
+		}
+
+		// Grab health and siaPath of the directory
+		dir.mu.Lock()
+		dirHealth := dir.health
+		dirSiaPath := dir.siaPath
+		dir.mu.Unlock()
+
+		// Track the worst health and the siaPaths that are popped off
+		health = math.Max(dirHealth, health)
+		siaPaths = append(siaPaths, dirSiaPath)
+
+		// If the lowest health directory is healthy then return
+		if dirHealth < siafile.RemoteRepairDownloadThreshold {
+			return siaPaths, health, nil
+		}
+
+		// Build a min-heap of chunks organized by chunk health.
+		r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
+		heapLen := r.uploadHeap.managedLen()
+		if heapLen == 0 {
+			r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
+			continue
+		}
+		r.log.Println("Added", heapLen, "chunks from", dirSiaPath, "to the upload heap")
 	}
 
-	// Sanity Check if directory was returned
-	if dir == nil {
-		// This should not happen very often or at all so a Println should be
-		// fine and not be spamming the logs.
-		r.log.Println("No directory returned from Directory Heap")
-		return modules.SiaPath{}, 0, nil
-	}
-
-	// Grab health and siaPath of the directory
-	dir.mu.Lock()
-	dirHealth := dir.health
-	dirSiaPath := dir.siaPath
-	dir.mu.Unlock()
-
-	// If the lowest health directory is healthy then return
-	if dirHealth < siafile.RemoteRepairDownloadThreshold {
-		return dirSiaPath, dirHealth, nil
-	}
-
-	// Build a min-heap of chunks organized by upload progress.
-	r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
-	heapLen := r.uploadHeap.managedLen()
-	if heapLen == 0 {
-		r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
-		return dirSiaPath, dirHealth, nil
-	}
-	r.log.Println("Added", heapLen, "chunks from", dirSiaPath, "to the upload heap")
-
-	return dirSiaPath, dirHealth, nil
+	return siaPaths, health, nil
 }
 
 // managedBuildAndPushRandomChunk randomly selects a file and builds the
@@ -759,7 +767,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		hosts := r.managedRefreshHostsAndWorkers()
 
 		// Add chunks to heap
-		dirSiaPath, dirHealth, err := r.managedAddChunksToHeap(hosts)
+		dirSiaPaths, dirHealth, err := r.managedAddChunksToHeap(hosts)
 		if err != nil {
 			// If there was an error adding chunks to the heap sleep for a
 			// little bit and then try again
@@ -795,11 +803,8 @@ func (r *Renter) threadedUploadAndRepair() {
 			case <-r.tg.StopChan():
 				return
 			}
-			// Refresh directory heap
-			err = r.managedResetDirectoryHeap()
-			if err != nil {
-				r.log.Println("WARN: there was an error reseting the directory heap:", err)
-			}
+			// Reset directory heap
+			r.directoryHeap.managedReset()
 			// Make sure that the hosts and workers are updated before
 			// continuing to the repair loop
 			hosts = r.managedRefreshHostsAndWorkers()
@@ -822,12 +827,14 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Call managedBubbleMetadata to update the filesystem
-		err = r.managedBubbleMetadata(dirSiaPath)
-		if err != nil {
-			// If there is an error with calling bubble log an error and then
-			// continue. Since bubble is called from a variety of places it is
-			// fine to just continue on without any special handling
-			r.log.Debugf("WARN: error calling managedBubbleMetadata on %v, err: %v", dirSiaPath, err)
+		for _, dirSiaPath := range dirSiaPaths {
+			err = r.managedBubbleMetadata(dirSiaPath)
+			if err != nil {
+				// If there is an error with calling bubble log an error and then
+				// continue. Since bubble is called from a variety of places it is
+				// fine to just continue on without any special handling
+				r.log.Debugf("WARN: error calling managedBubbleMetadata on %v, err: %v", dirSiaPath, err)
+			}
 		}
 	}
 }
