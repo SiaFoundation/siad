@@ -124,8 +124,8 @@ var (
 	}).(time.Duration)
 
 	// maxUploadHeapChunks is the maximum number of chunks that we should add to
-	// the upload heap. This always will be used as the target number of chunks
-	// to add to the upload heap which which will mean for small directories we
+	// the upload heap. This also will be used as the target number of chunks to
+	// add to the upload heap which which will mean for small directories we
 	// will add multiple directories.
 	maxUploadHeapChunks = build.Select(build.Var{
 		Dev:      40,

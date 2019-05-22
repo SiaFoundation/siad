@@ -380,9 +380,9 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 
 // managedAddChunksToHeap will add chunks to the upload heap one directory at a
 // time until the directory heap is empty of the uploadheap is full. It does
-// this by finding the worst health directory and adding the chunks from that
-// directory to the upload heap. If the worst health directory found is
-// sufficiently healthy then no chunks will be added to the heap.
+// this by popping directories off the directory heap and adding the chunks from
+// that directory to the upload heap. If the worst health directory found is
+// sufficiently healthy then we return.
 func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.SiaPath, float64, error) {
 	var siaPaths []modules.SiaPath
 	var health float64
@@ -413,12 +413,12 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.Si
 		health = math.Max(dirHealth, health)
 		siaPaths = append(siaPaths, dirSiaPath)
 
-		// If the lowest health directory is healthy then return
+		// If the directory that was just popped is healthy then return
 		if dirHealth < siafile.RemoteRepairDownloadThreshold {
 			return siaPaths, health, nil
 		}
 
-		// Build a min-heap of chunks organized by chunk health.
+		// Add chunks from the directory to the uploadHeap.
 		r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
 		heapLen := r.uploadHeap.managedLen()
 		if heapLen == 0 {
