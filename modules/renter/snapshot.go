@@ -68,6 +68,10 @@ func (r *Renter) UploadBackup(src, name string) error {
 // managedUploadBackup creates a backup of the renter which is uploaded to the
 // sia network as a snapshot and can be retrieved using only the seed.
 func (r *Renter) managedUploadBackup(src, name string) error {
+	if len(name) > 96 {
+		return errors.New("name is too long")
+	}
+
 	// Open the backup for uploading.
 	backup, err := os.Open(src)
 	if err != nil {
@@ -97,49 +101,76 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		ErasureCode: ec,
 		Force:       false,
 	}
-	// Upload the backup.
+	// Begin uploading the backup.
 	if err := r.managedUploadStreamFromReader(up, backup, true); err != nil {
 		return errors.AddContext(err, "failed to upload backup")
 	}
-	// Wait for the upload to finish.
-	//
-	// TODO: do this without polling
-	uploadStartTime := time.Now()
-	for {
-		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-		info, err := r.staticBackupFileSet.FileInfo(sp, offlineMap, goodForRenewMap, contractsMap)
-		if err == nil && info.Health <= siafile.RemoteRepairDownloadThreshold {
-			break
-		}
-		// sleep for a bit before trying again
-		select {
-		case <-time.After(uploadPollInterval):
-			if time.Since(uploadStartTime) > uploadPollTimeout {
-				return errors.New("backup upload timed out")
-			}
-		case <-r.tg.StopChan():
-			return errors.New("interrupted by shutdown")
-		}
+	// Save initial snapshot entry.
+	meta := modules.UploadedBackup{
+		Name:           name,
+		CreationDate:   types.CurrentTimestamp(),
+		Size:           0,
+		UploadProgress: 0,
+	}
+	fastrand.Read(meta.UID[:])
+	if err := r.managedSaveSnapshot(meta); err != nil {
+		return err
 	}
 
-	// Grab the entry for the uploaded backup's siafile.
-	entry, err := r.staticBackupFileSet.Open(sp)
-	if err != nil {
-		return errors.AddContext(err, "failed to get entry for snapshot")
-	}
-	defer entry.Close()
-	// Read the siafile from disk.
-	sr, err := entry.SnapshotReader()
-	if err != nil {
-		return err
-	}
-	defer sr.Close()
-	dotSia, err := ioutil.ReadAll(sr)
-	if err != nil {
-		return err
-	}
-	// Upload the snapshot to the network.
-	return r.managedUploadSnapshot(name, dotSia)
+	// TODO: this needs to be spawned again if interrupted by shutdown
+	go func() {
+		err := func() error {
+			// Wait for the upload to finish.
+			//
+			// TODO: do this without polling
+			for {
+				offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+				info, err := r.staticBackupFileSet.FileInfo(sp, offlineMap, goodForRenewMap, contractsMap)
+				if err != nil {
+					return err
+				}
+				if info.Health <= siafile.RemoteRepairDownloadThreshold {
+					break
+				}
+				// record current UploadProgress
+				meta.UploadProgress = info.UploadProgress
+				if err := r.managedSaveSnapshot(meta); err != nil {
+					return err
+				}
+				// sleep for a bit before trying again
+				select {
+				case <-time.After(uploadPollInterval):
+				case <-r.tg.StopChan():
+					return errors.New("interrupted by shutdown")
+				}
+			}
+
+			// Grab the entry for the uploaded backup's siafile.
+			entry, err := r.staticBackupFileSet.Open(sp)
+			if err != nil {
+				return errors.AddContext(err, "failed to get entry for snapshot")
+			}
+			defer entry.Close()
+			// Read the siafile from disk.
+			sr, err := entry.SnapshotReader()
+			if err != nil {
+				return err
+			}
+			defer sr.Close()
+			dotSia, err := ioutil.ReadAll(sr)
+			if err != nil {
+				return err
+			}
+			// Upload the snapshot to the network.
+			meta.UploadProgress = 100
+			meta.Size = uint64(len(dotSia))
+			return r.managedUploadSnapshot(meta, dotSia)
+		}()
+		if err != nil {
+			r.log.Println("Failed to upload snapshot:", err)
+		}
+	}()
+	return nil
 }
 
 // DownloadBackup downloads the specified backup.
@@ -336,17 +367,7 @@ func (r *Renter) managedSaveSnapshot(meta modules.UploadedBackup) error {
 }
 
 // managedUploadSnapshot uploads a snapshot .sia file to all hosts.
-func (r *Renter) managedUploadSnapshot(name string, dotSia []byte) error {
-	if len(name) > 96 {
-		return errors.New("name is too long")
-	}
-	meta := modules.UploadedBackup{
-		Name:         name,
-		CreationDate: types.CurrentTimestamp(),
-		Size:         uint64(len(dotSia)),
-	}
-	fastrand.Read(meta.UID[:])
-
+func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byte) error {
 	contracts := r.hostContractor.Contracts()
 
 	// upload the siafile and update the entry table for each host
@@ -369,17 +390,14 @@ func (r *Renter) managedUploadSnapshot(name string, dotSia []byte) error {
 			r.log.Printf("Uploading snapshot to host %v failed: %v", hostKey, err)
 			continue
 		}
-
-		// Save the new snapshot as soon as it has been uploaded to any host.
-		if numHosts == 0 {
-			if err := r.managedSaveSnapshot(meta); err != nil {
-				return err
-			}
-		}
 		numHosts++
 	}
 	if numHosts == 0 {
 		r.log.Println("WARN: Failed to upload snapshot to at least one host")
+	}
+	// save final version of snapshot
+	if err := r.managedSaveSnapshot(meta); err != nil {
+		return err
 	}
 
 	return nil

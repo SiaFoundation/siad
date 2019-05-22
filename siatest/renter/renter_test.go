@@ -4986,7 +4986,25 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	// Create a snapshot.
-	if err := r.RenterCreateBackupPost("foo", true); err != nil {
+	createSnapshot := func(name string) error {
+		if err := r.RenterCreateBackupPost(name, true); err != nil {
+			return err
+		}
+		// wait for backup to upload
+		return build.Retry(60, time.Second, func() error {
+			ubs, _ := r.RenterUploadedBackups()
+			for _, ub := range ubs {
+				if ub.Name != name {
+					continue
+				} else if ub.UploadProgress != 100 {
+					return errors.New("backup not uploaded")
+				}
+				return nil
+			}
+			return errors.New("backup not found")
+		})
+	}
+	if err := createSnapshot("foo"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -4999,7 +5017,7 @@ func TestRemoteBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
-	if err := r.RenterCreateBackupPost("bar", true); err != nil {
+	if err := createSnapshot("bar"); err != nil {
 		t.Fatal(err)
 	}
 
