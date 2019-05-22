@@ -178,9 +178,10 @@ type (
 
 	// RenterUploadedBackup describes an uploaded backup.
 	RenterUploadedBackup struct {
-		Name         string          `json:"name"`
-		CreationDate types.Timestamp `json:"creationdate"`
-		Size         uint64          `json:"size"`
+		Name           string          `json:"name"`
+		CreationDate   types.Timestamp `json:"creationdate"`
+		Size           uint64          `json:"size"`
+		UploadProgress float64         `json:"uploadprogress"`
 	}
 
 	// DownloadInfo contains all client-facing information of a file.
@@ -325,9 +326,10 @@ func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http
 	rups := make([]RenterUploadedBackup, len(backups))
 	for i, b := range backups {
 		rups[i] = RenterUploadedBackup{
-			Name:         b.NameString(),
-			CreationDate: b.CreationDate,
-			Size:         b.Size,
+			Name:           b.Name,
+			CreationDate:   b.CreationDate,
+			Size:           b.Size,
+			UploadProgress: b.UploadProgress,
 		}
 	}
 	WriteJSON(w, rups)

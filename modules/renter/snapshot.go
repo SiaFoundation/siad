@@ -26,8 +26,11 @@ import (
 // snapshot metadata and the other sectors on the host storing the snapshot
 // data.
 type snapshotEntry struct {
-	Meta        modules.UploadedBackup
-	DataSectors [4]crypto.Hash // pointers to sectors containing snapshot .sia file
+	Name         [96]byte
+	UID          [16]byte
+	CreationDate types.Timestamp
+	Size         uint64         // size of snapshot .sia file
+	DataSectors  [4]crypto.Hash // pointers to sectors containing snapshot .sia file
 }
 
 var (
@@ -159,7 +162,7 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	var found bool
 	id := r.mu.RLock()
 	for _, b := range r.persist.UploadedBackups {
-		if b.NameString() == name {
+		if b.Name == name {
 			uid = b.UID
 			found = true
 			break
@@ -220,7 +223,14 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	}
 
 	// upload the siafile, creating a snapshotEntry
-	entry := snapshotEntry{Meta: meta}
+	var name [96]byte
+	copy(name[:], meta.Name)
+	entry := snapshotEntry{
+		Name:         name,
+		UID:          meta.UID,
+		CreationDate: meta.CreationDate,
+		Size:         meta.Size,
+	}
 	for j, piece := range sectors {
 		root, err := host.Upload(piece)
 		if err != nil {
@@ -280,13 +290,19 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	return nil
 }
 
-func (r *Renter) managedSaveNewSnapshot(meta modules.UploadedBackup) error {
+func (r *Renter) managedSaveSnapshot(meta modules.UploadedBackup) error {
 	id := r.mu.RLock()
 	defer r.mu.RUnlock(id)
 	// Check whether we've already saved this snapshot.
-	for _, ub := range r.persist.UploadedBackups {
+	for i, ub := range r.persist.UploadedBackups {
 		if ub.UID == meta.UID {
-			return nil
+			if ub == meta {
+				// nothing changed
+				return nil
+			}
+			// something changed; overwrite existing entry
+			r.persist.UploadedBackups[i] = meta
+			return r.saveSync()
 		}
 	}
 	// Append the new snapshot.
@@ -321,14 +337,14 @@ func (r *Renter) managedSaveNewSnapshot(meta modules.UploadedBackup) error {
 
 // managedUploadSnapshot uploads a snapshot .sia file to all hosts.
 func (r *Renter) managedUploadSnapshot(name string, dotSia []byte) error {
+	if len(name) > 96 {
+		return errors.New("name is too long")
+	}
 	meta := modules.UploadedBackup{
+		Name:         name,
 		CreationDate: types.CurrentTimestamp(),
 		Size:         uint64(len(dotSia)),
 	}
-	if len(name) > len(meta.Name) {
-		return errors.New("name is too long")
-	}
-	copy(meta.Name[:], name)
 	fastrand.Read(meta.UID[:])
 
 	contracts := r.hostContractor.Contracts()
@@ -356,7 +372,7 @@ func (r *Renter) managedUploadSnapshot(name string, dotSia []byte) error {
 
 		// Save the new snapshot as soon as it has been uploaded to any host.
 		if numHosts == 0 {
-			if err := r.managedSaveNewSnapshot(meta); err != nil {
+			if err := r.managedSaveSnapshot(meta); err != nil {
 				return err
 			}
 		}
@@ -447,7 +463,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 			// search for the desired snapshot
 			var entry *snapshotEntry
 			for j := range entryTable {
-				if entryTable[j].Meta.UID == uid {
+				if entryTable[j].UID == uid {
 					entry = &entryTable[j]
 					break
 				}
@@ -463,12 +479,18 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 					return err
 				}
 				dotSia = append(dotSia, data...)
-				if uint64(len(dotSia)) >= entry.Meta.Size {
-					dotSia = dotSia[:entry.Meta.Size]
+				if uint64(len(dotSia)) >= entry.Size {
+					dotSia = dotSia[:entry.Size]
 					break
 				}
 			}
-			ub = entry.Meta
+			ub = modules.UploadedBackup{
+				Name:           string(bytes.TrimRight(entry.Name[:], string(0))),
+				UID:            entry.UID,
+				CreationDate:   entry.CreationDate,
+				Size:           entry.Size,
+				UploadProgress: 100,
+			}
 			return nil
 		}()
 		if err != nil {
@@ -492,10 +514,16 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			missingMap[uid] = struct{}{}
 		}
 		for _, e := range entryTable {
-			if _, ok := known[e.Meta.UID]; !ok {
-				unknown = append(unknown, e.Meta)
+			if _, ok := known[e.UID]; !ok {
+				unknown = append(unknown, modules.UploadedBackup{
+					Name:           string(bytes.TrimRight(e.Name[:], string(0))),
+					UID:            e.UID,
+					CreationDate:   e.CreationDate,
+					Size:           e.Size,
+					UploadProgress: 100,
+				})
 			}
-			delete(missingMap, e.Meta.UID)
+			delete(missingMap, e.UID)
 		}
 		for uid := range missingMap {
 			missing = append(missing, uid)
@@ -577,9 +605,9 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// Record the new snapshots; they'll be replicated to the other
 				// hosts in subsequent iterations of the synchronization loop.
 				for _, ub := range unknown {
-					r.log.Println("Located new snapshot", ub.NameString(), "on host", c.HostPublicKey)
+					r.log.Println("Located new snapshot", ub.Name, "on host", c.HostPublicKey)
 					known[ub.UID] = struct{}{}
-					if err := r.managedSaveNewSnapshot(ub); err != nil {
+					if err := r.managedSaveSnapshot(ub); err != nil {
 						return err
 					}
 				}
