@@ -1445,7 +1445,6 @@ func TestRenterAddNodes(t *testing.T) {
 		{"TestRedundancyReporting", testRedundancyReporting}, // Put first because it pulls the original tg renter
 		{"TestOverspendAllowance", testOverspendAllowance},
 		{"TestRenterCancelAllowance", testRenterCancelAllowance},
-		{"TestRenewFailing", testRenewFailing}, // Put last because it impacts a host
 	}
 
 	// Run tests
@@ -1537,25 +1536,31 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testRenewFailing checks if a contract gets marked as !goodForRenew after
+// TestRenewFailing checks if a contract gets marked as !goodForRenew after
 // failing multiple times in a row.
-func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
-	// Add a renter with a custom allowance to give it plenty of time to renew
-	// the contract later.
-	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
-	renterParams.Allowance = siatest.DefaultAllowance
-	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 1)
-	renterParams.Allowance.Period = 200
-	renterParams.Allowance.RenewWindow = 100
-	nodes, err := tg.AddNodes(renterParams)
-	if err != nil && len(nodes) > 0 {
-		renter := nodes[0]
-		renter.PrintDebugInfo(t, true, true, true)
-		t.Fatal(err)
-	} else if err != nil {
-		t.Fatal(err)
+func TestRenewFailing(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
 	}
-	renter := nodes[0]
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	renter := tg.Renters()[0]
 
 	// All the contracts of the renter should be goodForRenew. So there should
 	// be no inactive contracts, only active contracts
@@ -1563,12 +1568,12 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uint64(len(rcg.ActiveContracts)) != renterParams.Allowance.Hosts {
+	if len(rcg.ActiveContracts) != len(tg.Hosts()) {
 		for i, c := range rcg.ActiveContracts {
 			fmt.Println(i, c.HostPublicKey)
 		}
 		t.Fatalf("renter had %v contracts but should have %v",
-			len(rcg.ActiveContracts), renterParams.Allowance.Hosts)
+			len(rcg.ActiveContracts), len(tg.Hosts()))
 	}
 	if len(rcg.InactiveContracts) != 0 {
 		t.Fatal("Renter should have 0 inactive contracts but has", len(rcg.InactiveContracts))
@@ -1617,12 +1622,12 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uint64(len(rcg.ActiveContracts)) != renterParams.Allowance.Hosts {
+	if len(rcg.ActiveContracts) != len(tg.Hosts()) {
 		for i, c := range rcg.ActiveContracts {
 			fmt.Println(i, c.HostPublicKey)
 		}
 		t.Fatalf("renter had %v contracts but should have %v",
-			len(rcg.ActiveContracts), renterParams.Allowance.Hosts)
+			len(rcg.ActiveContracts), len(tg.Hosts()))
 	}
 	if len(rcg.InactiveContracts) != 0 {
 		t.Fatal("Renter should have 0 inactive contracts but has", len(rcg.InactiveContracts))
@@ -1638,9 +1643,9 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	// We should be within the second half of the renew window now. We keep
 	// mining blocks until the host with the locked wallet has been replaced.
 	// This should happen before we reach the endHeight of the contracts. This
-	// means we should have number of hosts - 1 active contracts and number of
-	// hosts - 1 inactive contracts.  One of the inactive contracts will be
-	// !goodForRenew due to the host
+	// means we should have number of hosts - 1 active contracts, number of
+	// hosts - 1 renewed contracts, and one of the disabled contract which will
+	// be the host that has the locked wallet
 	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 1*time.Second, func() error {
 		if err := miner.MineBlock(); err != nil {
 			return err
@@ -1654,22 +1659,27 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
 			return fmt.Errorf("Expected %v active contracts, got %v", len(tg.Hosts())-1, len(rc.ActiveContracts))
 		}
-		if len(rc.RenewedContracts) != len(tg.Hosts())-2 {
-			return fmt.Errorf("Expected %v renewed contracts, got %v", len(tg.Hosts())-2, len(rc.RenewedContracts))
+		if len(rc.RenewedContracts) != len(tg.Hosts())-1 {
+			return fmt.Errorf("Expected %v renewed contracts, got %v", len(tg.Hosts())-1, len(rc.RenewedContracts))
 		}
 		if len(rc.DisabledContracts) != 1 {
 			return fmt.Errorf("Expected %v disabled contracts, got %v", 1, len(rc.DisabledContracts))
 		}
 
-		// Check that the locked host is in inactive and not in active.
+		// Check that the locked host is not in active or renewed contracts.
 		for _, c := range rc.ActiveContracts {
 			if c.HostPublicKey.String() == lockedHostPK.String() {
 				return errors.New("locked host still appears in set of active contracts")
 			}
 		}
-		// If the host does appear in the inactive, set, then the test has
+		for _, c := range rc.RenewedContracts {
+			if c.HostPublicKey.String() == lockedHostPK.String() {
+				return errors.New("locked host still appears in set of renewed contracts")
+			}
+		}
+		// If the host does appear in the disabled, set, then the test has
 		// passed.
-		for _, c := range rc.ActiveContracts {
+		for _, c := range rc.DisabledContracts {
 			if c.HostPublicKey.String() == lockedHostPK.String() {
 				return nil
 			}

@@ -32,7 +32,7 @@ type TestNode struct {
 // boolean arguments dictate what is printed
 func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterInfo bool) {
 	if contractInfo {
-		rc, err := tn.RenterInactiveContractsGet()
+		rc, err := tn.RenterDisabledContractsGet()
 		if err != nil {
 			t.Log(err)
 		}
@@ -45,8 +45,17 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
-		t.Log("Inactive Contracts")
-		for _, c := range rc.InactiveContracts {
+		t.Log("Renewed Contracts")
+		for _, c := range rc.RenewedContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
+		}
+		t.Log()
+		t.Log("Disabled Contracts")
+		for _, c := range rc.DisabledContracts {
 			t.Log("    ID", c.ID)
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
@@ -91,11 +100,13 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			for _, subnet := range host.IPNets {
 				t.Log("            ", subnet)
 			}
+			t.Log()
 		}
 		t.Log()
 	}
 
 	if renterInfo {
+		t.Log("Renter Info")
 		rg, err := tn.RenterGet()
 		if err != nil {
 			t.Log(err)
