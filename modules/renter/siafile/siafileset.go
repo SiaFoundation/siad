@@ -197,6 +197,40 @@ func (sfs *SiaFileSet) createAndApplyTransaction(updates ...writeaheadlog.Update
 	return nil
 }
 
+// delete deletes the SiaFileSetEntry's SiaFile
+func (sfs *SiaFileSet) delete(siaPath modules.SiaPath) error {
+	// Fetch the corresponding siafile and call delete.
+	//
+	// NOTE: since we are just accessing the entry directly from the map while
+	// holding the SiaFileSet lock we are not creating a new threadUID and
+	// therefore do not need to call close on this entry
+	entry, _, exists := sfs.siaPathToEntryAndUID(siaPath)
+	if !exists {
+		// Check if the file exists on disk
+		siaFilePath := siaPath.SiaFileSysPath(sfs.staticSiaFileDir)
+		_, err := os.Stat(siaFilePath)
+		if os.IsNotExist(err) {
+			return ErrUnknownPath
+		}
+		// If the entry does not exists then we want to just remove the entry
+		// from disk without loading it from disk to avoid errors due to corrupt
+		// siafiles
+		update := createDeleteUpdate(siaFilePath)
+		return sfs.createAndApplyTransaction(update)
+	}
+
+	// Delete SiaFile
+	err := entry.Delete()
+	if err != nil {
+		return err
+	}
+	// Remove the siafile from the set maps so that other threads can't find
+	// it.
+	delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
+	delete(sfs.siapathToUID, sfs.siaPath(entry))
+	return nil
+}
+
 // siaPath is a convenience wrapper around FromSysPath. Since the files are
 // loaded from disk, the siapaths should always be correct. It's argument is
 // also an entry instead of the path and dir.
@@ -366,37 +400,7 @@ func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, erro
 func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-
-	// Fetch the corresponding siafile and call delete.
-	//
-	// NOTE: since we are just accessing the entry directly from the map while
-	// holding the SiaFileSet lock we are not creating a new threadUID and
-	// therefore do not need to call close on this entry
-	entry, _, exists := sfs.siaPathToEntryAndUID(siaPath)
-	if !exists {
-		// Check if the file exists on disk
-		siaFilePath := siaPath.SiaFileSysPath(sfs.staticSiaFileDir)
-		_, err := os.Stat(siaFilePath)
-		if os.IsNotExist(err) {
-			return ErrUnknownPath
-		}
-		// If the entry does not exists then we want to just remove the entry
-		// from disk without loading it from disk to avoid errors due to corrupt
-		// siafiles
-		update := createDeleteUpdate(siaFilePath)
-		return sfs.createAndApplyTransaction(update)
-	}
-
-	// Delete SiaFile
-	err := entry.Delete()
-	if err != nil {
-		return err
-	}
-	// Remove the siafile from the set maps so that other threads can't find
-	// it.
-	delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
-	delete(sfs.siapathToUID, sfs.siaPath(entry))
-	return nil
+	return sfs.delete(siaPath)
 }
 
 // Exists checks to see if a file with the provided siaPath already exists in
@@ -633,6 +637,49 @@ func healthPercentage(h, sh float64, ec modules.ErasureCoder) float64 {
 	parityPieces := ec.NumPieces() - dataPieces
 	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
 	return 100 * ((worstHealth - health) / worstHealth)
+}
+
+// DeleteDir deletes a siadir and all the siadirs and siafiles within it
+// recursively.
+func (sfs *SiaFileSet) DeleteDir(siaPath modules.SiaPath, deleteDir siadir.DeleteDirFunc) error {
+	// Prevent new files from being opened.
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	// Lock all files within the dir.
+	var lockedFiles []*siaFileSetEntry
+	defer func() {
+		for _, entry := range lockedFiles {
+			entry.mu.Unlock()
+		}
+	}()
+	for sp := range sfs.siapathToUID {
+		entry, _, exists := sfs.siaPathToEntryAndUID(sp)
+		if !exists {
+			continue
+		}
+		if strings.HasPrefix(sp.String(), siaPath.String()) {
+			entry.mu.Lock()
+			lockedFiles = append(lockedFiles, entry)
+		}
+	}
+	// Delete the dir using the provided delete function.
+	if err := deleteDir(siaPath); err != nil {
+		return errors.AddContext(err, "failed to delete dir")
+	}
+	// Delete was successful. Delete the siafiles in memory before they are being
+	// unlocked again.
+	for _, entry := range lockedFiles {
+		// Get siaPath.
+		var sp modules.SiaPath
+		if err := sp.LoadSysPath(sfs.staticSiaFileDir, entry.siaFilePath); err != nil {
+			build.Critical("Getting the siaPath shouldn't fail")
+			continue
+		}
+		// Mark the file as deleted. It will be closed automatically by the last
+		// thread calling 'Close' on it.
+		entry.deleted = true
+	}
+	return nil
 }
 
 // RenameDir renames a siadir and all the siadirs and siafiles within it
