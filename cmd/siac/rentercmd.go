@@ -626,28 +626,56 @@ func rentercontractscmd() {
 	for _, c := range rc.ActiveContracts {
 		totalStored += c.Size
 		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalSpent = totalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
 		totalFees = totalFees.Add(c.Fees)
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		totalSpent = totalSpent.Add(contractTotalSpent)
 	}
 	// Passive Contracts are all good data
 	for _, c := range rc.PassiveContracts {
 		totalStored += c.Size
 		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalSpent = totalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
 		totalFees = totalFees.Add(c.Fees)
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		totalSpent = totalSpent.Add(contractTotalSpent)
 	}
 	// Refreshed Contracts are duplicate data
 	for _, c := range rc.PassiveContracts {
 		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalSpent = totalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
 		totalFees = totalFees.Add(c.Fees)
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		totalSpent = totalSpent.Add(contractTotalSpent)
 	}
 	// Disabled Contracts are wasted data
 	for _, c := range rc.PassiveContracts {
 		totalWasted += c.Size
 		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalSpent = totalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
 		totalFees = totalFees.Add(c.Fees)
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		totalSpent = totalSpent.Add(contractTotalSpent)
 	}
 	fmt.Printf(`  Total Good Data:    %s
   Total Wasted Data:  %s
@@ -674,11 +702,18 @@ func rentercontractscmd() {
 				address = "Host Removed"
 				hostVersion = ""
 			}
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
 			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				hostVersion,
 				currencyUnits(c.RenterFunds),
-				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+				currencyUnits(contractTotalSpent),
 				currencyUnits(c.Fees),
 				filesizeUnits(c.Size),
 				c.EndHeight,
@@ -705,11 +740,18 @@ func rentercontractscmd() {
 				address = "Host Removed"
 				hostVersion = ""
 			}
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
 			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				hostVersion,
 				currencyUnits(c.RenterFunds),
-				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+				currencyUnits(contractTotalSpent),
 				currencyUnits(c.Fees),
 				filesizeUnits(c.Size),
 				c.EndHeight,
@@ -736,11 +778,18 @@ func rentercontractscmd() {
 				address = "Host Removed"
 				hostVersion = ""
 			}
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
 			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				hostVersion,
 				currencyUnits(c.RenterFunds),
-				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+				currencyUnits(contractTotalSpent),
 				currencyUnits(c.Fees),
 				filesizeUnits(c.Size),
 				c.EndHeight,
@@ -767,11 +816,18 @@ func rentercontractscmd() {
 				address = "Host Removed"
 				hostVersion = ""
 			}
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
 			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				hostVersion,
 				currencyUnits(c.RenterFunds),
-				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+				currencyUnits(contractTotalSpent),
 				currencyUnits(c.Fees),
 				filesizeUnits(c.Size),
 				c.EndHeight,
@@ -795,14 +851,28 @@ func rentercontractscmd() {
 		for _, c := range rce.ExpiredContracts {
 			totalStored += c.Size
 			totalRemaining = totalRemaining.Add(c.RenterFunds)
-			totalSpent = totalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
 			totalFees = totalFees.Add(c.Fees)
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
+			totalSpent = totalSpent.Add(contractTotalSpent)
 		}
 		// Expired Refreshed Contracts are duplicate data
 		for _, c := range rce.ExpiredRefreshedContracts {
 			totalRemaining = totalRemaining.Add(c.RenterFunds)
-			totalSpent = totalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
 			totalFees = totalFees.Add(c.Fees)
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
+			totalSpent = totalSpent.Add(contractTotalSpent)
 		}
 		fmt.Printf(`  Total Expired Data:  %s
   Total Remaining:     %v
@@ -825,11 +895,18 @@ func rentercontractscmd() {
 					address = "Host Removed"
 					hostVersion = ""
 				}
+				// Negative Currency Check
+				var contractTotalSpent types.Currency
+				if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+					contractTotalSpent = c.RenterFunds.Add(c.Fees)
+				} else {
+					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+				}
 				fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 					address,
 					hostVersion,
 					currencyUnits(c.RenterFunds),
-					currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+					currencyUnits(contractTotalSpent),
 					currencyUnits(c.Fees),
 					filesizeUnits(c.Size),
 					c.EndHeight,
@@ -855,11 +932,18 @@ func rentercontractscmd() {
 					address = "Host Removed"
 					hostVersion = ""
 				}
+				// Negative Currency Check
+				var contractTotalSpent types.Currency
+				if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+					contractTotalSpent = c.RenterFunds.Add(c.Fees)
+				} else {
+					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+				}
 				fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 					address,
 					hostVersion,
 					currencyUnits(c.RenterFunds),
-					currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+					currencyUnits(contractTotalSpent),
 					currencyUnits(c.Fees),
 					filesizeUnits(c.Size),
 					c.EndHeight,
