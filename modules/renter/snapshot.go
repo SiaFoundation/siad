@@ -43,6 +43,11 @@ var (
 	snapshotTableSpecifier = types.Specifier{'S', 'n', 'a', 'p', 's', 'h', 'o', 't', 'T', 'a', 'b', 'l', 'e'}
 )
 
+// calcSnapshotUploadProgress calculates the upload progress of a snapshot.
+func calcSnapshotUploadProgress(fileUploadProgress float64, dotSiaUploadProgress float64) float64 {
+	return 0.8*fileUploadProgress + 0.2*dotSiaUploadProgress
+}
+
 // UploadedBackups returns the backups that the renter can download.
 func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, error) {
 	if err := r.tg.Add(); err != nil {
@@ -133,7 +138,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 					break
 				}
 				// record current UploadProgress
-				meta.UploadProgress = info.UploadProgress
+				meta.UploadProgress = calcSnapshotUploadProgress(info.UploadProgress, 0)
 				if err := r.managedSaveSnapshot(meta); err != nil {
 					return err
 				}
@@ -162,7 +167,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 				return err
 			}
 			// Upload the snapshot to the network.
-			meta.UploadProgress = 100
+			meta.UploadProgress = calcSnapshotUploadProgress(100, 0)
 			meta.Size = uint64(len(dotSia))
 			return r.managedUploadSnapshot(meta, dotSia)
 		}()
@@ -370,16 +375,22 @@ func (r *Renter) managedSaveSnapshot(meta modules.UploadedBackup) error {
 func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byte) error {
 	contracts := r.hostContractor.Contracts()
 
+	// count good hosts
+	var total int
+	for _, c := range contracts {
+		if c.Utility.GoodForUpload {
+			total++
+		}
+	}
+
 	// upload the siafile and update the entry table for each host
-	var numHosts int
-	for i := range contracts {
-		hostKey := contracts[i].HostPublicKey
-		utility, ok := r.hostContractor.ContractUtility(hostKey)
-		if !ok || !utility.GoodForUpload {
+	var succeeded int
+	for _, c := range contracts {
+		if !c.Utility.GoodForUpload {
 			continue
 		}
 		err := func() error {
-			host, err := r.hostContractor.Session(hostKey, r.tg.StopChan())
+			host, err := r.hostContractor.Session(c.HostPublicKey, r.tg.StopChan())
 			if err != nil {
 				return err
 			}
@@ -387,15 +398,21 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 			return r.managedUploadSnapshotHost(meta, dotSia, host)
 		}()
 		if err != nil {
-			r.log.Printf("Uploading snapshot to host %v failed: %v", hostKey, err)
+			r.log.Printf("Uploading snapshot to host %v failed: %v", c.HostPublicKey, err)
 			continue
 		}
-		numHosts++
+		succeeded++
+		pct := 100 * float64(succeeded) / float64(total)
+		meta.UploadProgress = calcSnapshotUploadProgress(100, pct)
+		if err := r.managedSaveSnapshot(meta); err != nil {
+			return err
+		}
 	}
-	if numHosts == 0 {
+	if succeeded == 0 {
 		r.log.Println("WARN: Failed to upload snapshot to at least one host")
 	}
 	// save final version of snapshot
+	meta.UploadProgress = calcSnapshotUploadProgress(100, 100)
 	if err := r.managedSaveSnapshot(meta); err != nil {
 		return err
 	}
