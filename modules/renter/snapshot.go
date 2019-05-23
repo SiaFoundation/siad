@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -277,7 +278,10 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 
 	// download the current entry table
 	tableSector, err := host.DownloadIndex(0, 0, uint32(modules.SectorSize))
-	if err != nil {
+	if err != nil && strings.Contains(err.Error(), "invalid sector bounds") {
+		// host has no sectors present
+		err = nil
+	} else if err != nil {
 		return err
 	}
 	// decrypt the table
@@ -437,6 +441,10 @@ func (r *Renter) managedDownloadSnapshotTable(host contractor.Session) ([]snapsh
 	// download the entry table
 	tableSector, err := host.DownloadIndex(0, 0, uint32(modules.SectorSize))
 	if err != nil {
+		if strings.Contains(err.Error(), "invalid sector bounds") {
+			// host is not storing any data yet; return an empty table.
+			return nil, nil
+		}
 		return nil, err
 	}
 	// decrypt the table
