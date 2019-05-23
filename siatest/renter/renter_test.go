@@ -351,7 +351,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Make sure the file reached full redundancy.
-	err = build.Retry(100, 200*time.Millisecond, func() error {
+	err = build.Retry(100, 600*time.Millisecond, func() error {
 		rfg, err := r.RenterFileGet(siaPath)
 		if err != nil {
 			return err
