@@ -5,13 +5,13 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -406,8 +406,8 @@ func TestDeleteCorruptSiaFile(t *testing.T) {
 	}
 }
 
-// TestSiaDirRename tests the RenameDir method of the siafileset.
-func TestSiaDirRename(t *testing.T) {
+// TestSiaDirDelete tests the DeleteDir method of the siafileset.
+func TestSiaDirDelete(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -449,7 +449,7 @@ func TestSiaDirRename(t *testing.T) {
 			default:
 			}
 			err := entry.Save()
-			if err != nil {
+			if err != nil && !strings.Contains(err.Error(), "can't call saveFile on deleted file") {
 				t.Fatal(err)
 			}
 			time.Sleep(50 * time.Millisecond)
@@ -491,62 +491,30 @@ func TestSiaDirRename(t *testing.T) {
 	}
 	// Wait a second for the goroutines to write to disk a few times.
 	time.Sleep(time.Second)
-	// Rename dir1 to dir2.
-	oldPath, err1 := modules.NewSiaPath(dirStructure[0])
-	newPath, err2 := modules.NewSiaPath("dir2")
-	if err := errors.Compose(err1, err2); err != nil {
+	// Delete dir1.
+	sp, err := modules.NewSiaPath("dir1")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sfs.RenameDir(oldPath, newPath, sds.Rename); err != nil {
+	if err := sfs.DeleteDir(sp, sds.Delete); err != nil {
 		t.Fatal(err)
 	}
+
 	// Wait another second for more writes to disk after renaming the dir before
 	// killing the goroutines.
 	time.Sleep(time.Second)
 	close(stop)
 	wg.Wait()
 	time.Sleep(time.Second)
-	// Make sure we can't open any of the old folders/files on disk but we can open
-	// the new ones.
-	for _, dir := range dirStructure {
-		oldDir, err1 := modules.NewSiaPath(dir)
-		newDir, err2 := oldDir.Rebase(oldPath, newPath)
-		if err := errors.Compose(err1, err2); err != nil {
-			t.Fatal(err)
+	// The root siafile dir should be empty except for 1 .siadir file.
+	files, err := ioutil.ReadDir(sfs.staticSiaFileDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || filepath.Ext(files[0].Name()) != modules.SiaDirExtension {
+		for _, file := range files {
+			t.Log("Found ", file.Name())
 		}
-		// Open entry with old dir. Shouldn't work.
-		_, err := sds.Open(oldDir)
-		if err != siadir.ErrUnknownPath {
-			t.Fatal("shouldn't be able to open old path", oldDir.String(), err)
-		}
-		// Old dir shouldn't exist.
-		if _, err = os.Stat(oldDir.SiaDirSysPath(dirRoot)); !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-		// Open entry with new dir. Should succeed.
-		entry, err := sds.Open(newDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer entry.Close()
-		// New dir should contain 1 siafile.
-		fis, err := ioutil.ReadDir(newDir.SiaDirSysPath(dirRoot))
-		if err != nil {
-			t.Fatal(err)
-		}
-		numFiles := 0
-		for _, fi := range fis {
-			if !fi.IsDir() && filepath.Ext(fi.Name()) == modules.SiaFileExtension {
-				numFiles++
-			}
-		}
-		if numFiles != 1 {
-			t.Fatalf("there should be 1 file in the new dir not %v", numFiles)
-		}
-		// New entry should have a file.
-		// Check siapath of entry.
-		if entry.SiaPath() != newDir {
-			t.Fatalf("entry should have siapath '%v' but was '%v'", newDir, entry.SiaPath())
-		}
+		t.Fatalf("There should be %v files/folders in the root dir but found %v\n", 1, len(files))
 	}
 }

@@ -121,7 +121,7 @@ func (sds *SiaDirSet) Delete(siaPath modules.SiaPath) error {
 		return nil // nothing to do
 	}
 	defer sds.closeEntry(entry)
-	if err := entry.Delete(); err != nil {
+	if err := entry.delete(); err != nil {
 		return err
 	}
 	// Deleting the dir was successful. Delete the open dirs. It's sufficient to do
