@@ -1019,6 +1019,11 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.RenterPostRateLimit(int64(modules.SectorSize), 0); err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Download the file asynchronously.
 	dst := filepath.Join(renter.FilesDir().Path(), "canceled_download.dat")
 	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true)
@@ -1326,6 +1331,11 @@ func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 	if err := renter.RenterPostRateLimit(int64(chunkSize), int64(chunkSize)); err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Call fail on the dependency every 10 ms.
 	cancel := make(chan struct{})
@@ -1380,6 +1390,11 @@ func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependenci
 	if err := renter.RenterPostRateLimit(int64(chunkSize), int64(chunkSize)); err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Call fail on the dependency every two seconds to allow some uploads to
 	// finish.
@@ -2860,6 +2875,11 @@ func TestRenterPersistData(t *testing.T) {
 	if err := r.RenterPostRateLimit(ds, us); err != nil {
 		t.Fatalf("%v: Could not set RateLimits to %v and %v", err, ds, us)
 	}
+	defer func() {
+		if err := r.RenterPostRateLimit(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Confirm Settings were updated
 	rg, err = r.RenterGet()
@@ -3473,6 +3493,11 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	if err := r.RenterPostRateLimit(chunkSize, chunkSize); err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := r.RenterPostRateLimit(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create Wait group
 	wg := new(sync.WaitGroup)
