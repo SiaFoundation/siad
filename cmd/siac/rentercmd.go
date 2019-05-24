@@ -42,15 +42,22 @@ var (
 	renterBackupCreateCmd = &cobra.Command{
 		Use:   "createbackup [path]",
 		Short: "Create a backup of the renter's siafiles",
-		Long:  "Create a backup of the renter's siafiles at the specified path",
+		Long:  "Create a backup of the renter's siafiles at the specified path. If -remote is used, path is the name of the uploaded backup.",
 		Run:   wrap(renterbackupcreatecmd),
 	}
 
 	renterBackupLoadCmd = &cobra.Command{
 		Use:   "loadbackup [path]",
 		Short: "Load a backup of the renter's siafiles",
-		Long:  "Load a backup of the renter's siafiles from the specified path",
+		Long:  "Load a backup of the renter's siafiles from the specified path. If -remote is used, path is the name of the uploaded backup.",
 		Run:   wrap(renterbackuploadcmd),
+	}
+
+	renterBackupListCmd = &cobra.Command{
+		Use:   "listbackups",
+		Short: "List backups stored on hosts",
+		Long:  "List backups stored on hosts",
+		Run:   wrap(renterbackuplistcmd),
 	}
 
 	renterCmd = &cobra.Command{
@@ -566,21 +573,41 @@ func renterbackupcreatecmd(path string) {
 		path = filepath.Join(path, fmt.Sprintf("%v.backup", time.Now().Unix()))
 	}
 	// Create backup.
-	err = httpClient.RenterCreateBackupPost(path, false)
+	err = httpClient.RenterCreateBackupPost(path, renterRemoteBackup)
 	if err != nil {
 		die("Failed to create backup", err)
 	}
+	if renterRemoteBackup {
+		fmt.Println("Remote backup initiated. Monitor progress with the 'listbackups' command.")
+	}
 }
 
-// renterbackloadcmd is the handler for the command `siac renter
+// renterbackuploadcmd is the handler for the command `siac renter
 // loadbackup`.
 func renterbackuploadcmd(path string) {
 	path = abs(path)
 
-	err := httpClient.RenterRecoverBackupPost(path, false)
+	err := httpClient.RenterRecoverBackupPost(path, renterRemoteBackup)
 	if err != nil {
 		die("Failed to load backup", err)
 	}
+}
+
+// renterbackuplistcmd is the handler for the command `siac renter listbackups`.
+func renterbackuplistcmd() {
+	ubs, err := httpClient.RenterUploadedBackups()
+	if err != nil {
+		die("Failed to retrieve backups", err)
+	} else if len(ubs) == 0 {
+		fmt.Println("No uploaded backups.")
+		return
+	}
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "  Name\tCreation Date\tUpload Progress")
+	for _, ub := range ubs {
+		fmt.Fprintln(w, ub.Name, ub.CreationDate, ub.UploadProgress)
+	}
+	w.Flush()
 }
 
 // rentercontractscmd is the handler for the comand `siac renter contracts`.
