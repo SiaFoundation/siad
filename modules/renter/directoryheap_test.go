@@ -133,23 +133,11 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 
 	// Reset Direcotry heap
-	err = rt.renter.managedResetDirectoryHeap()
-	if err != nil {
-		t.Fatal(err)
-	}
+	rt.renter.directoryHeap.managedReset()
 
-	// Confirm that the heap has a length of 1
-	if rt.renter.directoryHeap.managedLen() != 1 {
-		t.Fatal("heap should have a length of 1 but has length of", rt.renter.directoryHeap.managedLen())
-	}
-
-	// Pop off top element. It should be an unexplored root
-	d = rt.renter.directoryHeap.managedPop()
-	if !d.siaPath.Equals(modules.RootSiaPath()) {
-		t.Fatalf("Expected siapath to be '%v' but was '%v'", modules.RootSiaPath(), d.siaPath)
-	}
-	if d.explored {
-		t.Fatal("Expected root directory to be unexplored")
+	// Confirm that the heap is empty
+	if rt.renter.directoryHeap.managedLen() != 0 {
+		t.Fatal("heap should empty but has length of", rt.renter.directoryHeap.managedLen())
 	}
 }
 
@@ -201,7 +189,7 @@ func TestPushSubDirectories(t *testing.T) {
 	}
 
 	// Make sure we are starting with an empty heap
-	rt.renter.directoryHeap.managedEmpty()
+	rt.renter.directoryHeap.managedReset()
 
 	// Add root sub directories
 	d := &directory{
@@ -344,7 +332,8 @@ func TestNextExploredDirectory(t *testing.T) {
 
 	// Make sure we are starting with an empty heap, this helps with ndfs and
 	// tests proper handling of empty heaps
-	err = rt.renter.managedResetDirectoryHeap()
+	rt.renter.directoryHeap.managedReset()
+	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}

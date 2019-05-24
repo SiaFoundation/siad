@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -282,5 +284,102 @@ func TestUploadHeap(t *testing.T) {
 	}
 	if chunk.piecesCompleted != 1 {
 		t.Fatal("top chunk should have the less amount of completed chunks")
+	}
+}
+
+// TestAddChunksToHeap probes the managedAddChunksToHeap method to ensure it is
+// functioning as intented
+func TestAddChunksToHeap(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create Renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create File params
+	_, rsc := testingFileParams()
+	source, err := rt.createZeroByteFileOnDisk()
+	if err != nil {
+		t.Fatal(err)
+	}
+	up := modules.FileUploadParams{
+		Source:      source,
+		ErasureCode: rsc,
+	}
+
+	// Create files in multiple directories
+	var numChunks uint64
+	var dirSiaPaths []modules.SiaPath
+	names := []string{"rootFile", "subdir/File", "subdir2/file"}
+	for _, name := range names {
+		siaPath, err := modules.NewSiaPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		up.SiaPath = siaPath
+		f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, 0777)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Track number of chunks
+		numChunks += f.NumChunks()
+		dirSiaPath, err := siaPath.Dir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Make sure directories are created
+		err = rt.renter.CreateDir(dirSiaPath)
+		if err != nil && err != siadir.ErrPathOverload {
+			t.Fatal(err)
+		}
+		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
+	}
+
+	// Call bubbled to ensure directory metadata is updated
+	for _, siaPath := range dirSiaPaths {
+		err := rt.renter.managedBubbleMetadata(siaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Manually add workers to worker pool and create host map
+	hosts := make(map[string]struct{})
+	for i := 0; i < rsc.MinPieces(); i++ {
+		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
+			downloadChan: make(chan struct{}, 1),
+			killChan:     make(chan struct{}),
+			uploadChan:   make(chan struct{}, 1),
+		}
+	}
+
+	// Make sure directory Heap it ready
+	rt.renter.directoryHeap.managedReset()
+	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// call managedAddChunksTo Heap
+	siaPaths, health, err := rt.renter.managedAddChunksToHeap(hosts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that all chunks from all the directories were added since there
+	// are not enough chunks in only one directory to fill the heap
+	if len(siaPaths) != 3 {
+		t.Fatal("Expected 3 siaPaths to be returned, got", siaPaths)
+	}
+	expectedHealth := 1 + (float64(rsc.MinPieces()) / float64(rsc.NumPieces()-rsc.MinPieces()))
+	if health != expectedHealth {
+		t.Fatalf("Expected health to be %v, got %v", expectedHealth, health)
+	}
+	if rt.renter.uploadHeap.managedLen() != int(numChunks) {
+		t.Fatalf("Expected uploadHeap to have %v chunks but it has %v chunks", numChunks, rt.renter.uploadHeap.managedLen())
 	}
 }
