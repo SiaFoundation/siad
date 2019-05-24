@@ -239,6 +239,42 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 	}
 }
 
+// managedStuckFile randomly find a stuck files from a directory
+func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (modules.SiaPath, error) {
+	// Get all list of files in the directory
+	files, err := r.FileList(dirSiaPath, false, false)
+	if err != nil {
+		return modules.SiaPath{}, err
+	}
+	if len(files) == 0 {
+		return modules.SiaPath{}, errors.New("no files in directory")
+	}
+
+	// Pull out stuck files and track the number of stuck chunks
+	var stuckFiles []modules.FileInfo
+	var totalStuckChunks int
+	for _, f := range files {
+		if f.Stuck {
+			stuckFiles = append(stuckFiles, f)
+			totalStuckChunks += int(f.NumStuckChunks)
+		}
+	}
+
+	// Use rand to decide which file to select. We can chose a file by
+	// subtracting the number of stuck chunks a file has from rand and if rand
+	// gets to 0 or less we choose that file
+	var siaPath modules.SiaPath
+	rand := fastrand.Intn(totalStuckChunks)
+	for _, f := range stuckFiles {
+		rand = rand - int(f.NumStuckChunks)
+		siaPath = f.SiaPath
+		if rand <= 0 {
+			break
+		}
+	}
+	return siaPath, nil
+}
+
 // managedSubDirectories reads a directory and returns a slice of all the sub
 // directory SiaPaths
 func (r *Renter) managedSubDirectories(siaPath modules.SiaPath) ([]modules.SiaPath, error) {
@@ -275,6 +311,7 @@ func (r *Renter) threadedStuckFileLoop() {
 	}
 
 	// Loop until the renter has shutdown or until there are no stuck chunks
+	var dirsToBubble []modules.SiaPath
 	for {
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
@@ -314,16 +351,52 @@ func (r *Renter) threadedStuckFileLoop() {
 			continue
 		}
 
+		// Get Random stuck file from directory
+		siaPath, err := r.managedStuckFile(dirSiaPath)
+		if err != nil {
+			r.log.Debugln("WARN: error getting random stuck file:", err)
+			// Sleep for a little bit before continuing
+			select {
+			case <-time.After(stuckLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
+			continue
+		}
+
 		// Refresh the worker pool and get the set of hosts that are currently
 		// useful for uploading.
 		hosts := r.managedRefreshHostsAndWorkers()
 
 		// Add stuck chunk to upload heap and signal repair needed
-		r.managedBuildChunkHeap(dirSiaPath, hosts, targetStuckChunks)
-		r.log.Debugf("Attempting to repair stuck chunks from directory `%s`", dirSiaPath.String())
+		err = r.managedBuildAndPushRandomChunk(siaPath, hosts, targetStuckChunks)
+		if err != nil {
+			r.log.Debugln("WARN: error pushing random stuck to uploadheap:", err)
+			// Sleep for a little bit before continuing
+			select {
+			case <-time.After(stuckLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
+			continue
+		}
+		r.log.Debugf("Attempting to repair stuck chunk from file `%s`", siaPath.String())
 		select {
 		case r.uploadHeap.repairNeeded <- struct{}{}:
 		default:
+		}
+
+		// Remember directory so we can call bubble since we successfully added
+		// a stuck chunk to the upload heap
+		dirsToBubble = append(dirsToBubble, dirSiaPath)
+
+		// Check if number of stuck chunks in uploadHeap is sufficient
+		r.uploadHeap.mu.Lock()
+		numStuckChunks := len(r.uploadHeap.stuckHeapChunks)
+		r.uploadHeap.mu.Unlock()
+		if numStuckChunks < maxStuckChunksInHeap {
+			// Add another stuck chunk
+			continue
 		}
 
 		// Sleep until it is time to try and repair another stuck chunk
@@ -349,15 +422,15 @@ func (r *Renter) threadedStuckFileLoop() {
 		// is called when a chunk is done with its repair and since this loop
 		// only typically adds one chunk at a time call bubble before the next
 		// iteration is sufficient.
-		err = r.managedBubbleMetadata(dirSiaPath)
-		if err != nil {
-			r.log.Println("Error calling managedBubbleMetadata on `", dirSiaPath.String(), "`:", err)
-			select {
-			case <-time.After(stuckLoopErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
+		for _, dir := range dirsToBubble {
+			err = r.managedBubbleMetadata(dir)
+			if err != nil {
+				r.log.Println("Error calling managedBubbleMetadata on `", dir.String(), "`:", err)
 			}
 		}
+
+		// Clear directories
+		dirsToBubble = []modules.SiaPath{}
 	}
 }
 
