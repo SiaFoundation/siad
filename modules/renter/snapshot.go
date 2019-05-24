@@ -105,7 +105,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	for {
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 		info, err := r.staticBackupFileSet.FileInfo(sp, offlineMap, goodForRenewMap, contractsMap)
-		if err == nil && info.Available && info.Recoverable {
+		if err == nil && info.Health <= siafile.RemoteRepairDownloadThreshold {
 			break
 		}
 		// sleep for a bit before trying again
