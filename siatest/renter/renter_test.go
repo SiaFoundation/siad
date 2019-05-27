@@ -4480,11 +4480,15 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// TODO: The following code was temporarily modified since we don't allow
+	// loading a backup into a non-empty renter at the moment. This needs to be
+	// changed once we do allow it.
 	// Recover the backup again. Now there should be another file with a suffix at
 	// the end.
-	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
-		t.Fatal(err)
+	if err := r.RenterRecoverBackupPost(backupPath, false); err == nil {
+		t.Fatal("Shouldn't be able to recover a backup into a non-empty renter")
 	}
+	t.SkipNow() // Skip remaining test until we enable recovering for non-empty renters.
 	fis, err := r.RenterFilesGet(false)
 	if err != nil {
 		t.Fatal(err)
