@@ -6,12 +6,13 @@ import (
 	"compress/gzip"
 	"crypto/cipher"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 
@@ -127,12 +128,6 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	}
 	defer root.Close()
 
-	// Make sure the number of files is 0.
-	numFiles := root.Metadata().AggregateNumFiles
-	if numFiles != 0 {
-		return fmt.Errorf("Backups can only be loaded on renters with 0 files but got %v", numFiles)
-	}
-
 	// Open the gzip file.
 	f, err := os.Open(src)
 	if err != nil {
@@ -202,7 +197,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	// Wrap the gzip reader in a tar reader.
 	tr := tar.NewReader(gzr)
 	// Untar the files.
-	return r.managedUntarDir(tr, r.staticFilesDir)
+	return r.managedUntarDir(tr)
 }
 
 // managedTarSiaFiles creates a tarball from the renter's siafiles and writes
@@ -286,7 +281,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 
 // managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
-func (r *Renter) managedUntarDir(tr *tar.Reader, dstFolder string) error {
+func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 	// Copy the files from the tarball to the new location.
 	for {
 		header, err := tr.Next()
@@ -295,7 +290,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader, dstFolder string) error {
 		} else if err != nil {
 			return err
 		}
-		dst := filepath.Join(dstFolder, header.Name)
+		dst := filepath.Join(r.staticFilesDir, header.Name)
 
 		// Check for dir.
 		info := header.FileInfo()
@@ -310,14 +305,48 @@ func (r *Renter) managedUntarDir(tr *tar.Reader, dstFolder string) error {
 		if err != nil {
 			return err
 		}
-		sf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
-		if err != nil {
-			return err
-		}
-		// Add the file to the SiaFileSet.
-		err = r.staticFileSet.AddExistingSiaFile(sf)
-		if err != nil {
-			return err
+		if name := filepath.Base(info.Name()); name == modules.SiaDirExtension {
+			// Load the file as a .siadir
+			var md siadir.Metadata
+			err = json.Unmarshal(b, &md)
+			if err != nil {
+				return err
+			}
+			// Try creating a new SiaDir.
+			var siaPath modules.SiaPath
+			if err := siaPath.LoadSysPath(r.staticFilesDir, dst); err != nil {
+				return err
+			}
+			siaPath, err = siaPath.Dir()
+			if err != nil {
+				return err
+			}
+			dirEntry, err := r.staticDirSet.NewSiaDir(siaPath)
+			if err == siadir.ErrPathOverload {
+				// .siadir exists already
+				continue
+			} else if err != nil {
+				return err // unexpected error
+			}
+			// Update the metadata.
+			if err := dirEntry.UpdateMetadata(md); err != nil {
+				dirEntry.Close()
+				return err
+			}
+			if err := dirEntry.Close(); err != nil {
+				return err
+			}
+		} else if filepath.Ext(info.Name()) == modules.SiaFileExtension {
+			// Load the file as a SiaFile.
+			sf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
+			if err != nil {
+				return err
+			}
+			// Add the file to the SiaFileSet.
+			err = r.staticFileSet.AddExistingSiaFile(sf)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
