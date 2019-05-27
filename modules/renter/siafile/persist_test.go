@@ -796,11 +796,11 @@ func TestUniqueIDMissing(t *testing.T) {
 	// Create a new file.
 	sf, wal, _ := newBlankTestFileAndWAL()
 	// It should have a UID.
-	if sf.staticMetadata.StaticUniqueID == "" {
+	if sf.staticMetadata.UniqueID == "" {
 		t.Fatal("unique ID wasn't set")
 	}
 	// Set the UID to a blank string and save the file.
-	sf.staticMetadata.StaticUniqueID = ""
+	sf.staticMetadata.UniqueID = ""
 	if err := sf.saveFile(); err != nil {
 		t.Fatal(err)
 	}
@@ -810,7 +810,7 @@ func TestUniqueIDMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	// It should have a UID now.
-	if sf.staticMetadata.StaticUniqueID == "" {
+	if sf.staticMetadata.UniqueID == "" {
 		t.Fatal("unique ID wasn't set after loading file")
 	}
 }

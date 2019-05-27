@@ -15,6 +15,15 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
+// FileSource is an interface that needs to be satisfied for a SiaFile to be
+// loaded from a specific source. Examples that satisfy it are the os.File and
+// bytes.Reader types.
+type FileSource interface {
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+}
+
 var (
 	// errUnknownSiaFileUpdate is returned when applyUpdates finds an update
 	// that is unknown
@@ -33,10 +42,24 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	return loadSiaFile(path, wal, modules.ProdDependencies)
 }
 
+// LoadSiaFileFromReader allows loading a SiaFile from a different location that
+// directly from disk as long as the source satisfies the SiaFileSource
+// interface.
+func LoadSiaFileFromReader(r FileSource, path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
+	return loadSiaFileFromReader(r, path, wal, modules.ProdDependencies)
+}
+
 // LoadSiaFileMetadata is a wrapper for loadSiaFileMetadata that uses the
 // production dependencies.
 func LoadSiaFileMetadata(path string) (Metadata, error) {
 	return loadSiaFileMetadata(path, modules.ProdDependencies)
+}
+
+// SetSiaFilePath sets the path of the siafile on disk.
+func (sf *SiaFile) SetSiaFilePath(path string) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.siaFilePath = path
 }
 
 // applyUpdates applies a number of writeaheadlog updates to the corresponding
@@ -73,26 +96,34 @@ func createDeleteUpdate(path string) writeaheadlog.Update {
 
 // loadSiaFile loads a SiaFile from disk.
 func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
+	// Open the file.
+	f, err := deps.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return loadSiaFileFromReader(f, path, wal, deps)
+}
+
+// loadSiaFileFromReader allows loading a SiaFile from a different location that
+// directly from disk as long as the source satisfies the SiaFileSource
+// interface.
+func loadSiaFileFromReader(r FileSource, path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
 	// Create the SiaFile
 	sf := &SiaFile{
 		deps:        deps,
 		siaFilePath: path,
 		wal:         wal,
 	}
-	// Open the file.
-	f, err := sf.deps.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
 	// Load the metadata.
-	decoder := json.NewDecoder(f)
-	if err := decoder.Decode(&sf.staticMetadata); err != nil {
+	decoder := json.NewDecoder(r)
+	err := decoder.Decode(&sf.staticMetadata)
+	if err != nil {
 		return nil, errors.AddContext(err, "failed to decode metadata")
 	}
 	// COMPATv137 legacy files might not have a unique id.
-	if sf.staticMetadata.StaticUniqueID == "" {
-		sf.staticMetadata.StaticUniqueID = uniqueID()
+	if sf.staticMetadata.UniqueID == "" {
+		sf.staticMetadata.UniqueID = uniqueID()
 	}
 	// Create the erasure coder.
 	sf.staticMetadata.staticErasureCode, err = unmarshalErasureCoder(sf.staticMetadata.StaticErasureCodeType, sf.staticMetadata.StaticErasureCodeParams)
@@ -114,7 +145,7 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		return nil, fmt.Errorf("pubKeyTableLen is %v, can't load file", pubKeyTableLen)
 	}
 	rawPubKeyTable := make([]byte, pubKeyTableLen)
-	if _, err := f.ReadAt(rawPubKeyTable, sf.staticMetadata.PubKeyTableOffset); err != nil {
+	if _, err := r.ReadAt(rawPubKeyTable, sf.staticMetadata.PubKeyTableOffset); err != nil {
 		return nil, errors.AddContext(err, "failed to read pubKeyTable from disk")
 	}
 	sf.pubKeyTable, err = unmarshalPubKeyTable(rawPubKeyTable)
@@ -122,7 +153,7 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		return nil, errors.AddContext(err, "failed to unmarshal pubKeyTable")
 	}
 	// Seek to the start of the chunks.
-	off, err := f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
+	off, err := r.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +164,7 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 	// Load the chunks.
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	for {
-		n, err := f.Read(chunkBytes)
+		n, err := r.Read(chunkBytes)
 		if n == 0 && err == io.EOF {
 			break
 		} else if err != nil {

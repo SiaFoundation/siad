@@ -21,7 +21,7 @@ type (
 
 	// Metadata is the metadata of a SiaFile and is JSON encoded.
 	Metadata struct {
-		StaticUniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
+		UniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
 
 		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
 		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
@@ -316,6 +316,11 @@ func (sf *SiaFile) Size() uint64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	return uint64(sf.staticMetadata.FileSize)
+}
+
+// UpdateUniqueID creates a new random uid for the SiaFile.
+func (sf *SiaFile) UpdateUniqueID() {
+	sf.staticMetadata.UniqueID = uniqueID()
 }
 
 // UpdateAccessTime updates the AccessTime timestamp to the current time.

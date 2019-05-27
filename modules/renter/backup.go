@@ -8,9 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -199,7 +202,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	// Wrap the gzip reader in a tar reader.
 	tr := tar.NewReader(gzr)
 	// Untar the files.
-	return untarDir(tr, r.staticFilesDir)
+	return r.managedUntarDir(tr, r.staticFilesDir)
 }
 
 // managedTarSiaFiles creates a tarball from the renter's siafiles and writes
@@ -281,9 +284,9 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 	})
 }
 
-// untarDir untars the archive from src and writes the contents to dstFolder
+// managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
-func untarDir(tr *tar.Reader, dstFolder string) error {
+func (r *Renter) managedUntarDir(tr *tar.Reader, dstFolder string) error {
 	// Copy the files from the tarball to the new location.
 	for {
 		header, err := tr.Next()
@@ -302,50 +305,22 @@ func untarDir(tr *tar.Reader, dstFolder string) error {
 			}
 			continue
 		}
-		// Add a suffix to the dst path if the file already exists for siafiles.
-		uniqueName := filepath.Ext(dst) == modules.SiaFileExtension
-		if uniqueName {
-			dst = uniqueFilename(dst)
-		}
-		// Create file while preserving mode.
-		f, err := os.OpenFile(dst, os.O_EXCL|os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
-		if !uniqueName && os.IsExist(err) {
-			continue
-		}
+		// Load the new file in memory.
+		b, err := ioutil.ReadAll(tr)
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(f, tr)
-
-		// Close the file right away instead of defering it.
-		_ = f.Close()
-
-		// Check if io.Copy was successful.
+		sf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
+		if err != nil {
+			return err
+		}
+		// Add the file to the SiaFileSet.
+		err = r.staticFileSet.AddExistingSiaFile(sf)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-// uniqueFilename checks if a file exists at a certain destination. If it does
-// it will append a suffix of the form _[num] and increment [num] until it can
-// find a suffix that isn't in use yet.
-func uniqueFilename(dst string) string {
-	suffix := ""
-	counter := 1
-	extension := filepath.Ext(dst)
-	nameNoExt := strings.TrimSuffix(dst, extension)
-	for {
-		path := nameNoExt + suffix + extension
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			// File doesn't exist. We are done.
-			return path
-		}
-		// Duplicate detected. Increment suffix and counter.
-		suffix = fmt.Sprintf("_%v", counter)
-		counter++
-	}
 }
 
 // wrapReaderInCipher wraps the reader r into another reader according to the
