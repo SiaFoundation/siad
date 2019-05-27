@@ -59,9 +59,9 @@ type (
 	// can therefore not be called from a locked SiaDirSet.
 	RenameDirFunc func(oldPath, newPath modules.SiaPath) error
 
-	// A DeleteDirFunc is a function that can be used to rename a SiaDir. It's
+	// A DeleteDirFunc is a function that can be used to delete a SiaDir. It's
 	// passed to the SiaFileSet to delete the direcory after already loaded
-	// SiaFiles are locked. A RenameDirFunc is assumed to lock the SiaDirSet and
+	// SiaFiles are locked. A DeleteDirFunc is assumed to lock the SiaDirSet and
 	// can therefore not be called from a locked SiaDirSet.
 	DeleteDirFunc func(siaPath modules.SiaPath) error
 )

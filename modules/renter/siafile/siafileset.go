@@ -212,9 +212,8 @@ func (sfs *SiaFileSet) delete(siaPath modules.SiaPath) error {
 		if os.IsNotExist(err) {
 			return ErrUnknownPath
 		}
-		// If the entry does not exists then we want to just remove the entry
-		// from disk without loading it from disk to avoid errors due to corrupt
-		// siafiles
+		// If the entry does not exist then we want to just remove the entry from disk
+		// without loading it from disk to avoid errors due to corrupt siafiles
 		update := createDeleteUpdate(siaFilePath)
 		return sfs.createAndApplyTransaction(update)
 	}
