@@ -431,7 +431,7 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 	oldFile, err := sfs.open(siaPath)
 	exists := err == nil
 	if exists {
-		defer oldFile.Close()
+		defer sfs.closeEntry(oldFile)
 	}
 	if err != nil && err != ErrUnknownPath {
 		return err
