@@ -186,6 +186,13 @@ type (
 		UploadProgress float64         `json:"uploadprogress"`
 	}
 
+	// RenterUploadedBackups lists the renter's uploaded backups, as well as the
+	// set of contracts storing all known backups.
+	RenterUploadedBackups struct {
+		Backups   []RenterUploadedBackup `json:"backups"`
+		Contracts []types.FileContractID `json:"contracts"`
+	}
+
 	// DownloadInfo contains all client-facing information of a file.
 	DownloadInfo struct {
 		Destination     string          `json:"destination"`     // The destination of the download.
@@ -320,7 +327,7 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 
 // renterUploadedBackupsHandlerGET handles the API calls to /renter/uploadedbackups
 func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	backups, err := api.renter.UploadedBackups()
+	backups, contracts, err := api.renter.UploadedBackups()
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -334,7 +341,10 @@ func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http
 			UploadProgress: b.UploadProgress,
 		}
 	}
-	WriteJSON(w, rups)
+	WriteJSON(w, RenterUploadedBackups{
+		Backups:   rups,
+		Contracts: contracts,
+	})
 }
 
 // parseErasureCodingParameters parses the supplied string values and creates

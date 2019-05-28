@@ -232,7 +232,7 @@ func (c *Client) RenterRecoverBackupPost(src string, remote bool) (err error) {
 }
 
 // RenterUploadedBackups lists the backups the renter has uploaded to hosts.
-func (c *Client) RenterUploadedBackups() (ubs []api.RenterUploadedBackup, err error) {
+func (c *Client) RenterUploadedBackups() (ubs api.RenterUploadedBackups, err error) {
 	err = c.get("/renter/uploadedbackups", &ubs)
 	return
 }

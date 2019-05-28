@@ -4844,7 +4844,7 @@ func TestRemoteBackup(t *testing.T) {
 		// wait for backup to upload
 		return build.Retry(60, time.Second, func() error {
 			ubs, _ := r.RenterUploadedBackups()
-			for _, ub := range ubs {
+			for _, ub := range ubs.Backups {
 				if ub.Name != name {
 					continue
 				} else if ub.UploadProgress != 100 {
@@ -4876,7 +4876,7 @@ func TestRemoteBackup(t *testing.T) {
 	ubs, err := r.RenterUploadedBackups()
 	if err != nil {
 		t.Fatal(err)
-	} else if len(ubs) != 2 {
+	} else if len(ubs.Backups) != 2 {
 		t.Fatal("expected two backups, got", ubs)
 	}
 
@@ -4960,7 +4960,7 @@ func TestRemoteBackup(t *testing.T) {
 		ubs, err = r.RenterUploadedBackups()
 		if err != nil {
 			return err
-		} else if len(ubs) != 2 {
+		} else if len(ubs.Backups) != 2 {
 			return fmt.Errorf("expected two backups, got %v", ubs)
 		}
 		return nil

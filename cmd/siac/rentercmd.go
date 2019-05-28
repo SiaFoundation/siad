@@ -598,14 +598,14 @@ func renterbackuplistcmd() {
 	ubs, err := httpClient.RenterUploadedBackups()
 	if err != nil {
 		die("Failed to retrieve backups", err)
-	} else if len(ubs) == 0 {
+	} else if len(ubs.Backups) == 0 {
 		fmt.Println("No uploaded backups.")
 		return
 	}
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "  Name\tCreation Date\tUpload Progress")
-	for _, ub := range ubs {
-		fmt.Fprintln(w, ub.Name, ub.CreationDate, ub.UploadProgress)
+	for _, ub := range ubs.Backups {
+		fmt.Fprintf(w, "  %v\t%v\t%v\n", ub.Name, ub.CreationDate, ub.UploadProgress)
 	}
 	w.Flush()
 }

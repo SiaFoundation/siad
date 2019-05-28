@@ -49,16 +49,18 @@ func calcSnapshotUploadProgress(fileUploadProgress float64, dotSiaUploadProgress
 	return 0.8*fileUploadProgress + 0.2*dotSiaUploadProgress
 }
 
-// UploadedBackups returns the backups that the renter can download.
-func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, error) {
+// UploadedBackups returns the backups that the renter can download, along with
+// a list of which contracts are storing all known backups.
+func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, []types.FileContractID, error) {
 	if err := r.tg.Add(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer r.tg.Done()
 	id := r.mu.RLock()
 	defer r.mu.RUnlock(id)
 	backups := append([]modules.UploadedBackup(nil), r.persist.UploadedBackups...)
-	return backups, nil
+	contracts := append([]types.FileContractID(nil), r.persist.SyncedContracts...)
+	return backups, contracts, nil
 }
 
 // UploadBackup creates a backup of the renter which is uploaded to the sia
