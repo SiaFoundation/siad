@@ -664,19 +664,19 @@ func rentercontractscmd() {
 		w.Flush()
 	}
 
-	fmt.Println("\nRenewed Contracts:")
-	if len(rc.RenewedContracts) == 0 {
-		fmt.Println("  No renewed contracts.")
+	fmt.Println("Passive Contracts:")
+	if len(rc.PassiveContracts) == 0 {
+		fmt.Println("  No passive contracts.")
 	} else {
-		// Display Renewed Contracts
-		sort.Sort(byValue(rc.RenewedContracts))
-		var renewedTotalStored uint64
-		var renewedTotalRemaining, renewedTotalSpent, renewedTotalFees types.Currency
-		for _, c := range rc.RenewedContracts {
-			renewedTotalStored += c.Size
-			renewedTotalRemaining = renewedTotalRemaining.Add(c.RenterFunds)
-			renewedTotalSpent = renewedTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
-			renewedTotalFees = renewedTotalFees.Add(c.Fees)
+		// Display Passive Contracts
+		sort.Sort(byValue(rc.PassiveContracts))
+		var passiveTotalStored uint64
+		var passiveTotalRemaining, passiveTotalSpent, passiveTotalFees types.Currency
+		for _, c := range rc.PassiveContracts {
+			passiveTotalStored += c.Size
+			passiveTotalRemaining = passiveTotalRemaining.Add(c.RenterFunds)
+			passiveTotalSpent = passiveTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
+			passiveTotalFees = passiveTotalFees.Add(c.Fees)
 		}
 		fmt.Printf(`  Number of Contracts:  %v
   Total stored:         %s
@@ -684,11 +684,57 @@ func rentercontractscmd() {
   Total Spent:          %v
   Total Fees:           %v
 
-`, len(rc.RenewedContracts), filesizeUnits(renewedTotalStored),
-			currencyUnits(renewedTotalRemaining), currencyUnits(renewedTotalSpent), currencyUnits(renewedTotalFees))
+`, len(rc.PassiveContracts), filesizeUnits(passiveTotalStored),
+			currencyUnits(passiveTotalRemaining), currencyUnits(passiveTotalSpent), currencyUnits(passiveTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
-		for _, c := range rc.RenewedContracts {
+		for _, c := range rc.PassiveContracts {
+			address := c.NetAddress
+			hostVersion := c.HostVersion
+			if address == "" {
+				address = "Host Removed"
+				hostVersion = ""
+			}
+			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+				address,
+				hostVersion,
+				currencyUnits(c.RenterFunds),
+				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+				currencyUnits(c.Fees),
+				filesizeUnits(c.Size),
+				c.EndHeight,
+				c.ID,
+				c.GoodForUpload,
+				c.GoodForRenew)
+		}
+		w.Flush()
+	}
+
+	fmt.Println("\nRefreshed Contracts:")
+	if len(rc.RefreshedContracts) == 0 {
+		fmt.Println("  No refreshed contracts.")
+	} else {
+		// Display Refreshed Contracts
+		sort.Sort(byValue(rc.RefreshedContracts))
+		var refreshedTotalStored uint64
+		var refreshedTotalRemaining, refreshedTotalSpent, refreshedTotalFees types.Currency
+		for _, c := range rc.RefreshedContracts {
+			refreshedTotalStored += c.Size
+			refreshedTotalRemaining = refreshedTotalRemaining.Add(c.RenterFunds)
+			refreshedTotalSpent = refreshedTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
+			refreshedTotalFees = refreshedTotalFees.Add(c.Fees)
+		}
+		fmt.Printf(`  Number of Contracts:  %v
+  Total stored:         %s
+  Total Remaining:      %v
+  Total Spent:          %v
+  Total Fees:           %v
+
+`, len(rc.RefreshedContracts), filesizeUnits(refreshedTotalStored),
+			currencyUnits(refreshedTotalRemaining), currencyUnits(refreshedTotalSpent), currencyUnits(refreshedTotalFees))
+		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		for _, c := range rc.RefreshedContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
 			if address == "" {
@@ -783,6 +829,54 @@ func rentercontractscmd() {
 	Total Fees:           %v
 			
 	`, len(rce.ExpiredContracts), filesizeUnits(expiredTotalStored), currencyUnits(expiredTotalWithheld), currencyUnits(expiredTotalSpent), currencyUnits(expiredTotalFees))
+			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "  Host\tHost Version\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+			for _, c := range rce.ExpiredContracts {
+				address := c.NetAddress
+				hostVersion := c.HostVersion
+				if address == "" {
+					address = "Host Removed"
+					hostVersion = ""
+				}
+				fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+					address,
+					hostVersion,
+					currencyUnits(c.RenterFunds),
+					currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+					currencyUnits(c.Fees),
+					filesizeUnits(c.Size),
+					c.EndHeight,
+					c.ID,
+					c.GoodForUpload,
+					c.GoodForRenew)
+			}
+			w.Flush()
+		}
+		
+		fmt.Println("\nExpired Refresh Contracts:")
+		if err != nil {
+			die("Could not get expired refreshed contracts:", err)
+		}
+		if len(rce.ExpiredRefreshedContracts) == 0 {
+			fmt.Println("  No expired contracts.")
+		} else {
+			sort.Sort(byValue(rce.ExpiredContracts))
+			var expiredRefreshedTotalStored uint64
+			var expiredRefreshedTotalWithheld, expiredRefreshedTotalSpent, expiredRefreshedTotalFees types.Currency
+			for _, c := range rce.ExpiredContracts {
+				expiredRefreshedTotalStored += c.Size
+				expiredRefreshedTotalWithheld = expiredRefreshedTotalWithheld.Add(c.RenterFunds)
+				expiredRefreshedTotalSpent = expiredRefreshedTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
+				expiredRefreshedTotalFees = expiredRefreshedTotalFees.Add(c.Fees)
+			}
+			fmt.Printf(`
+	Number of Contracts:  %v
+	Total stored:         %9s
+	Total Remaining:      %v
+	Total Spent:          %v
+	Total Fees:           %v
+			
+	`, len(rce.ExpiredRefreshedContracts), filesizeUnits(expiredRefreshedTotalStored), currencyUnits(expiredRefreshedTotalWithheld), currencyUnits(expiredRefreshedTotalSpent), currencyUnits(expiredRefreshedTotalFees))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "  Host\tHost Version\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 			for _, c := range rce.ExpiredContracts {

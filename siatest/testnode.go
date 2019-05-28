@@ -45,8 +45,8 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
-		t.Log("Renewed Contracts")
-		for _, c := range rc.RenewedContracts {
+		t.Log("Refreshed Contracts")
+		for _, c := range rc.RefreshedContracts {
 			t.Log("    ID", c.ID)
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)

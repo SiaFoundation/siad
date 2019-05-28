@@ -182,6 +182,49 @@ func (c *Contractor) RecoveryScanStatus() (bool, types.BlockHeight) {
 	return sip == 1, bh
 }
 
+// RefreshedContract returns a bool indicating if the contract was a refreshed
+// contract. A refreshed contract refers to a contract that ran out of funds
+// prior to the end height and so was renewed with the host in the same period.
+// Both the old and the new contract have the same end height
+func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
+	// Add thread and acquire lock
+	if err := c.tg.Add(); err != nil {
+		return false
+	}
+	defer c.tg.Done()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Check if contract ID is found in the renewedTo map indicating that the
+	// contract was renewed
+	newFCID, renewed := c.renewedTo[fcid]
+	if !renewed {
+		return renewed
+	}
+
+	// Grab the contract to check its end height
+	contract, ok := c.oldContracts[fcid]
+	if !ok {
+		build.Critical("contract not found in oldContracts, this should never happen")
+		return renewed
+	}
+
+	// Grab the contract it was renewed to to check its end height
+	newSafeContract, ok := c.staticContracts.Acquire(newFCID)
+	if ok {
+		defer c.staticContracts.Return(newSafeContract)
+		return newSafeContract.Metadata().EndHeight == contract.EndHeight
+
+	}
+	newContract, ok := c.oldContracts[newFCID]
+	if !ok {
+		build.Critical("contract not tracked in staticContracts of old contracts, this should never happen")
+		return renewed
+	}
+
+	return newContract.EndHeight == contract.EndHeight
+}
+
 // SetRateLimits sets the bandwidth limits for connections created by the
 // contractSet.
 func (c *Contractor) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {

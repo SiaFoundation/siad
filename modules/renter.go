@@ -580,6 +580,9 @@ type Renter interface {
 	// contracts is in progress and if it is, the current progress of the scan.
 	RecoveryScanStatus() (bool, types.BlockHeight)
 
+	// RefreshedContract checks if the contract was previously refreshed
+	RefreshedContract(fcid types.FileContractID) bool
+
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
 
