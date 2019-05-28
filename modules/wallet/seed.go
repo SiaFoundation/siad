@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/coreos/bbolt"
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"

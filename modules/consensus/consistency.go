@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-
-	"github.com/coreos/bbolt"
 )
 
 // manageErr handles an error detected by the consistency checks.

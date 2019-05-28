@@ -8,11 +8,10 @@ import (
 	"fmt"
 	"os"
 
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/persist"
-
-	"github.com/coreos/bbolt"
 )
 
 var (

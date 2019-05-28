@@ -11,14 +11,13 @@ import (
 	"testing"
 	"time"
 
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 // TestSynchronize tests that the consensus set can successfully synchronize

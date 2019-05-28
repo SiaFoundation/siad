@@ -5,11 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 // TestRescan triggers a rescan in the transaction pool, verifying that the

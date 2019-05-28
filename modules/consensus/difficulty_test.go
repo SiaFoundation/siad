@@ -5,9 +5,8 @@ import (
 	"math/big"
 	"testing"
 
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 // TestChildTargetOak checks the childTargetOak function, especially for edge

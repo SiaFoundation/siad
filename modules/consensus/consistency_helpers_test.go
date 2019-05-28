@@ -1,9 +1,8 @@
 package consensus
 
 import (
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-
-	"github.com/coreos/bbolt"
 )
 
 // dbConsensusChecksum is a convenience function to call consensusChecksum

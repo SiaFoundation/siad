@@ -5,10 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-
-	"github.com/coreos/bbolt"
 )
 
 // TestDBOpen tests the wallet.openDB method.

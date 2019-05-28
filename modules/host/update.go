@@ -7,11 +7,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 // initRescan is a helper function of initConsensusSubscribe, and is called when
