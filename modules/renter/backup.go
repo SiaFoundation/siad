@@ -117,6 +117,19 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	}
 	defer r.tg.Done()
 
+	// Only load a backup if there are no siafiles yet.
+	root, err := r.staticDirSet.Open(modules.RootSiaPath())
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	// Make sure the number of files is 0.
+	numFiles := root.Metadata().AggregateNumFiles
+	if numFiles != 0 {
+		return fmt.Errorf("Backups can only be loaded on renters with 0 files but got %v", numFiles)
+	}
+
 	// Open the gzip file.
 	f, err := os.Open(src)
 	if err != nil {
