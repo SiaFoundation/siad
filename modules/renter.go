@@ -598,6 +598,9 @@ type Renter interface {
 	// along with a list of which contracts are storing all known backups.
 	UploadedBackups() ([]UploadedBackup, []types.FileContractID, error)
 
+	// BackupsInContract returns the backups stored on the specified contract.
+	BackupsInContract(fcid types.FileContractID) ([]UploadedBackup, error)
+
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(siaPath SiaPath) error
 

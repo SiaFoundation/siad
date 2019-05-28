@@ -63,6 +63,42 @@ func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, []types.FileContra
 	return backups, contracts, nil
 }
 
+// BackupsInContract returns the backups stored on a particular contract.
+func (r *Renter) BackupsInContract(fcid types.FileContractID) ([]modules.UploadedBackup, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
+	contracts := r.hostContractor.Contracts()
+	for _, c := range contracts {
+		if c.ID != fcid {
+			continue
+		}
+		host, err := r.hostContractor.Session(c.HostPublicKey, r.tg.StopChan())
+		if err != nil {
+			return nil, err
+		}
+		defer host.Close()
+		entryTable, err := r.managedDownloadSnapshotTable(host)
+		if err != nil {
+			return nil, err
+		}
+		backups := make([]modules.UploadedBackup, len(entryTable))
+		for i, e := range entryTable {
+			backups[i] = modules.UploadedBackup{
+				Name:           string(bytes.TrimRight(e.Name[:], string(0))),
+				UID:            e.UID,
+				CreationDate:   e.CreationDate,
+				Size:           e.Size,
+				UploadProgress: 100,
+			}
+		}
+		return backups, nil
+	}
+	return nil, errors.New("no contract with that ID")
+}
+
 // UploadBackup creates a backup of the renter which is uploaded to the sia
 // network as a snapshot and can be retrieved using only the seed.
 func (r *Renter) UploadBackup(src, name string) error {
@@ -227,33 +263,11 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	}
 
 	// download the current entry table
-	tableSector, err := host.DownloadIndex(0, 0, uint32(modules.SectorSize))
-	if err != nil && strings.Contains(err.Error(), "invalid sector bounds") {
-		// host has no sectors present
-		err = nil
-	} else if err != nil {
-		return err
-	}
-	// decrypt the table
-	c, err := twofish.NewCipher(secret[:])
-	aead, err := cipher.NewGCM(c)
+	entryTable, err := r.managedDownloadSnapshotTable(host)
 	if err != nil {
 		return err
 	}
-	encTable, err := crypto.DecryptWithNonce(tableSector, aead)
-
-	// check that the sector actually contains an entry table. If so, we
-	// should replace the old table; if not, we should swap the old
-	// sector to the end, but not delete it.
-	haveValidTable := err == nil && bytes.Equal(encTable[:16], snapshotTableSpecifier[:])
-
-	// update the entry table
-	var entryTable []snapshotEntry
-	if haveValidTable {
-		if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
-			return err
-		}
-	}
+	shouldOverwrite := len(entryTable) != 0 // only overwrite if the sector already contained an entryTable
 	entryTable = append(entryTable, entry)
 
 	// if entryTable is too large to fit in a sector, repeatedly remove the
@@ -261,6 +275,8 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	sort.Slice(r.persist.UploadedBackups, func(i, j int) bool {
 		return r.persist.UploadedBackups[i].CreationDate > r.persist.UploadedBackups[j].CreationDate
 	})
+	c, _ := twofish.NewCipher(secret[:])
+	aead, _ := cipher.NewGCM(c)
 	overhead := types.SpecifierLen + aead.Overhead() + aead.NonceSize()
 	for len(encoding.Marshal(entryTable))+overhead > int(modules.SectorSize) {
 		entryTable = entryTable[:len(entryTable)-1]
@@ -270,11 +286,11 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	newTable := make([]byte, modules.SectorSize-uint64(aead.Overhead()+aead.NonceSize()))
 	copy(newTable[:16], snapshotTableSpecifier[:])
 	copy(newTable[16:], encoding.Marshal(entryTable))
-	tableSector = crypto.EncryptWithNonce(newTable, aead)
+	tableSector := crypto.EncryptWithNonce(newTable, aead)
 
 	// swap the new entry table into index 0 and delete the old one
 	// (unless it wasn't an entry table)
-	if _, err := host.Replace(tableSector, 0, haveValidTable); err != nil {
+	if _, err := host.Replace(tableSector, 0, shouldOverwrite); err != nil {
 		return err
 	}
 	return nil

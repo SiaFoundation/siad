@@ -332,6 +332,20 @@ func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	// if requested, fetch the backups stored on a specific host
+	if req.FormValue("contract") != "" {
+		var fcid types.FileContractID
+		if err := fcid.LoadString(req.FormValue("contract")); err != nil {
+			WriteError(w, Error{"invalid contract ID: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		backups, err = api.renter.BackupsInContract(fcid)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	rups := make([]RenterUploadedBackup, len(backups))
 	for i, b := range backups {
 		rups[i] = RenterUploadedBackup{
