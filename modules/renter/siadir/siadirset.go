@@ -58,6 +58,12 @@ type (
 	// SiaFiles are locked. A RenameDirFunc is assumed to lock the SiaDirSet and
 	// can therefore not be called from a locked SiaDirSet.
 	RenameDirFunc func(oldPath, newPath modules.SiaPath) error
+
+	// A DeleteDirFunc is a function that can be used to delete a SiaDir. It's
+	// passed to the SiaFileSet to delete the direcory after already loaded
+	// SiaFiles are locked. A DeleteDirFunc is assumed to lock the SiaDirSet and
+	// can therefore not be called from a locked SiaDirSet.
+	DeleteDirFunc func(siaPath modules.SiaPath) error
 )
 
 // newThreadType created a threadInfo entry for the threadMap
@@ -86,6 +92,45 @@ func NewSiaDirSet(rootDir string, wal *writeaheadlog.WAL) *SiaDirSet {
 		siaDirMap:     make(map[modules.SiaPath]*siaDirSetEntry),
 		wal:           wal,
 	}
+}
+
+// Delete deletes the SiaDir that belongs to the siaPath
+func (sds *SiaDirSet) Delete(siaPath modules.SiaPath) error {
+	// Prevent new dirs from being opened.
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	// Lock loaded files to prevent persistence from happening and unlock them when
+	// we are done renaming the dir.
+	var lockedDirs []*siaDirSetEntry
+	defer func() {
+		for _, entry := range lockedDirs {
+			entry.mu.Unlock()
+		}
+	}()
+	for key, entry := range sds.siaDirMap {
+		if strings.HasPrefix(key.String(), siaPath.String()) {
+			entry.mu.Lock()
+			lockedDirs = append(lockedDirs, entry)
+		}
+	}
+	// Grab entry and delete it.
+	entry, err := sds.open(siaPath)
+	if err != nil && err != ErrUnknownPath {
+		return err
+	} else if err == ErrUnknownPath {
+		return nil // nothing to do
+	}
+	defer sds.closeEntry(entry)
+	if err := entry.delete(); err != nil {
+		return err
+	}
+	// Deleting the dir was successful. Delete the open dirs. It's sufficient to do
+	// so only in memory to avoid any persistence. They will be removed from the
+	// map by the last thread closing the entry.
+	for _, entry := range lockedDirs {
+		entry.deleted = true
+	}
+	return nil
 }
 
 // exists checks to see if a SiaDir with the provided siaPath already exists in
@@ -244,34 +289,6 @@ func (sds *SiaDirSet) readLockDirInfo(siaPath modules.SiaPath) (modules.Director
 		Size:                metadata.Size,
 		StuckHealth:         metadata.StuckHealth,
 	}, nil
-}
-
-// Delete deletes the SiaDir that belongs to the siaPath
-func (sds *SiaDirSet) Delete(siaPath modules.SiaPath) error {
-	sds.mu.Lock()
-	defer sds.mu.Unlock()
-	// Check if SiaDir exists
-	exists, err := sds.exists(siaPath)
-	if !exists && os.IsNotExist(err) {
-		return ErrUnknownPath
-	}
-	if err != nil {
-		return err
-	}
-	// Grab entry
-	entry, err := sds.open(siaPath)
-	if err != nil {
-		return err
-	}
-	// Defer close entry
-	defer sds.closeEntry(entry)
-	entry.threadMapMu.Lock()
-	defer entry.threadMapMu.Unlock()
-	// Delete SiaDir
-	if err := entry.Delete(); err != nil {
-		return err
-	}
-	return nil
 }
 
 // Exists checks to see if a file with the provided siaPath already exists in

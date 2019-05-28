@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -403,6 +404,119 @@ func TestDeleteCorruptSiaFile(t *testing.T) {
 	_, err = os.Stat(siaFilePath)
 	if !os.IsNotExist(err) {
 		t.Fatal("Expected err to be that file does not exists but was:", err)
+	}
+}
+
+// TestSiaDirDelete tests the DeleteDir method of the siafileset.
+func TestSiaDirDelete(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Prepare a siadirset
+	dirRoot := filepath.Join(os.TempDir(), "siadirs", t.Name())
+	os.RemoveAll(dirRoot)
+	os.RemoveAll(dirRoot)
+	wal, _ := newTestWAL()
+	sds := siadir.NewSiaDirSet(dirRoot, wal)
+	sfs := NewSiaFileSet(dirRoot, wal)
+
+	// Specify a directory structure for this test.
+	var dirStructure = []string{
+		"dir1",
+		"dir1/subdir1",
+		"dir1/subdir1/subsubdir1",
+		"dir1/subdir1/subsubdir2",
+		"dir1/subdir1/subsubdir3",
+		"dir1/subdir2",
+		"dir1/subdir2/subsubdir1",
+		"dir1/subdir2/subsubdir2",
+		"dir1/subdir2/subsubdir3",
+		"dir1/subdir3",
+		"dir1/subdir3/subsubdir1",
+		"dir1/subdir3/subsubdir2",
+		"dir1/subdir3/subsubdir3",
+	}
+	// Specify a function that's executed in parallel which continuously saves a
+	// file to disk.
+	stop := make(chan struct{})
+	wg := new(sync.WaitGroup)
+	f := func(entry *SiaFileSetEntry) {
+		defer wg.Done()
+		defer entry.Close()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			err := entry.Save()
+			if err != nil && !strings.Contains(err.Error(), "can't call saveFile on deleted file") {
+				t.Fatal(err)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	// Create the structure and spawn a goroutine that keeps saving the structure
+	// to disk for each directory.
+	for _, dir := range dirStructure {
+		sp, err := modules.NewSiaPath(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry, err := sds.NewSiaDir(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 50% chance to close the dir.
+		if fastrand.Intn(2) == 0 {
+			entry.Close()
+		}
+		// Create a file in the dir.
+		fileSP, err := sp.Join(hex.EncodeToString(fastrand.Bytes(16)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+		sf, err := sfs.NewSiaFile(modules.FileUploadParams{Source: source, SiaPath: fileSP, ErasureCode: rc}, sk, fileSize, fileMode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 50% chance to spawn goroutine. It's not realistic to assume that all dirs
+		// are loaded.
+		if fastrand.Intn(2) == 0 {
+			wg.Add(1)
+			go f(sf)
+		} else {
+			sf.Close()
+		}
+	}
+	// Wait a second for the goroutines to write to disk a few times.
+	time.Sleep(time.Second)
+	// Delete dir1.
+	sp, err := modules.NewSiaPath("dir1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sfs.DeleteDir(sp, sds.Delete); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait another second for more writes to disk after renaming the dir before
+	// killing the goroutines.
+	time.Sleep(time.Second)
+	close(stop)
+	wg.Wait()
+	time.Sleep(time.Second)
+	// The root siafile dir should be empty except for 1 .siadir file.
+	files, err := ioutil.ReadDir(sfs.staticSiaFileDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || filepath.Ext(files[0].Name()) != modules.SiaDirExtension {
+		for _, file := range files {
+			t.Log("Found ", file.Name())
+		}
+		t.Fatalf("There should be %v files/folders in the root dir but found %v\n", 1, len(files))
 	}
 }
 

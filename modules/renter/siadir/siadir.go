@@ -220,15 +220,21 @@ func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependenci
 	return sd, err
 }
 
+// delete removes the directory from disk and marks it as deleted. Once the directory is
+// deleted, attempting to access the directory will return an error.
+func (sd *SiaDir) delete() error {
+	update := sd.createDeleteUpdate()
+	err := sd.createAndApplyTransaction(update)
+	sd.deleted = true
+	return err
+}
+
 // Delete removes the directory from disk and marks it as deleted. Once the directory is
 // deleted, attempting to access the directory will return an error.
 func (sd *SiaDir) Delete() error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
-	update := sd.createDeleteUpdate()
-	err := sd.createAndApplyTransaction(update)
-	sd.deleted = true
-	return err
+	return sd.delete()
 }
 
 // Deleted returns the deleted field of the siaDir
