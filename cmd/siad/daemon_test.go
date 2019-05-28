@@ -1,7 +1,10 @@
 package main
 
 import (
+	"os"
 	"testing"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 )
 
 // TestUnitProcessNetAddr probes the 'processNetAddr' function.
@@ -147,6 +150,43 @@ func TestUnitProcessConfig(t *testing.T) {
 	_, err := processConfig(config)
 	if err == nil {
 		t.Error("processModules didn't error on invalid module:", invalidModule)
+	}
+}
+
+// TestAPIPassword tests the 'apiPassword' function.
+func TestAPIPassword(t *testing.T) {
+	dir := build.TempDir("siad", t.Name())
+	// If config.Siad.AuthenticateAPI is false, no password should be set
+	var config Config
+	config, err := loadAPIPassword(config, dir)
+	if err != nil {
+		t.Fatal(err)
+	} else if config.APIPassword != "" {
+		t.Fatal("loadAPIPassword should not set a password if config.Siad.AuthenticateAPI is false")
+	}
+	config.Siad.AuthenticateAPI = true
+	// On first invocation, loadAPIPassword should generate a new random password
+	config2, err := loadAPIPassword(config, dir)
+	if err != nil {
+		t.Fatal(err)
+	} else if config2.APIPassword == "" {
+		t.Fatal("loadAPIPassword should have generated a random password")
+	}
+	// On subsequent invocations, loadAPIPassword should use the previously-generated password
+	config3, err := loadAPIPassword(config, dir)
+	if err != nil {
+		t.Fatal(err)
+	} else if config3.APIPassword != config2.APIPassword {
+		t.Fatal("loadAPIPassword should have used previously-generated password")
+	}
+	// If the environment variable is set, loadAPIPassword should use that
+	defer os.Setenv("SIA_API_PASSWORD", os.Getenv("SIA_API_PASSWORD"))
+	os.Setenv("SIA_API_PASSWORD", "foobar")
+	config4, err := loadAPIPassword(config, dir)
+	if err != nil {
+		t.Fatal(err)
+	} else if config4.APIPassword != "foobar" {
+		t.Fatal("loadAPIPassword should use environment variable")
 	}
 }
 
