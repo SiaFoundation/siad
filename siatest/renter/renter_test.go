@@ -5239,9 +5239,8 @@ func TestOutOfStorageHandling(t *testing.T) {
 
 	// Create a group with 1 default host.
 	gp := siatest.GroupParams{
-		Hosts:   1,
-		Renters: 1,
-		Miners:  1,
+		Hosts:  1,
+		Miners: 1,
 	}
 	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, gp)
@@ -5298,30 +5297,39 @@ func TestOutOfStorageHandling(t *testing.T) {
 	}
 	// Make sure the host's contract is no longer good for upload but still good
 	// for renew.
-	hpk, err := host.HostPublicKey()
+	err = build.Retry(10, time.Second, func() error {
+		if err := tg.Miners()[0].MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		hpk, err := host.HostPublicKey()
+		if err != nil {
+			return err
+		}
+		rcg, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rcg.ActiveContracts) != 2 {
+			return fmt.Errorf("Expected 2 active contracts but got %v", len(rcg.ActiveContracts))
+		}
+		var hostContract api.RenterContract
+		if hc := rcg.ActiveContracts[0]; hc.HostPublicKey.String() == hpk.String() {
+			hostContract = hc
+		} else if hc := rcg.ActiveContracts[1]; hc.HostPublicKey.String() == hpk.String() {
+			hostContract = hc
+		} else {
+			return errors.New("Neither of the active contracts belongs to the host")
+		}
+		if !hostContract.GoodForRenew {
+			return errors.New("contract should be GoodForRenew but wasn't")
+		}
+		if hostContract.GoodForUpload {
+			return errors.New("contract shouldn't be GoodForUPload but was")
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	rcg, err := renter.RenterContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rcg.ActiveContracts) != 2 {
-		t.Fatal("Expected 2 active contracts but got", len(rcg.ActiveContracts))
-	}
-	var hostContract api.RenterContract
-	if hc := rcg.ActiveContracts[0]; hc.HostPublicKey.String() == hpk.String() {
-		hostContract = hc
-	} else if hc := rcg.ActiveContracts[1]; hc.HostPublicKey.String() == hpk.String() {
-		hostContract = hc
-	} else {
-		t.Fatal("Neither of the active contracts belongs to the host")
-	}
-	if !hostContract.GoodForRenew {
-		t.Fatal("contract should be GoodForRenew but wasn't")
-	}
-	if hostContract.GoodForUpload {
-		t.Fatal("contract shouldn't be GoodForUPload but was")
 	}
 
 	// Add a new host for the renter to replace the old one with.
@@ -5334,7 +5342,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal(err)
 	}
 	// There should be 3 active contracts now.
-	rcg, err = renter.RenterContractsGet()
+	rcg, err := renter.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}

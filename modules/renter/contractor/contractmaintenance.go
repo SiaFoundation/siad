@@ -366,6 +366,19 @@ func (c *Contractor) managedMarkContractsUtility() error {
 				return u, nil
 			}
 
+			// Contract should not be used for uploading if the host is out of storage.
+			if c.blockHeight-u.LastOOSErr <= oosRetryInterval {
+				if u.GoodForUpload {
+					c.log.Println("Marking contract as not being good for upload due to the host running out of storage:", contract.ID)
+				}
+				if !u.GoodForRenew {
+					c.log.Println("Marking contract as being good for renew:", contract.ID)
+				}
+				u.GoodForUpload = false
+				u.GoodForRenew = true
+				return u, nil
+			}
+
 			if !u.GoodForUpload || !u.GoodForRenew {
 				c.log.Println("Marking contract as being both GoodForUpload and GoodForRenew", u.GoodForUpload, u.GoodForRenew, contract.ID)
 			}

@@ -192,6 +192,7 @@ type Allowance struct {
 type ContractUtility struct {
 	GoodForUpload bool
 	GoodForRenew  bool
+	LastOOSErr    types.BlockHeight
 	Locked        bool // Locked utilities can only be set to false.
 }
 

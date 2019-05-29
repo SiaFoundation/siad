@@ -50,6 +50,14 @@ var (
 		Standard: 50,
 		Testing:  1,
 	}).(int)
+
+	// oosRetryInterval is the time we wait for a host that ran out of storage to
+	// add more storage before trying to upload to it again.
+	oosRetryInterval = build.Select(build.Var{
+		Dev:      types.BlockHeight(types.BlocksPerDay),  // 1 day
+		Standard: types.BlockHeight(types.BlocksPerWeek), // 7 days
+		Testing:  types.BlockHeight(types.BlocksPerHour), // 1 hour
+	}).(types.BlockHeight)
 )
 
 // Constants related to the safety values for when the contractor is forming

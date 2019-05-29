@@ -67,7 +67,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 				// None of the storage folders have enough room to house the
 				// sector.
 				wal.mu.Unlock()
-				return errInsufficientStorageForSector
+				return ErrInsufficientStorageForSector
 			}
 			defer sf.mu.RUnlock()
 
@@ -136,7 +136,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			wal.mu.Unlock()
 			return nil
 		}()
-		if err == errInsufficientStorageForSector {
+		if err == ErrInsufficientStorageForSector {
 			return err
 		} else if err != nil {
 			// Try the next storage folder.
@@ -147,7 +147,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 		break
 	}
 	if len(storageFolders) < 1 {
-		return errInsufficientStorageForSector
+		return ErrInsufficientStorageForSector
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package proto
 
 import (
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -107,6 +109,13 @@ func (he *Editor) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	defer func() {
 		// Increase Successful/Failed interactions accordingly
 		if err != nil {
+			// If the host was OOS, we update the contract utility.
+			if strings.Contains(err.Error(), contractmanager.ErrInsufficientStorageForSector.Error()) {
+				u := sc.Utility()
+				u.GoodForUpload = false // Stop uploading to such a host immediately.
+				u.LastOOSErr = he.height
+				err = errors.Compose(err, sc.UpdateUtility(u))
+			}
 			he.hdb.IncrementFailedInteractions(he.host.PublicKey)
 			err = errors.Extend(err, modules.ErrHostFault)
 		} else {
