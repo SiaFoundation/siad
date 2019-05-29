@@ -4961,7 +4961,9 @@ func TestRemoteBackup(t *testing.T) {
 		if err != nil {
 			return err
 		} else if len(ubs.Backups) != 2 {
-			return fmt.Errorf("expected two backups, got %v", ubs)
+			return fmt.Errorf("expected two backups, got %v", ubs.Backups)
+		} else if len(ubs.SyncedHosts) != 2 {
+			return fmt.Errorf("expected two synced hosts, got %v", len(ubs.SyncedHosts))
 		}
 		return nil
 	})

@@ -51,7 +51,7 @@ func calcSnapshotUploadProgress(fileUploadProgress float64, dotSiaUploadProgress
 
 // UploadedBackups returns the backups that the renter can download, along with
 // a list of which contracts are storing all known backups.
-func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, []types.FileContractID, error) {
+func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, []types.SiaPublicKey, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, nil, err
 	}
@@ -59,44 +59,45 @@ func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, []types.FileContra
 	id := r.mu.RLock()
 	defer r.mu.RUnlock(id)
 	backups := append([]modules.UploadedBackup(nil), r.persist.UploadedBackups...)
-	contracts := append([]types.FileContractID(nil), r.persist.SyncedContracts...)
-	return backups, contracts, nil
+	hosts := make([]types.SiaPublicKey, 0, len(r.persist.SyncedContracts))
+	for _, c := range r.hostContractor.Contracts() {
+		for _, id := range r.persist.SyncedContracts {
+			if c.ID == id {
+				hosts = append(hosts, c.HostPublicKey)
+				break
+			}
+		}
+	}
+	return backups, hosts, nil
 }
 
-// BackupsInContract returns the backups stored on a particular contract.
-func (r *Renter) BackupsInContract(fcid types.FileContractID) ([]modules.UploadedBackup, error) {
+// BackupsOnHost returns the backups stored on a particular host.
+func (r *Renter) BackupsOnHost(hostKey types.SiaPublicKey) ([]modules.UploadedBackup, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer r.tg.Done()
 
-	contracts := r.hostContractor.Contracts()
-	for _, c := range contracts {
-		if c.ID != fcid {
-			continue
-		}
-		host, err := r.hostContractor.Session(c.HostPublicKey, r.tg.StopChan())
-		if err != nil {
-			return nil, err
-		}
-		defer host.Close()
-		entryTable, err := r.managedDownloadSnapshotTable(host)
-		if err != nil {
-			return nil, err
-		}
-		backups := make([]modules.UploadedBackup, len(entryTable))
-		for i, e := range entryTable {
-			backups[i] = modules.UploadedBackup{
-				Name:           string(bytes.TrimRight(e.Name[:], string(0))),
-				UID:            e.UID,
-				CreationDate:   e.CreationDate,
-				Size:           e.Size,
-				UploadProgress: 100,
-			}
-		}
-		return backups, nil
+	host, err := r.hostContractor.Session(hostKey, r.tg.StopChan())
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("no contract with that ID")
+	defer host.Close()
+	entryTable, err := r.managedDownloadSnapshotTable(host)
+	if err != nil {
+		return nil, err
+	}
+	backups := make([]modules.UploadedBackup, len(entryTable))
+	for i, e := range entryTable {
+		backups[i] = modules.UploadedBackup{
+			Name:           string(bytes.TrimRight(e.Name[:], string(0))),
+			UID:            e.UID,
+			CreationDate:   e.CreationDate,
+			Size:           e.Size,
+			UploadProgress: 100,
+		}
+	}
+	return backups, nil
 }
 
 // UploadBackup creates a backup of the renter which is uploaded to the sia

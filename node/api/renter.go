@@ -189,8 +189,9 @@ type (
 	// RenterUploadedBackups lists the renter's uploaded backups, as well as the
 	// set of contracts storing all known backups.
 	RenterUploadedBackups struct {
-		Backups   []RenterUploadedBackup `json:"backups"`
-		Contracts []types.FileContractID `json:"contracts"`
+		Backups       []RenterUploadedBackup `json:"backups"`
+		SyncedHosts   []types.SiaPublicKey   `json:"syncedhosts"`
+		UnsyncedHosts []types.SiaPublicKey   `json:"unsyncedhosts"`
 	}
 
 	// DownloadInfo contains all client-facing information of a file.
@@ -327,19 +328,31 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 
 // renterUploadedBackupsHandlerGET handles the API calls to /renter/uploadedbackups
 func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	backups, contracts, err := api.renter.UploadedBackups()
+	backups, syncedHosts, err := api.renter.UploadedBackups()
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	var unsyncedHosts []types.SiaPublicKey
+outer:
+	for _, c := range api.renter.Contracts() {
+		for _, h := range syncedHosts {
+			if c.HostPublicKey.String() == h.String() {
+				continue outer
+			}
+		}
+		unsyncedHosts = append(unsyncedHosts, c.HostPublicKey)
+	}
+
 	// if requested, fetch the backups stored on a specific host
-	if req.FormValue("contract") != "" {
-		var fcid types.FileContractID
-		if err := fcid.LoadString(req.FormValue("contract")); err != nil {
-			WriteError(w, Error{"invalid contract ID: " + err.Error()}, http.StatusBadRequest)
+	if req.FormValue("host") != "" {
+		var hostKey types.SiaPublicKey
+		hostKey.LoadString(req.FormValue("host"))
+		if hostKey.Key == nil {
+			WriteError(w, Error{"invalid host public key"}, http.StatusBadRequest)
 			return
 		}
-		backups, err = api.renter.BackupsInContract(fcid)
+		backups, err = api.renter.BackupsOnHost(hostKey)
 		if err != nil {
 			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return
@@ -356,8 +369,9 @@ func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http
 		}
 	}
 	WriteJSON(w, RenterUploadedBackups{
-		Backups:   rups,
-		Contracts: contracts,
+		Backups:       rups,
+		SyncedHosts:   syncedHosts,
+		UnsyncedHosts: unsyncedHosts,
 	})
 }
 
