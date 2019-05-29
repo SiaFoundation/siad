@@ -32,12 +32,21 @@ type TestNode struct {
 // boolean arguments dictate what is printed
 func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterInfo bool) {
 	if contractInfo {
-		rc, err := tn.RenterDisabledContractsGet()
+		rc, err := tn.RenterAllContractsGet()
 		if err != nil {
 			t.Log(err)
 		}
 		t.Log("Active Contracts")
 		for _, c := range rc.ActiveContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
+		}
+		t.Log()
+		t.Log("Passive Contracts")
+		for _, c := range rc.PassiveContracts {
 			t.Log("    ID", c.ID)
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
@@ -63,12 +72,17 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
-		rce, err := tn.RenterExpiredContractsGet()
-		if err != nil {
-			t.Log(err)
-		}
 		t.Log("Expired Contracts")
-		for _, c := range rce.ExpiredContracts {
+		for _, c := range rc.ExpiredContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
+		}
+		t.Log()
+		t.Log("Expired Refreshed Contracts")
+		for _, c := range rc.ExpiredRefreshedContracts {
 			t.Log("    ID", c.ID)
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)

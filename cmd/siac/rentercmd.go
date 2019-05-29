@@ -852,13 +852,13 @@ func rentercontractscmd() {
 			}
 			w.Flush()
 		}
-		
+
 		fmt.Println("\nExpired Refresh Contracts:")
 		if err != nil {
 			die("Could not get expired refreshed contracts:", err)
 		}
 		if len(rce.ExpiredRefreshedContracts) == 0 {
-			fmt.Println("  No expired contracts.")
+			fmt.Println("  No expired refreshed contracts.")
 		} else {
 			sort.Sort(byValue(rce.ExpiredContracts))
 			var expiredRefreshedTotalStored uint64

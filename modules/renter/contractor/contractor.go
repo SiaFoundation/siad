@@ -192,8 +192,8 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 		return false
 	}
 	defer c.tg.Done()
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	// Check if contract ID is found in the renewedTo map indicating that the
 	// contract was renewed
@@ -210,18 +210,16 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	}
 
 	// Grab the contract it was renewed to to check its end height
-	newSafeContract, ok := c.staticContracts.Acquire(newFCID)
-	if ok {
-		defer c.staticContracts.Return(newSafeContract)
-		return newSafeContract.Metadata().EndHeight == contract.EndHeight
-
-	}
-	newContract, ok := c.oldContracts[newFCID]
+	newContract, ok := c.staticContracts.View(newFCID)
 	if !ok {
-		build.Critical("contract not tracked in staticContracts of old contracts, this should never happen")
-		return renewed
+		newContract, ok = c.oldContracts[newFCID]
+		if !ok {
+			build.Critical("contract not tracked in staticContracts of old contracts, this should never happen")
+			return renewed
+		}
 	}
 
+	// The contract was refreshed if the endheights are the same
 	return newContract.EndHeight == contract.EndHeight
 }
 
