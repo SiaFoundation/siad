@@ -42,10 +42,10 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	return loadSiaFile(path, wal, modules.ProdDependencies)
 }
 
-// LoadSiaFileFromReader allows loading a SiaFile from a different location that
+// LoadSiaFileFromFileSource allows loading a SiaFile from a different location that
 // directly from disk as long as the source satisfies the SiaFileSource
 // interface.
-func LoadSiaFileFromReader(r FileSource, path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
+func LoadSiaFileFromFileSource(r FileSource, path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	return loadSiaFileFromReader(r, path, wal, modules.ProdDependencies)
 }
 
