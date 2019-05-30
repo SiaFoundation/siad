@@ -1806,6 +1806,8 @@ Recoverable contracts are contracts which the contractor is currently trying to 
 | Expired           | No            | No           | No                | No                            |
 | Expired Refreshed | No            | No           | No                | Yes                           |
 
+**NOTE:** No spending is double counted anywhere in the contracts, only the data is double counted in the refreshed contracts. For spending totals in the current period, all spending in active, passive, refreshed, and disabled contracts should be counted. For data totals, the data in active and passive contracts is the total uploaded while the data in disabled contracts is wasted uploaded data.
+
 ### Query String Parameters
 #### OPTIONAL
 **disabled** | boolean
