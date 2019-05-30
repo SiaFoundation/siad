@@ -186,9 +186,9 @@ type (
 		UploadProgress float64         `json:"uploadprogress"`
 	}
 
-	// RenterUploadedBackups lists the renter's uploaded backups, as well as the
+	// RenterBackupsGET lists the renter's uploaded backups, as well as the
 	// set of contracts storing all known backups.
-	RenterUploadedBackups struct {
+	RenterBackupsGET struct {
 		Backups       []RenterUploadedBackup `json:"backups"`
 		SyncedHosts   []types.SiaPublicKey   `json:"syncedhosts"`
 		UnsyncedHosts []types.SiaPublicKey   `json:"unsyncedhosts"`
@@ -213,121 +213,8 @@ type (
 	}
 )
 
-// renterBackupHandlerPOST handles the API calls to /renter/backup
-func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	upload, err := scanBool(req.FormValue("remote"))
-	if err != nil {
-		WriteError(w, Error{"invalid remote param: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	// Check that destination was specified.
-	dst := req.FormValue("destination")
-	if dst == "" {
-		WriteError(w, Error{"destination not specified"}, http.StatusBadRequest)
-		return
-	}
-	var backupPath string
-	if upload {
-		// Write the backup to a temporary file and delete it after uploading.
-		tmpDir, err := ioutil.TempDir("", "sia-backup")
-		if err != nil {
-			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-			return
-		}
-		defer os.RemoveAll(tmpDir)
-		backupPath = filepath.Join(tmpDir, dst)
-	} else {
-		backupPath = dst
-		// The destination needs to be an absolute path.
-		if !filepath.IsAbs(backupPath) {
-			WriteError(w, Error{"destination must be an absolute path"}, http.StatusBadRequest)
-			return
-		}
-	}
-	// Get the wallet seed.
-	ws, _, err := api.wallet.PrimarySeed()
-	if err != nil {
-		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
-		return
-	}
-	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := proto.DeriveRenterSeed(ws)
-	defer fastrand.Read(rs[:])
-	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, backupKeySpecifier)
-	defer fastrand.Read(secret[:])
-	// Create the backup.
-	if err := api.renter.CreateBackup(backupPath, secret[:32]); err != nil {
-		WriteError(w, Error{"failed to create backup: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	// Upload the backup if requested.
-	if upload {
-		if err := api.renter.UploadBackup(backupPath, dst); err != nil {
-			WriteError(w, Error{"failed to upload backup: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-	WriteSuccess(w)
-}
-
-// renterBackupHandlerPOST handles the API calls to /renter/recoverbackup
-func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	download, err := scanBool(req.FormValue("remote"))
-	if err != nil {
-		WriteError(w, Error{"invalid remote param: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	// Check that source was specified.
-	src := req.FormValue("source")
-	if src == "" {
-		WriteError(w, Error{"source not specified"}, http.StatusBadRequest)
-		return
-	}
-	var backupPath string
-	if download {
-		// Write the backup to a temporary file and delete it after loading.
-		tmpDir, err := ioutil.TempDir("", "sia-backup")
-		if err != nil {
-			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-			return
-		}
-		defer os.RemoveAll(tmpDir)
-		backupPath = filepath.Join(tmpDir, src)
-		if err := api.renter.DownloadBackup(backupPath, src); err != nil {
-			WriteError(w, Error{"failed to download backup: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	} else {
-		backupPath = src
-		// The source needs to be an absolute path.
-		if !filepath.IsAbs(backupPath) {
-			WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
-			return
-		}
-	}
-	// Get the wallet seed.
-	ws, _, err := api.wallet.PrimarySeed()
-	if err != nil {
-		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
-		return
-	}
-	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := proto.DeriveRenterSeed(ws)
-	defer fastrand.Read(rs[:])
-	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, backupKeySpecifier)
-	defer fastrand.Read(secret[:])
-	// Load the backup.
-	if err := api.renter.LoadBackup(backupPath, secret[:32]); err != nil {
-		WriteError(w, Error{"failed to load backup: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	WriteSuccess(w)
-}
-
-// renterUploadedBackupsHandlerGET handles the API calls to /renter/uploadedbackups
-func (api *API) renterUploadedBackupsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// renterBackupsHandlerGET handles the API calls to /renter/backups.
+func (api *API) renterBackupsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	backups, syncedHosts, err := api.renter.UploadedBackups()
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -368,11 +255,160 @@ outer:
 			UploadProgress: b.UploadProgress,
 		}
 	}
-	WriteJSON(w, RenterUploadedBackups{
+	WriteJSON(w, RenterBackupsGET{
 		Backups:       rups,
 		SyncedHosts:   syncedHosts,
 		UnsyncedHosts: unsyncedHosts,
 	})
+}
+
+// renterBackupsCreateHandlerPOST handles the API calls to /renter/backups/create
+func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Check that a name was specified.
+	name := req.FormValue("name")
+	if name == "" {
+		WriteError(w, Error{"name not specified"}, http.StatusBadRequest)
+		return
+	}
+
+	// Write the backup to a temporary file and delete it after uploading.
+	tmpDir, err := ioutil.TempDir("", "sia-backup")
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+	backupPath := filepath.Join(tmpDir, name)
+
+	// Get the wallet seed.
+	ws, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
+		return
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, backupKeySpecifier)
+	defer fastrand.Read(secret[:])
+	// Create the backup.
+	if err := api.renter.CreateBackup(backupPath, secret[:32]); err != nil {
+		WriteError(w, Error{"failed to create backup: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Upload the backup.
+	if err := api.renter.UploadBackup(backupPath, name); err != nil {
+		WriteError(w, Error{"failed to upload backup: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterBackupsRestoreHandlerGET handles the API calls to /renter/backups/restore
+func (api *API) renterBackupsRestoreHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Check that a name was specified.
+	name := req.FormValue("name")
+	if name == "" {
+		WriteError(w, Error{"name not specified"}, http.StatusBadRequest)
+		return
+	}
+	// Write the backup to a temporary file and delete it after loading.
+	tmpDir, err := ioutil.TempDir("", "sia-backup")
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+	backupPath := filepath.Join(tmpDir, name)
+	if err := api.renter.DownloadBackup(backupPath, name); err != nil {
+		WriteError(w, Error{"failed to download backup: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Get the wallet seed.
+	ws, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
+		return
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, backupKeySpecifier)
+	defer fastrand.Read(secret[:])
+	// Load the backup.
+	if err := api.renter.LoadBackup(backupPath, secret[:32]); err != nil {
+		WriteError(w, Error{"failed to load backup: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterBackupHandlerPOST handles the API calls to /renter/backup
+func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Check that destination was specified.
+	dst := req.FormValue("destination")
+	if dst == "" {
+		WriteError(w, Error{"destination not specified"}, http.StatusBadRequest)
+		return
+	}
+	// The destination needs to be an absolute path.
+	if !filepath.IsAbs(dst) {
+		WriteError(w, Error{"destination must be an absolute path"}, http.StatusBadRequest)
+		return
+	}
+	// Get the wallet seed.
+	ws, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
+		return
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, backupKeySpecifier)
+	defer fastrand.Read(secret[:])
+	// Create the backup.
+	if err := api.renter.CreateBackup(dst, secret[:32]); err != nil {
+		WriteError(w, Error{"failed to create backup: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterBackupHandlerPOST handles the API calls to /renter/recoverbackup
+func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Check that source was specified.
+	src := req.FormValue("source")
+	if src == "" {
+		WriteError(w, Error{"source not specified"}, http.StatusBadRequest)
+		return
+	}
+	// The source needs to be an absolute path.
+	if !filepath.IsAbs(src) {
+		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
+		return
+	}
+	// Get the wallet seed.
+	ws, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
+		return
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, backupKeySpecifier)
+	defer fastrand.Read(secret[:])
+	// Load the backup.
+	if err := api.renter.LoadBackup(src, secret[:32]); err != nil {
+		WriteError(w, Error{"failed to load backup: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
 }
 
 // parseErasureCodingParameters parses the supplied string values and creates

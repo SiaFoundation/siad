@@ -40,17 +40,17 @@ var (
 	}
 
 	renterBackupCreateCmd = &cobra.Command{
-		Use:   "createbackup [path]",
+		Use:   "createbackup [name]",
 		Short: "Create a backup of the renter's siafiles",
-		Long:  "Create a backup of the renter's siafiles at the specified path. If -remote is used, path is the name of the uploaded backup.",
+		Long:  "Create a backup of the renter's siafiles, using the specified name.",
 		Run:   wrap(renterbackupcreatecmd),
 	}
 
 	renterBackupLoadCmd = &cobra.Command{
-		Use:   "loadbackup [path]",
-		Short: "Load a backup of the renter's siafiles",
-		Long:  "Load a backup of the renter's siafiles from the specified path. If -remote is used, path is the name of the uploaded backup.",
-		Run:   wrap(renterbackuploadcmd),
+		Use:   "restorebackup [name]",
+		Short: "Restore a backup of the renter's siafiles",
+		Long:  "Restore the backup of the renter's siafiles with the given name.",
+		Run:   wrap(renterbackuprestorecmd),
 	}
 
 	renterBackupListCmd = &cobra.Command{
@@ -565,37 +565,27 @@ func (s byValue) Less(i, j int) bool {
 
 // renterbackcreatecmd is the handler for the command `siac renter
 // createbackup`.
-func renterbackupcreatecmd(path string) {
-	path = abs(path)
-	// If the destination is a folder, create the backup in the folder.
-	fi, err := os.Stat(path)
-	if err == nil && fi.IsDir() {
-		path = filepath.Join(path, fmt.Sprintf("%v.backup", time.Now().Unix()))
-	}
+func renterbackupcreatecmd(name string) {
 	// Create backup.
-	err = httpClient.RenterCreateBackupPost(path, renterRemoteBackup)
+	err := httpClient.RenterCreateBackupPost(name)
 	if err != nil {
 		die("Failed to create backup", err)
 	}
-	if renterRemoteBackup {
-		fmt.Println("Remote backup initiated. Monitor progress with the 'listbackups' command.")
-	}
+	fmt.Println("Backup initiated. Monitor progress with the 'listbackups' command.")
 }
 
-// renterbackuploadcmd is the handler for the command `siac renter
-// loadbackup`.
-func renterbackuploadcmd(path string) {
-	path = abs(path)
-
-	err := httpClient.RenterRecoverBackupPost(path, renterRemoteBackup)
+// renterbackuprestorecmd is the handler for the command `siac renter
+// restorebackup`.
+func renterbackuprestorecmd(name string) {
+	err := httpClient.RenterRecoverBackupPost(name)
 	if err != nil {
-		die("Failed to load backup", err)
+		die("Failed to restore backup", err)
 	}
 }
 
 // renterbackuplistcmd is the handler for the command `siac renter listbackups`.
 func renterbackuplistcmd() {
-	ubs, err := httpClient.RenterUploadedBackups()
+	ubs, err := httpClient.RenterBackups()
 	if err != nil {
 		die("Failed to retrieve backups", err)
 	} else if len(ubs.Backups) == 0 {
