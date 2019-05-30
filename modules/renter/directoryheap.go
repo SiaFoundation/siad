@@ -165,11 +165,14 @@ func (dh *directoryHeap) managedUpdate(d *directory) bool {
 	if !exists {
 		return false
 	}
-	// Update the fields of the directory in the heap
+	// Update the health fields of the directory in the heap.
+	//
+	// NOTE: we don't want to update the explored field because we don't want to
+	// make an unexplored directory as explored and miss adding its sub
+	// directories
 	heapDir.mu.Lock()
 	heapDir.aggregateHealth = math.Max(heapDir.aggregateHealth, d.aggregateHealth)
 	heapDir.health = math.Max(heapDir.health, d.health)
-	heapDir.explored = heapDir.explored || d.explored
 	heapDir.mu.Unlock()
 	heap.Fix(&dh.heap, heapDir.index)
 	return true

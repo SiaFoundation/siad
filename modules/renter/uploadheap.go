@@ -624,9 +624,18 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	// Since directory is being added back as explored we only need to
 	// set the health as that is what will be used for sorting in the
 	// directory heap
-	err = r.directoryHeap.managedPushDirectory(dirSiaPath, 0, worstIgnoredHealth, true)
-	if err != nil {
-		r.log.Println("WARN: unable to push directory", dirSiaPath.String(), "back onto directory heap:", err)
+	d := &directory{
+		health:   worstIgnoredHealth,
+		explored: true,
+		siaPath:  dirSiaPath,
+	}
+	if r.directoryHeap.managedPush(d) {
+		return
+	}
+
+	// Directory wasn't added to directory heap, try updating the directory
+	if !r.directoryHeap.managedUpdate(d) {
+		r.log.Println("WARN: unable to push or update directory", dirSiaPath.String(), "in the directory heap")
 	}
 	return
 }
@@ -958,19 +967,9 @@ func (r *Renter) threadedUploadAndRepair() {
 			}
 		}
 
-		// Call managedBubbleMetadata to update the filesystem
+		// Call threadedBubbleMetadata to update the filesystem.
 		for _, dirSiaPath := range dirSiaPaths {
-			err = r.managedBubbleMetadata(dirSiaPath)
-			if err != nil {
-				// If there is an error with calling bubble log an error and
-				// then continue. Since bubble is called from a variety of
-				// places it is fine to just continue on without any special
-				// handling. Additionally we do not sleep here like we due
-				// previously in this method because we potentially have several
-				// directories to bubble so we want to get through all the
-				// bubble calls.
-				r.log.Debugf("WARN: error calling managedBubbleMetadata on %v, err: %v", dirSiaPath, err)
-			}
+			go r.threadedBubbleMetadata(dirSiaPath)
 		}
 	}
 }
