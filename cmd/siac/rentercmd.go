@@ -664,7 +664,7 @@ func rentercontractscmd() {
 		w.Flush()
 	}
 
-	fmt.Println("Passive Contracts:")
+	fmt.Println("\nPassive Contracts:")
 	if len(rc.PassiveContracts) == 0 {
 		fmt.Println("  No passive contracts.")
 	} else {

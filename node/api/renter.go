@@ -666,15 +666,19 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 		refreshed := api.renter.RefreshedContract(c.ID)
 		active := c.Utility.GoodForUpload && c.Utility.GoodForRenew && !refreshed
 		passive := !c.Utility.GoodForUpload && c.Utility.GoodForRenew && !refreshed
+		disabledContract := disabled && !active && !passive && !refreshed
 
 		// A contract can either be active, passive, refreshed, or disabled
-		if active {
+		statusErr := active && passive && refreshed || active && refreshed || active && passive || passive && refreshed
+		if statusErr {
+			build.Critical("Contract has multiple status types, this should never happen")
+		} else if active {
 			rc.ActiveContracts = append(rc.ActiveContracts, contract)
 		} else if passive {
 			rc.PassiveContracts = append(rc.PassiveContracts, contract)
 		} else if refreshed {
 			rc.RefreshedContracts = append(rc.RefreshedContracts, contract)
-		} else {
+		} else if disabledContract {
 			rc.DisabledContracts = append(rc.DisabledContracts, contract)
 		}
 
@@ -724,15 +728,19 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 		// Determine contract status
 		refreshed := api.renter.RefreshedContract(c.ID)
 		currentPeriodContract := c.StartHeight >= currentPeriod
+		expiredContract := expired && !currentPeriodContract && !refreshed
+		expiredRefreshed := expired && !currentPeriodContract && refreshed
+		refreshedContract := refreshed && currentPeriodContract
+		disabledContract := disabled && !refreshed && currentPeriodContract
 
 		// A contract can only be refreshed, disabled, expired, or expired refreshed
-		if expired && !currentPeriodContract && !refreshed {
+		if expiredContract {
 			rc.ExpiredContracts = append(rc.ExpiredContracts, contract)
-		} else if expired && !currentPeriodContract && refreshed {
+		} else if expiredRefreshed {
 			rc.ExpiredRefreshedContracts = append(rc.ExpiredRefreshedContracts, contract)
-		} else if refreshed && currentPeriodContract {
+		} else if refreshedContract {
 			rc.RefreshedContracts = append(rc.RefreshedContracts, contract)
-		} else if disabled && !refreshed && currentPeriodContract {
+		} else if disabledContract {
 			rc.DisabledContracts = append(rc.DisabledContracts, contract)
 		}
 

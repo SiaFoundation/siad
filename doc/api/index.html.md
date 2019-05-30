@@ -1795,7 +1795,16 @@ Refreshed contracts are contracts that ran out of funds and needed to be renewed
 Disabled contracts are contracts that are in the current period that are not being used for uploading as they were replaced instead of renewed.
 Expired contracts are contracts not in the current period, where no more data is being stored and excess funds have been released to the renter.
 Expired Refreshed contracts are contracts that were refreshed at some point in a previous period. The data reported in these contracts is duplicate data and should not be included in any accounting.
-Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
+Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet.
+
+| Type              | GoodForUpload | GoodForRenew | In Current Period | Data Counted Elsewhere Already|
+| ----------------- | :-----------: | :----------: | :---------------: | :---------------------------: |
+| Active            | Yes           | Yes          | Yes               | No                            |
+| Passive           | No            | Yes          | Yes               | No                            |
+| Refreshed         | No            | No           | Yes               | Yes                           |
+| Disabled          | No            | No           | Yes               | No                            |
+| Expired           | No            | No           | No                | No                            |
+| Expired Refreshed | No            | No           | No                | Yes                           |
 
 ### Query String Parameters
 #### OPTIONAL
