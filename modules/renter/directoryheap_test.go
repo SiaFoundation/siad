@@ -72,6 +72,11 @@ func TestDirectoryHeap(t *testing.T) {
 		t.Fatalf("heap should have length of %v but was %v", heapLen, rt.renter.directoryHeap.managedLen())
 	}
 
+	// Check health of heap
+	if rt.renter.directoryHeap.managedHealth() != float64(5) {
+		t.Fatalf("Expected health of heap to be the value of the aggregate health of top chunk %v, got %v", 5, rt.renter.directoryHeap.managedHealth())
+	}
+
 	// Pop off top element and check against expected values
 	d := rt.renter.directoryHeap.managedPop()
 	if d.health != float64(1) {
@@ -82,6 +87,11 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 	if d.explored {
 		t.Fatal("Expected the directory to be unexplored")
+	}
+
+	// Check health of heap
+	if rt.renter.directoryHeap.managedHealth() != float64(4) {
+		t.Fatalf("Expected health of heap to be the value of the health of top chunk %v, got %v", 4, rt.renter.directoryHeap.managedHealth())
 	}
 
 	// Push directory back on, then confirm a second push fails

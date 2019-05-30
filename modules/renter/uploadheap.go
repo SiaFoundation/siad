@@ -371,7 +371,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 
 		// If a chunk is not able to be repaired, mark it as stuck.
 		if !repairable {
-			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being downloadable")
+			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being repairable")
 			err = r.managedSetStuckAndClose(chunk, true)
 			if err != nil {
 				r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
@@ -393,9 +393,8 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 // this by popping directories off the directory heap and adding the chunks from
 // that directory to the upload heap. If the worst health directory found is
 // sufficiently healthy then we return.
-func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.SiaPath, float64, error) {
+func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.SiaPath, error) {
 	var siaPaths []modules.SiaPath
-	var health float64
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
 	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
@@ -405,12 +404,12 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.Si
 			r.log.Println("WARN: error getting explored directory:", err)
 			// Reset the directory heap to try and help address the error
 			r.directoryHeap.managedReset()
-			return siaPaths, health, err
+			return siaPaths, err
 		}
 
 		// Sanity Check if directory was returned
 		if dir == nil {
-			return siaPaths, health, nil
+			return siaPaths, nil
 		}
 
 		// Grab health and siaPath of the directory
@@ -420,12 +419,11 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.Si
 		dir.mu.Unlock()
 
 		// Track the worst health and the siaPaths that are popped off
-		health = math.Max(dirHealth, health)
 		siaPaths = append(siaPaths, dirSiaPath)
 
 		// If the directory that was just popped is healthy then return
 		if dirHealth < siafile.RemoteRepairDownloadThreshold {
-			return siaPaths, health, nil
+			return siaPaths, nil
 		}
 
 		// Add chunks from the directory to the uploadHeap.
@@ -438,7 +436,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.Si
 		r.log.Println("Added", heapLen, "chunks from", dirSiaPath, "to the upload heap")
 	}
 
-	return siaPaths, health, nil
+	return siaPaths, nil
 }
 
 // managedBuildAndPushRandomChunk randomly selects a file and builds the
@@ -582,6 +580,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		// Add chunk to the uploadHeap
 		chunk := heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
 		if !r.uploadHeap.managedPush(chunk) {
+			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
 			// Chunk wasn't added to the heap. Close the file.
 			err := chunk.fileEntry.Close()
 			if err != nil {
@@ -893,26 +892,8 @@ func (r *Renter) threadedUploadAndRepair() {
 			}
 		}
 
-		// Refresh the worker pool and get the set of hosts that are currently
-		// useful for uploading.
-		hosts := r.managedRefreshHostsAndWorkers()
-
-		// Add chunks to heap
-		dirSiaPaths, dirHealth, err := r.managedAddChunksToHeap(hosts)
-		if err != nil {
-			// If there was an error adding chunks to the heap sleep for a
-			// little bit and then try again
-			r.log.Debugln("WARN: error adding chunks to the heap:", err)
-			select {
-			case <-time.After(uploadAndRepairErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-			continue
-		}
-
 		// Check if the file system is healthy
-		if dirHealth < siafile.RemoteRepairDownloadThreshold {
+		if r.directoryHeap.managedHealth() < siafile.RemoteRepairDownloadThreshold {
 			// If the file system is healthy then block until there is a new
 			// upload or there is a repair that is needed.
 			select {
@@ -934,11 +915,30 @@ func (r *Renter) threadedUploadAndRepair() {
 			case <-r.tg.StopChan():
 				return
 			}
-			// Reset directory heap
-			r.directoryHeap.managedReset()
-			// Make sure that the hosts and workers are updated before
-			// continuing to the repair loop
-			hosts = r.managedRefreshHostsAndWorkers()
+			// Reset directory heap if the heap is still healthy. We do this
+			// check to make sure a directory wasn't added by another thread
+			// that needs to be repaired.
+			if r.directoryHeap.managedHealth() < siafile.RemoteRepairDownloadThreshold {
+				r.directoryHeap.managedReset()
+			}
+		}
+
+		// Refresh the worker pool and get the set of hosts that are currently
+		// useful for uploading.
+		hosts := r.managedRefreshHostsAndWorkers()
+
+		// Add chunks to heap
+		dirSiaPaths, err := r.managedAddChunksToHeap(hosts)
+		if err != nil {
+			// If there was an error adding chunks to the heap sleep for a
+			// little bit and then try again
+			r.log.Debugln("WARN: error adding chunks to the heap:", err)
+			select {
+			case <-time.After(uploadAndRepairErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
+			continue
 		}
 
 		// The necessary conditions for performing an upload and repair have
@@ -948,7 +948,8 @@ func (r *Renter) threadedUploadAndRepair() {
 		err = r.managedRepairLoop(hosts)
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit
-			// and then try again
+			// and then try again. Here we do not skip to the next iteration as
+			// we want to call bubble on the impacted directories
 			r.log.Println("WARN: there was an error in the repair loop:", err)
 			select {
 			case <-time.After(uploadAndRepairErrorSleepDuration):

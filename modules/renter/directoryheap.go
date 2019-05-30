@@ -101,9 +101,15 @@ func (dh *directoryHeap) managedHealth() float64 {
 	// Pop off and then push back the top directory. We are not using the
 	// managed methods here as to avoid removing the directory from the map and
 	// having another thread push the directory onto the heap in between locks
+	var health float64
 	d := heap.Pop(&dh.heap).(*directory)
+	if d.explored {
+		health = d.health
+	} else {
+		health = d.aggregateHealth
+	}
 	heap.Push(&dh.heap, d)
-	return d.health
+	return health
 }
 
 // managedLen returns the length of the heap

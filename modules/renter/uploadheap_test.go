@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"fmt"
 	"math"
 	"os"
 	"testing"
@@ -366,7 +365,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	}
 
 	// call managedAddChunksTo Heap
-	siaPaths, health, err := rt.renter.managedAddChunksToHeap(hosts)
+	siaPaths, err := rt.renter.managedAddChunksToHeap(hosts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,10 +374,6 @@ func TestAddChunksToHeap(t *testing.T) {
 	// are not enough chunks in only one directory to fill the heap
 	if len(siaPaths) != 3 {
 		t.Fatal("Expected 3 siaPaths to be returned, got", siaPaths)
-	}
-	expectedHealth := 1 + (float64(rsc.MinPieces()) / float64(rsc.NumPieces()-rsc.MinPieces()))
-	if health != expectedHealth {
-		t.Fatalf("Expected health to be %v, got %v", expectedHealth, health)
 	}
 	if rt.renter.uploadHeap.managedLen() != int(numChunks) {
 		t.Fatalf("Expected uploadHeap to have %v chunks but it has %v chunks", numChunks, rt.renter.uploadHeap.managedLen())
@@ -406,8 +401,12 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	source, err := rt.createZeroByteFileOnDisk()
+	if err != nil {
+		t.Fatal(err)
+	}
 	up := modules.FileUploadParams{
-		Source:      "",
+		Source:      source,
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
@@ -416,22 +415,10 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create workers and hosts to have one chunk healthy and one unhealthy
-	// Add 1 piece to each chunk
+	// Create maps for method inputs
 	hosts := make(map[string]struct{})
 	offline := make(map[string]bool)
 	goodForRenew := make(map[string]bool)
-	for i := uint64(0); i < f.NumChunks(); i++ {
-		host := fmt.Sprintf("host:0%v", i)
-		spk := types.SiaPublicKey{}
-		spk.LoadString(host)
-		hosts[spk.String()] = struct{}{}
-		goodForRenew[spk.String()] = true
-		offline[spk.String()] = false
-		if err := f.AddPiece(spk, i, 0, crypto.Hash{}); err != nil {
-			t.Fatal(err)
-		}
-	}
 
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
@@ -466,11 +453,12 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 
 	// Fill upload heap with chunks that are a worse health than the chunks in
 	// the file
-	for i := 0; i <= maxUploadHeapChunks; i++ {
+	var i uint64
+	for rt.renter.uploadHeap.managedLen() < maxUploadHeapChunks {
 		chunk := &unfinishedUploadChunk{
 			id: uploadChunkID{
 				fileUID: "chunk",
-				index:   uint64(i),
+				index:   i,
 			},
 			stuck:           false,
 			piecesCompleted: -1,
@@ -479,6 +467,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 		if !rt.renter.uploadHeap.managedPush(chunk) {
 			t.Fatal("Chunk should have been added to heap")
 		}
+		i++
 	}
 
 	// Record length of upload heap
