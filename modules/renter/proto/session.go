@@ -8,14 +8,12 @@ import (
 	"math/bits"
 	"net"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
@@ -347,7 +345,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	var hostSig modules.LoopWriteResponse
 	if err := s.readResponse(&hostSig, modules.RPCMinLen); err != nil {
 		// If the host was OOS, we update the contract utility.
-		if strings.Contains(err.Error(), contractmanager.ErrInsufficientStorageForSector.Error()) {
+		if modules.IsOOSErr(err) {
 			u := sc.Utility()
 			u.GoodForUpload = false // Stop uploading to such a host immediately.
 			u.LastOOSErr = s.height
