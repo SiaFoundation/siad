@@ -595,7 +595,8 @@ func renterbackuplistcmd() {
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "  Name\tCreation Date\tUpload Progress")
 	for _, ub := range ubs.Backups {
-		fmt.Fprintf(w, "  %v\t%v\t%v\n", ub.Name, ub.CreationDate, ub.UploadProgress)
+		date := time.Unix(int64(ub.CreationDate), 0)
+		fmt.Fprintf(w, "  %v\t%v\t%v\n", ub.Name, date.Format(time.ANSIC), ub.UploadProgress)
 	}
 	w.Flush()
 }
