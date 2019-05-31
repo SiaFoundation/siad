@@ -4427,6 +4427,17 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Recover the backup into the same renter. Nothing should change.
+	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
+		t.Fatal(err)
+	}
+	files, err := r.Files(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 {
+		t.Fatal("expected 1 file but got", len(files))
+	}
 	// Get the renter's seed.
 	wsg, err := r.WalletSeedsGet()
 	if err != nil {

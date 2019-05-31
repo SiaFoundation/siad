@@ -94,28 +94,6 @@ func randomThreadUID() uint64 {
 	return fastrand.Uint64n(math.MaxUint64)
 }
 
-// uniqueFilename checks if a file exists at a certain destination. If it does
-// it will append a suffix of the form _[num] and increment [num] until it can
-// find a suffix that isn't in use yet.
-func uniqueFilename(dst string) (string, error) {
-	suffix := ""
-	counter := 1
-	extension := filepath.Ext(dst)
-	nameNoExt := strings.TrimSuffix(dst, extension)
-	for {
-		path := nameNoExt + suffix + extension
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			// File doesn't exist. We are done.
-			return path, nil
-		} else if err != nil {
-			return "", err
-		}
-		// Duplicate detected. Increment suffix and counter.
-		suffix = fmt.Sprintf("_%v", counter)
-		counter++
-	}
-}
-
 // CopyEntry returns a copy of the SiaFileSetEntry
 func (entry *SiaFileSetEntry) CopyEntry() *SiaFileSetEntry {
 	entry.threadMapMu.Lock()
@@ -425,12 +403,28 @@ func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, erro
 func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
+	return sfs.addExistingSiaFile(sf, 0)
+}
+
+// addExistingSiaFile adds an existing SiaFile to the set and stores it on disk.
+// If the exact same file already exists, this is a no-op. If a file already
+// exists with a different UID, the UID will be updated and a unique path will
+// be chosen. If no file exists, the UID will be updated but the path remains
+// the same.
+func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
+	fmt.Println("trying", sf.SiaFilePath(), suffix)
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
-	if err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath()); err != nil {
+	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
+	if err != nil {
 		return err
 	}
-	oldFile, err := sfs.open(siaPath)
+	var oldFile *SiaFileSetEntry
+	if suffix == 0 {
+		oldFile, err = sfs.open(siaPath)
+	} else {
+		oldFile, err = sfs.open(siaPath.AddSuffix(suffix))
+	}
 	exists := err == nil
 	if exists {
 		defer sfs.closeEntry(oldFile)
@@ -438,24 +432,25 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 	if err != nil && err != ErrUnknownPath {
 		return err
 	}
-	// If it doesn't exist, update the UID and save the file.
+	// If it doesn't exist, update the UID, the path if necessary and save the
+	// file.
 	if !exists {
+		println("doesn't exist")
 		sf.UpdateUniqueID()
+		if suffix > 0 {
+			siaFilePath := siaPath.AddSuffix(suffix).SiaFileSysPath(sfs.staticSiaFileDir)
+			sf.SetSiaFilePath(siaFilePath)
+			println("new path", sf.SiaFilePath())
+		}
 		return sf.Save()
 	}
 	// If it exists and the UID matches too, skip the file.
 	if sf.UID() == oldFile.UID() {
+		println("bummer")
 		return nil
 	}
-	// If it exists and the UIDs don't match, update the UID and give the new file
-	// a unique path.
-	sf.UpdateUniqueID()
-	uf, err := uniqueFilename(sf.SiaFilePath())
-	if err != nil {
-		return errors.AddContext(err, "failed to get unique name for file")
-	}
-	sf.SetSiaFilePath(uf)
-	return sf.Save()
+	// If it exists and the UIDs don't match, increment the suffix and try again.
+	return sfs.addExistingSiaFile(sf, suffix+1)
 }
 
 // Delete deletes the SiaFileSetEntry's SiaFile
