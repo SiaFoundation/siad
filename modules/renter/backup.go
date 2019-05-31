@@ -249,7 +249,8 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			}
 			defer sr.Close()
 			file = sr
-			// Update the size of the file within the header.
+			// Update the size of the file within the header since it might have changed
+			// while we weren't holding the lock.
 			fi, err := sr.Stat()
 			if err != nil {
 				return err
@@ -279,7 +280,8 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			}
 			defer dr.Close()
 			file = dr
-			// Update the size of the file within the header.
+			// Update the size of the file within the header since it might have changed
+			// while we weren't holding the lock.
 			fi, err := dr.Stat()
 			if err != nil {
 				return err
