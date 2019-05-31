@@ -230,7 +230,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			return tw.WriteHeader(header)
 		}
 		// Handle siafiles and siadirs differently.
-		var file io.ReadCloser
+		var file io.Reader
 		if filepath.Ext(path) == modules.SiaFileExtension {
 			// Get the siafile.
 			siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
@@ -243,11 +243,18 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			}
 			defer entry.Close()
 			// Get a reader to read from the siafile.
-			file, err = entry.SnapshotReader()
+			sr, err := entry.SnapshotReader()
 			if err != nil {
 				return err
 			}
-			defer file.Close()
+			defer sr.Close()
+			file = sr
+			// Update the size of the file within the header.
+			fi, err := sr.Stat()
+			if err != nil {
+				return err
+			}
+			header.Size = fi.Size()
 		} else if filepath.Ext(path) == modules.SiaDirExtension {
 			// Get the siadir.
 			var siaPath modules.SiaPath
@@ -266,11 +273,18 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			}
 			defer entry.Close()
 			// Get a reader to read from the siafile.
-			file, err = entry.DirReader()
+			dr, err := entry.DirReader()
 			if err != nil {
 				return err
 			}
-			defer file.Close()
+			defer dr.Close()
+			file = dr
+			// Update the size of the file within the header.
+			fi, err := dr.Stat()
+			if err != nil {
+				return err
+			}
+			header.Size = fi.Size()
 		}
 		// Write the header.
 		if err := tw.WriteHeader(header); err != nil {
