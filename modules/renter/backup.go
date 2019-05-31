@@ -224,13 +224,10 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		}
 		relPath := strings.TrimPrefix(path, r.staticFilesDir)
 		header.Name = relPath
-		// Write the header.
-		if err := tw.WriteHeader(header); err != nil {
-			return err
-		}
-		// If the info is a dir there is nothing more to do.
+		// If the info is a dir there is nothing more to do besides writing the
+		// header.
 		if info.IsDir() {
-			return nil
+			return tw.WriteHeader(header)
 		}
 		// Handle siafiles and siadirs differently.
 		var file io.ReadCloser
@@ -274,6 +271,10 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 				return err
 			}
 			defer file.Close()
+		}
+		// Write the header.
+		if err := tw.WriteHeader(header); err != nil {
+			return err
 		}
 		// Add the file to the archive.
 		_, err = io.Copy(tw, file)
