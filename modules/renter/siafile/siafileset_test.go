@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"bytes"
 	"encoding/hex"
 	"io/ioutil"
 	"os"
@@ -21,7 +22,7 @@ import (
 func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 	// Create new SiaFile params
 	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
-	dir := filepath.Join(os.TempDir(), "siafiles")
+	dir := filepath.Join(os.TempDir(), "siafiles", hex.EncodeToString(fastrand.Bytes(16)))
 	// Create SiaFileSet
 	wal, _ := newTestWAL()
 	sfs := NewSiaFileSet(dir, wal)
@@ -36,6 +37,79 @@ func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 		return nil, nil, err
 	}
 	return entry, sfs, nil
+}
+
+// TestAddExistingSiafile tests the AddExistingSiaFile method's behavior.
+func TestAddExistingSiafile(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create a fileset with file.
+	sf, sfs, err := newTestSiaFileSetWithFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add the existing file to the set again this shouldn't do anything.
+	if err := sfs.AddExistingSiaFile(sf.SiaFile); err != nil {
+		t.Fatal(err)
+	}
+	numSiaFiles := 0
+	err = filepath.Walk(sfs.staticSiaFileDir, func(path string, info os.FileInfo, err error) error {
+		if filepath.Ext(path) == modules.SiaFileExtension {
+			numSiaFiles++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// There should be 1 siafile.
+	if numSiaFiles != 1 {
+		t.Fatalf("Found %v siafiles but expected %v", numSiaFiles, 1)
+	}
+	// Load the same siafile again, but change the UID.
+	b, err := ioutil.ReadFile(sf.siaFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSF, err := LoadSiaFileFromReader(bytes.NewReader(b), sf.SiaFilePath(), sf.wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Grab the pre-import UID after changing it.
+	newSF.UpdateUniqueID()
+	preImportUID := newSF.UID()
+	// Import the file. This should work because the files no longer share the same
+	// UID.
+	if err := sfs.AddExistingSiaFile(newSF); err != nil {
+		t.Fatal(err)
+	}
+	numSiaFiles = 0
+	err = filepath.Walk(sfs.staticSiaFileDir, func(path string, info os.FileInfo, err error) error {
+		if filepath.Ext(path) == modules.SiaFileExtension {
+			numSiaFiles++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// There should be 2 siafiles.
+	if numSiaFiles != 2 {
+		t.Fatalf("Found %v siafiles but expected %v", numSiaFiles, 2)
+	}
+	// The UID should have changed.
+	if newSF.UID() == preImportUID {
+		t.Fatal("newSF UID should have changed after importing the file")
+	}
+	if !strings.HasSuffix(newSF.SiaFilePath(), "_1"+modules.SiaFileExtension) {
+		t.Fatal("SiaFile should have a suffix but didn't")
+	}
+	// Should be able to open the new file from disk.
+	if _, err := os.Stat(newSF.SiaFilePath()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestSiaFileSetDeleteOpen checks that deleting an entry from the set followed
