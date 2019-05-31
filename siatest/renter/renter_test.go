@@ -4837,9 +4837,9 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if len(rfg.Files) == 0 {
 		// Set fileSize and redundancy for upload
-		fileSize := int(modules.SectorSize)
-		dataPieces := uint64(4)
+		dataPieces := uint64(len(tg.Hosts()) - 1)
 		parityPieces := uint64(len(tg.Hosts())) - dataPieces
+		fileSize := int(dataPieces * modules.SectorSize)
 
 		// Upload file
 		_, _, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
