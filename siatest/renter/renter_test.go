@@ -4154,7 +4154,6 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 
 	// Start the renter again. This time it's unlocked and the automatic recovery
 	// scan isn't disabled.
-	println("starting")
 	if err := tg.StartNodeCleanDeps(r); err != nil {
 		t.Fatal(err)
 	}
@@ -4215,6 +4214,150 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 	_, err = r.DownloadByStream(rf)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestCreateLoadBackup tests that creating a backup with the /renter/backup
+// endpoint works as expected and that it can be loaded with the
+// /renter/recoverbackup endpoint.
+func TestCreateLoadBackup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(len(tg.Hosts()) - 1)
+	parityPieces := uint64(1)
+	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Create a backup.
+	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
+	err = r.RenterCreateLocalBackupPost(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Recover the backup into the same renter. Nothing should change.
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	files, err := r.Files(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 {
+		t.Fatal("expected 1 file but got", len(files))
+	}
+	// Get the renter's seed.
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Shut down the renter.
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+	// Start a new renter from the same seed Disable its health and repair loops to
+	// avoid updating the .siadir file.
+	rt := node.RenterTemplate
+	rt.PrimarySeed = wsg.PrimarySeed
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+	// Recover the backup.
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	// The .siadir file should also be recovered.
+	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, "subDir", modules.SiaDirExtension)
+	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
+		t.Fatal(".siadir file doesn't exist")
+	}
+	// There shouldn't be a .siadir_1 file as we don't replace existing .siadir
+	// files.
+	if _, err := os.Stat(dirMDPath + "_1"); !os.IsNotExist(err) {
+		t.Fatal(".siadir_1 file does exist")
+	}
+	// The file should be available and ready for download again.
+	if _, err := r.DownloadByStream(rf); err != nil {
+		t.Fatal(err)
+	}
+	// Delete the file and upload another file to the same siapath. This one should
+	// have the same siapath but not the same UID.
+	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
+	subDir, err = r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err = subDir.NewFileWithName(lf.FileName(), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Recover the backup again. Now there should be another file with a suffix at
+	// the end.
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	fis, err := r.RenterFilesGet(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fis.Files) != 2 {
+		t.Fatalf("Expected 2 files but got %v", len(fis.Files))
+	}
+	sp, err := modules.NewSiaPath(rf.SiaPath().String() + "_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileGet(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The .siadir file should still exist.
+	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
+		t.Fatal(".siadir file doesn't exist")
+	}
+	// There shouldn't be a .siadir_1 file as we don't replace existing .siadir
+	// files.
+	if _, err := os.Stat(dirMDPath + "_1"); !os.IsNotExist(err) {
+		t.Fatal(".siadir_1 file does exist")
 	}
 }
 

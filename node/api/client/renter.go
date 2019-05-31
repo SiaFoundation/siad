@@ -231,6 +231,27 @@ func (c *Client) RenterRecoverBackupPost(name string) (err error) {
 	return
 }
 
+// RenterCreateLocalBackupPost creates a local backup of the SiaFiles of the
+// renter.
+//
+// Deprecated: Use RenterCreateBackupPost instead.
+func (c *Client) RenterCreateLocalBackupPost(dst string) (err error) {
+	values := url.Values{}
+	values.Set("destination", dst)
+	err = c.post("/renter/backup", values.Encode(), nil)
+	return
+}
+
+// RenterRecoverLocalBackupPost restores the specified backup.
+//
+// Deprecated: Use RenterCreateBackupPost instead.
+func (c *Client) RenterRecoverLocalBackupPost(src string) (err error) {
+	values := url.Values{}
+	values.Set("source", src)
+	err = c.post("/renter/recoverbackup", values.Encode(), nil)
+	return
+}
+
 // RenterDownloadFullGet uses the /renter/download endpoint to download a full
 // file.
 func (c *Client) RenterDownloadFullGet(siaPath modules.SiaPath, destination string, async bool) (err error) {
