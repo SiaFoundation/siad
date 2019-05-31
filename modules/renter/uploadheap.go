@@ -393,8 +393,8 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 // this by popping directories off the directory heap and adding the chunks from
 // that directory to the upload heap. If the worst health directory found is
 // sufficiently healthy then we return.
-func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.SiaPath, error) {
-	var siaPaths []modules.SiaPath
+func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.SiaPath]struct{}, error) {
+	siaPaths := make(map[modules.SiaPath]struct{})
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
 	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
@@ -418,9 +418,6 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.Si
 		dirSiaPath := dir.siaPath
 		dir.mu.Unlock()
 
-		// Track the worst health and the siaPaths that are popped off
-		siaPaths = append(siaPaths, dirSiaPath)
-
 		// If the directory that was just popped is healthy then return
 		if dirHealth < siafile.RemoteRepairDownloadThreshold {
 			return siaPaths, nil
@@ -433,6 +430,14 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) ([]modules.Si
 			r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
 			continue
 		}
+
+		// Since we added chunks from this directory ,track the siaPaths
+		//
+		// NOTE: we only want to remember each siaPath once which is why we use
+		// a map. We Don't check if the siaPath is already in the map because
+		// another thread could have added the directory back to the heap after
+		// we just popped it off. This is the case for new uploads.
+		siaPaths[dirSiaPath] = struct{}{}
 		r.log.Println("Added", heapLen, "chunks from", dirSiaPath, "to the upload heap")
 	}
 
@@ -934,7 +939,8 @@ func (r *Renter) threadedUploadAndRepair() {
 		hosts := r.managedRefreshHostsAndWorkers()
 
 		// Add chunks to heap
-		dirSiaPaths, err := r.managedAddChunksToHeap(hosts)
+		dirSiaPaths := make(map[modules.SiaPath]struct{})
+		dirSiaPaths, err = r.managedAddChunksToHeap(hosts)
 		if err != nil {
 			// If there was an error adding chunks to the heap sleep for a
 			// little bit and then try again
@@ -965,7 +971,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Call threadedBubbleMetadata to update the filesystem.
-		for _, dirSiaPath := range dirSiaPaths {
+		for dirSiaPath := range dirSiaPaths {
 			go r.threadedBubbleMetadata(dirSiaPath)
 		}
 	}

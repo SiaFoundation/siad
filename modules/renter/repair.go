@@ -83,7 +83,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath) error {
 	// Add stuck chunks from file to repair heap
 	files := []*siafile.SiaFileSetEntry{sf}
 	hosts := r.managedRefreshHostsAndWorkers()
-	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	r.managedBuildAndPushChunks(files, hosts, targetStuckChunks, offline, goodForRenew)
 	return nil
 }
