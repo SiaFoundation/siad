@@ -550,6 +550,16 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 	r.mu.RUnlock(id)
 
 	for {
+		// Can't do anything if the wallet is locked.
+		if unlocked, _ := r.w.Unlocked(); !unlocked {
+			select {
+			case <-time.After(snapshotSyncSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
+			continue
+		}
+
 		// First, process any snapshot siafiles that may have finished uploading.
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 		root, _ := modules.NewSiaPath(".")
