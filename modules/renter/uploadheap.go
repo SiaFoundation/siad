@@ -501,7 +501,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	// temporary heap
 	var unfinishedChunkHeap uploadChunkHeap
 	var worstIgnoredHealth float64
-	dirHeapHealth := r.directoryHeap.managedHealth()
+	dirHeapHealth := r.directoryHeap.managedPeekHealth()
 	for _, file := range files {
 		// Check if file is a worse health than the directory heap
 		fileHealth := file.Metadata().CachedHealth
@@ -539,7 +539,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 			}
 
 			// Pop of the worst half of the heap
-			var chunksToKeep uploadChunkHeap
+			var chunksToKeep []*unfinishedUploadChunk
 			for len(unfinishedChunkHeap) > maxUploadHeapChunks {
 				chunksToKeep = append(chunksToKeep, heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk))
 			}
@@ -564,11 +564,8 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 				heap.Push(&unfinishedChunkHeap, chunk)
 			}
 
-			// Make sure chunksToKeep heap is zeroed out in memory
-			err = chunksToKeep.reset()
-			if err != nil {
-				r.log.Println("WARN: error resetting the chunks to keep heap:", err)
-			}
+			// Make sure chunksToKeep is zeroed out in memory
+			chunksToKeep = []*unfinishedUploadChunk{}
 		}
 
 	}
@@ -902,7 +899,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Check if the file system is healthy
-		if r.directoryHeap.managedHealth() < siafile.RemoteRepairDownloadThreshold {
+		if r.directoryHeap.managedPeekHealth() < siafile.RemoteRepairDownloadThreshold {
 			// If the file system is healthy then block until there is a new
 			// upload or there is a repair that is needed.
 			select {
@@ -927,7 +924,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			// Reset directory heap if the heap is still healthy. We do this
 			// check to make sure a directory wasn't added by another thread
 			// that needs to be repaired.
-			if r.directoryHeap.managedHealth() < siafile.RemoteRepairDownloadThreshold {
+			if r.directoryHeap.managedPeekHealth() < siafile.RemoteRepairDownloadThreshold {
 				r.directoryHeap.managedReset()
 			}
 		}

@@ -73,8 +73,8 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 
 	// Check health of heap
-	if rt.renter.directoryHeap.managedHealth() != float64(5) {
-		t.Fatalf("Expected health of heap to be the value of the aggregate health of top chunk %v, got %v", 5, rt.renter.directoryHeap.managedHealth())
+	if rt.renter.directoryHeap.managedPeekHealth() != float64(5) {
+		t.Fatalf("Expected health of heap to be the value of the aggregate health of top chunk %v, got %v", 5, rt.renter.directoryHeap.managedPeekHealth())
 	}
 
 	// Pop off top element and check against expected values
@@ -90,8 +90,8 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 
 	// Check health of heap
-	if rt.renter.directoryHeap.managedHealth() != float64(4) {
-		t.Fatalf("Expected health of heap to be the value of the health of top chunk %v, got %v", 4, rt.renter.directoryHeap.managedHealth())
+	if rt.renter.directoryHeap.managedPeekHealth() != float64(4) {
+		t.Fatalf("Expected health of heap to be the value of the health of top chunk %v, got %v", 4, rt.renter.directoryHeap.managedPeekHealth())
 	}
 
 	// Push directory back on, then confirm a second push fails

@@ -90,8 +90,15 @@ func (rdh *repairDirectoryHeap) Pop() interface{} {
 	return d
 }
 
-// managedHealth returns the current worst health of the directory heap
-func (dh *directoryHeap) managedHealth() float64 {
+// managedLen returns the length of the heap
+func (dh *directoryHeap) managedLen() int {
+	dh.mu.Lock()
+	defer dh.mu.Unlock()
+	return dh.heap.Len()
+}
+
+// managedPeekHealth returns the current worst health of the directory heap
+func (dh *directoryHeap) managedPeekHealth() float64 {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
 	// If the heap is empty return 0 as that is the max health
@@ -110,13 +117,6 @@ func (dh *directoryHeap) managedHealth() float64 {
 	}
 	heap.Push(&dh.heap, d)
 	return health
-}
-
-// managedLen returns the length of the heap
-func (dh *directoryHeap) managedLen() int {
-	dh.mu.Lock()
-	defer dh.mu.Unlock()
-	return dh.heap.Len()
 }
 
 // managedPop will return the top directory from the heap
@@ -168,7 +168,7 @@ func (dh *directoryHeap) managedUpdate(d *directory) bool {
 	// Update the health fields of the directory in the heap.
 	//
 	// NOTE: we don't want to update the explored field because we don't want to
-	// make an unexplored directory as explored and miss adding its sub
+	// mark an unexplored directory as explored and miss adding its sub
 	// directories
 	heapDir.mu.Lock()
 	heapDir.aggregateHealth = math.Max(heapDir.aggregateHealth, d.aggregateHealth)
