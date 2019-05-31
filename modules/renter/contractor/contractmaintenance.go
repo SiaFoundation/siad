@@ -250,6 +250,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 	c.mu.RLock()
 	hostCount := int(c.allowance.Hosts)
 	period := c.allowance.Period
+	height := c.blockHeight
 	c.mu.RUnlock()
 	hosts, err := c.hdb.RandomHosts(hostCount+randomHostsBufferForScore, nil, nil)
 	if err != nil {
@@ -357,6 +358,19 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundUploadThreshold {
 				if u.GoodForUpload {
 					c.log.Printf("Marking contract as not good for upload because of insufficient funds: %v vs. %v - %v", contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0, percentRemaining, contract.ID)
+				}
+				if !u.GoodForRenew {
+					c.log.Println("Marking contract as being good for renew:", contract.ID)
+				}
+				u.GoodForUpload = false
+				u.GoodForRenew = true
+				return u, nil
+			}
+
+			// Contract should not be used for uploading if the host is out of storage.
+			if height-u.LastOOSErr <= oosRetryInterval {
+				if u.GoodForUpload {
+					c.log.Println("Marking contract as not being good for upload due to the host running out of storage:", contract.ID)
 				}
 				if !u.GoodForRenew {
 					c.log.Println("Marking contract as being good for renew:", contract.ID)

@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
@@ -5063,5 +5064,128 @@ func testEscapeSiaPath(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestOutOfStorageHandling makes sure that we form a new contract to replace a
+// host that has run out of storage while still keeping it around as
+// goodForRenew.
+func TestOutOfStorageHandling(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group with 1 default host.
+	gp := siatest.GroupParams{
+		Hosts:  1,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Prepare a host that offers the minimum storage possible.
+	hostTemplate := node.Host(filepath.Join(testDir, "host1"))
+	hostTemplate.HostStorage = modules.SectorSize * contractmanager.MinimumSectorsPerStorageFolder
+
+	// Prepare a renter that expects to upload 1 Sector of data to 2 hosts at a 2x
+	// redundancy. We set the ExpectedStorage lower than the available storage on
+	// the host to make sure it's not penalized.
+	renterTemplate := node.Renter(filepath.Join(testDir, "renter"))
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	allowance := siatest.DefaultAllowance
+	allowance.ExpectedRedundancy = float64(dataPieces+parityPieces) / float64(dataPieces)
+	allowance.ExpectedStorage = modules.SectorSize // 4 KiB
+	allowance.Hosts = 2
+	renterTemplate.Allowance = allowance
+
+	// Add the host and renter to the group.
+	nodes, err := tg.AddNodes(hostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := nodes[0]
+	nodes, err = tg.AddNodes(renterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Upload a file to fill up the host.
+	_, _, err = renter.UploadNewFileBlocking(int(hostTemplate.HostStorage), dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the host is full.
+	hg, err := host.HostGet()
+	if hg.ExternalSettings.RemainingStorage != 0 {
+		t.Fatal("Expected remaining storage to be 0 but was", hg.ExternalSettings.RemainingStorage)
+	}
+	// Start uploading another file in the background to trigger the OOS error.
+	_, rf, err := renter.UploadNewFile(int(2*modules.SectorSize), dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the host's contract is no longer good for upload but still good
+	// for renew.
+	err = build.Retry(10, time.Second, func() error {
+		if err := tg.Miners()[0].MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		hpk, err := host.HostPublicKey()
+		if err != nil {
+			return err
+		}
+		rcg, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rcg.ActiveContracts) != 2 {
+			return fmt.Errorf("Expected 2 active contracts but got %v", len(rcg.ActiveContracts))
+		}
+		var hostContract api.RenterContract
+		if hc := rcg.ActiveContracts[0]; hc.HostPublicKey.String() == hpk.String() {
+			hostContract = hc
+		} else if hc := rcg.ActiveContracts[1]; hc.HostPublicKey.String() == hpk.String() {
+			hostContract = hc
+		} else {
+			return errors.New("Neither of the active contracts belongs to the host")
+		}
+		if !hostContract.GoodForRenew {
+			return errors.New("contract should be GoodForRenew but wasn't")
+		}
+		if hostContract.GoodForUpload {
+			return errors.New("contract shouldn't be GoodForUPload but was")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a new host for the renter to replace the old one with.
+	_, err = tg.AddNodes(node.Host(filepath.Join(testDir, "host2")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The file should reach full redundancy now.
+	if err := renter.WaitForUploadRedundancy(rf, allowance.ExpectedRedundancy); err != nil {
+		t.Fatal(err)
+	}
+	// There should be 3 active contracts now.
+	rcg, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rcg.ActiveContracts) != 3 {
+		t.Fatal("Expected 3 active contracts but got", len(rcg.ActiveContracts))
 	}
 }

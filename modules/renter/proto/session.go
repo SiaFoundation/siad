@@ -344,6 +344,13 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// read the host's signature
 	var hostSig modules.LoopWriteResponse
 	if err := s.readResponse(&hostSig, modules.RPCMinLen); err != nil {
+		// If the host was OOS, we update the contract utility.
+		if modules.IsOOSErr(err) {
+			u := sc.Utility()
+			u.GoodForUpload = false // Stop uploading to such a host immediately.
+			u.LastOOSErr = s.height
+			err = errors.Compose(err, sc.UpdateUtility(u))
+		}
 		return modules.RenterContract{}, err
 	}
 	txn.TransactionSignatures[1].Signature = hostSig.Signature

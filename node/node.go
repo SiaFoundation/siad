@@ -90,6 +90,7 @@ type NodeParams struct {
 	Allowance   modules.Allowance
 	Bootstrap   bool
 	HostAddress string
+	HostStorage uint64
 	RPCAddress  string
 
 	// Initialize node from existing seed.

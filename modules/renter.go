@@ -192,7 +192,8 @@ type Allowance struct {
 type ContractUtility struct {
 	GoodForUpload bool
 	GoodForRenew  bool
-	Locked        bool // Locked utilities can only be set to false.
+	LastOOSErr    types.BlockHeight // OOS means Out Of Storage
+	Locked        bool              // Locked utilities can only be set to false.
 }
 
 // DirectoryInfo provides information about a siadir
