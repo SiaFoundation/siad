@@ -97,7 +97,7 @@ func randomThreadUID() uint64 {
 // uniqueFilename checks if a file exists at a certain destination. If it does
 // it will append a suffix of the form _[num] and increment [num] until it can
 // find a suffix that isn't in use yet.
-func uniqueFilename(dst string) string {
+func uniqueFilename(dst string) (string, error) {
 	suffix := ""
 	counter := 1
 	extension := filepath.Ext(dst)
@@ -106,7 +106,9 @@ func uniqueFilename(dst string) string {
 		path := nameNoExt + suffix + extension
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			// File doesn't exist. We are done.
-			return path
+			return path, nil
+		} else if err != nil {
+			return "", err
 		}
 		// Duplicate detected. Increment suffix and counter.
 		suffix = fmt.Sprintf("_%v", counter)
@@ -448,7 +450,11 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 	// If it exists and the UIDs don't match, update the UID and give the new file
 	// a unique path.
 	sf.UpdateUniqueID()
-	sf.SetSiaFilePath(uniqueFilename(sf.SiaFilePath()))
+	uf, err := uniqueFilename(sf.SiaFilePath())
+	if err != nil {
+		return errors.AddContext(err, "failed to get unique name for file")
+	}
+	sf.SetSiaFilePath(uf)
 	return sf.Save()
 }
 

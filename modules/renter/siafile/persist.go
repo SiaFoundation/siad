@@ -15,15 +15,6 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
-// FileSource is an interface that needs to be satisfied for a SiaFile to be
-// loaded from a specific source. Examples that satisfy it are the os.File and
-// bytes.Reader types.
-type FileSource interface {
-	io.Reader
-	io.ReaderAt
-	io.Seeker
-}
-
 var (
 	// errUnknownSiaFileUpdate is returned when applyUpdates finds an update
 	// that is unknown
@@ -42,10 +33,10 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	return loadSiaFile(path, wal, modules.ProdDependencies)
 }
 
-// LoadSiaFileFromFileSource allows loading a SiaFile from a different location that
+// LoadSiaFileFromReader allows loading a SiaFile from a different location that
 // directly from disk as long as the source satisfies the SiaFileSource
 // interface.
-func LoadSiaFileFromFileSource(r FileSource, path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
+func LoadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	return loadSiaFileFromReader(r, path, wal, modules.ProdDependencies)
 }
 
@@ -108,7 +99,7 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 // loadSiaFileFromReader allows loading a SiaFile from a different location that
 // directly from disk as long as the source satisfies the SiaFileSource
 // interface.
-func loadSiaFileFromReader(r FileSource, path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
+func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
 	// Create the SiaFile
 	sf := &SiaFile{
 		deps:        deps,
@@ -145,7 +136,10 @@ func loadSiaFileFromReader(r FileSource, path string, wal *writeaheadlog.WAL, de
 		return nil, fmt.Errorf("pubKeyTableLen is %v, can't load file", pubKeyTableLen)
 	}
 	rawPubKeyTable := make([]byte, pubKeyTableLen)
-	if _, err := r.ReadAt(rawPubKeyTable, sf.staticMetadata.PubKeyTableOffset); err != nil {
+	if _, err := r.Seek(sf.staticMetadata.PubKeyTableOffset, io.SeekStart); err != nil {
+		return nil, errors.AddContext(err, "failed to seek to pubKeyTable")
+	}
+	if _, err := r.Read(rawPubKeyTable); err != nil {
 		return nil, errors.AddContext(err, "failed to read pubKeyTable from disk")
 	}
 	sf.pubKeyTable, err = unmarshalPubKeyTable(rawPubKeyTable)

@@ -338,7 +338,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			}
 		} else if filepath.Ext(info.Name()) == modules.SiaFileExtension {
 			// Load the file as a SiaFile.
-			sf, err := siafile.LoadSiaFileFromFileSource(bytes.NewReader(b), dst, r.wal)
+			sf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
 			if err != nil {
 				return err
 			}
