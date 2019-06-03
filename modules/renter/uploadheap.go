@@ -395,6 +395,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 // sufficiently healthy then we return.
 func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.SiaPath]struct{}, error) {
 	siaPaths := make(map[modules.SiaPath]struct{})
+	prevHeapLen := r.uploadHeap.managedLen()
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
 	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
@@ -431,13 +432,18 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 
 		// Add chunks from the directory to the uploadHeap.
 		r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
-		heapLen := r.uploadHeap.managedLen()
-		if heapLen == 0 {
-			r.log.Debugf("No chunks added to the heap for repair from `%v` even through health was %v", dirSiaPath, dirHealth)
-			continue
-		}
 
-		// Since we added chunks from this directory ,track the siaPaths
+		// Check to see if we are still adding chunks
+		heapLen := r.uploadHeap.managedLen()
+		if heapLen == prevHeapLen {
+			// No more chunks added to the uploadHeap from the worst health
+			// directory. This means that the worse health chunks are already in
+			// the heap so return. This can be the case in new uploads
+			return siaPaths, nil
+		}
+		prevHeapLen = heapLen
+
+		// Since we added chunks from this directory, track the siaPath
 		//
 		// NOTE: we only want to remember each siaPath once which is why we use
 		// a map. We Don't check if the siaPath is already in the map because
@@ -879,6 +885,15 @@ func (r *Renter) threadedUploadAndRepair() {
 		return
 	}
 
+	// Initialize the directory heap but pushing an unexplored root
+	err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
+	if err != nil {
+		// If there is an error pushing an unexplored root to start log the
+		// error. This is not critical, it just means that the repairs won't
+		// start up right away
+		r.log.Println("WARN: error push unexplored root directory onto directory heap:", err)
+	}
+
 	// Perpetual loop to scan for more files and add chunks to the uploadheap
 	for {
 		// Return if the renter has shut down
@@ -894,23 +909,8 @@ func (r *Renter) threadedUploadAndRepair() {
 			return
 		}
 
-		// Check if there are directories in the directory heap, If not add an
-		// unexplored root.
-		if r.directoryHeap.managedLen() == 0 {
-			err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
-			if err != nil {
-				r.log.Println("WARN: error push unexplored root directory onto directory heap:", err)
-				select {
-				case <-time.After(uploadAndRepairErrorSleepDuration):
-				case <-r.tg.StopChan():
-					return
-				}
-				continue
-			}
-		}
-
-		// Check if the file system is healthy
-		if r.directoryHeap.managedPeekHealth() < siafile.RemoteRepairDownloadThreshold {
+		// Check if the file system is healthy and the upload heap is empty
+		if r.directoryHeap.managedPeekHealth() < siafile.RemoteRepairDownloadThreshold && r.uploadHeap.managedLen() == 0 {
 			// If the file system is healthy then block until there is a new
 			// upload or there is a repair that is needed.
 			select {
@@ -932,11 +932,27 @@ func (r *Renter) threadedUploadAndRepair() {
 			case <-r.tg.StopChan():
 				return
 			}
+
 			// Reset directory heap if the heap is still healthy. We do this
 			// check to make sure a directory wasn't added by another thread
 			// that needs to be repaired.
 			if r.directoryHeap.managedPeekHealth() < siafile.RemoteRepairDownloadThreshold {
 				r.directoryHeap.managedReset()
+			}
+
+			// Check if there are directories in the directory heap, If not add an
+			// unexplored root.
+			if r.directoryHeap.managedLen() == 0 {
+				err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
+				if err != nil {
+					r.log.Println("WARN: error push unexplored root directory onto directory heap:", err)
+					select {
+					case <-time.After(uploadAndRepairErrorSleepDuration):
+					case <-r.tg.StopChan():
+						return
+					}
+					continue
+				}
 			}
 		}
 
@@ -959,10 +975,23 @@ func (r *Renter) threadedUploadAndRepair() {
 			continue
 		}
 
+		// Check if there are chunks in the uploadheap to repair
+		heapLen := r.uploadHeap.managedLen()
+		if heapLen == 0 {
+			// Try this as an error and sleep for a bit to prevent rapid cycling
+			r.log.Debugln("No chunks in the upload heap even though repair loop was prompted to add chunks and repair")
+			select {
+			case <-time.After(uploadAndRepairErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
+			continue
+		}
+
 		// The necessary conditions for performing an upload and repair have
 		// been met - perform the upload and repair by having the repair loop
 		// work through the chunks in the uploadheap
-		r.log.Debugln("Executing an upload and repair cycle, uploadHeap has", r.uploadHeap.managedLen(), "chunks in it")
+		r.log.Debugln("Executing an upload and repair cycle, uploadHeap has", heapLen, "chunks in it")
 		err = r.managedRepairLoop(hosts)
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit
