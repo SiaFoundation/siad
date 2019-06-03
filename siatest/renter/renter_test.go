@@ -5155,22 +5155,19 @@ func TestOutOfStorageHandling(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if len(rcg.ActiveContracts) != 2 {
-			return fmt.Errorf("Expected 2 active contracts but got %v", len(rcg.ActiveContracts))
+		// One contract should be good for uploads and renewal and is therefore
+		// active.
+		if len(rcg.ActiveContracts) != 1 {
+			return fmt.Errorf("Expected 1 active contract but got %v", len(rcg.ActiveContracts))
 		}
-		var hostContract api.RenterContract
-		if hc := rcg.ActiveContracts[0]; hc.HostPublicKey.String() == hpk.String() {
-			hostContract = hc
-		} else if hc := rcg.ActiveContracts[1]; hc.HostPublicKey.String() == hpk.String() {
-			hostContract = hc
-		} else {
-			return errors.New("Neither of the active contracts belongs to the host")
+		// One contract should be good for renewal but not uploading and is therefore
+		// passive.
+		if len(rcg.PassiveContracts) != 1 {
+			return fmt.Errorf("Expected 1 passive contract but got %v", len(rcg.PassiveContracts))
 		}
-		if !hostContract.GoodForRenew {
-			return errors.New("contract should be GoodForRenew but wasn't")
-		}
-		if hostContract.GoodForUpload {
-			return errors.New("contract shouldn't be GoodForUPload but was")
+		hostContract := rcg.PassiveContracts[0]
+		if hostContract.HostPublicKey.String() != hpk.String() {
+			return errors.New("Passive contract doesn't belong to the host")
 		}
 		return nil
 	})
