@@ -9,40 +9,6 @@ ldflags= -X gitlab.com/NebulousLabs/Sia/build.GitRevision=${GIT_DIRTY}${GIT_REVI
 # all will build and install release binaries
 all: release
 
-# dependencies installs all of the dependencies that are required for building
-# Sia.
-dependencies:
-	# Consensus Dependencies
-	go get -u gitlab.com/NebulousLabs/demotemutex
-	go get -u gitlab.com/NebulousLabs/fastrand
-	go get -u gitlab.com/NebulousLabs/merkletree
-	go get -u gitlab.com/NebulousLabs/bolt
-	go get -u golang.org/x/crypto/blake2b
-	go get -u golang.org/x/crypto/ed25519
-	# Module + Daemon Dependencies
-	go get -u gitlab.com/NebulousLabs/entropy-mnemonics
-	go get -u gitlab.com/NebulousLabs/errors
-	go get -u gitlab.com/NebulousLabs/go-upnp
-	go get -u gitlab.com/NebulousLabs/ratelimit
-	go get -u gitlab.com/NebulousLabs/threadgroup
-	go get -u gitlab.com/NebulousLabs/writeaheadlog
-	go get -u github.com/klauspost/reedsolomon
-	go get -u github.com/julienschmidt/httprouter
-	go get -u github.com/inconshreveable/go-update
-	go get -u github.com/kardianos/osext
-	go get -u github.com/inconshreveable/mousetrap
-	go get -u github.com/dchest/threefish
-	go get -u golang.org/x/crypto/curve25519
-	go get -u golang.org/x/crypto/chacha20poly1305
-	# Frontend Dependencies
-	go get -u golang.org/x/crypto/ssh/terminal
-	go get -u github.com/spf13/cobra/doc
-	# Developer Dependencies
-	go install -race std
-	go get -u github.com/client9/misspell/cmd/misspell
-	go get -u golang.org/x/lint/golint
-	go get -u gitlab.com/NebulousLabs/glyphcheck
-
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
 run = .
@@ -122,5 +88,5 @@ whitepaper:
 	@pdflatex -output-directory=doc whitepaper.tex > /dev/null
 	pdflatex -output-directory=doc whitepaper.tex
 
-.PHONY: all dependencies fmt install release release-std xc clean test test-v test-long cover cover-integration cover-unit whitepaper
+.PHONY: all fmt install release release-std xc clean test test-v test-long cover cover-integration cover-unit whitepaper
 
