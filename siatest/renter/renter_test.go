@@ -5184,12 +5184,32 @@ func TestOutOfStorageHandling(t *testing.T) {
 	if err := renter.WaitForUploadRedundancy(rf, allowance.ExpectedRedundancy); err != nil {
 		t.Fatal(err)
 	}
-	// There should be 3 active contracts now.
+	// There should be 2 active contracts now and 1 passive one.
 	rcg, err := renter.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rcg.ActiveContracts) != 3 {
-		t.Fatal("Expected 3 active contracts but got", len(rcg.ActiveContracts))
+	if len(rcg.ActiveContracts) != 2 {
+		t.Fatal("Expected 2 active contracts but got", len(rcg.ActiveContracts))
+	}
+	if len(rcg.PassiveContracts) != 1 {
+		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts))
+	}
+	// After a while we give the host a new chance and it should be active again.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if err := tg.Miners()[0].MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		rcg, err = renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rcg.ActiveContracts) != 3 {
+			return fmt.Errorf("Expected 3 active contracts but got %v", len(rcg.ActiveContracts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
