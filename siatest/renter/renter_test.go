@@ -5155,22 +5155,19 @@ func TestOutOfStorageHandling(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if len(rcg.ActiveContracts) != 2 {
-			return fmt.Errorf("Expected 2 active contracts but got %v", len(rcg.ActiveContracts))
+		// One contract should be good for uploads and renewal and is therefore
+		// active.
+		if len(rcg.ActiveContracts) != 1 {
+			return fmt.Errorf("Expected 1 active contract but got %v", len(rcg.ActiveContracts))
 		}
-		var hostContract api.RenterContract
-		if hc := rcg.ActiveContracts[0]; hc.HostPublicKey.String() == hpk.String() {
-			hostContract = hc
-		} else if hc := rcg.ActiveContracts[1]; hc.HostPublicKey.String() == hpk.String() {
-			hostContract = hc
-		} else {
-			return errors.New("Neither of the active contracts belongs to the host")
+		// One contract should be good for renewal but not uploading and is therefore
+		// passive.
+		if len(rcg.PassiveContracts) != 1 {
+			return fmt.Errorf("Expected 1 passive contract but got %v", len(rcg.PassiveContracts))
 		}
-		if !hostContract.GoodForRenew {
-			return errors.New("contract should be GoodForRenew but wasn't")
-		}
-		if hostContract.GoodForUpload {
-			return errors.New("contract shouldn't be GoodForUPload but was")
+		hostContract := rcg.PassiveContracts[0]
+		if hostContract.HostPublicKey.String() != hpk.String() {
+			return errors.New("Passive contract doesn't belong to the host")
 		}
 		return nil
 	})
@@ -5187,12 +5184,32 @@ func TestOutOfStorageHandling(t *testing.T) {
 	if err := renter.WaitForUploadRedundancy(rf, allowance.ExpectedRedundancy); err != nil {
 		t.Fatal(err)
 	}
-	// There should be 3 active contracts now.
+	// There should be 2 active contracts now and 1 passive one.
 	rcg, err := renter.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rcg.ActiveContracts) != 3 {
-		t.Fatal("Expected 3 active contracts but got", len(rcg.ActiveContracts))
+	if len(rcg.ActiveContracts) != 2 {
+		t.Fatal("Expected 2 active contracts but got", len(rcg.ActiveContracts))
+	}
+	if len(rcg.PassiveContracts) != 1 {
+		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts))
+	}
+	// After a while we give the host a new chance and it should be active again.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if err := tg.Miners()[0].MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		rcg, err = renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rcg.ActiveContracts) != 3 {
+			return fmt.Errorf("Expected 3 active contracts but got %v", len(rcg.ActiveContracts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
