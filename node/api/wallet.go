@@ -14,7 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"github.com/julienschmidt/httprouter"
-	"gitlab.com/NebulousLabs/entropy-mnemonics"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 )
 
 type (
@@ -234,7 +234,7 @@ func (api *API) wallet033xHandler(w http.ResponseWriter, req *http.Request, _ ht
 			WriteSuccess(w)
 			return
 		}
-		if err != nil && err != modules.ErrBadEncryptionKey {
+		if err != modules.ErrBadEncryptionKey {
 			WriteError(w, Error{"error when calling /wallet/033x: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
@@ -393,7 +393,7 @@ func (api *API) walletSeedHandler(w http.ResponseWriter, req *http.Request, _ ht
 			WriteSuccess(w)
 			return
 		}
-		if err != nil && err != modules.ErrBadEncryptionKey {
+		if err != modules.ErrBadEncryptionKey {
 			WriteError(w, Error{"error when calling /wallet/seed: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
@@ -421,7 +421,7 @@ func (api *API) walletSiagkeyHandler(w http.ResponseWriter, req *http.Request, _
 			WriteSuccess(w)
 			return
 		}
-		if err != nil && err != modules.ErrBadEncryptionKey {
+		if err != modules.ErrBadEncryptionKey {
 			WriteError(w, Error{"error when calling /wallet/siagkey: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
@@ -686,7 +686,7 @@ func (api *API) walletUnlockHandler(w http.ResponseWriter, req *http.Request, _ 
 			WriteSuccess(w)
 			return
 		}
-		if err != nil && err != modules.ErrBadEncryptionKey {
+		if err != modules.ErrBadEncryptionKey {
 			WriteError(w, Error{"error when calling /wallet/unlock: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
@@ -711,7 +711,7 @@ func (api *API) walletChangePasswordHandler(w http.ResponseWriter, req *http.Req
 			WriteSuccess(w)
 			return
 		}
-		if err != nil && err != modules.ErrBadEncryptionKey {
+		if err != modules.ErrBadEncryptionKey {
 			WriteError(w, Error{"error when calling /wallet/changepassword: " + err.Error()}, http.StatusBadRequest)
 			return
 		}

@@ -53,9 +53,6 @@ func (w *Wallet) advanceSeedLookahead(index uint64) (bool, error) {
 
 	// Update the primarySeedProgress
 	dbPutPrimarySeedProgress(w.dbTx, newProgress)
-	if err != nil {
-		return false, err
-	}
 
 	// Regenerate lookahead
 	w.regenerateLookahead(newProgress)

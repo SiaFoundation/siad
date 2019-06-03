@@ -98,9 +98,6 @@ func (cs *ConsensusSet) getArbSiacoinOutput() (scoid types.SiacoinOutputID, sco 
 	if dbErr != nil {
 		panic(dbErr)
 	}
-	if err != nil {
-		return types.SiacoinOutputID{}, types.SiacoinOutput{}, err
-	}
 	return scoid, sco, nil
 }
 
