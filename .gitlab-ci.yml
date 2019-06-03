@@ -8,9 +8,8 @@ stages:
 lint:
   stage: lint
   script: 
-    - go get -u github.com/alecthomas/gometalinter
-    - gometalinter --install
-    - gometalinter --deadline=300s --vendor --disable-all --enable=vet --enable=gofmt ./...
+    - go get github.com/golangci/golangci-lint/cmd/golangci-lint
+    - golangci-lint run --disable-all --enable=vet --enable=gofmt ./...
     - make test
 
 legacy-tests:
