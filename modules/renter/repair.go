@@ -276,6 +276,13 @@ func (r *Renter) threadedStuckFileLoop() {
 
 	// Loop until the renter has shutdown or until there are no stuck chunks
 	for {
+		// Return if the renter has shut down.
+		select {
+		case <-r.tg.StopChan():
+			return
+		default:
+		}
+
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.

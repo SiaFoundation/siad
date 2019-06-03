@@ -398,6 +398,12 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
 	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
+		select {
+		case <-r.tg.StopChan():
+			return siaPaths, errors.New("renter shutdown before we could finish adding chunks to heap")
+		default:
+		}
+
 		// Pop an explored directory off of the directory heap
 		dir, err := r.managedNextExploredDirectory()
 		if err != nil {

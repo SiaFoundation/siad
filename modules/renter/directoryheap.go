@@ -199,6 +199,12 @@ func (dh *directoryHeap) managedPushDirectory(siaPath modules.SiaPath, aggregate
 func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 	// Loop until we pop off an explored directory
 	for {
+		select {
+		case <-r.tg.StopChan():
+			return nil, errors.New("renter shutdown before directory could be returned")
+		default:
+		}
+
 		// Pop directory
 		d := r.directoryHeap.managedPop()
 
