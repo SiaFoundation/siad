@@ -208,32 +208,47 @@ func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, 
 	return h.Get("ID"), err
 }
 
-// RenterCreateBackupPost creates a backup of the SiaFiles of the renter. If the
-// remote flag is set, the backup is uploaded to hosts, and dst is used as the
-// backup's name. Otherwise, dst is the absolute path on disk where the backup
-// is stored.
-func (c *Client) RenterCreateBackupPost(dst string, remote bool) (err error) {
+// RenterBackups lists the backups the renter has uploaded to hosts.
+func (c *Client) RenterBackups() (ubs api.RenterBackupsGET, err error) {
+	err = c.get("/renter/backups", &ubs)
+	return
+}
+
+// RenterCreateBackupPost creates a backup of the SiaFiles of the renter and
+// uploads it to hosts.
+func (c *Client) RenterCreateBackupPost(name string) (err error) {
+	values := url.Values{}
+	values.Set("name", name)
+	err = c.post("/renter/backups/create", values.Encode(), nil)
+	return
+}
+
+// RenterRecoverBackupPost downloads and restores the specified backup.
+func (c *Client) RenterRecoverBackupPost(name string) (err error) {
+	values := url.Values{}
+	values.Set("name", name)
+	err = c.post("/renter/backups/restore", values.Encode(), nil)
+	return
+}
+
+// RenterCreateLocalBackupPost creates a local backup of the SiaFiles of the
+// renter.
+//
+// Deprecated: Use RenterCreateBackupPost instead.
+func (c *Client) RenterCreateLocalBackupPost(dst string) (err error) {
 	values := url.Values{}
 	values.Set("destination", dst)
-	values.Set("remote", fmt.Sprint(remote))
 	err = c.post("/renter/backup", values.Encode(), nil)
 	return
 }
 
-// RenterRecoverBackupPost loads a backup of the SiaFiles of the renter. If the
-// remote flag is set, the backup is downloaded from host, and src must match
-// the name used when the backup was uploaded.
-func (c *Client) RenterRecoverBackupPost(src string, remote bool) (err error) {
+// RenterRecoverLocalBackupPost restores the specified backup.
+//
+// Deprecated: Use RenterCreateBackupPost instead.
+func (c *Client) RenterRecoverLocalBackupPost(src string) (err error) {
 	values := url.Values{}
 	values.Set("source", src)
-	values.Set("remote", fmt.Sprint(remote))
 	err = c.post("/renter/recoverbackup", values.Encode(), nil)
-	return
-}
-
-// RenterUploadedBackups lists the backups the renter has uploaded to hosts.
-func (c *Client) RenterUploadedBackups() (ubs []api.RenterUploadedBackup, err error) {
-	err = c.get("/renter/uploadedbackups", &ubs)
 	return
 }
 

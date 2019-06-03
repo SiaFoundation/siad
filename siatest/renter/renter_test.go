@@ -4154,7 +4154,6 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 
 	// Start the renter again. This time it's unlocked and the automatic recovery
 	// scan isn't disabled.
-	println("starting")
 	if err := tg.StartNodeCleanDeps(r); err != nil {
 		t.Fatal(err)
 	}
@@ -4263,12 +4262,12 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Create a backup.
 	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
-	err = r.RenterCreateBackupPost(backupPath, false)
+	err = r.RenterCreateLocalBackupPost(backupPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Recover the backup into the same renter. Nothing should change.
-	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
 		t.Fatal(err)
 	}
 	files, err := r.Files(false)
@@ -4297,7 +4296,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	r = nodes[0]
 	// Recover the backup.
-	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
 		t.Fatal(err)
 	}
 	// The .siadir file should also be recovered.
@@ -4333,7 +4332,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Recover the backup again. Now there should be another file with a suffix at
 	// the end.
-	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
 		t.Fatal(err)
 	}
 	fis, err := r.RenterFilesGet(false)
@@ -4838,13 +4837,13 @@ func TestRemoteBackup(t *testing.T) {
 	}
 	// Create a snapshot.
 	createSnapshot := func(name string) error {
-		if err := r.RenterCreateBackupPost(name, true); err != nil {
+		if err := r.RenterCreateBackupPost(name); err != nil {
 			return err
 		}
 		// wait for backup to upload
 		return build.Retry(60, time.Second, func() error {
-			ubs, _ := r.RenterUploadedBackups()
-			for _, ub := range ubs {
+			ubs, _ := r.RenterBackups()
+			for _, ub := range ubs.Backups {
 				if ub.Name != name {
 					continue
 				} else if ub.UploadProgress != 100 {
@@ -4873,10 +4872,10 @@ func TestRemoteBackup(t *testing.T) {
 	}
 
 	// Both snapshots should be listed.
-	ubs, err := r.RenterUploadedBackups()
+	ubs, err := r.RenterBackups()
 	if err != nil {
 		t.Fatal(err)
-	} else if len(ubs) != 2 {
+	} else if len(ubs.Backups) != 2 {
 		t.Fatal("expected two backups, got", ubs)
 	}
 
@@ -4887,7 +4886,7 @@ func TestRemoteBackup(t *testing.T) {
 	if err := r.RenterDeletePost(rf2.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.RenterRecoverBackupPost("foo", true); err != nil {
+	if err := r.RenterRecoverBackupPost("foo"); err != nil {
 		t.Fatal(err)
 	}
 	// We should be able to download the first file.
@@ -4904,7 +4903,7 @@ func TestRemoteBackup(t *testing.T) {
 	}
 
 	// Restore the second snapshot.
-	if err := r.RenterRecoverBackupPost("bar", true); err != nil {
+	if err := r.RenterRecoverBackupPost("bar"); err != nil {
 		t.Fatal(err)
 	}
 	// We should be able to download both files now.
@@ -4957,11 +4956,13 @@ func TestRemoteBackup(t *testing.T) {
 	// Wait for the recovery process to complete.
 	err = build.Retry(60, time.Second, func() error {
 		// Both snapshots should be listed.
-		ubs, err = r.RenterUploadedBackups()
+		ubs, err = r.RenterBackups()
 		if err != nil {
 			return err
-		} else if len(ubs) != 2 {
-			return fmt.Errorf("expected two backups, got %v", ubs)
+		} else if len(ubs.Backups) != 2 {
+			return fmt.Errorf("expected two backups, got %v", ubs.Backups)
+		} else if len(ubs.SyncedHosts) != 2 {
+			return fmt.Errorf("expected two synced hosts, got %v", len(ubs.SyncedHosts))
 		}
 		return nil
 	})
@@ -4970,7 +4971,7 @@ func TestRemoteBackup(t *testing.T) {
 	}
 
 	// Restore the second snapshot.
-	if err := r.RenterRecoverBackupPost("bar", true); err != nil {
+	if err := r.RenterRecoverBackupPost("bar"); err != nil {
 		t.Fatal(err)
 	}
 	// We should be able to download both files now.
