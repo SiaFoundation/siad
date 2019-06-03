@@ -192,7 +192,8 @@ type Allowance struct {
 type ContractUtility struct {
 	GoodForUpload bool
 	GoodForRenew  bool
-	Locked        bool // Locked utilities can only be set to false.
+	LastOOSErr    types.BlockHeight // OOS means Out Of Storage
+	Locked        bool              // Locked utilities can only be set to false.
 }
 
 // DirectoryInfo provides information about a siadir
@@ -579,6 +580,9 @@ type Renter interface {
 	// RecoveryScanStatus returns a bool indicating if a scan for recoverable
 	// contracts is in progress and if it is, the current progress of the scan.
 	RecoveryScanStatus() (bool, types.BlockHeight)
+
+	// RefreshedContract checks if the contract was previously refreshed
+	RefreshedContract(fcid types.FileContractID) bool
 
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error

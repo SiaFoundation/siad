@@ -172,6 +172,9 @@ type hostContractor interface {
 	// contracts is in progress and if it is, the current progress of the scan.
 	RecoveryScanStatus() (bool, types.BlockHeight)
 
+	// RefreshedContract checks if the contract was previously refreshed
+	RefreshedContract(fcid types.FileContractID) bool
+
 	// RateLimits Gets the bandwidth limits for connections created by the
 	// contractor and its submodules.
 	RateLimits() (readBPS int64, writeBPS int64, packetSize uint64)
@@ -706,6 +709,12 @@ func (r *Renter) PeriodSpending() modules.ContractorSpending { return r.hostCont
 // RecoverableContracts returns the host contractor's recoverable contracts.
 func (r *Renter) RecoverableContracts() []modules.RecoverableContract {
 	return r.hostContractor.RecoverableContracts()
+}
+
+// RefreshedContract returns a bool indicating if the contract was previously
+// refreshed
+func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
+	return r.hostContractor.RefreshedContract(fcid)
 }
 
 // Settings returns the renter's allowance

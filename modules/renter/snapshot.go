@@ -279,8 +279,8 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 }
 
 func (r *Renter) managedSaveSnapshot(meta modules.UploadedBackup) error {
-	id := r.mu.RLock()
-	defer r.mu.RUnlock(id)
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
 	// Check whether we've already saved this snapshot.
 	for i, ub := range r.persist.UploadedBackups {
 		if ub.UID == meta.UID {

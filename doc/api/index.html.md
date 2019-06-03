@@ -1788,12 +1788,25 @@ Size in bytes of the backup.
 curl -A "Sia-Agent" "localhost:9980/renter/contracts?disabled=true&expired=true&recoverable=false"
 ```
 
-Returns the renter's contracts.
-Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default.
-Renewed contracts are contracts that are being used to store and download data, but are not being uploaded to because they either ran out of storage or funds and required renewal. The Renter has an active contract with these hosts for uploading.
+Returns the renter's contracts. Active, passive, and refreshed contracts are returned by default.
+Active contracts are contracts that the Renter is currently using to store, upload, and download data.
+Passive contracts are contracts that are no longer GoodForUpload but are GoodForRenew. This means the data will continue to be available to be downloaded from.
+Refreshed contracts are contracts that ran out of funds and needed to be renewed so more money could be added to the contract with the host. The data reported in these contracts is duplicate data and should not be included in any accounting.
 Disabled contracts are contracts that are in the current period that are not being used for uploading as they were replaced instead of renewed.
-Expired contracts are contracts no in the current period, where not more data is being stored and excess funds have been released to the renter.
-Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
+Expired contracts are contracts not in the current period, where no more data is being stored and excess funds have been released to the renter.
+Expired Refreshed contracts are contracts that were refreshed at some point in a previous period. The data reported in these contracts is duplicate data and should not be included in any accounting.
+Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet.
+
+| Type              | GoodForUpload | GoodForRenew | In Current Period | Data Counted Elsewhere Already|
+| ----------------- | :-----------: | :----------: | :---------------: | :---------------------------: |
+| Active            | Yes           | Yes          | Yes               | No                            |
+| Passive           | No            | Yes          | Yes               | No                            |
+| Refreshed         | No            | No           | Yes               | Yes                           |
+| Disabled          | No            | No           | Yes               | No                            |
+| Expired           | No            | No           | No                | No                            |
+| Expired Refreshed | No            | No           | No                | Yes                           |
+
+**NOTE:** No spending is double counted anywhere in the contracts, only the data is double counted in the refreshed contracts. For spending totals in the current period, all spending in active, passive, refreshed, and disabled contracts should be counted. For data totals, the data in active and passive contracts is the total uploaded while the data in disabled contracts is wasted uploaded data.
 
 ### Query String Parameters
 #### OPTIONAL
@@ -1834,9 +1847,11 @@ flag indicating if recoverable contracts should be returned.
       "goodforrenew":     false,            // boolean
     }
   ],
-  "renewedcontracts": [],
+  "passivecontracts": [],
+  "refreshedcontracts": [],
   "disabledcontracts": [],
   "expiredcontracts": [],
+  "expiredrefreshedcontracts": [],
   "recoverablecontracts": [],
 }
 ```

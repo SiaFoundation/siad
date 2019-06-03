@@ -111,6 +111,17 @@ func (c *Client) RenterContractCancelPost(id types.FileContractID) (err error) {
 	return
 }
 
+// RenterAllContractsGet requests the /renter/contracts resource with all
+// options set to true
+func (c *Client) RenterAllContractsGet() (rc api.RenterContracts, err error) {
+	values := url.Values{}
+	values.Set("disabled", fmt.Sprint(true))
+	values.Set("expired", fmt.Sprint(true))
+	values.Set("recoverable", fmt.Sprint(true))
+	err = c.get("/renter/contracts?"+values.Encode(), &rc)
+	return
+}
+
 // RenterContractsGet requests the /renter/contracts resource and returns
 // Contracts and ActiveContracts
 func (c *Client) RenterContractsGet() (rc api.RenterContracts, err error) {

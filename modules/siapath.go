@@ -69,6 +69,13 @@ func newSiaPath(s string) (SiaPath, error) {
 	return sp, sp.validate(false)
 }
 
+// AddSuffix adds a numeric suffix to the end of the SiaPath.
+func (sp SiaPath) AddSuffix(suffix uint) SiaPath {
+	return SiaPath{
+		Path: sp.Path + fmt.Sprintf("_%v", suffix),
+	}
+}
+
 // Dir returns the directory of the SiaPath
 func (sp SiaPath) Dir() (SiaPath, error) {
 	str := filepath.Dir(sp.Path)
