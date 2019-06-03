@@ -6,9 +6,9 @@ import (
 	"math/big"
 
 	bolt "github.com/coreos/bbolt"
-	"gitlab.com/NebulousLabs/Sia/types"
-
 	"gitlab.com/NebulousLabs/errors"
+
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // Errors returned by this file.

@@ -5,9 +5,10 @@ import (
 	"math"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // directory is a helper struct that represents a siadir in the

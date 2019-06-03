@@ -14,14 +14,14 @@ import (
 	"syscall"
 	"time"
 
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
-	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // A Server is a collection of siad modules that can be communicated with over

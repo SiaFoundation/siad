@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"errors"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )

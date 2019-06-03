@@ -4,9 +4,10 @@ import (
 	"math"
 
 	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 type (

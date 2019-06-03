@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/klauspost/reedsolomon"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 

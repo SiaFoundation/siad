@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 )
 

@@ -2,6 +2,7 @@ package explorer
 
 import (
 	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"

@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // RSSubCode is a Reed-Solomon encoder/decoder. It implements the

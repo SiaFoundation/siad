@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/julienschmidt/httprouter"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/julienschmidt/httprouter"
-	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 )
 
 type (

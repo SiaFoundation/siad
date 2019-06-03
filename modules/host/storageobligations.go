@@ -37,6 +37,7 @@ import (
 	"strconv"
 
 	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"

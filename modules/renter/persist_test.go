@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // newTestingFile initializes a file object with random parameters.

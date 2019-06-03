@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"

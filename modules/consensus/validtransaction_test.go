@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestTryValidTransactionSet submits a valid transaction set to the

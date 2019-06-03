@@ -5,6 +5,7 @@ package consensus
 
 import (
 	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 )

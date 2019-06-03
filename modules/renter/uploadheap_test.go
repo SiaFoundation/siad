@@ -5,10 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
