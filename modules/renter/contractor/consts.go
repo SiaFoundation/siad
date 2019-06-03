@@ -56,7 +56,7 @@ var (
 	oosRetryInterval = build.Select(build.Var{
 		Dev:      types.BlockHeight(types.BlocksPerHour / 2), // 30 minutes
 		Standard: types.BlockHeight(types.BlocksPerWeek),     // 7 days
-		Testing:  types.BlockHeight(5),                       // 50 minutes
+		Testing:  types.BlockHeight(types.BlocksPerHour * 2), // 2 hours
 	}).(types.BlockHeight)
 )
 
