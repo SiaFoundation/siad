@@ -81,9 +81,9 @@ func (api *API) buildHTTPRoutes() {
 	if api.renter != nil {
 		router.GET("/renter", api.renterHandlerGET)
 		router.POST("/renter", RequirePassword(api.renterHandlerPOST, requiredPassword))
-		router.POST("/renter/backup", RequirePassword(api.renterBackupHandlerPOST, requiredPassword))
-		router.POST("/renter/recoverbackup", RequirePassword(api.renterLoadBackupHandlerPOST, requiredPassword))
-		router.GET("/renter/uploadedbackups", RequirePassword(api.renterUploadedBackupsHandlerGET, requiredPassword))
+		router.GET("/renter/backups", RequirePassword(api.renterBackupsHandlerGET, requiredPassword))
+		router.POST("/renter/backups/create", RequirePassword(api.renterBackupsCreateHandlerPOST, requiredPassword))
+		router.POST("/renter/backups/restore", RequirePassword(api.renterBackupsRestoreHandlerGET, requiredPassword))
 		router.POST("/renter/contract/cancel", RequirePassword(api.renterContractCancelHandler, requiredPassword))
 		router.GET("/renter/contracts", api.renterContractsHandler)
 		router.GET("/renter/downloads", api.renterDownloadsHandler)
@@ -121,6 +121,10 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/hostdb/all", api.hostdbAllHandler)
 		router.GET("/hostdb/hosts/:pubkey", api.hostdbHostsHandler)
 		router.POST("/hostdb/filtermode", RequirePassword(api.hostdbFilterModeHandlerPOST, requiredPassword))
+
+		// Deprecated endpoints.
+		router.POST("/renter/backup", RequirePassword(api.renterBackupHandlerPOST, requiredPassword))
+		router.POST("/renter/recoverbackup", RequirePassword(api.renterLoadBackupHandlerPOST, requiredPassword))
 	}
 
 	// Transaction pool API Calls

@@ -152,7 +152,6 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 			return errors.AddContext(err, "unable to make an http request")
 		}
 		defer resp.Body.Close()
-
 		if non2xx(resp.StatusCode) {
 			return decodeError(resp)
 		}

@@ -594,8 +594,12 @@ type Renter interface {
 	// DownloadBackup downloads a backup previously uploaded to hosts.
 	DownloadBackup(dst string, name string) error
 
-	// UploadedBackups returns a list of backups previously uploaded to hosts.
-	UploadedBackups() ([]UploadedBackup, error)
+	// UploadedBackups returns a list of backups previously uploaded to hosts,
+	// along with a list of which hosts are storing all known backups.
+	UploadedBackups() ([]UploadedBackup, []types.SiaPublicKey, error)
+
+	// BackupsOnHost returns the backups stored on the specified host.
+	BackupsOnHost(hostKey types.SiaPublicKey) ([]UploadedBackup, error)
 
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(siaPath SiaPath) error

@@ -38,12 +38,12 @@ type uploadChunkHeap []*unfinishedUploadChunk
 // Implementation of heap.Interface for uploadChunkHeap.
 func (uch uploadChunkHeap) Len() int { return len(uch) }
 func (uch uploadChunkHeap) Less(i, j int) bool {
-	// If chunk i is high priority, return true to prioritize it.
-	if uch[i].priority {
+	// If only chunk i is high priority, return true to prioritize it.
+	if uch[i].priority && !uch[j].priority {
 		return true
 	}
-	// If chunk j is high priority, return false to prioritize it.
-	if uch[j].priority {
+	// If only chunk j is high priority, return false to prioritize it.
+	if !uch[i].priority && uch[j].priority {
 		return false
 	}
 	// If the chunks have the same stuck status, check which chunk has the worse

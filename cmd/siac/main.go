@@ -26,7 +26,6 @@ var (
 	renterListVerbose       bool   // Show additional info about uploaded files.
 	renterListRecursive     bool   // List files of folder recursively.
 	renterShowHistory       bool   // Show download history in addition to download queue.
-	renterRemoteBackup      bool   // Use backups stored on hosts.
 	siaDir                  string // Path to sia data dir
 	walletRawTxn            bool   // Encode/decode transactions in base64-encoded binary.
 
@@ -186,8 +185,6 @@ func main() {
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
 
 	renterCmd.Flags().BoolVarP(&renterListVerbose, "verbose", "v", false, "Show additional file info such as redundancy")
-	renterBackupCreateCmd.Flags().BoolVarP(&renterRemoteBackup, "remote", "", false, "Upload the backup to hosts instead of storing it locally")
-	renterBackupLoadCmd.Flags().BoolVarP(&renterRemoteBackup, "remote", "", false, "Download the backup from hosts instead of using a local file")
 	renterContractsCmd.Flags().BoolVarP(&renterAllContracts, "all", "A", false, "Show all expired contracts in addition to active contracts")
 	renterDownloadsCmd.Flags().BoolVarP(&renterShowHistory, "history", "H", false, "Show download history in addition to the download queue")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadAsync, "async", "A", false, "Download file asynchronously")
