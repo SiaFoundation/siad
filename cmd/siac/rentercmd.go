@@ -543,6 +543,14 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		fmt.Println("No flags specified. Allowance not updated.")
 		return
 	}
+	// check for required initial fields
+	if rg.Settings.Allowance.Funds.IsZero() && allowanceFunds == "" {
+		die("Funds must be set in initial allowance")
+	}
+	if rg.Settings.Allowance.ExpectedStorage == 0 && allowanceExpectedStorage == "" {
+		die("Expected storage must be set in initial allowance")
+	}
+
 	if err := req.Send(); err != nil {
 		die("Could not set allowance:", err)
 	}
