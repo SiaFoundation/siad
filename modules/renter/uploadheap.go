@@ -748,14 +748,6 @@ func (r *Renter) threadedUploadAndRepair() {
 		return
 	}
 
-	// Add any backups that weren't fully uploaded before the renter
-	// shutdown
-	r.managedBuildChunkHeap(modules.RootSiaPath(), r.managedRefreshHostsAndWorkers(), targetBackupChunks)
-	heapLen := r.uploadHeap.managedLen()
-	if heapLen != 0 {
-		r.log.Println("Added", heapLen, "backup chunks to the upload heap")
-	}
-
 	// Perpetual loop to scan for more files and add chunks to the uploadheap
 	for {
 		// Return if the renter has shut down
@@ -763,6 +755,14 @@ func (r *Renter) threadedUploadAndRepair() {
 		case <-r.tg.StopChan():
 			return
 		default:
+		}
+
+		// Add any backups that weren't fully uploaded before the renter
+		// shutdown
+		r.managedBuildChunkHeap(modules.RootSiaPath(), r.managedRefreshHostsAndWorkers(), targetBackupChunks)
+		heapLen := r.uploadHeap.managedLen()
+		if heapLen != 0 {
+			r.log.Println("Added", heapLen, "backup chunks to the upload heap")
 		}
 
 		// Wait until the renter is online to proceed. This function will return
