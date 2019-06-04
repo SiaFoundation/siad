@@ -102,6 +102,17 @@ type uploadHeap struct {
 	mu sync.Mutex
 }
 
+// managedExists checks if a chunk currently exists in the upload heap. A chunk
+// exists in the upload heap if it exists in any of the heap's tracking maps
+func (uh *uploadHeap) managedExists(id uploadChunkID) bool {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	_, existsUnstuckHeap := uh.unstuckHeapChunks[id]
+	_, existsRepairing := uh.repairingChunks[id]
+	_, existsStuckHeap := uh.stuckHeapChunks[id]
+	return existsUnstuckHeap || existsRepairing || existsStuckHeap
+}
+
 // managedLen will return the length of the heap
 func (uh *uploadHeap) managedLen() int {
 	uh.mu.Lock()
@@ -549,6 +560,18 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 				continue
 			}
 
+			// Check to see the chunk is already in the upload heap
+			if r.uploadHeap.managedExists(chunk.id) {
+				// Close the file entry
+				err := chunk.fileEntry.Close()
+				if err != nil {
+					r.log.Println("WARN: unable to close file:", err)
+				}
+				// Since the chunk is already in the heap we do not need to
+				// track the health of the chunk
+				continue
+			}
+
 			// Add chunk to temp heap
 			heap.Push(&unfinishedChunkHeap, chunk)
 
@@ -638,9 +661,8 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		return
 	}
 
-	// Since directory is being added back as explored we only need to
-	// set the health as that is what will be used for sorting in the
-	// directory heap
+	// Since directory is being added back as explored we only need to set the
+	// health as that is what will be used for sorting in the directory heap.
 	d := &directory{
 		health:   worstIgnoredHealth,
 		explored: true,
@@ -649,6 +671,11 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	if r.directoryHeap.managedPush(d) {
 		return
 	}
+
+	// Since the directory seems to be currently in the heap then the element
+	// will be updated and could be marked as unexplored so set the
+	// aggregateHealth as well.
+	d.aggregateHealth = worstIgnoredHealth
 
 	// Directory wasn't added to directory heap, try updating the directory
 	if !r.directoryHeap.managedUpdate(d) {
