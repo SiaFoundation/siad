@@ -152,7 +152,9 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 			return errors.AddContext(err, "unable to make an http request")
 		}
 		defer resp.Body.Close()
-
+		if non2xx(resp.StatusCode) {
+			return decodeError(resp)
+		}
 		_, err = io.Copy(&downbytes, resp.Body)
 		if err != nil {
 			return errors.AddContext(err, "unable to make a copy after the http request")
