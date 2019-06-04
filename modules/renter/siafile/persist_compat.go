@@ -77,6 +77,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		deleted:     fd.Deleted,
 		wal:         sfs.wal,
 	}
+	defer file.checkPubkeyOffsets()
 	file.chunks = make([]chunk, len(fd.Chunks))
 	for i := range file.chunks {
 		file.chunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())

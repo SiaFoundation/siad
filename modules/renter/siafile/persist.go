@@ -106,6 +106,7 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		siaFilePath: path,
 		wal:         wal,
 	}
+	defer sf.checkPubkeyOffsets()
 	// Load the metadata.
 	decoder := json.NewDecoder(r)
 	err := decoder.Decode(&sf.staticMetadata)
@@ -363,6 +364,8 @@ func (sf *SiaFile) chunkOffset(chunkIndex int) int64 {
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
 func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
+	sf.stuckChunkCheck()
+	sf.checkPubkeyOffsets()
 	// Sanity check that file hasn't been deleted.
 	if sf.deleted {
 		return errors.New("can't call createAndApplyTransaction on deleted file")
@@ -387,6 +390,8 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	if err := txn.SignalUpdatesApplied(); err != nil {
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
+	sf.stuckChunkCheck()
+	sf.checkPubkeyOffsets()
 	return nil
 }
 

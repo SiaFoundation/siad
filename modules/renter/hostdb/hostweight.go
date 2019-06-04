@@ -508,13 +508,13 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 
 // managedCalculateHostWeightFn creates a hosttree.WeightFunc given an Allowance.
 func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
-	// Get the txnFees.
-	hdb.mu.RLock()
-	txnFees := hdb.txnFees
-	blockHeight := hdb.blockHeight
-	hdb.mu.RUnlock()
 	// Create the weight function.
 	return func(entry modules.HostDBEntry) hosttree.ScoreBreakdown {
+		// Get the txnFees.
+		hdb.mu.RLock()
+		txnFees := hdb.txnFees
+		blockHeight := hdb.blockHeight
+		hdb.mu.RUnlock()
 		return hosttree.HostAdjustments{
 			BurnAdjustment:             1,
 			CollateralAdjustment:       hdb.collateralAdjustments(entry, allowance),
