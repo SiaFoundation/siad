@@ -370,10 +370,10 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 
 // lifetimeAdjustments will adjust the weight of the host according to the total
 // amount of time that has passed since the host's original announcement.
-func (hdb *HostDB) lifetimeAdjustments(entry modules.HostDBEntry) float64 {
+func (hdb *HostDB) lifetimeAdjustments(entry modules.HostDBEntry, blockHeight types.BlockHeight) float64 {
 	base := float64(1)
-	if hdb.blockHeight >= entry.FirstSeen {
-		age := hdb.blockHeight - entry.FirstSeen
+	if blockHeight >= entry.FirstSeen {
+		age := blockHeight - entry.FirstSeen
 		if age < 12000 {
 			base = base * 2 / 3 // 1.5x total
 		}
@@ -511,6 +511,7 @@ func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hos
 	// Get the txnFees.
 	hdb.mu.RLock()
 	txnFees := hdb.txnFees
+	blockHeight := hdb.blockHeight
 	hdb.mu.RUnlock()
 	// Create the weight function.
 	return func(entry modules.HostDBEntry) hosttree.ScoreBreakdown {
@@ -519,7 +520,7 @@ func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hos
 			CollateralAdjustment:       hdb.collateralAdjustments(entry, allowance),
 			DurationAdjustment:         hdb.durationAdjustments(entry, allowance),
 			InteractionAdjustment:      hdb.interactionAdjustments(entry),
-			AgeAdjustment:              hdb.lifetimeAdjustments(entry),
+			AgeAdjustment:              hdb.lifetimeAdjustments(entry, blockHeight),
 			PriceAdjustment:            hdb.priceAdjustments(entry, allowance, txnFees),
 			StorageRemainingAdjustment: storageRemainingAdjustments(entry),
 			UptimeAdjustment:           hdb.uptimeAdjustments(entry),

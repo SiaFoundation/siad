@@ -149,6 +149,22 @@ func TestDirectoryHeap(t *testing.T) {
 	if rt.renter.directoryHeap.managedLen() != 0 {
 		t.Fatal("heap should empty but has length of", rt.renter.directoryHeap.managedLen())
 	}
+
+	// Test initializing directory heap
+	err = rt.renter.managedInitDirectoryHeap()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt.renter.directoryHeap.managedLen() != 1 {
+		t.Fatal("directory heap should have length of 1 but has length of", rt.renter.directoryHeap.managedLen())
+	}
+	d = rt.renter.directoryHeap.managedPop()
+	if d.explored {
+		t.Fatal("directory should be unexplored root")
+	}
+	if !d.siaPath.Equals(modules.RootSiaPath()) {
+		t.Fatal("Directory should be root directory but is", d.siaPath)
+	}
 }
 
 // TestPushSubDirectories probes the methods that add sub directories to the

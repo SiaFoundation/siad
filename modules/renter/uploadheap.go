@@ -295,9 +295,9 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		// with the file after marking the chunks as stuck
 		if allowance.Hosts < uint64(minPieces) && target == targetUnstuckChunks {
 			// There are not enough hosts in the allowance for the file to reach
-			// minimum redundancy. Mark all unhealthy chunks as stuck
+			// minimum redundancy. Mark all chunks as stuck
 			r.log.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for file %v", allowance.Hosts, minPieces, entry.SiaFilePath())
-			if err := entry.MarkAllUnhealthyChunksAsStuck(offline, goodForRenew); err != nil {
+			if err := entry.SetAllStuck(true); err != nil {
 				r.log.Println("WARN: unable to mark all chunks as stuck:", err)
 			}
 		}
@@ -438,7 +438,10 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 		if heapLen == prevHeapLen {
 			// No more chunks added to the uploadHeap from the worst health
 			// directory. This means that the worse health chunks are already in
-			// the heap so return. This can be the case in new uploads
+			// the heap or are currently being repaired, so return. This can be
+			// the case in new uploads or repair loop iterations triggered from
+			// bubble
+			r.log.Debugln("no more chunks added to the upload heap")
 			return siaPaths, nil
 		}
 		prevHeapLen = heapLen
@@ -723,10 +726,10 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	switch target {
 	case targetStuckChunks:
-		r.log.Debugln("Adding stuck chunk to heap")
+		r.log.Debugln("Attempting to add stuck chunk to heap")
 		r.managedBuildAndPushRandomChunk(files, maxStuckChunksInHeap, hosts, target, offline, goodForRenew)
 	case targetUnstuckChunks:
-		r.log.Debugln("Adding chunks to heap")
+		r.log.Debugln("Attempting to add chunks to heap")
 		r.managedBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
 	default:
 		r.log.Println("WARN: repair target not recognized", target)
@@ -885,13 +888,13 @@ func (r *Renter) threadedUploadAndRepair() {
 		return
 	}
 
-	// Initialize the directory heap but pushing an unexplored root
-	err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
+	// Initialize the directory heap
+	err = r.managedInitDirectoryHeap()
 	if err != nil {
-		// If there is an error pushing an unexplored root to start log the
+		// If there is an error initializing the directory heap to start log the
 		// error. This is not critical, it just means that the repairs won't
 		// start up right away
-		r.log.Println("WARN: error push unexplored root directory onto directory heap:", err)
+		r.log.Println("WARN: error initializing the directory heap to start the background repair thread:", err)
 	}
 
 	// Perpetual loop to scan for more files and add chunks to the uploadheap
@@ -933,25 +936,17 @@ func (r *Renter) threadedUploadAndRepair() {
 				return
 			}
 
-			// Reset directory heap if the heap is still healthy. We do this
-			// check to make sure a directory wasn't added by another thread
-			// that needs to be repaired.
+			// Reset directory heap by re-initializing it if the heap is still
+			// healthy. We do this check to make sure a directory wasn't added
+			// by another thread that needs to be repaired.
 			if r.directoryHeap.managedPeekHealth() < siafile.RemoteRepairDownloadThreshold {
-				r.directoryHeap.managedReset()
-			}
-
-			// Check if there are directories in the directory heap, If not add an
-			// unexplored root.
-			if r.directoryHeap.managedLen() == 0 {
-				err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
+				err = r.managedInitDirectoryHeap()
 				if err != nil {
-					r.log.Println("WARN: error push unexplored root directory onto directory heap:", err)
-					select {
-					case <-time.After(uploadAndRepairErrorSleepDuration):
-					case <-r.tg.StopChan():
-						return
-					}
-					continue
+					// If there is an error initializing the directory heap log
+					// the error. We don't want to sleep here as we were trigger
+					// to repair chunks so we don't want to delay the repair if
+					// there are chunks in the upload heap already.
+					r.log.Println("WARN: error re-initializing the directory heap:", err)
 				}
 			}
 		}
@@ -964,21 +959,20 @@ func (r *Renter) threadedUploadAndRepair() {
 		dirSiaPaths := make(map[modules.SiaPath]struct{})
 		dirSiaPaths, err = r.managedAddChunksToHeap(hosts)
 		if err != nil {
-			// If there was an error adding chunks to the heap sleep for a
-			// little bit and then try again
+			// Log the error but don't sleep as there are potentially chunks in
+			// the heap from new uploads. If the heap is empty the next check
+			// will catch that and handle it as an error
 			r.log.Debugln("WARN: error adding chunks to the heap:", err)
-			select {
-			case <-time.After(uploadAndRepairErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-			continue
 		}
 
 		// Check if there are chunks in the uploadheap to repair
 		heapLen := r.uploadHeap.managedLen()
 		if heapLen == 0 {
-			// Try this as an error and sleep for a bit to prevent rapid cycling
+			// Treat this as an error and sleep for a bit to prevent rapid
+			// cycling. This is may or may not be an actual error, we could be
+			// hitting this condition due to bubble triggering the repair loop
+			// while all the worst chunks are still being repaired so there are
+			// no new chunks that can be added to the upload heap.
 			r.log.Debugln("No chunks in the upload heap even though repair loop was prompted to add chunks and repair")
 			select {
 			case <-time.After(uploadAndRepairErrorSleepDuration):
@@ -1007,6 +1001,11 @@ func (r *Renter) threadedUploadAndRepair() {
 
 		// Call threadedBubbleMetadata to update the filesystem.
 		for dirSiaPath := range dirSiaPaths {
+			// We call bubble in a go routine so that it is not a bottle neck
+			// for the repair loop iterations. This however can lead to some
+			// additional unneeded cycles of the repair loop as a result of when
+			// these bubbles reach root. This cycles however will be handled and
+			// can be seen in the logs.
 			go r.threadedBubbleMetadata(dirSiaPath)
 		}
 	}

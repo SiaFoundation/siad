@@ -192,6 +192,24 @@ func (dh *directoryHeap) managedPushDirectory(siaPath modules.SiaPath, aggregate
 	return nil
 }
 
+// managedInitDirectoryHeap clears the directory heap and then adds an
+// unexplored root directory
+func (r *Renter) managedInitDirectoryHeap() error {
+	// Reset the directory heap to help clear it from memory
+	r.directoryHeap.managedReset()
+
+	// Grab the root siadir metadata
+	siaDir, err := r.staticDirSet.Open(modules.RootSiaPath())
+	if err != nil {
+		return err
+	}
+	defer siaDir.Close()
+	metadata := siaDir.Metadata()
+
+	// Push unexplored root directory onto heap
+	return r.directoryHeap.managedPushDirectory(modules.RootSiaPath(), metadata.AggregateHealth, metadata.Health, false)
+}
+
 // managedNextExploredDirectory pops directories off of the heap until it
 // finds an explored directory. If an unexplored directory is found, any
 // subdirectories are added to the heap and the directory is marked as explored
@@ -257,7 +275,7 @@ func (r *Renter) managedPushSubDirectories(d *directory) error {
 // managedPushUnexploredDirectory reads the health from the siadir metadata and
 // pushes an unexplored directory element onto the heap
 func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
-	// Grab the root siadir metadata
+	// Grab the siadir metadata
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
 		return err

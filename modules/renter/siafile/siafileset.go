@@ -412,7 +412,6 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
 func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
-	fmt.Println("trying", sf.SiaFilePath(), suffix)
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
 	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
@@ -435,18 +434,15 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
 	// If it doesn't exist, update the UID, the path if necessary and save the
 	// file.
 	if !exists {
-		println("doesn't exist")
 		sf.UpdateUniqueID()
 		if suffix > 0 {
 			siaFilePath := siaPath.AddSuffix(suffix).SiaFileSysPath(sfs.staticSiaFileDir)
 			sf.SetSiaFilePath(siaFilePath)
-			println("new path", sf.SiaFilePath())
 		}
 		return sf.Save()
 	}
 	// If it exists and the UID matches too, skip the file.
 	if sf.UID() == oldFile.UID() {
-		println("bummer")
 		return nil
 	}
 	// If it exists and the UIDs don't match, increment the suffix and try again.

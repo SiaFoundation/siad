@@ -577,7 +577,9 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
 
 	// Save the changes.
+	id := r.mu.Lock()
 	err = r.saveSync()
+	r.mu.Unlock(id)
 	if err != nil {
 		return err
 	}
