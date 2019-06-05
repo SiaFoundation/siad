@@ -278,11 +278,7 @@ func (sf *SiaFile) SetMode(mode os.FileMode) error {
 	sf.staticMetadata.ChangeTime = time.Now()
 
 	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
+	return sf.saveFile()
 }
 
 // SetLastHealthCheckTime sets the LastHealthCheckTime in memory to the current
@@ -304,11 +300,7 @@ func (sf *SiaFile) SetLocalPath(path string) error {
 	sf.staticMetadata.LocalPath = path
 
 	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
+	return sf.saveFile()
 }
 
 // Size returns the file's size.
@@ -330,11 +322,7 @@ func (sf *SiaFile) UpdateAccessTime() error {
 	sf.staticMetadata.AccessTime = time.Now()
 
 	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
+	return sf.saveFile()
 }
 
 // UpdateLastHealthCheckTime updates the LastHealthCheckTime timestamp to the
@@ -344,11 +332,7 @@ func (sf *SiaFile) UpdateLastHealthCheckTime() error {
 	defer sf.mu.Unlock()
 	sf.staticMetadata.LastHealthCheckTime = time.Now()
 	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
+	return sf.saveFile()
 }
 
 // staticChunkSize returns the size of a single chunk of the file.
