@@ -51,6 +51,10 @@ func (sfr *SnapshotReader) Stat() (os.FileInfo, error) {
 // Siafile from disk.
 func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
 	// Lock the file.
+	//
+	// TODO
+	// - should this be a full lock?
+	// - is the read lock never released?
 	sf.mu.RLock()
 	if sf.deleted {
 		sf.mu.RUnlock()

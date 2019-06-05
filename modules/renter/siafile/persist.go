@@ -393,6 +393,16 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	}
 	sf.stuckChunkCheck()
 	sf.checkPubkeyOffsets()
+
+	// Check disk
+
+	sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
+	if err != nil && !os.IsNotExist(err) {
+		panic(errors.AddContext(err, "error on loading siafile after applying updates"))
+	} else if err == nil {
+		sf2.stuckChunkCheck()
+		sf2.checkPubkeyOffsets()
+	}
 	return nil
 }
 

@@ -205,7 +205,15 @@ func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 	}
 	// Update the fileSize.
 	sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(len(sf.chunks)))
-	return sf.saveFile()
+	mdu, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	updates = append(updates, mdu...)
+	// Update the filesize in the metadata.
+	return sf.createAndApplyTransaction(updates...)
+	//
+	// return sf.saveFile()
 }
 
 // SetFileSize changes the fileSize of the SiaFile.
@@ -213,7 +221,12 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	sf.staticMetadata.FileSize = int64(fileSize)
-	return sf.saveFile()
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+	// return sf.saveFile()
 }
 
 // AddPiece adds an uploaded piece to the file. It also updates the host table
@@ -376,7 +389,12 @@ func (sf *SiaFile) Save() error {
 func (sf *SiaFile) SaveMetadata() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	return sf.saveFile()
+	// return sf.saveFile()
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // Expiration updates CachedExpiration with the lowest height at which any of
