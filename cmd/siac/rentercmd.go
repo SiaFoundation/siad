@@ -571,13 +571,37 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 		return strings.TrimSpace(str)
 	}
 
-	fmt.Println("[Placeholder intro]")
+	fmt.Println("Interactive tool for setting the 8 allowance options.\n")
 
 	// funds
 	var funds types.Currency
-	fmt.Println("[Placeholder funds]")
-	fmt.Println("Current value:", allowance.Funds)
-	fmt.Println("Default value:", modules.DefaultAllowance.Funds)
+	fmt.Println(`1/8: Funds
+Funds determines the number of siacoins that the renter will spend when forming
+contracts with hosts. The renter will not allocate more than this amount of
+siacoins into the set of contracts each billing period. If the renter spends all
+of the funds but then needs to form new contracts, the renter will wait until
+either until the user increase the allowance funds, or until a new billing
+period is reached. If there are not enough funds to repair all files, then files
+may be at risk of getting lost.
+
+The renter will initially spend approximately 1/3rd of the allowance funds
+forming contracts. Siacoins that are spent to form contracts fall into two
+categories. The first is 'spent funds', and the second is 'unspent allocated
+funds'. Spent funds are funds which were spent on storage costs, bandwidth
+costs, and fees such as transaction fees. Unspent allocated funds are funds
+which have been locked into a contract, but haven't actually been spent yet. If
+the funds are never spent, the funds will be returned to the user 24 hours after
+the contract expires.
+
+The command 'siac renter allowance' can be used to see a breakdown of spending.
+
+The following units can be used to set the allowance:
+    H  (10^24 H per siacoin)
+    SC (1 siacoin per SC)
+    KS (1000 siacoins per KS)
+`)
+	fmt.Println("Current value:", currencyUnits(allowance.Funds))
+	fmt.Println("Default value:", currencyUnits(modules.DefaultAllowance.Funds))
 	if allowance.Funds.IsZero() {
 		funds = allowance.Funds
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -601,9 +625,19 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 
 	// period
 	var period types.BlockHeight
-	fmt.Println("[Placeholder period]")
-	fmt.Println("Current value:", allowance.Period)
-	fmt.Println("Default value:", modules.DefaultAllowance.Period)
+	fmt.Println(`
+The period is equivalent to the billing cycle length. The renter will not spend
+more than the full balance of its funds every billing cycle. When the billing
+cycle is over, the contracts will be renewed and the spending will be reset.
+
+The following units can be used to set the period:
+
+    b (blocks - 10 mintues)
+    d (days - 144 blocks or 1440 minutes)
+    w (weeks - 1008 blocks or 10080 blocks)
+`)
+	fmt.Println("Current value:", periodUnits(allowance.Period), "weeks")
+	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.Period), "weeks")
 	if allowance.Period == 0 {
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
@@ -625,7 +659,14 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 
 	// hosts
 	var hosts uint64
-	fmt.Println("[Placeholder hosts]")
+	fmt.Println(`
+Hosts sets the number of hosts that will be used to form the allowance. Sia
+gains most of its resiliancy from having a large number of hosts. More hosts
+will mean both more robustness and higher speeds when using the network, however
+will also result in more memory consumption and higher blockchain fees. It is
+strongly recommended that the default number of hosts be used as a minimum, and
+that double the default number of default hosts is used as a maximum.
+`)
 	fmt.Println("Current value:", allowance.Hosts)
 	fmt.Println("Default value:", modules.DefaultAllowance.Hosts)
 	if allowance.Hosts == 0 {
@@ -646,9 +687,30 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 
 	// renewWindow
 	var renewWindow types.BlockHeight
-	fmt.Println("[Placeholder renewWindow]")
-	fmt.Println("Current value:", allowance.RenewWindow)
-	fmt.Println("Default value:", modules.DefaultAllowance.RenewWindow)
+	fmt.Println(`
+The renew window is how long the user has to renew their contracts. At the end
+of the period, all of the contracts expire. The contracts need to be renewewd
+before they expire, otherwise the user will lose all of their files. The renew
+window is the window of time at the end of the period during which the renter
+will renew the users contracts. For example, if the renew window is 1 week long,
+then during the final week of each period the user will renew their contracts.
+If the user is offline for that whole week, the user's data will be lost.
+
+Each billing cycle begins at the beginning of the renew window for the previous
+period. For example, if the period is 12 weeks long and the renew window is 4
+weeks long, then the first billing cycle technically begins at -4 weeks, or 4
+weeks before the allowance is created. And the second billing cycle begins at
+week 8, or 8 weeks after the allowance is created. The third billing cycle will
+begin at week 20.
+
+The following units can be used to set the renew window:
+
+    b (blocks - 10 mintues)
+    d (days - 144 blocks or 1440 minutes)
+    w (weeks - 1008 blocks or 10080 blocks)
+`)
+	fmt.Println("Current value:", periodUnits(allowance.RenewWindow), "weeks")
+	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.RenewWindow), "weeks")
 	if allowance.RenewWindow == 0 {
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
@@ -670,9 +732,29 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 
 	// expectedStorage
 	var expectedStorage uint64
-	fmt.Println("[Placeholder expectedStorage]")
-	fmt.Println("Current value:", allowance.ExpectedStorage)
-	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedStorage)
+	fmt.Println(`
+Expected storage is the amount of storage that the user expects to keep on the
+Sia network. This value is important to calibrate the spending habits of Sia.
+Because Sia is decentralized, there is no easy way for Sia to know what the real
+world cost of storage is, nor what the real world price of a siacoin is. To
+overcome this deficiency, Sia depends on the user for guidance.
+
+If the user has a low allowance and a high amount of expected storage, Sia will
+more heavily prioritize cheaper hosts, and will also be more comfortable with
+hosts that post lower amounts of collateral. If the user has a high allowance
+and a low amount of expected storage, Sia will prioritize hosts that post more
+collateral, have better uptime, and overall will emphasize traits besides price.
+
+Generally speaking, Sia will try to spend substantially less than the full
+allowance to achieve the expected amount of storage, so setting a high allowance
+and a low amount of expected storage does not mean that Sia will disregard
+price, nor does it mean that Sia will form contracts with hosts that
+substantially overcharge. The biggest impact is that Sia will more strongly
+prefer hosts that post a large amount of collateral if the allowance is high
+relative to the amount of expected storage.
+`)
+	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedStorage))
+	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedStorage))
 	if allowance.ExpectedStorage == 0 {
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
@@ -694,9 +776,18 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 
 	// expectedUpload
 	var expectedUpload uint64
-	fmt.Println("[Placeholder expectedUpload]")
-	fmt.Println("Current value:", allowance.ExpectedUpload)
-	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedUpload)
+	fmt.Println(`
+Expected upload tells Sia how much uploading the user expects to do each period.
+If this value is high, Sia will more strongly prefer hosts that have a low
+upload bandwidth price. If this value is low, Sia will focus on other metrics
+than upload bandwidth pricing, because even if the host charges a lot for upload
+bandwidth, it will not impact the total cost to the user very much.
+
+The user should not consider upload bandwidth used during repairs, the renter
+will consider repair bandwidth separately.
+`)
+	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedUpload))
+	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedUpload))
 	if allowance.ExpectedUpload == 0 {
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
@@ -718,9 +809,18 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 
 	// expectedDownload
 	var expectedDownload uint64
-	fmt.Println("[Placeholder expectedDownload]")
-	fmt.Println("Current value:", allowance.ExpectedDownload)
-	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedDownload)
+	fmt.Println(`
+Expected download tells Sia how much downloading the user expects to do each
+period. If this value is high, Sia will more strongly prefer hosts that have a
+low download bandwidth price. If this value is low, Sia will focus on other
+metrics than download bandwidth pricing, because even if the host charges a lot
+for downloads, it will not impact the total cost to the user very much.
+
+The user should not consider download bandwidth used during repairs, the renter
+will consider repair bandwidth separately.
+`)
+	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedDownload))
+	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedDownload))
 	if allowance.ExpectedDownload == 0 {
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
@@ -742,7 +842,18 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 
 	// expectedRedundancy
 	var expectedRedundancy float64
-	fmt.Println("[Placeholder expectedRedundancy]")
+	fmt.Println(`
+Expected redundancy is used in conjunction with expected storage to determine
+the total amount of raw storage that will be stored on hosts. If the expected
+storage is 1 TB and the expected redundancy is 3, then the renter will calculate
+that the total amount of storage in the user's contracts will be 3 TiB.
+
+This value does not need to be changed from the default unless the user is
+manually choosing redundancy settings for their file. If different files are
+being given different redundancy settings, then the average of all the
+redundancies should be used as the value for expected redundancy, weighted by
+how large the files are.
+`)
 	fmt.Println("Current value:", allowance.ExpectedRedundancy)
 	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedRedundancy)
 	if allowance.ExpectedRedundancy == 0 {
