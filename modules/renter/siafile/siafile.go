@@ -386,11 +386,7 @@ func (sf *SiaFile) Save() error {
 func (sf *SiaFile) SaveMetadata() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
+	return sf.saveFile() // TODO: This should be saveMetadata which causes a panic for some reason
 }
 
 // Expiration updates CachedExpiration with the lowest height at which any of
