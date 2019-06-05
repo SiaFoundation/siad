@@ -171,6 +171,7 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		}
 		sf.chunks = append(sf.chunks, chunk)
 	}
+	sf.stuckChunkCheck()
 	return sf, nil
 }
 
@@ -454,6 +455,15 @@ func (sf *SiaFile) saveFile() error {
 	}
 	chunksUpdates := sf.saveChunksUpdates()
 	err = sf.createAndApplyTransaction(append(headerUpdates, chunksUpdates...)...)
+	if err != nil {
+		return errors.AddContext(err, "failed to apply saveFile updates")
+	}
+	sf.stuckChunkCheck()
+	sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
+	if err != nil {
+		build.Critical(err)
+	}
+	sf2.stuckChunkCheck()
 	return errors.AddContext(err, "failed to apply saveFile updates")
 }
 

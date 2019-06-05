@@ -510,16 +510,13 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
 	// Create the weight function.
 	return func(entry modules.HostDBEntry) hosttree.ScoreBreakdown {
-		// Get the txnFees.
-		txnFees := hdb.txnFees
-		blockHeight := hdb.blockHeight
 		return hosttree.HostAdjustments{
 			BurnAdjustment:             1,
 			CollateralAdjustment:       hdb.collateralAdjustments(entry, allowance),
 			DurationAdjustment:         hdb.durationAdjustments(entry, allowance),
 			InteractionAdjustment:      hdb.interactionAdjustments(entry),
-			AgeAdjustment:              hdb.lifetimeAdjustments(entry, blockHeight),
-			PriceAdjustment:            hdb.priceAdjustments(entry, allowance, txnFees),
+			AgeAdjustment:              hdb.lifetimeAdjustments(entry, hdb.blockHeight),
+			PriceAdjustment:            hdb.priceAdjustments(entry, allowance, hdb.txnFees),
 			StorageRemainingAdjustment: storageRemainingAdjustments(entry),
 			UptimeAdjustment:           hdb.uptimeAdjustments(entry),
 			VersionAdjustment:          versionAdjustments(entry),
