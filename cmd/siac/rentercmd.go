@@ -14,17 +14,15 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
-
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (
@@ -635,14 +633,14 @@ The following units can be used to set the allowance:
 	req = req.WithFunds(funds)
 
 	// period
-	fmt.Println(`
+	fmt.Println(`2/8: Period
 The period is equivalent to the billing cycle length. The renter will not spend
 more than the full balance of its funds every billing cycle. When the billing
 cycle is over, the contracts will be renewed and the spending will be reset.
 
 The following units can be used to set the period:
 
-    b (blocks - 10 mintues)
+    b (blocks - 10 minutes)
     d (days - 144 blocks or 1440 minutes)
     w (weeks - 1008 blocks or 10080 blocks)`)
 	fmt.Println()
@@ -675,7 +673,7 @@ The following units can be used to set the period:
 	req = req.WithPeriod(period)
 
 	// hosts
-	fmt.Println(`
+	fmt.Println(`3/8: Hosts
 Hosts sets the number of hosts that will be used to form the allowance. Sia
 gains most of its resiliancy from having a large number of hosts. More hosts
 will mean both more robustness and higher speeds when using the network, however
@@ -709,7 +707,7 @@ that double the default number of default hosts is used as a maximum.`)
 	req = req.WithHosts(uint64(hosts))
 
 	// renewWindow
-	fmt.Println(`
+	fmt.Println(`4/8: Renew Window
 The renew window is how long the user has to renew their contracts. At the end
 of the period, all of the contracts expire. The contracts need to be renewewd
 before they expire, otherwise the user will lose all of their files. The renew
@@ -727,7 +725,7 @@ begin at week 20.
 
 The following units can be used to set the renew window:
 
-    b (blocks - 10 mintues)
+    b (blocks - 10 minutes)
     d (days - 144 blocks or 1440 minutes)
     w (weeks - 1008 blocks or 10080 blocks)`)
 	fmt.Println()
@@ -760,7 +758,7 @@ The following units can be used to set the renew window:
 	req = req.WithRenewWindow(renewWindow)
 
 	// expectedStorage
-	fmt.Println(`
+	fmt.Println(`5/8: Expected Storage
 Expected storage is the amount of storage that the user expects to keep on the
 Sia network. This value is important to calibrate the spending habits of Sia.
 Because Sia is decentralized, there is no easy way for Sia to know what the real
@@ -807,7 +805,7 @@ relative to the amount of expected storage.`)
 	req = req.WithExpectedStorage(expectedStorage)
 
 	// expectedUpload
-	fmt.Println(`
+	fmt.Println(`6/8: Expected Upload
 Expected upload tells Sia how much uploading the user expects to do each month.
 If this value is high, Sia will more strongly prefer hosts that have a low
 upload bandwidth price. If this value is low, Sia will focus on other metrics
@@ -843,7 +841,7 @@ will consider repair bandwidth separately.`)
 	req = req.WithExpectedUpload(expectedUpload / uint64(modules.BlocksPerMonth))
 
 	// expectedDownload
-	fmt.Println(`
+	fmt.Println(`7/8: Expected Download
 Expected download tells Sia how much downloading the user expects to do each
 month. If this value is high, Sia will more strongly prefer hosts that have a
 low download bandwidth price. If this value is low, Sia will focus on other
@@ -879,7 +877,7 @@ will consider repair bandwidth separately.`)
 	req = req.WithExpectedDownload(expectedDownload / uint64(modules.BlocksPerMonth))
 
 	// expectedRedundancy
-	fmt.Println(`
+	fmt.Println(`8/8: Expected Redundancy
 Expected redundancy is used in conjunction with expected storage to determine
 the total amount of raw storage that will be stored on hosts. If the expected
 storage is 1 TB and the expected redundancy is 3, then the renter will calculate
