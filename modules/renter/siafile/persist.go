@@ -106,7 +106,7 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		siaFilePath: path,
 		wal:         wal,
 	}
-	defer sf.checkPubkeyOffsets()
+	// defer sf.checkPubkeyOffsets()
 	// Load the metadata.
 	decoder := json.NewDecoder(r)
 	err := decoder.Decode(&sf.staticMetadata)
@@ -171,7 +171,7 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		}
 		sf.chunks = append(sf.chunks, chunk)
 	}
-	sf.stuckChunkCheck()
+	// sf.stuckChunkCheck()
 	return sf, nil
 }
 
@@ -365,8 +365,18 @@ func (sf *SiaFile) chunkOffset(chunkIndex int) int64 {
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
 func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
-	sf.stuckChunkCheck()
-	sf.checkPubkeyOffsets()
+	sf.stuckChunkAndPubKeyCheck(nil)
+	// Check disk
+	defer func() {
+		sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
+		if err != nil && !os.IsNotExist(err) {
+			panic(errors.AddContext(err, "error on loading siafile after applying updates"))
+		} else if err == nil {
+			sf2.stuckChunkAndPubKeyCheck(sf)
+		}
+	}()
+	defer sf.stuckChunkAndPubKeyCheck(nil)
+
 	// Sanity check that file hasn't been deleted.
 	if sf.deleted {
 		return errors.New("can't call createAndApplyTransaction on deleted file")
@@ -377,32 +387,33 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	// Create the writeaheadlog transaction.
 	txn, err := sf.wal.NewTransaction(updates)
 	if err != nil {
+		fmt.Println()
+		fmt.Println("OMG ERR NewTransaction:", err)
+		fmt.Println()
 		return errors.AddContext(err, "failed to create wal txn")
 	}
 	// No extra setup is required. Signal that it is done.
 	if err := <-txn.SignalSetupComplete(); err != nil {
+		fmt.Println()
+		fmt.Println("OMG ERR SignalSetupComplete:", err)
+		fmt.Println()
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
 	// Apply the updates.
 	if err := sf.applyUpdates(updates...); err != nil {
+		fmt.Println()
+		fmt.Println("OMG ERR apply updates:", err)
+		fmt.Println()
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
 	if err := txn.SignalUpdatesApplied(); err != nil {
+		fmt.Println()
+		fmt.Println("OMG ERR SignalUpdatesApplied:", err)
+		fmt.Println()
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
-	sf.stuckChunkCheck()
-	sf.checkPubkeyOffsets()
 
-	// Check disk
-
-	sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
-	if err != nil && !os.IsNotExist(err) {
-		panic(errors.AddContext(err, "error on loading siafile after applying updates"))
-	} else if err == nil {
-		sf2.stuckChunkCheck()
-		sf2.checkPubkeyOffsets()
-	}
 	return nil
 }
 
@@ -465,12 +476,10 @@ func (sf *SiaFile) saveFile() error {
 	}
 	chunksUpdates := sf.saveChunksUpdates()
 	err = sf.createAndApplyTransaction(append(headerUpdates, chunksUpdates...)...)
-	sf.stuckChunkCheck()
-	sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
-	if err != nil {
-		panic("not what should be happending")
-	}
-	sf2.stuckChunkCheck()
+	// sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
+	// if err != nil {
+	// 	panic("not what should be happending")
+	// }
 	return errors.AddContext(err, "failed to apply saveFile updates")
 }
 
@@ -573,6 +582,9 @@ func (sf *SiaFile) saveMetadataUpdates() ([]writeaheadlog.Update, error) {
 	// needs to be moved as well and saveHeader is already handling that
 	// edgecase.
 	if int64(len(metadata)) > sf.staticMetadata.PubKeyTableOffset {
+		fmt.Println()
+		fmt.Println("Calling save header instead of save metadata")
+		fmt.Println()
 		return sf.saveHeaderUpdates()
 	}
 	// Otherwise we can create and return the updates.

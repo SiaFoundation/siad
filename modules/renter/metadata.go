@@ -221,8 +221,9 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	}
 	defer sf.Close()
 
-	// Mark sure that healthy chunks are not marked as stuck
-	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	// Get offline and goodforrenew maps
+	// hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	hostOfflineMap, hostGoodForRenewMap, _ := r.managedContractUtilityMaps()
 
 	// Calculate file health
 	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)

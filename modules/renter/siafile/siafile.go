@@ -234,7 +234,8 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	defer sf.checkPubkeyOffsets()
+	sf.stuckChunkAndPubKeyCheck(nil)
+	defer sf.stuckChunkAndPubKeyCheck(nil)
 	// If the file was deleted we can't add a new piece since it would write
 	// the file to disk again.
 	if sf.deleted {
@@ -253,14 +254,14 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		}
 	}
 	// If we don't know the host yet, we add it to the table.
-	//tableChanged := false
+	tableChanged := false
 	if tableIndex == -1 {
 		sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{
 			PublicKey: pk,
 			Used:      true,
 		})
 		tableIndex = len(sf.pubKeyTable) - 1
-		//tableChanged = true
+		tableChanged = true
 	}
 	// Check if the chunkIndex is valid.
 	if chunkIndex >= uint64(len(sf.chunks)) {
@@ -294,24 +295,24 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	if chunkSize > maxChunkSize {
 		return fmt.Errorf("chunk doesn't fit into allocated space %v > %v", chunkSize, maxChunkSize)
 	}
-	sf.checkPubkeyOffsets()
 	// Update the file atomically.
-	//var updates []writeaheadlog.Update
-	//var err error
+	var updates []writeaheadlog.Update
+	var err error
 	// Get the updates for the header.
-	//	if tableChanged {
-	//		// If the table changed we update the whole header.
-	//		updates, err = sf.saveHeaderUpdates()
-	//	} else {
-	//		// Otherwise just the metadata.
-	//		updates, err = sf.saveMetadataUpdates()
-	//	}
-	//	if err != nil {
-	//		return err
-	//	}
-	//	// Save the changed chunk to disk.
-	//	chunkUpdate := sf.saveChunkUpdate(int(chunkIndex))
-	return sf.saveFile() // sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
+	if tableChanged {
+		// If the table changed we update the whole header.
+		updates, err = sf.saveHeaderUpdates()
+	} else {
+		// Otherwise just the metadata.
+		updates, err = sf.saveMetadataUpdates()
+	}
+	if err != nil {
+		return err
+	}
+	// Save the changed chunk to disk.
+	chunkUpdate := sf.saveChunkUpdate(int(chunkIndex))
+	return sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
+	// return sf.saveFile()
 }
 
 // chunkHealth returns the health of the chunk which is defined as the percent
@@ -440,7 +441,8 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.stuckChunkCheck()
+	sf.stuckChunkAndPubKeyCheck(nil)
+	defer sf.stuckChunkAndPubKeyCheck(nil)
 	// Update the cache.
 	defer func() {
 		sf.staticMetadata.CachedHealth = h
@@ -602,13 +604,13 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	defer sf.stuckChunkCheck()
+	sf.stuckChunkAndPubKeyCheck(nil)
+	defer sf.stuckChunkAndPubKeyCheck(nil)
 
 	// If the file has been deleted we can't mark a chunk as stuck.
 	if sf.deleted {
 		return errors.New("can't call SetStuck on deleted file")
 	}
-	sf.stuckChunkCheck()
 	// Update all the Stuck field for each chunk.
 	for chunkIndex := range sf.chunks {
 		s := sf.chunks[chunkIndex].Stuck
@@ -632,7 +634,6 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	} else {
 		sf.staticMetadata.NumStuckChunks = 0
 	}
-	sf.stuckChunkCheck()
 	// Save the whole file atomically.
 	return sf.saveFile()
 }
@@ -641,9 +642,8 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.stuckChunkCheck()
-	defer sf.stuckChunkCheck()
-
+	sf.stuckChunkAndPubKeyCheck(nil)
+	defer sf.stuckChunkAndPubKeyCheck(nil)
 	// If the file has been deleted we can't mark a chunk as stuck.
 	if sf.deleted {
 		return errors.New("can't call SetStuck on deleted file")
@@ -663,43 +663,58 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 		}
 	}()
 	// Update chunk and NumStuckChunks in siafile metadata
-	sf.stuckChunkCheck()
 	sf.chunks[index].Stuck = stuck
 	if stuck {
 		sf.staticMetadata.NumStuckChunks++
 	} else {
 		sf.staticMetadata.NumStuckChunks--
 	}
-	sf.stuckChunkCheck()
 	// Update chunk and metadata on disk
-	return sf.saveFile()
+	// return sf.saveFile()
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	update := sf.saveChunkUpdate(int(index))
+	updates = append(updates, update)
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // stuckChunkCheck is a debug method to catch the panic of number of stuck
 // chunks not matching the metadata NumStuckChunks
-func (sf *SiaFile) stuckChunkCheck() {
+func (sf *SiaFile) stuckChunkAndPubKeyCheck(sf2 *SiaFile) {
 	var stuckChunks uint64
 	for _, chunk := range sf.chunks {
 		if chunk.Stuck {
 			stuckChunks++
 		}
 	}
+	var stuckErr error
 	if stuckChunks != sf.staticMetadata.NumStuckChunks {
-		build.Critical("stuck chunks not equal", stuckChunks, sf.staticMetadata.NumStuckChunks, sf.staticMetadata.FileSize)
+		stuckErr = fmt.Errorf("stuck chunks not equal, stuckChunks: %v, NumStuckChunks: %v, FileSize: %v", stuckChunks, sf.staticMetadata.NumStuckChunks, sf.staticMetadata.FileSize)
 	}
-}
 
-// checkPubkeyOffsets is a debug method to catch the panic of piece host table
-// offsets being outside the pubkey table
-func (sf *SiaFile) checkPubkeyOffsets() {
+	var pubkeyErr error
 	for _, chunk := range sf.chunks {
 		for _, pieceSet := range chunk.Pieces {
 			for _, piece := range pieceSet {
 				if int(piece.HostTableOffset) >= len(sf.pubKeyTable) {
-					build.Critical("HostTableOffset", piece.HostTableOffset, ">= len(pubkeyTable)", len(sf.pubKeyTable))
+					pubkeyErr = errors.Compose(pubkeyErr, fmt.Errorf("HostTableOffset %v >= len(pubkeyTable) %v", piece.HostTableOffset, len(sf.pubKeyTable)))
 				}
 			}
 		}
+	}
+	if stuckErr != nil || pubkeyErr != nil {
+		var files string
+		if sf2 != nil {
+			files = fmt.Sprintf("File 1: %v", sf) + fmt.Sprintf("File 2: %v", sf2)
+		}
+		s := fmt.Sprintf(`
+		Corrupt files: %v
+		stuck chunk err: %v
+		pubkey err: %v
+		`, files, stuckErr, pubkeyErr)
+		build.Critical(s)
 	}
 }
 
@@ -813,7 +828,7 @@ func (sf *SiaFile) hostKey(offset uint32) HostPublicKey {
 // HostTableOffset of the pieces and removes pieces which do no longer have a
 // host.
 func (sf *SiaFile) pruneHosts() {
-	defer sf.checkPubkeyOffsets()
+	defer sf.stuckChunkAndPubKeyCheck(nil)
 	var prunedTable []HostPublicKey
 	// Create a map to track how the indices of the hostkeys changed when being
 	// pruned.

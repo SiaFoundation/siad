@@ -334,7 +334,7 @@ func (sf *SiaFile) UpdateAccessTime() error {
 	sf.staticMetadata.AccessTime = time.Now()
 
 	// Save changes to metadata to disk.
-	return sf.saveFile()
+	// return sf.saveFile()
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err

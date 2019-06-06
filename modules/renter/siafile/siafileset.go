@@ -180,18 +180,30 @@ func (sfs *SiaFileSet) createAndApplyTransaction(updates ...writeaheadlog.Update
 	// Create the writeaheadlog transaction.
 	txn, err := sfs.wal.NewTransaction(updates)
 	if err != nil {
+		fmt.Println()
+		fmt.Println("OMG ERR NewTransaction:", err)
+		fmt.Println()
 		return errors.AddContext(err, "failed to create wal txn")
 	}
 	// No extra setup is required. Signal that it is done.
 	if err := <-txn.SignalSetupComplete(); err != nil {
+		fmt.Println()
+		fmt.Println("OMG ERR SignalSetupComplete:", err)
+		fmt.Println()
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
 	// Apply the updates.
 	if err := applyUpdates(modules.ProdDependencies, updates...); err != nil {
+		fmt.Println()
+		fmt.Println("OMG ERR applyUpdates:", err)
+		fmt.Println()
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
 	if err := txn.SignalUpdatesApplied(); err != nil {
+		fmt.Println()
+		fmt.Println("OMG ERR SignalUpdatesApplied:", err)
+		fmt.Println()
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
 	return nil
