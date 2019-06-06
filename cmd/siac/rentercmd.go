@@ -827,7 +827,7 @@ will consider repair bandwidth separately.
 			die("Could not parse expected upload")
 		}
 	}
-	req = req.WithExpectedUpload(expectedUpload/uint64(modules.BlocksPerMonth))
+	req = req.WithExpectedUpload(expectedUpload / uint64(modules.BlocksPerMonth))
 
 	// expectedDownload
 	var expectedDownload uint64
@@ -862,7 +862,7 @@ will consider repair bandwidth separately.
 			die("Could not parse expected download")
 		}
 	}
-	req = req.WithExpectedDownload(expectedDownload/uint64(modules.BlocksPerMonth))
+	req = req.WithExpectedDownload(expectedDownload / uint64(modules.BlocksPerMonth))
 
 	// expectedRedundancy
 	var expectedRedundancy float64
