@@ -5,11 +5,13 @@ import (
 )
 
 const (
+	// secondsPerMonth is how many seconds are in 30 complete days.
+	secondsPerMonth = 2592e3
+)
+
+const (
 	// HostDir names the directory that contains the host persistence.
 	HostDir = "host"
-
-	// How many seconds are in 30 complete days.
-	SecondsPerMonth = 2592e3
 )
 
 var (
