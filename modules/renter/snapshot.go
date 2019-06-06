@@ -563,7 +563,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		// First, process any snapshot siafiles that may have finished uploading.
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 		root, _ := modules.NewSiaPath(".")
-		finfos, err := r.staticBackupFileSet.FileList(root, true, false, offlineMap, goodForRenewMap, contractsMap)
+		finfos, err := r.staticBackupFileSet.FileList(root, true, true, offlineMap, goodForRenewMap, contractsMap)
 		if err != nil {
 			r.log.Println("Could not get un-uploaded snapshots:", err)
 		}
