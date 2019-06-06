@@ -635,6 +635,12 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		for _, ub := range r.persist.UploadedBackups {
 			if ub.UploadProgress == 100 {
 				known[ub.UID] = struct{}{}
+			} else {
+				// signal r.threadedUploadAndRepair to keep uploading the snapshot
+				select {
+				case r.uploadHeap.repairNeeded <- struct{}{}:
+				default:
+				}
 			}
 		}
 		r.mu.RUnlock(id)
