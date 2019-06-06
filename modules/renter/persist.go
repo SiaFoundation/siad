@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -288,10 +289,16 @@ func (r *Renter) managedInitPersist() error {
 		for _, update := range txn.Updates {
 			if siafile.IsSiaFileUpdate(update) {
 				if err := siafile.ApplyUpdates(update); err != nil {
+					fmt.Println()
+					fmt.Println("OMG ERR calling siafile ApplyUpdates renter persist:", err)
+					fmt.Println()
 					return errors.AddContext(err, "failed to apply SiaFile update")
 				}
 			} else if siadir.IsSiaDirUpdate(update) {
 				if err := siadir.ApplyUpdates(update); err != nil {
+					fmt.Println()
+					fmt.Println("OMG ERR calling siafile ApplyUpdates renter persist:", err)
+					fmt.Println()
 					return errors.AddContext(err, "failed to apply SiaDir update")
 				}
 			} else {

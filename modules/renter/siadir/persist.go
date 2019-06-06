@@ -22,6 +22,9 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := applyUpdate(modules.ProdDependencies, u)
 		if err != nil {
+			fmt.Println()
+			fmt.Println("OMG ERR siadir ApplyUpdates:", err)
+			fmt.Println()
 			return errors.AddContext(err, "failed to apply update")
 		}
 	}

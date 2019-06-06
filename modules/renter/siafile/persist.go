@@ -70,6 +70,9 @@ func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) er
 			}
 		}()
 		if err != nil {
+			fmt.Println()
+			fmt.Println("OMG ERR siafile applyUpdates:", err)
+			fmt.Println()
 			return errors.AddContext(err, "failed to apply update")
 		}
 	}
