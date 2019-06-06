@@ -5,25 +5,17 @@ import (
 )
 
 const (
-	// secondsPerMonth is how many seconds are in 30 complete days.
-	secondsPerMonth = 2592e3
-)
-
-const (
 	// HostDir names the directory that contains the host persistence.
 	HostDir = "host"
 )
 
 var (
 	// BlockBytesPerMonthTerabyte is the conversion rate between block-bytes and month-TB.
-	BlockBytesPerMonthTerabyte = BytesPerTerabyte.Mul64(uint64(BlocksPerMonth))
-
-	// BlocksPerMonth contains the number of blocks per month.
 	//
-	// TODO: Convert to `secondsPerMonth / types.BlockFrequency` - not a simple
-	// change because it means the number for testing changes from 4320 to
-	// 2592e3, and this breaks some of the tests.
-	BlocksPerMonth = secondsPerMonth / types.BlockFrequency
+	// TODO: Convert to `BytesPerTerabyte.Mul64(types.BlocksPerMonth)` - not a
+	// simple change because it means the number for testing changes from 4320
+	// to 2592e3, and this breaks some of the tests.
+	BlockBytesPerMonthTerabyte = BytesPerTerabyte.Mul64(4320)
 
 	// BytesPerTerabyte is the conversion rate between bytes and terabytes.
 	BytesPerTerabyte = types.NewCurrency64(1e12)
