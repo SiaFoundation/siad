@@ -425,137 +425,143 @@ again:
 // rentersetallowancecmd is the handler for `siac renter setallowance`.
 // set the allowance or modify individual allowance fields.
 func rentersetallowancecmd(cmd *cobra.Command, args []string) {
-	req := httpClient.RenterPostPartialAllowance()
-	changedFields := 0
-
 	// Get the current period setting.
 	rg, err := httpClient.RenterGet()
 	if err != nil {
 		die("Could not get renter settings")
 	}
-	period := rg.Settings.Allowance.Period
 
 	if allowanceInteractive {
+		req := httpClient.RenterPostPartialAllowance()
 		req = rentersetallowancecmdInteractive(req, rg.Settings.Allowance)
-	} else {
-		// parse funds
-		if allowanceFunds != "" {
-			hastings, err := parseCurrency(allowanceFunds)
-			if err != nil {
-				die("Could not parse amount:", err)
-			}
-			var funds types.Currency
-			_, err = fmt.Sscan(hastings, &funds)
-			if err != nil {
-				die("Could not parse amount:", err)
-			}
-			req = req.WithFunds(funds)
-			changedFields++
+		if err := req.Send(); err != nil {
+			die("Could not set allowance:", err)
 		}
-		// parse period
-		if allowancePeriod != "" {
-			blocks, err := parsePeriod(allowancePeriod)
-			if err != nil {
-				die("Could not parse period:", err)
-			}
-			_, err = fmt.Sscan(blocks, &period)
-			if err != nil {
-				die("Could not parse period:", err)
-			}
-			req = req.WithPeriod(period)
-			changedFields++
+		fmt.Println("Allowance updated")
+		return
+	}
+
+	req := httpClient.RenterPostPartialAllowance()
+	changedFields := 0
+	period := rg.Settings.Allowance.Period
+
+	// parse funds
+	if allowanceFunds != "" {
+		hastings, err := parseCurrency(allowanceFunds)
+		if err != nil {
+			die("Could not parse amount:", err)
 		}
-		// parse hosts
-		if allowanceHosts != "" {
-			hosts, err := strconv.Atoi(allowanceHosts)
-			if err != nil {
-				die("Could not parse host count")
-			}
-			req = req.WithHosts(uint64(hosts))
-			changedFields++
+		var funds types.Currency
+		_, err = fmt.Sscan(hastings, &funds)
+		if err != nil {
+			die("Could not parse amount:", err)
 		}
-		// parse renewWindow
-		if allowanceRenewWindow != "" {
-			rw, err := parsePeriod(allowanceRenewWindow)
-			if err != nil {
-				die("Could not parse renew window")
-			}
-			var renewWindow types.BlockHeight
-			_, err = fmt.Sscan(rw, &renewWindow)
-			if err != nil {
-				die("Could not parse renew window:", err)
-			}
-			req = req.WithRenewWindow(renewWindow)
-			changedFields++
+		req = req.WithFunds(funds)
+		changedFields++
+	}
+	// parse period
+	if allowancePeriod != "" {
+		blocks, err := parsePeriod(allowancePeriod)
+		if err != nil {
+			die("Could not parse period:", err)
 		}
-		// parse expectedStorage
-		if allowanceExpectedStorage != "" {
-			es, err := parseFilesize(allowanceExpectedStorage)
-			if err != nil {
-				die("Could not parse expected storage")
-			}
-			var expectedStorage uint64
-			_, err = fmt.Sscan(es, &expectedStorage)
-			if err != nil {
-				die("Could not parse expected storage")
-			}
-			req = req.WithExpectedStorage(expectedStorage)
-			changedFields++
+		_, err = fmt.Sscan(blocks, &period)
+		if err != nil {
+			die("Could not parse period:", err)
 		}
-		// parse expectedUpload
-		if allowanceExpectedUpload != "" {
-			eu, err := parseFilesize(allowanceExpectedUpload)
-			if err != nil {
-				die("Could not parse expected upload")
-			}
-			var expectedUpload uint64
-			_, err = fmt.Sscan(eu, &expectedUpload)
-			if err != nil {
-				die("Could not parse expected upload")
-			}
-			req = req.WithExpectedUpload(expectedUpload / uint64(period))
-			changedFields++
+		req = req.WithPeriod(period)
+		changedFields++
+	}
+	// parse hosts
+	if allowanceHosts != "" {
+		hosts, err := strconv.Atoi(allowanceHosts)
+		if err != nil {
+			die("Could not parse host count")
 		}
-		// parse expectedDownload
-		if allowanceExpectedDownload != "" {
-			ed, err := parseFilesize(allowanceExpectedDownload)
-			if err != nil {
-				die("Could not parse expected download")
-			}
-			var expectedDownload uint64
-			_, err = fmt.Sscan(ed, &expectedDownload)
-			if err != nil {
-				die("Could not parse expected download")
-			}
-			req = req.WithExpectedDownload(expectedDownload / uint64(period))
-			changedFields++
+		req = req.WithHosts(uint64(hosts))
+		changedFields++
+	}
+	// parse renewWindow
+	if allowanceRenewWindow != "" {
+		rw, err := parsePeriod(allowanceRenewWindow)
+		if err != nil {
+			die("Could not parse renew window")
 		}
-		// parse expectedRedundancy
-		if allowanceExpectedRedundancy != "" {
-			er, err := parseFilesize(allowanceExpectedRedundancy)
-			if err != nil {
-				die("Could not parse expected redundancy")
-			}
-			var expectedRedundancy float64
-			_, err = fmt.Sscan(er, &expectedRedundancy)
-			if err != nil {
-				die("Could not parse expected redundancy")
-			}
-			req = req.WithExpectedRedundancy(expectedRedundancy)
-			changedFields++
+		var renewWindow types.BlockHeight
+		_, err = fmt.Sscan(rw, &renewWindow)
+		if err != nil {
+			die("Could not parse renew window:", err)
 		}
-		// check if any fields were updated.
-		if changedFields == 0 {
-			fmt.Println("No flags specified. Allowance not updated.")
-			return
+		req = req.WithRenewWindow(renewWindow)
+		changedFields++
+	}
+	// parse expectedStorage
+	if allowanceExpectedStorage != "" {
+		es, err := parseFilesize(allowanceExpectedStorage)
+		if err != nil {
+			die("Could not parse expected storage")
 		}
-		// check for required initial fields
-		if rg.Settings.Allowance.Funds.IsZero() && allowanceFunds == "" {
-			die("Funds must be set in initial allowance")
+		var expectedStorage uint64
+		_, err = fmt.Sscan(es, &expectedStorage)
+		if err != nil {
+			die("Could not parse expected storage")
 		}
-		if rg.Settings.Allowance.ExpectedStorage == 0 && allowanceExpectedStorage == "" {
-			die("Expected storage must be set in initial allowance")
+		req = req.WithExpectedStorage(expectedStorage)
+		changedFields++
+	}
+	// parse expectedUpload
+	if allowanceExpectedUpload != "" {
+		eu, err := parseFilesize(allowanceExpectedUpload)
+		if err != nil {
+			die("Could not parse expected upload")
 		}
+		var expectedUpload uint64
+		_, err = fmt.Sscan(eu, &expectedUpload)
+		if err != nil {
+			die("Could not parse expected upload")
+		}
+		req = req.WithExpectedUpload(expectedUpload / uint64(period))
+		changedFields++
+	}
+	// parse expectedDownload
+	if allowanceExpectedDownload != "" {
+		ed, err := parseFilesize(allowanceExpectedDownload)
+		if err != nil {
+			die("Could not parse expected download")
+		}
+		var expectedDownload uint64
+		_, err = fmt.Sscan(ed, &expectedDownload)
+		if err != nil {
+			die("Could not parse expected download")
+		}
+		req = req.WithExpectedDownload(expectedDownload / uint64(period))
+		changedFields++
+	}
+	// parse expectedRedundancy
+	if allowanceExpectedRedundancy != "" {
+		er, err := parseFilesize(allowanceExpectedRedundancy)
+		if err != nil {
+			die("Could not parse expected redundancy")
+		}
+		var expectedRedundancy float64
+		_, err = fmt.Sscan(er, &expectedRedundancy)
+		if err != nil {
+			die("Could not parse expected redundancy")
+		}
+		req = req.WithExpectedRedundancy(expectedRedundancy)
+		changedFields++
+	}
+	// check if any fields were updated.
+	if changedFields == 0 {
+		fmt.Println("No flags specified. Allowance not updated.")
+		return
+	}
+	// check for required initial fields
+	if rg.Settings.Allowance.Funds.IsZero() && allowanceFunds == "" {
+		die("Funds must be set in initial allowance")
+	}
+	if rg.Settings.Allowance.ExpectedStorage == 0 && allowanceExpectedStorage == "" {
+		die("Expected storage must be set in initial allowance")
 	}
 
 	if err := req.Send(); err != nil {
