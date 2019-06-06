@@ -571,10 +571,10 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 		return strings.TrimSpace(str)
 	}
 
-	fmt.Println("Interactive tool for setting the 8 allowance options.\n")
+	fmt.Println("Interactive tool for setting the 8 allowance options.")
+	fmt.Println()
 
 	// funds
-	var funds types.Currency
 	fmt.Println(`1/8: Funds
 Funds determines the number of siacoins that the renter will spend when forming
 contracts with hosts. The renter will not allocate more than this amount of
@@ -598,10 +598,12 @@ The command 'siac renter allowance' can be used to see a breakdown of spending.
 The following units can be used to set the allowance:
     H  (10^24 H per siacoin)
     SC (1 siacoin per SC)
-    KS (1000 siacoins per KS)
-`)
+    KS (1000 siacoins per KS)`)
+	fmt.Println()
 	fmt.Println("Current value:", currencyUnits(allowance.Funds))
 	fmt.Println("Default value:", currencyUnits(modules.DefaultAllowance.Funds))
+
+	var funds types.Currency
 	if allowance.Funds.IsZero() {
 		funds = modules.DefaultAllowance.Funds
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -627,7 +629,6 @@ The following units can be used to set the allowance:
 	req = req.WithFunds(funds)
 
 	// period
-	var period types.BlockHeight
 	fmt.Println(`
 The period is equivalent to the billing cycle length. The renter will not spend
 more than the full balance of its funds every billing cycle. When the billing
@@ -637,10 +638,12 @@ The following units can be used to set the period:
 
     b (blocks - 10 mintues)
     d (days - 144 blocks or 1440 minutes)
-    w (weeks - 1008 blocks or 10080 blocks)
-`)
+    w (weeks - 1008 blocks or 10080 blocks)`)
+	fmt.Println()
 	fmt.Println("Current value:", periodUnits(allowance.Period), "weeks")
 	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.Period), "weeks")
+
+	var period types.BlockHeight
 	if allowance.Period == 0 {
 		period = modules.DefaultAllowance.Period
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -666,17 +669,18 @@ The following units can be used to set the period:
 	req = req.WithPeriod(period)
 
 	// hosts
-	var hosts uint64
 	fmt.Println(`
 Hosts sets the number of hosts that will be used to form the allowance. Sia
 gains most of its resiliancy from having a large number of hosts. More hosts
 will mean both more robustness and higher speeds when using the network, however
 will also result in more memory consumption and higher blockchain fees. It is
 strongly recommended that the default number of hosts be used as a minimum, and
-that double the default number of default hosts is used as a maximum.
-`)
+that double the default number of default hosts is used as a maximum.`)
+	fmt.Println()
 	fmt.Println("Current value:", allowance.Hosts)
 	fmt.Println("Default value:", modules.DefaultAllowance.Hosts)
+
+	var hosts uint64
 	if allowance.Hosts == 0 {
 		hosts = modules.DefaultAllowance.Hosts
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -699,7 +703,6 @@ that double the default number of default hosts is used as a maximum.
 	req = req.WithHosts(uint64(hosts))
 
 	// renewWindow
-	var renewWindow types.BlockHeight
 	fmt.Println(`
 The renew window is how long the user has to renew their contracts. At the end
 of the period, all of the contracts expire. The contracts need to be renewewd
@@ -720,10 +723,12 @@ The following units can be used to set the renew window:
 
     b (blocks - 10 mintues)
     d (days - 144 blocks or 1440 minutes)
-    w (weeks - 1008 blocks or 10080 blocks)
-`)
+    w (weeks - 1008 blocks or 10080 blocks)`)
+	fmt.Println()
 	fmt.Println("Current value:", periodUnits(allowance.RenewWindow), "weeks")
 	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.RenewWindow), "weeks")
+
+	var renewWindow types.BlockHeight
 	if allowance.RenewWindow == 0 {
 		renewWindow = modules.DefaultAllowance.RenewWindow
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -749,7 +754,6 @@ The following units can be used to set the renew window:
 	req = req.WithRenewWindow(renewWindow)
 
 	// expectedStorage
-	var expectedStorage uint64
 	fmt.Println(`
 Expected storage is the amount of storage that the user expects to keep on the
 Sia network. This value is important to calibrate the spending habits of Sia.
@@ -769,10 +773,12 @@ and a low amount of expected storage does not mean that Sia will disregard
 price, nor does it mean that Sia will form contracts with hosts that
 substantially overcharge. The biggest impact is that Sia will more strongly
 prefer hosts that post a large amount of collateral if the allowance is high
-relative to the amount of expected storage.
-`)
+relative to the amount of expected storage.`)
+	fmt.Println()
 	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedStorage))
 	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedStorage))
+
+	var expectedStorage uint64
 	if allowance.ExpectedStorage == 0 {
 		expectedStorage = modules.DefaultAllowance.ExpectedStorage
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -795,7 +801,6 @@ relative to the amount of expected storage.
 	req = req.WithExpectedStorage(expectedStorage)
 
 	// expectedUpload
-	var expectedUpload uint64
 	fmt.Println(`
 Expected upload tells Sia how much uploading the user expects to do each month.
 If this value is high, Sia will more strongly prefer hosts that have a low
@@ -804,10 +809,12 @@ than upload bandwidth pricing, because even if the host charges a lot for upload
 bandwidth, it will not impact the total cost to the user very much.
 
 The user should not consider upload bandwidth used during repairs, the renter
-will consider repair bandwidth separately.
-`)
+will consider repair bandwidth separately.`)
+	fmt.Println()
 	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedUpload*uint64(modules.BlocksPerMonth)))
 	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(modules.BlocksPerMonth)))
+
+	var expectedUpload uint64
 	if allowance.ExpectedUpload == 0 {
 		expectedUpload = modules.DefaultAllowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -830,7 +837,6 @@ will consider repair bandwidth separately.
 	req = req.WithExpectedUpload(expectedUpload / uint64(modules.BlocksPerMonth))
 
 	// expectedDownload
-	var expectedDownload uint64
 	fmt.Println(`
 Expected download tells Sia how much downloading the user expects to do each
 month. If this value is high, Sia will more strongly prefer hosts that have a
@@ -839,10 +845,12 @@ metrics than download bandwidth pricing, because even if the host charges a lot
 for downloads, it will not impact the total cost to the user very much.
 
 The user should not consider download bandwidth used during repairs, the renter
-will consider repair bandwidth separately.
-`)
+will consider repair bandwidth separately.`)
+	fmt.Println()
 	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedDownload*uint64(modules.BlocksPerMonth)))
 	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(modules.BlocksPerMonth)))
+
+	var expectedDownload uint64
 	if allowance.ExpectedDownload == 0 {
 		expectedDownload = modules.DefaultAllowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -865,7 +873,6 @@ will consider repair bandwidth separately.
 	req = req.WithExpectedDownload(expectedDownload / uint64(modules.BlocksPerMonth))
 
 	// expectedRedundancy
-	var expectedRedundancy float64
 	fmt.Println(`
 Expected redundancy is used in conjunction with expected storage to determine
 the total amount of raw storage that will be stored on hosts. If the expected
@@ -876,10 +883,12 @@ This value does not need to be changed from the default unless the user is
 manually choosing redundancy settings for their file. If different files are
 being given different redundancy settings, then the average of all the
 redundancies should be used as the value for expected redundancy, weighted by
-how large the files are.
-`)
+how large the files are.`)
+	fmt.Println()
 	fmt.Println("Current value:", allowance.ExpectedRedundancy)
 	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedRedundancy)
+
+	var expectedRedundancy float64
 	if allowance.ExpectedRedundancy == 0 {
 		expectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 		fmt.Println("Enter desired value below, or leave blank to use default value")
