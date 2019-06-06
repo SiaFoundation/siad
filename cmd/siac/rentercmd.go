@@ -588,14 +588,13 @@ either until the user increase the allowance funds, or until a new billing
 period is reached. If there are not enough funds to repair all files, then files
 may be at risk of getting lost.
 
-The renter will initially spend approximately 1/3rd of the allowance funds
-forming contracts. Siacoins that are spent to form contracts fall into two
-categories. The first is 'spent funds', and the second is 'unspent allocated
-funds'. Spent funds are funds which were spent on storage costs, bandwidth
-costs, and fees such as transaction fees. Unspent allocated funds are funds
-which have been locked into a contract, but haven't actually been spent yet. If
-the funds are never spent, the funds will be returned to the user 24 hours after
-the contract expires.
+Once the allowance is set, the renter will begin forming contracts. This will
+immediately spend a large portion of the allowance, while also leaving a large
+portion for forming additional contracts throughout the billing period. Most of
+the funds that are spent immediately are not actually spent, but instead locked
+up into state channels. In the allowance reports, these funds will typically be
+reported as 'unspent allocated'. The funds that have been set aside for forming
+contracts later in the billing cycle will be reported as 'unspent unallocated'.
 
 The command 'siac renter allowance' can be used to see a breakdown of spending.
 
@@ -635,8 +634,8 @@ The following units can be used to set the allowance:
 	// period
 	fmt.Println(`2/8: Period
 The period is equivalent to the billing cycle length. The renter will not spend
-more than the full balance of its funds every billing cycle. When the billing
-cycle is over, the contracts will be renewed and the spending will be reset.
+more than the full balance of its funds every billing period. When the billing
+period is over, the contracts will be renewed and the spending will be reset.
 
 The following units can be used to set the period:
 
@@ -678,8 +677,8 @@ Hosts sets the number of hosts that will be used to form the allowance. Sia
 gains most of its resiliancy from having a large number of hosts. More hosts
 will mean both more robustness and higher speeds when using the network, however
 will also result in more memory consumption and higher blockchain fees. It is
-strongly recommended that the default number of hosts be used as a minimum, and
-that double the default number of default hosts is used as a maximum.`)
+recommended that the default number of hosts be treated as a minimum, and that
+double the default number of default hosts be treated as a maximum.`)
 	fmt.Println()
 	fmt.Println("Current value:", allowance.Hosts)
 	fmt.Println("Default value:", modules.DefaultAllowance.Hosts)
@@ -716,11 +715,11 @@ will renew the users contracts. For example, if the renew window is 1 week long,
 then during the final week of each period the user will renew their contracts.
 If the user is offline for that whole week, the user's data will be lost.
 
-Each billing cycle begins at the beginning of the renew window for the previous
+Each billing period begins at the beginning of the renew window for the previous
 period. For example, if the period is 12 weeks long and the renew window is 4
-weeks long, then the first billing cycle technically begins at -4 weeks, or 4
-weeks before the allowance is created. And the second billing cycle begins at
-week 8, or 8 weeks after the allowance is created. The third billing cycle will
+weeks long, then the first billing period technically begins at -4 weeks, or 4
+weeks before the allowance is created. And the second billing period begins at
+week 8, or 8 weeks after the allowance is created. The third billing period will
 begin at week 20.
 
 The following units can be used to set the renew window:
@@ -760,24 +759,21 @@ The following units can be used to set the renew window:
 	// expectedStorage
 	fmt.Println(`5/8: Expected Storage
 Expected storage is the amount of storage that the user expects to keep on the
-Sia network. This value is important to calibrate the spending habits of Sia.
-Because Sia is decentralized, there is no easy way for Sia to know what the real
-world cost of storage is, nor what the real world price of a siacoin is. To
-overcome this deficiency, Sia depends on the user for guidance.
+Sia network. This value is important to calibrate the spending habits of siad.
+Because Sia is decentralized, there is no easy way for siad to know what the
+real world cost of storage is, nor what the real world price of a siacoin is. To
+overcome this deficiency, siad depends on the user for guidance.
 
-If the user has a low allowance and a high amount of expected storage, Sia will
+If the user has a low allowance and a high amount of expected storage, siad will
 more heavily prioritize cheaper hosts, and will also be more comfortable with
 hosts that post lower amounts of collateral. If the user has a high allowance
-and a low amount of expected storage, Sia will prioritize hosts that post more
-collateral, have better uptime, and overall will emphasize traits besides price.
+and a low amount of expected storage, siad will prioritize hosts that post more
+collateral, as well as giving preference to hosts better overall traits such as
+uptime and age.
 
-Generally speaking, Sia will try to spend substantially less than the full
-allowance to achieve the expected amount of storage, so setting a high allowance
-and a low amount of expected storage does not mean that Sia will disregard
-price, nor does it mean that Sia will form contracts with hosts that
-substantially overcharge. The biggest impact is that Sia will more strongly
-prefer hosts that post a large amount of collateral if the allowance is high
-relative to the amount of expected storage.`)
+Even when the user has a large allowance and a low amount of expected storage,
+siad will try to optimize for saving money; siad tries to meet the users storage
+and bandwith needs while spending significantly less than the overall allowance.`)
 	fmt.Println()
 	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedStorage))
 	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedStorage))
@@ -806,14 +802,14 @@ relative to the amount of expected storage.`)
 
 	// expectedUpload
 	fmt.Println(`6/8: Expected Upload
-Expected upload tells Sia how much uploading the user expects to do each month.
-If this value is high, Sia will more strongly prefer hosts that have a low
-upload bandwidth price. If this value is low, Sia will focus on other metrics
+Expected upload tells siad how much uploading the user expects to do each month.
+If this value is high, siad will more strongly prefer hosts that have a low
+upload bandwidth price. If this value is low, siad will focus on other metrics
 than upload bandwidth pricing, because even if the host charges a lot for upload
 bandwidth, it will not impact the total cost to the user very much.
 
-The user should not consider upload bandwidth used during repairs, the renter
-will consider repair bandwidth separately.`)
+The user should not consider upload bandwidth used during repairs, siad will
+consider repair bandwidth separately.`)
 	fmt.Println()
 	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedUpload*uint64(modules.BlocksPerMonth)))
 	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(modules.BlocksPerMonth)))
@@ -842,14 +838,14 @@ will consider repair bandwidth separately.`)
 
 	// expectedDownload
 	fmt.Println(`7/8: Expected Download
-Expected download tells Sia how much downloading the user expects to do each
-month. If this value is high, Sia will more strongly prefer hosts that have a
-low download bandwidth price. If this value is low, Sia will focus on other
+Expected download tells siad how much downloading the user expects to do each
+month. If this value is high, siad will more strongly prefer hosts that have a
+low download bandwidth price. If this value is low, siad will focus on other
 metrics than download bandwidth pricing, because even if the host charges a lot
 for downloads, it will not impact the total cost to the user very much.
 
-The user should not consider download bandwidth used during repairs, the renter
-will consider repair bandwidth separately.`)
+The user should not consider download bandwidth used during repairs, siad will
+consider repair bandwidth separately.`)
 	fmt.Println()
 	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedDownload*uint64(modules.BlocksPerMonth)))
 	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(modules.BlocksPerMonth)))
