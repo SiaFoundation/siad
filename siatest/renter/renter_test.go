@@ -5214,3 +5214,91 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestInterruptBackup tests that the renter can resume uploading a backup after
+// restarting.
+func TestInterruptBackup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(len(tg.Hosts()) - 1)
+	parityPieces := uint64(1)
+	_, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// Create a snapshot.
+	if err := r.RenterCreateBackupPost("foo"); err != nil {
+		t.Fatal(err)
+	}
+	// The snapshot should be listed and not 100% uploaded.
+	ubs, err := r.RenterBackups()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(ubs.Backups) != 1 {
+		t.Fatal("expected one backup, got", ubs)
+	} else if ubs.Backups[0].UploadProgress == 100 {
+		t.Fatal("backup should not be 100% uploaded")
+	}
+
+	// Restart the renter node.
+	if err := r.RestartNode(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The snapshot should still be listed and incomplete.
+	ubs, err = r.RenterBackups()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(ubs.Backups) != 1 {
+		t.Fatal("expected one backup, got", ubs)
+	} else if ubs.Backups[0].UploadProgress == 100 {
+		t.Fatal("backup should not be 100% uploaded")
+	}
+
+	// Wait for the snapshot to finish uploading.
+	err = build.Retry(60, time.Second, func() error {
+		ubs, _ := r.RenterBackups()
+		if len(ubs.Backups) != 1 {
+			return errors.New("expected one backup")
+		}
+		if ubs.Backups[0].UploadProgress != 100 {
+			return errors.New("backup not uploaded")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
