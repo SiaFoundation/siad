@@ -19,7 +19,7 @@ var (
 	BlockBytesPerMonthTerabyte = BytesPerTerabyte.Mul64(uint64(BlocksPerMonth))
 
 	// BlocksPerMonth contains the number of blocks per month.
-	BlocksPerMonth = SecondsPerMonth / types.BlockFrequency
+	BlocksPerMonth = secondsPerMonth / types.BlockFrequency
 
 	// BytesPerTerabyte is the conversion rate between bytes and terabytes.
 	BytesPerTerabyte = types.NewCurrency64(1e12)
