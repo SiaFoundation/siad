@@ -481,6 +481,8 @@ func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types
 	// security risk, since we *did* sign the revision that the host is
 	// claiming. Worst case, certain contract metadata (e.g. UploadSpending)
 	// will be incorrect.
+	c.headerMu.Lock()
+	defer c.headerMu.Unlock()
 	c.header.Transaction.FileContractRevisions[0] = rev
 	c.header.Transaction.TransactionSignatures = sigs
 	// Drop the WAL transactions, since they can't conceivably help us.
