@@ -633,7 +633,9 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		known := make(map[[16]byte]struct{})
 		id := r.mu.RLock()
 		for _, ub := range r.persist.UploadedBackups {
-			known[ub.UID] = struct{}{}
+			if ub.UploadProgress == 100 {
+				known[ub.UID] = struct{}{}
+			}
 		}
 		r.mu.RUnlock(id)
 
