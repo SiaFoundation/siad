@@ -16,13 +16,13 @@ const (
 
 var (
 	// BlockBytesPerMonthTerabyte is the conversion rate between block-bytes and month-TB.
-	//
-	// TODO: Convert to BytesPerTerabyte.Mul64(uint64(BlocksPerMonth)) - not a
-	// simple change because it means the number for testing changes from 4320
-	// to 2592e3, and this breaks some of the tests.
-	BlockBytesPerMonthTerabyte = 4320
+	BlockBytesPerMonthTerabyte = BytesPerTerabyte.Mul64(uint64(BlocksPerMonth))
 
 	// BlocksPerMonth contains the number of blocks per month.
+	//
+	// TODO: Convert to `secondsPerMonth / types.BlockFrequency` - not a simple
+	// change because it means the number for testing changes from 4320 to
+	// 2592e3, and this breaks some of the tests.
 	BlocksPerMonth = secondsPerMonth / types.BlockFrequency
 
 	// BytesPerTerabyte is the conversion rate between bytes and terabytes.

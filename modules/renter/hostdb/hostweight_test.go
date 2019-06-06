@@ -10,17 +10,12 @@ import (
 )
 
 var (
-	// An allowance to give to every hostdb for testing.
-	DefaultTestAllowance = modules.Allowance{
-		Funds:              types.SiacoinPrecision.Mul64(500),
-		Hosts:              uint64(50),
-		Period:             types.BlockHeight(12096),
-		RenewWindow:        types.BlockHeight(4032),
-		ExpectedStorage:    modules.DefaultAllowance.ExpectedStorage,
-		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
-		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
-		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
-	}
+	// Set the default test allowance to the default renter allowance. It used
+	// to be the case that the default renter allowance was not sufficient for
+	// testing, but that is no longer the case. The variable is kept anyway so
+	// that we can make adjustments easily if we decide that we need to for the
+	// hostdb.
+	DefaultTestAllowance = modules.DefaultAllowance
 
 	// The default entry to use when performing scoring.
 	DefaultHostDBEntry = modules.HostDBEntry{
