@@ -811,8 +811,8 @@ bandwidth, it will not impact the total cost to the user very much.
 The user should not consider upload bandwidth used during repairs, siad will
 consider repair bandwidth separately.`)
 	fmt.Println()
-	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedUpload*uint64(modules.BlocksPerMonth)))
-	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(modules.BlocksPerMonth)))
+	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedUpload*uint64(types.BlocksPerMonth)))
+	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(types.BlocksPerMonth)))
 
 	var expectedUpload uint64
 	if allowance.ExpectedUpload == 0 {
@@ -834,7 +834,7 @@ consider repair bandwidth separately.`)
 			die("Could not parse expected upload")
 		}
 	}
-	req = req.WithExpectedUpload(expectedUpload / uint64(modules.BlocksPerMonth))
+	req = req.WithExpectedUpload(expectedUpload / uint64(types.BlocksPerMonth))
 
 	// expectedDownload
 	fmt.Println(`7/8: Expected Download
@@ -847,8 +847,8 @@ for downloads, it will not impact the total cost to the user very much.
 The user should not consider download bandwidth used during repairs, siad will
 consider repair bandwidth separately.`)
 	fmt.Println()
-	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedDownload*uint64(modules.BlocksPerMonth)))
-	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(modules.BlocksPerMonth)))
+	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedDownload*uint64(types.BlocksPerMonth)))
+	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(types.BlocksPerMonth)))
 
 	var expectedDownload uint64
 	if allowance.ExpectedDownload == 0 {
@@ -870,7 +870,7 @@ consider repair bandwidth separately.`)
 			die("Could not parse expected download")
 		}
 	}
-	req = req.WithExpectedDownload(expectedDownload / uint64(modules.BlocksPerMonth))
+	req = req.WithExpectedDownload(expectedDownload / uint64(types.BlocksPerMonth))
 
 	// expectedRedundancy
 	fmt.Println(`8/8: Expected Redundancy
