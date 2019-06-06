@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -57,6 +58,11 @@ func (sf *SiaFile) SetSiaFilePath(path string) {
 // SiaFile. This method can apply updates from different SiaFiles and should
 // only be run before the SiaFiles are loaded from disk right after the startup
 // of siad. Otherwise we might run into concurrency issues.
+//
+// TODO - Does this need to be updated to handle deletion better? If a file is
+// deleted and then there is a second update that update would fail because the
+// file is gone. However that one expected failure would cause the rest of the
+// updates not to return?
 func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := func() error {
@@ -168,6 +174,7 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		} else if err != nil {
 			return nil, err
 		}
+		// fmt.Println("calling unmarshalChunk for", path)
 		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
 		if err != nil {
 			return nil, err
@@ -305,6 +312,9 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 		switch u.Name {
 		case updateDeleteName:
 			if err := readAndApplyDeleteUpdate(sf.deps, u); err != nil {
+				fmt.Println()
+				fmt.Println("OMG ERR siafile.applyUpdates applying delete update:", err)
+				fmt.Println()
 				return err
 			}
 			updates = updates[i+1:]
@@ -319,11 +329,17 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 
 	// Create the path if it doesn't exist yet.
 	if err = os.MkdirAll(filepath.Dir(sf.siaFilePath), 0700); err != nil {
+		fmt.Println()
+		fmt.Println("OMG ERR siafile.applyUpdates creating directory:", err)
+		fmt.Println()
 		return err
 	}
 	// Create and/or open the file.
 	f, err := sf.deps.OpenFile(sf.siaFilePath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
+		fmt.Println()
+		fmt.Println("OMG ERR siafile.applyUpdates opening file:", err)
+		fmt.Println()
 		return err
 	}
 	defer func() {
@@ -333,6 +349,11 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 		} else {
 			// Otherwise we still need to close the file.
 			err = errors.Compose(err, f.Close())
+		}
+		if err != nil {
+			fmt.Println()
+			fmt.Println("OMG ERR siafile.applyUpdates in defer func:", err)
+			fmt.Println()
 		}
 	}()
 
@@ -351,6 +372,9 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 			}
 		}()
 		if err != nil {
+			fmt.Println()
+			fmt.Println("OMG ERR siafile.applyUpdates applying updates:", err)
+			fmt.Println()
 			return errors.AddContext(err, "failed to apply update")
 		}
 	}
@@ -368,13 +392,77 @@ func (sf *SiaFile) chunkOffset(chunkIndex int) int64 {
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
 func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
+	s := fmt.Sprintf("Calling CreateAndApplyTransaction with %v updates for %v\n", len(updates), sf.siaFilePath)
+	metadataUpdate := false
+	for i, u := range updates {
+		path, index, _, err := readInsertUpdate(u)
+		if err != nil {
+			panic(err)
+		}
+		if index == 0 {
+			if len(updates) == 1 {
+				metadataUpdate = true
+			}
+			// Metadata update
+			s = s + fmt.Sprintf("Update %v is a %v for the metadata for %v\n", i, u.Name, path)
+		} else if int(index) > len(sf.pubKeyTable) {
+			// Chunk update
+			s = s + fmt.Sprintf("Update %v is a %v for a chunk for %v\n", i, u.Name, path)
+		} else {
+
+			s = s + fmt.Sprintf("Update %v is a %v for something else for %v\n", i, u.Name, path)
+		}
+	}
+	// fmt.Println(s)
+	// check info in memory and on disk before write
 	sf.stuckChunkAndPubKeyCheck(nil)
-	// Check disk
+	sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
+	if err != nil && !os.IsNotExist(err) {
+		panic(errors.AddContext(err, "error on loading siafile after applying updates"))
+	} else if err == nil {
+		sf2.stuckChunkAndPubKeyCheck(sf)
+	}
+	// Check memory vs disk
+	if sf2 != nil && metadataUpdate {
+		var panicE error
+		if sf.staticMetadata.NumStuckChunks != sf2.staticMetadata.NumStuckChunks {
+			fmt.Printf("About to Panic: in Memory file pointer %p %v\n", sf, sf.siaFilePath)
+			panicE = fmt.Errorf("in memory %v doesn't match on disk %v NumStuckChunks", sf.staticMetadata.NumStuckChunks, sf2.staticMetadata.NumStuckChunks)
+		}
+		for i, c := range sf.chunks {
+			if c.Stuck != sf2.chunks[i].Stuck {
+				fmt.Printf("About to Panic: in Memory file pointer %p %v\n", sf, sf.siaFilePath)
+				panicE = errors.Compose(panicE, fmt.Errorf("in memory %v doesn't match on disk %v chunk stuck", c.Stuck, sf2.chunks[i].Stuck))
+			}
+		}
+		if panicE != nil {
+			build.Critical(panicE)
+		}
+	}
+
+	// Check memory and disk after write
 	defer func() {
 		sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
 		if err != nil && !os.IsNotExist(err) {
 			panic(errors.AddContext(err, "error on loading siafile after applying updates"))
 		} else if err == nil {
+			// check memory vs disk
+			// if sf2 != nil && metadataUpdate {
+			var panicE error
+			if sf.staticMetadata.NumStuckChunks != sf2.staticMetadata.NumStuckChunks {
+				fmt.Printf("About to Panic: in Memory file pointer %p %v\n", sf, sf.siaFilePath)
+				panicE = fmt.Errorf("in memory %v doesn't match on disk %v NumStuckChunks", sf.staticMetadata.NumStuckChunks, sf2.staticMetadata.NumStuckChunks)
+			}
+			for i, c := range sf.chunks {
+				if c.Stuck != sf2.chunks[i].Stuck {
+					fmt.Printf("About to Panic: in Memory file pointer %p %v\n", sf, sf.siaFilePath)
+					panicE = errors.Compose(panicE, fmt.Errorf("in memory %v doesn't match on disk %v chunk stuck", c.Stuck, sf2.chunks[i].Stuck))
+				}
+			}
+			if panicE != nil {
+				build.Critical(panicE)
+			}
+			// }
 			sf2.stuckChunkAndPubKeyCheck(sf)
 		}
 	}()
@@ -437,10 +525,22 @@ func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Up
 		build.Critical("index passed to createUpdate should never be negative")
 	}
 	// Create update
-	return writeaheadlog.Update{
+	// return writeaheadlog.Update{
+	update := writeaheadlog.Update{
 		Name:         updateInsertName,
 		Instructions: encoding.MarshalAll(sf.siaFilePath, index, data),
 	}
+	_, indexr, datar, err := readInsertUpdate(update)
+	if err != nil {
+		build.Critical("error reading insert update", err)
+	}
+	if index != indexr {
+		build.Critical("indexes not equal", index, indexr)
+	}
+	if bytes.Compare(data, datar) != 0 {
+		build.Critical("data in update not equal", data, datar)
+	}
+	return update
 }
 
 // readAndApplyInsertUpdate reads the insert update for a SiaFile and then

@@ -68,7 +68,7 @@ func TestRenter(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -99,7 +99,7 @@ func TestRenterTwo(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -255,7 +255,7 @@ func TestRenterThree(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -286,7 +286,7 @@ func TestRenterFour(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -1154,7 +1154,7 @@ func TestRenterInterrupt(t *testing.T) {
 	if !build.VLONG {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
@@ -1447,7 +1447,7 @@ func TestRenterAddNodes(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
@@ -1558,7 +1558,7 @@ func TestRenewFailing(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
@@ -2005,7 +2005,7 @@ func TestRenterContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
@@ -2291,7 +2291,7 @@ func TestRenterLosingHosts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup without a renter so renter can be added with custom
 	// allowance
@@ -2510,7 +2510,7 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	if !build.VLONG {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup without a renter so renter can be added with custom
 	// allowance
@@ -2694,7 +2694,7 @@ func TestRenterPersistData(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Get test directory
 	testDir := renterTestDir(t.Name())
@@ -2792,7 +2792,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if testing.Short() || !build.VLONG {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup, creating without renter so the renter's
 	// initial balance can be obtained
@@ -3293,7 +3293,7 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	if !build.VLONG {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup,
 	groupParams := siatest.GroupParams{
@@ -3459,7 +3459,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup, creating without renter so the renter's
 	// contract transactions can easily be obtained.
@@ -3598,7 +3598,7 @@ func TestUploadAfterDelete(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -3653,7 +3653,7 @@ func TestRenterContractRecovery(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup, creating without renter so the renter's
 	// contract transactions can easily be obtained.
@@ -3803,7 +3803,7 @@ func TestSiafileCompatCode(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Get test directory
 	testDir := renterTestDir(t.Name())
@@ -3939,7 +3939,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
 		Hosts:  2,
@@ -4091,7 +4091,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
 		Hosts:  2,
@@ -4224,7 +4224,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -4367,7 +4367,7 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup, creating without renter so the renter's
 	// contract transactions can easily be obtained.
@@ -4599,7 +4599,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	if testing.Short() || !build.VLONG {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
@@ -4799,7 +4799,7 @@ func TestRemoteBackup(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -5082,7 +5082,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group with 1 default host.
 	gp := siatest.GroupParams{

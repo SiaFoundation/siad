@@ -95,16 +95,33 @@ func randomThreadUID() uint64 {
 }
 
 // CopyEntry returns a copy of the SiaFileSetEntry
-func (entry *SiaFileSetEntry) CopyEntry() *SiaFileSetEntry {
+//
+// TODO - should be updated to return error
+func (entry *SiaFileSetEntry) CopyEntry() (*SiaFileSetEntry, error) {
+	// Grab siafile set lock
+	entry.staticSiaFileSet.mu.Lock()
+	defer entry.staticSiaFileSet.mu.Unlock()
+	// Check if entry is deleted, we don't want to make a copy of a deleted
+	// entry
+	if entry.Deleted() {
+		return nil, errors.New("can't make copy of deleted siafile entry")
+	}
+	// Sanity Check that the entry is currently in the SiaFileSet
+	_, exists := entry.staticSiaFileSet.siaFileMap[entry.UID()]
+	if !exists {
+		return nil, errors.New("siafile entry not found in siafileset")
+	}
+	// Create copy
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
 	threadUID := randomThreadUID()
+	entry.threadMap[threadUID] = newThreadInfo()
 	copy := &SiaFileSetEntry{
 		siaFileSetEntry: entry.siaFileSetEntry,
 		threadUID:       threadUID,
 	}
-	entry.threadMap[threadUID] = newThreadInfo()
-	return copy
+	fmt.Printf("Calling CopyEntry on %p %v\nCopy made %p %v\n", entry.SiaFile, entry.siaFilePath, copy.SiaFile, copy.siaFilePath)
+	return copy, nil
 }
 
 // Close will close the set entry, removing the entry from memory if there are
@@ -169,6 +186,7 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 		delete(sfs.siaFileMap, entry.UID())
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	}
+	fmt.Printf("Calling Close on %p %v\n", entry.SiaFile, entry.siaFilePath)
 }
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
@@ -229,6 +247,7 @@ func (sfs *SiaFileSet) delete(siaPath modules.SiaPath) error {
 		update := createDeleteUpdate(siaFilePath)
 		return sfs.createAndApplyTransaction(update)
 	}
+	fmt.Printf("Calling Delete on %p %v\n", entry.SiaFile, entry.siaFilePath)
 
 	// Delete SiaFile
 	err := entry.Delete()
@@ -273,8 +292,14 @@ func (sfs *SiaFileSet) siaPathToEntryAndUID(siaPath modules.SiaPath) (*siaFileSe
 // the renter
 func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file in Memory
-	_, _, exists := sfs.siaPathToEntryAndUID(siaPath)
-	if exists {
+	_, UID, exists1 := sfs.siaPathToEntryAndUID(siaPath)
+	_, exists2 := sfs.siaFileMap[UID]
+	// Sanity check that the maps are consistent
+	if exists1 != exists2 {
+		build.Critical("SiaFileSet in memory maps are inconsistent", exists1, exists2)
+	}
+	// Since maps are consistent, only need to check one
+	if exists1 {
 		return true
 	}
 	// Check for file on disk
@@ -334,13 +359,19 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) (*siaFileSetEntry, error)
 		staticSiaFileSet: sfs,
 		threadMap:        threads,
 	}
-	// Add entry to siaFileMap and siapathToUID map. Sanity check that the UID is
-	// in fact unique.
+	// Sanity check that the UID is in fact unique.
 	if _, exists := sfs.siaFileMap[entry.UID()]; exists {
 		err := errors.New("siafile was already loaded")
 		build.Critical(err)
 		return nil, err
 	}
+	// Sanity check that there isn't a naming conflict
+	if _, exists := sfs.siapathToUID[sfs.siaPath(entry)]; exists {
+		err := errors.New("siapath already in map")
+		build.Critical(err)
+		return nil, err
+	}
+	// Add entry to siaFileMap and siapathToUID map.
 	sfs.siaFileMap[entry.UID()] = entry
 	sfs.siapathToUID[sfs.siaPath(entry)] = entry.UID()
 	return entry, nil
@@ -374,6 +405,7 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
 	}
+	fmt.Printf("Calling Open on %p %v\n", entry.SiaFile, entry.siaFilePath)
 	threadUID := randomThreadUID()
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
@@ -424,6 +456,7 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
 func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
+	fmt.Printf("Calling addExistingSiaFile on %p %v\n", sf, sf.siaFilePath)
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
 	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
@@ -641,6 +674,7 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Calling NewSiaFile on %p %v\n", entry.SiaFile, entry.siaFilePath)
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
 	return &SiaFileSetEntry{
@@ -658,12 +692,12 @@ func (sfs *SiaFileSet) Open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	return sfs.open(siaPath)
 }
 
-// Metadata returns the metadata of a SiaFile.
-func (sfs *SiaFileSet) Metadata(siaPath modules.SiaPath) (Metadata, error) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-	return sfs.readLockMetadata(siaPath)
-}
+// // Metadata returns the metadata of a SiaFile.
+// func (sfs *SiaFileSet) Metadata(siaPath modules.SiaPath) (Metadata, error) {
+// 	sfs.mu.Lock()
+// 	defer sfs.mu.Unlock()
+// 	return sfs.readLockMetadata(siaPath)
+// }
 
 // Rename will move a siafile from one path to a new path. Existing entries that
 // are already open at the old path will continue to be valid.
@@ -681,6 +715,7 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("Calling Rename on %p %v\n", entry.SiaFile, entry.siaFilePath)
 	// This whole function is wrapped in a set lock, which means per convention
 	// we cannot call an exported function (Close) on the entry. We will have to
 	// call closeEntry on the set instead.

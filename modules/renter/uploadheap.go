@@ -192,8 +192,14 @@ func (uh *uploadHeap) managedReset() error {
 
 // buildUnfinishedChunk will pull out a single unfinished chunk of a file.
 func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool) *unfinishedUploadChunk {
+	// Copy entry
+	copy, err := entry.CopyEntry()
+	if err != nil {
+		r.log.Println("WARN: unable to copy siafile entry:", err)
+		return nil
+	}
 	uuc := &unfinishedUploadChunk{
-		fileEntry: entry.CopyEntry(),
+		fileEntry: copy,
 
 		id: uploadChunkID{
 			fileUID: entry.UID(),
@@ -349,7 +355,11 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		}
 
 		// Create unfinishedUploadChunk
-		newUnfinishedChunks[i] = r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false)
+		chunk := r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false)
+		if chunk == nil {
+			continue
+		}
+		newUnfinishedChunks[i] = chunk
 	}
 
 	// Iterate through the set of newUnfinishedChunks and remove any that are

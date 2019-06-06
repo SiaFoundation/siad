@@ -25,7 +25,7 @@ func TestInitialScanComplete(t *testing.T) {
 		t.SkipNow()
 	}
 
-	t.Parallel()
+	// t.Parallel()
 
 	// Get a directory for testing.
 	testDir := renterTestDir(t.Name())
@@ -103,7 +103,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Get the testDir for this test.
 	testDir := renterTestDir(t.Name())
@@ -304,7 +304,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Get the testDir for this test.
 	testDir := renterTestDir(t.Name())
@@ -458,7 +458,7 @@ func TestDisableIPViolationCheck(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Get the testDir for this test.
 	testDir := renterTestDir(t.Name())
@@ -614,7 +614,7 @@ func TestFilterMode(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{

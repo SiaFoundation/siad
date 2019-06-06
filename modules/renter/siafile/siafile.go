@@ -395,6 +395,7 @@ func (sf *SiaFile) SaveMetadata() error {
 	if err != nil {
 		return err
 	}
+	// fmt.Println(len(updates), "updates being creating from save Metadata for", sf.siaFilePath)
 	return sf.createAndApplyTransaction(updates...)
 }
 
@@ -611,12 +612,13 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	if sf.deleted {
 		return errors.New("can't call SetStuck on deleted file")
 	}
+	fmt.Printf("Calling setAllStuck on %p %v\n", sf, sf.siaFilePath)
 	// Update all the Stuck field for each chunk.
 	for chunkIndex := range sf.chunks {
 		s := sf.chunks[chunkIndex].Stuck
 		defer func() {
 			if err != nil {
-				println("1***********************************")
+				fmt.Println("1A***********************************")
 				sf.chunks[chunkIndex].Stuck = s
 			}
 		}()
@@ -626,6 +628,7 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	nsc := sf.staticMetadata.NumStuckChunks
 	defer func() {
 		if err != nil {
+			fmt.Println("1B***********************************")
 			sf.staticMetadata.NumStuckChunks = nsc
 		}
 	}()
@@ -652,12 +655,13 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	if stuck == sf.chunks[index].Stuck {
 		return nil
 	}
+	fmt.Printf("Calling setStuck on %p %v for index %v\n", sf, sf.siaFilePath, index)
 	// Remember the current number of stuck chunks in case an error happens.
 	nsc := sf.staticMetadata.NumStuckChunks
 	s := sf.chunks[index].Stuck
 	defer func() {
 		if err != nil {
-			println("2***********************************")
+			fmt.Println("2***********************************")
 			sf.staticMetadata.NumStuckChunks = nsc
 			sf.chunks[index].Stuck = s
 		}
