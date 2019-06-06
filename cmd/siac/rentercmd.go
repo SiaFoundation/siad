@@ -603,10 +603,10 @@ The following units can be used to set the allowance:
 	fmt.Println("Current value:", currencyUnits(allowance.Funds))
 	fmt.Println("Default value:", currencyUnits(modules.DefaultAllowance.Funds))
 	if allowance.Funds.IsZero() {
-		funds = allowance.Funds
+		funds = modules.DefaultAllowance.Funds
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		funds = modules.DefaultAllowance.Funds
+		funds = allowance.Funds
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Funds: ")
@@ -620,6 +620,9 @@ The following units can be used to set the allowance:
 		if err != nil {
 			die("Could not parse amount:", err)
 		}
+	}
+	if funds.IsZero() {
+		die("Allowance cannot be 0")
 	}
 	req = req.WithFunds(funds)
 
@@ -639,8 +642,10 @@ The following units can be used to set the period:
 	fmt.Println("Current value:", periodUnits(allowance.Period), "weeks")
 	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.Period), "weeks")
 	if allowance.Period == 0 {
+		period = modules.DefaultAllowance.Period
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
+		period = allowance.Period
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Period: ")
@@ -654,6 +659,9 @@ The following units can be used to set the period:
 		if err != nil {
 			die("Could not parse period:", err)
 		}
+	}
+	if period == 0 {
+		die("Period cannot be 0")
 	}
 	req = req.WithPeriod(period)
 
@@ -670,8 +678,10 @@ that double the default number of default hosts is used as a maximum.
 	fmt.Println("Current value:", allowance.Hosts)
 	fmt.Println("Default value:", modules.DefaultAllowance.Hosts)
 	if allowance.Hosts == 0 {
+		hosts = modules.DefaultAllowance.Hosts
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
+		hosts = allowance.Hosts
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Hosts: ")
@@ -682,6 +692,9 @@ that double the default number of default hosts is used as a maximum.
 			die("Could not parse host count")
 		}
 		hosts = uint64(hostsInt)
+	}
+	if hosts == 0 {
+		die("Must have at least 1 host")
 	}
 	req = req.WithHosts(uint64(hosts))
 
@@ -712,8 +725,10 @@ The following units can be used to set the renew window:
 	fmt.Println("Current value:", periodUnits(allowance.RenewWindow), "weeks")
 	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.RenewWindow), "weeks")
 	if allowance.RenewWindow == 0 {
+		renewWindow = modules.DefaultAllowance.RenewWindow
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
+		renewWindow = allowance.RenewWindow
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Renew Window: ")
@@ -727,6 +742,9 @@ The following units can be used to set the renew window:
 		if err != nil {
 			die("Could not parse renew window:", err)
 		}
+	}
+	if renewWindow == 0 {
+		die("Cannot set renew window to zero")
 	}
 	req = req.WithRenewWindow(renewWindow)
 
@@ -756,8 +774,10 @@ relative to the amount of expected storage.
 	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedStorage))
 	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedStorage))
 	if allowance.ExpectedStorage == 0 {
+		expectedStorage = modules.DefaultAllowance.ExpectedStorage
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
+		expectedStorage = allowance.ExpectedStorage
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Storage: ")
@@ -777,7 +797,7 @@ relative to the amount of expected storage.
 	// expectedUpload
 	var expectedUpload uint64
 	fmt.Println(`
-Expected upload tells Sia how much uploading the user expects to do each period.
+Expected upload tells Sia how much uploading the user expects to do each month.
 If this value is high, Sia will more strongly prefer hosts that have a low
 upload bandwidth price. If this value is low, Sia will focus on other metrics
 than upload bandwidth pricing, because even if the host charges a lot for upload
@@ -786,11 +806,13 @@ bandwidth, it will not impact the total cost to the user very much.
 The user should not consider upload bandwidth used during repairs, the renter
 will consider repair bandwidth separately.
 `)
-	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedUpload))
-	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedUpload))
+	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedUpload*uint64(modules.BlocksPerMonth)))
+	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(modules.BlocksPerMonth)))
 	if allowance.ExpectedUpload == 0 {
+		expectedUpload = modules.DefaultAllowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
+		expectedUpload = allowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Upload: ")
@@ -805,13 +827,13 @@ will consider repair bandwidth separately.
 			die("Could not parse expected upload")
 		}
 	}
-	req = req.WithExpectedUpload(expectedUpload / uint64(period))
+	req = req.WithExpectedUpload(expectedUpload/uint64(modules.BlocksPerMonth))
 
 	// expectedDownload
 	var expectedDownload uint64
 	fmt.Println(`
 Expected download tells Sia how much downloading the user expects to do each
-period. If this value is high, Sia will more strongly prefer hosts that have a
+month. If this value is high, Sia will more strongly prefer hosts that have a
 low download bandwidth price. If this value is low, Sia will focus on other
 metrics than download bandwidth pricing, because even if the host charges a lot
 for downloads, it will not impact the total cost to the user very much.
@@ -819,11 +841,13 @@ for downloads, it will not impact the total cost to the user very much.
 The user should not consider download bandwidth used during repairs, the renter
 will consider repair bandwidth separately.
 `)
-	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedDownload))
-	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedDownload))
+	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedDownload*uint64(modules.BlocksPerMonth)))
+	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(modules.BlocksPerMonth)))
 	if allowance.ExpectedDownload == 0 {
+		expectedDownload = modules.DefaultAllowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
+		expectedDownload = allowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Download: ")
@@ -838,7 +862,7 @@ will consider repair bandwidth separately.
 			die("Could not parse expected download")
 		}
 	}
-	req = req.WithExpectedDownload(expectedDownload / uint64(period))
+	req = req.WithExpectedDownload(expectedDownload/uint64(modules.BlocksPerMonth))
 
 	// expectedRedundancy
 	var expectedRedundancy float64
@@ -857,8 +881,10 @@ how large the files are.
 	fmt.Println("Current value:", allowance.ExpectedRedundancy)
 	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedRedundancy)
 	if allowance.ExpectedRedundancy == 0 {
+		expectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
+		expectedRedundancy = allowance.ExpectedRedundancy
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Redundancy: ")
@@ -873,9 +899,11 @@ how large the files are.
 			die("Could not parse expected redundancy")
 		}
 	}
+	if expectedRedundancy < 1 {
+		die("Expected redundancy must be at least 1")
+	}
 	req = req.WithExpectedRedundancy(expectedRedundancy)
-
-	fmt.Println("[Placeholder outro]")
+	fmt.Println()
 
 	return req
 }

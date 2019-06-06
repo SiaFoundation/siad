@@ -7,15 +7,23 @@ import (
 const (
 	// HostDir names the directory that contains the host persistence.
 	HostDir = "host"
+
+	// How many seconds are in 30 complete days.
+	SecondsPerMonth = 2592e3
 )
 
 var (
 	// BlockBytesPerMonthTerabyte is the conversion rate between block-bytes and month-TB.
-	BlockBytesPerMonthTerabyte = BytesPerTerabyte.Mul64(4320)
+	BlockBytesPerMonthTerabyte = BytesPerTerabyte.Mul64(uint64(BlocksPerMonth))
+
+	// BlocksPerMonth contains the number of blocks per month.
+	BlocksPerMonth = SecondsPerMonth / types.BlockFrequency
 
 	// BytesPerTerabyte is the conversion rate between bytes and terabytes.
 	BytesPerTerabyte = types.NewCurrency64(1e12)
+)
 
+var (
 	// HostConnectabilityStatusChecking is returned from ConnectabilityStatus()
 	// if the host is still determining if it is connectable.
 	HostConnectabilityStatusChecking = HostConnectabilityStatus("checking")
