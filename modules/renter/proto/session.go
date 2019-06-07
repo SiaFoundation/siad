@@ -850,6 +850,8 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		case <-cancel:
 			conn.Close()
 		case <-closeChan:
+			// we don't close the connection here because we want session.Close
+			// to be able to return the Close error directly
 		}
 	}()
 
@@ -857,6 +859,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 	aead, challenge, err := performSessionHandshake(conn, host.PublicKey)
 	if err != nil {
 		conn.Close()
+		close(closeChan)
 		return nil, errors.AddContext(err, "session handshake failed")
 	}
 	s := &Session{
