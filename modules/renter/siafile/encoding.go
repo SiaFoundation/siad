@@ -28,7 +28,6 @@ func marshalChunk(chunk chunk) []byte {
 	} else {
 		copy(stuck, []byte{0})
 	}
-	// fmt.Println("4********************** chunk marshalled", stuck, []byte{1}, []byte{0})
 
 	// Write the pieces length prefix.
 	np := buf.Next(2)
@@ -113,7 +112,6 @@ func unmarshalChunk(numPieces uint32, raw []byte) (chunk chunk, err error) {
 	// read Stuck byte
 	stuckBytes := buf.Next(1)
 	chunk.Stuck = stuckBytes[0] == byte(1)
-	// fmt.Println("3********************** chunk unmarshalled", stuckBytes[0], byte(1))
 
 	// read the pieces length prefix.
 	prefixLen := 2

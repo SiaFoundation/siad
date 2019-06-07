@@ -22,9 +22,6 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := applyUpdate(modules.ProdDependencies, u)
 		if err != nil {
-			fmt.Println()
-			fmt.Println("OMG ERR siadir ApplyUpdates:", err)
-			fmt.Println()
 			return errors.AddContext(err, "failed to apply update")
 		}
 	}
@@ -102,30 +99,18 @@ func managedCreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeah
 	// Create the writeaheadlog transaction.
 	txn, err := wal.NewTransaction(updates)
 	if err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR NewTransaction:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to create wal txn")
 	}
 	// No extra setup is required. Signal that it is done.
 	if err := <-txn.SignalSetupComplete(); err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR SignalSetupCOmplete:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
 	// Apply the updates.
 	if err := ApplyUpdates(updates...); err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR ApplyUpdates:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
 	if err := txn.SignalUpdatesApplied(); err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR SignalUpdatesApplied:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
 	return nil
@@ -259,30 +244,18 @@ func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) err
 	// Create the writeaheadlog transaction.
 	txn, err := sd.wal.NewTransaction(updates)
 	if err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR NewTransaction:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to create wal txn")
 	}
 	// No extra setup is required. Signal that it is done.
 	if err := <-txn.SignalSetupComplete(); err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR SignalSetupComplete:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
 	// Apply the updates.
 	if err := sd.applyUpdates(updates...); err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR applyUpdates:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
 	if err := txn.SignalUpdatesApplied(); err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR SignalUpdatesApplied:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
 	return nil

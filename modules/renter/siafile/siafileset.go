@@ -120,7 +120,6 @@ func (entry *SiaFileSetEntry) CopyEntry() (*SiaFileSetEntry, error) {
 		siaFileSetEntry: entry.siaFileSetEntry,
 		threadUID:       threadUID,
 	}
-	fmt.Printf("Calling CopyEntry on %p %v\nCopy made %p %v\n", entry.SiaFile, entry.siaFilePath, copy.SiaFile, copy.siaFilePath)
 	return copy, nil
 }
 
@@ -190,7 +189,6 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 		delete(sfs.siaFileMap, entry.UID())
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	}
-	fmt.Printf("Calling Close on %p %v\n", entry.SiaFile, entry.siaFilePath)
 }
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
@@ -202,30 +200,18 @@ func (sfs *SiaFileSet) createAndApplyTransaction(updates ...writeaheadlog.Update
 	// Create the writeaheadlog transaction.
 	txn, err := sfs.wal.NewTransaction(updates)
 	if err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR NewTransaction:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to create wal txn")
 	}
 	// No extra setup is required. Signal that it is done.
 	if err := <-txn.SignalSetupComplete(); err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR SignalSetupComplete:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
 	// Apply the updates.
 	if err := applyUpdates(modules.ProdDependencies, updates...); err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR applyUpdates:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
 	if err := txn.SignalUpdatesApplied(); err != nil {
-		fmt.Println()
-		fmt.Println("OMG ERR SignalUpdatesApplied:", err)
-		fmt.Println()
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
 	return nil
@@ -251,7 +237,6 @@ func (sfs *SiaFileSet) delete(siaPath modules.SiaPath) error {
 		update := createDeleteUpdate(siaFilePath)
 		return sfs.createAndApplyTransaction(update)
 	}
-	fmt.Printf("Calling Delete on %p %v\n", entry.SiaFile, entry.siaFilePath)
 
 	// Delete SiaFile
 	err := entry.Delete()
@@ -409,7 +394,6 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
 	}
-	fmt.Printf("Calling Open on %p %v\n", entry.SiaFile, entry.siaFilePath)
 	threadUID := randomThreadUID()
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
@@ -460,7 +444,6 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
 func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
-	fmt.Printf("Calling addExistingSiaFile on %p %v\n", sf, sf.siaFilePath)
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
 	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
@@ -678,7 +661,6 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Calling NewSiaFile on %p %v\n", entry.SiaFile, entry.siaFilePath)
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
 	return &SiaFileSetEntry{
@@ -719,7 +701,6 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Calling Rename on %p %v\n", entry.SiaFile, entry.siaFilePath)
 	// This whole function is wrapped in a set lock, which means per convention
 	// we cannot call an exported function (Close) on the entry. We will have to
 	// call closeEntry on the set instead.
