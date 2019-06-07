@@ -118,6 +118,11 @@ func (entry *SiaFileSetEntry) CopyEntry() (*SiaFileSetEntry, error) {
 		siaFileSetEntry: entry.siaFileSetEntry,
 		threadUID:       threadUID,
 	}
+	// sanity check that copy isn't nil
+	if copy == nil {
+		build.Critical("nil copy is about to be returned from CopyEntry")
+		return nil, errors.New("unable to create copy")
+	}
 	return copy, nil
 }
 

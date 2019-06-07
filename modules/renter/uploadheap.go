@@ -198,6 +198,10 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 		r.log.Println("WARN: unable to copy siafile entry:", err)
 		return nil
 	}
+	if copy == nil {
+		build.Critical("nil file entry return from CopyEntry, and error should have been returned")
+		return nil
+	}
 	uuc := &unfinishedUploadChunk{
 		fileEntry: copy,
 
@@ -360,6 +364,9 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 			continue
 		}
 		newUnfinishedChunks[i] = chunk
+		if chunk.fileEntry == nil {
+			build.Critical("upload chunk file entry is nil after adding to newUnfinishedChunks")
+		}
 	}
 
 	// Iterate through the set of newUnfinishedChunks and remove any that are
@@ -587,6 +594,9 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 
 			// Add chunk to temp heap
 			heap.Push(&unfinishedChunkHeap, chunk)
+			if chunk.fileEntry == nil {
+				build.Critical("upload chunk file entry is nil after adding to temp heap")
+			}
 
 			// Check if temp heap is growing too large. We want to restrict it to
 			// twice the size of the max upload heap size
@@ -639,6 +649,9 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 			if err != nil {
 				r.log.Println("WARN: unable to close file:", err)
 			}
+		}
+		if chunk.fileEntry == nil {
+			build.Critical("upload chunk file entry is nil after adding to heap")
 		}
 	}
 
@@ -804,6 +817,9 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 // from the network), erasure coding the logical data into the physical data,
 // and then finally passing the work onto the workers.
 func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[string]struct{}) error {
+	if uuc.fileEntry == nil {
+		build.Critical("upload chunk file entry is nil when calling managedPrepareNextChunk")
+	}
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
@@ -867,6 +883,9 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			// The heap is empty so reset it to free memory and return.
 			r.uploadHeap.managedReset()
 			return nil
+		}
+		if nextChunk.fileEntry == nil {
+			build.Critical("upload chunk file entry is nil after popping off upload heap")
 		}
 		r.log.Debugln("Sending next chunk to the workers", nextChunk.id)
 
