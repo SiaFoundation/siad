@@ -563,7 +563,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		// First, process any snapshot siafiles that may have finished uploading.
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 		root, _ := modules.NewSiaPath(".")
-		finfos, err := r.staticBackupFileSet.FileList(root, true, false, offlineMap, goodForRenewMap, contractsMap)
+		finfos, err := r.staticBackupFileSet.FileList(root, true, true, offlineMap, goodForRenewMap, contractsMap)
 		if err != nil {
 			r.log.Println("Could not get un-uploaded snapshots:", err)
 		}
@@ -633,7 +633,15 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		known := make(map[[16]byte]struct{})
 		id := r.mu.RLock()
 		for _, ub := range r.persist.UploadedBackups {
-			known[ub.UID] = struct{}{}
+			if ub.UploadProgress == 100 {
+				known[ub.UID] = struct{}{}
+			} else {
+				// signal r.threadedUploadAndRepair to keep uploading the snapshot
+				select {
+				case r.uploadHeap.repairNeeded <- struct{}{}:
+				default:
+				}
+			}
 		}
 		r.mu.RUnlock(id)
 
