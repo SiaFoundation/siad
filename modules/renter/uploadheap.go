@@ -154,16 +154,10 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	canAddStuckChunk := chunkStuck && !existsStuckHeap && !existsRepairing && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
 	canAddUnstuckChunk := !chunkStuck && !existsUnstuckHeap && !existsRepairing
 	if canAddStuckChunk {
-		if uuc.fileEntry == nil {
-			build.Critical("file entry is nil in managedPush")
-		}
 		uh.stuckHeapChunks[uuc.id] = struct{}{}
 		heap.Push(&uh.heap, uuc)
 		return true
 	} else if canAddUnstuckChunk {
-		if uuc.fileEntry == nil {
-			build.Critical("file entry is nil in managedPush")
-		}
 		uh.unstuckHeapChunks[uuc.id] = struct{}{}
 		heap.Push(&uh.heap, uuc)
 		return true
@@ -176,9 +170,6 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 	uh.mu.Lock()
 	if len(uh.heap) > 0 {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
-		if uc.fileEntry == nil {
-			build.Critical("file entry is nil in managedPush")
-		}
 		delete(uh.unstuckHeapChunks, uc.id)
 		delete(uh.stuckHeapChunks, uc.id)
 		if _, exists := uh.repairingChunks[uc.id]; exists {
@@ -373,9 +364,6 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 			continue
 		}
 		newUnfinishedChunks[i] = chunk
-		if chunk.fileEntry == nil {
-			build.Critical("upload chunk file entry is nil after adding to newUnfinishedChunks")
-		}
 	}
 
 	// Iterate through the set of newUnfinishedChunks and remove any that are
@@ -603,9 +591,6 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 
 			// Add chunk to temp heap
 			heap.Push(&unfinishedChunkHeap, chunk)
-			if chunk.fileEntry == nil {
-				build.Critical("upload chunk file entry is nil after adding to temp heap")
-			}
 
 			// Check if temp heap is growing too large. We want to restrict it to
 			// twice the size of the max upload heap size
@@ -658,9 +643,6 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 			if err != nil {
 				r.log.Println("WARN: unable to close file:", err)
 			}
-		}
-		if chunk.fileEntry == nil {
-			build.Critical("upload chunk file entry is nil after adding to heap")
 		}
 	}
 
@@ -826,12 +808,6 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 // from the network), erasure coding the logical data into the physical data,
 // and then finally passing the work onto the workers.
 func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[string]struct{}) error {
-	if uuc == nil {
-		panic("nextChunk is nil in managedPrepareNextChunk")
-	}
-	if uuc.fileEntry == nil {
-		panic("file entry is nil in managedPrepareNextChunk")
-	}
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
@@ -840,12 +816,6 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	}
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
 	// does not need to bottleneck the repair loop.
-	if uuc == nil {
-		panic("nextChunk is nil before calling threadedFetchAndRepairChunk")
-	}
-	if uuc.fileEntry == nil {
-		panic("file entry is nil before calling threadedFetchAndRepairChunk")
-	}
 	go r.threadedFetchAndRepairChunk(uuc)
 	return nil
 }
@@ -899,15 +869,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		nextChunk := r.uploadHeap.managedPop()
 		if nextChunk == nil {
 			// The heap is empty so reset it to free memory and return.
-			heapLen := r.uploadHeap.managedLen()
-			if heapLen != 0 {
-				build.Critical("nextChunk in nil but heap has length of", heapLen)
-			}
 			r.uploadHeap.managedReset()
 			return nil
-		}
-		if nextChunk.fileEntry == nil {
-			build.Critical("upload chunk file entry is nil after popping off upload heap")
 		}
 		r.log.Debugln("Sending next chunk to the workers", nextChunk.id)
 
@@ -948,12 +911,6 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		// Perform the work. managedPrepareNextChunk will block until
 		// enough memory is available to perform the work, slowing this
 		// thread down to using only the resources that are available.
-		if nextChunk == nil {
-			panic("nextChunk is nil before calling managedPrepareNextChunk")
-		}
-		if nextChunk.fileEntry == nil {
-			panic("file entry is nil before calling managedPrepareNextChunk")
-		}
 		err := r.managedPrepareNextChunk(nextChunk, hosts)
 		if err != nil {
 			// An error was return which means the renter was unable to allocate
@@ -1006,7 +963,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			return
 		default:
 		}
-
+		time.Sleep(5 * time.Second)
 		// Add any backups that weren't fully uploaded before the renter
 		// shutdown
 		heapLen := r.uploadHeap.managedLen()
