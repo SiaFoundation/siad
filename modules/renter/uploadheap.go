@@ -817,8 +817,11 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 // from the network), erasure coding the logical data into the physical data,
 // and then finally passing the work onto the workers.
 func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[string]struct{}) error {
+	if uuc == nil {
+		panic("nextChunk is nil in managedPrepareNextChunk")
+	}
 	if uuc.fileEntry == nil {
-		build.Critical("upload chunk file entry is nil when calling managedPrepareNextChunk")
+		panic("file entry is nil in managedPrepareNextChunk")
 	}
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
@@ -828,6 +831,12 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	}
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
 	// does not need to bottleneck the repair loop.
+	if uuc == nil {
+		panic("nextChunk is nil before calling threadedFetchAndRepairChunk")
+	}
+	if uuc.fileEntry == nil {
+		panic("file entry is nil before calling threadedFetchAndRepairChunk")
+	}
 	go r.threadedFetchAndRepairChunk(uuc)
 	return nil
 }
@@ -926,6 +935,12 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		// Perform the work. managedPrepareNextChunk will block until
 		// enough memory is available to perform the work, slowing this
 		// thread down to using only the resources that are available.
+		if nextChunk == nil {
+			panic("nextChunk is nil before calling managedPrepareNextChunk")
+		}
+		if nextChunk.fileEntry == nil {
+			panic("file entry is nil before calling managedPrepareNextChunk")
+		}
 		err := r.managedPrepareNextChunk(nextChunk, hosts)
 		if err != nil {
 			// An error was return which means the renter was unable to allocate
