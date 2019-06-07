@@ -210,84 +210,6 @@ func TestBuildChunkHeap(t *testing.T) {
 	}
 }
 
-// TestUploadHeap probes the upload heap to make sure chunks are sorted
-// correctly
-func TestUploadHeap(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
-	// Create renter
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Add chunks to heap. Chunks are prioritize by stuck status first and then
-	// by piecesComplete/piecesNeeded
-	//
-	// Adding 2 stuck chunks then 2 unstuck chunks, each set has a chunk with 1
-	// piece completed and 2 pieces completed. If the heap doesn't sort itself
-	// then this would put an unstuck chunk with the highest completion at the
-	// top of the heap which would be wrong
-	chunk := &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: "stuck",
-			index:   1,
-		},
-		stuck:           true,
-		piecesCompleted: 1,
-		piecesNeeded:    1,
-	}
-	if !rt.renter.uploadHeap.managedPush(chunk) {
-		t.Fatal("unable to push chunk", chunk)
-	}
-	chunk = &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: "stuck",
-			index:   2,
-		},
-		stuck:           true,
-		piecesCompleted: 2,
-		piecesNeeded:    1,
-	}
-	if !rt.renter.uploadHeap.managedPush(chunk) {
-		t.Fatal("unable to push chunk", chunk)
-	}
-	chunk = &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: "unstuck",
-			index:   1,
-		},
-		stuck:           true,
-		piecesCompleted: 1,
-		piecesNeeded:    1,
-	}
-	if !rt.renter.uploadHeap.managedPush(chunk) {
-		t.Fatal("unable to push chunk", chunk)
-	}
-	chunk = &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: "unstuck",
-			index:   2,
-		},
-		stuck:           true,
-		piecesCompleted: 2,
-		piecesNeeded:    1,
-	}
-	if !rt.renter.uploadHeap.managedPush(chunk) {
-		t.Fatal("unable to push chunk", chunk)
-	}
-
-	chunk = rt.renter.uploadHeap.managedPop()
-	if !chunk.stuck {
-		t.Fatal("top chunk should be stuck")
-	}
-	if chunk.piecesCompleted != 1 {
-		t.Fatal("top chunk should have the less amount of completed chunks")
-	}
-}
-
 // TestAddChunksToHeap probes the managedAddChunksToHeap method to ensure it is
 // functioning as intended
 func TestAddChunksToHeap(t *testing.T) {
@@ -516,5 +438,83 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	health, _, _ := f.Health(offline, goodForRenew)
 	if d.health != health {
 		t.Fatalf("Expected directory health to be %v but was %v", health, d.health)
+	}
+}
+
+// TestUploadHeap probes the upload heap to make sure chunks are sorted
+// correctly
+func TestUploadHeap(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add chunks to heap. Chunks are prioritize by stuck status first and then
+	// by piecesComplete/piecesNeeded
+	//
+	// Adding 2 stuck chunks then 2 unstuck chunks, each set has a chunk with 1
+	// piece completed and 2 pieces completed. If the heap doesn't sort itself
+	// then this would put an unstuck chunk with the highest completion at the
+	// top of the heap which would be wrong
+	chunk := &unfinishedUploadChunk{
+		id: uploadChunkID{
+			fileUID: "stuck",
+			index:   1,
+		},
+		stuck:           true,
+		piecesCompleted: 1,
+		piecesNeeded:    1,
+	}
+	if !rt.renter.uploadHeap.managedPush(chunk) {
+		t.Fatal("unable to push chunk", chunk)
+	}
+	chunk = &unfinishedUploadChunk{
+		id: uploadChunkID{
+			fileUID: "stuck",
+			index:   2,
+		},
+		stuck:           true,
+		piecesCompleted: 2,
+		piecesNeeded:    1,
+	}
+	if !rt.renter.uploadHeap.managedPush(chunk) {
+		t.Fatal("unable to push chunk", chunk)
+	}
+	chunk = &unfinishedUploadChunk{
+		id: uploadChunkID{
+			fileUID: "unstuck",
+			index:   1,
+		},
+		stuck:           true,
+		piecesCompleted: 1,
+		piecesNeeded:    1,
+	}
+	if !rt.renter.uploadHeap.managedPush(chunk) {
+		t.Fatal("unable to push chunk", chunk)
+	}
+	chunk = &unfinishedUploadChunk{
+		id: uploadChunkID{
+			fileUID: "unstuck",
+			index:   2,
+		},
+		stuck:           true,
+		piecesCompleted: 2,
+		piecesNeeded:    1,
+	}
+	if !rt.renter.uploadHeap.managedPush(chunk) {
+		t.Fatal("unable to push chunk", chunk)
+	}
+
+	chunk = rt.renter.uploadHeap.managedPop()
+	if !chunk.stuck {
+		t.Fatal("top chunk should be stuck")
+	}
+	if chunk.piecesCompleted != 1 {
+		t.Fatal("top chunk should have the less amount of completed chunks")
 	}
 }
