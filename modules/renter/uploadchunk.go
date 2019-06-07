@@ -214,6 +214,12 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 
 	// Calculate the amount of memory needed for erasure coding. This will need
 	// to be released if there's an error before erasure coding is complete.
+	if chunk == nil {
+		panic("chunk is nil")
+	}
+	if chunk.fileEntry == nil {
+		panic("file entry is nil")
+	}
 	pieceSize := chunk.fileEntry.PieceSize()
 	minPieces := uint64(chunk.fileEntry.ErasureCode().MinPieces())
 	erasureCodingMemory := pieceSize * minPieces
