@@ -1,7 +1,7 @@
 image: golang:1.12
 
 stages:
-  - lint
+  # - lint
   - test
   - deploy
  
@@ -27,20 +27,20 @@ lint:
     - gometalinter --deadline=300s --vendor --disable-all --enable=vet --enable=gofmt ./...
     - make test
 
-legacy-tests:
-  stage: test
-  except:
-    - schedules
-  artifacts:
-    name: "SiaTesting-$CI_JOB_NAME"
-    paths:
-      - $CI_PROJECT_DIR/SiaTesting
-      - $CI_PROJECT_DIR/cover/cover.out
-    when: always
-  script: 
-    - make test-long pkgs="./node ./node/api ./node/api/server" run=.
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-    - cp -R ./cover $CI_PROJECT_DIR/cover
+# legacy-tests:
+#   stage: test
+#   except:
+#     - schedules
+#   artifacts:
+#     name: "SiaTesting-$CI_JOB_NAME"
+#     paths:
+#       - $CI_PROJECT_DIR/SiaTesting
+#       - $CI_PROJECT_DIR/cover/cover.out
+#     when: always
+#   script: 
+#     - make test-long pkgs="./node ./node/api ./node/api/server" run=.
+#     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
+#     - cp -R ./cover $CI_PROJECT_DIR/cover
 
 package-tests:
   stage: test
@@ -53,24 +53,25 @@ package-tests:
       - $CI_PROJECT_DIR/cover/cover.out
     when: always
   script: 
-    - make test-long run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
+    - make test-long run=. pkgs="./modules/renter"
+    # - make test-long run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
     - cp -R ./cover $CI_PROJECT_DIR/cover
 
-integration-tests:
-  stage: test
-  except:
-    - schedules
-  artifacts:
-    name: "SiaTesting-$CI_JOB_NAME"
-    paths:
-      - $CI_PROJECT_DIR/SiaTesting
-      - $CI_PROJECT_DIR/cover/cover.out
-    when: always
-  script:
-    - make test-long run=. pkgs="./siatest ./siatest/consensus ./siatest/renter ./siatest/wallet"
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-    - cp -R ./cover $CI_PROJECT_DIR/cover
+# integration-tests:
+#   stage: test
+#   except:
+#     - schedules
+#   artifacts:
+#     name: "SiaTesting-$CI_JOB_NAME"
+#     paths:
+#       - $CI_PROJECT_DIR/SiaTesting
+#       - $CI_PROJECT_DIR/cover/cover.out
+#     when: always
+#   script:
+#     - make test-long run=. pkgs="./siatest ./siatest/consensus ./siatest/renter ./siatest/wallet"
+#     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
+#     - cp -R ./cover $CI_PROJECT_DIR/cover
 
 legacy-tests-nightly:
   stage: test
