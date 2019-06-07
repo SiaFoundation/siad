@@ -358,8 +358,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	}
 
 	// Make sure directory Heap it ready
-	rt.renter.directoryHeap.managedReset()
-	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
+	err = rt.renter.managedInitDirectoryHeap()
 	if err != nil {
 		t.Fatal(err)
 	}

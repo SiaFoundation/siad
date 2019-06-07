@@ -214,7 +214,10 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 
 	// Calculate the amount of memory needed for erasure coding. This will need
 	// to be released if there's an error before erasure coding is complete.
-	erasureCodingMemory := chunk.fileEntry.PieceSize() * uint64(chunk.fileEntry.ErasureCode().MinPieces())
+	pieceSize := chunk.fileEntry.PieceSize()
+	minPieces := uint64(chunk.fileEntry.ErasureCode().MinPieces())
+	erasureCodingMemory := pieceSize * minPieces
+	// erasureCodingMemory := chunk.fileEntry.PieceSize() * uint64(chunk.fileEntry.ErasureCode().MinPieces())
 
 	// Calculate the amount of memory to release due to already completed
 	// pieces. This memory gets released during encryption, but needs to be
