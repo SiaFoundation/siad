@@ -530,6 +530,9 @@ func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry
 
 // managedBuildAndPushChunks builds the unfinished upload chunks and adds them
 // to the upload heap
+//
+// NOTE: the files submitted to this function should all be from the same
+// directory
 func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
 	// Sanity check that at least one file was provided
 	if len(files) == 0 {
@@ -628,8 +631,9 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		// Add chunk to the uploadHeap
 		chunk := heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
 		if !r.uploadHeap.managedPush(chunk) {
-			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
-			// Chunk wasn't added to the heap. Close the file.
+			// We don't track the health of this chunk since the only reason it
+			// wouldn't be added. To the heap is if it is already in the heap or
+			// is currently being repaired. Close the file.
 			err := chunk.fileEntry.Close()
 			if err != nil {
 				r.log.Println("WARN: unable to close file:", err)
