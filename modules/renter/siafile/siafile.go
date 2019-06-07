@@ -708,22 +708,24 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	// want to remove them from the table but only if we have enough used hosts.
 	// Otherwise we might be pruning hosts that could become used again since
 	// the file might be in flux while it uploads or repairs
+	pruned := false
 	tooManyUnusedHosts := unusedHosts > pubKeyTablePruneThreshold
 	enoughUsedHosts := len(usedMap) > sf.staticMetadata.staticErasureCode.NumPieces()
 	if tooManyUnusedHosts && enoughUsedHosts {
 		sf.pruneHosts()
+		pruned = true
 	}
 	// Save the header to disk.
-	//	updates, err := sf.saveHeaderUpdates()
-	//	if err != nil {
-	//		return err
-	//	}
-	//	// If we pruned the hosts we also need to save the body.
-	//	if pruned {
-	//		chunkUpdates := sf.saveChunksUpdates()
-	//		updates = append(updates, chunkUpdates...)
-	//	}
-	return sf.saveFile() //sf.createAndApplyTransaction(updates...)
+	updates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return err
+	}
+	// If we pruned the hosts we also need to save the body.
+	if pruned {
+		chunkUpdates := sf.saveChunksUpdates()
+		updates = append(updates, chunkUpdates...)
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // defragChunk removes pieces which belong to bad hosts and if that wasn't
