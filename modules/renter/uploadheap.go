@@ -64,7 +64,7 @@ func (uch *uploadChunkHeap) Pop() interface{} {
 	old := *uch
 	n := len(old)
 	x := old[n-1]
-	*uch = old[0 : n-1]
+	*uch = old[:n-1]
 	return x
 }
 
@@ -137,7 +137,6 @@ func (uh *uploadHeap) managedMarkRepairDone(id uploadChunkID) {
 // managedPush will try and add a chunk to the upload heap. If the chunk is
 // added it will return true otherwise it will return false
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
-	var added bool
 	// Grab chunk stuck status
 	uuc.mu.Lock()
 	chunkStuck := uuc.stuck
@@ -145,6 +144,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 
 	// Check if chunk is in any of the heap maps
 	uh.mu.Lock()
+	defer uh.mu.Unlock()
 	_, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
 	_, existsRepairing := uh.repairingChunks[uuc.id]
 	_, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
@@ -155,14 +155,13 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	if canAddStuckChunk {
 		uh.stuckHeapChunks[uuc.id] = struct{}{}
 		heap.Push(&uh.heap, uuc)
-		added = true
+		return true
 	} else if canAddUnstuckChunk {
 		uh.unstuckHeapChunks[uuc.id] = struct{}{}
 		heap.Push(&uh.heap, uuc)
-		added = true
+		return true
 	}
-	uh.mu.Unlock()
-	return added
+	return false
 }
 
 // managedPop will pull a chunk off of the upload heap and return it.
@@ -620,7 +619,6 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 			// Make sure chunksToKeep is zeroed out in memory
 			chunksToKeep = []*unfinishedUploadChunk{}
 		}
-
 	}
 
 	// We now have a temporary heap of the worst chunks in the directory that

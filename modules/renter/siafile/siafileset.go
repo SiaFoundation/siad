@@ -167,6 +167,10 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	// Lock the thread map mu and remove the threadUID from the entry.
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
+
+	if _, exists := entry.threadMap[entry.threadUID]; !exists {
+		build.Critical("threaduid doesn't exist in threadMap: ", entry.SiaFilePath(), len(entry.threadMap))
+	}
 	delete(entry.threadMap, entry.threadUID)
 
 	// The entry that exists in the siafile set may not be the same as the entry
