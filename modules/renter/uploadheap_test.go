@@ -449,7 +449,7 @@ func TestUploadHeap(t *testing.T) {
 	}
 
 	// Create renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}

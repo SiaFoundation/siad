@@ -155,14 +155,14 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	canAddUnstuckChunk := !chunkStuck && !existsUnstuckHeap && !existsRepairing
 	if canAddStuckChunk {
 		if uuc.fileEntry == nil {
-			panic("file entry is nil in managedPush")
+			build.Critical("file entry is nil in managedPush")
 		}
 		uh.stuckHeapChunks[uuc.id] = struct{}{}
 		heap.Push(&uh.heap, uuc)
 		return true
 	} else if canAddUnstuckChunk {
 		if uuc.fileEntry == nil {
-			panic("file entry is nil in managedPush")
+			build.Critical("file entry is nil in managedPush")
 		}
 		uh.unstuckHeapChunks[uuc.id] = struct{}{}
 		heap.Push(&uh.heap, uuc)
@@ -177,7 +177,7 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 	if len(uh.heap) > 0 {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
 		if uc.fileEntry == nil {
-			panic("file entry is nil in managedPush")
+			build.Critical("file entry is nil in managedPush")
 		}
 		delete(uh.unstuckHeapChunks, uc.id)
 		delete(uh.stuckHeapChunks, uc.id)
@@ -208,7 +208,7 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 		return nil
 	}
 	if copy == nil {
-		build.Critical("nil file entry return from CopyEntry, and error should have been returned")
+		build.Critical("nil file entry return from CopyEntry, and no error should have been returned")
 		return nil
 	}
 	uuc := &unfinishedUploadChunk{
