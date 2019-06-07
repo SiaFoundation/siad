@@ -212,11 +212,11 @@ func (hdb *HostDB) interactionAdjustments(entry modules.HostDBEntry) float64 {
 // that it has set.
 //
 // REMINDER: The allowance contains an absolute number of bytes for expected
-// storage on a per-renter basis that doesn't account for redundancy.. This
-// value needs to be adjusted to a per-contract basis that accounts for
-// redundancy. The upload and download values also do not account for
-// redundancy, and they are on a per-block basis, meaning you need to multiply
-// be the allowance period when working with these values.
+// storage on a per-renter basis that doesn't account for redundancy. This value
+// needs to be adjusted to a per-contract basis that accounts for redundancy.
+// The upload and download values also do not account for redundancy, and they
+// are on a per-block basis, meaning you need to multiply be the allowance
+// period when working with these values.
 func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules.Allowance, txnFees types.Currency) float64 {
 	// Divide by zero mitigation.
 	if allowance.Hosts == 0 {

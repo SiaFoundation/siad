@@ -10,16 +10,17 @@ import (
 )
 
 var (
-	// An allowance to give to every hostdb for testing.
+	// Set the default test allowance
 	DefaultTestAllowance = modules.Allowance{
-		Funds:              types.SiacoinPrecision.Mul64(500),
-		Hosts:              uint64(50),
-		Period:             types.BlockHeight(12096),
-		RenewWindow:        types.BlockHeight(4032),
-		ExpectedStorage:    modules.DefaultAllowance.ExpectedStorage,
-		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
-		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
-		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		Funds:       types.SiacoinPrecision.Mul64(500),
+		Hosts:       uint64(50),
+		Period:      types.BlockHeight(12096),
+		RenewWindow: types.BlockHeight(4032),
+
+		ExpectedStorage:    1e12,                                 // 1 TB
+		ExpectedUpload:     uint64(200e9) / types.BlocksPerMonth, // 200 GB per month
+		ExpectedDownload:   uint64(100e9) / types.BlocksPerMonth, // 100 GB per month
+		ExpectedRedundancy: 3.0,                                  // default is 10/30 erasure coding
 	}
 
 	// The default entry to use when performing scoring.
