@@ -74,7 +74,7 @@ func (uch *uploadChunkHeap) reset() (err error) {
 	for _, c := range *uch {
 		err = errors.Compose(err, c.fileEntry.Close())
 	}
-	uch = &uploadChunkHeap{}
+	*uch = uploadChunkHeap{}
 	return err
 }
 
