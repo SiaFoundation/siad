@@ -128,7 +128,7 @@ func (s *Snapshot) Size() uint64 {
 }
 
 // Snapshot creates a snapshot of the SiaFile.
-func (sf *siaFileSetEntry) Snapshot() *Snapshot {
+func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	mk := sf.MasterKey()
 	sf.mu.RLock()
 
@@ -136,28 +136,32 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 	pkt := make([]HostPublicKey, len(sf.pubKeyTable))
 	copy(pkt, sf.pubKeyTable)
 
-	chunks := make([]Chunk, 0, len(sf.chunks))
+	chunks := make([]Chunk, 0, sf.numChunks)
 	// Figure out how much memory we need to allocate for the piece sets and
 	// pieces.
 	var numPieceSets, numPieces int
-	for chunkIndex := range sf.chunks {
-		numPieceSets += len(sf.chunks[chunkIndex].Pieces)
-		for pieceIndex := range sf.chunks[chunkIndex].Pieces {
-			numPieces += len(sf.chunks[chunkIndex].Pieces[pieceIndex])
+	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+		numPieceSets += len(chunk.Pieces)
+		for pieceIndex := range chunk.Pieces {
+			numPieces += len(chunk.Pieces[pieceIndex])
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	// Allocate all the piece sets and pieces at once.
 	allPieceSets := make([][]Piece, numPieceSets)
 	allPieces := make([]Piece, numPieces)
 
 	// Copy chunks.
-	for chunkIndex := range sf.chunks {
-		pieces := allPieceSets[:len(sf.chunks[chunkIndex].Pieces)]
-		allPieceSets = allPieceSets[len(sf.chunks[chunkIndex].Pieces):]
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
+		pieces := allPieceSets[:len(chunk.Pieces)]
+		allPieceSets = allPieceSets[len(chunk.Pieces):]
 		for pieceIndex := range pieces {
-			pieces[pieceIndex] = allPieces[:len(sf.chunks[chunkIndex].Pieces[pieceIndex])]
-			allPieces = allPieces[len(sf.chunks[chunkIndex].Pieces[pieceIndex]):]
-			for i, piece := range sf.chunks[chunkIndex].Pieces[pieceIndex] {
+			pieces[pieceIndex] = allPieces[:len(chunk.Pieces[pieceIndex])]
+			allPieces = allPieces[len(chunk.Pieces[pieceIndex]):]
+			for i, piece := range chunk.Pieces[pieceIndex] {
 				pieces[pieceIndex][i] = Piece{
 					HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
 					MerkleRoot: piece.MerkleRoot,
@@ -167,6 +171,10 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 		chunks = append(chunks, Chunk{
 			Pieces: pieces,
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	// Get non-static metadata fields under lock.
 	fileSize := sf.staticMetadata.FileSize
@@ -186,5 +194,5 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 		staticMode:        mode,
 		staticPubKeyTable: pkt,
 		staticSiaPath:     sp,
-	}
+	}, nil
 }
