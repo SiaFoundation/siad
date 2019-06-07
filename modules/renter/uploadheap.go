@@ -29,6 +29,7 @@ const (
 	targetError repairTarget = iota
 	targetStuckChunks
 	targetUnstuckChunks
+	targetBackupChunks
 )
 
 // uploadChunkHeap is a bunch of priority-sorted chunks that need to be either
@@ -700,13 +701,19 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 // construct a chunk heap.
 func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[string]struct{}, target repairTarget) {
 	// Get Directory files
-	var files []*siafile.SiaFileSetEntry
+	var fileinfos []os.FileInfo
 	var err error
-	fileinfos, err := ioutil.ReadDir(dirSiaPath.SiaDirSysPath(r.staticFilesDir))
+	if target == targetBackupChunks {
+		fileinfos, err = ioutil.ReadDir(dirSiaPath.SiaDirSysPath(r.staticBackupsDir))
+	} else {
+		fileinfos, err = ioutil.ReadDir(dirSiaPath.SiaDirSysPath(r.staticFilesDir))
+	}
 	if err != nil {
 		r.log.Println("WARN: could not read directory:", err)
 		return
 	}
+	// Build files from fileinfos
+	var files []*siafile.SiaFileSetEntry
 	for _, fi := range fileinfos {
 		// skip sub directories and non siafiles
 		ext := filepath.Ext(fi.Name())
@@ -717,10 +724,15 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 		// Open SiaFile
 		siaPath, err := dirSiaPath.Join(strings.TrimSuffix(fi.Name(), ext))
 		if err != nil {
-			r.log.Println("WARN: could not create siapath:", err)
+			r.log.Println("WARN: could not create siaPath:", err)
 			continue
 		}
-		file, err := r.staticFileSet.Open(siaPath)
+		var file *siafile.SiaFileSetEntry
+		if target == targetBackupChunks {
+			file, err = r.staticBackupFileSet.Open(siaPath)
+		} else {
+			file, err = r.staticFileSet.Open(siaPath)
+		}
 		if err != nil {
 			r.log.Println("WARN: could not open siafile:", err)
 			continue
@@ -764,6 +776,9 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	// Build the unfinished upload chunks and add them to the upload heap
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	switch target {
+	case targetBackupChunks:
+		r.log.Debugln("Adding backup chunks to heap")
+		r.managedBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
 	case targetStuckChunks:
 		r.log.Debugln("Attempting to add stuck chunk to heap")
 		r.managedBuildAndPushRandomChunk(files, maxStuckChunksInHeap, hosts, target, offline, goodForRenew)
@@ -945,6 +960,15 @@ func (r *Renter) threadedUploadAndRepair() {
 		default:
 		}
 
+		// Add any backups that weren't fully uploaded before the renter
+		// shutdown
+		heapLen := r.uploadHeap.managedLen()
+		r.managedBuildChunkHeap(modules.RootSiaPath(), r.managedRefreshHostsAndWorkers(), targetBackupChunks)
+		numBackupchunks := r.uploadHeap.managedLen() - heapLen
+		if numBackupchunks > 0 {
+			r.log.Println("Added", numBackupchunks, "backup chunks to the upload heap")
+		}
+
 		// Wait until the renter is online to proceed. This function will return
 		// 'false' if the renter has shut down before being online.
 		if !r.managedBlockUntilOnline() {
@@ -1005,7 +1029,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Check if there are chunks in the uploadheap to repair
-		heapLen := r.uploadHeap.managedLen()
+		heapLen = r.uploadHeap.managedLen()
 		if heapLen == 0 {
 			// Treat this as an error and sleep for a bit to prevent rapid
 			// cycling. This is may or may not be an actual error, we could be
