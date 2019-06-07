@@ -628,11 +628,11 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 				r.log.Println("WARN: unable to close file:", err)
 			}
 
-			// // Reset temp heap to release memory
-			// err = unfinishedChunkHeap.reset()
-			// if err != nil {
-			// 	r.log.Println("WARN: error resetting the temporary upload heap:", err)
-			// }
+			// Reset temp heap to release memory
+			err = unfinishedChunkHeap.reset()
+			if err != nil {
+				r.log.Println("WARN: error resetting the temporary upload heap:", err)
+			}
 
 			// Add worst chunks back to heap
 			for _, chunk := range chunksToKeep {
@@ -676,12 +676,12 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		}
 	}
 
-	// // We are done with the temporary heap so reset it to help release the
-	// // memory
-	// err := unfinishedChunkHeap.reset()
-	// if err != nil {
-	// 	r.log.Println("WARN: error resetting the temporary upload heap:", err)
-	// }
+	// We are done with the temporary heap so reset it to help release the
+	// memory
+	err := unfinishedChunkHeap.reset()
+	if err != nil {
+		r.log.Println("WARN: error resetting the temporary upload heap:", err)
+	}
 
 	// Check if we should add the directory back to the directory heap
 	if worstIgnoredHealth < siafile.RemoteRepairDownloadThreshold {
