@@ -19,13 +19,13 @@ before_script:
   - cp -R $CI_PROJECT_DIR $GOPATH/src/gitlab.com/NebulousLabs/Sia
   - cd $GOPATH/src/gitlab.com/NebulousLabs/Sia
 
-lint:
-  stage: lint
-  script: 
-    - go get -u github.com/alecthomas/gometalinter
-    - gometalinter --install
-    - gometalinter --deadline=300s --vendor --disable-all --enable=vet --enable=gofmt ./...
-    - make test
+# lint:
+#   stage: lint
+#   script: 
+#     - go get -u github.com/alecthomas/gometalinter
+#     - gometalinter --install
+#     - gometalinter --deadline=300s --vendor --disable-all --enable=vet --enable=gofmt ./...
+#     - make test
 
 # legacy-tests:
 #   stage: test
