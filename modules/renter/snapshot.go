@@ -220,6 +220,7 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	return err
 }
 
+// managedUploadSnapshotHost uploads a snapshot to a single host.
 func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia []byte, host contractor.Session) error {
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
@@ -293,6 +294,7 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	return nil
 }
 
+// managedSaveSnapshot saves snapshot metadata to disk.
 func (r *Renter) managedSaveSnapshot(meta modules.UploadedBackup) error {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
