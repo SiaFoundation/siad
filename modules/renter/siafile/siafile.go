@@ -212,8 +212,6 @@ func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 	updates = append(updates, mdu...)
 	// Update the filesize in the metadata.
 	return sf.createAndApplyTransaction(updates...)
-	//
-	// return sf.saveFile()
 }
 
 // SetFileSize changes the fileSize of the SiaFile.
@@ -226,7 +224,6 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 		return err
 	}
 	return sf.createAndApplyTransaction(updates...)
-	// return sf.saveFile()
 }
 
 // AddPiece adds an uploaded piece to the file. It also updates the host table
@@ -310,7 +307,6 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// Save the changed chunk to disk.
 	chunkUpdate := sf.saveChunkUpdate(int(chunkIndex))
 	return sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
-	// return sf.saveFile()
 }
 
 // chunkHealth returns the health of the chunk which is defined as the percent
@@ -388,7 +384,6 @@ func (sf *SiaFile) Save() error {
 func (sf *SiaFile) SaveMetadata() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	// return sf.saveFile()
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
@@ -660,7 +655,6 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 		sf.staticMetadata.NumStuckChunks--
 	}
 	// Update chunk and metadata on disk
-	// return sf.saveFile()
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err

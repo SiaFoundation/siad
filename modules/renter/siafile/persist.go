@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -112,7 +111,6 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		siaFilePath: path,
 		wal:         wal,
 	}
-	// defer sf.checkPubkeyOffsets()
 	// Load the metadata.
 	decoder := json.NewDecoder(r)
 	err := decoder.Decode(&sf.staticMetadata)
@@ -414,22 +412,10 @@ func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Up
 		build.Critical("index passed to createUpdate should never be negative")
 	}
 	// Create update
-	// return writeaheadlog.Update{
-	update := writeaheadlog.Update{
+	return writeaheadlog.Update{
 		Name:         updateInsertName,
 		Instructions: encoding.MarshalAll(sf.siaFilePath, index, data),
 	}
-	_, indexr, datar, err := readInsertUpdate(update)
-	if err != nil {
-		build.Critical("error reading insert update", err)
-	}
-	if index != indexr {
-		build.Critical("indexes not equal", index, indexr)
-	}
-	if bytes.Compare(data, datar) != 0 {
-		build.Critical("data in update not equal", data, datar)
-	}
-	return update
 }
 
 // readAndApplyInsertUpdate reads the insert update for a SiaFile and then
@@ -468,10 +454,6 @@ func (sf *SiaFile) saveFile() error {
 	}
 	chunksUpdates := sf.saveChunksUpdates()
 	err = sf.createAndApplyTransaction(append(headerUpdates, chunksUpdates...)...)
-	// sf2, err := LoadSiaFile(sf.siaFilePath, sf.wal)
-	// if err != nil {
-	// 	panic("not what should be happending")
-	// }
 	return errors.AddContext(err, "failed to apply saveFile updates")
 }
 

@@ -18,7 +18,7 @@ func TestRenterDownloadStreamCache(t *testing.T) {
 	if testing.Short() || !build.VLONG {
 		t.SkipNow()
 	}
-	// t.Parallel()
+	t.Parallel()
 
 	// Create a testgroup with a renter.
 	groupParams := siatest.GroupParams{
@@ -159,7 +159,7 @@ func TestRenterStream(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// t.Parallel()
+	t.Parallel()
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{

@@ -283,8 +283,6 @@ func (sf *SiaFile) SetMode(mode os.FileMode) error {
 		return err
 	}
 	return sf.createAndApplyTransaction(updates...)
-
-	// return sf.saveFile()
 }
 
 // SetLastHealthCheckTime sets the LastHealthCheckTime in memory to the current
@@ -305,8 +303,6 @@ func (sf *SiaFile) SetLocalPath(path string) error {
 	defer sf.mu.Unlock()
 	sf.staticMetadata.LocalPath = path
 
-	// Save changes to metadata to disk.
-	// return sf.saveFile()
 	// Save changes to metadata to disk.
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
@@ -334,7 +330,6 @@ func (sf *SiaFile) UpdateAccessTime() error {
 	sf.staticMetadata.AccessTime = time.Now()
 
 	// Save changes to metadata to disk.
-	// return sf.saveFile()
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err

@@ -95,8 +95,6 @@ func randomThreadUID() uint64 {
 }
 
 // CopyEntry returns a copy of the SiaFileSetEntry
-//
-// TODO - should be updated to return error
 func (entry *SiaFileSetEntry) CopyEntry() (*SiaFileSetEntry, error) {
 	// Grab siafile set lock
 	entry.staticSiaFileSet.mu.Lock()
@@ -677,13 +675,6 @@ func (sfs *SiaFileSet) Open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	defer sfs.mu.Unlock()
 	return sfs.open(siaPath)
 }
-
-// // Metadata returns the metadata of a SiaFile.
-// func (sfs *SiaFileSet) Metadata(siaPath modules.SiaPath) (Metadata, error) {
-// 	sfs.mu.Lock()
-// 	defer sfs.mu.Unlock()
-// 	return sfs.readLockMetadata(siaPath)
-// }
 
 // Rename will move a siafile from one path to a new path. Existing entries that
 // are already open at the old path will continue to be valid.

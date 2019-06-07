@@ -506,7 +506,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// Grab necessary information from upload chunk under lock
 	uc.mu.Lock()
 	index := uc.id.index
-	stuck := uc.stuck // grab updated stuck status?
+	stuck := uc.stuck
 	piecesCompleted := uc.piecesCompleted
 	piecesNeeded := uc.piecesNeeded
 	stuckRepair := uc.stuckRepair
