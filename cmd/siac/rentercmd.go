@@ -96,6 +96,13 @@ var (
 		Run:   wrap(renterdownloadscmd),
 	}
 
+	renterDownloadCancelCmd = &cobra.Command{
+		Use:   "canceldownload [cancelID]",
+		Short: "Cancel async download",
+		Long:  "Cancels an ongoing async download.",
+		Run:   wrap(renterdownloadcancelcmd),
+	}
+
 	renterFilesDeleteCmd = &cobra.Command{
 		Use:     "delete [path]",
 		Aliases: []string{"rm"},
@@ -1399,7 +1406,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		}
 		// Download file.
 		totalSize += file.Filesize
-		err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
 			return
@@ -1465,6 +1472,15 @@ func renterdirdownload(path, destination string) {
 		fmt.Printf("Download of file '%v' to destination '%v' failed: %v\n", fd.SiaPath, fd.Destination, fd.Error)
 	}
 	os.Exit(1)
+}
+
+// renterdownloadcancelcmd is the handler for the command `siac renter download cancel [cancelID]`
+// Cancels the ongoing download.
+func renterdownloadcancelcmd(cancelID string) {
+	if err := httpClient.RenterCancelDownloadPost(cancelID); err != nil {
+		die("Couldn't cancel download:", err)
+	}
+	fmt.Println("Download canceled successfully")
 }
 
 // renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
@@ -1539,7 +1555,7 @@ func renterfilesdownload(path, destination string) {
 	// the call will return before the download has completed. The call is made
 	// as an async call.
 	start := time.Now()
-	err = httpClient.RenterDownloadFullGet(siaPath, destination, true)
+	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true)
 	if err != nil {
 		die("Download could not be started:", err)
 	}
@@ -1547,6 +1563,7 @@ func renterfilesdownload(path, destination string) {
 	// If the download is async, report success.
 	if renterDownloadAsync {
 		fmt.Printf("Queued Download '%s' to %s.\n", siaPath.String(), abs(destination))
+		fmt.Printf("ID to cancel download: '%v'\n", cancelID)
 		return
 	}
 
