@@ -600,25 +600,26 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				if err != nil {
 					return errors.AddContext(err, "failed to get entry for snapshot")
 				}
-				defer entry.Close()
 				// Read the siafile from disk.
 				sr, err := entry.SnapshotReader()
 				if err != nil {
-					return err
+					return errors.Compose(err, entry.Close())
 				}
 				defer sr.Close()
 				dotSia, err := ioutil.ReadAll(sr)
 				if err != nil {
-					return err
+					return errors.Compose(err, entry.Close())
 				}
 				// Upload the snapshot to the network.
 				meta.UploadProgress = calcSnapshotUploadProgress(100, 0)
 				meta.Size = uint64(len(dotSia))
 				if err := r.managedUploadSnapshot(meta, dotSia); err != nil {
-					return err
+					return errors.Compose(err, entry.Close())
 				}
 				// Delete the local siafile.
-				entry.Close()
+				if err := entry.Close(); err != nil {
+					return err
+				}
 				if err := r.staticBackupFileSet.Delete(info.SiaPath); err != nil {
 					return err
 				}
