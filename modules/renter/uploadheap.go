@@ -154,10 +154,16 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	canAddStuckChunk := chunkStuck && !existsStuckHeap && !existsRepairing && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
 	canAddUnstuckChunk := !chunkStuck && !existsUnstuckHeap && !existsRepairing
 	if canAddStuckChunk {
+		if uuc.fileEntry == nil {
+			panic("file entry is nil in managedPush")
+		}
 		uh.stuckHeapChunks[uuc.id] = struct{}{}
 		heap.Push(&uh.heap, uuc)
 		return true
 	} else if canAddUnstuckChunk {
+		if uuc.fileEntry == nil {
+			panic("file entry is nil in managedPush")
+		}
 		uh.unstuckHeapChunks[uuc.id] = struct{}{}
 		heap.Push(&uh.heap, uuc)
 		return true
@@ -170,6 +176,9 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 	uh.mu.Lock()
 	if len(uh.heap) > 0 {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
+		if uc.fileEntry == nil {
+			panic("file entry is nil in managedPush")
+		}
 		delete(uh.unstuckHeapChunks, uc.id)
 		delete(uh.stuckHeapChunks, uc.id)
 		if _, exists := uh.repairingChunks[uc.id]; exists {
@@ -569,17 +578,6 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			// Check if chunk has a worse health than the directory heap
 			chunk := unfinishedUploadChunks[i]
-			if chunk.health < dirHeapHealth {
-				// Track the health
-				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
-				// Close the file entry
-				err := chunk.fileEntry.Close()
-				if err != nil {
-					r.log.Println("WARN: unable to close file:", err)
-				}
-				continue
-			}
-
 			// Check to see the chunk is already in the upload heap
 			if r.uploadHeap.managedExists(chunk.id) {
 				// Close the file entry
@@ -589,6 +587,17 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 				}
 				// Since the chunk is already in the heap we do not need to
 				// track the health of the chunk
+				continue
+			}
+
+			if chunk.health < dirHeapHealth {
+				// Track the health
+				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+				// Close the file entry
+				err := chunk.fileEntry.Close()
+				if err != nil {
+					r.log.Println("WARN: unable to close file:", err)
+				}
 				continue
 			}
 
@@ -619,11 +628,11 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 				r.log.Println("WARN: unable to close file:", err)
 			}
 
-			// Reset temp heap to release memory
-			err = unfinishedChunkHeap.reset()
-			if err != nil {
-				r.log.Println("WARN: error resetting the temporary upload heap:", err)
-			}
+			// // Reset temp heap to release memory
+			// err = unfinishedChunkHeap.reset()
+			// if err != nil {
+			// 	r.log.Println("WARN: error resetting the temporary upload heap:", err)
+			// }
 
 			// Add worst chunks back to heap
 			for _, chunk := range chunksToKeep {
@@ -667,12 +676,12 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		}
 	}
 
-	// We are done with the temporary heap so reset it to help release the
-	// memory
-	err := unfinishedChunkHeap.reset()
-	if err != nil {
-		r.log.Println("WARN: error resetting the temporary upload heap:", err)
-	}
+	// // We are done with the temporary heap so reset it to help release the
+	// // memory
+	// err := unfinishedChunkHeap.reset()
+	// if err != nil {
+	// 	r.log.Println("WARN: error resetting the temporary upload heap:", err)
+	// }
 
 	// Check if we should add the directory back to the directory heap
 	if worstIgnoredHealth < siafile.RemoteRepairDownloadThreshold {
@@ -890,6 +899,10 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		nextChunk := r.uploadHeap.managedPop()
 		if nextChunk == nil {
 			// The heap is empty so reset it to free memory and return.
+			heapLen := r.uploadHeap.managedLen()
+			if heapLen != 0 {
+				build.Critical("nextChunk in nil but heap has length of", heapLen)
+			}
 			r.uploadHeap.managedReset()
 			return nil
 		}

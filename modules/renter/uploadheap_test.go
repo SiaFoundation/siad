@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"testing"
@@ -295,13 +296,17 @@ func TestAddChunksToHeap(t *testing.T) {
 	}
 
 	// Create Renter
+	fmt.Println("-- Creating New Renter")
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	fmt.Println("-- New Renter Created")
 
 	// Create File params
+	fmt.Println("-- Creating file params")
 	_, rsc := testingFileParams()
+	fmt.Println("-- Creating zero byte file on disk")
 	source, err := rt.createZeroByteFileOnDisk()
 	if err != nil {
 		t.Fatal(err)
@@ -312,6 +317,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	}
 
 	// Create files in multiple directories
+	fmt.Println("-- Creating renter files")
 	var numChunks uint64
 	var dirSiaPaths []modules.SiaPath
 	names := []string{"rootFile", "subdir/File", "subdir2/file"}
@@ -325,22 +331,26 @@ func TestAddChunksToHeap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		fmt.Println("-- file", f.SiaFilePath(), "created")
 		// Track number of chunks
 		numChunks += f.NumChunks()
 		dirSiaPath, err := siaPath.Dir()
 		if err != nil {
 			t.Fatal(err)
 		}
+		fmt.Println("-- Creating renter directories")
 		// Make sure directories are created
 		err = rt.renter.CreateDir(dirSiaPath)
 		if err != nil && err != siadir.ErrPathOverload {
 			t.Fatal(err)
 		}
+		fmt.Println("-- Directory", dirSiaPath, "created")
 		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
 	}
 
 	// Call bubbled to ensure directory metadata is updated
 	for _, siaPath := range dirSiaPaths {
+		fmt.Println("-- Calling bubble on", siaPath)
 		err := rt.renter.managedBubbleMetadata(siaPath)
 		if err != nil {
 			t.Fatal(err)
@@ -358,12 +368,14 @@ func TestAddChunksToHeap(t *testing.T) {
 	}
 
 	// Make sure directory Heap it ready
+	fmt.Println("-- Init directory heap")
 	err = rt.renter.managedInitDirectoryHeap()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// call managedAddChunksTo Heap
+	fmt.Println("-- Calling managedAddChunksToHeap")
 	siaPaths, err := rt.renter.managedAddChunksToHeap(hosts)
 	if err != nil {
 		t.Fatal(err)
@@ -371,6 +383,7 @@ func TestAddChunksToHeap(t *testing.T) {
 
 	// Confirm that all chunks from all the directories were added since there
 	// are not enough chunks in only one directory to fill the heap
+	fmt.Println("-- Final checks")
 	if len(siaPaths) != 3 {
 		t.Fatal("Expected 3 siaPaths to be returned, got", siaPaths)
 	}
