@@ -598,21 +598,30 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				if err != nil {
 					return errors.Compose(err, entry.Close())
 				}
-				defer sr.Close()
+				// NOTE: The snapshot reader needs to be closed _before_ the
+				// entry is closed. Closing the entry first can cause a
+				// deadlock.
+
 				dotSia, err := ioutil.ReadAll(sr)
 				if err != nil {
-					return errors.Compose(err, entry.Close())
+					return errors.Compose(err, sr.Close(), entry.Close())
 				}
 				// Upload the snapshot to the network.
 				meta.UploadProgress = calcSnapshotUploadProgress(100, 0)
 				meta.Size = uint64(len(dotSia))
 				if err := r.managedUploadSnapshot(meta, dotSia); err != nil {
+					return errors.Compose(err, sr.Close(), entry.Close())
+				}
+
+				// Close out the snapshot reader and then the siafile entry.
+				if err := sr.Close(); err != nil {
 					return errors.Compose(err, entry.Close())
 				}
-				// Delete the local siafile.
 				if err := entry.Close(); err != nil {
 					return err
 				}
+
+				// Delete the local siafile.
 				if err := r.staticBackupFileSet.Delete(info.SiaPath); err != nil {
 					return err
 				}

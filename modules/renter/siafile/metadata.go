@@ -184,8 +184,8 @@ func (sf *SiaFile) ChunkSize() uint64 {
 
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
 func (sf *SiaFile) LastHealthCheckTime() time.Time {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
 	return sf.staticMetadata.LastHealthCheckTime
 }
 

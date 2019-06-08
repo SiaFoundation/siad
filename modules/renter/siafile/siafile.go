@@ -666,8 +666,8 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 
 // StuckChunkByIndex returns if the chunk at the index is marked as Stuck or not
 func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
 	return sf.chunks[index].Stuck
 }
 
