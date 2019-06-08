@@ -443,9 +443,15 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 	secret := crypto.HashAll(rs, snapshotKeySpecifier)
 	defer fastrand.Read(secret[:])
 
+	// try downloading from each host in serial, prioritizing the hosts that are
+	// GoodForUpload, then GoodForRenew
 	contracts := r.hostContractor.Contracts()
-
-	// try each host individually
+	sort.Slice(contracts, func(i, j int) bool {
+		if contracts[i].Utility.GoodForUpload == contracts[j].Utility.GoodForUpload {
+			return contracts[i].Utility.GoodForRenew && !contracts[j].Utility.GoodForRenew
+		}
+		return contracts[i].Utility.GoodForUpload && !contracts[j].Utility.GoodForUpload
+	})
 	for i := range contracts {
 		err := func() error {
 			host, err := r.hostContractor.Session(contracts[i].HostPublicKey, r.tg.StopChan())
