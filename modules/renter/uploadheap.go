@@ -963,7 +963,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			return
 		default:
 		}
-		time.Sleep(5 * time.Second)
+
 		// Add any backups that weren't fully uploaded before the renter
 		// shutdown
 		heapLen := r.uploadHeap.managedLen()
