@@ -598,25 +598,38 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				if err != nil {
 					return errors.Compose(err, entry.Close())
 				}
-				// NOTE: The snapshot reader needs to be closed _before_ the
-				// entry is closed. Closing the entry first can cause a
-				// deadlock.
+				// NOTE: The snapshot reader needs to be closed before
+				// entry.Close is called, and unfortunately also before
+				// managedUploadSnapshot is called, because the snapshot reader
+				// holds a lock on the underlying dotsia, which is also actively
+				// a part of the repair system. The repair system locks the
+				// renter then tries to grab a lock on the siafile, while
+				// 'managedUploadSnapshot' can independently try to grab a lock
+				// on the renter while holding the snapshot.
 
+				// TODO: Calling ReadAll here is not really acceptable because
+				// for larger renters, the snapshot can be very large. For a
+				// user with 20 TB of data, the snapshot is going to be 2 GB
+				// large, which on its own exceeds our goal for the total memory
+				// consumption of the renter, and it's not even that much data.
+				//
+				// Need to work around the snapshot reader lock issue as well.
 				dotSia, err := ioutil.ReadAll(sr)
-				if err != nil {
-					return errors.Compose(err, sr.Close(), entry.Close())
+				if err := sr.Close(); err != nil {
+					return errors.Compose(err, entry.Close())
 				}
+				if err != nil {
+					return errors.Compose(err, entry.Close())
+				}
+
 				// Upload the snapshot to the network.
 				meta.UploadProgress = calcSnapshotUploadProgress(100, 0)
 				meta.Size = uint64(len(dotSia))
 				if err := r.managedUploadSnapshot(meta, dotSia); err != nil {
-					return errors.Compose(err, sr.Close(), entry.Close())
-				}
-
-				// Close out the snapshot reader and then the siafile entry.
-				if err := sr.Close(); err != nil {
 					return errors.Compose(err, entry.Close())
 				}
+
+				// Close out the entry.
 				if err := entry.Close(); err != nil {
 					return err
 				}

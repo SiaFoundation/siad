@@ -57,6 +57,9 @@ func (sfr *SnapshotReader) Stat() (os.FileInfo, error) {
 // also not okay, because if some other thread has attempted to grab a writelock
 // on the siafile, the readlock will block and then the Close() statement may
 // never be reached for the SnapshotReader.
+//
+// TODO: Things upstream would be a lot easier if we could drop the requirement
+// to hold a lock for the duration of the life of the snapshot reader.
 func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
 	// Lock the file.
 	sf.mu.RLock()

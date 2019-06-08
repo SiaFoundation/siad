@@ -4847,7 +4847,7 @@ func TestRemoteBackup(t *testing.T) {
 				if ub.Name != name {
 					continue
 				} else if ub.UploadProgress != 100 {
-					return errors.New("backup not uploaded")
+					return fmt.Errorf("backup not uploaded: %v", ub.UploadProgress)
 				}
 				return nil
 			}
