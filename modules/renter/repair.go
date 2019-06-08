@@ -83,7 +83,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath) error {
 	// Add stuck chunks from file to repair heap
 	files := []*siafile.SiaFileSetEntry{sf}
 	hosts := r.managedRefreshHostsAndWorkers()
-	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	r.managedBuildAndPushChunks(files, hosts, targetStuckChunks, offline, goodForRenew)
 	return nil
 }
@@ -276,6 +276,13 @@ func (r *Renter) threadedStuckFileLoop() {
 
 	// Loop until the renter has shutdown or until there are no stuck chunks
 	for {
+		// Return if the renter has shut down.
+		select {
+		case <-r.tg.StopChan():
+			return
+		default:
+		}
+
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.

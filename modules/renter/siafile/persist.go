@@ -57,6 +57,11 @@ func (sf *SiaFile) SetSiaFilePath(path string) {
 // SiaFile. This method can apply updates from different SiaFiles and should
 // only be run before the SiaFiles are loaded from disk right after the startup
 // of siad. Otherwise we might run into concurrency issues.
+//
+// TODO - Does this need to be updated to handle deletion better? If a file is
+// deleted and then there is a second update that update would fail because the
+// file is gone. However that one expected failure would cause the rest of the
+// updates not to return?
 func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := func() error {
