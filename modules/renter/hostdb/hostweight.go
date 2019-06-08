@@ -535,7 +535,7 @@ func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance module
 		return modules.HostScoreBreakdown{}, err
 	}
 	defer hdb.tg.Done()
-	return hdb.managedScoreBreakdown(entry, true, true, true), nil
+	return hdb.managedEstimatedScoreBreakdown(entry, allowance, true, true, true), nil
 }
 
 // ScoreBreakdown provdes a detailed set of scalars and bools indicating
@@ -546,6 +546,24 @@ func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) (modules.HostScoreB
 	}
 	defer hdb.tg.Done()
 	return hdb.managedScoreBreakdown(entry, false, false, false), nil
+}
+
+// managedEstimatedScoreBreakdown computes the score breakdown of a host.
+// Certain adjustments can be ignored.
+func (hdb *HostDB) managedEstimatedScoreBreakdown(entry modules.HostDBEntry, allowance modules.Allowance, ignoreAge, ignoreDuration, ignoreUptime bool) modules.HostScoreBreakdown {
+	hosts := hdb.ActiveHosts()
+	weightFunc := hdb.managedCalculateHostWeightFn(allowance)
+
+	// Compute the totalScore.
+	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
+	totalScore := types.Currency{}
+	for _, host := range hosts {
+		totalScore = totalScore.Add(hdb.weightFunc(host).Score())
+	}
+	// Compute the breakdown.
+
+	return weightFunc(entry).HostScoreBreakdown(totalScore, ignoreAge, ignoreDuration, ignoreUptime)
 }
 
 // managedScoreBreakdown computes the score breakdown of a host. Certain
