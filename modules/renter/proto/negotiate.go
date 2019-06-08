@@ -137,7 +137,7 @@ func verifyRecentRevision(conn net.Conn, contract *SafeContract, hostVersion str
 		}
 		ourRev = contract.header.LastRevision()
 		if lastRevision.NewRevisionNumber != ourRev.NewRevisionNumber {
-			return &recentRevisionError{ourRev.NewRevisionNumber, lastRevision.NewRevisionNumber}
+			return &revisionNumberMismatchError{ourRev.NewRevisionNumber, lastRevision.NewRevisionNumber}
 		}
 	}
 	// NOTE: we can fake the blockheight here because it doesn't affect

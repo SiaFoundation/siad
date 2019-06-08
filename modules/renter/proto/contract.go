@@ -414,6 +414,9 @@ func (c *SafeContract) unappliedHeader() (h contractHeader) {
 // match, and the host's revision is ahead of the renter's, syncRevision uses
 // the host's revision.
 func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) error {
+	c.headerMu.Lock()
+	defer c.headerMu.Unlock()
+
 	// Our current revision should always be signed. If it isn't, we have no
 	// choice but to accept the host's revision.
 	if len(c.header.Transaction.TransactionSignatures) == 0 {
@@ -426,6 +429,11 @@ func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types
 
 	// If the revision number and Merkle root match, we don't need to do anything.
 	if rev.NewRevisionNumber == ourRev.NewRevisionNumber && rev.NewFileMerkleRoot == ourRev.NewFileMerkleRoot {
+		// If any other fields mismatch, it must be our fault, since we signed
+		// the revision reported by the host. So, to ensure things are
+		// consistent, we blindly overwrite our revision with the host's.
+		c.header.Transaction.FileContractRevisions[0] = rev
+		c.header.Transaction.TransactionSignatures = sigs
 		return nil
 	}
 
@@ -435,7 +443,7 @@ func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types
 	// ill intent, this would mean that they failed to commit one or more
 	// revisions to durable storage, which reflects very poorly on them.
 	if rev.NewRevisionNumber < ourRev.NewRevisionNumber {
-		return &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
+		return &revisionNumberMismatchError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
 	}
 
 	// At this point, we know that either the host's revision number is above
@@ -481,8 +489,6 @@ func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types
 	// security risk, since we *did* sign the revision that the host is
 	// claiming. Worst case, certain contract metadata (e.g. UploadSpending)
 	// will be incorrect.
-	c.headerMu.Lock()
-	defer c.headerMu.Unlock()
 	c.header.Transaction.FileContractRevisions[0] = rev
 	c.header.Transaction.TransactionSignatures = sigs
 	// Drop the WAL transactions, since they can't conceivably help us.
