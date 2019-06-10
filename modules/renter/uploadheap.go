@@ -965,24 +965,23 @@ func (r *Renter) threadedUploadAndRepair() {
 		default:
 		}
 
-		// Add any backups that weren't fully uploaded before the renter
-		// shutdown
-		heapLen := r.uploadHeap.managedLen()
-		// TODO: This line is not obvious. How does the code below result in
-		// loading the backups? Why is 'managedRefreshHostsAndWorkers()' called
-		// as a parameter?
-		//
-		// TODO: Is this line only meant to be handled once at startup?
-		r.managedBuildChunkHeap(modules.RootSiaPath(), r.managedRefreshHostsAndWorkers(), targetBackupChunks)
-		numBackupchunks := r.uploadHeap.managedLen() - heapLen
-		if numBackupchunks > 0 {
-			r.log.Println("Added", numBackupchunks, "backup chunks to the upload heap")
-		}
-
 		// Wait until the renter is online to proceed. This function will return
 		// 'false' if the renter has shut down before being online.
 		if !r.managedBlockUntilOnline() {
 			return
+		}
+
+		// Add any chunks from the backup heap that need to be repaired. This
+		// needs to be handled separately because currently the filesystem for
+		// storing system files and chunks such as those related to snapshot
+		// backups is different from the siafileset that stores non-system files
+		// and chunks.
+		heapLen := r.uploadHeap.managedLen()
+		hosts := r.managedRefreshHostsAndWorkers()
+		r.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetBackupChunks)
+		numBackupchunks := r.uploadHeap.managedLen() - heapLen
+		if numBackupchunks > 0 {
+			r.log.Println("Added", numBackupchunks, "backup chunks to the upload heap")
 		}
 
 		// Check if the file system is healthy and the upload heap is empty
@@ -1009,6 +1008,12 @@ func (r *Renter) threadedUploadAndRepair() {
 				return
 			}
 
+			// Wait until the renter is online to proceed. This function will return
+			// 'false' if the renter has shut down before being online.
+			if !r.managedBlockUntilOnline() {
+				return
+			}
+
 			// Reset directory heap by re-initializing it if the heap is still
 			// healthy. We do this check to make sure a directory wasn't added
 			// by another thread that needs to be repaired.
@@ -1025,13 +1030,12 @@ func (r *Renter) threadedUploadAndRepair() {
 					r.log.Println("WARN: error re-initializing the directory heap:", err)
 				}
 			}
+			// Refresh the worker pool and get the set of hosts that are currently
+			// useful for uploading.
+			hosts = r.managedRefreshHostsAndWorkers()
 		}
 
-		// Refresh the worker pool and get the set of hosts that are currently
-		// useful for uploading.
-		hosts := r.managedRefreshHostsAndWorkers()
-
-		// Add chunks to heap
+		// Add chunks to heap.
 		dirSiaPaths := make(map[modules.SiaPath]struct{})
 		dirSiaPaths, err = r.managedAddChunksToHeap(hosts)
 		if err != nil {
