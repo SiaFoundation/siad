@@ -206,6 +206,9 @@ func TestIntegrationFormContract(t *testing.T) {
 		t.Fatal("no entry for host in db")
 	}
 
+	// wait for the contractor to stop performing contract maintenance
+	time.Sleep(time.Second)
+
 	// set an allowance but don't use SetAllowance to avoid automatic contract
 	// formation.
 	c.mu.Lock()
@@ -276,6 +279,9 @@ func TestIntegrationReviseContract(t *testing.T) {
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
+
+	// wait for the contractor to stop performing contract maintenance
+	time.Sleep(time.Second)
 
 	// set an allowance but don't use SetAllowance to avoid automatic contract
 	// formation.
