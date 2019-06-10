@@ -438,6 +438,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 
 		// Sanity Check if directory was returned
 		if dir == nil {
+			r.log.Debugln("no more chunks added to the upload heap because there are no more directories")
 			return siaPaths, nil
 		}
 
@@ -449,6 +450,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 
 		// If the directory that was just popped is healthy then return
 		if dirHealth < RepairThreshold {
+			r.log.Debugln("no more chunks added to the upload heap because directory popped is healthy")
 			return siaPaths, nil
 		}
 
@@ -466,6 +468,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 			r.log.Debugln("no more chunks added to the upload heap")
 			return siaPaths, nil
 		}
+		chunksAdded := heapLen - prevHeapLen
 		prevHeapLen = heapLen
 
 		// Since we added chunks from this directory, track the siaPath
@@ -475,7 +478,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 		// another thread could have added the directory back to the heap after
 		// we just popped it off. This is the case for new uploads.
 		siaPaths[dirSiaPath] = struct{}{}
-		r.log.Println("Added", heapLen, "chunks from", dirSiaPath, "to the upload heap")
+		r.log.Println("Added", chunksAdded, "chunks from", dirSiaPath, "to the upload heap")
 	}
 
 	return siaPaths, nil
@@ -778,7 +781,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	switch target {
 	case targetBackupChunks:
-		r.log.Debugln("Adding backup chunks to heap")
+		r.log.Debugln("Attempting to add backup chunks to heap")
 		r.managedBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
 	case targetStuckChunks:
 		r.log.Debugln("Attempting to add stuck chunk to heap")
@@ -993,6 +996,7 @@ func (r *Renter) threadedUploadAndRepair() {
 				// iteration of the repair loop the filesystem metadata might
 				// not be updated yet and it might appear to be healthy and
 				// therefore not begin the repair/upload.
+				r.log.Debugln("repair loop triggered by new upload channel")
 			case <-r.uploadHeap.repairNeeded:
 				// Since the repairNeeded channel is used by the stuck loop to
 				// indicate that a stuck chunk has been added to the uploadheap,
@@ -1001,6 +1005,7 @@ func (r *Renter) threadedUploadAndRepair() {
 				// next iteration of the repair loop we will end up back here as
 				// stuck chunks are not considered in the Health of the
 				// filesystem so the filesystem will still appear to be healthy.
+				r.log.Debugln("repair loop triggered by repair needed channel")
 			case <-r.tg.StopChan():
 				return
 			}
