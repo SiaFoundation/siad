@@ -1045,27 +1045,13 @@ func (r *Renter) threadedUploadAndRepair() {
 			r.log.Debugln("WARN: error adding chunks to the heap:", err)
 		}
 
-		// Check if there are chunks in the uploadheap to repair
-		heapLen = r.uploadHeap.managedLen()
-		if heapLen == 0 {
-			// Treat this as an error and sleep for a bit to prevent rapid
-			// cycling. This is may or may not be an actual error, we could be
-			// hitting this condition due to bubble triggering the repair loop
-			// while all the worst chunks are still being repaired so there are
-			// no new chunks that can be added to the upload heap.
-			r.log.Debugln("No chunks in the upload heap even though repair loop was prompted to add chunks and repair")
-			select {
-			case <-time.After(uploadAndRepairErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-			continue
-		}
+		// There are benign edge cases where the heap will be emtpy after chunks
+		// have been added. For example, if a chunk has gotten more healthy
+		// since the last health check due to one of its hosts coming back
+		// online. In these cases, the best course of action is to proceed with
+		// the repair and move on to the next directories in the directory heap.
 
-		// The necessary conditions for performing an upload and repair have
-		// been met - perform the upload and repair by having the repair loop
-		// work through the chunks in the uploadheap
-		r.log.Debugln("Executing an upload and repair cycle, uploadHeap has", heapLen, "chunks in it")
+		r.log.Debugln("Executing an upload and repair cycle, uploadHeap has", r.uploadHeap.managedLen(), "chunks in it")
 		err = r.managedRepairLoop(hosts)
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit
