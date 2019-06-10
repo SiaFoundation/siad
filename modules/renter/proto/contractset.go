@@ -40,14 +40,14 @@ func (cs *ContractSet) Acquire(id types.FileContractID) (*SafeContract, bool) {
 	if !ok {
 		return nil, false
 	}
-	safeContract.mu.Lock()
+	safeContract.revisionMu.Lock()
 	// We need to check if the contract is still in the map or if it has been
 	// deleted in the meantime.
 	cs.mu.Lock()
 	_, ok = cs.contracts[id]
 	cs.mu.Unlock()
 	if !ok {
-		safeContract.mu.Unlock()
+		safeContract.revisionMu.Unlock()
 		return nil, false
 	}
 	return safeContract, true
@@ -67,7 +67,7 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	delete(cs.contracts, c.header.ID())
 	delete(cs.pubKeys, c.header.HostPublicKey().String())
 	cs.mu.Unlock()
-	c.mu.Unlock()
+	c.revisionMu.Unlock()
 	// delete contract file
 	path := filepath.Join(cs.dir, c.header.ID().String()+contractExtension)
 	err := errors.Compose(c.headerFile.Close(), os.Remove(path))
@@ -122,7 +122,7 @@ func (cs *ContractSet) Return(c *SafeContract) {
 		build.Critical("no contract with that key")
 	}
 	cs.mu.Unlock()
-	c.mu.Unlock()
+	c.revisionMu.Unlock()
 }
 
 // RateLimits sets the bandwidth limits for connections created by the
