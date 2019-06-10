@@ -493,7 +493,7 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
 func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.delete(siaPath)
+	return sfs.deleteFile(siaPath)
 }
 
 // Exists checks to see if a file with the provided siaPath already exists in
