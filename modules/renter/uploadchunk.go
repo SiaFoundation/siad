@@ -329,11 +329,6 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 // chunk.data should be passed as 'nil' to the download, to keep memory usage as
 // light as possible.
 func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
-	// Only download this file if more than 25% of the redundancy is missing.
-	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
-	chunkHealth := 1 - (float64(chunk.piecesCompleted-chunk.minimumPieces) / numParityPieces)
-	download := chunkHealth >= siafile.RemoteRepairDownloadThreshold
-
 	// If a sourceReader is available, use it.
 	var err error
 	if chunk.sourceReader != nil {
@@ -363,7 +358,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	}
 
 	// Download the chunk if it's not on disk.
-	if chunk.fileEntry.LocalPath() == "" && download {
+	if chunk.fileEntry.LocalPath() == "" {
 		return r.managedDownloadLogicalChunkData(chunk)
 	} else if chunk.fileEntry.LocalPath() == "" {
 		return errors.New("file not available locally")
@@ -377,7 +372,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// data for the file should reside in the file metadata and not in a
 	// separate struct.
 	osFile, err := os.Open(chunk.fileEntry.LocalPath())
-	if err != nil && download {
+	if err != nil {
 		return r.managedDownloadLogicalChunkData(chunk)
 	} else if err != nil {
 		return errors.Extend(err, errors.New("failed to open file locally"))
@@ -389,7 +384,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
 	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 	_, err = buf.ReadFrom(sr)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF && download {
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		r.log.Debugln("failed to read file, downloading instead:", err)
 		return r.managedDownloadLogicalChunkData(chunk)
 	} else if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
@@ -507,13 +502,14 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	uc.mu.Lock()
 	index := uc.id.index
 	stuck := uc.stuck
+	minimumPieces := uc.minimumPieces
 	piecesCompleted := uc.piecesCompleted
 	piecesNeeded := uc.piecesNeeded
 	stuckRepair := uc.stuckRepair
 	uc.mu.Unlock()
 
-	// Determine if repair was successful
-	successfulRepair := (1-siafile.RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
+	// Determine if repair was successful.
+	successfulRepair := float64(piecesNeeded-piecesCompleted)/float64(piecesNeeded-minimumPieces) < RepairThreshold
 
 	// Check if renter is shutting down
 	var renterError bool

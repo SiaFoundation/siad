@@ -385,7 +385,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		_, err := os.Stat(chunk.fileEntry.LocalPath())
 		onDisk := err == nil
 		repairable := chunk.health <= 1 || onDisk
-		needsRepair := chunk.health >= siafile.RemoteRepairDownloadThreshold
+		needsRepair := chunk.health >= RepairThreshold
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
 		// repairable or if we are targetting stuck chunks
@@ -451,7 +451,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 		dir.mu.Unlock()
 
 		// If the directory that was just popped is healthy then return
-		if dirHealth < siafile.RemoteRepairDownloadThreshold {
+		if dirHealth < RepairThreshold {
 			return siaPaths, nil
 		}
 
@@ -666,7 +666,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	}
 
 	// Check if we should add the directory back to the directory heap
-	if worstIgnoredHealth < siafile.RemoteRepairDownloadThreshold {
+	if worstIgnoredHealth < RepairThreshold {
 		return
 	}
 
@@ -759,7 +759,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 		// information updated by bubble this cached health is accurate enough
 		// to use in order to determine if a file has any chunks that need
 		// repair
-		ignore := file.NumChunks() == file.NumStuckChunks() || file.Metadata().CachedHealth < siafile.RemoteRepairDownloadThreshold
+		ignore := file.NumChunks() == file.NumStuckChunks() || file.Metadata().CachedHealth < RepairThreshold
 		if target == targetUnstuckChunks && ignore {
 			err := file.Close()
 			if err != nil {
@@ -843,11 +843,12 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // loop will continue until the renter stops, there are no more chunks, or the
 // number of chunks in the uploadheap has dropped below the minUploadHeapSize
 func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
-	// smallRepair indicates whether or not the repair loop is starting off
-	// below minUploadHeapSize. This is the case with small file uploads, small
-	// file repairs, or repairs on mostly healthy file systems. In these cases
-	// we want to just drain the heap
-	smallRepair := r.uploadHeap.managedLen() < minUploadHeapSize
+	// smallRepair indicates whether or not the repair loop should process all
+	// of the chunks in the heap instead of just processing down to the minimum
+	// heap size. We want to process all of the chunks if the rest of the
+	// directory heap is in good health and there are no more chunks that could
+	// be added to the heap.
+	smallRepair := r.directoryHeap.managedPeekHealth() < RepairThreshold
 
 	// Work through the heap repairing chunks until heap is empty for
 	// smallRepairs or heap drops below minUploadHeapSize for larger repairs
@@ -967,6 +968,11 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Add any backups that weren't fully uploaded before the renter
 		// shutdown
 		heapLen := r.uploadHeap.managedLen()
+		// TODO: This line is not obvious. How does the code below result in
+		// loading the backups? Why is 'managedRefreshHostsAndWorkers()' called
+		// as a parameter?
+		//
+		// TODO: Is this line only meant to be handled once at startup?
 		r.managedBuildChunkHeap(modules.RootSiaPath(), r.managedRefreshHostsAndWorkers(), targetBackupChunks)
 		numBackupchunks := r.uploadHeap.managedLen() - heapLen
 		if numBackupchunks > 0 {
@@ -980,7 +986,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Check if the file system is healthy and the upload heap is empty
-		if r.directoryHeap.managedPeekHealth() < siafile.RemoteRepairDownloadThreshold && r.uploadHeap.managedLen() == 0 {
+		if r.directoryHeap.managedPeekHealth() < RepairThreshold && r.uploadHeap.managedLen() == 0 {
 			// If the file system is healthy then block until there is a new
 			// upload or there is a repair that is needed.
 			select {
@@ -1006,7 +1012,10 @@ func (r *Renter) threadedUploadAndRepair() {
 			// Reset directory heap by re-initializing it if the heap is still
 			// healthy. We do this check to make sure a directory wasn't added
 			// by another thread that needs to be repaired.
-			if r.directoryHeap.managedPeekHealth() < siafile.RemoteRepairDownloadThreshold {
+			//
+			// TODO: This needs to be performed under a lock that wraps both the
+			// check and the init to be thread safe.
+			if r.directoryHeap.managedPeekHealth() < RepairThreshold {
 				err = r.managedInitDirectoryHeap()
 				if err != nil {
 					// If there is an error initializing the directory heap log

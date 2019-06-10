@@ -185,7 +185,7 @@ func testStreamLargeFile(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 	// Upload file, creating a piece for each host in the group
-	dataPieces := uint64(1)
+	dataPieces := uint64(2)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	ct := crypto.TypeDefaultRenter
 	fileSize := int(10 * siatest.ChunkSize(dataPieces, ct))

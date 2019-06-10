@@ -378,7 +378,7 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 	// loops start at the root directory so there is no point triggering them
 	// until the root directory is updated
 	if siaPath.IsRoot() {
-		if metadata.AggregateHealth >= siafile.RemoteRepairDownloadThreshold {
+		if metadata.AggregateHealth >= RepairThreshold {
 			select {
 			case r.uploadHeap.repairNeeded <- struct{}{}:
 			default:
