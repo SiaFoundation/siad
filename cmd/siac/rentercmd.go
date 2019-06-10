@@ -207,6 +207,7 @@ func rentercmd() {
 	}
 
 	// Print Allowance info
+	fmt.Println()
 	fmt.Printf(`Allowance:`)
 	if rg.Settings.Allowance.Funds.IsZero() {
 		fmt.Printf("      0 SC (No current allowance)\n")
@@ -221,6 +222,7 @@ func rentercmd() {
 	}
 
 	// File and Contract Data
+	fmt.Println()
 	fmt.Printf(`Data Storage:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
