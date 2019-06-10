@@ -582,7 +582,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				continue
 			}
 
-			if info.Health > siafile.RemoteRepairDownloadThreshold {
+			if info.Health >= RepairThreshold {
 				// not ready for upload yet
 				continue
 			}

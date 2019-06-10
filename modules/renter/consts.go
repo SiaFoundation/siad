@@ -29,6 +29,15 @@ var (
 		Standard: 20,
 		Testing:  8,
 	}).(int)
+
+	// RepairThreshold defines the threshold at which the renter decides to
+	// repair a file. The renter will start repairing the file when the health
+	// is equal to or greater than this value.
+	RepairThreshold = build.Select(build.Var{
+		Dev:      0.25,
+		Standard: 0.25,
+		Testing:  0.25,
+	}).(float64)
 )
 
 // Default memory usage parameters.
