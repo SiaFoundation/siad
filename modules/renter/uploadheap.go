@@ -357,6 +357,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		// Create unfinishedUploadChunk
 		chunk, err := r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false)
 		if err != nil {
+			r.log.Debugln("Error when building an unfinished chunk:", err)
 			continue
 		}
 		newUnfinishedChunks = append(newUnfinishedChunks, chunk)
