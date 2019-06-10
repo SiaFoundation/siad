@@ -265,7 +265,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// post-revision contract.
 	//
 	// TODO: update this for non-local root storage
-	walTxn, err := sc.recordUploadIntent(rev, crypto.Hash{}, storagePrice, bandwidthPrice)
+	walTxn, err := sc.managedRecordUploadIntent(rev, crypto.Hash{}, storagePrice, bandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -363,7 +363,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// update contract
 	//
 	// TODO: unnecessary?
-	err = sc.commitUpload(walTxn, txn, crypto.Hash{}, storagePrice, bandwidthPrice)
+	err = sc.managedCommitUpload(walTxn, txn, crypto.Hash{}, storagePrice, bandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -463,7 +463,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
-	walTxn, err := sc.recordDownloadIntent(rev, price)
+	walTxn, err := sc.managedRecordDownloadIntent(rev, price)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -553,7 +553,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	}
 
 	// update contract and metrics
-	if err := sc.commitDownload(walTxn, txn, price); err != nil {
+	if err := sc.managedCommitDownload(walTxn, txn, price); err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -642,7 +642,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
-	walTxn, err := sc.recordDownloadIntent(rev, price)
+	walTxn, err := sc.managedRecordDownloadIntent(rev, price)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -676,7 +676,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	txn.TransactionSignatures[1].Signature = resp.Signature
 
 	// update contract and metrics
-	if err := sc.commitDownload(walTxn, txn, price); err != nil {
+	if err := sc.managedCommitDownload(walTxn, txn, price); err != nil {
 		return modules.RenterContract{}, nil, err
 	}
 
@@ -811,7 +811,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 	if err != nil {
 		s.Close()
 		return nil, err
-	} else if err := sc.syncRevision(rev, sigs); err != nil {
+	} else if err := sc.managedSyncRevision(rev, sigs); err != nil {
 		s.Close()
 		return nil, err
 	}

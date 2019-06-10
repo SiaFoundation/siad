@@ -259,7 +259,7 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 	return c.merkleRoots.insert(index, root)
 }
 
-func (c *SafeContract) recordUploadIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -284,7 +284,7 @@ func (c *SafeContract) recordUploadIntent(rev types.FileContractRevision, root c
 	return t, nil
 }
 
-func (c *SafeContract) commitUpload(t *writeaheadlog.Transaction, signedTxn types.Transaction, root crypto.Hash, storageCost, bandwidthCost types.Currency) error {
+func (c *SafeContract) managedCommitUpload(t *writeaheadlog.Transaction, signedTxn types.Transaction, root crypto.Hash, storageCost, bandwidthCost types.Currency) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -309,7 +309,7 @@ func (c *SafeContract) commitUpload(t *writeaheadlog.Transaction, signedTxn type
 	return nil
 }
 
-func (c *SafeContract) recordDownloadIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+func (c *SafeContract) managedRecordDownloadIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -332,7 +332,7 @@ func (c *SafeContract) recordDownloadIntent(rev types.FileContractRevision, band
 	return t, nil
 }
 
-func (c *SafeContract) commitDownload(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
+func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -353,9 +353,9 @@ func (c *SafeContract) commitDownload(t *writeaheadlog.Transaction, signedTxn ty
 	return nil
 }
 
-// commitTxns commits the unapplied transactions to the contract file and marks
+// managedCommitTxns commits the unapplied transactions to the contract file and marks
 // the transactions as applied.
-func (c *SafeContract) commitTxns() error {
+func (c *SafeContract) managedCommitTxns() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, t := range c.unappliedTxns {
@@ -390,12 +390,12 @@ func (c *SafeContract) commitTxns() error {
 	return nil
 }
 
-// syncRevision checks whether rev accords with the SafeContract's most recent
-// revision; if it does not, syncRevision attempts to synchronize with rev by
-// committing any uncommitted WAL transactions. If the revisions still do not
-// match, and the host's revision is ahead of the renter's, syncRevision uses
-// the host's revision.
-func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) error {
+// managedSyncRevision checks whether rev accords with the SafeContract's most
+// recent revision; if it does not, managedSyncRevision attempts to synchronize
+// with rev by committing any uncommitted WAL transactions. If the revisions
+// still do not match, and the host's revision is ahead of the renter's,
+// managedSyncRevision uses the host's revision.
+func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -592,7 +592,7 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 
 	// apply the wal txns if necessary.
 	if applyTxns {
-		if err := sc.commitTxns(); err != nil {
+		if err := sc.managedCommitTxns(); err != nil {
 			return err
 		}
 	}
@@ -627,9 +627,9 @@ func (cs *ContractSet) ConvertV130Contract(c V130Contract, cr V130CachedRevision
 		defer cs.Return(sc)
 		if len(cr.MerkleRoots) == sc.merkleRoots.len()+1 {
 			root := cr.MerkleRoots[len(cr.MerkleRoots)-1]
-			_, err = sc.recordUploadIntent(cr.Revision, root, types.ZeroCurrency, types.ZeroCurrency)
+			_, err = sc.managedRecordUploadIntent(cr.Revision, root, types.ZeroCurrency, types.ZeroCurrency)
 		} else {
-			_, err = sc.recordDownloadIntent(cr.Revision, types.ZeroCurrency)
+			_, err = sc.managedRecordDownloadIntent(cr.Revision, types.ZeroCurrency)
 		}
 		if err != nil {
 			return err

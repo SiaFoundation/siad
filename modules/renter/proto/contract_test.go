@@ -62,7 +62,7 @@ func TestContractUncommittedTxn(t *testing.T) {
 	newRoot := revisedRoots[1]
 	storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
 	bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
-	walTxn, err := sc.recordUploadIntent(fcr, newRoot, storageCost, bandwidthCost)
+	walTxn, err := sc.managedRecordUploadIntent(fcr, newRoot, storageCost, bandwidthCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestContractUncommittedTxn(t *testing.T) {
 	}
 
 	// apply the uncommitted transaction
-	err = sc.commitTxns()
+	err = sc.managedCommitTxns()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestContractIncompleteWrite(t *testing.T) {
 	newRoot := revisedRoots[1]
 	storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
 	bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
-	_, err = sc.recordUploadIntent(fcr, newRoot, storageCost, bandwidthCost)
+	_, err = sc.managedRecordUploadIntent(fcr, newRoot, storageCost, bandwidthCost)
 	if err != nil {
 		t.Fatal(err)
 	}
