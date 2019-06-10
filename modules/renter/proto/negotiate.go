@@ -132,7 +132,7 @@ func verifyRecentRevision(conn net.Conn, contract *SafeContract, hostVersion str
 	} else if lastRevision.NewRevisionNumber != ourRev.NewRevisionNumber {
 		// If the revision number doesn't match try to commit potential
 		// unapplied transactions and check again.
-		if err := contract.commitTxns(); err != nil {
+		if err := contract.managedCommitTxns(); err != nil {
 			return errors.AddContext(err, "failed to commit transactions")
 		}
 		ourRev = contract.header.LastRevision()
