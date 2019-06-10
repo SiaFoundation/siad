@@ -88,6 +88,7 @@ func (ws *WalletBridge) PrimarySeed() (modules.Seed, uint64, error) { return ws.
 // and sign a transaction.
 func (ws *WalletBridge) StartTransaction() (transactionBuilder, error) { return ws.W.StartTransaction() }
 
+// Unlocked reports whether the wallet bridge is unlocked.
 func (ws *WalletBridge) Unlocked() (bool, error) { return ws.W.Unlocked() }
 
 // stdPersist implements the persister interface. The filename required by
