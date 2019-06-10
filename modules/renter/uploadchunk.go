@@ -360,22 +360,13 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// Download the chunk if it's not on disk.
 	if chunk.fileEntry.LocalPath() == "" {
 		return r.managedDownloadLogicalChunkData(chunk)
-	} else if chunk.fileEntry.LocalPath() == "" {
-		return errors.New("file not available locally")
 	}
 
 	// Try to read the data from disk. If that fails at any point, prefer to
 	// download the chunk.
-	//
-	// TODO: Might want to remove the file from the renter tracking if the disk
-	// loading fails. Should do this after we swap the file format, the tracking
-	// data for the file should reside in the file metadata and not in a
-	// separate struct.
 	osFile, err := os.Open(chunk.fileEntry.LocalPath())
 	if err != nil {
 		return r.managedDownloadLogicalChunkData(chunk)
-	} else if err != nil {
-		return errors.Extend(err, errors.New("failed to open file locally"))
 	}
 	defer osFile.Close()
 	// TODO: Once we have enabled support for small chunks, we should stop
@@ -387,9 +378,6 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		r.log.Debugln("failed to read file, downloading instead:", err)
 		return r.managedDownloadLogicalChunkData(chunk)
-	} else if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		r.log.Debugln("failed to read file locally:", err)
-		return errors.Extend(err, errors.New("failed to read file locally"))
 	}
 	chunk.logicalChunkData = buf.buf
 
