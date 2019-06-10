@@ -191,19 +191,19 @@ func (uh *uploadHeap) managedReset() error {
 }
 
 // buildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool) *unfinishedUploadChunk {
+func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool) (*unfinishedUploadChunk, error) {
 	// Copy entry
-	copy, err := entry.CopyEntry()
+	entryCopy, err := entry.CopyEntry()
 	if err != nil {
 		r.log.Println("WARN: unable to copy siafile entry:", err)
-		return nil
+		return nil, errors.AddContext(err, "unable to copy file entry when trying to build the unfinished chunk")
 	}
-	if copy == nil {
+	if entryCopy == nil {
 		build.Critical("nil file entry return from CopyEntry, and no error should have been returned")
-		return nil
+		return nil, errors.New("CopyEntry returned a nil copy")
 	}
 	uuc := &unfinishedUploadChunk{
-		fileEntry: copy,
+		fileEntry: entryCopy,
 
 		id: uploadChunkID{
 			fileUID: entry.UID(),
@@ -249,7 +249,7 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 		if err := entry.SetStuck(chunkIndex, true); err != nil {
 			r.log.Printf("failed to set chunk %v stuck: %v", chunkIndex, err)
 		}
-		return nil
+		return nil, errors.AddContext(err, "error trying to get the pieces for the chunk")
 	}
 	for pieceIndex, pieceSet := range pieces {
 		for _, piece := range pieceSet {
@@ -287,7 +287,7 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 	// Now that we have calculated the completed pieces for the chunk we can
 	// calculate the health of the chunk to avoid a call to ChunkHealth
 	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.minimumPieces) / float64(uuc.piecesNeeded-uuc.minimumPieces))
-	return uuc
+	return uuc, nil
 }
 
 // buildUnfinishedChunks will pull all of the unfinished chunks out of a file.
@@ -347,23 +347,20 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 	}
 
 	// Assemble the set of chunks.
-	//
-	// TODO / NOTE: Future files may have a different method for determining the
-	// number of chunks. Changes will be made due to things like sparse files,
-	// and the fact that chunks are going to be different sizes.
-	newUnfinishedChunks := make([]*unfinishedUploadChunk, len(chunkIndexes))
-	for i, index := range chunkIndexes {
+	newUnfinishedChunks := make([]*unfinishedUploadChunk, 0, len(chunkIndexes))
+	for _, index := range chunkIndexes {
 		// Sanity check: fileUID should not be the empty value.
 		if entry.UID() == "" {
 			build.Critical("empty string for file UID")
 		}
 
 		// Create unfinishedUploadChunk
-		chunk := r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false)
-		if chunk == nil {
+		chunk, err := r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false)
+		if err != nil {
+			r.log.Debugln("Error when building an unfinished chunk:", err)
 			continue
 		}
-		newUnfinishedChunks[i] = chunk
+		newUnfinishedChunks = append(newUnfinishedChunks, chunk)
 	}
 
 	// Iterate through the set of newUnfinishedChunks and remove any that are

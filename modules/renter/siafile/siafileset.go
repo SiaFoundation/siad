@@ -99,31 +99,36 @@ func (entry *SiaFileSetEntry) CopyEntry() (*SiaFileSetEntry, error) {
 	// Grab siafile set lock
 	entry.staticSiaFileSet.mu.Lock()
 	defer entry.staticSiaFileSet.mu.Unlock()
-	// Check if entry is deleted, we don't want to make a copy of a deleted
-	// entry
+
+	// Check if entry is deleted, we will not make a copy of a deleted file.
 	if entry.Deleted() {
 		return nil, errors.New("can't make copy of deleted siafile entry")
 	}
+
 	// Sanity Check that the entry is currently in the SiaFileSet
 	_, exists := entry.staticSiaFileSet.siaFileMap[entry.UID()]
 	if !exists {
+		// If the file is deleted, it should be marked as delted. If the file is
+		// renamed, it should still have the same UID. The entry is coming from
+		// an existing entry, so the entry should still be in memory because not
+		// all of the entries have been closed. There shouldn't be a case where
+		// the entry does not exist in the siafile set for this code if it's not
+		// deleted.
+		build.Critical("provided entry does not exist in the SiaFileSet, but has not been marked as deleted")
 		return nil, errors.New("siafile entry not found in siafileset")
 	}
-	// Create copy
+
+	// Create the copy of the entry. Both the original entry and the copied
+	// entry will need to be closed.
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
-	copy := &SiaFileSetEntry{
+	entryCopy := &SiaFileSetEntry{
 		siaFileSetEntry: entry.siaFileSetEntry,
 		threadUID:       threadUID,
 	}
-	// sanity check that copy isn't nil
-	if copy == nil {
-		build.Critical("nil copy is about to be returned from CopyEntry")
-		return nil, errors.New("unable to create copy")
-	}
-	return copy, nil
+	return entryCopy, nil
 }
 
 // Close will close the set entry, removing the entry from memory if there are
@@ -221,7 +226,7 @@ func (sfs *SiaFileSet) createAndApplyTransaction(updates ...writeaheadlog.Update
 }
 
 // delete deletes the SiaFileSetEntry's SiaFile
-func (sfs *SiaFileSet) delete(siaPath modules.SiaPath) error {
+func (sfs *SiaFileSet) deleteFile(siaPath modules.SiaPath) error {
 	// Fetch the corresponding siafile and call delete.
 	//
 	// NOTE: since we are just accessing the entry directly from the map while
@@ -488,7 +493,7 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
 func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.delete(siaPath)
+	return sfs.deleteFile(siaPath)
 }
 
 // Exists checks to see if a file with the provided siaPath already exists in
