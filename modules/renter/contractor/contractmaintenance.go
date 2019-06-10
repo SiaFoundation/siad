@@ -988,7 +988,8 @@ func (c *Contractor) threadedContractMaintenance() {
 	// (refreshSet). If there is not enough money available, the more expensive
 	// contracts will be skipped.
 	for _, renewal := range renewSet {
-		if !c.wallet.Unlocked() {
+		unlocked, err := c.wallet.Unlocked()
+		if !unlocked || err != nil {
 			c.log.Println("contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
 			return
 		}
@@ -1023,7 +1024,8 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 	}
 	for _, renewal := range refreshSet {
-		if !c.wallet.Unlocked() {
+		unlocked, err := c.wallet.Unlocked()
+		if !unlocked || err != nil {
 			c.log.Println("contractor is attempting to refresh contracts that have run out of funds, however the wallet is locked")
 			return
 		}
@@ -1105,7 +1107,8 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
-		if !c.wallet.Unlocked() {
+		unlocked, err := c.wallet.Unlocked()
+		if !unlocked || err != nil {
 			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
 			return
 		}
