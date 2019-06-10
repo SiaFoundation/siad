@@ -784,6 +784,17 @@ func (c *Contractor) managedFindRecoverableContracts() {
 	}
 }
 
+// managedUpdateContractUtility is a helper function that acquires a contract, updates
+// its ContractUtility and returns the contract again.
+func (c *Contractor) managedUpdateContractUtility(id types.FileContractID, utility modules.ContractUtility) error {
+	safeContract, ok := c.staticContracts.Acquire(id)
+	if !ok {
+		return errors.New("failed to acquire contract for update")
+	}
+	defer c.staticContracts.Return(safeContract)
+	return safeContract.UpdateUtility(utility)
+}
+
 // threadedContractMaintenance checks the set of contracts that the contractor
 // has against the allownace, renewing any contracts that need to be renewed,
 // dropping contracts which are no longer worthwhile, and adding contracts if
@@ -1151,15 +1162,4 @@ func (c *Contractor) threadedContractMaintenance() {
 		default:
 		}
 	}
-}
-
-// managedUpdateContractUtility is a helper function that acquires a contract, updates
-// its ContractUtility and returns the contract again.
-func (c *Contractor) managedUpdateContractUtility(id types.FileContractID, utility modules.ContractUtility) error {
-	safeContract, ok := c.staticContracts.Acquire(id)
-	if !ok {
-		return errors.New("failed to acquire contract for update")
-	}
-	defer c.staticContracts.Return(safeContract)
-	return safeContract.UpdateUtility(utility)
 }
