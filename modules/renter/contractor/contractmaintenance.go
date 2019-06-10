@@ -65,13 +65,6 @@ func (c *Contractor) managedCheckForDuplicates() {
 
 			// Link the contracts to each other and then store the old contract
 			// in the record of historic contracts.
-			//
-			// TODO: This code assumes that the contracts are linked because
-			// they share a host, but it's not guaranteed that just be cause two
-			// contracts have the same host that one is a renewal of the other.
-			// This code also ensures that a renter can only ever have a single
-			// contract with a host, which is not a restriction that we want to
-			// be locked into.
 			c.mu.Lock()
 			c.renewedFrom[newContract.ID] = oldContract.ID
 			c.renewedTo[oldContract.ID] = newContract.ID
@@ -984,8 +977,10 @@ func (c *Contractor) threadedContractMaintenance() {
 	// (refreshSet). If there is not enough money available, the more expensive
 	// contracts will be skipped.
 	for _, renewal := range renewSet {
-		// TODO: Check if the wallet is unlocked here. If the wallet is locked,
-		// exit here.
+		if !c.wallet.Unlocked() {
+			c.log.Println("contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
+			return
+		}
 
 		c.log.Println("Attempting to perform a renewal:", renewal.id)
 		// Skip this renewal if we don't have enough funds remaining.
@@ -1017,8 +1012,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 	}
 	for _, renewal := range refreshSet {
-		// TODO: Check if the wallet is unlocked here. If the wallet is locked,
-		// exit here.
+		if !c.wallet.Unlocked() {
+			c.log.Println("contractor is attempting to refresh contracts that have run out of funds, however the wallet is locked")
+			return
+		}
 
 		// Skip this renewal if we don't have enough funds remaining.
 		c.log.Debugln("Attempting to perform a contract refresh:", renewal.id)
@@ -1097,8 +1094,10 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
-		// TODO: Check if the wallet is unlocked here. If the wallet is locked,
-		// exit here.
+		if !c.wallet.Unlocked() {
+			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
+			return
+		}
 
 		// Determine if we have enough money to form a new contract.
 		if fundsRemaining.Cmp(initialContractFunds) < 0 {
