@@ -252,7 +252,8 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 	// Find the minimum score that a host is allowed to have to be considered
 	// good for upload.
-	var minScore types.Currency
+	var minScoreGFR types.Currency
+	var minScoreGFU types.Currency
 	if len(hosts) > 0 {
 		sb, err := c.hdb.ScoreBreakdown(hosts[0])
 		if err != nil {
@@ -269,7 +270,8 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			}
 		}
 		// Set the minimum acceptable score to a factor of the lowest score.
-		minScore = lowestScore.Div(scoreLeeway)
+		minScoreGFR = lowestScore.Div(scoreLeewayGoodForRenew)
+		minScoreGFU = lowestScore.Div(scoreLeewayGoodForUpload)
 	}
 
 	// Update utility fields for each contract.
@@ -300,10 +302,21 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			if err != nil {
 				return u, err
 			}
-			if !minScore.IsZero() && sb.Score.Cmp(minScore) < 0 {
+			if !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0 {
 				// Log if the utility has changed.
 				if u.GoodForUpload || u.GoodForRenew {
-					c.log.Printf("Marking contract as having no utility because of host score: %v, minScore: %v - %v", sb.Score, minScore, contract.ID)
+					c.log.Printf("Marking contract as having no utility because of host score: %v", contract.ID)
+					c.log.Println("Min Score:", minScoreGFR)
+					c.log.Println("Score:    ", sb.Score)
+					c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
+					c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
+					c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
+					c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
+					c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
+					c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
+					c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
+					c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
+					c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
 				}
 				u.GoodForUpload = false
 				u.GoodForRenew = false
@@ -318,6 +331,30 @@ func (c *Contractor) managedMarkContractsUtility() error {
 				}
 				u.GoodForUpload = false
 				u.GoodForRenew = false
+				return u, nil
+			}
+
+			// Contract should not be used for uplodaing if the score is poor.
+			if !minScoreGFU.IsZero() && sb.Score.Cmp(minScoreGFU) < 0 {
+				if u.GoodForUpload {
+					c.log.Println("Marking contract as not good for upload because of a poor score", contract.ID)
+					c.log.Println("Min Score:", minScoreGFU)
+					c.log.Println("Score:    ", sb.Score)
+					c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
+					c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
+					c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
+					c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
+					c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
+					c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
+					c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
+					c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
+					c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
+				}
+				if !u.GoodForRenew {
+					c.log.Println("Marking contract as being good for renew", contract.ID)
+				}
+				u.GoodForUpload = false
+				u.GoodForRenew = true
 				return u, nil
 			}
 
@@ -1133,6 +1170,21 @@ func (c *Contractor) threadedContractMaintenance() {
 			continue
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
+
+		sb, err := c.hdb.ScoreBreakdown(host)
+		if err == nil {
+			c.log.Println("A new contract has been formed with a host:", newContract.ID)
+			c.log.Println("Score:    ", sb.Score)
+			c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
+			c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
+			c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
+			c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
+			c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
+			c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
+			c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
+			c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
+			c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
+		}
 
 		// Add this contract to the contractor and save.
 		err = c.managedUpdateContractUtility(newContract.ID, modules.ContractUtility{
