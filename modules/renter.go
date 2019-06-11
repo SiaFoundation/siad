@@ -204,6 +204,7 @@ type DirectoryInfo struct {
 	AggregateHealth              float64   `json:"aggregatehealth"`
 	AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
 	AggregateMaxHealth           float64   `json:"aggregatemaxhealth"`
+	AggregateMaxHealthPercentage float64   `json:"aggregatemaxhealthpercentage"`
 	AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
 	AggregateMostRecentModTime   time.Time `json:"aggregatemostrecentmodtime"`
 	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
@@ -216,6 +217,7 @@ type DirectoryInfo struct {
 	// an aggregate of the entire sub directory tree
 	Health              float64   `json:"health"`
 	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+	MaxHealthPercentage float64   `json:"maxhealthpercentage"`
 	MaxHealth           float64   `json:"maxhealth"`
 	MinRedundancy       float64   `json:"minredundancy"`
 	MostRecentModTime   time.Time `json:"mostrecentmodtime"`
