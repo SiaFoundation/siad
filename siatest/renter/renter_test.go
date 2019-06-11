@@ -942,7 +942,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to create a new host", err)
 	}
-	// When doing remote repair the redundancy might not reach 100%.
+	// Wait for the file to be healthy.
 	if err := r.WaitForUploadHealth(remoteFile); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}

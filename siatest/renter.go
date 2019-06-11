@@ -286,7 +286,7 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 	if err = tn.WaitForUploadProgress(remoteFile, 1); err != nil {
 		return nil, nil, err
 	}
-	// Wait until upload reaches a certain redundancy
+	// Wait until upload reaches a certain health
 	err = tn.WaitForUploadHealth(remoteFile)
 	return localFile, remoteFile, err
 }
@@ -336,7 +336,7 @@ func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, pari
 		return nil, err
 	}
 
-	// Wait until upload reaches a certain redundancy
+	// Wait until upload reaches a certain health
 	err = tn.WaitForUploadHealth(remoteFile)
 	return remoteFile, err
 }
