@@ -681,6 +681,9 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			if len(contracts) != 0 {
 				syncedContracts = make(map[types.FileContractID]struct{})
 				for _, c := range contracts {
+					if !c.Utility.GoodForRenew || !c.Utility.GoodForUpload {
+						continue
+					}
 					syncedContracts[c.ID] = struct{}{}
 				}
 			}
