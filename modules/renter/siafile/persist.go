@@ -352,7 +352,7 @@ func (sf *SiaFile) chunk(chunkIndex int) (chunk, error) {
 		return chunk{}, errors.AddContext(err, "failed to open file to read chunk")
 	}
 	defer f.Close()
-	if _, err := f.ReadAt(chunkBytes, chunkOffset); err != nil {
+	if _, err := f.ReadAt(chunkBytes, chunkOffset); err != nil && err != io.EOF {
 		return chunk{}, errors.AddContext(err, "failed to read chunk from disk")
 	}
 	c, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
