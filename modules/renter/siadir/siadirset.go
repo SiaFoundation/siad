@@ -93,14 +93,14 @@ func randomThreadUID() uint64 {
 // the health is worse than the RepairThreshold, a health of 0 - 0.25 is full
 // health. Likewise, a health that is greater than 1.25 is essentially 0 health.
 func HealthPercentage(health float64) float64 {
-	healthPercent := 1.25 - health
-	if healthPercent > 1 {
-		healthPercent = 1
+	healthPercent := 100 * (1.25 - health)
+	if healthPercent > 100 {
+		healthPercent = 100
 	}
 	if healthPercent < 0 {
 		health = 0
 	}
-	return 100 * healthPercent
+	return healthPercent
 }
 
 // NewSiaDirSet initializes and returns a SiaDirSet
