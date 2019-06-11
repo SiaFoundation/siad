@@ -1,11 +1,10 @@
 package renter
 
 import (
-	"math"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
+
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -61,50 +60,29 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+
+	// Call threadedBubbleMetadata on the old directory to make sure the system
+	// metadata is updated to reflect the move
+	defer func() error {
+		dirSiaPath, err := siaPath.Dir()
+		if err != nil {
+			return err
+		}
+		go r.threadedBubbleMetadata(dirSiaPath)
+		return nil
+	}()
+
 	return r.staticFileSet.Delete(siaPath)
 }
 
 // FileList returns all of the files that the renter has.
-func (r *Renter) FileList() ([]modules.FileInfo, error) {
+func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]modules.FileInfo, error) {
 	if err := r.tg.Add(); err != nil {
 		return []modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	fileList := []modules.FileInfo{}
-	err := filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
-		// This error is non-nil if filepath.Walk couldn't stat a file or
-		// folder. We simply ignore missing files.
-		if os.IsNotExist(err) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-
-		// Skip folders and non-sia files.
-		if info.IsDir() || filepath.Ext(path) != modules.SiaFileExtension {
-			return nil
-		}
-
-		// Load the Siafile.
-		str := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), modules.SiaFileExtension)
-		siaPath, err := modules.NewSiaPath(str)
-		if err != nil {
-			return err
-		}
-		file, err := r.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
-		if os.IsNotExist(err) || err == siafile.ErrUnknownPath {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		fileList = append(fileList, file)
-		return nil
-	})
-
-	return fileList, err
+	return r.staticFileSet.FileList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
 }
 
 // File returns file from siaPath queried by user.
@@ -115,7 +93,7 @@ func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 	}
 	defer r.tg.Done()
 	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
-	return r.fileInfo(siaPath, offline, goodForRenew, contracts)
+	return r.staticFileSet.FileInfo(siaPath, offline, goodForRenew, contracts)
 }
 
 // RenameFile takes an existing file and changes the nickname. The original
@@ -126,55 +104,49 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticFileSet.Rename(currentName, newName)
+	// Rename file
+	err := r.staticFileSet.Rename(currentName, newName)
+	if err != nil {
+		return err
+	}
+	// Call threadedBubbleMetadata on the old directory to make sure the system
+	// metadata is updated to reflect the move
+	dirSiaPath, err := currentName.Dir()
+	if err != nil {
+		return err
+	}
+	go r.threadedBubbleMetadata(dirSiaPath)
+
+	// Create directory metadata for new path, ignore errors if siadir already
+	// exists
+	dirSiaPath, err = newName.Dir()
+	if err != nil {
+		return err
+	}
+	err = r.CreateDir(dirSiaPath)
+	if err != siadir.ErrPathOverload && err != nil {
+		return err
+	}
+	// Call threadedBubbleMetadata on the new directory to make sure the system
+	// metadata is updated to reflect the move
+	go r.threadedBubbleMetadata(dirSiaPath)
+	return nil
 }
 
-// fileInfo returns information on a siafile. As a performance optimization, the
-// fileInfo takes the maps returned by renter.managedContractUtilityMaps as
-// many files at once.
-func (r *Renter) fileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
-	// Get the file and its contracts
+// SetFileStuck sets the Stuck field of the whole siafile to stuck.
+func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	// Open the file.
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
-		return modules.FileInfo{}, err
+		return err
 	}
 	defer entry.Close()
-
-	// Build the FileInfo
-	var onDisk bool
-	localPath := entry.LocalPath()
-	if localPath != "" {
-		_, err = os.Stat(localPath)
-		onDisk = err == nil
-	}
-	redundancy := entry.Redundancy(offline, goodForRenew)
-	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
-	fileInfo := modules.FileInfo{
-		AccessTime:       entry.AccessTime(),
-		Available:        redundancy >= 1,
-		ChangeTime:       entry.ChangeTime(),
-		CipherType:       entry.MasterKey().Type().String(),
-		CreateTime:       entry.CreateTime(),
-		Expiration:       entry.Expiration(contracts),
-		Filesize:         entry.Size(),
-		Health:           health,
-		LocalPath:        localPath,
-		MaxHealth:        math.Max(health, stuckHealth),
-		MaxHealthPercent: entry.HealthPercentage(math.Max(health, stuckHealth)),
-		ModTime:          entry.ModTime(),
-		NumStuckChunks:   numStuckChunks,
-		OnDisk:           onDisk,
-		Recoverable:      onDisk || redundancy >= 1,
-		Redundancy:       redundancy,
-		Renewing:         true,
-		SiaPath:          entry.SiaPath().String(),
-		Stuck:            numStuckChunks > 0,
-		StuckHealth:      stuckHealth,
-		UploadedBytes:    entry.UploadedBytes(),
-		UploadProgress:   entry.UploadProgress(),
-	}
-
-	return fileInfo, nil
+	// Update the file.
+	return entry.SetAllStuck(stuck)
 }
 
 // fileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
@@ -200,7 +172,7 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string, oldContracts []module
 		PieceSize:   f.pieceSize,
 		Mode:        os.FileMode(f.mode),
 		Deleted:     f.deleted,
-		UID:         f.staticUID,
+		UID:         siafile.SiafileUID(f.staticUID),
 	}
 	chunks := make([]siafile.FileChunk, f.numChunks())
 	for i := 0; i < len(chunks); i++ {

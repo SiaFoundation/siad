@@ -103,13 +103,19 @@ func (srv *Server) Serve() error {
 // the empty string. Usernames are ignored for authentication. This type of
 // authentication sends passwords in plaintext and should therefore only be
 // used if the APIaddr is localhost.
-func NewServer(APIaddr string, requiredUserAgent string, requiredPassword string, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) (*Server, error) {
+func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) (*Server, error) {
 	listener, err := net.Listen("tcp", APIaddr)
 	if err != nil {
 		return nil, err
 	}
 
-	api := New(requiredUserAgent, requiredPassword, cs, e, g, h, m, r, tp, w)
+	// Load the config file.
+	cfg, err := modules.NewConfig(filepath.Join(dir, "siad.config"))
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to load siad config")
+	}
+
+	api := New(cfg, requiredUserAgent, requiredPassword, cs, e, g, h, m, r, tp, w)
 	srv := &Server{
 		api: api,
 		apiServer: &http.Server{
@@ -191,7 +197,7 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 	if err != nil {
 		return nil, err
 	}
-	srv, err := NewServer("localhost:0", "Sia-Agent", "", cs, nil, g, h, m, r, tp, w)
+	srv, err := NewServer(testdir, "localhost:0", "Sia-Agent", "", cs, nil, g, h, m, r, tp, w)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +221,7 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 	// TODO: A more reasonable way of listening for server errors.
 	go func() {
 		listenErr := srv.Serve()
-		if listenErr != nil {
+		if listenErr != nil && !strings.Contains(listenErr.Error(), "ThreadGroup already stopped") {
 			panic(listenErr)
 		}
 	}()
@@ -275,7 +281,7 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	if err != nil {
 		return nil, err
 	}
-	srv, err := NewServer("localhost:0", "Sia-Agent", requiredPassword, cs, nil, g, h, m, r, tp, w)
+	srv, err := NewServer(testdir, "localhost:0", "Sia-Agent", requiredPassword, cs, nil, g, h, m, r, tp, w)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +335,7 @@ func assembleExplorerServerTester(testdir string) (*serverTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	srv, err := NewServer("localhost:0", "", "", cs, e, g, nil, nil, nil, nil, nil)
+	srv, err := NewServer(testdir, "localhost:0", "", "", cs, e, g, nil, nil, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}

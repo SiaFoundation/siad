@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,7 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -33,6 +31,26 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 // dependencies.
 func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	return loadSiaFile(path, wal, modules.ProdDependencies)
+}
+
+// LoadSiaFileFromReader allows loading a SiaFile from a different location that
+// directly from disk as long as the source satisfies the SiaFileSource
+// interface.
+func LoadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
+	return loadSiaFileFromReader(r, path, wal, modules.ProdDependencies)
+}
+
+// LoadSiaFileMetadata is a wrapper for loadSiaFileMetadata that uses the
+// production dependencies.
+func LoadSiaFileMetadata(path string) (Metadata, error) {
+	return loadSiaFileMetadata(path, modules.ProdDependencies)
+}
+
+// SetSiaFilePath sets the path of the siafile on disk.
+func (sf *SiaFile) SetSiaFilePath(path string) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.siaFilePath = path
 }
 
 // applyUpdates applies a number of writeaheadlog updates to the corresponding
@@ -58,30 +76,59 @@ func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) er
 	return nil
 }
 
+// createDeleteUpdate is a helper method that creates a writeaheadlog for
+// deleting a file.
+func createDeleteUpdate(path string) writeaheadlog.Update {
+	return writeaheadlog.Update{
+		Name:         updateDeleteName,
+		Instructions: []byte(path),
+	}
+}
+
 // loadSiaFile loads a SiaFile from disk.
 func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
-	// Create the SiaFile
-	sf := &SiaFile{
-		deps:           deps,
-		staticUniqueID: hex.EncodeToString(fastrand.Bytes(8)),
-		siaFilePath:    path,
-		wal:            wal,
-	}
 	// Open the file.
-	f, err := sf.deps.Open(path)
+	f, err := deps.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	return loadSiaFileFromReader(f, path, wal, deps)
+}
+
+// loadSiaFileFromReader allows loading a SiaFile from a different location that
+// directly from disk as long as the source satisfies the SiaFileSource
+// interface.
+func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
+	// Create the SiaFile
+	sf := &SiaFile{
+		deps:        deps,
+		siaFilePath: path,
+		wal:         wal,
+	}
 	// Load the metadata.
-	decoder := json.NewDecoder(f)
-	if err := decoder.Decode(&sf.staticMetadata); err != nil {
+	decoder := json.NewDecoder(r)
+	err := decoder.Decode(&sf.staticMetadata)
+	if err != nil {
 		return nil, errors.AddContext(err, "failed to decode metadata")
+	}
+	// COMPATv137 legacy files might not have a unique id.
+	if sf.staticMetadata.UniqueID == "" {
+		sf.staticMetadata.UniqueID = uniqueID()
 	}
 	// Create the erasure coder.
 	sf.staticMetadata.staticErasureCode, err = unmarshalErasureCoder(sf.staticMetadata.StaticErasureCodeType, sf.staticMetadata.StaticErasureCodeParams)
 	if err != nil {
 		return nil, err
+	}
+	// COMPATv140 legacy 0-byte files might not have correct cached fields since we
+	// never update them once they are created.
+	if sf.staticMetadata.FileSize == 0 {
+		ec := sf.staticMetadata.staticErasureCode
+		sf.staticMetadata.CachedHealth = 0
+		sf.staticMetadata.CachedStuckHealth = 0
+		sf.staticMetadata.CachedRedundancy = float64(ec.NumPieces()) / float64(ec.MinPieces())
+		sf.staticMetadata.CachedUploadProgress = 100
 	}
 	// Load the pubKeyTable.
 	pubKeyTableLen := sf.staticMetadata.ChunkOffset - sf.staticMetadata.PubKeyTableOffset
@@ -89,7 +136,10 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		return nil, fmt.Errorf("pubKeyTableLen is %v, can't load file", pubKeyTableLen)
 	}
 	rawPubKeyTable := make([]byte, pubKeyTableLen)
-	if _, err := f.ReadAt(rawPubKeyTable, sf.staticMetadata.PubKeyTableOffset); err != nil {
+	if _, err := r.Seek(sf.staticMetadata.PubKeyTableOffset, io.SeekStart); err != nil {
+		return nil, errors.AddContext(err, "failed to seek to pubKeyTable")
+	}
+	if _, err := r.Read(rawPubKeyTable); err != nil {
 		return nil, errors.AddContext(err, "failed to read pubKeyTable from disk")
 	}
 	sf.pubKeyTable, err = unmarshalPubKeyTable(rawPubKeyTable)
@@ -97,7 +147,7 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		return nil, errors.AddContext(err, "failed to unmarshal pubKeyTable")
 	}
 	// Seek to the start of the chunks.
-	off, err := f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
+	off, err := r.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +158,7 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 	// Load the chunks.
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	for {
-		n, err := f.Read(chunkBytes)
+		n, err := r.Read(chunkBytes)
 		if n == 0 && err == io.EOF {
 			break
 		} else if err != nil {
@@ -118,9 +168,30 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		if err != nil {
 			return nil, err
 		}
-		sf.staticChunks = append(sf.staticChunks, chunk)
+		sf.chunks = append(sf.chunks, chunk)
 	}
 	return sf, nil
+}
+
+// loadSiaFileMetadata loads only the metadata of a SiaFile from disk.
+func loadSiaFileMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
+	// Open the file.
+	f, err := deps.Open(path)
+	if err != nil {
+		return Metadata{}, err
+	}
+	defer f.Close()
+	// Load the metadata.
+	decoder := json.NewDecoder(f)
+	if err = decoder.Decode(&md); err != nil {
+		return
+	}
+	// Create the erasure coder.
+	md.staticErasureCode, err = unmarshalErasureCoder(md.StaticErasureCodeType, md.StaticErasureCodeParams)
+	if err != nil {
+		return
+	}
+	return
 }
 
 // readAndApplyDeleteUpdate reads the delete update and applies it. This helper
@@ -296,9 +367,8 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	if sf.deleted {
 		return errors.New("can't call createAndApplyTransaction on deleted file")
 	}
-	// This should never be called on a deleted file.
-	if sf.deleted {
-		return errors.New("shouldn't apply updates on deleted file")
+	if len(updates) == 0 {
+		return nil
 	}
 	// Create the writeaheadlog transaction.
 	txn, err := sf.wal.NewTransaction(updates)
@@ -323,10 +393,7 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 // createDeleteUpdate is a helper method that creates a writeaheadlog for
 // deleting a file.
 func (sf *SiaFile) createDeleteUpdate() writeaheadlog.Update {
-	return writeaheadlog.Update{
-		Name:         updateDeleteName,
-		Instructions: []byte(sf.siaFilePath),
-	}
+	return createDeleteUpdate(sf.siaFilePath)
 }
 
 // createInsertUpdate is a helper method which creates a writeaheadlog update for
@@ -380,35 +447,29 @@ func (sf *SiaFile) saveFile() error {
 	if err != nil {
 		return errors.AddContext(err, "failed to to create save header updates")
 	}
-	chunksUpdates, err := sf.saveChunksUpdates()
-	if err != nil {
-		return errors.AddContext(err, "failed to create save chunks updates")
-	}
+	chunksUpdates := sf.saveChunksUpdates()
 	err = sf.createAndApplyTransaction(append(headerUpdates, chunksUpdates...)...)
 	return errors.AddContext(err, "failed to apply saveFile updates")
 }
 
 // saveChunkUpdate creates a writeaheadlog update that saves a single marshaled chunk
 // to disk when applied.
-func (sf *SiaFile) saveChunkUpdate(chunkIndex int) (writeaheadlog.Update, error) {
+func (sf *SiaFile) saveChunkUpdate(chunkIndex int) writeaheadlog.Update {
 	offset := sf.chunkOffset(chunkIndex)
-	chunkBytes := marshalChunk(sf.staticChunks[chunkIndex])
-	return sf.createInsertUpdate(offset, chunkBytes), nil
+	chunkBytes := marshalChunk(sf.chunks[chunkIndex])
+	return sf.createInsertUpdate(offset, chunkBytes)
 }
 
 // saveChunksUpdates creates writeaheadlog updates which save the marshaled chunks of
 // the SiaFile to disk when applied.
-func (sf *SiaFile) saveChunksUpdates() ([]writeaheadlog.Update, error) {
+func (sf *SiaFile) saveChunksUpdates() []writeaheadlog.Update {
 	// Marshal all the chunks and create updates for them.
-	updates := make([]writeaheadlog.Update, 0, len(sf.staticChunks))
-	for chunkIndex := range sf.staticChunks {
-		update, err := sf.saveChunkUpdate(chunkIndex)
-		if err != nil {
-			return nil, err
-		}
+	updates := make([]writeaheadlog.Update, 0, len(sf.chunks))
+	for chunkIndex := range sf.chunks {
+		update := sf.saveChunkUpdate(chunkIndex)
 		updates = append(updates, update)
 	}
-	return updates, nil
+	return updates
 }
 
 // saveHeaderUpdates creates writeaheadlog updates to saves the metadata and

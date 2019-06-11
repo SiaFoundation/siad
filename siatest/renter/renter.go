@@ -14,7 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -44,10 +43,7 @@ func checkBalanceVsSpending(r *siatest.TestNode, initialBalance types.Currency) 
 		Expected Balance:   %v
 		Wallet Balance:     %v
 		Actual difference:  %v
-		ExpectedBalance:    %v
-		walletBalance:      %v
-		`, expectedBalance.HumanString(), wg.ConfirmedSiacoinBalance.HumanString(), initialBalance.Sub(wg.ConfirmedSiacoinBalance).HumanString(),
-			expectedBalance.HumanString(), wg.ConfirmedSiacoinBalance.HumanString())
+		`, expectedBalance.HumanString(), wg.ConfirmedSiacoinBalance.HumanString(), initialBalance.Sub(wg.ConfirmedSiacoinBalance).HumanString())
 		var diff string
 		if expectedBalance.Cmp(wg.ConfirmedSiacoinBalance) > 0 {
 			diff = fmt.Sprintf("Under reported by:  %v\n", expectedBalance.Sub(wg.ConfirmedSiacoinBalance).HumanString())
@@ -60,26 +56,9 @@ func checkBalanceVsSpending(r *siatest.TestNode, initialBalance types.Currency) 
 	return nil
 }
 
-// checkContracts confirms that contracts are renewed as expected, renewed
-// contracts should be the renter's active contracts and oldContracts should be
-// the renter's inactive and expired contracts
-func checkContracts(numHosts, numRenewals int, oldContracts, renewedContracts []api.RenterContract) error {
-	if len(renewedContracts) != numHosts {
-		return fmt.Errorf("Incorrect number of Active contracts: have %v expected %v", len(renewedContracts), numHosts)
-	}
-	if len(oldContracts) == 0 && numRenewals == 0 {
-		return nil
-	}
-	// Confirm contracts were renewed, this will also mean there are old contracts
-	// Verify there are not more renewedContracts than there are oldContracts
-	// This would mean contracts are not getting archived
-	if len(oldContracts) < len(renewedContracts) {
-		return errors.New("Too many renewed contracts")
-	}
-	if len(oldContracts) != numHosts*numRenewals {
-		return fmt.Errorf("Incorrect number of Old contracts: have %v expected %v", len(oldContracts), numHosts*numRenewals)
-	}
-
+// checkRenewedContractIDs confirms that contracts are renewed as expected with
+// hosts and no duplicate IDs
+func checkRenewedContractIDs(oldContracts, renewedContracts []api.RenterContract) error {
 	// Create Maps for comparison
 	initialContractIDMap := make(map[types.FileContractID]struct{})
 	initialContractKeyMap := make(map[crypto.Hash]struct{})
@@ -236,9 +215,38 @@ func checkContractVsReportedSpending(r *siatest.TestNode, WindowSize types.Block
 	return nil
 }
 
-// checkRenewedContracts confirms that renewed contracts have zero upload and
-// download spending. Renewed contracts should be the renter's active contracts
-func checkRenewedContracts(renewedContracts []api.RenterContract) error {
+// checkExpectedNumberOfContracts confirms that the renter has the expected
+// number of each type of contract
+func checkExpectedNumberOfContracts(r *siatest.TestNode, numActive, numPassive, numRefreshed, numDisabled, numExpired, numExpiredRefreshed int) error {
+	rc, err := r.RenterAllContractsGet()
+	if err != nil {
+		return err
+	}
+	if len(rc.ActiveContracts) != numActive {
+		return fmt.Errorf("Expected %v active contracts, got %v", numActive, len(rc.ActiveContracts))
+	}
+	if len(rc.PassiveContracts) != numPassive {
+		return fmt.Errorf("Expected %v passive contracts, got %v", numPassive, len(rc.PassiveContracts))
+	}
+	if len(rc.RefreshedContracts) != numRefreshed {
+		return fmt.Errorf("Expected %v refreshed contracts, got %v", numRefreshed, len(rc.RefreshedContracts))
+	}
+	if len(rc.DisabledContracts) != numDisabled {
+		return fmt.Errorf("Expected %v disabled contracts, got %v", numDisabled, len(rc.DisabledContracts))
+	}
+	if len(rc.ExpiredContracts) != numExpired {
+		return fmt.Errorf("Expected %v expired contracts, got %v", numExpired, len(rc.ExpiredContracts))
+	}
+	if len(rc.ExpiredRefreshedContracts) != numExpiredRefreshed {
+		return fmt.Errorf("Expected %v expired refreshed contracts, got %v", numExpiredRefreshed, len(rc.ExpiredRefreshedContracts))
+	}
+	return nil
+}
+
+// checkRenewedContractsSpending confirms that renewed contracts have zero
+// upload and download spending. Renewed contracts should be the renter's active
+// contracts
+func checkRenewedContractsSpending(renewedContracts []api.RenterContract) error {
 	for _, c := range renewedContracts {
 		if c.UploadSpending.Cmp(types.ZeroCurrency) != 0 && c.GoodForUpload {
 			return fmt.Errorf("Upload spending on renewed contract equal to %v, expected zero", c.UploadSpending.HumanString())
@@ -349,7 +357,7 @@ func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 		// Wait to ensure download and stream have started
 		time.Sleep(sleep)
 		var err error
-		rf, err = r.Rename(rf, persist.RandomSuffix())
+		rf, err = r.Rename(rf, modules.RandomSiaPath())
 		if err != nil {
 			t.Fatal(err)
 		}

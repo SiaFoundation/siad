@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"io/ioutil"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -12,8 +13,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -39,11 +42,55 @@ func (rt *renterTester) Close() error {
 	return nil
 }
 
+// addRenter adds a renter to the renter tester and then make sure there is
+// money in the wallet
+func (rt *renterTester) addRenter(r *Renter) error {
+	rt.renter = r
+	// Mine blocks until there is money in the wallet.
+	for i := types.BlockHeight(0); i <= types.MaturityDelay; i++ {
+		_, err := rt.miner.AddBlock()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// createZeroByteFileOnDisk creates a 0 byte file on disk so that a Stat of the
+// local path won't return an error
+func (rt *renterTester) createZeroByteFileOnDisk() (string, error) {
+	path := filepath.Join(rt.renter.staticFilesDir, persist.RandomSuffix())
+	err := ioutil.WriteFile(path, []byte{}, 0600)
+	if err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 // newRenterTester creates a ready-to-use renter tester with money in the
 // wallet.
 func newRenterTester(name string) (*renterTester, error) {
-	// Create the modules.
 	testdir := build.TempDir("renter", name)
+	rt, err := newRenterTesterNoRenter(testdir)
+	if err != nil {
+		return nil, err
+	}
+	r, err := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(testdir, modules.RenterDir))
+	if err != nil {
+		return nil, err
+	}
+	err = rt.addRenter(r)
+	if err != nil {
+		return nil, err
+	}
+	return rt, nil
+}
+
+// newRenterTesterNoRenter creates all the modules for the renter tester except
+// the renter. A renter will need to be added and blocks mined to add money to
+// the wallet.
+func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
+	// Create the modules.
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, err
@@ -69,35 +116,53 @@ func newRenterTester(name string) (*renterTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, err := New(g, cs, w, tp, filepath.Join(testdir, modules.RenterDir))
-	if err != nil {
-		return nil, err
-	}
 	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
 	if err != nil {
 		return nil, err
 	}
 
 	// Assemble all pieces into a renter tester.
-	rt := &renterTester{
+	return &renterTester{
 		cs:      cs,
 		gateway: g,
 		miner:   m,
 		tpool:   tp,
 		wallet:  w,
 
-		renter: r,
-		dir:    testdir,
-	}
+		dir: testdir,
+	}, nil
+}
 
-	// Mine blocks until there is money in the wallet.
-	for i := types.BlockHeight(0); i <= types.MaturityDelay; i++ {
-		_, err := rt.miner.AddBlock()
-		if err != nil {
-			return nil, err
-		}
+// newRenterTesterWithDependency creates a ready-to-use renter tester with money in the
+// wallet.
+func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*renterTester, error) {
+	testdir := build.TempDir("renter", name)
+	rt, err := newRenterTesterNoRenter(testdir)
+	if err != nil {
+		return nil, err
+	}
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(testdir, modules.RenterDir), deps)
+	if err != nil {
+		return nil, err
+	}
+	err = rt.addRenter(r)
+	if err != nil {
+		return nil, err
 	}
 	return rt, nil
+}
+
+// newRenterWithDependency creates a Renter with custom dependency
+func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*Renter, error) {
+	hdb, err := hostdb.New(g, cs, tpool, persistDir)
+	if err != nil {
+		return nil, err
+	}
+	hc, err := contractor.New(cs, wallet, tpool, hdb, persistDir)
+	if err != nil {
+		return nil, err
+	}
+	return NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, deps)
 }
 
 // stubHostDB is the minimal implementation of the hostDB interface. It can be

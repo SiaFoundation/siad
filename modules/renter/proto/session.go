@@ -20,6 +20,8 @@ import (
 )
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
+//
+// TODO: The session type needs access to a logger. Probably the renter logger.
 type Session struct {
 	aead        cipher.AEAD
 	challenge   [16]byte
@@ -81,6 +83,21 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	}
 	// Set the new Session contract.
 	s.contractID = id
+	// Verify the public keys in the claimed revision.
+	expectedUnlockConditions := types.UnlockConditions{
+		PublicKeys: []types.SiaPublicKey{
+			types.Ed25519PublicKey(secretKey.PublicKey()),
+			s.host.PublicKey,
+		},
+		SignaturesRequired: 2,
+	}
+	if resp.Revision.UnlockConditions.UnlockHash() != expectedUnlockConditions.UnlockHash() {
+		return resp.Revision, resp.Signatures, errors.New("host's claimed revision has wrong unlock conditions")
+	}
+	// Verify the claimed signatures.
+	if err := modules.VerifyFileContractRevisionTransactionSignatures(resp.Revision, resp.Signatures, s.height); err != nil {
+		return resp.Revision, resp.Signatures, err
+	}
 	return resp.Revision, resp.Signatures, nil
 }
 
@@ -113,15 +130,44 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	return rc, crypto.MerkleRoot(data), err
 }
 
+// Replace calls the Write RPC with a series of actions that replace the sector
+// at the specified index with data, returning the updated contract and the
+// Merkle root of the new sector.
+func (s *Session) Replace(data []byte, sectorIndex uint64, trim bool) (_ modules.RenterContract, _ crypto.Hash, err error) {
+	sc, haveContract := s.contractSet.Acquire(s.contractID)
+	if !haveContract {
+		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract not present in contract set")
+	}
+	defer s.contractSet.Return(sc)
+	// get current number of sectors
+	numSectors := sc.header.LastRevision().NewFileSize / modules.SectorSize
+	actions := []modules.LoopWriteAction{
+		// append the new sector
+		{Type: modules.WriteActionAppend, Data: data},
+		// swap the new sector with the old sector
+		{Type: modules.WriteActionSwap, A: 0, B: numSectors},
+	}
+	if trim {
+		// delete the old sector
+		actions = append(actions, modules.LoopWriteAction{Type: modules.WriteActionTrim, A: 1})
+	}
+
+	rc, err := s.write(sc, actions)
+	return rc, crypto.MerkleRoot(data), err
+}
+
 // Write implements the Write RPC, except for ActionUpdate. A Merkle proof is
 // always requested.
 func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterContract, err error) {
-	// Acquire the contract.
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
 		return modules.RenterContract{}, errors.New("contract not present in contract set")
 	}
 	defer s.contractSet.Return(sc)
+	return s.write(sc, actions)
+}
+
+func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ modules.RenterContract, err error) {
 	contract := sc.header // for convenience
 
 	// calculate price per sector
@@ -163,7 +209,7 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterCont
 	bandwidthPrice = bandwidthPrice.Add(s.host.DownloadBandwidthPrice.Mul64(uint64(proofSize)))
 
 	// to mitigate small errors (e.g. differing block heights), fudge the
-	// price and collateral by 0.2%.
+	// price and collateral by hostPriceLeeway.
 	cost := s.host.BaseRPCPrice.Add(bandwidthPrice).Add(storagePrice).MulFloat(1 + hostPriceLeeway)
 	collateral = collateral.MulFloat(1 - hostPriceLeeway)
 
@@ -172,7 +218,25 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterCont
 		return modules.RenterContract{}, errors.New("contract has insufficient funds to support upload")
 	}
 	if contract.LastRevision().NewMissedProofOutputs[1].Value.Cmp(collateral) < 0 {
-		return modules.RenterContract{}, errors.New("contract has insufficient collateral to support upload")
+		// The contract doesn't have enough value in it to supply the
+		// collateral. Instead of giving up, have the host put up everything
+		// that remains, even if that is zero. The renter was aware when the
+		// contract was formed that there may not be enough collateral in the
+		// contract to cover the full storage needs for the renter, yet the
+		// renter formed the contract anyway. Therefore the renter must think
+		// that it's sufficient.
+		//
+		// TODO: log.Debugln here to indicate that the host is having issues
+		// supplying collateral.
+		//
+		// TODO: We may in the future want to have the renter perform a renewal
+		// on this contract so that the host can refill the collateral. That's a
+		// concern at the renter level though, not at the session level. The
+		// session should still be assuming that if the renter is willing to use
+		// this contract, the renter is aware that there isn't enough collateral
+		// remaining and is happy to use the contract anyway. Therefore this
+		// TODO should be moved to a different part of the codebase.
+		collateral = contract.LastRevision().NewMissedProofOutputs[1].Value
 	}
 
 	// create the revision; we will update the Merkle root later
@@ -201,7 +265,7 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterCont
 	// post-revision contract.
 	//
 	// TODO: update this for non-local root storage
-	walTxn, err := sc.recordUploadIntent(rev, crypto.Hash{}, storagePrice, bandwidthPrice)
+	walTxn, err := sc.managedRecordUploadIntent(rev, crypto.Hash{}, storagePrice, bandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -280,6 +344,13 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterCont
 	// read the host's signature
 	var hostSig modules.LoopWriteResponse
 	if err := s.readResponse(&hostSig, modules.RPCMinLen); err != nil {
+		// If the host was OOS, we update the contract utility.
+		if modules.IsOOSErr(err) {
+			u := sc.Utility()
+			u.GoodForUpload = false // Stop uploading to such a host immediately.
+			u.LastOOSErr = s.height
+			err = errors.Compose(err, sc.UpdateUtility(u))
+		}
 		return modules.RenterContract{}, err
 	}
 	txn.TransactionSignatures[1].Signature = hostSig.Signature
@@ -292,7 +363,7 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterCont
 	// update contract
 	//
 	// TODO: unnecessary?
-	err = sc.commitUpload(walTxn, txn, crypto.Hash{}, storagePrice, bandwidthPrice)
+	err = sc.managedCommitUpload(walTxn, txn, crypto.Hash{}, storagePrice, bandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -392,7 +463,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
-	walTxn, err := sc.recordDownloadIntent(rev, price)
+	walTxn, err := sc.managedRecordDownloadIntent(rev, price)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -476,13 +547,13 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	}
 	txn.TransactionSignatures[1].Signature = hostSig
 
-	// Disrupt before commiting.
+	// Disrupt before committing.
 	if s.deps.Disrupt("InterruptDownloadAfterSendingRevision") {
 		return modules.RenterContract{}, errors.New("InterruptDownloadAfterSendingRevision disrupt")
 	}
 
 	// update contract and metrics
-	if err := sc.commitDownload(walTxn, txn, price); err != nil {
+	if err := sc.managedCommitDownload(walTxn, txn, price); err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -571,7 +642,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
-	walTxn, err := sc.recordDownloadIntent(rev, price)
+	walTxn, err := sc.managedRecordDownloadIntent(rev, price)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -605,7 +676,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	txn.TransactionSignatures[1].Signature = resp.Signature
 
 	// update contract and metrics
-	if err := sc.commitDownload(walTxn, txn, price); err != nil {
+	if err := sc.managedCommitDownload(walTxn, txn, price); err != nil {
 		return modules.RenterContract{}, nil, err
 	}
 
@@ -736,11 +807,11 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		return nil, err
 	}
 	// Lock the contract and resynchronize if necessary
-	rev, _, err := s.Lock(id, sc.header.SecretKey)
+	rev, sigs, err := s.Lock(id, sc.header.SecretKey)
 	if err != nil {
 		s.Close()
 		return nil, err
-	} else if err := sc.syncRevision(rev); err != nil {
+	} else if err := sc.managedSyncRevision(rev, sigs); err != nil {
 		s.Close()
 		return nil, err
 	}
@@ -779,13 +850,17 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		case <-cancel:
 			conn.Close()
 		case <-closeChan:
+			// we don't close the connection here because we want session.Close
+			// to be able to return the Close error directly
 		}
 	}()
 
 	// Perform the handshake and create the session object.
 	aead, challenge, err := performSessionHandshake(conn, host.PublicKey)
 	if err != nil {
-		return nil, err
+		conn.Close()
+		close(closeChan)
+		return nil, errors.AddContext(err, "session handshake failed")
 	}
 	s := &Session{
 		aead:        aead,

@@ -76,13 +76,18 @@ func (c *Contractor) managedArchiveContracts() {
 // is a change in the blockchain. Updates will always be called in order.
 func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Get the wallet's seed for contract recovery.
+	haveSeed := true
+	missedRecovery := false
 	s, _, err := c.wallet.PrimarySeed()
 	if err != nil {
-		c.log.Println("Failed to get the wallet's seed:", err)
+		haveSeed = false
 	}
 	// Get the master renter seed and wipe it once we are done with it.
-	renterSeed := proto.DeriveRenterSeed(s)
-	defer fastrand.Read(renterSeed[:])
+	var renterSeed proto.RenterSeed
+	if haveSeed {
+		renterSeed = proto.DeriveRenterSeed(s)
+		defer fastrand.Read(renterSeed[:])
+	}
 
 	c.mu.Lock()
 	for _, block := range cc.RevertedBlocks {
@@ -97,7 +102,15 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 			c.blockHeight++
 		}
 		// Find lost contracts for recovery.
-		c.findRecoverableContracts(renterSeed, block)
+		if haveSeed {
+			c.findRecoverableContracts(renterSeed, block)
+		} else {
+			missedRecovery = true
+		}
+	}
+	// If we didn't miss the recover, we update the recentRecoverChange
+	if !missedRecovery && c.recentRecoveryChange == c.lastChange {
+		c.recentRecoveryChange = cc.ID
 	}
 
 	// If we have entered the next period, update currentPeriod

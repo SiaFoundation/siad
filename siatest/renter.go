@@ -32,7 +32,7 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	if err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async); err != nil {
+	if _, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async); err != nil {
 		return nil, errors.AddContext(err, "failed to download file")
 	}
 	// Create the TestFile
@@ -63,7 +63,7 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	if err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async); err != nil {
+	if _, err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async); err != nil {
 		return nil, errors.AddContext(err, "failed to download file")
 	}
 	// Create the TestFile
@@ -109,7 +109,7 @@ func (tn *TestNode) DownloadByStream(rf *RemoteFile) (data []byte, err error) {
 }
 
 // Rename renames a remoteFile and returns the new file.
-func (tn *TestNode) Rename(rf *RemoteFile, newPath string) (*RemoteFile, error) {
+func (tn *TestNode) Rename(rf *RemoteFile, newPath modules.SiaPath) (*RemoteFile, error) {
 	err := tn.RenterRenamePost(rf.SiaPath(), newPath)
 	if err != nil {
 		return nil, err
@@ -209,8 +209,8 @@ func (tn *TestNode) File(rf *RemoteFile) (modules.FileInfo, error) {
 }
 
 // Files lists the files tracked by the renter
-func (tn *TestNode) Files() ([]modules.FileInfo, error) {
-	rf, err := tn.RenterFilesGet()
+func (tn *TestNode) Files(cached bool) ([]modules.FileInfo, error) {
+	rf, err := tn.RenterFilesGet(cached)
 	if err != nil {
 		return nil, err
 	}
@@ -218,11 +218,11 @@ func (tn *TestNode) Files() ([]modules.FileInfo, error) {
 }
 
 // Upload uses the node to upload the file with the option to overwrite if exists.
-func (tn *TestNode) Upload(lf *LocalFile, siapath string, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
+func (tn *TestNode) Upload(lf *LocalFile, siapath modules.SiaPath, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file
 	err := tn.RenterUploadForcePost(lf.path, siapath, dataPieces, parityPieces, force)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to upload from "+lf.path+" to "+siapath)
+		return nil, errors.AddContext(err, "unable to upload from "+lf.path+" to "+siapath.String())
 	}
 	// Create remote file object
 	rf := &RemoteFile{
@@ -292,10 +292,10 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 
 // Dirs returns the siapaths of all dirs of the TestNode's renter in no
 // deterministic order.
-func (tn *TestNode) Dirs() ([]string, error) {
+func (tn *TestNode) Dirs() ([]modules.SiaPath, error) {
 	// dirs always contains the root dir.
-	dirs := []string{""}
-	toVisit := []string{""}
+	dirs := []modules.SiaPath{modules.RootSiaPath()}
+	toVisit := []modules.SiaPath{modules.RootSiaPath()}
 
 	// As long as we find new dirs we add them to dirs.
 	for len(toVisit) > 0 {
@@ -447,7 +447,7 @@ func (tn *TestNode) WaitForDecreasingRedundancy(rf *RemoteFile, redundancy float
 func (tn *TestNode) WaitForStuckChunksToBubble() error {
 	// Wait until the root directory no long reports no stuck chunks
 	return build.Retry(1000, 100*time.Millisecond, func() error {
-		rd, err := tn.RenterGetDir("")
+		rd, err := tn.RenterGetDir(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -463,7 +463,7 @@ func (tn *TestNode) WaitForStuckChunksToBubble() error {
 func (tn *TestNode) WaitForStuckChunksToRepair() error {
 	// Wait until the root directory no long reports no stuck chunks
 	return build.Retry(1000, 100*time.Millisecond, func() error {
-		rd, err := tn.RenterGetDir("")
+		rd, err := tn.RenterGetDir(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}

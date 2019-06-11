@@ -48,7 +48,18 @@ func (sfr *SnapshotReader) Stat() (os.FileInfo, error) {
 }
 
 // SnapshotReader creates a io.ReadCloser that can be used to read the raw
-// Siafile from disk.
+// Siafile from disk. Note that the underlying siafile holds a readlock until
+// the SnapshotReader is closed, which means that no operations can be called to
+// the underlying siafile which may cause it to grab a lock, because that will
+// cause a deadlock.
+//
+// Operations which require grabbing a readlock on the underlying siafile are
+// also not okay, because if some other thread has attempted to grab a writelock
+// on the siafile, the readlock will block and then the Close() statement may
+// never be reached for the SnapshotReader.
+//
+// TODO: Things upstream would be a lot easier if we could drop the requirement
+// to hold a lock for the duration of the life of the snapshot reader.
 func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
 	// Lock the file.
 	sf.mu.RLock()
@@ -128,23 +139,27 @@ func (s *Snapshot) Size() uint64 {
 }
 
 // Snapshot creates a snapshot of the SiaFile.
-func (sf *SiaFile) Snapshot() *Snapshot {
+func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 	mk := sf.MasterKey()
+
+	//////////////////////////////////////////////////////////////////////////////
+	// RLock starts here. No way to exit the function until RUnlock is reached
+	// below.
+	//////////////////////////////////////////////////////////////////////////////
 	sf.mu.RLock()
-	defer sf.mu.RUnlock()
 
 	// Copy PubKeyTable.
 	pkt := make([]HostPublicKey, len(sf.pubKeyTable))
 	copy(pkt, sf.pubKeyTable)
 
-	chunks := make([]Chunk, 0, len(sf.staticChunks))
+	chunks := make([]Chunk, 0, len(sf.chunks))
 	// Figure out how much memory we need to allocate for the piece sets and
 	// pieces.
 	var numPieceSets, numPieces int
-	for chunkIndex := range sf.staticChunks {
-		numPieceSets += len(sf.staticChunks[chunkIndex].Pieces)
-		for pieceIndex := range sf.staticChunks[chunkIndex].Pieces {
-			numPieces += len(sf.staticChunks[chunkIndex].Pieces[pieceIndex])
+	for chunkIndex := range sf.chunks {
+		numPieceSets += len(sf.chunks[chunkIndex].Pieces)
+		for pieceIndex := range sf.chunks[chunkIndex].Pieces {
+			numPieces += len(sf.chunks[chunkIndex].Pieces[pieceIndex])
 		}
 	}
 	// Allocate all the piece sets and pieces at once.
@@ -152,13 +167,13 @@ func (sf *SiaFile) Snapshot() *Snapshot {
 	allPieces := make([]Piece, numPieces)
 
 	// Copy chunks.
-	for chunkIndex := range sf.staticChunks {
-		pieces := allPieceSets[:len(sf.staticChunks[chunkIndex].Pieces)]
-		allPieceSets = allPieceSets[len(sf.staticChunks[chunkIndex].Pieces):]
+	for chunkIndex := range sf.chunks {
+		pieces := allPieceSets[:len(sf.chunks[chunkIndex].Pieces)]
+		allPieceSets = allPieceSets[len(sf.chunks[chunkIndex].Pieces):]
 		for pieceIndex := range pieces {
-			pieces[pieceIndex] = allPieces[:len(sf.staticChunks[chunkIndex].Pieces[pieceIndex])]
-			allPieces = allPieces[len(sf.staticChunks[chunkIndex].Pieces[pieceIndex]):]
-			for i, piece := range sf.staticChunks[chunkIndex].Pieces[pieceIndex] {
+			pieces[pieceIndex] = allPieces[:len(sf.chunks[chunkIndex].Pieces[pieceIndex])]
+			allPieces = allPieces[len(sf.chunks[chunkIndex].Pieces[pieceIndex]):]
+			for i, piece := range sf.chunks[chunkIndex].Pieces[pieceIndex] {
 				pieces[pieceIndex][i] = Piece{
 					HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
 					MerkleRoot: piece.MerkleRoot,
@@ -169,15 +184,27 @@ func (sf *SiaFile) Snapshot() *Snapshot {
 			Pieces: pieces,
 		})
 	}
+	// Get non-static metadata fields under lock.
+	fileSize := sf.staticMetadata.FileSize
+	mode := sf.staticMetadata.Mode
+
+	sf.mu.RUnlock()
+	//////////////////////////////////////////////////////////////////////////////
+	// RLock ends here.
+	//////////////////////////////////////////////////////////////////////////////
+
+	sf.staticSiaFileSet.mu.Lock()
+	sp := sf.staticSiaFileSet.siaPath(sf)
+	sf.staticSiaFileSet.mu.Unlock()
 
 	return &Snapshot{
 		staticChunks:      chunks,
-		staticFileSize:    sf.staticMetadata.StaticFileSize,
+		staticFileSize:    fileSize,
 		staticPieceSize:   sf.staticMetadata.StaticPieceSize,
 		staticErasureCode: sf.staticMetadata.staticErasureCode,
 		staticMasterKey:   mk,
-		staticMode:        sf.staticMetadata.Mode,
+		staticMode:        mode,
 		staticPubKeyTable: pkt,
-		staticSiaPath:     sf.staticMetadata.SiaPath,
+		staticSiaPath:     sp,
 	}
 }

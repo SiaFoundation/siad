@@ -45,6 +45,7 @@ type worker struct {
 	uploadChan                chan struct{}            // Notifications of new work.
 	uploadConsecutiveFailures int                      // How many times in a row uploading has failed.
 	uploadRecentFailure       time.Time                // How recent was the last failure?
+	uploadRecentFailureErr    error                    // What was the reason for the last failure?
 	uploadTerminated          bool                     // Have we stopped uploading?
 
 	// Utilities.
@@ -82,6 +83,7 @@ func (r *Renter) managedUpdateWorkerPool() {
 			}
 			r.workerPool[id] = worker
 			if err := r.tg.Add(); err != nil {
+				r.mu.Unlock(lockID)
 				// Stop starting workers on shutdown.
 				break
 			}
@@ -95,13 +97,30 @@ func (r *Renter) managedUpdateWorkerPool() {
 
 	// Remove a worker for any worker that is not in the set of new contracts.
 	lockID := r.mu.Lock()
+	totalCoolDown := 0
 	for id, worker := range r.workerPool {
-		_, exists := contractMap[id]
+		select {
+		case <-r.tg.StopChan():
+			// Release the lock and return to prevent error of trying to close
+			// the worker channel after a shutdown
+			r.mu.Unlock(lockID)
+			return
+		default:
+		}
+		contract, exists := contractMap[id]
 		if !exists {
 			delete(r.workerPool, id)
 			close(worker.killChan)
 		}
+		worker.mu.Lock()
+		onCoolDown, coolDownTime := worker.onUploadCooldown()
+		if onCoolDown {
+			totalCoolDown++
+		}
+		r.log.Debugf("Worker %v is GoodForUpload %v for contract %v\n    and is on uploadCooldown %v for %v because of %v", worker.hostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
+		worker.mu.Unlock()
 	}
+	r.log.Debugf("Refreshed Worker Pool has %v total workers and %v are on cooldown", len(r.workerPool), totalCoolDown)
 	r.mu.Unlock(lockID)
 }
 
@@ -112,7 +131,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillDownloading()
 
 	for {
-		// Perform one stpe of processing download work.
+		// Perform one step of processing download work.
 		downloadChunk := w.managedNextDownloadChunk()
 		if downloadChunk != nil {
 			// managedDownload will handle removing the worker internally. If

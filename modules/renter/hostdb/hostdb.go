@@ -287,7 +287,9 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 // weight. If hostdb is in black or white list mode, then only active hosts from
 // the filteredTree will be returned
 func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry) {
+	hdb.mu.RLock()
 	allHosts := hdb.filteredTree.All()
+	hdb.mu.RUnlock()
 	for _, entry := range allHosts {
 		if len(entry.ScanHistory) == 0 {
 			continue
@@ -306,6 +308,8 @@ func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry) {
 // AllHosts returns all of the hosts known to the hostdb, including the inactive
 // ones. AllHosts is not filtered by blacklist or whitelist mode.
 func (hdb *HostDB) AllHosts() (allHosts []modules.HostDBEntry) {
+	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
 	return hdb.hostTree.All()
 }
 
@@ -470,67 +474,6 @@ func (hdb *HostDB) IPViolationsCheck() bool {
 	return !hdb.disableIPViolationCheck
 }
 
-// RandomHosts implements the HostDB interface's RandomHosts() method. It takes
-// a number of hosts to return, and a slice of netaddresses to ignore, and
-// returns a slice of entries. If the IP violation check was disabled, the
-// addressBlacklist is ignored.
-func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
-	hdb.mu.RLock()
-	initialScanComplete := hdb.initialScanComplete
-	ipCheckDisabled := hdb.disableIPViolationCheck
-	hdb.mu.RUnlock()
-	if !initialScanComplete {
-		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
-	}
-	if ipCheckDisabled {
-		return hdb.filteredTree.SelectRandom(n, blacklist, nil), nil
-	}
-	return hdb.filteredTree.SelectRandom(n, blacklist, addressBlacklist), nil
-}
-
-// SetIPViolationCheck enables or disables the IP violation check. If disabled,
-// CheckForIPViolations won't return bad hosts and RandomHosts will return the
-// address blacklist.
-func (hdb *HostDB) SetIPViolationCheck(enabled bool) {
-	hdb.mu.Lock()
-	defer hdb.mu.Unlock()
-	hdb.disableIPViolationCheck = !enabled
-}
-
-// RandomHostsWithAllowance works as RandomHosts but uses a temporary hosttree
-// created from the specified allowance. This is a very expensive call and
-// should be used with caution.
-func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist []types.SiaPublicKey, allowance modules.Allowance) ([]modules.HostDBEntry, error) {
-	hdb.mu.RLock()
-	initialScanComplete := hdb.initialScanComplete
-	filteredHosts := hdb.filteredHosts
-	filterType := hdb.filterMode
-	hdb.mu.RUnlock()
-	if !initialScanComplete {
-		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
-	}
-	// Create a temporary hosttree from the given allowance.
-	ht := hosttree.New(hdb.managedCalculateHostWeightFn(allowance), hdb.deps.Resolver())
-
-	// Insert all known hosts.
-	var insertErrs error
-	allHosts := hdb.hostTree.All()
-	isWhitelist := filterType == modules.HostDBActiveWhitelist
-	for _, host := range allHosts {
-		// Filter out listed hosts
-		_, ok := filteredHosts[host.PublicKey.String()]
-		if isWhitelist != ok {
-			continue
-		}
-		if err := ht.Insert(host); err != nil {
-			insertErrs = errors.Compose(insertErrs, err)
-		}
-	}
-
-	// Select hosts from the temporary hosttree.
-	return ht.SelectRandom(n, blacklist, addressBlacklist), insertErrs
-}
-
 // SetAllowance updates the allowance used by the hostdb for weighing hosts by
 // updating the host weight function. It will completely rebuild the hosttree so
 // it should be used with care.
@@ -549,4 +492,13 @@ func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 	// Update the weight function.
 	wf := hdb.managedCalculateHostWeightFn(allowance)
 	return hdb.managedSetWeightFunction(wf)
+}
+
+// SetIPViolationCheck enables or disables the IP violation check. If disabled,
+// CheckForIPViolations won't return bad hosts and RandomHosts will return the
+// address blacklist.
+func (hdb *HostDB) SetIPViolationCheck(enabled bool) {
+	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
+	hdb.disableIPViolationCheck = !enabled
 }

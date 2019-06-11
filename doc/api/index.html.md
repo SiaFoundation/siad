@@ -554,13 +554,15 @@ fetches status information about the host.
     "maxrevisebatchsize":   17825792,             // bytes
     "netaddress":           "123.456.789.0:9982", // string
     "windowsize":           144,                  // blocks
-
+    
     "collateral":       "57870370370",                     // hastings / byte / block
     "collateralbudget": "2000000000000000000000000000000", // hastings
     "maxcollateral":    "100000000000000000000000000000",  // hastings
-
+    
+    "minbaserpcprice":           "123",                        //hastings
     "mincontractprice":          "30000000000000000000000000", // hastings
     "mindownloadbandwidthprice": "250000000000000",            // hastings / byte
+    "minsectoraccessprice":      "123",                        //hastings
     "minstorageprice":           "231481481481",               // hastings / byte / block
     "minuploadbandwidthprice":   "100000000000000"             // hastings / byte
   },
@@ -710,13 +712,28 @@ The total amount of money that the host will allocate to collateral across all f
 
 **maxcollateral** | hastings  
 The maximum amount of collateral that the host will put into a
-single file contract.  
+single file contract.
+
+**minbaserpcprice** | hastings  
+The minimum price that the host will demand from a renter for interacting with
+the host. This is charged for every interaction a renter has with a host to pay
+for resources consumed during the interaction. It is added to the
+`mindownloadbandwidthprice` and `minuploadbandwidthprice` when uploading or
+downloading files from the host.
 
 **mincontractprice** | hastings  
 The minimum price that the host will demand from a renter when forming a contract. Typically this price is to cover transaction fees on the file contract revision and storage proof, but can also be used if the host has a low amount of collateral. The price is a minimum because the host may automatically adjust the price upwards in times of high demand.  
 
 **mindownloadbandwidthprice** | hastings / byte  
-The minimum price that the host will demand from a renter when the renter is downloading data. If the host is saturated, the host may increase the price from the minimum.  
+The minimum price that the host will demand from a renter when the renter is downloading data. If the host is saturated, the host may increase the price from the minimum.
+
+**minsectoraccessprice** | hastings  
+The minimum price that the host will demand from a renter for accessing a sector
+of data on disk. Since the host has to read at least a full 4MB sector from disk
+regardless of how much the renter intends to download this is charged to pay for
+the physical disk resources the host uses. It is multiplied by the number of
+sectors read then added to the `mindownloadbandwidthprice` when downloading a
+file.
 
 **minstorageprice** | hastings / byte / block  
 The minimum price that the host will demand when storing data for extended periods of time. If the host is low on space, the price of storage may be set higher than the minimum.  
@@ -792,8 +809,23 @@ The total amount of money that the host will allocate to collateral across all f
 **maxcollateral** | hastings
 The maximum amount of collateral that the host will put into a single file contract.  
 
+**minbaserpcprice** | hastings  
+The minimum price that the host will demand from a renter for interacting with
+the host. This is charged for every interaction a renter has with a host to pay
+for resources consumed during the interaction. It is added to the
+`mindownloadbandwidthprice` and `minuploadbandwidthprice` when uploading or
+downloading files from the host.
+
 **mincontractprice** | hastings
 The minimum price that the host will demand from a renter when forming a contract. Typically this price is to cover transaction fees on the file contract revision and storage proof, but can also be used if the host has a low amount of collateral. The price is a minimum because the host may automatically adjust the price upwards in times of high demand.  
+
+**minsectoraccessprice** | hastings  
+The minimum price that the host will demand from a renter for accessing a sector
+of data on disk. Since the host has to read at least a full 4MB sector from disk
+regardless of how much the renter intends to download this is charged to pay for
+the physical disk resources the host uses. It is multiplied by the number of
+sectors read then added to the `mindownloadbandwidthprice` when downloading a
+file.
 
 **mindownloadbandwidthprice** | hastings / byte
 The minimum price that the host will demand from a renter when the renter is downloading data. If the host is saturated, the host may increase the price from the minimum.  
@@ -1348,6 +1380,7 @@ Example Pubkey: ed25519:1234567890abcdef1234567890abcdef1234567890abcdef12345678
     "ageadjustment":              0.1234,   // float64
     "burnadjustment":             0.1234,   // float64
     "collateraladjustment":       23.456,   // float64
+	"durationadjustment":         1,        // float64
     "interactionadjustment":      0.1234,   // float64
     "priceadjustment":            0.1234,   // float64
     "storageremainingadjustment": 0.1234,   // float64
@@ -1375,6 +1408,9 @@ The multiplier that gets applied to the host based on how much proof-of-burn the
 
 **collateraladjustment** | float64 
 The multiplier that gets applied to a host based on how much collateral the host is offering. More collateral is typically better, though above a point it can be detrimental.  
+
+**durationadjustment** | float64
+The multiplier that gets applied to a host based on the max duration it accepts for file contracts. Typically '1' for hosts with an acceptable max duration, and '0' for hosts that have a max duration which is not long enough.
 
 **interactionadjustment** | float64 
 The multipler that gets applied to a host based on previous interactions with the host. A high ratio of successful interactions will improve this hosts score, and a high ratio of failed interactions will hurt this hosts score. This adjustment helps account for hosts that are on unstable connections, don't keep their wallets unlocked, ran out of funds, etc.  
@@ -1632,7 +1668,7 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&fu
 
 Modify settings that control the renter's behavior.
 
-### Query Response Parameters
+### Query String Parameters
 #### OPTIONAL
 Any of the renter settings can be set, see fields [here](#settings)
 
@@ -1670,11 +1706,16 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "destination=/home/backups/01-01-
 
 Creates a backup of all siafiles in the renter at the specified path.
 
-### Query Response Parameters
+### Query String Parameters
 #### REQUIRED
 **destination** | string
 The path on disk where the backup will be created. Needs to be an absolute
 path.
+
+#### OPTIONAL
+**remote** | boolean
+flag indicating if the backup should be stored on hosts. If true,
+**destination** is interpreted as the backup's name, not its path.
 
 ### Response
 
@@ -1691,29 +1732,86 @@ Recovers an existing backup from the specified path by adding all the siafiles
 contained within it to the renter. Should a siafile for a certain path already
 exist, a number will be added as a suffix. e.g. 'myfile_1.sia'
 
-### Query Response Parameters
+### Query String Parameters
 #### REQUIRED
 **source** | string
 The path on disk where the backup will be recovered from. Needs to be an
 absolute path.
 
+#### OPTIONAL
+**remote** | boolean
+flag indicating if the backup is stored on hosts. If true, **source** is
+interpreted as the backup's name, not its path.
+
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/uploadedbackups [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadedbackups"
+```
+
+Lists the backups that have been uploaded to hosts.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+[
+  {
+    "name": "foo",                             // string
+    "UID": "00112233445566778899aabbccddeeff", // string
+    "creationdate": 1234567890,                // Unix timestamp
+    "size": 8192                               // bytes
+  }
+]
+```
+**name** | string  
+The name of the backup.
+
+**UID** | string
+A unique identifier for the backup.
+
+**creationdate** | string
+Unix timestamp of when the backup was created.
+
+**size** 
+Size in bytes of the backup.
 
 ## /renter/contracts [GET]
 > curl example  
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/renter/contracts?inactive=true&expired=true&recoverable=false"
+curl -A "Sia-Agent" "localhost:9980/renter/contracts?disabled=true&expired=true&recoverable=false"
 ```
 
-Returns the renter's contracts.  Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default. Inactive contracts are contracts that are in the current period but are marked as not good for renew, these contracts have the potential to become active again but currently are not storing data.  Expired contracts are contracts not in the current period, where not more data is being stored and excess funds have been released to the renter. Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
+Returns the renter's contracts. Active, passive, and refreshed contracts are returned by default.
+Active contracts are contracts that the Renter is currently using to store, upload, and download data.
+Passive contracts are contracts that are no longer GoodForUpload but are GoodForRenew. This means the data will continue to be available to be downloaded from.
+Refreshed contracts are contracts that ran out of funds and needed to be renewed so more money could be added to the contract with the host. The data reported in these contracts is duplicate data and should not be included in any accounting.
+Disabled contracts are contracts that are in the current period that are not being used for uploading as they were replaced instead of renewed.
+Expired contracts are contracts not in the current period, where no more data is being stored and excess funds have been released to the renter.
+Expired Refreshed contracts are contracts that were refreshed at some point in a previous period. The data reported in these contracts is duplicate data and should not be included in any accounting.
+Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet.
+
+| Type              | GoodForUpload | GoodForRenew | In Current Period | Data Counted Elsewhere Already|
+| ----------------- | :-----------: | :----------: | :---------------: | :---------------------------: |
+| Active            | Yes           | Yes          | Yes               | No                            |
+| Passive           | No            | Yes          | Yes               | No                            |
+| Refreshed         | No            | No           | Yes               | Yes                           |
+| Disabled          | No            | No           | Yes               | No                            |
+| Expired           | No            | No           | No                | No                            |
+| Expired Refreshed | No            | No           | No                | Yes                           |
+
+**NOTE:** No spending is double counted anywhere in the contracts, only the data is double counted in the refreshed contracts. For spending totals in the current period, all spending in active, passive, refreshed, and disabled contracts should be counted. For data totals, the data in active and passive contracts is the total uploaded while the data in disabled contracts is wasted uploaded data.
 
 ### Query String Parameters
 #### OPTIONAL
-**inactive** | boolean
-flag indicating if inactive contracts should be returned.
+**disabled** | boolean
+flag indicating if disabled contracts should be returned.
 
 **expired** | boolean
 flag indicating if expired contracts should be returned.
@@ -1749,8 +1847,11 @@ flag indicating if recoverable contracts should be returned.
       "goodforrenew":     false,            // boolean
     }
   ],
-  "inactivecontracts": [],
+  "passivecontracts": [],
+  "refreshedcontracts": [],
+  "disabledcontracts": [],
   "expiredcontracts": [],
+  "expiredrefreshedcontracts": [],
   "recoverablecontracts": [],
 }
 ```
@@ -1911,9 +2012,13 @@ Location where the directory will reside in the renter on the network. The path 
 ### Query String Parameters
 #### REQUIRED
 **action** | string
-Action can be either `create` or `delete`.
+Action can be either `create`, `delete` or `rename`.
  - `create` will create an empty directory on the sia network
  - `delete` will remove a directory and its contents from the sia network
+ - `rename` will rename a directory on the sia network
+
+ **newsiapath** | string
+ The new siapath of the renamed folder. Only required for the `rename` action.
 
 ### Response
 
@@ -2051,8 +2156,13 @@ The allowance settings used for the estimation are also returned, see the fields
 > curl example  
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/renter/files"
+curl -A "Sia-Agent" "localhost:9980/renter/files?cached=false"
 ```
+
+### Query String Parameters
+#### OPTIONAL
+**cached** | boolean
+determines whether cached values should be returned or if the latest values should be computed. Cached values speed the endpoint up significantly. The default value is 'false'.
 
 lists the status of all files.
 
@@ -2239,13 +2349,34 @@ If httresp is true, the data will be written to the http response.
 
 #### OPTIONAL
 **async** | boolean
-If async is true, the http request will be non blocking. Can't be used with:  
+If async is true, the http request will be non blocking. Can't be used with
+httpresp. An async download will also set the 'ID' field in the http response
+header to a unique identifier for the async download which can be used to
+cancel the download with the /renter/download/cancel endpoint.
 
 **length** | bytes
 Length of the requested data. Has to be <= filesize-offset.  
 
 **offset** | bytes
 Offset relative to the file start from where the download starts.  
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/download/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/download/cancel?id=<downloadid>"
+```
+
+cancels the download with the given id.
+
+### Query String Parameters
+**id** | string
+ID returned by the /renter/download/*siapath* endpoint when setting
+async=true. It is set in the http header's 'ID' field.
 
 ### Response
 
@@ -2385,6 +2516,41 @@ The number of data pieces to use when erasure coding the file.
 
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file. Total redundancy of the file is (datapieces+paritypieces)/datapieces.  
+
+**force** | boolean
+Delete potential existing file at siapath.
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/uploadstream/*siapath* [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadstream/myfile?datapieces=10&paritypieces=20" --data-binary @myfile.dat
+```
+
+uploads a file to the network using a stream.
+
+### Path Parameters
+#### REQUIRED
+**siapath** | string
+Location where the file will reside in the renter on the network. The path must be non-empty, may not include any path traversal strings ("./", "../"), and may not begin with a forward-slash character.  
+
+### Query String Parameters
+#### OPTIONAL
+**datapieces** | int  
+The number of data pieces to use when erasure coding the file.  
+
+**paritypieces** | int  
+The number of parity pieces to use when erasure coding the file. Total redundancy of the file is (datapieces+paritypieces)/datapieces.  
+
+**force**
+Delete potential existing file at siapath.
+
+**repair**
+Repair existing file from stream. Can't be specified together with datapieces, paritypieces and force.
 
 ### Response
 

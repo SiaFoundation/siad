@@ -91,10 +91,10 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 	if waitOnRedundancy {
 		// wait for the file to have a redundancy > 1
 		err = build.Retry(200, time.Second, func() error {
-			var rf RenterFiles
-			st.getAPI("/renter/files", &rf)
-			if len(rf.Files) != 1 || rf.Files[0].Redundancy < 1 {
-				return fmt.Errorf("the uploading is not succeeding for some reason: %v\n", rf.Files[0])
+			var rf RenterFile
+			st.getAPI("/renter/file/"+name, &rf)
+			if rf.File.Redundancy < 1 {
+				return fmt.Errorf("the uploading is not succeeding for some reason: %v", rf.File)
 			}
 			return nil
 		})
@@ -110,8 +110,11 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 // parameters, verifying that the parameters are applied correctly and the file
 // is downloaded successfully.
 func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp bool, testName string) error {
-	ulSiaPath := testName + ".dat"
-	st, path := setupTestDownload(t, int(filesize), ulSiaPath, true)
+	ulSiaPath, err := modules.NewSiaPath(testName + ".dat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, path := setupTestDownload(t, int(filesize), ulSiaPath.String(), true)
 	defer func() {
 		st.server.panicClose()
 		os.Remove(path)
@@ -149,7 +152,9 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 			return errors.AddContext(err, "unable to make an http request")
 		}
 		defer resp.Body.Close()
-
+		if non2xx(resp.StatusCode) {
+			return decodeError(resp)
+		}
 		_, err = io.Copy(&downbytes, resp.Body)
 		if err != nil {
 			return errors.AddContext(err, "unable to make a copy after the http request")
@@ -168,7 +173,7 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 				return errors.AddContext(err, "unable to view the download queue")
 			}
 			for _, download := range rdq.Downloads {
-				if download.Received == download.Filesize && download.SiaPath == ulSiaPath {
+				if download.Received == download.Filesize && download.SiaPath.Equals(ulSiaPath) {
 					return nil
 				}
 			}
@@ -230,7 +235,7 @@ func TestRenterDownloadError(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, download := range rdq.Downloads {
-		if download.SiaPath == "test.dat" && download.Received == download.Filesize && download.Error == expectedErr.Error() {
+		if download.SiaPath.String() == "test.dat" && download.Received == download.Filesize && download.Error == expectedErr.Error() {
 			t.Fatal("download had unexpected error: ", download.Error)
 		}
 	}
@@ -432,7 +437,7 @@ func TestRenterAsyncDownloadError(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, download := range rdq.Downloads {
-		if download.SiaPath == "test.dat" && download.Received == download.Filesize && download.Error == "" {
+		if download.SiaPath.String() == "test.dat" && download.Received == download.Filesize && download.Error == "" {
 			t.Fatal("download had nil error")
 		}
 	}
@@ -465,7 +470,7 @@ func TestRenterAsyncDownload(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, download := range rdq.Downloads {
-			if download.Received == download.Filesize && download.SiaPath == "test.dat" {
+			if download.Received == download.Filesize && download.SiaPath.String() == "test.dat" {
 				success = true
 			}
 		}
@@ -519,7 +524,7 @@ func TestRenterPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rf.Files) != 1 || rf.Files[0].SiaPath != "foo/bar/test" {
+	if len(rf.Files) != 1 || rf.Files[0].SiaPath.String() != "foo/bar/test" {
 		t.Fatal("/renter/files did not return correct file:", rf)
 	}
 }
@@ -566,7 +571,7 @@ func TestRenterConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rf.Files) != 1 || rf.Files[0].SiaPath != "foo/bar.sia/test" {
+	if len(rf.Files) != 1 || rf.Files[0].SiaPath.String() != "foo/bar.sia/test" {
 		t.Fatal("/renter/files did not return correct file:", rf)
 	}
 
@@ -803,7 +808,7 @@ func TestRenterLoadNonexistent(t *testing.T) {
 	downpath := filepath.Join(st.dir, "dnedown.dat")
 	err = st.stdGetAPI("/renter/download/dne?destination=" + downpath)
 	if err == nil {
-		t.Error("should not be able to download non-existant file")
+		t.Error("should not be able to download non-existent file")
 	}
 
 	// The renter's downloads queue should be empty.
@@ -1802,7 +1807,7 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		files, err := st.renter.FileList()
+		files, err := st.renter.FileList(modules.RootSiaPath(), true, false)
 		if err != nil {
 			return err
 		}

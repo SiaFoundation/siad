@@ -14,7 +14,7 @@ func (c *Client) MinerGet() (mg api.MinerGET, err error) {
 
 // MinerHeaderGet uses the /miner/header endpoint to get a header for work.
 func (c *Client) MinerHeaderGet() (target types.Target, bh types.BlockHeader, err error) {
-	targetAndHeader, err := c.getRawResponse("/miner/header")
+	_, targetAndHeader, err := c.getRawResponse("/miner/header")
 	if err != nil {
 		return types.Target{}, types.BlockHeader{}, err
 	}

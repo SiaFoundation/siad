@@ -15,17 +15,19 @@ import (
 
 var (
 	// Flags.
-	dictionaryLanguage     string // dictionary for seed utils
-	hostContractOutputType string // output type for host contracts
-	hostVerbose            bool   // display additional host info
-	initForce              bool   // destroy and re-encrypt the wallet on init if it already exists
-	initPassword           bool   // supply a custom password when creating a wallet
-	renterAllContracts     bool   // Show all active and expired contracts
-	renterDownloadAsync    bool   // Downloads files asynchronously
-	renterListVerbose      bool   // Show additional info about uploaded files.
-	renterShowHistory      bool   // Show download history in addition to download queue.
-	siaDir                 string // Path to sia data dir
-	walletRawTxn           bool   // Encode/decode transactions in base64-encoded binary.
+	dictionaryLanguage      string // dictionary for seed utils
+	hostContractOutputType  string // output type for host contracts
+	hostVerbose             bool   // display additional host info
+	initForce               bool   // destroy and re-encrypt the wallet on init if it already exists
+	initPassword            bool   // supply a custom password when creating a wallet
+	renterAllContracts      bool   // Show all active and expired contracts
+	renterDownloadAsync     bool   // Downloads files asynchronously
+	renterDownloadRecursive bool   // Downloads folders recursively.
+	renterListVerbose       bool   // Show additional info about uploaded files.
+	renterListRecursive     bool   // List files of folder recursively.
+	renterShowHistory       bool   // Show download history in addition to download queue.
+	siaDir                  string // Path to sia data dir
+	walletRawTxn            bool   // Encode/decode transactions in base64-encoded binary.
 
 	allowanceFunds              string // amount of money to be used within a period
 	allowancePeriod             string // length of period
@@ -35,6 +37,7 @@ var (
 	allowanceExpectedUpload     string // expected data uploaded within period
 	allowanceExpectedDownload   string // expected data downloaded within period
 	allowanceExpectedRedundancy string // expected redundancy of most uploaded files
+	allowanceInteractive        bool   // set allowance interactively
 )
 
 var (
@@ -50,8 +53,6 @@ const (
 	exitCodeUsage   = 64 // EX_USAGE in sysexits.h
 )
 
-// post makes an API call and discards the response. An error is returned if
-// the response status is not 2xx.
 // wrap wraps a generic command with a check that the command has been
 // passed the correct number of arguments. The command must take only strings
 // as arguments.
@@ -86,12 +87,53 @@ func die(args ...interface{}) {
 	os.Exit(exitCodeGeneral)
 }
 
+// statuscmd is the handler for the command `siac`
+// prints basic information about Sia.
+func statuscmd() {
+
+	// Consensus Info
+	cg, err := httpClient.ConsensusGet()
+	if err != nil {
+		die("Could not get consensus status:", err)
+	}
+	fmt.Printf(`Consensus:
+  Synced: %v
+  Height: %v
+
+`, yesNo(cg.Synced), cg.Height)
+
+	// Wallet Info
+	walletStatus, err := httpClient.WalletGet()
+	if err != nil {
+		die("Could not get wallet status:", err)
+	}
+	if walletStatus.Unlocked {
+		fmt.Printf(`Wallet:
+  Status:          unlocked
+  Siacoin Balance: %v
+
+`, currencyUnits(walletStatus.ConfirmedSiacoinBalance))
+	} else {
+		fmt.Printf(`Wallet:
+  Status: Locked
+
+`)
+	}
+
+	// Renter Info
+	fmt.Printf(`Renter:`)
+	err = renterFilesAndContractSummary()
+	if err != nil {
+		die(err)
+	}
+}
+
 func main() {
 	root := &cobra.Command{
 		Use:   os.Args[0],
 		Short: "Sia Client v" + build.Version,
 		Long:  "Sia Client v" + build.Version,
-		Run:   wrap(consensuscmd),
+		Run:   wrap(statuscmd),
 	}
 
 	rootCmd = root
@@ -111,7 +153,7 @@ func main() {
 	hostContractCmd.Flags().StringVarP(&hostContractOutputType, "type", "t", "value", "Select output type")
 
 	root.AddCommand(hostdbCmd)
-	hostdbCmd.AddCommand(hostdbViewCmd)
+	hostdbCmd.AddCommand(hostdbViewCmd, hostdbFiltermodeCmd)
 	hostdbCmd.Flags().IntVarP(&hostdbNumHosts, "numhosts", "n", 0, "Number of hosts to display from the hostdb")
 	hostdbCmd.Flags().BoolVarP(&hostdbVerbose, "verbose", "v", false, "Display full hostdb information")
 
@@ -137,8 +179,8 @@ func main() {
 		renterContractsCmd, renterFilesListCmd, renterFilesRenameCmd,
 		renterFilesUploadCmd, renterUploadsCmd, renterExportCmd,
 		renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
-		renterTriggerContractRecoveryScanCmd,
-		renterContractsRecoveryScanProgressCmd)
+		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
+		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -147,7 +189,9 @@ func main() {
 	renterContractsCmd.Flags().BoolVarP(&renterAllContracts, "all", "A", false, "Show all expired contracts in addition to active contracts")
 	renterDownloadsCmd.Flags().BoolVarP(&renterShowHistory, "history", "H", false, "Show download history in addition to the download queue")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadAsync, "async", "A", false, "Download file asynchronously")
+	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadRecursive, "recursive", "R", false, "Download folder recursively")
 	renterFilesListCmd.Flags().BoolVarP(&renterListVerbose, "verbose", "v", false, "Show additional file info such as redundancy")
+	renterFilesListCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list files and folders")
 	renterExportCmd.AddCommand(renterExportContractTxnsCmd)
 
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceFunds, "amount", "", "amount of money in allowance, specified in currency units")
@@ -158,15 +202,16 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedUpload, "expected-upload", "", "expected upload in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedRedundancy, "expected-redundancy", "", "expected redundancy of most uploaded files")
+	renterSetAllowanceCmd.Flags().BoolVarP(&allowanceInteractive, "interactive", "i", true, "Set allowance interactively, with guided prompts")
 
 	root.AddCommand(gatewayCmd)
-	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd)
+	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd)
 
 	root.AddCommand(consensusCmd)
 	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
 
 	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsHastingsCmd, utilsEncodeRawTxnCmd, utilsDecodeRawTxnCmd,
-		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd)
+		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd, utilsDisplayAPIPasswordCmd)
 	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
 	root.AddCommand(utilsCmd)
 
@@ -190,9 +235,12 @@ func main() {
 		if httpClient.Password == "" {
 			pw, err := ioutil.ReadFile(build.APIPasswordFile(siaDir))
 			if err != nil {
-				die("Could not read API password file:", err)
+				fmt.Println("Could not read API password file:", err)
+				httpClient.Password = ""
+			} else {
+				httpClient.Password = strings.TrimSpace(string(pw))
 			}
-			httpClient.Password = strings.TrimSpace(string(pw))
+
 		}
 	})
 

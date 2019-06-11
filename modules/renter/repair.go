@@ -56,15 +56,10 @@ package renter
 import (
 	"fmt"
 	"io/ioutil"
-	"math"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -74,19 +69,6 @@ var (
 	// errNoStuckFiles is a helper to indicate that there are no stuck files in
 	// the renter's directory
 	errNoStuckFiles = errors.New("no stuck files")
-)
-
-// bubbleStatus indicates the status of a bubble being executed on a
-// directory
-type bubbleStatus int
-
-// bubbleError, bubbleInit, bubbleActive, and bubblePending are the constants
-// used to determine the status of a bubble being executed on a directory
-const (
-	bubbleError bubbleStatus = iota
-	bubbleInit
-	bubbleActive
-	bubblePending
 )
 
 // managedAddStuckChunksToHeap adds all the stuck chunks in a file to the repair
@@ -101,300 +83,28 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath) error {
 	// Add stuck chunks from file to repair heap
 	files := []*siafile.SiaFileSetEntry{sf}
 	hosts := r.managedRefreshHostsAndWorkers()
-	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	r.managedBuildAndPushChunks(files, hosts, targetStuckChunks, offline, goodForRenew)
 	return nil
 }
 
-// managedBubbleNeeded checks if a bubble is needed for a directory, updates the
-// renter's bubbleUpdates map and returns a bool
-func (r *Renter) managedBubbleNeeded(siaPath modules.SiaPath) (bool, error) {
-	r.bubbleUpdatesMu.Lock()
-	defer r.bubbleUpdatesMu.Unlock()
-
-	// Check for bubble in bubbleUpdate map
-	siaPathStr := siaPath.String()
-	status, ok := r.bubbleUpdates[siaPathStr]
-	if !ok {
-		status = bubbleInit
-		r.bubbleUpdates[siaPathStr] = status
-	}
-
-	// Update the bubble status
-	var err error
-	switch status {
-	case bubblePending:
-	case bubbleActive:
-		r.bubbleUpdates[siaPathStr] = bubblePending
-	case bubbleInit:
-		r.bubbleUpdates[siaPathStr] = bubbleActive
-		return true, nil
-	default:
-		err = errors.New("WARN: invalid bubble status")
-	}
-	return false, err
-}
-
-// managedCalculateDirectoryMetadata calculates the new values for the
-// directory's metadata and tracks the value, either worst or best, for each to
-// be bubbled up
-func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
-	// Set default metadata values to start
-	metadata := siadir.Metadata{
-		AggregateNumFiles:   uint64(0),
-		Health:              siadir.DefaultDirHealth,
-		LastHealthCheckTime: time.Now(),
-		ModTime:             time.Time{},
-		MinRedundancy:       math.MaxFloat64,
-		NumFiles:            uint64(0),
-		NumStuckChunks:      uint64(0),
-		NumSubDirs:          uint64(0),
-		AggregateSize:       uint64(0),
-		StuckHealth:         siadir.DefaultDirHealth,
-	}
-	// Read directory
-	fileinfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
-	if err != nil {
-		r.log.Printf("WARN: Error in reading files in directory %v : %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
-		return siadir.Metadata{}, err
-	}
-
-	// Iterate over directory
-	for _, fi := range fileinfos {
-		// Check to make sure renter hasn't been shutdown
-		select {
-		case <-r.tg.StopChan():
-			return siadir.Metadata{}, err
-		default:
-		}
-
-		var health, stuckHealth, redundancy float64
-		var numStuckChunks uint64
-		var lastHealthCheckTime, modTime time.Time
-		ext := filepath.Ext(fi.Name())
-		// Check for SiaFiles and Directories
-		if ext == modules.SiaFileExtension {
-			// SiaFile found, calculate the needed metadata information of the siafile
-			fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
-			fileSiaPath, err := siaPath.Join(fName)
-			if err != nil {
-				return siadir.Metadata{}, err
-			}
-			fileMetadata, err := r.managedCalculateFileMetadata(fileSiaPath)
-			if err != nil {
-				r.log.Printf("failed to calculate file metadata %v: %v", fi.Name(), err)
-				continue
-			}
-			if time.Since(fileMetadata.RecentRepairTime) >= fileRepairInterval {
-				// If the file has not recently been repaired then consider the
-				// health of the file
-				health = fileMetadata.Health
-			}
-			lastHealthCheckTime = fileMetadata.LastHealthCheckTime
-			modTime = fileMetadata.ModTime
-			numStuckChunks = fileMetadata.NumStuckChunks
-			redundancy = fileMetadata.Redundancy
-			stuckHealth = fileMetadata.StuckHealth
-			// Update NumFiles and AggregateNumFiles
-			metadata.NumFiles++
-			metadata.AggregateNumFiles++
-			// Update Size
-			metadata.AggregateSize += fileMetadata.Size
-		} else if fi.IsDir() {
-			// Directory is found, read the directory metadata file
-			dirSiaPath, err := siaPath.Join(fi.Name())
-			if err != nil {
-				return siadir.Metadata{}, err
-			}
-			dirMetadata, err := r.managedDirectoryMetadata(dirSiaPath)
-			if err != nil {
-				return siadir.Metadata{}, err
-			}
-			health = dirMetadata.Health
-			lastHealthCheckTime = dirMetadata.LastHealthCheckTime
-			modTime = dirMetadata.ModTime
-			numStuckChunks = dirMetadata.NumStuckChunks
-			redundancy = dirMetadata.MinRedundancy
-			stuckHealth = dirMetadata.StuckHealth
-			// Update AggregateNumFiles
-			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
-			// Update NumSubDirs
-			metadata.NumSubDirs++
-			// Update Size
-			metadata.AggregateSize += dirMetadata.AggregateSize
-		} else {
-			// Ignore everthing that is not a SiaFile or a directory
-			continue
-		}
-		// Update Health and Stuck Health
-		if health > metadata.Health {
-			metadata.Health = health
-		}
-		if stuckHealth > metadata.StuckHealth {
-			metadata.StuckHealth = stuckHealth
-		}
-		// Update ModTime
-		if modTime.After(metadata.ModTime) {
-			metadata.ModTime = modTime
-		}
-		// Increment NumStuckChunks
-		metadata.NumStuckChunks += numStuckChunks
-		// Update MinRedundancy
-		if redundancy < metadata.MinRedundancy {
-			metadata.MinRedundancy = redundancy
-		}
-		// Update LastHealthCheckTime
-		if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
-			metadata.LastHealthCheckTime = lastHealthCheckTime
-		}
-		metadata.NumStuckChunks += numStuckChunks
-	}
-	// Sanity check on ModTime. If mod time is still zero it means there were no
-	// files or subdirectories. Set ModTime to now since we just updated this
-	// directory
-	if metadata.ModTime.IsZero() {
-		metadata.ModTime = time.Now()
-	}
-
-	// Sanity check on Redundancy. If MinRedundancy is still math.MaxFloat64
-	// then set it to 0
-	if metadata.MinRedundancy == math.MaxFloat64 {
-		metadata.MinRedundancy = 0
-	}
-
-	return metadata, nil
-}
-
-// managedCalculateFileMetadata calculates and returns the necessary metadata
-// information of a siafile that needs to be bubbled
-func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath) (siafile.BubbledMetadata, error) {
-	// Load the Siafile.
-	sf, err := r.staticFileSet.Open(siaPath)
-	if err != nil {
-		return siafile.BubbledMetadata{}, err
-	}
-	defer sf.Close()
-
-	// Mark sure that healthy chunks are not marked as stuck
-	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
-	err = sf.MarkAllHealthyChunksAsUnstuck(hostOfflineMap, hostGoodForRenewMap)
-	if err != nil {
-		return siafile.BubbledMetadata{}, errors.AddContext(err, "unable to mark healthy chunks as unstuck")
-	}
-	// Calculate file health
-	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
-	// Update the LastHealthCheckTime
-	if err := sf.UpdateLastHealthCheckTime(); err != nil {
-		return siafile.BubbledMetadata{}, err
-	}
-	// Calculate file Redundancy and check if local file is missing and
-	// redundancy is less than one
-	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
-	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
-		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
-	}
-	metadata := siafile.CachedHealthMetadata{
-		Health:      health,
-		Redundancy:  redundancy,
-		StuckHealth: stuckHealth,
-	}
-	return siafile.BubbledMetadata{
-		Health:              health,
-		LastHealthCheckTime: sf.LastHealthCheckTime(),
-		ModTime:             sf.ModTime(),
-		NumStuckChunks:      numStuckChunks,
-		Redundancy:          redundancy,
-		Size:                sf.Size(),
-		StuckHealth:         stuckHealth,
-	}, sf.UpdateCachedHealthMetadata(metadata)
-}
-
-// managedCompleteBubbleUpdate completes the bubble update and updates and/or
-// removes it from the renter's bubbleUpdates.
-func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) error {
-	r.bubbleUpdatesMu.Lock()
-	defer r.bubbleUpdatesMu.Unlock()
-
-	// Check current status
-	siaPathStr := siaPath.String()
-	status, ok := r.bubbleUpdates[siaPathStr]
-	if !ok {
-		// Bubble not found in map, nothing to do.
-		return nil
-	}
-
-	// Update status and call new bubble or remove from bubbleUpdates and save
-	switch status {
-	case bubblePending:
-		r.bubbleUpdates[siaPathStr] = bubbleInit
-		defer func() {
-			go r.threadedBubbleMetadata(siaPath)
-		}()
-	case bubbleActive:
-		delete(r.bubbleUpdates, siaPathStr)
-	default:
-		return errors.New("WARN: invalid bubble status")
-	}
-
-	return r.saveBubbleUpdates()
-}
-
-// managedDirectoryMetadata reads the directory metadata and returns the bubble
-// metadata
-func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
-	// Check for bad paths and files
-	fi, err := os.Stat(siaPath.SiaDirSysPath(r.staticFilesDir))
-	if err != nil {
-		return siadir.Metadata{}, err
-	}
-	if !fi.IsDir() {
-		return siadir.Metadata{}, fmt.Errorf("%v is not a directory", siaPath)
-	}
-
-	//  Open SiaDir
-	siaDir, err := r.staticDirSet.Open(siaPath)
-	if os.IsNotExist(err) {
-		// Remember initial Error
-		initError := err
-		// Metadata file does not exists, check if directory is empty
-		fileInfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
-		if err != nil {
-			return siadir.Metadata{}, err
-		}
-		// If the directory is empty and is not the root directory, assume it
-		// was deleted so do not create a metadata file
-		if len(fileInfos) == 0 && !siaPath.IsRoot() {
-			return siadir.Metadata{}, initError
-		}
-		// If we are at the root directory or the directory is not empty, create
-		// a metadata file
-		siaDir, err = r.staticDirSet.NewSiaDir(siaPath)
-	}
-	if err != nil {
-		return siadir.Metadata{}, err
-	}
-	defer siaDir.Close()
-
-	return siaDir.Metadata(), nil
-}
-
-// managedOldestHealthCheckTime finds the lowest level directory that has a
-// LastHealthCheckTime that is outside the healthCheckInterval
+// managedOldestHealthCheckTime finds the lowest level directory with the oldest
+// LastHealthCheckTime
 func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, error) {
 	// Check the siadir metadata for the root files directory
 	siaPath := modules.RootSiaPath()
-	health, err := r.managedDirectoryMetadata(siaPath)
+	metadata, err := r.managedDirectoryMetadata(siaPath)
 	if err != nil {
 		return modules.SiaPath{}, time.Time{}, err
 	}
 
-	// Find the lowest level directory that has a LastHealthCheckTime outside
-	// the healthCheckInterval
-	for time.Since(health.LastHealthCheckTime) > healthCheckInterval {
+	// Follow the path of oldest LastHealthCheckTime to the lowest level
+	// directory
+	for metadata.NumSubDirs > 0 {
 		// Check to make sure renter hasn't been shutdown
 		select {
 		case <-r.tg.StopChan():
-			return modules.SiaPath{}, time.Time{}, err
+			return modules.SiaPath{}, time.Time{}, errors.New("Renter shutdown before oldestHealthCheckTime could be found")
 		default:
 		}
 
@@ -403,45 +113,49 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 		if err != nil {
 			return modules.SiaPath{}, time.Time{}, err
 		}
-		// If there are no sub directories, return
-		if len(subDirSiaPaths) == 0 {
-			return siaPath, health.LastHealthCheckTime, nil
-		}
 
 		// Find the oldest LastHealthCheckTime of the sub directories
 		updated := false
 		for _, subDirPath := range subDirSiaPaths {
+			// Check to make sure renter hasn't been shutdown
+			select {
+			case <-r.tg.StopChan():
+				return modules.SiaPath{}, time.Time{}, errors.New("Renter shutdown before oldestHealthCheckTime could be found")
+			default:
+			}
+
 			// Check lastHealthCheckTime of sub directory
-			subHealth, err := r.managedDirectoryMetadata(subDirPath)
+			subMetadata, err := r.managedDirectoryMetadata(subDirPath)
 			if err != nil {
 				return modules.SiaPath{}, time.Time{}, err
 			}
 
-			// If lastCheck is after current lastHealthCheckTime continue since
-			// we are already in a directory with an older timestamp
-			if subHealth.LastHealthCheckTime.After(health.LastHealthCheckTime) {
+			// If the LastHealthCheckTime is after current LastHealthCheckTime
+			// continue since we are already in a directory with an older
+			// timestamp
+			if subMetadata.AggregateLastHealthCheckTime.After(metadata.AggregateLastHealthCheckTime) {
 				continue
 			}
 
-			// Update lastHealthCheckTime and follow older path
+			// Update LastHealthCheckTime and follow older path
 			updated = true
-			health.LastHealthCheckTime = subHealth.LastHealthCheckTime
+			metadata = subMetadata
 			siaPath = subDirPath
 		}
 
 		// If the values were never updated with any of the sub directory values
 		// then return as we are in the directory we are looking for
 		if !updated {
-			return siaPath, health.LastHealthCheckTime, nil
+			return siaPath, metadata.AggregateLastHealthCheckTime, nil
 		}
 	}
 
-	return siaPath, health.LastHealthCheckTime, nil
+	return siaPath, metadata.AggregateLastHealthCheckTime, nil
 }
 
 // managedStuckDirectory randomly finds a directory that contains stuck chunks
 func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
-	// Iterating of the renter direcotry until randomly ending up in a
+	// Iterating of the renter directory until randomly ending up in a
 	// directory, break and return that directory
 	siaPath := modules.RootSiaPath()
 	for {
@@ -452,7 +166,11 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		default:
 		}
 
-		directories, files, err := r.DirList(siaPath)
+		directories, err := r.DirList(siaPath)
+		if err != nil {
+			return modules.SiaPath{}, err
+		}
+		files, err := r.FileList(siaPath, false, false)
 		if err != nil {
 			return modules.SiaPath{}, err
 		}
@@ -460,13 +178,13 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		if len(directories) == 0 {
 			build.Critical("No directories returned from DirList")
 		}
-		// Check if we are in an empty Directory. This could happen if the only
-		// file in a directory was stuck and was very recently deleted so the
-		// health of the directory has not yet been updated.
+		// Check if we are in an empty Directory. This will be the case before
+		// any files have been uploaded so the root directory is empty. Also it
+		// could happen if the only file in a directory was stuck and was very
+		// recently deleted so the health of the directory has not yet been
+		// updated.
 		emptyDir := len(directories) == 1 && len(files) == 0
 		if emptyDir {
-			// Log an error to keep track of occurrences
-			r.log.Debugln("WARN: empty directory found with stuck chunks:", siaPath)
 			return siaPath, errNoStuckFiles
 		}
 		// Check if there are stuck chunks in this directory
@@ -490,7 +208,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		// directory that means that it is the sum of all the files and
 		// directories.  We can chose a directory by subtracting the number of
 		// stuck chunks a directory has from rand and if rand gets to 0 or less
-		// we choose that direcotry
+		// we choose that directory
 		for i := len(directories) - 1; i >= 0; i-- {
 			// If we make it to the last iteration double check that the current
 			// directory has files
@@ -501,7 +219,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 			// If we are on the last iteration and the directory does have files
 			// then return the current directory
 			if i == 0 {
-				siaPath.LoadString(directories[0].SiaPath)
+				siaPath = directories[0].SiaPath
 				return siaPath, nil
 			}
 
@@ -511,7 +229,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 			}
 
 			rand = rand - int(directories[i].AggregateNumStuckChunks)
-			siaPath.LoadString(directories[i].SiaPath)
+			siaPath = directories[i].SiaPath
 			// If rand is less than 0 break out of the loop and continue into
 			// that directory
 			if rand <= 0 {
@@ -543,151 +261,6 @@ func (r *Renter) managedSubDirectories(siaPath modules.SiaPath) ([]modules.SiaPa
 	return folders, nil
 }
 
-// managedWorstHealthDirectory follows the path of worst health to the lowest
-// level possible
-func (r *Renter) managedWorstHealthDirectory() (modules.SiaPath, float64, error) {
-	// Check the health of the root files directory
-	siaPath := modules.RootSiaPath()
-	health, err := r.managedDirectoryMetadata(siaPath)
-	if err != nil {
-		return modules.SiaPath{}, 0, err
-	}
-
-	// Follow the path of worst health to the lowest level. We only want to find
-	// directories with a health worse than the repairHealthThreshold to save
-	// resources
-	for health.Health >= siafile.RemoteRepairDownloadThreshold {
-		// Check to make sure renter hasn't been shutdown
-		select {
-		case <-r.tg.StopChan():
-			return modules.SiaPath{}, 0, errors.New("could not find worst health directory due to shutdown")
-		default:
-		}
-		// Check for subdirectories
-		subDirSiaPaths, err := r.managedSubDirectories(siaPath)
-		if err != nil {
-			return modules.SiaPath{}, 0, err
-		}
-		// If there are no sub directories, return
-		if len(subDirSiaPaths) == 0 {
-			return siaPath, health.Health, nil
-		}
-
-		// Check sub directory healths to find the worst health
-		updated := false
-		for _, subDirPath := range subDirSiaPaths {
-			// Check health of sub directory
-			subHealth, err := r.managedDirectoryMetadata(subDirPath)
-			if err != nil {
-				return modules.SiaPath{}, 0, err
-			}
-
-			// If the health of the sub directory is better than the current
-			// worst health continue
-			if subHealth.Health < health.Health {
-				continue
-			}
-
-			// Update Health and worst health path
-			updated = true
-			health.Health = subHealth.Health
-			siaPath = subDirPath
-		}
-
-		// If the values were never updated with any of the sub directory values
-		// then return as we are in the directory we are looking for
-		if !updated {
-			return siaPath, health.Health, nil
-		}
-	}
-
-	return siaPath, health.Health, nil
-}
-
-// threadedBubbleMetadata calculates the updated values of a directory's
-// metadata and updates the siadir metadata on disk then calls
-// threadedBubbleMetadata on the parent directory
-func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
-	if err := r.tg.Add(); err != nil {
-		return
-	}
-	defer r.tg.Done()
-
-	// Check if bubble is needed
-	needed, err := r.managedBubbleNeeded(siaPath)
-	if err != nil {
-		r.log.Println("WARN: error in checking if bubble is needed:", err)
-		return
-	}
-	if !needed {
-		return
-	}
-
-	// Make sure we call threadedBubbleMetadata on the parent once we are done.
-	defer func() {
-		// Complete bubble
-		err = r.managedCompleteBubbleUpdate(siaPath)
-		if err != nil {
-			r.log.Println("WARN: error in completing bubble:", err)
-			return
-		}
-		// Continue with parent dir if we aren't in the root dir already.
-		if siaPath.IsRoot() {
-			return
-		}
-		parentDir, err := siaPath.Dir()
-		if err != nil {
-			r.log.Printf("WARN: Failed to defer threadedBubbleMetadata: %v", err)
-			return
-		}
-		go r.threadedBubbleMetadata(parentDir)
-	}()
-
-	// Calculate the new metadata values of the directory
-	metadata, err := r.managedCalculateDirectoryMetadata(siaPath)
-	if err != nil {
-		r.log.Printf("WARN: Could not calculate the metadata of directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
-		return
-	}
-
-	// Update directory metadata with the health information. Don't return here
-	// to avoid skipping the repairNeeded and stuckChunkFound signals.
-	siaDir, err := r.staticDirSet.Open(siaPath)
-	if err != nil {
-		r.log.Printf("WARN: Could not open directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
-	} else {
-		defer siaDir.Close()
-		err = siaDir.UpdateMetadata(metadata)
-		if err != nil {
-			r.log.Printf("WARN: Could not update the metadata of the directory %v: %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
-		}
-	}
-
-	// If siaPath is equal to "" then return as we are in the root files
-	// directory of the renter
-	if siaPath.IsRoot() {
-		// If we are at the root directory then check if any files were found in
-		// need of repair or and stuck chunks and trigger the appropriate repair
-		// loop. This is only done at the root directory as the repair and stuck
-		// loops start at the root directory so there is no point triggering
-		// them until the root directory is updated
-		if metadata.Health >= siafile.RemoteRepairDownloadThreshold {
-			select {
-			case r.uploadHeap.repairNeeded <- struct{}{}:
-			default:
-			}
-		}
-		if metadata.NumStuckChunks > 0 {
-			select {
-			case r.uploadHeap.stuckChunkFound <- struct{}{}:
-			default:
-			}
-		}
-		return
-	}
-	return
-}
-
 // threadedStuckFileLoop go through the renter directory and finds the stuck
 // chunks and tries to repair them
 func (r *Renter) threadedStuckFileLoop() {
@@ -697,8 +270,19 @@ func (r *Renter) threadedStuckFileLoop() {
 	}
 	defer r.tg.Done()
 
+	if r.deps.Disrupt("DisableRepairAndHealthLoops") {
+		return
+	}
+
 	// Loop until the renter has shutdown or until there are no stuck chunks
 	for {
+		// Return if the renter has shut down.
+		select {
+		case <-r.tg.StopChan():
+			return
+		default:
+		}
+
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.
@@ -710,6 +294,12 @@ func (r *Renter) threadedStuckFileLoop() {
 		dirSiaPath, err := r.managedStuckDirectory()
 		if err != nil && err != errNoStuckFiles {
 			r.log.Debugln("WARN: error getting random stuck directory:", err)
+			// Sleep for a little bit before continuing
+			select {
+			case <-time.After(stuckLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
 			continue
 		}
 		if err == errNoStuckFiles {
@@ -725,7 +315,7 @@ func (r *Renter) threadedStuckFileLoop() {
 				// to the heap
 				err := r.managedAddStuckChunksToHeap(siaPath)
 				if err != nil {
-					r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath, "to heap:", err)
+					r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath.String(), "to heap:", err)
 				}
 			}
 			continue
@@ -735,16 +325,13 @@ func (r *Renter) threadedStuckFileLoop() {
 		// useful for uploading.
 		hosts := r.managedRefreshHostsAndWorkers()
 
-		// Add stuck chunk to upload heap
+		// Add stuck chunk to upload heap and signal repair needed
 		r.managedBuildChunkHeap(dirSiaPath, hosts, targetStuckChunks)
-
-		// Try and repair stuck chunk. Since the heap prioritizes stuck chunks
-		// the first chunk popped off will be the stuck chunk.
-		r.log.Debugf("Attempting to repair stuck chunks from directory `%s`", dirSiaPath)
-		r.managedRepairLoop(hosts)
-
-		// Call bubble once all chunks have been popped off heap
-		r.threadedBubbleMetadata(dirSiaPath)
+		r.log.Debugf("Attempting to repair stuck chunks from directory `%s`", dirSiaPath.String())
+		select {
+		case r.uploadHeap.repairNeeded <- struct{}{}:
+		default:
+		}
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
@@ -757,9 +344,25 @@ func (r *Renter) threadedStuckFileLoop() {
 		case siaPath := <-r.uploadHeap.stuckChunkSuccess:
 			// Stuck chunk was successfully repaired. Add the rest of the file
 			// to the heap
+			r.log.Debugln("Stuck repair was successful adding stuck chunks from file", siaPath.String(), "to heap:", err)
 			err := r.managedAddStuckChunksToHeap(siaPath)
 			if err != nil {
-				r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath, "to heap:", err)
+				r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath.String(), "to heap:", err)
+			}
+		}
+
+		// Call bubble before continuing on next iteration to ensure filesystem
+		// is up to date. We do not use the upload heap's channel since bubble
+		// is called when a chunk is done with its repair and since this loop
+		// only typically adds one chunk at a time call bubble before the next
+		// iteration is sufficient.
+		err = r.managedBubbleMetadata(dirSiaPath)
+		if err != nil {
+			r.log.Println("Error calling managedBubbleMetadata on `", dirSiaPath.String(), "`:", err)
+			select {
+			case <-time.After(stuckLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
 			}
 		}
 	}
@@ -773,6 +376,11 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		return
 	}
 	defer r.tg.Done()
+
+	if r.deps.Disrupt("DisableRepairAndHealthLoops") {
+		return
+	}
+
 	// Loop until the renter has shutdown or until the renter's top level files
 	// directory has a LasHealthCheckTime within the healthCheckInterval
 	for {
@@ -782,29 +390,47 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			return
 		default:
 		}
+
 		// Follow path of oldest time, return directory and timestamp
+		r.log.Debugln("Checknig for oldest health check time")
 		siaPath, lastHealthCheckTime, err := r.managedOldestHealthCheckTime()
 		if err != nil {
+			// If there is an error getting the lastHealthCheckTime sleep for a
+			// little bit before continuing
 			r.log.Debug("WARN: Could not find oldest health check time:", err)
+			select {
+			case <-time.After(healthLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
 			continue
 		}
 
-		// If lastHealthCheckTime is within the healthCheckInterval block
-		// until it is time to check again
-		var nextCheckTime time.Duration
+		// Check if the time since the last check on the least recently checked
+		// folder is inside the health check interval. If so, the whole
+		// filesystem has been checked recently, and we can sleep until the
+		// least recent check is outside the check interval.
 		timeSinceLastCheck := time.Since(lastHealthCheckTime)
-		if timeSinceLastCheck > healthCheckInterval { // Check for underflow
-			nextCheckTime = 0
-		} else {
-			nextCheckTime = healthCheckInterval - timeSinceLastCheck
+		if timeSinceLastCheck < healthCheckInterval {
+			// Sleep until the least recent check is outside the check interval.
+			sleepDuration := healthCheckInterval - timeSinceLastCheck
+			r.log.Debugln("Health loop sleeping for", sleepDuration)
+			wakeSignal := time.After(sleepDuration)
+			select {
+			case <-r.tg.StopChan():
+				return
+			case <-wakeSignal:
+			}
 		}
-		healthCheckSignal := time.After(nextCheckTime)
-		select {
-		case <-r.tg.StopChan():
-			return
-		case <-healthCheckSignal:
-			// Bubble directory
-			r.threadedBubbleMetadata(siaPath)
+		r.log.Debug("Health Loop calling bubble on '", siaPath.String(), "'")
+		err = r.managedBubbleMetadata(siaPath)
+		if err != nil {
+			r.log.Println("Error calling managedBubbleMetadata on `", siaPath.String(), "`:", err)
+			select {
+			case <-time.After(healthLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
 		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -28,6 +29,15 @@ var (
 		Run:   wrap(hostdbcmd),
 	}
 
+	hostdbFiltermodeCmd = &cobra.Command{
+		Use:   "filtermode [filtermode] [hosts]",
+		Short: "Set the filtermode.",
+		Long: `Set the hostdb filtermode and specify hosts.
+        [filtermode] can be whitelist, blacklist, or disable.
+        [hosts] must be a comma separated list of host public keys.`,
+		Run: wrap(hostdbfiltermodecmd),
+	}
+
 	hostdbViewCmd = &cobra.Command{
 		Use:   "view [pubkey]",
 		Short: "View the full information for a host.",
@@ -43,6 +53,7 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 	fmt.Fprintf(w, "\t\tAge:\t %.3f\n", info.ScoreBreakdown.AgeAdjustment)
 	fmt.Fprintf(w, "\t\tBurn:\t %.3f\n", info.ScoreBreakdown.BurnAdjustment)
 	fmt.Fprintf(w, "\t\tCollateral:\t %.3f\n", info.ScoreBreakdown.CollateralAdjustment/1e96)
+	fmt.Fprintf(w, "\t\tDuration:\t %.3f\n", info.ScoreBreakdown.DurationAdjustment)
 	fmt.Fprintf(w, "\t\tInteraction:\t %.3f\n", info.ScoreBreakdown.InteractionAdjustment)
 	fmt.Fprintf(w, "\t\tPrice:\t %.3f\n", info.ScoreBreakdown.PriceAdjustment*1e24)
 	fmt.Fprintf(w, "\t\tStorage:\t %.3f\n", info.ScoreBreakdown.StorageRemainingAdjustment)
@@ -51,6 +62,8 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 	w.Flush()
 }
 
+// hostdbcmd is the handler for the command `siac hostdb`.
+// Lists hosts known to the hostdb
 func hostdbcmd() {
 	if !hostdbVerbose {
 		info, err := httpClient.HostDbActiveGet()
@@ -277,6 +290,32 @@ func hostdbcmd() {
 	}
 }
 
+// hostdbfiltermodecmd is the handler for the command `siac hostdb filtermode`.
+// sets the hostdb filtermode (whitelist, blacklist, disable)
+func hostdbfiltermodecmd(filtermodeStr, hostsStr string) {
+	var fm modules.FilterMode
+	err := fm.FromString(filtermodeStr)
+	if err != nil {
+		fmt.Println("Could not parse filtermode: ", err)
+	}
+
+	var host types.SiaPublicKey
+	var hosts []types.SiaPublicKey
+
+	for _, h := range strings.Split(hostsStr, ",") {
+		host.LoadString(string(h))
+		hosts = append(hosts, host)
+	}
+
+	err = httpClient.HostDbFilterModePost(fm, hosts)
+	if err != nil {
+		fmt.Println("Could not set hostdb filtermode: ", err)
+	}
+	fmt.Println("Set filtermode to ", filtermodeStr, " with hosts ", hostsStr)
+}
+
+// hostdbviewcmd is the handler for the command `siac hostdb view`.
+// shows detailed information about a host in the hostdb.
 func hostdbviewcmd(pubkey string) {
 	var publicKey types.SiaPublicKey
 	publicKey.LoadString(pubkey)
@@ -298,6 +337,7 @@ func hostdbviewcmd(pubkey string) {
 	fmt.Fprintln(w, "\t\tTotal Storage:\t", info.Entry.TotalStorage/1e9, "GB")
 	fmt.Fprintln(w, "\t\tRemaining Storage:\t", info.Entry.RemainingStorage/1e9, "GB")
 	fmt.Fprintln(w, "\t\tOffered Collateral (TB / Mo):\t", currencyUnits(info.Entry.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)))
+	fmt.Fprintln(w, "\t\tMax Collateral:\t", currencyUnits(info.Entry.MaxCollateral))
 	fmt.Fprintln(w, "\n\t\tContract Price:\t", currencyUnits(info.Entry.ContractPrice))
 	fmt.Fprintln(w, "\t\tStorage Price (TB / Mo):\t", currencyUnits(info.Entry.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)))
 	fmt.Fprintln(w, "\t\tDownload Price (1 TB):\t", currencyUnits(info.Entry.DownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)))

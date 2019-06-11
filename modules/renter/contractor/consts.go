@@ -40,7 +40,7 @@ var (
 	// interrupted until after uploading progress is interrupted. Structuring
 	// things this way essentially allows the user to experience the failure
 	// mode of 'can't store additional stuff' before the user experiences the
-	// failure mode of 'can't retreive stuff already uploaded'.
+	// failure mode of 'can't retrieve stuff already uploaded'.
 	MinContractFundUploadThreshold = float64(0.05) // 5%
 
 	// randomHostsBufferForScore defines how many extra hosts are queried when trying
@@ -50,6 +50,14 @@ var (
 		Standard: 50,
 		Testing:  1,
 	}).(int)
+
+	// oosRetryInterval is the time we wait for a host that ran out of storage to
+	// add more storage before trying to upload to it again.
+	oosRetryInterval = build.Select(build.Var{
+		Dev:      types.BlockHeight(types.BlocksPerHour / 2), // 30 minutes
+		Standard: types.BlockHeight(types.BlocksPerWeek),     // 7 days
+		Testing:  types.BlockHeight(types.BlocksPerHour * 2),
+	}).(types.BlockHeight)
 )
 
 // Constants related to the safety values for when the contractor is forming
@@ -68,10 +76,30 @@ var (
 		Testing:  maxStoragePrice.Mul64(300 * 4320), // 2 orders of magnitude greater
 	}).(types.Currency)
 
-	// scoreLeeway defines the factor by which a host can miss the goal score
-	// for a set of hosts. To determine the goal score, a new set of hosts is
-	// queried from the hostdb and the lowest scoring among them is selected.
-	// That score is then divided by scoreLeeway to get the minimum score that a
-	// host is allowed to have before being marked as !GoodForUpload.
-	scoreLeeway = types.NewCurrency64(100)
+	// scoreLeewayGoodForRenew defines the factor by which a host can miss the
+	// goal score for a set of hosts and still be GoodForRenew. To determine the
+	// goal score, a new set of hosts is queried from the hostdb and the lowest
+	// scoring among them is selected.  That score is then divided by
+	// scoreLeewayGoodForRenew to get the minimum score that a host is allowed
+	// to have before being marked as !GoodForRenew.
+	//
+	// TODO: At this point in time, this value is somewhat arbitrary and could
+	// be getting set in a lot more scientific way.
+	scoreLeewayGoodForRenew = types.NewCurrency64(500)
+
+	// scoreLeewayGoodForUpload defines the factor by which a host can miss the
+	// goal score for a set of hosts and still be GoodForUpload. To determine the
+	// goal score, a new set of hosts is queried from the hostdb and the lowest
+	// scoring among them is selected.  That score is then divided by
+	// scoreLeewayGoodForUpload to get the minimum score that a host is allowed
+	// to have before being marked as !GoodForUpload.
+	//
+	// Hosts are marked !GoodForUpload before they are marked !GoodForRenew
+	// because churn can harm the health and scalability of a user's filesystem.
+	// Switching away from adding new files to a host can minimize the damage of
+	// using a bad host without incurring data churn.
+	//
+	// TODO: At this point in time, this value is somewhat arbitrary and could
+	// be getting set in a lot more scientific way.
+	scoreLeewayGoodForUpload = types.NewCurrency64(40)
 )

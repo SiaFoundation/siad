@@ -1,25 +1,33 @@
 package siafile
 
 import (
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 type (
-	// metadata is the metadata of a SiaFile and is JSON encoded.
-	metadata struct {
-		StaticPagesPerChunk uint8           `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
-		StaticVersion       [16]byte        `json:"version"`       // version of the sia file format used
-		StaticFileSize      int64           `json:"filesize"`      // total size of the file
-		StaticPieceSize     uint64          `json:"piecesize"`     // size of a single piece of the file
-		LocalPath           string          `json:"localpath"`     // file to the local copy of the file used for repairing
-		SiaPath             modules.SiaPath `json:"siapath"`       // the path of the file on the Sia network
+	// SiafileUID is a unique identifier for siafile which is used to track
+	// siafiles even after renaming them.
+	SiafileUID string
+
+	// Metadata is the metadata of a SiaFile and is JSON encoded.
+	Metadata struct {
+		UniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
+
+		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
+		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
+		FileSize            int64    `json:"filesize"`      // total size of the file
+		StaticPieceSize     uint64   `json:"piecesize"`     // size of a single piece of the file
+		LocalPath           string   `json:"localpath"`     // file to the local copy of the file used for repairing
 
 		// fields for encryption
 		StaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
@@ -33,6 +41,39 @@ type (
 		AccessTime time.Time `json:"accesstime"` // time of last access
 		CreateTime time.Time `json:"createtime"` // time of file creation
 
+		// Cached fields. These fields are cached fields and are only meant to be used
+		// to create FileInfos for file related API endpoints. There is no guarantee
+		// that these fields are up-to-date. Neither in memory nor on disk. Updates to
+		// these fields aren't persisted immediately. Instead they will only be
+		// persisted whenever another method persists the metadata or when the SiaFile
+		// is closed.
+		//
+		// CachedRedundancy is the redundancy of the file on the network and is
+		// updated within the 'Redundancy' method which is periodically called by the
+		// repair code.
+		//
+		// CachedHealth is the health of the file on the network and is also
+		// periodically updated by the health check loop whenever 'Health' is called.
+		//
+		// CachedStuckHealth is the health of the stuck chunks of the file. It is
+		// updated by the health check loop. CachedExpiration is the lowest height at
+		// which any of the file's contracts will expire. Also updated periodically by
+		// the health check loop whenever 'Health' is called.
+		//
+		// CachedUploadedBytes is the number of bytes of the file that have been
+		// uploaded to the network so far. Is updated every time a piece is added to
+		// the siafile.
+		//
+		// CachedUploadProgress is the upload progress of the file and is updated
+		// every time a piece is added to the siafile.
+		//
+		CachedRedundancy     float64           `json:"cachedredundancy"`
+		CachedHealth         float64           `json:"cachedhealth"`
+		CachedStuckHealth    float64           `json:"cachedstuckhealth"`
+		CachedExpiration     types.BlockHeight `json:"cachedexpiration"`
+		CachedUploadedBytes  uint64            `json:"cacheduploadedbytes"`
+		CachedUploadProgress float64           `json:"cacheduploadprogress"`
+
 		// Repair loop fields
 		//
 		// Health is the worst health of the file's unstuck chunks and
@@ -44,9 +85,6 @@ type (
 		// NumStuckChunks is the number of all the SiaFile's chunks that have
 		// been marked as stuck by the repair loop
 		//
-		// RecentRepairTime is the timestamp of the last time the file was added
-		// to the repair heap for repair
-		//
 		// Redundancy is the cached value of the last time the file's redundancy
 		// was checked
 		//
@@ -55,7 +93,6 @@ type (
 		Health              float64   `json:"health"`
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
-		RecentRepairTime    time.Time `json:"recentrepairtime"`
 		Redundancy          float64   `json:"redundancy"`
 		StuckHealth         float64   `json:"stuckhealth"`
 
@@ -105,7 +142,6 @@ type (
 		LastHealthCheckTime time.Time
 		ModTime             time.Time
 		NumStuckChunks      uint64
-		RecentRepairTime    time.Time
 		Redundancy          float64
 		Size                uint64
 		StuckHealth         float64
@@ -148,8 +184,8 @@ func (sf *SiaFile) ChunkSize() uint64 {
 
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
 func (sf *SiaFile) LastHealthCheckTime() time.Time {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
 	return sf.staticMetadata.LastHealthCheckTime
 }
 
@@ -170,6 +206,13 @@ func (sf *SiaFile) MasterKey() crypto.CipherKey {
 		panic(errors.AddContext(err, "failed to create masterkey of siafile"))
 	}
 	return sk
+}
+
+// Metadata returns the metadata of the SiaFile.
+func (sf *SiaFile) Metadata() Metadata {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata
 }
 
 // Mode returns the FileMode of the SiaFile.
@@ -199,22 +242,12 @@ func (sf *SiaFile) PieceSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize
 }
 
-// RecentRepairTime returns  the RecentRepairTime timestamp of the file
-func (sf *SiaFile) RecentRepairTime() time.Time {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	return sf.staticMetadata.RecentRepairTime
-}
-
 // Rename changes the name of the file to a new one.
 func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
-	// TODO - this code creates directories without metadata files.  Add
-	// metadate file creation in repair by folder code when updating renter
-	// redundancy
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
@@ -222,7 +255,6 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
-	sf.staticMetadata.SiaPath = newSiaPath
 	// Update the ChangeTime because the metadata changed.
 	sf.staticMetadata.ChangeTime = time.Now()
 	// Write the header to the new location.
@@ -232,10 +264,7 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	}
 	updates = append(updates, headerUpdate...)
 	// Write the chunks to the new location.
-	chunksUpdates, err := sf.saveChunksUpdates()
-	if err != nil {
-		return err
-	}
+	chunksUpdates := sf.saveChunksUpdates()
 	updates = append(updates, chunksUpdates...)
 	// Apply updates.
 	return sf.createAndApplyTransaction(updates...)
@@ -256,6 +285,17 @@ func (sf *SiaFile) SetMode(mode os.FileMode) error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
+// SetLastHealthCheckTime sets the LastHealthCheckTime in memory to the current
+// time but does not update and write to disk.
+//
+// NOTE: This call should be used in conjunction with a method that saves the
+// SiaFile metadata
+func (sf *SiaFile) SetLastHealthCheckTime() {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.LastHealthCheckTime = time.Now()
+}
+
 // SetLocalPath changes the local path of the file which is used to repair
 // the file from disk.
 func (sf *SiaFile) SetLocalPath(path string) error {
@@ -271,16 +311,16 @@ func (sf *SiaFile) SetLocalPath(path string) error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
-// SiaPath returns the file's sia path.
-func (sf *SiaFile) SiaPath() modules.SiaPath {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	return sf.staticMetadata.SiaPath
-}
-
 // Size returns the file's size.
 func (sf *SiaFile) Size() uint64 {
-	return uint64(sf.staticMetadata.StaticFileSize)
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return uint64(sf.staticMetadata.FileSize)
+}
+
+// UpdateUniqueID creates a new random uid for the SiaFile.
+func (sf *SiaFile) UpdateUniqueID() {
+	sf.staticMetadata.UniqueID = uniqueID()
 }
 
 // UpdateAccessTime updates the AccessTime timestamp to the current time.
@@ -297,60 +337,12 @@ func (sf *SiaFile) UpdateAccessTime() error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
-// UpdateLastHealthCheckTime updates the LastHealthCheckTime timestamp to the
-// current time.
-func (sf *SiaFile) UpdateLastHealthCheckTime() error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	sf.staticMetadata.LastHealthCheckTime = time.Now()
-	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
-}
-
-// UpdateCachedHealthMetadata updates the siafile metadata fields that are the
-// cached health values
-func (sf *SiaFile) UpdateCachedHealthMetadata(metadata CachedHealthMetadata) error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// Update the number of stuck chunks
-	var numStuckChunks uint64
-	for _, chunk := range sf.staticChunks {
-		if chunk.Stuck {
-			numStuckChunks++
-		}
-	}
-	sf.staticMetadata.Health = metadata.Health
-	sf.staticMetadata.NumStuckChunks = numStuckChunks
-	sf.staticMetadata.Redundancy = metadata.Redundancy
-	sf.staticMetadata.StuckHealth = metadata.StuckHealth
-	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
-}
-
-// UpdateRecentRepairTime updates the RecentRepairTime timestamp to the current
-// time.
-func (sf *SiaFile) UpdateRecentRepairTime() error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	sf.staticMetadata.RecentRepairTime = time.Now()
-
-	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
-}
-
 // staticChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) staticChunkSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize * uint64(sf.staticMetadata.staticErasureCode.MinPieces())
+}
+
+// uniqueID creates a random unique SiafileUID.
+func uniqueID() SiafileUID {
+	return SiafileUID(hex.EncodeToString(fastrand.Bytes(20)))
 }

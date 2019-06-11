@@ -62,7 +62,8 @@ type (
 	persistence struct {
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
-		StreamCacheSize  uint64
+		UploadedBackups  []modules.UploadedBackup
+		SyncedContracts  []types.FileContractID
 	}
 )
 
@@ -217,8 +218,9 @@ func (r *Renter) managedLoadSettings() error {
 		// No persistence yet, set the defaults and continue.
 		r.persist.MaxDownloadSpeed = DefaultMaxDownloadSpeed
 		r.persist.MaxUploadSpeed = DefaultMaxUploadSpeed
-		r.persist.StreamCacheSize = DefaultStreamCacheSize
+		id := r.mu.Lock()
 		err = r.saveSync()
+		r.mu.Unlock(id)
 		if err != nil {
 			return err
 		}
@@ -259,6 +261,10 @@ func (r *Renter) managedInitPersist() error {
 	// because the wal needs the directory to be created and the staticDirSet
 	// needs the wal.
 	err := os.MkdirAll(r.staticFilesDir, 0700)
+	if err != nil {
+		return err
+	}
+	err = os.MkdirAll(r.staticBackupsDir, 0700)
 	if err != nil {
 		return err
 	}
@@ -304,6 +310,8 @@ func (r *Renter) managedInitPersist() error {
 	r.wal = wal
 	r.staticFileSet = siafile.NewSiaFileSet(r.staticFilesDir, wal)
 	r.staticDirSet = siadir.NewSiaDirSet(r.staticFilesDir, wal)
+	r.staticBackupFileSet = siafile.NewSiaFileSet(r.staticBackupsDir, wal)
+	r.staticBackupDirSet = siadir.NewSiaDirSet(r.staticBackupsDir, wal)
 	if err := r.staticDirSet.InitRootDir(); err != nil {
 		return err
 	}

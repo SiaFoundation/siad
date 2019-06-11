@@ -25,7 +25,7 @@ func testingFileParams() (modules.SiaPath, modules.ErasureCoder) {
 	nData := fastrand.Intn(10)
 	nParity := fastrand.Intn(10)
 	rsc, _ := siafile.NewRSCode(nData+1, nParity+1)
-	return newRandSiaPath(), rsc
+	return modules.RandomSiaPath(), rsc
 }
 
 // equalFiles is a helper function that compares two files for equality.
@@ -33,8 +33,8 @@ func equalFiles(f1, f2 *siafile.SiaFile) error {
 	if f1 == nil || f2 == nil {
 		return fmt.Errorf("one or both files are nil")
 	}
-	if f1.SiaPath() != f2.SiaPath() {
-		return fmt.Errorf("names do not match: %v %v", f1.SiaPath(), f2.SiaPath())
+	if f1.UID() != f2.UID() {
+		return fmt.Errorf("uids do not match: %v %v", f1.UID(), f2.UID())
 	}
 	if f1.Size() != f2.Size() {
 		return fmt.Errorf("sizes do not match: %v %v", f1.Size(), f2.Size())
@@ -69,18 +69,13 @@ func TestRenterSaveLoad(t *testing.T) {
 	if settings.MaxUploadSpeed != DefaultMaxUploadSpeed {
 		t.Error("default max upload speed not set at init")
 	}
-	if settings.StreamCacheSize != DefaultStreamCacheSize {
-		t.Error("default stream cache size not set at init")
-	}
 
 	// Update the settings of the renter to have a new stream cache size and
 	// download speed.
 	newDownSpeed := int64(300e3)
 	newUpSpeed := int64(500e3)
-	newCacheSize := uint64(3)
 	settings.MaxDownloadSpeed = newDownSpeed
 	settings.MaxUploadSpeed = newUpSpeed
-	settings.StreamCacheSize = newCacheSize
 	rt.renter.SetSettings(settings)
 
 	// Add a file to the renter
@@ -88,7 +83,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siapath := entry.SiaPath()
+	siapath := rt.renter.staticFileSet.SiaPath(entry)
 	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -125,9 +120,6 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 	if newSettings.MaxUploadSpeed != newUpSpeed {
 		t.Error("upload settings not being persisted correctly")
-	}
-	if newSettings.StreamCacheSize != newCacheSize {
-		t.Error("cache settings not being persisted correctly")
 	}
 
 	// Check that SiaFileSet loaded the renter's file
@@ -195,25 +187,25 @@ func TestRenterPaths(t *testing.T) {
 	}
 
 	// Check that the files were loaded properly.
-	entry, err := rt.renter.staticFileSet.Open(siaPath1)
+	entry1, err := rt.renter.staticFileSet.Open(siaPath1)
 	if err != nil {
 		t.Fatal("File not found in renter", err)
 	}
-	if err := equalFiles(f1, entry.SiaFile); err != nil {
+	if err := equalFiles(f1, entry1.SiaFile); err != nil {
 		t.Fatal(err)
 	}
-	entry, err = rt.renter.staticFileSet.Open(siaPath2)
+	entry2, err := rt.renter.staticFileSet.Open(siaPath2)
 	if err != nil {
 		t.Fatal("File not found in renter", err)
 	}
-	if err := equalFiles(f2, entry.SiaFile); err != nil {
+	if err := equalFiles(f2, entry2.SiaFile); err != nil {
 		t.Fatal(err)
 	}
-	entry, err = rt.renter.staticFileSet.Open(siaPath3)
+	entry3, err := rt.renter.staticFileSet.Open(siaPath3)
 	if err != nil {
 		t.Fatal("File not found in renter", err)
 	}
-	if err := equalFiles(f3, entry.SiaFile); err != nil {
+	if err := equalFiles(f3, entry3.SiaFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,7 +223,8 @@ func TestRenterPaths(t *testing.T) {
 		return nil
 	})
 	// walk will descend into foo/bar/, reading baz, bar, and finally foo
-	expWalkStr := (f3.SiaPath().String() + ".sia") + (f2.SiaPath().String() + ".sia") + (f1.SiaPath().String() + ".sia")
+	sfs := rt.renter.staticFileSet
+	expWalkStr := (sfs.SiaPath(entry3).String() + ".sia") + (sfs.SiaPath(entry2).String() + ".sia") + (sfs.SiaPath(entry1).String() + ".sia")
 	if filepath.ToSlash(walkStr) != expWalkStr {
 		t.Fatalf("Bad walk string: expected %v, got %v", expWalkStr, walkStr)
 	}

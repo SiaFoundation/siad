@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -43,6 +44,14 @@ var (
 		Short: "View a list of peers",
 		Long:  "View the current peer list.",
 		Run:   wrap(gatewaylistcmd),
+	}
+
+	gatewayRatelimitCmd = &cobra.Command{
+		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
+		Short: "set maxdownloadspeed and maxuploadspeed",
+		Long: `Set the maxdownloadspeed and maxuploadspeed in bytes-per-second
+(B/s).  Set them to 0 for no limit.`,
+		Run: wrap(gatewayratelimitcmd),
 	}
 )
 
@@ -85,6 +94,8 @@ func gatewaycmd() {
 	}
 	fmt.Println("Address:", info.NetAddress)
 	fmt.Println("Active peers:", len(info.Peers))
+	fmt.Println("Max download speed:", info.MaxDownloadSpeed)
+	fmt.Println("Max upload speed:", info.MaxUploadSpeed)
 }
 
 // gatewaylistcmd is the handler for the command `siac gateway list`.
@@ -105,4 +116,24 @@ func gatewaylistcmd() {
 		fmt.Fprintf(w, "%v\t%v\t%v\n", peer.Version, yesNo(!peer.Inbound), peer.NetAddress)
 	}
 	w.Flush()
+}
+
+// gatewayratelimitcmd is the handler for the command `siac gateway ratelimit`.
+// sets the maximum upload & download bandwidth the gateway module is permitted
+// to use.
+func gatewayratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
+	downloadSpeedInt, err := strconv.ParseInt(downloadSpeedStr, 10, 64)
+	if err != nil {
+		die("Could not parse downloadspeed")
+	}
+	uploadSpeedInt, err := strconv.ParseInt(uploadSpeedStr, 10, 64)
+	if err != nil {
+		die("Could not parse uploadspeed")
+	}
+
+	err = httpClient.GatewayRateLimitPost(downloadSpeedInt, uploadSpeedInt)
+	if err != nil {
+		die("Could not set gateway ratelimit speed")
+	}
+	fmt.Println("Set gateway maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }

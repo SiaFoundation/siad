@@ -10,7 +10,11 @@ package node
 // modules.
 
 import (
+	"fmt"
 	"path/filepath"
+
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules/explorer"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
@@ -83,7 +87,11 @@ type NodeParams struct {
 	WalletDeps      modules.Dependencies
 
 	// Custom settings for modules
-	Allowance modules.Allowance
+	Allowance   modules.Allowance
+	Bootstrap   bool
+	HostAddress string
+	HostStorage uint64
+	RPCAddress  string
 
 	// Initialize node from existing seed.
 	PrimarySeed string
@@ -115,31 +123,85 @@ type Node struct {
 	Dir string
 }
 
+// NumModules returns how many of the major modules the given NodeParams would
+// create.
+func (np NodeParams) NumModules() (n int) {
+	if np.CreateGateway || np.Gateway != nil {
+		n++
+	}
+	if np.CreateConsensusSet || np.ConsensusSet != nil {
+		n++
+	}
+	if np.CreateTransactionPool || np.TransactionPool != nil {
+		n++
+	}
+	if np.CreateWallet || np.Wallet != nil {
+		n++
+	}
+	if np.CreateHost || np.Host != nil {
+		n++
+	}
+	if np.CreateRenter || np.Renter != nil {
+		n++
+	}
+	if np.CreateMiner || np.Miner != nil {
+		n++
+	}
+	if !np.CreateExplorer || np.Explorer != nil {
+		n++
+	}
+	return
+}
+
+// printlnRelease is a wrapper that only prints to stdout in release builds.
+func printlnRelease(a ...interface{}) (int, error) {
+	if build.Release == "standard" {
+		return fmt.Println(a...)
+	}
+	return 0, nil
+}
+
+// printfRelease is a wrapper that only prints to stdout in release builds.
+func printfRelease(format string, a ...interface{}) (int, error) {
+	if build.Release == "standard" {
+		return fmt.Printf(format, a...)
+	}
+	return 0, nil
+}
+
 // Close will call close on every module within the node, combining and
 // returning the errors.
 func (n *Node) Close() (err error) {
-	if n.Explorer != nil {
-		err = errors.Compose(n.Explorer.Close())
-	}
-	if n.Miner != nil {
-		err = errors.Compose(n.Miner.Close())
-	}
-	if n.Host != nil {
-		err = errors.Compose(n.Host.Close())
-	}
 	if n.Renter != nil {
+		printlnRelease("Closing renter...")
 		err = errors.Compose(n.Renter.Close())
 	}
+	if n.Host != nil {
+		printlnRelease("Closing host...")
+		err = errors.Compose(n.Host.Close())
+	}
+	if n.Miner != nil {
+		printlnRelease("Closing miner...")
+		err = errors.Compose(n.Miner.Close())
+	}
 	if n.Wallet != nil {
+		printlnRelease("Closing wallet...")
 		err = errors.Compose(n.Wallet.Close())
 	}
 	if n.TransactionPool != nil {
+		printlnRelease("Closing transactionpool...")
 		err = errors.Compose(n.TransactionPool.Close())
 	}
+	if n.Explorer != nil {
+		printlnRelease("Closing explorer...")
+		err = errors.Compose(n.Explorer.Close())
+	}
 	if n.ConsensusSet != nil {
+		printlnRelease("Closing consensusset...")
 		err = errors.Compose(n.ConsensusSet.Close())
 	}
 	if n.Gateway != nil {
+		printlnRelease("Closing gateway...")
 		err = errors.Compose(n.Gateway.Close())
 	}
 	return err
@@ -153,30 +215,26 @@ func (n *Node) Close() (err error) {
 func New(params NodeParams) (*Node, error) {
 	dir := params.Dir
 
+	numModules := params.NumModules()
+	i := 1
+	printfRelease("(%d/%d) Loading siad...\n", i, numModules)
 	// Gateway.
 	g, err := func() (modules.Gateway, error) {
 		if params.CreateGateway && params.Gateway != nil {
 			return nil, errors.New("cannot both create a gateway and use a passed in gateway")
 		}
-		/* Template for dealing with optional dependencies:
-		if !params.CreateGateway && parames.GatewayDependencies != nil {
-			return nil, errors.New("cannot pass in gateway dependencies if you are not creating a gateway")
-		}
-		*/
 		if params.Gateway != nil {
 			return params.Gateway, nil
 		}
 		if !params.CreateGateway {
 			return nil, nil
 		}
-		/* Template for dealing with optional dependencies:
-		if params.GatewayDependencies == nil {
-			gateway.New(...
-		} else {
-			gateway.NewDeps(...
+		if params.RPCAddress == "" {
+			params.RPCAddress = "localhost:0"
 		}
-		*/
-		return gateway.New("localhost:0", false, filepath.Join(dir, modules.GatewayDir))
+		i++
+		printfRelease("(%d/%d) Loading gateway...\n", i, numModules)
+		return gateway.New(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir))
 	}()
 	if err != nil {
 		return nil, errors.Extend(err, errors.New("unable to create gateway"))
@@ -193,10 +251,35 @@ func New(params NodeParams) (*Node, error) {
 		if !params.CreateConsensusSet {
 			return nil, nil
 		}
-		return consensus.New(g, false, filepath.Join(dir, modules.ConsensusDir))
+		i++
+		printfRelease("(%d/%d) Loading consensus...\n", i, numModules)
+		return consensus.New(g, params.Bootstrap, filepath.Join(dir, modules.ConsensusDir))
 	}()
 	if err != nil {
 		return nil, errors.Extend(err, errors.New("unable to create consensus set"))
+	}
+
+	// Explorer.
+	e, err := func() (modules.Explorer, error) {
+		if !params.CreateExplorer && params.Explorer != nil {
+			return nil, errors.New("cannot create explorer and also use custom explorer")
+		}
+		if params.Explorer != nil {
+			return params.Explorer, nil
+		}
+		if !params.CreateExplorer {
+			return nil, nil
+		}
+		e, err := explorer.New(cs, filepath.Join(dir, modules.ExplorerDir))
+		if err != nil {
+			return nil, err
+		}
+		i++
+		printfRelease("(%d/%d) Loading explorer...\n", i, numModules)
+		return e, nil
+	}()
+	if err != nil {
+		return nil, errors.Extend(err, errors.New("unable to create explorer"))
 	}
 
 	// Transaction Pool.
@@ -210,6 +293,8 @@ func New(params NodeParams) (*Node, error) {
 		if !params.CreateTransactionPool {
 			return nil, nil
 		}
+		i++
+		printfRelease("(%d/%d) Loading transaction pool...\n", i, numModules)
 		return transactionpool.New(cs, g, filepath.Join(dir, modules.TransactionPoolDir))
 	}()
 	if err != nil {
@@ -231,10 +316,35 @@ func New(params NodeParams) (*Node, error) {
 		if walletDeps == nil {
 			walletDeps = modules.ProdDependencies
 		}
+		i++
+		printfRelease("(%d/%d) Loading wallet...\n", i, numModules)
 		return wallet.NewCustomWallet(cs, tp, filepath.Join(dir, modules.WalletDir), walletDeps)
 	}()
 	if err != nil {
 		return nil, errors.Extend(err, errors.New("unable to create wallet"))
+	}
+
+	// Miner.
+	m, err := func() (modules.TestMiner, error) {
+		if params.CreateMiner && params.Miner != nil {
+			return nil, errors.New("cannot create miner and also use custom miner")
+		}
+		if params.Miner != nil {
+			return params.Miner, nil
+		}
+		if !params.CreateMiner {
+			return nil, nil
+		}
+		i++
+		printfRelease("(%d/%d) Loading miner...\n", i, numModules)
+		m, err := miner.New(cs, tp, w, filepath.Join(dir, modules.MinerDir))
+		if err != nil {
+			return nil, err
+		}
+		return m, nil
+	}()
+	if err != nil {
+		return nil, errors.Extend(err, errors.New("unable to create miner"))
 	}
 
 	// Host.
@@ -248,7 +358,12 @@ func New(params NodeParams) (*Node, error) {
 		if !params.CreateHost {
 			return nil, nil
 		}
-		return host.New(cs, g, tp, w, "localhost:0", filepath.Join(dir, modules.HostDir))
+		if params.HostAddress == "" {
+			params.HostAddress = "localhost:0"
+		}
+		i++
+		printfRelease("(%d/%d) Loading host...\n", i, numModules)
+		return host.New(cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
 	}()
 	if err != nil {
 		return nil, errors.Extend(err, errors.New("unable to create host"))
@@ -283,6 +398,9 @@ func New(params NodeParams) (*Node, error) {
 		}
 		persistDir := filepath.Join(dir, modules.RenterDir)
 
+		i++
+		printfRelease("(%d/%d) Loading renter...\n", i, numModules)
+
 		// HostDB
 		hdb, err := hostdb.NewCustomHostDB(g, cs, tp, persistDir, hostDBDeps)
 		if err != nil {
@@ -302,49 +420,10 @@ func New(params NodeParams) (*Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		return renter.NewCustomRenter(g, cs, tp, hdb, hc, persistDir, renterDeps)
+		return renter.NewCustomRenter(g, cs, tp, hdb, w, hc, persistDir, renterDeps)
 	}()
 	if err != nil {
 		return nil, errors.Extend(err, errors.New("unable to create renter"))
-	}
-
-	// Miner.
-	m, err := func() (modules.TestMiner, error) {
-		if params.CreateMiner && params.Miner != nil {
-			return nil, errors.New("cannot create miner and also use custom miner")
-		}
-		if params.Miner != nil {
-			return params.Miner, nil
-		}
-		if !params.CreateMiner {
-			return nil, nil
-		}
-		m, err := miner.New(cs, tp, w, filepath.Join(dir, modules.MinerDir))
-		if err != nil {
-			return nil, err
-		}
-		return m, nil
-	}()
-	if err != nil {
-		return nil, errors.Extend(err, errors.New("unable to create miner"))
-	}
-
-	// Explorer.
-	e, err := func() (modules.Explorer, error) {
-		if !params.CreateExplorer && params.Explorer != nil {
-			return nil, errors.New("cannot create explorer and also use custom explorer")
-		}
-		if params.Explorer != nil {
-			return params.Explorer, nil
-		}
-		if !params.CreateExplorer {
-			return nil, nil
-		}
-		// TODO: Implement explorer.
-		return nil, errors.New("explorer not implemented")
-	}()
-	if err != nil {
-		return nil, errors.Extend(err, errors.New("unable to create explorer"))
 	}
 
 	return &Node{

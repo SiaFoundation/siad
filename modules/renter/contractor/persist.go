@@ -19,6 +19,7 @@ type contractorPersist struct {
 	BlockHeight          types.BlockHeight               `json:"blockheight"`
 	CurrentPeriod        types.BlockHeight               `json:"currentperiod"`
 	LastChange           modules.ConsensusChangeID       `json:"lastchange"`
+	RecentRecoveryChange modules.ConsensusChangeID       `json:"recentrecoverychange"`
 	OldContracts         []modules.RenterContract        `json:"oldcontracts"`
 	RecoverableContracts []modules.RecoverableContract   `json:"recoverablecontracts"`
 	RenewedFrom          map[string]types.FileContractID `json:"renewedfrom"`
@@ -28,12 +29,13 @@ type contractorPersist struct {
 // persistData returns the data in the Contractor that will be saved to disk.
 func (c *Contractor) persistData() contractorPersist {
 	data := contractorPersist{
-		Allowance:     c.allowance,
-		BlockHeight:   c.blockHeight,
-		CurrentPeriod: c.currentPeriod,
-		LastChange:    c.lastChange,
-		RenewedFrom:   make(map[string]types.FileContractID),
-		RenewedTo:     make(map[string]types.FileContractID),
+		Allowance:            c.allowance,
+		BlockHeight:          c.blockHeight,
+		CurrentPeriod:        c.currentPeriod,
+		LastChange:           c.lastChange,
+		RecentRecoveryChange: c.recentRecoveryChange,
+		RenewedFrom:          make(map[string]types.FileContractID),
+		RenewedTo:            make(map[string]types.FileContractID),
 	}
 	for k, v := range c.renewedFrom {
 		data.RenewedFrom[k.String()] = v
@@ -63,7 +65,7 @@ func (c *Contractor) load() error {
 	if !reflect.DeepEqual(data.Allowance, modules.Allowance{}) {
 		if data.Allowance.ExpectedStorage == 0 && data.Allowance.ExpectedUpload == 0 &&
 			data.Allowance.ExpectedDownload == 0 && data.Allowance.ExpectedRedundancy == 0 {
-			// Set the fields to the defauls.
+			// Set the fields to the defaults.
 			data.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 			data.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 			data.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
@@ -75,6 +77,7 @@ func (c *Contractor) load() error {
 	c.blockHeight = data.BlockHeight
 	c.currentPeriod = data.CurrentPeriod
 	c.lastChange = data.LastChange
+	c.recentRecoveryChange = data.RecentRecoveryChange
 	var fcid types.FileContractID
 	for k, v := range data.RenewedFrom {
 		if err := fcid.LoadString(k); err != nil {
@@ -100,11 +103,6 @@ func (c *Contractor) load() error {
 
 // save saves the Contractor persistence data to disk.
 func (c *Contractor) save() error {
-	return c.persist.save(c.persistData())
-}
-
-// saveSync saves the Contractor persistence data to disk and then syncs to disk.
-func (c *Contractor) saveSync() error {
 	return c.persist.save(c.persistData())
 }
 

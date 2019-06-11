@@ -1,10 +1,14 @@
 package modules
 
 import (
+	"encoding/base32"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
+
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // siapath.go contains the types and methods for creating and manipulating
@@ -35,6 +39,14 @@ func NewSiaPath(s string) (SiaPath, error) {
 	return newSiaPath(s)
 }
 
+// RandomSiaPath returns a random SiaPath created from 20 bytes of base32
+// encoded entropy.
+func RandomSiaPath() (sp SiaPath) {
+	sp.Path = base32.StdEncoding.EncodeToString(fastrand.Bytes(20))
+	sp.Path = sp.Path[:20]
+	return
+}
+
 // RootSiaPath returns a SiaPath for the root siadir which has a blank path
 func RootSiaPath() SiaPath {
 	return SiaPath{}
@@ -55,6 +67,13 @@ func newSiaPath(s string) (SiaPath, error) {
 		Path: clean(s),
 	}
 	return sp, sp.validate(false)
+}
+
+// AddSuffix adds a numeric suffix to the end of the SiaPath.
+func (sp SiaPath) AddSuffix(suffix uint) SiaPath {
+	return SiaPath{
+		Path: sp.Path + fmt.Sprintf("_%v", suffix),
+	}
 }
 
 // Dir returns the directory of the SiaPath
@@ -91,9 +110,39 @@ func (sp *SiaPath) LoadString(s string) error {
 	return sp.validate(false)
 }
 
+// LoadSysPath loads a SiaPath from a given system path by trimming the dir at
+// the front of the path, the extension at the back and returning the remaining
+// path as a SiaPath.
+func (sp *SiaPath) LoadSysPath(dir, path string) error {
+	if !strings.HasPrefix(path, dir) {
+		return fmt.Errorf("%v is not a prefix of %v", dir, path)
+	}
+	path = strings.TrimSuffix(strings.TrimPrefix(path, dir), SiaFileExtension)
+	return sp.LoadString(path)
+}
+
 // MarshalJSON marshales a SiaPath as a string.
 func (sp SiaPath) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sp.String())
+}
+
+// Name returns the name of the file.
+func (sp SiaPath) Name() string {
+	_, name := filepath.Split(sp.Path)
+	return name
+}
+
+// Rebase changes the base of a siapath from oldBase to newBase and returns a new SiaPath.
+// e.g. rebasing 'a/b/myfile' from oldBase 'a/b/' to 'a/' would result in 'a/myfile'
+func (sp SiaPath) Rebase(oldBase, newBase SiaPath) (SiaPath, error) {
+	if !strings.HasPrefix(sp.Path, oldBase.Path) {
+		return SiaPath{}, fmt.Errorf("'%v' isn't the base of '%v'", oldBase.Path, sp.Path)
+	}
+	relPath := strings.TrimPrefix(sp.Path, oldBase.Path)
+	if relPath == "" {
+		return newBase, nil
+	}
+	return newBase.Join(relPath)
 }
 
 // UnmarshalJSON unmarshals a siapath into a SiaPath object.
@@ -126,6 +175,18 @@ func (sp SiaPath) SiaFileSysPath(dir string) string {
 // String returns the SiaPath's path
 func (sp SiaPath) String() string {
 	return sp.Path
+}
+
+// FromSysPath creates a SiaPath from a siaFilePath and corresponding root files
+// dir.
+func (sp *SiaPath) FromSysPath(siaFilePath, dir string) (err error) {
+	if !strings.HasPrefix(siaFilePath, dir) {
+		return fmt.Errorf("SiaFilePath %v is not within dir %v", siaFilePath, dir)
+	}
+	relPath := strings.TrimPrefix(siaFilePath, dir)
+	relPath = strings.TrimSuffix(relPath, SiaFileExtension)
+	*sp, err = newSiaPath(relPath)
+	return
 }
 
 // validate checks that a Siapath is a legal filename. ../ is disallowed to

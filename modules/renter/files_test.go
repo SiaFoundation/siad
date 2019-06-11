@@ -12,7 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -53,15 +52,6 @@ func newTestingWal() *writeaheadlog.WAL {
 		panic(err)
 	}
 	return wal
-}
-
-// newRandSiaPath creates a new SiaPath type with a random path.
-func newRandSiaPath() modules.SiaPath {
-	siaPath, err := modules.NewSiaPath(hex.EncodeToString(fastrand.Bytes(4)))
-	if err != nil {
-		panic(err)
-	}
-	return siaPath
 }
 
 // newRenterTestFile creates a test file when the test has a renter so that the
@@ -145,49 +135,12 @@ func TestFileNumChunks(t *testing.T) {
 	}
 }
 
-// TestFileUploadedBytes tests that uploadedBytes() returns a value equal to
-// the number of sectors stored via contract times the size of each sector.
-func TestFileUploadedBytes(t *testing.T) {
-	// ensure that a piece fits within a sector
-	rsc, _ := siafile.NewRSCode(1, 3)
-	f, err := newFileTesting(t.Name(), newTestingWal(), rsc, 1000, 0777, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := uint64(0); i < 4; i++ {
-		err := f.AddPiece(types.SiaPublicKey{}, uint64(0), i, crypto.Hash{})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if f.UploadedBytes() != 4*modules.SectorSize {
-		t.Errorf("expected uploadedBytes to be 8, got %v", f.UploadedBytes())
-	}
-}
-
-// TestFileUploadProgressPinning verifies that uploadProgress() returns at most
-// 100%, even if more pieces have been uploaded,
-func TestFileUploadProgressPinning(t *testing.T) {
-	rsc, _ := siafile.NewRSCode(1, 1)
-	f, err := newFileTesting(t.Name(), newTestingWal(), rsc, 4, 0777, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := uint64(0); i < 2; i++ {
-		err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, uint64(0), i, crypto.Hash{})
-		err2 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(1)}}, uint64(0), i, crypto.Hash{})
-		if err := errors.Compose(err1, err2); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if f.UploadProgress() != 100 {
-		t.Fatal("expected uploadProgress to report 100% but was", f.UploadProgress())
-	}
-}
-
 // TestFileRedundancy tests that redundancy is correctly calculated for files
 // with varying number of filecontracts and erasure code settings.
 func TestFileRedundancy(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	nDatas := []int{1, 2, 10}
 	neverOffline := make(map[string]bool)
 	goodForRenew := make(map[string]bool)
@@ -472,56 +425,6 @@ func TestFileHealth(t *testing.T) {
 	}
 }
 
-// TestFileExpiration probes the expiration method of the file type.
-func TestFileExpiration(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	rsc, _ := siafile.NewRSCode(1, 2)
-	f, err := newFileTesting(t.Name(), newTestingWal(), rsc, 1000, 0777, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	contracts := make(map[string]modules.RenterContract)
-	if f.Expiration(contracts) != 0 {
-		t.Error("file with no pieces should report as having no time remaining")
-	}
-	// Create 3 public keys
-	pk1 := types.SiaPublicKey{Key: []byte{0}}
-	pk2 := types.SiaPublicKey{Key: []byte{1}}
-	pk3 := types.SiaPublicKey{Key: []byte{2}}
-
-	// Add a piece for each key to the file.
-	err1 := f.AddPiece(pk1, 0, 0, crypto.Hash{})
-	err2 := f.AddPiece(pk2, 0, 1, crypto.Hash{})
-	err3 := f.AddPiece(pk3, 0, 2, crypto.Hash{})
-	if err := errors.Compose(err1, err2, err3); err != nil {
-		t.Fatal(err)
-	}
-
-	// Add a contract.
-	fc := modules.RenterContract{}
-	fc.EndHeight = 100
-	contracts[pk1.String()] = fc
-	if f.Expiration(contracts) != 100 {
-		t.Error("file did not report lowest WindowStart")
-	}
-
-	// Add a contract with a lower WindowStart.
-	fc.EndHeight = 50
-	contracts[pk2.String()] = fc
-	if f.Expiration(contracts) != 50 {
-		t.Error("file did not report lowest WindowStart")
-	}
-
-	// Add a contract with a higher WindowStart.
-	fc.EndHeight = 75
-	contracts[pk3.String()] = fc
-	if f.Expiration(contracts) != 50 {
-		t.Error("file did not report lowest WindowStart")
-	}
-}
-
 // TestRenterFileListLocalPath verifies that FileList() returns the correct
 // local path information for an uploaded file.
 func TestRenterFileListLocalPath(t *testing.T) {
@@ -539,7 +442,7 @@ func TestRenterFileListLocalPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt.renter.mu.Unlock(id)
-	files, err := rt.renter.FileList()
+	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +490,7 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 	// Delete the file.
-	siapath := entry.SiaPath()
+	siapath := rt.renter.staticFileSet.SiaPath(entry)
 	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -596,7 +499,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	files, err := rt.renter.FileList()
+	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -618,11 +521,11 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir)) // set name to "1"
+	err = rt.renter.RenameFile(rt.renter.staticFileSet.SiaPath(entry2), siaPath1) // set name to "1"
 	if err != nil {
 		t.Fatal(err)
 	}
-	siapath2 := entry2.SiaPath()
+	siapath2 := rt.renter.staticFileSet.SiaPath(entry2)
 	err = entry2.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -670,7 +573,7 @@ func TestRenterFileList(t *testing.T) {
 	defer rt.Close()
 
 	// Get the file list of an empty renter.
-	files, err := rt.renter.FileList()
+	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,37 +583,37 @@ func TestRenterFileList(t *testing.T) {
 
 	// Put a file in the renter.
 	entry1, _ := rt.renter.newRenterTestFile()
-	files, err = rt.renter.FileList()
+	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 1 {
 		t.Fatal("FileList is not returning the only file in the renter")
 	}
-	if files[0].SiaPath != entry1.SiaPath().String() {
+	if !files[0].SiaPath.Equals(rt.renter.staticFileSet.SiaPath(entry1)) {
 		t.Error("FileList is not returning the correct filename for the only file")
 	}
 
 	// Put multiple files in the renter.
 	entry2, _ := rt.renter.newRenterTestFile()
-	files, err = rt.renter.FileList()
+	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 2 {
 		t.Fatalf("Expected %v files, got %v", 2, len(files))
 	}
-	files, err = rt.renter.FileList()
+	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !((files[0].SiaPath == entry1.SiaPath().String() || files[0].SiaPath == entry2.SiaPath().String()) &&
-		(files[1].SiaPath == entry1.SiaPath().String() || files[1].SiaPath == entry2.SiaPath().String()) &&
+	if !((files[0].SiaPath.Equals(rt.renter.staticFileSet.SiaPath(entry1)) || files[0].SiaPath.Equals(rt.renter.staticFileSet.SiaPath(entry2))) &&
+		(files[1].SiaPath.Equals(rt.renter.staticFileSet.SiaPath(entry1)) || files[1].SiaPath.Equals(rt.renter.staticFileSet.SiaPath(entry2))) &&
 		(files[0].SiaPath != files[1].SiaPath)) {
 		t.Log("files[0].SiaPath", files[0].SiaPath)
 		t.Log("files[1].SiaPath", files[1].SiaPath)
-		t.Log("file1.SiaPath()", entry1.SiaPath().String())
-		t.Log("file2.SiaPath()", entry2.SiaPath().String())
+		t.Log("file1.SiaPath()", rt.renter.staticFileSet.SiaPath(entry1).String())
+		t.Log("file2.SiaPath()", rt.renter.staticFileSet.SiaPath(entry2).String())
 		t.Error("FileList is returning wrong names for the files")
 	}
 }
@@ -740,9 +643,12 @@ func TestRenterRenameFile(t *testing.T) {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
+	// Get the fileset.
+	sfs := rt.renter.staticFileSet
+
 	// Rename a file that does exist.
 	entry, _ := rt.renter.newRenterTestFile()
-	err = entry.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir))
+	err = rt.renter.RenameFile(sfs.SiaPath(entry), siaPath1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -750,14 +656,14 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := rt.renter.FileList()
+	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 1 {
 		t.Fatal("FileList has unexpected number of files:", len(files))
 	}
-	if files[0].SiaPath != siaPath1a.String() {
+	if !files[0].SiaPath.Equals(siaPath1a) {
 		t.Errorf("RenameFile failed: expected %v, got %v", siaPath1a.String(), files[0].SiaPath)
 	}
 	// Confirm SiaFileSet was updated
@@ -775,7 +681,7 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir))
+	err = rt.renter.RenameFile(rt.renter.staticFileSet.SiaPath(entry2), siaPath1) // Rename to "1"
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -802,6 +708,29 @@ func TestRenterRenameFile(t *testing.T) {
 	err = rt.renter.RenameFile(siaPath1, siaPath1b)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Rename file that would create a directory
+	siaPathWithDir, err := modules.NewSiaPath("new/name/with/dir/test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.RenameFile(siaPath1b, siaPathWithDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm directory metadatas exist
+	dirSiaPath := siaPathWithDir
+	for !dirSiaPath.Equals(modules.RootSiaPath()) {
+		dirSiaPath, err = dirSiaPath.Dir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = rt.renter.staticDirSet.Open(dirSiaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -854,7 +783,7 @@ func TestRenterFileDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.SiaPath != fileName {
+	if !f.SiaPath.Equals(siaPath) {
 		t.Fatalf("siapath not set as expected: got %v expected %v", f.SiaPath, fileName)
 	}
 

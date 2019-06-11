@@ -17,8 +17,10 @@ import (
 // submits the new contract transaction to tpool. The new contract is added to
 // the ContractSet and its metadata is returned.
 func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
-	// use the new renter-host protocol for hosts v1.4.0 or above
-	if build.VersionCmp(params.Host.Version, "1.4.0") >= 0 {
+	// use the new renter-host protocol for hosts that support it.
+	//
+	// NOTE: due to a bug, we use the old protocol even for v1.4.0 hosts.
+	if build.VersionCmp(params.Host.Version, "1.4.1") >= 0 {
 		return cs.newRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
 	}
 	return cs.oldRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
@@ -409,10 +411,10 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	}
 	defer s.Close()
 	// Lock the contract and resynchronize if necessary
-	rev, _, err := s.Lock(contract.ID(), contract.SecretKey)
+	rev, sigs, err := s.Lock(contract.ID(), contract.SecretKey)
 	if err != nil {
 		return modules.RenterContract{}, err
-	} else if err := oldContract.syncRevision(rev); err != nil {
+	} else if err := oldContract.managedSyncRevision(rev, sigs); err != nil {
 		return modules.RenterContract{}, err
 	}
 

@@ -72,6 +72,8 @@ func stopcmd() {
 	fmt.Println("Sia daemon stopped.")
 }
 
+// updatecmd is the handler for the command `siac update`.
+// Updates the daemon version to latest general release.
 func updatecmd() {
 	update, err := httpClient.DaemonUpdateGet()
 	if err != nil {
@@ -91,6 +93,8 @@ func updatecmd() {
 	fmt.Printf("Updated to version %s! Restart siad now.\n", update.Version)
 }
 
+// updatecheckcmd is the handler for the command `siac check`.
+// Checks is there is an newer daemon version available.
 func updatecheckcmd() {
 	update, err := httpClient.DaemonUpdateGet()
 	if err != nil {

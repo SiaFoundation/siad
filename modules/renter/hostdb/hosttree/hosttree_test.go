@@ -28,7 +28,7 @@ func (sb customScoreBreakdown) Score() types.Currency {
 func (sb customScoreBreakdown) ConversionRate(_ types.Currency) float64 {
 	return 0.0
 }
-func (sb customScoreBreakdown) HostScoreBreakdown(_ types.Currency, _, _ bool) modules.HostScoreBreakdown {
+func (sb customScoreBreakdown) HostScoreBreakdown(_ types.Currency, _, _, _ bool) modules.HostScoreBreakdown {
 	return modules.HostScoreBreakdown{}
 }
 func newCustomScoreBreakdown(score types.Currency) ScoreBreakdown {
@@ -402,11 +402,9 @@ func TestNodeAtWeight(t *testing.T) {
 
 // TestRandomHosts probes the SelectRandom method.
 func TestRandomHosts(t *testing.T) {
-	calls := 0
 	// Create the tree.
 	tree := New(func(dbe modules.HostDBEntry) ScoreBreakdown {
-		calls++
-		return newCustomScoreBreakdown(types.NewCurrency64(uint64(calls)))
+		return newCustomScoreBreakdown(dbe.StoragePrice)
 	}, modules.ProductionResolver{})
 
 	// Empty.
@@ -417,8 +415,11 @@ func TestRandomHosts(t *testing.T) {
 
 	// Insert 3 hosts to be selected.
 	entry1 := makeHostDBEntry()
+	entry1.StoragePrice = types.NewCurrency64(2)
 	entry2 := makeHostDBEntry()
+	entry2.StoragePrice = types.NewCurrency64(3)
 	entry3 := makeHostDBEntry()
+	entry3.StoragePrice = types.NewCurrency64(4)
 
 	if err := tree.Insert(entry1); err != nil {
 		t.Fatal(err)
@@ -433,7 +434,7 @@ func TestRandomHosts(t *testing.T) {
 	if len(tree.hosts) != 3 {
 		t.Error("wrong number of hosts")
 	}
-	if tree.root.weight.Cmp(types.NewCurrency64(6)) != 0 {
+	if tree.root.weight.Cmp(types.NewCurrency64(9)) != 0 {
 		t.Error("unexpected weight at initialization")
 		t.Error(tree.root.weight)
 	}
@@ -447,7 +448,7 @@ func TestRandomHosts(t *testing.T) {
 	// Grab 2 random hosts.
 	randHosts = tree.SelectRandom(2, nil, nil)
 	if len(randHosts) != 2 {
-		t.Error("didn't get 2 hosts")
+		t.Fatal("didn't get 2 hosts")
 	}
 	if randHosts[0].PublicKey.String() == randHosts[1].PublicKey.String() {
 		t.Error("doubled up")
@@ -456,11 +457,30 @@ func TestRandomHosts(t *testing.T) {
 	// Grab 3 random hosts.
 	randHosts = tree.SelectRandom(3, nil, nil)
 	if len(randHosts) != 3 {
-		t.Error("didn't get 3 hosts")
+		t.Fatal("didn't get 3 hosts", len(randHosts))
 	}
 
 	if randHosts[0].PublicKey.String() == randHosts[1].PublicKey.String() || randHosts[0].PublicKey.String() == randHosts[2].PublicKey.String() || randHosts[1].PublicKey.String() == randHosts[2].PublicKey.String() {
 		t.Error("doubled up")
+	}
+
+	// Grab 4 random hosts. 3 should be returned.
+	randHosts = tree.SelectRandom(4, nil, nil)
+	if len(randHosts) != 3 {
+		t.Fatal("didn't get 3 hosts", len(randHosts))
+	}
+
+	entry4 := makeHostDBEntry()
+	entry4.StoragePrice = types.NewCurrency64(1)
+	if err := tree.Insert(entry4); err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab 4 random hosts. 3 should be returned because the fourth has a score
+	// of 1.
+	randHosts = tree.SelectRandom(4, nil, nil)
+	if len(randHosts) != 3 {
+		t.Error("didn't get 3 hosts")
 	}
 
 	// Grab 4 random hosts. 3 should be returned.

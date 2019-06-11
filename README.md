@@ -1,4 +1,4 @@
-# [![Sia Logo](https://sia.tech/static/assets/svg/sia-green-logo.svg)](http://sia.tech) v1.4.0 (Draco)
+# [![Sia Logo](https://sia.tech/static/assets/svg/sia-green-logo.svg)](http://sia.tech) v1.4.1 (Draco)
 
 [![Build Status](https://gitlab.com/NebulousLabs/Sia/badges/master/build.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
 [![Coverage Report](https://gitlab.com/NebulousLabs/Sia/badges/master/coverage.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
@@ -6,7 +6,7 @@
 [![Go Report Card](https://goreportcard.com/badge/gitlab.com/NebulousLabs/Sia)](https://goreportcard.com/report/gitlab.com/NebulousLabs/Sia)
 [![License MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://img.shields.io/badge/License-MIT-brightgreen.svg)
 
-Sia is a new decentralized cloud storage platform that radically alters the
+Sia is a decentralized cloud storage platform that radically alters the
 landscape of cloud storage. By leveraging smart contracts, client-side
 encryption, and sophisticated redundancy (via Reed-Solomon codes), Sia allows
 users to safely store their data with hosts that they do not know or trust.
@@ -15,7 +15,7 @@ best service at the lowest price. And since there is no barrier to entry for
 hosts, anyone with spare storage capacity can join the network and start
 making money.
 
-![UI](http://i.imgur.com/iHoGqoL.png)
+![UI](https://i.imgur.com/BFMQwhg.png)
 
 Traditional cloud storage has a number of shortcomings. Users are limited to a
 few big-name offerings: Google, Microsoft, Amazon. These companies have little
@@ -52,11 +52,12 @@ keys.
 At the core of Sia is a blockchain that closely resembles Bitcoin.
 Transactions are conducted in Siacoin, a cryptocurrency. The blockchain is
 what allows Sia to enforce its smart contracts without relying on centralized
-authority. To acquire siacoins, use an exchange such as [Bittrex](https://bittrex.com), [Yunbi](https://yunbi.com), or
-[Bisq](https://www.bisq.io).
+authority. To acquire siacoins, use an exchange such as [Binance](https://binance.com), [Bittrex](https://bittrex.com), [Shapeshift](https://shapeshift.io), or
+[Poloniex](https://poloniex.com).
 
 To get started with Sia, check out the guides below:
 
+- [Storing files with Sia-UI](https://blog.sia.tech/a-guide-to-sia-ui-v1-4-0-7ec3dfcae35a)
 - [How to Store Data on Sia](https://blog.sia.tech/getting-started-with-private-decentralized-cloud-storage-c9565dc8c854)
 - [How to Become a Sia Host](https://blog.sia.tech/how-to-run-a-host-on-sia-2159ebc4725)
 - [Using the Sia API](https://blog.sia.tech/api-quickstart-guide-f1d160c05235)
@@ -74,7 +75,7 @@ service, or "daemon," that runs the Sia protocol and exposes an HTTP API on
 port 9980. siac is a command-line client that can be used to interact with
 siad in a user-friendly way. There is also a graphical client, [Sia-UI](https://gitlab.com/NebulousLabs/Sia-UI), which
 is the preferred way of using Sia for most users. For interested developers,
-the siad API is documented [here](doc/API.md).
+the siad API is documented at [sia.tech/docs](https://sia.tech/docs/).
 
 siad and siac are run via command prompt. On Windows, you can just double-
 click siad.exe if you don't need to specify any command-line arguments.

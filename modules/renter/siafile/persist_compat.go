@@ -2,12 +2,10 @@ package siafile
 
 import (
 	"os"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -24,7 +22,7 @@ type (
 		PieceSize   uint64
 		Mode        os.FileMode
 		Deleted     bool
-		UID         string
+		UID         SiafileUID
 		Chunks      []FileChunk
 	}
 	// FileChunk is a helper struct that contains data about a chunk.
@@ -39,9 +37,6 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 
-	// Trim any leading slashes in the legacy name.
-	fd.Name = strings.TrimPrefix(fd.Name, "/")
-
 	// Legacy master keys are always twofish keys.
 	mk, err := crypto.NewSiaKey(crypto.TypeTwofish, fd.MasterKey[:])
 	if err != nil {
@@ -53,13 +48,18 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	if err != nil {
 		return &SiaFileSetEntry{}, err
 	}
+	zeroHealth := float64(1 + fd.ErasureCode.MinPieces()/(fd.ErasureCode.NumPieces()-fd.ErasureCode.MinPieces()))
 	file := &SiaFile{
-		staticMetadata: metadata{
+		staticMetadata: Metadata{
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
 			CreateTime:              currentTime,
-			StaticFileSize:          int64(fd.FileSize),
+			CachedHealth:            zeroHealth,
+			CachedStuckHealth:       0,
+			CachedRedundancy:        0,
+			CachedUploadProgress:    0,
+			FileSize:                int64(fd.FileSize),
 			LocalPath:               fd.RepairPath,
 			StaticMasterKey:         mk.Key(),
 			StaticMasterKeyType:     mk.Type(),
@@ -70,17 +70,23 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(fd.ErasureCode.NumPieces()),
 			StaticPieceSize:         fd.PieceSize,
-			SiaPath:                 siaPath,
+			UniqueID:                SiafileUID(fd.UID),
 		},
-		deleted:        fd.Deleted,
-		deps:           modules.ProdDependencies,
-		siaFilePath:    siaPath.SiaFileSysPath(sfs.siaFileDir),
-		staticUniqueID: fd.UID,
-		wal:            sfs.wal,
+		siaFilePath: siaPath.SiaFileSysPath(sfs.staticSiaFileDir),
+		deps:        modules.ProdDependencies,
+		deleted:     fd.Deleted,
+		wal:         sfs.wal,
 	}
-	file.staticChunks = make([]chunk, len(fd.Chunks))
-	for i := range file.staticChunks {
-		file.staticChunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
+	file.chunks = make([]chunk, len(fd.Chunks))
+	for i := range file.chunks {
+		file.chunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
+	}
+	// Update cached fields for 0-Byte files.
+	if file.staticMetadata.FileSize == 0 {
+		file.staticMetadata.CachedHealth = 0
+		file.staticMetadata.CachedStuckHealth = 0
+		file.staticMetadata.CachedRedundancy = float64(fd.ErasureCode.NumPieces()) / float64(fd.ErasureCode.MinPieces())
+		file.staticMetadata.CachedUploadProgress = 100
 	}
 
 	// Populate the pubKeyTable of the file and add the pieces.
@@ -99,20 +105,26 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 					})
 				}
 				// Add the piece to the SiaFile.
-				file.staticChunks[chunkIndex].Pieces[pieceIndex] = append(file.staticChunks[chunkIndex].Pieces[pieceIndex], piece{
+				file.chunks[chunkIndex].Pieces[pieceIndex] = append(file.chunks[chunkIndex].Pieces[pieceIndex], piece{
 					HostTableOffset: tableOffset,
 					MerkleRoot:      p.MerkleRoot,
 				})
 			}
 		}
 	}
-	entry := sfs.newSiaFileSetEntry(file)
+	entry, err := sfs.newSiaFileSetEntry(file)
+	if err != nil {
+		return nil, err
+	}
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
-	sfs.siaFileMap[siaPath] = entry
 	sfse := &SiaFileSetEntry{
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
 	}
+
+	// Update the cached fields for progress and uploaded bytes.
+	_, _ = file.UploadProgressAndBytes()
+
 	return sfse, errors.AddContext(file.saveFile(), "unable to save file")
 }

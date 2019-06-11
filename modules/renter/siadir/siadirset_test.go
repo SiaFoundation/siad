@@ -3,8 +3,12 @@ package siadir
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
+
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
@@ -25,7 +29,7 @@ func newTestSiaDirSetWithDir() (*SiaDirSetEntry, *SiaDirSet, error) {
 	// Create SiaDirSet and SiaDirSetEntry
 	wal, _ := newTestWAL()
 	sds := NewSiaDirSet(dir, wal)
-	entry, err := sds.NewSiaDir(newRandSiaPath())
+	entry, err := sds.NewSiaDir(modules.RandomSiaPath())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -49,7 +53,7 @@ func TestInitRootDir(t *testing.T) {
 	}
 
 	// Verify the siadir exists on disk
-	siaPath := modules.RootSiaPath().SiaDirMetadataSysPath(sds.rootDir)
+	siaPath := modules.RootSiaPath().SiaDirMetadataSysPath(sds.staticRootDir)
 	_, err := os.Stat(siaPath)
 	if err != nil {
 		t.Fatal(err)
@@ -229,10 +233,26 @@ func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	// Update the metadata of the entry
 	checkTime := time.Now()
 	metadataUpdate := md
+	// Aggregate fields
+	metadataUpdate.AggregateHealth = 7
+	metadataUpdate.AggregateLastHealthCheckTime = checkTime
+	metadataUpdate.AggregateMinRedundancy = 2.2
+	metadataUpdate.AggregateModTime = checkTime
+	metadataUpdate.AggregateNumFiles = 11
+	metadataUpdate.AggregateNumStuckChunks = 15
+	metadataUpdate.AggregateNumSubDirs = 5
+	metadataUpdate.AggregateSize = 2432
+	metadataUpdate.AggregateStuckHealth = 5
+	// SiaDir fields
 	metadataUpdate.Health = 4
-	metadataUpdate.StuckHealth = 2
 	metadataUpdate.LastHealthCheckTime = checkTime
-	metadataUpdate.NumStuckChunks = 5
+	metadataUpdate.MinRedundancy = 2
+	metadataUpdate.ModTime = checkTime
+	metadataUpdate.NumFiles = 5
+	metadataUpdate.NumStuckChunks = 6
+	metadataUpdate.NumSubDirs = 4
+	metadataUpdate.Size = 223
+	metadataUpdate.StuckHealth = 2
 
 	err = sds.UpdateMetadata(siaPath, metadataUpdate)
 	if err != nil {
@@ -244,5 +264,115 @@ func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	err = equalMetadatas(md, metadataUpdate)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestSiaDirRename tests the Rename method of the siadirset.
+func TestSiaDirRename(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Prepare a siadirset
+	dir := filepath.Join(os.TempDir(), "siadirs", t.Name())
+	os.RemoveAll(dir)
+	wal, _ := newTestWAL()
+	sds := NewSiaDirSet(dir, wal)
+
+	// Specify a directory structure for this test.
+	var dirStructure = []string{
+		"dir1",
+		"dir1/subdir1",
+		"dir1/subdir1/subsubdir1",
+		"dir1/subdir1/subsubdir2",
+		"dir1/subdir1/subsubdir3",
+		"dir1/subdir2",
+		"dir1/subdir2/subsubdir1",
+		"dir1/subdir2/subsubdir2",
+		"dir1/subdir2/subsubdir3",
+		"dir1/subdir3",
+		"dir1/subdir3/subsubdir1",
+		"dir1/subdir3/subsubdir2",
+		"dir1/subdir3/subsubdir3",
+	}
+	// Specify a function that's executed in parallel which continuously saves dirs
+	// to disk.
+	stop := make(chan struct{})
+	wg := new(sync.WaitGroup)
+	f := func(entry *SiaDirSetEntry) {
+		defer wg.Done()
+		defer entry.Close()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			err := entry.UpdateMetadata(Metadata{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	// Create the structure and spawn a goroutine that keeps saving the structure
+	// to disk for each directory.
+	for _, dir := range dirStructure {
+		sp, err := modules.NewSiaPath(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry, err := sds.NewSiaDir(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 50% chance to spawn goroutine. It's not realistic to assume that all dirs
+		// are loaded.
+		if fastrand.Intn(2) == 0 {
+			wg.Add(1)
+			go f(entry)
+		} else {
+			entry.Close()
+		}
+	}
+	// Wait a second for the goroutines to write to disk a few times.
+	time.Sleep(time.Second)
+	// Rename dir1 to dir2.
+	oldPath, err1 := modules.NewSiaPath(dirStructure[0])
+	newPath, err2 := modules.NewSiaPath("dir2")
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
+	if err := sds.Rename(oldPath, newPath); err != nil {
+		t.Fatal(err)
+	}
+	// Wait another second for more writes to disk after renaming the dir before
+	// killing the goroutines.
+	time.Sleep(time.Second)
+	close(stop)
+	wg.Wait()
+	time.Sleep(time.Second)
+	// Make sure we can't open any of the old folders on disk but we can open the
+	// new ones.
+	for _, dir := range dirStructure {
+		oldDir, err1 := modules.NewSiaPath(dir)
+		newDir, err2 := oldDir.Rebase(oldPath, newPath)
+		if err := errors.Compose(err1, err2); err != nil {
+			t.Fatal(err)
+		}
+		// Open entry with old dir. Shouldn't work.
+		_, err := sds.Open(oldDir)
+		if err != ErrUnknownPath {
+			t.Fatal("shouldn't be able to open old path", oldDir.String(), err)
+		}
+		// Open entry with new dir. Should succeed.
+		entry, err := sds.Open(newDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer entry.Close()
+		// Check siapath of entry.
+		if entry.siaPath != newDir {
+			t.Fatalf("entry should have siapath '%v' but was '%v'", newDir, entry.siaPath)
+		}
 	}
 }

@@ -126,6 +126,8 @@ type Gateway struct {
 	handlers map[rpcID]modules.RPCFunc
 	initRPCs map[string]modules.RPCFunc
 
+	// blacklist are peers that the gateway shouldn't connect to
+	//
 	// nodes is the set of all known nodes (i.e. potential peers).
 	//
 	// peers are the nodes that the gateway is currently connected to.
@@ -141,9 +143,10 @@ type Gateway struct {
 	// and would block any threads.Flush() calls. So a second threadgroup is
 	// added which handles clean-shutdown for the peers, without blocking
 	// threads.Flush() calls.
-	nodes  map[modules.NetAddress]*node
-	peers  map[modules.NetAddress]*peer
-	peerTG siasync.ThreadGroup
+	blacklist map[string]struct{}
+	nodes     map[modules.NetAddress]*node
+	peers     map[modules.NetAddress]*peer
+	peerTG    siasync.ThreadGroup
 
 	// Utilities.
 	log        *persist.Logger
@@ -170,18 +173,18 @@ func (g *Gateway) managedSleep(t time.Duration) (completed bool) {
 	}
 }
 
-// setRateLimits sets the ratelimit of the gateway after performing input
+// setRateLimits sets the specified ratelimit after performing input
 // validation without persisting them.
-func (g *Gateway) setRateLimits(downloadSpeed, uploadSpeed int64) error {
+func setRateLimits(rl *ratelimit.RateLimit, downloadSpeed, uploadSpeed int64) error {
 	// Input validation.
 	if downloadSpeed < 0 || uploadSpeed < 0 {
 		return errors.New("download/upload rate can't be below 0")
 	}
 	// Check for sentinel "no limits" value.
 	if downloadSpeed == 0 && uploadSpeed == 0 {
-		g.rl.SetLimits(0, 0, 0)
+		rl.SetLimits(0, 0, 0)
 	} else {
-		g.rl.SetLimits(downloadSpeed, uploadSpeed, 4*4096)
+		rl.SetLimits(downloadSpeed, uploadSpeed, 4*4096)
 	}
 	return nil
 }
@@ -234,7 +237,7 @@ func (g *Gateway) SetRateLimits(downloadSpeed, uploadSpeed int64) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	// Set the limit in memory.
-	if err := g.setRateLimits(downloadSpeed, uploadSpeed); err != nil {
+	if err := setRateLimits(g.rl, downloadSpeed, uploadSpeed); err != nil {
 		return err
 	}
 	// Update the persistence struct.
@@ -255,8 +258,9 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 		handlers: make(map[rpcID]modules.RPCFunc),
 		initRPCs: make(map[string]modules.RPCFunc),
 
-		nodes: make(map[modules.NetAddress]*node),
-		peers: make(map[modules.NetAddress]*peer),
+		blacklist: make(map[string]struct{}),
+		nodes:     make(map[modules.NetAddress]*node),
+		peers:     make(map[modules.NetAddress]*peer),
 
 		persistDir: persistDir,
 	}
@@ -305,12 +309,9 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	if loadErr := g.load(); loadErr != nil && !os.IsNotExist(loadErr) {
 		return nil, loadErr
 	}
-	if loadErr := g.loadNodes(); loadErr != nil && !os.IsNotExist(loadErr) {
-		return nil, loadErr
-	}
 	// Create the ratelimiter and set it to the persisted limits.
 	g.rl = ratelimit.NewRateLimit(0, 0, 0)
-	if err := g.setRateLimits(g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed); err != nil {
+	if err := setRateLimits(g.rl, g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed); err != nil {
 		return nil, err
 	}
 	// Spawn the thread to periodically save the gateway.

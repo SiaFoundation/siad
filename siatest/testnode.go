@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -31,7 +32,7 @@ type TestNode struct {
 // boolean arguments dictate what is printed
 func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterInfo bool) {
 	if contractInfo {
-		rc, err := tn.RenterInactiveContractsGet()
+		rc, err := tn.RenterAllContractsGet()
 		if err != nil {
 			t.Log(err)
 		}
@@ -44,8 +45,8 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
-		t.Log("Inactive Contracts")
-		for _, c := range rc.InactiveContracts {
+		t.Log("Passive Contracts")
+		for _, c := range rc.PassiveContracts {
 			t.Log("    ID", c.ID)
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
@@ -53,12 +54,35 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
-		rce, err := tn.RenterExpiredContractsGet()
-		if err != nil {
-			t.Log(err)
+		t.Log("Refreshed Contracts")
+		for _, c := range rc.RefreshedContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
 		}
+		t.Log()
+		t.Log("Disabled Contracts")
+		for _, c := range rc.DisabledContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
+		}
+		t.Log()
 		t.Log("Expired Contracts")
-		for _, c := range rce.ExpiredContracts {
+		for _, c := range rc.ExpiredContracts {
+			t.Log("    ID", c.ID)
+			t.Log("    HostPublicKey", c.HostPublicKey)
+			t.Log("    GoodForUpload", c.GoodForUpload)
+			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    EndHeight", c.EndHeight)
+		}
+		t.Log()
+		t.Log("Expired Refreshed Contracts")
+		for _, c := range rc.ExpiredRefreshedContracts {
 			t.Log("    ID", c.ID)
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
@@ -75,7 +99,13 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 		}
 		t.Log("Active Hosts from HostDB")
 		for _, host := range hdbag.Hosts {
+			hostInfo, err := tn.HostDbHostsGet(host.PublicKey)
+			if err != nil {
+				t.Log(err)
+			}
 			t.Log("    Host:", host.NetAddress)
+			t.Log("        score", hostInfo.ScoreBreakdown.Score)
+			t.Log("        breakdown", hostInfo.ScoreBreakdown)
 			t.Log("        pk", host.PublicKey)
 			t.Log("        Accepting Contracts", host.HostExternalSettings.AcceptingContracts)
 			t.Log("        Filtered", host.Filtered)
@@ -84,11 +114,13 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			for _, subnet := range host.IPNets {
 				t.Log("            ", subnet)
 			}
+			t.Log()
 		}
 		t.Log()
 	}
 
 	if renterInfo {
+		t.Log("Renter Info")
 		rg, err := tn.RenterGet()
 		if err != nil {
 			t.Log(err)
@@ -133,6 +165,15 @@ func (tn *TestNode) StartNode() error {
 		return nil
 	}
 	return tn.WalletUnlockPost(tn.primarySeed)
+}
+
+// StartNodeCleanDeps restarts a node from an active group without its
+// previously assigned dependencies.
+func (tn *TestNode) StartNodeCleanDeps() error {
+	tn.params.ContractSetDeps = nil
+	tn.params.ContractorDeps = nil
+	tn.params.RenterDeps = nil
+	return tn.StartNode()
 }
 
 // StopNode stops a TestNode
@@ -236,6 +277,11 @@ func (tn *TestNode) initRootDirs() error {
 
 // SiaPath returns the siapath of a local file or directory to be used for
 // uploading
-func (tn *TestNode) SiaPath(path string) string {
-	return strings.TrimPrefix(path, tn.filesDir.path+string(filepath.Separator))
+func (tn *TestNode) SiaPath(path string) modules.SiaPath {
+	s := strings.TrimPrefix(path, tn.filesDir.path+string(filepath.Separator))
+	sp, err := modules.NewSiaPath(s)
+	if err != nil {
+		build.Critical("This shouldn't happen", err)
+	}
+	return sp
 }

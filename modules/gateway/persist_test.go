@@ -62,7 +62,7 @@ func TestLoadv033(t *testing.T) {
 		persistDir: filepath.Join("testdata", t.Name()),
 		log:        log,
 	}
-	if err := g.loadNodes(); err != nil {
+	if err := g.load(); err != nil {
 		t.Fatal(err)
 	}
 

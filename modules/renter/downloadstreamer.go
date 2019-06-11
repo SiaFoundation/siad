@@ -266,7 +266,7 @@ func (s *streamer) managedFillCache() bool {
 		s.cacheOffset = streamOffset
 	}
 
-	// Return true, indicating that this function should be called agian,
+	// Return true, indicating that this function should be called again,
 	// because there may be more cache that has been requested or used since the
 	// previous request.
 	return true
@@ -440,6 +440,16 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 		return s.offset, errors.New("cannot seek to negative offset")
 	}
 
+	// Reset the target cache size upon seek to be the default again. This is in
+	// place because some programs will rapidly consume the cache to build up
+	// their own buffer. This can result in the cache growing very large, which
+	// hurts seek times. By resetting the cache size upon seek, we ensure that
+	// the user gets a consistent experience when seeking. In a perfect world,
+	// we'd have an easy way to measure the bitrate of the file being streamed,
+	// so that we could set a target cache size according to that, but at the
+	// moment we don't have an easy way to get that information.
+	s.targetCacheSize = initialStreamerCacheSize
+
 	// Update the offset of the stream and immediately send a thread to update
 	// the cache.
 	s.offset = newOffset
@@ -468,15 +478,21 @@ func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, er
 	defer entry.Close()
 
 	// Create the streamer
+	s := r.managedStreamer(entry.Snapshot())
+	return r.staticFileSet.SiaPath(entry).String(), s, nil
+}
+
+// managedStreamer creates a streamer from a siafile snapshot and starts filling
+// its cache.
+func (r *Renter) managedStreamer(snapshot *siafile.Snapshot) modules.Streamer {
 	s := &streamer{
-		staticFile: entry.Snapshot(),
+		staticFile: snapshot,
 		r:          r,
 
 		activateCache:   make(chan struct{}),
 		cacheReady:      make(chan struct{}),
 		targetCacheSize: initialStreamerCacheSize,
 	}
-
 	go s.threadedFillCache()
-	return entry.SiaPath().String(), s, nil
+	return s
 }
