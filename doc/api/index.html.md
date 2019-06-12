@@ -443,6 +443,50 @@ MaxTargetAdjustmentDown restrict how much the block difficulty is allowed to cha
 **siacoinprecision** | currency  
 SiacoinPrecision is the number of base units in a siacoin. The Sia network has a very large number of base units. We call 10^24 of these a siacoin.
 
+## /daemon/settings [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/settings"
+```
+Returns the settings for the daemon
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "maxdownloadspeed": 0,  // bytes per second
+  "maxuploadspeed": 0     // bytes per second
+}
+```
+
+**maxdownloadspeed** | bytes per second  
+Is the maximum download speed that the daemon can reach. 0 means there is no limit set.
+
+**maxuploadspeed** | bytes per second  
+Is the maximum upload speed that the daemon can reach. 0 means there is no limit set.
+
+## /daemon/settings [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "maxdownloadspeed=1000000&maxuploadspeed=20000" "localhost:9980/daemon/settings"
+```
+
+Modify settings that control the daemon's behavior.
+
+### Query String Parameters
+#### OPTIONAL
+**maxdownloadspeed** | bytes per second  
+Max download speed permitted in bytes per second  
+
+**maxuploadspeed** | bytes per second  
+Max upload speed permitted in bytes per second  
+
+### Response
+standard success or error response. See [standard responses](#standard-responses).
+
 ## /daemon/stop [GET]
 > curl example  
 
@@ -451,6 +495,41 @@ curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/stop"
 ```
 
 Cleanly shuts down the daemon. This may take a few seconds.
+
+### Response
+standard success or error response. See [standard responses](#standard-responses).
+
+## /daemon/update [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/update"
+```
+Returns the the status of any updates available for the daemon
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "available": false, // boolean
+  "version": "1.4.0"  // string
+}
+```
+
+**available** | boolean  
+Available indicates whether or not there is an update available for the daemon.
+
+**version** | string  
+Version is the version of the latest release.
+
+## /daemon/update [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/update"
+```
+Updates the daemon to the latest available version release.
 
 ### Response
 standard success or error response. See [standard responses](#standard-responses).
