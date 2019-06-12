@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -157,8 +158,12 @@ func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 	kc := make(map[string]contractInfo)
 	for _, contract := range contracts {
+		if n := len(contract.Transaction.FileContractRevisions); n != 1 {
+			build.Critical("contract's transaction should contain 1 revision but had ", n)
+			continue
+		}
 		kc[contract.HostPublicKey.String()] = contractInfo{
-			StoredData: contract.Transaction.FileContracts[0].FileSize,
+			StoredData: contract.Transaction.FileContractRevisions[0].NewFileSize,
 		}
 	}
 	hdb.knownContracts = kc
