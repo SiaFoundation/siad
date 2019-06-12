@@ -875,6 +875,11 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Debugln("Unable to mark contract utilities:", err)
 		return
 	}
+	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	if err != nil {
+		c.log.Debugln("Unable to update hostdb contracts:", err)
+		return
+	}
 
 	// If there are no hosts requested by the allowance, there is no remaining
 	// work.
