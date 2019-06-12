@@ -397,7 +397,7 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error
 	// Read the chunks one-by-one.
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
-		if _, err := f.Read(chunkBytes); err != nil {
+		if _, err := f.Read(chunkBytes); err != nil && err != io.EOF {
 			return errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
 		}
 		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
