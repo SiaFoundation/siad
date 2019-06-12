@@ -524,7 +524,7 @@ func TestSiaDirDelete(t *testing.T) {
 			default:
 			}
 			err := entry.Save()
-			if err != nil && !strings.Contains(err.Error(), "can't call saveFile on deleted file") {
+			if err != nil && !strings.Contains(err.Error(), "can't call createAndApplyTransaction on deleted file") {
 				t.Fatal(err)
 			}
 			time.Sleep(50 * time.Millisecond)
