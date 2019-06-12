@@ -7,6 +7,7 @@ package renter
 
 import (
 	"runtime"
+	"runtime/debug"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -115,6 +116,7 @@ func (mm *memoryManager) Return(amount uint64) {
 	mm.memSinceGC += amount
 	if mm.memSinceGC > defaultMemory {
 		runtime.GC()
+		debug.FreeOSMemory()
 		mm.memSinceGC = 0
 	}
 
