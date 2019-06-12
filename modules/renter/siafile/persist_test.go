@@ -762,6 +762,7 @@ func TestSaveChunk(t *testing.T) {
 	// Choose a random chunk from the file and replace it.
 	chunkIndex := fastrand.Intn(sf.numChunks)
 	chunk := randomChunk()
+	chunk.Index = chunkIndex
 
 	// Write the chunk to disk using saveChunk.
 	update := sf.saveChunkUpdate(chunk)
@@ -780,13 +781,13 @@ func TestSaveChunk(t *testing.T) {
 	defer f.Close()
 
 	readChunk := make([]byte, len(marshaledChunk))
-	if _, err := f.ReadAt(readChunk, sf.chunkOffset(chunkIndex)); err != nil {
-		t.Fatal(err)
+	if n, err := f.ReadAt(readChunk, sf.chunkOffset(chunkIndex)); err != nil {
+		t.Fatal(err, n, len(marshaledChunk))
 	}
 
 	// The marshaled chunk should equal the chunk we read from disk.
 	if !bytes.Equal(readChunk, marshaledChunk) {
-		t.Fatal("marshaled chunk doesn't equal chunk on disk")
+		t.Fatal("marshaled chunk doesn't equal chunk on disk", len(readChunk), len(marshaledChunk))
 	}
 }
 
