@@ -321,6 +321,7 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 		_, err = os.Stat(localPath)
 		onDisk = err == nil
 	}
+	maxHealth := math.Max(md.CachedHealth, md.CachedStuckHealth)
 	fileInfo := modules.FileInfo{
 		AccessTime:       md.AccessTime,
 		Available:        md.CachedRedundancy >= 1,
@@ -331,8 +332,8 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 		Filesize:         uint64(md.FileSize),
 		Health:           md.CachedHealth,
 		LocalPath:        localPath,
-		MaxHealth:        math.Max(md.CachedHealth, md.CachedStuckHealth),
-		MaxHealthPercent: healthPercentage(md.CachedHealth, md.CachedStuckHealth, md.staticErasureCode),
+		MaxHealth:        maxHealth,
+		MaxHealthPercent: siadir.HealthPercentage(maxHealth),
 		ModTime:          md.ModTime,
 		NumStuckChunks:   md.NumStuckChunks,
 		OnDisk:           onDisk,
@@ -524,6 +525,7 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
 	redundancy := entry.Redundancy(offline, goodForRenew)
 	uploadProgress, uploadedBytes := entry.UploadProgressAndBytes()
+	maxHealth := math.Max(health, stuckHealth)
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
 		Available:        redundancy >= 1,
@@ -534,8 +536,8 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		Filesize:         entry.Size(),
 		Health:           health,
 		LocalPath:        localPath,
-		MaxHealth:        math.Max(health, stuckHealth),
-		MaxHealthPercent: healthPercentage(health, stuckHealth, entry.ErasureCode()),
+		MaxHealth:        maxHealth,
+		MaxHealthPercent: siadir.HealthPercentage(maxHealth),
 		ModTime:          entry.ModTime(),
 		NumStuckChunks:   numStuckChunks,
 		OnDisk:           onDisk,
@@ -713,16 +715,6 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 
 	// Update the siafile to have a new name.
 	return entry.Rename(newSiaPath, newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir))
-}
-
-// healthPercentage returns the health in a more human understandable format out
-// of 100%
-func healthPercentage(h, sh float64, ec modules.ErasureCoder) float64 {
-	health := math.Max(h, sh)
-	dataPieces := ec.MinPieces()
-	parityPieces := ec.NumPieces() - dataPieces
-	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
-	return 100 * ((worstHealth - health) / worstHealth)
 }
 
 // DeleteDir deletes a siadir and all the siadirs and siafiles within it
