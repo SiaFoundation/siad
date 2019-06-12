@@ -2661,6 +2661,25 @@ Repair existing file from stream. Can't be specified together with datapieces, p
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /renter/validate/*siapath* [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/validatesiapath/isthis-aval_idsiapath"
+```
+
+validates whether or not the provided siapaht is a valid siapath. SiaPaths cannot contain traversal strings or be empty. Valid characters are:
+
+$, &, `, :, ;, #, %, @, <, >, =, ?, [, ], {, }, ^, |, ~, -, +, _, comma, ', "
+
+### Path Parameters
+#### REQUIRED
+**siapath** | string  
+siapath to test.
+
+### Response
+standard success or error response, a successful response means a valid siapath. See [standard responses](#standard-responses).
+
 # Transaction Pool
 
 ## /tpool/confirmed/:id [GET]
