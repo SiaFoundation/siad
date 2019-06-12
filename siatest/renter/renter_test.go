@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -298,6 +299,7 @@ func TestRenterFour(t *testing.T) {
 	subTests := []test{
 		{"TestStreamRepair", testStreamRepair},
 		{"TestEscapeSiaPath", testEscapeSiaPath},
+		{"TestValidateSiaPath", testValidateSiaPath},
 	}
 
 	// Run tests
@@ -5061,6 +5063,96 @@ func testEscapeSiaPath(t *testing.T, tg *siatest.TestGroup) {
 		_, err = r.RenterFileGet(siaPath)
 		if err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+// testValidateSiaPath tests the validate siapath endpoint
+func testValidateSiaPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	r := tg.Renters()[0]
+
+	// Create siapaths to test
+	var pathTests = []struct {
+		path  string
+		valid bool
+	}{
+		{"valid/siapath", true},
+		{"\\some\\windows\\path", true}, // clean converts OS separators
+		{"../../../directory/traversal", false},
+		{"testpath", true},
+		{"valid/siapath/../with/directory/traversal", false},
+		{"validpath/test", true},
+		{"..validpath/..test", true},
+		{"./invalid/path", false},
+		{".../path", true},
+		{"valid./path", true},
+		{"valid../path", true},
+		{"valid/path./test", true},
+		{"valid/path../test", true},
+		{"test/path", true},
+		{"/leading/slash", false}, // this is not valid through the api because a leading slash is added by the api call so this turns into 2 leading slashes
+		{"foo/./bar", false},
+		{"", false},
+		{"blank/end/", true}, // clean will trim trailing slashes so this is a valid input
+		{"double//dash", false},
+		{"../", false},
+		{"./", false},
+		{".", false},
+	}
+	// Test all siapaths
+	for _, pathTest := range pathTests {
+		err := r.RenterValidateSiaPathPost(pathTest.path)
+		// Verify expected Error
+		if err != nil && pathTest.valid {
+			t.Fatal("validateSiapath failed on valid path: ", pathTest.path)
+		}
+		if err == nil && !pathTest.valid {
+			t.Fatal("validateSiapath succeeded on invalid path: ", pathTest.path)
+		}
+	}
+
+	// Create SiaPaths that contain escape characters
+	var escapeCharTests = []struct {
+		path  string
+		valid bool
+	}{
+		{"dollar$sign", true},
+		{"and&sign", true},
+		{"single`quote", true},
+		{"full:colon", true},
+		{"semi;colon", true},
+		{"hash#tag", true},
+		{"percent%sign", true},
+		{"at@sign", true},
+		{"less<than", true},
+		{"greater>than", true},
+		{"equal=to", true},
+		{"question?mark", true},
+		{"open[bracket", true},
+		{"close]bracket", true},
+		{"open{bracket", true},
+		{"close}bracket", true},
+		{"carrot^top", true},
+		{"pipe|pipe", true},
+		{"tilda~tilda", true},
+		{"plus+sign", true},
+		{"minus-sign", true},
+		{"under_score", true},
+		{"comma,comma", true},
+		{"apostrophy's", true},
+		{`quotation"marks`, true},
+	}
+	// Test all escape charcter siapaths
+	for _, escapeCharTest := range escapeCharTests {
+		path := url.PathEscape(escapeCharTest.path)
+		err := r.RenterValidateSiaPathPost(path)
+		// Verify expected Error
+		if err != nil && escapeCharTest.valid {
+			t.Fatalf("validateSiapath failed on valid path %v, escaped %v ", escapeCharTest.path, path)
+		}
+		if err == nil && !escapeCharTest.valid {
+			t.Fatalf("validateSiapath succeeded on invalid path %v, escaped %v ", escapeCharTest.path, path)
 		}
 	}
 }

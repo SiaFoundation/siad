@@ -39,7 +39,7 @@ func TestSiapathValidate(t *testing.T) {
 		siaPath := SiaPath{
 			Path: pathtest.in,
 		}
-		err := siaPath.validate(false)
+		err := siaPath.Validate(false)
 		if err != nil && pathtest.valid {
 			t.Fatal("validateSiapath failed on valid path: ", pathtest.in)
 		}
@@ -77,6 +77,31 @@ func TestSiapath(t *testing.T) {
 		{"../", false},
 		{"./", false},
 		{".", false},
+		{"dollar$sign", true},
+		{"and&sign", true},
+		{"single`quote", true},
+		{"full:colon", true},
+		{"semi;colon", true},
+		{"hash#tag", true},
+		{"percent%sign", true},
+		{"at@sign", true},
+		{"less<than", true},
+		{"greater>than", true},
+		{"equal=to", true},
+		{"question?mark", true},
+		{"open[bracket", true},
+		{"close]bracket", true},
+		{"open{bracket", true},
+		{"close}bracket", true},
+		{"carrot^top", true},
+		{"pipe|pipe", true},
+		{"tilda~tilda", true},
+		{"plus+sign", true},
+		{"minus-sign", true},
+		{"under_score", true},
+		{"comma,comma", true},
+		{"apostrophy's", true},
+		{`quotation"marks`, true},
 	}
 
 	// Test NewSiaPath
