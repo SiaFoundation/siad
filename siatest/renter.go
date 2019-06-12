@@ -404,7 +404,7 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 			return ErrFileNotTracked
 		}
 		if file.MaxHealth >= renter.RepairThreshold {
-			return fmt.Errorf("file is not healthy yet, threshold it %v but health is %v", renter.RepairThreshold, file.MaxHealth)
+			return fmt.Errorf("file is not healthy yet, threshold is %v but health is %v", renter.RepairThreshold, file.MaxHealth)
 		}
 		return nil
 	})
