@@ -173,7 +173,13 @@ func TestPruneHosts(t *testing.T) {
 	remainingKey := sf.pubKeyTable[1]
 
 	// Prune the file.
-	sf.pruneHosts()
+	updates, err = sf.pruneHosts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sf.createAndApplyTransaction(updates...); err != nil {
+		t.Fatal(err)
+	}
 
 	// Check that there is only a single key left.
 	if len(sf.pubKeyTable) != 1 {
