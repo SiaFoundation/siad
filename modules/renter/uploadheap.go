@@ -798,8 +798,11 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	// is not much slowdown compared to skipping the sort, because the sort is
 	// so fast.
 	if len(files) > maxUploadHeapChunks {
+		// Sort so that the highest health chunks will be first in the array.
+		// Higher health values equal worse health for the file, and we want to
+		// focus on the worst files.
 		sort.Slice(files, func(i, j int) bool {
-			return files[i].Metadata().CachedHealth < files[j].Metadata().CachedHealth
+			return files[i].Metadata().CachedHealth > files[j].Metadata().CachedHealth
 		})
 		for i := maxUploadHeapChunks; i < len(files); i++ {
 			err := files[i].Close()
