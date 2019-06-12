@@ -96,6 +96,13 @@ var (
 		Run:   wrap(renterdownloadscmd),
 	}
 
+	renterDownloadCancelCmd = &cobra.Command{
+		Use:   "canceldownload [cancelID]",
+		Short: "Cancel async download",
+		Long:  "Cancels an ongoing async download.",
+		Run:   wrap(renterdownloadcancelcmd),
+	}
+
 	renterFilesDeleteCmd = &cobra.Command{
 		Use:     "delete [path]",
 		Aliases: []string{"rm"},
@@ -200,6 +207,7 @@ func rentercmd() {
 	}
 
 	// Print Allowance info
+	fmt.Println()
 	fmt.Printf(`Allowance:`)
 	if rg.Settings.Allowance.Funds.IsZero() {
 		fmt.Printf("      0 SC (No current allowance)\n")
@@ -214,6 +222,7 @@ func rentercmd() {
 	}
 
 	// File and Contract Data
+	fmt.Println()
 	fmt.Printf(`Data Storage:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
@@ -1399,7 +1408,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		}
 		// Download file.
 		totalSize += file.Filesize
-		err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
 			return
@@ -1465,6 +1474,15 @@ func renterdirdownload(path, destination string) {
 		fmt.Printf("Download of file '%v' to destination '%v' failed: %v\n", fd.SiaPath, fd.Destination, fd.Error)
 	}
 	os.Exit(1)
+}
+
+// renterdownloadcancelcmd is the handler for the command `siac renter download cancel [cancelID]`
+// Cancels the ongoing download.
+func renterdownloadcancelcmd(cancelID string) {
+	if err := httpClient.RenterCancelDownloadPost(cancelID); err != nil {
+		die("Couldn't cancel download:", err)
+	}
+	fmt.Println("Download canceled successfully")
 }
 
 // renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
@@ -1539,7 +1557,7 @@ func renterfilesdownload(path, destination string) {
 	// the call will return before the download has completed. The call is made
 	// as an async call.
 	start := time.Now()
-	err = httpClient.RenterDownloadFullGet(siaPath, destination, true)
+	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true)
 	if err != nil {
 		die("Download could not be started:", err)
 	}
@@ -1547,6 +1565,7 @@ func renterfilesdownload(path, destination string) {
 	// If the download is async, report success.
 	if renterDownloadAsync {
 		fmt.Printf("Queued Download '%s' to %s.\n", siaPath.String(), abs(destination))
+		fmt.Printf("ID to cancel download: '%v'\n", cancelID)
 		return
 	}
 
@@ -1848,7 +1867,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	fmt.Printf(" %9s\n", filesizeUnits(totalStored))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if renterListVerbose {
-		fmt.Fprintln(w, "  Name\tFile size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tOn Disk\tRecoverable")
+		fmt.Fprintln(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable")
 	}
 	sort.Sort(byDirectoryInfo(dirs))
 	// Print dirs.
@@ -1857,7 +1876,17 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		// Print subdirs.
 		sort.Sort(bySiaPathDir(dir.subDirs))
 		for _, subDir := range dir.subDirs {
-			fmt.Fprintf(w, "  %v/\t\t\t\t\t\t\t\t\t\t\n", subDir.SiaPath.Name())
+			fmt.Fprintf(w, "  %s", subDir.SiaPath.Name()+"/")
+			fmt.Fprintf(w, "\t%9s", filesizeUnits(subDir.AggregateSize))
+			if renterListVerbose {
+				redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
+				if subDir.AggregateMinRedundancy == -1 {
+					redundancyStr = "-"
+				}
+				healthStr := fmt.Sprintf("%.2f%%", 100*(1.25-subDir.AggregateMaxHealth))
+				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", "-", "-", "-", redundancyStr, healthStr, "-", "-", "-", "-")
+			}
+			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 		}
 
 		// Print files.
@@ -1881,7 +1910,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 				onDiskStr := yesNo(file.OnDisk)
 				recoverableStr := yesNo(file.Recoverable)
 				stuckStr := yesNo(file.Stuck)
-				fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
+				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", availableStr, filesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
 			}
 			if !renterListVerbose && !file.Available {
 				fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)

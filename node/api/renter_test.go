@@ -91,10 +91,10 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 	if waitOnRedundancy {
 		// wait for the file to have a redundancy > 1
 		err = build.Retry(200, time.Second, func() error {
-			var rf RenterFiles
-			st.getAPI("/renter/files", &rf)
-			if len(rf.Files) != 1 || rf.Files[0].Redundancy < 1 {
-				return fmt.Errorf("the uploading is not succeeding for some reason: %v", rf.Files[0])
+			var rf RenterFile
+			st.getAPI("/renter/file/"+name, &rf)
+			if rf.File.Redundancy < 1 {
+				return fmt.Errorf("the uploading is not succeeding for some reason: %v", rf.File)
 			}
 			return nil
 		})

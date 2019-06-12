@@ -221,7 +221,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	}
 	defer sf.Close()
 
-	// Mark sure that healthy chunks are not marked as stuck
+	// Get offline and goodforrenew maps
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 
 	// Calculate file health
@@ -378,7 +378,7 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 	// loops start at the root directory so there is no point triggering them
 	// until the root directory is updated
 	if siaPath.IsRoot() {
-		if metadata.AggregateHealth >= siafile.RemoteRepairDownloadThreshold {
+		if metadata.AggregateHealth >= RepairThreshold {
 			select {
 			case r.uploadHeap.repairNeeded <- struct{}{}:
 			default:

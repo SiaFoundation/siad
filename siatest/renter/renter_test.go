@@ -22,7 +22,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -62,9 +61,9 @@ func runRenterTests(t *testing.T, gp siatest.GroupParams, tests []test) error {
 	return nil
 }
 
-// TestRenter executes a number of subtests using the same TestGroup to
-// save time on initialization
-func TestRenter(t *testing.T) {
+// TestRenterOne executes a number of subtests using the same TestGroup to save
+// time on initialization
+func TestRenterOne(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -835,7 +834,7 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 // after a host goes offline.
 func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
-	renter := tg.Renters()[0]
+	renterNode := tg.Renters()[0]
 
 	// Check that we have enough hosts for this test.
 	if len(tg.Hosts()) < 2 {
@@ -844,17 +843,17 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 
 	// Set fileSize and redundancy for upload
 	fileSize := int(modules.SectorSize)
-	dataPieces := uint64(1)
+	dataPieces := uint64(2)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Upload file
-	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	_, remoteFile, err := renterNode.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Get the file info of the fully uploaded file. Tha way we can compare the
 	// redundancies later.
-	fi, err := renter.File(remoteFile)
+	fi, err := renterNode.File(remoteFile)
 	if err != nil {
 		t.Fatal("failed to get file info", err)
 	}
@@ -862,17 +861,17 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Take down hosts until enough are missing that the chunks get marked as
 	// stuck after repairs.
 	var hostsRemoved uint64
-	for hostsRemoved = 0; float64(hostsRemoved)/float64(parityPieces) <= siafile.RemoteRepairDownloadThreshold; hostsRemoved++ {
+	for hostsRemoved = 0; float64(hostsRemoved)/float64(parityPieces) < renter.RepairThreshold; hostsRemoved++ {
 		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
 			t.Fatal("Failed to shutdown host", err)
 		}
 	}
 	expectedRedundancy := float64(dataPieces+parityPieces-hostsRemoved) / float64(dataPieces)
-	if err := renter.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
+	if err := renterNode.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
 	// We should still be able to download
-	if _, err := renter.DownloadByStream(remoteFile); err != nil {
+	if _, err := renterNode.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
 	}
 	// Bring up hosts to replace the ones that went offline.
@@ -883,16 +882,16 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("Failed to create a new host", err)
 		}
 	}
-	if err := renter.WaitForUploadRedundancy(remoteFile, fi.Redundancy); err != nil {
+	if err := renterNode.WaitForUploadRedundancy(remoteFile, fi.Redundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// Check to see if a chunk got repaired and marked as unstuck
-	err = renter.WaitForStuckChunksToRepair()
+	err = renterNode.WaitForStuckChunksToRepair()
 	if err != nil {
 		t.Fatal(err)
 	}
 	// We should be able to download
-	if _, err := renter.DownloadByStream(remoteFile); err != nil {
+	if _, err := renterNode.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
 	}
 }
@@ -920,7 +919,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Get the file info of the fully uploaded file. Tha way we can compare the
 	// redundancieslater.
-	fi, err := r.File(remoteFile)
+	_, err = r.File(remoteFile)
 	if err != nil {
 		t.Fatal("failed to get file info", err)
 	}
@@ -950,7 +949,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to create a new host", err)
 	}
 	// When doing remote repair the redundancy might not reach 100%.
-	expectedRedundancy = (1.0 - siafile.RemoteRepairDownloadThreshold) * fi.Redundancy
+	expectedRedundancy = (((1.0 - renter.RepairThreshold) * float64(parityPieces)) + float64(dataPieces)) / float64(dataPieces+parityPieces)
 	if err := r.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
@@ -974,7 +973,7 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 	// Upload file, creating a piece for each host in the group
-	dataPieces := uint64(1)
+	dataPieces := uint64(2)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := 100 + siatest.Fuzz()
 	_, _, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
@@ -4847,7 +4846,7 @@ func TestRemoteBackup(t *testing.T) {
 				if ub.Name != name {
 					continue
 				} else if ub.UploadProgress != 100 {
-					return errors.New("backup not uploaded")
+					return fmt.Errorf("backup not uploaded: %v", ub.UploadProgress)
 				}
 				return nil
 			}
@@ -5207,6 +5206,94 @@ func TestOutOfStorageHandling(t *testing.T) {
 		}
 		if len(rcg.ActiveContracts) != 3 {
 			return fmt.Errorf("Expected 3 active contracts but got %v", len(rcg.ActiveContracts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestInterruptBackup tests that the renter can resume uploading a backup after
+// restarting.
+func TestInterruptBackup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(len(tg.Hosts()) - 1)
+	parityPieces := uint64(1)
+	_, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// Create a snapshot.
+	if err := r.RenterCreateBackupPost("foo"); err != nil {
+		t.Fatal(err)
+	}
+	// The snapshot should be listed and not 100% uploaded.
+	ubs, err := r.RenterBackups()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(ubs.Backups) != 1 {
+		t.Fatal("expected one backup, got", ubs)
+	} else if ubs.Backups[0].UploadProgress == 100 {
+		t.Fatal("backup should not be 100% uploaded")
+	}
+
+	// Restart the renter node.
+	if err := r.RestartNode(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The snapshot should still be listed and incomplete.
+	ubs, err = r.RenterBackups()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(ubs.Backups) != 1 {
+		t.Fatal("expected one backup, got", ubs)
+	} else if ubs.Backups[0].UploadProgress == 100 {
+		t.Fatal("backup should not be 100% uploaded")
+	}
+
+	// Wait for the snapshot to finish uploading.
+	err = build.Retry(60, time.Second, func() error {
+		ubs, _ := r.RenterBackups()
+		if len(ubs.Backups) != 1 {
+			return errors.New("expected one backup")
+		}
+		if ubs.Backups[0].UploadProgress != 100 {
+			return errors.New("backup not uploaded")
 		}
 		return nil
 	})

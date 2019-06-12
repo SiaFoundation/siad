@@ -27,6 +27,7 @@ func (newStub) Unsubscribe(modules.ConsensusSetSubscriber) { return }
 func (newStub) NextAddress() (uc types.UnlockConditions, err error)          { return }
 func (newStub) PrimarySeed() (modules.Seed, uint64, error)                   { return modules.Seed{}, 0, nil }
 func (newStub) StartTransaction() (tb modules.TransactionBuilder, err error) { return }
+func (newStub) Unlocked() (bool, error)                                      { return true, nil }
 
 // transaction pool stubs
 func (newStub) AcceptTransactionSet([]types.Transaction) error      { return nil }
@@ -700,6 +701,7 @@ func (ws *testWalletShim) StartTransaction() (modules.TransactionBuilder, error)
 	ws.startTxnCalled = true
 	return nil, nil
 }
+func (ws *testWalletShim) Unlocked() (bool, error) { return true, nil }
 
 // TestWalletBridge tests the walletBridge type.
 func TestWalletBridge(t *testing.T) {

@@ -29,6 +29,15 @@ var (
 		Standard: 20,
 		Testing:  8,
 	}).(int)
+
+	// RepairThreshold defines the threshold at which the renter decides to
+	// repair a file. The renter will start repairing the file when the health
+	// is equal to or greater than this value.
+	RepairThreshold = build.Select(build.Var{
+		Dev:      0.25,
+		Standard: 0.25,
+		Testing:  0.25,
+	}).(float64)
 )
 
 // Default memory usage parameters.
@@ -128,14 +137,14 @@ var (
 	// add to the upload heap which which will mean for small directories we
 	// will add multiple directories.
 	maxUploadHeapChunks = build.Select(build.Var{
-		Dev:      40,
-		Standard: 100,
+		Dev:      25,
+		Standard: 250,
 		Testing:  5,
 	}).(int)
 
 	// minUploadHeapSize is the minimum number of chunks we want in the upload
 	// heap before trying to add more in order to maintain back pressure on the
-	// workers, repairs, and uploads
+	// workers, repairs, and uploads.
 	minUploadHeapSize = build.Select(build.Var{
 		Dev:      5,
 		Standard: 20,

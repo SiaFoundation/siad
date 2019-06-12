@@ -3,7 +3,6 @@ package proto
 import (
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -48,23 +47,19 @@ type ContractParams struct {
 	// TODO: add optional keypair
 }
 
-// A revisionSaver is called just before we send our revision signature to the host; this
-// allows the revision and Merkle roots to be reloaded later if we desync from the host.
-type revisionSaver func(types.FileContractRevision, []crypto.Hash) error
-
-// A recentRevisionError occurs if the host reports a different revision
+// A revisionNumberMismatchError occurs if the host reports a different revision
 // number than expected.
-type recentRevisionError struct {
+type revisionNumberMismatchError struct {
 	ours, theirs uint64
 }
 
-func (e *recentRevisionError) Error() string {
-	return fmt.Sprintf("our revision number (%v) does not match the host's (%v)", e.ours, e.theirs)
+func (e *revisionNumberMismatchError) Error() string {
+	return fmt.Sprintf("our revision number (%v) does not match the host's (%v); the host may be acting maliciously", e.ours, e.theirs)
 }
 
 // IsRevisionMismatch returns true if err was caused by the host reporting a
 // different revision number than expected.
 func IsRevisionMismatch(err error) bool {
-	_, ok := err.(*recentRevisionError)
+	_, ok := err.(*revisionNumberMismatchError)
 	return ok
 }

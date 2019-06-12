@@ -72,6 +72,11 @@ func TestDirectoryHeap(t *testing.T) {
 		t.Fatalf("heap should have length of %v but was %v", heapLen, rt.renter.directoryHeap.managedLen())
 	}
 
+	// Check health of heap
+	if rt.renter.directoryHeap.managedPeekHealth() != float64(5) {
+		t.Fatalf("Expected health of heap to be the value of the aggregate health of top chunk %v, got %v", 5, rt.renter.directoryHeap.managedPeekHealth())
+	}
+
 	// Pop off top element and check against expected values
 	d := rt.renter.directoryHeap.managedPop()
 	if d.health != float64(1) {
@@ -82,6 +87,11 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 	if d.explored {
 		t.Fatal("Expected the directory to be unexplored")
+	}
+
+	// Check health of heap
+	if rt.renter.directoryHeap.managedPeekHealth() != float64(4) {
+		t.Fatalf("Expected health of heap to be the value of the health of top chunk %v, got %v", 4, rt.renter.directoryHeap.managedPeekHealth())
 	}
 
 	// Push directory back on, then confirm a second push fails
@@ -138,6 +148,22 @@ func TestDirectoryHeap(t *testing.T) {
 	// Confirm that the heap is empty
 	if rt.renter.directoryHeap.managedLen() != 0 {
 		t.Fatal("heap should empty but has length of", rt.renter.directoryHeap.managedLen())
+	}
+
+	// Test initializing directory heap
+	err = rt.renter.managedInitDirectoryHeap()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt.renter.directoryHeap.managedLen() != 1 {
+		t.Fatal("directory heap should have length of 1 but has length of", rt.renter.directoryHeap.managedLen())
+	}
+	d = rt.renter.directoryHeap.managedPop()
+	if d.explored {
+		t.Fatal("directory should be unexplored root")
+	}
+	if !d.siaPath.Equals(modules.RootSiaPath()) {
+		t.Fatal("Directory should be root directory but is", d.siaPath)
 	}
 }
 
