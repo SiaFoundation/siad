@@ -153,20 +153,20 @@ func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	return err
 }
 
-// updateContracts rebuilds the knownContracts of the HostBD using the provided
+// updateContracts rebuilds the knownContracts of the HostDB using the provided
 // contracts.
 func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
-	kc := make(map[string]contractInfo)
+	knownContracts := make(map[string]contractInfo)
 	for _, contract := range contracts {
 		if n := len(contract.Transaction.FileContractRevisions); n != 1 {
 			build.Critical("contract's transaction should contain 1 revision but had ", n)
 			continue
 		}
-		kc[contract.HostPublicKey.String()] = contractInfo{
+		knownContracts[contract.HostPublicKey.String()] = contractInfo{
 			StoredData: contract.Transaction.FileContractRevisions[0].NewFileSize,
 		}
 	}
-	hdb.knownContracts = kc
+	hdb.knownContracts = knownContracts
 }
 
 // New returns a new HostDB.
