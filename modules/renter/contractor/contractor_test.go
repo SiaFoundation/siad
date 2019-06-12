@@ -51,6 +51,7 @@ func (newStub) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, 
 	return modules.HostScoreBreakdown{}, nil
 }
 func (newStub) SetAllowance(allowance modules.Allowance) error { return nil }
+func (newStub) UpdateContracts([]modules.RenterContract) error { return nil }
 
 // TestNew tests the New function.
 func TestNew(t *testing.T) {
@@ -132,6 +133,7 @@ func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdow
 	return modules.HostScoreBreakdown{}, nil
 }
 func (stubHostDB) SetAllowance(allowance modules.Allowance) error { return nil }
+func (stubHostDB) UpdateContracts([]modules.RenterContract) error { return nil }
 
 // TestAllowanceSpending verifies that the contractor will not spend more or
 // less than the allowance if uploading causes repeated early renewal, and that

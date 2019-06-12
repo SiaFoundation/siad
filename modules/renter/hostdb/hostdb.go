@@ -31,6 +31,11 @@ var (
 	errNilTPool              = errors.New("cannot create hostdb with nil transaction pool")
 )
 
+// contractInfo contains information about a contract relevant to the HostDB.
+type contractInfo struct {
+	StoredData uint64 `json:"storeddata"`
+}
+
 // The HostDB is a database of potential hosts. It assigns a weight to each
 // host based on their hosting parameters, and then can select hosts at random
 // for uploading files.
@@ -45,6 +50,11 @@ type HostDB struct {
 	mu         sync.RWMutex
 	persistDir string
 	tg         threadgroup.ThreadGroup
+
+	// knownContracts are contracts which the HostDB was informed about by the
+	// Contractor. It contains infos about active contracts we have formed with
+	// hosts. The mapkey is a serialized SiaPublicKey.
+	knownContracts map[string]contractInfo
 
 	// The hostdb gets initialized with an allowance that can be modified. The
 	// allowance is used to build a weightFunc that the hosttree depends on to
@@ -142,6 +152,18 @@ func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	return err
 }
 
+// updateContracts rebuilds the knownContracts of the HostBD using the provided
+// contracts.
+func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
+	kc := make(map[string]contractInfo)
+	for _, contract := range contracts {
+		kc[contract.HostPublicKey.String()] = contractInfo{
+			StoredData: contract.Transaction.FileContracts[0].FileSize,
+		}
+	}
+	hdb.knownContracts = kc
+}
+
 // New returns a new HostDB.
 func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, error) {
 	// Check for nil inputs.
@@ -170,9 +192,9 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		persistDir: persistDir,
 		tpool:      tpool,
 
-		scanMap: make(map[string]struct{}),
-
-		filteredHosts: make(map[string]types.SiaPublicKey),
+		filteredHosts:  make(map[string]types.SiaPublicKey),
+		knownContracts: make(map[string]contractInfo),
+		scanMap:        make(map[string]struct{}),
 	}
 
 	// Set the allowance, txnFees and hostweight function.
@@ -501,4 +523,17 @@ func (hdb *HostDB) SetIPViolationCheck(enabled bool) {
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
 	hdb.disableIPViolationCheck = !enabled
+}
+
+// UpdateContracts rebuilds the knownContracts of the HostBD using the provided
+// contracts.
+func (hdb *HostDB) UpdateContracts(contracts []modules.RenterContract) error {
+	if err := hdb.tg.Add(); err != nil {
+		return err
+	}
+	defer hdb.tg.Done()
+	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
+	hdb.updateContracts(contracts)
+	return nil
 }
