@@ -191,7 +191,7 @@ func (uh *uploadHeap) managedReset() error {
 }
 
 // buildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool) (*unfinishedUploadChunk, error) {
+func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool, offline, goodForRenew map[string]bool) (*unfinishedUploadChunk, error) {
 	// Copy entry
 	entryCopy, err := entry.CopyEntry()
 	if err != nil {
@@ -253,15 +253,13 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 	}
 	for pieceIndex, pieceSet := range pieces {
 		for _, piece := range pieceSet {
-			// Get the contract for the piece.
-			contractUtility, exists := r.hostContractor.ContractUtility(piece.HostPubKey)
-			if !exists {
-				// File contract does not seem to be part of the host anymore.
-				continue
-			}
-			if !contractUtility.GoodForRenew {
-				// We are no longer renewing with this contract, so it does not
-				// count for redundancy.
+			hpk := piece.HostPubKey.String()
+			goodForRenew, exists2 := goodForRenew[hpk]
+			offline, exists := offline[hpk]
+			if !exists || !exists2 || !goodForRenew || offline {
+				// This piece cannot be counted towards redudnacy if the host is
+				// offline, is marked no good for renew, or is not available in
+				// the lookup maps.
 				continue
 			}
 
@@ -355,7 +353,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		}
 
 		// Create unfinishedUploadChunk
-		chunk, err := r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false)
+		chunk, err := r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false, offline, goodForRenew)
 		if err != nil {
 			r.log.Debugln("Error when building an unfinished chunk:", err)
 			continue
