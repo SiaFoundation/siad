@@ -4893,7 +4893,11 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// We should be able to download the first file.
-	if _, err := r.DownloadToDisk(rf, false); err != nil {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		_, err = r.DownloadToDisk(rf, false)
+		return err
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	// The second file should still fail.
@@ -4910,10 +4914,18 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// We should be able to download both files now.
-	if _, err := r.DownloadToDisk(rf, false); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.DownloadToDisk(rf2, false); err != nil {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		_, err = r.DownloadToDisk(rf, false)
+		if err != nil {
+			return err
+		}
+		_, err = r.DownloadToDisk(rf2, false)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
