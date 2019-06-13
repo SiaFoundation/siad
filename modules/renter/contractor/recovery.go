@@ -266,7 +266,7 @@ func (c *Contractor) managedRecoverContracts() {
 				// merge them.
 				// For now we ignore that contract and don't delete it. We
 				// might want to recover it later.
-				c.log.Println("Not recovering contract since we already have a contract with that host",
+				c.log.Debugln("Not recovering contract since we already have a contract with that host",
 					rc.ID, rc.HostPublicKey.String())
 				return
 			}
