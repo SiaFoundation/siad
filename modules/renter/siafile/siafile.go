@@ -906,7 +906,7 @@ func (sf *SiaFile) goodPieces(chunk chunk, offlineMap map[string]bool, goodForRe
 }
 
 // UploadProgressAndBytes is the exported wrapped for uploadProgressAndBytes.
-func (sf *SiaFile) UploadProgressAndBytes() (float64, uint64) {
+func (sf *SiaFile) UploadProgressAndBytes() (float64, uint64, error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	return sf.uploadProgressAndBytes()
@@ -917,24 +917,27 @@ func (sf *SiaFile) UploadProgressAndBytes() (float64, uint64) {
 // uploaded based on the unique pieces that have been uploaded and also how many
 // bytes have been uploaded of that file in total. Note that a file may be
 // Available long before UploadProgress reaches 100%.
-func (sf *SiaFile) uploadProgressAndBytes() (float64, uint64) {
-	_, uploaded := sf.uploadedBytes()
+func (sf *SiaFile) uploadProgressAndBytes() (float64, uint64, error) {
+	_, uploaded, err := sf.uploadedBytes()
+	if err != nil {
+		return 0, 0, err
+	}
 	if sf.staticMetadata.FileSize == 0 {
 		// Update cache.
 		sf.staticMetadata.CachedUploadProgress = 100
-		return 100, uploaded
+		return 100, uploaded, nil
 	}
 	desired := uint64(sf.numChunks) * modules.SectorSize * uint64(sf.staticMetadata.staticErasureCode.NumPieces())
 	// Update cache.
 	sf.staticMetadata.CachedUploadProgress = math.Min(100*(float64(uploaded)/float64(desired)), 100)
-	return sf.staticMetadata.CachedUploadProgress, uploaded
+	return sf.staticMetadata.CachedUploadProgress, uploaded, nil
 }
 
 // uploadedBytes indicates how many bytes of the file have been uploaded via
 // current file contracts in total as well as unique uploaded bytes. Note that
 // this includes padding and redundancy, so uploadedBytes can return a value
 // much larger than the file's original filesize.
-func (sf *SiaFile) uploadedBytes() (uint64, uint64) {
+func (sf *SiaFile) uploadedBytes() (uint64, uint64, error) {
 	var total, unique uint64
 	err := sf.iterateChunksReadonly(func(chunk chunk) error {
 		for _, pieceSet := range chunk.Pieces {
@@ -955,10 +958,9 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64) {
 		return nil
 	})
 	if err != nil {
-		build.Critical("failed to compute uploaded bytes", err)
-		return 0, 0
+		return 0, 0, errors.AddContext(err, "failed to compute uploaded bytes")
 	}
 	// Update cache.
 	sf.staticMetadata.CachedUploadedBytes = total
-	return total, unique
+	return total, unique, nil
 }

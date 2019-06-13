@@ -80,6 +80,12 @@ OUTER:
 				offset := uint64(fastrand.Intn(int(sf.staticMetadata.FileSize)))
 				snap, err := sf.Snapshot()
 				if err != nil {
+					if errors.Contains(err, errDiskFault) {
+						numRecoveries++
+						break
+					}
+					// If the error wasn't caused by the dependency, the test
+					// fails.
 					t.Fatal(err)
 				}
 				chunkIndex, _ := snap.ChunkIndexByOffset(offset)

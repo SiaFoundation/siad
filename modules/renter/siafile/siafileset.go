@@ -526,7 +526,10 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 	if err != nil {
 		return modules.FileInfo{}, errors.AddContext(err, "failed to get file redundancy")
 	}
-	uploadProgress, uploadedBytes := entry.UploadProgressAndBytes()
+	uploadProgress, uploadedBytes, err := entry.UploadProgressAndBytes()
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "failed to get upload progress and bytes")
+	}
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
 		Available:        redundancy >= 1,

@@ -564,7 +564,10 @@ func TestUploadedBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	totalBytes, uniqueBytes := f.uploadedBytes()
+	totalBytes, uniqueBytes, err := f.uploadedBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if totalBytes != 4*modules.SectorSize {
 		t.Errorf("expected totalBytes to be %v, got %v", 4*modules.SectorSize, totalBytes)
 	}
