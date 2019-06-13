@@ -396,14 +396,15 @@ func (sf *SiaFile) ErasureCode() modules.ErasureCoder {
 }
 
 // Save saves the file's header to disk.
-func (sf *SiaFile) Save() error {
+func (sf *SiaFile) Save(chunks []byte) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	updates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return errors.AddContext(err, "failed to create header updates")
 	}
-	return sf.createAndApplyTransaction(updates...)
+	chunkUpdate := sf.createInsertUpdate(sf.staticMetadata.ChunkOffset, chunks)
+	return sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
 }
 
 // SaveMetadata saves the file's metadata to disk.

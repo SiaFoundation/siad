@@ -4259,6 +4259,10 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
+	// Delete the file locally.
+	if err := lf.Delete(); err != nil {
+		t.Fatal(err)
+	}
 	// Create a backup.
 	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
 	err = r.RenterCreateLocalBackupPost(backupPath)

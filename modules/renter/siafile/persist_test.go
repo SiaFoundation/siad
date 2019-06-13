@@ -468,7 +468,7 @@ func TestZeroByteFileCompat(t *testing.T) {
 	sf.staticMetadata.CachedRedundancy = 0
 	sf.staticMetadata.CachedUploadProgress = 0
 	// Save the file and reload it.
-	if err := sf.Save(); err != nil {
+	if err := sf.SaveMetadata(); err != nil {
 		t.Fatal(err)
 	}
 	sf, err = loadSiaFile(siaFilePath, wal, modules.ProdDependencies)

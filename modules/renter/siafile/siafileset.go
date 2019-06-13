@@ -440,10 +440,10 @@ func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, erro
 // exists with a different UID, the UID will be updated and a unique path will
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
-func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
+func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile, chunks []byte) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.addExistingSiaFile(sf, 0)
+	return sfs.addExistingSiaFile(sf, chunks, 0)
 }
 
 // addExistingSiaFile adds an existing SiaFile to the set and stores it on disk.
@@ -451,7 +451,7 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 // exists with a different UID, the UID will be updated and a unique path will
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
-func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
+func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, chunks []byte, suffix uint) error {
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
 	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
@@ -479,14 +479,14 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
 			siaFilePath := siaPath.AddSuffix(suffix).SiaFileSysPath(sfs.staticSiaFileDir)
 			sf.SetSiaFilePath(siaFilePath)
 		}
-		return sf.Save()
+		return sf.Save(chunks)
 	}
 	// If it exists and the UID matches too, skip the file.
 	if sf.UID() == oldFile.UID() {
 		return nil
 	}
 	// If it exists and the UIDs don't match, increment the suffix and try again.
-	return sfs.addExistingSiaFile(sf, suffix+1)
+	return sfs.addExistingSiaFile(sf, chunks, suffix+1)
 }
 
 // Delete deletes the SiaFileSetEntry's SiaFile
