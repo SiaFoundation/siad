@@ -884,9 +884,14 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 	// be added to the heap.
 	smallRepair := r.directoryHeap.managedPeekHealth() < RepairThreshold
 
+	// Limit the amount of time spent in each iteration of the repair loop so
+	// that changes to the directory heap take effect sooner rather than later.
+	reapirBreakTime := time.Now().Add(maxRepairLoopTime)
+
 	// Work through the heap repairing chunks until heap is empty for
-	// smallRepairs or heap drops below minUploadHeapSize for larger repairs
-	for r.uploadHeap.managedLen() >= minUploadHeapSize || smallRepair {
+	// smallRepairs or heap drops below minUploadHeapSize for larger repairs, or
+	// until the total amount of time spent in one reapir iteration has elapsed.
+	for r.uploadHeap.managedLen() >= minUploadHeapSize || smallRepair || time.After(repairBreakTime) {
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
