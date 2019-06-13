@@ -36,11 +36,11 @@ var (
 	}
 
 	hostdbSetFiltermodeCmd = &cobra.Command{
-		Use:   "setfiltermode [filtermode] [hosts]",
+		Use:   "setfiltermode [filtermode] [host] [host] [host]...",
 		Short: "Set the filtermode.",
 		Long: `Set the hostdb filtermode and specify hosts.
         [filtermode] can be whitelist, blacklist, or disable.
-        [hosts] must be a comma separated list of host public keys.`,
+        [host] is the host public key.`,
 		Run: hostdbsetfiltermodecmd,
 	}
 
@@ -365,6 +365,7 @@ func hostdbviewcmd(pubkey string) {
 	fmt.Println("  Version:         ", info.Entry.Version)
 	fmt.Println("  Block First Seen:", info.Entry.FirstSeen)
 	fmt.Println("  Absolute Score:  ", info.ScoreBreakdown.Score)
+	fmt.Println("  Filtered:        ", info.Entry.Filtered)
 
 	fmt.Println("\n  Host Settings:")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)

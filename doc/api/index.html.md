@@ -1656,7 +1656,7 @@ Lets you enable and disable a filter mode for the hostdb. Currenlty the two mode
 **filtermode** | string  
 Can be either whitelist, blacklist, or disable.  
 
-**hosts** | array of string
+**hosts** | array of string  
 Comma separated pubkeys.  
 
 ### Response
