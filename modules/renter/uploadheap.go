@@ -886,12 +886,12 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 
 	// Limit the amount of time spent in each iteration of the repair loop so
 	// that changes to the directory heap take effect sooner rather than later.
-	reapirBreakTime := time.Now().Add(maxRepairLoopTime)
+	repairBreakTime := time.Now().Add(maxRepairLoopTime)
 
 	// Work through the heap repairing chunks until heap is empty for
 	// smallRepairs or heap drops below minUploadHeapSize for larger repairs, or
-	// until the total amount of time spent in one reapir iteration has elapsed.
-	for r.uploadHeap.managedLen() >= minUploadHeapSize || smallRepair || time.After(repairBreakTime) {
+	// until the total amount of time spent in one repair iteration has elapsed.
+	for r.uploadHeap.managedLen() >= minUploadHeapSize || smallRepair || time.Now().After(repairBreakTime) {
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
@@ -921,7 +921,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		if availableWorkers < nextChunk.minimumPieces {
 			// If the chunk is not stuck, check whether there are enough hosts
 			// in the allowance to support the chunk.
-			if !nextChunk.Stuck {
+			if !nextChunk.stuck {
 				// There are not enough available workers for the chunk to reach
 				// minimum redundancy. Check if the allowance has enough hosts
 				// for the chunk to reach minimum redundancy
