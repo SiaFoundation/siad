@@ -157,8 +157,8 @@ func TestFileRedundancy(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Test that an empty file has 0 redundancy.
-		if r := f.Redundancy(neverOffline, goodForRenew); r != 0 {
-			t.Error("expected 0 redundancy, got", r)
+		if r, err := f.Redundancy(neverOffline, goodForRenew); r != 0 || err != nil {
+			t.Error("expected 0 redundancy, got", r, err)
 		}
 		// Test that a file with 1 host that has a piece for every chunk but
 		// one chunk still has a redundancy of 0.
@@ -168,8 +168,8 @@ func TestFileRedundancy(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if r := f.Redundancy(neverOffline, goodForRenew); r != 0 {
-			t.Error("expected 0 redundancy, got", r)
+		if r, err := f.Redundancy(neverOffline, goodForRenew); r != 0 || err != nil {
+			t.Error("expected 0 redundancy, got", r, err)
 		}
 		// Test that adding another host with a piece for every chunk but one
 		// chunk still results in a file with redundancy 0.
@@ -179,8 +179,8 @@ func TestFileRedundancy(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if r := f.Redundancy(neverOffline, goodForRenew); r != 0 {
-			t.Error("expected 0 redundancy, got", r)
+		if r, err := f.Redundancy(neverOffline, goodForRenew); r != 0 || err != nil {
+			t.Error("expected 0 redundancy, got", r, err)
 		}
 		// Test that adding a file contract with a piece for the missing chunk
 		// results in a file with redundancy > 0 && <= 1.
@@ -190,8 +190,8 @@ func TestFileRedundancy(t *testing.T) {
 		}
 		// 1.0 / MinPieces because the chunk with the least number of pieces has 1 piece.
 		expectedR := 1.0 / float64(f.ErasureCode().MinPieces())
-		if r := f.Redundancy(neverOffline, goodForRenew); r != expectedR {
-			t.Errorf("expected %f redundancy, got %f", expectedR, r)
+		if r, err := f.Redundancy(neverOffline, goodForRenew); r != expectedR || err != nil {
+			t.Errorf("expected %f redundancy, got %f: %v", expectedR, r, err)
 		}
 		// Test that adding a file contract that has erasureCode.MinPieces() pieces
 		// per chunk for all chunks results in a file with redundancy > 1.
@@ -209,8 +209,8 @@ func TestFileRedundancy(t *testing.T) {
 		}
 		// 1+MinPieces / MinPieces because the chunk with the least number of pieces has 1+MinPieces pieces.
 		expectedR = float64(1+f.ErasureCode().MinPieces()) / float64(f.ErasureCode().MinPieces())
-		if r := f.Redundancy(neverOffline, goodForRenew); r != expectedR {
-			t.Errorf("expected %f redundancy, got %f", expectedR, r)
+		if r, err := f.Redundancy(neverOffline, goodForRenew); r != expectedR || err != nil {
+			t.Errorf("expected %f redundancy, got %f: %v", expectedR, r, err)
 		}
 
 		// verify offline file contracts are not counted in the redundancy
@@ -227,8 +227,8 @@ func TestFileRedundancy(t *testing.T) {
 			specificOffline[pk] = false
 		}
 		specificOffline[string(byte(5))] = true
-		if r := f.Redundancy(specificOffline, goodForRenew); r != expectedR {
-			t.Errorf("expected redundancy to ignore offline file contracts, wanted %f got %f", expectedR, r)
+		if r, err := f.Redundancy(specificOffline, goodForRenew); r != expectedR || err != nil {
+			t.Errorf("expected redundancy to ignore offline file contracts, wanted %f got %f: %v", expectedR, r, err)
 		}
 	}
 }

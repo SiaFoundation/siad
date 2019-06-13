@@ -4860,6 +4860,10 @@ func TestRemoteBackup(t *testing.T) {
 	if err := createSnapshot("foo"); err != nil {
 		t.Fatal(err)
 	}
+	// Delete the file locally.
+	if err := lf.Delete(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Upload another file and take another snapshot.
 	lf2, err := subDir.NewFile(100)
@@ -4871,6 +4875,9 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	if err := createSnapshot("bar"); err != nil {
+		t.Fatal(err)
+	}
+	if err := lf2.Delete(); err != nil {
 		t.Fatal(err)
 	}
 

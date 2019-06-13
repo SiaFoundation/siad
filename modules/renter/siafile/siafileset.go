@@ -522,7 +522,10 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		onDisk = err == nil
 	}
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
-	redundancy := entry.Redundancy(offline, goodForRenew)
+	redundancy, err := entry.Redundancy(offline, goodForRenew)
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "failed to get file redundancy")
+	}
 	uploadProgress, uploadedBytes := entry.UploadProgressAndBytes()
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),

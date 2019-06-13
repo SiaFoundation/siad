@@ -581,7 +581,7 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 // unique within a file contract. -1 is returned if the file has size 0. It
 // takes two arguments, a map of offline contracts for this file and a map that
 // indicates if a contract is goodForRenew.
-func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) (r float64) {
+func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) (r float64, err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// Update the cache.
@@ -592,15 +592,15 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 		// TODO change this once tiny files are supported.
 		if sf.numChunks != 1 {
 			// should never happen
-			return -1
+			return -1, nil
 		}
 		ec := sf.staticMetadata.staticErasureCode
-		return float64(ec.NumPieces()) / float64(ec.MinPieces())
+		return float64(ec.NumPieces()) / float64(ec.MinPieces()), nil
 	}
 
 	minRedundancy := math.MaxFloat64
 	minRedundancyNoRenew := math.MaxFloat64
-	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
 		// Loop over chunks and remember how many unique pieces of the chunk
 		// were goodForRenew and how many were not.
 		numPiecesRenew, numPiecesNoRenew := sf.goodPieces(chunk, offlineMap, goodForRenewMap)
@@ -615,8 +615,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 		return nil
 	})
 	if err != nil {
-		build.Critical("failed to get redundancy", err)
-		return 0
+		return 0, err
 	}
 
 	// If the redundancy is smaller than 1x we return the redundancy that
@@ -625,11 +624,11 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 	// should never go above numPieces / minPieces and redundancyNoRenew should
 	// never go below 1.
 	if minRedundancy < 1 && minRedundancyNoRenew >= 1 {
-		return 1
+		return 1, nil
 	} else if minRedundancy < 1 {
-		return minRedundancyNoRenew
+		return minRedundancyNoRenew, nil
 	}
-	return minRedundancy
+	return minRedundancy, nil
 }
 
 // SetAllStuck sets the Stuck field of all chunks to stuck.
