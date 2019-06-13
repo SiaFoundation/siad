@@ -99,6 +99,8 @@ type (
 		RootTarget types.Target `json:"roottarget"`
 		RootDepth  types.Target `json:"rootdepth"`
 
+		DefaultAllowance modules.Allowance `json:"defaultallowance"`
+
 		// DEPRECATED: same values as MaxTargetAdjustmentUp and
 		// MaxTargetAdjustmentDown.
 		MaxAdjustmentUp   *big.Rat `json:"maxadjustmentup"`
@@ -269,6 +271,8 @@ func (api *API) daemonConstantsHandler(w http.ResponseWriter, _ *http.Request, _
 
 		RootTarget: types.RootTarget,
 		RootDepth:  types.RootDepth,
+
+		DefaultAllowance: modules.DefaultAllowance,
 
 		// DEPRECATED: same values as MaxTargetAdjustmentUp and
 		// MaxTargetAdjustmentDown.

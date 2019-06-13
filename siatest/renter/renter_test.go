@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -298,6 +299,7 @@ func TestRenterFour(t *testing.T) {
 	subTests := []test{
 		{"TestStreamRepair", testStreamRepair},
 		{"TestEscapeSiaPath", testEscapeSiaPath},
+		{"TestValidateSiaPath", testValidateSiaPath},
 	}
 
 	// Run tests
@@ -851,12 +853,6 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Get the file info of the fully uploaded file. Tha way we can compare the
-	// redundancies later.
-	fi, err := renterNode.File(remoteFile)
-	if err != nil {
-		t.Fatal("failed to get file info", err)
-	}
 
 	// Take down hosts until enough are missing that the chunks get marked as
 	// stuck after repairs.
@@ -882,7 +878,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("Failed to create a new host", err)
 		}
 	}
-	if err := renterNode.WaitForUploadRedundancy(remoteFile, fi.Redundancy); err != nil {
+	if err := renterNode.WaitForUploadHealth(remoteFile); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// Check to see if a chunk got repaired and marked as unstuck
@@ -948,9 +944,8 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to create a new host", err)
 	}
-	// When doing remote repair the redundancy might not reach 100%.
-	expectedRedundancy = (((1.0 - renter.RepairThreshold) * float64(parityPieces)) + float64(dataPieces)) / float64(dataPieces+parityPieces)
-	if err := r.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
+	// Wait for the file to be healthy.
+	if err := r.WaitForUploadHealth(remoteFile); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// Check to see if a chunk got repaired and marked as unstuck
@@ -1544,10 +1539,9 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Redundancy should go back to normal.
-	expectedRedundancy = float64(dataPieces+parityPieces) / float64(dataPieces)
-	if err := renter.WaitForUploadRedundancy(rf, expectedRedundancy); err != nil {
-		t.Fatal("Redundancy is not increasing")
+	// File should be repaired.
+	if err := renter.WaitForUploadHealth(rf); err != nil {
+		t.Fatal("File is not being repaired", err)
 	}
 }
 
@@ -3423,9 +3417,8 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to create a new host", err)
 	}
-	// We should reach full redundancy again.
-	expectedRedundancy := float64((dataPieces + parityPieces)) / float64(dataPieces)
-	if err := renter.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
+	// We should reach full health again.
+	if err := renter.WaitForUploadHealth(remoteFile); err != nil {
 		t.Logf("numHosts: %v", len(tg.Hosts()))
 		t.Fatal("File wasn't repaired", err)
 	}
@@ -4782,7 +4775,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(b), remoteFile.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.WaitForUploadRedundancy(remoteFile, float64(dataPieces+parityPieces)/float64(dataPieces)); err != nil {
+	if err := r.WaitForUploadHealth(remoteFile); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// We should be able to download
@@ -5085,6 +5078,96 @@ func testEscapeSiaPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testValidateSiaPath tests the validate siapath endpoint
+func testValidateSiaPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	r := tg.Renters()[0]
+
+	// Create siapaths to test
+	var pathTests = []struct {
+		path  string
+		valid bool
+	}{
+		{"valid/siapath", true},
+		{"\\some\\windows\\path", true}, // clean converts OS separators
+		{"../../../directory/traversal", false},
+		{"testpath", true},
+		{"valid/siapath/../with/directory/traversal", false},
+		{"validpath/test", true},
+		{"..validpath/..test", true},
+		{"./invalid/path", false},
+		{".../path", true},
+		{"valid./path", true},
+		{"valid../path", true},
+		{"valid/path./test", true},
+		{"valid/path../test", true},
+		{"test/path", true},
+		{"/leading/slash", false}, // this is not valid through the api because a leading slash is added by the api call so this turns into 2 leading slashes
+		{"foo/./bar", false},
+		{"", false},
+		{"blank/end/", true}, // clean will trim trailing slashes so this is a valid input
+		{"double//dash", false},
+		{"../", false},
+		{"./", false},
+		{".", false},
+	}
+	// Test all siapaths
+	for _, pathTest := range pathTests {
+		err := r.RenterValidateSiaPathPost(pathTest.path)
+		// Verify expected Error
+		if err != nil && pathTest.valid {
+			t.Fatal("validateSiapath failed on valid path: ", pathTest.path)
+		}
+		if err == nil && !pathTest.valid {
+			t.Fatal("validateSiapath succeeded on invalid path: ", pathTest.path)
+		}
+	}
+
+	// Create SiaPaths that contain escape characters
+	var escapeCharTests = []struct {
+		path  string
+		valid bool
+	}{
+		{"dollar$sign", true},
+		{"and&sign", true},
+		{"single`quote", true},
+		{"full:colon", true},
+		{"semi;colon", true},
+		{"hash#tag", true},
+		{"percent%sign", true},
+		{"at@sign", true},
+		{"less<than", true},
+		{"greater>than", true},
+		{"equal=to", true},
+		{"question?mark", true},
+		{"open[bracket", true},
+		{"close]bracket", true},
+		{"open{bracket", true},
+		{"close}bracket", true},
+		{"carrot^top", true},
+		{"pipe|pipe", true},
+		{"tilda~tilda", true},
+		{"plus+sign", true},
+		{"minus-sign", true},
+		{"under_score", true},
+		{"comma,comma", true},
+		{"apostrophy's", true},
+		{`quotation"marks`, true},
+	}
+	// Test all escape charcter siapaths
+	for _, escapeCharTest := range escapeCharTests {
+		path := url.PathEscape(escapeCharTest.path)
+		err := r.RenterValidateSiaPathPost(path)
+		// Verify expected Error
+		if err != nil && escapeCharTest.valid {
+			t.Fatalf("validateSiapath failed on valid path %v, escaped %v ", escapeCharTest.path, path)
+		}
+		if err == nil && !escapeCharTest.valid {
+			t.Fatalf("validateSiapath succeeded on invalid path %v, escaped %v ", escapeCharTest.path, path)
+		}
+	}
+}
+
 // TestOutOfStorageHandling makes sure that we form a new contract to replace a
 // host that has run out of storage while still keeping it around as
 // goodForRenew.
@@ -5191,8 +5274,8 @@ func TestOutOfStorageHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The file should reach full redundancy now.
-	if err := renter.WaitForUploadRedundancy(rf, allowance.ExpectedRedundancy); err != nil {
+	// The file should reach full health now.
+	if err := renter.WaitForUploadHealth(rf); err != nil {
 		t.Fatal(err)
 	}
 	// There should be 2 active contracts now and 1 passive one.

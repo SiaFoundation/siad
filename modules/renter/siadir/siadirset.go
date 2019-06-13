@@ -85,6 +85,24 @@ func randomThreadUID() uint64 {
 	return fastrand.Uint64n(math.MaxUint64)
 }
 
+// HealthPercentage returns the health in a more human understandable format out
+// of 100%
+//
+// The percentage is out of 1.25, this is to account for the RepairThreshold of
+// 0.25 and assumes that the worst health is 1.5. Since we do not repair until
+// the health is worse than the RepairThreshold, a health of 0 - 0.25 is full
+// health. Likewise, a health that is greater than 1.25 is essentially 0 health.
+func HealthPercentage(health float64) float64 {
+	healthPercent := 100 * (1.25 - health)
+	if healthPercent > 100 {
+		healthPercent = 100
+	}
+	if healthPercent < 0 {
+		health = 0
+	}
+	return healthPercent
+}
+
 // NewSiaDirSet initializes and returns a SiaDirSet
 func NewSiaDirSet(rootDir string, wal *writeaheadlog.WAL) *SiaDirSet {
 	return &SiaDirSet{
@@ -263,11 +281,14 @@ func (sds *SiaDirSet) readLockDirInfo(siaPath modules.SiaPath) (modules.Director
 	if err != nil {
 		return modules.DirectoryInfo{}, err
 	}
+	aggregateMaxHealth := math.Max(metadata.AggregateHealth, metadata.AggregateStuckHealth)
+	maxHealth := math.Max(metadata.Health, metadata.StuckHealth)
 	return modules.DirectoryInfo{
 		// Aggregate Fields
 		AggregateHealth:              metadata.AggregateHealth,
 		AggregateLastHealthCheckTime: metadata.AggregateLastHealthCheckTime,
-		AggregateMaxHealth:           math.Max(metadata.AggregateHealth, metadata.AggregateStuckHealth),
+		AggregateMaxHealth:           aggregateMaxHealth,
+		AggregateMaxHealthPercentage: HealthPercentage(aggregateMaxHealth),
 		AggregateMinRedundancy:       metadata.AggregateMinRedundancy,
 		AggregateMostRecentModTime:   metadata.AggregateModTime,
 		AggregateNumFiles:            metadata.AggregateNumFiles,
@@ -279,7 +300,8 @@ func (sds *SiaDirSet) readLockDirInfo(siaPath modules.SiaPath) (modules.Director
 		// SiaDir Fields
 		Health:              metadata.Health,
 		LastHealthCheckTime: metadata.LastHealthCheckTime,
-		MaxHealth:           math.Max(metadata.Health, metadata.StuckHealth),
+		MaxHealth:           maxHealth,
+		MaxHealthPercentage: HealthPercentage(maxHealth),
 		MinRedundancy:       metadata.MinRedundancy,
 		MostRecentModTime:   metadata.ModTime,
 		NumFiles:            metadata.NumFiles,

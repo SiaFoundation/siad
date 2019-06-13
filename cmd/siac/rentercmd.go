@@ -1883,7 +1883,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 				if subDir.AggregateMinRedundancy == -1 {
 					redundancyStr = "-"
 				}
-				healthStr := fmt.Sprintf("%.2f%%", 100*(1.25-subDir.AggregateMaxHealth))
+				healthStr := fmt.Sprintf("%.2f%%", subDir.AggregateMaxHealthPercentage)
 				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", "-", "-", "-", redundancyStr, healthStr, "-", "-", "-", "-")
 			}
 			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")

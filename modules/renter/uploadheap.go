@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -191,7 +192,7 @@ func (uh *uploadHeap) managedReset() error {
 }
 
 // buildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool) (*unfinishedUploadChunk, error) {
+func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool, offline, goodForRenew map[string]bool) (*unfinishedUploadChunk, error) {
 	// Copy entry
 	entryCopy, err := entry.CopyEntry()
 	if err != nil {
@@ -237,7 +238,7 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 		physicalChunkData: make([][]byte, entry.ErasureCode().NumPieces()),
 
 		pieceUsage:  make([]bool, entry.ErasureCode().NumPieces()),
-		unusedHosts: make(map[string]struct{}),
+		unusedHosts: make(map[string]struct{}, len(hosts)),
 	}
 
 	// Every chunk can have a different set of unused hosts.
@@ -258,15 +259,13 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 	}
 	for pieceIndex, pieceSet := range pieces {
 		for _, piece := range pieceSet {
-			// Get the contract for the piece.
-			contractUtility, exists := r.hostContractor.ContractUtility(piece.HostPubKey)
-			if !exists {
-				// File contract does not seem to be part of the host anymore.
-				continue
-			}
-			if !contractUtility.GoodForRenew {
-				// We are no longer renewing with this contract, so it does not
-				// count for redundancy.
+			hpk := piece.HostPubKey.String()
+			goodForRenew, exists2 := goodForRenew[hpk]
+			offline, exists := offline[hpk]
+			if !exists || !exists2 || !goodForRenew || offline {
+				// This piece cannot be counted towards redudnacy if the host is
+				// offline, is marked no good for renew, or is not available in
+				// the lookup maps.
 				continue
 			}
 
@@ -365,7 +364,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		}
 
 		// Create unfinishedUploadChunk
-		chunk, err := r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false)
+		chunk, err := r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false, offline, goodForRenew)
 		if err != nil {
 			r.log.Debugln("Error when building an unfinished chunk:", err)
 			continue
@@ -713,6 +712,11 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
+//
+// TODO: accept an input to indicate how much room is in the heap
+//
+// TODO: Explore whether there is a way to perform the task below without
+// opening a full file entry for each file in the directory.
 func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[string]struct{}, target repairTarget) {
 	// Get Directory files
 	var fileinfos []os.FileInfo
@@ -785,6 +789,36 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	if len(files) == 0 {
 		r.log.Debugln("No files pulled from `", dirSiaPath, "` to build the repair heap")
 		return
+	}
+
+	// If there are more files than there is room in the heap, sort the files by
+	// health and only use the required number of files to build the heap. In
+	// the absolute worst case, each file will be only contributing one chunk to
+	// the heap, so this shortcut will not be missing any important chunks. This
+	// shortcut will also not be used for directories that have fewer than
+	// 'maxUploadHeapChunks' files in them, minimzing the impact of this code in
+	// the typical case.
+	//
+	// v1.4.1 Benchmark: on a computer with an SSD, the time to sort 6,000 files
+	// is less than 50 milliseconds, while the time to process 250 files with 40
+	// chunks each using 'managedBuildAndPushChunks' is several seconds. Even in
+	// the worst case, where we are sorting 251 files with 1 chunk each, there
+	// is not much slowdown compared to skipping the sort, because the sort is
+	// so fast.
+	if len(files) > maxUploadHeapChunks {
+		// Sort so that the highest health chunks will be first in the array.
+		// Higher health values equal worse health for the file, and we want to
+		// focus on the worst files.
+		sort.Slice(files, func(i, j int) bool {
+			return files[i].Metadata().CachedHealth > files[j].Metadata().CachedHealth
+		})
+		for i := maxUploadHeapChunks; i < len(files); i++ {
+			err := files[i].Close()
+			if err != nil {
+				r.log.Println("WARN: Could not close file:", err)
+			}
+		}
+		files = files[:maxUploadHeapChunks]
 	}
 
 	// Build the unfinished upload chunks and add them to the upload heap

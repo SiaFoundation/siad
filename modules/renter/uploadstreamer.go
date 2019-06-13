@@ -213,8 +213,9 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		}
 
 		// Start the chunk upload.
+		offline, goodForRenew, _ := r.managedContractUtilityMaps()
 		id := r.mu.Lock()
-		uuc, err := r.buildUnfinishedChunk(entry, chunkIndex, hosts, pks, true)
+		uuc, err := r.buildUnfinishedChunk(entry, chunkIndex, hosts, pks, true, offline, goodForRenew)
 		r.mu.Unlock(id)
 		if err != nil {
 			return errors.AddContext(err, "unable to fetch chunk for stream")
