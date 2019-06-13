@@ -904,15 +904,14 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			return errors.New("repair loop returned early due to the renter been offline")
 		}
 
-		// Check if there is work by trying to pop of the next chunk from
-		// the heap.
+		// Check if there is work by trying to pop off the next chunk from the
+		// heap.
 		nextChunk := r.uploadHeap.managedPop()
 		if nextChunk == nil {
 			// The heap is empty so reset it to free memory and return.
 			r.uploadHeap.managedReset()
 			return nil
 		}
-		r.log.Debugln("Sending next chunk to the workers", nextChunk.id)
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy.
@@ -1026,8 +1025,34 @@ func (r *Renter) threadedUploadAndRepair() {
 			r.log.Println("Added", numBackupchunks, "backup chunks to the upload heap")
 		}
 
-		// Check if the file system is healthy and the upload heap is empty
+		// Check if there is work to do. If the filesystem is healthy and the
+		// heap is empty, there is no work to do and the thread should block
+		// until there is work to do.
 		if r.directoryHeap.managedPeekHealth() < RepairThreshold && r.uploadHeap.managedLen() == 0 {
+			// Reset the heap to put the root back on top. This is done before
+			// sleeping so that anything which automatically gets added to the
+			// heap during the sleep will not block a reset of the heap.
+			//
+			// TODO: To be 100% correct, this function should check whether the
+			// heap is healthy under lock while it is resetting the heap. If the
+			// heap is not healthy, all unhealthy elements should be popped off
+			// before the reset, and then added back on after the reset, so that
+			// those elements are still available on top following the reset.
+			// And then we should indicate that any blocking because we thought
+			// that the heap was healthy should be skipped, because between the
+			// time that we checked last and the time that we reset the heap,
+			// the health of the heap changed. The window for this to happen is
+			// very small, and the consequences of resetting incorrectly are
+			// also small, so this race is left alone for now.
+			err = r.managedInitDirectoryHeap()
+			if err != nil {
+				// If there is an error initializing the directory heap log
+				// the error. We don't want to sleep here as we were trigger
+				// to repair chunks so we don't want to delay the repair if
+				// there are chunks in the upload heap already.
+				r.log.Println("WARN: error re-initializing the directory heap:", err)
+			}
+
 			// If the file system is healthy then block until there is a new
 			// upload or there is a repair that is needed.
 			select {
@@ -1052,31 +1077,9 @@ func (r *Renter) threadedUploadAndRepair() {
 				return
 			}
 
-			// Wait until the renter is online to proceed. This function will return
-			// 'false' if the renter has shut down before being online.
-			if !r.managedBlockUntilOnline() {
-				return
-			}
-
-			// Reset directory heap by re-initializing it if the heap is still
-			// healthy. We do this check to make sure a directory wasn't added
-			// by another thread that needs to be repaired.
-			//
-			// TODO: This needs to be performed under a lock that wraps both the
-			// check and the init to be thread safe.
-			if r.directoryHeap.managedPeekHealth() < RepairThreshold {
-				err = r.managedInitDirectoryHeap()
-				if err != nil {
-					// If there is an error initializing the directory heap log
-					// the error. We don't want to sleep here as we were trigger
-					// to repair chunks so we don't want to delay the repair if
-					// there are chunks in the upload heap already.
-					r.log.Println("WARN: error re-initializing the directory heap:", err)
-				}
-			}
-			// Refresh the worker pool and get the set of hosts that are currently
-			// useful for uploading.
-			hosts = r.managedRefreshHostsAndWorkers()
+			// Continue here to force the code to re-check for backups, to
+			// re-block until it's online, and to refresh the worker pool.
+			continue
 		}
 
 		// Add chunks to heap.
@@ -1094,6 +1097,8 @@ func (r *Renter) threadedUploadAndRepair() {
 		// since the last health check due to one of its hosts coming back
 		// online. In these cases, the best course of action is to proceed with
 		// the repair and move on to the next directories in the directory heap.
+		// The repair loop will return immediately if it is given little or no
+		// work but it can see that there is more work that it could be given.
 
 		r.log.Debugln("Executing an upload and repair cycle, uploadHeap has", r.uploadHeap.managedLen(), "chunks in it")
 		err = r.managedRepairLoop(hosts)
