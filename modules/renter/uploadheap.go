@@ -915,22 +915,25 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		availableWorkers := len(r.workerPool)
 		r.mu.RUnlock(id)
 		if availableWorkers < nextChunk.minimumPieces {
-			// There are not enough available workers for the chunk to reach
-			// minimum redundancy. Check if the allowance has enough hosts for
-			// the chunk to reach minimum redundancy
-			allowance := r.hostContractor.Allowance()
-			// Only perform this check on chunks that are not stuck to prevent
-			// log spam
-			if allowance.Hosts < uint64(nextChunk.minimumPieces) && !nextChunk.stuck {
-				// There are not enough hosts in the allowance for this chunk to
-				// reach minimum redundancy. Log an error, set the chunk as stuck,
-				// and close the file
-				r.log.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for chunk %v", allowance.Hosts, nextChunk.minimumPieces, nextChunk.id)
-				err := nextChunk.fileEntry.SetStuck(nextChunk.index, true)
-				if err != nil {
-					r.log.Debugln("WARN: unable to mark chunk as stuck:", err, nextChunk.id)
+			// If the chunk is not stuck, check whether there are enough hosts
+			// in the allowance to support the chunk.
+			if !nextChunk.Stuck {
+				// There are not enough available workers for the chunk to reach
+				// minimum redundancy. Check if the allowance has enough hosts
+				// for the chunk to reach minimum redundancy
+				allowance := r.hostContractor.Allowance()
+				if allowance.Hosts < uint64(nextChunk.minimumPieces) {
+					// There are not enough hosts in the allowance for this
+					// chunk to reach minimum redundancy. Log an error, set the
+					// chunk as stuck, and close the file
+					r.log.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for chunk %v", allowance.Hosts, nextChunk.minimumPieces, nextChunk.id)
+					err := nextChunk.fileEntry.SetStuck(nextChunk.index, true)
+					if err != nil {
+						r.log.Debugln("WARN: unable to mark chunk as stuck:", err, nextChunk.id)
+					}
 				}
 			}
+
 			// There are enough hosts set in the allowance so this is a
 			// temporary issue with available workers, just ignore the chunk
 			// for now and close the file
