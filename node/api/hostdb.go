@@ -42,6 +42,13 @@ type (
 		InitialScanComplete bool `json:"initialscancomplete"`
 	}
 
+	// HostdbFilterModeGET contains the information about the HostDB's
+	// filtermode
+	HostdbFilterModeGET struct {
+		FilterMode string   `json:"filtermode"`
+		Hosts      []string `json:"hosts"`
+	}
+
 	// HostdbFilterModePOST contains the information needed to set the the
 	// FilterMode of the hostDB
 	HostdbFilterModePOST struct {
@@ -142,6 +149,26 @@ func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps 
 	WriteJSON(w, HostdbHostsGET{
 		Entry:          extendedEntry,
 		ScoreBreakdown: breakdown,
+	})
+}
+
+// hostdbFilterModeHandlerGET handles the API call to get the hostdb's filter
+// mode
+func (api *API) hostdbFilterModeHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get FilterMode
+	fm, hostMap, err := api.renter.Filter()
+	if err != nil {
+		WriteError(w, Error{"unable to get filter mode: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Build Slice of PubKeys
+	var hosts []string
+	for key := range hostMap {
+		hosts = append(hosts, key)
+	}
+	WriteJSON(w, HostdbFilterModeGET{
+		FilterMode: fm.String(),
+		Hosts:      hosts,
 	})
 }
 

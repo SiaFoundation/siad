@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -30,12 +29,19 @@ var (
 	}
 
 	hostdbFiltermodeCmd = &cobra.Command{
-		Use:   "filtermode [filtermode] [hosts]",
+		Use:   "filtermode",
+		Short: "View hostDB filtermode.",
+		Long:  "View the hostDB filtermode and the filtered hosts",
+		Run:   wrap(hostdbfiltermodecmd),
+	}
+
+	hostdbSetFiltermodeCmd = &cobra.Command{
+		Use:   "setfiltermode [filtermode] [hosts]",
 		Short: "Set the filtermode.",
 		Long: `Set the hostdb filtermode and specify hosts.
         [filtermode] can be whitelist, blacklist, or disable.
         [hosts] must be a comma separated list of host public keys.`,
-		Run: wrap(hostdbfiltermodecmd),
+		Run: hostdbsetfiltermodecmd,
 	}
 
 	hostdbViewCmd = &cobra.Command{
@@ -290,28 +296,57 @@ func hostdbcmd() {
 	}
 }
 
-// hostdbfiltermodecmd is the handler for the command `siac hostdb filtermode`.
-// sets the hostdb filtermode (whitelist, blacklist, disable)
-func hostdbfiltermodecmd(filtermodeStr, hostsStr string) {
-	var fm modules.FilterMode
-	err := fm.FromString(filtermodeStr)
+// hostdbfiltermodecmd is the handler for the command `siac hostdb
+// filtermode`.
+func hostdbfiltermodecmd() {
+	hdfmg, err := httpClient.HostDbFilterModeGet()
 	if err != nil {
-		fmt.Println("Could not parse filtermode: ", err)
+		die(err)
 	}
+	fmt.Println()
+	fmt.Println("  HostDB Filter Mode:", hdfmg.FilterMode)
+	fmt.Println("  Hosts:")
+	for _, host := range hdfmg.Hosts {
+		fmt.Println("    ", host)
+	}
+	fmt.Println()
+}
 
+// hostdbsetfiltermodecmd is the handler for the command `siac hostdb
+// setfiltermode`. sets the hostdb filtermode (whitelist, blacklist, disable)
+func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
+	var fm modules.FilterMode
+	var filterModeStr string
 	var host types.SiaPublicKey
 	var hosts []types.SiaPublicKey
-
-	for _, h := range strings.Split(hostsStr, ",") {
-		host.LoadString(string(h))
-		hosts = append(hosts, host)
+	switch len(args) {
+	case 0:
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	case 1:
+		filterModeStr = args[0]
+		if filterModeStr != "disable" {
+			die("if only submitting filtermode it should be `disable`")
+		}
+	default:
+		filterModeStr = args[0]
+		for i := 1; i < len(args); i++ {
+			host.LoadString(args[i])
+			hosts = append(hosts, host)
+		}
+	}
+	err := fm.FromString(filterModeStr)
+	if err != nil {
+		fmt.Println("Could not parse filtermode: ", err)
+		die()
 	}
 
 	err = httpClient.HostDbFilterModePost(fm, hosts)
 	if err != nil {
 		fmt.Println("Could not set hostdb filtermode: ", err)
+		die()
 	}
-	fmt.Println("Set filtermode to ", filtermodeStr, " with hosts ", hostsStr)
+	fmt.Println("Successfully set the filter mode")
 }
 
 // hostdbviewcmd is the handler for the command `siac hostdb view`.

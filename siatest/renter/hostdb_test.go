@@ -737,11 +737,28 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 		return err
 	}
 
-	// confirm contracts are dropped and replaced appropriately for the FilterMode
+	// Confirm filter mode is set as expected
+	hdfmg, err := renter.HostDbFilterModeGet()
+	if err != nil {
+		return err
+	}
+	if hdfmg.FilterMode != fm.String() {
+		return fmt.Errorf("filter mode not set as expected, got %v expected %v", hdfmg.FilterMode, fm.String())
+	}
+	if len(hdfmg.Hosts) != len(filteredHosts) {
+		return fmt.Errorf("Number of filtered hosts incorrect, got %v expected %v", len(hdfmg.Hosts), len(filteredHosts))
+	}
+	// Create map for comparison
 	filteredHostsMap := make(map[string]struct{})
 	for _, pk := range filteredHosts {
 		filteredHostsMap[pk.String()] = struct{}{}
 	}
+	for _, host := range hdfmg.Hosts {
+		if _, ok := filteredHostsMap[host]; !ok {
+			return errors.New("host returned not found in filtered hosts")
+		}
+	}
+	// confirm contracts are dropped and replaced appropriately for the FilterMode
 	loop = 0
 	err = build.Retry(50, 100*time.Millisecond, func() error {
 		// Mine a block every 10 iterations to make sure

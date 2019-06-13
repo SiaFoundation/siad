@@ -629,6 +629,9 @@ type Renter interface {
 	// should be returned or not.
 	FileList(siaPath SiaPath, recursive, cached bool) ([]FileInfo, error)
 
+	// Filter returns the renter's hostdb's filterMode and filteredHosts
+	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
+
 	// SetFilterMode sets the renter's hostdb filter mode
 	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error
 
