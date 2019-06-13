@@ -1340,6 +1340,17 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 	WriteSuccess(w)
 }
 
+// renterValidateSiaPathHandler handles the API call that validates a siapath
+func (api *API) renterValidateSiaPathHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+	// Try and create a new siapath, this will validate the potential siapath
+	_, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
 // renterDirHandlerGET handles the API call to query a directory
 func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	var siaPath modules.SiaPath
