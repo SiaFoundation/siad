@@ -394,8 +394,9 @@ func (sf *SiaFile) ErasureCode() modules.ErasureCoder {
 	return sf.staticMetadata.staticErasureCode
 }
 
-// Save saves the file's header to disk.
-func (sf *SiaFile) Save(chunks []byte) error {
+// SaveWithChunks saves the file's header to disk and appends the raw chunks provided at
+// the end of the file.
+func (sf *SiaFile) SaveWithChunks(chunks []byte) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	updates, err := sf.saveHeaderUpdates()
@@ -404,6 +405,17 @@ func (sf *SiaFile) Save(chunks []byte) error {
 	}
 	chunkUpdate := sf.createInsertUpdate(sf.staticMetadata.ChunkOffset, chunks)
 	return sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
+}
+
+// SaveHeader saves the file's header to disk.
+func (sf *SiaFile) SaveHeader() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	updates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // SaveMetadata saves the file's metadata to disk.

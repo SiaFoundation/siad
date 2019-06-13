@@ -542,7 +542,7 @@ func TestSiaDirDelete(t *testing.T) {
 				return
 			default:
 			}
-			err := entry.Save([]byte{})
+			err := entry.SaveHeader()
 			if err != nil && !strings.Contains(err.Error(), "can't call createAndApplyTransaction on deleted file") {
 				t.Fatal(err)
 			}
@@ -655,7 +655,7 @@ func TestSiaDirRename(t *testing.T) {
 				return
 			default:
 			}
-			err := entry.Save([]byte{})
+			err := entry.SaveHeader()
 			if err != nil {
 				t.Fatal(err)
 			}

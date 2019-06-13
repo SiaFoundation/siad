@@ -480,7 +480,7 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, chunks []byte, suffix uin
 			siaFilePath := siaPath.AddSuffix(suffix).SiaFileSysPath(sfs.staticSiaFileDir)
 			sf.SetSiaFilePath(siaFilePath)
 		}
-		return sf.Save(chunks)
+		return sf.SaveWithChunks(chunks)
 	}
 	// If it exists and the UID matches too, skip the file.
 	if sf.UID() == oldFile.UID() {

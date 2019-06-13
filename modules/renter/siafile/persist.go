@@ -347,7 +347,7 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 func (sf *SiaFile) chunk(chunkIndex int) (chunk, error) {
 	chunkOffset := sf.chunkOffset(chunkIndex)
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
-	f, err := os.Open(sf.siaFilePath)
+	f, err := sf.deps.Open(sf.siaFilePath)
 	if err != nil {
 		return chunk{}, errors.AddContext(err, "failed to open file to read chunk")
 	}
