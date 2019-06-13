@@ -348,15 +348,14 @@ func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForR
 
 // ChunkHealth returns the health of the chunk which is defined as the percent
 // of parity pieces remaining.
-func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
+func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (float64, error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	chunk, err := sf.chunk(index)
 	if err != nil {
-		build.Critical("failed to read chunk: ", err)
-		return 0
+		return 0, errors.AddContext(err, "failed to read chunk")
 	}
-	return sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+	return sf.chunkHealth(chunk, offlineMap, goodForRenewMap), nil
 }
 
 // ChunkIndexByOffset will return the chunkIndex that contains the provided
@@ -716,15 +715,14 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 }
 
 // StuckChunkByIndex returns if the chunk at the index is marked as Stuck or not
-func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
+func (sf *SiaFile) StuckChunkByIndex(index uint64) (bool, error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	chunk, err := sf.chunk(int(index))
 	if err != nil {
-		build.Critical("failed to read chunk", err)
-		return false
+		return false, errors.AddContext(err, "failed to read chunk")
 	}
-	return chunk.Stuck
+	return chunk.Stuck, nil
 }
 
 // UID returns a unique identifier for this file.
