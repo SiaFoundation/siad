@@ -758,6 +758,21 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 			return errors.New("host returned not found in filtered hosts")
 		}
 	}
+
+	// Confirm hosts are marked as filtered in original hosttree by querying AllHost
+	hbag, err := renter.HostDbAllGet()
+	if err != nil {
+		return err
+	}
+	for _, host := range hbag.Hosts {
+		if _, ok := filteredHostsMap[host.PublicKeyString]; !ok {
+			continue
+		}
+		if !host.Filtered {
+			return errors.New("Host not marked as filtered")
+		}
+	}
+
 	// confirm contracts are dropped and replaced appropriately for the FilterMode
 	loop = 0
 	err = build.Retry(50, 100*time.Millisecond, func() error {
