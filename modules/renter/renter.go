@@ -829,10 +829,10 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// Spin up the workers for the work pool.
 	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
-	go r.threadedUpdateRenterHealth()
-	go r.threadedStuckFileLoop()
 	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
 		go r.threadedUploadAndRepair()
+		go r.threadedUpdateRenterHealth()
+		go r.threadedStuckFileLoop()
 	}
 
 	// Kill workers on shutdown.
