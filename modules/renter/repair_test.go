@@ -3,6 +3,7 @@ package renter
 import (
 	"encoding/hex"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -81,6 +82,7 @@ func TestBubbleHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Check to make sure bubble doesn't error on an empty directory
 	err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
@@ -346,6 +348,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create directory tree
 	subDir1, err := modules.NewSiaPath("SubDir1")
@@ -423,6 +426,7 @@ func TestNumFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create directory tree
 	subDir1, err := modules.NewSiaPath("SubDir1")
@@ -467,7 +471,7 @@ func TestNumFiles(t *testing.T) {
 	// of files and aggregate number of files
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -503,6 +507,7 @@ func TestDirectorySize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create directory tree
 	subDir1, err := modules.NewSiaPath("SubDir1")
@@ -547,7 +552,7 @@ func TestDirectorySize(t *testing.T) {
 	// Call bubble on lowest lever and confirm top level reports accurate size
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -580,6 +585,7 @@ func TestDirectoryModTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create directory tree
 	subDir1, err := modules.NewSiaPath("SubDir1")
@@ -625,7 +631,7 @@ func TestDirectoryModTime(t *testing.T) {
 	// update time
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -652,6 +658,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create a test directory with sub folders
 	//
@@ -782,6 +789,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create a file
 	rsc, _ := siafile.NewRSCode(1, 1)
@@ -836,5 +844,52 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 	if !fileMetadata.ModTime.Equal(modTime) {
 		t.Fatalf("Unexpected modtime, expected %v got %v", modTime, fileMetadata.ModTime)
+	}
+}
+
+// TestCreateMissingSiaDir confirms that the repair code creates a siadir file
+// if one is not found
+func TestCreateMissingSiaDir(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Confirm the siadir file is on disk
+	siaDirPath := modules.RootSiaPath().SiaDirMetadataSysPath(rt.renter.staticFilesDir)
+	_, err = os.Stat(siaDirPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Remove .siadir file on disk
+	err = os.Remove(siaDirPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm siadir is gone
+	_, err = os.Stat(siaDirPath)
+	if !os.IsNotExist(err) {
+		t.Fatal("Err should have been IsNotExist", err)
+	}
+
+	// Create siadir file with managedDirectoryMetadata
+	_, err = rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm it is on disk
+	_, err = os.Stat(siaDirPath)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

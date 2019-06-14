@@ -105,7 +105,7 @@ type (
 
 		// downloadCompleteFunc is a slice of functions which are called when
 		// completeChan is closed.
-		downloadCompleteFuncs []downloadCompleteFunc
+		downloadCompleteFuncs []func(error) error
 
 		// Timestamp information.
 		endTime         time.Time // Set immediately before closing 'completeChan'.
@@ -144,12 +144,12 @@ type (
 		overdrive     int           // How many extra pieces to download to prevent slow hosts from being a bottleneck.
 		priority      uint64        // Files with a higher priority will be downloaded first.
 	}
-
-	// downloadCompleteFunc is a function called upon completion of the
-	// download. It accepts an error as an argument and returns an error. That
-	// way it's possible to add custom behavior for failing downloads.
-	downloadCompleteFunc func(error) error
 )
+
+// managedCancel cancels a download by marking it as failed.
+func (d *download) managedCancel() {
+	d.managedFail(modules.ErrDownloadCancelled)
+}
 
 // managedFail will mark the download as complete, but with the provided error.
 // If the download has already failed, the error will be updated to be a
@@ -206,11 +206,11 @@ func (d *download) markComplete() {
 // functions are executed in the same order as they are registered and waiting
 // for the download's completeChan to be closed implies that the registered
 // functions were executed.
-func (d *download) onComplete(f downloadCompleteFunc) {
+func (d *download) onComplete(f func(error) error) {
 	select {
 	case <-d.completeChan:
 		if err := f(d.err); err != nil {
-			d.log.Println("Failed to execute at least one downloadCompleteFunc", err)
+			d.log.Println("Failed to execute downloadCompleteFunc", err)
 		}
 		return
 	default:
@@ -242,7 +242,7 @@ func (d *download) Err() (err error) {
 // functions are executed in the same order as they are registered and waiting
 // for the download's completeChan to be closed implies that the registered
 // functions were executed.
-func (d *download) OnComplete(f downloadCompleteFunc) {
+func (d *download) OnComplete(f func(error) error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.onComplete(f)
@@ -270,13 +270,19 @@ func (r *Renter) Download(p modules.RenterDownloadParameters) error {
 
 // DownloadAsync performs a file download using the passed parameters without
 // blocking until the download is finished.
-func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters) error {
+func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error) error) (cancel func(), err error) {
 	if err := r.tg.Add(); err != nil {
-		return err
+		return nil, err
 	}
 	defer r.tg.Done()
-	_, err := r.managedDownload(p)
-	return err
+	d, err := r.managedDownload(p)
+	if err != nil {
+		return nil, err
+	}
+	if f != nil {
+		d.onComplete(f)
+	}
+	return d.managedCancel, err
 }
 
 // managedDownload performs a file download using the passed parameters and

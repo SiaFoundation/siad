@@ -3,6 +3,7 @@ package renter
 import (
 	"container/heap"
 	"fmt"
+	"math"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -12,6 +13,10 @@ import (
 // directory is a helper struct that represents a siadir in the
 // repairDirectoryHeap
 type directory struct {
+	// Heap controlled fields
+	index int // The index of the item in the heap
+
+	// mu controlled fields
 	aggregateHealth float64
 	health          float64
 	explored        bool
@@ -27,7 +32,7 @@ type directoryHeap struct {
 
 	// heapDirectories is a map containing all the directories currently in the
 	// heap
-	heapDirectories map[modules.SiaPath]struct{}
+	heapDirectories map[modules.SiaPath]*directory
 
 	mu sync.Mutex
 }
@@ -66,23 +71,23 @@ func (rdh repairDirectoryHeap) Less(i, j int) bool {
 	// Prioritize higher health
 	return iHealth > jHealth
 }
-func (rdh repairDirectoryHeap) Swap(i, j int)       { rdh[i], rdh[j] = rdh[j], rdh[i] }
-func (rdh *repairDirectoryHeap) Push(x interface{}) { *rdh = append(*rdh, x.(*directory)) }
+func (rdh repairDirectoryHeap) Swap(i, j int) {
+	rdh[i], rdh[j] = rdh[j], rdh[i]
+	rdh[i].index, rdh[j].index = i, j
+}
+func (rdh *repairDirectoryHeap) Push(x interface{}) {
+	n := len(*rdh)
+	d := x.(*directory)
+	d.index = n
+	*rdh = append(*rdh, d)
+}
 func (rdh *repairDirectoryHeap) Pop() interface{} {
 	old := *rdh
 	n := len(old)
-	dir := old[n-1]
+	d := old[n-1]
+	d.index = -1 // for safety
 	*rdh = old[0 : n-1]
-	return dir
-}
-
-// managedEmpty clears the directory heap by recreating the heap and
-// heapDirectories.
-func (dh *directoryHeap) managedEmpty() {
-	dh.mu.Lock()
-	defer dh.mu.Unlock()
-	dh.heapDirectories = make(map[modules.SiaPath]struct{})
-	dh.heap = repairDirectoryHeap{}
+	return d
 }
 
 // managedLen returns the length of the heap
@@ -92,12 +97,35 @@ func (dh *directoryHeap) managedLen() int {
 	return dh.heap.Len()
 }
 
+// managedPeekHealth returns the current worst health of the directory heap
+func (dh *directoryHeap) managedPeekHealth() float64 {
+	dh.mu.Lock()
+	defer dh.mu.Unlock()
+	// If the heap is empty return 0 as that is the max health
+	if dh.heap.Len() == 0 {
+		return 0
+	}
+	// Pop off and then push back the top directory. We are not using the
+	// managed methods here as to avoid removing the directory from the map and
+	// having another thread push the directory onto the heap in between locks
+	var health float64
+	d := heap.Pop(&dh.heap).(*directory)
+	if d.explored {
+		health = d.health
+	} else {
+		health = d.aggregateHealth
+	}
+	heap.Push(&dh.heap, d)
+	return health
+}
+
 // managedPop will return the top directory from the heap
 func (dh *directoryHeap) managedPop() (d *directory) {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
 	if dh.heap.Len() > 0 {
-		d = dh.pop()
+		d = heap.Pop(&dh.heap).(*directory)
+		delete(dh.heapDirectories, d.siaPath)
 	}
 	return d
 }
@@ -107,35 +135,79 @@ func (dh *directoryHeap) managedPop() (d *directory) {
 func (dh *directoryHeap) managedPush(d *directory) bool {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
-	var added bool
 	_, exists := dh.heapDirectories[d.siaPath]
-	if !exists {
-		heap.Push(&dh.heap, d)
-		dh.heapDirectories[d.siaPath] = struct{}{}
-		added = true
+	if exists {
+		return false
 	}
-	return added
+	heap.Push(&dh.heap, d)
+	dh.heapDirectories[d.siaPath] = d
+	return true
 }
 
-// managedPushUnexploredDirectory adds an unexplored directory to the directory
-// heap
-func (dh *directoryHeap) managedPushUnexploredDirectory(siaPath modules.SiaPath, aggregateHealth, health float64) error {
+// managedReset clears the directory heap by recreating the heap and
+// heapDirectories.
+func (dh *directoryHeap) managedReset() {
+	dh.mu.Lock()
+	defer dh.mu.Unlock()
+	dh.heapDirectories = make(map[modules.SiaPath]*directory)
+	dh.heap = repairDirectoryHeap{}
+}
+
+// managedUpdate will update the directory that is currently in the heap based
+// on the directory pasted in.
+//
+// The worse health will be kept and explored will be prioritized over
+// unexplored
+func (dh *directoryHeap) managedUpdate(d *directory) bool {
+	dh.mu.Lock()
+	defer dh.mu.Unlock()
+	heapDir, exists := dh.heapDirectories[d.siaPath]
+	if !exists {
+		return false
+	}
+	// Update the health fields of the directory in the heap.
+	//
+	// NOTE: we don't want to update the explored field because we don't want to
+	// mark an unexplored directory as explored and miss adding its sub
+	// directories
+	heapDir.mu.Lock()
+	heapDir.aggregateHealth = math.Max(heapDir.aggregateHealth, d.aggregateHealth)
+	heapDir.health = math.Max(heapDir.health, d.health)
+	heapDir.mu.Unlock()
+	heap.Fix(&dh.heap, heapDir.index)
+	return true
+}
+
+// managedPushDirectory adds a directory to the directory heap
+func (dh *directoryHeap) managedPushDirectory(siaPath modules.SiaPath, aggregateHealth, health float64, explored bool) error {
 	d := &directory{
 		aggregateHealth: aggregateHealth,
 		health:          health,
+		explored:        explored,
 		siaPath:         siaPath,
 	}
 	if !dh.managedPush(d) {
-		return errors.New("failed to push unexplored directory onto heap")
+		return errors.New("failed to push directory onto heap")
 	}
 	return nil
 }
 
-// pop pulls off the top directory from the heap and deletes it from the map
-func (dh *directoryHeap) pop() (d *directory) {
-	d = heap.Pop(&dh.heap).(*directory)
-	delete(dh.heapDirectories, d.siaPath)
-	return d
+// managedInitDirectoryHeap clears the directory heap and then adds an
+// unexplored root directory
+func (r *Renter) managedInitDirectoryHeap() error {
+	// Reset the directory heap to help clear it from memory
+	r.directoryHeap.managedReset()
+
+	// Grab the root siadir metadata
+	siaDir, err := r.staticDirSet.Open(modules.RootSiaPath())
+	if err != nil {
+		return err
+	}
+	defer siaDir.Close()
+	metadata := siaDir.Metadata()
+
+	// Push unexplored root directory onto heap
+	return r.directoryHeap.managedPushDirectory(modules.RootSiaPath(), metadata.AggregateHealth, metadata.Health, false)
 }
 
 // managedNextExploredDirectory pops directories off of the heap until it
@@ -145,6 +217,12 @@ func (dh *directoryHeap) pop() (d *directory) {
 func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 	// Loop until we pop off an explored directory
 	for {
+		select {
+		case <-r.tg.StopChan():
+			return nil, errors.New("renter shutdown before directory could be returned")
+		default:
+		}
+
 		// Pop directory
 		d := r.directoryHeap.managedPop()
 
@@ -197,7 +275,7 @@ func (r *Renter) managedPushSubDirectories(d *directory) error {
 // managedPushUnexploredDirectory reads the health from the siadir metadata and
 // pushes an unexplored directory element onto the heap
 func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
-	// Grab the root siadir metadata
+	// Grab the siadir metadata
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil {
 		return err
@@ -206,13 +284,5 @@ func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
 	metadata := siaDir.Metadata()
 
 	// Push unexplored directory onto heap
-	return r.directoryHeap.managedPushUnexploredDirectory(siaPath, metadata.AggregateHealth, metadata.Health)
-}
-
-// managedResetDirectoryHeap resets the directory heap by clearing it and then
-// adding an unexplored root directory to the heap.
-func (r *Renter) managedResetDirectoryHeap() error {
-	// Empty the directory heap
-	r.directoryHeap.managedEmpty()
-	return r.managedPushUnexploredDirectory(modules.RootSiaPath())
+	return r.directoryHeap.managedPushDirectory(siaPath, metadata.AggregateHealth, metadata.Health, false)
 }

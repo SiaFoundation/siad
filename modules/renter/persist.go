@@ -63,6 +63,7 @@ type (
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
 		UploadedBackups  []modules.UploadedBackup
+		SyncedContracts  []types.FileContractID
 	}
 )
 
@@ -217,7 +218,9 @@ func (r *Renter) managedLoadSettings() error {
 		// No persistence yet, set the defaults and continue.
 		r.persist.MaxDownloadSpeed = DefaultMaxDownloadSpeed
 		r.persist.MaxUploadSpeed = DefaultMaxUploadSpeed
+		id := r.mu.Lock()
 		err = r.saveSync()
+		r.mu.Unlock(id)
 		if err != nil {
 			return err
 		}
@@ -258,6 +261,10 @@ func (r *Renter) managedInitPersist() error {
 	// because the wal needs the directory to be created and the staticDirSet
 	// needs the wal.
 	err := os.MkdirAll(r.staticFilesDir, 0700)
+	if err != nil {
+		return err
+	}
+	err = os.MkdirAll(r.staticBackupsDir, 0700)
 	if err != nil {
 		return err
 	}

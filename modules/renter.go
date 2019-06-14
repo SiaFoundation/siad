@@ -30,6 +30,10 @@ var (
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
 
+	// ErrDownloadCancelled is the error set when a download was cancelled
+	// manually by the user.
+	ErrDownloadCancelled = errors.New("download was cancelled")
+
 	// PriceEstimationScope is the number of hosts that get queried by the
 	// renter when providing price estimates. Especially for the 'Standard'
 	// variable, there should be congruence with the number of contracts being
@@ -188,7 +192,8 @@ type Allowance struct {
 type ContractUtility struct {
 	GoodForUpload bool
 	GoodForRenew  bool
-	Locked        bool // Locked utilities can only be set to false.
+	LastOOSErr    types.BlockHeight // OOS means Out Of Storage
+	Locked        bool              // Locked utilities can only be set to false.
 }
 
 // DirectoryInfo provides information about a siadir
@@ -199,6 +204,7 @@ type DirectoryInfo struct {
 	AggregateHealth              float64   `json:"aggregatehealth"`
 	AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
 	AggregateMaxHealth           float64   `json:"aggregatemaxhealth"`
+	AggregateMaxHealthPercentage float64   `json:"aggregatemaxhealthpercentage"`
 	AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
 	AggregateMostRecentModTime   time.Time `json:"aggregatemostrecentmodtime"`
 	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
@@ -211,6 +217,7 @@ type DirectoryInfo struct {
 	// an aggregate of the entire sub directory tree
 	Health              float64   `json:"health"`
 	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+	MaxHealthPercentage float64   `json:"maxhealthpercentage"`
 	MaxHealth           float64   `json:"maxhealth"`
 	MinRedundancy       float64   `json:"minredundancy"`
 	MostRecentModTime   time.Time `json:"mostrecentmodtime"`
@@ -509,10 +516,11 @@ type ContractorSpending struct {
 
 // UploadedBackup contains metadata about an uploaded backup.
 type UploadedBackup struct {
-	Name         [96]byte
-	UID          [16]byte
-	CreationDate types.Timestamp
-	Size         uint64 // size of snapshot .sia file
+	Name           string
+	UID            [16]byte
+	CreationDate   types.Timestamp
+	Size           uint64 // size of snapshot .sia file
+	UploadProgress float64
 }
 
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
@@ -575,6 +583,9 @@ type Renter interface {
 	// contracts is in progress and if it is, the current progress of the scan.
 	RecoveryScanStatus() (bool, types.BlockHeight)
 
+	// RefreshedContract checks if the contract was previously refreshed
+	RefreshedContract(fcid types.FileContractID) bool
+
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
 
@@ -585,8 +596,12 @@ type Renter interface {
 	// DownloadBackup downloads a backup previously uploaded to hosts.
 	DownloadBackup(dst string, name string) error
 
-	// UploadedBackups returns a list of backups previously uploaded to hosts.
-	UploadedBackups() ([]UploadedBackup, error)
+	// UploadedBackups returns a list of backups previously uploaded to hosts,
+	// along with a list of which hosts are storing all known backups.
+	UploadedBackups() ([]UploadedBackup, []types.SiaPublicKey, error)
+
+	// BackupsOnHost returns the backups stored on the specified host.
+	BackupsOnHost(hostKey types.SiaPublicKey) ([]UploadedBackup, error)
 
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(siaPath SiaPath) error
@@ -597,7 +612,7 @@ type Renter interface {
 
 	// Download performs a download according to the parameters passed without
 	// blocking, including downloads of `offset` and `length` type.
-	DownloadAsync(params RenterDownloadParameters) error
+	DownloadAsync(params RenterDownloadParameters, onComplete func(error) error) (cancel func(), err error)
 
 	// ClearDownloadHistory clears the download history of the renter
 	// inclusive for before and after times.
@@ -609,9 +624,10 @@ type Renter interface {
 	// File returns information on specific file queried by user
 	File(siaPath SiaPath) (FileInfo, error)
 
-	// FileList returns information on all of the files stored by the renter. The
-	// 'cached' argument specifies whether cached values should be returned or not.
-	FileList(cached bool) ([]FileInfo, error)
+	// FileList returns information on all of the files stored by the renter at the
+	// specified folder. The 'cached' argument specifies whether cached values
+	// should be returned or not.
+	FileList(siaPath SiaPath, recursive, cached bool) ([]FileInfo, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
 	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error
@@ -669,8 +685,8 @@ type Renter interface {
 	// DeleteDir deletes a directory from the renter
 	DeleteDir(siaPath SiaPath) error
 
-	// DirList lists the directories and the files stored in a siadir
-	DirList(siaPath SiaPath) ([]DirectoryInfo, []FileInfo, error)
+	// DirList lists the directories in a siadir
+	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

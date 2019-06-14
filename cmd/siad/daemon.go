@@ -150,25 +150,24 @@ func apiPassword(siaDir string) (string, error) {
 
 // loadAPIPassword determines whether to use an API password from disk or a
 // temporary one entered by the user according to the provided config.
-func loadAPIPassword(config Config) (err error) {
+func loadAPIPassword(config Config, siaDir string) (_ Config, err error) {
 	if config.Siad.AuthenticateAPI {
 		if config.Siad.TempPassword {
 			config.APIPassword, err = passwordPrompt("Enter API password: ")
 			if err != nil {
-				return err
+				return Config{}, err
 			} else if config.APIPassword == "" {
-				return errors.New("password cannot be blank")
+				return Config{}, errors.New("password cannot be blank")
 			}
 		} else {
 			// load API password from environment variable or file.
-			// TODO: allow user to specify location of password file.
-			config.APIPassword, err = apiPassword(build.DefaultSiaDir())
+			config.APIPassword, err = apiPassword(siaDir)
 			if err != nil {
-				return err
+				return Config{}, err
 			}
 		}
 	}
-	return nil
+	return config, nil
 }
 
 // printVersionAndRevision prints the daemon's version and revision numbers.
@@ -213,7 +212,7 @@ func tryAutoUnlock(srv *server.Server) {
 	if password := os.Getenv("SIA_WALLET_PASSWORD"); password != "" {
 		fmt.Println("Sia Wallet Password found, attempting to auto-unlock wallet")
 		if err := srv.Unlock(password); err != nil {
-			fmt.Println("Auto-unlock failed.")
+			fmt.Println("Auto-unlock failed:", err)
 		} else {
 			fmt.Println("Auto-unlock successful.")
 		}
@@ -230,7 +229,8 @@ func startDaemon(config Config) (err error) {
 	}
 
 	// Load API password.
-	if err = loadAPIPassword(config); err != nil {
+	config, err = loadAPIPassword(config, build.DefaultSiaDir())
+	if err != nil {
 		return errors.AddContext(err, "failed to get API password")
 	}
 

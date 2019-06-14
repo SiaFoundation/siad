@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,10 +19,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -61,9 +62,9 @@ func runRenterTests(t *testing.T, gp siatest.GroupParams, tests []test) error {
 	return nil
 }
 
-// TestRenter executes a number of subtests using the same TestGroup to
-// save time on initialization
-func TestRenter(t *testing.T) {
+// TestRenterOne executes a number of subtests using the same TestGroup to save
+// time on initialization
+func TestRenterOne(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -268,6 +269,7 @@ func TestRenterThree(t *testing.T) {
 		{"TestAllowanceDefaultSet", testAllowanceDefaultSet},
 		{"TestFileAvailableAndRecoverable", testFileAvailableAndRecoverable},
 		{"TestSetFileStuck", testSetFileStuck},
+		{"TestCancelAsyncDownload", testCancelAsyncDownload},
 		{"TestUploadStreaming", testUploadStreaming},
 		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
 	}
@@ -296,6 +298,8 @@ func TestRenterFour(t *testing.T) {
 	// Specify subtests to run
 	subTests := []test{
 		{"TestStreamRepair", testStreamRepair},
+		{"TestEscapeSiaPath", testEscapeSiaPath},
+		{"TestValidateSiaPath", testValidateSiaPath},
 	}
 
 	// Run tests
@@ -349,7 +353,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Make sure the file reached full redundancy.
-	err = build.Retry(100, 200*time.Millisecond, func() error {
+	err = build.Retry(100, 600*time.Millisecond, func() error {
 		rfg, err := r.RenterFileGet(siaPath)
 		if err != nil {
 			return err
@@ -476,7 +480,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 		// Download files to build download history
 		dest := filepath.Join(siatest.SiaTestingDir, strconv.Itoa(fastrand.Intn(math.MaxInt32)))
 		for i := 0; i < remainingDownloads; i++ {
-			err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false)
+			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false)
 			if err != nil {
 				t.Fatal("Could not Download file:", err)
 			}
@@ -832,7 +836,7 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 // after a host goes offline.
 func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
-	renter := tg.Renters()[0]
+	renterNode := tg.Renters()[0]
 
 	// Check that we have enough hosts for this test.
 	if len(tg.Hosts()) < 2 {
@@ -841,35 +845,29 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 
 	// Set fileSize and redundancy for upload
 	fileSize := int(modules.SectorSize)
-	dataPieces := uint64(1)
+	dataPieces := uint64(2)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Upload file
-	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	_, remoteFile, err := renterNode.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
-	}
-	// Get the file info of the fully uploaded file. Tha way we can compare the
-	// redundancies later.
-	fi, err := renter.File(remoteFile)
-	if err != nil {
-		t.Fatal("failed to get file info", err)
 	}
 
 	// Take down hosts until enough are missing that the chunks get marked as
 	// stuck after repairs.
 	var hostsRemoved uint64
-	for hostsRemoved = 0; float64(hostsRemoved)/float64(parityPieces) <= siafile.RemoteRepairDownloadThreshold; hostsRemoved++ {
+	for hostsRemoved = 0; float64(hostsRemoved)/float64(parityPieces) < renter.RepairThreshold; hostsRemoved++ {
 		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
 			t.Fatal("Failed to shutdown host", err)
 		}
 	}
 	expectedRedundancy := float64(dataPieces+parityPieces-hostsRemoved) / float64(dataPieces)
-	if err := renter.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
+	if err := renterNode.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
 	// We should still be able to download
-	if _, err := renter.DownloadByStream(remoteFile); err != nil {
+	if _, err := renterNode.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
 	}
 	// Bring up hosts to replace the ones that went offline.
@@ -880,16 +878,16 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("Failed to create a new host", err)
 		}
 	}
-	if err := renter.WaitForUploadRedundancy(remoteFile, fi.Redundancy); err != nil {
+	if err := renterNode.WaitForUploadHealth(remoteFile); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// Check to see if a chunk got repaired and marked as unstuck
-	err = renter.WaitForStuckChunksToRepair()
+	err = renterNode.WaitForStuckChunksToRepair()
 	if err != nil {
 		t.Fatal(err)
 	}
 	// We should be able to download
-	if _, err := renter.DownloadByStream(remoteFile); err != nil {
+	if _, err := renterNode.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
 	}
 }
@@ -917,7 +915,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Get the file info of the fully uploaded file. Tha way we can compare the
 	// redundancieslater.
-	fi, err := r.File(remoteFile)
+	_, err = r.File(remoteFile)
 	if err != nil {
 		t.Fatal("failed to get file info", err)
 	}
@@ -946,9 +944,8 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to create a new host", err)
 	}
-	// When doing remote repair the redundancy might not reach 100%.
-	expectedRedundancy = (1.0 - siafile.RemoteRepairDownloadThreshold) * fi.Redundancy
-	if err := r.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
+	// Wait for the file to be healthy.
+	if err := r.WaitForUploadHealth(remoteFile); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// Check to see if a chunk got repaired and marked as unstuck
@@ -971,7 +968,7 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 	// Upload file, creating a piece for each host in the group
-	dataPieces := uint64(1)
+	dataPieces := uint64(2)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := 100 + siatest.Fuzz()
 	_, _, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
@@ -997,6 +994,68 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		if !reflect.DeepEqual(files[i], rf.File) {
 			t.Fatalf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
 		}
+	}
+}
+
+// testCancelAsyncDownload tests that cancelling an async download aborts the
+// download and sets the correct fields.
+func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := 10 * modules.SectorSize
+	_, remoteFile, err := renter.UploadNewFileBlocking(int(fileSize), dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Set a ratelimit that only allows for downloading a sector every second.
+	if err := renter.RenterPostRateLimit(int64(modules.SectorSize), 0); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Download the file asynchronously.
+	dst := filepath.Join(renter.FilesDir().Path(), "canceled_download.dat")
+	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sometimes wait a second to not always cancel the download right
+	// away.
+	time.Sleep(time.Second * time.Duration(fastrand.Intn(2)))
+	// Cancel the download.
+	if err := renter.RenterCancelDownloadPost(cancelID); err != nil {
+		t.Fatal(err)
+	}
+	// Get the download info.
+	rdg, err := renter.RenterDownloadsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var di *api.DownloadInfo
+	for _, d := range rdg.Downloads {
+		if remoteFile.SiaPath() == d.SiaPath && dst == d.Destination {
+			di = &d
+			break
+		}
+	}
+	if di == nil {
+		t.Fatal("couldn't find download")
+	}
+	// Make sure the download was cancelled.
+	if !di.Completed {
+		t.Fatal("download is not marked as completed")
+	}
+	if di.Received >= fileSize {
+		t.Fatal("the download finished successfully")
+	}
+	if di.Error != modules.ErrDownloadCancelled.Error() {
+		t.Fatal("error message doesn't match ErrDownloadCancelled")
 	}
 }
 
@@ -1267,6 +1326,11 @@ func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 	if err := renter.RenterPostRateLimit(int64(chunkSize), int64(chunkSize)); err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Call fail on the dependency every 10 ms.
 	cancel := make(chan struct{})
@@ -1321,6 +1385,11 @@ func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependenci
 	if err := renter.RenterPostRateLimit(int64(chunkSize), int64(chunkSize)); err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Call fail on the dependency every two seconds to allow some uploads to
 	// finish.
@@ -1387,7 +1456,6 @@ func TestRenterAddNodes(t *testing.T) {
 		{"TestUploadReady", testUploadReady},
 		{"TestOverspendAllowance", testOverspendAllowance},
 		{"TestRenterCancelAllowance", testRenterCancelAllowance},
-		{"TestRenewFailing", testRenewFailing}, // Put last because it impacts a host
 	}
 
 	// Run tests
@@ -1472,32 +1540,37 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Redundancy should go back to normal.
-	expectedRedundancy = float64(dataPieces+parityPieces) / float64(dataPieces)
-	if err := renter.WaitForUploadRedundancy(rf, expectedRedundancy); err != nil {
-		t.Fatal("Redundancy is not increasing")
+	// File should be repaired.
+	if err := renter.WaitForUploadHealth(rf); err != nil {
+		t.Fatal("File is not being repaired", err)
 	}
 }
 
-// testRenewFailing checks if a contract gets marked as !goodForRenew after
+// TestRenewFailing checks if a contract gets marked as !goodForRenew after
 // failing multiple times in a row.
-func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
-	// Add a renter with a custom allowance to give it plenty of time to renew
-	// the contract later.
-	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
-	renterParams.Allowance = siatest.DefaultAllowance
-	renterParams.Allowance.Hosts = uint64(len(tg.Hosts()) - 1)
-	renterParams.Allowance.Period = 200
-	renterParams.Allowance.RenewWindow = 100
-	nodes, err := tg.AddNodes(renterParams)
-	if err != nil && len(nodes) > 0 {
-		renter := nodes[0]
-		renter.PrintDebugInfo(t, true, true, true)
-		t.Fatal(err)
-	} else if err != nil {
-		t.Fatal(err)
+func TestRenewFailing(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
 	}
-	renter := nodes[0]
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	renter := tg.Renters()[0]
 
 	// All the contracts of the renter should be goodForRenew. So there should
 	// be no inactive contracts, only active contracts
@@ -1505,12 +1578,12 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uint64(len(rcg.ActiveContracts)) != renterParams.Allowance.Hosts {
+	if len(rcg.ActiveContracts) != len(tg.Hosts()) {
 		for i, c := range rcg.ActiveContracts {
 			fmt.Println(i, c.HostPublicKey)
 		}
 		t.Fatalf("renter had %v contracts but should have %v",
-			len(rcg.ActiveContracts), renterParams.Allowance.Hosts)
+			len(rcg.ActiveContracts), len(tg.Hosts()))
 	}
 	if len(rcg.InactiveContracts) != 0 {
 		t.Fatal("Renter should have 0 inactive contracts but has", len(rcg.InactiveContracts))
@@ -1559,12 +1632,12 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uint64(len(rcg.ActiveContracts)) != renterParams.Allowance.Hosts {
+	if len(rcg.ActiveContracts) != len(tg.Hosts()) {
 		for i, c := range rcg.ActiveContracts {
 			fmt.Println(i, c.HostPublicKey)
 		}
 		t.Fatalf("renter had %v contracts but should have %v",
-			len(rcg.ActiveContracts), renterParams.Allowance.Hosts)
+			len(rcg.ActiveContracts), len(tg.Hosts()))
 	}
 	if len(rcg.InactiveContracts) != 0 {
 		t.Fatal("Renter should have 0 inactive contracts but has", len(rcg.InactiveContracts))
@@ -1580,9 +1653,9 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 	// We should be within the second half of the renew window now. We keep
 	// mining blocks until the host with the locked wallet has been replaced.
 	// This should happen before we reach the endHeight of the contracts. This
-	// means we should have number of hosts - 1 active contracts and number of
-	// hosts - 1 inactive contracts.  One of the inactive contracts will be
-	// !goodForRenew due to the host
+	// means we should have number of hosts - 1 active contracts, number of
+	// hosts - 1 renewed contracts, and one of the disabled contract which will
+	// be the host that has the locked wallet
 	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 1*time.Second, func() error {
 		if err := miner.MineBlock(); err != nil {
 			return err
@@ -1593,28 +1666,24 @@ func testRenewFailing(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			return err
 		}
+		rce, err := renter.RenterExpiredContractsGet()
+		if err != nil {
+			return err
+		}
 		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
 			return fmt.Errorf("Expected %v active contracts, got %v", len(tg.Hosts())-1, len(rc.ActiveContracts))
-		}
-		if len(rc.RenewedContracts) != len(tg.Hosts())-2 {
-			return fmt.Errorf("Expected %v renewed contracts, got %v", len(tg.Hosts())-2, len(rc.RenewedContracts))
 		}
 		if len(rc.DisabledContracts) != 1 {
 			return fmt.Errorf("Expected %v disabled contracts, got %v", 1, len(rc.DisabledContracts))
 		}
-
-		// Check that the locked host is in inactive and not in active.
-		for _, c := range rc.ActiveContracts {
-			if c.HostPublicKey.String() == lockedHostPK.String() {
-				return errors.New("locked host still appears in set of active contracts")
-			}
+		if len(rce.ExpiredContracts) != len(tg.Hosts())-1 {
+			return fmt.Errorf("Expected %v expired contracts, got %v", len(tg.Hosts())-1, len(rce.ExpiredContracts))
 		}
-		// If the host does appear in the inactive, set, then the test has
+
+		// If the host is the host in the disabled contract, then the test has
 		// passed.
-		for _, c := range rc.ActiveContracts {
-			if c.HostPublicKey.String() == lockedHostPK.String() {
-				return nil
-			}
+		if rc.DisabledContracts[0].HostPublicKey.String() != lockedHostPK.String() {
+			return errors.New("Disbled contract host not the locked host")
 		}
 		return nil
 	})
@@ -1792,13 +1861,9 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 
-	// All contracts should be archived.
+	// All contracts should be disabled.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		rcExpired, err := renter.RenterExpiredContractsGet()
+		rc, err := renter.RenterDisabledContractsGet()
 		if err != nil {
 			return err
 		}
@@ -1806,15 +1871,19 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 		if len(rc.ActiveContracts) != 0 {
 			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
 		}
-		if len(rc.InactiveContracts) != 0 {
-			return fmt.Errorf("expected 0 inactive contracts, got %v", len(rc.InactiveContracts))
+		if len(rc.PassiveContracts) != 0 {
+			return fmt.Errorf("expected 0 passive contracts, got %v", len(rc.PassiveContracts))
 		}
-		if len(rcExpired.ExpiredContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v expired contracts, got %v", len(tg.Hosts()), len(rc.InactiveContracts))
+		if len(rc.RefreshedContracts) != 0 {
+			return fmt.Errorf("expected 0 refreshed contracts, got %v", len(rc.RefreshedContracts))
+		}
+		if len(rc.DisabledContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v disabled contracts, got %v", len(tg.Hosts()), len(rc.DisabledContracts))
 		}
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2049,7 +2118,6 @@ func TestRenterContracts(t *testing.T) {
 	currentPeriodStart := rg.CurrentPeriod
 	period := rg.Settings.Allowance.Period
 	renewWindow := rg.Settings.Allowance.RenewWindow
-	numRenewals := 0
 
 	// Check if the current period was set in the past
 	cg, err := r.ConsensusGet()
@@ -2065,29 +2133,9 @@ func TestRenterContracts(t *testing.T) {
 	}
 
 	// Confirm Contracts were created as expected.  There should only be active
-	// contracts and no renewed, disabled, or expired contracts
+	// contracts and no passive,refreshed, disabled, or expired contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := r.RenterDisabledContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("Expected %v active contracts, got %v", len(tg.Hosts()), len(rc.ActiveContracts))
-		}
-		if len(rc.RenewedContracts) != 0 {
-			return fmt.Errorf("Expected 0 renewed contracts, got %v", len(rc.RenewedContracts))
-		}
-		if len(rc.DisabledContracts) != 0 {
-			return fmt.Errorf("Expected 0 disabled contracts, got %v", len(rc.DisabledContracts))
-		}
-		rcExpired, err := r.RenterExpiredContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rcExpired.ExpiredContracts) != 0 {
-			return fmt.Errorf("Expected 0 expired contracts, got %v", len(rcExpired.ExpiredContracts))
-		}
-		return nil
+		return checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2119,42 +2167,28 @@ func TestRenterContracts(t *testing.T) {
 	if err = renewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
-	numRenewals++
 
 	// Confirm Contracts were renewed as expected, all original contracts should
 	// have been renewed if GoodForRenew = true.  There should be the same
-	// number of active and renewed contracts, and 0 disabled and expired
-	// contracts since we are still within the endheight of the original
-	// contracts, and the renewed contracts should be the same contracts as the
-	// original active contracts.
+	// number of active and expired contracts, and no other type of contract.
+	// The renewed contracts should be with the same hosts as the original
+	// active contracts.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := r.RenterDisabledContractsGet()
+		// Confirm we have the expected number of each type of contract
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(originalContracts), 0)
 		if err != nil {
 			return err
 		}
-		if len(originalContracts) != len(rc.RenewedContracts) {
-			return fmt.Errorf("Didn't get expected number of renewed contracts, expected %v got %v", len(originalContracts), len(rc.RenewedContracts))
-		}
-		for _, c := range rc.RenewedContracts {
-			if _, ok := originalContractIDMap[c.ID]; !ok {
-				return errors.New("ID from rc not found in originalContracts")
-			}
-		}
-		if len(rc.DisabledContracts) != 0 {
-			return fmt.Errorf("Expected 0 disabled contracts, got %v", len(rc.DisabledContracts))
-		}
-		rcExpired, err := r.RenterExpiredContractsGet()
+		// Confirm the IDs and hosts make sense
+		rc, err := r.RenterAllContractsGet()
 		if err != nil {
 			return err
 		}
-		if len(rcExpired.ExpiredContracts) != 0 {
-			return fmt.Errorf("Expected 0 expired contracts, got %v", len(rcExpired.ExpiredContracts))
-		}
-		// checkContracts will confirm correct number of contracts
-		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.RenewedContracts, append(rc.DisabledContracts, rcExpired.ExpiredContracts...)...), rc.ActiveContracts); err != nil {
+		if err = checkRenewedContractIDs(rc.ExpiredContracts, rc.ActiveContracts); err != nil {
 			return err
 		}
-		if err = checkRenewedContracts(rc.ActiveContracts); err != nil {
+		// Confirm the spending makes sense
+		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -2166,7 +2200,7 @@ func TestRenterContracts(t *testing.T) {
 	// Confirm contract end heights were set properly End height should be the
 	// end of the next period as the contracts are renewed due to reaching the
 	// renew window
-	rc, err = r.RenterDisabledContractsGet()
+	rc, err = r.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2180,54 +2214,6 @@ func TestRenterContracts(t *testing.T) {
 		}
 	}
 
-	// Record renewed contracts
-	renewedContracts := rc.RenewedContracts
-	renewedContractIDMap := make(map[types.FileContractID]struct{})
-	for _, c := range renewedContracts {
-		renewedContractIDMap[c.ID] = struct{}{}
-	}
-
-	// Mine to force inactive contracts to be expired contracts
-	m := tg.Miners()[0]
-	cg, err = r.ConsensusGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < int(renewedContracts[0].EndHeight-cg.Height+types.MaturityDelay); i++ {
-		if err = m.MineBlock(); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Waiting for nodes to sync
-	if err = tg.Sync(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Confirm contracts, the expired contracts should now be the same contracts
-	// as the previous renewed contracts.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err = r.RenterExpiredContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return errors.New("Waiting for active contracts to form")
-		}
-		if len(rc.ExpiredContracts) != len(renewedContracts) {
-			return fmt.Errorf("Expected the same number of expired and renewed contracts; got %v expired and %v renewed", len(rc.ExpiredContracts), len(renewedContracts))
-		}
-		for _, c := range rc.ExpiredContracts {
-			if _, ok := renewedContractIDMap[c.ID]; !ok {
-				return errors.New("ID from expired not found in renewedContracts")
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Renewing contracts by spending is very time consuming, the rest of the
 	// test is only run during vlong so the rest of the test package doesn't
 	// time out
@@ -2235,33 +2221,12 @@ func TestRenterContracts(t *testing.T) {
 		return
 	}
 
-	// Record current active and expired contracts
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err = r.RenterContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("waiting for active contracts to form")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rc, err = r.RenterExpiredContractsGet()
+	// Record current active contracts
+	rc, err = r.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 	activeContracts := rc.ActiveContracts
-	expiredContracts := rc.ExpiredContracts
-	if err != nil {
-		t.Fatal(err)
-	}
-	expiredContractIDMap := make(map[types.FileContractID]struct{})
-	for _, c := range expiredContracts {
-		expiredContractIDMap[c.ID] = struct{}{}
-	}
 
 	// Capturing end height to compare against renewed contracts
 	endHeight := rc.ActiveContracts[0].EndHeight
@@ -2272,56 +2237,33 @@ func TestRenterContracts(t *testing.T) {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
-	numRenewals++
 
 	// Confirm contracts were renewed as expected.  Active contracts prior to
-	// renewal should now be in the renewed contracts
+	// renewal should now be in the refreshed contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err = r.RenterContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return errors.New("Waiting for active contracts to form")
-		}
-		rcExpired, err := r.RenterExpiredContractsGet()
+		err = checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts()), 0)
 		if err != nil {
 			return err
 		}
 
-		// Confirm active and renewed contracts
-		renewedContractIDMap := make(map[types.FileContractID]struct{})
-		for _, c := range rc.RenewedContracts {
-			renewedContractIDMap[c.ID] = struct{}{}
+		// Confirm active and refreshed contracts
+		rc, err := r.RenterAllContractsGet()
+		if err != nil {
+			return err
 		}
-		for _, c := range activeContracts {
-			if _, ok := renewedContractIDMap[c.ID]; !ok && c.UploadSpending.Cmp(startingUploadSpend) <= 0 {
-				return errors.New("ID from activeContacts not found in renewedContracts")
-			}
-		}
-
-		// Check that there are renewed contracts, and that the renewed
-		// contracts correctly mark the GoodForUpload and GoodForRenew fields as
-		// false.
-		if len(rc.RenewedContracts) == 0 {
-			return errors.New("no reported renewed contracts")
-		}
-		for _, c := range rc.RenewedContracts {
+		refreshedContractIDMap := make(map[types.FileContractID]struct{})
+		for _, c := range rc.RefreshedContracts {
+			// refreshed contracts should be !GoodForUpload and !GoodForRenew
 			if c.GoodForUpload || c.GoodForRenew {
 				return errors.New("an renewed contract is being reported as either good for upload or good for renew")
 			}
+			refreshedContractIDMap[c.ID] = struct{}{}
 		}
-
-		// Confirm expired contracts
-		if len(expiredContracts) != len(rcExpired.ExpiredContracts) {
-			return fmt.Errorf("Didn't get expected number of expired contracts, expected %v got %v", len(expiredContracts), len(rcExpired.ExpiredContracts))
-		}
-		for _, c := range rcExpired.ExpiredContracts {
-			if _, ok := expiredContractIDMap[c.ID]; !ok {
-				return errors.New("ID from rcExpired not found in expiredContracts")
+		for _, c := range activeContracts {
+			if _, ok := refreshedContractIDMap[c.ID]; !ok && c.UploadSpending.Cmp(startingUploadSpend) <= 0 {
+				return errors.New("ID from activeContacts not found in RefreshedContracts")
 			}
 		}
-
 		return nil
 	})
 	if err != nil {
@@ -2347,20 +2289,19 @@ func TestRenterContracts(t *testing.T) {
 	if err = renewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
-	numRenewals++
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := r.RenterDisabledContractsGet()
-		if err != nil {
-			return err
-		}
-		rcExpired, err := r.RenterExpiredContractsGet()
+		err = checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
 		if err != nil {
 			return err
 		}
 		// checkContracts will confirm correct number of inactive and active contracts
-		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.RenewedContracts, append(rc.DisabledContracts, rcExpired.ExpiredContracts...)...), rc.ActiveContracts); err != nil {
+		rc, err := r.RenterAllContractsGet()
+		if err != nil {
+			return err
+		}
+		if err = checkRenewedContractIDs(rc.ExpiredContracts, rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -2891,6 +2832,11 @@ func TestRenterPersistData(t *testing.T) {
 	if err := r.RenterPostRateLimit(ds, us); err != nil {
 		t.Fatalf("%v: Could not set RateLimits to %v and %v", err, ds, us)
 	}
+	defer func() {
+		if err := r.RenterPostRateLimit(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Confirm Settings were updated
 	rg, err = r.RenterGet()
@@ -2980,21 +2926,13 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err = tg.SetRenterAllowance(r, siatest.DefaultAllowance); err != nil {
 		t.Fatal("Failed to set renter allowance:", err)
 	}
-	numRenewals := 0
 
 	// Confirm Contracts were created as expected, check that the funds
 	// allocated when setting the allowance are reflected correctly in the
 	// wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := r.RenterInactiveContractsGet()
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
 		if err != nil {
-			return err
-		}
-		rcExpired, err := r.RenterExpiredContractsGet()
-		if err != nil {
-			return err
-		}
-		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 			return err
 		}
 		err = checkBalanceVsSpending(r, initialBalance)
@@ -3043,22 +2981,18 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err = renewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
-	numRenewals++
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := r.RenterInactiveContractsGet()
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 		if err != nil {
 			return err
 		}
-		rcExpired, err := r.RenterExpiredContractsGet()
+		rc, err := r.RenterContractsGet()
 		if err != nil {
 			return err
 		}
-		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
-			return err
-		}
-		if err = checkRenewedContracts(rc.ActiveContracts); err != nil {
+		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -3128,7 +3062,6 @@ func TestRenterSpendingReporting(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	numRenewals++
 
 	// Waiting for nodes to sync
 	if err = tg.Sync(); err != nil {
@@ -3147,18 +3080,15 @@ func TestRenterSpendingReporting(t *testing.T) {
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := r.RenterInactiveContractsGet()
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, 0)
 		if err != nil {
 			return err
 		}
-		rcExpired, err := r.RenterExpiredContractsGet()
+		rc, err := r.RenterContractsGet()
 		if err != nil {
 			return err
 		}
-		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
-			return err
-		}
-		if err = checkRenewedContracts(rc.ActiveContracts); err != nil {
+		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -3209,22 +3139,18 @@ func TestRenterSpendingReporting(t *testing.T) {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
-	numRenewals++
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := r.RenterInactiveContractsGet()
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts())*2, 0)
 		if err != nil {
 			return err
 		}
-		rcExpired, err := r.RenterExpiredContractsGet()
+		rc, err := r.RenterContractsGet()
 		if err != nil {
 			return err
 		}
-		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
-			return err
-		}
-		if err = checkRenewedContracts(rc.ActiveContracts); err != nil {
+		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -3273,22 +3199,18 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err = renewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
-	numRenewals++
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := r.RenterInactiveContractsGet()
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
 		if err != nil {
 			return err
 		}
-		rcExpired, err := r.RenterExpiredContractsGet()
+		rc, err := r.RenterContractsGet()
 		if err != nil {
 			return err
 		}
-		if err = checkContracts(len(tg.Hosts()), numRenewals, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
-			return err
-		}
-		if err = checkRenewedContracts(rc.ActiveContracts); err != nil {
+		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -3504,6 +3426,11 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	if err := r.RenterPostRateLimit(chunkSize, chunkSize); err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := r.RenterPostRateLimit(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create Wait group
 	wg := new(sync.WaitGroup)
@@ -3580,9 +3507,8 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to create a new host", err)
 	}
-	// We should reach full redundancy again.
-	expectedRedundancy := float64((dataPieces + parityPieces)) / float64(dataPieces)
-	if err := renter.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
+	// We should reach full health again.
+	if err := renter.WaitForUploadHealth(remoteFile); err != nil {
 		t.Logf("numHosts: %v", len(tg.Hosts()))
 		t.Fatal("File wasn't repaired", err)
 	}
@@ -4240,6 +4166,139 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	}
 }
 
+// TestRenterContractAutomaticRecoveryScan tests that a renter which has already
+// scanned the whole blockchain and has lost its contracts, will recover them
+// automatically during the next contract maintenance.
+func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a renter node that can't run the automatic contract recovery scan.
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.ContractorDeps = &dependencies.DependencyDisableRecoveryStatusReset{}
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := tg.Renters()[0]
+
+	// Upload a file to the renter.
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(10 * modules.SectorSize)
+	_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// Remember the contracts the renter formed with the hosts.
+	oldContracts := make(map[types.FileContractID]api.RenterContract)
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range rc.ActiveContracts {
+		oldContracts[c.ID] = c
+	}
+
+	// Cancel the allowance to avoid new contracts replacing the recoverable
+	// ones.
+	if err := r.RenterCancelAllowance(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop the renter.
+	if err := tg.StopNode(r); err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete the contracts.
+	if err := os.RemoveAll(filepath.Join(r.Dir, modules.RenterDir, "contracts")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start the renter again. This time it's unlocked and the automatic recovery
+	// scan isn't disabled.
+	if err := tg.StartNodeCleanDeps(r); err != nil {
+		t.Fatal(err)
+	}
+
+	// The renter shouldn't have any contracts.
+	rcg, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rcg.ActiveContracts)+len(rcg.InactiveContracts)+len(rcg.ExpiredContracts) > 0 {
+		t.Fatal("There shouldn't be any contracts after deleting them")
+	}
+
+	// The new renter should have the same active contracts as the old one.
+	miner := tg.Miners()[0]
+	numRetries := 0
+	err = build.Retry(60, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
+		rc, err = r.RenterContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rc.ActiveContracts) != len(oldContracts) {
+			return fmt.Errorf("Didn't recover the right number of contracts, expected %v but was %v",
+				len(oldContracts), len(rc.ActiveContracts))
+		}
+		for _, c := range rc.ActiveContracts {
+			contract, exists := oldContracts[c.ID]
+			if !exists {
+				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
+			}
+			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+				return errors.New("public keys don't match")
+			}
+			if contract.EndHeight != c.EndHeight {
+				return errors.New("endheights don't match")
+			}
+			if contract.GoodForRenew != c.GoodForRenew {
+				return errors.New("GoodForRenew doesn't match")
+			}
+			if contract.GoodForUpload != c.GoodForUpload {
+				return errors.New("GoodForRenew doesn't match")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		rc, _ = r.RenterContractsGet()
+		t.Log("Contracts in total:", len(rc.Contracts))
+		t.Fatal(err)
+	}
+	// Download the whole file again to see if all roots were recovered.
+	_, err = r.DownloadByStream(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestCreateLoadBackup tests that creating a backup with the /renter/backup
 // endpoint works as expected and that it can be loaded with the
 // /renter/recoverbackup endpoint.
@@ -4285,9 +4344,20 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Create a backup.
 	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
-	err = r.RenterCreateBackupPost(backupPath, false)
+	err = r.RenterCreateLocalBackupPost(backupPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Recover the backup into the same renter. Nothing should change.
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	files, err := r.Files(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 {
+		t.Fatal("expected 1 file but got", len(files))
 	}
 	// Get the renter's seed.
 	wsg, err := r.WalletSeedsGet()
@@ -4298,7 +4368,8 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err := tg.RemoveNode(r); err != nil {
 		t.Fatal(err)
 	}
-	// Start a new renter from the same seed.
+	// Start a new renter from the same seed Disable its health and repair loops to
+	// avoid updating the .siadir file.
 	rt := node.RenterTemplate
 	rt.PrimarySeed = wsg.PrimarySeed
 	nodes, err := tg.AddNodes(rt)
@@ -4307,17 +4378,51 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	r = nodes[0]
 	// Recover the backup.
-	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
 		t.Fatal(err)
+	}
+	// The .siadir file should also be recovered.
+	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, "subDir", modules.SiaDirExtension)
+	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
+		t.Fatal(".siadir file doesn't exist")
+	}
+	// There shouldn't be a .siadir_1 file as we don't replace existing .siadir
+	// files.
+	if _, err := os.Stat(dirMDPath + "_1"); !os.IsNotExist(err) {
+		t.Fatal(".siadir_1 file does exist")
 	}
 	// The file should be available and ready for download again.
 	if _, err := r.DownloadByStream(rf); err != nil {
 		t.Fatal(err)
 	}
-	// Recover the backup again. Now there should be another file with a suffix
-	// at the end.
-	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
+	// Delete the file and upload another file to the same siapath. This one should
+	// have the same siapath but not the same UID.
+	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
 		t.Fatal(err)
+	}
+	subDir, err = r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err = subDir.NewFileWithName(lf.FileName(), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Recover the backup again. Now there should be another file with a suffix at
+	// the end.
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	fis, err := r.RenterFilesGet(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fis.Files) != 2 {
+		t.Fatalf("Expected 2 files but got %v", len(fis.Files))
 	}
 	sp, err := modules.NewSiaPath(rf.SiaPath().String() + "_1")
 	if err != nil {
@@ -4326,6 +4431,15 @@ func TestCreateLoadBackup(t *testing.T) {
 	_, err = r.RenterFileGet(sp)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The .siadir file should still exist.
+	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
+		t.Fatal(".siadir file doesn't exist")
+	}
+	// There shouldn't be a .siadir_1 file as we don't replace existing .siadir
+	// files.
+	if _, err := os.Stat(dirMDPath + "_1"); !os.IsNotExist(err) {
+		t.Fatal(".siadir_1 file does exist")
 	}
 }
 
@@ -4651,9 +4765,9 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if len(rfg.Files) == 0 {
 		// Set fileSize and redundancy for upload
-		fileSize := int(modules.SectorSize)
-		dataPieces := uint64(4)
+		dataPieces := uint64(len(tg.Hosts()) - 1)
 		parityPieces := uint64(len(tg.Hosts())) - dataPieces
+		fileSize := int(dataPieces * modules.SectorSize)
 
 		// Upload file
 		_, _, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
@@ -4747,7 +4861,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(b), remoteFile.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.WaitForUploadRedundancy(remoteFile, float64(dataPieces+parityPieces)/float64(dataPieces)); err != nil {
+	if err := r.WaitForUploadHealth(remoteFile); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// We should be able to download
@@ -4804,7 +4918,25 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	// Create a snapshot.
-	if err := r.RenterCreateBackupPost("foo", true); err != nil {
+	createSnapshot := func(name string) error {
+		if err := r.RenterCreateBackupPost(name); err != nil {
+			return err
+		}
+		// wait for backup to upload
+		return build.Retry(60, time.Second, func() error {
+			ubs, _ := r.RenterBackups()
+			for _, ub := range ubs.Backups {
+				if ub.Name != name {
+					continue
+				} else if ub.UploadProgress != 100 {
+					return fmt.Errorf("backup not uploaded: %v", ub.UploadProgress)
+				}
+				return nil
+			}
+			return errors.New("backup not found")
+		})
+	}
+	if err := createSnapshot("foo"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -4817,16 +4949,16 @@ func TestRemoteBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
-	if err := r.RenterCreateBackupPost("bar", true); err != nil {
+	if err := createSnapshot("bar"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Both snapshots should be listed.
-	ubs, err := r.RenterUploadedBackups()
+	ubs, err := r.RenterBackups()
 	if err != nil {
 		t.Fatal(err)
-	} else if len(ubs) != 2 {
-		t.Fatal("expected two backups, got", len(ubs))
+	} else if len(ubs.Backups) != 2 {
+		t.Fatal("expected two backups, got", ubs)
 	}
 
 	// Delete both files and restore the first snapshot.
@@ -4836,7 +4968,7 @@ func TestRemoteBackup(t *testing.T) {
 	if err := r.RenterDeletePost(rf2.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.RenterRecoverBackupPost("foo", true); err != nil {
+	if err := r.RenterRecoverBackupPost("foo"); err != nil {
 		t.Fatal(err)
 	}
 	// We should be able to download the first file.
@@ -4847,9 +4979,13 @@ func TestRemoteBackup(t *testing.T) {
 	if _, err := r.DownloadToDisk(rf2, false); err == nil {
 		t.Fatal("expected second file to be unavailable")
 	}
+	// Delete the first file again.
+	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+		t.Fatal(err)
+	}
 
 	// Restore the second snapshot.
-	if err := r.RenterRecoverBackupPost("bar", true); err != nil {
+	if err := r.RenterRecoverBackupPost("bar"); err != nil {
 		t.Fatal(err)
 	}
 	// We should be able to download both files now.
@@ -4857,6 +4993,484 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := r.DownloadToDisk(rf2, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm siadir exists by querying directory
+	rd, err := r.RenterGetDir(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rd.Directories) != 2 {
+		t.Fatal("Expected root and 1 subdirectory but got", rd.Directories)
+	}
+	if len(rd.Files) != 0 {
+		t.Fatal("Expected 0 files but got", rd.Files)
+	}
+	rd, err = r.RenterGetDir(rd.Directories[1].SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rd.Directories) != 1 {
+		t.Fatal("expected only root directory but got", rd.Directories)
+	}
+	if len(rd.Files) != 2 {
+		t.Fatal("Expected 2 files but got", rd.Files)
+	}
+
+	// Delete the renter entirely and create a new renter with the same seed.
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := wsg.PrimarySeed
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.PrimarySeed = seed
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+
+	// Wait for the recovery process to complete.
+	err = build.Retry(60, time.Second, func() error {
+		// Both snapshots should be listed.
+		ubs, err = r.RenterBackups()
+		if err != nil {
+			return err
+		} else if len(ubs.Backups) != 2 {
+			return fmt.Errorf("expected two backups, got %v", ubs.Backups)
+		} else if len(ubs.SyncedHosts) != 2 {
+			return fmt.Errorf("expected two synced hosts, got %v", len(ubs.SyncedHosts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Restore the second snapshot.
+	if err := r.RenterRecoverBackupPost("bar"); err != nil {
+		t.Fatal(err)
+	}
+	// We should be able to download both files now.
+	if _, err := r.DownloadToDisk(rf, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.DownloadToDisk(rf2, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm siadir exists by querying directory
+	rd, err = r.RenterGetDir(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rd.Directories) != 2 {
+		t.Fatal("Expected root and 1 subdirectory but got", rd.Directories)
+	}
+	if len(rd.Files) != 0 {
+		t.Fatal("Expected 0 files but got", rd.Files)
+	}
+	rd, err = r.RenterGetDir(rd.Directories[1].SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rd.Directories) != 1 {
+		t.Fatal("expected only root directory but got", rd.Directories)
+	}
+	if len(rd.Files) != 2 {
+		t.Fatal("Expected 2 files but got", rd.Files)
+	}
+}
+
+// testEscapeSiaPath tests that SiaPaths are escaped correctly to handle escape
+// characters
+func testEscapeSiaPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	r := tg.Renters()[0]
+
+	// Check that we have enough hosts for this test.
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
+
+	// Set fileSize and redundancy for upload
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+
+	// Create Local File
+	lf, err := r.FilesDir().NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File names to tests
+	names := []string{
+		"dollar$sign",
+		"and&sign",
+		"single`quote",
+		"full:colon",
+		"semi;colon",
+		"hash#tag",
+		"percent%sign",
+		"at@sign",
+		"less<than",
+		"greater>than",
+		"equal=to",
+		"question?mark",
+		"open[bracket",
+		"close]bracket",
+		"open{bracket",
+		"close}bracket",
+		"carrot^top",
+		"pipe|pipe",
+		"tilda~tilda",
+		"plus+sign",
+		"minus-sign",
+		"under_score",
+		"comma,comma",
+		"apostrophy's",
+		`quotation"marks`,
+	}
+	for _, s := range names {
+		// Create SiaPath
+		siaPath, err := modules.NewSiaPath(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Upload file
+		_, err = r.Upload(lf, siaPath, dataPieces, parityPieces, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Confirm we can get file
+		_, err = r.RenterFileGet(siaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// testValidateSiaPath tests the validate siapath endpoint
+func testValidateSiaPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	r := tg.Renters()[0]
+
+	// Create siapaths to test
+	var pathTests = []struct {
+		path  string
+		valid bool
+	}{
+		{"valid/siapath", true},
+		{"\\some\\windows\\path", true}, // clean converts OS separators
+		{"../../../directory/traversal", false},
+		{"testpath", true},
+		{"valid/siapath/../with/directory/traversal", false},
+		{"validpath/test", true},
+		{"..validpath/..test", true},
+		{"./invalid/path", false},
+		{".../path", true},
+		{"valid./path", true},
+		{"valid../path", true},
+		{"valid/path./test", true},
+		{"valid/path../test", true},
+		{"test/path", true},
+		{"/leading/slash", false}, // this is not valid through the api because a leading slash is added by the api call so this turns into 2 leading slashes
+		{"foo/./bar", false},
+		{"", false},
+		{"blank/end/", true}, // clean will trim trailing slashes so this is a valid input
+		{"double//dash", false},
+		{"../", false},
+		{"./", false},
+		{".", false},
+	}
+	// Test all siapaths
+	for _, pathTest := range pathTests {
+		err := r.RenterValidateSiaPathPost(pathTest.path)
+		// Verify expected Error
+		if err != nil && pathTest.valid {
+			t.Fatal("validateSiapath failed on valid path: ", pathTest.path)
+		}
+		if err == nil && !pathTest.valid {
+			t.Fatal("validateSiapath succeeded on invalid path: ", pathTest.path)
+		}
+	}
+
+	// Create SiaPaths that contain escape characters
+	var escapeCharTests = []struct {
+		path  string
+		valid bool
+	}{
+		{"dollar$sign", true},
+		{"and&sign", true},
+		{"single`quote", true},
+		{"full:colon", true},
+		{"semi;colon", true},
+		{"hash#tag", true},
+		{"percent%sign", true},
+		{"at@sign", true},
+		{"less<than", true},
+		{"greater>than", true},
+		{"equal=to", true},
+		{"question?mark", true},
+		{"open[bracket", true},
+		{"close]bracket", true},
+		{"open{bracket", true},
+		{"close}bracket", true},
+		{"carrot^top", true},
+		{"pipe|pipe", true},
+		{"tilda~tilda", true},
+		{"plus+sign", true},
+		{"minus-sign", true},
+		{"under_score", true},
+		{"comma,comma", true},
+		{"apostrophy's", true},
+		{`quotation"marks`, true},
+	}
+	// Test all escape charcter siapaths
+	for _, escapeCharTest := range escapeCharTests {
+		path := url.PathEscape(escapeCharTest.path)
+		err := r.RenterValidateSiaPathPost(path)
+		// Verify expected Error
+		if err != nil && escapeCharTest.valid {
+			t.Fatalf("validateSiapath failed on valid path %v, escaped %v ", escapeCharTest.path, path)
+		}
+		if err == nil && !escapeCharTest.valid {
+			t.Fatalf("validateSiapath succeeded on invalid path %v, escaped %v ", escapeCharTest.path, path)
+		}
+	}
+}
+
+// TestOutOfStorageHandling makes sure that we form a new contract to replace a
+// host that has run out of storage while still keeping it around as
+// goodForRenew.
+func TestOutOfStorageHandling(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group with 1 default host.
+	gp := siatest.GroupParams{
+		Hosts:  1,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Prepare a host that offers the minimum storage possible.
+	hostTemplate := node.Host(filepath.Join(testDir, "host1"))
+	hostTemplate.HostStorage = modules.SectorSize * contractmanager.MinimumSectorsPerStorageFolder
+
+	// Prepare a renter that expects to upload 1 Sector of data to 2 hosts at a 2x
+	// redundancy. We set the ExpectedStorage lower than the available storage on
+	// the host to make sure it's not penalized.
+	renterTemplate := node.Renter(filepath.Join(testDir, "renter"))
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	allowance := siatest.DefaultAllowance
+	allowance.ExpectedRedundancy = float64(dataPieces+parityPieces) / float64(dataPieces)
+	allowance.ExpectedStorage = modules.SectorSize // 4 KiB
+	allowance.Hosts = 2
+	renterTemplate.Allowance = allowance
+
+	// Add the host and renter to the group.
+	nodes, err := tg.AddNodes(hostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := nodes[0]
+	nodes, err = tg.AddNodes(renterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Upload a file to fill up the host.
+	_, _, err = renter.UploadNewFileBlocking(int(hostTemplate.HostStorage), dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the host is full.
+	hg, err := host.HostGet()
+	if hg.ExternalSettings.RemainingStorage != 0 {
+		t.Fatal("Expected remaining storage to be 0 but was", hg.ExternalSettings.RemainingStorage)
+	}
+	// Start uploading another file in the background to trigger the OOS error.
+	_, rf, err := renter.UploadNewFile(int(2*modules.SectorSize), dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the host's contract is no longer good for upload but still good
+	// for renew.
+	err = build.Retry(10, time.Second, func() error {
+		if err := tg.Miners()[0].MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		hpk, err := host.HostPublicKey()
+		if err != nil {
+			return err
+		}
+		rcg, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		// One contract should be good for uploads and renewal and is therefore
+		// active.
+		if len(rcg.ActiveContracts) != 1 {
+			return fmt.Errorf("Expected 1 active contract but got %v", len(rcg.ActiveContracts))
+		}
+		// One contract should be good for renewal but not uploading and is therefore
+		// passive.
+		if len(rcg.PassiveContracts) != 1 {
+			return fmt.Errorf("Expected 1 passive contract but got %v", len(rcg.PassiveContracts))
+		}
+		hostContract := rcg.PassiveContracts[0]
+		if hostContract.HostPublicKey.String() != hpk.String() {
+			return errors.New("Passive contract doesn't belong to the host")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a new host for the renter to replace the old one with.
+	_, err = tg.AddNodes(node.Host(filepath.Join(testDir, "host2")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The file should reach full health now.
+	if err := renter.WaitForUploadHealth(rf); err != nil {
+		t.Fatal(err)
+	}
+	// There should be 2 active contracts now and 1 passive one.
+	rcg, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rcg.ActiveContracts) != 2 {
+		t.Fatal("Expected 2 active contracts but got", len(rcg.ActiveContracts))
+	}
+	if len(rcg.PassiveContracts) != 1 {
+		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts))
+	}
+	// After a while we give the host a new chance and it should be active again.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if err := tg.Miners()[0].MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		rcg, err = renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rcg.ActiveContracts) != 3 {
+			return fmt.Errorf("Expected 3 active contracts but got %v", len(rcg.ActiveContracts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestInterruptBackup tests that the renter can resume uploading a backup after
+// restarting.
+func TestInterruptBackup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(len(tg.Hosts()) - 1)
+	parityPieces := uint64(1)
+	_, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// Create a snapshot.
+	if err := r.RenterCreateBackupPost("foo"); err != nil {
+		t.Fatal(err)
+	}
+	// The snapshot should be listed and not 100% uploaded.
+	ubs, err := r.RenterBackups()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(ubs.Backups) != 1 {
+		t.Fatal("expected one backup, got", ubs)
+	} else if ubs.Backups[0].UploadProgress == 100 {
+		t.Fatal("backup should not be 100% uploaded")
+	}
+
+	// Restart the renter node.
+	if err := r.RestartNode(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The snapshot should still be listed and incomplete.
+	ubs, err = r.RenterBackups()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(ubs.Backups) != 1 {
+		t.Fatal("expected one backup, got", ubs)
+	} else if ubs.Backups[0].UploadProgress == 100 {
+		t.Fatal("backup should not be 100% uploaded")
+	}
+
+	// Wait for the snapshot to finish uploading.
+	err = build.Retry(60, time.Second, func() error {
+		ubs, _ := r.RenterBackups()
+		if len(ubs.Backups) != 1 {
+			return errors.New("expected one backup")
+		}
+		if ubs.Backups[0].UploadProgress != 100 {
+			return errors.New("backup not uploaded")
+		}
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 }

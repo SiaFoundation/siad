@@ -590,7 +590,13 @@ func (spk *SiaPublicKey) LoadString(s string) {
 // compact during logging. The key type prefix and lack of a checksum help to
 // separate it from a sia address.
 func (spk SiaPublicKey) String() string {
-	return spk.Algorithm.String() + ":" + fmt.Sprintf("%x", spk.Key)
+	if spk.Algorithm == SignatureEd25519 {
+		buf := make([]byte, 72)
+		copy(buf[:8], "ed25519:")
+		hex.Encode(buf[8:], spk.Key)
+		return string(buf)
+	}
+	return spk.Algorithm.String() + ":" + hex.EncodeToString(spk.Key)
 }
 
 // UnmarshalJSON unmarshals a SiaPublicKey as JSON.

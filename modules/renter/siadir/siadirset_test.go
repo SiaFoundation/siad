@@ -53,7 +53,7 @@ func TestInitRootDir(t *testing.T) {
 	}
 
 	// Verify the siadir exists on disk
-	siaPath := modules.RootSiaPath().SiaDirMetadataSysPath(sds.rootDir)
+	siaPath := modules.RootSiaPath().SiaDirMetadataSysPath(sds.staticRootDir)
 	_, err := os.Stat(siaPath)
 	if err != nil {
 		t.Fatal(err)

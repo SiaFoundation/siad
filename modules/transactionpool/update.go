@@ -173,7 +173,7 @@ func (tp *TransactionPool) purge() {
 func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	tp.mu.Lock()
 
-	tp.log.Printf("CCID %v (height %v): %v applied blocks, %v reverted blocks", crypto.Hash(cc.ID).String()[:8], tp.blockHeight, len(cc.AppliedBlocks), len(cc.RevertedBlocks))
+	tp.log.Debugf("CCID %v (height %v): %v applied blocks, %v reverted blocks", crypto.Hash(cc.ID).String()[:8], tp.blockHeight, len(cc.AppliedBlocks), len(cc.RevertedBlocks))
 
 	// Get the recent block ID for a sanity check that the consensus change is
 	// being provided to us correctly.

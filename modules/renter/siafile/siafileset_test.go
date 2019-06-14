@@ -1,10 +1,12 @@
 package siafile
 
 import (
+	"bytes"
 	"encoding/hex"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +22,7 @@ import (
 func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 	// Create new SiaFile params
 	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
-	dir := filepath.Join(os.TempDir(), "siafiles")
+	dir := filepath.Join(os.TempDir(), "siafiles", hex.EncodeToString(fastrand.Bytes(16)))
 	// Create SiaFileSet
 	wal, _ := newTestWAL()
 	sfs := NewSiaFileSet(dir, wal)
@@ -35,6 +37,79 @@ func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 		return nil, nil, err
 	}
 	return entry, sfs, nil
+}
+
+// TestAddExistingSiafile tests the AddExistingSiaFile method's behavior.
+func TestAddExistingSiafile(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create a fileset with file.
+	sf, sfs, err := newTestSiaFileSetWithFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add the existing file to the set again this shouldn't do anything.
+	if err := sfs.AddExistingSiaFile(sf.SiaFile); err != nil {
+		t.Fatal(err)
+	}
+	numSiaFiles := 0
+	err = filepath.Walk(sfs.staticSiaFileDir, func(path string, info os.FileInfo, err error) error {
+		if filepath.Ext(path) == modules.SiaFileExtension {
+			numSiaFiles++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// There should be 1 siafile.
+	if numSiaFiles != 1 {
+		t.Fatalf("Found %v siafiles but expected %v", numSiaFiles, 1)
+	}
+	// Load the same siafile again, but change the UID.
+	b, err := ioutil.ReadFile(sf.siaFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSF, err := LoadSiaFileFromReader(bytes.NewReader(b), sf.SiaFilePath(), sf.wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Grab the pre-import UID after changing it.
+	newSF.UpdateUniqueID()
+	preImportUID := newSF.UID()
+	// Import the file. This should work because the files no longer share the same
+	// UID.
+	if err := sfs.AddExistingSiaFile(newSF); err != nil {
+		t.Fatal(err)
+	}
+	numSiaFiles = 0
+	err = filepath.Walk(sfs.staticSiaFileDir, func(path string, info os.FileInfo, err error) error {
+		if filepath.Ext(path) == modules.SiaFileExtension {
+			numSiaFiles++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// There should be 2 siafiles.
+	if numSiaFiles != 2 {
+		t.Fatalf("Found %v siafiles but expected %v", numSiaFiles, 2)
+	}
+	// The UID should have changed.
+	if newSF.UID() == preImportUID {
+		t.Fatal("newSF UID should have changed after importing the file")
+	}
+	if !strings.HasSuffix(newSF.SiaFilePath(), "_1"+modules.SiaFileExtension) {
+		t.Fatal("SiaFile should have a suffix but didn't")
+	}
+	// Should be able to open the new file from disk.
+	if _, err := os.Stat(newSF.SiaFilePath()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestSiaFileSetDeleteOpen checks that deleting an entry from the set followed
@@ -403,6 +478,119 @@ func TestDeleteCorruptSiaFile(t *testing.T) {
 	_, err = os.Stat(siaFilePath)
 	if !os.IsNotExist(err) {
 		t.Fatal("Expected err to be that file does not exists but was:", err)
+	}
+}
+
+// TestSiaDirDelete tests the DeleteDir method of the siafileset.
+func TestSiaDirDelete(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Prepare a siadirset
+	dirRoot := filepath.Join(os.TempDir(), "siadirs", t.Name())
+	os.RemoveAll(dirRoot)
+	os.RemoveAll(dirRoot)
+	wal, _ := newTestWAL()
+	sds := siadir.NewSiaDirSet(dirRoot, wal)
+	sfs := NewSiaFileSet(dirRoot, wal)
+
+	// Specify a directory structure for this test.
+	var dirStructure = []string{
+		"dir1",
+		"dir1/subdir1",
+		"dir1/subdir1/subsubdir1",
+		"dir1/subdir1/subsubdir2",
+		"dir1/subdir1/subsubdir3",
+		"dir1/subdir2",
+		"dir1/subdir2/subsubdir1",
+		"dir1/subdir2/subsubdir2",
+		"dir1/subdir2/subsubdir3",
+		"dir1/subdir3",
+		"dir1/subdir3/subsubdir1",
+		"dir1/subdir3/subsubdir2",
+		"dir1/subdir3/subsubdir3",
+	}
+	// Specify a function that's executed in parallel which continuously saves a
+	// file to disk.
+	stop := make(chan struct{})
+	wg := new(sync.WaitGroup)
+	f := func(entry *SiaFileSetEntry) {
+		defer wg.Done()
+		defer entry.Close()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			err := entry.Save()
+			if err != nil && !strings.Contains(err.Error(), "can't call saveFile on deleted file") {
+				t.Fatal(err)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	// Create the structure and spawn a goroutine that keeps saving the structure
+	// to disk for each directory.
+	for _, dir := range dirStructure {
+		sp, err := modules.NewSiaPath(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry, err := sds.NewSiaDir(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 50% chance to close the dir.
+		if fastrand.Intn(2) == 0 {
+			entry.Close()
+		}
+		// Create a file in the dir.
+		fileSP, err := sp.Join(hex.EncodeToString(fastrand.Bytes(16)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+		sf, err := sfs.NewSiaFile(modules.FileUploadParams{Source: source, SiaPath: fileSP, ErasureCode: rc}, sk, fileSize, fileMode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 50% chance to spawn goroutine. It's not realistic to assume that all dirs
+		// are loaded.
+		if fastrand.Intn(2) == 0 {
+			wg.Add(1)
+			go f(sf)
+		} else {
+			sf.Close()
+		}
+	}
+	// Wait a second for the goroutines to write to disk a few times.
+	time.Sleep(time.Second)
+	// Delete dir1.
+	sp, err := modules.NewSiaPath("dir1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sfs.DeleteDir(sp, sds.Delete); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait another second for more writes to disk after renaming the dir before
+	// killing the goroutines.
+	time.Sleep(time.Second)
+	close(stop)
+	wg.Wait()
+	time.Sleep(time.Second)
+	// The root siafile dir should be empty except for 1 .siadir file.
+	files, err := ioutil.ReadDir(sfs.staticSiaFileDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || filepath.Ext(files[0].Name()) != modules.SiaDirExtension {
+		for _, file := range files {
+			t.Log("Found ", file.Name())
+		}
+		t.Fatalf("There should be %v files/folders in the root dir but found %v\n", 1, len(files))
 	}
 }
 

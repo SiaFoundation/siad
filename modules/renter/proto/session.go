@@ -265,7 +265,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// post-revision contract.
 	//
 	// TODO: update this for non-local root storage
-	walTxn, err := sc.recordUploadIntent(rev, crypto.Hash{}, storagePrice, bandwidthPrice)
+	walTxn, err := sc.managedRecordUploadIntent(rev, crypto.Hash{}, storagePrice, bandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -344,6 +344,13 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// read the host's signature
 	var hostSig modules.LoopWriteResponse
 	if err := s.readResponse(&hostSig, modules.RPCMinLen); err != nil {
+		// If the host was OOS, we update the contract utility.
+		if modules.IsOOSErr(err) {
+			u := sc.Utility()
+			u.GoodForUpload = false // Stop uploading to such a host immediately.
+			u.LastOOSErr = s.height
+			err = errors.Compose(err, sc.UpdateUtility(u))
+		}
 		return modules.RenterContract{}, err
 	}
 	txn.TransactionSignatures[1].Signature = hostSig.Signature
@@ -356,7 +363,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// update contract
 	//
 	// TODO: unnecessary?
-	err = sc.commitUpload(walTxn, txn, crypto.Hash{}, storagePrice, bandwidthPrice)
+	err = sc.managedCommitUpload(walTxn, txn, crypto.Hash{}, storagePrice, bandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -456,7 +463,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
-	walTxn, err := sc.recordDownloadIntent(rev, price)
+	walTxn, err := sc.managedRecordDownloadIntent(rev, price)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -546,7 +553,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	}
 
 	// update contract and metrics
-	if err := sc.commitDownload(walTxn, txn, price); err != nil {
+	if err := sc.managedCommitDownload(walTxn, txn, price); err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -635,7 +642,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
-	walTxn, err := sc.recordDownloadIntent(rev, price)
+	walTxn, err := sc.managedRecordDownloadIntent(rev, price)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -669,7 +676,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	txn.TransactionSignatures[1].Signature = resp.Signature
 
 	// update contract and metrics
-	if err := sc.commitDownload(walTxn, txn, price); err != nil {
+	if err := sc.managedCommitDownload(walTxn, txn, price); err != nil {
 		return modules.RenterContract{}, nil, err
 	}
 
@@ -804,7 +811,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 	if err != nil {
 		s.Close()
 		return nil, err
-	} else if err := sc.syncRevision(rev, sigs); err != nil {
+	} else if err := sc.managedSyncRevision(rev, sigs); err != nil {
 		s.Close()
 		return nil, err
 	}
@@ -843,6 +850,8 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		case <-cancel:
 			conn.Close()
 		case <-closeChan:
+			// we don't close the connection here because we want session.Close
+			// to be able to return the Close error directly
 		}
 	}()
 
@@ -850,6 +859,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 	aead, challenge, err := performSessionHandshake(conn, host.PublicKey)
 	if err != nil {
 		conn.Close()
+		close(closeChan)
 		return nil, errors.AddContext(err, "session handshake failed")
 	}
 	s := &Session{

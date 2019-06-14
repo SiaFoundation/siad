@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -101,6 +102,18 @@ const (
 	// that both the host and the renter can have time to process large Merkle
 	// tree calculations that may be involved with renewing a file contract.
 	NegotiateRenewContractTime = 600 * time.Second
+)
+
+var (
+	// ErrInsufficientStorageForSector is returned if the host tries to add a
+	// sector when there is not enough storage remaining on the host to accept
+	// the sector.
+	//
+	// Ideally, the host will adjust pricing as the host starts to fill up, so
+	// this error should be pretty rare. Demand should drive the price up
+	// faster than the Host runs out of space, such that the host is always
+	// hovering around 95% capacity and rarely over 98% or under 90% capacity.
+	ErrInsufficientStorageForSector = errors.New("not enough storage remaining to accept sector")
 )
 
 var (
@@ -832,6 +845,12 @@ func DecodeAnnouncement(fullAnnouncement []byte) (na NetAddress, spk types.SiaPu
 	return ha.NetAddress, ha.PublicKey, nil
 }
 
+// IsOOSErr is a helper function to determine whether an error is a
+// ErrInsufficientStorageForSector.
+func IsOOSErr(err error) bool {
+	return strings.Contains(err.Error(), ErrInsufficientStorageForSector.Error())
+}
+
 // VerifyFileContractRevisionTransactionSignatures checks that the signatures
 // on a file contract revision are valid and cover the right fields.
 func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevision, tsigs []types.TransactionSignature, height types.BlockHeight) error {
@@ -867,9 +886,9 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 		host.StoragePrice = types.NewCurrency64(1)
 	}
 	// Underflow check.
-	if funding.Cmp(host.ContractPrice.Add(txnFee)) <= 0 {
-		err = fmt.Errorf("contract price (%v) plus transaction fee (%v) exceeds funding (%v)",
-			host.ContractPrice.HumanString(), txnFee.HumanString(), funding.HumanString())
+	if funding.Cmp(host.ContractPrice.Add(txnFee).Add(basePrice)) <= 0 {
+		err = fmt.Errorf("contract price (%v) plus transaction fee (%v) plus base price (%v) exceeds funding (%v)",
+			host.ContractPrice.HumanString(), txnFee.HumanString(), basePrice.HumanString(), funding.HumanString())
 		return
 	}
 	// Calculate renterPayout.

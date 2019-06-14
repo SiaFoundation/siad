@@ -109,6 +109,29 @@ type (
 	}
 )
 
+// DirReader is a helper type that allows reading a raw .siadir from disk while
+// keeping the file in memory locked.
+type DirReader struct {
+	f  *os.File
+	sd *SiaDir
+}
+
+// Close closes the underlying file.
+func (sdr *DirReader) Close() error {
+	sdr.sd.mu.Unlock()
+	return sdr.f.Close()
+}
+
+// Read calls Read on the underlying file.
+func (sdr *DirReader) Read(b []byte) (int, error) {
+	return sdr.f.Read(b)
+}
+
+// Stat returns the FileInfo of the underlying file.
+func (sdr *DirReader) Stat() (os.FileInfo, error) {
+	return sdr.f.Stat()
+}
+
 // New creates a new directory in the renter directory and makes sure there is a
 // metadata file in the directory and creates one as needed. This method will
 // also make sure that all the parent directories are created and have metadata
@@ -165,31 +188,45 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 	return md, update, err
 }
 
-// LoadSiaDir loads the directory metadata from disk
-func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (*SiaDir, error) {
-	sd := &SiaDir{
-		deps:    deps,
-		siaPath: siaPath,
-		rootDir: rootDir,
-		wal:     wal,
-	}
+// loadSiaDirMetadata loads the directory metadata from disk.
+func loadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
 	// Open the file.
-	file, err := sd.deps.Open(siaPath.SiaDirMetadataSysPath(rootDir))
+	file, err := deps.Open(path)
 	if err != nil {
-		return nil, err
+		return Metadata{}, err
 	}
 	defer file.Close()
 
 	// Read the file
 	bytes, err := ioutil.ReadAll(file)
 	if err != nil {
-		return nil, err
+		return Metadata{}, err
 	}
 
 	// Parse the json object.
-	err = json.Unmarshal(bytes, &sd.metadata)
+	err = json.Unmarshal(bytes, &md)
+	return
+}
 
+// LoadSiaDir loads the directory metadata from disk
+func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
+	sd = &SiaDir{
+		deps:    deps,
+		siaPath: siaPath,
+		rootDir: rootDir,
+		wal:     wal,
+	}
+	sd.metadata, err = loadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(rootDir), modules.ProdDependencies)
 	return sd, err
+}
+
+// delete removes the directory from disk and marks it as deleted. Once the directory is
+// deleted, attempting to access the directory will return an error.
+func (sd *SiaDir) delete() error {
+	update := sd.createDeleteUpdate()
+	err := sd.createAndApplyTransaction(update)
+	sd.deleted = true
+	return err
 }
 
 // Delete removes the directory from disk and marks it as deleted. Once the directory is
@@ -197,10 +234,7 @@ func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependenci
 func (sd *SiaDir) Delete() error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
-	update := sd.createDeleteUpdate()
-	err := sd.createAndApplyTransaction(update)
-	sd.deleted = true
-	return err
+	return sd.delete()
 }
 
 // Deleted returns the deleted field of the siaDir
@@ -208,6 +242,27 @@ func (sd *SiaDir) Deleted() bool {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
 	return sd.deleted
+}
+
+// DirReader creates a io.ReadCloser that can be used to read the raw SiaDir
+// from disk.
+func (sd *SiaDir) DirReader() (*DirReader, error) {
+	sd.mu.Lock()
+	if sd.deleted {
+		sd.mu.Unlock()
+		return nil, errors.New("can't copy deleted SiaDir")
+	}
+	// Open file.
+	path := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
+	f, err := os.Open(path)
+	if err != nil {
+		sd.mu.Unlock()
+		return nil, err
+	}
+	return &DirReader{
+		sd: sd,
+		f:  f,
+	}, nil
 }
 
 // Metadata returns the metadata of the SiaDir

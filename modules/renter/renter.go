@@ -172,6 +172,9 @@ type hostContractor interface {
 	// contracts is in progress and if it is, the current progress of the scan.
 	RecoveryScanStatus() (bool, types.BlockHeight)
 
+	// RefreshedContract checks if the contract was previously refreshed
+	RefreshedContract(fcid types.FileContractID) bool
+
 	// RateLimits Gets the bandwidth limits for connections created by the
 	// contractor and its submodules.
 	RateLimits() (readBPS int64, writeBPS int64, packetSize uint64)
@@ -562,19 +565,20 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 		return err
 	}
 
+	// Set IPViolationsCheck
+	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
+
 	// Set the bandwidth limits.
 	err = r.setBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
 	if err != nil {
 		return err
 	}
+	// Save the changes.
+	id := r.mu.Lock()
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
-
-	// Set IPViolationsCheck
-	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
-
-	// Save the changes.
 	err = r.saveSync()
+	r.mu.Unlock(id)
 	if err != nil {
 		return err
 	}
@@ -708,6 +712,12 @@ func (r *Renter) RecoverableContracts() []modules.RecoverableContract {
 	return r.hostContractor.RecoverableContracts()
 }
 
+// RefreshedContract returns a bool indicating if the contract was previously
+// refreshed
+func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
+	return r.hostContractor.RefreshedContract(fcid)
+}
+
 // Settings returns the renter's allowance
 func (r *Renter) Settings() modules.RenterSettings {
 	download, upload, _ := r.hostContractor.RateLimits()
@@ -776,7 +786,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			stuckChunkSuccess: make(chan modules.SiaPath, 1),
 		},
 		directoryHeap: directoryHeap{
-			heapDirectories: make(map[modules.SiaPath]struct{}),
+			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),
@@ -829,6 +839,9 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		r.mu.RUnlock(id)
 		return nil
 	})
+
+	// Spin up the snapshot synchronization thread.
+	go r.threadedSynchronizeSnapshots()
 
 	return r, nil
 }

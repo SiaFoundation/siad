@@ -221,7 +221,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	}
 	defer sf.Close()
 
-	// Mark sure that healthy chunks are not marked as stuck
+	// Get offline and goodforrenew maps
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 
 	// Calculate file health
@@ -292,24 +292,13 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 
 	//  Open SiaDir
 	siaDir, err := r.staticDirSet.Open(siaPath)
-	if os.IsNotExist(err) {
-		// Remember initial Error
-		initError := err
-		// Metadata file does not exists, check if directory is empty
-		fileInfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
+	if err != nil && err.Error() == siadir.ErrUnknownPath.Error() {
+		// If siadir doesn't exist create one
+		siaDir, err = r.staticDirSet.NewSiaDir(siaPath)
 		if err != nil {
 			return siadir.Metadata{}, err
 		}
-		// If the directory is empty and is not the root directory, assume it
-		// was deleted so do not create a metadata file
-		if len(fileInfos) == 0 && !siaPath.IsRoot() {
-			return siadir.Metadata{}, initError
-		}
-		// If we are at the root directory or the directory is not empty, create
-		// a metadata file
-		siaDir, err = r.staticDirSet.NewSiaDir(siaPath)
-	}
-	if err != nil {
+	} else if err != nil {
 		return siadir.Metadata{}, err
 	}
 	defer siaDir.Close()
@@ -389,7 +378,7 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 	// loops start at the root directory so there is no point triggering them
 	// until the root directory is updated
 	if siaPath.IsRoot() {
-		if metadata.AggregateHealth >= siafile.RemoteRepairDownloadThreshold {
+		if metadata.AggregateHealth >= RepairThreshold {
 			select {
 			case r.uploadHeap.repairNeeded <- struct{}{}:
 			default:

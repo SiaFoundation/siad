@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 )
 
@@ -38,6 +37,7 @@ var (
 	allowanceExpectedUpload     string // expected data uploaded within period
 	allowanceExpectedDownload   string // expected data downloaded within period
 	allowanceExpectedRedundancy string // expected redundancy of most uploaded files
+	allowanceInteractive        bool   // set allowance interactively
 )
 
 var (
@@ -121,23 +121,11 @@ func statuscmd() {
 	}
 
 	// Renter Info
-	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
+	fmt.Printf(`Renter:`)
+	err = renterFilesAndContractSummary()
 	if err != nil {
-		die("Could not get renter files:", err)
+		die(err)
 	}
-	rc, err := httpClient.RenterInactiveContractsGet()
-	if err != nil {
-		die("Could not get contracts:", err)
-	}
-
-	fmt.Printf(`Renter:
-  Files:          %v
-  Total Stored:   %v
-  Min Redundancy: %v
-  Contracts:      %v
-
-`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].MinRedundancy, len(rc.ActiveContracts))
-
 }
 
 func main() {
@@ -191,8 +179,8 @@ func main() {
 		renterContractsCmd, renterFilesListCmd, renterFilesRenameCmd,
 		renterFilesUploadCmd, renterUploadsCmd, renterExportCmd,
 		renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
-		renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
-		renterContractsRecoveryScanProgressCmd)
+		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
+		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -214,6 +202,7 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedUpload, "expected-upload", "", "expected upload in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedRedundancy, "expected-redundancy", "", "expected redundancy of most uploaded files")
+	renterSetAllowanceCmd.Flags().BoolVarP(&allowanceInteractive, "interactive", "i", true, "Set allowance interactively, with guided prompts")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd)

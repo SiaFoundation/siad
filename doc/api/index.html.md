@@ -338,6 +338,155 @@ standard success or error response. See [standard responses](#standard-responses
 
 The daemon is responsible for starting and stopping the modules which make up the rest of Sia.
 
+## /daemon/constants [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/constants"
+```
+
+Returns the some of the constants that the Sia daemon uses. 
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "blockfrequency":600,           // blockheight
+  "blocksizelimit":2000000,       // uint64
+  "extremefuturethreshold":18000, // timestamp
+  "futurethreshold":10800,        // timestamp
+  "genesistimestamp":1433600000,  // timestamp
+  "maturitydelay":144,            // blockheight
+  "mediantimestampwindow":11,     // uint64
+  "siafundcount":"10000",         // uint64
+  "siafundportion":"39/1000",     // big.Rat
+  "targetwindow":1000,            // blockheight
+  
+  "initialcoinbase":300000, // uint64
+  "minimumcoinbase":30000,  // uint64
+  
+  "roottarget": // target
+  [0,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  "rootdepth":  // target
+  [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
+  
+  "allowance":  // allowance
+    {
+      "funds":"55000000000000000000000000000",  // currency
+      "hosts":50,                       // uint64
+      "period":12096,                   // blockheight
+      "renewwindow":4032,               // blockheight
+      "expectedstorage":1000000000000,  // uint64
+      "expectedupload":2,               // uint64
+      "expecteddownload":1,             // uint64
+      "expectedredundancy":3            // uint64
+    },
+  
+  "maxtargetadjustmentup":"5/2",    // big.Rat
+  "maxtargetadjustmentdown":"2/5",  // big.Rat
+  
+  "siacoinprecision":"1000000000000000000000000"  // currency
+}
+```
+**blockfrequency** | blockheight  
+BlockFrequency is the desired number of seconds that should elapse, on average, between successive Blocks.
+
+**blocksizelimit** | uint64  
+BlockSizeLimit is the maximum size of a binary-encoded Block that is permitted by the consensus rules.
+
+**extremefuturethreshold** | timestamp  
+ExtremeFutureThreshold is a temporal limit beyond which Blocks are discarded by the consensus rules. When incoming Blocks are processed, their Timestamp is allowed to exceed the processor's current time by a small amount. But if the Timestamp is further into the future than ExtremeFutureThreshold, the Block is immediately discarded.
+
+**futurethreshold** | timestamp  
+FutureThreshold is a temporal limit beyond which Blocks are discarded by the consensus rules. When incoming Blocks are processed, their Timestamp is allowed to exceed the processor's current time by no more than FutureThreshold. If the excess duration is larger than FutureThreshold, but smaller than ExtremeFutureThreshold, the Block may be held in memory until the Block's Timestamp exceeds the current time by less than FutureThreshold.
+
+**genesistimestamp** | timestamp  
+GenesisBlock is the first block of the block chain
+
+**maturitydelay** | blockheight  
+MaturityDelay specifies the number of blocks that a maturity-required output is required to be on hold before it can be spent on the blockchain. Outputs are maturity-required if they are highly likely to be altered or invalidated in the event of a small reorg. One example is the block reward, as a small reorg may invalidate the block reward. Another example is a siafund payout, as a tiny reorg may change the value of the payout, and thus invalidate any transactions spending the payout. File contract payouts also are subject to a maturity delay.
+
+**mediantimestampwindow** | uint64  
+MedianTimestampWindow tells us how many blocks to look back when calculating the median timestamp over the previous n blocks. The timestamp of a block is not allowed to be less than or equal to the median timestamp of the previous n blocks, where for Sia this number is typically 11.
+
+**siafundcount** | currency  
+SiafundCount is the total number of Siafunds in existence.
+
+**siafundportion** | big.Rat  
+SiafundPortion is the percentage of siacoins that is taxed from FileContracts.
+
+**targetwindow** | blockheight  
+TargetWindow is the number of blocks to look backwards when determining how much time has passed vs. how many blocks have been created. It's only used in the old, broken difficulty adjustment algorithm.
+
+**initialcoinbase** | uint64  
+InitialCoinbase is the coinbase reward of the Genesis block.
+
+**minimumcoinbase** | uint64  
+MinimumCoinbase is the minimum coinbase reward for a block. The coinbase decreases in each block after the Genesis block, but it will not decrease past MinimumCoinbase.
+
+**roottarget** | target  
+RootTarget is the target for the genesis block - basically how much work needs to be done in order to mine the first block. The difficulty adjustment algorithm takes over from there.
+
+**rootdepth** | target  
+RootDepth is the cumulative target of all blocks. The root depth is essentially the maximum possible target, there have been no blocks yet, so there is no cumulated difficulty yet.
+
+**defaultallowance** | allowance  
+DefaultAllowance is the set of default allowance settings that will be used when allowances are not set or not fully set
+
+**maxtargetadjustmentup** | big.Rat  
+MaxTargetAdjustmentUp restrict how much the block difficulty is allowed to change in a single step, which is important to limit the effect of difficulty raising and lowering attacks.
+
+**maxtargetadjustmentdown** | big.Rat  
+MaxTargetAdjustmentDown restrict how much the block difficulty is allowed to change in a single step, which is important to limit the effect of difficulty raising and lowering attacks.
+
+**siacoinprecision** | currency  
+SiacoinPrecision is the number of base units in a siacoin. The Sia network has a very large number of base units. We call 10^24 of these a siacoin.
+
+## /daemon/settings [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/settings"
+```
+Returns the settings for the daemon
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "maxdownloadspeed": 0,  // bytes per second
+  "maxuploadspeed": 0     // bytes per second
+}
+```
+
+**maxdownloadspeed** | bytes per second  
+Is the maximum download speed that the daemon can reach. 0 means there is no limit set.
+
+**maxuploadspeed** | bytes per second  
+Is the maximum upload speed that the daemon can reach. 0 means there is no limit set.
+
+## /daemon/settings [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "maxdownloadspeed=1000000&maxuploadspeed=20000" "localhost:9980/daemon/settings"
+```
+
+Modify settings that control the daemon's behavior.
+
+### Query String Parameters
+#### OPTIONAL
+**maxdownloadspeed** | bytes per second  
+Max download speed permitted in bytes per second  
+
+**maxuploadspeed** | bytes per second  
+Max upload speed permitted in bytes per second  
+
+### Response
+standard success or error response. See [standard responses](#standard-responses).
+
 ## /daemon/stop [GET]
 > curl example  
 
@@ -346,6 +495,41 @@ curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/stop"
 ```
 
 Cleanly shuts down the daemon. This may take a few seconds.
+
+### Response
+standard success or error response. See [standard responses](#standard-responses).
+
+## /daemon/update [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/update"
+```
+Returns the the status of any updates available for the daemon
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "available": false, // boolean
+  "version": "1.4.0"  // string
+}
+```
+
+**available** | boolean  
+Available indicates whether or not there is an update available for the daemon.
+
+**version** | string  
+Version is the version of the latest release.
+
+## /daemon/update [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/update"
+```
+Updates the daemon to the latest available version release.
 
 ### Response
 standard success or error response. See [standard responses](#standard-responses).
@@ -1788,12 +1972,25 @@ Size in bytes of the backup.
 curl -A "Sia-Agent" "localhost:9980/renter/contracts?disabled=true&expired=true&recoverable=false"
 ```
 
-Returns the renter's contracts.
-Active contracts are contracts that the Renter is currently using to store, upload, and download data, and are returned by default.
-Renewed contracts are contracts that are being used to store and download data, but are not being uploaded to because they either ran out of storage or funds and required renewal. The Renter has an active contract with these hosts for uploading.
+Returns the renter's contracts. Active, passive, and refreshed contracts are returned by default.
+Active contracts are contracts that the Renter is currently using to store, upload, and download data.
+Passive contracts are contracts that are no longer GoodForUpload but are GoodForRenew. This means the data will continue to be available to be downloaded from.
+Refreshed contracts are contracts that ran out of funds and needed to be renewed so more money could be added to the contract with the host. The data reported in these contracts is duplicate data and should not be included in any accounting.
 Disabled contracts are contracts that are in the current period that are not being used for uploading as they were replaced instead of renewed.
-Expired contracts are contracts no in the current period, where not more data is being stored and excess funds have been released to the renter.
-Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet. 
+Expired contracts are contracts not in the current period, where no more data is being stored and excess funds have been released to the renter.
+Expired Refreshed contracts are contracts that were refreshed at some point in a previous period. The data reported in these contracts is duplicate data and should not be included in any accounting.
+Recoverable contracts are contracts which the contractor is currently trying to recover and which haven't expired yet.
+
+| Type              | GoodForUpload | GoodForRenew | In Current Period | Data Counted Elsewhere Already|
+| ----------------- | :-----------: | :----------: | :---------------: | :---------------------------: |
+| Active            | Yes           | Yes          | Yes               | No                            |
+| Passive           | No            | Yes          | Yes               | No                            |
+| Refreshed         | No            | No           | Yes               | Yes                           |
+| Disabled          | No            | No           | Yes               | No                            |
+| Expired           | No            | No           | No                | No                            |
+| Expired Refreshed | No            | No           | No                | Yes                           |
+
+**NOTE:** No spending is double counted anywhere in the contracts, only the data is double counted in the refreshed contracts. For spending totals in the current period, all spending in active, passive, refreshed, and disabled contracts should be counted. For data totals, the data in active and passive contracts is the total uploaded while the data in disabled contracts is wasted uploaded data.
 
 ### Query String Parameters
 #### OPTIONAL
@@ -1834,9 +2031,11 @@ flag indicating if recoverable contracts should be returned.
       "goodforrenew":     false,            // boolean
     }
   ],
-  "renewedcontracts": [],
+  "passivecontracts": [],
+  "refreshedcontracts": [],
   "disabledcontracts": [],
   "expiredcontracts": [],
+  "expiredrefreshedcontracts": [],
   "recoverablecontracts": [],
 }
 ```
@@ -2334,13 +2533,34 @@ If httresp is true, the data will be written to the http response.
 
 #### OPTIONAL
 **async** | boolean
-If async is true, the http request will be non blocking. Can't be used with:  
+If async is true, the http request will be non blocking. Can't be used with
+httpresp. An async download will also set the 'ID' field in the http response
+header to a unique identifier for the async download which can be used to
+cancel the download with the /renter/download/cancel endpoint.
 
 **length** | bytes
 Length of the requested data. Has to be <= filesize-offset.  
 
 **offset** | bytes
 Offset relative to the file start from where the download starts.  
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/download/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/download/cancel?id=<downloadid>"
+```
+
+cancels the download with the given id.
+
+### Query String Parameters
+**id** | string
+ID returned by the /renter/download/*siapath* endpoint when setting
+async=true. It is set in the http header's 'ID' field.
 
 ### Response
 
@@ -2519,6 +2739,25 @@ Repair existing file from stream. Can't be specified together with datapieces, p
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/validate/*siapath* [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/validatesiapath/isthis-aval_idsiapath"
+```
+
+validates whether or not the provided siapaht is a valid siapath. SiaPaths cannot contain traversal strings or be empty. Valid characters are:
+
+$, &, `, :, ;, #, %, @, <, >, =, ?, [, ], {, }, ^, |, ~, -, +, _, comma, ', "
+
+### Path Parameters
+#### REQUIRED
+**siapath** | string  
+siapath to test.
+
+### Response
+standard success or error response, a successful response means a valid siapath. See [standard responses](#standard-responses).
 
 # Transaction Pool
 

@@ -48,12 +48,17 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	if err != nil {
 		return &SiaFileSetEntry{}, err
 	}
+	zeroHealth := float64(1 + fd.ErasureCode.MinPieces()/(fd.ErasureCode.NumPieces()-fd.ErasureCode.MinPieces()))
 	file := &SiaFile{
 		staticMetadata: Metadata{
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
 			CreateTime:              currentTime,
+			CachedHealth:            zeroHealth,
+			CachedStuckHealth:       0,
+			CachedRedundancy:        0,
+			CachedUploadProgress:    0,
 			FileSize:                int64(fd.FileSize),
 			LocalPath:               fd.RepairPath,
 			StaticMasterKey:         mk.Key(),
@@ -65,7 +70,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(fd.ErasureCode.NumPieces()),
 			StaticPieceSize:         fd.PieceSize,
-			StaticUniqueID:          SiafileUID(fd.UID),
+			UniqueID:                SiafileUID(fd.UID),
 		},
 		siaFilePath: siaPath.SiaFileSysPath(sfs.staticSiaFileDir),
 		deps:        modules.ProdDependencies,
@@ -75,6 +80,13 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	file.chunks = make([]chunk, len(fd.Chunks))
 	for i := range file.chunks {
 		file.chunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
+	}
+	// Update cached fields for 0-Byte files.
+	if file.staticMetadata.FileSize == 0 {
+		file.staticMetadata.CachedHealth = 0
+		file.staticMetadata.CachedStuckHealth = 0
+		file.staticMetadata.CachedRedundancy = float64(fd.ErasureCode.NumPieces()) / float64(fd.ErasureCode.MinPieces())
+		file.staticMetadata.CachedUploadProgress = 100
 	}
 
 	// Populate the pubKeyTable of the file and add the pieces.

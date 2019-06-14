@@ -135,12 +135,17 @@ func (c *chunk) numPieces() (numPieces int) {
 func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
+	zeroHealth := float64(1 + erasureCode.MinPieces()/(erasureCode.NumPieces()-erasureCode.MinPieces()))
 	file := &SiaFile{
 		staticMetadata: Metadata{
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
 			CreateTime:              currentTime,
+			CachedHealth:            zeroHealth,
+			CachedStuckHealth:       0,
+			CachedRedundancy:        0,
+			CachedUploadProgress:    0,
 			FileSize:                int64(fileSize),
 			LocalPath:               source,
 			StaticMasterKey:         masterKey.Key(),
@@ -152,7 +157,7 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
-			StaticUniqueID:          uniqueID(),
+			UniqueID:                uniqueID(),
 		},
 		deps:        modules.ProdDependencies,
 		siaFilePath: siaFilePath,
@@ -167,7 +172,7 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 	for i := range file.chunks {
 		file.chunks[i].Pieces = make([][]piece, erasureCode.NumPieces())
 	}
-	// Init cached fields for 0-Byte files.
+	// Update cached fields for 0-Byte files.
 	if file.staticMetadata.FileSize == 0 {
 		file.staticMetadata.CachedHealth = 0
 		file.staticMetadata.CachedStuckHealth = 0
@@ -285,7 +290,6 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	if chunkSize > maxChunkSize {
 		return fmt.Errorf("chunk doesn't fit into allocated space %v > %v", chunkSize, maxChunkSize)
 	}
-
 	// Update the file atomically.
 	var updates []writeaheadlog.Update
 	var err error
@@ -413,8 +417,13 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 
 // Health calculates the health of the file to be used in determining repair
 // priority. Health of the file is the lowest health of any of the chunks and is
-// defined as the percent of parity pieces remaining.  Additionally the
-// NumStuckChunks will be updated for the SiaFile and returned
+// defined as the percent of parity pieces remaining. The NumStuckChunks will be
+// calculated for the SiaFile and returned.
+//
+// NOTE: The cached values of the health and stuck health will be set but not
+// saved to disk as Health() does not write to disk. If the cached values need
+// to be updated on disk then a metadata save method should be called in
+// conjunction with Health()
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
@@ -425,7 +434,6 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-
 	// Update the cache.
 	defer func() {
 		sf.staticMetadata.CachedHealth = h
@@ -497,97 +505,6 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 		keys = append(keys, key.PublicKey)
 	}
 	return keys
-}
-
-// MarkAllHealthyChunksAsUnstuck marks all health chunks as unstuck in the
-// siafile
-func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// If the file has been deleted we can't mark a chunk as stuck.
-	if sf.deleted {
-		return errors.New("can't call SetStuck on deleted file")
-	}
-	var updates []writeaheadlog.Update
-	for chunkIndex := range sf.chunks {
-		// Check if chunk is already unstuck
-		if !sf.chunks[chunkIndex].Stuck {
-			continue
-		}
-		// Check health of chunk
-		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
-		// If chunk is unhealthy then we don't need to mark it as unstuck. We
-		// are only want to mark chunks that are 100% healthy as unstuck.
-		if chunkHealth != 0 {
-			continue
-		}
-		// In case an error happens we need to revert the changes we are going
-		// to make.
-		defer func() {
-			if err != nil {
-				sf.chunks[chunkIndex].Stuck = true
-				sf.staticMetadata.NumStuckChunks++
-			}
-		}()
-		// Update chunk and NumStuckChunks in siafile metadata
-		sf.chunks[chunkIndex].Stuck = false
-		sf.staticMetadata.NumStuckChunks--
-		// Create chunk update
-		update := sf.saveChunkUpdate(chunkIndex)
-		updates = append(updates, update)
-	}
-	// Create metadata update and apply updates on disk
-	metadataUpdates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	updates = append(updates, metadataUpdates...)
-	return sf.createAndApplyTransaction(updates...)
-}
-
-// MarkAllUnhealthyChunksAsStuck marks all unhealthy chunks as stuck in the
-// siafile
-func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// If the file has been deleted we can't mark a chunk as stuck.
-	if sf.deleted {
-		return errors.New("can't call SetStuck on deleted file")
-	}
-	var updates []writeaheadlog.Update
-	for chunkIndex := range sf.chunks {
-		// Check if chunk is already stuck
-		if sf.chunks[chunkIndex].Stuck {
-			continue
-		}
-		// Check health of chunk
-		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
-		// If chunk is healthy then we don't need to mark it as stuck
-		if chunkHealth < RemoteRepairDownloadThreshold {
-			continue
-		}
-		// In case an error happens we need to revert the changes we are going
-		// to make.
-		defer func() {
-			if err != nil {
-				sf.chunks[chunkIndex].Stuck = false
-				sf.staticMetadata.NumStuckChunks--
-			}
-		}()
-		// Update chunk and NumStuckChunks in siafile metadata
-		sf.chunks[chunkIndex].Stuck = true
-		sf.staticMetadata.NumStuckChunks++
-		// Create chunk update
-		update := sf.saveChunkUpdate(chunkIndex)
-		updates = append(updates, update)
-	}
-	// Create metadata update and apply updates on disk
-	metadataUpdates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	updates = append(updates, metadataUpdates...)
-	return sf.createAndApplyTransaction(updates...)
 }
 
 // NumChunks returns the number of chunks the file consists of. This will
@@ -675,7 +592,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 }
 
 // SetAllStuck sets the Stuck field of all chunks to stuck.
-func (sf *SiaFile) SetAllStuck(stuck bool) error {
+func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 
@@ -685,9 +602,21 @@ func (sf *SiaFile) SetAllStuck(stuck bool) error {
 	}
 	// Update all the Stuck field for each chunk.
 	for chunkIndex := range sf.chunks {
+		s := sf.chunks[chunkIndex].Stuck
+		defer func() {
+			if err != nil {
+				sf.chunks[chunkIndex].Stuck = s
+			}
+		}()
 		sf.chunks[chunkIndex].Stuck = stuck
 	}
 	// Update NumStuckChunks in siafile metadata
+	nsc := sf.staticMetadata.NumStuckChunks
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.NumStuckChunks = nsc
+		}
+	}()
 	if stuck {
 		sf.staticMetadata.NumStuckChunks = uint64(len(sf.chunks))
 	} else {
@@ -701,7 +630,6 @@ func (sf *SiaFile) SetAllStuck(stuck bool) error {
 func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-
 	// If the file has been deleted we can't mark a chunk as stuck.
 	if sf.deleted {
 		return errors.New("can't call SetStuck on deleted file")
@@ -710,7 +638,7 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	if stuck == sf.chunks[index].Stuck {
 		return nil
 	}
-	// Remember the currenct number of stuck chunks in case an error happens.
+	// Remember the current number of stuck chunks in case an error happens.
 	nsc := sf.staticMetadata.NumStuckChunks
 	s := sf.chunks[index].Stuck
 	defer func() {
@@ -738,14 +666,16 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 
 // StuckChunkByIndex returns if the chunk at the index is marked as Stuck or not
 func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
 	return sf.chunks[index].Stuck
 }
 
 // UID returns a unique identifier for this file.
 func (sf *SiaFile) UID() SiafileUID {
-	return sf.staticMetadata.StaticUniqueID
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.UniqueID
 }
 
 // UpdateUsedHosts updates the 'Used' flag for the entries in the pubKeyTable
@@ -774,9 +704,14 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 			unusedHosts++
 		}
 	}
-	// Prune the pubKeyTable if necessary.
+	// Prune the pubKeyTable if necessary. If we have too many unused hosts we
+	// want to remove them from the table but only if we have enough used hosts.
+	// Otherwise we might be pruning hosts that could become used again since
+	// the file might be in flux while it uploads or repairs
 	pruned := false
-	if unusedHosts > pubKeyTablePruneThreshold {
+	tooManyUnusedHosts := unusedHosts > pubKeyTablePruneThreshold
+	enoughUsedHosts := len(usedMap) > sf.staticMetadata.staticErasureCode.NumPieces()
+	if tooManyUnusedHosts && enoughUsedHosts {
 		sf.pruneHosts()
 		pruned = true
 	}
@@ -829,7 +764,7 @@ func (sf *SiaFile) hostKey(offset uint32) HostPublicKey {
 	if offset >= uint32(len(sf.pubKeyTable)) {
 		// Causes tests to fail. The following for loop will try to fix the
 		// corruption on release builds.
-		build.Critical("piece.HostTableOffset >= len(sf.pubKeyTable)")
+		build.Critical("piece.HostTableOffset", offset, " >= len(sf.pubKeyTable)", len(sf.pubKeyTable))
 		for offset >= uint32(len(sf.pubKeyTable)) {
 			sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
 		}

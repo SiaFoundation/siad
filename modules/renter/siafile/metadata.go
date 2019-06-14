@@ -21,7 +21,7 @@ type (
 
 	// Metadata is the metadata of a SiaFile and is JSON encoded.
 	Metadata struct {
-		StaticUniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
+		UniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
 
 		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
 		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
@@ -184,8 +184,8 @@ func (sf *SiaFile) ChunkSize() uint64 {
 
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
 func (sf *SiaFile) LastHealthCheckTime() time.Time {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
 	return sf.staticMetadata.LastHealthCheckTime
 }
 
@@ -318,50 +318,17 @@ func (sf *SiaFile) Size() uint64 {
 	return uint64(sf.staticMetadata.FileSize)
 }
 
+// UpdateUniqueID creates a new random uid for the SiaFile.
+func (sf *SiaFile) UpdateUniqueID() {
+	sf.staticMetadata.UniqueID = uniqueID()
+}
+
 // UpdateAccessTime updates the AccessTime timestamp to the current time.
 func (sf *SiaFile) UpdateAccessTime() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	sf.staticMetadata.AccessTime = time.Now()
 
-	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
-}
-
-// UpdateLastHealthCheckTime updates the LastHealthCheckTime timestamp to the
-// current time.
-func (sf *SiaFile) UpdateLastHealthCheckTime() error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	sf.staticMetadata.LastHealthCheckTime = time.Now()
-	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
-}
-
-// UpdateCachedHealthMetadata updates the siafile metadata fields that are the
-// cached health values
-func (sf *SiaFile) UpdateCachedHealthMetadata(metadata CachedHealthMetadata) error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// Update the number of stuck chunks
-	var numStuckChunks uint64
-	for _, chunk := range sf.chunks {
-		if chunk.Stuck {
-			numStuckChunks++
-		}
-	}
-	sf.staticMetadata.Health = metadata.Health
-	sf.staticMetadata.NumStuckChunks = numStuckChunks
-	sf.staticMetadata.Redundancy = metadata.Redundancy
-	sf.staticMetadata.StuckHealth = metadata.StuckHealth
 	// Save changes to metadata to disk.
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {

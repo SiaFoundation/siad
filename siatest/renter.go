@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/persist"
 
@@ -32,7 +33,7 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	if err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async); err != nil {
+	if _, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async); err != nil {
 		return nil, errors.AddContext(err, "failed to download file")
 	}
 	// Create the TestFile
@@ -63,7 +64,7 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	if err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async); err != nil {
+	if _, err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async); err != nil {
 		return nil, errors.AddContext(err, "failed to download file")
 	}
 	// Create the TestFile
@@ -285,8 +286,8 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 	if err = tn.WaitForUploadProgress(remoteFile, 1); err != nil {
 		return nil, nil, err
 	}
-	// Wait until upload reaches a certain redundancy
-	err = tn.WaitForUploadRedundancy(remoteFile, float64((dataPieces+parityPieces))/float64(dataPieces))
+	// Wait until upload reaches a certain health
+	err = tn.WaitForUploadHealth(remoteFile)
 	return localFile, remoteFile, err
 }
 
@@ -335,8 +336,8 @@ func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, pari
 		return nil, err
 	}
 
-	// Wait until upload reaches a certain redundancy
-	err = tn.WaitForUploadRedundancy(remoteFile, float64((dataPieces+parityPieces))/float64(dataPieces))
+	// Wait until upload reaches a certain health
+	err = tn.WaitForUploadHealth(remoteFile)
 	return remoteFile, err
 }
 
@@ -389,20 +390,21 @@ func (tn *TestNode) WaitForUploadProgress(rf *RemoteFile, progress float64) erro
 
 }
 
-// WaitForUploadRedundancy waits for a file to reach a certain upload redundancy.
-func (tn *TestNode) WaitForUploadRedundancy(rf *RemoteFile, redundancy float64) error {
+// WaitForUploadHealth waits for a file to reach a health better than the
+// RepairThreshold.
+func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 	// Check if file is tracked by renter at all
 	if _, err := tn.File(rf); err != nil {
 		return ErrFileNotTracked
 	}
-	// Wait until it reaches the redundancy
+	// Wait until the file is viewed as healthy by the renter
 	err := Retry(1000, 100*time.Millisecond, func() error {
 		file, err := tn.File(rf)
 		if err != nil {
 			return ErrFileNotTracked
 		}
-		if file.Redundancy < redundancy {
-			return fmt.Errorf("redundancy should be %v but was %v", redundancy, file.Redundancy)
+		if file.MaxHealth >= renter.RepairThreshold {
+			return fmt.Errorf("file is not healthy yet, threshold is %v but health is %v", renter.RepairThreshold, file.MaxHealth)
 		}
 		return nil
 	})

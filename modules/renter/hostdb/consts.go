@@ -69,6 +69,11 @@ const (
 	// empty itself and for waiting on the consensus set to be synced.
 	scanCheckInterval = time.Second
 
+	// storedDataMultiplier is the number we multiply the data we already have
+	// stored with a host with when doing the remaining storage adjustment for a
+	// host.
+	storedDataMultiplier = uint64(4)
+
 	// txnFeesUpdateRatio is the amount of change we tolerate in the txnFees
 	// before we rebuild the hosttree.
 	txnFeesUpdateRatio = 0.05 // 5%

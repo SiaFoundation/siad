@@ -132,11 +132,11 @@ func TestDirInfo(t *testing.T) {
 	}
 
 	// Check that DirInfo returns the same information as stored in the metadata
-	fooDirInfo, err := rt.renter.DirInfo(siaPath)
+	fooDirInfo, err := rt.renter.staticDirSet.DirInfo(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootDirInfo, err := rt.renter.DirInfo(modules.RootSiaPath())
+	rootDirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,10 +187,11 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Confirm that DirList returns 1 FileInfo and 2 DirectoryInfos
-	directories, files, err := rt.renter.DirList(modules.RootSiaPath())
+	directories, err := rt.renter.DirList(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
+	files, err := rt.renter.FileList(modules.RootSiaPath(), false, false)
 	if len(directories) != 2 {
 		t.Fatal("Expected 2 DirectoryInfos but got", len(directories))
 	}
@@ -231,6 +232,10 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 	if di.AggregateMaxHealth != aggregateMaxHealth {
 		return fmt.Errorf("AggregateMaxHealths not equal %v and %v", di.AggregateMaxHealth, aggregateMaxHealth)
 	}
+	aggregateMaxHealthPercentage := siadir.HealthPercentage(aggregateMaxHealth)
+	if di.AggregateMaxHealthPercentage != aggregateMaxHealthPercentage {
+		return fmt.Errorf("AggregateMaxHealthPercentage not equal %v and %v", di.AggregateMaxHealthPercentage, aggregateMaxHealthPercentage)
+	}
 	if md.AggregateMinRedundancy != di.AggregateMinRedundancy {
 		return fmt.Errorf("AggregateMinRedundancy not equal, %v and %v", md.AggregateMinRedundancy, di.AggregateMinRedundancy)
 	}
@@ -262,6 +267,10 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 	maxHealth := math.Max(md.Health, md.StuckHealth)
 	if di.MaxHealth != maxHealth {
 		return fmt.Errorf("MaxHealths not equal %v and %v", di.MaxHealth, maxHealth)
+	}
+	maxHealthPercentage := siadir.HealthPercentage(maxHealth)
+	if di.MaxHealthPercentage != maxHealthPercentage {
+		return fmt.Errorf("MaxHealthPercentage not equal %v and %v", di.MaxHealthPercentage, maxHealthPercentage)
 	}
 	if md.MinRedundancy != di.MinRedundancy {
 		return fmt.Errorf("MinRedundancy not equal, %v and %v", md.MinRedundancy, di.MinRedundancy)

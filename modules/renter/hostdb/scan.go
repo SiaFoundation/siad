@@ -476,6 +476,7 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			conn2.Close()
 		}()
 		defer close(connCloseChan2)
+		conn2.SetDeadline(time.Now().Add(hostScanDeadline))
 
 		err = encoding.WriteObject(conn2, modules.RPCSettings)
 		if err != nil {
