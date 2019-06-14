@@ -260,6 +260,14 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (modules.SiaPath, 
 		}
 	}
 
+	// Confirm there are stuck files and stuck chunks
+	if len(stuckFiles) == 0 {
+		return modules.SiaPath{}, errNoStuckFiles
+	}
+	if totalStuckChunks == 0 {
+		return modules.SiaPath{}, errors.New("No stuck chunks found in stuck files")
+	}
+
 	// Use rand to decide which file to select. We can chose a file by
 	// subtracting the number of stuck chunks a file has from rand and if rand
 	// gets to 0 or less we choose that file
