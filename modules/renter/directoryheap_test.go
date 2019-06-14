@@ -38,6 +38,7 @@ func TestDirectoryHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Add directories to heap. Using these settings ensures that neither the
 	// first of the last element added remains at the top of the health. The
@@ -180,6 +181,7 @@ func TestPushSubDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create a test directory with the following healths
 	//
@@ -273,6 +275,7 @@ func TestNextExploredDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create a test directory with the following healths/aggregateHealths
 	//
