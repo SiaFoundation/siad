@@ -109,8 +109,19 @@ func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 
 	// Extract the segment from the pieces.
 	decodedSegmentSize := rs.staticSegmentSize * uint64(rs.MinPieces())
+	segment := make([][]byte, len(pieces))
+	for i := range segment {
+		segment[i] = make([]byte, 0, rs.staticSegmentSize)
+	}
 	for segmentIndex := 0; uint64(segmentIndex) < pieceSize/rs.staticSegmentSize && n > 0; segmentIndex++ {
-		segment := ExtractSegment(pieces, segmentIndex, rs.staticSegmentSize)
+		off := uint64(segmentIndex) * rs.staticSegmentSize
+		for i, piece := range pieces {
+			if uint64(len(piece)) >= off+rs.staticSegmentSize {
+				segment[i] = append(segment[i][:0], piece[off:off+rs.staticSegmentSize]...)
+			} else {
+				segment[i] = segment[i][:0]
+			}
+		}
 		// Reconstruct the segment.
 		if n < decodedSegmentSize {
 			decodedSegmentSize = n
