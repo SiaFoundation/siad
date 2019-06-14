@@ -360,7 +360,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	}
 
 	// Make sure directory Heap is ready
-	err = rt.renter.managedPushUnexploredRoot()
+	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,9 +434,14 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	if rt.renter.uploadHeap.managedLen() != 0 {
 		t.Fatal("Expected upload heap to be empty but has length of", rt.renter.uploadHeap.managedLen())
 	}
-	if rt.renter.directoryHeap.managedLen() != 0 {
+	// "Empty" -> gets initialized with the root dir, therefore should have one
+	// directory in it.
+	if rt.renter.directoryHeap.managedLen() != 1 {
 		t.Fatal("Expected directory heap to be empty but has length of", rt.renter.directoryHeap.managedLen())
 	}
+	// Reset the dir heap to clear the root dir out, rest of test wants an empty
+	// heap.
+	rt.renter.directoryHeap.managedReset()
 
 	// Add chunks from file to uploadHeap
 	rt.renter.managedBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)

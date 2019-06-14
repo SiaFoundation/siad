@@ -811,6 +811,9 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	if err := r.managedInitPersist(); err != nil {
 		return nil, err
 	}
+	// After persist is initialized, push the root directory onto the directory
+	// heap for the repair process.
+	r.managedPushUnexploredDirectory(modules.RootSiaPath())
 
 	// Load and execute bubble updates
 	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
@@ -826,9 +829,11 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// Spin up the workers for the work pool.
 	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
-	go r.threadedUploadAndRepair()
 	go r.threadedUpdateRenterHealth()
 	go r.threadedStuckFileLoop()
+	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
+		go r.threadedUploadAndRepair()
+	}
 
 	// Kill workers on shutdown.
 	r.tg.OnStop(func() error {

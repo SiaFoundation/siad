@@ -679,25 +679,21 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 
 	// Since directory is being added back as explored we only need to set the
 	// health as that is what will be used for sorting in the directory heap.
+	//
+	// The aggregate health is set to 0 because the directory is being marked as
+	// explored.
 	d := &directory{
-		health:   worstIgnoredHealth,
-		explored: true,
-		siaPath:  dirSiaPath,
+		aggregateHealth: 0,
+		health:          worstIgnoredHealth,
+		explored:        true,
+		siaPath:         dirSiaPath,
 	}
-	if r.directoryHeap.managedPush(d) {
-		return
-	}
-
-	// Since the directory seems to be currently in the heap then the element
-	// will be updated and could be marked as unexplored so set the
-	// aggregateHealth as well.
-	d.aggregateHealth = worstIgnoredHealth
-
-	// Directory wasn't added to directory heap, try updating the directory
-	if !r.directoryHeap.managedUpdate(d) {
-		r.log.Println("WARN: unable to push or update directory", dirSiaPath.String(), "in the directory heap")
-	}
-	return
+	// Add the directory to the heap. If there is a conflict because the
+	// directory is already in the heap (for example, added by another thread or
+	// process), then the worst of the values between this dir and the one
+	// that's already in the dir will be used, to ensure that the repair loop
+	// will prioritize all bad value files.
+	r.directoryHeap.managedPush(d)
 }
 
 // managedBuildChunkHeap will iterate through all of the files in the renter and
@@ -984,22 +980,14 @@ func (r *Renter) threadedUploadAndRepair() {
 	}
 	defer r.tg.Done()
 
-	if r.deps.Disrupt("DisableRepairAndHealthLoops") {
-		return
-	}
-
-	// Initialize the directory heap
-	err = r.managedPushUnexploredRoot()
-	if err != nil {
-		// If there is an error initializing the directory heap to start log the
-		// error. This is not critical, it just means that the repairs won't
-		// start up right away
-		r.log.Println("WARN: error initializing the directory heap to start the background repair thread:", err)
-	}
-
-	// Perpetual loop to scan for more files and add chunks to the uploadheap
+	// Perpetual loop to scan for more files and add chunks to the uploadheap.
+	// The loop assumes that the heap has already been initialized (either at
+	// startup, or after sleeping) and does checks to see whether there is any
+	// work required. If there is not any work required, the loop will sleep
+	// until woken up. If there is work required, the loop will begin to process
+	// the chunks and directories in the repair heaps.
 	for {
-		// Return if the renter has shut down
+		// Return if the renter has shut down.
 		select {
 		case <-r.tg.StopChan():
 			return
@@ -1011,6 +999,8 @@ func (r *Renter) threadedUploadAndRepair() {
 		if !r.managedBlockUntilOnline() {
 			return
 		}
+		// Refresh the worker set.
+		hosts := r.managedRefreshHostsAndWorkers()
 
 		// Add any chunks from the backup heap that need to be repaired. This
 		// needs to be handled separately because currently the filesystem for
@@ -1018,7 +1008,6 @@ func (r *Renter) threadedUploadAndRepair() {
 		// backups is different from the siafileset that stores non-system files
 		// and chunks.
 		heapLen := r.uploadHeap.managedLen()
-		hosts := r.managedRefreshHostsAndWorkers()
 		r.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetBackupChunks)
 		numBackupchunks := r.uploadHeap.managedLen() - heapLen
 		if numBackupchunks > 0 {
@@ -1051,12 +1040,6 @@ func (r *Renter) threadedUploadAndRepair() {
 			// upload or there is a repair that is needed.
 			select {
 			case <-r.uploadHeap.newUploads:
-				// Since uploads are added directly to the heap then we want to
-				// move straight to the repair instead of continuing to the next
-				// iteration of the for loop. If we continue to the next
-				// iteration of the repair loop the filesystem metadata might
-				// not be updated yet and it might appear to be healthy and
-				// therefore not begin the repair/upload.
 				r.log.Debugln("repair loop triggered by new upload channel")
 			case <-r.uploadHeap.repairNeeded:
 				// Since the repairNeeded channel is used by the stuck loop to
@@ -1071,7 +1054,7 @@ func (r *Renter) threadedUploadAndRepair() {
 				return
 			}
 
-			err = r.managedPushUnexploredRoot()
+			err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
 			if err != nil {
 				// If there is an error initializing the directory heap log
 				// the error. We don't want to sleep here as we were trigger
