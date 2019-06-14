@@ -202,7 +202,7 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedUpload, "expected-upload", "", "expected upload in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedRedundancy, "expected-redundancy", "", "expected redundancy of most uploaded files")
-	renterSetAllowanceCmd.Flags().BoolVarP(&allowanceInteractive, "interactive", "i", true, "Set allowance interactively, with guided prompts")
+	renterSetAllowanceCmd.Flags().BoolVarP(&allowanceInteractive, "interactive", "i", false, "Set allowance interactively, with guided prompts")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd)
