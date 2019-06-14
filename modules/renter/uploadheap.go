@@ -986,6 +986,10 @@ func (r *Renter) threadedUploadAndRepair() {
 	// work required. If there is not any work required, the loop will sleep
 	// until woken up. If there is work required, the loop will begin to process
 	// the chunks and directories in the repair heaps.
+	//
+	// TODO: Currently it is possible to hit an edge condition where the heap is
+	// never actually reset if the user keeps slowly uploading files one at a
+	// time, such that the heap always has something to work on.
 	for {
 		// Return if the renter has shut down.
 		select {
@@ -1017,23 +1021,10 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Check if there is work to do. If the filesystem is healthy and the
 		// heap is empty, there is no work to do and the thread should block
 		// until there is work to do.
-		if r.directoryHeap.managedPeekHealth() < RepairThreshold && r.uploadHeap.managedLen() == 0 {
-			// Reset the heap to put the root back on top. This is done before
-			// sleeping so that anything which automatically gets added to the
-			// heap during the sleep will be impacted by a reset, nor block a
-			// reset.
-			//
-			// TODO: To be 100% correct, this function should check whether the
-			// heap is healthy under lock while it is resetting the heap. If the
-			// heap is not healthy, all unhealthy elements should be popped off
-			// before the reset, and then added back on after the reset, so that
-			// those elements are still available on top following the reset.
-			// And then we should indicate that any blocking because we thought
-			// that the heap was healthy should be skipped, because between the
-			// time that we checked last and the time that we reset the heap,
-			// the health of the heap changed. The window for this to happen is
-			// very small, and the consequences of resetting incorrectly are
-			// also small, so this race is left alone for now.
+		if r.uploadHeap.managedLen() == 0 && r.directoryHeap.managedPeekHealth() < RepairThreshold {
+			// Do not need to worry about edge cases related to other threads
+			// interacting with the directory heap, because this is the only
+			// thread that interacts with the directory heap.
 			r.directoryHeap.managedReset()
 
 			// If the file system is healthy then block until there is a new
