@@ -680,8 +680,10 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	// Since directory is being added back as explored we only need to set the
 	// health as that is what will be used for sorting in the directory heap.
 	//
-	// The aggregate health is set to 0 because the directory is being marked as
-	// explored.
+	// The aggregate health is set to 'worstIgnoredHealth' as well. In the event
+	// that the directory gets added as unexplored because another copy of the
+	// unexplored directory exists on the directory heap, we need to make sure
+	// that the worst known health is represented in the aggregate value.
 	d := &directory{
 		aggregateHealth: worstIgnoredHealth,
 		health:          worstIgnoredHealth,
