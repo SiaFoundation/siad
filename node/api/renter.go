@@ -432,38 +432,45 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 // an erasure coder. If values haven't been supplied it will fill in sane
 // defaults.
 func parseErasureCodingParameters(strDataPieces, strParityPieces string) (modules.ErasureCoder, error) {
-	// Check whether the erasure coding parameters have been supplied.
-	if strDataPieces != "" || strParityPieces != "" {
-		dataPieces, parityPieces, err := parseDataAndParityPieces(strDataPieces, strParityPieces)
-		if err != nil {
-			return nil, err
-		}
-
-		// Verify that sane values for parityPieces and redundancy are being
-		// supplied.
-		if parityPieces < requiredParityPieces {
-			err := fmt.Errorf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)
-			return nil, err
-		}
-		redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
-		if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
-			err := fmt.Errorf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)
-			return nil, err
-		}
-
-		// Create the erasure coder.
-		return siafile.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
+	// Parse data and parity pieces
+	dataPieces, parityPieces, err := parseDataAndParityPieces(strDataPieces, strParityPieces)
+	if err != nil {
+		return nil, err
 	}
-	return nil, nil
+
+	// Check if data and parity pieces were set
+	if dataPieces == 0 && parityPieces == 0 {
+		return nil, nil
+	}
+
+	// Verify that sane values for parityPieces and redundancy are being
+	// supplied.
+	if parityPieces < requiredParityPieces {
+		err := fmt.Errorf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)
+		return nil, err
+	}
+	redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
+	if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
+		err := fmt.Errorf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)
+		return nil, err
+	}
+
+	// Create the erasure coder.
+	return siafile.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
 }
 
 // parseDataAndParityPieces parse the numeric values for dataPieces and
 // parityPieces from the input strings
 func parseDataAndParityPieces(strDataPieces, strParityPieces string) (dataPieces, parityPieces int, err error) {
 	// Check that both values have been supplied.
-	if strDataPieces == "" || strParityPieces == "" {
+	if (strDataPieces == "") != (strParityPieces == "") {
 		err = errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
 		return 0, 0, err
+	}
+
+	// Check for blank strings.
+	if strDataPieces == "" && strParityPieces == "" {
+		return 0, 0, nil
 	}
 
 	// Parse dataPieces and Parity Pieces.
@@ -1316,27 +1323,24 @@ func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Reques
 	parityPiecesStr := req.FormValue("paritypieces")
 
 	// Check params
-	var dataPieces, parityPieces int
-	if dataPiecesStr == "" && parityPiecesStr == "" {
-		// Set to defaults
+	dataPieces, parityPieces, err := parseDataAndParityPieces(dataPiecesStr, parityPiecesStr)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Check if we need to set to defaults
+	if dataPieces == 0 && parityPieces == 0 {
 		dataPieces = renter.DefaultDataPieces
 		parityPieces = renter.DefaultParityPieces
-	} else {
-		var err error
-		dataPieces, parityPieces, err = parseDataAndParityPieces(dataPiecesStr, parityPiecesStr)
-		if err != nil {
-			WriteError(w, Error{"failed to parse query params" + err.Error()}, http.StatusBadRequest)
-			return
-		}
 	}
 	contractsNeeded := dataPieces + parityPieces
 
 	// Get contracts - compare against data and parity pieces
-	_, _, activeContracts, _, _, _ := api.parseRenterContracts(false, false, false)
+	contracts := api.parseRenterContracts(false, false, false)
 	WriteJSON(w, RenterUploadReady{
-		Ready:              len(activeContracts) >= contractsNeeded,
+		Ready:              len(contracts.ActiveContracts) >= contractsNeeded,
 		ContractsNeeded:    contractsNeeded,
-		NumActiveContracts: len(activeContracts),
+		NumActiveContracts: len(contracts.ActiveContracts),
 		DataPieces:         dataPieces,
 		ParityPieces:       parityPieces,
 	})
