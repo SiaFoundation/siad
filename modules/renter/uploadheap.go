@@ -683,7 +683,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	// The aggregate health is set to 0 because the directory is being marked as
 	// explored.
 	d := &directory{
-		aggregateHealth: 0,
+		aggregateHealth: worstIgnoredHealth,
 		health:          worstIgnoredHealth,
 		explored:        true,
 		siaPath:         dirSiaPath,

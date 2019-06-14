@@ -500,11 +500,6 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	if !d.siaPath.Equals(modules.RootSiaPath()) {
 		t.Fatal("Expected Directory siapath to be the root siaPath but was", d.siaPath.String())
 	}
-	// aggregateHealth is manually set to 0 when directory is added back to heap
-	// since it is explored and the aggregateHealth is no longer considered
-	if d.aggregateHealth != 0 {
-		t.Fatal("Expected aggregateHealth to be 0 but was", d.aggregateHealth)
-	}
 	// The directory health should be that of the file since none of the chunks
 	// were added
 	health, _, _ := f.Health(offline, goodForRenew)
