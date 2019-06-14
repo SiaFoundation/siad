@@ -1024,9 +1024,15 @@ func (r *Renter) threadedUploadAndRepair() {
 		// heap is empty, there is no work to do and the thread should block
 		// until there is work to do.
 		if r.uploadHeap.managedLen() == 0 && r.directoryHeap.managedPeekHealth() < RepairThreshold {
-			// Do not need to worry about edge cases related to other threads
-			// interacting with the directory heap, because this is the only
-			// thread that interacts with the directory heap.
+			// TODO: This has a tiny window where it might be dumping out chunks
+			// that need health, if the upload call is appending to the
+			// directory heap because there is a new upload.
+			//
+			// I believe that a good fix for this would be to change the upload
+			// heap so that it performs a rapid bubble before trying to insert
+			// the chunks into the heap. Then, even if a reset is triggered,
+			// because a rapid bubble has already completed updating the health
+			// of the root dir, it will be considered fairly.
 			r.directoryHeap.managedReset()
 
 			// If the file system is healthy then block until there is a new
