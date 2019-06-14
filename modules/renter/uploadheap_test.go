@@ -359,8 +359,8 @@ func TestAddChunksToHeap(t *testing.T) {
 		}
 	}
 
-	// Make sure directory Heap it ready
-	err = rt.renter.managedInitDirectoryHeap()
+	// Make sure directory Heap is ready
+	err = rt.renter.managedPushUnexploredRoot()
 	if err != nil {
 		t.Fatal(err)
 	}

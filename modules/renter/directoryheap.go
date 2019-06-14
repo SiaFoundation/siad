@@ -101,10 +101,12 @@ func (dh *directoryHeap) managedLen() int {
 func (dh *directoryHeap) managedPeekHealth() float64 {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
+
 	// If the heap is empty return 0 as that is the max health
 	if dh.heap.Len() == 0 {
 		return 0
 	}
+
 	// Pop off and then push back the top directory. We are not using the
 	// managed methods here as to avoid removing the directory from the map and
 	// having another thread push the directory onto the heap in between locks
@@ -192,24 +194,6 @@ func (dh *directoryHeap) managedPushDirectory(siaPath modules.SiaPath, aggregate
 	return nil
 }
 
-// managedInitDirectoryHeap clears the directory heap and then adds an
-// unexplored root directory
-func (r *Renter) managedInitDirectoryHeap() error {
-	// Reset the directory heap to help clear it from memory
-	r.directoryHeap.managedReset()
-
-	// Grab the root siadir metadata
-	siaDir, err := r.staticDirSet.Open(modules.RootSiaPath())
-	if err != nil {
-		return err
-	}
-	defer siaDir.Close()
-	metadata := siaDir.Metadata()
-
-	// Push unexplored root directory onto heap
-	return r.directoryHeap.managedPushDirectory(modules.RootSiaPath(), metadata.AggregateHealth, metadata.Health, false)
-}
-
 // managedNextExploredDirectory pops directories off of the heap until it
 // finds an explored directory. If an unexplored directory is found, any
 // subdirectories are added to the heap and the directory is marked as explored
@@ -285,4 +269,19 @@ func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
 
 	// Push unexplored directory onto heap
 	return r.directoryHeap.managedPushDirectory(siaPath, metadata.AggregateHealth, metadata.Health, false)
+}
+
+// managedPushUnexploredRoot will push the unexplored root directory onto the
+// directory heap.
+func (r *Renter) managedPushUnexploredRoot() error {
+	// Grab the root siadir metadata
+	siaDir, err := r.staticDirSet.Open(modules.RootSiaPath())
+	if err != nil {
+		return err
+	}
+	defer siaDir.Close()
+	metadata := siaDir.Metadata()
+
+	// Push unexplored root directory onto heap
+	return r.directoryHeap.managedPushDirectory(modules.RootSiaPath(), metadata.AggregateHealth, metadata.Health, false)
 }

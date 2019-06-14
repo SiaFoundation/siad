@@ -151,7 +151,7 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 
 	// Test initializing directory heap
-	err = rt.renter.managedInitDirectoryHeap()
+	err = rt.renter.managedPushUnexploredRoot()
 	if err != nil {
 		t.Fatal(err)
 	}

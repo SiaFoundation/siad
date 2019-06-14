@@ -989,7 +989,7 @@ func (r *Renter) threadedUploadAndRepair() {
 	}
 
 	// Initialize the directory heap
-	err = r.managedInitDirectoryHeap()
+	err = r.managedPushUnexploredRoot()
 	if err != nil {
 		// If there is an error initializing the directory heap to start log the
 		// error. This is not critical, it just means that the repairs won't
@@ -1031,7 +1031,8 @@ func (r *Renter) threadedUploadAndRepair() {
 		if r.directoryHeap.managedPeekHealth() < RepairThreshold && r.uploadHeap.managedLen() == 0 {
 			// Reset the heap to put the root back on top. This is done before
 			// sleeping so that anything which automatically gets added to the
-			// heap during the sleep will not block a reset of the heap.
+			// heap during the sleep will be impacted by a reset, nor block a
+			// reset.
 			//
 			// TODO: To be 100% correct, this function should check whether the
 			// heap is healthy under lock while it is resetting the heap. If the
@@ -1044,14 +1045,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			// the health of the heap changed. The window for this to happen is
 			// very small, and the consequences of resetting incorrectly are
 			// also small, so this race is left alone for now.
-			err = r.managedInitDirectoryHeap()
-			if err != nil {
-				// If there is an error initializing the directory heap log
-				// the error. We don't want to sleep here as we were trigger
-				// to repair chunks so we don't want to delay the repair if
-				// there are chunks in the upload heap already.
-				r.log.Println("WARN: error re-initializing the directory heap:", err)
-			}
+			r.directoryHeap.managedReset()
 
 			// If the file system is healthy then block until there is a new
 			// upload or there is a repair that is needed.
@@ -1075,6 +1069,15 @@ func (r *Renter) threadedUploadAndRepair() {
 				r.log.Debugln("repair loop triggered by repair needed channel")
 			case <-r.tg.StopChan():
 				return
+			}
+
+			err = r.managedPushUnexploredRoot()
+			if err != nil {
+				// If there is an error initializing the directory heap log
+				// the error. We don't want to sleep here as we were trigger
+				// to repair chunks so we don't want to delay the repair if
+				// there are chunks in the upload heap already.
+				r.log.Println("WARN: error re-initializing the directory heap:", err)
 			}
 
 			// Continue here to force the code to re-check for backups, to
