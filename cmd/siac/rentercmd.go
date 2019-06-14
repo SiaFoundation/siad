@@ -4,6 +4,7 @@ package main
 // not handle this very gracefully.
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,15 +14,15 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
-
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (
@@ -40,17 +41,24 @@ var (
 	}
 
 	renterBackupCreateCmd = &cobra.Command{
-		Use:   "createbackup [path]",
+		Use:   "createbackup [name]",
 		Short: "Create a backup of the renter's siafiles",
-		Long:  "Create a backup of the renter's siafiles at the specified path",
+		Long:  "Create a backup of the renter's siafiles, using the specified name.",
 		Run:   wrap(renterbackupcreatecmd),
 	}
 
 	renterBackupLoadCmd = &cobra.Command{
-		Use:   "loadbackup [path]",
-		Short: "Load a backup of the renter's siafiles",
-		Long:  "Load a backup of the renter's siafiles from the specified path",
-		Run:   wrap(renterbackuploadcmd),
+		Use:   "restorebackup [name]",
+		Short: "Restore a backup of the renter's siafiles",
+		Long:  "Restore the backup of the renter's siafiles with the given name.",
+		Run:   wrap(renterbackuprestorecmd),
+	}
+
+	renterBackupListCmd = &cobra.Command{
+		Use:   "listbackups",
+		Short: "List backups stored on hosts",
+		Long:  "List backups stored on hosts",
+		Run:   wrap(renterbackuplistcmd),
 	}
 
 	renterCmd = &cobra.Command{
@@ -86,6 +94,13 @@ var (
 		Short: "View the download queue",
 		Long:  "View the list of files currently downloading.",
 		Run:   wrap(renterdownloadscmd),
+	}
+
+	renterDownloadCancelCmd = &cobra.Command{
+		Use:   "canceldownload [cancelID]",
+		Short: "Cancel async download",
+		Long:  "Cancels an ongoing async download.",
+		Run:   wrap(renterdownloadcancelcmd),
 	}
 
 	renterFilesDeleteCmd = &cobra.Command{
@@ -192,6 +207,7 @@ func rentercmd() {
 	}
 
 	// Print Allowance info
+	fmt.Println()
 	fmt.Printf(`Allowance:`)
 	if rg.Settings.Allowance.Funds.IsZero() {
 		fmt.Printf("      0 SC (No current allowance)\n")
@@ -206,6 +222,7 @@ func rentercmd() {
 	}
 
 	// File and Contract Data
+	fmt.Println()
 	fmt.Printf(`Data Storage:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
@@ -415,14 +432,24 @@ again:
 // rentersetallowancecmd is the handler for `siac renter setallowance`.
 // set the allowance or modify individual allowance fields.
 func rentersetallowancecmd(cmd *cobra.Command, args []string) {
-	req := httpClient.RenterPostPartialAllowance()
-	changedFields := 0
-
 	// Get the current period setting.
 	rg, err := httpClient.RenterGet()
 	if err != nil {
 		die("Could not get renter settings")
 	}
+
+	if allowanceInteractive {
+		req := httpClient.RenterPostPartialAllowance()
+		req = rentersetallowancecmdInteractive(req, rg.Settings.Allowance)
+		if err := req.Send(); err != nil {
+			die("Could not set allowance:", err)
+		}
+		fmt.Println("Allowance updated")
+		return
+	}
+
+	req := httpClient.RenterPostPartialAllowance()
+	changedFields := 0
 	period := rg.Settings.Allowance.Period
 
 	// parse funds
@@ -536,10 +563,367 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		fmt.Println("No flags specified. Allowance not updated.")
 		return
 	}
+	// check for required initial fields
+	if rg.Settings.Allowance.Funds.IsZero() && allowanceFunds == "" {
+		die("Funds must be set in initial allowance")
+	}
+	if rg.Settings.Allowance.ExpectedStorage == 0 && allowanceExpectedStorage == "" {
+		die("Expected storage must be set in initial allowance")
+	}
+
 	if err := req.Send(); err != nil {
 		die("Could not set allowance:", err)
 	}
 	fmt.Printf("Allowance updated. %v setting(s) changed.\n", changedFields)
+}
+
+func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowance modules.Allowance) *client.AllowanceRequestPost {
+	br := bufio.NewReader(os.Stdin)
+	readString := func() string {
+		str, _ := br.ReadString('\n')
+		return strings.TrimSpace(str)
+	}
+
+	fmt.Println("Interactive tool for setting the 8 allowance options.")
+	fmt.Println()
+
+	// funds
+	fmt.Println(`1/8: Funds
+Funds determines the number of siacoins that the renter will spend when forming
+contracts with hosts. The renter will not allocate more than this amount of
+siacoins into the set of contracts each billing period. If the renter spends all
+of the funds but then needs to form new contracts, the renter will wait until
+either until the user increase the allowance funds, or until a new billing
+period is reached. If there are not enough funds to repair all files, then files
+may be at risk of getting lost.
+
+Once the allowance is set, the renter will begin forming contracts. This will
+immediately spend a large portion of the allowance, while also leaving a large
+portion for forming additional contracts throughout the billing period. Most of
+the funds that are spent immediately are not actually spent, but instead locked
+up into state channels. In the allowance reports, these funds will typically be
+reported as 'unspent allocated'. The funds that have been set aside for forming
+contracts later in the billing cycle will be reported as 'unspent unallocated'.
+
+The command 'siac renter allowance' can be used to see a breakdown of spending.
+
+The following units can be used to set the allowance:
+    H  (10^24 H per siacoin)
+    SC (1 siacoin per SC)
+    KS (1000 siacoins per KS)`)
+	fmt.Println()
+	fmt.Println("Current value:", currencyUnits(allowance.Funds))
+	fmt.Println("Default value:", currencyUnits(modules.DefaultAllowance.Funds))
+
+	var funds types.Currency
+	if allowance.Funds.IsZero() {
+		funds = modules.DefaultAllowance.Funds
+		fmt.Println("Enter desired value below, or leave blank to use default value")
+	} else {
+		funds = allowance.Funds
+		fmt.Println("Enter desired value below, or leave blank to use current value")
+	}
+	fmt.Print("Funds: ")
+	allowanceFunds := readString()
+	if allowanceFunds != "" {
+		hastings, err := parseCurrency(allowanceFunds)
+		if err != nil {
+			die("Could not parse amount:", err)
+		}
+		_, err = fmt.Sscan(hastings, &funds)
+		if err != nil {
+			die("Could not parse amount:", err)
+		}
+	}
+	if funds.IsZero() {
+		die("Allowance cannot be 0")
+	}
+	req = req.WithFunds(funds)
+
+	// period
+	fmt.Println(`2/8: Period
+The period is equivalent to the billing cycle length. The renter will not spend
+more than the full balance of its funds every billing period. When the billing
+period is over, the contracts will be renewed and the spending will be reset.
+
+The following units can be used to set the period:
+
+    b (blocks - 10 minutes)
+    d (days - 144 blocks or 1440 minutes)
+    w (weeks - 1008 blocks or 10080 blocks)`)
+	fmt.Println()
+	fmt.Println("Current value:", periodUnits(allowance.Period), "weeks")
+	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.Period), "weeks")
+
+	var period types.BlockHeight
+	if allowance.Period == 0 {
+		period = modules.DefaultAllowance.Period
+		fmt.Println("Enter desired value below, or leave blank to use default value")
+	} else {
+		period = allowance.Period
+		fmt.Println("Enter desired value below, or leave blank to use current value")
+	}
+	fmt.Print("Period: ")
+	allowancePeriod := readString()
+	if allowancePeriod != "" {
+		blocks, err := parsePeriod(allowancePeriod)
+		if err != nil {
+			die("Could not parse period:", err)
+		}
+		_, err = fmt.Sscan(blocks, &period)
+		if err != nil {
+			die("Could not parse period:", err)
+		}
+	}
+	if period == 0 {
+		die("Period cannot be 0")
+	}
+	req = req.WithPeriod(period)
+
+	// hosts
+	fmt.Println(`3/8: Hosts
+Hosts sets the number of hosts that will be used to form the allowance. Sia
+gains most of its resiliancy from having a large number of hosts. More hosts
+will mean both more robustness and higher speeds when using the network, however
+will also result in more memory consumption and higher blockchain fees. It is
+recommended that the default number of hosts be treated as a minimum, and that
+double the default number of default hosts be treated as a maximum.`)
+	fmt.Println()
+	fmt.Println("Current value:", allowance.Hosts)
+	fmt.Println("Default value:", modules.DefaultAllowance.Hosts)
+
+	var hosts uint64
+	if allowance.Hosts == 0 {
+		hosts = modules.DefaultAllowance.Hosts
+		fmt.Println("Enter desired value below, or leave blank to use default value")
+	} else {
+		hosts = allowance.Hosts
+		fmt.Println("Enter desired value below, or leave blank to use current value")
+	}
+	fmt.Print("Hosts: ")
+	allowanceHosts := readString()
+	if allowanceHosts != "" {
+		hostsInt, err := strconv.Atoi(allowanceHosts)
+		if err != nil {
+			die("Could not parse host count")
+		}
+		hosts = uint64(hostsInt)
+	}
+	if hosts == 0 {
+		die("Must have at least 1 host")
+	}
+	req = req.WithHosts(uint64(hosts))
+
+	// renewWindow
+	fmt.Println(`4/8: Renew Window
+The renew window is how long the user has to renew their contracts. At the end
+of the period, all of the contracts expire. The contracts need to be renewewd
+before they expire, otherwise the user will lose all of their files. The renew
+window is the window of time at the end of the period during which the renter
+will renew the users contracts. For example, if the renew window is 1 week long,
+then during the final week of each period the user will renew their contracts.
+If the user is offline for that whole week, the user's data will be lost.
+
+Each billing period begins at the beginning of the renew window for the previous
+period. For example, if the period is 12 weeks long and the renew window is 4
+weeks long, then the first billing period technically begins at -4 weeks, or 4
+weeks before the allowance is created. And the second billing period begins at
+week 8, or 8 weeks after the allowance is created. The third billing period will
+begin at week 20.
+
+The following units can be used to set the renew window:
+
+    b (blocks - 10 minutes)
+    d (days - 144 blocks or 1440 minutes)
+    w (weeks - 1008 blocks or 10080 blocks)`)
+	fmt.Println()
+	fmt.Println("Current value:", periodUnits(allowance.RenewWindow), "weeks")
+	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.RenewWindow), "weeks")
+
+	var renewWindow types.BlockHeight
+	if allowance.RenewWindow == 0 {
+		renewWindow = modules.DefaultAllowance.RenewWindow
+		fmt.Println("Enter desired value below, or leave blank to use default value")
+	} else {
+		renewWindow = allowance.RenewWindow
+		fmt.Println("Enter desired value below, or leave blank to use current value")
+	}
+	fmt.Print("Renew Window: ")
+	allowanceRenewWindow := readString()
+	if allowanceRenewWindow != "" {
+		rw, err := parsePeriod(allowanceRenewWindow)
+		if err != nil {
+			die("Could not parse renew window")
+		}
+		_, err = fmt.Sscan(rw, &renewWindow)
+		if err != nil {
+			die("Could not parse renew window:", err)
+		}
+	}
+	if renewWindow == 0 {
+		die("Cannot set renew window to zero")
+	}
+	req = req.WithRenewWindow(renewWindow)
+
+	// expectedStorage
+	fmt.Println(`5/8: Expected Storage
+Expected storage is the amount of storage that the user expects to keep on the
+Sia network. This value is important to calibrate the spending habits of siad.
+Because Sia is decentralized, there is no easy way for siad to know what the
+real world cost of storage is, nor what the real world price of a siacoin is. To
+overcome this deficiency, siad depends on the user for guidance.
+
+If the user has a low allowance and a high amount of expected storage, siad will
+more heavily prioritize cheaper hosts, and will also be more comfortable with
+hosts that post lower amounts of collateral. If the user has a high allowance
+and a low amount of expected storage, siad will prioritize hosts that post more
+collateral, as well as giving preference to hosts better overall traits such as
+uptime and age.
+
+Even when the user has a large allowance and a low amount of expected storage,
+siad will try to optimize for saving money; siad tries to meet the users storage
+and bandwith needs while spending significantly less than the overall allowance.`)
+	fmt.Println()
+	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedStorage))
+	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedStorage))
+
+	var expectedStorage uint64
+	if allowance.ExpectedStorage == 0 {
+		expectedStorage = modules.DefaultAllowance.ExpectedStorage
+		fmt.Println("Enter desired value below, or leave blank to use default value")
+	} else {
+		expectedStorage = allowance.ExpectedStorage
+		fmt.Println("Enter desired value below, or leave blank to use current value")
+	}
+	fmt.Print("Expected Storage: ")
+	allowanceExpectedStorage := readString()
+	if allowanceExpectedStorage != "" {
+		es, err := parseFilesize(allowanceExpectedStorage)
+		if err != nil {
+			die("Could not parse expected storage")
+		}
+		_, err = fmt.Sscan(es, &expectedStorage)
+		if err != nil {
+			die("Could not parse expected storage")
+		}
+	}
+	req = req.WithExpectedStorage(expectedStorage)
+
+	// expectedUpload
+	fmt.Println(`6/8: Expected Upload
+Expected upload tells siad how much uploading the user expects to do each month.
+If this value is high, siad will more strongly prefer hosts that have a low
+upload bandwidth price. If this value is low, siad will focus on other metrics
+than upload bandwidth pricing, because even if the host charges a lot for upload
+bandwidth, it will not impact the total cost to the user very much.
+
+The user should not consider upload bandwidth used during repairs, siad will
+consider repair bandwidth separately.`)
+	fmt.Println()
+	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedUpload*uint64(types.BlocksPerMonth)))
+	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(types.BlocksPerMonth)))
+
+	var expectedUpload uint64
+	if allowance.ExpectedUpload == 0 {
+		expectedUpload = modules.DefaultAllowance.ExpectedUpload
+		fmt.Println("Enter desired value below, or leave blank to use default value")
+	} else {
+		expectedUpload = allowance.ExpectedUpload
+		fmt.Println("Enter desired value below, or leave blank to use current value")
+	}
+	fmt.Print("Expected Upload: ")
+	allowanceExpectedUpload := readString()
+	if allowanceExpectedUpload != "" {
+		eu, err := parseFilesize(allowanceExpectedUpload)
+		if err != nil {
+			die("Could not parse expected upload")
+		}
+		_, err = fmt.Sscan(eu, &expectedUpload)
+		if err != nil {
+			die("Could not parse expected upload")
+		}
+	}
+	req = req.WithExpectedUpload(expectedUpload / uint64(types.BlocksPerMonth))
+
+	// expectedDownload
+	fmt.Println(`7/8: Expected Download
+Expected download tells siad how much downloading the user expects to do each
+month. If this value is high, siad will more strongly prefer hosts that have a
+low download bandwidth price. If this value is low, siad will focus on other
+metrics than download bandwidth pricing, because even if the host charges a lot
+for downloads, it will not impact the total cost to the user very much.
+
+The user should not consider download bandwidth used during repairs, siad will
+consider repair bandwidth separately.`)
+	fmt.Println()
+	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedDownload*uint64(types.BlocksPerMonth)))
+	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(types.BlocksPerMonth)))
+
+	var expectedDownload uint64
+	if allowance.ExpectedDownload == 0 {
+		expectedDownload = modules.DefaultAllowance.ExpectedDownload
+		fmt.Println("Enter desired value below, or leave blank to use default value")
+	} else {
+		expectedDownload = allowance.ExpectedDownload
+		fmt.Println("Enter desired value below, or leave blank to use current value")
+	}
+	fmt.Print("Expected Download: ")
+	allowanceExpectedDownload := readString()
+	if allowanceExpectedDownload != "" {
+		ed, err := parseFilesize(allowanceExpectedDownload)
+		if err != nil {
+			die("Could not parse expected download")
+		}
+		_, err = fmt.Sscan(ed, &expectedDownload)
+		if err != nil {
+			die("Could not parse expected download")
+		}
+	}
+	req = req.WithExpectedDownload(expectedDownload / uint64(types.BlocksPerMonth))
+
+	// expectedRedundancy
+	fmt.Println(`8/8: Expected Redundancy
+Expected redundancy is used in conjunction with expected storage to determine
+the total amount of raw storage that will be stored on hosts. If the expected
+storage is 1 TB and the expected redundancy is 3, then the renter will calculate
+that the total amount of storage in the user's contracts will be 3 TiB.
+
+This value does not need to be changed from the default unless the user is
+manually choosing redundancy settings for their file. If different files are
+being given different redundancy settings, then the average of all the
+redundancies should be used as the value for expected redundancy, weighted by
+how large the files are.`)
+	fmt.Println()
+	fmt.Println("Current value:", allowance.ExpectedRedundancy)
+	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedRedundancy)
+
+	var expectedRedundancy float64
+	if allowance.ExpectedRedundancy == 0 {
+		expectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+		fmt.Println("Enter desired value below, or leave blank to use default value")
+	} else {
+		expectedRedundancy = allowance.ExpectedRedundancy
+		fmt.Println("Enter desired value below, or leave blank to use current value")
+	}
+	fmt.Print("Expected Redundancy: ")
+	allowanceExpectedRedundancy := readString()
+	if allowanceExpectedRedundancy != "" {
+		er, err := parseFilesize(allowanceExpectedRedundancy)
+		if err != nil {
+			die("Could not parse expected redundancy")
+		}
+		_, err = fmt.Sscan(er, &expectedRedundancy)
+		if err != nil {
+			die("Could not parse expected redundancy")
+		}
+	}
+	if expectedRedundancy < 1 {
+		die("Expected redundancy must be at least 1")
+	}
+	req = req.WithExpectedRedundancy(expectedRedundancy)
+	fmt.Println()
+
+	return req
 }
 
 // byValue sorts contracts by their value in siacoins, high to low. If two
@@ -558,29 +942,40 @@ func (s byValue) Less(i, j int) bool {
 
 // renterbackcreatecmd is the handler for the command `siac renter
 // createbackup`.
-func renterbackupcreatecmd(path string) {
-	path = abs(path)
-	// If the destination is a folder, create the backup in the folder.
-	fi, err := os.Stat(path)
-	if err == nil && fi.IsDir() {
-		path = filepath.Join(path, fmt.Sprintf("%v.backup", time.Now().Unix()))
-	}
+func renterbackupcreatecmd(name string) {
 	// Create backup.
-	err = httpClient.RenterCreateBackupPost(path, false)
+	err := httpClient.RenterCreateBackupPost(name)
 	if err != nil {
 		die("Failed to create backup", err)
 	}
+	fmt.Println("Backup initiated. Monitor progress with the 'listbackups' command.")
 }
 
-// renterbackloadcmd is the handler for the command `siac renter
-// loadbackup`.
-func renterbackuploadcmd(path string) {
-	path = abs(path)
-
-	err := httpClient.RenterRecoverBackupPost(path, false)
+// renterbackuprestorecmd is the handler for the command `siac renter
+// restorebackup`.
+func renterbackuprestorecmd(name string) {
+	err := httpClient.RenterRecoverBackupPost(name)
 	if err != nil {
-		die("Failed to load backup", err)
+		die("Failed to restore backup", err)
 	}
+}
+
+// renterbackuplistcmd is the handler for the command `siac renter listbackups`.
+func renterbackuplistcmd() {
+	ubs, err := httpClient.RenterBackups()
+	if err != nil {
+		die("Failed to retrieve backups", err)
+	} else if len(ubs.Backups) == 0 {
+		fmt.Println("No uploaded backups.")
+		return
+	}
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "  Name\tCreation Date\tUpload Progress")
+	for _, ub := range ubs.Backups {
+		date := time.Unix(int64(ub.CreationDate), 0)
+		fmt.Fprintf(w, "  %v\t%v\t%v\n", ub.Name, date.Format(time.ANSIC), ub.UploadProgress)
+	}
+	w.Flush()
 }
 
 // rentercontractscmd is the handler for the comand `siac renter contracts`.
@@ -591,30 +986,83 @@ func rentercontractscmd() {
 		die("Could not get contracts:", err)
 	}
 
+	// Build Current Period summary
+	fmt.Println("Current Period Summary")
+	var totalStored, totalWasted uint64
+	var totalRemaining, totalSpent, totalFees types.Currency
+	// Active Contracts are all good data
+	for _, c := range rc.ActiveContracts {
+		totalStored += c.Size
+		totalRemaining = totalRemaining.Add(c.RenterFunds)
+		totalFees = totalFees.Add(c.Fees)
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		totalSpent = totalSpent.Add(contractTotalSpent)
+	}
+	// Passive Contracts are all good data
+	for _, c := range rc.PassiveContracts {
+		totalStored += c.Size
+		totalRemaining = totalRemaining.Add(c.RenterFunds)
+		totalFees = totalFees.Add(c.Fees)
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		totalSpent = totalSpent.Add(contractTotalSpent)
+	}
+	// Refreshed Contracts are duplicate data
+	for _, c := range rc.PassiveContracts {
+		totalRemaining = totalRemaining.Add(c.RenterFunds)
+		totalFees = totalFees.Add(c.Fees)
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		totalSpent = totalSpent.Add(contractTotalSpent)
+	}
+	// Disabled Contracts are wasted data
+	for _, c := range rc.PassiveContracts {
+		totalWasted += c.Size
+		totalRemaining = totalRemaining.Add(c.RenterFunds)
+		totalFees = totalFees.Add(c.Fees)
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		totalSpent = totalSpent.Add(contractTotalSpent)
+	}
+	fmt.Printf(`  Total Good Data:    %s
+  Total Wasted Data:  %s
+  Total Remaining:    %v
+  Total Spent:        %v
+  Total Fees:         %v
+
+`, filesizeUnits(totalStored), filesizeUnits(totalWasted), currencyUnits(totalRemaining), currencyUnits(totalSpent), currencyUnits(totalFees))
+
+	// List out contracts
 	fmt.Println("Active Contracts:")
 	if len(rc.ActiveContracts) == 0 {
 		fmt.Println("  No active contracts.")
 	} else {
 		// Display Active Contracts
+		fmt.Println("  Number of Contracts:", len(rc.ActiveContracts))
 		sort.Sort(byValue(rc.ActiveContracts))
-		var activeTotalStored uint64
-		var activeTotalRemaining, activeTotalSpent, activeTotalFees types.Currency
-		for _, c := range rc.ActiveContracts {
-			activeTotalStored += c.Size
-			activeTotalRemaining = activeTotalRemaining.Add(c.RenterFunds)
-			activeTotalSpent = activeTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
-			activeTotalFees = activeTotalFees.Add(c.Fees)
-		}
-		fmt.Printf(`  Number of Contracts:  %v
-  Total stored:         %s
-  Total Remaining:      %v
-  Total Spent:          %v
-  Total Fees:           %v
-
-`, len(rc.ActiveContracts), filesizeUnits(activeTotalStored),
-			currencyUnits(activeTotalRemaining), currencyUnits(activeTotalSpent), currencyUnits(activeTotalFees))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  \nHost\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.ActiveContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
@@ -622,11 +1070,18 @@ func rentercontractscmd() {
 				address = "Host Removed"
 				hostVersion = ""
 			}
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
 			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				hostVersion,
 				currencyUnits(c.RenterFunds),
-				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+				currencyUnits(contractTotalSpent),
 				currencyUnits(c.Fees),
 				filesizeUnits(c.Size),
 				c.EndHeight,
@@ -637,42 +1092,72 @@ func rentercontractscmd() {
 		w.Flush()
 	}
 
-	fmt.Println("\nRenewed Contracts:")
-	if len(rc.RenewedContracts) == 0 {
-		fmt.Println("  No renewed contracts.")
+	fmt.Println("\nPassive Contracts:")
+	if len(rc.PassiveContracts) == 0 {
+		fmt.Println("  No passive contracts.")
 	} else {
-		// Display Renewed Contracts
-		sort.Sort(byValue(rc.RenewedContracts))
-		var renewedTotalStored uint64
-		var renewedTotalRemaining, renewedTotalSpent, renewedTotalFees types.Currency
-		for _, c := range rc.RenewedContracts {
-			renewedTotalStored += c.Size
-			renewedTotalRemaining = renewedTotalRemaining.Add(c.RenterFunds)
-			renewedTotalSpent = renewedTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
-			renewedTotalFees = renewedTotalFees.Add(c.Fees)
-		}
-		fmt.Printf(`  Number of Contracts:  %v
-  Total stored:         %s
-  Total Remaining:      %v
-  Total Spent:          %v
-  Total Fees:           %v
-
-`, len(rc.RenewedContracts), filesizeUnits(renewedTotalStored),
-			currencyUnits(renewedTotalRemaining), currencyUnits(renewedTotalSpent), currencyUnits(renewedTotalFees))
+		// Display Passive Contracts
+		sort.Sort(byValue(rc.PassiveContracts))
+		fmt.Println("  Number of Contracts:", len(rc.PassiveContracts))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
-		for _, c := range rc.RenewedContracts {
+		fmt.Fprintln(w, "  \nHost\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		for _, c := range rc.PassiveContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
 			if address == "" {
 				address = "Host Removed"
 				hostVersion = ""
 			}
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
 			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				hostVersion,
 				currencyUnits(c.RenterFunds),
-				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+				currencyUnits(contractTotalSpent),
+				currencyUnits(c.Fees),
+				filesizeUnits(c.Size),
+				c.EndHeight,
+				c.ID,
+				c.GoodForUpload,
+				c.GoodForRenew)
+		}
+		w.Flush()
+	}
+
+	fmt.Println("\nRefreshed Contracts:")
+	if len(rc.RefreshedContracts) == 0 {
+		fmt.Println("  No refreshed contracts.")
+	} else {
+		// Display Refreshed Contracts
+		sort.Sort(byValue(rc.RefreshedContracts))
+		fmt.Println("  Number of Contracts:", len(rc.RefreshedContracts))
+		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "  \nHost\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		for _, c := range rc.RefreshedContracts {
+			address := c.NetAddress
+			hostVersion := c.HostVersion
+			if address == "" {
+				address = "Host Removed"
+				hostVersion = ""
+			}
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
+			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+				address,
+				hostVersion,
+				currencyUnits(c.RenterFunds),
+				currencyUnits(contractTotalSpent),
 				currencyUnits(c.Fees),
 				filesizeUnits(c.Size),
 				c.EndHeight,
@@ -689,25 +1174,9 @@ func rentercontractscmd() {
 	} else {
 		// Display Disabled Contracts
 		sort.Sort(byValue(rc.DisabledContracts))
-		var disabledTotalStored uint64
-		var disabledTotalRemaining, disabledTotalSpent, disabledTotalFees types.Currency
-		for _, c := range rc.DisabledContracts {
-			disabledTotalStored += c.Size
-			disabledTotalRemaining = disabledTotalRemaining.Add(c.RenterFunds)
-			disabledTotalSpent = disabledTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
-			disabledTotalFees = disabledTotalFees.Add(c.Fees)
-		}
-
-		fmt.Printf(`
-  Number of Contracts:  %v
-  Total stored:         %s
-  Total Remaining:      %v
-  Total Spent:          %v
-  Total Fees:           %v
-
-`, len(rc.DisabledContracts), filesizeUnits(disabledTotalStored), currencyUnits(disabledTotalRemaining), currencyUnits(disabledTotalSpent), currencyUnits(disabledTotalFees))
+		fmt.Println("  Number of Contracts:", len(rc.DisabledContracts))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  Host\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  \nHost\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.DisabledContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
@@ -715,11 +1184,18 @@ func rentercontractscmd() {
 				address = "Host Removed"
 				hostVersion = ""
 			}
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
 			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				hostVersion,
 				currencyUnits(c.RenterFunds),
-				currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+				currencyUnits(contractTotalSpent),
 				currencyUnits(c.Fees),
 				filesizeUnits(c.Size),
 				c.EndHeight,
@@ -731,33 +1207,55 @@ func rentercontractscmd() {
 	}
 
 	if renterAllContracts {
-		fmt.Println("\nExpired Contracts:")
 		rce, err := httpClient.RenterExpiredContractsGet()
 		if err != nil {
 			die("Could not get expired contracts:", err)
 		}
+		// Build Historical summary
+		fmt.Println("Historical Summary")
+		var totalStored uint64
+		var totalRemaining, totalSpent, totalFees types.Currency
+		// Expired Contracts are all good data
+		for _, c := range rce.ExpiredContracts {
+			totalStored += c.Size
+			totalRemaining = totalRemaining.Add(c.RenterFunds)
+			totalFees = totalFees.Add(c.Fees)
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
+			totalSpent = totalSpent.Add(contractTotalSpent)
+		}
+		// Expired Refreshed Contracts are duplicate data
+		for _, c := range rce.ExpiredRefreshedContracts {
+			totalRemaining = totalRemaining.Add(c.RenterFunds)
+			totalFees = totalFees.Add(c.Fees)
+			// Negative Currency Check
+			var contractTotalSpent types.Currency
+			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+				contractTotalSpent = c.RenterFunds.Add(c.Fees)
+			} else {
+				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+			}
+			totalSpent = totalSpent.Add(contractTotalSpent)
+		}
+		fmt.Printf(`  Total Expired Data:  %s
+  Total Remaining:     %v
+  Total Spent:         %v
+  Total Fees:          %v
+
+`, filesizeUnits(totalStored), currencyUnits(totalRemaining), currencyUnits(totalSpent), currencyUnits(totalFees))
+		fmt.Println("\nExpired Contracts:")
 		if len(rce.ExpiredContracts) == 0 {
 			fmt.Println("  No expired contracts.")
 		} else {
 			sort.Sort(byValue(rce.ExpiredContracts))
-			var expiredTotalStored uint64
-			var expiredTotalWithheld, expiredTotalSpent, expiredTotalFees types.Currency
-			for _, c := range rce.ExpiredContracts {
-				expiredTotalStored += c.Size
-				expiredTotalWithheld = expiredTotalWithheld.Add(c.RenterFunds)
-				expiredTotalSpent = expiredTotalSpent.Add(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees))
-				expiredTotalFees = expiredTotalFees.Add(c.Fees)
-			}
-			fmt.Printf(`
-	Number of Contracts:  %v
-	Total stored:         %9s
-	Total Remaining:      %v
-	Total Spent:          %v
-	Total Fees:           %v
-			
-	`, len(rce.ExpiredContracts), filesizeUnits(expiredTotalStored), currencyUnits(expiredTotalWithheld), currencyUnits(expiredTotalSpent), currencyUnits(expiredTotalFees))
+			fmt.Println("	 Number of Contracts:", len(rce.ExpiredContracts))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  Host\tHost Version\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+			fmt.Fprintln(w, "  \nHost\tHost Version\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
 			for _, c := range rce.ExpiredContracts {
 				address := c.NetAddress
 				hostVersion := c.HostVersion
@@ -765,11 +1263,55 @@ func rentercontractscmd() {
 					address = "Host Removed"
 					hostVersion = ""
 				}
+				// Negative Currency Check
+				var contractTotalSpent types.Currency
+				if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+					contractTotalSpent = c.RenterFunds.Add(c.Fees)
+				} else {
+					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+				}
 				fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 					address,
 					hostVersion,
 					currencyUnits(c.RenterFunds),
-					currencyUnits(c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)),
+					currencyUnits(contractTotalSpent),
+					currencyUnits(c.Fees),
+					filesizeUnits(c.Size),
+					c.EndHeight,
+					c.ID,
+					c.GoodForUpload,
+					c.GoodForRenew)
+			}
+			w.Flush()
+		}
+
+		fmt.Println("\nExpired Refresh Contracts:")
+		if len(rce.ExpiredRefreshedContracts) == 0 {
+			fmt.Println("  No expired refreshed contracts.")
+		} else {
+			sort.Sort(byValue(rce.ExpiredContracts))
+			fmt.Println("	 Number of Contracts:", len(rce.ExpiredRefreshedContracts))
+			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "  \nHost\tHost Version\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+			for _, c := range rce.ExpiredContracts {
+				address := c.NetAddress
+				hostVersion := c.HostVersion
+				if address == "" {
+					address = "Host Removed"
+					hostVersion = ""
+				}
+				// Negative Currency Check
+				var contractTotalSpent types.Currency
+				if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+					contractTotalSpent = c.RenterFunds.Add(c.Fees)
+				} else {
+					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+				}
+				fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+					address,
+					hostVersion,
+					currencyUnits(c.RenterFunds),
+					currencyUnits(contractTotalSpent),
 					currencyUnits(c.Fees),
 					filesizeUnits(c.Size),
 					c.EndHeight,
@@ -866,7 +1408,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		}
 		// Download file.
 		totalSize += file.Filesize
-		err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
 			return
@@ -932,6 +1474,15 @@ func renterdirdownload(path, destination string) {
 		fmt.Printf("Download of file '%v' to destination '%v' failed: %v\n", fd.SiaPath, fd.Destination, fd.Error)
 	}
 	os.Exit(1)
+}
+
+// renterdownloadcancelcmd is the handler for the command `siac renter download cancel [cancelID]`
+// Cancels the ongoing download.
+func renterdownloadcancelcmd(cancelID string) {
+	if err := httpClient.RenterCancelDownloadPost(cancelID); err != nil {
+		die("Couldn't cancel download:", err)
+	}
+	fmt.Println("Download canceled successfully")
 }
 
 // renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
@@ -1006,7 +1557,7 @@ func renterfilesdownload(path, destination string) {
 	// the call will return before the download has completed. The call is made
 	// as an async call.
 	start := time.Now()
-	err = httpClient.RenterDownloadFullGet(siaPath, destination, true)
+	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true)
 	if err != nil {
 		die("Download could not be started:", err)
 	}
@@ -1014,6 +1565,7 @@ func renterfilesdownload(path, destination string) {
 	// If the download is async, report success.
 	if renterDownloadAsync {
 		fmt.Printf("Queued Download '%s' to %s.\n", siaPath.String(), abs(destination))
+		fmt.Printf("ID to cancel download: '%v'\n", cancelID)
 		return
 	}
 
@@ -1315,7 +1867,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	fmt.Printf(" %9s\n", filesizeUnits(totalStored))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if renterListVerbose {
-		fmt.Fprintln(w, "  Name\tFile size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tOn Disk\tRecoverable")
+		fmt.Fprintln(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable")
 	}
 	sort.Sort(byDirectoryInfo(dirs))
 	// Print dirs.
@@ -1324,7 +1876,17 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		// Print subdirs.
 		sort.Sort(bySiaPathDir(dir.subDirs))
 		for _, subDir := range dir.subDirs {
-			fmt.Fprintf(w, "  %v/\t\t\t\t\t\t\t\t\t\t\n", subDir.SiaPath.Name())
+			fmt.Fprintf(w, "  %s", subDir.SiaPath.Name()+"/")
+			fmt.Fprintf(w, "\t%9s", filesizeUnits(subDir.AggregateSize))
+			if renterListVerbose {
+				redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
+				if subDir.AggregateMinRedundancy == -1 {
+					redundancyStr = "-"
+				}
+				healthStr := fmt.Sprintf("%.2f%%", subDir.AggregateMaxHealthPercentage)
+				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", "-", "-", "-", redundancyStr, healthStr, "-", "-", "-", "-")
+			}
+			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 		}
 
 		// Print files.
@@ -1348,7 +1910,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 				onDiskStr := yesNo(file.OnDisk)
 				recoverableStr := yesNo(file.Recoverable)
 				stuckStr := yesNo(file.Stuck)
-				fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
+				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", availableStr, filesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
 			}
 			if !renterListVerbose && !file.Available {
 				fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)

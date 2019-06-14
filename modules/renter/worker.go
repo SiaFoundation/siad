@@ -83,6 +83,7 @@ func (r *Renter) managedUpdateWorkerPool() {
 			}
 			r.workerPool[id] = worker
 			if err := r.tg.Add(); err != nil {
+				r.mu.Unlock(lockID)
 				// Stop starting workers on shutdown.
 				break
 			}
@@ -98,6 +99,14 @@ func (r *Renter) managedUpdateWorkerPool() {
 	lockID := r.mu.Lock()
 	totalCoolDown := 0
 	for id, worker := range r.workerPool {
+		select {
+		case <-r.tg.StopChan():
+			// Release the lock and return to prevent error of trying to close
+			// the worker channel after a shutdown
+			r.mu.Unlock(lockID)
+			return
+		default:
+		}
 		contract, exists := contractMap[id]
 		if !exists {
 			delete(r.workerPool, id)

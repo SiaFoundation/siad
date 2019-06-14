@@ -25,7 +25,7 @@ func (r *Renter) DeleteDir(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticDirSet.Delete(siaPath)
+	return r.staticFileSet.DeleteDir(siaPath, r.staticDirSet.Delete)
 }
 
 // DirList lists the directories in a siadir

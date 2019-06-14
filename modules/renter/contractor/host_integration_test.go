@@ -200,6 +200,11 @@ func TestIntegrationFormContract(t *testing.T) {
 	defer h.Close()
 	defer c.Close()
 
+	// acquire the contract maintenance lock for the duration of the test. This
+	// prevents theadedContractMaintenance from running.
+	c.maintenanceLock.Lock()
+	defer c.maintenanceLock.Unlock()
+
 	// get the host's entry from the db
 	hostEntry, ok := c.hdb.Host(h.PublicKey())
 	if !ok {
@@ -270,6 +275,11 @@ func TestIntegrationReviseContract(t *testing.T) {
 	}
 	defer h.Close()
 	defer c.Close()
+
+	// acquire the contract maintenance lock for the duration of the test. This
+	// prevents theadedContractMaintenance from running.
+	c.maintenanceLock.Lock()
+	defer c.maintenanceLock.Unlock()
 
 	// get the host's entry from the db
 	hostEntry, ok := c.hdb.Host(h.PublicKey())

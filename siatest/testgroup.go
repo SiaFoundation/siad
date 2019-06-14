@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
@@ -155,7 +157,11 @@ func addStorageFolderToHosts(hosts map[*TestNode]struct{}) error {
 	for host := range hosts {
 		wg.Add(1)
 		go func(i int, host *TestNode) {
-			errs[i] = host.HostStorageFoldersAddPost(host.Dir, 1048576)
+			storage := 4 * contractmanager.MinimumSectorsPerStorageFolder * modules.SectorSize
+			if host.params.HostStorage > 0 {
+				storage = host.params.HostStorage
+			}
+			errs[i] = host.HostStorageFoldersAddPost(host.Dir, storage)
 			wg.Done()
 		}(i, host)
 		i++

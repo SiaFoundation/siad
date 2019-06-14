@@ -218,7 +218,9 @@ func (r *Renter) managedLoadSettings() error {
 		// No persistence yet, set the defaults and continue.
 		r.persist.MaxDownloadSpeed = DefaultMaxDownloadSpeed
 		r.persist.MaxUploadSpeed = DefaultMaxUploadSpeed
+		id := r.mu.Lock()
 		err = r.saveSync()
+		r.mu.Unlock(id)
 		if err != nil {
 			return err
 		}

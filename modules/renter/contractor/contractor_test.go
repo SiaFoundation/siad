@@ -27,6 +27,7 @@ func (newStub) Unsubscribe(modules.ConsensusSetSubscriber) { return }
 func (newStub) NextAddress() (uc types.UnlockConditions, err error)          { return }
 func (newStub) PrimarySeed() (modules.Seed, uint64, error)                   { return modules.Seed{}, 0, nil }
 func (newStub) StartTransaction() (tb modules.TransactionBuilder, err error) { return }
+func (newStub) Unlocked() (bool, error)                                      { return true, nil }
 
 // transaction pool stubs
 func (newStub) AcceptTransactionSet([]types.Transaction) error      { return nil }
@@ -50,6 +51,7 @@ func (newStub) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, 
 	return modules.HostScoreBreakdown{}, nil
 }
 func (newStub) SetAllowance(allowance modules.Allowance) error { return nil }
+func (newStub) UpdateContracts([]modules.RenterContract) error { return nil }
 
 // TestNew tests the New function.
 func TestNew(t *testing.T) {
@@ -131,6 +133,7 @@ func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdow
 	return modules.HostScoreBreakdown{}, nil
 }
 func (stubHostDB) SetAllowance(allowance modules.Allowance) error { return nil }
+func (stubHostDB) UpdateContracts([]modules.RenterContract) error { return nil }
 
 // TestAllowanceSpending verifies that the contractor will not spend more or
 // less than the allowance if uploading causes repeated early renewal, and that
@@ -700,6 +703,7 @@ func (ws *testWalletShim) StartTransaction() (modules.TransactionBuilder, error)
 	ws.startTxnCalled = true
 	return nil, nil
 }
+func (ws *testWalletShim) Unlocked() (bool, error) { return true, nil }
 
 // TestWalletBridge tests the walletBridge type.
 func TestWalletBridge(t *testing.T) {

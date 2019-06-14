@@ -82,16 +82,6 @@ const (
 	priceFloor = 0.1
 )
 
-var (
-	// requiredStorage indicates the amount of storage that the host must be
-	// offering in order to be considered a valuable/worthwhile host.
-	requiredStorage = build.Select(build.Var{
-		Standard: uint64(20e9),
-		Dev:      uint64(1e6),
-		Testing:  uint64(1e3),
-	}).(uint64)
-)
-
 // collateralAdjustments improves the host's weight according to the amount of
 // collateral that they have provided.
 func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance modules.Allowance) float64 {
@@ -212,11 +202,11 @@ func (hdb *HostDB) interactionAdjustments(entry modules.HostDBEntry) float64 {
 // that it has set.
 //
 // REMINDER: The allowance contains an absolute number of bytes for expected
-// storage on a per-renter basis that doesn't account for redundancy.. This
-// value needs to be adjusted to a per-contract basis that accounts for
-// redundancy. The upload and download values also do not account for
-// redundancy, and they are on a per-block basis, meaning you need to multiply
-// be the allowance period when working with these values.
+// storage on a per-renter basis that doesn't account for redundancy. This value
+// needs to be adjusted to a per-contract basis that accounts for redundancy.
+// The upload and download values also do not account for redundancy, and they
+// are on a per-block basis, meaning you need to multiply be the allowance
+// period when working with these values.
 func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules.Allowance, txnFees types.Currency) float64 {
 	// Divide by zero mitigation.
 	if allowance.Hosts == 0 {
@@ -315,36 +305,40 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 
 // storageRemainingAdjustments adjusts the weight of the entry according to how
 // much storage it has remaining.
-func storageRemainingAdjustments(entry modules.HostDBEntry) float64 {
+func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowance modules.Allowance) float64 {
+	var storedData uint64
+	if ci, exists := hdb.knownContracts[entry.PublicKey.String()]; exists {
+		storedData = ci.StoredData
+	}
 	base := float64(1)
-	if entry.RemainingStorage < 100*requiredStorage {
+	if entry.RemainingStorage+storedDataMultiplier*storedData < 100*allowance.ExpectedStorage {
 		base = base / 2 // 2x total penalty
 	}
-	if entry.RemainingStorage < 80*requiredStorage {
+	if entry.RemainingStorage+storedDataMultiplier*storedData < 80*allowance.ExpectedStorage {
 		base = base / 2 // 4x total penalty
 	}
-	if entry.RemainingStorage < 40*requiredStorage {
+	if entry.RemainingStorage+storedDataMultiplier*storedData < 40*allowance.ExpectedStorage {
 		base = base / 2 // 8x total penalty
 	}
-	if entry.RemainingStorage < 20*requiredStorage {
+	if entry.RemainingStorage+storedDataMultiplier*storedData < 20*allowance.ExpectedStorage {
 		base = base / 2 // 16x total penalty
 	}
-	if entry.RemainingStorage < 15*requiredStorage {
+	if entry.RemainingStorage+storedDataMultiplier*storedData < 15*allowance.ExpectedStorage {
 		base = base / 2 // 32x total penalty
 	}
-	if entry.RemainingStorage < 10*requiredStorage {
+	if entry.RemainingStorage+storedDataMultiplier*storedData < 10*allowance.ExpectedStorage {
 		base = base / 2 // 64x total penalty
 	}
-	if entry.RemainingStorage < 5*requiredStorage {
+	if entry.RemainingStorage+storedDataMultiplier*storedData < 5*allowance.ExpectedStorage {
 		base = base / 2 // 128x total penalty
 	}
-	if entry.RemainingStorage < 3*requiredStorage {
+	if entry.RemainingStorage+storedDataMultiplier*storedData < 3*allowance.ExpectedStorage {
 		base = base / 2 // 256x total penalty
 	}
-	if entry.RemainingStorage < 2*requiredStorage {
+	if entry.RemainingStorage+storedDataMultiplier*storedData < 2*allowance.ExpectedStorage {
 		base = base / 2 // 512x total penalty
 	}
-	if entry.RemainingStorage < requiredStorage {
+	if entry.RemainingStorage+storedDataMultiplier*storedData < allowance.ExpectedStorage {
 		base = base / 2 // 1024x total penalty
 	}
 	return base
@@ -521,7 +515,7 @@ func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hos
 			InteractionAdjustment:      hdb.interactionAdjustments(entry),
 			AgeAdjustment:              hdb.lifetimeAdjustments(entry),
 			PriceAdjustment:            hdb.priceAdjustments(entry, allowance, txnFees),
-			StorageRemainingAdjustment: storageRemainingAdjustments(entry),
+			StorageRemainingAdjustment: hdb.storageRemainingAdjustments(entry, allowance),
 			UptimeAdjustment:           hdb.uptimeAdjustments(entry),
 			VersionAdjustment:          versionAdjustments(entry),
 		}
@@ -535,7 +529,7 @@ func (hdb *HostDB) EstimateHostScore(entry modules.HostDBEntry, allowance module
 		return modules.HostScoreBreakdown{}, err
 	}
 	defer hdb.tg.Done()
-	return hdb.managedScoreBreakdown(entry, true, true, true), nil
+	return hdb.managedEstimatedScoreBreakdown(entry, allowance, true, true, true), nil
 }
 
 // ScoreBreakdown provdes a detailed set of scalars and bools indicating
@@ -546,6 +540,24 @@ func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) (modules.HostScoreB
 	}
 	defer hdb.tg.Done()
 	return hdb.managedScoreBreakdown(entry, false, false, false), nil
+}
+
+// managedEstimatedScoreBreakdown computes the score breakdown of a host.
+// Certain adjustments can be ignored.
+func (hdb *HostDB) managedEstimatedScoreBreakdown(entry modules.HostDBEntry, allowance modules.Allowance, ignoreAge, ignoreDuration, ignoreUptime bool) modules.HostScoreBreakdown {
+	hosts := hdb.ActiveHosts()
+	weightFunc := hdb.managedCalculateHostWeightFn(allowance)
+
+	// Compute the totalScore.
+	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
+	totalScore := types.Currency{}
+	for _, host := range hosts {
+		totalScore = totalScore.Add(hdb.weightFunc(host).Score())
+	}
+	// Compute the breakdown.
+
+	return weightFunc(entry).HostScoreBreakdown(totalScore, ignoreAge, ignoreDuration, ignoreUptime)
 }
 
 // managedScoreBreakdown computes the score breakdown of a host. Certain

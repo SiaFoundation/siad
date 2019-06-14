@@ -1,14 +1,49 @@
 package daemon
 
 import (
+	"encoding/hex"
 	"testing"
 	"time"
+
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 )
+
+// TestDaemonAPIPassword makes sure that the daemon rejects requests with the
+// wrong API password.
+func TestDaemonAPIPassword(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	testDir := daemonTestDir(t.Name())
+
+	// Create a new server
+	testNode, err := siatest.NewCleanNode(node.Gateway(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make a manual API request without a password.
+	c := client.New(testNode.Server.APIAddress())
+	if err := c.DaemonStopGet(); err == nil {
+		t.Error("expected unauthenticated API request to fail")
+	}
+	// Make a manual API request with an incorrect password.
+	c.Password = hex.EncodeToString(fastrand.Bytes(16))
+	if err := c.DaemonStopGet(); err == nil {
+		t.Error("expected unauthenticated API request to fail")
+	}
+	// Make a manual API request with the correct password.
+	c.Password = testNode.Password
+	if err := c.DaemonStopGet(); err != nil {
+		t.Error(err)
+	}
+}
 
 // TestDaemonRatelimit makes sure that we can set the daemon's global
 // ratelimits using the API and that they are persisted correctly.

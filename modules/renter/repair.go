@@ -83,7 +83,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath) error {
 	// Add stuck chunks from file to repair heap
 	files := []*siafile.SiaFileSetEntry{sf}
 	hosts := r.managedRefreshHostsAndWorkers()
-	offline, goodForRenew, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	r.managedBuildAndPushChunks(files, hosts, targetStuckChunks, offline, goodForRenew)
 	return nil
 }
@@ -313,6 +313,13 @@ func (r *Renter) threadedStuckFileLoop() {
 	// Loop until the renter has shutdown or until there are no stuck chunks
 	var dirsToBubble []modules.SiaPath
 	for {
+		// Return if the renter has shut down.
+		select {
+		case <-r.tg.StopChan():
+			return
+		default:
+		}
+
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.
@@ -458,6 +465,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		}
 
 		// Follow path of oldest time, return directory and timestamp
+		r.log.Debugln("Checknig for oldest health check time")
 		siaPath, lastHealthCheckTime, err := r.managedOldestHealthCheckTime()
 		if err != nil {
 			// If there is an error getting the lastHealthCheckTime sleep for a
@@ -477,8 +485,9 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		// least recent check is outside the check interval.
 		timeSinceLastCheck := time.Since(lastHealthCheckTime)
 		if timeSinceLastCheck < healthCheckInterval {
-			// Sleep unitl the least recent check is outside the check interval.
+			// Sleep until the least recent check is outside the check interval.
 			sleepDuration := healthCheckInterval - timeSinceLastCheck
+			r.log.Debugln("Health loop sleeping for", sleepDuration)
 			wakeSignal := time.After(sleepDuration)
 			select {
 			case <-r.tg.StopChan():
@@ -486,6 +495,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			case <-wakeSignal:
 			}
 		}
+		r.log.Debug("Health Loop calling bubble on '", siaPath.String(), "'")
 		err = r.managedBubbleMetadata(siaPath)
 		if err != nil {
 			r.log.Println("Error calling managedBubbleMetadata on `", siaPath.String(), "`:", err)
