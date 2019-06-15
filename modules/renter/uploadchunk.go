@@ -333,6 +333,9 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	if chunk.sourceReader != nil {
 		// Ensure that the source reader will be closed.
 		defer chunk.sourceReader.Close()
+
+		// Read the data from the source reader into a download destination
+		// buffer.
 		buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 		n, err := buf.ReadFrom(chunk.sourceReader)
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
