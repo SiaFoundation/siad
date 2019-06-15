@@ -187,21 +187,6 @@ func (dh *directoryHeap) update(d *directory) bool {
 	return true
 }
 
-// managedUpdate will update the directory that is currently in the heap based
-// on the directory pasted in.
-//
-// The worse health between the pushed dir and the existing dir will be kept to
-// ensure that the directory is looked at by the repair heap.
-//
-// Similarly, if either the new dir or the existing dir are marked as
-// unexplored, the new dir will be marked as unexplored to ensure that all
-// subdirs of the dir get added to the heap.
-func (dh *directoryHeap) managedUpdate(d *directory) bool {
-	dh.mu.Lock()
-	defer dh.mu.Unlock()
-	return dh.update(d)
-}
-
 // managedPushDirectory adds a directory to the directory heap
 func (dh *directoryHeap) managedPushDirectory(siaPath modules.SiaPath, aggregateHealth, health float64, explored bool) {
 	d := &directory{

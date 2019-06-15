@@ -105,9 +105,7 @@ func TestDirectoryHeap(t *testing.T) {
 	d.aggregateHealth = 0
 	d.health = 0
 	d.explored = true
-	if !rt.renter.directoryHeap.managedUpdate(d) {
-		t.Fatal("directory not updated")
-	}
+	rt.renter.directoryHeap.managedPush(d)
 	topDir := rt.renter.directoryHeap.managedPop()
 	if topDir.health != float64(4) {
 		t.Fatal("Expected Health of 4, got", topDir.health)
