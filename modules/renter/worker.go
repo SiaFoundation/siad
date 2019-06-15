@@ -22,14 +22,18 @@ import (
 // uploading and downloading with flaky hosts in the worker sets has
 // substantially reduced overall performance and throughput.
 type worker struct {
-	// The contract and host used by this worker.
-	contract   modules.RenterContract
+	// The hostPubKey also serves as an id for the worker, as there is only one
+	// worker per host.
 	hostPubKey types.SiaPublicKey
-	renter     *Renter
 
 	// Download variables that are not protected by a mutex, but also do not
 	// need to be protected by a mutex, as they are only accessed by the master
 	// thread for the worker.
+	//
+	// The 'owned' prefix here indicates that only the master thread for the
+	// object (in this case, 'threadedWorkLoop') is allowed to access these
+	// variables. Because only that thread is allowed to access the variables,
+	// that thread is able to access these variables without a mutex.
 	ownedDownloadConsecutiveFailures int       // How many failures in a row?
 	ownedDownloadRecentFailure       time.Time // How recent was the last failure?
 
@@ -55,73 +59,26 @@ type worker struct {
 	// master thread.
 	killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 	mu       sync.Mutex
+	renter   *Renter
 }
 
-// updateWorkerPool will grab the set of contracts from the contractor and
-// update the worker pool to match.
-func (r *Renter) managedUpdateWorkerPool() {
-	contractSlice := r.hostContractor.Contracts()
-	contractMap := make(map[types.FileContractID]modules.RenterContract)
-	for i := 0; i < len(contractSlice); i++ {
-		contractMap[contractSlice[i].ID] = contractSlice[i]
-	}
-
-	// Add a worker for any contract that does not already have a worker.
-	for id, contract := range contractMap {
-		lockID := r.mu.Lock()
-		_, exists := r.workerPool[id]
-		if !exists {
-			worker := &worker{
-				contract:   contract,
-				hostPubKey: contract.HostPublicKey,
-
-				downloadChan: make(chan struct{}, 1),
-				killChan:     make(chan struct{}),
-				uploadChan:   make(chan struct{}, 1),
-
-				renter: r,
-			}
-			r.workerPool[id] = worker
-			if err := r.tg.Add(); err != nil {
-				r.mu.Unlock(lockID)
-				// Stop starting workers on shutdown.
-				break
-			}
-			go func() {
-				defer r.tg.Done()
-				worker.threadedWorkLoop()
-			}()
-		}
-		r.mu.Unlock(lockID)
-	}
-
-	// Remove a worker for any worker that is not in the set of new contracts.
-	lockID := r.mu.Lock()
-	totalCoolDown := 0
-	for id, worker := range r.workerPool {
-		select {
-		case <-r.tg.StopChan():
-			// Release the lock and return to prevent error of trying to close
-			// the worker channel after a shutdown
-			r.mu.Unlock(lockID)
-			return
-		default:
-		}
-		contract, exists := contractMap[id]
-		if !exists {
-			delete(r.workerPool, id)
-			close(worker.killChan)
-		}
-		worker.mu.Lock()
-		onCoolDown, coolDownTime := worker.onUploadCooldown()
-		if onCoolDown {
-			totalCoolDown++
-		}
-		r.log.Debugf("Worker %v is GoodForUpload %v for contract %v\n    and is on uploadCooldown %v for %v because of %v", worker.hostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
-		worker.mu.Unlock()
-	}
-	r.log.Debugf("Refreshed Worker Pool has %v total workers and %v are on cooldown", len(r.workerPool), totalCoolDown)
-	r.mu.Unlock(lockID)
+// workerPool is the collection of workers that the renter can use for
+// uploading, downloading, and other tasks related to communicating with the
+// host. There is one worker per host that the renter has a contract with. This
+// includes hosts that have been disabled or otherwise been marked as
+// !GoodForRenew or !GoodForUpload. We keep all of these workers so that they
+// can be used in emergencies in the event that there seems to be no other way
+// to recover data.
+//
+// TODO: Currently the repair loop does a lot of fetching and passing of host
+// maps and offline maps and goodforrenew maps. All of those objects should be
+// cached in the worker pool, which will both improve performance and reduce the
+// calling complexity of the functions that currently need to pass this
+// information around.
+type workerPool struct {
+	workers map[string]*worker // The string is the host's public key.
+	mu      sync.RWMutex
+	renter  *Renter
 }
 
 // threadedWorkLoop repeatedly issues work to a worker, stopping when the worker
@@ -163,4 +120,89 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 	}
+}
+
+// managedUpdate will grab the set of contracts from the contractor and update
+// the worker pool to match.
+func (wp *workerPool) managedUpdate() {
+	contractSlice := wp.renter.hostContractor.Contracts()
+	contractMap := make(map[string]modules.RenterContract, len(contractSlice))
+	for _, contract := range contractSlice {
+		contractMap[contract.HostPublicKey.String()] = contract
+	}
+
+	// Add a worker for any contract that does not already have a worker.
+	for id, contract := range contractMap {
+		wp.mu.Lock()
+		_, exists := wp.workers[id]
+		if !exists {
+			w := &worker{
+				hostPubKey: contract.HostPublicKey,
+
+				downloadChan: make(chan struct{}, 1),
+				killChan:     make(chan struct{}),
+				uploadChan:   make(chan struct{}, 1),
+
+				renter: wp.renter,
+			}
+			wp.workers[id] = w
+			if err := wp.renter.tg.Add(); err != nil {
+				// Renter shutdown is happening, abort the loop to create more
+				// workers.
+				wp.mu.Unlock()
+				break
+			}
+			go func() {
+				defer wp.renter.tg.Done()
+				w.threadedWorkLoop()
+			}()
+		}
+		wp.mu.Unlock()
+	}
+
+	// Remove a worker for any worker that is not in the set of new contracts.
+	totalCoolDown := 0
+	wp.mu.Lock()
+	for id, worker := range wp.workers {
+		select {
+		case <-wp.renter.tg.StopChan():
+			// Release the lock and return to prevent error of trying to close
+			// the worker channel after a shutdown
+			wp.mu.Unlock()
+			return
+		default:
+		}
+		contract, exists := contractMap[id]
+		if !exists {
+			delete(wp.workers, id)
+			close(worker.killChan)
+		}
+		worker.mu.Lock()
+		onCoolDown, coolDownTime := worker.onUploadCooldown()
+		if onCoolDown {
+			totalCoolDown++
+		}
+		wp.renter.log.Debugf("Worker %v is GoodForUpload %v for contract %v\n    and is on uploadCooldown %v for %v because of %v", worker.hostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
+		worker.mu.Unlock()
+	}
+	wp.renter.log.Debugf("Refreshed Worker Pool has %v total workers and %v are on cooldown", len(wp.workers), totalCoolDown)
+	wp.mu.Unlock()
+}
+
+// newWorkerPool will initialize and return a worker pool.
+func (r *Renter) newWorkerPool() *workerPool {
+	wp := &workerPool{
+		workers: make(map[string]*worker),
+		renter:  r,
+	}
+	wp.renter.tg.OnStop(func() error {
+		wp.mu.RLock()
+		for _, w := range wp.workers {
+			close(w.killChan)
+		}
+		wp.mu.RUnlock()
+		return nil
+	})
+	wp.managedUpdate()
+	return wp
 }

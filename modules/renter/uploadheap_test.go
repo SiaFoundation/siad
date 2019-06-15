@@ -11,7 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
@@ -62,17 +61,16 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
+		rt.renter.workerPool.workers[string([]byte{byte(i)})] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
 		}
 	}
 
-	// Call buildUnfinishedChunks as not stuck loop, all un stuck chunks should be returned
-	id := rt.renter.mu.Lock()
-	uucs := rt.renter.buildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
-	rt.renter.mu.Unlock(id)
+	// Call managedBuildUnfinishedChunks as not stuck loop, all un stuck chunks
+	// should be returned
+	uucs := rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
 	if len(uucs) != int(f.NumChunks())-1 {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", int(f.NumChunks())-1, len(uucs))
 	}
@@ -82,10 +80,9 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		}
 	}
 
-	// Call buildUnfinishedChunks as stuck loop, all stuck chunks should be returned
-	id = rt.renter.mu.Lock()
-	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
-	rt.renter.mu.Unlock(id)
+	// Call managedBuildUnfinishedChunks as stuck loop, all stuck chunks should
+	// be returned
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
 	if len(uucs) != 1 {
 		t.Fatalf("Incorrect number of chunks returned, expected 1 got %v", len(uucs))
 	}
@@ -101,21 +98,18 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Call buildUnfinishedChunks as not stuck loop, since the file is now not
-	// repairable it should return no chunks
-	id = rt.renter.mu.Lock()
-	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
-	rt.renter.mu.Unlock(id)
+	// Call managedBuildUnfinishedChunks as not stuck loop, since the file is
+	// now not repairable it should return no chunks
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
 	if len(uucs) != 0 {
 		t.Fatalf("Incorrect number of chunks returned, expected 0 got %v", len(uucs))
 	}
 
-	// Call buildUnfinishedChunks as stuck loop, all chunks should be returned
-	// because they should have been marked as stuck by the previous call and
-	// stuck chunks should still be returned if the file is not repairable
-	id = rt.renter.mu.Lock()
-	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
-	rt.renter.mu.Unlock(id)
+	// Call managedBuildUnfinishedChunks as stuck loop, all chunks should be
+	// returned because they should have been marked as stuck by the previous
+	// call and stuck chunks should still be returned if the file is not
+	// repairable
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
 	if len(uucs) != int(f.NumChunks()) {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", f.NumChunks(), len(uucs))
 	}
@@ -160,7 +154,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
 	for i := 0; i < int(f1.NumChunks()+f2.NumChunks()); i++ {
-		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
+		rt.renter.workerPool.workers[string([]byte{byte(i)})] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
@@ -352,7 +346,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
 	for i := 0; i < rsc.MinPieces(); i++ {
-		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
+		rt.renter.workerPool.workers[string([]byte{byte(i)})] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
@@ -423,7 +417,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
+		rt.renter.workerPool.workers[string([]byte{byte(i)})] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
