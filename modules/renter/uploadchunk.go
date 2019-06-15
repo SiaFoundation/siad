@@ -338,10 +338,6 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		// buffer.
 		buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 		n, err := buf.ReadFrom(chunk.sourceReader)
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return errors.AddContext(err, "failed to read chunk from source reader")
-		}
-
 		// Adjust the fileSize. Since we don't know the length of the stream
 		// beforehand we simply assume that a whole chunk will be added to the
 		// file. That's why we subtract the difference between the size of a
@@ -351,7 +347,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 			return errors.AddContext(errSize, "failed to adjust FileSize")
 		}
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return errors.AddContext(err, "failed to read chunk from sourceReader")
+			return errors.AddContext(err, "failed to read chunk from source reader")
 		}
 		chunk.logicalChunkData = buf.buf
 		return nil
