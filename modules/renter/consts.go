@@ -167,6 +167,17 @@ var (
 		Testing:  250 * time.Millisecond,
 	}).(time.Duration)
 
+	// repairLoopResetFrequency is the frequency with which the repair loop will
+	// reset entirely, pushing the root directory back on top. This is a
+	// temporary measure to ensure that even if a user is continuously
+	// uploading, the repair heap is occasionally reset to push the root
+	// directory on top.
+	repairLoopResetFrequency = build.Select(build.Var{
+		Dev:      15 * time.Minute,
+		Standard: 1 * time.Hour,
+		Testing:  40 * time.Second,
+	}).(time.Duration)
+
 	// repairStuckChunkInterval defines how long the renter sleeps between
 	// trying to repair a stuck chunk. The uploadHeap prioritizes stuck chunks
 	// so this interval is to allow time for unstuck chunks to be repaired.

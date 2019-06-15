@@ -133,7 +133,10 @@ func (dh *directoryHeap) managedPop() (d *directory) {
 }
 
 // managedPush will try to add a directory to the directory heap. If the
-// directory is added it will return true, otherwise it will return false.
+// directory already exists, the existing directory will be updated to have the
+// worst healths of the pushed directory and the existing directory. And if
+// either the existing directory or the pushed directory is marked as
+// unexplored, the updated directory will be marked as unexplored.
 func (dh *directoryHeap) managedPush(d *directory) {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()

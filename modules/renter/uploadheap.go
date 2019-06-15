@@ -989,9 +989,11 @@ func (r *Renter) threadedUploadAndRepair() {
 	// until woken up. If there is work required, the loop will begin to process
 	// the chunks and directories in the repair heaps.
 	//
-	// TODO: Currently it is possible to hit an edge condition where the heap is
-	// never actually reset if the user keeps slowly uploading files one at a
-	// time, such that the heap always has something to work on.
+	// After 'repairLoopResetFrequency', the repair loop will be reset. This
+	// adds a layer of robustness in case the repair loop gets stuck or can't
+	// work through the full heap quickly because the user keeps uploading new
+	// files and keeping a minimum number of chunks in the repair heap.
+	resetTime := time.Now().Add(repairLoopResetFrequency)
 	for {
 		// Return if the renter has shut down.
 		select {
@@ -1007,6 +1009,17 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 		// Refresh the worker set.
 		hosts := r.managedRefreshHostsAndWorkers()
+
+		// If enough time has elapsed to trigger a directory reset, reset the
+		// directory.
+		if time.Now().After(resetTime) {
+			resetTime = time.Now().Add(repairLoopResetFrequency)
+			r.directoryHeap.managedReset()
+			err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
+			if err != nil {
+				r.log.Println("WARN: error re-initializing the directory heap:", err)
+			}
+		}
 
 		// Add any chunks from the backup heap that need to be repaired. This
 		// needs to be handled separately because currently the filesystem for
@@ -1041,13 +1054,6 @@ func (r *Renter) threadedUploadAndRepair() {
 			case <-r.uploadHeap.newUploads:
 				r.log.Debugln("repair loop triggered by new upload channel")
 			case <-r.uploadHeap.repairNeeded:
-				// Since the repairNeeded channel is used by the stuck loop to
-				// indicate that a stuck chunk has been added to the uploadheap,
-				// we want to move straight to the repair instead of continuing
-				// to the next iteration of the for loop. If we continue to the
-				// next iteration of the repair loop we will end up back here as
-				// stuck chunks are not considered in the Health of the
-				// filesystem so the filesystem will still appear to be healthy.
 				r.log.Debugln("repair loop triggered by repair needed channel")
 			case <-r.tg.StopChan():
 				return
