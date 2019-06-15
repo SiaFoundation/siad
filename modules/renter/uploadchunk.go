@@ -332,10 +332,14 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// If a sourceReader is available, use it.
 	var err error
 	if chunk.sourceReader != nil {
-		// Read up to chunk.length bytes from the stream.
-		byteBuf := make([]byte, chunk.length)
-		n, err := io.ReadFull(chunk.sourceReader, byteBuf)
+		// Ensure that the source reader will be closed.
 		defer chunk.sourceReader.Close()
+		buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
+		n, err := buf.ReadFrom(chunk.sourceReader)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return errors.AddContext(err, "failed to read chunk from source reader")
+		}
+
 		// Adjust the fileSize. Since we don't know the length of the stream
 		// beforehand we simply assume that a whole chunk will be added to the
 		// file. That's why we subtract the difference between the size of a
@@ -347,14 +351,8 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 			return errors.AddContext(err, "failed to read chunk from sourceReader")
 		}
-		// Read the byteBuf into the sharded destination buffer.
-		buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
-		_, err = buf.ReadFrom(bytes.NewBuffer(byteBuf))
-		if err == nil || err == io.EOF || err == io.ErrUnexpectedEOF {
-			chunk.logicalChunkData = buf.buf
-			return nil
-		}
-		return errors.AddContext(err, "failed to get logicalChunkData from stream")
+		chunk.logicalChunkData = buf.buf
+		return nil
 	}
 
 	// Download the chunk if it's not on disk.
