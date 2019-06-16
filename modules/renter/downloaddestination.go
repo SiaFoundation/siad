@@ -63,13 +63,12 @@ func NewDownloadDestinationBuffer(length, pieceSize uint64) downloadDestinationB
 // ReadFrom reads data from a io.Reader until the buffer is full.
 func (dw downloadDestinationBuffer) ReadFrom(r io.Reader) (int64, error) {
 	var n int64
-	for len(dw.buf) > 0 {
-		read, err := io.ReadFull(r, dw.buf[0])
+	for _, bufI := range dw.buf {
+		read, err := io.ReadFull(r, bufI)
+		n += int64(read)
 		if err != nil {
 			return n, err
 		}
-		dw.buf = dw.buf[1:]
-		n += int64(read)
 	}
 	return n, nil
 }
