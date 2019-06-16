@@ -572,6 +572,7 @@ func (s *Session) ReadSection(root crypto.Hash, offset, length uint32) (_ module
 		MerkleProof: true,
 	}
 	var buf bytes.Buffer
+	buf.Grow(int(length))
 	contract, err := s.Read(&buf, req, nil)
 	return contract, buf.Bytes(), err
 }
