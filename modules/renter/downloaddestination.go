@@ -64,7 +64,8 @@ func NewDownloadDestinationBuffer(length, pieceSize uint64) downloadDestinationB
 func (dw downloadDestinationBuffer) ReadFrom(r io.Reader) (int64, error) {
 	var n int64
 	for i := 0; i < len(dw.buf); i++ {
-		read, err := io.ReadFull(r, dw.buf[0])
+	for _, bufI := range dw.buf {
+		read, err := io.ReadFull(r, bufI)
 		n += int64(read)
 		if err != nil {
 			return n, err
