@@ -550,9 +550,10 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	var worstIgnoredHealth float64
 	dirHeapHealth := r.directoryHeap.managedPeekHealth()
 	for _, file := range files {
-		// Check if file is a worse health than the directory heap
+		// For normal repairs check if file is a worse health than the directory
+		// heap
 		fileHealth := file.Metadata().CachedHealth
-		if fileHealth < dirHeapHealth {
+		if fileHealth < dirHeapHealth && target == targetUnstuckChunks {
 			worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
 			continue
 		}
@@ -563,7 +564,6 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file, hosts, target, offline, goodForRenew)
 		r.mu.Unlock(id)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
-			// Check if chunk has a worse health than the directory heap
 			chunk := unfinishedUploadChunks[i]
 			// Check to see the chunk is already in the upload heap
 			if r.uploadHeap.managedExists(chunk.id) {
@@ -577,7 +577,9 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 				continue
 			}
 
-			if chunk.health < dirHeapHealth {
+			// For normal repairs check if chunk has a worse health than the
+			// directory heap
+			if chunk.health < dirHeapHealth && target == targetUnstuckChunks {
 				// Track the health
 				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
 				// Close the file entry
@@ -591,8 +593,10 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 			// Add chunk to temp heap
 			heap.Push(&unfinishedChunkHeap, chunk)
 
-			// Check if temp heap is growing too large. We want to restrict it to
-			// twice the size of the max upload heap size
+			// Check if temp heap is growing too large. We want to restrict it
+			// to twice the size of the max upload heap size. This restriction
+			// should be applied to all repairs to prevent excessive memory
+			// usage.
 			if len(unfinishedChunkHeap) < maxUploadHeapChunks*2 {
 				continue
 			}
@@ -631,7 +635,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	// We now have a temporary heap of the worst chunks in the directory that
 	// are also worse than any other chunk in the directory heap. Now we try and
 	// add as many chunks as we can to the uploadHeap
-	for len(unfinishedChunkHeap) > 0 && r.uploadHeap.managedLen() < maxUploadHeapChunks {
+	for len(unfinishedChunkHeap) > 0 && (r.uploadHeap.managedLen() < maxUploadHeapChunks || target == targetBackupChunks) {
 		// Add chunk to the uploadHeap
 		chunk := heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
 		if !r.uploadHeap.managedPush(chunk) {
@@ -662,6 +666,12 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	err := unfinishedChunkHeap.reset()
 	if err != nil {
 		r.log.Println("WARN: error resetting the temporary upload heap:", err)
+	}
+
+	// Check if we were adding backup chunks, if so return here as backups are
+	// not added to the directory heap
+	if target == targetBackupChunks {
+		return
 	}
 
 	// Check if we should add the directory back to the directory heap
@@ -787,13 +797,17 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	// 'maxUploadHeapChunks' files in them, minimzing the impact of this code in
 	// the typical case.
 	//
+	// This check only applies to normal repairs. Stuck repairs have their own
+	// way of managing the number of chunks added to the heap and backup chunks
+	// should always be added.
+	//
 	// v1.4.1 Benchmark: on a computer with an SSD, the time to sort 6,000 files
 	// is less than 50 milliseconds, while the time to process 250 files with 40
 	// chunks each using 'managedBuildAndPushChunks' is several seconds. Even in
 	// the worst case, where we are sorting 251 files with 1 chunk each, there
 	// is not much slowdown compared to skipping the sort, because the sort is
 	// so fast.
-	if len(files) > maxUploadHeapChunks {
+	if len(files) > maxUploadHeapChunks && target == targetUnstuckChunks {
 		// Sort so that the highest health chunks will be first in the array.
 		// Higher health values equal worse health for the file, and we want to
 		// focus on the worst files.
