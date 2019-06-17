@@ -22,9 +22,9 @@ import (
 // uploading and downloading with flaky hosts in the worker sets has
 // substantially reduced overall performance and throughput.
 type worker struct {
-	// The hostPubKey also serves as an id for the worker, as there is only one
-	// worker per host.
-	hostPubKey types.SiaPublicKey
+	// The host pub key also serves as an id for the worker, as there is only
+	// one worker per host.
+	staticHostPubKey types.SiaPublicKey
 
 	// Download variables that are not protected by a mutex, but also do not
 	// need to be protected by a mutex, as they are only accessed by the master
@@ -137,7 +137,7 @@ func (wp *workerPool) managedUpdate() {
 		_, exists := wp.workers[id]
 		if !exists {
 			w := &worker{
-				hostPubKey: contract.HostPublicKey,
+				staticHostPubKey: contract.HostPublicKey,
 
 				downloadChan: make(chan struct{}, 1),
 				killChan:     make(chan struct{}),
@@ -182,7 +182,7 @@ func (wp *workerPool) managedUpdate() {
 		if onCoolDown {
 			totalCoolDown++
 		}
-		wp.renter.log.Debugf("Worker %v is GoodForUpload %v for contract %v\n    and is on uploadCooldown %v for %v because of %v", worker.hostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
+		wp.renter.log.Debugf("Worker %v is GoodForUpload %v for contract %v\n    and is on uploadCooldown %v for %v because of %v", worker.staticHostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
 		worker.mu.Unlock()
 	}
 	wp.renter.log.Debugf("Refreshed Worker Pool has %v total workers and %v are on cooldown", len(wp.workers), totalCoolDown)
