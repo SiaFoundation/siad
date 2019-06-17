@@ -664,6 +664,12 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		r.log.Println("WARN: error resetting the temporary upload heap:", err)
 	}
 
+	// Check if we were adding backup chunks, if so return here as backups are
+	// not added to the directory heap
+	if target == targetBackupChunks {
+		return
+	}
+
 	// Check if we should add the directory back to the directory heap
 	if worstIgnoredHealth < RepairThreshold {
 		return
