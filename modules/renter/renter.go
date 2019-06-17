@@ -616,6 +616,18 @@ func (r *Renter) ActiveHosts() []modules.HostDBEntry { return r.hostDB.ActiveHos
 // AllHosts returns an array of all hosts
 func (r *Renter) AllHosts() []modules.HostDBEntry { return r.hostDB.AllHosts() }
 
+// Filter returns the renter's hostdb's filterMode and filteredHosts
+func (r *Renter) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
+	var fm modules.FilterMode
+	hosts := make(map[string]types.SiaPublicKey)
+	if err := r.tg.Add(); err != nil {
+		return fm, hosts, err
+	}
+	defer r.tg.Done()
+	fm, hosts = r.hostDB.Filter()
+	return fm, hosts, nil
+}
+
 // SetFilterMode sets the renter's hostdb filter mode
 func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error {
 	if err := r.tg.Add(); err != nil {

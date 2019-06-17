@@ -26,6 +26,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create file on disk
 	path, err := rt.createZeroByteFileOnDisk()
@@ -133,6 +134,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create 2 files
 	rsc, _ := siafile.NewRSCode(1, 1)
@@ -216,6 +218,7 @@ func TestUploadHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Add chunks to heap. Chunks are prioritize by stuck status first and then
 	// by piecesComplete/piecesNeeded
@@ -295,6 +298,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create File params
 	_, rsc := testingFileParams()
@@ -389,6 +393,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create file
 	rsc, _ := siafile.NewRSCode(1, 1)
