@@ -121,6 +121,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/hostdb/active", api.hostdbActiveHandler)
 		router.GET("/hostdb/all", api.hostdbAllHandler)
 		router.GET("/hostdb/hosts/:pubkey", api.hostdbHostsHandler)
+		router.GET("/hostdb/filtermode", api.hostdbFilterModeHandlerGET)
 		router.POST("/hostdb/filtermode", RequirePassword(api.hostdbFilterModeHandlerPOST, requiredPassword))
 
 		// Deprecated endpoints.

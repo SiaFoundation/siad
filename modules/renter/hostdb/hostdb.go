@@ -439,6 +439,14 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	}
 	// Check if disabling
 	if fm == modules.HostDBDisableFilter {
+		// Reset filtered field for hosts
+		for _, pk := range hdb.filteredHosts {
+			err := hdb.hostTree.SetFiltered(pk, false)
+			if err != nil {
+				hdb.log.Println("Unable to mark entry as not filtered:", err)
+			}
+		}
+		// Reset filtered fields
 		hdb.filteredTree = hdb.hostTree
 		hdb.filteredHosts = make(map[string]types.SiaPublicKey)
 		hdb.filterMode = fm
@@ -457,10 +465,17 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	// Create filteredHosts map
 	filteredHosts := make(map[string]types.SiaPublicKey)
 	for _, h := range hosts {
+		// Add host to filtered host map
 		if _, ok := filteredHosts[h.String()]; ok {
 			continue
 		}
 		filteredHosts[h.String()] = h
+
+		// Update host in unfiltered hosttree
+		err := hdb.hostTree.SetFiltered(h, true)
+		if err != nil {
+			hdb.log.Println("Unable to mark entry as filtered:", err)
+		}
 	}
 	var allErrs error
 	allHosts := hdb.hostTree.All()

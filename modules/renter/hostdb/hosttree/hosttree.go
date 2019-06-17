@@ -250,6 +250,16 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 	return nil
 }
 
+// SetFiltered updates a host entry filtered field.
+func (ht *HostTree) SetFiltered(pubKey types.SiaPublicKey, filtered bool) error {
+	entry, ok := ht.Select(pubKey)
+	if !ok {
+		return ErrNoSuchHost
+	}
+	entry.Filtered = filtered
+	return ht.Modify(entry)
+}
+
 // SetWeightFunction resets the HostTree and assigns it a new weight
 // function. This resets the tree and reinserts all the hosts.
 func (ht *HostTree) SetWeightFunction(wf WeightFunc) error {
