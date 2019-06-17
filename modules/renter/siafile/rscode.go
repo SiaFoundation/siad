@@ -54,6 +54,12 @@ func (rs *RSCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	return pieces, nil
 }
 
+// Reconstruct recovers the full set of encoded shards from the provided pieces,
+// of which at least MinPieces must be non-nil.
+func (rs *RSCode) Reconstruct(pieces [][]byte) error {
+	return rs.enc.Reconstruct(pieces)
+}
+
 // Recover recovers the original data from pieces and writes it to w.
 // pieces should be identical to the slice returned by Encode (length and
 // order must be preserved), but with missing elements set to nil.

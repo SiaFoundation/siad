@@ -19,74 +19,106 @@ package renter
 import (
 	"errors"
 	"io"
+	"os"
 	"sync"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// downloadDestination is a wrapper for the different types of writing that we
-// can do when recovering and writing the logical data of a file. The wrapper
-// needs to convert the various write-at calls into writes that make sense to
-// the underlying file, buffer, or stream.
+// skipWriter is a helper type that ignores the first 'skip' bytes written to it.
+type skipWriter struct {
+	w    io.Writer
+	skip int
+}
+
+func (sw *skipWriter) Write(p []byte) (int, error) {
+	if sw.skip == 0 {
+		return sw.w.Write(p)
+	} else if sw.skip > len(p) {
+		sw.skip -= len(p)
+		return len(p), nil
+	}
+	n, err := sw.w.Write(p[sw.skip:])
+	n += sw.skip
+	sw.skip = 0
+	return n, err
+}
+
+// downloadDestination is the interface that receives the data recovered by the
+// download process. The call to WritePieces is in `threadedRecoverLogicalData`.
 //
-// For example, if the underlying object is a file, the WriteAt call is just a
-// passthrough function. But if the underlying object is a stream, WriteAt may
-// block while it waits for previous data to be written.
+// The downloadDestination interface takes a bunch of pieces because different
+// types of destinations will prefer receiving pieces over receiving continuous
+// data. The destinations that prefer taking continuous data can have the
+// WritePieces method of the interface convert the pieces into continuous data.
 type downloadDestination interface {
-	WriteAt(data []byte, offset int64) (int, error)
+	// WritePieces takes the set of pieces from the chunk as input. There should
+	// be at least `minPieces` pieces, but they do not need to be the data
+	// pieces - the downloadDestination can check and determine if a recovery is
+	// required.
+	//
+	// The pieces are provided decrypted. If we did not need to decrypt the
+	// data, there would be little point in fetching the data.
+	WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, writeOffset int64, length uint64) error
 }
 
 // downloadDestinationBuffer writes logical chunk data to an in-memory buffer.
 // This buffer is primarily used when performing repairs on uploads.
 type downloadDestinationBuffer struct {
-	buf       [][]byte
-	pieceSize uint64
+	pieces [][]byte
 }
 
 // NewDownloadDestinationBuffer allocates the necessary number of shards for
 // the downloadDestinationBuffer and returns the new buffer.
-func NewDownloadDestinationBuffer(length, pieceSize uint64) downloadDestinationBuffer {
-	// Round length up to next multiple of SectorSize.
-	if length%pieceSize != 0 {
-		length += pieceSize - length%pieceSize
+func NewDownloadDestinationBuffer(numPieces int, pieceSize uint64) *downloadDestinationBuffer {
+	pieces := make([][]byte, numPieces)
+	for i := range pieces {
+		pieces[i] = make([]byte, 0, pieceSize)
 	}
-	// Create buffer
-	ddb := downloadDestinationBuffer{
-		buf:       make([][]byte, 0, length/pieceSize),
-		pieceSize: pieceSize,
+	return &downloadDestinationBuffer{
+		pieces: pieces,
 	}
-	for length > 0 {
-		ddb.buf = append(ddb.buf, make([]byte, pieceSize))
-		length -= pieceSize
-	}
-	return ddb
 }
 
-// ReadFrom reads data from a io.Reader until the buffer is full.
-func (dw downloadDestinationBuffer) ReadFrom(r io.Reader) (int64, error) {
-	var n int64
-	for _, bufI := range dw.buf {
-		read, err := io.ReadFull(r, bufI)
-		n += int64(read)
-		if err != nil {
-			return n, err
+// ReadPieces reads data pieces from the supplied io.Reader, returning the
+// number of bytes read.
+func (dw *downloadDestinationBuffer) ReadPieces(ec modules.ErasureCoder, r io.Reader) (int64, error) {
+	// read data shards, then encode; this is necessary because the rssubcode
+	// arranges data in shards differently than the normal rscode.
+	var total int64
+	for i, p := range dw.pieces[:ec.MinPieces()] {
+		p := p[:cap(p)]
+		n, err := io.ReadFull(r, p)
+		total += int64(n)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return total, err
 		}
+		dw.pieces[i] = p
 	}
-	return n, nil
+	dw.pieces, _ = ec.EncodeShards(dw.pieces[:ec.MinPieces()])
+	return total, nil
 }
 
-// WriteAt writes the provided data to the downloadDestinationBuffer.
-func (dw downloadDestinationBuffer) WriteAt(data []byte, offset int64) (int, error) {
-	if uint64(len(data))+uint64(offset) > uint64(len(dw.buf))*dw.pieceSize || offset < 0 {
-		return 0, errors.New("write at specified offset exceeds buffer size")
+// WritePieces copies the provided pieces into the buffer without decoding them.
+func (dw *downloadDestinationBuffer) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
+	for i := range pieces {
+		dw.pieces[i] = append(dw.pieces[i][:0], pieces[i]...)
 	}
-	written := len(data)
-	for len(data) > 0 {
-		shardIndex := offset / int64(dw.pieceSize)
-		sliceIndex := offset % int64(dw.pieceSize)
-		n := copy(dw.buf[shardIndex][sliceIndex:], data)
-		data = data[n:]
-		offset += int64(n)
+	return nil
+}
+
+// downloadDestinationFile wraps an os.File into a downloadDestination.
+type downloadDestinationFile struct {
+	f *os.File
+}
+
+// WritePieces will decode the pieces and write them to a file at the provided
+// offset, using the provided length.
+func (ddf *downloadDestinationFile) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
+	if _, err := ddf.f.Seek(offset, io.SeekStart); err != nil {
+		return err
 	}
-	return written, nil
+	return ec.Recover(pieces, dataOffset+length, &skipWriter{w: ddf.f, skip: int(dataOffset)})
 }
 
 // downloadDestinationWriter is a downloadDestination that writes to an
@@ -164,36 +196,36 @@ func (ddw *downloadDestinationWriter) Close() error {
 	return nil
 }
 
-// WriteAt will block until the stream has progressed to 'offset', and then it
-// will write its own data. An error will be returned if the stream has already
-// progressed beyond 'offset'.
-func (ddw *downloadDestinationWriter) WriteAt(data []byte, offset int64) (int, error) {
-	write := func() (int, error) {
+// WritePieces will block until the stream has progressed to 'offset', and then
+// decode the pieces and write them. An error will be returned if the stream has
+// already progressed beyond 'offset'.
+func (ddw *downloadDestinationWriter) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
+	write := func() error {
 		// Error if the stream has been closed.
 		if ddw.closed {
-			return 0, errClosedStream
+			return errClosedStream
 		}
 		// Error if the stream has progressed beyond 'offset'.
 		if offset < ddw.progress {
 			ddw.mu.Unlock()
-			return 0, errOffsetAlreadyWritten
+			return errOffsetAlreadyWritten
 		}
 
 		// Write the data to the stream, and the update the progress and unblock
 		// the next write.
-		n, err := ddw.Write(data)
-		ddw.progress += int64(n)
+		err := ec.Recover(pieces, dataOffset+length, &skipWriter{w: ddw, skip: int(dataOffset)})
+		ddw.progress += int64(length)
 		ddw.unblockNextWrites()
-		return n, err
+		return err
 	}
 
 	ddw.mu.Lock()
 	// Attempt to write if the stream progress is at or beyond the offset. The
 	// write call will perform error handling.
 	if offset <= ddw.progress {
-		n, err := write()
+		err := write()
 		ddw.mu.Unlock()
-		return n, err
+		return err
 	}
 
 	// The stream has not yet progressed to 'offset'. We will block until the
@@ -213,7 +245,7 @@ func (ddw *downloadDestinationWriter) WriteAt(data []byte, offset int64) (int, e
 	ddw.mu.Unlock()
 	myMu.Lock()
 	ddw.mu.Lock()
-	n, err := write()
+	err := write()
 	ddw.mu.Unlock()
-	return n, err
+	return err
 }
