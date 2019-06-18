@@ -33,7 +33,10 @@ hosts for changes so that if a host changes its settings or goes offline the
 Renter is notified and can have its Contractor adjust any contracts accordingly.
 
 ### Proto
-TODO - Chris
+The proto package implements the renter's half of the renter-host protocol,
+including contract formation and renewal, uploading and downloading, verifying
+Merkle proofs, and synchronizing revision states. It is a low-level package
+whose functionality is largely wrapped by the Contractor.
 
 ### SiaDir
 The SiaDir package is the code that defines what a directory is on the Sia network.
