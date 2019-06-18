@@ -158,9 +158,13 @@ and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w r
 	}
 
 	renterSetAllowanceCmd = &cobra.Command{
-		Use:   "setallowance --amount [amount] --period [period] --hosts [hosts] --renew-window [renew window]",
+		Use:   "setallowance",
 		Short: "Set the allowance",
 		Long: `Set the amount of money that can be spent over a given period.
+
+If no flags are set you will be walked through the interactive allowance
+setting. To update only certain fields, pass in those values with the
+cooresponding field flag, for example '--amount 500SC'.
 
 Allowance can be automatically renewed periodically. If the current
 blockheight + the renew window >= the end height the contract,
@@ -438,16 +442,6 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		die("Could not get renter settings")
 	}
 
-	if allowanceInteractive {
-		req := httpClient.RenterPostPartialAllowance()
-		req = rentersetallowancecmdInteractive(req, rg.Settings.Allowance)
-		if err := req.Send(); err != nil {
-			die("Could not set allowance:", err)
-		}
-		fmt.Println("Allowance updated")
-		return
-	}
-
 	req := httpClient.RenterPostPartialAllowance()
 	changedFields := 0
 	period := rg.Settings.Allowance.Period
@@ -560,7 +554,13 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	}
 	// check if any fields were updated.
 	if changedFields == 0 {
-		fmt.Println("No flags specified. Allowance not updated.")
+		// If no fields were set then walk the user through the interactive
+		// allowance setting
+		req = rentersetallowancecmdInteractive(req, rg.Settings.Allowance)
+		if err := req.Send(); err != nil {
+			die("Could not set allowance:", err)
+		}
+		fmt.Println("Allowance updated")
 		return
 	}
 	// check for required initial fields
