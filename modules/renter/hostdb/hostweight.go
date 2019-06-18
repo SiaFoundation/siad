@@ -307,15 +307,15 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 // much storage it has remaining.
 func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowance modules.Allowance) float64 {
 	// Determine how much data the renter is storing on this host.
-	var storedData uint64
+	var storedData float64
 	if ci, exists := hdb.knownContracts[entry.PublicKey.String()]; exists {
-		storedData = ci.StoredData
+		storedData = float64(ci.StoredData)
 	}
 
 	// idealDataPerHost is the amount of data that we would have to put on each
 	// host assuming that our storage requirements were spread evenly across
 	// every single host.
-	idealDataPerHost := allowance.ExpectedStorage*allowance.ExpectedRedundancy/allowance.Hosts
+	idealDataPerHost := float64(allowance.ExpectedStorage) * allowance.ExpectedRedundancy / float64(allowance.Hosts)
 	// allocationPerHost is the amount of data that we would like to be able to
 	// put on each host, because data is not always spread evenly across the
 	// hosts during upload. Slower hosts may get very little data, more
@@ -326,7 +326,7 @@ func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowa
 	// hostExpectedStorage is the amount of storage that we expect to be able to
 	// store on this host overall, which should include the stored data that is
 	// already on the host.
-	hostExpectedStorage = (entry.RemainingStorage * storageCompetitionFactor) + storedData
+	hostExpectedStorage := (float64(entry.RemainingStorage) * storageCompetitionFactor) + storedData
 	// The score fore the host is the square of the amount of storage we
 	// expected divided by the amount of storage we want. If we expect to be
 	// able to store more data on the host than we need to allocate, the host
