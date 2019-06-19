@@ -132,8 +132,8 @@ func (wp *workerPool) managedUpdate() {
 	}
 
 	// Add a worker for any contract that does not already have a worker.
+	wp.mu.Lock()
 	for id, contract := range contractMap {
-		wp.mu.Lock()
 		_, exists := wp.workers[id]
 		if !exists {
 			w := &worker{
@@ -157,8 +157,8 @@ func (wp *workerPool) managedUpdate() {
 				w.threadedWorkLoop()
 			}()
 		}
-		wp.mu.Unlock()
 	}
+	wp.mu.Unlock()
 
 	// Remove a worker for any worker that is not in the set of new contracts.
 	totalCoolDown := 0
