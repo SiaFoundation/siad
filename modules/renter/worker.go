@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -131,8 +132,11 @@ func (wp *workerPool) managedUpdate() {
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 
-	// Add a worker for any contract that does not already have a worker.
+	// Lock the worker pool for the duration of updating its fields.
 	wp.mu.Lock()
+	defer wp.mu.Unlock()
+
+	// Add a worker for any contract that does not already have a worker.
 	for id, contract := range contractMap {
 		_, exists := wp.workers[id]
 		if !exists {
@@ -149,7 +153,6 @@ func (wp *workerPool) managedUpdate() {
 			if err := wp.renter.tg.Add(); err != nil {
 				// Renter shutdown is happening, abort the loop to create more
 				// workers.
-				wp.mu.Unlock()
 				break
 			}
 			go func() {
@@ -158,17 +161,14 @@ func (wp *workerPool) managedUpdate() {
 			}()
 		}
 	}
-	wp.mu.Unlock()
 
 	// Remove a worker for any worker that is not in the set of new contracts.
 	totalCoolDown := 0
-	wp.mu.Lock()
 	for id, worker := range wp.workers {
 		select {
 		case <-wp.renter.tg.StopChan():
 			// Release the lock and return to prevent error of trying to close
 			// the worker channel after a shutdown
-			wp.mu.Unlock()
 			return
 		default:
 		}
@@ -177,16 +177,21 @@ func (wp *workerPool) managedUpdate() {
 			delete(wp.workers, id)
 			close(worker.killChan)
 		}
-		worker.mu.Lock()
-		onCoolDown, coolDownTime := worker.onUploadCooldown()
-		if onCoolDown {
-			totalCoolDown++
+
+		// A lock is grabbed on the worker to fetch some info for a debugging
+		// statement. build.DEBUG is used so that worker lock contention is not
+		// introduced needlessly.
+		if build.DEBUG {
+			worker.mu.Lock()
+			onCoolDown, coolDownTime := worker.onUploadCooldown()
+			if onCoolDown {
+				totalCoolDown++
+			}
+			wp.renter.log.Debugf("Worker %v is GoodForUpload %v for contract %v\n    and is on uploadCooldown %v for %v because of %v", worker.staticHostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
+			worker.mu.Unlock()
 		}
-		wp.renter.log.Debugf("Worker %v is GoodForUpload %v for contract %v\n    and is on uploadCooldown %v for %v because of %v", worker.staticHostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
-		worker.mu.Unlock()
 	}
 	wp.renter.log.Debugf("Refreshed Worker Pool has %v total workers and %v are on cooldown", len(wp.workers), totalCoolDown)
-	wp.mu.Unlock()
 }
 
 // newWorkerPool will initialize and return a worker pool.
