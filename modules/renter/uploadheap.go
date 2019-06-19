@@ -301,9 +301,9 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chu
 func (r *Renter) managedBuildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
 	// If we don't have enough workers for the file, don't repair it right now.
 	minPieces := entry.ErasureCode().MinPieces()
-	r.workerPool.mu.RLock()
-	workerPoolLen := len(r.workerPool.workers)
-	r.workerPool.mu.RUnlock()
+	r.staticWorkerPool.mu.RLock()
+	workerPoolLen := len(r.staticWorkerPool.workers)
+	r.staticWorkerPool.mu.RUnlock()
 	if workerPoolLen < minPieces {
 		// There are not enough workers for the chunk to reach minimum
 		// redundancy. Check if the allowance has enough hosts for the chunk to
@@ -871,7 +871,7 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 		hosts[contract.HostPublicKey.String()] = struct{}{}
 	}
 	// Refresh the worker pool as well.
-	r.workerPool.managedUpdate()
+	r.staticWorkerPool.managedUpdate()
 	return hosts
 }
 
@@ -917,9 +917,9 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy.
-		r.workerPool.mu.RLock()
-		availableWorkers := len(r.workerPool.workers)
-		r.workerPool.mu.RUnlock()
+		r.staticWorkerPool.mu.RLock()
+		availableWorkers := len(r.staticWorkerPool.workers)
+		r.staticWorkerPool.mu.RUnlock()
 		if availableWorkers < nextChunk.minimumPieces {
 			// If the chunk is not stuck, check whether there are enough hosts
 			// in the allowance to support the chunk.

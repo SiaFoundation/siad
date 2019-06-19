@@ -186,9 +186,9 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 
 	// Check if we currently have enough workers for the specified redundancy.
 	minWorkers := entry.ErasureCode().MinPieces()
-	r.workerPool.mu.RLock()
-	availableWorkers := len(r.workerPool.workers)
-	r.workerPool.mu.RUnlock()
+	r.staticWorkerPool.mu.RLock()
+	availableWorkers := len(r.staticWorkerPool.workers)
+	r.staticWorkerPool.mu.RUnlock()
 	if availableWorkers < minWorkers {
 		return fmt.Errorf("Need at least %v workers for upload but got only %v",
 			minWorkers, availableWorkers)

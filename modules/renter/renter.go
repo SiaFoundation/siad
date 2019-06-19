@@ -243,7 +243,7 @@ type Renter struct {
 	tg               threadgroup.ThreadGroup
 	tpool            modules.TransactionPool
 	wal              *writeaheadlog.WAL
-	workerPool       *workerPool
+	staticWorkerPool *workerPool
 }
 
 // Close closes the Renter and its dependencies
@@ -574,7 +574,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 
 	// Update the worker pool so that the changes are immediately apparent to
 	// users.
-	r.workerPool.managedUpdate()
+	r.staticWorkerPool.managedUpdate()
 	return nil
 }
 
@@ -814,7 +814,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// heap for the repair process.
 	r.managedPushUnexploredDirectory(modules.RootSiaPath())
 	// After persist is initialized, create the worker pool.
-	r.workerPool = r.newWorkerPool()
+	r.staticWorkerPool = r.newWorkerPool()
 
 	// Load and execute bubble updates
 	if err := r.loadAndExecuteBubbleUpdates(); err != nil {

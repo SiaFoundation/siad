@@ -62,7 +62,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.workerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
@@ -156,7 +156,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
 	for i := 0; i < int(f1.NumChunks()+f2.NumChunks()); i++ {
-		rt.renter.workerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
@@ -350,7 +350,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
 	for i := 0; i < rsc.MinPieces(); i++ {
-		rt.renter.workerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
@@ -422,7 +422,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.workerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
