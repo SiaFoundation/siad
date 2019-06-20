@@ -398,7 +398,16 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 	// Check if bubble is needed
 	proceedWithBubble := r.managedPrepareBubble(siaPath)
 	if !proceedWithBubble {
-		return nil
+		// Update the AggregateLastHealthCheckTime even if we weren't able to bubble
+		// right away.
+		entry, err := r.staticDirSet.Open(siaPath)
+		if err != nil {
+			return err
+		}
+		defer entry.Close()
+		md := entry.Metadata()
+		md.AggregateLastHealthCheckTime = time.Now()
+		return entry.UpdateMetadata(md)
 	}
 	return r.managedPerformBubbleMetadata(siaPath)
 }
