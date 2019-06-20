@@ -37,21 +37,21 @@ spellcheck:
 
 # debug builds and installs debug binaries.
 debug:
-	go install -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GO111MODULE=on go install -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 debug-race:
-	go install -race -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GO111MODULE=on go install -race -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
 # dev builds and installs developer binaries.
 dev:
-	go install -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GO111MODULE=on go install -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 dev-race:
-	go install -race -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GO111MODULE=on go install -race -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
 # release builds and installs release binaries.
 release:
-	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
+	GO111MODULE=on go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
 release-race:
-	go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
+	GO111MODULE=on go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
 
 # clean removes all directories that get automatically created during
 # development.
@@ -59,21 +59,21 @@ clean:
 	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf release 
 
 test:
-	go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run)
+	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run)
 test-v:
-	go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run)
+	GO111MODULE=on go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run)
 test-long: clean fmt vet lint
 	@mkdir -p cover
-	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug netgo' -timeout=1800s $(pkgs) -run=$(run)
+	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug netgo' -timeout=1800s $(pkgs) -run=$(run)
 test-vlong: clean fmt vet lint
 	@mkdir -p cover
-	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run)
+	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run)
 test-cpu:
-	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run)
+	GO111MODULE=on go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run)
 test-mem:
-	go test -v -tags='testing debug netgo' -timeout=500s -memprofile mem.prof $(pkgs) -run=$(run)
+	GO111MODULE=on go test -v -tags='testing debug netgo' -timeout=500s -memprofile mem.prof $(pkgs) -run=$(run)
 bench: clean fmt
-	go test -tags='debug testing netgo' -timeout=500s -run=XXX -bench=$(run) $(pkgs)
+	GO111MODULE=on go test -tags='debug testing netgo' -timeout=500s -run=XXX -bench=$(run) $(pkgs)
 cover: clean
 	@mkdir -p cover
 	@for package in $(pkgs); do                                                                                                          \
