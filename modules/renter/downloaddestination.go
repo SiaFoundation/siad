@@ -31,6 +31,8 @@ type skipWriter struct {
 	skip int
 }
 
+// Write will write bytes to the skipWriter, being sure to skip over any bytes
+// which the skipWriter was initialized to skip
 func (sw *skipWriter) Write(p []byte) (int, error) {
 	if sw.skip == 0 {
 		return sw.w.Write(p)
