@@ -80,25 +80,6 @@ func NewDownloadDestinationBuffer(numPieces int, pieceSize uint64) *downloadDest
 	}
 }
 
-// ReadPieces reads data pieces from the supplied io.Reader, returning the
-// number of bytes read.
-func (dw *downloadDestinationBuffer) ReadPieces(ec modules.ErasureCoder, r io.Reader) (int64, error) {
-	// read data shards, then encode; this is necessary because the rssubcode
-	// arranges data in shards differently than the normal rscode.
-	var total int64
-	for i, p := range dw.pieces[:ec.MinPieces()] {
-		p := p[:cap(p)]
-		n, err := io.ReadFull(r, p)
-		total += int64(n)
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return total, err
-		}
-		dw.pieces[i] = p
-	}
-	dw.pieces, _ = ec.EncodeShards(dw.pieces[:ec.MinPieces()])
-	return total, nil
-}
-
 // WritePieces copies the provided pieces into the buffer without decoding them.
 func (dw *downloadDestinationBuffer) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
 	for i := range pieces {

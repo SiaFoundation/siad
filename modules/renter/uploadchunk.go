@@ -124,6 +124,26 @@ func (uc *unfinishedUploadChunk) chunkComplete() bool {
 	return false
 }
 
+// readLogicalData initializes the chunk's logicalChunkData using data read from
+// r, returning the number of bytes read.
+func (uc *unfinishedUploadChunk) readLogicalData(r io.Reader) (uint64, error) {
+	// Allocate data pieces and fill them with data from r.
+	ec := uc.fileEntry.ErasureCode()
+	dataPieces := make([][]byte, ec.MinPieces())
+	var total uint64
+	for i := range dataPieces {
+		dataPieces[i] = make([]byte, uc.fileEntry.PieceSize())
+		n, err := io.ReadFull(r, dataPieces[i])
+		total += uint64(n)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return total, errors.AddContext(err, "failed to read chunk from source reader")
+		}
+	}
+	// Encode the data pieces, forming the chunk's logical data.
+	uc.logicalChunkData, _ = ec.EncodeShards(dataPieces)
+	return total, nil
+}
+
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
 // physical data and distribute it to the worker pool.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
@@ -330,28 +350,20 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 // light as possible.
 func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
 	// If a sourceReader is available, use it.
-	var err error
 	if chunk.sourceReader != nil {
-		// Ensure that the source reader will be closed.
 		defer chunk.sourceReader.Close()
-
-		// Read the data from the source reader into a download destination
-		// buffer.
-		rs := chunk.fileEntry.ErasureCode()
-		buf := NewDownloadDestinationBuffer(rs.NumPieces(), chunk.fileEntry.PieceSize())
-		n, err := buf.ReadPieces(rs, chunk.sourceReader)
-		// Adjust the fileSize. Since we don't know the length of the stream
+		n, err := chunk.readLogicalData(chunk.sourceReader)
+		if err != nil {
+			return err
+		}
+		// Adjust the filesize. Since we don't know the length of the stream
 		// beforehand we simply assume that a whole chunk will be added to the
 		// file. That's why we subtract the difference between the size of a
 		// chunk and n here.
-		adjustedSize := chunk.fileEntry.Size() - chunk.length + uint64(n)
+		adjustedSize := chunk.fileEntry.Size() - chunk.length + n
 		if errSize := chunk.fileEntry.SetFileSize(adjustedSize); errSize != nil {
 			return errors.AddContext(errSize, "failed to adjust FileSize")
 		}
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return errors.AddContext(err, "failed to read chunk from source reader")
-		}
-		chunk.logicalChunkData = buf.pieces
 		return nil
 	}
 
@@ -360,27 +372,21 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		return r.managedDownloadLogicalChunkData(chunk)
 	}
 
-	// Try to read the data from disk. If that fails at any point, prefer to
-	// download the chunk.
-	osFile, err := os.Open(chunk.fileEntry.LocalPath())
+	// Try to read the data from disk. If that fails, fallback to downloading.
+	err := func() error {
+		osFile, err := os.Open(chunk.fileEntry.LocalPath())
+		if err != nil {
+			return err
+		}
+		defer osFile.Close()
+		sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
+		_, err = chunk.readLogicalData(sr)
+		return err
+	}()
 	if err != nil {
-		return r.managedDownloadLogicalChunkData(chunk)
-	}
-	defer osFile.Close()
-	// TODO: Once we have enabled support for small chunks, we should stop
-	// needing to ignore the EOF errors, because the chunk size should always
-	// match the tail end of the file. Until then, we ignore io.EOF.
-	sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
-	rs := chunk.fileEntry.ErasureCode()
-	buf := NewDownloadDestinationBuffer(rs.NumPieces(), chunk.fileEntry.PieceSize())
-	_, err = buf.ReadPieces(rs, sr)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		r.log.Debugln("failed to read file, downloading instead:", err)
 		return r.managedDownloadLogicalChunkData(chunk)
 	}
-	chunk.logicalChunkData = buf.pieces
-
-	// Data successfully read from disk.
 	return nil
 }
 
