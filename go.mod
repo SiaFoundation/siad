@@ -8,7 +8,7 @@ require (
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
 	github.com/julienschmidt/httprouter v1.2.0
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0
-	github.com/karrick/godirwalk v1.10.3
+	github.com/karrick/godirwalk v1.10.12
 	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/klauspost/reedsolomon v1.9.2
 	github.com/pkg/errors v0.8.1 // indirect
@@ -26,4 +26,7 @@ require (
 	golang.org/x/crypto v0.0.0-20190530122614-20be4c3c3ed5
 )
 
-replace github.com/coreos/bbolt => ./vendor/github.com/coreos/bbolt
+replace (
+	github.com/coreos/bbolt => ./vendor/github.com/coreos/bbolt
+	github.com/xtaci/smux => ./vendor/github.com/xtaci/smux
+)
