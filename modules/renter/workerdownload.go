@@ -59,7 +59,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 
 	// Fetch the sector. If fetching the sector fails, the worker needs to be
 	// unregistered with the chunk.
-	d, err := w.renter.hostContractor.Downloader(w.contract.HostPublicKey, w.renter.tg.StopChan())
+	d, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
 		w.renter.log.Debugln("worker failed to create downloader:", err)
 		udc.managedUnregisterWorker(w)
@@ -67,7 +67,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	}
 	defer d.Close()
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
-	root := udc.staticChunkMap[w.contract.HostPublicKey.String()].root
+	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
 	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
@@ -84,7 +84,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	// Decrypt the piece. This might introduce some overhead for downloads with
 	// a large overdrive. It shouldn't be a bottleneck though since bandwidth
 	// is usually a lot more scarce than CPU processing power.
-	pieceIndex := udc.staticChunkMap[w.contract.HostPublicKey.String()].index
+	pieceIndex := udc.staticChunkMap[w.staticHostPubKey.String()].index
 	key := udc.masterKey.Derive(udc.staticChunkIndex, pieceIndex)
 	decryptedPiece, err := key.DecryptBytesInPlace(pieceData, uint64(fetchOffset/crypto.SegmentSize))
 	if err != nil {
@@ -180,7 +180,7 @@ func (w *worker) managedQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 func (udc *unfinishedDownloadChunk) managedUnregisterWorker(w *worker) {
 	udc.mu.Lock()
 	udc.piecesRegistered--
-	udc.pieceUsage[udc.staticChunkMap[w.contract.HostPublicKey.String()].index] = false
+	udc.pieceUsage[udc.staticChunkMap[w.staticHostPubKey.String()].index] = false
 	udc.mu.Unlock()
 }
 
@@ -207,7 +207,7 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	udc.mu.Lock()
 	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces() || udc.download.staticComplete()
 	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
-	pieceData, workerHasPiece := udc.staticChunkMap[w.contract.HostPublicKey.String()]
+	pieceData, workerHasPiece := udc.staticChunkMap[w.staticHostPubKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
 	if chunkComplete || chunkFailed || w.ownedOnDownloadCooldown() || !workerHasPiece || pieceCompleted {
 		udc.mu.Unlock()
