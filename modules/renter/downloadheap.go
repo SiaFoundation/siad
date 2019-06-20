@@ -121,14 +121,14 @@ func (r *Renter) managedBlockUntilOnline() bool {
 func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownloadChunk) {
 	// Distribute the chunk to workers, marking the number of workers
 	// that have received the work.
-	id := r.mu.Lock()
+	r.staticWorkerPool.mu.RLock()
 	udc.mu.Lock()
-	udc.workersRemaining = len(r.workerPool)
+	udc.workersRemaining = len(r.staticWorkerPool.workers)
 	udc.mu.Unlock()
-	for _, worker := range r.workerPool {
+	for _, worker := range r.staticWorkerPool.workers {
 		worker.managedQueueDownloadChunk(udc)
 	}
-	r.mu.Unlock(id)
+	r.staticWorkerPool.mu.RUnlock()
 
 	// If there are no workers, there will be no workers to attempt to clean up
 	// the chunk, so we must make sure that managedCleanUp is called at least
@@ -173,7 +173,7 @@ LOOP:
 
 		// Update the worker pool and fetch the current time. The loop will
 		// reset after a certain amount of time has passed.
-		r.managedUpdateWorkerPool()
+		r.staticWorkerPool.managedUpdate()
 		workerUpdateTime := time.Now()
 
 		// Pull downloads out of the heap. Will break if the heap is empty, and

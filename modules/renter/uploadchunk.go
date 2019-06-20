@@ -131,13 +131,13 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	// received the chunk. The workers cannot be interacted with while the
 	// renter is holding a lock, so we need to build a list of workers while
 	// under lock and then launch work jobs after that.
-	id := r.mu.RLock()
-	uc.workersRemaining += len(r.workerPool)
-	workers := make([]*worker, 0, len(r.workerPool))
-	for _, worker := range r.workerPool {
+	r.staticWorkerPool.mu.RLock()
+	uc.workersRemaining += len(r.staticWorkerPool.workers)
+	workers := make([]*worker, 0, len(r.staticWorkerPool.workers))
+	for _, worker := range r.staticWorkerPool.workers {
 		workers = append(workers, worker)
 	}
-	r.mu.RUnlock(id)
+	r.staticWorkerPool.mu.RUnlock()
 	for _, worker := range workers {
 		worker.managedQueueUploadChunk(uc)
 	}

@@ -131,7 +131,7 @@ func hostdbcmd() {
 		fmt.Println()
 		fmt.Println(len(offlineHosts), "Offline Hosts:")
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tPrice (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tRemaining Storage\tPrice (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
 		for i, host := range offlineHosts {
 			// Compute the total measured uptime and total measured downtime for this
 			// host.
@@ -171,15 +171,15 @@ func hostdbcmd() {
 			// recent scans.
 			price := host.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)
 			downloadBWPrice := host.StoragePrice.Mul(modules.BytesPerTerabyte)
-			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(offlineHosts)-i, host.PublicKeyString,
-				host.NetAddress, host.Version, currencyUnits(price), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
+			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(offlineHosts)-i, host.PublicKeyString,
+				host.NetAddress, host.Version, filesizeUnits(host.RemainingStorage), currencyUnits(price), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
 		}
 		w.Flush()
 
 		fmt.Println()
 		fmt.Println(len(inactiveHosts), "Inactive Hosts:")
 		w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tRemaining Storage\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
 		for i, host := range inactiveHosts {
 			// Compute the total measured uptime and total measured downtime for this
 			// host.
@@ -219,9 +219,9 @@ func hostdbcmd() {
 			price := host.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)
 			collateral := host.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)
 			downloadBWPrice := host.DownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)
-			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(inactiveHosts)-i, host.PublicKeyString, host.NetAddress, host.Version, currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
+			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(inactiveHosts)-i, host.PublicKeyString, host.NetAddress, host.Version, filesizeUnits(host.RemainingStorage), currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
 		}
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tRemaining Storage\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
 		w.Flush()
 
 		// Grab the host at the 3/5th point and use it as the reference. (it's
@@ -242,7 +242,7 @@ func hostdbcmd() {
 		fmt.Println()
 		fmt.Println(len(activeHosts), "Active Hosts:")
 		w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tScore\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tScore\tRemaining Storage\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
 		for i, host := range activeHosts {
 			// Compute the total measured uptime and total measured downtime for this
 			// host.
@@ -289,9 +289,9 @@ func hostdbcmd() {
 			price := host.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)
 			collateral := host.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)
 			downloadBWPrice := host.DownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)
-			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%12.6g\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(activeHosts)-i, host.PublicKeyString, host.NetAddress, host.Version, score, currencyUnits(host.ContractPrice), currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
+			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%12.6g\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(activeHosts)-i, host.PublicKeyString, host.NetAddress, host.Version, score, filesizeUnits(host.RemainingStorage), currencyUnits(host.ContractPrice), currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
 		}
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tScore\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tScore\tRemaining Storage\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
 		w.Flush()
 	}
 }
