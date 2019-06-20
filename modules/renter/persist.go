@@ -182,32 +182,9 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 	return nil
 }
 
-// saveBubbleUpdates stores the current bubble updates to disk and then syncs to disk.
-func (r *Renter) saveBubbleUpdates() error {
-	return persist.SaveJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, repairLoopFilename))
-}
-
 // saveSync stores the current renter data to disk and then syncs to disk.
 func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
-}
-
-// loadAndExecuteBubbleUpdates loads any bubble updates from disk and calls each
-// update in its own thread
-func (r *Renter) loadAndExecuteBubbleUpdates() error {
-	err := persist.LoadJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, repairLoopFilename))
-	if os.IsNotExist(err) {
-		err = r.saveBubbleUpdates()
-	}
-	if err != nil {
-		return err
-	}
-	var siaPath modules.SiaPath
-	for dir := range r.bubbleUpdates {
-		siaPath.LoadString(dir)
-		go r.threadedBubbleMetadata(siaPath)
-	}
-	return nil
 }
 
 // managedLoadSettings fetches the saved renter data from disk.
