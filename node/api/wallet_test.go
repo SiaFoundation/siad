@@ -1177,15 +1177,15 @@ func TestWalletSiafunds(t *testing.T) {
 
 	// Announce the host and form an allowance with it. This will result in a
 	// siafund claim.
-	err = st.announceHost()
-	if err != nil {
-		t.Fatal(err)
-	}
 	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}
