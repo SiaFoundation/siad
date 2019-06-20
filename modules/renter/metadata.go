@@ -245,44 +245,40 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 //
 // TODO: bubbleUpdatesMu is in violation of conventions, needs to be moved to
 // its own object to have its own mu.
-func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) (err error) {
+func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) {
 	r.bubbleUpdatesMu.Lock()
 	defer r.bubbleUpdatesMu.Unlock()
-	defer func() {
-		err = r.saveBubbleUpdates()
-	}()
 
 	// Check current status
 	siaPathStr := siaPath.String()
-	status := r.bubbleUpdates[siaPathStr]
+	status, exists := r.bubbleUpdates[siaPathStr]
 
 	// If the status is 'bubbleActive', delete the status and return.
 	if status == bubbleActive {
 		delete(r.bubbleUpdates, siaPathStr)
-		return nil
+		return
 	}
 	// If the status is not 'bubbleActive', and the status is also not
 	// 'bubblePending', this is an error. There should be a status, and it
 	// should either be active or pending.
-	if status != bubbleActive && status != bubblePending {
-		build.Critical("invalid bubble status", status)
-		return nil
+	if status != bubblePending {
+		build.Critical("invalid bubble status", status, exists)
+		delete(r.bubbleUpdates, siaPathStr) // Attempt to reset the corrupted state.
+		return
 	}
 	// The status is bubblePending, switch the status to bubbleActive.
 	r.bubbleUpdates[siaPathStr] = bubbleActive
 
 	// Launch a thread to do another bubble on this directory, as there was a
 	// bubble pending waiting for the current bubble to complete.
+	err := r.tg.Add()
+	if err != nil {
+		return
+	}
 	go func() {
-		err := r.tg.Add()
-		if err != nil {
-			return
-		}
 		defer r.tg.Done()
-
 		r.managedPerformBubbleMetadata(siaPath)
 	}()
-	return nil
 }
 
 // managedDirectoryMetadata reads the directory metadata and returns the bubble
@@ -331,10 +327,8 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 	// Make sure we call threadedBubbleMetadata on the parent once we are done.
 	defer func() error {
 		// Complete bubble
-		err = r.managedCompleteBubbleUpdate(siaPath)
-		if err != nil {
-			return errors.AddContext(err, "error in completing bubble")
-		}
+		r.managedCompleteBubbleUpdate(siaPath)
+
 		// Continue with parent dir if we aren't in the root dir already.
 		if siaPath.IsRoot() {
 			return nil
