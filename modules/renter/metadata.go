@@ -264,7 +264,7 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) (err error
 	// If the status is not 'bubbleActive', and the status is also not
 	// 'bubblePending', this is an error. There should be a status, and it
 	// should either be active or pending.
-	if status != bubbleActive && status != bubblePending {
+	if status != bubblePending {
 		build.Critical("invalid bubble status", status)
 		return nil
 	}
