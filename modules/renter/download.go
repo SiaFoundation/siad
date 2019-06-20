@@ -337,7 +337,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		if err != nil {
 			return nil, err
 		}
-		dw = osFile
+		dw = &downloadDestinationFile{f: osFile}
 		destinationType = "file"
 	}
 

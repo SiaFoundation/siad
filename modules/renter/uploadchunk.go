@@ -124,6 +124,26 @@ func (uc *unfinishedUploadChunk) chunkComplete() bool {
 	return false
 }
 
+// readLogicalData initializes the chunk's logicalChunkData using data read from
+// r, returning the number of bytes read.
+func (uc *unfinishedUploadChunk) readLogicalData(r io.Reader) (uint64, error) {
+	// Allocate data pieces and fill them with data from r.
+	ec := uc.fileEntry.ErasureCode()
+	dataPieces := make([][]byte, ec.MinPieces())
+	var total uint64
+	for i := range dataPieces {
+		dataPieces[i] = make([]byte, uc.fileEntry.PieceSize())
+		n, err := io.ReadFull(r, dataPieces[i])
+		total += uint64(n)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return total, errors.AddContext(err, "failed to read chunk from source reader")
+		}
+	}
+	// Encode the data pieces, forming the chunk's logical data.
+	uc.logicalChunkData, _ = ec.EncodeShards(dataPieces)
+	return total, nil
+}
+
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
 // physical data and distribute it to the worker pool.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
@@ -159,7 +179,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	}
 
 	// Create the download.
-	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
+	buf := NewDownloadDestinationBuffer()
 	d, err := r.managedNewDownload(downloadParams{
 		destination:     buf,
 		destinationType: "buffer",
@@ -195,10 +215,10 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		return errors.New("repair download interrupted by stop call")
 	}
 	if d.Err() != nil {
-		buf.buf = nil
+		buf.pieces = nil
 		return d.Err()
 	}
-	chunk.logicalChunkData = [][]byte(buf.buf)
+	chunk.logicalChunkData = buf.pieces
 	return nil
 }
 
@@ -265,7 +285,8 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// fact to reduce the total memory required to create the physical data.
 	// That will also change the amount of memory we need to allocate, and the
 	// number of times we need to return memory.
-	chunk.physicalChunkData, err = chunk.fileEntry.ErasureCode().EncodeShards(chunk.logicalChunkData)
+	err = chunk.fileEntry.ErasureCode().Reconstruct(chunk.logicalChunkData)
+	chunk.physicalChunkData = chunk.logicalChunkData
 	chunk.logicalChunkData = nil
 	r.memoryManager.Return(erasureCodingMemory)
 	chunk.memoryReleased += erasureCodingMemory
@@ -329,27 +350,20 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 // light as possible.
 func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
 	// If a sourceReader is available, use it.
-	var err error
 	if chunk.sourceReader != nil {
-		// Ensure that the source reader will be closed.
 		defer chunk.sourceReader.Close()
-
-		// Read the data from the source reader into a download destination
-		// buffer.
-		buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
-		n, err := buf.ReadFrom(chunk.sourceReader)
-		// Adjust the fileSize. Since we don't know the length of the stream
+		n, err := chunk.readLogicalData(chunk.sourceReader)
+		if err != nil {
+			return err
+		}
+		// Adjust the filesize. Since we don't know the length of the stream
 		// beforehand we simply assume that a whole chunk will be added to the
 		// file. That's why we subtract the difference between the size of a
 		// chunk and n here.
-		adjustedSize := chunk.fileEntry.Size() - chunk.length + uint64(n)
+		adjustedSize := chunk.fileEntry.Size() - chunk.length + n
 		if errSize := chunk.fileEntry.SetFileSize(adjustedSize); errSize != nil {
 			return errors.AddContext(errSize, "failed to adjust FileSize")
 		}
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return errors.AddContext(err, "failed to read chunk from source reader")
-		}
-		chunk.logicalChunkData = buf.buf
 		return nil
 	}
 
@@ -358,26 +372,21 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		return r.managedDownloadLogicalChunkData(chunk)
 	}
 
-	// Try to read the data from disk. If that fails at any point, prefer to
-	// download the chunk.
-	osFile, err := os.Open(chunk.fileEntry.LocalPath())
+	// Try to read the data from disk. If that fails, fallback to downloading.
+	err := func() error {
+		osFile, err := os.Open(chunk.fileEntry.LocalPath())
+		if err != nil {
+			return err
+		}
+		defer osFile.Close()
+		sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
+		_, err = chunk.readLogicalData(sr)
+		return err
+	}()
 	if err != nil {
-		return r.managedDownloadLogicalChunkData(chunk)
-	}
-	defer osFile.Close()
-	// TODO: Once we have enabled support for small chunks, we should stop
-	// needing to ignore the EOF errors, because the chunk size should always
-	// match the tail end of the file. Until then, we ignore io.EOF.
-	sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
-	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
-	_, err = buf.ReadFrom(sr)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		r.log.Debugln("failed to read file, downloading instead:", err)
 		return r.managedDownloadLogicalChunkData(chunk)
 	}
-	chunk.logicalChunkData = buf.buf
-
-	// Data successfully read from disk.
 	return nil
 }
 

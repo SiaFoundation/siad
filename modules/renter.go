@@ -147,6 +147,10 @@ type (
 		// sharded input.
 		EncodeShards(data [][]byte) ([][]byte, error)
 
+		// Reconstruct recovers the full set of encoded shards from the provided
+		// pieces, of which at least MinPieces must be non-nil.
+		Reconstruct(pieces [][]byte) error
+
 		// Recover recovers the original data from pieces and writes it to w.
 		// pieces should be identical to the slice returned by Encode (length and
 		// order must be preserved), but with missing elements set to nil. n is
