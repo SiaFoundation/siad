@@ -306,42 +306,38 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 // storageRemainingAdjustments adjusts the weight of the entry according to how
 // much storage it has remaining.
 func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowance modules.Allowance) float64 {
-	var storedData uint64
+	// Determine how much data the renter is storing on this host.
+	var storedData float64
 	if ci, exists := hdb.knownContracts[entry.PublicKey.String()]; exists {
-		storedData = ci.StoredData
+		storedData = float64(ci.StoredData)
 	}
-	base := float64(1)
-	if entry.RemainingStorage+storedDataMultiplier*storedData < 100*allowance.ExpectedStorage {
-		base = base / 2 // 2x total penalty
+
+	// idealDataPerHost is the amount of data that we would have to put on each
+	// host assuming that our storage requirements were spread evenly across
+	// every single host.
+	idealDataPerHost := float64(allowance.ExpectedStorage) * allowance.ExpectedRedundancy / float64(allowance.Hosts)
+	// allocationPerHost is the amount of data that we would like to be able to
+	// put on each host, because data is not always spread evenly across the
+	// hosts during upload. Slower hosts may get very little data, more
+	// expensive hosts may get very little data, and other factors can skew the
+	// distribution. allocationPerHost takes into account the skew and tries to
+	// ensure that there's enough allocation per host to accomodate for a skew.
+	allocationPerHost := idealDataPerHost * storageSkewMultiplier
+	// hostExpectedStorage is the amount of storage that we expect to be able to
+	// store on this host overall, which should include the stored data that is
+	// already on the host.
+	hostExpectedStorage := (float64(entry.RemainingStorage) * storageCompetitionFactor) + storedData
+	// The score for the host is the square of the amount of storage we
+	// expected divided by the amount of storage we want. If we expect to be
+	// able to store more data on the host than we need to allocate, the host
+	// gets full score for storage.
+	if hostExpectedStorage >= allocationPerHost {
+		return 1
 	}
-	if entry.RemainingStorage+storedDataMultiplier*storedData < 80*allowance.ExpectedStorage {
-		base = base / 2 // 4x total penalty
-	}
-	if entry.RemainingStorage+storedDataMultiplier*storedData < 40*allowance.ExpectedStorage {
-		base = base / 2 // 8x total penalty
-	}
-	if entry.RemainingStorage+storedDataMultiplier*storedData < 20*allowance.ExpectedStorage {
-		base = base / 2 // 16x total penalty
-	}
-	if entry.RemainingStorage+storedDataMultiplier*storedData < 15*allowance.ExpectedStorage {
-		base = base / 2 // 32x total penalty
-	}
-	if entry.RemainingStorage+storedDataMultiplier*storedData < 10*allowance.ExpectedStorage {
-		base = base / 2 // 64x total penalty
-	}
-	if entry.RemainingStorage+storedDataMultiplier*storedData < 5*allowance.ExpectedStorage {
-		base = base / 2 // 128x total penalty
-	}
-	if entry.RemainingStorage+storedDataMultiplier*storedData < 3*allowance.ExpectedStorage {
-		base = base / 2 // 256x total penalty
-	}
-	if entry.RemainingStorage+storedDataMultiplier*storedData < 2*allowance.ExpectedStorage {
-		base = base / 2 // 512x total penalty
-	}
-	if entry.RemainingStorage+storedDataMultiplier*storedData < allowance.ExpectedStorage {
-		base = base / 2 // 1024x total penalty
-	}
-	return base
+	// Otherwise, the score of the host is the fraction of the data we expect
+	// raised to the storage penalty exponentiation.
+	storageRatio := hostExpectedStorage / allocationPerHost
+	return math.Pow(storageRatio, storagePenaltyExponentitaion)
 }
 
 // versionAdjustments will adjust the weight of the entry according to the siad
