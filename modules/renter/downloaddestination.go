@@ -70,21 +70,13 @@ type downloadDestinationBuffer struct {
 
 // NewDownloadDestinationBuffer allocates the necessary number of shards for
 // the downloadDestinationBuffer and returns the new buffer.
-func NewDownloadDestinationBuffer(numPieces int, pieceSize uint64) *downloadDestinationBuffer {
-	pieces := make([][]byte, numPieces)
-	for i := range pieces {
-		pieces[i] = make([]byte, 0, pieceSize)
-	}
-	return &downloadDestinationBuffer{
-		pieces: pieces,
-	}
+func NewDownloadDestinationBuffer() *downloadDestinationBuffer {
+	return &downloadDestinationBuffer{}
 }
 
-// WritePieces copies the provided pieces into the buffer without decoding them.
-func (dw *downloadDestinationBuffer) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
-	for i := range pieces {
-		dw.pieces[i] = append(dw.pieces[i][:0], pieces[i]...)
-	}
+// WritePieces stores the provided pieces for later processing.
+func (dw *downloadDestinationBuffer) WritePieces(_ modules.ErasureCoder, pieces [][]byte, _ uint64, _ int64, _ uint64) error {
+	dw.pieces = pieces
 	return nil
 }
 

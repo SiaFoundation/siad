@@ -179,7 +179,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	}
 
 	// Create the download.
-	buf := NewDownloadDestinationBuffer(chunk.fileEntry.ErasureCode().NumPieces(), chunk.fileEntry.PieceSize())
+	buf := NewDownloadDestinationBuffer()
 	d, err := r.managedNewDownload(downloadParams{
 		destination:     buf,
 		destinationType: "buffer",
