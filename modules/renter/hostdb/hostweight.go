@@ -327,7 +327,7 @@ func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowa
 	// store on this host overall, which should include the stored data that is
 	// already on the host.
 	hostExpectedStorage := (float64(entry.RemainingStorage) * storageCompetitionFactor) + storedData
-	// The score fore the host is the square of the amount of storage we
+	// The score for the host is the square of the amount of storage we
 	// expected divided by the amount of storage we want. If we expect to be
 	// able to store more data on the host than we need to allocate, the host
 	// gets full score for storage.
