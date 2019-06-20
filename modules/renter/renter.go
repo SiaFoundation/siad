@@ -827,11 +827,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// heap for the repair process.
 	r.managedPushUnexploredDirectory(modules.RootSiaPath())
 
-	// Load and execute bubble updates
-	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
-		return nil, err
-	}
-
 	// Subscribe to the consensus set.
 	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
 	if err != nil {

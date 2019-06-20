@@ -248,13 +248,10 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) (err error) {
 	r.bubbleUpdatesMu.Lock()
 	defer r.bubbleUpdatesMu.Unlock()
-	defer func() {
-		err = r.saveBubbleUpdates()
-	}()
 
 	// Check current status
 	siaPathStr := siaPath.String()
-	status := r.bubbleUpdates[siaPathStr]
+	status, exists := r.bubbleUpdates[siaPathStr]
 
 	// If the status is 'bubbleActive', delete the status and return.
 	if status == bubbleActive {
@@ -265,7 +262,8 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) (err error
 	// 'bubblePending', this is an error. There should be a status, and it
 	// should either be active or pending.
 	if status != bubblePending {
-		build.Critical("invalid bubble status", status)
+		build.Critical("invalid bubble status", status, exists)
+		delete(r.bubbleUpdates, siaPathStr) // Attempt to reset the corrupted state.
 		return nil
 	}
 	// The status is bubblePending, switch the status to bubbleActive.
@@ -273,15 +271,15 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) (err error
 
 	// Launch a thread to do another bubble on this directory, as there was a
 	// bubble pending waiting for the current bubble to complete.
+	err = r.tg.Add()
+	if err != nil {
+		return err
+	}
 	go func() {
-		err := r.tg.Add()
-		if err != nil {
-			return
-		}
 		defer r.tg.Done()
-
 		r.managedPerformBubbleMetadata(siaPath)
 	}()
+
 	return nil
 }
 
