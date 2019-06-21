@@ -4,9 +4,10 @@ import (
 	"net/url"
 	"strconv"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (

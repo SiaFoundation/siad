@@ -3,9 +3,8 @@ package siatest
 import (
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 type (

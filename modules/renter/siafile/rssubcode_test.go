@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
+
+	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 // TestPartialEncodeRecover checks that individual segments of an encoded piece

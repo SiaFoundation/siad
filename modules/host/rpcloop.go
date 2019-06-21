@@ -6,13 +6,14 @@ import (
 	"net"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
+	"golang.org/x/crypto/chacha20poly1305"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
-	"golang.org/x/crypto/chacha20poly1305"
 )
 
 // An rpcSession contains the state of an RPC session with a renter.

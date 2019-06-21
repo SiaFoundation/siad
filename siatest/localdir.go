@@ -6,10 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // LocalDir is a helper struct that represents a directory on disk that is to be

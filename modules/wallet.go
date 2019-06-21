@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	"gitlab.com/NebulousLabs/entropy-mnemonics"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"

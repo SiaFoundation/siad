@@ -3,12 +3,12 @@ package consensus
 import (
 	"testing"
 
+	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
-
-	"github.com/coreos/bbolt"
 )
 
 // TestTryValidTransactionSet submits a valid transaction set to the

@@ -5,10 +5,10 @@ import (
 	"encoding/binary"
 	"math/big"
 
-	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
+	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/errors"
+
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // Errors returned by this file.

@@ -3,7 +3,6 @@ package consensus
 /*
 import (
 	"testing"
-
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
