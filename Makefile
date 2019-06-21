@@ -24,7 +24,7 @@ fmt:
 
 # vet calls go vet on all packages.
 # NOTE: go vet requires packages to be built in order to obtain type info.
-vet: release-std
+vet:
 	go vet $(pkgs)
 
 lint:
@@ -89,5 +89,5 @@ whitepaper:
 	@pdflatex -output-directory=doc whitepaper.tex > /dev/null
 	pdflatex -output-directory=doc whitepaper.tex
 
-.PHONY: all fmt install release release-std xc clean test test-v test-long cover cover-integration cover-unit whitepaper
+.PHONY: all fmt install release clean test test-v test-long cover whitepaper
 
