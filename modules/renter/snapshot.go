@@ -121,7 +121,6 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return errors.AddContext(err, "failed to open backup for uploading")
 	}
 	defer backup.Close()
-	// TODO: verify that src is actually a backup file
 
 	// Prepare the siapath.
 	sp, err := modules.NewSiaPath(name)
