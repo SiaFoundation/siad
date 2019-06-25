@@ -26,6 +26,8 @@ type (
 	// simple interface that allows for asking a module about potential issues.
 	Alerter interface {
 		Alerts() []Alert
+		RegisterAlert(id AlertID, msg, cause string, severity AlertSeverity)
+		UnregisterAlert(id AlertID)
 	}
 
 	// Alert is a type that contains essential information about an alert.
@@ -39,6 +41,9 @@ type (
 		// Severity categorizes the Alerts to allow for an easy way to filter them.
 		Severity AlertSeverity `json:"severity"`
 	}
+
+	// AlertID is a helper type for an Alert's ID.
+	AlertID uint64
 
 	// AlertSeverity describes the severity of an alert.
 	AlertSeverity uint8

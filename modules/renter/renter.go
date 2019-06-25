@@ -187,7 +187,7 @@ type hostContractor interface {
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
-	// Alerts.
+	// Alert management.
 	staticAlerter *alerter
 
 	// File management.

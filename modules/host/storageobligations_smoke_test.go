@@ -37,10 +37,13 @@ func (stubTPool) FeeEstimation() (min, max types.Currency)           { return ty
 func (stubTPool) TransactionSet(oid crypto.Hash) []types.Transaction { return nil }
 func (stubTPool) Broadcast(ts []types.Transaction)                   {}
 func (stubTPool) Close() error                                       { return nil }
-func (stubTPool) TransactionList() []types.Transaction               { return nil }
+func (stubTPool) RegisterAlert(id modules.AlertID, msg, cause string, severity modules.AlertSeverity) {
+}
+func (stubTPool) TransactionList() []types.Transaction { return nil }
 func (stubTPool) Transaction(id types.TransactionID) (types.Transaction, []types.Transaction, bool) {
 	return types.Transaction{}, nil, false
 }
+func (stubTPool) UnregisterAlert(id modules.AlertID)                                    {}
 func (stubTPool) ProcessConsensusChange(cc modules.ConsensusChange)                     {}
 func (stubTPool) PurgeTransactionPool()                                                 {}
 func (stubTPool) TransactionPoolSubscribe(subscriber modules.TransactionPoolSubscriber) {}
