@@ -1,0 +1,61 @@
+package modules
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+// TestMarshalUnmarshalAlertSeverity tests the custom marshaling/unmarshaling
+// code for AlertSeverity.
+func TestMarshalUnmarshalAlertSeverity(t *testing.T) {
+	severityUnknown := AlertSeverity(SeverityUnknown)
+	severityInfo := AlertSeverity(SeverityInfo)
+	severityWarning := AlertSeverity(SeverityWarning)
+	severityError := AlertSeverity(SeverityError)
+	severityInvalid := AlertSeverity(42)
+
+	var s AlertSeverity
+	// Marshal/Unmarshal unknown.
+	b, err := json.Marshal(severityUnknown)
+	if err == nil {
+		t.Fatal("Shouldn't be able to marshal unknown")
+	}
+	// Marshal/Unmarshal info.
+	b, err = json.Marshal(severityInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	if s != SeverityInfo {
+		t.Fatal("result not the same severity as input")
+	}
+	// Marshal/Unmarshal warning.
+	b, err = json.Marshal(severityWarning)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	if s != SeverityWarning {
+		t.Fatal("result not the same severity as input")
+	}
+	// Marshal/Unmarshal error.
+	b, err = json.Marshal(severityError)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	if s != SeverityError {
+		t.Fatal("result not the same severity as input")
+	}
+	// Marshal/Unmarshal invalid.
+	b, err = json.Marshal(severityInvalid)
+	if err == nil {
+		t.Fatal("Shouldn't be able to marshal invalid")
+	}
+}

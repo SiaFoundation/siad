@@ -187,6 +187,9 @@ type hostContractor interface {
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
+	// Alerts.
+	staticAlerter *alerter
+
 	// File management.
 	staticFileSet       *siafile.SiaFileSet
 	staticBackupFileSet *siafile.SiaFileSet
@@ -799,6 +802,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		hostDB:           hdb,
 		hostContractor:   hc,
 		persistDir:       persistDir,
+		staticAlerter:    newAlerter(),
 		staticFilesDir:   filepath.Join(persistDir, modules.SiapathRoot),
 		staticBackupsDir: filepath.Join(persistDir, modules.BackupRoot),
 		mu:               siasync.New(modules.SafeMutexDelay, 1),
