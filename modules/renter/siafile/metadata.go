@@ -102,11 +102,6 @@ type (
 		UserID  int         `json:"userid"`  // id of the user who owns the file
 		GroupID int         `json:"groupid"` // id of the group that owns the file
 
-		// staticChunkMetadataSize is the amount of space allocated within the
-		// siafile for the metadata of a single chunk. It allows us to do
-		// random access operations on the file in constant time.
-		StaticChunkMetadataSize uint64 `json:"chunkmetadatasize"`
-
 		// The following fields are the offsets for data that is written to disk
 		// after the pubKeyTable. We reserve a generous amount of space for the
 		// table and extra fields, but we need to remember those offsets in case we
