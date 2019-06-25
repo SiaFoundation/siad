@@ -24,8 +24,13 @@ type (
 
 	// Alert is a type that contains essential information about an alert.
 	Alert struct {
-		Msg      string
-		Cause    string
+		// Msg is the message the Alert is meant to convey to the user.
+		// e.g. "Contractor can't form new contrats"
+		Msg string
+		// Cause is the cause for the Alert.
+		// e.g. "Wallet is locked"
+		Cause string
+		// Severity categorizes the Alerts to allow for an easy way to filter them.
 		Severity uint8
 	}
 )
