@@ -15,20 +15,20 @@
 Here is a list of technical documentation to help understand the different parts of the Sia code base.
 
 ### Module README's
-* [Consensus](../modules/consensus/README.md)
-* [Explorer](../modules/explorer/README.md)
-* [Gateway](../modules/gateway/README.md)
-* [Host](../modules/host/README.md)
-    * [Contract Manager](../modules/host/contractmanager/README.md)
-* [Miner](../modules/miner/README.md)
+* Consensus - `coming soon`
+* Explorer - `coming soon`
+* Gateway - `coming soon`
+* Host - `coming soon`
+    * Contract Manager - `coming soon`
+* Miner - `coming soon`
 * [Renter](../modules/renter/README.md)
-    * [Contractor](../modules/renter/contractor/README.md)
-    * [HostDB](../modules/renter/hostdb/README.md)
-    * [Proto](../modules/renter/proto/README.md)
-    * [SiaDir](../modules/renter/siadir/README.md)
-    * [SiaFile](../modules/renter/siafile/README.md)
-* [Transaction Pool](../modules/transactionpool/README.md)
-* [Wallet](../modules/wallet/README.md)
+    * Contractor - `coming soon`
+    * HostDB - `coming soon`
+    * Proto - `coming soon`
+    * SiaDir - `coming soon`
+    * SiaFile - `coming soon`
+* Transaction Pool - `coming soon`
+* Wallet - `coming soon`
 
 ### API
 The API documentation can be found [here](api/index.html.md) and at [sia.tech/docs](https://sia.tech/docs).
