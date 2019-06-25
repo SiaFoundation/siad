@@ -530,6 +530,8 @@ type UploadedBackup struct {
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
+	Alerter
+
 	// ActiveHosts provides the list of hosts that the renter is selecting,
 	// sorted by preference.
 	ActiveHosts() []HostDBEntry

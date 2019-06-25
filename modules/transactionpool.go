@@ -98,6 +98,8 @@ type (
 
 	// A TransactionPool manages unconfirmed transactions.
 	TransactionPool interface {
+		Alerter
+
 		// AcceptTransactionSet accepts a set of potentially interdependent
 		// transactions.
 		AcceptTransactionSet([]types.Transaction) error

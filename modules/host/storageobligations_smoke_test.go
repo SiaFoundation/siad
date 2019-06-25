@@ -32,6 +32,7 @@ type stubTPool struct{}
 func (stubTPool) AcceptTransactionSet(ts []types.Transaction) error {
 	return errTxFail
 }
+func (stubTPool) Alerts() []modules.Alert                            { return []modules.Alert{} }
 func (stubTPool) FeeEstimation() (min, max types.Currency)           { return types.Currency{}, types.Currency{} }
 func (stubTPool) TransactionSet(oid crypto.Hash) []types.Transaction { return nil }
 func (stubTPool) Broadcast(ts []types.Transaction)                   {}
