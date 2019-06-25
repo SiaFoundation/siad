@@ -2,7 +2,7 @@
 
 #### Table of Contents
 * [Tech Docs](#tech-docs)
-    * [Module READMME's](#module-readme's)
+    * [Module README's](#module-readme's)
     * [API](#api)
     * [Support Docs](#support-docs)
 * [Sia Third Party Apps](#sia-third-party-apps)
