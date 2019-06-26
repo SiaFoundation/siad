@@ -22,6 +22,7 @@ func (api *API) buildHTTPRoutes() {
 	router.RedirectTrailingSlash = false
 
 	// Daemon API Calls
+	router.GET("/daemon/alerts", api.daemonAlertsHandlerGET)
 	router.GET("/daemon/constants", api.daemonConstantsHandler)
 	router.GET("/daemon/version", api.daemonVersionHandler)
 	router.GET("/daemon/update", api.daemonUpdateHandlerGET)

@@ -54,6 +54,12 @@ bwIDAQAB
 )
 
 type (
+	// DaemonAlertsGet contains information about currently registered alerts
+	// across all loaded modules.
+	DaemonAlertsGet struct {
+		Alerts []modules.Alert `json:"alerts"`
+	}
+
 	// DaemonVersionGet contains information about the running daemon's version.
 	DaemonVersionGet struct {
 		Version     string
@@ -215,6 +221,36 @@ func updateToRelease(version string) error {
 	}
 
 	return nil
+}
+
+// daemonAlertsHandlerGET handles the API call that returns the alerts of all
+// loaded modules.
+func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	var alerts []modules.Alert
+	if api.gateway != nil {
+		alerts = append(alerts, api.gateway.Alerts()...)
+	}
+	if api.cs != nil {
+		alerts = append(alerts, api.cs.Alerts()...)
+	}
+	if api.tpool != nil {
+		alerts = append(alerts, api.tpool.Alerts()...)
+	}
+	if api.wallet != nil {
+		alerts = append(alerts, api.wallet.Alerts()...)
+	}
+	if api.renter != nil {
+		alerts = append(alerts, api.renter.Alerts()...)
+	}
+	if api.miner != nil {
+		alerts = append(alerts, api.miner.Alerts()...)
+	}
+	if api.host != nil {
+		alerts = append(alerts, api.host.Alerts()...)
+	}
+	WriteJSON(w, DaemonAlertsGET{
+		Alerts: alerts,
+	})
 }
 
 // daemonUpdateHandlerGET handles the API call that checks for an update.
