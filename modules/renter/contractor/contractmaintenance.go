@@ -861,6 +861,13 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	defer c.maintenanceLock.Unlock()
 
+	if unlocked, err := c.wallet.Unlocked(); err == nil && !unlocked {
+		c.staticAlerter.RegisterAlert(modules.AlertIDIncompleteMaintenance,
+			"Maintenance of contracts is incomplete", "Wallet is locked", modules.SeverityWarning)
+	} else if err == nil {
+		c.staticAlerter.UnregisterAlert(modules.AlertIDIncompleteMaintenance)
+	}
+
 	// Perform general cleanup of the contracts. This includes recovering lost
 	// contracts, archiving contracts, and other cleanup work. This should all
 	// happen before the rest of the maintenance.

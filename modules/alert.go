@@ -29,6 +29,9 @@ const (
 const (
 	// alertIDUnknown is the id of an unknown alert.
 	alertIDUnknown = iota
+	// AlertIDIncompleteMaintenace is the id of the alert that is registered if the
+	// wallet is locked during a contract maintenance.
+	AlertIDIncompleteMaintenance
 )
 
 type (

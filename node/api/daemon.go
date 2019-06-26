@@ -248,7 +248,7 @@ func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _
 	if api.host != nil {
 		alerts = append(alerts, api.host.Alerts()...)
 	}
-	WriteJSON(w, DaemonAlertsGET{
+	WriteJSON(w, DaemonAlertsGet{
 		Alerts: alerts,
 	})
 }
