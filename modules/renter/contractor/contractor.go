@@ -279,7 +279,7 @@ func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, 
 func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
 	// Create the Contractor object.
 	c := &Contractor{
-		staticAlerter: modules.NewAlerter(),
+		staticAlerter: modules.NewAlerter("contractor"),
 		cs:            cs,
 		staticDeps:    deps,
 		hdb:           hdb,

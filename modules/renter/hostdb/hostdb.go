@@ -201,7 +201,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		filteredHosts:  make(map[string]types.SiaPublicKey),
 		knownContracts: make(map[string]contractInfo),
 		scanMap:        make(map[string]struct{}),
-		staticAlerter:  modules.NewAlerter(),
+		staticAlerter:  modules.NewAlerter("hostdb"),
 	}
 
 	// Set the allowance, txnFees and hostweight function.

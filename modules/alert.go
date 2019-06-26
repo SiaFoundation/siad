@@ -103,14 +103,16 @@ func (a *AlertSeverity) UnmarshalJSON(b []byte) error {
 type (
 	alerter struct {
 		alerts map[AlertID]Alert
+		module string
 		mu     sync.Mutex
 	}
 )
 
 // NewAlerter creates a new alerter for the renter.
-func NewAlerter() Alerter {
+func NewAlerter(module string) Alerter {
 	return &alerter{
 		alerts: make(map[AlertID]Alert),
+		module: module,
 	}
 }
 
@@ -132,7 +134,7 @@ func (a *alerter) RegisterAlert(id AlertID, msg, cause string, severity AlertSev
 	defer a.mu.Unlock()
 	a.alerts[id] = Alert{
 		Cause:    cause,
-		Module:   "renter",
+		Module:   a.module,
 		Msg:      msg,
 		Severity: severity,
 	}
