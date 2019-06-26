@@ -54,6 +54,8 @@ var (
 // A hostDB is a database of hosts that the renter can use for figuring out who
 // to upload to, and download from.
 type hostDB interface {
+	modules.Alerter
+
 	// ActiveHosts returns the list of hosts that are actively being selected
 	// from.
 	ActiveHosts() []modules.HostDBEntry
@@ -108,6 +110,8 @@ type hostDB interface {
 // A hostContractor negotiates, revises, renews, and provides access to file
 // contracts.
 type hostContractor interface {
+	modules.Alerter
+
 	// SetAllowance sets the amount of money the contractor is allowed to
 	// spend on contracts over a given time period, divided among the number
 	// of hosts specified. Note that contractor can start forming contracts as
@@ -188,7 +192,7 @@ type hostContractor interface {
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
 	// Alert management.
-	staticAlerter *alerter
+	staticAlerter modules.Alerter
 
 	// File management.
 	staticFileSet       *siafile.SiaFileSet
@@ -802,7 +806,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		hostDB:           hdb,
 		hostContractor:   hc,
 		persistDir:       persistDir,
-		staticAlerter:    newAlerter(),
+		staticAlerter:    modules.NewAlerter(),
 		staticFilesDir:   filepath.Join(persistDir, modules.SiapathRoot),
 		staticBackupsDir: filepath.Join(persistDir, modules.BackupRoot),
 		mu:               siasync.New(modules.SafeMutexDelay, 1),

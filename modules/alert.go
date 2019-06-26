@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 )
 
+// The following consts are the different types of severity levels available in
+// the alert system.
 const (
 	// SeverityUnknown is the value of an uninitialized severity and should never
 	// be used.
@@ -19,6 +22,13 @@ const (
 	// SeverityError should be used for information about the system where
 	// immediate action is recommended to avoid further issues like loss of data.
 	SeverityError
+)
+
+// The following consts are a list of AlertIDs. All IDs used throughout Sia
+// should be unique and listed here.
+const (
+	// alertIDUnknown is the id of an unknown alert.
+	alertIDUnknown = iota
 )
 
 type (
@@ -83,4 +93,51 @@ func (a *AlertSeverity) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("unknown severity '%v'", severityStr)
 	}
 	return nil
+}
+
+// alerter implements the Alerter interface. It can be used as a helper type to
+// implement the Alerter interface for modules and submodules.
+type (
+	alerter struct {
+		alerts map[AlertID]Alert
+		mu     sync.Mutex
+	}
+)
+
+// NewAlerter creates a new alerter for the renter.
+func NewAlerter() Alerter {
+	return &alerter{
+		alerts: make(map[AlertID]Alert),
+	}
+}
+
+// Alerts returns the current alerts tracked by the alerter.
+func (a *alerter) Alerts() []Alert {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	alerts := make([]Alert, 0, len(a.alerts))
+	for _, alert := range a.alerts {
+		alerts = append(alerts, alert)
+	}
+	return alerts
+}
+
+// RegisterAlert adds an alert to the alerter.
+func (a *alerter) RegisterAlert(id AlertID, msg, cause string, severity AlertSeverity) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.alerts[id] = Alert{
+		Cause:    cause,
+		Module:   "renter",
+		Msg:      msg,
+		Severity: severity,
+	}
+}
+
+// UnregisterAlert removes an alert from the alerter by id.
+func (a *alerter) UnregisterAlert(id AlertID) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.alerts, id)
 }
