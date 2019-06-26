@@ -338,6 +338,42 @@ standard success or error response. See [standard responses](#standard-responses
 
 The daemon is responsible for starting and stopping the modules which make up the rest of Sia.
 
+## /daemon/alerts [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/daemon/alerts"
+```
+
+Returns the alerts of the Sia instance.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "alerts": [
+    {
+      "cause": "Wallet is locked",
+      "msg": "Maintenance of contracts is incomplete",
+      "module": "contractor",
+      "severity": "warning",
+    }
+  ],
+}
+```
+**msg** | string  
+Msg contains information about an issue.
+
+**cause** | string  
+Cause is the cause for the information contained in msg if known.
+
+**module** | string  
+Module is the module which caused the alert.
+
+**severity** | string  
+Severity is one of the following: "info", "warning", "error"
+
 ## /daemon/constants [GET]
 > curl example  
 

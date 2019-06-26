@@ -226,7 +226,7 @@ func updateToRelease(version string) error {
 // daemonAlertsHandlerGET handles the API call that returns the alerts of all
 // loaded modules.
 func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	var alerts []modules.Alert
+	alerts := make([]modules.Alert, 0) // initialize slice to avoid "null" in response.
 	if api.gateway != nil {
 		alerts = append(alerts, api.gateway.Alerts()...)
 	}
