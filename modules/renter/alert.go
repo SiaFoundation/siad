@@ -58,8 +58,9 @@ func (a *alerter) RegisterAlert(id modules.AlertID, msg, cause string, severity 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.alerts[id] = modules.Alert{
-		Msg:      msg,
 		Cause:    cause,
+		Module:   "renter",
+		Msg:      msg,
 		Severity: severity,
 	}
 }

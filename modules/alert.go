@@ -32,12 +32,14 @@ type (
 
 	// Alert is a type that contains essential information about an alert.
 	Alert struct {
-		// Msg is the message the Alert is meant to convey to the user.
-		// e.g. "Contractor can't form new contrats"
-		Msg string `json:"msg"`
 		// Cause is the cause for the Alert.
 		// e.g. "Wallet is locked"
 		Cause string `json:"cause"`
+		// Msg is the message the Alert is meant to convey to the user.
+		// e.g. "Contractor can't form new contrats"
+		Msg string `json:"msg"`
+		// Module contains information about what module the alert originated from.
+		Module string `json:"module"`
 		// Severity categorizes the Alerts to allow for an easy way to filter them.
 		Severity AlertSeverity `json:"severity"`
 	}
