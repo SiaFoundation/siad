@@ -126,6 +126,10 @@ const (
 )
 
 type (
+	// DownloadID is a unique identifier used to identify downloads within the
+	// download history.
+	DownloadID string
+
 	// ErasureCoderType is an identifier for the individual types of erasure
 	// coders.
 	ErasureCoderType [4]byte

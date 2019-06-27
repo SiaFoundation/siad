@@ -206,7 +206,7 @@ type Renter struct {
 	//
 	// TODO: Currently the download history doesn't include repair-initiated
 	// downloads, and instead only contains user-initiated downloads.
-	downloadHistory   []*download
+	downloadHistory   map[modules.DownloadID]*download
 	downloadHistoryMu sync.Mutex
 
 	// Upload management.
