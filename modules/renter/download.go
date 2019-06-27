@@ -73,14 +73,18 @@ package renter
 // price and total throughput.
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -111,13 +115,14 @@ type (
 		endTime         time.Time // Set immediately before closing 'completeChan'.
 		staticStartTime time.Time // Set immediately when the download object is created.
 
-		// Basic information about the file.
+		// Basic information about the file/download.
 		destination           downloadDestination
-		destinationString     string          // The string reported to the user to indicate the download's destination.
-		staticDestinationType string          // "memory buffer", "http stream", "file", etc.
-		staticLength          uint64          // Length to download starting from the offset.
-		staticOffset          uint64          // Offset within the file to start the download.
-		staticSiaPath         modules.SiaPath // The path of the siafile at the time the download started.
+		destinationString     string             // The string reported to the user to indicate the download's destination.
+		staticDestinationType string             // "memory buffer", "http stream", "file", etc.
+		staticLength          uint64             // Length to download starting from the offset.
+		staticOffset          uint64             // Offset within the file to start the download.
+		staticSiaPath         modules.SiaPath    // The path of the siafile at the time the download started.
+		staticUID             modules.DownloadID // unique identifier for the download
 
 		// Retrieval settings for the file.
 		staticLatencyTarget time.Duration // In milliseconds. Lower latency results in lower total system throughput.
@@ -246,6 +251,11 @@ func (d *download) OnComplete(f func(error) error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.onComplete(f)
+}
+
+// UID returns the unique identifier of the download.
+func (d *download) UID() modules.DownloadID {
+	return d.staticUID
 }
 
 // Download performs a file download using the passed parameters and blocks
@@ -383,7 +393,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	// Add the download object to the download history if it's not a stream.
 	if destinationType != destinationTypeSeekStream {
 		r.downloadHistoryMu.Lock()
-		r.downloadHistory = append(r.downloadHistory, d)
+		r.downloadHistory[d.UID()] = d
 		r.downloadHistoryMu.Unlock()
 	}
 
@@ -417,6 +427,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		destination:           params.destination,
 		destinationString:     params.destinationString,
 		staticDestinationType: params.destinationType,
+		staticUID:             modules.DownloadID(hex.EncodeToString(fastrand.Bytes(16))),
 		staticLatencyTarget:   params.latencyTarget,
 		staticLength:          params.length,
 		staticOffset:          params.offset,
@@ -567,10 +578,19 @@ func (r *Renter) DownloadHistory() []modules.DownloadInfo {
 	r.downloadHistoryMu.Lock()
 	defer r.downloadHistoryMu.Unlock()
 
-	downloads := make([]modules.DownloadInfo, len(r.downloadHistory))
-	for i := range r.downloadHistory {
+	// Get a slice of the history sorted from most recnet to least recent.
+	downloadHistory := make([]*download, 0, len(r.downloadHistory))
+	for _, d := range r.downloadHistory {
+		downloadHistory = append(downloadHistory, d)
+	}
+	sort.Slice(downloadHistory, func(i, j int) bool {
+		return downloadHistory[i].staticStartTime.After(downloadHistory[j].staticStartTime)
+	})
+
+	downloads := make([]modules.DownloadInfo, len(downloadHistory))
+	for i := range downloadHistory {
 		// Order from most recent to least recent.
-		d := r.downloadHistory[len(r.downloadHistory)-i-1]
+		d := downloadHistory[len(r.downloadHistory)-i-1]
 		d.mu.Lock() // Lock required for d.endTime only.
 		downloads[i] = modules.DownloadInfo{
 			Destination:     d.destinationString,
@@ -625,7 +645,7 @@ func (r *Renter) ClearDownloadHistory(after, before time.Time) error {
 
 	// Clear download history if both before and after timestamps are zero values
 	if before.Equal(types.EndOfTime) && after.IsZero() {
-		r.downloadHistory = r.downloadHistory[:0]
+		r.downloadHistory = make(map[modules.DownloadID]*download)
 		return nil
 	}
 
@@ -633,10 +653,10 @@ func (r *Renter) ClearDownloadHistory(after, before time.Time) error {
 	withinTimespan := func(t time.Time) bool {
 		return (t.After(after) || t.Equal(after)) && (t.Before(before) || t.Equal(before))
 	}
-	filtered := r.downloadHistory[:0]
+	filtered := make(map[modules.DownloadID]*download)
 	for _, d := range r.downloadHistory {
 		if !withinTimespan(d.staticStartTime) {
-			filtered = append(filtered, d)
+			filtered[d.UID()] = d
 		}
 	}
 	r.downloadHistory = filtered

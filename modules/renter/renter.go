@@ -206,7 +206,7 @@ type Renter struct {
 	//
 	// TODO: Currently the download history doesn't include repair-initiated
 	// downloads, and instead only contains user-initiated downloads.
-	downloadHistory   []*download
+	downloadHistory   map[modules.DownloadID]*download
 	downloadHistoryMu sync.Mutex
 
 	// Upload management.
@@ -790,7 +790,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
 
-		bubbleUpdates: make(map[string]bubbleStatus),
+		bubbleUpdates:   make(map[string]bubbleStatus),
+		downloadHistory: make(map[modules.DownloadID]*download),
 
 		cs:               cs,
 		deps:             deps,
