@@ -888,7 +888,7 @@ func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.R
 	uid := req.FormValue("uid")
 	di, exists := api.renter.DownloadByUID(modules.DownloadID(uid))
 	if !exists {
-		WriteError(w, Error{fmt.Sprintf("Download with id '%v' doesn't exist", uid)}, http.StatusNotFound)
+		WriteError(w, Error{"Download with id '%v' doesn't exist: " + string(uid)}, http.StatusNotFound)
 		return
 	}
 	WriteJSON(w, DownloadInfo{
@@ -1145,7 +1145,7 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	w.Header().Set("UID", "TODO: change to actual download id")
+	w.Header().Set("UID", "missingid")
 	if params.Async {
 		var cancel func()
 		id := hex.EncodeToString(fastrand.Bytes(16))

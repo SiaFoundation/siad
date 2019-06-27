@@ -212,7 +212,9 @@ func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, 
 // RenterDownloadInfoGet uses the /renter/downloadinfo endpoint to fetch
 // information about a download from the history.
 func (c *Client) RenterDownloadInfoGet(uid modules.DownloadID) (di api.DownloadInfo, err error) {
-	err = c.get("/renter/downloadinfo?uid="+string(uid), &di)
+	values := url.Values{}
+	values.Set("uid", string(string(uid)))
+	err = c.get("/renter/downloadinfo?"+values.Encode(), &di)
 	return
 }
 
