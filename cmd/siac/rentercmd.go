@@ -828,7 +828,7 @@ consider repair bandwidth separately.`)
 		expectedUpload = modules.DefaultAllowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedUpload = allowance.ExpectedUpload
+		expectedUpload = allowance.ExpectedUpload * uint64(types.BlocksPerMonth)
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Upload: ")
@@ -864,7 +864,7 @@ consider repair bandwidth separately.`)
 		expectedDownload = modules.DefaultAllowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedDownload = allowance.ExpectedDownload
+		expectedDownload = allowance.ExpectedDownload * uint64(types.BlocksPerMonth)
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Download: ")
