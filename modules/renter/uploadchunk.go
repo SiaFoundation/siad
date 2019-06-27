@@ -195,6 +195,10 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	if err != nil {
 		return err
 	}
+	// Start the download.
+	if err := d.Start(); err != nil {
+		return err
+	}
 
 	// Register some cleanup for when the download is done.
 	d.OnComplete(func(_ error) error {

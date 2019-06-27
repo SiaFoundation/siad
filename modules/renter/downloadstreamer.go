@@ -202,6 +202,10 @@ func (s *streamer) managedFillCache() bool {
 	defer func() {
 		d.destination = nil
 	}()
+	// Start the download.
+	if err := d.Start(); err != nil {
+		return false
+	}
 	// Block until the download has completed.
 	select {
 	case <-d.completeChan:

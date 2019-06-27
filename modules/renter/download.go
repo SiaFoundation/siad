@@ -91,7 +91,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -124,15 +123,16 @@ type (
 		staticSiaPath         modules.SiaPath    // The path of the siafile at the time the download started.
 		staticUID             modules.DownloadID // unique identifier for the download
 
+		staticParams downloadParams
+
 		// Retrieval settings for the file.
 		staticLatencyTarget time.Duration // In milliseconds. Lower latency results in lower total system throughput.
 		staticOverdrive     int           // How many extra pieces to download to prevent slow hosts from being a bottleneck.
 		staticPriority      uint64        // Downloads with higher priority will complete first.
 
 		// Utilities.
-		log           *persist.Logger // Same log as the renter.
-		memoryManager *memoryManager  // Same memoryManager used across the renter.
-		mu            sync.Mutex      // Unique to the download object.
+		r  *Renter    // The renter that was used to create the download.
+		mu sync.Mutex // Unique to the download object.
 	}
 
 	// downloadParams is the set of parameters to use when downloading a file.
@@ -168,7 +168,7 @@ func (d *download) managedFail(err error) {
 	if complete && d.err != nil {
 		return
 	} else if complete && d.err == nil {
-		d.log.Critical("download is marked as completed without error, but then managedFail was called with err:", err)
+		d.r.log.Critical("download is marked as completed without error, but then managedFail was called with err:", err)
 		return
 	}
 
@@ -200,7 +200,7 @@ func (d *download) markComplete() {
 	}
 	// Log potential errors.
 	if err != nil {
-		d.log.Println("Failed to execute at least one downloadCompleteFunc", err)
+		d.r.log.Println("Failed to execute at least one downloadCompleteFunc", err)
 	}
 	// Set downloadCompleteFuncs to nil to avoid executing them multiple times.
 	d.downloadCompleteFuncs = nil
@@ -215,7 +215,7 @@ func (d *download) onComplete(f func(error) error) {
 	select {
 	case <-d.completeChan:
 		if err := f(d.err); err != nil {
-			d.log.Println("Failed to execute downloadCompleteFunc", err)
+			d.r.log.Println("Failed to execute downloadCompleteFunc", err)
 		}
 		return
 	default:
@@ -435,8 +435,8 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		staticSiaPath:         params.file.SiaPath(),
 		staticPriority:        params.priority,
 
-		log:           r.log,
-		memoryManager: r.memoryManager,
+		r:            r,
+		staticParams: params,
 	}
 
 	// Update the endTime of the download when it's done.
@@ -445,15 +445,22 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		return nil
 	})
 
+	return d, nil
+}
+
+// Start starts a download previously created with `managedNewDownload`.
+func (d *download) Start() error {
 	// Nothing more to do for 0-byte files or 0-length downloads.
 	if d.staticLength == 0 {
 		d.markComplete()
-		return d, nil
+		return nil
 	}
 
 	// Determine which chunks to download.
+	params := d.staticParams
 	minChunk, minChunkOffset := params.file.ChunkIndexByOffset(params.offset)
 	maxChunk, maxChunkOffset := params.file.ChunkIndexByOffset(params.offset + params.length)
+
 	// If the maxChunkOffset is exactly 0 we need to subtract 1 chunk. e.g. if
 	// the chunkSize is 100 bytes and we want to download 100 bytes from offset
 	// 0, maxChunk would be 1 and maxChunkOffset would be 0. We want maxChunk
@@ -463,7 +470,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 	}
 	// Make sure the requested chunks are within the boundaries.
 	if minChunk == params.file.NumChunks() || maxChunk == params.file.NumChunks() {
-		return nil, errors.New("download is requesting a chunk that is past the boundary of the file")
+		return errors.New("download is requesting a chunk that is past the boundary of the file")
 	}
 
 	// For each chunk, assemble a mapping from the contract id to the index of
@@ -475,7 +482,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		// Get the pieces for the chunk.
 		pieces, err := params.file.Pieces(uint64(chunkIndex))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		for pieceIndex, pieceSet := range pieces {
 			for _, piece := range pieceSet {
@@ -483,7 +490,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 				// the same chunk.
 				_, exists := chunkMaps[chunkIndex-minChunk][piece.HostPubKey.String()]
 				if exists {
-					r.log.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.")
+					d.r.log.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.")
 				}
 				chunkMaps[chunkIndex-minChunk][piece.HostPubKey.String()] = downloadPieceInfo{
 					index: uint64(pieceIndex),
@@ -517,7 +524,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 			// TODO: There is some sane minimum latency that should actually be
 			// set based on the number of pieces 'n', and the 'n' fastest
 			// workers that we have.
-			staticLatencyTarget: params.latencyTarget + (25 * time.Duration(i-minChunk)), // Increase target by 25ms per chunk.
+			staticLatencyTarget: d.staticLatencyTarget + (25 * time.Duration(i-minChunk)), // Increase target by 25ms per chunk.
 			staticNeedsMemory:   params.needsMemory,
 			staticPriority:      params.priority,
 
@@ -555,13 +562,13 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 
 		// Add this chunk to the chunk heap, and notify the download loop that
 		// there is work to do.
-		r.managedAddChunkToDownloadHeap(udc)
+		d.r.managedAddChunkToDownloadHeap(udc)
 		select {
-		case r.newDownloads <- struct{}{}:
+		case d.r.newDownloads <- struct{}{}:
 		default:
 		}
 	}
-	return d, nil
+	return nil
 }
 
 // DownloadByUID returns a single download from the history by it's UID.

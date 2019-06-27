@@ -186,7 +186,7 @@ func (udc *unfinishedDownloadChunk) returnMemory() {
 	}
 	// Return any memory we don't need.
 	if uint64(udc.memoryAllocated) > maxMemory {
-		udc.download.memoryManager.Return(udc.memoryAllocated - maxMemory)
+		udc.download.r.memoryManager.Return(udc.memoryAllocated - maxMemory)
 		udc.memoryAllocated = maxMemory
 	}
 }
