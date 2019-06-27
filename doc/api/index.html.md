@@ -362,11 +362,11 @@ Returns the alerts of the Sia instance.
   ],
 }
 ```
-**msg** | string  
-Msg contains information about an issue.
-
 **cause** | string  
 Cause is the cause for the information contained in msg if known.
+
+**msg** | string  
+Msg contains information about an issue.
 
 **module** | string  
 Module is the module which caused the alert.
