@@ -626,6 +626,9 @@ type Renter interface {
 	// inclusive for before and after times.
 	ClearDownloadHistory(after, before time.Time) error
 
+	// DownloadByUID returns a download from the download history given its uid.
+	DownloadByUID(uid DownloadID) (DownloadInfo, bool)
+
 	// DownloadHistory lists all the files that have been scheduled for download.
 	DownloadHistory() []DownloadInfo
 

@@ -1414,7 +1414,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		}
 		// Download file.
 		totalSize += file.Filesize
-		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		_, _, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
 			return
@@ -1563,7 +1563,7 @@ func renterfilesdownload(path, destination string) {
 	// the call will return before the download has completed. The call is made
 	// as an async call.
 	start := time.Now()
-	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true)
+	_, cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true)
 	if err != nil {
 		die("Download could not be started:", err)
 	}

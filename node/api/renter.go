@@ -883,6 +883,32 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 	})
 }
 
+// renterDownloadByUIDHandlerGET handles the API call to /renter/downloadinfo.
+func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	uid := req.FormValue("uid")
+	di, exists := api.renter.DownloadByUID(modules.DownloadID(uid))
+	if !exists {
+		WriteError(w, Error{fmt.Sprintf("Download with id '%v' doesn't exist", uid)}, http.StatusNotFound)
+		return
+	}
+	WriteJSON(w, DownloadInfo{
+		Destination:     di.Destination,
+		DestinationType: di.DestinationType,
+		Filesize:        di.Length,
+		Length:          di.Length,
+		Offset:          di.Offset,
+		SiaPath:         di.SiaPath,
+
+		Completed:            di.Completed,
+		EndTime:              di.EndTime,
+		Error:                di.Error,
+		Received:             di.Received,
+		StartTime:            di.StartTime,
+		StartTimeUnix:        di.StartTimeUnix,
+		TotalDataTransferred: di.TotalDataTransferred,
+	})
+}
+
 // renterRecoveryScanHandlerPOST handles the API call to /renter/recoveryscan.
 func (api *API) renterRecoveryScanHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	if err := api.renter.InitRecoveryScan(); err != nil {
@@ -1119,6 +1145,7 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	w.Header().Set("UID", "TODO: change to actual download id")
 	if params.Async {
 		var cancel func()
 		id := hex.EncodeToString(fastrand.Bytes(16))

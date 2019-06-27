@@ -46,7 +46,7 @@ func TestRenterDownloadStreamCache(t *testing.T) {
 	}
 
 	// Download that file using a download stream.
-	downloadedData, err := renter.DownloadByStream(remoteFile)
+	_, downloadedData, err := renter.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -564,6 +564,30 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 	return d, nil
 }
 
+// DownloadByUID returns a single download from the history by it's UID.
+func (r *Renter) DownloadByUID(uid modules.DownloadID) (modules.DownloadInfo, bool) {
+	r.downloadHistoryMu.Lock()
+	defer r.downloadHistoryMu.Unlock()
+	d, exists := r.downloadHistory[uid]
+	if !exists {
+		return modules.DownloadInfo{}, false
+	}
+	return modules.DownloadInfo{
+		Destination:     d.destinationString,
+		DestinationType: d.staticDestinationType,
+		Length:          d.staticLength,
+		Offset:          d.staticOffset,
+		SiaPath:         d.staticSiaPath,
+
+		Completed:            d.staticComplete(),
+		EndTime:              d.endTime,
+		Received:             atomic.LoadUint64(&d.atomicDataReceived),
+		StartTime:            d.staticStartTime,
+		StartTimeUnix:        d.staticStartTime.UnixNano(),
+		TotalDataTransferred: atomic.LoadUint64(&d.atomicTotalDataTransferred),
+	}, true
+}
+
 // DownloadHistory returns the list of downloads that have been performed. Will
 // include downloads that have not yet completed. Downloads will be roughly,
 // but not precisely, sorted according to start time.
