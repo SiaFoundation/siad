@@ -99,7 +99,7 @@ func (w *Wallet) MasterKey(seed modules.Seed) ([]byte, error) {
 func (w *Wallet) initEncryption(key []byte, seed modules.Seed, progress uint64) (modules.Seed, error) {
 	// If masterKey is blank, use the hash of the seed.
 	var masterKey crypto.CipherKey
-	if masterKey == nil {
+	if key == nil {
 		masterKey = crypto.NewWalletKey(crypto.HashObject(seed))
 	} else {
 		masterKey = crypto.NewWalletKey(crypto.HashObject(key))
