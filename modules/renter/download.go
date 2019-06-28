@@ -619,13 +619,13 @@ func (r *Renter) DownloadHistory() []modules.DownloadInfo {
 	r.downloadHistoryMu.Lock()
 	defer r.downloadHistoryMu.Unlock()
 
-	// Get a slice of the history sorted from most recnet to least recent.
+	// Get a slice of the history sorted from least recent to most recent.
 	downloadHistory := make([]*download, 0, len(r.downloadHistory))
 	for _, d := range r.downloadHistory {
 		downloadHistory = append(downloadHistory, d)
 	}
 	sort.Slice(downloadHistory, func(i, j int) bool {
-		return downloadHistory[i].staticStartTime.After(downloadHistory[j].staticStartTime)
+		return downloadHistory[i].staticStartTime.Before(downloadHistory[j].staticStartTime)
 	})
 
 	downloads := make([]modules.DownloadInfo, len(downloadHistory))
