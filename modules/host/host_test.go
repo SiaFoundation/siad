@@ -7,11 +7,11 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	// "gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
@@ -30,7 +30,7 @@ type hostTester struct {
 	renting   bool
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey crypto.CipherKey
+	walletKey []byte
 
 	host *Host
 
@@ -85,7 +85,7 @@ func (ht *hostTester) initRenting() error {
 // and then stores the key in the host tester.
 func (ht *hostTester) initWallet() error {
 	// Create the keys for the wallet and unlock it.
-	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
+	key := fastrand.Bytes(16)
 	ht.walletKey = key
 	_, err := ht.wallet.Encrypt(key)
 	if err != nil {

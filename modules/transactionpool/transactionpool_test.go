@@ -7,7 +7,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
@@ -24,7 +23,7 @@ type tpoolTester struct {
 	tpool     *TransactionPool
 	miner     modules.TestMiner
 	wallet    modules.Wallet
-	walletKey crypto.CipherKey
+	walletKey []byte
 
 	persistDir string
 }
@@ -50,7 +49,7 @@ func blankTpoolTester(name string) (*tpoolTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
+	key := fastrand.Bytes(16)
 	_, err = w.Encrypt(key)
 	if err != nil {
 		return nil, err

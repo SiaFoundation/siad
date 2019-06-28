@@ -24,7 +24,7 @@ func TestSignTransaction(t *testing.T) {
 	defer wt.closeWt()
 
 	// load siafunds into the wallet
-	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
+	err = wt.wallet.LoadSiagKeys(crypto.NewWalletKey(crypto.HashObject(wt.walletMasterKey)), []string{"../../types/siag0of1of1.siakey"})
 	if err != nil {
 		t.Error(err)
 	}

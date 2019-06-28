@@ -257,7 +257,7 @@ type (
 		// and will return an error on subsequent calls (even after restarting
 		// the wallet). To reset the wallet, the wallet files must be moved to
 		// a different directory or deleted.
-		Encrypt(masterKey crypto.CipherKey) (Seed, error)
+		Encrypt(masterKey []byte) (Seed, error)
 
 		// Reset will reset the wallet, clearing the database and returning it to
 		// the unencrypted state. Reset can only be called on a wallet that has
@@ -273,11 +273,15 @@ type (
 		// Unlike Encrypt, the blockchain will be scanned to determine the
 		// seed's progress. For this reason, InitFromSeed should not be called
 		// until the blockchain is fully synced.
-		InitFromSeed(masterKey crypto.CipherKey, seed Seed) error
+		InitFromSeed(masterKey []byte, seed Seed) error
 
 		// Lock deletes all keys in memory and prevents the wallet from being
 		// used to spend coins or extract keys until 'Unlock' is called.
 		Lock() error
+
+		// MasterKey uses the provided seed to get and decrypt the masterKey
+		// that was used to encrypt the wallet.
+		MasterKey(seed Seed) ([]byte, error)
 
 		// Unlock must be called before the wallet is usable. All wallets and
 		// wallet seeds are encrypted by default, and the wallet will not know
@@ -286,11 +290,11 @@ type (
 		//
 		// All items in the wallet are encrypted using different keys which are
 		// derived from the master key.
-		Unlock(masterKey crypto.CipherKey) error
+		Unlock(masterKey []byte) error
 
 		// ChangeKey changes the wallet's materKey from masterKey to newKey,
 		// re-encrypting the wallet with the provided key.
-		ChangeKey(masterKey crypto.CipherKey, newKey crypto.CipherKey) error
+		ChangeKey(masterKey []byte, newKey []byte) error
 
 		// Unlocked returns true if the wallet is currently unlocked, false
 		// otherwise.
@@ -333,7 +337,7 @@ type (
 		// LoadSeed only needs to be called if the original seed file or
 		// encryption password was lost. The master key is used to encrypt the
 		// recovery seed before saving it to disk.
-		LoadSeed(crypto.CipherKey, Seed) error
+		LoadSeed([]byte, Seed) error
 
 		// LoadSiagKeys will take a set of filepaths that point to a siag key
 		// and will have the siag keys loaded into the wallet so that they will

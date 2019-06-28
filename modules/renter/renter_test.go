@@ -108,7 +108,7 @@ func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
+	key := fastrand.Bytes(16)
 	_, err = w.Encrypt(key)
 	if err != nil {
 		return nil, err

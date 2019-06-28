@@ -152,16 +152,16 @@ type (
 
 // encryptionKeys enumerates the possible encryption keys that can be derived
 // from an input string.
-func encryptionKeys(seedStr string) (validKeys []crypto.CipherKey) {
+func encryptionKeys(seedStr string) (validKeys [][]byte) {
 	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
 	for _, dict := range dicts {
 		seed, err := modules.StringToSeed(seedStr, dict)
 		if err != nil {
 			continue
 		}
-		validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seed)))
+		validKeys = append(validKeys, seed[:])
 	}
-	validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seedStr)))
+	validKeys = append(validKeys, []byte(seedStr))
 	return validKeys
 }
 
@@ -229,7 +229,7 @@ func (api *API) wallet033xHandler(w http.ResponseWriter, req *http.Request, _ ht
 	}
 	potentialKeys := encryptionKeys(req.FormValue("encryptionpassword"))
 	for _, key := range potentialKeys {
-		err := api.wallet.Load033xWallet(key, source)
+		err := api.wallet.Load033xWallet(crypto.NewWalletKey(crypto.HashObject(key)), source)
 		if err == nil {
 			WriteSuccess(w)
 			return
@@ -309,9 +309,9 @@ func (api *API) walletBackupHandler(w http.ResponseWriter, req *http.Request, _ 
 
 // walletInitHandler handles API calls to /wallet/init.
 func (api *API) walletInitHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var encryptionKey crypto.CipherKey
+	var encryptionKey []byte
 	if req.FormValue("encryptionpassword") != "" {
-		encryptionKey = crypto.NewWalletKey(crypto.HashObject(req.FormValue("encryptionpassword")))
+		encryptionKey = []byte(req.FormValue("encryptionpassword"))
 	}
 
 	if req.FormValue("force") == "true" {
@@ -343,9 +343,9 @@ func (api *API) walletInitHandler(w http.ResponseWriter, req *http.Request, _ ht
 
 // walletInitSeedHandler handles API calls to /wallet/init/seed.
 func (api *API) walletInitSeedHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var encryptionKey crypto.CipherKey
+	var encryptionKey []byte
 	if req.FormValue("encryptionpassword") != "" {
-		encryptionKey = crypto.NewWalletKey(crypto.HashObject(req.FormValue("encryptionpassword")))
+		encryptionKey = []byte(req.FormValue("encryptionpassword"))
 	}
 	dictID := mnemonics.DictionaryID(req.FormValue("dictionary"))
 	if dictID == "" {
@@ -416,7 +416,7 @@ func (api *API) walletSiagkeyHandler(w http.ResponseWriter, req *http.Request, _
 	}
 
 	for _, key := range potentialKeys {
-		err := api.wallet.LoadSiagKeys(key, keyfiles)
+		err := api.wallet.LoadSiagKeys(crypto.NewWalletKey(crypto.HashObject(key)), keyfiles)
 		if err == nil {
 			WriteSuccess(w)
 			return
@@ -696,17 +696,14 @@ func (api *API) walletUnlockHandler(w http.ResponseWriter, req *http.Request, _ 
 
 // walletChangePasswordHandler handles API calls to /wallet/changepassword
 func (api *API) walletChangePasswordHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var newKey crypto.CipherKey
 	newPassword := req.FormValue("newpassword")
 	if newPassword == "" {
 		WriteError(w, Error{"a password must be provided to newpassword"}, http.StatusBadRequest)
 		return
 	}
-	newKey = crypto.NewWalletKey(crypto.HashObject(newPassword))
-
 	originalKeys := encryptionKeys(req.FormValue("encryptionpassword"))
 	for _, key := range originalKeys {
-		err := api.wallet.ChangeKey(key, newKey)
+		err := api.wallet.ChangeKey(key, []byte(newPassword))
 		if err == nil {
 			WriteSuccess(w)
 			return

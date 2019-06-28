@@ -31,7 +31,7 @@ func TestPrimarySeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sk := crypto.NewWalletKey(crypto.HashObject(seed))
+	sk := seed[:]
 	err = wt.wallet.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestPrimarySeed(t *testing.T) {
 	if err != modules.ErrLockedWallet {
 		t.Error("unexpected err:", err)
 	}
-	sk = crypto.NewWalletKey(crypto.HashObject(seed))
+	sk = seed[:]
 	err = wt.wallet.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestLoadSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sk := crypto.NewWalletKey(crypto.HashObject(newSeed))
+	sk := newSeed[:]
 	err = w.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +135,7 @@ func TestLoadSeed(t *testing.T) {
 	if !siacoinBal.Equals64(0) {
 		t.Error("fresh wallet should not have a balance")
 	}
-	sk = crypto.NewWalletKey(crypto.HashObject(newSeed))
+	sk = newSeed[:]
 	err = w.LoadSeed(sk, seed)
 	if err != nil {
 		t.Fatal(err)
@@ -218,7 +218,7 @@ func TestSweepSeedCoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sk := crypto.NewWalletKey(crypto.HashObject(newSeed))
+	sk := newSeed[:]
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestSweepSeedFunds(t *testing.T) {
 	defer wt.closeWt()
 
 	// Load the key into the wallet.
-	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
+	err = wt.wallet.LoadSiagKeys(crypto.NewWalletKey(crypto.HashObject(wt.walletMasterKey)), []string{"../../types/siag0of1of1.siakey"})
 	if err != nil {
 		t.Error(err)
 	}
@@ -349,7 +349,7 @@ func TestSweepSeedSentFunds(t *testing.T) {
 	defer wt.closeWt()
 
 	// Load the key into the wallet.
-	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
+	err = wt.wallet.LoadSiagKeys(crypto.NewWalletKey(crypto.HashObject(wt.walletMasterKey)), []string{"../../types/siag0of1of1.siakey"})
 	if err != nil {
 		t.Error(err)
 	}
@@ -445,7 +445,7 @@ func TestSweepSeedCoinsAndFunds(t *testing.T) {
 	defer wt.closeWt()
 
 	// Load the key into the wallet.
-	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
+	err = wt.wallet.LoadSiagKeys(crypto.NewWalletKey(crypto.HashObject(wt.walletMasterKey)), []string{"../../types/siag0of1of1.siakey"})
 	if err != nil {
 		t.Error(err)
 	}

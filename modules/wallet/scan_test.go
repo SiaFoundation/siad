@@ -3,8 +3,9 @@ package wallet
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -21,7 +22,7 @@ func TestScanLargeIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer wt.closeWt()
-	masterKey := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
+	masterKey := fastrand.Bytes(16)
 	_, err = wt.wallet.Encrypt(masterKey)
 	if err != nil {
 		t.Fatal(err)

@@ -70,6 +70,7 @@ var (
 	keySiafundPool            = []byte("keySiafundPool")
 	keySpendableKeyFiles      = []byte("keySpendableKeyFiles")
 	keyUID                    = []byte("keyUID")
+	keyWalletPassword         = []byte("keyWalletPassword")
 	keyWatchedAddrs           = []byte("keyWatchedAddrs")
 )
 

@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
@@ -99,7 +98,7 @@ func TestWalletEncrypt(t *testing.T) {
 	testdir := build.TempDir("api", t.Name())
 
 	walletPassword := "testpass"
-	key := crypto.NewWalletKey(crypto.HashObject(walletPassword))
+	key := []byte(walletPassword)
 
 	st, err := assembleServerTester(key, testdir)
 	if err != nil {
@@ -426,7 +425,7 @@ func TestIntegrationWalletSweepSeedPOST(t *testing.T) {
 	defer st.server.panicClose()
 
 	// send coins to a new wallet, then sweep them back
-	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
+	key := fastrand.Bytes(16)
 	w, err := wallet.New(st.cs, st.tpool, filepath.Join(st.dir, "wallet2"))
 	if err != nil {
 		t.Fatal(err)
@@ -491,7 +490,7 @@ func TestIntegrationWalletLoadSeedPOST(t *testing.T) {
 	}
 
 	// Create a wallet.
-	key := crypto.NewWalletKey(crypto.HashObject("password"))
+	key := []byte("password")
 	st, err := assembleServerTester(key, build.TempDir("api", t.Name()))
 	if err != nil {
 		t.Fatal(err)
@@ -506,7 +505,7 @@ func TestIntegrationWalletLoadSeedPOST(t *testing.T) {
 	}
 
 	// Create a wallet to load coins from.
-	key2 := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
+	key2 := fastrand.Bytes(16)
 	w2, err := wallet.New(st.cs, st.tpool, filepath.Join(st.dir, "wallet2"))
 	if err != nil {
 		t.Fatal(err)
@@ -1029,7 +1028,7 @@ func TestWalletReset(t *testing.T) {
 	testdir := build.TempDir("api", t.Name())
 
 	walletPassword := "testpass"
-	key := crypto.NewWalletKey(crypto.HashObject(walletPassword))
+	key := []byte(walletPassword)
 
 	st, err := assembleServerTester(key, testdir)
 	if err != nil {
@@ -1044,7 +1043,7 @@ func TestWalletReset(t *testing.T) {
 
 	// reencrypt the wallet
 	newPassword := "testpass2"
-	newKey := crypto.NewWalletKey(crypto.HashObject(newPassword))
+	newKey := []byte(newPassword)
 
 	initValues := url.Values{}
 	initValues.Set("force", "true")
@@ -1110,7 +1109,7 @@ func TestWalletSiafunds(t *testing.T) {
 	t.Parallel()
 
 	walletPassword := "testpass"
-	key := crypto.NewWalletKey(crypto.HashObject(walletPassword))
+	key := []byte(walletPassword)
 	testdir := build.TempDir("api", t.Name())
 	st, err := assembleServerTester(key, testdir)
 	if err != nil {
@@ -1288,8 +1287,8 @@ func TestWalletChangePassword(t *testing.T) {
 
 	originalPassword := "testpass"
 	newPassword := "newpass"
-	originalKey := crypto.NewWalletKey(crypto.HashObject(originalPassword))
-	newKey := crypto.NewWalletKey(crypto.HashObject(newPassword))
+	originalKey := []byte(originalPassword)
+	newKey := []byte(newPassword)
 
 	st, err := assembleServerTester(originalKey, testdir)
 	if err != nil {
