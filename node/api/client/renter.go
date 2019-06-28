@@ -182,9 +182,9 @@ func (c *Client) RenterRecoverableContractsGet() (rc api.RenterContracts, err er
 
 // RenterCancelDownloadPost requests the /renter/download/cancel endpoint to
 // cancel an ongoing doing.
-func (c *Client) RenterCancelDownloadPost(id string) (err error) {
+func (c *Client) RenterCancelDownloadPost(id modules.DownloadID) (err error) {
 	values := url.Values{}
-	values.Set("id", id)
+	values.Set("id", string(id))
 	err = c.post("/renter/download/cancel", values.Encode(), nil)
 	return
 }
@@ -198,7 +198,7 @@ func (c *Client) RenterDeletePost(siaPath modules.SiaPath) (err error) {
 
 // RenterDownloadGet uses the /renter/download endpoint to download a file to a
 // destination on disk.
-func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool) (modules.DownloadID, string, error) {
+func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool) (modules.DownloadID, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("destination", destination)
@@ -206,7 +206,7 @@ func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, 
 	values.Set("length", fmt.Sprint(length))
 	values.Set("async", fmt.Sprint(async))
 	h, _, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
-	return modules.DownloadID(h.Get("UID")), h.Get("ID"), err
+	return modules.DownloadID(h.Get("ID")), err
 }
 
 // RenterDownloadInfoGet uses the /renter/downloadinfo endpoint to fetch
@@ -264,14 +264,14 @@ func (c *Client) RenterRecoverLocalBackupPost(src string) (err error) {
 
 // RenterDownloadFullGet uses the /renter/download endpoint to download a full
 // file.
-func (c *Client) RenterDownloadFullGet(siaPath modules.SiaPath, destination string, async bool) (modules.DownloadID, string, error) {
+func (c *Client) RenterDownloadFullGet(siaPath modules.SiaPath, destination string, async bool) (modules.DownloadID, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("destination", destination)
 	values.Set("httpresp", fmt.Sprint(false))
 	values.Set("async", fmt.Sprint(async))
 	h, _, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
-	return modules.DownloadID(h.Get("UID")), h.Get("ID"), err
+	return modules.DownloadID(h.Get("ID")), err
 }
 
 // RenterClearAllDownloadsPost requests the /renter/downloads/clear resource
@@ -324,7 +324,7 @@ func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, 
 	values.Set("length", fmt.Sprint(length))
 	values.Set("httpresp", fmt.Sprint(true))
 	h, resp, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
-	return modules.DownloadID(h.Get("UID")), resp, err
+	return modules.DownloadID(h.Get("ID")), resp, err
 }
 
 // RenterFileGet uses the /renter/file/:siapath endpoint to query a file.

@@ -258,41 +258,51 @@ func (d *download) UID() modules.DownloadID {
 	return d.staticUID
 }
 
-// Download performs a file download using the passed parameters and blocks
-// until the download is finished.
-func (r *Renter) Download(p modules.RenterDownloadParameters) error {
+// Download creates a file download using the passed parameters and blocks until
+// the download is finished. The download needs to be started by calling the
+// returned method.
+func (r *Renter) Download(p modules.RenterDownloadParameters) (modules.DownloadID, func() error, error) {
 	if err := r.tg.Add(); err != nil {
-		return err
+		return "", nil, err
 	}
 	defer r.tg.Done()
 	d, err := r.managedDownload(p)
 	if err != nil {
-		return err
+		return "", nil, err
 	}
-	// Block until the download has completed
-	select {
-	case <-d.completeChan:
-		return d.Err()
-	case <-r.tg.StopChan():
-		return errors.New("download interrupted by shutdown")
-	}
+	return d.UID(), func() error {
+		// Start download.
+		if err := d.Start(); err != nil {
+			return err
+		}
+		// Block until the download has completed
+		select {
+		case <-d.completeChan:
+			return d.Err()
+		case <-r.tg.StopChan():
+			return errors.New("download interrupted by shutdown")
+		}
+	}, nil
 }
 
-// DownloadAsync performs a file download using the passed parameters without
-// blocking until the download is finished.
-func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error) error) (cancel func(), err error) {
+// DownloadAsync creates a file download using the passed parameters without
+// blocking until the download is finished. The download needs to be started
+// using the method returned by DownloadAsync.
+func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error) error) (id modules.DownloadID, start func() error, cancel func(), err error) {
 	if err := r.tg.Add(); err != nil {
-		return nil, err
+		return "", nil, nil, err
 	}
 	defer r.tg.Done()
 	d, err := r.managedDownload(p)
 	if err != nil {
-		return nil, err
+		return "", nil, nil, err
 	}
 	if f != nil {
 		d.onComplete(f)
 	}
-	return d.managedCancel, err
+	return d.UID(), func() error {
+		return d.Start()
+	}, d.managedCancel, nil
 }
 
 // managedDownload performs a file download using the passed parameters and

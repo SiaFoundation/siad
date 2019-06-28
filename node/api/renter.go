@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -1119,7 +1118,7 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 // renterCancelDownloadHandler handles the API call to cancel a download.
 func (api *API) renterCancelDownloadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Get the id.
-	id := req.FormValue("id")
+	id := modules.DownloadID(req.FormValue("id"))
 	if id == "" {
 		WriteError(w, Error{"id not specified"}, http.StatusBadRequest)
 		return
@@ -1145,26 +1144,33 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	w.Header().Set("UID", "missingid")
+	var id modules.DownloadID
+	var start func() error
 	if params.Async {
 		var cancel func()
-		id := hex.EncodeToString(fastrand.Bytes(16))
-		cancel, err = api.renter.DownloadAsync(params, func(_ error) error {
+		id, start, cancel, err = api.renter.DownloadAsync(params, func(_ error) error {
 			api.downloadMu.Lock()
 			delete(api.downloads, id)
 			api.downloadMu.Unlock()
 			return nil
 		})
+		// Add download to API's map for cancellation.
 		if err == nil {
-			w.Header().Set("ID", id)
 			api.downloadMu.Lock()
 			api.downloads[id] = cancel
 			api.downloadMu.Unlock()
 		}
 	} else {
-		err = api.renter.Download(params)
+		id, start, err = api.renter.Download(params)
 	}
 	if err != nil {
+		WriteError(w, Error{"download creation failed: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	// Set ID before starting download.
+	w.Header().Set("ID", string(id))
+	// Start download.
+	if err := start(); err != nil {
 		WriteError(w, Error{"download failed: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}

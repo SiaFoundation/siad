@@ -614,13 +614,15 @@ type Renter interface {
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(siaPath SiaPath) error
 
-	// Download performs a download according to the parameters passed, including
-	// downloads of `offset` and `length` type.
-	Download(params RenterDownloadParameters) error
+	// Download creates a download according to the parameters passed, including
+	// downloads of `offset` and `length` type. It returns a method to
+	// start the download.
+	Download(params RenterDownloadParameters) (DownloadID, func() error, error)
 
-	// Download performs a download according to the parameters passed without
-	// blocking, including downloads of `offset` and `length` type.
-	DownloadAsync(params RenterDownloadParameters, onComplete func(error) error) (cancel func(), err error)
+	// Download creates a download according to the parameters passed without
+	// blocking, including downloads of `offset` and `length` type. It returns a
+	// method to start the download and one to cancel it.
+	DownloadAsync(params RenterDownloadParameters, onComplete func(error) error) (uid DownloadID, start func() error, cancel func(), err error)
 
 	// ClearDownloadHistory clears the download history of the renter
 	// inclusive for before and after times.
