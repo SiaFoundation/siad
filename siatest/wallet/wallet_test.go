@@ -560,6 +560,8 @@ func TestWalletLastAddresses(t *testing.T) {
 	}
 }
 
+// TestWalletSendUnsynced confirms that the wallet will return an error when
+// trying to send siacoins or siafunds if the consensus is not fully synced
 func TestWalletSendUnsynced(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
