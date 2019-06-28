@@ -171,7 +171,7 @@ func TestIntegrationUserSuppliedEncryption(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer wt.closeWt()
-	masterKey := []byte{}
+	masterKey := []byte{1, 2, 3}
 	_, err = wt.wallet.Encrypt(masterKey)
 	if err != nil {
 		t.Error(err)

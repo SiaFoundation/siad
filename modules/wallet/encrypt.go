@@ -164,7 +164,6 @@ func (w *Wallet) managedUnlock(key []byte) error {
 		return errUnencryptedWallet
 	}
 	masterKey := crypto.NewWalletKey(crypto.HashObject(key))
-
 	// Load db objects into memory.
 	var lastChange modules.ConsensusChangeID
 	var primarySeedFile seedFile
