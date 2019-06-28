@@ -114,6 +114,11 @@ func (w *Wallet) SendSiacoins(amount types.Currency, dest types.UnlockHash) (txn
 	}
 	defer w.tg.Done()
 
+	// Check if concensus is synced
+	if !w.cs.Synced() {
+		return nil, errors.New("cannot send siacoin until fully synced")
+	}
+
 	w.mu.RLock()
 	unlocked := w.unlocked
 	w.mu.RUnlock()
@@ -175,6 +180,12 @@ func (w *Wallet) SendSiacoinsMulti(outputs []types.SiacoinOutput) (txns []types.
 		return nil, err
 	}
 	defer w.tg.Done()
+
+	// Check if concensus is synced
+	if !w.cs.Synced() {
+		return nil, errors.New("cannot send siacoin until fully synced")
+	}
+
 	w.mu.RLock()
 	unlocked := w.unlocked
 	w.mu.RUnlock()
@@ -249,6 +260,12 @@ func (w *Wallet) SendSiafunds(amount types.Currency, dest types.UnlockHash) (txn
 		return nil, err
 	}
 	defer w.tg.Done()
+
+	// Check if concensus is synced
+	if !w.cs.Synced() {
+		return nil, errors.New("cannot send siafunds until fully synced")
+	}
+
 	w.mu.RLock()
 	unlocked := w.unlocked
 	w.mu.RUnlock()
