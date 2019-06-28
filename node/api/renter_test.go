@@ -1108,7 +1108,7 @@ func TestRenterRelativePathErrorDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	renterDownloadAbsoluteError := "download failed: destination must be an absolute path"
+	renterDownloadAbsoluteError := "download creation failed: destination must be an absolute path"
 
 	// Create a file, and upload it.
 	path := filepath.Join(st.dir, "test.dat")
