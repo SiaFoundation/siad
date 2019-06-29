@@ -25,7 +25,7 @@ fmt:
 # vet calls go vet on all packages.
 # NOTE: go vet requires packages to be built in order to obtain type info.
 vet:
-	go vet $(pkgs)
+	GO111MODULE=on go vet $(pkgs)
 
 lint:
 	go get golang.org/x/lint/golint
