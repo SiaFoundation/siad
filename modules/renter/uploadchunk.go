@@ -334,6 +334,8 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
 			// If the piece was not a full sector, pad it accordingly with random bytes.
 			if short := int(modules.SectorSize) - len(chunk.physicalChunkData[i]); short > 0 {
+				// The form `append(obj, make([]T, n))` will be optimized by the
+				// compiler to eliminate unneeded allocations starting go 1.11.
 				chunk.physicalChunkData[i] = append(chunk.physicalChunkData[i], make([]byte, short)...)
 				fastrand.Read(chunk.physicalChunkData[i][len(chunk.physicalChunkData[i])-short:])
 			}
