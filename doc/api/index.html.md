@@ -3527,6 +3527,26 @@ Locks the wallet, wiping all secret keys. After being locked, the keys are encry
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /wallet/password [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/wallet/password?seed=<primaryseed>"
+```
+
+Retrieves the password entered by the user to encrypt the wallet using the primary seed of the wallet.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "password": "mypassword",
+}
+```
+**password**  
+Password entered by the user when first encrypting the wallet. If no password was used and the seed is the password, password will be an empty string.  
+
 ## /wallet/transaction/:*id* [GET]
 > curl example  
 

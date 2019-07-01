@@ -645,4 +645,18 @@ func TestWalletRetrievePasswordBySeed(t *testing.T) {
 	if wpk.Password != password {
 		t.Fatalf("Expected Password '%v' but got '%v'", password, wpk.Password)
 	}
+	// Reinit the wallet by the blank password.
+	if err := testNode.WalletInitSeedPost(seedStr, "", true); err != nil {
+		t.Fatal(err)
+	}
+	// Fetch the password using the seed.
+	wpk, err = testNode.WalletPasswordGet(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The password is the seed which means we expect the returned password to be
+	// an empty string.
+	if wpk.Password != "" {
+		t.Fatalf("Expected Password to be empty string but was '%v'", wpk.Password)
+	}
 }

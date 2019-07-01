@@ -133,7 +133,9 @@ func (w *Wallet) initEncryption(key []byte, seed modules.Seed, progress uint64) 
 	}
 
 	// Encrypt the masterkey using the seed to allow for a masterkey recovery using
-	// the seed.
+	// the seed. If the seed is used as the key, this will store an empty string in
+	// the database since there isn't a good reason to enter the seed to retrieve
+	// the seed anyway.
 	wpk := walletPasswordEncryptionKey(seed, dbGetWalletUID(w.dbTx))
 	err = wb.Put(keyWalletPassword, wpk.EncryptBytes(key))
 	if err != nil {
