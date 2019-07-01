@@ -110,7 +110,15 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 		addedReceivedData := uint64(udc.erasureCode.MinPieces()) * (udc.staticFetchLength / uint64(udc.erasureCode.MinPieces()))
 		atomic.AddUint64(&udc.download.atomicDataReceived, udc.staticFetchLength-addedReceivedData)
 		// Recover the logical data.
-		go udc.threadedRecoverLogicalData()
+		if err := w.renter.tg.Add(); err != nil {
+			w.renter.log.Debugln("worker failed to decrypt piece:", err)
+			udc.mu.Unlock()
+			return
+		}
+		go func() {
+			defer w.renter.tg.Done()
+			udc.threadedRecoverLogicalData()
+		}()
 	}
 	udc.mu.Unlock()
 }
