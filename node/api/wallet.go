@@ -53,6 +53,11 @@ type (
 		PrimarySeed string `json:"primaryseed"`
 	}
 
+	// WalletPasswordGet contains the password used to encrypt the wallet.
+	WalletPasswordGET struct {
+		Password string `json:"password"`
+	}
+
 	// WalletSiacoinsPOST contains the transaction sent in the POST call to
 	// /wallet/siacoins.
 	WalletSiacoinsPOST struct {
@@ -163,6 +168,29 @@ func encryptionKeys(seedStr string) (validKeys [][]byte) {
 	}
 	validKeys = append(validKeys, []byte(seedStr))
 	return validKeys
+}
+
+// walletPasswordHandlerGet retrieves the password used to encrypt the wallet by
+// providing the primary seed.
+func (api *API) walletPasswordHandlerGet(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	seedStr := req.FormValue("seed")
+	if seedStr == "" {
+		WriteError(w, Error{"Primary seed wasn't provided"}, http.StatusBadRequest)
+		return
+	}
+	seed, err := modules.StringToSeed(seedStr, mnemonics.DictionaryID("english"))
+	if err != nil {
+		WriteError(w, Error{"Invalid Seed: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	key, err := api.wallet.MasterKey(seed)
+	if err != nil {
+		WriteError(w, Error{"Failed to retrieve password: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, WalletPasswordGET{
+		Password: string(key),
+	})
 }
 
 // walletHander handles API calls to /wallet.

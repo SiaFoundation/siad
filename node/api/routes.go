@@ -152,6 +152,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/wallet/init", RequirePassword(api.walletInitHandler, requiredPassword))
 		router.POST("/wallet/init/seed", RequirePassword(api.walletInitSeedHandler, requiredPassword))
 		router.POST("/wallet/lock", RequirePassword(api.walletLockHandler, requiredPassword))
+		router.GET("/wallet/password", RequirePassword(api.walletPasswordHandlerGet, requiredPassword))
 		router.POST("/wallet/seed", RequirePassword(api.walletSeedHandler, requiredPassword))
 		router.GET("/wallet/seeds", RequirePassword(api.walletSeedsHandler, requiredPassword))
 		router.POST("/wallet/siacoins", RequirePassword(api.walletSiacoinsHandler, requiredPassword))

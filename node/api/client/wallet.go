@@ -6,6 +6,10 @@ import (
 	"net/url"
 	"strconv"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -72,6 +76,19 @@ func (c *Client) WalletLastAddressesGet(count uint64) (wag api.WalletAddressesGE
 // WalletLockPost uses the /wallet/lock endpoint to lock the wallet.
 func (c *Client) WalletLockPost() (err error) {
 	err = c.post("/wallet/lock", "", nil)
+	return
+}
+
+// WalletPasswordGet uses the /wallet/password endpoint to retrieve the password
+// used to encrypt the wallet.
+func (c *Client) WalletPasswordGet(seed modules.Seed) (wpg api.WalletPasswordGET, err error) {
+	seedStr, err := modules.SeedToString(seed, mnemonics.DictionaryID("english"))
+	if err != nil {
+		return api.WalletPasswordGET{}, errors.AddContext(err, "failed to convert seed to string")
+	}
+	values := url.Values{}
+	values.Set("seed", seedStr)
+	err = c.get("/wallet/password?"+values.Encode(), &wpg)
 	return
 }
 

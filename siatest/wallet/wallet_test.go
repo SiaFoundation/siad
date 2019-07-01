@@ -8,6 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -602,5 +606,43 @@ func TestWalletSendUnsynced(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "cannot send siafunds until fully synced") {
 		t.Fatal("expected to get synced error but got:", err)
+	}
+}
+
+// TestWalletRetrievePasswordBySeed initializes a wallet with a custom password
+// and uses the primary seed to retrieve that password.
+func TestWalletRetrievePasswordBySeed(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a new server
+	testNode, err := siatest.NewNode(node.AllModules(walletTestDir(t.Name())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := testNode.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Reinit the wallet by using a specific password.
+	seed := modules.Seed{}
+	fastrand.Read(seed[:])
+	seedStr, err := modules.SeedToString(seed, mnemonics.DictionaryID("english"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := "password"
+	if err := testNode.WalletInitSeedPost(seedStr, password, true); err != nil {
+		t.Fatal(err)
+	}
+	// Fetch the password using the seed.
+	wpk, err := testNode.WalletPasswordGet(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check passwords.
+	if wpk.Password != password {
+		t.Fatalf("Expected Password '%v' but got '%v'", password, wpk.Password)
 	}
 }
