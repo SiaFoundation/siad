@@ -903,8 +903,21 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("This test requires at least 2 hosts")
 	}
 
-	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
+	// Choose a filesize for the upload. To hit a wide range of cases,
+	// siatest.Fuzz is used.
+	fuzz := siatest.Fuzz()
+	fileSize := int(modules.SectorSize) + fuzz
+	// One out of three times, add an extra sector.
+	if siatest.Fuzz() == 0 {
+		fileSize += int(modules.SectorSize)
+	}
+	// One out of three times, add a random amount of extra data.
+	if siatest.Fuzz() == 0 {
+		fileSize += fastrand.Intn(int(modules.SectorSize))
+	}
+	t.Log("testRemoteRepair fileSize choice:", fileSize)
+
+	// Set the redundancy for the upload.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
