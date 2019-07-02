@@ -645,7 +645,11 @@ func TestWalletRetrievePasswordBySeed(t *testing.T) {
 	if wpk.Password != password {
 		t.Fatalf("Expected Password '%v' but got '%v'", password, wpk.Password)
 	}
-	// Reinit the wallet by the blank password.
+	// Unlock the wallet using the password.
+	if err := testNode.WalletUnlockPost(wpk.Password); err != nil {
+		t.Fatal("Failed to unlock wallet")
+	}
+	// Reinit the wallet by using a blank password.
 	if err := testNode.WalletInitSeedPost(seedStr, "", true); err != nil {
 		t.Fatal(err)
 	}
@@ -658,5 +662,14 @@ func TestWalletRetrievePasswordBySeed(t *testing.T) {
 	// an empty string.
 	if wpk.Password != "" {
 		t.Fatalf("Expected Password to be empty string but was '%v'", wpk.Password)
+	}
+	// Unlock the wallet using the password. This shouldn't work as the password is
+	// blank.
+	if err := testNode.WalletUnlockPost(wpk.Password); err == nil {
+		t.Fatal("Unlocking the wallet should fail")
+	}
+	// Unlock the wallet using the seed.
+	if err := testNode.WalletUnlockPost(seedStr); err != nil {
+		t.Fatal("Failed to unlock wallet")
 	}
 }
