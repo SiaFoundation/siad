@@ -4262,7 +4262,18 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Recover the backup into the same renter. Nothing should change.
+	// Get current allowance.
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowance := rg.Settings.Allowance
+	// Reset allowance.
+	if err := r.RenterCancelAllowance(); err != nil {
+		t.Fatal(err)
+	}
+	// Recover the backup into the same renter. No new files should appear but the
+	// allowance should be set again.
 	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
 		t.Fatal(err)
 	}
@@ -4272,6 +4283,13 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	if len(files) != 1 {
 		t.Fatal("expected 1 file but got", len(files))
+	}
+	rg, err = r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rg.Settings.Allowance, allowance) {
+		t.Fatal("allowance doesn't match allowance before reset")
 	}
 	// Get the renter's seed.
 	wsg, err := r.WalletSeedsGet()
