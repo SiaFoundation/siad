@@ -205,7 +205,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if !reflect.DeepEqual(allowance, modules.Allowance{}) &&
 		reflect.DeepEqual(r.hostContractor.Allowance(), modules.Allowance{}) {
 		if err := r.hostContractor.SetAllowance(allowance); err != nil {
-			return err
+			return errors.AddContext(err, "unable to set allowance from backup")
 		}
 	}
 	// Prepend the decoder's buffer to the remaining archive.
