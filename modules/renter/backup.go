@@ -17,7 +17,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/twofish"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
@@ -158,30 +157,25 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if err := dec.Decode(&bh); err != nil {
 		return err
 	}
-	// Seek back by the amount of data left in the decoder's buffer. That gives
-	// us the offset of the body.
-	var off int64
-	if buf, ok := dec.Buffered().(*bytes.Reader); ok {
-		off, err = f.Seek(int64(1-buf.Len()), io.SeekCurrent)
-		if err != nil {
-			return err
-		}
-	} else {
-		build.Critical("Buffered should return a bytes.Reader")
-	}
 	// Check the version number.
 	if bh.Version != encryptionVersion {
 		return errors.New("unknown version")
 	}
-	// Wrap the file in the correct streamcipher.
-	archive, err = wrapReaderInCipher(f, bh, secret)
+	// Wrap the file in the correct streamcipher. Consider the data remaining in
+	// the decoder's buffer by using a multireader.
+	archive = io.MultiReader(dec.Buffered(), archive)
+	_, err = archive.Read(make([]byte, 1)) // Ignore first byte of buffer to get to the body of the backup
+	if err != nil {
+		return err
+	}
+	archive, err = wrapReaderInCipher(io.MultiReader(archive, f), bh, secret)
 	if err != nil {
 		return err
 	}
 	// Pipe the remaining file into the hasher to verify that the hash is
 	// correct.
 	h := crypto.NewHash()
-	_, err = io.Copy(h, archive)
+	n, err := io.Copy(h, archive)
 	if err != nil {
 		return err
 	}
@@ -190,7 +184,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 		return errors.New("checksum doesn't match")
 	}
 	// Seek back to the beginning of the body.
-	if _, err := f.Seek(off, io.SeekStart); err != nil {
+	if _, err := f.Seek(-n, io.SeekCurrent); err != nil {
 		return err
 	}
 	// Wrap the file again.
@@ -214,22 +208,8 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 			return err
 		}
 	}
-	// Seek back by the amount of data left in the decoder's buffer. That gives
-	// us the offset of the zipped archive.
-	if buf, ok := dec.Buffered().(*bytes.Reader); ok {
-		off, err = f.Seek(int64(1-buf.Len()), io.SeekCurrent)
-		if err != nil {
-			return err
-		}
-	} else {
-		build.Critical("Buffered should return a bytes.Reader")
-	}
-	// Wrap the file again.
-	archive, err = wrapReaderInCipher(f, bh, secret)
-	if err != nil {
-		return err
-	}
-
+	// Prepend the decoder's buffer to the remaining archive.
+	archive = io.MultiReader(dec.Buffered(), archive)
 	// Wrap the potentially encrypted reader in a gzip reader.
 	gzr, err := gzip.NewReader(archive)
 	if err != nil {
