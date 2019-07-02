@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -93,6 +94,16 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) error {
 	// before encrypting it.
 	h := crypto.NewHash()
 	archive = io.MultiWriter(archive, h)
+	// Write the allowance after adding encryption and hashing, but before adding
+	// compression.
+	allowanceBytes, err := json.Marshal(r.hostContractor.Allowance())
+	if err != nil {
+		return errors.AddContext(err, "failed to marshal allowance")
+	}
+	_, err = archive.Write(allowanceBytes)
+	if err != nil {
+		return errors.AddContext(err, "failed to write allowance to backup")
+	}
 	// Wrap the potentially encrypted writer into a gzip writer.
 	gzw := gzip.NewWriter(archive)
 	// Wrap the gzip writer into a tar writer.
@@ -187,6 +198,38 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if err != nil {
 		return err
 	}
+	// Unmarshal the allowance if available. This needs to happen after adding
+	// decryption and confirming the hash but before adding decompression.
+	dec = json.NewDecoder(archive)
+	var allowance modules.Allowance
+	if err := dec.Decode(&allowance); err != nil {
+		// legacy backup without allowance
+		r.log.Println("WARN: Decoding the backup's allowance failed: ", err)
+	}
+	// If the backup contained a valid allowance and we currently don't have an
+	// allowance set, import it.
+	if !reflect.DeepEqual(allowance, modules.Allowance{}) &&
+		reflect.DeepEqual(r.hostContractor.Allowance(), modules.Allowance{}) {
+		if err := r.hostContractor.SetAllowance(allowance); err != nil {
+			return err
+		}
+	}
+	// Seek back by the amount of data left in the decoder's buffer. That gives
+	// us the offset of the zipped archive.
+	if buf, ok := dec.Buffered().(*bytes.Reader); ok {
+		off, err = f.Seek(int64(1-buf.Len()), io.SeekCurrent)
+		if err != nil {
+			return err
+		}
+	} else {
+		build.Critical("Buffered should return a bytes.Reader")
+	}
+	// Wrap the file again.
+	archive, err = wrapReaderInCipher(f, bh, secret)
+	if err != nil {
+		return err
+	}
+
 	// Wrap the potentially encrypted reader in a gzip reader.
 	gzr, err := gzip.NewReader(archive)
 	if err != nil {
