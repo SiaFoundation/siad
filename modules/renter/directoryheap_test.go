@@ -38,6 +38,7 @@ func TestDirectoryHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Add directories to heap. Using these settings ensures that neither the
 	// first of the last element added remains at the top of the health. The
@@ -50,6 +51,8 @@ func TestDirectoryHeap(t *testing.T) {
 	// &{1 5 false {1} {0 0}}
 	// &{6 0 true {6} {0 0}}
 
+	// Reset the directory heap because the root directory is added at init.
+	rt.renter.directoryHeap.managedReset()
 	heapLen := 6
 	for i := 1; i <= heapLen; i++ {
 		siaPath, err := modules.NewSiaPath(fmt.Sprint(i))
@@ -62,12 +65,10 @@ func TestDirectoryHeap(t *testing.T) {
 			explored:        i%2 == 0,
 			siaPath:         siaPath,
 		}
-		if !rt.renter.directoryHeap.managedPush(d) {
-			t.Fatal("directory not added")
-		}
+		rt.renter.directoryHeap.managedPush(d)
 	}
 
-	// Confirm all elements added
+	// Confirm all elements added.
 	if rt.renter.directoryHeap.managedLen() != heapLen {
 		t.Fatalf("heap should have length of %v but was %v", heapLen, rt.renter.directoryHeap.managedLen())
 	}
@@ -94,22 +95,18 @@ func TestDirectoryHeap(t *testing.T) {
 		t.Fatalf("Expected health of heap to be the value of the health of top chunk %v, got %v", 4, rt.renter.directoryHeap.managedPeekHealth())
 	}
 
-	// Push directory back on, then confirm a second push fails
-	if !rt.renter.directoryHeap.managedPush(d) {
-		t.Fatal("directory not added")
-	}
-	if rt.renter.directoryHeap.managedPush(d) {
-		t.Fatal("directory should not have been added")
-	}
+	// Push directory back on.
+	rt.renter.directoryHeap.managedPush(d)
+	// A second push will be an update, which should change nothing, and
+	// therefore not impact the outcome of the test.
+	rt.renter.directoryHeap.managedPush(d)
 
 	// Now update directory and confirm it is not the top directory and the top
 	// element is as expected
 	d.aggregateHealth = 0
 	d.health = 0
 	d.explored = true
-	if !rt.renter.directoryHeap.managedUpdate(d) {
-		t.Fatal("directory not updated")
-	}
+	rt.renter.directoryHeap.managedPush(d)
 	topDir := rt.renter.directoryHeap.managedPop()
 	if topDir.health != float64(4) {
 		t.Fatal("Expected Health of 4, got", topDir.health)
@@ -142,7 +139,7 @@ func TestDirectoryHeap(t *testing.T) {
 		}
 	}
 
-	// Reset Direcotry heap
+	// Reset Directory heap
 	rt.renter.directoryHeap.managedReset()
 
 	// Confirm that the heap is empty
@@ -151,7 +148,7 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 
 	// Test initializing directory heap
-	err = rt.renter.managedInitDirectoryHeap()
+	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,6 +177,7 @@ func TestPushSubDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create a test directory with the following healths
 	//
@@ -273,6 +271,7 @@ func TestNextExploredDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create a test directory with the following healths/aggregateHealths
 	//

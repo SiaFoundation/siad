@@ -4,12 +4,12 @@ import (
 	"sort"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -248,6 +248,16 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 
 	ht.hosts[entry.PublicKey.String()] = node
 	return nil
+}
+
+// SetFiltered updates a host entry filtered field.
+func (ht *HostTree) SetFiltered(pubKey types.SiaPublicKey, filtered bool) error {
+	entry, ok := ht.Select(pubKey)
+	if !ok {
+		return ErrNoSuchHost
+	}
+	entry.Filtered = filtered
+	return ht.Modify(entry)
 }
 
 // SetWeightFunction resets the HostTree and assigns it a new weight

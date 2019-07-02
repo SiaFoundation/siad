@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"golang.org/x/crypto/chacha20poly1305"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -12,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // extendDeadline is a helper function for extending the connection timeout.

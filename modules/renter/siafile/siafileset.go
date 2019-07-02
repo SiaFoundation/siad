@@ -12,14 +12,14 @@ import (
 	"time"
 
 	"github.com/karrick/godirwalk"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/errors"
-
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // The SiaFileSet structure helps track the number of threads using a siafile
@@ -289,14 +289,8 @@ func (sfs *SiaFileSet) siaPathToEntryAndUID(siaPath modules.SiaPath) (*siaFileSe
 // the renter
 func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file in Memory
-	_, UID, exists1 := sfs.siaPathToEntryAndUID(siaPath)
-	_, exists2 := sfs.siaFileMap[UID]
-	// Sanity check that the maps are consistent
-	if exists1 != exists2 {
-		build.Critical("SiaFileSet in memory maps are inconsistent", exists1, exists2)
-	}
-	// Since maps are consistent, only need to check one
-	if exists1 {
+	_, _, exists := sfs.siaPathToEntryAndUID(siaPath)
+	if exists {
 		return true
 	}
 	// Check for file on disk

@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // bubbleStatus indicates the status of a bubble being executed on a
@@ -23,14 +25,14 @@ type bubbleStatus int
 // used to determine the status of a bubble being executed on a directory
 const (
 	bubbleError bubbleStatus = iota
-	bubbleInit
 	bubbleActive
 	bubblePending
 )
 
-// managedBubbleNeeded checks if a bubble is needed for a directory, updates the
-// renter's bubbleUpdates map and returns a bool
-func (r *Renter) managedBubbleNeeded(siaPath modules.SiaPath) (bool, error) {
+// managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
+// caller should proceed by calling bubble. If 'false' is returned, the caller
+// should not bubble, another thread will handle running the bubble.
+func (r *Renter) managedPrepareBubble(siaPath modules.SiaPath) bool {
 	r.bubbleUpdatesMu.Lock()
 	defer r.bubbleUpdatesMu.Unlock()
 
@@ -38,23 +40,14 @@ func (r *Renter) managedBubbleNeeded(siaPath modules.SiaPath) (bool, error) {
 	siaPathStr := siaPath.String()
 	status, ok := r.bubbleUpdates[siaPathStr]
 	if !ok {
-		status = bubbleInit
-		r.bubbleUpdates[siaPathStr] = status
-	}
-
-	// Update the bubble status
-	var err error
-	switch status {
-	case bubblePending:
-	case bubbleActive:
-		r.bubbleUpdates[siaPathStr] = bubblePending
-	case bubbleInit:
 		r.bubbleUpdates[siaPathStr] = bubbleActive
-		return true, nil
-	default:
-		err = errors.New("WARN: invalid bubble status")
+		return true
 	}
-	return false, err
+	if status != bubbleActive && status != bubblePending {
+		build.Critical("bubble status set to bubbleError")
+	}
+	r.bubbleUpdates[siaPathStr] = bubblePending
+	return false
 }
 
 // managedCalculateDirectoryMetadata calculates the new values for the
@@ -253,32 +246,43 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 
 // managedCompleteBubbleUpdate completes the bubble update and updates and/or
 // removes it from the renter's bubbleUpdates.
-func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) error {
+//
+// TODO: bubbleUpdatesMu is in violation of conventions, needs to be moved to
+// its own object to have its own mu.
+func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) {
 	r.bubbleUpdatesMu.Lock()
 	defer r.bubbleUpdatesMu.Unlock()
 
 	// Check current status
 	siaPathStr := siaPath.String()
-	status, ok := r.bubbleUpdates[siaPathStr]
-	if !ok {
-		// Bubble not found in map, nothing to do.
-		return nil
-	}
+	status, exists := r.bubbleUpdates[siaPathStr]
 
-	// Update status and call new bubble or remove from bubbleUpdates and save
-	switch status {
-	case bubblePending:
-		r.bubbleUpdates[siaPathStr] = bubbleInit
-		defer func() {
-			go r.threadedBubbleMetadata(siaPath)
-		}()
-	case bubbleActive:
+	// If the status is 'bubbleActive', delete the status and return.
+	if status == bubbleActive {
 		delete(r.bubbleUpdates, siaPathStr)
-	default:
-		return errors.New("WARN: invalid bubble status")
+		return
 	}
+	// If the status is not 'bubbleActive', and the status is also not
+	// 'bubblePending', this is an error. There should be a status, and it
+	// should either be active or pending.
+	if status != bubblePending {
+		build.Critical("invalid bubble status", status, exists)
+		delete(r.bubbleUpdates, siaPathStr) // Attempt to reset the corrupted state.
+		return
+	}
+	// The status is bubblePending, switch the status to bubbleActive.
+	r.bubbleUpdates[siaPathStr] = bubbleActive
 
-	return r.saveBubbleUpdates()
+	// Launch a thread to do another bubble on this directory, as there was a
+	// bubble pending waiting for the current bubble to complete.
+	err := r.tg.Add()
+	if err != nil {
+		return
+	}
+	go func() {
+		defer r.tg.Done()
+		r.managedPerformBubbleMetadata(siaPath)
+	}()
 }
 
 // managedDirectoryMetadata reads the directory metadata and returns the bubble
@@ -321,26 +325,14 @@ func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
 	}
 }
 
-// managedBubbleMetadata calculates the updated values of a directory's metadata
-// and updates the siadir metadata on disk then calls threadedBubbleMetadata on
-// the parent directory so that it is only blocking for the current directory
-func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
-	// Check if bubble is needed
-	needed, err := r.managedBubbleNeeded(siaPath)
-	if err != nil {
-		return errors.AddContext(err, "error in checking if bubble is needed")
-	}
-	if !needed {
-		return nil
-	}
-
+// managedPerformBubbleMetadata will bubble the metadata without checking the
+// bubble preparation.
+func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err error) {
 	// Make sure we call threadedBubbleMetadata on the parent once we are done.
 	defer func() error {
 		// Complete bubble
-		err = r.managedCompleteBubbleUpdate(siaPath)
-		if err != nil {
-			return errors.AddContext(err, "error in completing bubble")
-		}
+		r.managedCompleteBubbleUpdate(siaPath)
+
 		// Continue with parent dir if we aren't in the root dir already.
 		if siaPath.IsRoot() {
 			return nil
@@ -395,4 +387,25 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 		}
 	}
 	return err
+}
+
+// managedBubbleMetadata calculates the updated values of a directory's metadata
+// and updates the siadir metadata on disk then calls threadedBubbleMetadata on
+// the parent directory so that it is only blocking for the current directory
+func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
+	// Check if bubble is needed
+	proceedWithBubble := r.managedPrepareBubble(siaPath)
+	if !proceedWithBubble {
+		// Update the AggregateLastHealthCheckTime even if we weren't able to bubble
+		// right away.
+		entry, err := r.staticDirSet.Open(siaPath)
+		if err != nil {
+			return err
+		}
+		defer entry.Close()
+		md := entry.Metadata()
+		md.AggregateLastHealthCheckTime = time.Now()
+		return entry.UpdateMetadata(md)
+	}
+	return r.managedPerformBubbleMetadata(siaPath)
 }

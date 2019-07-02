@@ -575,7 +575,7 @@ returns information about the gateway, including the list of connected peers.
     "netaddress":"333.333.333.333:9981",  // string
     "peers":[
         {
-            "inbound":    alse,                    // boolean
+            "inbound":    false,                   // boolean
             "local":      false,                   // boolean
             "netaddress": "222.222.222.222:9981",  // string
             "version":    "1.0.0",                 // string
@@ -1527,7 +1527,7 @@ curl -A "Sia-Agent" "localhost:9980/hostdb/all"
 Lists all of the hosts known to the renter. Hosts are not guaranteed to be in any particular order, and the order may change in subsequent calls.
 
 ### JSON Response 
-Repsonse is the same as [`/hostdb/active`](#hosts)
+Response is the same as [`/hostdb/active`](#hosts)
 
 ## /hostdb/hosts/:*pubkey* [GET]
 > curl example  
@@ -1611,6 +1611,33 @@ The multiplier that gets applied to a host based on the uptime percentage of the
 **versionadjustment** | float64 
 The multiplier that gets applied to a host based on the version of Sia that they are running. Versions get penalties if there are known bugs, scaling limitations, performance limitations, etc. Generally, the most recent version is always the one with the highest score.  
 
+## /hostdb/filtermode [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" --user "":<apipassword> "localhost:9980/hostdb/filtermode"
+```  
+Returns the current filter mode of the hostDB and any filtered hosts.
+
+### JSON Response 
+> JSON Response Example
+ 
+```go
+{
+  "filtermode": "blacklist",  // string
+  "hosts":
+    [
+      "ed25519:122218260fb74b20a8be3000ad56a931f7461ea990a6dc5676c31bdf65fc668f"  // string
+    ]
+}
+
+```
+**filtermode** | string  
+Can be either whitelist, blacklist, or disable.  
+
+**hosts** | array of strings
+Comma separated pubkeys.  
+
 ## /hostdb/filtermode [POST]
 > curl example  
 
@@ -1620,7 +1647,7 @@ curl -A "Sia-Agent" --user "":<apipassword> --data '{"filtermode" : "whitelist",
 ```go
 curl -A "Sia-Agent" --user "":<apipassword> --data '{"filtermode" : "disable"}' "localhost:9980/hostdb/filtermode"
 ```
-Lets you enable and disable a filter mode for the hostdb. Currenlty the two modes supported are `blacklist` mode and `whitelist` mode. In `blacklist` mode, any hosts you identify as being on the `blacklist` will not be used to form contracts. In `whitelist` mode, only the hosts identified as being on the `whitelist` will be used to form contracts. In both modes, hosts that you are blacklisted will be filtered from your hostdb. To enable either mode, set `filtermode` to the desired mode and submit a list of host pubkeys as the corresponding `blacklist` or `whitelist`. To disable either list, the `host` field can be left blank (e.g. empty slice) and the `filtermode` should be set to `disable`.  
+Lets you enable and disable a filter mode for the hostdb. Currently the two modes supported are `blacklist` mode and `whitelist` mode. In `blacklist` mode, any hosts you identify as being on the `blacklist` will not be used to form contracts. In `whitelist` mode, only the hosts identified as being on the `whitelist` will be used to form contracts. In both modes, hosts that you are blacklisted will be filtered from your hostdb. To enable either mode, set `filtermode` to the desired mode and submit a list of host pubkeys as the corresponding `blacklist` or `whitelist`. To disable either list, the `host` field can be left blank (e.g. empty slice) and the `filtermode` should be set to `disable`.  
 
 **NOTE:** Enabling and disabling a filter mode can result in changes with your current contracts with can result in an increase in contract fee spending. For example, if `blacklist` mode is enabled, any hosts that you currently have contracts with that are also on the provide list of `hosts` will have their contracts replaced with non-blacklisted hosts. When `whitelist` mode is enabled, contracts will be replaced until there are only contracts with whitelisted hosts. Even disabling a filter mode can result in a change in contracts if there are better scoring hosts in your hostdb that were previously being filtered out.  
 
@@ -1629,7 +1656,7 @@ Lets you enable and disable a filter mode for the hostdb. Currenlty the two mode
 **filtermode** | string  
 Can be either whitelist, blacklist, or disable.  
 
-**hosts** | array of string
+**hosts** | array of string  
 Comma separated pubkeys.  
 
 ### Response
@@ -1768,10 +1795,14 @@ Returns the current settings along with metrics on the renter's spending.
 {
   "settings": {
     "allowance": {
-      "funds":       "1234",  // hastings
-      "hosts":       24,      // int
-      "period":      6048,    // blocks
-      "renewwindow": 3024     // blocks
+      "funds":              "1234",         // hastings
+      "hosts":              24,             // int
+      "period":             6048,           // blocks
+      "renewwindow":        3024            // blocks
+      "expectedstorage":    1000000000000,  // uint64
+      "expectedupload":     2,              // uint64
+      "expecteddownload":   1,              // uint64
+      "expectedredundancy": 3               // uint64
     },
     "maxuploadspeed":     1234, // BPS
     "maxdownloadspeed":   1234, // BPS
@@ -1796,16 +1827,92 @@ Settings that control the behavior of the renter.
 Allowance dictates how much the renter is allowed to spend in a given period. Note that funds are spent on both storage and bandwidth.  
 
 **funds** | hastings  
-Amount of money allocated for contracts. Funds are spent on both storage and bandwidth.  
+Funds determines the number of siacoins that the renter will spend when forming
+contracts with hosts. The renter will not allocate more than this amount of
+siacoins into the set of contracts each billing period. If the renter spends all
+of the funds but then needs to form new contracts, the renter will wait until
+either until the user increase the allowance funds, or until a new billing
+period is reached. If there are not enough funds to repair all files, then files
+may be at risk of getting lost.
 
 **hosts** | int
-Number of hosts that contracts will be formed with.  
+Hosts sets the number of hosts that will be used to form the allowance. Sia
+gains most of its resiliancy from having a large number of hosts. More hosts
+will mean both more robustness and higher speeds when using the network, however
+will also result in more memory consumption and higher blockchain fees. It is
+recommended that the default number of hosts be treated as a minimum, and that
+double the default number of default hosts be treated as a maximum.
 
 **period** | blocks  
-Duration of contracts formed, in number of blocks.  
+The period is equivalent to the billing cycle length. The renter will not spend
+more than the full balance of its funds every billing period. When the billing
+period is over, the contracts will be renewed and the spending will be reset.
 
 **renewwindow** | blocks  
-If the current blockheight + the renew window >= the height the contract is scheduled to end, the contract is renewed automatically. Is always nonzero.  
+The renew window is how long the user has to renew their contracts. At the end
+of the period, all of the contracts expire. The contracts need to be renewewd
+before they expire, otherwise the user will lose all of their files. The renew
+window is the window of time at the end of the period during which the renter
+will renew the users contracts. For example, if the renew window is 1 week long,
+then during the final week of each period the user will renew their contracts.
+If the user is offline for that whole week, the user's data will be lost.
+
+Each billing period begins at the beginning of the renew window for the previous
+period. For example, if the period is 12 weeks long and the renew window is 4
+weeks long, then the first billing period technically begins at -4 weeks, or 4
+weeks before the allowance is created. And the second billing period begins at
+week 8, or 8 weeks after the allowance is created. The third billing period will
+begin at week 20.
+
+**expectedstorage** | bytes  
+Expected storage is the amount of storage that the user expects to keep on the
+Sia network. This value is important to calibrate the spending habits of siad.
+Because Sia is decentralized, there is no easy way for siad to know what the
+real world cost of storage is, nor what the real world price of a siacoin is. To
+overcome this deficiency, siad depends on the user for guidance.
+
+If the user has a low allowance and a high amount of expected storage, siad will
+more heavily prioritize cheaper hosts, and will also be more comfortable with
+hosts that post lower amounts of collateral. If the user has a high allowance
+and a low amount of expected storage, siad will prioritize hosts that post more
+collateral, as well as giving preference to hosts better overall traits such as
+uptime and age.
+
+Even when the user has a large allowance and a low amount of expected storage,
+siad will try to optimize for saving money; siad tries to meet the users storage
+and bandwidth needs while spending significantly less than the overall allowance.
+
+**expectedupload** | bytes  
+Expected upload tells siad how much uploading the user expects to do each month.
+If this value is high, siad will more strongly prefer hosts that have a low
+upload bandwidth price. If this value is low, siad will focus on other metrics
+than upload bandwidth pricing, because even if the host charges a lot for upload
+bandwidth, it will not impact the total cost to the user very much.
+
+The user should not consider upload bandwidth used during repairs, siad will
+consider repair bandwidth separately.
+
+**expecteddownload** | bytes  
+Expected download tells siad how much downloading the user expects to do each
+month. If this value is high, siad will more strongly prefer hosts that have a
+low download bandwidth price. If this value is low, siad will focus on other
+metrics than download bandwidth pricing, because even if the host charges a lot
+for downloads, it will not impact the total cost to the user very much.
+
+The user should not consider download bandwidth used during repairs, siad will
+consider repair bandwidth separately.
+
+**expectedredundancy** | bytes    
+Expected redundancy is used in conjunction with expected storage to determine
+the total amount of raw storage that will be stored on hosts. If the expected
+storage is 1 TB and the expected redundancy is 3, then the renter will calculate
+that the total amount of storage in the user's contracts will be 3 TiB.
+
+This value does not need to be changed from the default unless the user is
+manually choosing redundancy settings for their file. If different files are
+being given different redundancy settings, then the average of all the
+redundancies should be used as the value for expected redundancy, weighted by
+how large the files are.
 
 **maxuploadspeed** | bytes per second  
 MaxUploadSpeed by default is unlimited but can be set by the user to manage bandwidth.  
@@ -2271,7 +2378,7 @@ Number of bytes downloaded thus far. Will only be updated as segments of the fil
 Time at which the download was initiated.
 
 **totaldatatransfered** | bytes
-The total amount of data transfered when downloading the file. This will eventually include data transferred during contract + payment negotiation, as well as data from failed piece downloads.  
+The total amount of data transferred when downloading the file. This will eventually include data transferred during contract + payment negotiation, as well as data from failed piece downloads.  
 
 ## /renter/downloads/clear [POST]
 > curl example  

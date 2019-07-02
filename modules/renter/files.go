@@ -4,10 +4,9 @@ import (
 	"os"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )

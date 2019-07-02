@@ -7,10 +7,11 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSnapshot tests if a snapshot is created correctly from a SiaFile.

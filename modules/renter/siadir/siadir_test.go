@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // checkMetadataInit is a helper that verifies that the metadata was initialized

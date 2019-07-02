@@ -132,6 +132,14 @@ var (
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
+	// maxRepairLoopTime indicates the maximum amount of time that the repair
+	// loop will spend popping chunks off of the repair heap.
+	maxRepairLoopTime = build.Select(build.Var{
+		Dev:      1 * time.Minute,
+		Standard: 15 * time.Minute,
+		Testing:  15 * time.Second,
+	}).(time.Duration)
+
 	// maxUploadHeapChunks is the maximum number of chunks that we should add to
 	// the upload heap. This also will be used as the target number of chunks to
 	// add to the upload heap which which will mean for small directories we
@@ -157,6 +165,17 @@ var (
 		Dev:      3 * time.Second,
 		Standard: 10 * time.Second,
 		Testing:  250 * time.Millisecond,
+	}).(time.Duration)
+
+	// repairLoopResetFrequency is the frequency with which the repair loop will
+	// reset entirely, pushing the root directory back on top. This is a
+	// temporary measure to ensure that even if a user is continuously
+	// uploading, the repair heap is occasionally reset to push the root
+	// directory on top.
+	repairLoopResetFrequency = build.Select(build.Var{
+		Dev:      15 * time.Minute,
+		Standard: 1 * time.Hour,
+		Testing:  40 * time.Second,
 	}).(time.Duration)
 
 	// repairStuckChunkInterval defines how long the renter sleeps between
