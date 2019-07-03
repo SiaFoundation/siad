@@ -1019,7 +1019,7 @@ func rentercontractscmd() {
 		totalSpent = totalSpent.Add(contractTotalSpent)
 	}
 	// Refreshed Contracts are duplicate data
-	for _, c := range rc.PassiveContracts {
+	for _, c := range rc.RefreshedContracts {
 		totalRemaining = totalRemaining.Add(c.RenterFunds)
 		totalFees = totalFees.Add(c.Fees)
 		// Negative Currency Check
@@ -1032,7 +1032,7 @@ func rentercontractscmd() {
 		totalSpent = totalSpent.Add(contractTotalSpent)
 	}
 	// Disabled Contracts are wasted data
-	for _, c := range rc.PassiveContracts {
+	for _, c := range rc.DisabledContracts {
 		totalWasted += c.Size
 		totalRemaining = totalRemaining.Add(c.RenterFunds)
 		totalFees = totalFees.Add(c.Fees)
@@ -1216,7 +1216,7 @@ func rentercontractscmd() {
 			die("Could not get expired contracts:", err)
 		}
 		// Build Historical summary
-		fmt.Println("Historical Summary")
+		fmt.Println("\nHistorical Summary")
 		var totalStored uint64
 		var totalRemaining, totalSpent, totalFees types.Currency
 		// Expired Contracts are all good data
@@ -1294,11 +1294,11 @@ func rentercontractscmd() {
 		if len(rce.ExpiredRefreshedContracts) == 0 {
 			fmt.Println("  No expired refreshed contracts.")
 		} else {
-			sort.Sort(byValue(rce.ExpiredContracts))
+			sort.Sort(byValue(rce.ExpiredRefreshedContracts))
 			fmt.Println("	 Number of Contracts:", len(rce.ExpiredRefreshedContracts))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
-			for _, c := range rce.ExpiredContracts {
+			for _, c := range rce.ExpiredRefreshedContracts {
 				address := c.NetAddress
 				hostVersion := c.HostVersion
 				if address == "" {
