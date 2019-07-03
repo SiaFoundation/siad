@@ -340,35 +340,8 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 			return err
 		default:
 		}
-
-		var aggregateLastHealthCheckTime time.Time
-		ext := filepath.Ext(fi.Name())
 		// Check for SiaFiles and Directories
-		if ext == modules.SiaFileExtension {
-			// SiaFile found. Open it.
-			fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
-			fileSiaPath, err := siaPath.Join(fName)
-			if err != nil {
-				r.log.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
-				continue
-			}
-			file, err := r.staticFileSet.Open(fileSiaPath)
-			if err != nil {
-				r.log.Printf("failed to open file %v: %v", fi.Name(), err)
-				continue
-			}
-			// Update LastHealthCheckTime right away and remember the
-			// aggregateLastHealthCheckTime.
-			lastHealthCheckTime := file.LastHealthCheckTime()
-			aggregateLastHealthCheckTime = lastHealthCheckTime
-			if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
-				metadata.LastHealthCheckTime = lastHealthCheckTime
-			}
-			// Close file again.
-			if err := file.Close(); err != nil {
-				r.log.Printf("failed to close file %v: %v", fi.Name(), err)
-			}
-		} else if fi.IsDir() {
+		if fi.IsDir() {
 			// Directory is found, read the directory metadata file
 			dirSiaPath, err := siaPath.Join(fi.Name())
 			if err != nil {
@@ -378,15 +351,14 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 			if err != nil {
 				return err
 			}
-			// Remember dir's AggregateLastHealthCheckTime.
-			aggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
+			// Update AggregateLastHealthCheckTime.
+			if dirMetadata.AggregateLastHealthCheckTime.Before(metadata.AggregateLastHealthCheckTime) {
+				metadata.AggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
+			}
 		} else {
-			// Ignore everything that is not a SiaFile or a directory
+			// Ignore everything that is not a directory since files should be updated
+			// already by the ongoing bubble.
 			continue
-		}
-		// Update AggregateLastHealthCheckTime.
-		if aggregateLastHealthCheckTime.Before(metadata.AggregateLastHealthCheckTime) {
-			metadata.AggregateLastHealthCheckTime = aggregateLastHealthCheckTime
 		}
 	}
 	// Write changes to disk.
