@@ -312,7 +312,7 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 
 // managedUpdateLastHealthCheckTime updates the LastHealthCheckTime and
 // AggregateLastHealthCheckTime fields of the directory metadata by reading all
-// the files and subdirs of the directory.
+// the subdirs of the directory.
 func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error {
 	// Open dir and fetch current metadata.
 	entry, err := r.staticDirSet.Open(siaPath)
