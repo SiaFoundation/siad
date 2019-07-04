@@ -330,7 +330,7 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	}
 	go func() {
 		defer c.tg.Done()
-		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
+		err := cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
 		if err == modules.ErrInvalidConsensusChangeID {
 			// Reset the contractor consensus variables and try rescanning.
 			c.blockHeight = 0

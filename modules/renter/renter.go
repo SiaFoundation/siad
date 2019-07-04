@@ -828,6 +828,13 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			r.log.Printf("Renter failed to subscribe to consensus set: %v", err)
 		}
 	}()
+	err := r.tg.OnStop(func() error {
+		cs.Unsubscribe(r)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	// Spin up the workers for the work pool.
 	go r.threadedDownloadLoop()
