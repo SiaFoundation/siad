@@ -250,7 +250,7 @@ func TestHostWeightStorageRemainingDifferences(t *testing.T) {
 	entry2.RemainingStorage = 1e3
 	hdb.knownContracts[entry.PublicKey.String()] = contractInfo{
 		HostPublicKey: entry.PublicKey,
-		StoredData: hdb.allowance.ExpectedStorage,
+		StoredData:    hdb.allowance.ExpectedStorage,
 	}
 	w1 = hdb.weightFunc(entry).Score()
 	w2 = hdb.weightFunc(entry2).Score()
