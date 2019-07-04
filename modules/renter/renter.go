@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -825,7 +826,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		defer r.tg.Done()
 		defer close(done)
 		err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
-		if err == threadgroup.ErrStopped {
+		if strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 			return
 		}
 		if err != nil {

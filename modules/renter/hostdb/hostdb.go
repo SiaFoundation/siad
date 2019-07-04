@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -293,7 +294,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			hdb.mu.Unlock()
 			err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
 		}
-		if err == threadgroup.ErrStopped {
+		if strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 			return
 		}
 		if err != nil {

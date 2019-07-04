@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -339,7 +340,7 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 			c.recentRecoveryChange = modules.ConsensusChangeBeginning
 			err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
 		}
-		if err == threadgroup.ErrStopped {
+		if strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 			return
 		}
 		if err != nil {
