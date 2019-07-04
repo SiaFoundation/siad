@@ -66,44 +66,17 @@ func checkMasterKey(tx *bolt.Tx, masterKey crypto.CipherKey) error {
 	return verifyEncryption(uk, encryptedVerification)
 }
 
-// MasterKey uses the provided seed to get and decrypt the masterKey
-// that was used to encrypt the wallet.
-func (w *Wallet) MasterKey(seed modules.Seed) ([]byte, error) {
-	if err := w.tg.Add(); err != nil {
-		return nil, err
-	}
-	defer w.tg.Done()
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	// Check if wallet is encrypted.
-	if !w.encrypted {
-		return nil, errUnencryptedWallet
-	}
-	// Compute password from seed.
-	wb := w.dbTx.Bucket(bucketWallet)
-	wpk := walletPasswordEncryptionKey(seed, dbGetWalletUID(w.dbTx))
-	// Grab the encrypted masterkey.
-	encryptedMK := wb.Get(keyWalletPassword)
-	if len(encryptedMK) == 0 {
-		return nil, errors.New("wallet is encrypted but masterkey is missing")
-	}
-	// Decrypt the masterkey.
-	masterKey, err := wpk.DecryptBytes(encryptedMK)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to decrypt masterkey")
-	}
-	return masterKey, nil
-}
-
 // initEncryption initializes and encrypts the primary SeedFile.
 func (w *Wallet) initEncryption(key []byte, seed modules.Seed, progress uint64) (modules.Seed, error) {
-	// If masterKey is blank, use the hash of the seed.
-	var masterKey crypto.CipherKey
+	var entropy crypto.Hash
 	if key == nil {
-		masterKey = crypto.NewWalletKey(crypto.HashObject(seed[:]))
+		// If masterKey is blank, use the hash of the seed.
+		entropy = crypto.HashObject(seed[:])
 	} else {
-		masterKey = crypto.NewWalletKey(crypto.HashObject(key))
+		// Otherwise use the hash of the provided key.
+		entropy = crypto.HashObject(key)
 	}
+	masterKey := crypto.NewWalletKey(entropy)
 
 	wb := w.dbTx.Bucket(bucketWallet)
 	// Check if the wallet encryption key has already been set.
@@ -133,11 +106,9 @@ func (w *Wallet) initEncryption(key []byte, seed modules.Seed, progress uint64) 
 	}
 
 	// Encrypt the masterkey using the seed to allow for a masterkey recovery using
-	// the seed. If the seed is used as the key, this will store an empty string in
-	// the database since there isn't a good reason to enter the seed to retrieve
-	// the seed anyway.
+	// the seed.
 	wpk := walletPasswordEncryptionKey(seed, dbGetWalletUID(w.dbTx))
-	err = wb.Put(keyWalletPassword, wpk.EncryptBytes(key))
+	err = wb.Put(keyWalletPassword, wpk.EncryptBytes(entropy[:]))
 	if err != nil {
 		return modules.Seed{}, err
 	}
@@ -146,6 +117,31 @@ func (w *Wallet) initEncryption(key []byte, seed modules.Seed, progress uint64) 
 	w.encrypted = true
 
 	return seed, nil
+}
+
+// managedMasterKey retrieves the masterkey that was stored encrypted in the
+// wallet's database.
+func (w *Wallet) managedMasterKey(seed modules.Seed) ([]byte, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	// Check if wallet is encrypted.
+	if !w.encrypted {
+		return nil, errUnencryptedWallet
+	}
+	// Compute password from seed.
+	wb := w.dbTx.Bucket(bucketWallet)
+	wpk := walletPasswordEncryptionKey(seed, dbGetWalletUID(w.dbTx))
+	// Grab the encrypted masterkey.
+	encryptedMK := wb.Get(keyWalletPassword)
+	if len(encryptedMK) == 0 {
+		return nil, errors.New("wallet is encrypted but masterkey is missing")
+	}
+	// Decrypt the masterkey.
+	masterKey, err := wpk.DecryptBytes(encryptedMK)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to decrypt masterkey")
+	}
+	return masterKey, nil
 }
 
 // managedUnlock loads all of the encrypted file structures into wallet memory. Even
@@ -485,7 +481,24 @@ func (w *Wallet) ChangeKey(masterKey []byte, newKey []byte) error {
 	}
 	defer w.tg.Done()
 
-	return w.managedChangeKey(masterKey, newKey)
+	mk := crypto.NewWalletKey(crypto.HashObject(masterKey))
+	return w.managedChangeKey(mk, newKey)
+}
+
+// ChangeKeyWithSeed uses the provided seed to get and decrypt the masterKey
+// that was used to encrypt the wallet and reencrypt using a new key.
+func (w *Wallet) ChangeKeyWithSeed(seed modules.Seed, key []byte) error {
+	if err := w.tg.Add(); err != nil {
+		return err
+	}
+	defer w.tg.Done()
+	mk, err := w.managedMasterKey(seed)
+	if err != nil {
+		return errors.AddContext(err, "failed to retrieve masterkey by seed")
+	}
+	var entropy crypto.Hash
+	copy(entropy[:], mk)
+	return w.managedChangeKey(crypto.NewWalletKey(entropy), key)
 }
 
 // Unlock will decrypt the wallet seed and load all of the addresses into
@@ -516,15 +529,15 @@ func (w *Wallet) Unlock(masterKey []byte) error {
 
 // managedChangeKey safely performs the database operations required to change
 // the wallet's encryption key.
-func (w *Wallet) managedChangeKey(key []byte, newKeyRaw []byte) error {
+func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKeyRaw []byte) error {
 	w.mu.Lock()
 	encrypted := w.encrypted
 	w.mu.Unlock()
 	if !encrypted {
 		return errUnencryptedWallet
 	}
-	masterKey := crypto.NewWalletKey(crypto.HashObject(key))
-	newKey := crypto.NewWalletKey(crypto.HashObject(newKeyRaw))
+	newEntropy := crypto.HashObject(newKeyRaw)
+	newKey := crypto.NewWalletKey(newEntropy)
 
 	// grab the current seed files
 	var primarySeedFile seedFile
@@ -639,7 +652,7 @@ func (w *Wallet) managedChangeKey(key []byte, newKeyRaw []byte) error {
 		}
 
 		wpk := walletPasswordEncryptionKey(primarySeed, dbGetWalletUID(w.dbTx))
-		err = wb.Put(keyWalletPassword, wpk.EncryptBytes(newKeyRaw))
+		err = wb.Put(keyWalletPassword, wpk.EncryptBytes(newEntropy[:]))
 		if err != nil {
 			return err
 		}

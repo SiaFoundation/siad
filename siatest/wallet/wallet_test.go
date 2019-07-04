@@ -609,9 +609,9 @@ func TestWalletSendUnsynced(t *testing.T) {
 	}
 }
 
-// TestWalletRetrievePasswordBySeed initializes a wallet with a custom password
-// and uses the primary seed to retrieve that password.
-func TestWalletRetrievePasswordBySeed(t *testing.T) {
+// TestWalletChangePasswordWithSeed initializes a wallet with a custom password
+// and uses the primary seed to change that password.
+func TestWalletChangePasswordWithSeed(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -636,40 +636,13 @@ func TestWalletRetrievePasswordBySeed(t *testing.T) {
 	if err := testNode.WalletInitSeedPost(seedStr, password, true); err != nil {
 		t.Fatal(err)
 	}
-	// Fetch the password using the seed.
-	wpk, err := testNode.WalletPasswordGet(seed)
-	if err != nil {
+	// Change the password again without using the password.
+	newPassword := "newpassword"
+	if err := testNode.WalletChangePasswordWithSeedPost(seed, newPassword); err != nil {
 		t.Fatal(err)
 	}
-	// Check passwords.
-	if wpk.Password != password {
-		t.Fatalf("Expected Password '%v' but got '%v'", password, wpk.Password)
-	}
-	// Unlock the wallet using the password.
-	if err := testNode.WalletUnlockPost(wpk.Password); err != nil {
-		t.Fatal("Failed to unlock wallet")
-	}
-	// Reinit the wallet by using a blank password.
-	if err := testNode.WalletInitSeedPost(seedStr, "", true); err != nil {
-		t.Fatal(err)
-	}
-	// Fetch the password using the seed.
-	wpk, err = testNode.WalletPasswordGet(seed)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The password is the seed which means we expect the returned password to be
-	// an empty string.
-	if wpk.Password != "" {
-		t.Fatalf("Expected Password to be empty string but was '%v'", wpk.Password)
-	}
-	// Unlock the wallet using the password. This shouldn't work as the password is
-	// blank.
-	if err := testNode.WalletUnlockPost(wpk.Password); err == nil {
-		t.Fatal("Unlocking the wallet should fail")
-	}
-	// Unlock the wallet using the seed.
-	if err := testNode.WalletUnlockPost(seedStr); err != nil {
+	// Unlock the wallet using the new password.
+	if err := testNode.WalletUnlockPost(newPassword); err != nil {
 		t.Fatal("Failed to unlock wallet")
 	}
 }

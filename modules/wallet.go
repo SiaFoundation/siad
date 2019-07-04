@@ -279,10 +279,6 @@ type (
 		// used to spend coins or extract keys until 'Unlock' is called.
 		Lock() error
 
-		// MasterKey uses the provided seed to get and decrypt the masterKey
-		// that was used to encrypt the wallet.
-		MasterKey(seed Seed) ([]byte, error)
-
 		// Unlock must be called before the wallet is usable. All wallets and
 		// wallet seeds are encrypted by default, and the wallet will not know
 		// which addresses to watch for on the blockchain until unlock has been
@@ -295,6 +291,10 @@ type (
 		// ChangeKey changes the wallet's materKey from masterKey to newKey,
 		// re-encrypting the wallet with the provided key.
 		ChangeKey(masterKey []byte, newKey []byte) error
+
+		// ChangeKeyWithSeed is the same as ChangeKey but uses the primary seed
+		// instead of the current masterKey.
+		ChangeKeyWithSeed(seed Seed, key []byte) error
 
 		// Unlocked returns true if the wallet is currently unlocked, false
 		// otherwise.
