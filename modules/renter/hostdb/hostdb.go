@@ -293,6 +293,9 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			hdb.mu.Unlock()
 			err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
 		}
+		if err == threadgroup.ErrStopped {
+			return
+		}
 		if err != nil {
 			build.Critical("HostDB failed to subscribe to consensus set", err)
 			hdb.log.Printf("HostDB failed to subscribe to consensus set")

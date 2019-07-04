@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -337,6 +338,9 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 			c.lastChange = modules.ConsensusChangeBeginning
 			c.recentRecoveryChange = modules.ConsensusChangeBeginning
 			err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
+		}
+		if err == threadgroup.ErrStopped {
+			return
 		}
 		if err != nil {
 			build.Critical("Contractor failed to subscribe to consensus set", err)
