@@ -277,19 +277,27 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 	hdb.mu.Unlock()
 
-	err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
-	if err == modules.ErrInvalidConsensusChangeID {
-		// Subscribe again using the new ID. This will cause a triggered scan
-		// on all of the hosts, but that should be acceptable.
-		hdb.mu.Lock()
-		hdb.blockHeight = 0
-		hdb.lastChange = modules.ConsensusChangeBeginning
-		hdb.mu.Unlock()
+	// Subscribe to the consensus set in a separate goroutine.
+	if err := hdb.tg.Add(); err != nil {
+		return nil, err
+	}
+	go func() {
+		defer hdb.tg.Done()
 		err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
-	}
-	if err != nil {
-		return nil, errors.New("hostdb subscription failed: " + err.Error())
-	}
+		if err == modules.ErrInvalidConsensusChangeID {
+			// Subscribe again using the new ID. This will cause a triggered scan
+			// on all of the hosts, but that should be acceptable.
+			hdb.mu.Lock()
+			hdb.blockHeight = 0
+			hdb.lastChange = modules.ConsensusChangeBeginning
+			hdb.mu.Unlock()
+			err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
+		}
+		if err != nil {
+			build.Critical("HostDB failed to subscribe to consensus set", err)
+			hdb.log.Printf("HostDB failed to subscribe to consensus set")
+		}
+	}()
 	err = hdb.tg.OnStop(func() error {
 		cs.Unsubscribe(hdb)
 		return nil

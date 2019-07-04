@@ -848,6 +848,12 @@ func (c *Contractor) threadedContractMaintenance() {
 	defer c.tg.Done()
 	c.log.Debugln("starting contract maintenance")
 
+	// No contract maintenance unless contractor is synced.
+	if !c.cs.Synced() {
+		c.log.Debugln("Skipping contract maintenance since contractor isn't synced yet")
+		return
+	}
+
 	// Only one instance of this thread should be running at a time. Under
 	// normal conditions, fine to return early if another thread is already
 	// doing maintenance. The next block will trigger another round. Under

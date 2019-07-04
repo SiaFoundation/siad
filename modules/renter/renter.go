@@ -816,11 +816,18 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
 
-	// Subscribe to the consensus set.
-	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
-	if err != nil {
+	// Subscribe to the consensus set in a separate goroutine.
+	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
+	go func() {
+		defer r.tg.Done()
+		err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
+		if err != nil {
+			build.Critical("Renter failed to subscribe to consensus set", err)
+			r.log.Printf("Renter failed to subscribe to consensus set: %v", err)
+		}
+	}()
 
 	// Spin up the workers for the work pool.
 	go r.threadedDownloadLoop()

@@ -324,18 +324,25 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	}
 
-	// Subscribe to the consensus set.
-	err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
-	if err == modules.ErrInvalidConsensusChangeID {
-		// Reset the contractor consensus variables and try rescanning.
-		c.blockHeight = 0
-		c.lastChange = modules.ConsensusChangeBeginning
-		c.recentRecoveryChange = modules.ConsensusChangeBeginning
+	// Subscribe to the consensus set in a separate goroutine.
+	if err := c.tg.Add(); err != nil {
+		return nil, err
+	}
+	go func() {
+		defer c.tg.Done()
 		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
-	}
-	if err != nil {
-		return nil, errors.New("contractor subscription failed: " + err.Error())
-	}
+		if err == modules.ErrInvalidConsensusChangeID {
+			// Reset the contractor consensus variables and try rescanning.
+			c.blockHeight = 0
+			c.lastChange = modules.ConsensusChangeBeginning
+			c.recentRecoveryChange = modules.ConsensusChangeBeginning
+			err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
+		}
+		if err != nil {
+			build.Critical("Contractor failed to subscribe to consensus set", err)
+			c.log.Printf("Contractor failed to subscribe to consensus set")
+		}
+	}()
 	// Unsubscribe from the consensus set upon shutdown.
 	c.tg.OnStop(func() {
 		cs.Unsubscribe(c)
