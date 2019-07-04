@@ -34,7 +34,8 @@ var (
 
 // contractInfo contains information about a contract relevant to the HostDB.
 type contractInfo struct {
-	StoredData uint64 `json:"storeddata"`
+	HostPublicKey types.SiaPublicKey
+	StoredData    uint64 `json:"storeddata"`
 }
 
 // The HostDB is a database of potential hosts. It assigns a weight to each
@@ -163,7 +164,8 @@ func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 			continue
 		}
 		knownContracts[contract.HostPublicKey.String()] = contractInfo{
-			StoredData: contract.Transaction.FileContractRevisions[0].NewFileSize,
+			HostPublicKey: contract.HostPublicKey,
+			StoredData:    contract.Transaction.FileContractRevisions[0].NewFileSize,
 		}
 	}
 	hdb.knownContracts = knownContracts
