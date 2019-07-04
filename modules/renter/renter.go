@@ -817,11 +817,13 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	r.staticWorkerPool = r.newWorkerPool()
 
 	// Subscribe to the consensus set in a separate goroutine.
+	done := make(chan struct{})
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
 	go func() {
 		defer r.tg.Done()
+		defer close(done)
 		err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
 		if err != nil {
 			build.Critical("Renter failed to subscribe to consensus set", err)
@@ -836,17 +838,28 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil, err
 	}
 
-	// Spin up the workers for the work pool.
-	go r.threadedDownloadLoop()
+	// Spin up background threads which are not depending on the renter being
+	// up-to-date with consensus.
 	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
-		go r.threadedUploadAndRepair()
 		go r.threadedUpdateRenterHealth()
-		go r.threadedStuckFileLoop()
 	}
-
-	// Spin up the snapshot synchronization thread.
-	go r.threadedSynchronizeSnapshots()
-
+	// Spin up the remaining background threads once we are caught up with the
+	// consensus set.
+	go func() {
+		select {
+		case <-r.tg.StopChan():
+			return
+		case <-done:
+		}
+		// Spin up the workers for the work pool.
+		go r.threadedDownloadLoop()
+		if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
+			go r.threadedUploadAndRepair()
+			go r.threadedStuckFileLoop()
+		}
+		// Spin up the snapshot synchronization thread.
+		go r.threadedSynchronizeSnapshots()
+	}()
 	return r, nil
 }
 
