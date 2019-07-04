@@ -285,6 +285,9 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	go func() {
 		defer hdb.tg.Done()
 		err := cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
+		if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+			return
+		}
 		if err == modules.ErrInvalidConsensusChangeID {
 			// Subscribe again using the new ID. This will cause a triggered scan
 			// on all of the hosts, but that should be acceptable.
@@ -294,7 +297,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			hdb.mu.Unlock()
 			err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
 		}
-		if strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+		if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 			return
 		}
 		if err != nil {

@@ -826,12 +826,13 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		defer r.tg.Done()
 		defer close(done)
 		err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
-		if strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+		if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 			return
 		}
 		if err != nil {
 			build.Critical("Renter failed to subscribe to consensus set", err)
 			r.log.Printf("Renter failed to subscribe to consensus set: %v", err)
+			r.tg.Stop()
 		}
 	}()
 	err := r.tg.OnStop(func() error {
