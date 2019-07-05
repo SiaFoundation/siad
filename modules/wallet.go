@@ -294,7 +294,7 @@ type (
 
 		// ChangeKeyWithSeed is the same as ChangeKey but uses the primary seed
 		// instead of the current masterKey.
-		ChangeKeyWithSeed(seed Seed, key []byte) error
+		ChangeKeyWithSeed(seed Seed, newKey []byte) error
 
 		// Unlocked returns true if the wallet is currently unlocked, false
 		// otherwise.
