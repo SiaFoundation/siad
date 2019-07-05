@@ -188,7 +188,9 @@ func (tp *TransactionPool) initPersist() error {
 			tp.log.Println("Invalid consensus change loaded; resetting. This can take a while.")
 			// Reset and rescan because the consensus set does not recognize the
 			// provided consensus change id.
+			tp.mu.Lock()
 			resetErr := tp.resetDB(tp.dbTx)
+			tp.mu.Unlock()
 			if resetErr != nil {
 				tp.log.Critical("Failed to reset tpool", resetErr)
 				return
