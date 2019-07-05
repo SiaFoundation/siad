@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -188,7 +187,7 @@ func TestIntegrationTransaction(t *testing.T) {
 	}
 
 	// test sending siafunds
-	err = wt.wallet.LoadSiagKeys(crypto.NewWalletKey(crypto.HashObject(wt.walletMasterKey)), []string{"../../types/siag0of1of1.siakey"})
+	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
 	if err != nil {
 		t.Error(err)
 	}

@@ -152,17 +152,18 @@ type (
 
 // encryptionKeys enumerates the possible encryption keys that can be derived
 // from an input string.
-func encryptionKeys(seedStr string) (validKeys [][]byte) {
+func encryptionKeys(seedStr string) (validKeys []crypto.CipherKey, seeds []modules.Seed) {
 	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
 	for _, dict := range dicts {
 		seed, err := modules.StringToSeed(seedStr, dict)
 		if err != nil {
 			continue
 		}
-		validKeys = append(validKeys, seed[:])
+		validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seed)))
+		seeds = append(seeds, seed)
 	}
-	validKeys = append(validKeys, []byte(seedStr))
-	return validKeys
+	validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seedStr)))
+	return
 }
 
 // walletHander handles API calls to /wallet.
@@ -227,9 +228,9 @@ func (api *API) wallet033xHandler(w http.ResponseWriter, req *http.Request, _ ht
 		WriteError(w, Error{"error when calling /wallet/033x: source must be an absolute path"}, http.StatusBadRequest)
 		return
 	}
-	potentialKeys := encryptionKeys(req.FormValue("encryptionpassword"))
+	potentialKeys, _ := encryptionKeys(req.FormValue("encryptionpassword"))
 	for _, key := range potentialKeys {
-		err := api.wallet.Load033xWallet(crypto.NewWalletKey(crypto.HashObject(key)), source)
+		err := api.wallet.Load033xWallet(key, source)
 		if err == nil {
 			WriteSuccess(w)
 			return
@@ -309,9 +310,9 @@ func (api *API) walletBackupHandler(w http.ResponseWriter, req *http.Request, _ 
 
 // walletInitHandler handles API calls to /wallet/init.
 func (api *API) walletInitHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var encryptionKey []byte
+	var encryptionKey crypto.CipherKey
 	if req.FormValue("encryptionpassword") != "" {
-		encryptionKey = []byte(req.FormValue("encryptionpassword"))
+		encryptionKey = crypto.NewWalletKey(crypto.HashObject(req.FormValue("encryptionpassword")))
 	}
 
 	if req.FormValue("force") == "true" {
@@ -343,9 +344,9 @@ func (api *API) walletInitHandler(w http.ResponseWriter, req *http.Request, _ ht
 
 // walletInitSeedHandler handles API calls to /wallet/init/seed.
 func (api *API) walletInitSeedHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var encryptionKey []byte
+	var encryptionKey crypto.CipherKey
 	if req.FormValue("encryptionpassword") != "" {
-		encryptionKey = []byte(req.FormValue("encryptionpassword"))
+		encryptionKey = crypto.NewWalletKey(crypto.HashObject(req.FormValue("encryptionpassword")))
 	}
 	dictID := mnemonics.DictionaryID(req.FormValue("dictionary"))
 	if dictID == "" {
@@ -386,7 +387,7 @@ func (api *API) walletSeedHandler(w http.ResponseWriter, req *http.Request, _ ht
 		return
 	}
 
-	potentialKeys := encryptionKeys(req.FormValue("encryptionpassword"))
+	potentialKeys, _ := encryptionKeys(req.FormValue("encryptionpassword"))
 	for _, key := range potentialKeys {
 		err := api.wallet.LoadSeed(key, seed)
 		if err == nil {
@@ -405,7 +406,7 @@ func (api *API) walletSeedHandler(w http.ResponseWriter, req *http.Request, _ ht
 func (api *API) walletSiagkeyHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Fetch the list of keyfiles from the post body.
 	keyfiles := strings.Split(req.FormValue("keyfiles"), ",")
-	potentialKeys := encryptionKeys(req.FormValue("encryptionpassword"))
+	potentialKeys, _ := encryptionKeys(req.FormValue("encryptionpassword"))
 
 	for _, keypath := range keyfiles {
 		// Check that all key paths are absolute paths.
@@ -416,7 +417,7 @@ func (api *API) walletSiagkeyHandler(w http.ResponseWriter, req *http.Request, _
 	}
 
 	for _, key := range potentialKeys {
-		err := api.wallet.LoadSiagKeys(crypto.NewWalletKey(crypto.HashObject(key)), keyfiles)
+		err := api.wallet.LoadSiagKeys(key, keyfiles)
 		if err == nil {
 			WriteSuccess(w)
 			return
@@ -679,7 +680,7 @@ func (api *API) walletTransactionsAddrHandler(w http.ResponseWriter, req *http.R
 
 // walletUnlockHandler handles API calls to /wallet/unlock.
 func (api *API) walletUnlockHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	potentialKeys := encryptionKeys(req.FormValue("encryptionpassword"))
+	potentialKeys, _ := encryptionKeys(req.FormValue("encryptionpassword"))
 	for _, key := range potentialKeys {
 		err := api.wallet.Unlock(key)
 		if err == nil {
@@ -696,15 +697,17 @@ func (api *API) walletUnlockHandler(w http.ResponseWriter, req *http.Request, _ 
 
 // walletChangePasswordHandler handles API calls to /wallet/changepassword
 func (api *API) walletChangePasswordHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var newKey crypto.CipherKey
 	newPassword := req.FormValue("newpassword")
 	if newPassword == "" {
 		WriteError(w, Error{"a password must be provided to newpassword"}, http.StatusBadRequest)
 		return
 	}
-	originalKeys := encryptionKeys(req.FormValue("encryptionpassword"))
+	newKey = crypto.NewWalletKey(crypto.HashObject(newPassword))
+
+	originalKeys, seeds := encryptionKeys(req.FormValue("encryptionpassword"))
 	for _, key := range originalKeys {
-		// Try using the key as a regular key first.
-		err := api.wallet.ChangeKey(key, []byte(newPassword))
+		err := api.wallet.ChangeKey(key, newKey)
 		if err == nil {
 			WriteSuccess(w)
 			return
@@ -713,19 +716,16 @@ func (api *API) walletChangePasswordHandler(w http.ResponseWriter, req *http.Req
 			WriteError(w, Error{"error when calling /wallet/changepassword: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
-		// Try using the key as a seed if it has the right length.
-		if len(key) == crypto.EntropySize {
-			var seed modules.Seed
-			copy(seed[:], key)
-			err = api.wallet.ChangeKeyWithSeed(seed, []byte(newPassword))
-			if err == nil {
-				WriteSuccess(w)
-				return
-			}
-			if err != modules.ErrBadEncryptionKey {
-				WriteError(w, Error{"error when calling /wallet/changepassword: " + err.Error()}, http.StatusBadRequest)
-				return
-			}
+	}
+	for _, seed := range seeds {
+		err := api.wallet.ChangeKeyWithSeed(seed, newKey)
+		if err == nil {
+			WriteSuccess(w)
+			return
+		}
+		if err != modules.ErrBadEncryptionKey {
+			WriteError(w, Error{"error when calling /wallet/changepassword: " + err.Error()}, http.StatusBadRequest)
+			return
 		}
 	}
 	WriteError(w, Error{"error when calling /wallet/changepassword: " + modules.ErrBadEncryptionKey.Error()}, http.StatusBadRequest)

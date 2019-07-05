@@ -224,7 +224,7 @@ func (w *Wallet) NextAddress() (types.UnlockConditions, error) {
 // reclaiming any funds that were lost due to a deleted file or lost encryption
 // key. An error will be returned if the seed has already been integrated with
 // the wallet.
-func (w *Wallet) LoadSeed(key []byte, seed modules.Seed) error {
+func (w *Wallet) LoadSeed(masterKey crypto.CipherKey, seed modules.Seed) error {
 	if err := w.tg.Add(); err != nil {
 		return err
 	}
@@ -266,7 +266,6 @@ func (w *Wallet) LoadSeed(key []byte, seed modules.Seed) error {
 	seedProgress += seedProgress / 25
 	w.log.Printf("INFO: found key index %v in blockchain. Setting auxiliary seed progress to %v", s.largestIndexSeen, seedProgress)
 
-	masterKey := crypto.NewWalletKey(crypto.HashObject(key))
 	err := func() error {
 		w.mu.Lock()
 		defer w.mu.Unlock()

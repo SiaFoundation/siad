@@ -17,6 +17,7 @@ import (
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
@@ -103,16 +104,16 @@ func (srv *Server) Unlock(password string) error {
 	if srv.node.Wallet == nil {
 		return errors.New("server doesn't have a wallet")
 	}
-	var validKeys [][]byte
+	var validKeys []crypto.CipherKey
 	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
 	for _, dict := range dicts {
 		seed, err := modules.StringToSeed(password, dict)
 		if err != nil {
 			continue
 		}
-		validKeys = append(validKeys, seed[:])
+		validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seed)))
 	}
-	validKeys = append(validKeys, []byte(password))
+	validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(password)))
 	for _, key := range validKeys {
 		if err := srv.node.Wallet.Unlock(key); err == nil {
 			return nil

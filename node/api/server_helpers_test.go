@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/explorer"
@@ -138,7 +138,7 @@ type serverTester struct {
 	renter    modules.Renter
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey []byte
+	walletKey crypto.CipherKey
 
 	server *Server
 
@@ -147,7 +147,7 @@ type serverTester struct {
 
 // assembleServerTester creates a bunch of modules and assembles them into a
 // server tester, without creating any directories or mining any blocks.
-func assembleServerTester(key []byte, testdir string) (*serverTester, error) {
+func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, error) {
 	// assembleServerTester should not get called during short tests, as it
 	// takes a long time to run.
 	if testing.Short() {
@@ -231,7 +231,7 @@ func assembleServerTester(key []byte, testdir string) (*serverTester, error) {
 // assembleAuthenticatedServerTester creates a bunch of modules and assembles
 // them into a server tester that requires authentication with the given
 // requiredPassword. No directories are created and no blocks are mined.
-func assembleAuthenticatedServerTester(requiredPassword string, key []byte, testdir string) (*serverTester, error) {
+func assembleAuthenticatedServerTester(requiredPassword string, key crypto.CipherKey, testdir string) (*serverTester, error) {
 	// assembleAuthenticatedServerTester should not get called during short
 	// tests, as it takes a long time to run.
 	if testing.Short() {
@@ -372,7 +372,7 @@ func blankServerTester(name string) (*serverTester, error) {
 
 	// Create the server tester with key.
 	testdir := build.TempDir("api", name)
-	key := fastrand.Bytes(16)
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	st, err := assembleServerTester(key, testdir)
 	if err != nil {
 		return nil, err
@@ -392,7 +392,7 @@ func createServerTester(name string) (*serverTester, error) {
 	// Create the testing directory.
 	testdir := build.TempDir("api", name)
 
-	key := fastrand.Bytes(16)
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	st, err := assembleServerTester(key, testdir)
 	if err != nil {
 		return nil, err
@@ -422,7 +422,7 @@ func createAuthenticatedServerTester(name string, password string) (*serverTeste
 	// Create the testing directory.
 	testdir := build.TempDir("authenticated-api", name)
 
-	key := fastrand.Bytes(16)
+	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	st, err := assembleAuthenticatedServerTester(password, key, testdir)
 	if err != nil {
 		return nil, err

@@ -257,7 +257,7 @@ type (
 		// and will return an error on subsequent calls (even after restarting
 		// the wallet). To reset the wallet, the wallet files must be moved to
 		// a different directory or deleted.
-		Encrypt(masterKey []byte) (Seed, error)
+		Encrypt(masterKey crypto.CipherKey) (Seed, error)
 
 		// Reset will reset the wallet, clearing the database and returning it to
 		// the unencrypted state. Reset can only be called on a wallet that has
@@ -273,7 +273,7 @@ type (
 		// Unlike Encrypt, the blockchain will be scanned to determine the
 		// seed's progress. For this reason, InitFromSeed should not be called
 		// until the blockchain is fully synced.
-		InitFromSeed(masterKey []byte, seed Seed) error
+		InitFromSeed(masterKey crypto.CipherKey, seed Seed) error
 
 		// Lock deletes all keys in memory and prevents the wallet from being
 		// used to spend coins or extract keys until 'Unlock' is called.
@@ -286,15 +286,15 @@ type (
 		//
 		// All items in the wallet are encrypted using different keys which are
 		// derived from the master key.
-		Unlock(masterKey []byte) error
+		Unlock(masterKey crypto.CipherKey) error
 
 		// ChangeKey changes the wallet's materKey from masterKey to newKey,
 		// re-encrypting the wallet with the provided key.
-		ChangeKey(masterKey []byte, newKey []byte) error
+		ChangeKey(masterKey crypto.CipherKey, newKey crypto.CipherKey) error
 
 		// ChangeKeyWithSeed is the same as ChangeKey but uses the primary seed
 		// instead of the current masterKey.
-		ChangeKeyWithSeed(seed Seed, newKey []byte) error
+		ChangeKeyWithSeed(seed Seed, newKey crypto.CipherKey) error
 
 		// Unlocked returns true if the wallet is currently unlocked, false
 		// otherwise.
@@ -337,7 +337,7 @@ type (
 		// LoadSeed only needs to be called if the original seed file or
 		// encryption password was lost. The master key is used to encrypt the
 		// recovery seed before saving it to disk.
-		LoadSeed([]byte, Seed) error
+		LoadSeed(crypto.CipherKey, Seed) error
 
 		// LoadSiagKeys will take a set of filepaths that point to a siag key
 		// and will have the siag keys loaded into the wallet so that they will

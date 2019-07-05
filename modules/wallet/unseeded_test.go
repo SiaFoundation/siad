@@ -3,7 +3,6 @@ package wallet
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -22,7 +21,7 @@ func TestIntegrationLoad1of1Siag(t *testing.T) {
 	defer wt.closeWt()
 
 	// Load the key into the wallet.
-	err = wt.wallet.LoadSiagKeys(crypto.NewWalletKey(crypto.HashObject(wt.walletMasterKey)), []string{"../../types/siag0of1of1.siakey"})
+	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
 	if err != nil {
 		t.Error(err)
 	}
@@ -67,7 +66,7 @@ func TestIntegrationLoad2of3Siag(t *testing.T) {
 	defer wt.closeWt()
 
 	// Load the key into the wallet.
-	err = wt.wallet.LoadSiagKeys(crypto.NewWalletKey(crypto.HashObject(wt.walletMasterKey)), []string{"../../types/siag0of2of3.siakey", "../../types/siag1of2of3.siakey"})
+	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of2of3.siakey", "../../types/siag1of2of3.siakey"})
 	if err != nil {
 		t.Error(err)
 	}

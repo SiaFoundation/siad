@@ -384,7 +384,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *siafile.SiaFileSetEntry, ho
 		needsRepair := chunk.health >= RepairThreshold
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
-		// repairable or if we are targeting stuck chunks
+		// repairable or if we are targetting stuck chunks
 		if needsRepair && (repairable || target == targetStuckChunks) {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue
@@ -1101,7 +1101,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			r.log.Debugln("WARN: error adding chunks to the heap:", err)
 		}
 
-		// There are benign edge cases where the heap will be empty after chunks
+		// There are benign edge cases where the heap will be emtpy after chunks
 		// have been added. For example, if a chunk has gotten more healthy
 		// since the last health check due to one of its hosts coming back
 		// online. In these cases, the best course of action is to proceed with

@@ -21,7 +21,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // hdbTester contains a hostdb and all dependencies.
@@ -31,7 +30,7 @@ type hdbTester struct {
 	miner     modules.TestMiner
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
-	walletKey []byte
+	walletKey crypto.CipherKey
 
 	hdb *HostDB
 
@@ -126,7 +125,7 @@ func newHDBTesterDeps(name string, deps modules.Dependencies) (*hdbTester, error
 
 // initWallet creates a wallet key, then initializes and unlocks the wallet.
 func (hdbt *hdbTester) initWallet() error {
-	hdbt.walletKey = fastrand.Bytes(16)
+	hdbt.walletKey = crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err := hdbt.wallet.Encrypt(hdbt.walletKey)
 	if err != nil {
 		return err

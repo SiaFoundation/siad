@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
@@ -241,7 +242,7 @@ func TestHostDBHostsHandler(t *testing.T) {
 
 // assembleHostHostname is assembleServerTester but you can specify which
 // hostname the host should use.
-func assembleHostPort(key []byte, hostHostname string, testdir string) (*serverTester, error) {
+func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string) (*serverTester, error) {
 	// assembleServerTester should not get called during short tests, as it
 	// takes a long time to run.
 	if testing.Short() {
