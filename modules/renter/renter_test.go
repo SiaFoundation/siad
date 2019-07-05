@@ -226,10 +226,7 @@ func (ps pricesStub) RandomHosts(_ int, _, _ []types.SiaPublicKey) ([]modules.Ho
 func (ps pricesStub) RandomHostsWithAllowance(_ int, _, _ []types.SiaPublicKey, _ modules.Allowance) ([]modules.HostDBEntry, error) {
 	return ps.dbEntries, nil
 }
-func (ps pricesStub) RegisterAlert(id modules.AlertID, msg, cause string, severity modules.AlertSeverity) {
-}
-func (ps pricesStub) UnregisterAlert(id modules.AlertID) {}
-func (ps pricesStub) SetIPViolationCheck(enabled bool)   { return }
+func (ps pricesStub) SetIPViolationCheck(enabled bool) { return }
 
 // TestRenterPricesDivideByZero verifies that the Price Estimation catches
 // divide by zero errors.

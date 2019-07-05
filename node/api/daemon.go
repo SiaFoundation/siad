@@ -242,9 +242,6 @@ func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _
 	if api.renter != nil {
 		alerts = append(alerts, api.renter.Alerts()...)
 	}
-	if api.miner != nil {
-		alerts = append(alerts, api.miner.Alerts()...)
-	}
 	if api.host != nil {
 		alerts = append(alerts, api.host.Alerts()...)
 	}

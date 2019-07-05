@@ -9,9 +9,9 @@ import (
 // code for AlertSeverity.
 func TestMarshalUnmarshalAlertSeverity(t *testing.T) {
 	severityUnknown := AlertSeverity(SeverityUnknown)
-	severityInfo := AlertSeverity(SeverityInfo)
 	severityWarning := AlertSeverity(SeverityWarning)
 	severityError := AlertSeverity(SeverityError)
+	severityCritical := AlertSeverity(SeverityCritical)
 	severityInvalid := AlertSeverity(42)
 
 	var s AlertSeverity
@@ -20,15 +20,15 @@ func TestMarshalUnmarshalAlertSeverity(t *testing.T) {
 	if err == nil {
 		t.Fatal("Shouldn't be able to marshal unknown")
 	}
-	// Marshal/Unmarshal info.
-	b, err = json.Marshal(severityInfo)
+	// Marshal/Unmarshal critical.
+	b, err = json.Marshal(severityCritical)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		t.Fatal(err)
 	}
-	if s != SeverityInfo {
+	if s != SeverityCritical {
 		t.Fatal("result not the same severity as input")
 	}
 	// Marshal/Unmarshal warning.

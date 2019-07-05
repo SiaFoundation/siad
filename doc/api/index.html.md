@@ -354,8 +354,8 @@ Returns the alerts of the Sia instance.
 {
   "alerts": [
     {
-      "cause": "Wallet is locked",
-      "msg": "Maintenance of contracts is incomplete",
+      "cause": "wallet is locked",
+      "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
       "module": "contractor",
       "severity": "warning",
     }
@@ -372,7 +372,7 @@ Msg contains information about an issue.
 Module is the module which caused the alert.
 
 **severity** | string  
-Severity is one of the following: "info", "warning", "error"
+Severity is either "warning", "error" or "critical" where "error" might be a lack of internet access and "critical" would be a lack of funds and contracts that are about to expire due to that.
 
 ## /daemon/constants [GET]
 > curl example  

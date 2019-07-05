@@ -75,7 +75,6 @@ type TestMiner interface {
 
 // The Miner interface provides access to mining features.
 type Miner interface {
-	Alerter
 	BlockManager
 	CPUMiner
 	io.Closer

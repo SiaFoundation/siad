@@ -49,7 +49,7 @@ type HostDB struct {
 
 	log           *persist.Logger
 	mu            sync.RWMutex
-	staticAlerter modules.Alerter
+	staticAlerter *modules.GenericAlerter
 	persistDir    string
 	tg            threadgroup.ThreadGroup
 

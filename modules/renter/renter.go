@@ -192,7 +192,7 @@ type hostContractor interface {
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
 	// Alert management.
-	staticAlerter modules.Alerter
+	staticAlerter *modules.GenericAlerter
 
 	// File management.
 	staticFileSet       *siafile.SiaFileSet

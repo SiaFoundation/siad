@@ -863,7 +863,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 	if unlocked, err := c.wallet.Unlocked(); err == nil && !unlocked {
 		c.staticAlerter.RegisterAlert(modules.AlertIDIncompleteMaintenance,
-			"Maintenance of contracts is incomplete", "Wallet is locked", modules.SeverityWarning)
+			"user's contracts need to be renewed but a locked wallet prevents renewal", "wallet is locked", modules.SeverityWarning)
 	} else if err == nil {
 		c.staticAlerter.UnregisterAlert(modules.AlertIDIncompleteMaintenance)
 	}

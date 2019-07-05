@@ -37,7 +37,7 @@ type Contractor struct {
 	log           *persist.Logger
 	mu            sync.RWMutex
 	persist       persister
-	staticAlerter modules.Alerter
+	staticAlerter *modules.GenericAlerter
 	staticDeps    modules.Dependencies
 	tg            siasync.ThreadGroup
 	tpool         transactionPool

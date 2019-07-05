@@ -13,15 +13,15 @@ const (
 	// SeverityUnknown is the value of an uninitialized severity and should never
 	// be used.
 	SeverityUnknown = iota
-	// SeverityInfo should be used for information about the system which doesn't
-	// require user interaction.
-	SeverityInfo
 	// SeverityWarning warns the user about potential issues which might require
 	// preventive actions.
 	SeverityWarning
 	// SeverityError should be used for information about the system where
 	// immediate action is recommended to avoid further issues like loss of data.
 	SeverityError
+	// SeverityCritical should be used for critical errors. e.g. a lack of funds
+	// causing data to get lost without immediate action.
+	SeverityCritical
 )
 
 // The following consts are a list of AlertIDs. All IDs used throughout Sia
@@ -35,12 +35,10 @@ const (
 )
 
 type (
-	// Alerter is the interface implemented by all top-level modules. It's a very
-	// simple interface that allows for asking a module about potential issues.
+	// Alerter is the interface implemented by all top-level modules. It's an
+	// interface that allows for asking a module about potential issues.
 	Alerter interface {
 		Alerts() []Alert
-		RegisterAlert(id AlertID, msg, cause string, severity AlertSeverity)
-		UnregisterAlert(id AlertID)
 	}
 
 	// Alert is a type that contains essential information about an alert.
@@ -67,12 +65,12 @@ type (
 // MarshalJSON defines a JSON encoding for the AlertSeverity.
 func (a AlertSeverity) MarshalJSON() ([]byte, error) {
 	switch a {
-	case SeverityInfo:
-		return json.Marshal("info")
 	case SeverityWarning:
 		return json.Marshal("warning")
 	case SeverityError:
 		return json.Marshal("error")
+	case SeverityCritical:
+		return json.Marshal("critical")
 	case SeverityUnknown:
 	default:
 	}
@@ -86,22 +84,22 @@ func (a *AlertSeverity) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	switch severityStr {
-	case "info":
-		*a = SeverityInfo
 	case "warning":
 		*a = SeverityWarning
 	case "error":
 		*a = SeverityError
+	case "critical":
+		*a = SeverityCritical
 	default:
 		return fmt.Errorf("unknown severity '%v'", severityStr)
 	}
 	return nil
 }
 
-// alerter implements the Alerter interface. It can be used as a helper type to
-// implement the Alerter interface for modules and submodules.
+// GenericAlerter implements the Alerter interface. It can be used as a helper
+// type to implement the Alerter interface for modules and submodules.
 type (
-	alerter struct {
+	GenericAlerter struct {
 		alerts map[AlertID]Alert
 		module string
 		mu     sync.Mutex
@@ -109,15 +107,15 @@ type (
 )
 
 // NewAlerter creates a new alerter for the renter.
-func NewAlerter(module string) Alerter {
-	return &alerter{
+func NewAlerter(module string) *GenericAlerter {
+	return &GenericAlerter{
 		alerts: make(map[AlertID]Alert),
 		module: module,
 	}
 }
 
 // Alerts returns the current alerts tracked by the alerter.
-func (a *alerter) Alerts() []Alert {
+func (a *GenericAlerter) Alerts() []Alert {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -129,7 +127,7 @@ func (a *alerter) Alerts() []Alert {
 }
 
 // RegisterAlert adds an alert to the alerter.
-func (a *alerter) RegisterAlert(id AlertID, msg, cause string, severity AlertSeverity) {
+func (a *GenericAlerter) RegisterAlert(id AlertID, msg, cause string, severity AlertSeverity) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.alerts[id] = Alert{
@@ -141,7 +139,7 @@ func (a *alerter) RegisterAlert(id AlertID, msg, cause string, severity AlertSev
 }
 
 // UnregisterAlert removes an alert from the alerter by id.
-func (a *alerter) UnregisterAlert(id AlertID) {
+func (a *GenericAlerter) UnregisterAlert(id AlertID) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.alerts, id)
