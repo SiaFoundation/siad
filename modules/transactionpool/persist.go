@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -177,24 +179,33 @@ func (tp *TransactionPool) initPersist() error {
 	}
 
 	// Subscribe to the consensus set using the most recent consensus change.
-	err = tp.consensusSet.ConsensusSetSubscribe(tp, cc, tp.tg.StopChan())
-	if err == modules.ErrInvalidConsensusChangeID {
-		tp.log.Println("Invalid consensus change loaded; resetting. This can take a while.")
-		// Reset and rescan because the consensus set does not recognize the
-		// provided consensus change id.
-		resetErr := tp.resetDB(tp.dbTx)
-		if resetErr != nil {
-			return resetErr
+	go func() {
+		err := tp.consensusSet.ConsensusSetSubscribe(tp, cc, tp.tg.StopChan())
+		if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+			return
 		}
-		freshScanErr := tp.consensusSet.ConsensusSetSubscribe(tp, modules.ConsensusChangeBeginning, tp.tg.StopChan())
-		if freshScanErr != nil {
-			return freshScanErr
+		if err == modules.ErrInvalidConsensusChangeID {
+			tp.log.Println("Invalid consensus change loaded; resetting. This can take a while.")
+			// Reset and rescan because the consensus set does not recognize the
+			// provided consensus change id.
+			resetErr := tp.resetDB(tp.dbTx)
+			if resetErr != nil {
+				tp.log.Critical("Failed to reset tpool", resetErr)
+				return
+			}
+			freshScanErr := tp.consensusSet.ConsensusSetSubscribe(tp, modules.ConsensusChangeBeginning, tp.tg.StopChan())
+			if freshScanErr != nil && strings.Contains(freshScanErr.Error(), threadgroup.ErrStopped.Error()) {
+				return
+			}
+			if freshScanErr != nil {
+				tp.log.Critical("Failed to subscribe tpool to consensusset", freshScanErr)
+				return
+			}
+			tp.tg.OnStop(func() {
+				tp.consensusSet.Unsubscribe(tp)
+			})
 		}
-		tp.tg.OnStop(func() {
-			tp.consensusSet.Unsubscribe(tp)
-		})
-		return nil
-	}
+	}()
 	if err != nil {
 		return err
 	}

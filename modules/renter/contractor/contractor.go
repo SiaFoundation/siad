@@ -344,9 +344,7 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 			return
 		}
 		if err != nil {
-			build.Critical("Contractor failed to subscribe to consensus set", err)
-			c.log.Printf("Contractor failed to subscribe to consensus set")
-			c.tg.Stop()
+			c.log.Critical("Contractor failed to subscribe to consensus set", err)
 		}
 	}()
 	// Unsubscribe from the consensus set upon shutdown.

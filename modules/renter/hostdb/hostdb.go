@@ -301,8 +301,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			return
 		}
 		if err != nil {
-			build.Critical("HostDB failed to subscribe to consensus set", err)
-			hdb.log.Printf("HostDB failed to subscribe to consensus set")
+			hdb.log.Critical("HostDB failed to subscribe to consensus set")
 		}
 	}()
 	err = hdb.tg.OnStop(func() error {
