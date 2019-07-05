@@ -245,6 +245,15 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 			w.watchedAddrs[addr] = struct{}{}
 		}
 
+		// COMPATv141 if the wallet password hasn't been encrypted yet using the seed,
+		// do it.
+		wpk := walletPasswordEncryptionKey(primarySeed, dbGetWalletUID(w.dbTx))
+		mkt := masterKey.Type()
+		mke := masterKey.Key()
+		wb := w.dbTx.Bucket(bucketWallet)
+		if len(wb.Get(keyWalletPassword)) == 0 {
+			return w.dbTx.Bucket(bucketWallet).Put(keyWalletPassword, wpk.EncryptBytes(append(mkt[:], mke...)))
+		}
 		return nil
 	}()
 	if err != nil {
