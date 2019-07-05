@@ -205,10 +205,11 @@ func (tp *TransactionPool) initPersist() error {
 				tp.consensusSet.Unsubscribe(tp)
 			})
 		}
+		if err != nil {
+			tp.log.Critical(err)
+			return
+		}
 	}()
-	if err != nil {
-		return err
-	}
 	tp.tg.OnStop(func() {
 		tp.consensusSet.Unsubscribe(tp)
 	})
