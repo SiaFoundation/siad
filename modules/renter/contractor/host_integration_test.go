@@ -602,18 +602,19 @@ func TestIntegrationEditorCaching(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, m, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer h.Close()
 	defer c.Close()
+	defer m.Close()
 
 	// set an allowance and wait for a contract to be formed.
 	if err := c.SetAllowance(modules.DefaultAllowance); err != nil {
 		t.Fatal(err)
 	}
-	if err := build.Retry(10, time.Second, func() error {
+	if err := build.Retry(2000, 100*time.Millisecond, func() error {
 		if len(c.Contracts()) == 0 {
 			return errors.New("no contracts were formed")
 		}
