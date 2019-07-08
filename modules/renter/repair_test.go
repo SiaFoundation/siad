@@ -754,7 +754,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	stuckDirectories[subDir1_2] = struct{}{}
 
 	// Find random directory several times, confirm that it finds a stuck
-	// directory and there it finds unique directories
+	// directory and that it finds unique directories
 	var unique bool
 	var previousDir modules.SiaPath
 	for i := 0; i < 10; i++ {
@@ -774,6 +774,83 @@ func TestRandomStuckDirectory(t *testing.T) {
 	}
 	if !unique {
 		t.Fatal("No unique directories found")
+	}
+}
+
+// TestRandomStuckFile tests that the renter can randomly find stuck files
+// weighted by the number of stuck chunks
+func TestRandomStuckFile(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Create 3 files
+	//
+	// File 1 will have all chunks stuck
+	file1, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = file1.GrowNumChunks(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath1 := rt.renter.staticFileSet.SiaPath(file1)
+	err = rt.renter.SetFileStuck(siaPath1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File 2 will have only 1 chunk stuck
+	file2, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath2 := rt.renter.staticFileSet.SiaPath(file2)
+	err = file2.SetStuck(0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File 3 will be unstuck
+	file3, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath3 := rt.renter.staticFileSet.SiaPath(file3)
+
+	// Find a stuck file randomly, it should never find file 3 and should find
+	// file 1 more than file 2.
+	var count1, count2 int
+	for i := 0; i < 10; i++ {
+		siaPath, err := rt.renter.managedStuckFile(modules.RootSiaPath())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if siaPath.Equals(siaPath1) {
+			count1++
+		}
+		if siaPath.Equals(siaPath2) {
+			count2++
+		}
+		if siaPath.Equals(siaPath3) {
+			t.Fatal("Unstuck file 3 found")
+		}
+	}
+
+	if count2 > count1 {
+		t.Fatal("Should have found file 1 more than file 2")
+	}
+	if count1 == 0 || count2 == 0 {
+		t.Fatalf("Found file 1 %v times and file 2 %v times", count1, count2)
 	}
 }
 
