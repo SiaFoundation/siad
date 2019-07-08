@@ -2,7 +2,6 @@ package renter
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"testing"
 
@@ -137,9 +136,13 @@ func TestBuildChunkHeap(t *testing.T) {
 	defer rt.Close()
 
 	// Create 2 files
+	source, err := rt.createZeroByteFileOnDisk()
+	if err != nil {
+		t.Fatal(err)
+	}
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
-		Source:      "",
+		Source:      source,
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
@@ -147,15 +150,10 @@ func TestBuildChunkHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	up.SiaPath = modules.RandomSiaPath()
-	f2, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
-	for i := 0; i < int(f1.NumChunks()+f2.NumChunks()); i++ {
+	for i := 0; i < int(f1.NumChunks()); i++ {
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
@@ -163,45 +161,11 @@ func TestBuildChunkHeap(t *testing.T) {
 		}
 	}
 
-	// Call managedBuildChunkHeap as stuck loop, since there are no stuck chunks
-	// there should be no chunks in the upload heap
-	rt.renter.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetStuckChunks)
-	if rt.renter.uploadHeap.managedLen() != 0 {
-		t.Fatalf("Expected heap length of %v but got %v", 0, rt.renter.uploadHeap.managedLen())
-	}
-
-	// Call managedBuildChunkHeap as not stuck loop, since we didn't upload the
-	// files we created nor do we have contracts, all the chunks will be viewed
-	// as not downloadable because they have a health of >1. Therefore we
-	// shouldn't see any chunks in the heap
+	// Call managedBuildChunkHeap as repair loop, we should see all the chunks
+	// from the file added
 	rt.renter.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetUnstuckChunks)
-	if rt.renter.uploadHeap.managedLen() != 0 {
-		t.Fatalf("Expected heap length of %v but got %v", 0, rt.renter.uploadHeap.managedLen())
-	}
-
-	// Call managedBuildChunkHeap again as the stuck loop, since the previous
-	// call saw all the chunks as not downloadable it will have marked them as
-	// stuck.
-	//
-	// For the stuck loop managedBuildChunkHeap will randomly grab one chunk
-	// from maxChunksInHeap files to add to the heap. There are two files
-	// created in the test so we would expect 2 or maxStuckChunksInHeap,
-	// whichever is less, chunks to be added to the heap
-	rt.renter.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetStuckChunks)
-	expectedChunks := math.Min(2, float64(maxStuckChunksInHeap))
-	if rt.renter.uploadHeap.managedLen() != int(expectedChunks) {
-		t.Fatalf("Expected heap length of %v but got %v", expectedChunks, rt.renter.uploadHeap.managedLen())
-	}
-
-	// Pop all chunks off and confirm they are stuck and marked as stuckRepair
-	chunk := rt.renter.uploadHeap.managedPop()
-	for chunk != nil {
-		if !chunk.stuck || !chunk.stuckRepair {
-			t.Log("Stuck:", chunk.stuck)
-			t.Log("StuckRepair:", chunk.stuckRepair)
-			t.Fatal("Chunk has incorrect stuck fields")
-		}
-		chunk = rt.renter.uploadHeap.managedPop()
+	if rt.renter.uploadHeap.managedLen() != int(f1.NumChunks()) {
+		t.Fatalf("Expected heap length of %v but got %v", f1.NumChunks(), rt.renter.uploadHeap.managedLen())
 	}
 }
 

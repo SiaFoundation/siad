@@ -240,7 +240,8 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 	}
 }
 
-// managedStuckFile randomly find a stuck files from a directory
+// managedStuckFile finds a weighted random stuck file from a directory based on
+// the number of stuck chunks in the stuck files of the directory
 func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (modules.SiaPath, error) {
 	// Get all list of files in the directory
 	files, err := r.FileList(dirSiaPath, false, false)
@@ -427,13 +428,18 @@ func (r *Renter) threadedStuckFileLoop() {
 			if err != nil {
 				r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath.String(), "to heap:", err)
 			}
+			// Make sure the directory for this file is in the list of
+			// directories to bubble.
+			dirSiaPath, err := siaPath.Dir()
+			if err != nil {
+				r.log.Println("WARN: Unable to get Directory SiaPath:", err)
+			} else {
+				dirsToBubble = append(dirsToBubble, dirSiaPath)
+			}
 		}
 
 		// Call bubble before continuing on next iteration to ensure filesystem
-		// is up to date. We do not use the upload heap's channel since bubble
-		// is called when a chunk is done with its repair and since this loop
-		// only typically adds one chunk at a time call bubble before the next
-		// iteration is sufficient.
+		// is up to date.
 		for _, dir := range dirsToBubble {
 			err = r.managedBubbleMetadata(dir)
 			if err != nil {
