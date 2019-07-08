@@ -37,7 +37,6 @@ var (
 	allowanceExpectedUpload     string // expected data uploaded within period
 	allowanceExpectedDownload   string // expected data downloaded within period
 	allowanceExpectedRedundancy string // expected redundancy of most uploaded files
-	allowanceInteractive        bool   // set allowance interactively
 )
 
 var (
@@ -153,7 +152,7 @@ func main() {
 	hostContractCmd.Flags().StringVarP(&hostContractOutputType, "type", "t", "value", "Select output type")
 
 	root.AddCommand(hostdbCmd)
-	hostdbCmd.AddCommand(hostdbViewCmd, hostdbFiltermodeCmd)
+	hostdbCmd.AddCommand(hostdbViewCmd, hostdbFiltermodeCmd, hostdbSetFiltermodeCmd)
 	hostdbCmd.Flags().IntVarP(&hostdbNumHosts, "numhosts", "n", 0, "Number of hosts to display from the hostdb")
 	hostdbCmd.Flags().BoolVarP(&hostdbVerbose, "verbose", "v", false, "Display full hostdb information")
 
@@ -202,7 +201,6 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedUpload, "expected-upload", "", "expected upload in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedRedundancy, "expected-redundancy", "", "expected redundancy of most uploaded files")
-	renterSetAllowanceCmd.Flags().BoolVarP(&allowanceInteractive, "interactive", "i", true, "Set allowance interactively, with guided prompts")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd)

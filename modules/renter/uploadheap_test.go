@@ -1,17 +1,16 @@
 package renter
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
@@ -63,17 +62,16 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
+		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
 		}
 	}
 
-	// Call buildUnfinishedChunks as not stuck loop, all un stuck chunks should be returned
-	id := rt.renter.mu.Lock()
-	uucs := rt.renter.buildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
-	rt.renter.mu.Unlock(id)
+	// Call managedBuildUnfinishedChunks as not stuck loop, all un stuck chunks
+	// should be returned
+	uucs := rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
 	if len(uucs) != int(f.NumChunks())-1 {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", int(f.NumChunks())-1, len(uucs))
 	}
@@ -83,10 +81,9 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		}
 	}
 
-	// Call buildUnfinishedChunks as stuck loop, all stuck chunks should be returned
-	id = rt.renter.mu.Lock()
-	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
-	rt.renter.mu.Unlock(id)
+	// Call managedBuildUnfinishedChunks as stuck loop, all stuck chunks should
+	// be returned
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
 	if len(uucs) != 1 {
 		t.Fatalf("Incorrect number of chunks returned, expected 1 got %v", len(uucs))
 	}
@@ -102,21 +99,18 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Call buildUnfinishedChunks as not stuck loop, since the file is now not
-	// repairable it should return no chunks
-	id = rt.renter.mu.Lock()
-	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
-	rt.renter.mu.Unlock(id)
+	// Call managedBuildUnfinishedChunks as not stuck loop, since the file is
+	// now not repairable it should return no chunks
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
 	if len(uucs) != 0 {
 		t.Fatalf("Incorrect number of chunks returned, expected 0 got %v", len(uucs))
 	}
 
-	// Call buildUnfinishedChunks as stuck loop, all chunks should be returned
-	// because they should have been marked as stuck by the previous call and
-	// stuck chunks should still be returned if the file is not repairable
-	id = rt.renter.mu.Lock()
-	uucs = rt.renter.buildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
-	rt.renter.mu.Unlock(id)
+	// Call managedBuildUnfinishedChunks as stuck loop, all chunks should be
+	// returned because they should have been marked as stuck by the previous
+	// call and stuck chunks should still be returned if the file is not
+	// repairable
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
 	if len(uucs) != int(f.NumChunks()) {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", f.NumChunks(), len(uucs))
 	}
@@ -162,7 +156,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
 	for i := 0; i < int(f1.NumChunks()+f2.NumChunks()); i++ {
-		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
+		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
@@ -356,15 +350,15 @@ func TestAddChunksToHeap(t *testing.T) {
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
 	for i := 0; i < rsc.MinPieces(); i++ {
-		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
+		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
 		}
 	}
 
-	// Make sure directory Heap it ready
-	err = rt.renter.managedInitDirectoryHeap()
+	// Make sure directory Heap is ready
+	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +422,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.workerPool[types.FileContractID{byte(i)}] = &worker{
+		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
 			uploadChan:   make(chan struct{}, 1),
@@ -439,9 +433,14 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	if rt.renter.uploadHeap.managedLen() != 0 {
 		t.Fatal("Expected upload heap to be empty but has length of", rt.renter.uploadHeap.managedLen())
 	}
-	if rt.renter.directoryHeap.managedLen() != 0 {
+	// "Empty" -> gets initialized with the root dir, therefore should have one
+	// directory in it.
+	if rt.renter.directoryHeap.managedLen() != 1 {
 		t.Fatal("Expected directory heap to be empty but has length of", rt.renter.directoryHeap.managedLen())
 	}
+	// Reset the dir heap to clear the root dir out, rest of test wants an empty
+	// heap.
+	rt.renter.directoryHeap.managedReset()
 
 	// Add chunks from file to uploadHeap
 	rt.renter.managedBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
@@ -500,15 +499,123 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	if !d.siaPath.Equals(modules.RootSiaPath()) {
 		t.Fatal("Expected Directory siapath to be the root siaPath but was", d.siaPath.String())
 	}
-	// aggregateHealth is manually set to 0 when directory is added back to heap
-	// since it is explored and the aggregateHealth is no longer considered
-	if d.aggregateHealth != 0 {
-		t.Fatal("Expected aggregateHealth to be 0 but was", d.aggregateHealth)
-	}
 	// The directory health should be that of the file since none of the chunks
 	// were added
 	health, _, _ := f.Health(offline, goodForRenew)
 	if d.health != health {
 		t.Fatalf("Expected directory health to be %v but was %v", health, d.health)
+	}
+}
+
+// TestUploadHeapMaps tests that the uploadHeap's maps are properly updated
+// through pushing, popping, and reseting the heap
+func TestUploadHeapMaps(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Add stuck and unstuck chunks to heap to fill up the heap maps
+	numHeapChunks := uint64(10)
+	sf, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := uint64(0); i < numHeapChunks; i++ {
+		// Create copy of siafile entry to be closed by reset
+		copy, err := sf.CopyEntry()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Create minimum chunk
+		stuck := i%2 == 0
+		chunk := &unfinishedUploadChunk{
+			id: uploadChunkID{
+				fileUID: siafile.SiafileUID(fmt.Sprintf("chunk - %v", i)),
+				index:   i,
+			},
+			fileEntry:       copy,
+			stuck:           stuck,
+			piecesCompleted: 1,
+			piecesNeeded:    1,
+		}
+		// push chunk to heap
+		if !rt.renter.uploadHeap.managedPush(chunk) {
+			t.Fatal("unable to push chunk", chunk)
+		}
+		// Confirm chunk is in the correct map
+		if stuck {
+			_, ok := rt.renter.uploadHeap.stuckHeapChunks[chunk.id]
+			if !ok {
+				t.Fatal("stuck chunk not in stuck chunk heap map")
+			}
+		} else {
+			_, ok := rt.renter.uploadHeap.unstuckHeapChunks[chunk.id]
+			if !ok {
+				t.Fatal("unstuck chunk not in unstuck chunk heap map")
+			}
+		}
+	}
+
+	// Close original siafile entry
+	if err := sf.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm length of maps
+	if len(rt.renter.uploadHeap.unstuckHeapChunks) != int(numHeapChunks/2) {
+		t.Fatalf("Expected %v unstuck chunks in map but found %v", numHeapChunks/2, len(rt.renter.uploadHeap.unstuckHeapChunks))
+	}
+	if len(rt.renter.uploadHeap.stuckHeapChunks) != int(numHeapChunks/2) {
+		t.Fatalf("Expected %v stuck chunks in map but found %v", numHeapChunks/2, len(rt.renter.uploadHeap.stuckHeapChunks))
+	}
+	if len(rt.renter.uploadHeap.repairingChunks) != 0 {
+		t.Fatalf("Expected %v repairing chunks in map but found %v", 0, len(rt.renter.uploadHeap.repairingChunks))
+	}
+
+	// Pop off some chunks
+	poppedChunks := 3
+	for i := 0; i < poppedChunks; i++ {
+		// Pop chunk
+		chunk := rt.renter.uploadHeap.managedPop()
+		// Confirm it is in the repairing map
+		_, ok := rt.renter.uploadHeap.repairingChunks[chunk.id]
+		if !ok {
+			t.Fatal("popped chunk not found in repairing map")
+		}
+		// Confirm the chunk cannot be pushed back onto the heap
+		if rt.renter.uploadHeap.managedPush(chunk) {
+			t.Fatal("should not have been able to push chunk back onto heap")
+		}
+	}
+
+	// Confirm length of maps
+	if len(rt.renter.uploadHeap.repairingChunks) != poppedChunks {
+		t.Fatalf("Expected %v repairing chunks in map but found %v", poppedChunks, len(rt.renter.uploadHeap.repairingChunks))
+	}
+	remainingChunks := len(rt.renter.uploadHeap.unstuckHeapChunks) + len(rt.renter.uploadHeap.stuckHeapChunks)
+	if remainingChunks != int(numHeapChunks)-poppedChunks {
+		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", int(numHeapChunks)-poppedChunks, remainingChunks)
+	}
+
+	// Reset the heap
+	if err := rt.renter.uploadHeap.managedReset(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm length of maps
+	if len(rt.renter.uploadHeap.repairingChunks) != poppedChunks {
+		t.Fatalf("Expected %v repairing chunks in map but found %v", poppedChunks, len(rt.renter.uploadHeap.repairingChunks))
+	}
+	remainingChunks = len(rt.renter.uploadHeap.unstuckHeapChunks) + len(rt.renter.uploadHeap.stuckHeapChunks)
+	if remainingChunks != 0 {
+		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", 0, remainingChunks)
 	}
 }

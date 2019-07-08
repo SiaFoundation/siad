@@ -6,10 +6,10 @@ import (
 	"math/big"
 	"net/http"
 
+	"github.com/julienschmidt/httprouter"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/julienschmidt/httprouter"
 )
 
 // ConsensusGET contains general information about the consensus set, with tags

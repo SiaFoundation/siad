@@ -63,15 +63,15 @@ func TestHostDBHostsActiveHandler(t *testing.T) {
 	}
 
 	// announce the host and start accepting contracts
+	err = st.setHostStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +156,10 @@ func TestHostDBHostsHandler(t *testing.T) {
 
 	// Announce the host and then get the list of hosts.
 	var ah HostdbActiveGET
+	err = st.setHostStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err = st.announceHost(); err != nil {
 		t.Fatal(err)
 	}

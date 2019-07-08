@@ -9,40 +9,6 @@ ldflags= -X gitlab.com/NebulousLabs/Sia/build.GitRevision=${GIT_DIRTY}${GIT_REVI
 # all will build and install release binaries
 all: release
 
-# dependencies installs all of the dependencies that are required for building
-# Sia.
-dependencies:
-	# Consensus Dependencies
-	go get -u gitlab.com/NebulousLabs/demotemutex
-	go get -u gitlab.com/NebulousLabs/fastrand
-	go get -u gitlab.com/NebulousLabs/merkletree
-	go get -u gitlab.com/NebulousLabs/bolt
-	go get -u golang.org/x/crypto/blake2b
-	go get -u golang.org/x/crypto/ed25519
-	# Module + Daemon Dependencies
-	go get -u gitlab.com/NebulousLabs/entropy-mnemonics
-	go get -u gitlab.com/NebulousLabs/errors
-	go get -u gitlab.com/NebulousLabs/go-upnp
-	go get -u gitlab.com/NebulousLabs/ratelimit
-	go get -u gitlab.com/NebulousLabs/threadgroup
-	go get -u gitlab.com/NebulousLabs/writeaheadlog
-	go get -u github.com/klauspost/reedsolomon
-	go get -u github.com/julienschmidt/httprouter
-	go get -u github.com/inconshreveable/go-update
-	go get -u github.com/kardianos/osext
-	go get -u github.com/inconshreveable/mousetrap
-	go get -u github.com/dchest/threefish
-	go get -u golang.org/x/crypto/curve25519
-	go get -u golang.org/x/crypto/chacha20poly1305
-	# Frontend Dependencies
-	go get -u golang.org/x/crypto/ssh/terminal
-	go get -u github.com/spf13/cobra/doc
-	# Developer Dependencies
-	go install -race std
-	go get -u github.com/client9/misspell/cmd/misspell
-	go get -u golang.org/x/lint/golint
-	go get -u gitlab.com/NebulousLabs/glyphcheck
-
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
 run = .
@@ -58,10 +24,11 @@ fmt:
 
 # vet calls go vet on all packages.
 # NOTE: go vet requires packages to be built in order to obtain type info.
-vet: release-std
-	go vet $(pkgs)
+vet:
+	GO111MODULE=on go vet $(pkgs)
 
 lint:
+	go get golang.org/x/lint/golint
 	golint -min_confidence=1.0 -set_exit_status $(pkgs)
 
 # spellcheck checks for misspelled words in comments or strings.
@@ -70,21 +37,21 @@ spellcheck:
 
 # debug builds and installs debug binaries.
 debug:
-	go install -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GO111MODULE=on go install -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 debug-race:
-	go install -race -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GO111MODULE=on go install -race -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
 # dev builds and installs developer binaries.
 dev:
-	go install -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GO111MODULE=on go install -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 dev-race:
-	go install -race -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GO111MODULE=on go install -race -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
 # release builds and installs release binaries.
 release:
-	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
+	GO111MODULE=on go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
 release-race:
-	go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
+	GO111MODULE=on go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
 
 # clean removes all directories that get automatically created during
 # development.
@@ -92,21 +59,21 @@ clean:
 	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf release 
 
 test:
-	go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run)
+	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run)
 test-v:
-	go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run)
+	GO111MODULE=on go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run)
 test-long: clean fmt vet lint
 	@mkdir -p cover
-	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug netgo' -timeout=1800s $(pkgs) -run=$(run)
+	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=1800s $(pkgs) -run=$(run)
 test-vlong: clean fmt vet lint
 	@mkdir -p cover
-	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run)
+	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run)
 test-cpu:
-	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run)
+	GO111MODULE=on go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run)
 test-mem:
-	go test -v -tags='testing debug netgo' -timeout=500s -memprofile mem.prof $(pkgs) -run=$(run)
+	GO111MODULE=on go test -v -tags='testing debug netgo' -timeout=500s -memprofile mem.prof $(pkgs) -run=$(run)
 bench: clean fmt
-	go test -tags='debug testing netgo' -timeout=500s -run=XXX -bench=$(run) $(pkgs)
+	GO111MODULE=on go test -tags='debug testing netgo' -timeout=500s -run=XXX -bench=$(run) $(pkgs)
 cover: clean
 	@mkdir -p cover
 	@for package in $(pkgs); do                                                                                                          \
@@ -122,5 +89,5 @@ whitepaper:
 	@pdflatex -output-directory=doc whitepaper.tex > /dev/null
 	pdflatex -output-directory=doc whitepaper.tex
 
-.PHONY: all dependencies fmt install release release-std xc clean test test-v test-long cover cover-integration cover-unit whitepaper
+.PHONY: all fmt install release clean test test-v test-long cover whitepaper
 

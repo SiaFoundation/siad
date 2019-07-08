@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"io"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // marshalChunk binary encodes a chunk. It only allocates memory a single time

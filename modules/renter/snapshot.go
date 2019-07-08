@@ -121,7 +121,6 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return errors.AddContext(err, "failed to open backup for uploading")
 	}
 	defer backup.Close()
-	// TODO: verify that src is actually a backup file
 
 	// Prepare the siapath.
 	sp, err := modules.NewSiaPath(name)
@@ -214,7 +213,11 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	}
 	defer entry.Close()
 	// Use .sia file to download snapshot.
-	s := r.managedStreamer(entry.Snapshot())
+	snap, err := entry.Snapshot()
+	if err != nil {
+		return err
+	}
+	s := r.managedStreamer(snap)
 	defer s.Close()
 	_, err = io.Copy(dstFile, s)
 	return err

@@ -11,12 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
@@ -572,6 +573,7 @@ func (s *Session) ReadSection(root crypto.Hash, offset, length uint32) (_ module
 		MerkleProof: true,
 	}
 	var buf bytes.Buffer
+	buf.Grow(int(length))
 	contract, err := s.Read(&buf, req, nil)
 	return contract, buf.Bytes(), err
 }

@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/threadgroup"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -34,7 +34,8 @@ var (
 
 // contractInfo contains information about a contract relevant to the HostDB.
 type contractInfo struct {
-	StoredData uint64 `json:"storeddata"`
+	HostPublicKey types.SiaPublicKey
+	StoredData    uint64 `json:"storeddata"`
 }
 
 // The HostDB is a database of potential hosts. It assigns a weight to each
@@ -163,7 +164,8 @@ func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 			continue
 		}
 		knownContracts[contract.HostPublicKey.String()] = contractInfo{
-			StoredData: contract.Transaction.FileContractRevisions[0].NewFileSize,
+			HostPublicKey: contract.HostPublicKey,
+			StoredData:    contract.Transaction.FileContractRevisions[0].NewFileSize,
 		}
 	}
 	hdb.knownContracts = knownContracts
@@ -439,6 +441,14 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	}
 	// Check if disabling
 	if fm == modules.HostDBDisableFilter {
+		// Reset filtered field for hosts
+		for _, pk := range hdb.filteredHosts {
+			err := hdb.hostTree.SetFiltered(pk, false)
+			if err != nil {
+				hdb.log.Println("Unable to mark entry as not filtered:", err)
+			}
+		}
+		// Reset filtered fields
 		hdb.filteredTree = hdb.hostTree
 		hdb.filteredHosts = make(map[string]types.SiaPublicKey)
 		hdb.filterMode = fm
@@ -457,10 +467,17 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	// Create filteredHosts map
 	filteredHosts := make(map[string]types.SiaPublicKey)
 	for _, h := range hosts {
+		// Add host to filtered host map
 		if _, ok := filteredHosts[h.String()]; ok {
 			continue
 		}
 		filteredHosts[h.String()] = h
+
+		// Update host in unfiltered hosttree
+		err := hdb.hostTree.SetFiltered(h, true)
+		if err != nil {
+			hdb.log.Println("Unable to mark entry as filtered:", err)
+		}
 	}
 	var allErrs error
 	allHosts := hdb.hostTree.All()

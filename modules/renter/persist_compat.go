@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // v137Persistence is the persistence struct of a renter that doesn't use the

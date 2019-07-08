@@ -16,6 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -29,9 +32,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // test is a helper struct for running subtests when tests can use the same test
@@ -903,8 +903,21 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("This test requires at least 2 hosts")
 	}
 
-	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
+	// Choose a filesize for the upload. To hit a wide range of cases,
+	// siatest.Fuzz is used.
+	fuzz := siatest.Fuzz()
+	fileSize := int(modules.SectorSize) + fuzz
+	// One out of three times, add an extra sector.
+	if siatest.Fuzz() == 0 {
+		fileSize += int(modules.SectorSize)
+	}
+	// One out of three times, add a random amount of extra data.
+	if siatest.Fuzz() == 0 {
+		fileSize += fastrand.Intn(int(modules.SectorSize))
+	}
+	t.Log("testRemoteRepair fileSize choice:", fileSize)
+
+	// Set the redundancy for the upload.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -4252,6 +4265,10 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
+	// Delete the file locally.
+	if err := lf.Delete(); err != nil {
+		t.Fatal(err)
+	}
 	// Create a backup.
 	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
 	err = r.RenterCreateLocalBackupPost(backupPath)
@@ -4849,6 +4866,10 @@ func TestRemoteBackup(t *testing.T) {
 	if err := createSnapshot("foo"); err != nil {
 		t.Fatal(err)
 	}
+	// Delete the file locally.
+	if err := lf.Delete(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Upload another file and take another snapshot.
 	lf2, err := subDir.NewFile(100)
@@ -4860,6 +4881,9 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	if err := createSnapshot("bar"); err != nil {
+		t.Fatal(err)
+	}
+	if err := lf2.Delete(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -4882,7 +4906,11 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// We should be able to download the first file.
-	if _, err := r.DownloadToDisk(rf, false); err != nil {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		_, err = r.DownloadToDisk(rf, false)
+		return err
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	// The second file should still fail.
@@ -4899,10 +4927,18 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// We should be able to download both files now.
-	if _, err := r.DownloadToDisk(rf, false); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.DownloadToDisk(rf2, false); err != nil {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		_, err = r.DownloadToDisk(rf, false)
+		if err != nil {
+			return err
+		}
+		_, err = r.DownloadToDisk(rf2, false)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 

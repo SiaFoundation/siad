@@ -6,11 +6,11 @@ import (
 	"io"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -146,6 +146,10 @@ type (
 		// EncodeShards encodes the input data like Encode but accepts an already
 		// sharded input.
 		EncodeShards(data [][]byte) ([][]byte, error)
+
+		// Reconstruct recovers the full set of encoded shards from the provided
+		// pieces, of which at least MinPieces must be non-nil.
+		Reconstruct(pieces [][]byte) error
 
 		// Recover recovers the original data from pieces and writes it to w.
 		// pieces should be identical to the slice returned by Encode (length and
@@ -628,6 +632,9 @@ type Renter interface {
 	// specified folder. The 'cached' argument specifies whether cached values
 	// should be returned or not.
 	FileList(siaPath SiaPath, recursive, cached bool) ([]FileInfo, error)
+
+	// Filter returns the renter's hostdb's filterMode and filteredHosts
+	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
 	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error

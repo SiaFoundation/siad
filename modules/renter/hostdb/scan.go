@@ -11,13 +11,14 @@ import (
 	"sort"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // equalIPNets checks if two slices of IP subnets contain the same subnets.
@@ -626,9 +627,14 @@ func (hdb *HostDB) threadedScan() {
 	hdb.mu.Unlock()
 	hdb.managedWaitForScans()
 
-	// Set the flag to indicate that the initial scan is complete.
 	hdb.mu.Lock()
+	// Set the flag to indicate that the initial scan is complete.
 	hdb.initialScanComplete = true
+	// Copy the known contracts to avoid having to lock the hdb later.
+	knownContracts := make(map[string]contractInfo)
+	for k, c := range hdb.knownContracts {
+		knownContracts[k] = c
+	}
 	hdb.mu.Unlock()
 
 	for {
@@ -642,19 +648,24 @@ func (hdb *HostDB) threadedScan() {
 		// most part only online hosts are getting scanned unless there are
 		// fewer than hostCheckupQuantity of them.
 
-		// Grab a set of hosts to scan, grab hosts that are active, inactive,
-		// and offline to get high diversity.
-		var onlineHosts, offlineHosts []modules.HostDBEntry
+		// Grab a set of hosts to scan, grab hosts that are active, inactive, offline
+		// and known to get high diversity.
+		var onlineHosts, offlineHosts, knownHosts []modules.HostDBEntry
 		allHosts := hdb.hostTree.All()
 		for i := len(allHosts) - 1; i >= 0; i-- {
-			if len(onlineHosts) >= hostCheckupQuantity && len(offlineHosts) >= hostCheckupQuantity {
+			if len(onlineHosts) >= hostCheckupQuantity &&
+				len(offlineHosts) >= hostCheckupQuantity &&
+				len(knownHosts) == len(knownContracts) {
 				break
 			}
 
-			// Figure out if the host is online or offline.
+			// Figure out if the host is known, online or offline.
 			host := allHosts[i]
 			online := len(host.ScanHistory) > 0 && host.ScanHistory[len(host.ScanHistory)-1].Success
-			if online && len(onlineHosts) < hostCheckupQuantity {
+			_, known := knownContracts[host.PublicKey.String()]
+			if known {
+				knownHosts = append(knownHosts, host)
+			} else if online && len(onlineHosts) < hostCheckupQuantity {
 				onlineHosts = append(onlineHosts, host)
 			} else if !online && len(offlineHosts) < hostCheckupQuantity {
 				offlineHosts = append(offlineHosts, host)
@@ -662,8 +673,11 @@ func (hdb *HostDB) threadedScan() {
 		}
 
 		// Queue the scans for each host.
-		hdb.log.Println("Performing scan on", len(onlineHosts), "online hosts and", len(offlineHosts), "offline hosts.")
+		hdb.log.Println("Performing scan on", len(onlineHosts), "online hosts and", len(offlineHosts), "offline hosts and", len(knownHosts), "known hosts.")
 		hdb.mu.Lock()
+		for _, host := range knownHosts {
+			hdb.queueScan(host)
+		}
 		for _, host := range onlineHosts {
 			hdb.queueScan(host)
 		}

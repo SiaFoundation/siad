@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/siatest"
-
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestRenterDownloadStreamCache checks that the download stream caching is

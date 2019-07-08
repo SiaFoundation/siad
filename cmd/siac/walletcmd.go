@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -21,7 +22,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/entropy-mnemonics"
 )
 
 var (

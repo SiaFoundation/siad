@@ -3,9 +3,10 @@ package renter
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestRecoveredDataOffset tests the recoveredDataOffset helper function.

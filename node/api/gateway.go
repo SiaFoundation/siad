@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-
 	"github.com/julienschmidt/httprouter"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // GatewayGET contains the fields returned by a GET call to "/gateway".

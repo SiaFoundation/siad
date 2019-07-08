@@ -5,26 +5,11 @@ stages:
   - test
   - deploy
  
-before_script:
-  - mkdir -p $GOPATH/src/golang.org/x
-  - git clone https://github.com/golang/crypto $GOPATH/src/golang.org/x/crypto
-  - (cd $GOPATH/src/golang.org/x/crypto && git remote set-url origin https://go.googlesource.com/crypto)
-  - git clone https://github.com/golang/net $GOPATH/src/golang.org/x/net
-  - (cd $GOPATH/src/golang.org/x/net && git remote set-url origin https://go.googlesource.com/net)
-  - git clone https://github.com/golang/sys $GOPATH/src/golang.org/x/sys
-  - (cd $GOPATH/src/golang.org/x/sys && git remote set-url origin https://go.googlesource.com/sys)
-  - git clone https://github.com/golang/text $GOPATH/src/golang.org/x/text
-  - (cd $GOPATH/src/golang.org/x/text && git remote set-url origin https://go.googlesource.com/text)
-  - make dependencies
-  - cp -R $CI_PROJECT_DIR $GOPATH/src/gitlab.com/NebulousLabs/Sia
-  - cd $GOPATH/src/gitlab.com/NebulousLabs/Sia
-
 lint:
   stage: lint
   script: 
-    - go get -u github.com/alecthomas/gometalinter
-    - gometalinter --install
-    - gometalinter --deadline=300s --vendor --disable-all --enable=vet --enable=gofmt ./...
+    - go get github.com/golangci/golangci-lint/cmd/golangci-lint
+    - golangci-lint run --disable-all --enable=vet --enable=gofmt ./...
     - make test
 
 legacy-tests:
@@ -40,7 +25,6 @@ legacy-tests:
   script: 
     - make test-long pkgs="./node ./node/api ./node/api/server" run=.
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-    - cp -R ./cover $CI_PROJECT_DIR/cover
 
 package-tests:
   stage: test
@@ -55,7 +39,6 @@ package-tests:
   script: 
     - make test-long run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-    - cp -R ./cover $CI_PROJECT_DIR/cover
 
 integration-tests:
   stage: test
@@ -70,7 +53,6 @@ integration-tests:
   script:
     - make test-long run=. pkgs="./siatest ./siatest/consensus ./siatest/renter ./siatest/wallet"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-    - cp -R ./cover $CI_PROJECT_DIR/cover
 
 legacy-tests-nightly:
   stage: test
@@ -85,7 +67,6 @@ legacy-tests-nightly:
   script: 
     - make test-vlong pkgs="./node ./node/api ./node/api/server" run=.
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-    - cp -R ./cover $CI_PROJECT_DIR/cover
 
 package-tests-nightly:
   stage: test
@@ -100,7 +81,6 @@ package-tests-nightly:
   script: 
     - make test-vlong run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-    - cp -R ./cover $CI_PROJECT_DIR/cover
 
 integration-tests-nightly:
   stage: test
@@ -115,7 +95,6 @@ integration-tests-nightly:
   script:
     - make test-vlong run=. pkgs="./siatest ./siatest/consensus ./siatest/gateway ./siatest/renter ./siatest/wallet"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-    - cp -R ./cover $CI_PROJECT_DIR/cover
 
 deploy:
   stage: deploy
