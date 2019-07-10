@@ -55,6 +55,7 @@ type NodeScanner struct {
 	networkIsUnreachables int
 	noRouteToHosts        int
 	connectionRefuseds    int
+	connectionTimedOut    int
 
 	// scanFile holds all the results for this scan.
 	scanFile *os.File
@@ -105,7 +106,7 @@ func main() {
 	}
 
 	// Print out stats periodically.
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	numRPCAttempts := 3
 
 	for {
@@ -213,7 +214,8 @@ func setupNodeScanner(addr modules.NetAddress) (ns *NodeScanner) {
 		log.Fatal("ShareNodes err: ", err)
 	}
 
-	// TODO: add bootstrap nodes to queue.
+	// Append bootstrap nodes to queue.
+	ns.queue = append(ns.queue, modules.BootstrapPeers...)
 
 	// Mark all starting nodes as seen.
 	ns.seen = make(map[modules.NetAddress]struct{})
@@ -258,7 +260,6 @@ func (ns *NodeScanner) logWorkerResult(res ShareNodesResult) {
 	}
 
 	ns.failConns++
-	log.Printf("Cannot connect to local node at address %s: %s\n", res.node, res.err)
 
 	if strings.Contains(res.err.Error(), "unacceptable version") {
 		ns.unacceptableVersions++
@@ -268,6 +269,8 @@ func (ns *NodeScanner) logWorkerResult(res ShareNodesResult) {
 		ns.noRouteToHosts++
 	} else if strings.Contains(res.err.Error(), "connection refused") {
 		ns.connectionRefuseds++
+	} else if strings.Contains(res.err.Error(), "connection timed out") {
+		ns.connectionTimedOut++
 	} else {
 		log.Printf("Cannot connect to local node at address %s: %s\n", res.node, res.err)
 	}
