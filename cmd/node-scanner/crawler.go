@@ -253,7 +253,6 @@ func (ns *NodeScanner) logWorkerResult(res ShareNodesResult) {
 	}
 
 	if res.err == nil {
-		log.Printf("success %s\n", res.node)
 		ns.successfulConns++
 		return
 	}
