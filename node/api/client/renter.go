@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -518,5 +519,15 @@ func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err e
 func (c *Client) RenterGetDir(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
 	sp := escapeSiaPath(siaPath)
 	err = c.get(fmt.Sprintf("/renter/dir/%s", sp), &rd)
+	return
+}
+
+// RenterValidateSiaPathPost uses the /renter/validatesiapath endpoint to
+// validate a potential siapath
+//
+// NOTE: This function specifically takes a string as an argument not a type
+// SiaPath
+func (c *Client) RenterValidateSiaPathPost(siaPathStr string) (err error) {
+	err = c.post(fmt.Sprintf("/renter/validatesiapath/%s", siaPathStr), "", nil)
 	return
 }

@@ -12,14 +12,14 @@ import (
 	"time"
 
 	"github.com/karrick/godirwalk"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/errors"
-
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // The SiaFileSet structure helps track the number of threads using a siafile
@@ -289,14 +289,8 @@ func (sfs *SiaFileSet) siaPathToEntryAndUID(siaPath modules.SiaPath) (*siaFileSe
 // the renter
 func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file in Memory
-	_, UID, exists1 := sfs.siaPathToEntryAndUID(siaPath)
-	_, exists2 := sfs.siaFileMap[UID]
-	// Sanity check that the maps are consistent
-	if exists1 != exists2 {
-		build.Critical("SiaFileSet in memory maps are inconsistent", exists1, exists2)
-	}
-	// Since maps are consistent, only need to check one
-	if exists1 {
+	_, _, exists := sfs.siaPathToEntryAndUID(siaPath)
+	if exists {
 		return true
 	}
 	// Check for file on disk
@@ -321,6 +315,7 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 		_, err = os.Stat(localPath)
 		onDisk = err == nil
 	}
+	maxHealth := math.Max(md.CachedHealth, md.CachedStuckHealth)
 	fileInfo := modules.FileInfo{
 		AccessTime:       md.AccessTime,
 		Available:        md.CachedRedundancy >= 1,
@@ -331,8 +326,8 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 		Filesize:         uint64(md.FileSize),
 		Health:           md.CachedHealth,
 		LocalPath:        localPath,
-		MaxHealth:        math.Max(md.CachedHealth, md.CachedStuckHealth),
-		MaxHealthPercent: healthPercentage(md.CachedHealth, md.CachedStuckHealth, md.staticErasureCode),
+		MaxHealth:        maxHealth,
+		MaxHealthPercent: siadir.HealthPercentage(maxHealth),
 		ModTime:          md.ModTime,
 		NumStuckChunks:   md.NumStuckChunks,
 		OnDisk:           onDisk,
@@ -390,7 +385,7 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		}
 		// Check for duplicate uid.
 		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
-			err := fmt.Errorf("%v and %v share the same UID", sfs.siaPath(conflictingEntry), siaPath)
+			err := fmt.Errorf("%v and %v share the same UID '%v'", sfs.siaPath(conflictingEntry), siaPath, sf.UID())
 			build.Critical(err)
 			return nil, err
 		}
@@ -440,10 +435,10 @@ func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, erro
 // exists with a different UID, the UID will be updated and a unique path will
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
-func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
+func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile, chunks []byte) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.addExistingSiaFile(sf, 0)
+	return sfs.addExistingSiaFile(sf, chunks, 0)
 }
 
 // addExistingSiaFile adds an existing SiaFile to the set and stores it on disk.
@@ -451,7 +446,7 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 // exists with a different UID, the UID will be updated and a unique path will
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
-func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
+func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, chunks []byte, suffix uint) error {
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
 	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
@@ -479,14 +474,14 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
 			siaFilePath := siaPath.AddSuffix(suffix).SiaFileSysPath(sfs.staticSiaFileDir)
 			sf.SetSiaFilePath(siaFilePath)
 		}
-		return sf.Save()
+		return sf.SaveWithChunks(chunks)
 	}
 	// If it exists and the UID matches too, skip the file.
 	if sf.UID() == oldFile.UID() {
 		return nil
 	}
 	// If it exists and the UIDs don't match, increment the suffix and try again.
-	return sfs.addExistingSiaFile(sf, suffix+1)
+	return sfs.addExistingSiaFile(sf, chunks, suffix+1)
 }
 
 // Delete deletes the SiaFileSetEntry's SiaFile
@@ -522,8 +517,15 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		onDisk = err == nil
 	}
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
-	redundancy := entry.Redundancy(offline, goodForRenew)
-	uploadProgress, uploadedBytes := entry.UploadProgressAndBytes()
+	redundancy, err := entry.Redundancy(offline, goodForRenew)
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "failed to get file redundancy")
+	}
+	uploadProgress, uploadedBytes, err := entry.UploadProgressAndBytes()
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "failed to get upload progress and bytes")
+	}
+	maxHealth := math.Max(health, stuckHealth)
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
 		Available:        redundancy >= 1,
@@ -534,8 +536,8 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		Filesize:         entry.Size(),
 		Health:           health,
 		LocalPath:        localPath,
-		MaxHealth:        math.Max(health, stuckHealth),
-		MaxHealthPercent: healthPercentage(health, stuckHealth, entry.ErasureCode()),
+		MaxHealth:        maxHealth,
+		MaxHealthPercent: siadir.HealthPercentage(maxHealth),
 		ModTime:          entry.ModTime(),
 		NumStuckChunks:   numStuckChunks,
 		OnDisk:           onDisk,
@@ -713,16 +715,6 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 
 	// Update the siafile to have a new name.
 	return entry.Rename(newSiaPath, newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir))
-}
-
-// healthPercentage returns the health in a more human understandable format out
-// of 100%
-func healthPercentage(h, sh float64, ec modules.ErasureCoder) float64 {
-	health := math.Max(h, sh)
-	dataPieces := ec.MinPieces()
-	parityPieces := ec.NumPieces() - dataPieces
-	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
-	return 100 * ((worstHealth - health) / worstHealth)
 }
 
 // DeleteDir deletes a siadir and all the siadirs and siafiles within it

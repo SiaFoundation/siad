@@ -12,16 +12,16 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
-
-	"github.com/julienschmidt/httprouter"
 )
 
 var (
@@ -1335,6 +1335,17 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 	err = api.renter.UploadStreamFromReader(up, req.Body)
 	if err != nil {
 		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterValidateSiaPathHandler handles the API call that validates a siapath
+func (api *API) renterValidateSiaPathHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+	// Try and create a new siapath, this will validate the potential siapath
+	_, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)

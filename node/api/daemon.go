@@ -17,6 +17,7 @@ import (
 	"github.com/inconshreveable/go-update"
 	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -98,6 +99,8 @@ type (
 
 		RootTarget types.Target `json:"roottarget"`
 		RootDepth  types.Target `json:"rootdepth"`
+
+		DefaultAllowance modules.Allowance `json:"defaultallowance"`
 
 		// DEPRECATED: same values as MaxTargetAdjustmentUp and
 		// MaxTargetAdjustmentDown.
@@ -269,6 +272,8 @@ func (api *API) daemonConstantsHandler(w http.ResponseWriter, _ *http.Request, _
 
 		RootTarget: types.RootTarget,
 		RootDepth:  types.RootDepth,
+
+		DefaultAllowance: modules.DefaultAllowance,
 
 		// DEPRECATED: same values as MaxTargetAdjustmentUp and
 		// MaxTargetAdjustmentDown.

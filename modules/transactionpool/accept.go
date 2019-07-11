@@ -171,9 +171,6 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 	// Check that the transaction set has enough fees to justify adding it to
 	// the transaction list.
 	requiredFees := tp.requiredFeesToExtendTpool().Mul64(setSize)
-	if err != nil {
-		return err
-	}
 	var setFees types.Currency
 	for _, txn := range superset {
 		for _, fee := range txn.MinerFees {
@@ -257,9 +254,6 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	// Check that the transaction set has enough fees to justify adding it to
 	// the transaction list.
 	requiredFees := tp.requiredFeesToExtendTpool().Mul64(setSize)
-	if err != nil {
-		return err
-	}
 	var setFees types.Currency
 	for _, txn := range ts {
 		for _, fee := range txn.MinerFees {

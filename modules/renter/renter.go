@@ -27,6 +27,10 @@ import (
 	"reflect"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
@@ -36,10 +40,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/writeaheadlog"
-
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 var (
@@ -186,21 +186,12 @@ type hostContractor interface {
 
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
-//
-// TODO: Separate the workerPool to have its own mutex. The workerPool doesn't
-// interfere with any of the other fields in the renter, should be fine for it
-// to have a separate mutex, that way operations on the worker pool don't block
-// operations on other parts of the struct. If we're going to do it that way,
-// might make sense to split the worker pool off into it's own struct entirely
-// the same way that we split of the memoryManager entirely.
 type Renter struct {
 	// File management.
-	//
 	staticFileSet       *siafile.SiaFileSet
 	staticBackupFileSet *siafile.SiaFileSet
 
 	// Directory Management
-	//
 	staticDirSet       *siadir.SiaDirSet
 	staticBackupDirSet *siadir.SiaDirSet
 
@@ -221,10 +212,6 @@ type Renter struct {
 	// Upload management.
 	uploadHeap    uploadHeap
 	directoryHeap directoryHeap
-
-	// List of workers that can be used for uploading and/or downloading.
-	memoryManager *memoryManager
-	workerPool    map[types.FileContractID]*worker
 
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
@@ -251,10 +238,12 @@ type Renter struct {
 	persistDir       string
 	staticFilesDir   string
 	staticBackupsDir string
+	memoryManager    *memoryManager
 	mu               *siasync.RWMutex
 	tg               threadgroup.ThreadGroup
 	tpool            modules.TransactionPool
 	wal              *writeaheadlog.WAL
+	staticWorkerPool *workerPool
 }
 
 // Close closes the Renter and its dependencies
@@ -565,19 +554,18 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 		return err
 	}
 
+	// Set IPViolationsCheck
+	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
+
 	// Set the bandwidth limits.
 	err = r.setBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
 	if err != nil {
 		return err
 	}
-	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
-	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
-
-	// Set IPViolationsCheck
-	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
-
 	// Save the changes.
 	id := r.mu.Lock()
+	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
+	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
 	err = r.saveSync()
 	r.mu.Unlock(id)
 	if err != nil {
@@ -586,7 +574,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 
 	// Update the worker pool so that the changes are immediately apparent to
 	// users.
-	r.managedUpdateWorkerPool()
+	r.staticWorkerPool.managedUpdate()
 	return nil
 }
 
@@ -627,6 +615,18 @@ func (r *Renter) ActiveHosts() []modules.HostDBEntry { return r.hostDB.ActiveHos
 
 // AllHosts returns an array of all hosts
 func (r *Renter) AllHosts() []modules.HostDBEntry { return r.hostDB.AllHosts() }
+
+// Filter returns the renter's hostdb's filterMode and filteredHosts
+func (r *Renter) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
+	var fm modules.FilterMode
+	hosts := make(map[string]types.SiaPublicKey)
+	if err := r.tg.Add(); err != nil {
+		return fm, hosts, err
+	}
+	defer r.tg.Done()
+	fm, hosts = r.hostDB.Filter()
+	return fm, hosts, nil
+}
 
 // SetFilterMode sets the renter's hostdb filter mode
 func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error {
@@ -790,8 +790,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
 
-		workerPool: make(map[types.FileContractID]*worker),
-
 		bubbleUpdates: make(map[string]bubbleStatus),
 
 		cs:               cs,
@@ -812,11 +810,11 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	if err := r.managedInitPersist(); err != nil {
 		return nil, err
 	}
-
-	// Load and execute bubble updates
-	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
-		return nil, err
-	}
+	// After persist is initialized, push the root directory onto the directory
+	// heap for the repair process.
+	r.managedPushUnexploredDirectory(modules.RootSiaPath())
+	// After persist is initialized, create the worker pool.
+	r.staticWorkerPool = r.newWorkerPool()
 
 	// Subscribe to the consensus set.
 	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
@@ -825,21 +823,12 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 
 	// Spin up the workers for the work pool.
-	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
-	go r.threadedUploadAndRepair()
-	go r.threadedUpdateRenterHealth()
-	go r.threadedStuckFileLoop()
-
-	// Kill workers on shutdown.
-	r.tg.OnStop(func() error {
-		id := r.mu.RLock()
-		for _, worker := range r.workerPool {
-			close(worker.killChan)
-		}
-		r.mu.RUnlock(id)
-		return nil
-	})
+	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
+		go r.threadedUploadAndRepair()
+		go r.threadedUpdateRenterHealth()
+		go r.threadedStuckFileLoop()
+	}
 
 	// Spin up the snapshot synchronization thread.
 	go r.threadedSynchronizeSnapshots()

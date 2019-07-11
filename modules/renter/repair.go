@@ -5,11 +5,12 @@ import (
 	"io/ioutil"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -217,10 +218,6 @@ func (r *Renter) threadedStuckFileLoop() {
 	}
 	defer r.tg.Done()
 
-	if r.deps.Disrupt("DisableRepairAndHealthLoops") {
-		return
-	}
-
 	// Loop until the renter has shutdown or until there are no stuck chunks
 	for {
 		// Return if the renter has shut down.
@@ -323,10 +320,6 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		return
 	}
 	defer r.tg.Done()
-
-	if r.deps.Disrupt("DisableRepairAndHealthLoops") {
-		return
-	}
 
 	// Loop until the renter has shutdown or until the renter's top level files
 	// directory has a LasHealthCheckTime within the healthCheckInterval

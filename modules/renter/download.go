@@ -10,13 +10,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -265,7 +265,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		if err != nil {
 			return nil, err
 		}
-		dw = osFile
+		dw = &downloadDestinationFile{f: osFile}
 		destinationType = "file"
 	}
 
@@ -278,12 +278,17 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		}
 	}
 
+	// Prepare snapshot.
+	snap, err := entry.Snapshot()
+	if err != nil {
+		return nil, err
+	}
 	// Create the download object.
 	d, err := r.managedNewDownload(downloadParams{
 		destination:       dw,
 		destinationType:   destinationType,
 		destinationString: p.Destination,
-		file:              entry.Snapshot(),
+		file:              snap,
 
 		latencyTarget: 25e3 * time.Millisecond, // TODO: high default until full latency support is added.
 		length:        p.Length,
@@ -400,7 +405,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 				// the same chunk.
 				_, exists := chunkMaps[chunkIndex-minChunk][piece.HostPubKey.String()]
 				if exists {
-					r.log.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.")
+					r.log.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.", params.file.SiaPath(), chunkIndex, pieceIndex, piece.HostPubKey.String())
 				}
 				chunkMaps[chunkIndex-minChunk][piece.HostPubKey.String()] = downloadPieceInfo{
 					index: uint64(pieceIndex),

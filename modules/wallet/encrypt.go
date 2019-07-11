@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/coreos/bbolt"
+	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -82,9 +83,6 @@ func (w *Wallet) initEncryption(masterKey crypto.CipherKey, seed modules.Seed, p
 	// Establish the encryption verification using the masterKey. After this
 	// point, the wallet is encrypted.
 	uk := uidEncryptionKey(masterKey, dbGetWalletUID(w.dbTx))
-	if err != nil {
-		return modules.Seed{}, err
-	}
 	err = wb.Put(keyEncryptionVerification, uk.EncryptBytes(verificationPlaintext))
 	if err != nil {
 		return modules.Seed{}, err

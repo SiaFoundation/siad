@@ -12,16 +12,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"golang.org/x/crypto/twofish"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
-	"golang.org/x/crypto/twofish"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
 // backupHeader defines the structure of the backup's JSON header.
@@ -355,12 +354,18 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			}
 		} else if filepath.Ext(info.Name()) == modules.SiaFileExtension {
 			// Load the file as a SiaFile.
-			sf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
+			reader := bytes.NewReader(b)
+			sf, err := siafile.LoadSiaFileFromReader(reader, dst, r.wal)
+			if err != nil {
+				return err
+			}
+			// Read the chunks from the reader.
+			chunks, err := ioutil.ReadAll(reader)
 			if err != nil {
 				return err
 			}
 			// Add the file to the SiaFileSet.
-			err = r.staticFileSet.AddExistingSiaFile(sf)
+			err = r.staticFileSet.AddExistingSiaFile(sf, chunks)
 			if err != nil {
 				return err
 			}

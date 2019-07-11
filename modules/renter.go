@@ -6,11 +6,11 @@ import (
 	"io"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -147,6 +147,10 @@ type (
 		// sharded input.
 		EncodeShards(data [][]byte) ([][]byte, error)
 
+		// Reconstruct recovers the full set of encoded shards from the provided
+		// pieces, of which at least MinPieces must be non-nil.
+		Reconstruct(pieces [][]byte) error
+
 		// Recover recovers the original data from pieces and writes it to w.
 		// pieces should be identical to the slice returned by Encode (length and
 		// order must be preserved), but with missing elements set to nil. n is
@@ -204,6 +208,7 @@ type DirectoryInfo struct {
 	AggregateHealth              float64   `json:"aggregatehealth"`
 	AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
 	AggregateMaxHealth           float64   `json:"aggregatemaxhealth"`
+	AggregateMaxHealthPercentage float64   `json:"aggregatemaxhealthpercentage"`
 	AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
 	AggregateMostRecentModTime   time.Time `json:"aggregatemostrecentmodtime"`
 	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
@@ -216,6 +221,7 @@ type DirectoryInfo struct {
 	// an aggregate of the entire sub directory tree
 	Health              float64   `json:"health"`
 	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+	MaxHealthPercentage float64   `json:"maxhealthpercentage"`
 	MaxHealth           float64   `json:"maxhealth"`
 	MinRedundancy       float64   `json:"minredundancy"`
 	MostRecentModTime   time.Time `json:"mostrecentmodtime"`
@@ -626,6 +632,9 @@ type Renter interface {
 	// specified folder. The 'cached' argument specifies whether cached values
 	// should be returned or not.
 	FileList(siaPath SiaPath, recursive, cached bool) ([]FileInfo, error)
+
+	// Filter returns the renter's hostdb's filterMode and filteredHosts
+	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
 	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error

@@ -91,7 +91,7 @@ files, and advertise yourself as a host.
 Building From Source
 --------------------
 
-To build from source, [Go 1.10 must be installed](https://golang.org/doc/install)
+To build from source, [Go 1.11 or above must be installed](https://golang.org/doc/install)
 on the system. Make sure your `$GOPATH` is set, and then simply use `go get`:
 
 ```

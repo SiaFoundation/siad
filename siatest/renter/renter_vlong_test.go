@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
@@ -17,8 +20,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestStresstestSiaFileSet is a vlong test that performs multiple operations
@@ -94,7 +95,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) && !errors.Contains(err, siatest.ErrFileNotTracked) {
 				t.Fatal(err)
 			}
-			if err := r.WaitForUploadRedundancy(rf, 1.0); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
+			if err := r.WaitForUploadHealth(rf); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(1000))*time.Millisecond + time.Second) // between 1s and 2s
@@ -135,7 +136,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) && !errors.Contains(err, siatest.ErrFileNotTracked) {
 				t.Fatal(err)
 			}
-			if err := r.WaitForUploadRedundancy(rf, 1.0); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
+			if err := r.WaitForUploadHealth(rf); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s

@@ -47,11 +47,6 @@ const (
 	// case timeout.
 	minScansForSpeedup = 25
 
-	// scanSpeedupMedianMultiplier is the number with which the median of the
-	// initial scans is multiplied to speedup the initial scan after
-	// minScansForSpeedup successful scans.
-	scanSpeedupMedianMultiplier = 5
-
 	// recentInteractionWeightLimit caps the number of recent interactions as a
 	// percentage of the historic interactions, to be certain that a large
 	// amount of activity in a short period of time does not overwhelm the
@@ -68,6 +63,42 @@ const (
 	// scanCheckInterval is the interval used when waiting for the scanList to
 	// empty itself and for waiting on the consensus set to be synced.
 	scanCheckInterval = time.Second
+
+	// scanSpeedupMedianMultiplier is the number with which the median of the
+	// initial scans is multiplied to speedup the initial scan after
+	// minScansForSpeedup successful scans.
+	scanSpeedupMedianMultiplier = 5
+
+	// storageCompetitionFactor is the amount of competition we expect to have
+	// over a volume of storage on a host. If a host has 1 TB of storage
+	// remaining and we are actively uploading, it is unlikely that we will get
+	// the full 1 TB, because other renters will also be actively uploading to
+	// the host. A storageCompetitionFactor of 0.25 indicates that we will
+	// likely get 0.25 TB out of the 1 TB that the host has.
+	//
+	// TODO: Eventually we will want to set this value dynamically based on
+	// factors such as our own speed and potentially per-host characteristics.
+	// Buf for now we use a global constant.
+	storageCompetitionFactor = 0.25
+
+	// storagePenaltyExponentiation is the exponent that we apply to the storage
+	// penalty. If the host has half as much storage as we would like and the
+	// storagePenaltyExponentiation is 2, then the final score for the host
+	// would be (0.5)^2 = 0.25.
+	storagePenaltyExponentitaion = 2.0
+
+	// storageSkewMultiplier is a factor that we multiply with a host's ideal
+	// storage. The ideal storage is the amount of data that would be stored on
+	// the host if the renter's expected storage total (including redundancy)
+	// was spread evenly across all of the hosts. The skew multiplier adjusts
+	// for the fact that data will not be evenly spread across the hosts.
+	//
+	// A value of '1.0' indicates that storage is spread perfectly evenly. A
+	// value of '2.0' means that the host with the most data stored on it will
+	// have twice as much storage as it would if the data were spread perfectly
+	// evenly. Values closer to 1 mean less skew, values more than 1 mean more
+	// skew.
+	storageSkewMultiplier = 1.75
 
 	// txnFeesUpdateRatio is the amount of change we tolerate in the txnFees
 	// before we rebuild the hosttree.

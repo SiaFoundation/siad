@@ -1,11 +1,12 @@
 package contractor
 
 import (
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // hasFCIdentifier checks the transaction for a ContractSignedIdentifier and
@@ -18,11 +19,9 @@ func hasFCIdentifier(txn types.Transaction) (proto.ContractSignedIdentifier, cry
 		return proto.ContractSignedIdentifier{}, nil, false
 	}
 	// Verify the prefix.
-	// TODO In the future we can remove checking for PrefixNonSia.
 	var prefix types.Specifier
 	copy(prefix[:], txn.ArbitraryData[0])
-	if prefix != modules.PrefixNonSia &&
-		prefix != modules.PrefixFileContractIdentifier {
+	if prefix != modules.PrefixFileContractIdentifier {
 		return proto.ContractSignedIdentifier{}, nil, false
 	}
 	// We found an identifier.

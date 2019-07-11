@@ -170,15 +170,15 @@ func TestHostAndRentVanilla(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
-	err = st.announceHost()
-	if err != nil {
-		t.Fatal(err)
-	}
 	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -753,15 +753,15 @@ func TestRenterUploadDownload(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	err = st.setHostStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -897,15 +897,15 @@ func TestRenterParallelDelete(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	err = st.setHostStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1009,15 +1009,15 @@ func TestRenterRenew(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	err = st.setHostStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1149,15 +1149,15 @@ func TestRenterAllowance(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	err = st.setHostStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1258,15 +1258,15 @@ func TestHostAndRentReload(t *testing.T) {
 	}
 
 	// Announce the host and start accepting contracts.
+	err = st.setHostStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}

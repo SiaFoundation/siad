@@ -6,15 +6,17 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 )
 
 // newTestSiaFileSetWithFile creates a new SiaFileSet and SiaFile and makes sure
@@ -51,7 +53,7 @@ func TestAddExistingSiafile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Add the existing file to the set again this shouldn't do anything.
-	if err := sfs.AddExistingSiaFile(sf.SiaFile); err != nil {
+	if err := sfs.AddExistingSiaFile(sf.SiaFile, []byte{}); err != nil {
 		t.Fatal(err)
 	}
 	numSiaFiles := 0
@@ -73,7 +75,12 @@ func TestAddExistingSiafile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newSF, err := LoadSiaFileFromReader(bytes.NewReader(b), sf.SiaFilePath(), sf.wal)
+	reader := bytes.NewReader(b)
+	newSF, err := LoadSiaFileFromReader(reader, sf.SiaFilePath(), sf.wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newChunks, err := ioutil.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,8 +89,21 @@ func TestAddExistingSiafile(t *testing.T) {
 	preImportUID := newSF.UID()
 	// Import the file. This should work because the files no longer share the same
 	// UID.
-	if err := sfs.AddExistingSiaFile(newSF); err != nil {
+	if err := sfs.AddExistingSiaFile(newSF, newChunks); err != nil {
 		t.Fatal(err)
+	}
+	// sf and newSF should have the same pieces.
+	for chunkIndex := uint64(0); chunkIndex < sf.NumChunks(); chunkIndex++ {
+		piecesOld, err1 := sf.Pieces(chunkIndex)
+		piecesNew, err2 := newSF.Pieces(chunkIndex)
+		if err := errors.Compose(err1, err2); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(piecesOld, piecesNew) {
+			t.Log("piecesOld: ", piecesOld)
+			t.Log("piecesNew: ", piecesNew)
+			t.Fatal("old pieces don't match new pieces")
+		}
 	}
 	numSiaFiles = 0
 	err = filepath.Walk(sfs.staticSiaFileDir, func(path string, info os.FileInfo, err error) error {
@@ -523,8 +543,8 @@ func TestSiaDirDelete(t *testing.T) {
 				return
 			default:
 			}
-			err := entry.Save()
-			if err != nil && !strings.Contains(err.Error(), "can't call saveFile on deleted file") {
+			err := entry.SaveHeader()
+			if err != nil && !strings.Contains(err.Error(), "can't call createAndApplyTransaction on deleted file") {
 				t.Fatal(err)
 			}
 			time.Sleep(50 * time.Millisecond)
@@ -636,7 +656,7 @@ func TestSiaDirRename(t *testing.T) {
 				return
 			default:
 			}
-			err := entry.Save()
+			err := entry.SaveHeader()
 			if err != nil {
 				t.Fatal(err)
 			}

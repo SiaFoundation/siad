@@ -6,13 +6,14 @@ import (
 	"path/filepath"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 const (
@@ -444,7 +445,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				}
 				// found a matching header, but it still won't have the host's
 				// signatures, since those aren't added until the transaction is
-				// commited. Add the signatures supplied by the host and commit
+				// committed. Add the signatures supplied by the host and commit
 				// the header.
 				u.Header.Transaction.TransactionSignatures = sigs
 				if err := c.applySetHeader(u.Header); err != nil {

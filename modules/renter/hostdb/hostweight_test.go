@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -222,16 +224,40 @@ func TestHostWeightStorageRemainingDifferences(t *testing.T) {
 	}
 	hdb := bareHostDB()
 
+	// Create two entries with different host keys.
 	entry := DefaultHostDBEntry
+	entry.PublicKey.Key = fastrand.Bytes(16)
 	entry2 := DefaultHostDBEntry
-	entry2.RemainingStorage = 50e3
+	entry2.PublicKey.Key = fastrand.Bytes(16)
+
+	// The first entry has more storage remaining than the second.
+	entry.RemainingStorage = modules.DefaultAllowance.ExpectedStorage // 1e12
+	entry2.RemainingStorage = 1e3
+
+	// The entry with more storage should have the higher score.
 	w1 := hdb.weightFunc(entry).Score()
 	w2 := hdb.weightFunc(entry2).Score()
-
 	if w1.Cmp(w2) <= 0 {
 		t.Log(w1)
 		t.Log(w2)
 		t.Error("Larger storage remaining should have more weight")
+	}
+
+	// Change both entries to have the same remaining storage but add contractInfo
+	// to the HostDB to make it think that we already uploaded some data to one of
+	// the entries. This entry should have the higher score.
+	entry.RemainingStorage = 1e3
+	entry2.RemainingStorage = 1e3
+	hdb.knownContracts[entry.PublicKey.String()] = contractInfo{
+		HostPublicKey: entry.PublicKey,
+		StoredData:    hdb.allowance.ExpectedStorage,
+	}
+	w1 = hdb.weightFunc(entry).Score()
+	w2 = hdb.weightFunc(entry2).Score()
+	if w1.Cmp(w2) <= 0 {
+		t.Log(w1)
+		t.Log(w2)
+		t.Error("Entry with uploaded data should have higher score")
 	}
 }
 

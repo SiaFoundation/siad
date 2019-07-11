@@ -121,7 +121,6 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return errors.AddContext(err, "failed to open backup for uploading")
 	}
 	defer backup.Close()
-	// TODO: verify that src is actually a backup file
 
 	// Prepare the siapath.
 	sp, err := modules.NewSiaPath(name)
@@ -214,7 +213,11 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	}
 	defer entry.Close()
 	// Use .sia file to download snapshot.
-	s := r.managedStreamer(entry.Snapshot())
+	snap, err := entry.Snapshot()
+	if err != nil {
+		return err
+	}
+	s := r.managedStreamer(snap)
 	defer s.Close()
 	_, err = io.Copy(dstFile, s)
 	return err
@@ -681,6 +684,9 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			if len(contracts) != 0 {
 				syncedContracts = make(map[types.FileContractID]struct{})
 				for _, c := range contracts {
+					if !c.Utility.GoodForRenew || !c.Utility.GoodForUpload {
+						continue
+					}
 					syncedContracts[c.ID] = struct{}{}
 				}
 			}
@@ -693,6 +699,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		}
 
 		// Synchronize the host.
+		r.log.Debugln("Synchronizing snapshots on host", c.HostPublicKey)
 		err = func() error {
 			// Download the host's entry table.
 			host, err := r.hostContractor.Session(c.HostPublicKey, r.tg.StopChan())
@@ -718,11 +725,11 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// Record the new snapshots; they'll be replicated to the other
 				// hosts in subsequent iterations of the synchronization loop.
 				for _, ub := range unknown {
-					r.log.Println("Located new snapshot", ub.Name, "on host", c.HostPublicKey)
 					known[ub.UID] = struct{}{}
 					if err := r.managedSaveSnapshot(ub); err != nil {
 						return err
 					}
+					r.log.Printf("Located new snapshot %q on host %v", ub.Name, c.HostPublicKey)
 				}
 			}
 
@@ -740,6 +747,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				if err := r.managedUploadSnapshotHost(ub, dotSia, host); err != nil {
 					return err
 				}
+				r.log.Printf("Replicated missing snapshot %q to host %v", ub.Name, c.HostPublicKey)
 			}
 			return nil
 		}()
@@ -755,7 +763,6 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			continue
 		}
 		// Mark the contract as synchronized.
-		r.log.Println("Synchronized snapshots on host", c.HostPublicKey)
 		syncedContracts[c.ID] = struct{}{}
 		// Commit the set of synchronized hosts.
 		id = r.mu.Lock()

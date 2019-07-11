@@ -4,12 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
+
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestSiaFileFaultyDisk simulates interacting with a SiaFile on a faulty disk.
@@ -78,7 +79,17 @@ OUTER:
 			if fastrand.Intn(100) < 80 {
 				spk := hostkeys[fastrand.Intn(len(hostkeys))]
 				offset := uint64(fastrand.Intn(int(sf.staticMetadata.FileSize)))
-				chunkIndex, _ := sf.Snapshot().ChunkIndexByOffset(offset)
+				snap, err := sf.Snapshot()
+				if err != nil {
+					if errors.Contains(err, errDiskFault) {
+						numRecoveries++
+						break
+					}
+					// If the error wasn't caused by the dependency, the test
+					// fails.
+					t.Fatal(err)
+				}
+				chunkIndex, _ := snap.ChunkIndexByOffset(offset)
 				pieceIndex := uint64(fastrand.Intn(sf.staticMetadata.staticErasureCode.NumPieces()))
 				if err := sf.AddPiece(spk, chunkIndex, pieceIndex, crypto.Hash{}); err != nil {
 					if errors.Contains(err, errDiskFault) {

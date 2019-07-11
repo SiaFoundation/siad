@@ -5,8 +5,9 @@ import (
 	"os"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/ratelimit"
+
+	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
 type (

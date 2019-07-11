@@ -5,11 +5,12 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TODO If we already have an active contract with a host for
@@ -266,7 +267,7 @@ func (c *Contractor) managedRecoverContracts() {
 				// merge them.
 				// For now we ignore that contract and don't delete it. We
 				// might want to recover it later.
-				c.log.Println("Not recovering contract since we already have a contract with that host",
+				c.log.Debugln("Not recovering contract since we already have a contract with that host",
 					rc.ID, rc.HostPublicKey.String())
 				return
 			}
