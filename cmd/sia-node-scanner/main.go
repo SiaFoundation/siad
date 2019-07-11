@@ -48,10 +48,10 @@ type NodeScanner struct {
 	// Connection stats for the current scan.
 	stats ScannerStats
 
-	// scanFile holds all the results for this scan.
-	scanFile *os.File
+	// scanLog holds all the results for this scan.
+	scanLog *os.File
 	// encoder is used to store NodeScanResult structs
-	// as JSON objects in the scanFile.
+	// as JSON objects in the scanLog.
 	encoder *json.Encoder
 }
 
@@ -158,7 +158,7 @@ func main() {
 			// Append stats to stats file.
 			ns.encoder.Encode(ns.stats)
 
-			ns.scanFile.Close()
+			ns.scanLog.Close()
 			return
 		}
 	}
@@ -192,13 +192,13 @@ func setupNodeScanner(addr modules.NetAddress) (ns *NodeScanner) {
 
 	// Create the file for this scan.
 	startTime := time.Now().Format("01-02:15:04")
-	scanFileName := scannerDirPath + "/scan-" + startTime + ".json"
-	scanFile, err := os.Create(scanFileName)
+	scanLogName := scannerDirPath + "/scan-" + startTime + ".json"
+	scanLog, err := os.Create(scanLogName)
 	if err != nil {
 		log.Fatal("Error creating scan file: ", err)
 	}
-	ns.scanFile = scanFile
-	ns.encoder = json.NewEncoder(ns.scanFile)
+	ns.scanLog = scanLog
+	ns.encoder = json.NewEncoder(ns.scanLog)
 
 	// Create dummy gateway at localhost.
 	g, err := gateway.New("localhost:0", true, scannerGatewayDirPath) // TODO: make own dir
@@ -250,7 +250,7 @@ func setupNodeScanner(addr modules.NetAddress) (ns *NodeScanner) {
 }
 
 // logWorkerResult collects the address, timestamp, and error returned
-// from the scan of a single node and writes it to the scanFile as a JSON object.
+// from the scan of a single node and writes it to the scanLog as a JSON object.
 // It also updates internal node scanner counters using the error returned.
 func (ns *NodeScanner) logWorkerResult(res ShareNodesResult) {
 	scanRes := NodeScanResult{
