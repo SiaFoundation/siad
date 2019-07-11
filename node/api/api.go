@@ -8,7 +8,12 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
+
+// ErrAPICallNotRecognized is returned by API client calls made to modules that
+// are not yet loaded.
+var ErrAPICallNotRecognized = errors.New("API call not recognized: ")
 
 // Error is a type that is encoded as JSON and returned in an API response in
 // the event of an error. Only the Message field is required. More fields may

@@ -206,7 +206,14 @@ func abs(path string) string {
 func rentercmd() {
 	// Get Renter
 	rg, err := httpClient.RenterGet()
-	if err != nil {
+	if errors.Contains(err, api.ErrAPICallNotRecognized) {
+		// Assume module is not loaded if status command is not recognized.
+		fmt.Printf(`Renter:
+  Status: %s
+
+`, moduleNotReadyStatus)
+		return
+	} else if err != nil {
 		die("Could not get renter info:", err)
 	}
 
@@ -238,9 +245,17 @@ func rentercmd() {
 // storing
 func renterFilesAndContractSummary() error {
 	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
-	if err != nil {
+	if errors.Contains(err, api.ErrAPICallNotRecognized) {
+		// Assume module is not loaded if status command is not recognized.
+		fmt.Printf(`
+  Status: %s
+
+`, moduleNotReadyStatus)
+		return nil
+	} else if err != nil {
 		return err
 	}
+
 	rc, err := httpClient.RenterContractsGet()
 	if err != nil {
 		return err

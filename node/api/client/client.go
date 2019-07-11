@@ -9,9 +9,8 @@ import (
 	"net/http"
 	"strings"
 
-	"gitlab.com/NebulousLabs/errors"
-
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // A Client makes requests to the siad HTTP API.
@@ -84,7 +83,7 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	defer drainAndClose(res.Body)
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, nil, errors.New("API call not recognized: " + resource)
+		return nil, nil, errors.AddContext(api.ErrAPICallNotRecognized, resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying
@@ -117,7 +116,7 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 	defer drainAndClose(res.Body)
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, errors.New("API call not recognized: " + resource)
+		return nil, errors.AddContext(api.ErrAPICallNotRecognized, resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying
@@ -171,7 +170,7 @@ func (c *Client) postRawResponse(resource string, body io.Reader) ([]byte, error
 	defer drainAndClose(res.Body)
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, errors.New("API call not recognized: " + resource)
+		return nil, errors.AddContext(api.ErrAPICallNotRecognized, resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying

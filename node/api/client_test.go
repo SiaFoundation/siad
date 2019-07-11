@@ -2,11 +2,12 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // Client holds fields to make requests to a Sia API.
@@ -50,7 +51,7 @@ func (c *Client) Get(resource string, obj interface{}) error {
 	}()
 
 	if res.StatusCode == http.StatusNotFound {
-		return errors.New("API call not recognized: " + resource)
+		return errors.AddContext(ErrAPICallNotRecognized, resource)
 	}
 
 	// Decode the body as an Error and return this error if the status code is
@@ -95,7 +96,7 @@ func (c *Client) Post(resource string, data string, obj interface{}) error {
 	}()
 
 	if res.StatusCode == http.StatusNotFound {
-		return errors.New("API call not recognized: " + resource)
+		return errors.AddContext(ErrAPICallNotRecognized, resource)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode > 299 {

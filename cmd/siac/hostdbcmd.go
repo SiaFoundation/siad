@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 const scanHistoryLen = 30
@@ -73,9 +74,17 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 func hostdbcmd() {
 	if !hostdbVerbose {
 		info, err := httpClient.HostDbActiveGet()
-		if err != nil {
+		if errors.Contains(err, api.ErrAPICallNotRecognized) {
+			// Assume module is not loaded if status command is not recognized.
+			fmt.Printf(`HostDb:
+  Status: %s
+
+`, moduleNotReadyStatus)
+			return
+		} else if err != nil {
 			die("Could not fetch host list:", err)
 		}
+
 		if len(info.Hosts) == 0 {
 			fmt.Println("No known active hosts")
 			return

@@ -16,4 +16,6 @@ const (
 	// SpeedEstimationWindow is the size of the window which we use to
 	// determine download speeds.
 	SpeedEstimationWindow = 60 * time.Second
+
+	moduleNotReadyStatus = "Module not loaded or still starting up"
 )
