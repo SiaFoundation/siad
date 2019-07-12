@@ -3,8 +3,7 @@ package main
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"log"
-	"strings"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TODO: Remove nodes that haven't been connected to in over 30 days.
@@ -18,7 +17,8 @@ type PersistData struct {
 	NodeSet map[modules.NetAddress]int64
 }
 
-// TODO: comment
+// Persister maintains a persist file that contains the json-encoded
+// PersistData.
 type Persister struct {
 	metadata    persist.Metadata
 	persistFile string
@@ -37,10 +37,11 @@ func NewPersister(persistFile string) (p *Persister, err error) {
 
 	p.data = PersistData{make(map[modules.NetAddress]int64)}
 
-	// TODO: Figure out why os.IsNotExist did not work here!
+	// Try loading the persist file.
 	err = persist.LoadJSON(p.metadata, &p.data, p.persistFile)
-	if err != nil && strings.Contains(err.Error(), "no such file") {
-		log.Println("IS NOT EXIT")
+	if errors.IsOSNotExist(err) {
+		// Ignore the error if the file doesn't exist yet.
+		// It will be created when saved for the first time.
 		return p, nil
 	}
 

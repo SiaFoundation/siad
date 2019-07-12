@@ -28,13 +28,14 @@ type NodeScanner struct {
 	/*
 		Count the total number of work assignments sent down workCh
 		 and the total number of results received through resultCh.
+
 		 Since every work assignment sent always sends a result back
 		 (even in case of failure), the main goroutine can tell if the
 		 node scan has finished by checking that:
 			- there are no assignments outstanding in workCh
 			- there are no unprocessed results in resultCh
 			- there are no unassigned addresses in queue
-			- all workers are done with their assignements (totalWorkAssignments = totalResults)
+			- all workers are done with their assignements (totalWorkAssignments == totalResults)
 	*/
 	totalWorkAssignments int
 	totalResults         int
@@ -54,7 +55,7 @@ type NodeScanner struct {
 	// as JSON objects in the scanLog.
 	encoder *json.Encoder
 
-	// The persister manages a PersistData that keeps
+	// The persister manages a PersistData object that keeps
 	// track of the time of the last successful connection
 	// to every single node the NodeScannner has scanned.
 	persister *Persister
@@ -92,11 +93,6 @@ type ScannerStats struct {
 	ConnectionRefusedFailures    int
 	ConnectionTimedOutFailures   int
 	AlreadyConnectedFailures     int
-	// TODO: decide how to handle: "already connected to this peer"
-	// shouldn't be happening tho....
-
-	// TODO: add stats related to changes in PersistData
-	// TODO: add stats about duration of scan
 }
 
 const maxSharedNodes = uint64(1000)
@@ -186,7 +182,7 @@ func NewNodeScanner() (ns *NodeScanner) {
 	ns.stats = ScannerStats{}
 
 	// Setup the node scanner's directories.
-	scannerDirPath := filepath.Join(os.TempDir(), "SiaNodeScanner")
+	scannerDirPath := "SiaNodeScanner"
 	scannerGatewayDirPath := filepath.Join(scannerDirPath, "gateway")
 	if _, err := os.Stat(scannerDirPath); os.IsNotExist(err) {
 		err := os.Mkdir(scannerDirPath, 0777)
