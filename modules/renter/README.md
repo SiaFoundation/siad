@@ -49,10 +49,13 @@ While the Worker is not currently a submodule, it plays a key role for the
 Renter. A worker represents a host that the renter has a contract with. The
 renter's worker pool is responsible for both uploads and downloads.
 
+**TODO** - needs to be expanded upon
+
 ## Functions of the Renter
 The Renter has the following functions that it performs.
  - Downloads
- - Repairs / Uploads
+ - Repairs and System Health
+ - Uploads
 
 ### Downloads
 The download code follows a clean/intuitive flow for getting super high and
@@ -128,7 +131,7 @@ targeted latency. These filters can target other traits as well, such as
 price and total throughput.
 
 
-### Repairs and Uploads
+### Repairs And System Health
 The following describes the work flow of how the Renter repairs files.
 
 There are 3 main functions that work together to make up Sia's file repair
@@ -136,10 +139,11 @@ mechanism, `threadedUpdateRenterHealth`, `threadedUploadAndRepairLoop`, and
 `threadedStuckFileLoop`. These 3 functions will be referred to as the health
 loop, the repair loop, and the stuck loop respectively.
 
+#### Health Loop
 The health loop is responsible for ensuring that the health of the renter's file
 directory is updated periodically. Along with the health, the metadata for the
 files and directories is also updated. The metadata information for a directory
-is stored in the .siadir metadata file and contains directory specific and
+is stored in the `.siadir` metadata file and contains directory specific and
 aggregate information. The aggregate fields are the worst values for any of the
 files and sub directories. This is true for all directories which, for example,
 means the health of top level directory of the renter is the health of the worst
@@ -157,6 +161,7 @@ repair loop. If a stuck chunk is found then a signal is sent to the stuck loop.
 Once the entire renter's directory has been updated within the
 healthCheckInterval the health loop sleeps until the time interval has passed.
 
+#### Repair Loop
 The repair loop is responsible for repairing the renter's files, this includes
 uploads. The repair loop uses a `directoryHeap` which is a max heap of directory
 elements sorted by health. The repair loop follows the following sudo code:
@@ -184,14 +189,47 @@ and call bubble on the directories that chunks were added from to keep the file
 system updated. This will continue until the file system is healthy, which means
 all files have a health less than the `RepairThreshold`.
 
+When repairing files, the Renter will first try and repair the `siafile` from
+the local file on disk. If the local file is not present, the Renter will
+download the needed data from its contracts in order to perform the repair. In
+order for a remote repair, ie repairing from data downloaded from the Renter's
+contracts, to be successful the `siafile` must be at 1x redundancy or better. If
+a `siafile` is below 1x redundancy and the local file is not present the file is
+considered lost as there is no way to repair it. 
+
+#### Stuck Loop
 The stuck loop is responsible for targeting chunks that didn't get repaired
 properly. The stuck loop randomly finds a directory containing stuck chunks and
-then will randomly add one stuck chunk to the heap. Stuck chunks are priority in
-the heap, so limiting it to `MaxStuckChunksInHeap` at a time prevents the heap
-from being saturated with stuck chunks that potentially cannot be repaired which
+then will randomly add one stuck chunk to the heap. The randomness with which
+the stuck loop finds stuck chunks is weighted by stuck chunks ie a directory
+with more stuck chunks will be more likely to be chosen and a file with more
+stuck chunks will be more likely to be chosen. Stuck chunks are priority in the
+heap, so limiting it to `MaxStuckChunksInHeap` at a time prevents the heap from
+being saturated with stuck chunks that potentially cannot be repaired which
 would cause no other files to be repaired. If the repair of a stuck chunk is
 successful, a signal is sent to the stuck loop and another stuck chunk is added
 to the heap. If the repair wasn't successful, the stuck loop will wait for the
 `repairStuckChunkInterval` to pass and then try another random stuck chunk. If
 the stuck loop doesn't find any stuck chunks, it will sleep until a bubble
 triggers it by finding a stuck chunk.
+
+File's are marked as `stuck` if the Renter is unable to fully upload the file.
+While there are many reasons a file might not be fully uploaded, failed uploads
+due to the Renter, ie the Renter shut down, will not cause the file to be marked
+as `stuck`. The intention is that if a file is marked as `stuck` then it is
+assumed that there is a problem with the file itself.
+
+### Uploads
+The Renter uploads `siafiles` in 40MB chunks. Redundancy kept at the chunk level
+which means each chunk will then be split in `datapieces` number of pieces. For
+the standard 10/20 scheme this means that each 40MB chunk will be split into 10
+4MB pieces, which is turn will be uploaded to 30 different hosts (10 data piecs
+and 20 parity pieces).
+
+Chunks are uploaded by first distributing the chunk to the worker pool. The
+chunk is distributed to the worker pool by adding it to the upload queue and
+then signalling the worker upload channel. Workers that are waiting for work
+will receive this channel and begin the upload. First the worker creates a
+connection with the host by creating an `editor`. Next the `editor` is used to
+update the file contract with the next data being uploaded. This will update the
+merkle root and the contract revision.
