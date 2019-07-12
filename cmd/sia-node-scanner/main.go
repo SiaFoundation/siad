@@ -209,7 +209,7 @@ func NewNodeScanner() (ns *NodeScanner) {
 	ns.encoder = json.NewEncoder(ns.scanLog)
 
 	// Create dummy gateway at localhost.
-	g, err := gateway.New("localhost:0", true, scannerGatewayDirPath) // TODO: make own dir
+	g, err := gateway.New("localhost:0", true, scannerGatewayDirPath)
 	if err != nil {
 		log.Fatal("Error making new gateway: ", err)
 	}
