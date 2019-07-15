@@ -164,7 +164,7 @@ healthCheckInterval the health loop sleeps until the time interval has passed.
 #### Repair Loop
 The repair loop is responsible for repairing the renter's files, this includes
 uploads. The repair loop uses a `directoryHeap` which is a max heap of directory
-elements sorted by health. The repair loop follows the following sudo code:
+elements sorted by health. The repair loop follows the following pseudocode:
 ```
 // Add backup chunks to heap
 
