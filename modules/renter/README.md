@@ -1,6 +1,8 @@
 # Renter
-The Renter is responsible for tracking all of the files that a user has uploaded
-to Sia, as well as the locations and health of these files.
+The Renter is responsible for tracking and actively maintaining all of the files
+that a user has uploaded to Sia. This includes the location and health of these
+files. The Renter, via the HostDB and the Contractor, is also responsible for
+picking hosts and maintaining the relationship with them.
 
 ## Submodules
 The Renter has several submodules that each perform a specific function for the
@@ -18,25 +20,24 @@ The Contractor manages the Renter's contracts and is responsible for all
 contract actions such as new contract formation and contract renewals. The main
 control logic of the Contractor begins in
 [`threadedContractMaintenance`](https://gitlab.com/NebulousLabs/Sia/blob/master/modules/renter/contractor/contractmaintenance.go#L748).
-`threadedContractMaintenance` is a background loop that is trigger by a
+`threadedContractMaintenance` is a background loop that is triggered by a
 consensus change or the Renter setting an Allowance. Once triggered, the
 Contractor begins checking for contracts and forming new contracts if there are
-not enough and renewing or refreshing any current contracts as needed. Most of
+not enough and renewing or refreshing any current contracts as needed. Many of
 the critical operations within the contract maintenance require the wallet to be
 unlocked.
 
 ### HostDB
-The HostDB manages the hosts that have been announced for the Renter. The HostDB
-is responsible for scoring and sorting the hosts so that when hosts are needed
-for contracts high quality hosts are provided. Additionally the HostDB scans the
-hosts for changes so that if a host changes its settings or goes offline the
-Renter is notified and can have its Contractor adjust any contracts accordingly.
+The HostDB curates and manages a list of hosts that may be useful for the renter
+in storing various types of data. The HostDB is responsible for scoring and
+sorting the hosts so that when hosts are needed for contracts high quality hosts
+are provided. 
 
 ### Proto
 The proto package implements the renter's half of the renter-host protocol,
-including contract formation and renewal, uploading and downloading, verifying
-Merkle proofs, and synchronizing revision states. It is a low-level package
-whose functionality is largely wrapped by the Contractor.
+including contract formation and renewal RPCs, uploading and downloading,
+verifying Merkle proofs, and synchronizing revision states. It is a low-level
+package whose functionality is largely wrapped by the Contractor.
 
 ### SiaDir
 The SiaDir package is the code that defines what a directory is on the Sia network.
@@ -44,20 +45,68 @@ The SiaDir package is the code that defines what a directory is on the Sia netwo
 ### SiaFile
 The SiaFile package is the code that defines what a file is on the Sia network.
 
-### Worker
-While the Worker is not currently a submodule, it plays a key role for the
-Renter. A worker represents a host that the renter has a contract with. The
-renter's worker pool is responsible for both uploads and downloads.
+## Subsystems of the Renter
+The Renter has the following subsystems that help carry out its
+responsibilities.
+ - Filesystem Controllers
+ - Persistance Subsystem
+ - Memory Subsystem
+ - Worker Subsystem
+ - Download Subsystem
+ - Download Streaming Subsystem
+ - Upload Subsystem
+ - Upload Streaming Subsystem
+ - Health Subsystem
+ - Repair Subsystem
+ - Backup Subsystem
 
-**TODO** - needs to be expanded upon
 
-## Functions of the Renter
-The Renter has the following functions that it performs.
- - Downloads
- - Repairs and System Health
- - Uploads
+dirs and files controllers (we should batch those together though, and probably
+merge the siadir and siafile packages as well), 
 
-### Downloads
+the download subsystem, 
+
+the download streaming subsystem (including the caching), 
+
+the upload subsystem, 
+
+the upload streaming subsystem, 
+
+the memory subsystem, 
+
+the persist and metadata subsystem (these should probably be combined, and
+probably moved to the siadir+siafile submodule), 
+
+
+
+### Filesystem Controllers
+**Key Files**
+
+// TODO - expand
+
+### Persistance Subsystem
+**Key Files**
+
+// TODO - expand
+
+### Memory Subsystem
+**Key Files**
+
+// TODO - expand
+
+### Worker Subsystem
+**Key Files**
+ - worker.go
+
+The worker subsystem is the interface between the renter and the hosts. All
+actions (with the exception of some legacy actions that are going to be migrated
+over) that involve working with hosts will pass through the worker. 
+
+// TODO - expand
+
+### Download Subsystem
+**Key Files**
+
 The download code follows a clean/intuitive flow for getting super high and
 computationally efficient parallelism on downloads. When a download is
 requested, it gets split into its respective chunks (which are downloaded
@@ -130,16 +179,41 @@ worker go standby instead of accept a chunk if the latency is higher than the
 targeted latency. These filters can target other traits as well, such as
 price and total throughput.
 
+// TODO - expand
 
-### Repairs And System Health
-The following describes the work flow of how the Renter repairs files.
+### Download Streaming Subsystem
+**Key Files**
 
-There are 3 main functions that work together to make up Sia's file repair
-mechanism, `threadedUpdateRenterHealth`, `threadedUploadAndRepairLoop`, and
-`threadedStuckFileLoop`. These 3 functions will be referred to as the health
-loop, the repair loop, and the stuck loop respectively.
+// TODO - expand
 
-#### Health Loop
+### Upload Subsystem
+**Key Files**
+
+// TODO - expand
+The Renter uploads `siafiles` in 40MB chunks. Redundancy kept at the chunk level
+which means each chunk will then be split in `datapieces` number of pieces. For
+the standard 10/20 scheme this means that each 40MB chunk will be split into 10
+4MB pieces, which is turn will be uploaded to 30 different hosts (10 data piecs
+and 20 parity pieces).
+
+Chunks are uploaded by first distributing the chunk to the worker pool. The
+chunk is distributed to the worker pool by adding it to the upload queue and
+then signalling the worker upload channel. Workers that are waiting for work
+will receive this channel and begin the upload. First the worker creates a
+connection with the host by creating an `editor`. Next the `editor` is used to
+update the file contract with the next data being uploaded. This will update the
+merkle root and the contract revision.
+
+### Upload Streaming Subsystem
+**Key Files**
+
+// TODO - expand
+
+### Health Subsystem
+**Key Files**
+
+// TODO - expand
+
 The health loop is responsible for ensuring that the health of the renter's file
 directory is updated periodically. Along with the health, the metadata for the
 files and directories is also updated. The metadata information for a directory
@@ -160,6 +234,17 @@ found that meets the threshold health for repair, then a signal is sent to the
 repair loop. If a stuck chunk is found then a signal is sent to the stuck loop.
 Once the entire renter's directory has been updated within the
 healthCheckInterval the health loop sleeps until the time interval has passed.
+
+### Repair Subsystem
+**Key Files**
+
+// TODO - expand
+The following describes the work flow of how the Renter repairs files.
+
+There are 3 main functions that work together to make up Sia's file repair
+mechanism, `threadedUpdateRenterHealth`, `threadedUploadAndRepairLoop`, and
+`threadedStuckFileLoop`. These 3 functions will be referred to as the health
+loop, the repair loop, and the stuck loop respectively.
 
 #### Repair Loop
 The repair loop is responsible for repairing the renter's files, this includes
@@ -219,17 +304,13 @@ due to the Renter, ie the Renter shut down, will not cause the file to be marked
 as `stuck`. The intention is that if a file is marked as `stuck` then it is
 assumed that there is a problem with the file itself.
 
-### Uploads
-The Renter uploads `siafiles` in 40MB chunks. Redundancy kept at the chunk level
-which means each chunk will then be split in `datapieces` number of pieces. For
-the standard 10/20 scheme this means that each 40MB chunk will be split into 10
-4MB pieces, which is turn will be uploaded to 30 different hosts (10 data piecs
-and 20 parity pieces).
+### Backup Subsystem
+**Key Files**
+ - backup.go
+ - backupsnapshot.go
 
-Chunks are uploaded by first distributing the chunk to the worker pool. The
-chunk is distributed to the worker pool by adding it to the upload queue and
-then signalling the worker upload channel. Workers that are waiting for work
-will receive this channel and begin the upload. First the worker creates a
-connection with the host by creating an `editor`. Next the `editor` is used to
-update the file contract with the next data being uploaded. This will update the
-merkle root and the contract revision.
+The backup subsystem of the renter is responsible for creating local and remote
+backups of the user's data, such that all data is able to be recovered onto a
+new machine should the current machine + metadata be lost.
+
+// TODO - expand
