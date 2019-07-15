@@ -81,22 +81,44 @@ probably moved to the siadir+siafile submodule),
 
 ### Filesystem Controllers
 **Key Files**
+ - dirs.go
+ - files.go
+
+**Key Constants**
+ - N/A
 
 // TODO - expand
 
 ### Persistance Subsystem
 **Key Files**
+ - persist_compat.go
+ - persist.go
+
+**Key Constants**
+ - N/A
 
 // TODO - expand
 
 ### Memory Subsystem
 **Key Files**
+ - memory.go
+
+**Key Constants**
+ - defaultMemory
 
 // TODO - expand
 
 ### Worker Subsystem
 **Key Files**
  - worker.go
+ - workerdownload.go
+ - workerupload.go
+
+**Key Constants**
+ - downloadFailureCooldown
+ - maxConsecutivePenalty
+ - uploadFailureCooldown
+ - workerPoolUpdateTimeout
 
 The worker subsystem is the interface between the renter and the hosts. All
 actions (with the exception of some legacy actions that are going to be migrated
@@ -106,6 +128,13 @@ over) that involve working with hosts will pass through the worker.
 
 ### Download Subsystem
 **Key Files**
+ - directoryheap.go
+ - download.go
+ - downloadheap.go
+ - downloadchunk.go
+
+**Key Constants**
+ - N/A
 
 The download code follows a clean/intuitive flow for getting super high and
 computationally efficient parallelism on downloads. When a download is
@@ -183,11 +212,24 @@ price and total throughput.
 
 ### Download Streaming Subsystem
 **Key Files**
+ - downloaddestination.go
+ - downloadstreamer.go
+
+**Key Constants**
+ - initialStreamerCacheSize
+ - maxStreamerCacheSize
 
 // TODO - expand
 
 ### Upload Subsystem
 **Key Files**
+ - directoryheap.go
+ - upload.go
+ - uploadheap.go
+ - uploadchunk.go
+
+**Key Constants**
+ - N/A
 
 // TODO - expand
 The Renter uploads `siafiles` in 40MB chunks. Redundancy kept at the chunk level
@@ -206,11 +248,20 @@ merkle root and the contract revision.
 
 ### Upload Streaming Subsystem
 **Key Files**
+ - uploadstreamer.go
+
+**Key Constants**
+ - N/A
 
 // TODO - expand
 
 ### Health Subsystem
 **Key Files**
+ - metadata.go
+ - repair.go
+
+**Key Constants**
+ - N/A
 
 // TODO - expand
 
@@ -237,6 +288,20 @@ healthCheckInterval the health loop sleeps until the time interval has passed.
 
 ### Repair Subsystem
 **Key Files**
+ - repair.go
+ - uploadheap.go
+ - directoryheap.go
+
+**Key Constants**
+ - RepairThreshold
+ - maxStuckChunksInHeap
+ - maxRepairLoopTime
+ - maxUploadHeapChunks
+ - minUploadHeapSize
+ - repairLoopResetFrequency
+ - repairStuckChunkInterval
+ - stuckLoopErrorSleepDuration
+ - uploadAndRepairSleepDuration
 
 // TODO - expand
 The following describes the work flow of how the Renter repairs files.
@@ -308,6 +373,11 @@ assumed that there is a problem with the file itself.
 **Key Files**
  - backup.go
  - backupsnapshot.go
+
+**Key Constants**
+ - uploadPollTimeout
+ - uploadPollInterval
+ - snapshotSyncSleepDuration
 
 The backup subsystem of the renter is responsible for creating local and remote
 backups of the user's data, such that all data is able to be recovered onto a
