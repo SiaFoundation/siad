@@ -117,7 +117,7 @@ even know that they are overdrive workers) and the recovery function.
 
 By default, the download code organizes itself around having maximum possible
 throughput. That is, it is highly parallel, and exploits that parallelism as
-efficiently and effectively as possible. The hostdb does a good of selecting
+efficiently and effectively as possible. The hostdb does a good job of selecting
 for hosts that have good traits, so we can generally assume that every host
 or worker at our disposable is reasonably effective in all dimensions, and
 that the overall selection is generally geared towards the user's
