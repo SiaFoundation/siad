@@ -7,14 +7,18 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // v137Persistence is the persistence struct of a renter that doesn't use the
@@ -30,6 +34,187 @@ type v137Persistence struct {
 // renter.
 type v137TrackedFile struct {
 	RepairPath string
+}
+
+// The v1.3.7 in-memory file format.
+//
+// A file is a single file that has been uploaded to the network. Files are
+// split into equal-length chunks, which are then erasure-coded into pieces.
+// Each piece is separately encrypted, using a key derived from the file's
+// master key. The pieces are uploaded to hosts in groups, such that one file
+// contract covers many pieces.
+type file struct {
+	name        string
+	size        uint64 // Static - can be accessed without lock.
+	contracts   map[types.FileContractID]fileContract
+	masterKey   [crypto.EntropySize]byte // Static - can be accessed without lock.
+	erasureCode modules.ErasureCoder     // Static - can be accessed without lock.
+	pieceSize   uint64                   // Static - can be accessed without lock.
+	mode        uint32                   // actually an os.FileMode
+	deleted     bool                     // indicates if the file has been deleted.
+
+	staticUID string // A UID assigned to the file when it gets created.
+
+	mu sync.RWMutex
+}
+
+// The v1.3.7 in-memory format for a contract used by the v1.3.7 file format.
+//
+// A fileContract is a contract covering an arbitrary number of file pieces.
+// Chunk/Piece metadata is used to split the raw contract data appropriately.
+type fileContract struct {
+	ID     types.FileContractID
+	IP     modules.NetAddress
+	Pieces []pieceData
+
+	WindowStart types.BlockHeight
+}
+
+// The v1.3.7 in-memory format for a piece used by the v1.3.7 file format.
+//
+// pieceData contains the metadata necessary to request a piece from a
+// fetcher.
+//
+// TODO: Add an 'Unavailable' flag that can be set if the host loses the piece.
+// Some TODOs exist in 'repair.go' related to this field.
+type pieceData struct {
+	Chunk      uint64      // which chunk the piece belongs to
+	Piece      uint64      // the index of the piece in the chunk
+	MerkleRoot crypto.Hash // the Merkle root of the piece
+}
+
+// numChunks returns the number of chunks that f was split into.
+func (f *file) numChunks() uint64 {
+	// empty files still need at least one chunk
+	if f.size == 0 {
+		return 1
+	}
+	n := f.size / f.staticChunkSize()
+	// last chunk will be padded, unless chunkSize divides file evenly.
+	if f.size%f.staticChunkSize() != 0 {
+		n++
+	}
+	return n
+}
+
+// staticChunkSize returns the size of one chunk.
+func (f *file) staticChunkSize() uint64 {
+	return f.pieceSize * uint64(f.erasureCode.MinPieces())
+}
+
+// MarshalSia implements the encoding.SiaMarshaller interface, writing the
+// file data to w.
+func (f *file) MarshalSia(w io.Writer) error {
+	enc := encoding.NewEncoder(w)
+
+	// encode easy fields
+	err := enc.EncodeAll(
+		f.name,
+		f.size,
+		f.masterKey,
+		f.pieceSize,
+		f.mode,
+	)
+	if err != nil {
+		return err
+	}
+	// COMPATv0.4.3 - encode the bytesUploaded and chunksUploaded fields
+	// TODO: the resulting .sia file may confuse old clients.
+	err = enc.EncodeAll(f.pieceSize*f.numChunks()*uint64(f.erasureCode.NumPieces()), f.numChunks())
+	if err != nil {
+		return err
+	}
+
+	// encode erasureCode
+	switch code := f.erasureCode.(type) {
+	case *siafile.RSCode:
+		err = enc.EncodeAll(
+			"Reed-Solomon",
+			uint64(code.MinPieces()),
+			uint64(code.NumPieces()-code.MinPieces()),
+		)
+		if err != nil {
+			return err
+		}
+	default:
+		if build.DEBUG {
+			panic("unknown erasure code")
+		}
+		return errors.New("unknown erasure code")
+	}
+	// encode contracts
+	if err := enc.Encode(uint64(len(f.contracts))); err != nil {
+		return err
+	}
+	for _, c := range f.contracts {
+		if err := enc.Encode(c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UnmarshalSia implements the encoding.SiaUnmarshaler interface,
+// reconstructing a file from the encoded bytes read from r.
+func (f *file) UnmarshalSia(r io.Reader) error {
+	dec := encoding.NewDecoder(r, 100e6)
+
+	// COMPATv0.4.3 - decode bytesUploaded and chunksUploaded into dummy vars.
+	var bytesUploaded, chunksUploaded uint64
+
+	// Decode easy fields.
+	err := dec.DecodeAll(
+		&f.name,
+		&f.size,
+		&f.masterKey,
+		&f.pieceSize,
+		&f.mode,
+		&bytesUploaded,
+		&chunksUploaded,
+	)
+	if err != nil {
+		return err
+	}
+	f.staticUID = persist.RandomSuffix()
+
+	// Decode erasure coder.
+	var codeType string
+	if err := dec.Decode(&codeType); err != nil {
+		return err
+	}
+	switch codeType {
+	case "Reed-Solomon":
+		var nData, nParity uint64
+		err = dec.DecodeAll(
+			&nData,
+			&nParity,
+		)
+		if err != nil {
+			return err
+		}
+		rsc, err := siafile.NewRSCode(int(nData), int(nParity))
+		if err != nil {
+			return err
+		}
+		f.erasureCode = rsc
+	default:
+		return errors.New("unrecognized erasure code type: " + codeType)
+	}
+
+	// Decode contracts.
+	var nContracts uint64
+	if err := dec.Decode(&nContracts); err != nil {
+		return err
+	}
+	f.contracts = make(map[types.FileContractID]fileContract)
+	var contract fileContract
+	for i := uint64(0); i < nContracts; i++ {
+		if err := dec.Decode(&contract); err != nil {
+			return err
+		}
+		f.contracts[contract.ID] = contract
+	}
+	return nil
 }
 
 // loadSiaFiles walks through the directory searching for siafiles and loading
@@ -97,6 +282,66 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 		}
 	}
 	return nil
+}
+
+// v137FileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
+// populated using the legacy file remain blank.
+func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []modules.RenterContract) (*siafile.SiaFileSetEntry, error) {
+	// Create a mapping of contract ids to host keys.
+	contracts := r.hostContractor.Contracts()
+	idToPk := make(map[types.FileContractID]types.SiaPublicKey)
+	for _, c := range contracts {
+		idToPk[c.ID] = c.HostPublicKey
+	}
+	// Add old contracts to the mapping too.
+	for _, c := range oldContracts {
+		idToPk[c.ID] = c.HostPublicKey
+	}
+
+	fileData := siafile.FileData{
+		Name:        f.name,
+		FileSize:    f.size,
+		MasterKey:   f.masterKey,
+		ErasureCode: f.erasureCode,
+		RepairPath:  repairPath,
+		PieceSize:   f.pieceSize,
+		Mode:        os.FileMode(f.mode),
+		Deleted:     f.deleted,
+		UID:         siafile.SiafileUID(f.staticUID),
+	}
+	chunks := make([]siafile.FileChunk, f.numChunks())
+	for i := 0; i < len(chunks); i++ {
+		chunks[i].Pieces = make([][]siafile.Piece, f.erasureCode.NumPieces())
+	}
+	for _, contract := range f.contracts {
+		pk, exists := idToPk[contract.ID]
+		if !exists {
+			r.log.Printf("Couldn't find pubKey for contract %v with WindowStart %v",
+				contract.ID, contract.WindowStart)
+			continue
+		}
+
+		for _, piece := range contract.Pieces {
+			// Make sure we don't add the same piece on the same host multiple
+			// times.
+			duplicate := false
+			for _, p := range chunks[piece.Chunk].Pieces[piece.Piece] {
+				if p.HostPubKey.String() == pk.String() {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
+			chunks[piece.Chunk].Pieces[piece.Piece] = append(chunks[piece.Chunk].Pieces[piece.Piece], siafile.Piece{
+				HostPubKey: pk,
+				MerkleRoot: piece.MerkleRoot,
+			})
+		}
+	}
+	fileData.Chunks = chunks
+	return r.staticFileSet.NewFromLegacyData(fileData)
 }
 
 // compatV137LoadSiaFilesFromReader reads .sia data from reader and registers
@@ -179,9 +424,9 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		if errDir != siadir.ErrPathOverload {
 			err = errors.Compose(err, sd.Close())
 		}
-		// fileToSiaFile adds siafile to the SiaFileSet so it does not need to
+		// v137FileToSiaFile adds siafile to the SiaFileSet so it does not need to
 		// be returned here
-		entry, err := r.fileToSiaFile(f, repairPath, oldContracts)
+		entry, err := r.v137FileToSiaFile(f, repairPath, oldContracts)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to transform old file to new file")
 		}
