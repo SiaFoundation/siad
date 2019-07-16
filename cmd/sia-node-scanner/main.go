@@ -55,10 +55,10 @@ type NodeScanner struct {
 	// as JSON objects in the scanLog.
 	encoder *json.Encoder
 
-	// The persister manages a PersistData object that keeps
+	// The persist manages a PersistData object that keeps
 	// track of the time of the last successful connection
 	// to every single node the NodeScannner has scanned.
-	persister *Persister
+	persist *Persist
 }
 
 // WorkAssignment tells a worker which node it should scan,
@@ -120,15 +120,15 @@ func main() {
 			fmt.Printf(ns.getStatsStr())
 
 		case <-persistTicker.C:
-			log.Println("Persisting nodes: ", len(ns.persister.data.NodeSet))
-			ns.persister.PersistData()
+			log.Println("Persisting nodes: ", len(ns.persist.data.NodeSet))
+			ns.persist.PersistData()
 
 		case res := <-ns.resultCh:
 			ns.totalResults++
 
 			// Update persisted set if the scan connection was successful.
 			if res.Err == nil {
-				ns.persister.data.NodeSet[res.Addr] = res.Timestamp
+				ns.persist.data.NodeSet[res.Addr] = res.Timestamp
 			}
 
 			// Add any new nodes from this set of results.
@@ -166,7 +166,7 @@ func main() {
 			ns.scanLog.Close()
 
 			// Save the PersistData.
-			ns.persister.PersistData()
+			ns.persist.PersistData()
 			return
 		}
 	}
@@ -217,21 +217,21 @@ func NewNodeScanner() (ns *NodeScanner) {
 	ns.gateway = g
 
 	persistFileName := scannerDirPath + "/persisted-node-set.json"
-	ns.persister, err = NewPersister(persistFileName)
+	ns.persist, err = NewPersist(persistFileName)
 	if err != nil {
-		log.Fatal("Error creating persister: ", err)
+		log.Fatal("Error creating persist: ", err)
 	}
 
 	// If the persisted set is empty, start with bootstrap nodes in queue.
 	// Otherwise start off with the persisted node set in the queue.
-	if len(ns.persister.data.NodeSet) == 0 {
+	if len(ns.persist.data.NodeSet) == 0 {
 		log.Println("Starting crawl with bootrstrap peers")
 		ns.queue = make([]modules.NetAddress, len(modules.BootstrapPeers))
 		copy(ns.queue, modules.BootstrapPeers)
 	} else {
-		log.Printf("Starting crawl with %d persisted peers\n", len(ns.persister.data.NodeSet))
-		ns.queue = make([]modules.NetAddress, len(ns.persister.data.NodeSet))
-		for n := range ns.persister.data.NodeSet {
+		log.Printf("Starting crawl with %d persisted peers\n", len(ns.persist.data.NodeSet))
+		ns.queue = make([]modules.NetAddress, len(ns.persist.data.NodeSet))
+		for n := range ns.persist.data.NodeSet {
 			ns.queue = append(ns.queue, n)
 		}
 	}

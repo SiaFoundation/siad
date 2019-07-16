@@ -17,17 +17,17 @@ type PersistData struct {
 	NodeSet map[modules.NetAddress]int64
 }
 
-// Persister maintains a persist file that contains the json-encoded
+// Persist maintains a persist file that contains the json-encoded
 // PersistData.
-type Persister struct {
+type Persist struct {
 	metadata    persist.Metadata
 	persistFile string
 
 	data PersistData
 }
 
-func NewPersister(persistFile string) (p *Persister, err error) {
-	p = new(Persister)
+func NewPersist(persistFile string) (p *Persist, err error) {
+	p = new(Persist)
 
 	p.persistFile = persistFile
 	p.metadata = persist.Metadata{
@@ -48,6 +48,6 @@ func NewPersister(persistFile string) (p *Persister, err error) {
 	return p, err
 }
 
-func (p *Persister) PersistData() error {
+func (p *Persist) PersistData() error {
 	return persist.SaveJSON(p.metadata, p.data, p.persistFile)
 }
