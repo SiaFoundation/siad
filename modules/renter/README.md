@@ -9,6 +9,12 @@ picking hosts and maintaining the relationship with them.
     section at the end of each section?
   - Update list of submodules to be links to README files was submodule READMEs
     are ready
+  - If we like this format for the README we should document it and make it
+    standard for consistency between module READMEs. Things to consider:
+     - What gets `highlighted`
+     - What gets linked
+     - What Sections to have and order
+  - Confirm all assumptions have tests
 
 ## Submodules
 The Renter has several submodules that each perform a specific function for the
@@ -64,25 +70,6 @@ responsibilities.
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
  - [Backup Subsystem](#backup-subsystem)
-
-
-dirs and files controllers (we should batch those together though, and probably
-merge the siadir and siafile packages as well), 
-
-the download subsystem, 
-
-the download streaming subsystem (including the caching), 
-
-the upload subsystem, 
-
-the upload streaming subsystem, 
-
-the memory subsystem, 
-
-the persist and metadata subsystem (these should probably be combined, and
-probably moved to the siadir+siafile submodule), 
-
-
 
 ### Filesystem Controllers
 **Key Files**
@@ -312,7 +299,8 @@ NumStuckChunks) it will be the sum of all the files and sub directories.
 #### Health Loops
 The health loop is responsible for ensuring that the health of the renter's file
 directory is updated periodically. Along with the health, the metadata for the
-files and directories is also updated.
+files and directories is also updated. Health is defined as the percent of
+redundancy missing, this means that a health of 0 is a full health file.
 
 The health loop keeps the renter file directory updated by following the path of
 oldest `LastHealthCheckTime` and then calling `managedBubbleMetadata` or
@@ -325,24 +313,27 @@ then a signal is sent to the stuck loop. Once the entire renter's directory has
 been updated within the healthCheckInterval the health loop sleeps until the
 time interval has passed.
 
-Since the health loop works off of the `LastHealthCheckTime` it is important to
-note that this is assuming that the `LastHealthCheckTime` is being kept updated
-and accurate throughout the filesystem.
+**Assumptions / Complexities**
+ - `LastHealthCheckTime` is being kept updated and accurate throughout the
+   filesystem.
 
 #### Repair Loop
 The repair loop is responsible for uploading new files to the renter and
-repairing existing files. The repair loop uses a `directoryHeap` which is a max
-heap of directory elements sorted by health. 
+repairing existing files. The heart of the repair loop is
+`threadedUploadAndRepair`, a thread that continually checks for work, schedules
+work, and then updates the filesystem when work is completed.
 
-We always check for backup chunks first to ensure backups are succeeding. The
-repair loop then checks if the file system is healthy by checking the top
-directory element in the directory heap. If healthy and there are no chunks
-currently in the upload heap, then the repair loop sleeps until it is triggered
-by a new upload or a repair is needed. Chunks are added to the upload heap by
-popping the directory off the directory heap and adding any chunks that are a
-worse health than the next directory in the directory heap. This continues until
-the `MaxUploadHeapChunks` is met. The repair loop will then repair those chunks
-and call bubble on the directories that chunks were added from to keep the file
+We always check for backup chunks first to ensure backups are succeeding. For
+the rest of the filesystem the repair loop uses a directory heap. The
+directoryHeap is a max heap of directory elements sorted by health. The repair
+loop checks if the file system is healthy by checking the top directory element
+in the directory heap. If healthy and there are no chunks currently in the
+upload heap, then the repair loop sleeps until it is triggered by a new upload
+or a repair is needed. Chunks are added to the upload heap by popping the
+directory off the directory heap and adding any chunks that are a worse health
+than the next directory in the directory heap. This continues until the
+`MaxUploadHeapChunks` is met. The repair loop will then repair those chunks and
+call bubble on the directories that chunks were added from to keep the file
 system updated. This will continue until the file system is healthy, which means
 all files have a health less than the `RepairThreshold`.
 
@@ -353,6 +344,14 @@ order for a remote repair, ie repairing from data downloaded from the Renter's
 contracts, to be successful the `siafile` must be at 1x redundancy or better. If
 a `siafile` is below 1x redundancy and the local file is not present the file is
 considered lost as there is no way to repair it. 
+
+**Assumptions / Complexities**
+ - New uploads have chunks added directly to the upload heap
+ - Repair loop will be sleep until work is needed meaning other threads will
+   wake up the repair loop 
+ - Backup chunks are added first
+ - Repair loop doesn't account for the fact that workers take time to finish an
+   upload. Currently is assumes that this work finishing immediately
 
 #### Stuck Loop
 File's are marked as `stuck` if the Renter is unable to fully upload the file.
