@@ -27,8 +27,11 @@ resulted from the either the connection attempt or ShareNodes RPC attempts.
 In addition to a log for each scan, the scanner also maintains a persistent set
 of all nodes it has successfully connected to. After the first run (which starts
 with the bootstrap nodes), all future runs start off the scan by filling the
-queue with this persistent set. The set also keeps track of the time of the last
-succesful connection for each IP address.
+queue with this persistent set. The set also keeps track of the time of the
+last succesful connection for each IP address.
+
+If a node has not been connected to successfully in over 30 days, it will be
+pruned from the set the next time a scan is started.
 
 ## Usage Running the `make` command will create and install the binary for you.
 Then running `sia-node-scanner` will create a SiaNodeScanner directory in the
