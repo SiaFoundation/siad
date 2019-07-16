@@ -40,6 +40,9 @@ the scan, which can be used for debugging, a `persisted-node-set.json` and
 `persisted-node-set.json_temp`, and timestamped files for each scan
 `scan-07-12:15:41.json`.
 
+Use the `-dir` flag to specify which directory to make the `SiaNodeScanner`
+directory in. The flag defaults to the current working directory.
+
 Ex:
 ```
 SiaNodeScanner

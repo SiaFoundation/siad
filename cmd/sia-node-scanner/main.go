@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -12,11 +13,6 @@ import (
 	"strings"
 	"time"
 )
-
-// pruneAge is the maxiumum allowed time in seconds since the last successful connection with a
-// node before we remove it from the persisted set. It is 1 month in seconds.
-// 60 seconds/minute * 60 minutes/hour * 24 hours/day * 30 days/month
-const pruneAge = 60 * 60 * 24 * 30
 
 type nodeScanner struct {
 	//The node scanner uses a dummy gateway to connect to nodes and
@@ -105,8 +101,16 @@ const maxRPCs = 10
 const maxWorkers = 10
 const workChSize = 1000
 
+// pruneAge is the maxiumum allowed time in seconds since the last successful connection with a
+// node before we remove it from the persisted set. It is 1 month in seconds.
+// 60 seconds/minute * 60 minutes/hour * 24 hours/day * 30 days/month
+const pruneAge = 60 * 60 * 24 * 30
+
 func main() {
-	ns := newNodeScanner()
+	dirPtr := flag.String("dir", "", "Directory where the node scanner will store its results")
+	flag.Parse()
+
+	ns := newNodeScanner(*dirPtr)
 
 	// Start all the workers.
 	for i := 0; i < maxWorkers; i++ {
@@ -182,12 +186,12 @@ func main() {
 // Sia node at addr. It then creates a queue of node addresses using the set of
 // bootstrap nodes and also by asking the initial node for peers using the
 // ShareNodes RPC.
-func newNodeScanner() (ns *nodeScanner) {
+func newNodeScanner(scannerDirPrefix string) (ns *nodeScanner) {
 	ns = new(nodeScanner)
 	ns.stats = scannerStats{}
 
 	// Setup the node scanner's directories.
-	scannerDirPath := "SiaNodeScanner"
+	scannerDirPath := filepath.Join(scannerDirPrefix, "SiaNodeScanner")
 	scannerGatewayDirPath := filepath.Join(scannerDirPath, "gateway")
 	if _, err := os.Stat(scannerDirPath); os.IsNotExist(err) {
 		err := os.Mkdir(scannerDirPath, 0777)
