@@ -2,16 +2,16 @@ package main
 
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	siaPersist "gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 // TODO: Remove nodes that haven't been connected to in over 30 days.
 
-const MetadataHeader = "SiaNodeScanner Persisted Node Set"
-const MetadataVersion = "0.0.1"
+const metadataHeader = "SiaNodeScanner Persisted Node Set"
+const metadataVersion = "0.0.1"
 
-type PersistData struct {
+type persistData struct {
 	// Keep track of last time we successfully connected to each node.
 	// Maps IP address to Unix timestamp.
 	NodeSet map[modules.NetAddress]int64
@@ -19,26 +19,26 @@ type PersistData struct {
 
 // Persist maintains a persist file that contains the json-encoded
 // PersistData.
-type Persist struct {
-	metadata    persist.Metadata
+type persist struct {
+	metadata    siaPersist.Metadata
 	persistFile string
 
-	data PersistData
+	data persistData
 }
 
-func NewPersist(persistFile string) (p *Persist, err error) {
-	p = new(Persist)
+func newPersist(persistFile string) (p *persist, err error) {
+	p = new(persist)
 
 	p.persistFile = persistFile
-	p.metadata = persist.Metadata{
-		Header:  MetadataHeader,
-		Version: MetadataVersion,
+	p.metadata = siaPersist.Metadata{
+		Header:  metadataHeader,
+		Version: metadataVersion,
 	}
 
-	p.data = PersistData{make(map[modules.NetAddress]int64)}
+	p.data = persistData{make(map[modules.NetAddress]int64)}
 
 	// Try loading the persist file.
-	err = persist.LoadJSON(p.metadata, &p.data, p.persistFile)
+	err = siaPersist.LoadJSON(p.metadata, &p.data, p.persistFile)
 	if errors.IsOSNotExist(err) {
 		// Ignore the error if the file doesn't exist yet.
 		// It will be created when saved for the first time.
@@ -48,6 +48,6 @@ func NewPersist(persistFile string) (p *Persist, err error) {
 	return p, err
 }
 
-func (p *Persist) PersistData() error {
-	return persist.SaveJSON(p.metadata, p.data, p.persistFile)
+func (p *persist) persistData() error {
+	return siaPersist.SaveJSON(p.metadata, p.data, p.persistFile)
 }
