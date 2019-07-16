@@ -247,7 +247,7 @@ merkle root and the contract revision.
 
 ### Upload Streaming Subsystem
 **Key Files**
- - uploadstreamer.go
+ - [uploadstreamer.go](./uploadstreamer.go)
 
 **Key Constants**
  - N/A
