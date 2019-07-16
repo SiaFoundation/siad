@@ -12,26 +12,30 @@ all: release
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
 run = .
-pkgs = ./build ./cmd/siac ./cmd/siad ./cmd/node-scanner ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer  \
+pkgs = ./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer  \
        ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor        \
        ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir             \
        ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./node ./node/api ./persist     \
        ./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/host ./siatest/miner ./siatest/renter    \
        ./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost ./siatest/transactionpool \
        ./siatest/wallet ./node/api/server ./sync ./types ./types/typesutil
+utils = ./cmd/sia-node-scanner 
 
-# fmt calls go fmt on all packages.
+# fmt calls go fmt on all packages and utils.
 fmt:
 	gofmt -s -l -w $(pkgs)
+	gofmt -s -l -w $(utils)
 
-# vet calls go vet on all packages.
+# vet calls go vet on all packages and utils.
 # NOTE: go vet requires packages to be built in order to obtain type info.
 vet:
 	GO111MODULE=on go vet $(pkgs)
+	GO111MODULE=on go vet $(utils)
 
 lint:
 	go get golang.org/x/lint/golint
 	golint -min_confidence=1.0 -set_exit_status $(pkgs)
+	golint -min_confidence=1.0 -set_exit_status $(utils)
 
 # spellcheck checks for misspelled words in comments or strings.
 spellcheck:
@@ -84,6 +88,9 @@ cover: clean
 		&& go tool cover -html=cover/$$package.out -o=cover/$$package.html                                                               \
 		&& rm cover/$$package.out ;                                                                                                      \
 	done
+
+utils:
+	GO111MODULE=on go install -tags='netgo' -ldflags='$(ldflags)' $(utils)
 
 # whitepaper builds the whitepaper from whitepaper.tex. pdflatex has to be
 # called twice because references will not update correctly the first time.
