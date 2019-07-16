@@ -4,6 +4,12 @@ that a user has uploaded to Sia. This includes the location and health of these
 files. The Renter, via the HostDB and the Contractor, is also responsible for
 picking hosts and maintaining the relationship with them.
 
+*TODO*
+  - Should assumptions for each section be put in a specific **assumptions**
+    section at the end of each section?
+  - Update list of submodules to be links to README files was submodule READMEs
+    are ready
+
 ## Submodules
 The Renter has several submodules that each perform a specific function for the
 Renter. This `README` will provide brief overviews of the submodules, but for
@@ -48,17 +54,16 @@ The SiaFile package is the code that defines what a file is on the Sia network.
 ## Subsystems of the Renter
 The Renter has the following subsystems that help carry out its
 responsibilities.
- - Filesystem Controllers
- - Persistance Subsystem
- - Memory Subsystem
- - Worker Subsystem
- - Download Subsystem
- - Download Streaming Subsystem
- - Upload Subsystem
- - Upload Streaming Subsystem
- - Health Subsystem
- - Repair Subsystem
- - Backup Subsystem
+ - [Filesystem Controllers](#filesystem-controllers)
+ - [Persistance Subsystem](#persistance-subsystem)
+ - [Memory Subsystem](#memory-subsystem)
+ - [Worker Subsystem](#worker-subsystem)
+ - [Download Subsystem](#download-subsystem)
+ - [Download Streaming Subsystem](#download-streaming-subsystem)
+ - [Upload Subsystem](#upload-subsystem)
+ - [Upload Streaming Subsystem](#upload-streaming-subsystem)
+ - [Health and Repair Subsystem](#health-and-repair-subsystem)
+ - [Backup Subsystem](#backup-subsystem)
 
 
 dirs and files controllers (we should batch those together though, and probably
@@ -81,38 +86,41 @@ probably moved to the siadir+siafile submodule),
 
 ### Filesystem Controllers
 **Key Files**
- - dirs.go
- - files.go
+ - [dirs.go](./dirs.go)
+ - [files.go](./files.go)
 
 **Key Constants**
  - N/A
 
-// TODO - expand
+*TODO* 
+  - fill out subsystem explanation
 
 ### Persistance Subsystem
 **Key Files**
- - persist_compat.go
- - persist.go
+ - [persist_compat.go](./persist_compat.go)
+ - [persist.go](./persist.go)
 
 **Key Constants**
  - N/A
 
-// TODO - expand
+*TODO* 
+  - fill out subsystem explanation
 
 ### Memory Subsystem
 **Key Files**
- - memory.go
+ - [memory.go](./memory.go)
 
 **Key Constants**
  - defaultMemory
 
-// TODO - expand
+*TODO* 
+  - fill out subsystem explanation
 
 ### Worker Subsystem
 **Key Files**
- - worker.go
- - workerdownload.go
- - workerupload.go
+ - [worker.go](./worker.go)
+ - [workerdownload.go](./workerdownload.go)
+ - [workerupload.go](./workerupload.go)
 
 **Key Constants**
  - downloadFailureCooldown
@@ -120,21 +128,24 @@ probably moved to the siadir+siafile submodule),
  - uploadFailureCooldown
  - workerPoolUpdateTimeout
 
+*TODO* 
+  - expand subsystem description
+
 The worker subsystem is the interface between the renter and the hosts. All
 actions (with the exception of some legacy actions that are going to be migrated
 over) that involve working with hosts will pass through the worker. 
 
-// TODO - expand
-
 ### Download Subsystem
 **Key Files**
- - directoryheap.go
- - download.go
- - downloadheap.go
- - downloadchunk.go
+ - [download.go](./download.go)
+ - [downloadheap.go](./downloadheap.go)
+ - [downloadchunk.go](./downloadchunk.go)
 
 **Key Constants**
  - N/A
+
+*TODO* 
+  - expand subsystem description
 
 The download code follows a clean/intuitive flow for getting super high and
 computationally efficient parallelism on downloads. When a download is
@@ -208,30 +219,31 @@ worker go standby instead of accept a chunk if the latency is higher than the
 targeted latency. These filters can target other traits as well, such as
 price and total throughput.
 
-// TODO - expand
-
 ### Download Streaming Subsystem
 **Key Files**
- - downloaddestination.go
- - downloadstreamer.go
+ - [downloaddestination.go](./downloaddestination.go)
+ - [downloadstreamer.go](./downloadstreamer.go)
 
 **Key Constants**
  - initialStreamerCacheSize
  - maxStreamerCacheSize
 
-// TODO - expand
+*TODO* 
+  - fill out subsystem explanation
 
 ### Upload Subsystem
 **Key Files**
- - directoryheap.go
- - upload.go
- - uploadheap.go
- - uploadchunk.go
+ - [directoryheap.go](./directoryheap.go)
+ - [upload.go](./upload.go)
+ - [uploadheap.go](./uploadheap.go)
+ - [uploadchunk.go](./uploadchunk.go)
 
 **Key Constants**
  - N/A
 
-// TODO - expand
+*TODO* 
+  - expand subsystem description
+
 The Renter uploads `siafiles` in 40MB chunks. Redundancy kept at the chunk level
 which means each chunk will then be split in `datapieces` number of pieces. For
 the standard 10/20 scheme this means that each 40MB chunk will be split into 10
@@ -253,44 +265,14 @@ merkle root and the contract revision.
 **Key Constants**
  - N/A
 
-// TODO - expand
+*TODO* 
+  - fill out subsystem explanation
 
-### Health Subsystem
+### Health and Repair Subsystem
 **Key Files**
- - metadata.go
- - repair.go
-
-**Key Constants**
- - N/A
-
-// TODO - expand
-
-The health loop is responsible for ensuring that the health of the renter's file
-directory is updated periodically. Along with the health, the metadata for the
-files and directories is also updated. The metadata information for a directory
-is stored in the `.siadir` metadata file and contains directory specific and
-aggregate information. The aggregate fields are the worst values for any of the
-files and sub directories. This is true for all directories which, for example,
-means the health of top level directory of the renter is the health of the worst
-file in the renter. For health and stuck health the worst value is the highest
-value, for timestamp values the oldest timestamp is the worst value, and for
-aggregate values (ie NumStuckChunks) it will be the sum of all the files and sub
-directories. The health loop keeps the renter file directory updated by
-following the path of oldest LastHealthCheckTime and then calling
-`managedBubbleMetadata` or `threadedBubbleMetadata`, to be referred to as
-bubble, on that directory. When a directory is bubbled, the metadata information
-is recalculated and saved to disk and then bubble is called on the parent
-directory until the top level directory is reached. If during a bubble a file is
-found that meets the threshold health for repair, then a signal is sent to the
-repair loop. If a stuck chunk is found then a signal is sent to the stuck loop.
-Once the entire renter's directory has been updated within the
-healthCheckInterval the health loop sleeps until the time interval has passed.
-
-### Repair Subsystem
-**Key Files**
- - repair.go
- - uploadheap.go
- - directoryheap.go
+ - [metadata.go](./metadata.go)
+ - [repair.go](./repair.go)
+ - [uploadheap.go](./uploadheap.go)
 
 **Key Constants**
  - RepairThreshold
@@ -303,30 +285,55 @@ healthCheckInterval the health loop sleeps until the time interval has passed.
  - stuckLoopErrorSleepDuration
  - uploadAndRepairSleepDuration
 
-// TODO - expand
-The following describes the work flow of how the Renter repairs files.
-
+*TODO*
+  - Update naming of bubble methods to updateAggregateMetadata, this will more
+    closely match the file naming as well. Update the health loop description to
+    match new naming
+  - Move HealthLoop and related methods out of repair.go to health.go
+  - Pull out repair code from  uploadheap.go so that uploadheap.go is only heap
+    related code. Put in repair.go
+  - Pull out stuck loop code from repair.go and uploadheap.go and put in
+    stuck.go
+  
 There are 3 main functions that work together to make up Sia's file repair
 mechanism, `threadedUpdateRenterHealth`, `threadedUploadAndRepairLoop`, and
 `threadedStuckFileLoop`. These 3 functions will be referred to as the health
 loop, the repair loop, and the stuck loop respectively.
 
+The Health and Repair Subsystems work off of the directory metadata. The
+metadata information contains directory specific and aggregate information. The
+aggregate fields are the worst values for any of the files and sub directories.
+This is true for all directories which, for example, means the health of top
+level directory of the renter is the health of the worst file in the renter. For
+health and stuck health the worst value is the highest value, for timestamp
+values the oldest timestamp is the worst value, and for aggregate values (ie
+NumStuckChunks) it will be the sum of all the files and sub directories.
+
+#### Health Loops
+The health loop is responsible for ensuring that the health of the renter's file
+directory is updated periodically. Along with the health, the metadata for the
+files and directories is also updated.
+
+The health loop keeps the renter file directory updated by following the path of
+oldest `LastHealthCheckTime` and then calling `managedBubbleMetadata` or
+`threadedBubbleMetadata`, to be referred to as bubble, on that directory. When a
+directory is bubbled, the metadata information is recalculated and saved to disk
+and then bubble is called on the parent directory until the top level directory
+is reached. If during a bubble a file is found that meets the threshold health
+for repair, then a signal is sent to the repair loop. If a stuck chunk is found
+then a signal is sent to the stuck loop. Once the entire renter's directory has
+been updated within the healthCheckInterval the health loop sleeps until the
+time interval has passed.
+
+Since the health loop works off of the `LastHealthCheckTime` it is important to
+note that this is assuming that the `LastHealthCheckTime` is being kept updated
+and accurate throughout the filesystem.
+
 #### Repair Loop
-The repair loop is responsible for repairing the renter's files, this includes
-uploads. The repair loop uses a `directoryHeap` which is a max heap of directory
-elements sorted by health. The repair loop follows the following pseudocode:
-```
-// Add backup chunks to heap
+The repair loop is responsible for uploading new files to the renter and
+repairing existing files. The repair loop uses a `directoryHeap` which is a max
+heap of directory elements sorted by health. 
 
-// Check if file system is healthy and no chunks in upload heap
-   // Sleep until triggered by upload or repair needed
-
-// Add chunks to heap
-
-// Repair chunks
-
-// Call bubble to update file system
-```
 We always check for backup chunks first to ensure backups are succeeding. The
 repair loop then checks if the file system is healthy by checking the top
 directory element in the directory heap. If healthy and there are no chunks
@@ -348,6 +355,12 @@ a `siafile` is below 1x redundancy and the local file is not present the file is
 considered lost as there is no way to repair it. 
 
 #### Stuck Loop
+File's are marked as `stuck` if the Renter is unable to fully upload the file.
+While there are many reasons a file might not be fully uploaded, failed uploads
+due to the Renter, ie the Renter shut down, will not cause the file to be marked
+as `stuck`. The intention is that if a file is marked as `stuck` then it is
+assumed that there is a problem with the file itself.
+
 The stuck loop is responsible for targeting chunks that didn't get repaired
 properly. The stuck loop randomly finds a directory containing stuck chunks and
 then will randomly add one stuck chunk to the heap. The randomness with which
@@ -363,24 +376,19 @@ to the heap. If the repair wasn't successful, the stuck loop will wait for the
 the stuck loop doesn't find any stuck chunks, it will sleep until a bubble
 triggers it by finding a stuck chunk.
 
-File's are marked as `stuck` if the Renter is unable to fully upload the file.
-While there are many reasons a file might not be fully uploaded, failed uploads
-due to the Renter, ie the Renter shut down, will not cause the file to be marked
-as `stuck`. The intention is that if a file is marked as `stuck` then it is
-assumed that there is a problem with the file itself.
-
 ### Backup Subsystem
 **Key Files**
- - backup.go
- - backupsnapshot.go
+ - [backup.go](./backup.go)
+ - [backupsnapshot.go](./backupsnapshot.go)
 
 **Key Constants**
  - uploadPollTimeout
  - uploadPollInterval
  - snapshotSyncSleepDuration
 
+*TODO* 
+  - expand subsystem description
+
 The backup subsystem of the renter is responsible for creating local and remote
 backups of the user's data, such that all data is able to be recovered onto a
 new machine should the current machine + metadata be lost.
-
-// TODO - expand
