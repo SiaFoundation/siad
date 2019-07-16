@@ -6,8 +6,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// TODO: Remove nodes that haven't been connected to in over 30 days.
-
 const metadataHeader = "SiaNodeScanner Persisted Node Set"
 const metadataVersion = "0.0.1"
 

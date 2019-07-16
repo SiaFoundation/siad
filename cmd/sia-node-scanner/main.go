@@ -13,6 +13,11 @@ import (
 	"time"
 )
 
+// pruneAge is the maxiumum allowed time in seconds since the last successful connection with a
+// node before we remove it from the persisted set. It is 1 month in seconds.
+// 60 seconds/minute * 60 minutes/hour * 24 hours/day * 30 days/month
+const pruneAge = 60 * 60 * 24 * 30
+
 type nodeScanner struct {
 	//The node scanner uses a dummy gateway to connect to nodes and
 	//		requests peers from nodes across the network using the
@@ -229,11 +234,22 @@ func newNodeScanner() (ns *nodeScanner) {
 		ns.queue = make([]modules.NetAddress, len(modules.BootstrapPeers))
 		copy(ns.queue, modules.BootstrapPeers)
 	} else {
-		log.Printf("Starting crawl with %d persisted peers\n", len(ns.persist.data.NodeSet))
 		ns.queue = make([]modules.NetAddress, len(ns.persist.data.NodeSet))
-		for n := range ns.persist.data.NodeSet {
-			ns.queue = append(ns.queue, n)
+		prunedPersistedData := persistData{
+			NodeSet: make(map[modules.NetAddress]int64),
 		}
+
+		now := time.Now().Unix()
+		for node, timestamp := range ns.persist.data.NodeSet {
+			// Prune peers we haven't connected to in more than pruneAge
+			// by not adding them to the new set.
+			if now-timestamp < pruneAge {
+				prunedPersistedData.NodeSet[node] = timestamp
+				ns.queue = append(ns.queue, node)
+			}
+		}
+		ns.persist.data = prunedPersistedData
+		log.Printf("Starting crawl with %d persisted peers\n", len(ns.persist.data.NodeSet))
 	}
 
 	// Mark all starting nodes as seen.
