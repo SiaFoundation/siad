@@ -120,7 +120,7 @@ func main() {
 	// Print out stats periodically.
 	// Persist the node set periodically.
 	printTicker := time.NewTicker(10 * time.Second)
-	persistTicker := time.NewTicker(1 * time.Minute)
+	persistTicker := time.NewTicker(10 * time.Second)
 
 	numRPCAttempts := 5
 	for {

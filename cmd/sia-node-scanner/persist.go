@@ -64,7 +64,7 @@ func (p *persist) updateNodeStats(res nodeScanResult) {
 			LastSuccessfulConnectionTime: res.Timestamp,
 			RecentUptime:                 1,
 			TotalUptime:                  1,
-			UptimePercentage:             1.0,
+			UptimePercentage:             100.0,
 		}
 		p.data.NodeStats[res.Addr] = stats
 		return
@@ -74,12 +74,14 @@ func (p *persist) updateNodeStats(res nodeScanResult) {
 	if res.Err != nil {
 		stats.RecentUptime = 0
 	} else {
-		timeElapsed := stats.LastSuccessfulConnectionTime - res.Timestamp
+		timeElapsed := res.Timestamp - stats.LastSuccessfulConnectionTime
 		stats.LastSuccessfulConnectionTime = res.Timestamp
 		stats.RecentUptime += timeElapsed
 		stats.TotalUptime += timeElapsed
 	}
-	stats.UptimePercentage = float64(stats.TotalUptime) / float64(time.Now().Unix()-stats.FirstConnectionTime)
+	// Subtract 1 from TotalUptime because we give everyone an extra second to
+	// start. This makes sure the uptime rate isn't higher than 1.
+	stats.UptimePercentage = 100.0 * float64(stats.TotalUptime-1) / float64(res.Timestamp-stats.FirstConnectionTime)
 
 	p.data.NodeStats[res.Addr] = stats
 }
