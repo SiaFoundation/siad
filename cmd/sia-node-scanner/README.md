@@ -27,18 +27,22 @@ resulted from the either the connection attempt or ShareNodes RPC attempts.
 In addition to a log for each scan, the scanner also maintains a persistent set
 of all nodes it has successfully connected to. After the first run (which starts
 with the bootstrap nodes), all future runs start off the scan by filling the
-queue with this persistent set. The set also keeps track of the time of the
-last succesful connection for each IP address.
-
+queue with this persistent set. For each node in the persisted set, we also
+store the first connection time, the last succesful connection time, recent
+uptime (number of seconds last node was last down or since first connection),
+total uptime, and also uptime percentage.
+ 
 If a node has not been connected to successfully in over 30 days, it will be
 pruned from the set the next time a scan is started.
 
-## Usage Running the `make` command will create and install the binary for you.
-Then running `sia-node-scanner` will create a SiaNodeScanner directory in the
-working directory which contains a directory for the `gateway` module use for
-the scan, which can be used for debugging, a `persisted-node-set.json` and
-`persisted-node-set.json_temp`, and timestamped files for each scan
-`scan-07-12:15:41.json`.
+## Usage 
+Running the `make utils` command will create and install the binary for you. The
+command `make test-utils` (and `make test`) will run the tests for the node
+scanner.  Then running `sia-node-scanner` will create a SiaNodeScanner directory
+in the working directory which contains a directory for the `gateway` module use
+for the scan, which can be used for debugging, a `persisted-node-set.json` and
+  `persisted-node-set.json_temp`, and timestamped files for each scan
+  `scan-07-12:15:41.json`.
 
 Use the `-dir` flag to specify which directory to make the `SiaNodeScanner`
 directory in. The flag defaults to the current working directory.
