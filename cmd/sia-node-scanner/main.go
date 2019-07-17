@@ -236,7 +236,7 @@ func newNodeScanner(scannerDirPrefix string) (ns *nodeScanner) {
 		ns.queue = make([]modules.NetAddress, len(modules.BootstrapPeers))
 		copy(ns.queue, modules.BootstrapPeers)
 	} else {
-		ns.queue = make([]modules.NetAddress, len(ns.persist.data.NodeStats))
+		ns.queue = make([]modules.NetAddress, 0, len(ns.persist.data.NodeStats))
 		prunedPersistedData := persistData{
 			StartTime: ns.persist.data.StartTime,
 			NodeStats: make(map[modules.NetAddress]nodeStats),
