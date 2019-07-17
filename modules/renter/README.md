@@ -11,16 +11,17 @@ picking hosts and maintaining the relationship with them.
     are ready
   - If we like this format for the README we should document it and make it
     standard for consistency between module READMEs. Things to consider:
-     - What gets `highlighted`
+     - What gets `highlighted` - code only
      - What gets linked
      - What Sections to have and order
   - Confirm all assumptions have tests
+  - Create subsystemconsts.go files and add them to the **Key Files** 
 
 ## Submodules
 The Renter has several submodules that each perform a specific function for the
-Renter. This `README` will provide brief overviews of the submodules, but for
-more detailed descriptions of the inner workings of the submodules the
-respective `README` files should be reviewed.
+Renter. This README will provide brief overviews of the submodules, but for more
+detailed descriptions of the inner workings of the submodules the respective
+README files should be reviewed.
  - Contractor
  - HostDB
  - Proto
@@ -29,15 +30,9 @@ respective `README` files should be reviewed.
 
 ### Contractor
 The Contractor manages the Renter's contracts and is responsible for all
-contract actions such as new contract formation and contract renewals. The main
-control logic of the Contractor begins in
-[`threadedContractMaintenance`](https://gitlab.com/NebulousLabs/Sia/blob/master/modules/renter/contractor/contractmaintenance.go#L748).
-`threadedContractMaintenance` is a background loop that is triggered by a
-consensus change or the Renter setting an Allowance. Once triggered, the
-Contractor begins checking for contracts and forming new contracts if there are
-not enough and renewing or refreshing any current contracts as needed. Many of
-the critical operations within the contract maintenance require the wallet to be
-unlocked.
+contract actions such as new contract formation and contract renewals. The
+Contractor determines which contracts are GoodForUpload and GoodForRenew and
+marks them accordingly.
 
 ### HostDB
 The HostDB curates and manages a list of hosts that may be useful for the renter
@@ -46,18 +41,22 @@ sorting the hosts so that when hosts are needed for contracts high quality hosts
 are provided. 
 
 ### Proto
-The proto package implements the renter's half of the renter-host protocol,
+The proto module implements the renter's half of the renter-host protocol,
 including contract formation and renewal RPCs, uploading and downloading,
 verifying Merkle proofs, and synchronizing revision states. It is a low-level
-package whose functionality is largely wrapped by the Contractor.
+module whose functionality is largely wrapped by the Contractor.
 
 ### SiaDir
-The SiaDir package is the code that defines what a directory is on the Sia network.
+The SiaDir module is the code that defines what a directory is on the Sia
+network. It also manages accesses and updates to the file, ensuring safety and
+ACIDity when performing file operations.
 
 ### SiaFile
-The SiaFile package is the code that defines what a file is on the Sia network.
+The SiaFile module is the code that defines what a file is on the Sia network.
+It also manages accesses and updates to the file, ensuring safety and ACIDity
+when performing file operations.
 
-## Subsystems of the Renter
+## Subsystems
 The Renter has the following subsystems that help carry out its
 responsibilities.
  - [Filesystem Controllers](#filesystem-controllers)
@@ -76,9 +75,6 @@ responsibilities.
  - [dirs.go](./dirs.go)
  - [files.go](./files.go)
 
-**Key Constants**
- - N/A
-
 *TODO* 
   - fill out subsystem explanation
 
@@ -87,18 +83,12 @@ responsibilities.
  - [persist_compat.go](./persist_compat.go)
  - [persist.go](./persist.go)
 
-**Key Constants**
- - N/A
-
 *TODO* 
   - fill out subsystem explanation
 
 ### Memory Subsystem
 **Key Files**
  - [memory.go](./memory.go)
-
-**Key Constants**
- - defaultMemory
 
 *TODO* 
   - fill out subsystem explanation
@@ -108,12 +98,6 @@ responsibilities.
  - [worker.go](./worker.go)
  - [workerdownload.go](./workerdownload.go)
  - [workerupload.go](./workerupload.go)
-
-**Key Constants**
- - downloadFailureCooldown
- - maxConsecutivePenalty
- - uploadFailureCooldown
- - workerPoolUpdateTimeout
 
 *TODO* 
   - expand subsystem description
@@ -125,11 +109,10 @@ over) that involve working with hosts will pass through the worker.
 ### Download Subsystem
 **Key Files**
  - [download.go](./download.go)
- - [downloadheap.go](./downloadheap.go)
  - [downloadchunk.go](./downloadchunk.go)
-
-**Key Constants**
- - N/A
+ - [downloaddestination.go](./downloaddestination.go)
+ - [downloadheap.go](./downloadheap.go)
+ - [workerdownload.go](./workerdownload.go)
 
 *TODO* 
   - expand subsystem description
@@ -208,12 +191,7 @@ price and total throughput.
 
 ### Download Streaming Subsystem
 **Key Files**
- - [downloaddestination.go](./downloaddestination.go)
  - [downloadstreamer.go](./downloadstreamer.go)
-
-**Key Constants**
- - initialStreamerCacheSize
- - maxStreamerCacheSize
 
 *TODO* 
   - fill out subsystem explanation
@@ -224,16 +202,14 @@ price and total throughput.
  - [upload.go](./upload.go)
  - [uploadheap.go](./uploadheap.go)
  - [uploadchunk.go](./uploadchunk.go)
-
-**Key Constants**
- - N/A
+ - [workerupload.go](./workerupload.go)
 
 *TODO* 
   - expand subsystem description
 
 The Renter uploads `siafiles` in 40MB chunks. Redundancy kept at the chunk level
 which means each chunk will then be split in `datapieces` number of pieces. For
-the standard 10/20 scheme this means that each 40MB chunk will be split into 10
+example, a 10/20 scheme would mean that each 40MB chunk will be split into 10
 4MB pieces, which is turn will be uploaded to 30 different hosts (10 data piecs
 and 20 parity pieces).
 
@@ -249,9 +225,6 @@ merkle root and the contract revision.
 **Key Files**
  - [uploadstreamer.go](./uploadstreamer.go)
 
-**Key Constants**
- - N/A
-
 *TODO* 
   - fill out subsystem explanation
 
@@ -261,17 +234,6 @@ merkle root and the contract revision.
  - [repair.go](./repair.go)
  - [uploadheap.go](./uploadheap.go)
 
-**Key Constants**
- - RepairThreshold
- - maxStuckChunksInHeap
- - maxRepairLoopTime
- - maxUploadHeapChunks
- - minUploadHeapSize
- - repairLoopResetFrequency
- - repairStuckChunkInterval
- - stuckLoopErrorSleepDuration
- - uploadAndRepairSleepDuration
-
 *TODO*
   - Update naming of bubble methods to updateAggregateMetadata, this will more
     closely match the file naming as well. Update the health loop description to
@@ -279,43 +241,81 @@ merkle root and the contract revision.
   - Move HealthLoop and related methods out of repair.go to health.go
   - Pull out repair code from  uploadheap.go so that uploadheap.go is only heap
     related code. Put in repair.go
-  - Pull out stuck loop code from repair.go and uploadheap.go and put in
-    stuck.go
+  - Pull out stuck loop code from uploadheap.go and put in repair.go
+  - Review naming of files associated with this subsystem
+  - Create benchmark for health loop and add print outs to Health Loop section
   
 There are 3 main functions that work together to make up Sia's file repair
 mechanism, `threadedUpdateRenterHealth`, `threadedUploadAndRepairLoop`, and
 `threadedStuckFileLoop`. These 3 functions will be referred to as the health
 loop, the repair loop, and the stuck loop respectively.
 
-The Health and Repair Subsystems work off of the directory metadata. The
-metadata information contains directory specific and aggregate information. The
-aggregate fields are the worst values for any of the files and sub directories.
-This is true for all directories which, for example, means the health of top
-level directory of the renter is the health of the worst file in the renter. For
-health and stuck health the worst value is the highest value, for timestamp
-values the oldest timestamp is the worst value, and for aggregate values (ie
-NumStuckChunks) it will be the sum of all the files and sub directories.
+The Health and Repair subsystem operates by scanning aggregate information kept
+in each directory's metadata. An example of this metadata would be the aggregate
+filesystem health. Each directory has a field `AggregateHealth` which represents
+the worst aggregate health of any file or subdirectory in the directory. Because
+the field is recursive, the `AggregateHealth` of the root directory represents
+the worst health of any file in the entire filesystem. Health is defined as the
+percent of redundancy missing, this means that a health of 0 is a full health
+file.
+
+`threadedUpdateRenterHealth` is responsible for keeping the aggregate
+information up to date, while the other two loops use that information to decide
+what upload and repair actions need to be performed.
 
 #### Health Loops
 The health loop is responsible for ensuring that the health of the renter's file
 directory is updated periodically. Along with the health, the metadata for the
-files and directories is also updated. Health is defined as the percent of
-redundancy missing, this means that a health of 0 is a full health file.
+files and directories is also updated. 
 
-The health loop keeps the renter file directory updated by following the path of
-oldest `LastHealthCheckTime` and then calling `managedBubbleMetadata` or
-`threadedBubbleMetadata`, to be referred to as bubble, on that directory. When a
+One of the key directory metadata fields that the health loop uses is
+`LastHealthCheckTime` and `AggregateLastHealthCheckTime`. `LastHealthCheckTime`
+is the timestamp of when a directory or file last had its health re-calculated
+during a bubble call. When determining which directory to start with when
+updating the renter's file system, the health loop follows the path of oldest
+`AggregateLastHealthCheckTime` to find the directory that is the most out of
+date. To do this, the health loop uses `managedOldestHealthCheckTime`. This
+method starts at the root level of the renter's file system and begins checking
+the `AggregateLastHealthCheckTime` of the subdirectories. It then finds which
+one is the oldest and moves into that subdirectory and continues the search.
+Once it reaches a directory that either has no subdirectories or has an older
+`AggregateLastHealthCheckTime` than any of the subdirectories, it returns that
+timestamp and the SiaPath of the directory.
+
+Once the health loop has found the most out of date directory, it calls
+`managedBubbleMetadata`, to be referred to as bubble, on that directory. When a
 directory is bubbled, the metadata information is recalculated and saved to disk
 and then bubble is called on the parent directory until the top level directory
-is reached. If during a bubble a file is found that meets the threshold health
+is reached. During this calculation, every file in the directory is opened,
+modified, and fsync'd individually. See benchmark results:
+
+*TODO* - add benchmark 
+
+If during a bubble a file is found that meets the threshold health
 for repair, then a signal is sent to the repair loop. If a stuck chunk is found
 then a signal is sent to the stuck loop. Once the entire renter's directory has
 been updated within the healthCheckInterval the health loop sleeps until the
 time interval has passed.
 
+Since we are updating the metadata on disk during the bubble calls we want to
+ensure that only one bubble is being called on a directory at a time. We do this
+through `managedPrepareBubble` and `managedCompleteBubbleUpdate`. The renter has
+a `bubbleUpdates` field that tracks all the bubbles and the `bubbleStatus`.
+Bubbles can either be active or pending. When bubble is called on a directory,
+`managedPrepareBubble` will check to see if there are any active or pending
+bubbles for the directory. If there are no bubbles being tracked for that
+directory then an active bubble update is added to the renter for the directory
+and the bubble is executed immediately. If there is a bubble currently being
+tracked for the directory then the bubble status is set to pending and the
+bubble is not executed immediately. Once a bubble is finished it will call
+`managedCompleteBubbleUpdate` which will check the status of the bubble. If the
+status is an active bubble then it is removed from the renter's tracking. If the
+status was a pending bubble then the status is set to active and bubble is
+called on the directory again. 
+
 **Assumptions / Complexities**
- - `LastHealthCheckTime` is being kept updated and accurate throughout the
-   filesystem.
+ - The Health Loop triggers the Repair Loop when unhealthy files are found
+ - The Health Loop triggers the Stuck Loop when stuck files are found
 
 #### Repair Loop
 The repair loop is responsible for uploading new files to the renter and
@@ -323,67 +323,114 @@ repairing existing files. The heart of the repair loop is
 `threadedUploadAndRepair`, a thread that continually checks for work, schedules
 work, and then updates the filesystem when work is completed.
 
-We always check for backup chunks first to ensure backups are succeeding. For
-the rest of the filesystem the repair loop uses a directory heap. The
-directoryHeap is a max heap of directory elements sorted by health. The repair
-loop checks if the file system is healthy by checking the top directory element
-in the directory heap. If healthy and there are no chunks currently in the
-upload heap, then the repair loop sleeps until it is triggered by a new upload
-or a repair is needed. Chunks are added to the upload heap by popping the
-directory off the directory heap and adding any chunks that are a worse health
-than the next directory in the directory heap. This continues until the
-`MaxUploadHeapChunks` is met. The repair loop will then repair those chunks and
-call bubble on the directories that chunks were added from to keep the file
-system updated. This will continue until the file system is healthy, which means
-all files have a health less than the `RepairThreshold`.
+The renter tracks backups and siafiles separately, which essentially means the
+renter has a backup filesystem and a siafile filesystem. As such, we need to
+check both these filesystems separately with the repair loop. Since the backups
+are in a different filesystem, the health loop does not check on the backups
+which means that there are no outside triggers for the repair loop that a backup
+wasn't uploaded successfully and needs to be repaired. Because of this we always
+check for backup chunks first to ensure backups are succeeding. There is a size
+limit on the heap to help check memory usage in check, so by adding backup
+chunks to the heap first we ensure that we are never skipping over backup chunks
+due to a full heap.
 
-When repairing files, the Renter will first try and repair the `siafile` from
-the local file on disk. If the local file is not present, the Renter will
-download the needed data from its contracts in order to perform the repair. In
-order for a remote repair, ie repairing from data downloaded from the Renter's
-contracts, to be successful the `siafile` must be at 1x redundancy or better. If
-a `siafile` is below 1x redundancy and the local file is not present the file is
-considered lost as there is no way to repair it. 
+For the siafile filesystem the repair loop uses a directory heap to prioritize
+which chunks to add. The directoryHeap is a max heap of directory elements
+sorted by health. The directory heap is initialized by pushing an unexplored
+root directory element. As directory elements are popped of the heap, they are
+explored, which means the directory that was popped off the heap as unexplored
+gets marked as explored and added back to the heap, while all the subdirectories
+are added as unexplored. Each directory element contains the health information
+of the directory it represents, both directory health and aggregate health. If a
+directory is unexplored the aggregate health is considered, if the directory is
+explored the directory health is consider in the sorting of the heap. This is to
+allow us to navigate through the filesystem and follow the path of worse health
+to find the most in need directories first. When the renter needs chunks to add
+to the upload heap, directory elements are popped of the heap and chunks are
+pulled from that directory to be added to the upload heap. If all the chunks
+that need repairing are added to the upload heap then the directory element is
+dropped. If not all the chunks that need repair are added, then the directory
+element is added back to the directory heap with a health equal to the next
+chunk that would have been added, thus re-prioritizing that directory in the
+heap.
+
+To build the upload heap for the siafile filesystem, the repair loop checks if
+the file system is healthy by checking the top directory element in the
+directory heap. If healthy and there are no chunks currently in the upload heap,
+then the repair loop sleeps until it is triggered by a new upload or a repair is
+needed. If the filesystem is in need of repair, chunks are added to the upload
+heap by popping the directory off the directory heap and adding any chunks that
+are a worse health than the next directory in the directory heap. This continues
+until the `MaxUploadHeapChunks` is met. The repair loop will then repair those
+chunks and call bubble on the directories that chunks were added from to keep
+the file system updated. This will continue until the file system is healthy,
+which means all files have a health less than the `RepairThreshold`.
+
+When repairing chunks, the Renter will first try and repair the chunk from the
+local file on disk. If the local file is not present, the Renter will download
+the needed data from its contracts in order to perform the repair. In order for
+a remote repair, ie repairing from data downloaded from the Renter's contracts,
+to be successful the chunk must be at 1x redundancy or better. If a chunk is
+below 1x redundancy and the local file is not present the chunk, and therefore
+the file, is considered lost as there is no way to repair it. 
 
 **Assumptions / Complexities**
- - New uploads have chunks added directly to the upload heap
- - Repair loop will be sleep until work is needed meaning other threads will
-   wake up the repair loop 
- - Backup chunks are added first
- - Repair loop doesn't account for the fact that workers take time to finish an
-   upload. Currently is assumes that this work finishing immediately
+ - `Upload` adds chunks directly to the upload heap by calling
+   `managedBuildAndPushChunks`
+ - Repair loop will sleep until work is needed meaning other threads will wake
+   up the repair loop by calling the `repairNeeded` channel
+ - There is always enough space in the heap, or the number of backup chunks is
+   few enough that all the backup chunks are always added to the upload heap.
+ - The repair loop relies on the directory heap being accurate which in terms
+   relies on the health loop keeping the filesystem up to date.
+ - The repair loop passes chunks on to the upload subsystem and expects that
+   subsystem to handle the request 
+ - Stuck chunks get added directory to the upload heap and have priority over
+   normal uploads and repairs
+ - Streaming upload chunks are added directory to the upload heap and have the
+   highest priority
 
 #### Stuck Loop
 File's are marked as `stuck` if the Renter is unable to fully upload the file.
 While there are many reasons a file might not be fully uploaded, failed uploads
 due to the Renter, ie the Renter shut down, will not cause the file to be marked
-as `stuck`. The intention is that if a file is marked as `stuck` then it is
-assumed that there is a problem with the file itself.
+as `stuck`. The goal is to mark a chunk as stuck if it is independently unable
+to be uploaded. Meaning, this chunk is unable to be repaired but other chunks
+are able to be repaired. We mark a chunk as stuck so that the repair loop will
+ignore it in the future and instead focus on chunks that are able to be
+repaired.
 
 The stuck loop is responsible for targeting chunks that didn't get repaired
-properly. The stuck loop randomly finds a directory containing stuck chunks and
-then will randomly add one stuck chunk to the heap. The randomness with which
-the stuck loop finds stuck chunks is weighted by stuck chunks ie a directory
-with more stuck chunks will be more likely to be chosen and a file with more
-stuck chunks will be more likely to be chosen. Stuck chunks are priority in the
-heap, so limiting it to `MaxStuckChunksInHeap` at a time prevents the heap from
-being saturated with stuck chunks that potentially cannot be repaired which
-would cause no other files to be repaired. If the repair of a stuck chunk is
-successful, a signal is sent to the stuck loop and another stuck chunk is added
-to the heap. If the repair wasn't successful, the stuck loop will wait for the
-`repairStuckChunkInterval` to pass and then try another random stuck chunk. If
-the stuck loop doesn't find any stuck chunks, it will sleep until a bubble
-triggers it by finding a stuck chunk.
+properly. To add stuck chunks to the upload heap, one chunk is selected
+uniformly at random out of all of the stuck chunks in the filesystem. The stuck
+loop does this by first selecting a directory containing stuck chunks and then
+selecting a file with stuck chunks to then adds one stuck chunk from that file
+to the heap. The randomness with which the stuck loop finds stuck chunks is
+weighted by stuck chunks ie a directory with more stuck chunks will be more
+likely to be chosen and a file with more stuck chunks will be more likely to be
+chosen. The stuck loop repeats this process of finding a stuck chunk until there
+are `MaxStuckChunksInHeap` stuck chunks in the upload heap.
+
+Stuck chunks are priority in the heap, so limiting it to `MaxStuckChunksInHeap`
+at a time prevents the heap from being saturated with stuck chunks that
+potentially cannot be repaired which would cause no other files to be repaired.
+If the repair of a stuck chunk is successful, a signal is sent to the stuck loop
+and another stuck chunk is added to the heap. Additionally, since the repair of
+the stuck chunk was successful the stuck loop assumes that the rest of the stuck
+chunks in that file will be repair, so it adds any other stuck chunks from that
+file to the upload heap. If the repair wasn't successful, the stuck loop will
+wait for the `repairStuckChunkInterval` to pass and then try another random
+stuck chunk. If the stuck loop doesn't find any stuck chunks, it will sleep
+until a bubble triggers it by finding a stuck chunk.
+
+**Assumptions / Complexities**
+ - If a stuck chunk is successfully repaired, the rest of the file's stuck
+   chunks are repaired
 
 ### Backup Subsystem
 **Key Files**
  - [backup.go](./backup.go)
  - [backupsnapshot.go](./backupsnapshot.go)
-
-**Key Constants**
- - uploadPollTimeout
- - uploadPollInterval
- - snapshotSyncSleepDuration
 
 *TODO* 
   - expand subsystem description
