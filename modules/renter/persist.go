@@ -260,7 +260,9 @@ func (r *Renter) managedInitPersist() error {
 
 	// Apply unapplied wal txns before loading the persistence structure to
 	// avoid loading potentially corrupted files.
-	r.log.Println("Wal initalized", len(txns), "transactions to apply")
+	if len(txns) > 0 {
+		r.log.Println("Wal initalized", len(txns), "transactions to apply")
+	}
 	for _, txn := range txns {
 		applyTxn := true
 		r.log.Println("applying transaction with", len(txn.Updates), "updates")
