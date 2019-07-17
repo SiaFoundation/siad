@@ -34,7 +34,8 @@ var (
 
 // contractInfo contains information about a contract relevant to the HostDB.
 type contractInfo struct {
-	StoredData uint64 `json:"storeddata"`
+	HostPublicKey types.SiaPublicKey
+	StoredData    uint64 `json:"storeddata"`
 }
 
 // The HostDB is a database of potential hosts. It assigns a weight to each
@@ -163,7 +164,8 @@ func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 			continue
 		}
 		knownContracts[contract.HostPublicKey.String()] = contractInfo{
-			StoredData: contract.Transaction.FileContractRevisions[0].NewFileSize,
+			HostPublicKey: contract.HostPublicKey,
+			StoredData:    contract.Transaction.FileContractRevisions[0].NewFileSize,
 		}
 	}
 	hdb.knownContracts = knownContracts
@@ -171,6 +173,14 @@ func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 
 // New returns a new HostDB.
 func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, error) {
+	// Create HostDB using production dependencies.
+	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
+}
+
+// NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
+// persistence data, spawns the HostDB's scanning threads, and subscribes it to
+// the consensusSet.
+func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Check for nil inputs.
 	if g == nil {
 		return nil, errNilGateway
@@ -181,14 +191,7 @@ func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPo
 	if tpool == nil {
 		return nil, errNilTPool
 	}
-	// Create HostDB using production dependencies.
-	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
-}
 
-// NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
-// persistence data, spawns the HostDB's scanning threads, and subscribes it to
-// the consensusSet.
-func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Create the HostDB object.
 	hdb := &HostDB{
 		cs:         cs,
