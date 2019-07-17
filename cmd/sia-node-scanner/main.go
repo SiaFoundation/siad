@@ -129,16 +129,14 @@ func main() {
 			fmt.Printf(ns.getStatsStr())
 
 		case <-persistTicker.C:
-			log.Println("Persisting nodes: ", len(ns.persist.data.NodeSet))
+			log.Println("Persisting nodes: ", len(ns.persist.data.NodeStats))
 			ns.persist.persistData()
 
 		case res := <-ns.resultCh:
 			ns.totalResults++
 
-			// Update persisted set if the scan connection was successful.
-			if res.Err == nil {
-				ns.persist.data.NodeSet[res.Addr] = res.Timestamp
-			}
+			// Update persisted set with result.
+			ns.persist.updateNodeStats(res)
 
 			// Add any new nodes from this set of results.
 			for node := range res.nodes {
@@ -233,27 +231,28 @@ func newNodeScanner(scannerDirPrefix string) (ns *nodeScanner) {
 
 	// If the persisted set is empty, start with bootstrap nodes in queue.
 	// Otherwise start off with the persisted node set in the queue.
-	if len(ns.persist.data.NodeSet) == 0 {
+	if len(ns.persist.data.NodeStats) == 0 {
 		log.Println("Starting crawl with bootrstrap peers")
 		ns.queue = make([]modules.NetAddress, len(modules.BootstrapPeers))
 		copy(ns.queue, modules.BootstrapPeers)
 	} else {
-		ns.queue = make([]modules.NetAddress, len(ns.persist.data.NodeSet))
+		ns.queue = make([]modules.NetAddress, len(ns.persist.data.NodeStats))
 		prunedPersistedData := persistData{
-			NodeSet: make(map[modules.NetAddress]int64),
+			StartTime: ns.persist.data.StartTime,
+			NodeStats: make(map[modules.NetAddress]nodeStats),
 		}
 
 		now := time.Now().Unix()
-		for node, timestamp := range ns.persist.data.NodeSet {
+		for node, nodeStats := range ns.persist.data.NodeStats {
 			// Prune peers we haven't connected to in more than pruneAge
 			// by not adding them to the new set.
-			if now-timestamp < pruneAge {
-				prunedPersistedData.NodeSet[node] = timestamp
+			if now-nodeStats.LastSuccessfulConnectionTime < pruneAge {
+				prunedPersistedData.NodeStats[node] = nodeStats
 				ns.queue = append(ns.queue, node)
 			}
 		}
 		ns.persist.data = prunedPersistedData
-		log.Printf("Starting crawl with %d persisted peers\n", len(ns.persist.data.NodeSet))
+		log.Printf("Starting crawl with %d persisted peers\n", len(ns.persist.data.NodeStats))
 	}
 
 	// Mark all starting nodes as seen.

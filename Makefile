@@ -66,6 +66,9 @@ clean:
 
 test:
 	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run)
+	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=5s $(utils) -run=$(run)
+test-utils:
+	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=5s $(utils) -run=$(run)
 test-v:
 	GO111MODULE=on go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run)
 test-long: clean fmt vet lint

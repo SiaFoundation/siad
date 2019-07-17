@@ -1,0 +1,50 @@
+"SiaNodeScanner Persisted Node Set"
+"0.0.1"
+"2f4476b684f43f30ee91bb437b1c347ce33d91101229f208171bf65b54d160f2"
+{
+	"StartTime": 1563376684,
+	"NodeStats": {
+		"109.172.42.157:9981": {
+			"FirstConnectionTime": 1563376704,
+			"LastSuccessfulConnectionTime": 1563376704,
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 1
+		},
+		"185.216.208.214:9981": {
+			"FirstConnectionTime": 1563376687,
+			"LastSuccessfulConnectionTime": 1563376687,
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 1
+		},
+		"223.19.102.54:9981": {
+			"FirstConnectionTime": 1563376687,
+			"LastSuccessfulConnectionTime": 1563376687,
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 1
+		},
+		"68.133.15.97:9981": {
+			"FirstConnectionTime": 1563376684,
+			"LastSuccessfulConnectionTime": 1563376684,
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 1
+		},
+		"82.231.193.206:9981": {
+			"FirstConnectionTime": 1563376689,
+			"LastSuccessfulConnectionTime": 1563376689,
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 1
+		},
+		"95.78.166.67:9981": {
+			"FirstConnectionTime": 1563376685,
+			"LastSuccessfulConnectionTime": 1563376685,
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 1
+		}
+	}
+}

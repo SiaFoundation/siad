@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	siaPersist "gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
@@ -9,14 +11,13 @@ import (
 const metadataHeader = "SiaNodeScanner Persisted Node Set"
 const metadataVersion = "0.0.1"
 
-type persistData struct {
-	// Keep track of last time we successfully connected to each node.
-	// Maps IP address to Unix timestamp.
-	NodeSet map[modules.NetAddress]int64
+var metadata = siaPersist.Metadata{
+	Header:  metadataHeader,
+	Version: metadataVersion,
 }
 
-// Persist maintains a persist file that contains the json-encoded
-// PersistData.
+// persist maintains a persist file that contains the json-encoded
+// persistData.
 type persist struct {
 	metadata    siaPersist.Metadata
 	persistFile string
@@ -24,16 +25,74 @@ type persist struct {
 	data persistData
 }
 
+type persistData struct {
+	// StartTime is the Unix timestamp of the first scan's start.
+	StartTime int64
+
+	// Keep connection time and uptime stats for each node.
+	NodeStats map[modules.NetAddress]nodeStats
+}
+
+type nodeStats struct {
+	// Unix timestamp of first succesful connection to this node.
+	// Used for total uptime and uptime percentage calculations.
+	FirstConnectionTime int64
+
+	// Keep track of last time we successfully connected to each node.
+	LastSuccessfulConnectionTime int64
+
+	// RecentUptime counts the number of seconds since the node was
+	// last down (or since first time scanned if it hasn't failed yet).
+	RecentUptime int64
+
+	// TotalUptime counts the total number of seconds this node has been up since
+	// the time of its first scan.
+	TotalUptime int64
+
+	// UptimePercentage is TotalUptime divided by time since
+	// FirstConnectionTime.
+	UptimePercentage float64
+}
+
+func (p *persist) updateNodeStats(res nodeScanResult) {
+	stats, ok := p.data.NodeStats[res.Addr]
+
+	// If this node isn't in the persisted set, initalize it.
+	if !ok {
+		stats = nodeStats{
+			FirstConnectionTime:          res.Timestamp,
+			LastSuccessfulConnectionTime: res.Timestamp,
+			RecentUptime:                 1,
+			TotalUptime:                  1,
+			UptimePercentage:             1.0,
+		}
+		p.data.NodeStats[res.Addr] = stats
+		return
+	}
+
+	// Update stats and uptime percentage.
+	if res.Err != nil {
+		stats.RecentUptime = 0
+	} else {
+		timeElapsed := stats.LastSuccessfulConnectionTime - res.Timestamp
+		stats.LastSuccessfulConnectionTime = res.Timestamp
+		stats.RecentUptime += timeElapsed
+		stats.TotalUptime += timeElapsed
+	}
+	stats.UptimePercentage = float64(stats.TotalUptime) / float64(time.Now().Unix()-stats.FirstConnectionTime)
+
+	p.data.NodeStats[res.Addr] = stats
+}
+
 func newPersist(persistFile string) (p *persist, err error) {
 	p = new(persist)
 
 	p.persistFile = persistFile
-	p.metadata = siaPersist.Metadata{
-		Header:  metadataHeader,
-		Version: metadataVersion,
+	p.metadata = metadata
+	p.data = persistData{
+		StartTime: time.Now().Unix(),
+		NodeStats: make(map[modules.NetAddress]nodeStats),
 	}
-
-	p.data = persistData{make(map[modules.NetAddress]int64)}
 
 	// Try loading the persist file.
 	err = siaPersist.LoadJSON(p.metadata, &p.data, p.persistFile)
