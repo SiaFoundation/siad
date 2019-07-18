@@ -1,0 +1,110 @@
+package renter
+
+// snapshotworkerfetchbackups.go contains all of the code related to using the
+// worker to fetch the list of snapshot backups available on a particular host.
+//
+// NOTE: No exponential backoff code is needed here because actions are always
+// user triggered.
+
+import (
+	"bytes"
+	"sync"
+
+	"gitlab.com/NebulousLabs/errors"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
+)
+
+// fetchBackupsJobQueue is the primary structure for managing fetch backup jobs
+// from the worker.
+type fetchBackupsJobQueue struct {
+	queue []chan *fetchBackupsJobResult
+	mu    sync.Mutex
+}
+
+// fetchBackupsJobResult contains the result from fetching a bunch of backups
+// from the host.
+type fetchBackupsJobResult struct {
+	err             error
+	uploadedBackups []modules.UploadedBackup
+}
+
+// managedQueueFetchBackupsJob will add the fetch backups job to the worker's
+// queue.
+func (w *worker) managedQueueFetchBackupsJob(resultChan chan *fetchBackupsJobResult) {
+	w.staticFetchBackupsJobQueue.mu.Lock()
+	w.staticFetchBackupsJobQueue.queue = append(w.staticFetchBackupsJobQueue.queue, resultChan)
+	w.staticFetchBackupsJobQueue.mu.Unlock()
+}
+
+// managedNextFetchBackupsJob will return the next fetch backups job in the
+// queue. If there is no job in the queue, nil will be returned.
+func (w *worker) managedNextFetchBackupsJob() chan *fetchBackupsJobResult {
+	w.staticFetchBackupsJobQueue.mu.Lock()
+	defer w.staticFetchBackupsJobQueue.mu.Unlock()
+
+	if len(w.staticFetchBackupsJobQueue.queue) == 0 {
+		return nil
+	}
+	nextJob := w.staticFetchBackupsJobQueue.queue[0]
+	w.staticFetchBackupsJobQueue.queue = w.staticFetchBackupsJobQueue.queue[1:]
+	return nextJob
+}
+
+// managedKillFetchBackupsJobs will throw an error for all queued backup jobs,
+// as they will not complete due to the worker being shut down.
+func (w *worker) managedKillFetchBackupsJobs() {
+	w.staticFetchBackupsJobQueue.mu.Lock()
+	for _, job := range w.staticFetchBackupsJobQueue.queue {
+		result := &fetchBackupsJobResult{
+			err: errors.New("worker was killed before backups could be retrieved"),
+		}
+		job <- result
+	}
+	w.staticFetchBackupsJobQueue.mu.Unlock()
+}
+
+// managedPerformFetchBackupsJob will fetch the list of backups from the host
+// and return them down the provided struct.
+func (w *worker) managedPerformFetchBackupsJob(resultChan chan *fetchBackupsJobResult) {
+	// Fetch a session to use in retrieving the backups.
+	//
+	// TODO: We should have a common session/editor/downloader that the worker
+	// keeps for all of the jobs that it performs, instead of calling out to the
+	// hostContractor so often.
+	session, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
+	if err != nil {
+		result := &fetchBackupsJobResult{
+			err: errors.AddContext(err, "unable to acquire session"),
+		}
+		resultChan <- result
+		return
+	}
+	defer session.Close()
+
+	// Download the list of backups.
+	entryTable, err := w.renter.managedDownloadSnapshotTable(session)
+	if err != nil {
+		result := &fetchBackupsJobResult{
+			err: errors.AddContext(err, "unable to download snapshot table"),
+		}
+		resultChan <- result
+		return
+	}
+
+	// Format the reponse and return the response to the requester.
+	uploadedBackups := make([]modules.UploadedBackup, len(entryTable))
+	for i, e := range entryTable {
+		uploadedBackups[i] = modules.UploadedBackup{
+			Name:           string(bytes.TrimRight(e.Name[:], string(0))),
+			UID:            e.UID,
+			CreationDate:   e.CreationDate,
+			Size:           e.Size,
+			UploadProgress: 100,
+		}
+	}
+	result := &fetchBackupsJobResult{
+		uploadedBackups: uploadedBackups,
+	}
+	resultChan <- result
+}
