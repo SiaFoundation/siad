@@ -29,9 +29,9 @@ const (
 const (
 	// alertIDUnknown is the id of an unknown alert.
 	alertIDUnknown = iota
-	// AlertIDIncompleteMaintenace is the id of the alert that is registered if the
-	// wallet is locked during a contract maintenance.
-	AlertIDIncompleteMaintenance
+	// AlertIDWalletLockedDuringMaintenance is the id of the alert that is
+	// registered if the wallet is locked during a contract renewal or formation.
+	AlertIDWalletLockedDuringMaintenance
 )
 
 type (
@@ -59,7 +59,7 @@ type (
 	AlertID uint64
 
 	// AlertSeverity describes the severity of an alert.
-	AlertSeverity uint8
+	AlertSeverity uint64
 )
 
 // MarshalJSON defines a JSON encoding for the AlertSeverity.

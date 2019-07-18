@@ -861,12 +861,15 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	defer c.maintenanceLock.Unlock()
 
-	if unlocked, err := c.wallet.Unlocked(); err == nil && !unlocked {
-		c.staticAlerter.RegisterAlert(modules.AlertIDIncompleteMaintenance,
-			"user's contracts need to be renewed but a locked wallet prevents renewal", "wallet is locked", modules.SeverityWarning)
-	} else if err == nil {
-		c.staticAlerter.UnregisterAlert(modules.AlertIDIncompleteMaintenance)
-	}
+	// Register the WalletLockedDuringMaintenance - alert if necessary.
+	var registerWalletLockedDuringMaintenance bool
+	defer func() {
+		if registerWalletLockedDuringMaintenance {
+			c.staticAlerter.RegisterAlert(modules.AlertIDWalletLockedDuringMaintenance, "contractor is attempting to renew/form contracts, however the wallet is locked", modules.ErrLockedWallet.Error(), modules.SeverityWarning)
+		} else {
+			c.staticAlerter.UnregisterAlert(modules.AlertIDWalletLockedDuringMaintenance)
+		}
+	}()
 
 	// Perform general cleanup of the contracts. This includes recovering lost
 	// contracts, archiving contracts, and other cleanup work. This should all
@@ -1039,6 +1042,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, renewal := range renewSet {
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
 			c.log.Println("contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
 			return
 		}
@@ -1075,6 +1079,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, renewal := range refreshSet {
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
 			c.log.Println("contractor is attempting to refresh contracts that have run out of funds, however the wallet is locked")
 			return
 		}
@@ -1158,6 +1163,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, host := range hosts {
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
 			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
 			return
 		}
