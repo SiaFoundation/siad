@@ -322,7 +322,7 @@ func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowa
 	// hosts during upload. Slower hosts may get very little data, more
 	// expensive hosts may get very little data, and other factors can skew the
 	// distribution. allocationPerHost takes into account the skew and tries to
-	// ensure that there's enough allocation per host to accomodate for a skew.
+	// ensure that there's enough allocation per host to accommodate for a skew.
 	allocationPerHost := idealDataPerHost * storageSkewMultiplier
 	// hostExpectedStorage is the amount of storage that we expect to be able to
 	// store on this host overall, which should include the stored data that is

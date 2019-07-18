@@ -139,7 +139,7 @@ func TestDirectoryHeap(t *testing.T) {
 		}
 	}
 
-	// Reset Direcotry heap
+	// Reset Directory heap
 	rt.renter.directoryHeap.managedReset()
 
 	// Confirm that the heap is empty

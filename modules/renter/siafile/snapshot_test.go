@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestSnapshot tests if a snapshot is created correctly from a SiaFile.
@@ -22,11 +23,14 @@ func TestSnapshot(t *testing.T) {
 
 	// Create a random file for testing and create a snapshot from it.
 	sf := dummyEntry(newTestFile())
-	snap := sf.Snapshot()
+	snap, err := sf.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Make sure the snapshot has the same fields as the SiaFile.
-	if len(sf.chunks) != len(snap.staticChunks) {
-		t.Errorf("expected %v chunks but got %v", len(sf.chunks), len(snap.staticChunks))
+	if sf.numChunks != len(snap.staticChunks) {
+		t.Errorf("expected %v chunks but got %v", sf.numChunks, len(snap.staticChunks))
 	}
 	if sf.staticMetadata.FileSize != snap.staticFileSize {
 		t.Errorf("staticFileSize was %v but should be %v",
@@ -62,15 +66,19 @@ func TestSnapshot(t *testing.T) {
 	}
 	sf.staticSiaFileSet.mu.Unlock()
 	// Compare the pieces.
-	for i := range sf.chunks {
-		sfPieces, err1 := sf.Pieces(uint64(i))
-		snapPieces, err2 := snap.Pieces(uint64(i))
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
+		sfPieces, err1 := sf.Pieces(uint64(chunk.Index))
+		snapPieces, err2 := snap.Pieces(uint64(chunk.Index))
 		if err := errors.Compose(err1, err2); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(sfPieces, snapPieces) {
 			t.Error("Pieces don't match")
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -126,18 +134,19 @@ func benchmarkSnapshot(b *testing.B, fileSize uint64) {
 	// Add numPieces to each chunks.
 	for i := uint64(0); i < sf.NumChunks(); i++ {
 		for j := uint64(0); j < uint64(rc.NumPieces()); j++ {
-			sf.chunks[i].Pieces[j] = append(sf.chunks[i].Pieces[j], piece{})
+			if err := sf.AddPiece(types.SiaPublicKey{}, i, j, crypto.Hash{}); err != nil {
+				b.Fatal(err)
+			}
 		}
-	}
-	// Save the file to disk.
-	if err := sf.saveFile(); err != nil {
-		b.Fatal(err)
 	}
 	// Reset the timer.
 	b.ResetTimer()
 
 	// Create snapshots as fast as possible.
 	for i := 0; i < b.N; i++ {
-		_ = sf.Snapshot()
+		_, err = sf.Snapshot()
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }

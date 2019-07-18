@@ -102,11 +102,6 @@ type (
 		UserID  int         `json:"userid"`  // id of the user who owns the file
 		GroupID int         `json:"groupid"` // id of the group that owns the file
 
-		// staticChunkMetadataSize is the amount of space allocated within the
-		// siafile for the metadata of a single chunk. It allows us to do
-		// random access operations on the file in constant time.
-		StaticChunkMetadataSize uint64 `json:"chunkmetadatasize"`
-
 		// The following fields are the offsets for data that is written to disk
 		// after the pubKeyTable. We reserve a generous amount of space for the
 		// table and extra fields, but we need to remember those offsets in case we
@@ -243,7 +238,9 @@ func (sf *SiaFile) PieceSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize
 }
 
-// Rename changes the name of the file to a new one.
+// Rename changes the name of the file to a new one. To guarantee that renaming
+// the file is atomic across all operating systems, we create a wal transaction
+// that moves over all the chunks one-by-one and deletes the src file.
 func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -254,6 +251,12 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	}
 	// Create the delete update before changing the path to the new one.
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
+	// Load all the chunks.
+	chunks := make([]chunk, 0, sf.numChunks)
+	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+		chunks = append(chunks, chunk)
+		return nil
+	})
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
 	// Update the ChangeTime because the metadata changed.
@@ -265,8 +268,9 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	}
 	updates = append(updates, headerUpdate...)
 	// Write the chunks to the new location.
-	chunksUpdates := sf.saveChunksUpdates()
-	updates = append(updates, chunksUpdates...)
+	for _, chunk := range chunks {
+		updates = append(updates, sf.saveChunkUpdate(chunk))
+	}
 	// Apply updates.
 	return sf.createAndApplyTransaction(updates...)
 }

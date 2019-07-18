@@ -24,8 +24,8 @@ fmt:
 
 # vet calls go vet on all packages.
 # NOTE: go vet requires packages to be built in order to obtain type info.
-vet: release-std
-	go vet $(pkgs)
+vet:
+	GO111MODULE=on go vet $(pkgs)
 
 lint:
 	go get golang.org/x/lint/golint
@@ -64,7 +64,7 @@ test-v:
 	GO111MODULE=on go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run)
 test-long: clean fmt vet lint
 	@mkdir -p cover
-	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug netgo' -timeout=1800s $(pkgs) -run=$(run)
+	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=1800s $(pkgs) -run=$(run)
 test-vlong: clean fmt vet lint
 	@mkdir -p cover
 	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run)
@@ -89,5 +89,5 @@ whitepaper:
 	@pdflatex -output-directory=doc whitepaper.tex > /dev/null
 	pdflatex -output-directory=doc whitepaper.tex
 
-.PHONY: all fmt install release release-std xc clean test test-v test-long cover cover-integration cover-unit whitepaper
+.PHONY: all fmt install release clean test test-v test-long cover whitepaper
 

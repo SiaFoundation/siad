@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -43,7 +44,7 @@ type unfinishedUploadChunk struct {
 	piecesNeeded   int    // number of pieces to achieve a 100% complete upload
 	stuck          bool   // indicates if the chunk was marked as stuck during last repair
 	stuckRepair    bool   // indicates if the chunk was identified for repair by the stuck loop
-	priority       bool   // indicates if the chunks is supposed to be repaird asap
+	priority       bool   // indicates if the chunks is supposed to be repaired asap
 
 	// The logical data is the data that is presented to the user when the user
 	// requests the chunk. The physical data is all of the pieces that get
@@ -178,12 +179,17 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		downloadLength = chunk.fileEntry.Size() % chunk.length
 	}
 
+	// Prepare snapshot.
+	snap, err := chunk.fileEntry.Snapshot()
+	if err != nil {
+		return err
+	}
 	// Create the download.
 	buf := NewDownloadDestinationBuffer()
 	d, err := r.managedNewDownload(downloadParams{
 		destination:     buf,
 		destinationType: "buffer",
-		file:            chunk.fileEntry.Snapshot(),
+		file:            snap,
 
 		latencyTarget: 200e3, // No need to rush latency on repair downloads.
 		length:        downloadLength,
@@ -331,6 +337,13 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			// Encrypt the piece.
 			key := chunk.fileEntry.MasterKey().Derive(chunk.index, uint64(i))
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
+			// If the piece was not a full sector, pad it accordingly with random bytes.
+			if short := int(modules.SectorSize) - len(chunk.physicalChunkData[i]); short > 0 {
+				// The form `append(obj, make([]T, n))` will be optimized by the
+				// compiler to eliminate unneeded allocations starting go 1.11.
+				chunk.physicalChunkData[i] = append(chunk.physicalChunkData[i], make([]byte, short)...)
+				fastrand.Read(chunk.physicalChunkData[i][len(chunk.physicalChunkData[i])-short:])
+			}
 		}
 	}
 	// Return the released memory.

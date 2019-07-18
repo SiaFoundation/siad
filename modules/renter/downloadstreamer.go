@@ -176,7 +176,7 @@ func (s *streamer) managedFillCache() bool {
 		destinationString: "httpresponse",
 		file:              s.staticFile,
 
-		latencyTarget: 50 * time.Millisecond, // TODO: low default until full latency suport is added.
+		latencyTarget: 50 * time.Millisecond, // TODO: low default until full latency support is added.
 		length:        uint64(fetchLen),
 		needsMemory:   true,
 		offset:        uint64(fetchOffset),
@@ -479,7 +479,11 @@ func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, er
 	defer entry.Close()
 
 	// Create the streamer
-	s := r.managedStreamer(entry.Snapshot())
+	snap, err := entry.Snapshot()
+	if err != nil {
+		return "", nil, err
+	}
+	s := r.managedStreamer(snap)
 	return r.staticFileSet.SiaPath(entry).String(), s, nil
 }
 
