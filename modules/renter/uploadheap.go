@@ -384,7 +384,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *siafile.SiaFileSetEntry, ho
 		needsRepair := chunk.health >= RepairThreshold
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
-		// repairable or if we are targetting stuck chunks
+		// repairable or if we are targeting stuck chunks
 		if needsRepair && (repairable || target == targetStuckChunks) {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue

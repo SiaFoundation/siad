@@ -915,7 +915,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if siatest.Fuzz() == 0 {
 		fileSize += fastrand.Intn(int(modules.SectorSize))
 	}
-	t.Log("testRemoteRepair fileSize choice:", fileSize)
+	t.Log("testRemoteRegair fileSize choice:", fileSize)
 
 	// Set fileSize and redundancy for upload
 	dataPieces := uint64(1)
