@@ -238,7 +238,9 @@ func (sf *SiaFile) PieceSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize
 }
 
-// Rename changes the name of the file to a new one.
+// Rename changes the name of the file to a new one. To guarantee that renaming
+// the file is atomic across all operating systems, we create a wal transaction
+// that moves over all the chunks one-by-one and deletes the src file.
 func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -249,6 +251,12 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	}
 	// Create the delete update before changing the path to the new one.
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
+	// Load all the chunks.
+	chunks := make([]chunk, 0, sf.numChunks)
+	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+		chunks = append(chunks, chunk)
+		return nil
+	})
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
 	// Update the ChangeTime because the metadata changed.
@@ -260,8 +268,9 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 	}
 	updates = append(updates, headerUpdate...)
 	// Write the chunks to the new location.
-	chunksUpdates := sf.saveChunksUpdates()
-	updates = append(updates, chunksUpdates...)
+	for _, chunk := range chunks {
+		updates = append(updates, sf.saveChunkUpdate(chunk))
+	}
 	// Apply updates.
 	return sf.createAndApplyTransaction(updates...)
 }

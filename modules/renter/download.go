@@ -350,12 +350,17 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		}
 	}
 
+	// Prepare snapshot.
+	snap, err := entry.Snapshot()
+	if err != nil {
+		return nil, err
+	}
 	// Create the download object.
 	d, err := r.managedNewDownload(downloadParams{
 		destination:       dw,
 		destinationType:   destinationType,
 		destinationString: p.Destination,
-		file:              entry.Snapshot(),
+		file:              snap,
 
 		latencyTarget: 25e3 * time.Millisecond, // TODO: high default until full latency support is added.
 		length:        p.Length,

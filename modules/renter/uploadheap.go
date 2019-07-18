@@ -203,6 +203,11 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chu
 		build.Critical("nil file entry return from CopyEntry, and no error should have been returned")
 		return nil, errors.New("CopyEntry returned a nil copy")
 	}
+	stuck, err := entry.StuckChunkByIndex(chunkIndex)
+	if err != nil {
+		r.log.Println("WARN: unable to get 'stuck' status:", err)
+		return nil, errors.AddContext(err, "unable to get 'stuck' status")
+	}
 	uuc := &unfinishedUploadChunk{
 		fileEntry: entryCopy,
 
@@ -228,7 +233,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chu
 		memoryNeeded:  entry.PieceSize()*uint64(entry.ErasureCode().NumPieces()+entry.ErasureCode().MinPieces()) + uint64(entry.ErasureCode().NumPieces())*entry.MasterKey().Type().Overhead(),
 		minimumPieces: entry.ErasureCode().MinPieces(),
 		piecesNeeded:  entry.ErasureCode().NumPieces(),
-		stuck:         entry.StuckChunkByIndex(chunkIndex),
+		stuck:         stuck,
 
 		physicalChunkData: make([][]byte, entry.ErasureCode().NumPieces()),
 
@@ -328,7 +333,12 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *siafile.SiaFileSetEntry, ho
 	// the repair loop should only be adding unstuck chunks
 	var chunkIndexes []uint64
 	for i := uint64(0); i < entry.NumChunks(); i++ {
-		if (target == targetStuckChunks) == entry.StuckChunkByIndex(i) {
+		stuck, err := entry.StuckChunkByIndex(i)
+		if err != nil {
+			r.log.Debugln("failed to get 'stuck' status of entry:", err)
+			continue
+		}
+		if (target == targetStuckChunks) == stuck {
 			chunkIndexes = append(chunkIndexes, i)
 		}
 	}
