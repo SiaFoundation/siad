@@ -66,17 +66,18 @@ clean:
 
 test:
 	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run)
-	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=5s $(utils) -run=$(run)
 test-utils:
-	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=5s $(utils) -run=$(run)
+	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=30s $(utils) -run=$(run)
 test-v:
 	GO111MODULE=on go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run)
 test-long: clean fmt vet lint
 	@mkdir -p cover
 	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=1800s $(pkgs) -run=$(run)
+	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=1800s $(utils) -run=$(run)
 test-vlong: clean fmt vet lint
 	@mkdir -p cover
 	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run)
+	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=2000s $(utils) -run=$(run)
 test-cpu:
 	GO111MODULE=on go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run)
 test-mem:
