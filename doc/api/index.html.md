@@ -575,7 +575,7 @@ returns information about the gateway, including the list of connected peers.
     "netaddress":"333.333.333.333:9981",  // string
     "peers":[
         {
-            "inbound":    alse,                    // boolean
+            "inbound":    false,                   // boolean
             "local":      false,                   // boolean
             "netaddress": "222.222.222.222:9981",  // string
             "version":    "1.0.0",                 // string
@@ -1527,7 +1527,7 @@ curl -A "Sia-Agent" "localhost:9980/hostdb/all"
 Lists all of the hosts known to the renter. Hosts are not guaranteed to be in any particular order, and the order may change in subsequent calls.
 
 ### JSON Response 
-Repsonse is the same as [`/hostdb/active`](#hosts)
+Response is the same as [`/hostdb/active`](#hosts)
 
 ## /hostdb/hosts/:*pubkey* [GET]
 > curl example  
@@ -1647,7 +1647,7 @@ curl -A "Sia-Agent" --user "":<apipassword> --data '{"filtermode" : "whitelist",
 ```go
 curl -A "Sia-Agent" --user "":<apipassword> --data '{"filtermode" : "disable"}' "localhost:9980/hostdb/filtermode"
 ```
-Lets you enable and disable a filter mode for the hostdb. Currenlty the two modes supported are `blacklist` mode and `whitelist` mode. In `blacklist` mode, any hosts you identify as being on the `blacklist` will not be used to form contracts. In `whitelist` mode, only the hosts identified as being on the `whitelist` will be used to form contracts. In both modes, hosts that you are blacklisted will be filtered from your hostdb. To enable either mode, set `filtermode` to the desired mode and submit a list of host pubkeys as the corresponding `blacklist` or `whitelist`. To disable either list, the `host` field can be left blank (e.g. empty slice) and the `filtermode` should be set to `disable`.  
+Lets you enable and disable a filter mode for the hostdb. Currently the two modes supported are `blacklist` mode and `whitelist` mode. In `blacklist` mode, any hosts you identify as being on the `blacklist` will not be used to form contracts. In `whitelist` mode, only the hosts identified as being on the `whitelist` will be used to form contracts. In both modes, hosts that you are blacklisted will be filtered from your hostdb. To enable either mode, set `filtermode` to the desired mode and submit a list of host pubkeys as the corresponding `blacklist` or `whitelist`. To disable either list, the `host` field can be left blank (e.g. empty slice) and the `filtermode` should be set to `disable`.  
 
 **NOTE:** Enabling and disabling a filter mode can result in changes with your current contracts with can result in an increase in contract fee spending. For example, if `blacklist` mode is enabled, any hosts that you currently have contracts with that are also on the provide list of `hosts` will have their contracts replaced with non-blacklisted hosts. When `whitelist` mode is enabled, contracts will be replaced until there are only contracts with whitelisted hosts. Even disabling a filter mode can result in a change in contracts if there are better scoring hosts in your hostdb that were previously being filtered out.  
 
@@ -1880,7 +1880,7 @@ uptime and age.
 
 Even when the user has a large allowance and a low amount of expected storage,
 siad will try to optimize for saving money; siad tries to meet the users storage
-and bandwith needs while spending significantly less than the overall allowance.
+and bandwidth needs while spending significantly less than the overall allowance.
 
 **expectedupload** | bytes  
 Expected upload tells siad how much uploading the user expects to do each month.
@@ -2439,7 +2439,7 @@ Number of bytes downloaded thus far. Will only be updated as segments of the fil
 Time at which the download was initiated.
 
 **totaldatatransfered** | bytes
-The total amount of data transfered when downloading the file. This will eventually include data transferred during contract + payment negotiation, as well as data from failed piece downloads.  
+The total amount of data transferred when downloading the file. This will eventually include data transferred during contract + payment negotiation, as well as data from failed piece downloads.  
 
 ## /renter/downloads/clear [POST]
 > curl example  
@@ -3950,4 +3950,5 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "<requestbody>" "localhost:9980/w
 standard success or error response. See [standard responses](#standard-responses).
 
 # Version
+<a href='https://sia.tech/docs/v141'>**v141**
 <a href='https://sia.tech/docs/v140'>**v140**
