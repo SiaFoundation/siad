@@ -126,6 +126,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	if err != nil {
 		c.log.Println("Unable to save while processing a consensus change:", err)
 	}
+	c.synced = cc.Synced
 	c.mu.Unlock()
 
 	// Perform contract maintenance if our blockchain is synced. Use a separate

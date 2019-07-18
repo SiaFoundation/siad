@@ -57,6 +57,7 @@ type Contractor struct {
 	blockHeight   types.BlockHeight
 	currentPeriod types.BlockHeight
 	lastChange    modules.ConsensusChangeID
+	synced        bool
 
 	// recentRecoveryChange is the first ConsensusChange that was missed while
 	// trying to find recoverable contracts. This is where we need to start
@@ -420,4 +421,11 @@ func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID
 		c.mu.Unlock()
 	}()
 	return nil
+}
+
+// managedSynced returns true if the contractor is synced with the consensusset.
+func (c *Contractor) managedSynced() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.synced
 }

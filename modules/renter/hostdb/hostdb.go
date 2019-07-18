@@ -86,6 +86,7 @@ type HostDB struct {
 	scanMap                 map[string]struct{}
 	scanWait                bool
 	scanningThreads         int
+	synced                  bool
 
 	// filteredTree is a hosttree that only contains the hosts that align with
 	// the filterMode. The filteredHosts are the hosts that are submitted with
@@ -153,6 +154,13 @@ func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 		err = errors.Compose(err, hdb.filteredTree.SetWeightFunction(wf))
 	}
 	return err
+}
+
+// managedSynced returns true if the hostdb is synced with the consensusset.
+func (hdb *HostDB) managedSynced() bool {
+	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
+	return hdb.synced
 }
 
 // updateContracts rebuilds the knownContracts of the HostDB using the provided

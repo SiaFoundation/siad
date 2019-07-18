@@ -849,8 +849,8 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.log.Debugln("starting contract maintenance")
 
 	// No contract maintenance unless contractor is synced.
-	if !c.cs.Synced() {
-		c.log.Debugln("Skipping contract maintenance since contractor isn't synced yet")
+	if !c.managedSynced() {
+		c.log.Debugln("Skipping contract maintenance since consensus isn't synced yet")
 		return
 	}
 

@@ -124,5 +124,6 @@ func (hdb *HostDB) ProcessConsensusChange(cc modules.ConsensusChange) {
 		}
 	}
 
+	hdb.synced = cc.Synced
 	hdb.lastChange = cc.ID
 }
