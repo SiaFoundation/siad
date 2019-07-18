@@ -6,9 +6,9 @@ This section gives an overview of how encryption is handled within the Sia walle
 
 #### Masterkey
 
-The masterkey can either be a custom password provided by the user or the wallet seed in the default case. Either way, the custom password or seed are hashed before being used to encrypt/decrypt the wallet to produce 32 bytes of entropy for the Twofish cipher. The masterkey itself is also never used directly to encrypt any data. Instead it is used with the wallet's UID to derive a key to encrypt the seed.
+The masterkey is a key that is either derived from a custom password provided by the user or the wallet seed if no custom password is provided. Either way, the custom password or seed are hashed before being used as the masterkey to encrypt/decrypt the wallet to produce exactly 32 bytes of entropy for the Twofish cipher. The masterkey itself is also never used directly to encrypt any data. Instead it is used with the wallet's UID to derive a key to encrypt the seed.
 
-To allow the user to recover the wallet after forgetting a custom password, the masterkey is also encrypted and stored within the wallet's BoltDB bucket. In this case the encryption key used is derived from the primary seed and the wallet's UID. 
+To allow the user to recover the wallet after forgetting a custom password, the masterkey is encrypted and stored within the wallet's BoltDB bucket. In this case the encryption key used is derived from the primary seed and the wallet's UID.
 
 #### Seed Encryption
 
@@ -16,7 +16,11 @@ To protect the user's primary seed, the so-called `seedFile` is encrypted before
 
 #### Locking / Unlocking the Wallet
 
-"Locking" and "Unlocking" the wallet refers to the process of wiping sensitive data like the primary seed from memory and loading the encrypted data from disk into memory and decrypting it respectively. 
+"Locking" and "Unlocking" the wallet refers to the process of wiping sensitive data from memory and loading the encrypted data from disk into memory and decrypting it respectively. The following fields are wiped by the wallet's `wipeSecrets` method when the wallet is locked.
+
+- `w.keys`        // secret keys derived from seeds
+- `w.seeds`       // imported seeds
+- `w.primarySeed` // wallet's primary seed
 
 #### Changing the password
 
