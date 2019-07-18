@@ -137,10 +137,23 @@ over) that involve working with hosts will pass through the worker.
 The download code follows a clean/intuitive flow for getting super high and
 computationally efficient parallelism on downloads. When a download is
 requested, it gets split into its respective chunks (which are downloaded
-individually) and then put into the download heap. The primary purpose of the
-download heap is to keep downloads on standby until there is enough memory
-available to send the downloads off to the workers. The heap is sorted first
-by priority, but then a few other criteria as well.
+individually) and then put into the download heap and download history as a
+struct of type `download`.
+
+A `download` contains the shared state of a download with all the information
+required for workers to complete it, additional information useful to users
+and completion functions which are executed upon download completion.
+
+The download history contains a mapping of all of the downloads' UIDs, which
+are randomly assigned upon initialization to their corresponding `download`
+struct. Unless cleared, users can retrieve information about ongoing and
+completed downloads by either retrieving the full history or a specific
+download from the history using the API.
+
+The primary purpose of the download heap is to keep downloads on standby
+until there is enough memory available to send the downloads off to the
+workers. The heap is sorted first by priority, but then a few other criteria
+as well.
 
 Some downloads, in particular downloads issued by the repair code, have
 already had their memory allocated. These downloads get to skip the heap and
