@@ -21,6 +21,7 @@ func TestContractorIncompleteMaintenanceAlert(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
+		Hosts:   1,
 		Miners:  1,
 		Renters: 1,
 	}
@@ -52,12 +53,13 @@ func TestContractorIncompleteMaintenanceAlert(t *testing.T) {
 	if err := r.WalletLockPost(); err != nil {
 		t.Fatal("Failed to lock wallet", err)
 	}
-	// Mine a block to trigger contract maintenance.
-	if err := tg.Miners()[0].MineBlock(); err != nil {
-		t.Fatal("Failed to mine block", err)
-	}
-	// The renter should have 1 alert now.
+	// The renter should have 1 alert once we have mined enough blocks to trigger a
+	// renewal.
 	err = build.Retry(1000, 100*time.Millisecond, func() error {
+		// Mine a block to trigger contract maintenance.
+		if err := tg.Miners()[0].MineBlock(); err != nil {
+			return err
+		}
 		dag, err = r.DaemonAlertsGet()
 		if err != nil {
 			return err
@@ -67,16 +69,19 @@ func TestContractorIncompleteMaintenanceAlert(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Make sure the alert is sane.
 	alert := dag.Alerts[0]
 	if alert.Severity != modules.SeverityWarning {
 		t.Fatal("alert has wrong severity")
 	}
-	if alert.Msg != "Maintenance of contracts is incomplete" {
-		t.Fatal("alert has wrong msg")
+	if alert.Msg != "contractor is attempting to renew/form contracts, however the wallet is locked" {
+		t.Fatal("alert has wrong msg", alert.Msg)
 	}
-	if alert.Cause != "Wallet is locked" {
-		t.Fatal("alert has wrong cause")
+	if alert.Cause != modules.ErrLockedWallet.Error() {
+		t.Fatal("alert has wrong cause", alert.Cause)
 	}
 	if alert.Module != "contractor" {
 		t.Fatal("alert module expected to be contractor but was ", alert.Module)
