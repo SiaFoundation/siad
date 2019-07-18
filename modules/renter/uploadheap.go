@@ -1101,7 +1101,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			r.log.Debugln("WARN: error adding chunks to the heap:", err)
 		}
 
-		// There are benign edge cases where the heap will be emtpy after chunks
+		// There are benign edge cases where the heap will be empty after chunks
 		// have been added. For example, if a chunk has gotten more healthy
 		// since the last health check due to one of its hosts coming back
 		// online. In these cases, the best course of action is to proceed with
