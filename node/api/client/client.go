@@ -74,11 +74,11 @@ func readAPIError(r io.Reader) error {
 func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	req, err := c.NewRequest("GET", resource, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.AddContext(err, "failed to construct GET request")
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, nil, errors.AddContext(err, "request failed")
+		return nil, nil, errors.AddContext(err, "GET request failed")
 	}
 	defer drainAndClose(res.Body)
 
@@ -89,7 +89,7 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, nil, readAPIError(res.Body)
+		return nil, nil, errors.AddContext(readAPIError(res.Body), "GET request error")
 	}
 
 	if res.StatusCode == http.StatusNoContent {
@@ -105,13 +105,13 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte, error) {
 	req, err := c.NewRequest("GET", resource, nil)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "failed to construct GET request")
 	}
 	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", from, to-1))
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, errors.AddContext(err, "request failed")
+		return nil, errors.AddContext(readAPIError(res.Body), "GET request error")
 	}
 	defer drainAndClose(res.Body)
 
@@ -122,7 +122,7 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, readAPIError(res.Body)
+		return nil, errors.AddContext(readAPIError(res.Body), "GET request error")
 	}
 
 	if res.StatusCode == http.StatusNoContent {
@@ -159,13 +159,13 @@ func (c *Client) get(resource string, obj interface{}) error {
 func (c *Client) postRawResponse(resource string, body io.Reader) ([]byte, error) {
 	req, err := c.NewRequest("POST", resource, body)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "failed to construct POST request")
 	}
 	// TODO: is this necessary?
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, errors.AddContext(err, "request failed")
+		return nil, errors.AddContext(err, "POST request failed")
 	}
 	defer drainAndClose(res.Body)
 
@@ -176,7 +176,7 @@ func (c *Client) postRawResponse(resource string, body io.Reader) ([]byte, error
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, readAPIError(res.Body)
+		return nil, errors.AddContext(readAPIError(res.Body), "POST request error")
 	}
 
 	if res.StatusCode == http.StatusNoContent {
