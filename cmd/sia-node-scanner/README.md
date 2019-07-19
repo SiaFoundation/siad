@@ -61,13 +61,14 @@ SiaNodeScanner
     └───(gateway module internals)
 ``` 
 
-## Implementation details There is 1 main goroutine, and 10 worker goroutines.
-The main routine starts the workers and creates workAssignments which are sent
-down a channel. The workers read from this channel to start scanning different
-IP addresses. When a scan is completed (either succesfully or because an error
-was encountered) each worker sends a NodeScanResult back down a result channel.
-The worker then reads from this channel, logging the result and any errors, and
-creating new work assignments if new IP addresses were discovered. 
+## Implementation details 
+There is 1 main goroutine, and 10 worker goroutines.The main routine starts the
+workers and creates workAssignments which are sent down a channel. The workers
+read from this channel to start scanning different IP addresses. When a scan is
+completed (either succesfully or because an error was encountered) each worker
+sends a NodeScanResult back down a result channel.  The worker then reads from
+this channel, logging the result and any errors, and creating new work
+assignments if new IP addresses were discovered. 
 
 The main goroutine also periodically (every 10 second) prints counters and
 connection stats to standard output. These counters are also logged at the end
