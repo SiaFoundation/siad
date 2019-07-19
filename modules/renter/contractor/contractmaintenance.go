@@ -861,7 +861,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	defer c.maintenanceLock.Unlock()
 
-	// Register the WalletLockedDuringMaintenance - alert if necessary.
+	// Register the WalletLockedDuringMaintenance alert if necessary.
 	var registerWalletLockedDuringMaintenance bool
 	defer func() {
 		if registerWalletLockedDuringMaintenance {
