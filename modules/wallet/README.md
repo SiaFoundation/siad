@@ -1,5 +1,6 @@
 # Wallet
-
+*TODO*
+ - Update layout of this README to match Renter README. (ie subsystems, key files, links, etc)
 ### Wallet Encryption
 
 This section gives an overview of how encryption is handled within the Sia wallet and refers to the source code within `encrypt.go`. All of the encryption within the wallet is done using the Twofish cipher in Galois Counter Mode and hashing is done using the Blake2B algorithm. 
