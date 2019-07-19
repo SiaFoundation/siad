@@ -142,10 +142,7 @@ func hostcmd() {
 	hg, err := httpClient.HostGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
-		fmt.Printf(`Host:
-  Status: %s
-
-`, moduleNotReadyStatus)
+		fmt.Printf("Host: \n  Status: %s\n\n", moduleNotReadyStatus)
 		return
 	} else if err != nil {
 		die("Could not fetch host settings:", err)
