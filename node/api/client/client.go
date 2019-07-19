@@ -83,7 +83,7 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	defer drainAndClose(res.Body)
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, nil, errors.AddContext(api.ErrAPICallNotRecognized, resource)
+		return nil, nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform GET on "+resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying
@@ -116,7 +116,7 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 	defer drainAndClose(res.Body)
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, errors.AddContext(api.ErrAPICallNotRecognized, resource)
+		return nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform GET on "+resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying
@@ -170,7 +170,7 @@ func (c *Client) postRawResponse(resource string, body io.Reader) ([]byte, error
 	defer drainAndClose(res.Body)
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, errors.AddContext(api.ErrAPICallNotRecognized, resource)
+		return nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform POST on "+resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying

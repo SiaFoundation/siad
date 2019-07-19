@@ -51,7 +51,7 @@ func (c *Client) Get(resource string, obj interface{}) error {
 	}()
 
 	if res.StatusCode == http.StatusNotFound {
-		return errors.AddContext(ErrAPICallNotRecognized, resource)
+		return errors.AddContext(ErrAPICallNotRecognized, "unable to perform GET on "+resource)
 	}
 
 	// Decode the body as an Error and return this error if the status code is
@@ -96,7 +96,7 @@ func (c *Client) Post(resource string, data string, obj interface{}) error {
 	}()
 
 	if res.StatusCode == http.StatusNotFound {
-		return errors.AddContext(ErrAPICallNotRecognized, resource)
+		return errors.AddContext(ErrAPICallNotRecognized, "unable to perform POST on "+resource)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode > 299 {
