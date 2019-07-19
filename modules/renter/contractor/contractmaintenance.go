@@ -865,7 +865,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	var registerWalletLockedDuringMaintenance bool
 	defer func() {
 		if registerWalletLockedDuringMaintenance {
-			c.staticAlerter.RegisterAlert(modules.AlertIDWalletLockedDuringMaintenance, "contractor is attempting to renew/form contracts, however the wallet is locked", modules.ErrLockedWallet.Error(), modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDWalletLockedDuringMaintenance, AlertMSGWalletLockedDuringMaintenance, modules.ErrLockedWallet.Error(), modules.SeverityWarning)
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDWalletLockedDuringMaintenance)
 		}
@@ -1043,7 +1043,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
-			c.log.Println("contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
+			c.log.Println("Contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
 			return
 		}
 

@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 
 	"gitlab.com/NebulousLabs/Sia/siatest"
 )
@@ -55,7 +56,7 @@ func TestContractorIncompleteMaintenanceAlert(t *testing.T) {
 	}
 	// The renter should have 1 alert once we have mined enough blocks to trigger a
 	// renewal.
-	err = build.Retry(1000, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Mine a block to trigger contract maintenance.
 		if err := tg.Miners()[0].MineBlock(); err != nil {
 			return err
@@ -77,7 +78,7 @@ func TestContractorIncompleteMaintenanceAlert(t *testing.T) {
 	if alert.Severity != modules.SeverityWarning {
 		t.Fatal("alert has wrong severity")
 	}
-	if alert.Msg != "contractor is attempting to renew/form contracts, however the wallet is locked" {
+	if alert.Msg != contractor.AlertMSGWalletLockedDuringMaintenance {
 		t.Fatal("alert has wrong msg", alert.Msg)
 	}
 	if alert.Cause != modules.ErrLockedWallet.Error() {
