@@ -639,6 +639,10 @@ func TestWalletChangePasswordWithSeed(t *testing.T) {
 	if err := testNode.WalletChangePasswordWithSeedPost(seed, newPassword); err != nil {
 		t.Fatal(err)
 	}
+	// Try unlocking the wallet using the old password.
+	if err := testNode.WalletUnlockPost(password); err == nil {
+		t.Fatal("Shouldn't be able to unlock the wallet with the old password")
+	}
 	// Unlock the wallet using the new password.
 	if err := testNode.WalletUnlockPost(newPassword); err != nil {
 		t.Fatal("Failed to unlock wallet")

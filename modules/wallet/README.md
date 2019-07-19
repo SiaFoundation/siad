@@ -1,8 +1,12 @@
 # Wallet
 
-### Wallet Encryption
+### Wallet Encryption Subsystem
 
-This section gives an overview of how encryption is handled within the Sia wallet and refers to the source code within `encrypt.go`. All of the encryption within the wallet is done using the Twofish cipher in Galois Counter Mode and hashing is done using the Blake2B algorithm. 
+This section gives an overview of how encryption is handled within the Sia wallet and refers to the source code within `encrypt.go`. The encryption within the wallet is done using the Twofish cipher in Galois Counter Mode and hashing is done using the Blake2B algorithm.
+
+The following pieces of information are currently being encrypted by the wallet:
+- [Masterkey](#masterkey)
+- [Seed](#seed-encryption)
 
 #### Masterkey
 
