@@ -19,14 +19,14 @@ var (
 )
 
 type (
-	// salt is a randomly generated salt and put at the front of every persistence
-	// object. It is used to make sure that a different encryption key can be used
-	// for every persistence object.
-	salt [crypto.EntropySize]byte
+	// walletSalt is a randomly generated salt and put at the front of every
+	// persistence object. It is used to make sure that a different encryption key
+	// can be used for every persistence object.
+	walletSalt [crypto.EntropySize]byte
 
 	// seedFile stores an encrypted wallet seed on disk.
 	seedFile struct {
-		UID                    salt
+		UID                    walletSalt
 		EncryptionVerification crypto.Ciphertext
 		Seed                   crypto.Ciphertext
 	}

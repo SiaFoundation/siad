@@ -144,7 +144,7 @@ func dbReset(tx *bolt.Tx) error {
 
 	// reinitialize the database with default values
 	wb := tx.Bucket(bucketWallet)
-	wb.Put(keySalt, fastrand.Bytes(len(salt{})))
+	wb.Put(keySalt, fastrand.Bytes(len(walletSalt{})))
 	wb.Put(keyConsensusHeight, encoding.Marshal(uint64(0)))
 	wb.Put(keyAuxiliarySeedFiles, encoding.Marshal([]seedFile{}))
 	wb.Put(keySpendableKeyFiles, encoding.Marshal([]spendableKeyFile{}))
@@ -443,7 +443,7 @@ func dbProcessedTransactionsIterator(tx *bolt.Tx) *processedTransactionsIter {
 }
 
 // dbGetWalletSalt returns the salt used by the wallet to derive encryption keys.
-func dbGetWalletSalt(tx *bolt.Tx) (uid salt) {
+func dbGetWalletSalt(tx *bolt.Tx) (uid walletSalt) {
 	copy(uid[:], tx.Bucket(bucketWallet).Get(keySalt))
 	return
 }

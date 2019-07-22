@@ -8,6 +8,7 @@ import (
 	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"golang.org/x/crypto/pbkdf2"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -31,15 +32,18 @@ var (
 
 // saltedEncryptionKey creates an encryption key that is used to decrypt a
 // specific key file.
-func saltedEncryptionKey(masterKey crypto.CipherKey, uid salt) (key crypto.CipherKey) {
-	key = crypto.NewWalletKey(crypto.HashAll(masterKey, uid))
+func saltedEncryptionKey(masterKey crypto.CipherKey, salt walletSalt) (key crypto.CipherKey) {
+	key = crypto.NewWalletKey(crypto.HashAll(masterKey, salt))
 	return
 }
 
 // walletPasswordEncryptionKey creates an encryption key that is used to
 // encrypt/decrypt the master encryption key.
-func walletPasswordEncryptionKey(seed modules.Seed, uid salt) (key crypto.CipherKey) {
-	key = crypto.NewWalletKey(crypto.HashAll(seed, uid))
+func walletPasswordEncryptionKey(seed modules.Seed, salt walletSalt) (key crypto.CipherKey) {
+	var h crypto.Hash
+	entropy := pbkdf2.Key(seed[:], salt[:], 10000, crypto.HashSize, crypto.NewHash)
+	copy(h[:], entropy)
+	key = crypto.NewWalletKey(h)
 	return
 }
 

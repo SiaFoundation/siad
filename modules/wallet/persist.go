@@ -32,7 +32,7 @@ var (
 
 // spendableKeyFile stores an encrypted spendable key on disk.
 type spendableKeyFile struct {
-	Salt                   salt
+	Salt                   walletSalt
 	EncryptionVerification crypto.Ciphertext
 	SpendableKey           crypto.Ciphertext
 }
@@ -56,7 +56,7 @@ func (w *Wallet) openDB(filename string) (err error) {
 		}
 		// if the wallet does not have a UID, create one
 		if tx.Bucket(bucketWallet).Get(keySalt) == nil {
-			uid := make([]byte, len(salt{}))
+			uid := make([]byte, len(walletSalt{}))
 			fastrand.Read(uid[:])
 			tx.Bucket(bucketWallet).Put(keySalt, uid)
 		}
@@ -199,7 +199,7 @@ func (w *Wallet) CreateBackup(backupFilepath string) error {
 
 // compat112Persist is the structure of the wallet.json file used in v1.1.2
 type compat112Persist struct {
-	UID                    salt
+	UID                    walletSalt
 	EncryptionVerification crypto.Ciphertext
 	PrimarySeedFile        seedFile
 	PrimarySeedProgress    uint64
