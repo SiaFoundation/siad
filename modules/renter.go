@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -557,6 +558,23 @@ type UploadedBackup struct {
 	UploadProgress float64
 }
 
+// A RenterFS supports generic filesystem operations.
+type RenterFS interface {
+	Stat(name string) (os.FileInfo, error)
+	OpenFile(name string, perm int, mode os.FileMode) (RenterFile, error)
+	io.Closer
+}
+
+// A RenterFile supports generic file operations.
+type RenterFile interface {
+	Name() string
+	Stat() (os.FileInfo, error)
+	Readdir(n int) ([]os.FileInfo, error)
+	Dirnames(n int) ([]string, error)
+	io.ReaderAt
+	io.Closer
+}
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -604,6 +622,9 @@ type Renter interface {
 	// CurrentPeriod returns the height at which the current allowance period
 	// began.
 	CurrentPeriod() types.BlockHeight
+
+	// FileSystem returns a filesystem at the given root.
+	FileSystem(root SiaPath) (RenterFS, error)
 
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
