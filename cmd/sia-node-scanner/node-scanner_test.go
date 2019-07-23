@@ -74,6 +74,7 @@ func TestSendShareNodesRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error making new gateway: ", err)
 	}
+	defer mainGateway.Close()
 
 	// Create testing gateways.
 	gateways := make([]*gateway.Gateway, 0, numTestingGateways)
@@ -83,6 +84,7 @@ func TestSendShareNodesRequests(t *testing.T) {
 			t.Fatal("Error making new gateway: ", err)
 		}
 		gateways = append(gateways, g)
+		defer g.Close()
 	}
 
 	// Connect the the 0th testing gateway to all the other ones.
@@ -99,7 +101,7 @@ func TestSendShareNodesRequests(t *testing.T) {
 	}
 
 	// Sleep for a few seconds so the ShareNodes RPCs return the expected result.
-	time.Sleep(5 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	// Test the sendShareNodesRequests function by making sure we get at least 10
 	// peers from the 0th testing gateway.
@@ -145,6 +147,7 @@ func TestRestartScanner(t *testing.T) {
 
 	// Create the testing node scanner.
 	ns := newNodeScanner(testDir)
+	defer ns.gateway.Close()
 
 	// Create a fake persisted set file, using the testing gateway addresses.
 	err = ns.setupPersistFile(ns.persistFile)
@@ -175,8 +178,13 @@ func TestRestartScanner(t *testing.T) {
 	ns.initialize()
 
 	// Shutdown the odd indexed gateways so the scan fails on those addresses.
-	for i := 1; i < numTestingGateways; i += 2 {
-		gateways[i].Close()
+	// Defer shutdown for the other gateways.
+	for i := 0; i < numTestingGateways; i++ {
+		if i%2 == 1 {
+			gateways[i].Close()
+		} else {
+			defer gateways[i].Close()
+		}
 	}
 
 	// Start a scan across the testing gateways.
