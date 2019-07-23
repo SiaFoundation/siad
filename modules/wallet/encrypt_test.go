@@ -532,3 +532,76 @@ func TestChangeKey(t *testing.T) {
 	}
 	postEncryptionTesting(wt.miner, wt.wallet, newKey)
 }
+
+// TestChangeKeyWithSeedCompatV141 tests that a wallet's encryption key can be changed
+// using only the seed for a legacy wallet.
+func TestChangeKeyWithSeedCompatV141(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete the wallet password from disk to simulate a pre-142 wallet.
+	var primarySeed modules.Seed
+	wt.wallet.mu.Lock()
+	copy(primarySeed[:], wt.wallet.primarySeed[:])
+	err = wt.wallet.dbTx.Bucket(bucketWallet).Delete(keyWalletPassword)
+	wt.wallet.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	// Restart wallet.
+	if err := wt.wallet.Close(); err != nil {
+		t.Fatalf("Failed to close wallet: %v", err)
+	}
+	wallet, err := New(wt.cs, wt.tpool, filepath.Join(wt.persistDir, modules.WalletDir))
+	if err != nil {
+		t.Fatalf("Failed to restart wallet: %v", err)
+	}
+	wt.wallet = wallet
+
+	// Unlock the wallet.
+	err = wt.wallet.Unlock(wt.walletMasterKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newKey := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
+	origBal, _, _, err := wt.wallet.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = wt.wallet.ChangeKeyWithSeed(primarySeed, newKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = wt.wallet.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = wt.wallet.Unlock(wt.walletMasterKey)
+	if err == nil {
+		t.Fatal("expected unlock to fail with the original key")
+	}
+
+	err = wt.wallet.Unlock(newKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newBal, _, _, err := wt.wallet.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newBal.Cmp(origBal) != 0 {
+		t.Fatal("wallet with changed key did not have the same balance")
+	}
+}

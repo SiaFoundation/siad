@@ -3180,7 +3180,7 @@ Changes the wallet's encryption key.
 ### Query String Parameters
 #### REQUIRED
 **encryptionpassword** | string
-encryptionpassword is the wallet's current encryption password.  
+encryptionpassword is the wallet's current encryption password or primary seed.  
 
 **newpassword** | string
 newpassword is the new password for the wallet.  

@@ -917,7 +917,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	t.Log("testRemoteRepair fileSize choice:", fileSize)
 
-	// Set the redundancy for the upload.
+	// Set fileSize and redundancy for upload
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
