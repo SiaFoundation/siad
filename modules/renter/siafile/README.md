@@ -15,6 +15,14 @@ improves disk performance. Overall the SiaFile package is designed to
 minimize disk I/O operations and to keep the memory footprint as small as
 possible without sacrificing performance.
 
+#### Benchmarks
+- Writing to a random chunk of a SiaFile
+    - i9-9900K with Intel SSDPEKNW010T8 -> 200 writes/second
+- Reading a random chunk of a SiaFile
+    - i9-9900K with Intel SSDPEKNW010T8 -> 50,000 reads/second
+- Loading a a SiaFile's header into memory
+    - i9-9900K with Intel SSDPEKNW010T8 -> 20,000 reads/second
+
 Structure of the SiaFile:
 - Header
     - [Metadata](#metadata)

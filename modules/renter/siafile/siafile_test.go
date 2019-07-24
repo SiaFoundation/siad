@@ -647,3 +647,146 @@ func TestFileExpiration(t *testing.T) {
 		t.Error("file did not report lowest WindowStart")
 	}
 }
+
+// BenchmarkLoadSiaFile benchmarks loading an existing siafile's metadata into
+// memory.
+func BenchmarkLoadSiaFile(b *testing.B) {
+	// Get new file params
+	siaFilePath, siaPath, source, _, sk, _, _, fileMode := newTestFileParams()
+	// Create the path to the file.
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		b.Fatal(err)
+	}
+	// Create the file.
+	wal, _ := newTestWAL()
+	rc, err := NewRSSubCode(10, 20, crypto.SegmentSize)
+	if err != nil {
+		b.Fatal(err)
+	}
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := sf.GrowNumChunks(10); err != nil { // Grow file to 10 chunks
+		b.Fatal(err)
+	}
+	// Add pieces to chunks until every chunk has full redundancy.
+	hostKeys := make([]types.SiaPublicKey, rc.NumPieces())
+	for i := range hostKeys {
+		fastrand.Read(hostKeys[i].Key)
+	}
+	for pieceIndex := 0; pieceIndex < rc.NumPieces(); pieceIndex++ {
+		for chunkIndex := 0; chunkIndex < int(sf.NumChunks()); chunkIndex++ {
+			if err := sf.AddPiece(hostKeys[pieceIndex], uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	b.ResetTimer()
+	for loads := 0; loads < b.N; loads++ {
+		sf, err = LoadSiaFile(siaFilePath, wal)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkRandomChunkWrite benchmarks writing pieces to random chunks within a
+// siafile.
+func BenchmarkRandomChunkWrite(b *testing.B) {
+	// Get new file params
+	siaFilePath, siaPath, source, _, sk, _, _, fileMode := newTestFileParams()
+	// Create the path to the file.
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		b.Fatal(err)
+	}
+	// Create the file.
+	wal, _ := newTestWAL()
+	rc, err := NewRSSubCode(10, 20, crypto.SegmentSize)
+	if err != nil {
+		b.Fatal(err)
+	}
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := sf.GrowNumChunks(100); err != nil { // Grow file to 100 chunks
+		b.Fatal(err)
+	}
+	// Add pieces to random chunks until every chunk has full redundancy.
+	writes := 0
+	piecePerm := fastrand.Perm(rc.NumPieces())
+	chunkPerm := fastrand.Perm(int(sf.NumChunks()))
+	hostKeys := make([]types.SiaPublicKey, rc.NumPieces())
+	for i := range hostKeys {
+		fastrand.Read(hostKeys[i].Key)
+	}
+	b.ResetTimer()
+	for writes < b.N {
+		for _, pieceIndex := range piecePerm {
+			for _, chunkIndex := range chunkPerm {
+				if err := sf.AddPiece(hostKeys[pieceIndex], uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
+					b.Fatal(err)
+				}
+				writes++
+				if writes == b.N {
+					return
+				}
+			}
+		}
+	}
+}
+
+// BenchmarkRandomChunkRead benchmarks reading pieces of a random chunks within
+// a siafile.
+func BenchmarkRandomChunkRead(b *testing.B) {
+	// Get new file params
+	siaFilePath, siaPath, source, _, sk, _, _, fileMode := newTestFileParams()
+	// Create the path to the file.
+	dir, _ := filepath.Split(siaFilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		b.Fatal(err)
+	}
+	// Create the file.
+	wal, _ := newTestWAL()
+	rc, err := NewRSSubCode(10, 20, crypto.SegmentSize)
+	if err != nil {
+		b.Fatal(err)
+	}
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := sf.GrowNumChunks(10); err != nil { // Grow file to 10 chunks
+		b.Fatal(err)
+	}
+	// Add pieces to chunks until every chunk has full redundancy.
+	hostKeys := make([]types.SiaPublicKey, rc.NumPieces())
+	for i := range hostKeys {
+		fastrand.Read(hostKeys[i].Key)
+	}
+	for pieceIndex := 0; pieceIndex < rc.NumPieces(); pieceIndex++ {
+		for chunkIndex := 0; chunkIndex < int(sf.NumChunks()); chunkIndex++ {
+			if err := sf.AddPiece(hostKeys[pieceIndex], uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	// Read random pieces
+	reads := 0
+	chunkPerm := fastrand.Perm(int(sf.NumChunks()))
+	b.ResetTimer()
+	for reads < b.N {
+		for _, chunkIndex := range chunkPerm {
+			if _, err := sf.Pieces(uint64(chunkIndex)); err != nil {
+				b.Fatal(err)
+			}
+			reads++
+			if reads == b.N {
+				return
+			}
+		}
+	}
+}
