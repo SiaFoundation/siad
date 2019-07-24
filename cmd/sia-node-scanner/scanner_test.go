@@ -12,15 +12,15 @@ import (
 	siaPersist "gitlab.com/NebulousLabs/Sia/persist"
 )
 
-// 1 gateway + 10 peers
-const numTestingGateways = 10
+const numTestingGateways = 3
 
 const testPersistFile = "testdata/persisted-node-set.json"
 
 // Check that the testdata set is loaded with sane values.
 func TestLoad(t *testing.T) {
+	now := time.Now()
 	data := persistData{
-		StartTime: time.Now().Unix(),
+		StartTime: now,
 		NodeStats: make(map[modules.NetAddress]nodeStats),
 	}
 
@@ -30,7 +30,7 @@ func TestLoad(t *testing.T) {
 	}
 
 	// Make sure StartTime has a reasonable (i.e. nonzero) value.
-	if data.StartTime == 0 {
+	if data.StartTime.IsZero() {
 		t.Fatal("Expected nonzero StartTime value")
 	}
 
@@ -46,10 +46,10 @@ func TestLoad(t *testing.T) {
 		if addr == "" {
 			ok = false
 		}
-		if nodeStats.FirstConnectionTime == 0 {
+		if nodeStats.FirstConnectionTime.IsZero() {
 			ok = false
 		}
-		if nodeStats.LastSuccessfulConnectionTime == 0 {
+		if nodeStats.LastSuccessfulConnectionTime.IsZero() {
 			ok = false
 		}
 		if nodeStats.RecentUptime == 0 {
@@ -89,7 +89,7 @@ func TestSendShareNodesRequests(t *testing.T) {
 
 	// Connect the the 0th testing gateway to all the other ones.
 	for i := 1; i < numTestingGateways; i++ {
-		err := gateways[0].Connect(gateways[i].Address())
+		err := gateways[i].Connect(gateways[0].Address())
 		if err != nil {
 			t.Fatal("Error connecting testing gateways: ", err)
 		}
@@ -100,14 +100,11 @@ func TestSendShareNodesRequests(t *testing.T) {
 		t.Fatal("Error connecting testing gateways: ", err)
 	}
 
-	// Sleep for a few seconds so the ShareNodes RPCs return the expected result.
-	time.Sleep(3 * time.Second)
-
 	// Test the sendShareNodesRequests function by making sure we get at least 10
 	// peers from the 0th testing gateway.
 	work := workAssignment{
 		node:           gateways[0].Address(),
-		maxRPCAttempts: 10,
+		maxRPCAttempts: 5,
 	}
 	res := sendShareNodesRequests(mainGateway, work)
 
@@ -154,7 +151,7 @@ func TestRestartScanner(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error when creating persist")
 	}
-	recentPast := time.Now().Unix() - 10000
+	recentPast := time.Now().Add(-10 * time.Minute)
 	testData := persistData{
 		StartTime: recentPast,
 		NodeStats: make(map[modules.NetAddress]nodeStats),
@@ -205,17 +202,17 @@ func TestRestartScanner(t *testing.T) {
 	for i := 0; i < numTestingGateways; i++ {
 		stats := testData2.NodeStats[gatewayAddrs[i]]
 		if i%2 == 0 {
-			if stats.LastSuccessfulConnectionTime <= stats.FirstConnectionTime {
-				t.Log("Expected test scan to update connection time", i, stats)
+			if !stats.LastSuccessfulConnectionTime.After(stats.FirstConnectionTime) {
+				t.Fatal("Expected test scan to update connection time", i, stats)
 			}
 			if stats.RecentUptime < stats.TotalUptime {
-				t.Log("Expected recent uptime to match total uptime if scan succeeded", i, stats)
+				t.Fatal("Expected recent uptime to match total uptime if scan succeeded", i, stats)
 			}
 			if stats.UptimePercentage < 100.0 {
-				t.Log("Expected perfect uptime", i, stats)
+				t.Fatal("Expected perfect uptime", i, stats)
 			}
 		} else {
-			if stats.LastSuccessfulConnectionTime > stats.FirstConnectionTime {
+			if stats.LastSuccessfulConnectionTime.After(stats.FirstConnectionTime) {
 				t.Fatal("Expected test scan not to update connection time", i, stats)
 			}
 			if stats.RecentUptime != 0 {

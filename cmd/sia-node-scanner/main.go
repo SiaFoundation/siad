@@ -74,27 +74,27 @@ var persistMetadata = siaPersist.Metadata{
 
 type persistData struct {
 	// StartTime is the Unix timestamp of the first scan's start.
-	StartTime int64
+	StartTime time.Time
 
 	// Keep connection time and uptime stats for each node.
 	NodeStats map[modules.NetAddress]nodeStats
 }
 
 type nodeStats struct {
-	// Unix timestamp of first succesful connection to this node.
+	// Timestamp of first succesful connection to this node.
 	// Used for total uptime and uptime percentage calculations.
-	FirstConnectionTime int64
+	FirstConnectionTime time.Time
 
 	// Keep track of last time we successfully connected to each node.
-	LastSuccessfulConnectionTime int64
+	LastSuccessfulConnectionTime time.Time
 
-	// RecentUptime counts the number of seconds since the node was
+	// RecentUptime counts the number of nanoseconds since the node was
 	// last down (or since first time scanned if it hasn't failed yet).
-	RecentUptime int64
+	RecentUptime time.Duration
 
-	// TotalUptime counts the total number of seconds this node has been up since
+	// TotalUptime counts the total number of nanoseconds this node has been up since
 	// the time of its first scan.
-	TotalUptime int64
+	TotalUptime time.Duration
 
 	// UptimePercentage is TotalUptime divided by time since
 	// FirstConnectionTime.
@@ -115,7 +115,7 @@ type workAssignment struct {
 // or an error from ShareNodes.
 type nodeScanResult struct {
 	Addr      modules.NetAddress
-	Timestamp int64
+	Timestamp time.Time
 	Err       error
 	nodes     map[modules.NetAddress]struct{}
 }
@@ -142,8 +142,8 @@ const workChSize = 1000
 
 // pruneAge is the maxiumum allowed time in seconds since the last successful connection with a
 // node before we remove it from the persisted set. It is 1 month in seconds.
-// 60 seconds/minute * 60 minutes/hour * 24 hours/day * 30 days/month
-const pruneAge = 60 * 60 * 24 * 30
+// 1 hour * 24 hours/day * 30 days/month
+const pruneAge = time.Hour * 24 * 30
 
 func main() {
 	dirPtr := flag.String("dir", "", "Directory where the node scanner will store its results")
@@ -228,11 +228,11 @@ func (ns *nodeScanner) initialize() {
 			NodeStats: make(map[modules.NetAddress]nodeStats),
 		}
 
-		now := time.Now().Unix()
+		now := time.Now()
 		for node, nodeStats := range ns.data.NodeStats {
 			// Prune peers we haven't connected to in more than pruneAge
 			// by not adding them to the new set.
-			if now-nodeStats.LastSuccessfulConnectionTime < pruneAge {
+			if now.Sub(nodeStats.LastSuccessfulConnectionTime) < pruneAge {
 				prunedPersistedData.NodeStats[node] = nodeStats
 				ns.queue = append(ns.queue, node)
 			}
@@ -406,7 +406,7 @@ func startWorker(g *gateway.Gateway, workCh <-chan workAssignment, resultCh chan
 		if err != nil {
 			resultCh <- nodeScanResult{
 				Addr:      work.node,
-				Timestamp: time.Now().Unix(),
+				Timestamp: time.Now(),
 				Err:       err,
 				nodes:     nil,
 			}
@@ -429,7 +429,7 @@ func sendShareNodesRequests(g *gateway.Gateway, work workAssignment) nodeScanRes
 	result := nodeScanResult{
 		Addr:      work.node,
 		Err:       nil,
-		Timestamp: time.Now().Unix(),
+		Timestamp: time.Now(),
 		nodes:     make(map[modules.NetAddress]struct{}),
 	}
 
@@ -477,14 +477,14 @@ func (ns *nodeScanner) updateNodeStats(res nodeScanResult) {
 	if res.Err != nil {
 		stats.RecentUptime = 0
 	} else {
-		timeElapsed := res.Timestamp - stats.LastSuccessfulConnectionTime
+		timeElapsed := res.Timestamp.Sub(stats.LastSuccessfulConnectionTime)
 		stats.LastSuccessfulConnectionTime = res.Timestamp
 		stats.RecentUptime += timeElapsed
 		stats.TotalUptime += timeElapsed
 	}
 	// Subtract 1 from TotalUptime because we give everyone an extra second to
 	// start. This makes sure the uptime rate isn't higher than 1.
-	stats.UptimePercentage = 100.0 * float64(stats.TotalUptime-1) / float64(res.Timestamp-stats.FirstConnectionTime)
+	stats.UptimePercentage = 100.0 * float64(stats.TotalUptime-1) / float64(res.Timestamp.Sub(stats.FirstConnectionTime))
 
 	ns.data.NodeStats[res.Addr] = stats
 }
@@ -492,7 +492,7 @@ func (ns *nodeScanner) updateNodeStats(res nodeScanResult) {
 func (ns *nodeScanner) setupPersistFile(fileName string) error {
 	ns.persistFile = fileName
 	ns.data = persistData{
-		StartTime: time.Now().Unix(),
+		StartTime: time.Now(),
 		NodeStats: make(map[modules.NetAddress]nodeStats),
 	}
 
