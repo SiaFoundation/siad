@@ -3,9 +3,17 @@ The SiaFile contains all the information about an uploaded file that is
 required to download it plus additional metadata about the file. The SiaFile
 is split up into 4kib pages. The header of the SiaFile is located within the
 first page of the SiaFile. More pages will be allocated should the header
-outgrow the page. Contrary to the chunks which are located behind the header,
-the metadata and host public key table are always kept in memory while chunks
-are loaded on demand.
+outgrow the page. The metadata and host public key table are kept in memory
+for as long as the siafile is open, and the chunks are loaded and unloaded as
+they are accessed.
+
+Since SiaFile's are rapidly accessed during downloads and repairs, the
+SiaFile was built with the requirement that all reads and writes must be able
+to happen in contant time, knowing only the offset of thte logical data
+within the SiaFile. To achieve that, all the data is page-aligned which also
+improves disk performance. Overall the SiaFile package is designed to
+minimize disk I/O operations and to keep the memory footprint as small as
+possible without sacrificing performance.
 
 Structure of the SiaFile:
 - Header
@@ -23,11 +31,11 @@ compatibility and readability. The encoded metadata is written to the
 beginning of the header.
 
 ### Host Public Key Table
-Contrary to the metadata, the host public key table uses the [Sia Binary
+The host public key table uses the [Sia Binary
 Encoding](./../../../doc/Encoding.md) and is written to the end of the
 header. As the table grows, it will grow towards the front of the header
 while the metadata grows towards the end. Should metadata and host public key
-table every overlap, a new page will be allocated for the header. The host
+table ever overlap, a new page will be allocated for the header. The host
 public key table is a table of all the hosts that contain pieces of the
 corresponding SiaFile.
 
@@ -42,28 +50,28 @@ be resolved to a host's public key using the host public key table. The
 
 ## Subsystems
 The SiaFile is split up into the following subsystems.
-- [Encoding Subsystem](#encoding-subsystem)
+- [Erasure Coding Subsystem](#erasure-coding-subsystem)
 - [Persistence Subsystem](#persistence-subsystem)
 - [SiaFileSet Subsystem](#siafileset-subsystem)
 - [Snapshot Subsystem](#snapshot-subsystem)
 
-### Encoding Subsystem
+### Erasure Coding Subsystem
 **Key Files**
-- [encoding.go](./encoding.go)
 - [rscode.go](./rscode.go)
 - [rssubcode.go](./rssubcode.go)
 
-The encoding substem contains the code required to serialize the individual
-parts of a SiaFile before writing it to disk and also the code for erasure
-coding data.
+The erasure coding subsystem contains the code required to split up chunks
+into multiple pieces for uploading them to hosts.
 
 ### Persistence Subsystem
 **Key Files**
+- [encoding.go](./encoding.go)
 - [persist.go](./persist.go)
 
-The persistence subsystem handles all of the disk I/O. It provides helper
-functions to read the SiaFile from disk and atomically write to disk using
-the [writeaheadlog](https://gitlab.com/NebulousLabs/writeaheadlog) package.
+The persistence subsystem handles all of the disk I/O and marshaling of
+datatypes. It provides helper functions to read the SiaFile from disk and
+atomically write to disk using the
+[writeaheadlog](https://gitlab.com/NebulousLabs/writeaheadlog) package.
 
 ### SiaFileSet Subsystem
 **Key Files**
