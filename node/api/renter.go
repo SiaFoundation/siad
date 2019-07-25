@@ -162,6 +162,13 @@ type (
 		Files []modules.FileInfo `json:"files"`
 	}
 
+	// RenterFUSEInfo contains information about the currently-mounted FUSE
+	// filesystem.
+	RenterFUSEInfo struct {
+		SiaPath modules.SiaPath `json:"siapath"`
+		Mount   string          `json:"mount"`
+	}
+
 	// RenterLoad lists files that were loaded into the renter.
 	RenterLoad struct {
 		FilesAdded []string `json:"filesadded"`
@@ -992,6 +999,39 @@ func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.R
 		StartTimeUnix:        di.StartTimeUnix,
 		TotalDataTransferred: di.TotalDataTransferred,
 	})
+}
+
+// renterFUSEHandler handles the API call to /renter/fuse.
+func (api *API) renterFUSEHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	fi := api.fuse.Info()
+	WriteJSON(w, RenterFUSEInfo{
+		SiaPath: fi.SiaPath,
+		Mount:   fi.Mount,
+	})
+}
+
+// renterFUSEMountHandler handles the API call to /renter/fuse/mount.
+func (api *API) renterFUSEMountHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	sp, err := modules.NewSiaPath(req.FormValue("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	mount := req.FormValue("mount")
+	if err := api.fuse.Mount(mount, sp); err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterFUSEUnmountHandler handles the API call to /renter/fuse/unmount.
+func (api *API) renterFUSEUnmountHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	if err := api.fuse.Unmount(); err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
 }
 
 // renterRecoveryScanHandlerPOST handles the API call to /renter/recoveryscan.

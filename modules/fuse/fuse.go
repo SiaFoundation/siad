@@ -64,7 +64,9 @@ func (f *FUSE) Mount(root string, sp modules.SiaPath) error {
 }
 
 func (f *FUSE) Unmount() error {
-	return f.srv.Unmount()
+	err := f.srv.Unmount()
+	f.srv = nil
+	return err
 }
 
 func errToStatus(op, name string, err error) fuse.Status {

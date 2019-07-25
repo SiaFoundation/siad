@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/fuse"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -96,6 +97,7 @@ func HttpPOSTAuthenticated(url string, data string, password string) (resp *http
 type API struct {
 	cs       modules.ConsensusSet
 	explorer modules.Explorer
+	fuse     *fuse.FUSE
 	gateway  modules.Gateway
 	host     modules.Host
 	miner    modules.Miner
@@ -129,6 +131,7 @@ func (api *API) SetModules(cs modules.ConsensusSet, e modules.Explorer, g module
 	api.host = h
 	api.miner = m
 	api.renter = r
+	api.fuse = fuse.New(r)
 	api.tpool = tp
 	api.wallet = w
 	api.buildHTTPRoutes()
@@ -141,6 +144,7 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 	api := &API{
 		cs:                cs,
 		explorer:          e,
+		fuse:              fuse.New(r),
 		gateway:           g,
 		host:              h,
 		miner:             m,

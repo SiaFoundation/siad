@@ -119,7 +119,7 @@ func (f *fsFile) Dirnames(n int) ([]string, error) {
 
 func (f *fsFile) ReadAt(p []byte, off int64) (int, error) {
 	var buf bytes.Buffer
-	err := f.r.Download(modules.RenterDownloadParameters{
+	_, _, err := f.r.Download(modules.RenterDownloadParameters{
 		SiaPath:    f.sp,
 		Httpwriter: &buf,
 		Offset:     uint64(off),
