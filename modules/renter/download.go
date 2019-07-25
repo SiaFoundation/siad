@@ -377,6 +377,10 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		if closer, ok := dw.(io.Closer); ok {
 			return closer.Close()
 		}
+		// sanity check that we close files.
+		if destinationType == "file" {
+			build.Critical("file wasn't closed after download")
+		}
 		return nil
 	})
 
