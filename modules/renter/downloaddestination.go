@@ -87,6 +87,11 @@ type downloadDestinationFile struct {
 	f *os.File
 }
 
+// Close implements the io.Closer interface for downloadDestinationFile.
+func (ddf *downloadDestinationFile) Close() error {
+	return ddf.f.Close()
+}
+
 // WritePieces will decode the pieces and write them to a file at the provided
 // offset, using the provided length.
 func (ddf *downloadDestinationFile) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
