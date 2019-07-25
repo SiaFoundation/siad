@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -692,9 +694,17 @@ func BenchmarkLoadSiaFile(b *testing.B) {
 	}
 }
 
+func BenchmarkRandomChunkWriteSingleThreaded(b *testing.B) {
+	benchmarkRandomChunkWrite(1, b)
+}
+func BenchmarkRandomChunkWriteMultiThreaded(b *testing.B) {
+	// 50 seems reasonable since it matches the number of hosts we usually have contracts with
+	benchmarkRandomChunkWrite(50, b)
+}
+
 // BenchmarkRandomChunkWrite benchmarks writing pieces to random chunks within a
 // siafile.
-func BenchmarkRandomChunkWrite(b *testing.B) {
+func benchmarkRandomChunkWrite(numThreads int, b *testing.B) {
 	// Get new file params
 	siaFilePath, siaPath, source, _, sk, _, _, fileMode := newTestFileParams()
 	// Create the path to the file.
@@ -716,27 +726,43 @@ func BenchmarkRandomChunkWrite(b *testing.B) {
 		b.Fatal(err)
 	}
 	// Add pieces to random chunks until every chunk has full redundancy.
-	writes := 0
+	var writes uint64
 	piecePerm := fastrand.Perm(rc.NumPieces())
 	chunkPerm := fastrand.Perm(int(sf.NumChunks()))
 	hostKeys := make([]types.SiaPublicKey, rc.NumPieces())
 	for i := range hostKeys {
 		fastrand.Read(hostKeys[i].Key)
 	}
-	b.ResetTimer()
-	for writes < b.N {
-		for _, pieceIndex := range piecePerm {
-			for _, chunkIndex := range chunkPerm {
-				if err := sf.AddPiece(hostKeys[pieceIndex], uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
-					b.Fatal(err)
-				}
-				writes++
-				if writes == b.N {
-					return
+	start := make(chan struct{})
+	worker := func() {
+		<-start
+		for atomic.LoadUint64(&writes) < uint64(b.N) {
+			for _, pieceIndex := range piecePerm {
+				for _, chunkIndex := range chunkPerm {
+					if err := sf.AddPiece(hostKeys[pieceIndex], uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
+						b.Fatal(err)
+					}
+					atomic.AddUint64(&writes, 1)
+					if atomic.LoadUint64(&writes) >= uint64(b.N) {
+						return
+					}
 				}
 			}
 		}
 	}
+	// Spawn worker threads.
+	var wg sync.WaitGroup
+	for i := 0; i < numThreads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			worker()
+		}()
+	}
+	// Reset timer and start threads.
+	b.ResetTimer()
+	close(start)
+	wg.Wait()
 }
 
 // BenchmarkRandomChunkRead benchmarks reading pieces of a random chunks within

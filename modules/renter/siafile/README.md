@@ -15,15 +15,17 @@ improves disk performance. Overall the SiaFile package is designed to
 minimize disk I/O operations and to keep the memory footprint as small as
 possible without sacrificing performance.
 
-#### Benchmarks
+## Benchmarks
 - Writing to a random chunk of a SiaFile
+    - i9-9900K with Intel SSDPEKNW010T8 -> 200 writes/second
+- Writing to a random chunk of a SiaFile (multithreaded)
     - i9-9900K with Intel SSDPEKNW010T8 -> 200 writes/second
 - Reading a random chunk of a SiaFile
     - i9-9900K with Intel SSDPEKNW010T8 -> 50,000 reads/second
 - Loading a a SiaFile's header into memory
     - i9-9900K with Intel SSDPEKNW010T8 -> 20,000 reads/second
 
-Structure of the SiaFile:
+## Structure of the SiaFile:
 - Header
     - [Metadata](#metadata)
     - [Host Public Key Table](#host-public-key-table)
@@ -59,6 +61,7 @@ be resolved to a host's public key using the host public key table. The
 ## Subsystems
 The SiaFile is split up into the following subsystems.
 - [Erasure Coding Subsystem](#erasure-coding-subsystem)
+- [File Format Subsystem](#file-format-subsystem)
 - [Persistence Subsystem](#persistence-subsystem)
 - [SiaFileSet Subsystem](#siafileset-subsystem)
 - [Snapshot Subsystem](#snapshot-subsystem)
@@ -68,8 +71,13 @@ The SiaFile is split up into the following subsystems.
 - [rscode.go](./rscode.go)
 - [rssubcode.go](./rssubcode.go)
 
-The erasure coding subsystem contains the code required to split up chunks
-into multiple pieces for uploading them to hosts.
+### File Format Subsystem
+**Key Files**
+- [siafile.go](./siafile.go)
+- [metadata.go](./metadata.go)
+
+The file format subsystem contains the type definitions for the SiaFile
+format and most of the exported methods of the package.
 
 ### Persistence Subsystem
 **Key Files**
