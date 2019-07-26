@@ -19,14 +19,14 @@ var (
 )
 
 type (
-	// uniqueID is a unique id randomly generated and put at the front of every
-	// persistence object. It is used to make sure that a different encryption
-	// key can be used for every persistence object.
-	uniqueID [crypto.EntropySize]byte
+	// walletSalt is a randomly generated salt and put at the front of every
+	// persistence object. It is used to make sure that a different encryption key
+	// can be used for every persistence object.
+	walletSalt [crypto.EntropySize]byte
 
 	// seedFile stores an encrypted wallet seed on disk.
 	seedFile struct {
-		UID                    uniqueID
+		UID                    walletSalt
 		EncryptionVerification crypto.Ciphertext
 		Seed                   crypto.Ciphertext
 	}
@@ -70,7 +70,7 @@ func generateKeys(seed modules.Seed, start, n uint64) []spendableKey {
 func createSeedFile(masterKey crypto.CipherKey, seed modules.Seed) seedFile {
 	var sf seedFile
 	fastrand.Read(sf.UID[:])
-	sek := uidEncryptionKey(masterKey, sf.UID)
+	sek := saltedEncryptionKey(masterKey, sf.UID)
 	sf.EncryptionVerification = sek.EncryptBytes(verificationPlaintext)
 	sf.Seed = sek.EncryptBytes(seed[:])
 	return sf
@@ -79,7 +79,7 @@ func createSeedFile(masterKey crypto.CipherKey, seed modules.Seed) seedFile {
 // decryptSeedFile decrypts a seed file using the encryption key.
 func decryptSeedFile(masterKey crypto.CipherKey, sf seedFile) (seed modules.Seed, err error) {
 	// Verify that the provided master key is the correct key.
-	decryptionKey := uidEncryptionKey(masterKey, sf.UID)
+	decryptionKey := saltedEncryptionKey(masterKey, sf.UID)
 	err = verifyEncryption(decryptionKey, sf.EncryptionVerification)
 	if err != nil {
 		return modules.Seed{}, err

@@ -7,8 +7,10 @@ import (
 	"strconv"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 )
 
 // WalletAddressGet requests a new address from the /wallet/address endpoint
@@ -32,6 +34,16 @@ func (c *Client) WalletChangePasswordPost(currentPassword, newPassword string) (
 	values.Set("encryptionpassword", currentPassword)
 	err = c.post("/wallet/changepassword", values.Encode(), nil)
 	return
+}
+
+// WalletChangePasswordWithSeedPost uses the /wallet/changepassword endpoint to
+// change the password used to encrypt the wallet.
+func (c *Client) WalletChangePasswordWithSeedPost(seed modules.Seed, newPassword string) (err error) {
+	seedStr, err := modules.SeedToString(seed, mnemonics.DictionaryID("english"))
+	if err != nil {
+		return err
+	}
+	return c.WalletChangePasswordPost(seedStr, newPassword)
 }
 
 // WalletInitPost uses the /wallet/init endpoint to initialize and encrypt a
