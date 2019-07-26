@@ -62,8 +62,13 @@ func (fs *fsImpl) OpenFile(name string, perm int, mode os.FileMode) (modules.Ren
 	if perm != os.O_RDONLY {
 		return nil, errors.New("read-only filesystem")
 	}
-	if _, err := fs.Stat(name); err != nil {
+	if stat, err := fs.Stat(name); err != nil {
 		return nil, err
+	} else if stat.IsDir() {
+		return &fsDir{
+			sp: fs.path(name),
+			r:  fs.r,
+		}, nil
 	}
 	return &fsFile{
 		sp: fs.path(name),
@@ -72,6 +77,56 @@ func (fs *fsImpl) OpenFile(name string, perm int, mode os.FileMode) (modules.Ren
 }
 
 func (fs *fsImpl) Close() error {
+	return nil
+}
+
+type fsDir struct {
+	sp modules.SiaPath
+	r  *Renter
+}
+
+func (d *fsDir) Readdir(n int) ([]os.FileInfo, error) {
+	fis, err := d.r.FileList(d.sp, false, true)
+	if err != nil {
+		return nil, err
+	}
+	dis, err := d.r.DirList(d.sp)
+	if err != nil {
+		return nil, err
+	}
+	var infos []os.FileInfo
+	for _, di := range dis {
+		infos = append(infos, dirInfoShim{di})
+	}
+	for _, fi := range fis {
+		infos = append(infos, fileInfoShim{fi})
+	}
+	return infos, nil
+}
+
+func (d *fsDir) Dirnames(n int) ([]string, error) {
+	infos, err := d.Readdir(n)
+	names := make([]string, len(infos))
+	for i := range names {
+		names[i] = infos[i].Name()
+	}
+	return names, err
+}
+
+func (d *fsDir) Name() string {
+	return d.sp.String()
+}
+
+func (d *fsDir) Stat() (os.FileInfo, error) {
+	di, err := d.r.staticDirSet.DirInfo(d.sp)
+	return dirInfoShim{di}, err
+}
+
+func (d *fsDir) ReadAt(p []byte, off int64) (int, error) {
+	return 0, errors.New("cannot call ReadAt on directory")
+}
+
+func (d *fsDir) Close() error {
 	return nil
 }
 
@@ -90,31 +145,11 @@ func (f *fsFile) Stat() (os.FileInfo, error) {
 }
 
 func (f *fsFile) Readdir(n int) ([]os.FileInfo, error) {
-	fis, err := f.r.FileList(f.sp, false, true)
-	if err != nil {
-		return nil, err
-	}
-	dis, err := f.r.DirList(f.sp)
-	if err != nil {
-		return nil, err
-	}
-	var infos []os.FileInfo
-	for _, di := range dis {
-		infos = append(infos, dirInfoShim{di})
-	}
-	for _, fi := range fis {
-		infos = append(infos, fileInfoShim{fi})
-	}
-	return infos, nil
+	return nil, errors.New("cannot call Readdir on file")
 }
 
 func (f *fsFile) Dirnames(n int) ([]string, error) {
-	infos, err := f.Readdir(n)
-	names := make([]string, len(infos))
-	for i := range names {
-		names[i] = infos[i].Name()
-	}
-	return names, err
+	return nil, errors.New("cannot call Dirnames on file")
 }
 
 func (f *fsFile) ReadAt(p []byte, off int64) (int, error) {
