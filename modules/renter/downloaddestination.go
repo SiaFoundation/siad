@@ -84,7 +84,8 @@ func (dw *downloadDestinationBuffer) WritePieces(_ modules.ErasureCoder, pieces 
 
 // downloadDestinationFile wraps an os.File into a downloadDestination.
 type downloadDestinationFile struct {
-	f *os.File
+	mu sync.Mutex
+	f  *os.File
 }
 
 // Close implements the io.Closer interface for downloadDestinationFile.
@@ -95,6 +96,8 @@ func (ddf *downloadDestinationFile) Close() error {
 // WritePieces will decode the pieces and write them to a file at the provided
 // offset, using the provided length.
 func (ddf *downloadDestinationFile) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
+	ddf.mu.Lock()
+	defer ddf.mu.Unlock()
 	if _, err := ddf.f.Seek(offset, io.SeekStart); err != nil {
 		return err
 	}
