@@ -106,7 +106,7 @@ func (uc *unfinishedUploadChunk) managedNotifyStandbyWorkers() {
 	uc.mu.Unlock()
 
 	for i := 0; i < len(standbyWorkers); i++ {
-		standbyWorkers[i].managedQueueUploadChunk(uc)
+		standbyWorkers[i].callQueueUploadChunk(uc)
 	}
 }
 
@@ -160,7 +160,7 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	}
 	r.staticWorkerPool.mu.RUnlock()
 	for _, worker := range workers {
-		worker.managedQueueUploadChunk(uc)
+		worker.callQueueUploadChunk(uc)
 	}
 }
 

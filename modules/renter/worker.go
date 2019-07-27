@@ -86,6 +86,14 @@ type worker struct {
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
 }
 
+// managedWake needs to be called any time that a job queued.
+func (w *worker) managedWake() {
+	select {
+	case w.wakeChan <- struct{}{}:
+	default:
+	}
+}
+
 // threadedWorkLoop continually checks if work has been issued to a worker. The
 // work loop checks for different types of work in a specific order, forming a
 // priority queue for the various types of work. It is possible for continuous
@@ -100,6 +108,8 @@ type worker struct {
 // the worker has because the worker object will be kept in memory via the
 // worker map.
 func (w *worker) threadedWorkLoop() {
+	// Ensure that all queued jobs are gracefully cleaned up when the worker is
+	// shut down.
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
@@ -164,5 +174,19 @@ func (w *worker) threadedWorkLoop() {
 		case <-w.renter.tg.StopChan():
 			return
 		}
+	}
+}
+
+// newWorker will create and return a worker that is ready to receive jobs.
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
+	return &worker{
+		staticHostPubKey: hostPubKey,
+
+		downloadChan: make(chan struct{}, 1),
+		killChan:     make(chan struct{}),
+		uploadChan:   make(chan struct{}, 1),
+		wakeChan:     make(chan struct{}, 1),
+
+		renter: r,
 	}
 }

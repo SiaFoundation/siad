@@ -574,7 +574,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 
 	// Update the worker pool so that the changes are immediately apparent to
 	// users.
-	r.staticWorkerPool.managedUpdate()
+	r.staticWorkerPool.callUpdate()
 	return nil
 }
 

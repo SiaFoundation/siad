@@ -97,14 +97,72 @@ responsibilities.
 **Key Files**
  - [worker.go](./worker.go)
  - [workerdownload.go](./workerdownload.go)
+ - [workerfetchbackups.go](./workerfetchbackups.go)
+ - [workerpool.go](./workerpool.go)
  - [workerupload.go](./workerupload.go)
 
-*TODO* 
-  - expand subsystem description
-
 The worker subsystem is the interface between the renter and the hosts. All
-actions (with the exception of some legacy actions that are going to be migrated
-over) that involve working with hosts will pass through the worker. 
+actions (with the exception of some legacy actions that are currently being
+updated) that involve working with hosts will pass through the worker subsystem.
+
+#### The Worker Pool
+
+The heart of the worker subsystem is the worker pool, implemented in
+[workerpool.go](./workerpool.go). The worker pool contains the set of workers
+that can be used to communicate with the hosts, one worker per host. The
+function callWorker() can be used to retreive a specific worker from the pool,
+and the function callUpdate() can be used to update the set of workers in the
+worker pool. callUpdate() will create new workers for any new contracts, will
+update workers for any contracts that changed, and will kill workers for any
+contracts that are no longer useful.
+
+##### Complexities
+
+ - callUpdate() should be called on the worker pool any time that that the set
+   of contracts changes or has updates which would impact what actions a worker
+   can take. For example, if the contract utility changes or if a contract is
+   cancelled.
+ - callWorker() can be used to fetch a worker and queue work into the worker.
+   The worker can be killed after callWorker() has been called but before the
+   returned worker has been used in any way.
+
+#### The Worker
+
+Each worker in the worker pool is responsible for managing communications with a
+single host. The worker has in infinite loop where it checks for work, performs
+any outstanding work, and then sleeps for a wake, kill, or shutdown signal. The
+implementation for the worker is primarily in [worker.go](./worker.go).
+
+Each type of work that the worker can perform has a queue. A unit of work is
+called a job. External subsystems can use callQueueX() to add a job to the
+worker. External subsystems can only queue work with a worker, the worker makes
+all of the decisions around when the work is actually performed.
+
+Internally, the worker needs to remember to call managedWake() after queuing a
+new job, otherwise the primary work thread will potentially continue sleeping
+and ignoring the work that has been queued.
+
+When a worker is killed, the worker is repsonsible for going through the list of
+jobs that have been queued and gracefully terminating the jobs, returning or
+signaling errors where appropriate.
+
+The worker currently supports queueing three types of jobs:
+ - Downloading a file [workerdownload.go](./workerdownload.go)
+ - Fetching a list of backups stored on a host
+   [workerfetchbackups.go](./workerfetchbackups.go)
+ - Uploading a file [workerupload.go](./workerupload.go)
+
+##### Complexities
+ - callQueueFetchBackupsJob() can be used to schedule a job to retrieve a list
+   of backups from a host
+ - callQueueUploadChunk() can be used to schedule a job to participate in a
+   chunk upload
+ - callQueueDownloadChunk() can be used to schedule a job to participate in a
+   chunk download
+ - managedPerformFetchBackupsJob() will use callDwonloadSnapshotTable() to fetch
+   the list of backups from the host. The snapshot subsystem is responsible for
+   defining what the list of backups looks like and how to actually fetch those
+   backups from the host.
 
 ### Download Subsystem
 **Key Files**

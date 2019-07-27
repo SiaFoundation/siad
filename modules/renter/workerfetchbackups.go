@@ -35,22 +35,14 @@ type fetchBackupsJobResult struct {
 }
 
 // callQueueFetchBackupsJob will add the fetch backups job to the worker's
-// queue.
+// queue. A channel will be returned, this channel will have the result of the
+// job returned down it when the job is completed.
 func (w *worker) callQueueFetchBackupsJob() chan fetchBackupsJobResult {
-	// Create a channel that the worker can use to communicate the result of
-	// attempting to fetch a backup from the host.
 	resultChan := make(chan fetchBackupsJobResult)
 	w.staticFetchBackupsJobQueue.mu.Lock()
 	w.staticFetchBackupsJobQueue.queue = append(w.staticFetchBackupsJobQueue.queue, resultChan)
 	w.staticFetchBackupsJobQueue.mu.Unlock()
-
-	// Signal the worker to wake up and look for jobs.
-	select {
-	case w.wakeChan <- struct{}{}:
-	default:
-	}
-
-	// Return the channel that the worker will use to send the result.
+	w.managedWake()
 	return resultChan
 }
 

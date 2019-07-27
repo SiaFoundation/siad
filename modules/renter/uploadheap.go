@@ -895,7 +895,7 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 		hosts[contract.HostPublicKey.String()] = struct{}{}
 	}
 	// Refresh the worker pool as well.
-	r.staticWorkerPool.managedUpdate()
+	r.staticWorkerPool.callUpdate()
 	return hosts
 }
 

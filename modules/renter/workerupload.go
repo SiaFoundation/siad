@@ -73,9 +73,9 @@ func (w *worker) managedNextUploadChunk() (nextChunk *unfinishedUploadChunk, pie
 	return nil, 0 // no work found
 }
 
-// managedQueueUploadChunk will take a chunk and add it to the worker's repair
+// callQueueUploadChunk will take a chunk and add it to the worker's repair
 // stack.
-func (w *worker) managedQueueUploadChunk(uc *unfinishedUploadChunk) {
+func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) {
 	// Check that the worker is allowed to be uploading before grabbing the
 	// worker lock.
 	utility, exists := w.renter.hostContractor.ContractUtility(w.staticHostPubKey)

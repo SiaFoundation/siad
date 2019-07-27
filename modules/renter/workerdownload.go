@@ -157,8 +157,8 @@ func (w *worker) managedNextDownloadChunk() *unfinishedDownloadChunk {
 	return nextChunk
 }
 
-// managedQueueDownloadChunk adds a chunk to the worker's queue.
-func (w *worker) managedQueueDownloadChunk(udc *unfinishedDownloadChunk) {
+// callQueueDownloadChunk adds a chunk to the worker's queue.
+func (w *worker) callQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 	// Accept the chunk unless the worker has been terminated. Accepting the
 	// chunk needs to happen under the same lock as fetching the termination
 	// status.

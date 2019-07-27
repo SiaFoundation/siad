@@ -29,9 +29,9 @@ type workerPool struct {
 	renter  *Renter
 }
 
-// managedWorker will return the worker associated with the provided public key.
+// callWorker will return the worker associated with the provided public key.
 // If no worker is found, an error will be returned.
-func (wp *workerPool) managedWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+func (wp *workerPool) callWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	wp.mu.Lock()
 	defer wp.mu.Unlock()
 
@@ -42,9 +42,10 @@ func (wp *workerPool) managedWorker(hostPubKey types.SiaPublicKey) (*worker, err
 	return worker, nil
 }
 
-// managedUpdate will grab the set of contracts from the contractor and update
-// the worker pool to match.
-func (wp *workerPool) managedUpdate() {
+// callUpdate will grab the set of contracts from the contractor and update the
+// worker pool to match, creating new workers and killing existing workers as
+// necessary.
+func (wp *workerPool) callUpdate() {
 	contractSlice := wp.renter.hostContractor.Contracts()
 	contractMap := make(map[string]modules.RenterContract, len(contractSlice))
 	for _, contract := range contractSlice {
@@ -59,16 +60,7 @@ func (wp *workerPool) managedUpdate() {
 	for id, contract := range contractMap {
 		_, exists := wp.workers[id]
 		if !exists {
-			w := &worker{
-				staticHostPubKey: contract.HostPublicKey,
-
-				downloadChan: make(chan struct{}, 1),
-				killChan:     make(chan struct{}),
-				uploadChan:   make(chan struct{}, 1),
-				wakeChan:     make(chan struct{}, 1),
-
-				renter: wp.renter,
-			}
+			w := wp.renter.newWorker(contract.HostPublicKey)
 			wp.workers[id] = w
 			if err := wp.renter.tg.Add(); err != nil {
 				// Renter shutdown is happening, abort the loop to create more
@@ -128,6 +120,6 @@ func (r *Renter) newWorkerPool() *workerPool {
 		wp.mu.RUnlock()
 		return nil
 	})
-	wp.managedUpdate()
+	wp.callUpdate()
 	return wp
 }

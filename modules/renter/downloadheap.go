@@ -126,7 +126,7 @@ func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownload
 	udc.workersRemaining = len(r.staticWorkerPool.workers)
 	udc.mu.Unlock()
 	for _, worker := range r.staticWorkerPool.workers {
-		worker.managedQueueDownloadChunk(udc)
+		worker.callQueueDownloadChunk(udc)
 	}
 	r.staticWorkerPool.mu.RUnlock()
 
@@ -173,7 +173,7 @@ LOOP:
 
 		// Update the worker pool and fetch the current time. The loop will
 		// reset after a certain amount of time has passed.
-		r.staticWorkerPool.managedUpdate()
+		r.staticWorkerPool.callUpdate()
 		workerUpdateTime := time.Now()
 
 		// Pull downloads out of the heap. Will break if the heap is empty, and

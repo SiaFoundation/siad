@@ -79,13 +79,13 @@ func (r *Renter) BackupsOnHost(hostKey types.SiaPublicKey) ([]modules.UploadedBa
 	defer r.tg.Done()
 
 	// Find the relevant worker.
-	w, err := r.staticWorkerPool.managedWorker(hostKey)
+	w, err := r.staticWorkerPool.callWorker(hostKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "host not found in the worker table")
 	}
 
 	// Create and queue the job.
-	resultChan := w.managedQueueFetchBackupsJob()
+	resultChan := w.callQueueFetchBackupsJob()
 
 	// Block until a result is returned from the worker. Note that `AddContext`
 	// will return nil if result.err is nil.

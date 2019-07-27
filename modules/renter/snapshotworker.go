@@ -1,5 +1,9 @@
 package renter
 
+// TODO: not sure if snapshotworker.go is actually the right way to organize
+// this file and function. It's definitely part of the snapshot subsystem, but
+// perhaps does not need to be part of the worker object.
+
 import (
 	"bytes"
 	"strings"
