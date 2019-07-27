@@ -34,6 +34,26 @@ type fetchBackupsJobResult struct {
 	uploadedBackups []modules.UploadedBackup
 }
 
+// callQueueFetchBackupsJob will add the fetch backups job to the worker's
+// queue.
+func (w *worker) callQueueFetchBackupsJob() chan fetchBackupsJobResult {
+	// Create a channel that the worker can use to communicate the result of
+	// attempting to fetch a backup from the host.
+	resultChan := make(chan fetchBackupsJobResult)
+	w.staticFetchBackupsJobQueue.mu.Lock()
+	w.staticFetchBackupsJobQueue.queue = append(w.staticFetchBackupsJobQueue.queue, resultChan)
+	w.staticFetchBackupsJobQueue.mu.Unlock()
+
+	// Signal the worker to wake up and look for jobs.
+	select {
+	case w.wakeChan <- struct{}{}:
+	default:
+	}
+
+	// Return the channel that the worker will use to send the result.
+	return resultChan
+}
+
 // managedKillFetchBackupsJobs will throw an error for all queued backup jobs,
 // as they will not complete due to the worker being shut down.
 func (w *worker) managedKillFetchBackupsJobs() {
@@ -102,24 +122,4 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 	}
 	resultChan <- result
 	return true
-}
-
-// managedQueueFetchBackupsJob will add the fetch backups job to the worker's
-// queue.
-func (w *worker) managedQueueFetchBackupsJob() chan fetchBackupsJobResult {
-	// Create a channel that the worker can use to communicate the result of
-	// attempting to fetch a backup from the host.
-	resultChan := make(chan fetchBackupsJobResult)
-	w.staticFetchBackupsJobQueue.mu.Lock()
-	w.staticFetchBackupsJobQueue.queue = append(w.staticFetchBackupsJobQueue.queue, resultChan)
-	w.staticFetchBackupsJobQueue.mu.Unlock()
-
-	// Signal the worker to wake up and look for jobs.
-	select {
-	case w.wakeChan <- struct{}{}:
-	default:
-	}
-
-	// Return the channel that the worker will use to send the result.
-	return resultChan
 }

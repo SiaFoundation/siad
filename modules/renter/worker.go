@@ -4,11 +4,11 @@ package renter
 // single host, and the work loop will listen for jobs and then perform them.
 //
 // The worker has a set of jobs that it is capable of performing. The standard
-// functions for a job are Kill, Perform, and Queue. Kill will empty the queue
-// and close out any work that will not be completed. Perform will grab a job
-// from the queue if one exists and complete that piece of work. Queue will add
-// a job to the queue of work of that type. See snapshotworkerfetchbackups.go
-// for a clean example.
+// functions for a job are Queue, Kill, and Perform. Queue will add a job to the
+// queue of work of that type. Kill will empty the queue and close out any work
+// that will not be completed. Perform will grab a job from the queue if one
+// exists and complete that piece of work. See snapshotworkerfetchbackups.go for
+// a clean example.
 
 // TODO: A single session should be added to the worker that gets maintained
 // within the work loop. All jobs performed by the worker will use the worker's
