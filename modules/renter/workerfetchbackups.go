@@ -1,11 +1,15 @@
 package renter
 
-// snapshotworkerfetchbackups.go contains all of the code related to using the
-// worker to fetch the list of snapshot backups available on a particular host.
+// workerfetchbackups.go contains all of the code related to using the worker to
+// fetch the list of snapshot backups available on a particular host.
 
 // TODO: Currently the backups are fetched using a separate session, when the
 // worker code is switched over to having a common session we should start using
 // that common session. Implementation in managedPerformFetchBackupsJob.
+//
+// TODO: The conversion from the []snapshotEntry to the []modules.UploadedBackup
+// is a conversion that should probably happen in the snapshot subsystem, or at
+// least use a helper method from the snapshot subsystem.
 
 import (
 	"bytes"
@@ -69,7 +73,7 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 	defer session.Close()
 
 	// Download the list of backups.
-	entryTable, err := w.renter.managedDownloadSnapshotTable(session)
+	entryTable, err := w.renter.callDownloadSnapshotTable(session)
 	if err != nil {
 		result := fetchBackupsJobResult{
 			err: errors.AddContext(err, "unable to download snapshot table"),
@@ -79,6 +83,10 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 	}
 
 	// Format the reponse and return the response to the requester.
+	//
+	// TODO: Should do the conversion from the snapshot subsystem. Either the
+	// return value of callDownloadSnapshotTable should be adjusted, or there
+	// should be a helper method to convert one result to the other.
 	uploadedBackups := make([]modules.UploadedBackup, len(entryTable))
 	for i, e := range entryTable {
 		uploadedBackups[i] = modules.UploadedBackup{

@@ -17,7 +17,7 @@ import (
 // snapshotworker.go houses code that is common to all of the snapshot related
 // jobs that a worker may have to perform.
 
-// managedDownloadSnapshotTable downloads the snapshot entry table from the
+// callDownloadSnapshotTable downloads the snapshot entry table from the
 // worker's host.
 //
 // TODO: remove the session as a required input since we'll be using the
@@ -26,7 +26,7 @@ import (
 // TODO: switch this from being a method on the renter to being a method on the
 // worker. After the worker has a session in it, this will remove the need to
 // have a snapshot table.
-func (r *Renter) managedDownloadSnapshotTable(session contractor.Session) ([]snapshotEntry, error) {
+func (r *Renter) callDownloadSnapshotTable(session contractor.Session) ([]snapshotEntry, error) {
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
 	if err != nil {

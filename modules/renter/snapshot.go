@@ -262,7 +262,7 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	}
 
 	// download the current entry table
-	entryTable, err := r.managedDownloadSnapshotTable(host)
+	entryTable, err := r.callDownloadSnapshotTable(host)
 	if err != nil {
 		return err
 	}
@@ -416,7 +416,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 				return err
 			}
 			defer host.Close()
-			entryTable, err := r.managedDownloadSnapshotTable(host)
+			entryTable, err := r.callDownloadSnapshotTable(host)
 			if err != nil {
 				return err
 			}
@@ -661,7 +661,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				return err
 			}
 			defer host.Close()
-			entryTable, err := r.managedDownloadSnapshotTable(host)
+			entryTable, err := r.callDownloadSnapshotTable(host)
 			if err != nil {
 				return err
 			}
