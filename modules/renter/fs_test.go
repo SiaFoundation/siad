@@ -205,6 +205,9 @@ func newTestingTrio(t *testing.T, name string) (*Renter, modules.Host, modules.T
 }
 
 func TestFS(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	r, _, _ := newTestingTrio(t, t.Name())
 
 	sourceData := []byte("Hello, FUSE!\n")
