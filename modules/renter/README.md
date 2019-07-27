@@ -110,41 +110,70 @@ updated) that involve working with hosts will pass through the worker subsystem.
 The heart of the worker subsystem is the worker pool, implemented in
 [workerpool.go](./workerpool.go). The worker pool contains the set of workers
 that can be used to communicate with the hosts, one worker per host. The
-function callWorker() can be used to retreive a specific worker from the pool,
-and the function callUpdate() can be used to update the set of workers in the
-worker pool. callUpdate() will create new workers for any new contracts, will
+function `callWorker` can be used to retreive a specific worker from the pool,
+and the function `callUpdate` can be used to update the set of workers in the
+worker pool. `callUpdate` will create new workers for any new contracts, will
 update workers for any contracts that changed, and will kill workers for any
 contracts that are no longer useful.
 
-##### Complexities
+##### Inbound Complexities
 
- - callUpdate() should be called on the worker pool any time that that the set
+ - `callUpdate` should be called on the worker pool any time that that the set
    of contracts changes or has updates which would impact what actions a worker
    can take. For example, if the contract utility changes or if a contract is
    cancelled.
- - callWorker() can be used to fetch a worker and queue work into the worker.
-   The worker can be killed after callWorker() has been called but before the
+   - `Renter.SetSettings` calls `callUpdate` after changing the settings of the
+	 renter. This is probably incorrect, as the actual contract set is updated
+	 by the contractor asynchronously, and really `callUpdate` should be
+	 triggered by the contractor as the set of hosts is changed.
+   - `Renter.threadedDownloadLoop` calls `callUpdate` on each iteration of the
+	 outer download loop to ensure that it is always working with the most
+	 recent set of hosts. If the contractor is updated to be able to call
+	 `callUpdate` during maintenance, this call becomes unnecessary.
+   - `Renter.managedRefreshHostsAndWorkers` calls `callUpdate` so that the
+	 renter has the latest list of hosts when performing uploads.
+	 `Renter.managedRefreshHostsAndWorkers` is itself called in many places,
+	 which means there's substantial complexity between the upload subsystem and
+	 the worker subsystem. This complexity can be eliminated by having the
+	 contractor being responsible for updating the worker pool as it changes the
+	 set of hosts, and also by having the worker pool store host map, which is
+	 one of the key reasons `Renter.managedRefreshHostsAndWorkers` is called so
+	 often - this function returns the set of hosts in addition to updating the
+	 worker pool.
+ - `callWorker` can be used to fetch a worker and queue work into the worker.
+   The worker can be killed after `callWorker` has been called but before the
    returned worker has been used in any way.
+   - `renter.BackupsOnHost` will use `callWorker` to retrieve a worker that can
+	 be used to pull the backups off of a host.
 
 #### The Worker
 
 Each worker in the worker pool is responsible for managing communications with a
-single host. The worker has in infinite loop where it checks for work, performs
+single host. The worker has an infinite loop where it checks for work, performs
 any outstanding work, and then sleeps for a wake, kill, or shutdown signal. The
 implementation for the worker is primarily in [worker.go](./worker.go).
 
 Each type of work that the worker can perform has a queue. A unit of work is
-called a job. External subsystems can use callQueueX() to add a job to the
+called a job. External subsystems can use `callQueueX` to add a job to the
 worker. External subsystems can only queue work with a worker, the worker makes
-all of the decisions around when the work is actually performed.
+all of the decisions around when the work is actually performed. Internally, the
+worker needs to remember to call `managedWake` after queuing a new job,
+otherwise the primary work thread will potentially continue sleeping and
+ignoring the work that has been queued.
 
-Internally, the worker needs to remember to call managedWake() after queuing a
-new job, otherwise the primary work thread will potentially continue sleeping
-and ignoring the work that has been queued.
+When a worker wakes or otherwise begins the work loop, the worker will check for
+each type of work in a specific order, therefore giving certain types of work
+priority over other types of work. For example, downloads are given priority
+over uploads. When the worker performs a piece of work, it will jump back to the
+top of the loop, meaning that a continuous stream of higher priority work can
+stall out all lower priority work.
 
 When a worker is killed, the worker is repsonsible for going through the list of
 jobs that have been queued and gracefully terminating the jobs, returning or
 signaling errors where appropriate.
+
+[workerfetchbackups.go](./workerfetchbackups.go) is a good starting point to see
+how a simple job is implemented.
 
 The worker currently supports queueing three types of jobs:
  - Downloading a file [workerdownload.go](./workerdownload.go)
@@ -152,17 +181,39 @@ The worker currently supports queueing three types of jobs:
    [workerfetchbackups.go](./workerfetchbackups.go)
  - Uploading a file [workerupload.go](./workerupload.go)
 
-##### Complexities
- - callQueueFetchBackupsJob() can be used to schedule a job to retrieve a list
-   of backups from a host
- - callQueueUploadChunk() can be used to schedule a job to participate in a
-   chunk upload
- - callQueueDownloadChunk() can be used to schedule a job to participate in a
+##### Inbound Complexities
+ - `callQueueDownloadChunk` can be used to schedule a job to participate in a
    chunk download
- - managedPerformFetchBackupsJob() will use callDwonloadSnapshotTable() to fetch
-   the list of backups from the host. The snapshot subsystem is responsible for
-   defining what the list of backups looks like and how to actually fetch those
-   backups from the host.
+   - `Renter.managedDistributeDownloadChunkToWorkers` will use this method to
+	 issue a brand new download project to all of the workers.
+   - `unfinishedDownloadChunk.managedCleanUp` will use this method to re-issue
+	 work to workers that are known to have passed on a job previously, but may
+	 be required now.
+ - `callQueueFetchBackupsJob` can be used to schedule a job to retrieve a list
+   of backups from a host
+   - `Renter.BackupsOnHost` will use this method to fetch a list of snapshot
+	 backups that are stored on a particular host.
+ - `callQueueUploadChunk` can be used to schedule a job to participate in a
+   chunk upload
+   - `Renter.managedDistributeChunkToWorkers` will use this method to distribute
+	 a brand new upload project to all of the workers.
+   - `unfinishedUploadChunk.managedNotifyStandbyWorkers` will use this method to
+	 re-issue work to workers that are known to have passed on a job previously,
+	 but may be required now.
+
+##### Outbound Complexities
+ - `managedPerformFetchBackupsJob` will use `Renter.callDownloadSnapshotTable`
+   to fetch the list of backups from the host. The snapshot subsystem is
+   responsible for defining what the list of backups looks like and how to fetch
+   those backups from the host.
+
+*TODO*
+ - Fill out the explanation and the complexities related to the upload and
+   download jobs. These should be organized such that the worker subsystem only
+   handles the queueing and launching of jobs, and that the heavy lifting for
+   the jobs occurs within the upload and download subsystems. Currently the
+   worker subsystem handles much more than it should with regards to upload and
+   download projects.
 
 ### Download Subsystem
 **Key Files**
