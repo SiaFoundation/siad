@@ -68,12 +68,10 @@ func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, []types.SiaPublicK
 	return backups, hosts, nil
 }
 
-// BackupsOnHost returns the backups stored on a particular host. The backup is
-// retrieved by sending a job to a worker and receiving the result of that job
-// over a channel.
-//
-// This operation can take multiple minutes if the worker is busy, though
-// typically this operation should only take a few seconds.
+// BackupsOnHost returns the backups stored on a particular host. This operation
+// can take multiple minutes if the renter is performing many other operations
+// on this host, however this operation is given high priority over other types
+// of operations.
 func (r *Renter) BackupsOnHost(hostKey types.SiaPublicKey) ([]modules.UploadedBackup, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
@@ -85,17 +83,12 @@ func (r *Renter) BackupsOnHost(hostKey types.SiaPublicKey) ([]modules.UploadedBa
 	if err != nil {
 		return nil, errors.AddContext(err, "host not found in the worker table")
 	}
-	// Create and queue the job.
-	resultChan := make(chan *fetchBackupsJobResult)
-	w.managedQueueFetchBackupsJob(resultChan)
-	// Signal the worker to wake up and look for jobs.
-	select {
-	case w.wakeChan <- struct{}{}:
-	default:
-	}
 
-	// Fetch the result from the worker. Add context to the error if there is
-	// one. Note that `AddContext` will return nil if result.err is nil.
+	// Create and queue the job.
+	resultChan := w.managedQueueFetchBackupsJob()
+
+	// Block until a result is returned from the worker. Note that `AddContext`
+	// will return nil if result.err is nil.
 	result := <-resultChan
 	result.err = errors.AddContext(result.err, "fetch backups job failed")
 	return result.uploadedBackups, result.err

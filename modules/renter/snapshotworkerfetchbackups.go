@@ -2,9 +2,10 @@ package renter
 
 // snapshotworkerfetchbackups.go contains all of the code related to using the
 // worker to fetch the list of snapshot backups available on a particular host.
-//
-// NOTE: No exponential backoff code is needed here because actions are always
-// user triggered.
+
+// TODO: Currently the backups are fetched using a separate session, when the
+// worker code is switched over to having a common session we should start using
+// that common session. Implementation in managedPerformFetchBackupsJob.
 
 import (
 	"bytes"
@@ -18,7 +19,7 @@ import (
 // fetchBackupsJobQueue is the primary structure for managing fetch backup jobs
 // from the worker.
 type fetchBackupsJobQueue struct {
-	queue []chan *fetchBackupsJobResult
+	queue []chan fetchBackupsJobResult
 	mu    sync.Mutex
 }
 
@@ -29,34 +30,12 @@ type fetchBackupsJobResult struct {
 	uploadedBackups []modules.UploadedBackup
 }
 
-// managedQueueFetchBackupsJob will add the fetch backups job to the worker's
-// queue.
-func (w *worker) managedQueueFetchBackupsJob(resultChan chan *fetchBackupsJobResult) {
-	w.staticFetchBackupsJobQueue.mu.Lock()
-	w.staticFetchBackupsJobQueue.queue = append(w.staticFetchBackupsJobQueue.queue, resultChan)
-	w.staticFetchBackupsJobQueue.mu.Unlock()
-}
-
-// managedNextFetchBackupsJob will return the next fetch backups job in the
-// queue. If there is no job in the queue, nil will be returned.
-func (w *worker) managedNextFetchBackupsJob() chan *fetchBackupsJobResult {
-	w.staticFetchBackupsJobQueue.mu.Lock()
-	defer w.staticFetchBackupsJobQueue.mu.Unlock()
-
-	if len(w.staticFetchBackupsJobQueue.queue) == 0 {
-		return nil
-	}
-	nextJob := w.staticFetchBackupsJobQueue.queue[0]
-	w.staticFetchBackupsJobQueue.queue = w.staticFetchBackupsJobQueue.queue[1:]
-	return nextJob
-}
-
 // managedKillFetchBackupsJobs will throw an error for all queued backup jobs,
 // as they will not complete due to the worker being shut down.
 func (w *worker) managedKillFetchBackupsJobs() {
 	w.staticFetchBackupsJobQueue.mu.Lock()
 	for _, job := range w.staticFetchBackupsJobQueue.queue {
-		result := &fetchBackupsJobResult{
+		result := fetchBackupsJobResult{
 			err: errors.New("worker was killed before backups could be retrieved"),
 		}
 		job <- result
@@ -66,30 +45,37 @@ func (w *worker) managedKillFetchBackupsJobs() {
 
 // managedPerformFetchBackupsJob will fetch the list of backups from the host
 // and return them down the provided struct.
-func (w *worker) managedPerformFetchBackupsJob(resultChan chan *fetchBackupsJobResult) {
+func (w *worker) managedPerformFetchBackupsJob() bool {
+	// Check whether there is any work to be performed.
+	var resultChan chan fetchBackupsJobResult
+	w.staticFetchBackupsJobQueue.mu.Lock()
+	if len(w.staticFetchBackupsJobQueue.queue) == 0 {
+		w.staticFetchBackupsJobQueue.mu.Unlock()
+		return false
+	}
+	resultChan = w.staticFetchBackupsJobQueue.queue[0]
+	w.staticFetchBackupsJobQueue.queue = w.staticFetchBackupsJobQueue.queue[1:]
+	w.staticFetchBackupsJobQueue.mu.Unlock()
+
 	// Fetch a session to use in retrieving the backups.
-	//
-	// TODO: We should have a common session/editor/downloader that the worker
-	// keeps for all of the jobs that it performs, instead of calling out to the
-	// hostContractor so often.
 	session, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
-		result := &fetchBackupsJobResult{
+		result := fetchBackupsJobResult{
 			err: errors.AddContext(err, "unable to acquire session"),
 		}
 		resultChan <- result
-		return
+		return true
 	}
 	defer session.Close()
 
 	// Download the list of backups.
 	entryTable, err := w.renter.managedDownloadSnapshotTable(session)
 	if err != nil {
-		result := &fetchBackupsJobResult{
+		result := fetchBackupsJobResult{
 			err: errors.AddContext(err, "unable to download snapshot table"),
 		}
 		resultChan <- result
-		return
+		return true
 	}
 
 	// Format the reponse and return the response to the requester.
@@ -103,8 +89,29 @@ func (w *worker) managedPerformFetchBackupsJob(resultChan chan *fetchBackupsJobR
 			UploadProgress: 100,
 		}
 	}
-	result := &fetchBackupsJobResult{
+	result := fetchBackupsJobResult{
 		uploadedBackups: uploadedBackups,
 	}
 	resultChan <- result
+	return true
+}
+
+// managedQueueFetchBackupsJob will add the fetch backups job to the worker's
+// queue.
+func (w *worker) managedQueueFetchBackupsJob() chan fetchBackupsJobResult {
+	// Create a channel that the worker can use to communicate the result of
+	// attempting to fetch a backup from the host.
+	resultChan := make(chan fetchBackupsJobResult)
+	w.staticFetchBackupsJobQueue.mu.Lock()
+	w.staticFetchBackupsJobQueue.queue = append(w.staticFetchBackupsJobQueue.queue, resultChan)
+	w.staticFetchBackupsJobQueue.mu.Unlock()
+
+	// Signal the worker to wake up and look for jobs.
+	select {
+	case w.wakeChan <- struct{}{}:
+	default:
+	}
+
+	// Return the channel that the worker will use to send the result.
+	return resultChan
 }

@@ -1,5 +1,26 @@
 package renter
 
+// worker.go defines a worker with a work loop. Each worker is connected to a
+// single host, and the work loop will listen for jobs and then perform them.
+//
+// The worker has a set of jobs that it is capable of performing. The standard
+// functions for a job are Kill, Perform, and Queue. Kill will empty the queue
+// and close out any work that will not be completed. Perform will grab a job
+// from the queue if one exists and complete that piece of work. Queue will add
+// a job to the queue of work of that type. See snapshotworkerfetchbackups.go
+// for a clean example.
+
+// TODO: A single session should be added to the worker that gets maintained
+// within the work loop. All jobs performed by the worker will use the worker's
+// single session.
+//
+// TODO: The upload and download code needs to be moved into properly separated
+// subsystems.
+//
+// TODO: The work functions for uploading and downloading should be transitioned
+// from the check();perform(); model to just the checkAndPerform(); model. See
+// how the backup fetcher is implemented for an example.
+
 import (
 	"sync"
 	"time"
@@ -20,10 +41,6 @@ import (
 // will still be present until some time has passed. Without any cooldowns,
 // uploading and downloading with flaky hosts in the worker sets has
 // substantially reduced overall performance and throughput.
-//
-// TODO: We should add a common session to the worker that persists to eliminate
-// the inherent latency and round trip overheads associated with opening a
-// session. This will also make Sia faster.
 type worker struct {
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
@@ -87,12 +104,28 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
 
+	// Primary work loop. There are several types of jobs that the worker can
+	// perform, and they are attempted with a specific priority. If any type of
+	// work is attempted, the loop resets to check for higher priority work
+	// again. This means that a stream of higher priority tasks can starve a
+	// building set of lower priority tasks.
+	//
+	// 'workAttempted' indicates that there was a job to perform, and that a
+	// nontrivial amount of time was spent attempting to perform the job. The
+	// job may or may not have been successful, that is irrelevant.
 	for {
-		// Check if there is a query from the user to fetch a backup from this
-		// host.
-		fetchBackupsJob := w.managedNextFetchBackupsJob()
-		if fetchBackupsJob != nil {
-			w.managedPerformFetchBackupsJob(fetchBackupsJob)
+		// Check for stop conditions on the worker.
+		select {
+		case <-w.killChan:
+			return
+		case <-w.renter.tg.StopChan():
+			return
+		default:
+		}
+
+		// Perform any job to fetch the list of backups from the host.
+		workAttempted := w.managedPerformFetchBackupsJob()
+		if workAttempted {
 			continue
 		}
 
