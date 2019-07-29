@@ -111,7 +111,7 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, errors.AddContext(readAPIError(res.Body), "GET request error")
+		return nil, errors.AddContext(err, "GET request failed")
 	}
 	defer drainAndClose(res.Body)
 
