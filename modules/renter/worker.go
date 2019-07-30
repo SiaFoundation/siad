@@ -80,14 +80,26 @@ type worker struct {
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
 }
 
-// managedBlockUntilOnline will block until the worker has internet
-// connectivity. 'false' will be returned if a kill signal is received or if the
-// renter is shut down before internet connectivity is restored. 'true' will be
-// returned if internet connectivity is successfully restored.
-func (w *worker) managedBlockUntilOnline() bool {
+// managedBlockUntilReady will block until the worker has internet connectivity.
+// 'false' will be returned if a kill signal is received or if the renter is
+// shut down before internet connectivity is restored. 'true' will be returned
+// if internet connectivity is successfully restored.
+func (w *worker) managedBlockUntilReady() bool {
+	// Check if the worker has received a kill signal, or if the renter has
+	// received a stop signal.
+	select {
+	case <-w.renter.tg.StopChan():
+		return false
+	case <-w.killChan:
+		return false
+	default:
+	}
+
+	// Check internet connectivity. If the worker does not have internet
+	// connectivity, block until connectivity is restored.
 	for !w.renter.g.Online() {
 		select {
-		case <-r.tg.StopChan():
+		case <-w.renter.tg.StopChan():
 			return false
 		case <-w.killChan:
 			return false
@@ -135,8 +147,11 @@ func (w *worker) threadedWorkLoop() {
 	// nontrivial amount of time was spent attempting to perform the job. The
 	// job may or may not have been successful, that is irrelevant.
 	for {
-		// Check for stop conditions on the worker.
-		if !w.managedBlockUntilOnline() {
+		// There are certain conditions under which the worker should either
+		// block or exit. This function will block until those conditions are
+		// met, returning 'true' when the worker can proceed and 'false' if the
+		// worker should exit.
+		if !w.managedBlockUntilReady() {
 			return
 		}
 
