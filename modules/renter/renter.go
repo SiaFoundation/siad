@@ -21,7 +21,7 @@ package renter
 // contractor's 'threadedContractMaintenance' will run in the background and
 // choose to update the hosts and contracts. Really, we should have the
 // contractor notify the renter whenever there has been a change in the contract
-// set so that 'callUpdate()' can be used.
+// set so that 'callUpdate()' can be used. Implementation in renter.SetSettings.
 
 import (
 	"fmt"

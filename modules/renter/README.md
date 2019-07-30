@@ -120,7 +120,7 @@ contracts that are no longer useful.
 
  - `callUpdate` should be called on the worker pool any time that that the set
    of contracts changes or has updates which would impact what actions a worker
-   can take. For example, if the contract utility changes or if a contract is
+   can take. For example, if a contract's utility changes or if a contract is
    cancelled.
    - `Renter.SetSettings` calls `callUpdate` after changing the settings of the
 	 renter. This is probably incorrect, as the actual contract set is updated
@@ -176,10 +176,10 @@ signaling errors where appropriate.
 how a simple job is implemented.
 
 The worker currently supports queueing three types of jobs:
- - Downloading a file [workerdownload.go](./workerdownload.go)
+ - Downloading a chunk [workerdownload.go](./workerdownload.go)
  - Fetching a list of backups stored on a host
    [workerfetchbackups.go](./workerfetchbackups.go)
- - Uploading a file [workerupload.go](./workerupload.go)
+ - Uploading a chunk [workerupload.go](./workerupload.go)
 
 ##### Inbound Complexities
  - `callQueueDownloadChunk` can be used to schedule a job to participate in a
@@ -206,14 +206,10 @@ The worker currently supports queueing three types of jobs:
    to fetch the list of backups from the host. The snapshot subsystem is
    responsible for defining what the list of backups looks like and how to fetch
    those backups from the host.
-
-*TODO*
- - Fill out the explanation and the complexities related to the upload and
-   download jobs. These should be organized such that the worker subsystem only
-   handles the queueing and launching of jobs, and that the heavy lifting for
-   the jobs occurs within the upload and download subsystems. Currently the
-   worker subsystem handles much more than it should with regards to upload and
-   download projects.
+ - `managedPerformDownloadChunkJob` is a mess of complexities and needs to be
+   refactored to be compliant with the new subsystem format.
+ - `managedPerformUploadChunkJob` is a mess of complexities and needs to be
+   refactored to be compliant with the new subsystem format.
 
 ### Download Subsystem
 **Key Files**

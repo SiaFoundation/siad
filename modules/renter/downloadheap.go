@@ -7,6 +7,10 @@ package renter
 //
 // Download jobs are added to the heap via a function call.
 
+// TODO: renter.threadedDownloadLoop will not need to call `callUpdate` once the
+// contractor is reporting changes in the contract set back to the worker
+// subsystem.
+
 import (
 	"container/heap"
 	"errors"
