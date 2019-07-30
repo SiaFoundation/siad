@@ -782,22 +782,26 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 	// parallelDownloads is the number of downloads that are run in parallel.
 	parallelDownloads := 10
 	// fileSize is the size of the downloaded file.
-	fileSize := int(10*modules.SectorSize) + siatest.Fuzz()
+	fileSize := siatest.Fuzz()
+	if build.VLONG {
+		fileSize += int(50 * modules.SectorSize)
+	} else {
+		fileSize += int(10 * modules.SectorSize)
+	}
 	// set download limits and reset them after test.
 	// uniqueRemoteFiles is the number of files that will be uploaded to the
 	// network. Downloads will choose the remote file to download randomly.
 	uniqueRemoteFiles := 5
-	// Grab the first of the group's renters
-	renter := tg.Renters()[0]
-	// set download limits and reset them after test.
-	if err := renter.RenterPostRateLimit(int64(fileSize)*2, 0); err != nil {
-		t.Fatal("failed to set renter bandwidth limit", err)
+	// Create a custom renter with a dependency and remove it again after the test
+	// is done.
+	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyPostponeWritePiecesRecovery{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
 	}
-	defer func() {
-		if err := renter.RenterPostRateLimit(0, 0); err != nil {
-			t.Error("failed to reset renter bandwidth limit", err)
-		}
-	}()
+	renter := nodes[0]
+	defer tg.RemoveNode(renter)
 
 	// Upload files
 	dataPieces := uint64(len(tg.Hosts())) - 1
@@ -810,6 +814,16 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 		}
 		remoteFiles = append(remoteFiles, remoteFile)
 	}
+
+	// set download limits and reset them after test.
+	if err := renter.RenterPostRateLimit(int64(fileSize)*2, 0); err != nil {
+		t.Fatal("failed to set renter bandwidth limit", err)
+	}
+	defer func() {
+		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+			t.Error("failed to reset renter bandwidth limit", err)
+		}
+	}()
 
 	// Randomly download using download to file and download to stream methods.
 	wg := new(sync.WaitGroup)

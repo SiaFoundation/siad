@@ -21,8 +21,10 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // skipWriter is a helper type that ignores the first 'skip' bytes written to it.
@@ -84,7 +86,8 @@ func (dw *downloadDestinationBuffer) WritePieces(_ modules.ErasureCoder, pieces 
 
 // downloadDestinationFile wraps an os.File into a downloadDestination.
 type downloadDestinationFile struct {
-	f *os.File
+	deps modules.Dependencies
+	f    *os.File
 }
 
 // Close implements the io.Closer interface for downloadDestinationFile.
@@ -97,6 +100,9 @@ func (ddf *downloadDestinationFile) Close() error {
 func (ddf *downloadDestinationFile) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
 	if _, err := ddf.f.Seek(offset, io.SeekStart); err != nil {
 		return err
+	}
+	if ddf.deps.Disrupt("PostponeWritePiecesRecovery") {
+		time.Sleep(time.Duration(fastrand.Intn(1000)) * time.Millisecond)
 	}
 	return ec.Recover(pieces, dataOffset+length, &skipWriter{w: ddf.f, skip: int(dataOffset)})
 }
