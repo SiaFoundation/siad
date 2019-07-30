@@ -113,6 +113,10 @@ const (
 	// maxStuckChunksInHeap is the maximum number of stuck chunks that the
 	// repair code will add to the heap at a time
 	maxStuckChunksInHeap = 5
+
+	// macSuccessfulStuckRepairFiles is the maximum number of files that the
+	// stuck loop will track when there is a successful stuck chunk repair
+	maxSuccessfulStuckRepairFiles = 20
 )
 
 var (
