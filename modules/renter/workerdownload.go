@@ -41,8 +41,18 @@ func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs modules
 	return uint64(segmentIndex * crypto.SegmentSize), uint64(numSegments * crypto.SegmentSize)
 }
 
-// managedDownload will perform some download work.
-func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
+// managedPerformDownloadChunkJob will perform some download work if any is
+// available, returning false if no work is available.
+func (w *worker) managedPerformDownloadChunkJob() bool {
+	w.downloadMu.Lock()
+	if len(w.downloadChunks) == 0 {
+		w.downloadMu.Unlock()
+		return false
+	}
+	udc := w.downloadChunks[0]
+	w.downloadChunks = w.downloadChunks[1:]
+	w.downloadMu.Unlock()
+
 	// Process this chunk. If the worker is not fit to do the download, or is
 	// put on standby, 'nil' will be returned. After the chunk has been
 	// processed, the worker will be registered with the chunk.
@@ -51,7 +61,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	// from the chunk entirely, or because the worker has been put on standby.
 	udc = w.ownedProcessDownloadChunk(udc)
 	if udc == nil {
-		return
+		return true
 	}
 	// Worker is being given a chance to work. After the work is complete,
 	// whether successful or failed, the worker needs to be removed.
@@ -63,7 +73,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	if err != nil {
 		w.renter.log.Debugln("worker failed to create downloader:", err)
 		udc.managedUnregisterWorker(w)
-		return
+		return true
 	}
 	defer d.Close()
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
@@ -72,7 +82,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)
-		return
+		return true
 	}
 	// TODO: Instead of adding the whole sector after the download completes,
 	// have the 'd.Sector' call add to this value ongoing as the sector comes
@@ -90,7 +100,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	if err != nil {
 		w.renter.log.Debugln("worker failed to decrypt piece:", err)
 		udc.managedUnregisterWorker(w)
-		return
+		return true
 	}
 
 	// Mark the piece as completed. Perform chunk recovery if we newly have
@@ -113,7 +123,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 		if err := w.renter.tg.Add(); err != nil {
 			w.renter.log.Debugln("worker failed to decrypt piece:", err)
 			udc.mu.Unlock()
-			return
+			return true
 		}
 		go func() {
 			defer w.renter.tg.Done()
@@ -121,6 +131,7 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 		}()
 	}
 	udc.mu.Unlock()
+	return true
 }
 
 // managedKillDownloading will drop all of the download work given to the
@@ -141,20 +152,6 @@ func (w *worker) managedKillDownloading() {
 	for i := 0; i < len(removedChunks); i++ {
 		removedChunks[i].managedRemoveWorker()
 	}
-}
-
-// managedNextDownloadChunk will pull the next potential chunk out of the work
-// queue for downloading.
-func (w *worker) managedNextDownloadChunk() *unfinishedDownloadChunk {
-	w.downloadMu.Lock()
-	defer w.downloadMu.Unlock()
-
-	if len(w.downloadChunks) == 0 {
-		return nil
-	}
-	nextChunk := w.downloadChunks[0]
-	w.downloadChunks = w.downloadChunks[1:]
-	return nextChunk
 }
 
 // callQueueDownloadChunk adds a chunk to the worker's queue.

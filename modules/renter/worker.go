@@ -16,10 +16,6 @@ package renter
 //
 // TODO: The upload and download code needs to be moved into properly separated
 // subsystems.
-//
-// TODO: The work functions for uploading and downloading should be transitioned
-// from the check();perform(); model to just the checkAndPerform(); model. See
-// how the backup fetcher is implemented for an example.
 
 import (
 	"sync"
@@ -144,28 +140,20 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
+		var workAttempted bool
 		// Perform any job to fetch the list of backups from the host.
-		workAttempted := w.managedPerformFetchBackupsJob()
+		workAttempted = w.managedPerformFetchBackupsJob()
 		if workAttempted {
 			continue
 		}
-
-		// Perform one step of processing download work.
-		downloadChunk := w.managedNextDownloadChunk()
-		if downloadChunk != nil {
-			// managedDownload will handle removing the worker internally. If
-			// the chunk is dropped from the worker, the worker will be removed
-			// from the chunk. If the worker executes a download (success or
-			// failure), the worker will be removed from the chunk. If the
-			// worker is put on standby, it will not be removed from the chunk.
-			w.managedDownload(downloadChunk)
+		// Perform any job to help download a chunk.
+		workAttempted = w.managedPerformDownloadChunkJob()
+		if workAttempted {
 			continue
 		}
-
-		// Perform one step of processing upload work.
-		chunk, pieceIndex := w.managedNextUploadChunk()
-		if chunk != nil {
-			w.managedUpload(chunk, pieceIndex)
+		// Perform any job to help upload a chunk.
+		workAttempted = w.managedPerformUploadChunkJob()
+		if workAttempted {
 			continue
 		}
 
