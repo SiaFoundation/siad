@@ -84,6 +84,23 @@ type worker struct {
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
 }
 
+// managedBlockUntilOnline will block until the worker has internet
+// connectivity. 'false' will be returned if a kill signal is received or if the
+// renter is shut down before internet connectivity is restored. 'true' will be
+// returned if internet connectivity is successfully restored.
+func (w *worker) managedBlockUntilOnline() bool {
+	for !w.renter.g.Online() {
+		select {
+		case <-r.tg.StopChan():
+			return false
+		case <-w.killChan:
+			return false
+		case <-time.After(offlineCheckFrequency):
+		}
+	}
+	return true
+}
+
 // staticWake needs to be called any time that a job queued.
 func (w *worker) staticWake() {
 	select {
@@ -123,12 +140,8 @@ func (w *worker) threadedWorkLoop() {
 	// job may or may not have been successful, that is irrelevant.
 	for {
 		// Check for stop conditions on the worker.
-		select {
-		case <-w.killChan:
+		if !w.managedBlockUntilOnline() {
 			return
-		case <-w.renter.tg.StopChan():
-			return
-		default:
 		}
 
 		// Perform any job to fetch the list of backups from the host.
@@ -158,8 +171,6 @@ func (w *worker) threadedWorkLoop() {
 
 		// Block until new work is received via the upload or download channels,
 		// or until a kill or stop signal is received.
-		//
-		// TODO: Condense these to a single channel.
 		select {
 		case <-w.wakeChan:
 			continue
@@ -176,8 +187,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
 	return &worker{
 		staticHostPubKey: hostPubKey,
 
-		killChan:     make(chan struct{}),
-		wakeChan:     make(chan struct{}, 1),
+		killChan: make(chan struct{}),
+		wakeChan: make(chan struct{}, 1),
 
 		renter: r,
 	}
