@@ -157,9 +157,9 @@ Each type of work that the worker can perform has a queue. A unit of work is
 called a job. External subsystems can use `callQueueX` to add a job to the
 worker. External subsystems can only queue work with a worker, the worker makes
 all of the decisions around when the work is actually performed. Internally, the
-worker needs to remember to call `managedWake` after queuing a new job,
-otherwise the primary work thread will potentially continue sleeping and
-ignoring the work that has been queued.
+worker needs to remember to call `staticWake` after queuing a new job, otherwise
+the primary work thread will potentially continue sleeping and ignoring the work
+that has been queued.
 
 When a worker wakes or otherwise begins the work loop, the worker will check for
 each type of work in a specific order, therefore giving certain types of work

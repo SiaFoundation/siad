@@ -42,7 +42,7 @@ func (w *worker) callQueueFetchBackupsJob() chan fetchBackupsJobResult {
 	w.staticFetchBackupsJobQueue.mu.Lock()
 	w.staticFetchBackupsJobQueue.queue = append(w.staticFetchBackupsJobQueue.queue, resultChan)
 	w.staticFetchBackupsJobQueue.mu.Unlock()
-	w.managedWake()
+	w.staticWake()
 	return resultChan
 }
 

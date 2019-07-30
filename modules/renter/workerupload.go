@@ -93,10 +93,7 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) {
 	w.mu.Unlock()
 
 	// Send a signal informing the work thread that there is work.
-	select {
-	case w.uploadChan <- struct{}{}:
-	default:
-	}
+	w.staticWake()
 }
 
 // managedUpload will perform some upload work.

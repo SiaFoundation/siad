@@ -168,10 +168,7 @@ func (w *worker) callQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 		// Accept the chunk and issue a notification to the master thread that
 		// there is a new download.
 		w.downloadChunks = append(w.downloadChunks, udc)
-		select {
-		case w.downloadChan <- struct{}{}:
-		default:
-		}
+		w.staticWake()
 	}
 	w.downloadMu.Unlock()
 

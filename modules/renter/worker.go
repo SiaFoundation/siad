@@ -59,7 +59,6 @@ type worker struct {
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
-	downloadChan       chan struct{}              // Notifications of new work. Takes priority over uploads.
 	downloadChunks     []*unfinishedDownloadChunk // Yet unprocessed work items.
 	downloadMu         sync.Mutex
 	downloadTerminated bool // Has downloading been terminated for this worker?
@@ -69,7 +68,6 @@ type worker struct {
 
 	// Upload variables.
 	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
-	uploadChan                chan struct{}            // Notifications of new work.
 	uploadConsecutiveFailures int                      // How many times in a row uploading has failed.
 	uploadRecentFailure       time.Time                // How recent was the last failure?
 	uploadRecentFailureErr    error                    // What was the reason for the last failure?
@@ -86,8 +84,8 @@ type worker struct {
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
 }
 
-// managedWake needs to be called any time that a job queued.
-func (w *worker) managedWake() {
+// staticWake needs to be called any time that a job queued.
+func (w *worker) staticWake() {
 	select {
 	case w.wakeChan <- struct{}{}:
 	default:
@@ -165,10 +163,6 @@ func (w *worker) threadedWorkLoop() {
 		select {
 		case <-w.wakeChan:
 			continue
-		case <-w.downloadChan:
-			continue
-		case <-w.uploadChan:
-			continue
 		case <-w.killChan:
 			return
 		case <-w.renter.tg.StopChan():
@@ -182,9 +176,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
 	return &worker{
 		staticHostPubKey: hostPubKey,
 
-		downloadChan: make(chan struct{}, 1),
 		killChan:     make(chan struct{}),
-		uploadChan:   make(chan struct{}, 1),
 		wakeChan:     make(chan struct{}, 1),
 
 		renter: r,
