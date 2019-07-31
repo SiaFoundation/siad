@@ -66,6 +66,11 @@ func readAPIError(r io.Reader) error {
 	if err := json.NewDecoder(r).Decode(&apiErr); err != nil {
 		return errors.AddContext(err, "could not read error response")
 	}
+
+	if apiErr.Error() == ErrPeerExists.Error() {
+		return ErrPeerExists
+	}
+
 	return apiErr
 }
 
