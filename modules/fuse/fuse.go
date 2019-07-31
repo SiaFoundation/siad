@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -54,7 +55,13 @@ func (f *FUSE) Mount(root string, sp modules.SiaPath) error {
 		rfs:        rfs,
 	}
 	nfs := pathfs.NewPathNodeFs(fs, nil)
-	server, _, err := nodefs.MountRoot(root, nfs.Root(), nil)
+	// we need to call `Mount` rather than `MountRoot` because we want to define
+	// the FUSE mount flag `AllowOther`, which enables non-permissioned users to
+	// access the FUSE mount. This makes life easier in Docker.
+	mountOpts := &fuse.MountOptions{
+		AllowOther: true,
+	}
+	server, _, err := nodefs.Mount(root, nfs.Root(), mountOpts, nil)
 	if err != nil {
 		return err
 	}
@@ -64,9 +71,15 @@ func (f *FUSE) Mount(root string, sp modules.SiaPath) error {
 }
 
 func (f *FUSE) Unmount() error {
+	if f.srv == nil {
+		return errors.New("no server mounted")
+	}
 	err := f.srv.Unmount()
+	if err != nil {
+		return err
+	}
 	f.srv = nil
-	return err
+	return nil
 }
 
 func errToStatus(op, name string, err error) fuse.Status {
@@ -116,7 +129,9 @@ func (fs *fuseFS) OpenDir(name string, _ *fuse.Context) ([]fuse.DirEntry, fuse.S
 	}
 	entries := make([]fuse.DirEntry, len(files))
 	for i, f := range files {
-		name := f.Name()
+		// When we don't remove the prepending path from the name, then FUSE won't
+		// show any subdirectory files.
+		name := path.Base(f.Name())
 		mode := uint32(f.Mode())
 		if f.IsDir() {
 			mode |= fuse.S_IFDIR

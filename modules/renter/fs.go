@@ -95,11 +95,17 @@ func (d *fsDir) Readdir(n int) ([]os.FileInfo, error) {
 		return nil, err
 	}
 	var infos []os.FileInfo
-	for _, di := range dis {
-		infos = append(infos, dirInfoShim{di})
+	for i, di := range dis {
+		// TODO: remove when we have proper write ability.
+		if di.Health <= 1 && i != 0 {
+			infos = append(infos, dirInfoShim{di})
+		}
 	}
 	for _, fi := range fis {
-		infos = append(infos, fileInfoShim{fi})
+		// TODO: remove when we have proper write ability.
+		if fi.Health <= 1 {
+			infos = append(infos, fileInfoShim{fi})
+		}
 	}
 	return infos, nil
 }

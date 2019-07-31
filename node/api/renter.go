@@ -1012,10 +1012,19 @@ func (api *API) renterFUSEHandler(w http.ResponseWriter, req *http.Request, _ ht
 
 // renterFUSEMountHandler handles the API call to /renter/fuse/mount.
 func (api *API) renterFUSEMountHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	sp, err := modules.NewSiaPath(req.FormValue("siapath"))
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+	var sp modules.SiaPath
+	spfv := req.FormValue("siapath")
+	// Check the form value for root path before attempting to call
+	// modules.NewSiaPath, as RootSiaPath is considered an edge case at the moment.
+	if spfv == "/" {
+		sp = modules.RootSiaPath()
+	} else {
+		s, err := modules.NewSiaPath(spfv)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		sp = s
 	}
 	mount := req.FormValue("mount")
 	if err := api.fuse.Mount(mount, sp); err != nil {
