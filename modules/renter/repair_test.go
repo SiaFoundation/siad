@@ -17,8 +17,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
-// TODO - Adding testing for interruptions
-
 // equalBubbledMetadata is a helper that checks for equality in the siadir
 // metadata that gets bubbled
 func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
@@ -895,5 +893,104 @@ func TestCreateMissingSiaDir(t *testing.T) {
 	_, err = os.Stat(siaDirPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestStuckQueue probes the implementation of the stuck queue
+func TestStuckQueue(t *testing.T) {
+	queue := stuckQueue{
+		queue:    make([]modules.SiaPath, 0, maxSuccessfulStuckRepairFiles),
+		siaPaths: make(map[modules.SiaPath]struct{}),
+	}
+
+	// Check queue initialized as expected
+	if queue.managedLen() != 0 {
+		t.Fatal("Expected length of 0 got", queue.managedLen())
+	}
+
+	// Create some SiaPaths to add to the queue
+	sp1, _ := modules.NewSiaPath("siaPath1")
+	sp2, _ := modules.NewSiaPath("siaPath2")
+	sp3, _ := modules.NewSiaPath("siaPath3")
+
+	// Test pushing 1 siapath onto queue
+	queue.managedPush(sp1)
+	if queue.managedLen() != 1 {
+		t.Fatal("Expected length of 1 got", queue.managedLen())
+	}
+	siaPath := queue.managedPop()
+	if !siaPath.Equals(sp1) {
+		t.Log("siaPath:", siaPath)
+		t.Log("sp1:", sp1)
+		t.Fatal("SiaPaths not equal")
+	}
+	if queue.managedLen() != 0 {
+		t.Fatal("Expected length of 0 got", queue.managedLen())
+	}
+
+	// Test adding multiple siaPaths to queue
+	queue.managedPush(sp3)
+	queue.managedPush(sp2)
+	queue.managedPush(sp1)
+	if queue.managedLen() != 3 {
+		t.Fatal("Expected length of 3 got", queue.managedLen())
+	}
+	siaPath = queue.managedPop()
+	if !siaPath.Equals(sp3) {
+		t.Log("siaPath:", siaPath)
+		t.Log("sp3:", sp3)
+		t.Fatal("SiaPaths not equal")
+	}
+}
+
+// TestAddStuckChunksToHeap probes the managedAddStuckChunksToHeap method
+func TestAddStuckChunksToHeap(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create renter with dependencies, first to disable the background health,
+	// repair, and stuck loops from running, then update it to bypass the worker
+	// pool length check in managedBuildUnfinishedChunks
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt.renter.deps = &dependencies.DependencyIgnoreWorkerPoolLength{}
+
+	// create file with no stuck chunks
+	rsc, _ := siafile.NewRSCode(1, 1)
+	up := modules.FileUploadParams{
+		Source:      "",
+		SiaPath:     modules.RandomSiaPath(),
+		ErasureCode: rsc,
+	}
+	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// call managedAddStuckChunksToHeap, no chunks should be added
+	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath)
+	if err != errNoStuckChunks {
+		t.Fatal(err)
+	}
+	if rt.renter.uploadHeap.managedLen() != 0 {
+		t.Fatal("Expected uploadHeap to be of length 0 got", rt.renter.uploadHeap.managedLen())
+	}
+
+	// make chunk stuck
+	if err = f.SetStuck(uint64(0), true); err != nil {
+		t.Fatal(err)
+	}
+
+	// call managedAddStuckChunksToHeap, chunk should be added to heap
+	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt.renter.uploadHeap.managedLen() != 1 {
+		t.Fatal("Expected uploadHeap to be of length 1 got", rt.renter.uploadHeap.managedLen())
 	}
 }

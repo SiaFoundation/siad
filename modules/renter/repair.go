@@ -95,7 +95,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath) error {
 	// Add up to maxStuckChunksInHeap stuck chunks to the upload heap
 	var chunk *unfinishedUploadChunk
 	stuckChunksAdded := 0
-	for len(unfinishedStuckChunks) < 0 && stuckChunksAdded < maxStuckChunksInHeap {
+	for len(unfinishedStuckChunks) > 0 && stuckChunksAdded < maxStuckChunksInHeap {
 		chunk, unfinishedStuckChunks = unfinishedStuckChunks[0], unfinishedStuckChunks[1:]
 		chunk.stuckRepair = true
 		if !r.uploadHeap.managedPush(chunk) {
@@ -349,15 +349,12 @@ func (r *Renter) threadedStuckFileLoop() {
 			if err != nil && err != errNoStuckChunks {
 				r.log.Println("WARN: error adding stuck chunks to heap:", err)
 			}
-			// If there are no longer stuck chunks in the file, continue to the
-			// next file
-			if err == errNoStuckChunks {
-				continue
-			}
-			// Since we either added stuck chunks to the heap from this file or
-			// all the stuck chunks for the file are already being worked on,
-			// remember the directory so we can call bubble on it at the end of
-			// this iteration of the stuck loop to update the filesystem
+
+			// Since we either added stuck chunks to the heap from this file,
+			// there are no stuck chunks left in the file, or all the stuck
+			// chunks for the file are already being worked on, remember the
+			// directory so we can call bubble on it at the end of this
+			// iteration of the stuck loop to update the filesystem
 			dirSiaPath, err := siaPath.Dir()
 			if err != nil {
 				r.log.Println("WARN: error getting directory siapath:", err)

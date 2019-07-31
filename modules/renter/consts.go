@@ -114,7 +114,7 @@ const (
 	// repair code will add to the heap at a time
 	maxStuckChunksInHeap = 5
 
-	// macSuccessfulStuckRepairFiles is the maximum number of files that the
+	// maxSuccessfulStuckRepairFiles is the maximum number of files that the
 	// stuck loop will track when there is a successful stuck chunk repair
 	maxSuccessfulStuckRepairFiles = 20
 )
