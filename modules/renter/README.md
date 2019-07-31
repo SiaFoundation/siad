@@ -422,19 +422,25 @@ to the heap. The randomness with which the stuck loop finds stuck chunks is
 weighted by stuck chunks ie a directory with more stuck chunks will be more
 likely to be chosen and a file with more stuck chunks will be more likely to be
 chosen. The stuck loop repeats this process of finding a stuck chunk until there
-are `MaxStuckChunksInHeap` stuck chunks in the upload heap.
+are `MaxStuckChunksInHeap` stuck chunks in the upload heap. Stuck chunks are
+priority in the heap, so limiting it to `MaxStuckChunksInHeap` at a time
+prevents the heap from being saturated with stuck chunks that potentially cannot
+be repaired which would cause no other files to be repaired. 
 
-Stuck chunks are priority in the heap, so limiting it to `MaxStuckChunksInHeap`
-at a time prevents the heap from being saturated with stuck chunks that
-potentially cannot be repaired which would cause no other files to be repaired.
-If the repair of a stuck chunk is successful, a signal is sent to the stuck loop
-and another stuck chunk is added to the heap. Additionally, since the repair of
-the stuck chunk was successful the stuck loop assumes that the rest of the stuck
-chunks in that file will be repair, so it adds any other stuck chunks from that
-file to the upload heap. If the repair wasn't successful, the stuck loop will
-wait for the `repairStuckChunkInterval` to pass and then try another random
-stuck chunk. If the stuck loop doesn't find any stuck chunks, it will sleep
-until a bubble triggers it by finding a stuck chunk.
+If the repair of a stuck chunk is successful, the SiaPath of the SiaFile it came
+from is added to the Renter's `stuckQueue` and a signal is sent to the stuck
+loop so that another stuck chunk can added to the heap. The `stuckQueue` tracks
+`maxSuccessfulStuckRepairFiles` number of SiaFiles that have had stuck chunks
+successfully repaired in a FIFO queue. If there have been successful stuck chunk
+repairs, the stuck loop will try and add additional stuck chunks from these
+files first before trying to add a random stuck chunk. The idea being that since
+all the chunks in a SiaFile have the same redundancy settings, if one chunk was
+able to be repaired, the other chunks should be able to be repaired as well. 
+
+If the repair wasn't successful, the stuck loop will wait for the
+`repairStuckChunkInterval` to pass and then try another random stuck chunk. If
+the stuck loop doesn't find any stuck chunks, it will sleep until a bubble
+triggers it by finding a stuck chunk.
 
 **Assumptions / Complexities**
  - If a stuck chunk is successfully repaired, the rest of the file's stuck
