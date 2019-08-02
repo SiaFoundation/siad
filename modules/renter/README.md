@@ -175,7 +175,7 @@ signaling errors where appropriate.
 [workerfetchbackups.go](./workerfetchbackups.go) is a good starting point to see
 how a simple job is implemented.
 
-The worker currently supports queueing three types of jobs:
+The worker currently supports queueing these jobs:
  - Downloading a chunk [workerdownload.go](./workerdownload.go)
  - Fetching a list of backups stored on a host
    [workerfetchbackups.go](./workerfetchbackups.go)
