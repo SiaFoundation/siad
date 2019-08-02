@@ -99,11 +99,11 @@ func (wp *workerPool) callUpdate() {
 			if onCoolDown {
 				totalCoolDown++
 			}
-			wp.renter.log.Debugf("Worker %v is GoodForUpload %v for contract %v\n    and is on uploadCooldown %v for %v because of %v", worker.staticHostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
+			wp.renter.log.Debugf("Worker %v is GoodForUpload %v for contract %v and is on uploadCooldown %v for %v because of %v", worker.staticHostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
 			worker.mu.Unlock()
 		}
 	}
-	wp.renter.log.Debugf("Refreshed Worker Pool has %v total workers and %v are on cooldown", len(wp.workers), totalCoolDown)
+	wp.renter.log.Debugf("worker pool has %v workers, %v are on cooldown", len(wp.workers), totalCoolDown)
 }
 
 // newWorkerPool will initialize and return a worker pool.

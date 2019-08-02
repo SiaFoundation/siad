@@ -1,8 +1,10 @@
 package renter
 
-// TODO: not sure if snapshotworker.go is actually the right way to organize
-// this file and function. It's definitely part of the snapshot subsystem, but
-// perhaps does not need to be part of the worker object.
+// snapshotsession.go contains methods related to fetching snapshot data over a
+// session with a host.
+//
+// TODO: The implementation for managedDownloadSnapshotTable currently silences
+// several errors, these errors should be handled explicitly.
 
 import (
 	"bytes"
@@ -18,19 +20,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 )
 
-// snapshotworker.go houses code that is common to all of the snapshot related
-// jobs that a worker may have to perform.
-
-// callDownloadSnapshotTable downloads the snapshot entry table from the
-// worker's host.
-//
-// TODO: remove the session as a required input since we'll be using the
-// worker's session instead.
-//
-// TODO: switch this from being a method on the renter to being a method on the
-// worker. After the worker has a session in it, this will remove the need to
-// have a snapshot table.
-func (r *Renter) callDownloadSnapshotTable(session contractor.Session) ([]snapshotEntry, error) {
+// managedDownloadSnapshotTable will fetch the snapshot table from the host.
+func (r *Renter) managedDownloadSnapshotTable(session contractor.Session) ([]snapshotEntry, error) {
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
 	if err != nil {
@@ -43,11 +34,14 @@ func (r *Renter) callDownloadSnapshotTable(session contractor.Session) ([]snapsh
 	secret := crypto.HashAll(rs, snapshotKeySpecifier)
 	defer fastrand.Read(secret[:])
 
-	// download the entry table
+	// Download the table of snapshots that the host is storing.
 	tableSector, err := session.DownloadIndex(0, 0, uint32(modules.SectorSize))
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid sector bounds") {
 			// host is not storing any data yet; return an empty table.
+			//
+			// TODO: Should retrun an error that the host does not have any
+			// snapshots / has not been prepared for snapshots yet.
 			return nil, nil
 		}
 		return nil, err
@@ -61,6 +55,9 @@ func (r *Renter) callDownloadSnapshotTable(session contractor.Session) ([]snapsh
 		// equivalent to having no entry table at all. This is not an error; it
 		// just means that when we upload a snapshot, we'll have to create a new
 		// table.
+		//
+		// TODO: Should return an error that decryption failed / there appears
+		// to be corruption.
 		return nil, nil
 	}
 
@@ -69,4 +66,26 @@ func (r *Renter) callDownloadSnapshotTable(session contractor.Session) ([]snapsh
 		return nil, err
 	}
 	return entryTable, nil
+}
+
+// callDownloadSnapshotTable downloads the snapshot entry table from the
+// worker's host.
+func (r *Renter) callFetchHostBackups(session contractor.Session) ([]modules.UploadedBackup, error) {
+	entryTable, err := r.managedDownloadSnapshotTable(session)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to download snapshot table")
+	}
+
+	// Format the reponse and return the response to the requester.
+	uploadedBackups := make([]modules.UploadedBackup, len(entryTable))
+	for i, e := range entryTable {
+		uploadedBackups[i] = modules.UploadedBackup{
+			Name:           string(bytes.TrimRight(e.Name[:], string(0))),
+			UID:            e.UID,
+			CreationDate:   e.CreationDate,
+			Size:           e.Size,
+			UploadProgress: 100,
+		}
+	}
+	return uploadedBackups, nil
 }

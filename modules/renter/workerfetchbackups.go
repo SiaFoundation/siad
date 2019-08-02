@@ -12,7 +12,6 @@ package renter
 // least use a helper method from the snapshot subsystem.
 
 import (
-	"bytes"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -84,33 +83,10 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 	}
 	defer session.Close()
 
-	// Download the list of backups.
-	entryTable, err := w.renter.callDownloadSnapshotTable(session)
-	if err != nil {
-		result := fetchBackupsJobResult{
-			err: errors.AddContext(err, "unable to download snapshot table"),
-		}
-		resultChan <- result
-		return true
-	}
-
-	// Format the reponse and return the response to the requester.
-	//
-	// TODO: Should do the conversion from the snapshot subsystem. Either the
-	// return value of callDownloadSnapshotTable should be adjusted, or there
-	// should be a helper method to convert one result to the other.
-	uploadedBackups := make([]modules.UploadedBackup, len(entryTable))
-	for i, e := range entryTable {
-		uploadedBackups[i] = modules.UploadedBackup{
-			Name:           string(bytes.TrimRight(e.Name[:], string(0))),
-			UID:            e.UID,
-			CreationDate:   e.CreationDate,
-			Size:           e.Size,
-			UploadProgress: 100,
-		}
-	}
+	backups, err := w.renter.callFetchHostBackups(session)
 	result := fetchBackupsJobResult{
-		uploadedBackups: uploadedBackups,
+		uploadedBackups: backups,
+		err:             errors.AddContext(err, "unable to download snapshot table"),
 	}
 	resultChan <- result
 	return true
