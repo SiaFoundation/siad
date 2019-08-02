@@ -428,14 +428,16 @@ prevents the heap from being saturated with stuck chunks that potentially cannot
 be repaired which would cause no other files to be repaired. 
 
 If the repair of a stuck chunk is successful, the SiaPath of the SiaFile it came
-from is added to the Renter's `stuckQueue` and a signal is sent to the stuck
-loop so that another stuck chunk can added to the heap. The `stuckQueue` tracks
+from is added to the Renter's `stuckStack` and a signal is sent to the stuck
+loop so that another stuck chunk can added to the heap. The `stuckStack` tracks
 `maxSuccessfulStuckRepairFiles` number of SiaFiles that have had stuck chunks
-successfully repaired in a FIFO queue. If there have been successful stuck chunk
+successfully repaired in a LIFO stack. If there have been successful stuck chunk
 repairs, the stuck loop will try and add additional stuck chunks from these
 files first before trying to add a random stuck chunk. The idea being that since
 all the chunks in a SiaFile have the same redundancy settings, if one chunk was
-able to be repaired, the other chunks should be able to be repaired as well. 
+able to be repaired, the other chunks should be able to be repaired as well.
+Additionally, the reason a LIFO stack is used is because the more recent a
+success was the higher confidence we have for additional successes.
 
 If the repair wasn't successful, the stuck loop will wait for the
 `repairStuckChunkInterval` to pass and then try another random stuck chunk. If

@@ -549,10 +549,10 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// the stuck loop
 	if stuck && successfulRepair && stuckRepair {
 		r.log.Debugln("Stuck chunk", uc.id, "successfully repaired")
-		// Add file to the successful stuck repair queue if there are still
+		// Add file to the successful stuck repair stack if there are still
 		// stuck chunks to repair
 		if uc.fileEntry.NumStuckChunks() > 0 {
-			r.stuckQueue.managedPush(r.staticFileSet.SiaPath(uc.fileEntry))
+			r.stuckStack.managedPush(r.staticFileSet.SiaPath(uc.fileEntry))
 		}
 		// Signal the stuck loop that the chunk was successfully repaired
 		select {

@@ -24,51 +24,69 @@ var (
 )
 
 type (
-	// stuckQueue contains a FIFO queue of files that have had a stuck chunk
+	// stuckStack contains a LIFO stack of files that have had a stuck chunk
 	// successfully repaired
-	stuckQueue struct {
-		queue    []modules.SiaPath
+	stuckStack struct {
+		stack    []modules.SiaPath
 		siaPaths map[modules.SiaPath]struct{}
 
 		mu sync.Mutex
 	}
 )
 
-// managedLen returns the length of the queue
-func (sq *stuckQueue) managedLen() int {
-	sq.mu.Lock()
-	defer sq.mu.Unlock()
-	return len(sq.queue)
+// managedLen returns the length of the stack
+func (ss *stuckStack) managedLen() int {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	return len(ss.stack)
 }
 
-// managedPop returns the first element in the queue
-func (sq *stuckQueue) managedPop() (sp modules.SiaPath) {
-	sq.mu.Lock()
-	defer sq.mu.Unlock()
+// managedPop returns the top element in the stack
+func (ss *stuckStack) managedPop() (sp modules.SiaPath) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
 
-	sp, sq.queue = sq.queue[0], sq.queue[1:]
-	delete(sq.siaPaths, sp)
+	// Check that there are elements to return
+	if len(ss.stack) == 0 {
+		return
+	}
+
+	// Pop top element
+	sp, ss.stack = ss.stack[len(ss.stack)-1], ss.stack[:len(ss.stack)-1]
+	delete(ss.siaPaths, sp)
 	return
 }
 
-// managedPush tries to add a file to the queue
-func (sq *stuckQueue) managedPush(siaPath modules.SiaPath) {
-	sq.mu.Lock()
-	defer sq.mu.Unlock()
+// managedPush tries to add a file to the stack
+func (ss *stuckStack) managedPush(siaPath modules.SiaPath) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
 
-	// Check if there is room in the queue
-	if len(sq.queue) >= maxSuccessfulStuckRepairFiles {
-		return
+	// Check if there is room in the stack
+	if len(ss.stack) >= maxSuccessfulStuckRepairFiles {
+		// Prune oldest elements
+		ss.stack = ss.stack[len(ss.stack)-maxSuccessfulStuckRepairFiles:]
 	}
 
 	// Check if the file is already being tracked
-	if _, ok := sq.siaPaths[siaPath]; ok {
-		return
+	if _, ok := ss.siaPaths[siaPath]; ok {
+		// Remove the old entry from the array
+		//
+		// NOTE: currently just iterating over the array since the array is
+		// known to be very small. If this changes in the future a heap or
+		// linked list should be used in order to avoid this slow iteration
+		for i, sp := range ss.stack {
+			if !siaPath.Equals(sp) {
+				continue
+			}
+			ss.stack = append(ss.stack[:i], ss.stack[i+1:]...)
+			break
+		}
 	}
 
-	// Add file to the queue
-	sq.queue = append(sq.queue, siaPath)
-	sq.siaPaths[siaPath] = struct{}{}
+	// Add file to the stack
+	ss.stack = append(ss.stack, siaPath)
+	ss.siaPaths[siaPath] = struct{}{}
 	return
 }
 
@@ -114,14 +132,9 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath) error {
 		return nil
 	}
 
-	// Since there are more stuck chunks in the file try and add it back to the
-	// queue
-	//
-	// NOTE: currently not re-prioritizing this file. I believe this is OK since
-	// it helps the stuck loop move on to other files. If we want to keep
-	// prioritizing this file until all the stuck chunks have been added then we
-	// can change this line.
-	r.stuckQueue.managedPush(siaPath)
+	// Since there are more stuck chunks in the file add it back to the stuck
+	// stack
+	r.stuckStack.managedPush(siaPath)
 
 	// Close out remaining file entries
 	for _, chunk := range unfinishedStuckChunks {
@@ -336,13 +349,13 @@ func (r *Renter) threadedStuckFileLoop() {
 		var dirSiaPaths []modules.SiaPath
 
 		// Try and add any stuck chunks from files that previously had a
-		// successful stuck chunk in FIFO order. We add these chunks first since
+		// successful stuck chunk in LIFO order. We add these chunks first since
 		// the previous success gives us more confidence that it is more likely
 		// additional stuck chunks from these files will be successful compared
 		// to a random stuck chunk from the renter's directory.
-		for r.stuckQueue.managedLen() > 0 && r.uploadHeap.managedNumStuckChunks() < maxStuckChunksInHeap {
+		for r.stuckStack.managedLen() > 0 && r.uploadHeap.managedNumStuckChunks() < maxStuckChunksInHeap {
 			// Pop the first file SiaPath
-			siaPath := r.stuckQueue.managedPop()
+			siaPath := r.stuckStack.managedPop()
 
 			// Add stuck chunks to uploadHeap
 			err = r.managedAddStuckChunksToHeap(siaPath)

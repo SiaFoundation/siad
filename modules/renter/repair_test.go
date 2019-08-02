@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -896,50 +897,72 @@ func TestCreateMissingSiaDir(t *testing.T) {
 	}
 }
 
-// TestStuckQueue probes the implementation of the stuck queue
-func TestStuckQueue(t *testing.T) {
-	queue := stuckQueue{
-		queue:    make([]modules.SiaPath, 0, maxSuccessfulStuckRepairFiles),
+// TestStuckStack probes the implementation of the stuck stack
+func TestStuckStack(t *testing.T) {
+	stack := stuckStack{
+		stack:    make([]modules.SiaPath, 0, maxSuccessfulStuckRepairFiles),
 		siaPaths: make(map[modules.SiaPath]struct{}),
 	}
 
-	// Check queue initialized as expected
-	if queue.managedLen() != 0 {
-		t.Fatal("Expected length of 0 got", queue.managedLen())
+	// Check stack initialized as expected
+	if stack.managedLen() != 0 {
+		t.Fatal("Expected length of 0 got", stack.managedLen())
 	}
 
-	// Create some SiaPaths to add to the queue
+	// Create some SiaPaths to add to the stack
 	sp1, _ := modules.NewSiaPath("siaPath1")
 	sp2, _ := modules.NewSiaPath("siaPath2")
 	sp3, _ := modules.NewSiaPath("siaPath3")
 
-	// Test pushing 1 siapath onto queue
-	queue.managedPush(sp1)
-	if queue.managedLen() != 1 {
-		t.Fatal("Expected length of 1 got", queue.managedLen())
+	// Test pushing 1 siapath onto stack
+	stack.managedPush(sp1)
+	if stack.managedLen() != 1 {
+		t.Fatal("Expected length of 1 got", stack.managedLen())
 	}
-	siaPath := queue.managedPop()
+	siaPath := stack.managedPop()
 	if !siaPath.Equals(sp1) {
 		t.Log("siaPath:", siaPath)
 		t.Log("sp1:", sp1)
 		t.Fatal("SiaPaths not equal")
 	}
-	if queue.managedLen() != 0 {
-		t.Fatal("Expected length of 0 got", queue.managedLen())
+	if stack.managedLen() != 0 {
+		t.Fatal("Expected length of 0 got", stack.managedLen())
 	}
 
-	// Test adding multiple siaPaths to queue
-	queue.managedPush(sp3)
-	queue.managedPush(sp2)
-	queue.managedPush(sp1)
-	if queue.managedLen() != 3 {
-		t.Fatal("Expected length of 3 got", queue.managedLen())
+	// Test adding multiple siaPaths to stack
+	stack.managedPush(sp1)
+	stack.managedPush(sp2)
+	stack.managedPush(sp3)
+	if stack.managedLen() != 3 {
+		t.Fatal("Expected length of 3 got", stack.managedLen())
 	}
-	siaPath = queue.managedPop()
+	// Last siapath added should be returned
+	siaPath = stack.managedPop()
 	if !siaPath.Equals(sp3) {
 		t.Log("siaPath:", siaPath)
 		t.Log("sp3:", sp3)
 		t.Fatal("SiaPaths not equal")
+	}
+
+	// Pushing first siapath again should result in moving it to the top
+	stack.managedPush(sp1)
+	if stack.managedLen() != 2 {
+		t.Fatal("Expected length of 2 got", stack.managedLen())
+	}
+	siaPath = stack.managedPop()
+	if !siaPath.Equals(sp1) {
+		t.Log("siaPath:", siaPath)
+		t.Log("sp1:", sp1)
+		t.Fatal("SiaPaths not equal")
+	}
+
+	// Should length should never exceed maxSuccessfulStuckRepairFiles
+	for i := 0; i < 2*maxSuccessfulStuckRepairFiles; i++ {
+		sp, _ := modules.NewSiaPath(strconv.Itoa(i))
+		stack.managedPush(sp)
+		if stack.managedLen() > maxSuccessfulStuckRepairFiles {
+			t.Fatalf("Length exceeded %v, %v", maxSuccessfulStuckRepairFiles, stack.managedLen())
+		}
 	}
 }
 

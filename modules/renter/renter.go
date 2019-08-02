@@ -212,7 +212,7 @@ type Renter struct {
 	// Upload management.
 	uploadHeap    uploadHeap
 	directoryHeap directoryHeap
-	stuckQueue    stuckQueue
+	stuckStack    stuckStack
 
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
@@ -790,8 +790,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
-		stuckQueue: stuckQueue{
-			queue:    make([]modules.SiaPath, 0, maxSuccessfulStuckRepairFiles),
+		stuckStack: stuckStack{
+			stack:    make([]modules.SiaPath, 0, maxSuccessfulStuckRepairFiles),
 			siaPaths: make(map[modules.SiaPath]struct{}),
 		},
 
