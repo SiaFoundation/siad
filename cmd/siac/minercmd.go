@@ -47,7 +47,7 @@ func minercmd() {
 	status, err := httpClient.MinerGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
-		fmt.Printf("Miner: \n  Status: %s\n\n", moduleNotReadyStatus)
+		fmt.Printf("Miner:\n  Status: %s\n\n", moduleNotReadyStatus)
 		return
 	} else if err != nil {
 		die("Could not get miner status:", err)
