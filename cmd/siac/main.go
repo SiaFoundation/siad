@@ -96,7 +96,7 @@ func statuscmd() {
 	cg, err := httpClient.ConsensusGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
-		fmt.Printf("Consensus: \n  Status: %s\n\n", moduleNotReadyStatus)
+		fmt.Printf("Consensus:\n  Status: %s\n\n", moduleNotReadyStatus)
 	} else if err != nil {
 		die("Could not get consensus status:", err)
 	} else {
