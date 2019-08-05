@@ -71,6 +71,13 @@ type (
 		n    int
 		cntr int
 	}
+
+	// DependencyPostponeWritePiecesRecovery adds a random sleep in the WritePieces
+	// method between calling Seek and Recover as a regression test for randomly
+	// corrupting downloads.
+	DependencyPostponeWritePiecesRecovery struct {
+		modules.ProductionDependencies
+	}
 )
 
 // NewDependencyCustomResolver creates a dependency from a given lookupIP
@@ -229,6 +236,11 @@ func (d *DependencyDisableRepairAndHealthLoops) Disrupt(s string) bool {
 // Disrupt will prevent the worker pool length check from failing
 func (d *DependencyIgnoreWorkerPoolLength) Disrupt(s string) bool {
 	return s == "IgnoreWorkerPoolLength"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyPostponeWritePiecesRecovery) Disrupt(s string) bool {
+	return s == "PostponeWritePiecesRecovery"
 }
 
 // Scan resumes the blocked scan.
