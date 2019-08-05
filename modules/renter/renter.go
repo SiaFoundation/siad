@@ -790,10 +790,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
-		stuckStack: stuckStack{
-			stack:    make([]modules.SiaPath, 0, maxSuccessfulStuckRepairFiles),
-			siaPaths: make(map[modules.SiaPath]struct{}),
-		},
 
 		bubbleUpdates: make(map[string]bubbleStatus),
 
@@ -810,6 +806,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		tpool:            tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.stuckStack = callNewStuckStack()
 
 	// Load all saved data.
 	if err := r.managedInitPersist(); err != nil {
