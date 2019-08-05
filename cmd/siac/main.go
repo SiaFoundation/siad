@@ -111,7 +111,7 @@ func statuscmd() {
 	walletStatus, err := httpClient.WalletGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
-		fmt.Printf("Wallet: \n  Status: %s\n\n", moduleNotReadyStatus)
+		fmt.Printf("Wallet:\n  Status: %s\n\n", moduleNotReadyStatus)
 	} else if err != nil {
 		die("Could not get wallet status:", err)
 	} else if walletStatus.Unlocked {
