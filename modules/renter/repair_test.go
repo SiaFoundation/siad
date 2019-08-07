@@ -910,7 +910,6 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt.renter.deps = &dependencies.DependencyIgnoreWorkerPoolLength{}
 
 	// create file with no stuck chunks
 	rsc, _ := siafile.NewRSCode(1, 1)
@@ -924,8 +923,22 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Create maps for method inputs
+	hosts := make(map[string]struct{})
+	offline := make(map[string]bool)
+	goodForRenew := make(map[string]bool)
+
+	// Manually add workers to worker pool
+	for i := 0; i < int(f.NumChunks()); i++ {
+		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+			downloadChan: make(chan struct{}, 1),
+			killChan:     make(chan struct{}),
+			uploadChan:   make(chan struct{}, 1),
+		}
+	}
+
 	// call managedAddStuckChunksToHeap, no chunks should be added
-	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath)
+	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath, hosts, offline, goodForRenew)
 	if err != errNoStuckChunks {
 		t.Fatal(err)
 	}
@@ -939,7 +952,7 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	}
 
 	// call managedAddStuckChunksToHeap, chunk should be added to heap
-	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath)
+	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath, hosts, offline, goodForRenew)
 	if err != nil {
 		t.Fatal(err)
 	}

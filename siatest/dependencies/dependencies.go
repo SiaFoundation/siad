@@ -47,12 +47,6 @@ type (
 		modules.ProductionDependencies
 	}
 
-	// DependencyIgnoreWorkerPoolLength ignores the checks in the upload and
-	// repair code for the number of workers in the worker pool
-	DependencyIgnoreWorkerPoolLength struct {
-		modules.ProductionDependencies
-	}
-
 	// DependencyInterruptOnceOnKeyword is a generic dependency that interrupts
 	// the flow of the program if the argument passed to Disrupt equals str and
 	// if f was set to true by calling Fail.
@@ -231,11 +225,6 @@ func (d *DependencyDisableRenewal) Disrupt(s string) bool {
 // Disrupt will prevent the repair and health loops from running
 func (d *DependencyDisableRepairAndHealthLoops) Disrupt(s string) bool {
 	return s == "DisableRepairAndHealthLoops"
-}
-
-// Disrupt will prevent the worker pool length check from failing
-func (d *DependencyIgnoreWorkerPoolLength) Disrupt(s string) bool {
-	return s == "IgnoreWorkerPoolLength"
 }
 
 // Disrupt returns true if the correct string is provided.
