@@ -982,7 +982,7 @@ func (sf *SiaFile) isIncludedPartialChunk(chunkIndex uint64) (CombinedChunkInfo,
 func (sf *SiaFile) isIncompletePartialChunk(chunkIndex uint64) bool {
 	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.CombinedChunks))
 	if idx == -1 {
-		return sf.staticMetadata.HasPartialChunk
+		return sf.staticMetadata.HasPartialChunk && chunkIndex == uint64(sf.numChunks-1)
 	}
 	return sf.staticMetadata.CombinedChunks[idx].Status < CombinedChunkStatusCompleted
 }
@@ -1252,7 +1252,7 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64, error) {
 			// Move onto the next pieceSet if nothing has been uploaded yet
 			idx := CombinedChunkIndex(uint64(sf.numChunks), uint64(chunk.Index), len(sf.staticMetadata.CombinedChunks))
 			if len(pieceSet) == 0 &&
-				(idx != -1 && sf.staticMetadata.CombinedChunks[idx].Status != CombinedChunkStatusInComplete) {
+				(idx == -1 || sf.staticMetadata.CombinedChunks[idx].Status != CombinedChunkStatusInComplete) {
 				continue
 			}
 

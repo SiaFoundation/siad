@@ -135,7 +135,7 @@ func (s *Snapshot) IsIncludedPartialChunk(chunkIndex uint64) (CombinedChunkInfo,
 func (s *Snapshot) IsIncompletePartialChunk(chunkIndex uint64) bool {
 	idx := CombinedChunkIndex(s.NumChunks(), chunkIndex, len(s.staticCombinedChunks))
 	if idx == -1 {
-		return s.staticHasPartialChunk
+		return s.staticHasPartialChunk && chunkIndex == uint64(len(s.staticChunks)-1)
 	}
 	return s.staticCombinedChunks[idx].Status < CombinedChunkStatusCompleted
 }
