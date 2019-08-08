@@ -91,9 +91,15 @@ func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error 
 	}
 	var err error
 	if numCombinedChunks == 1 {
-		err = sf.SetCombinedChunk(0, int64(partialChunkSize), combinedChunks, nil)
+		combinedChunks[0].Offset = 0
+		combinedChunks[0].Length = partialChunkSize
+		err = sf.SetCombinedChunk(combinedChunks, nil)
 	} else if numCombinedChunks == 2 {
-		err = sf.SetCombinedChunk(int64(sf.ChunkSize()-1), int64(partialChunkSize), combinedChunks, nil)
+		combinedChunks[0].Offset = sf.ChunkSize() - 1
+		combinedChunks[0].Length = 1
+		combinedChunks[0].Offset = 0
+		combinedChunks[0].Length = partialChunkSize - 1
+		err = sf.SetCombinedChunk(combinedChunks, nil)
 	}
 	if err != nil {
 		return err

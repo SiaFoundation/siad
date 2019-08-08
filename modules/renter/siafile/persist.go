@@ -79,7 +79,7 @@ func LoadSiaFileMetadata(path string) (Metadata, error) {
 // new chunk to the partial SiaFile if necessary. At the end it applies the
 // updates of the partial chunk set, the SiaFile and the partial SiaFile
 // atomically.
-func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modules.CombinedChunk, updates []writeaheadlog.Update) error {
+func (sf *SiaFile) SetCombinedChunk(combinedChunks []modules.CombinedChunk, updates []writeaheadlog.Update) error {
 	// SavePartialChunk can only be called when there is no partial chunk yet.
 	if !sf.staticMetadata.HasPartialChunk || len(sf.staticMetadata.CombinedChunks) > 0 {
 		return fmt.Errorf("can't call SetCombinedChunk unless file has a partial chunk and doesn't have combined chunks assigned to it yet: %v %v",
@@ -90,9 +90,13 @@ func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modul
 		return fmt.Errorf("should have 1 or 2 combined chunks but got %v", len(combinedChunks))
 	}
 	// Make sure the length is what we would expect.
+	var totalLength int64
+	for _, cc := range combinedChunks {
+		totalLength += int64(cc.Length)
+	}
 	expectedLength := sf.staticMetadata.FileSize % int64(sf.staticChunkSize())
-	if length != expectedLength {
-		return fmt.Errorf("expect partial chunk length to be %v but was %v", expectedLength, length)
+	if totalLength != expectedLength {
+		return fmt.Errorf("expect partial chunk length to be %v but was %v", expectedLength, totalLength)
 	}
 	// Lock both the SiaFile and partials SiaFile. We need to atomically update
 	// both of them.
