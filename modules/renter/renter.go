@@ -215,6 +215,7 @@ type Renter struct {
 	// Upload management.
 	uploadHeap    uploadHeap
 	directoryHeap directoryHeap
+	stuckStack    stuckStack
 
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
@@ -787,7 +788,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			newUploads:        make(chan struct{}, 1),
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
-			stuckChunkSuccess: make(chan modules.SiaPath, 1),
+			stuckChunkSuccess: make(chan struct{}, 1),
 		},
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]*directory),
@@ -808,6 +809,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		tpool:            tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.stuckStack = callNewStuckStack()
 
 	// Load all saved data.
 	if err := r.managedInitPersist(); err != nil {

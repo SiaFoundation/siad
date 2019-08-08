@@ -136,9 +136,10 @@ func (r *Renter) managedInitPersist() error {
 
 	// Initialize the writeaheadlog.
 	options := writeaheadlog.Options{
-		Logger: r.log,
+		StaticLog: r.log,
+		Path:      filepath.Join(r.persistDir, walFile),
 	}
-	txns, wal, err := writeaheadlog.NewWithOptions(filepath.Join(r.persistDir, walFile), options)
+	txns, wal, err := writeaheadlog.NewWithOptions(options)
 	if err != nil {
 		return err
 	}

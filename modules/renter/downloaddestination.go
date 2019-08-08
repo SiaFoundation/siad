@@ -21,8 +21,10 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // skipWriter is a helper type that ignores the first 'skip' bytes written to it.
@@ -44,6 +46,38 @@ func (sw *skipWriter) Write(p []byte) (int, error) {
 	n += sw.skip
 	sw.skip = 0
 	return n, err
+}
+
+// SectionWriter implements Write on a section
+// of an underlying WriterAt.
+type SectionWriter struct {
+	w     io.WriterAt
+	base  int64
+	off   int64
+	limit int64
+}
+
+// errSectionWriteOutOfBounds is an error returned by the section writer if a
+// write would cross the boundaries between section.
+var errSectionWriteOutOfBounds = errors.New("section write is out of bounds")
+
+// NewSectionWriter returns a SectionWriter that writes to w
+// starting at offset off and stops with EOF after n bytes.
+func NewSectionWriter(w io.WriterAt, off int64, n int64) *SectionWriter {
+	return &SectionWriter{w, off, off, off + n}
+}
+
+// Write implements the io.Writer interface using WriteAt.
+func (s *SectionWriter) Write(p []byte) (n int, err error) {
+	if s.off >= s.limit {
+		return 0, errSectionWriteOutOfBounds
+	}
+	if int64(len(p)) > s.limit-s.off {
+		return 0, errSectionWriteOutOfBounds
+	}
+	n, err = s.w.WriteAt(p, s.off)
+	s.off += int64(n)
+	return
 }
 
 // downloadDestination is the interface that receives the data recovered by the
@@ -84,7 +118,9 @@ func (dw *downloadDestinationBuffer) WritePieces(_ modules.ErasureCoder, pieces 
 
 // downloadDestinationFile wraps an os.File into a downloadDestination.
 type downloadDestinationFile struct {
-	f *os.File
+	deps            modules.Dependencies
+	f               *os.File
+	staticChunkSize int64
 }
 
 // Close implements the io.Closer interface for downloadDestinationFile.
@@ -95,10 +131,11 @@ func (ddf *downloadDestinationFile) Close() error {
 // WritePieces will decode the pieces and write them to a file at the provided
 // offset, using the provided length.
 func (ddf *downloadDestinationFile) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
-	if _, err := ddf.f.Seek(offset, io.SeekStart); err != nil {
-		return err
+	sw := NewSectionWriter(ddf.f, offset, ddf.staticChunkSize)
+	if ddf.deps.Disrupt("PostponeWritePiecesRecovery") {
+		time.Sleep(time.Duration(fastrand.Intn(1000)) * time.Millisecond)
 	}
-	return ec.Recover(pieces, dataOffset+length, &skipWriter{w: ddf.f, skip: int(dataOffset)})
+	return ec.Recover(pieces, dataOffset+length, &skipWriter{w: sw, skip: int(dataOffset)})
 }
 
 // downloadDestinationWriter is a downloadDestination that writes to an

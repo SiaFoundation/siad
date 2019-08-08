@@ -350,6 +350,7 @@ merkle root and the contract revision.
 **Key Files**
  - [metadata.go](./metadata.go)
  - [repair.go](./repair.go)
+ - [stuckstack.go](./stuckstack.go)
  - [uploadheap.go](./uploadheap.go)
 
 *TODO*
@@ -519,31 +520,56 @@ ignore it in the future and instead focus on chunks that are able to be
 repaired.
 
 The stuck loop is responsible for targeting chunks that didn't get repaired
-properly. To add stuck chunks to the upload heap, one chunk is selected
-uniformly at random out of all of the stuck chunks in the filesystem. The stuck
-loop does this by first selecting a directory containing stuck chunks and then
-selecting a file with stuck chunks to then adds one stuck chunk from that file
-to the heap. The randomness with which the stuck loop finds stuck chunks is
-weighted by stuck chunks ie a directory with more stuck chunks will be more
-likely to be chosen and a file with more stuck chunks will be more likely to be
-chosen. The stuck loop repeats this process of finding a stuck chunk until there
-are `MaxStuckChunksInHeap` stuck chunks in the upload heap.
+properly. There are two methods for adding stuck chunks to the upload heap, the
+first method is random selection and the second is using the `stuckStack`. On
+start up the `stuckStack` is empty so the stuck loop begins using the random
+selection method. Once the `stuckStack` begins to fill, the stuck loop will use
+the `stuckStack` first before using the random method.
 
-Stuck chunks are priority in the heap, so limiting it to `MaxStuckChunksInHeap`
-at a time prevents the heap from being saturated with stuck chunks that
-potentially cannot be repaired which would cause no other files to be repaired.
-If the repair of a stuck chunk is successful, a signal is sent to the stuck loop
-and another stuck chunk is added to the heap. Additionally, since the repair of
-the stuck chunk was successful the stuck loop assumes that the rest of the stuck
-chunks in that file will be repair, so it adds any other stuck chunks from that
-file to the upload heap. If the repair wasn't successful, the stuck loop will
-wait for the `repairStuckChunkInterval` to pass and then try another random
-stuck chunk. If the stuck loop doesn't find any stuck chunks, it will sleep
-until a bubble triggers it by finding a stuck chunk.
+For the random selection one chunk is selected uniformly at random out of all of
+the stuck chunks in the filesystem. The stuck loop does this by first selecting
+a directory containing stuck chunks by calling `managedStuckDirectory`. Then
+`managedBuildAndPushRandomChunk` is called to select a file with stuck chunks to
+then add one stuck chunk from that file to the heap. The stuck loop repeats this
+process of finding a stuck chunk until there are `MaxStuckChunksInHeap` stuck
+chunks in the upload heap. Stuck chunks are priority in the heap, so limiting it
+to `MaxStuckChunksInHeap` at a time prevents the heap from being saturated with
+stuck chunks that potentially cannot be repaired which would cause no other
+files to be repaired. 
+
+For the stuck loop to begin using the `stuckStack` there needs to have been
+successful stuck chunk repairs. If the repair of a stuck chunk is successful,
+the SiaPath of the SiaFile it came from is added to the Renter's `stuckStack`
+and a signal is sent to the stuck loop so that another stuck chunk can added to
+the heap. The `stuckStack` tracks `maxSuccessfulStuckRepairFiles` number of
+SiaFiles that have had stuck chunks successfully repaired in a LIFO stack. If
+the LIFO stack already has `maxSuccessfulStuckRepairFiles` in it, when a new
+SiaFile is pushed onto the stack the oldest SiaFile is dropped from the stack so
+the new SiaFile can be added. Additionally, if SiaFile is being added that is
+already being tracked, then the originally reference is removed and the SiaFile
+is added to the top of the Stack. If there have been successful stuck chunk
+repairs, the stuck loop will try and add additional stuck chunks from these
+files first before trying to add a random stuck chunk. The idea being that since
+all the chunks in a SiaFile have the same redundancy settings and were
+presumably uploaded around the same time, if one chunk was able to be repaired,
+the other chunks should be able to be repaired as well. Additionally, the reason
+a LIFO stack is used is because the more recent a success was the higher
+confidence we have for additional successes.
+
+If the repair wasn't successful, the stuck loop will wait for the
+`repairStuckChunkInterval` to pass and then try another random stuck chunk. If
+the stuck loop doesn't find any stuck chunks, it will sleep until a bubble wakes
+it up by finding a stuck chunk.
 
 **Assumptions / Complexities**
- - If a stuck chunk is successfully repaired, the rest of the file's stuck
-   chunks are repaired
+ - Chunk repair code signals the stuck loop when a stuck chunk is successfully
+   repaired
+ - Health loop signals the stuck loop when aggregateNumStuckChunks for the root
+   directory is > 0
+ - The stuck loop and the repair loop use a number of the same methods when
+   building `unfinishedUploadChunks` to add to the `uploadHeap`. These methods
+   rely on the `repairTarget` to know if they should target stuck chunks or
+   unstuck chunks 
 
 ### Backup Subsystem
 **Key Files**

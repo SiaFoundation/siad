@@ -140,6 +140,14 @@ var (
 		Testing:  15 * time.Second,
 	}).(time.Duration)
 
+	// maxSuccessfulStuckRepairFiles is the maximum number of files that the
+	// stuck loop will track when there is a successful stuck chunk repair
+	maxSuccessfulStuckRepairFiles = build.Select(build.Var{
+		Dev:      3,
+		Standard: 20,
+		Testing:  2,
+	}).(int)
+
 	// maxUploadHeapChunks is the maximum number of chunks that we should add to
 	// the upload heap. This also will be used as the target number of chunks to
 	// add to the upload heap which which will mean for small directories we
