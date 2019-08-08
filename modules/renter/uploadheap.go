@@ -99,7 +99,7 @@ type uploadHeap struct {
 	newUploads        chan struct{}
 	repairNeeded      chan struct{}
 	stuckChunkFound   chan struct{}
-	stuckChunkSuccess chan modules.SiaPath
+	stuckChunkSuccess chan struct{}
 
 	mu sync.Mutex
 }
@@ -134,6 +134,13 @@ func (uh *uploadHeap) managedMarkRepairDone(id uploadChunkID) {
 		build.Critical("Chunk is not in the repair map, this means it was removed prematurely or was never added")
 	}
 	delete(uh.repairingChunks, id)
+}
+
+// managedNumStuckChunks returns the number of stuck chunks in the heap
+func (uh *uploadHeap) managedNumStuckChunks() int {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	return len(uh.stuckHeapChunks)
 }
 
 // managedPush will try and add a chunk to the upload heap. If the chunk is
@@ -636,7 +643,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		chunk := heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
 		if !r.uploadHeap.managedPush(chunk) {
 			// We don't track the health of this chunk since the only reason it
-			// wouldn't be added. To the heap is if it is already in the heap or
+			// wouldn't be added to the heap is if it is already in the heap or
 			// is currently being repaired. Close the file.
 			err := chunk.fileEntry.Close()
 			if err != nil {

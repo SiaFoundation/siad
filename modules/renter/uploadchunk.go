@@ -543,13 +543,19 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop
 	if stuck && successfulRepair && stuckRepair {
-		// Signal the stuck loop that the chunk was successfully repaired
 		r.log.Debugln("Stuck chunk", uc.id, "successfully repaired")
+		// Add file to the successful stuck repair stack if there are still
+		// stuck chunks to repair
+		if uc.fileEntry.NumStuckChunks() > 0 {
+			r.stuckStack.managedPush(r.staticFileSet.SiaPath(uc.fileEntry))
+		}
+		// Signal the stuck loop that the chunk was successfully repaired
 		select {
 		case <-r.tg.StopChan():
 			r.log.Debugln("WARN: renter shut down before the stuck loop was signalled that the stuck repair was successful")
 			return
-		case r.uploadHeap.stuckChunkSuccess <- r.staticFileSet.SiaPath(uc.fileEntry):
+		case r.uploadHeap.stuckChunkSuccess <- struct{}{}:
+		default:
 		}
 	}
 }
