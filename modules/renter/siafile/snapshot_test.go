@@ -2,15 +2,10 @@ package siafile
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 
-	"gitlab.com/NebulousLabs/errors"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -48,6 +43,9 @@ func TestSnapshot(t *testing.T) {
 		t.Errorf("numPieces was %v but should be %v",
 			sf.staticMetadata.staticErasureCode.NumPieces(), snap.staticErasureCode.NumPieces())
 	}
+	if !reflect.DeepEqual(sf.staticMetadata.CombinedChunks, snap.staticCombinedChunks) {
+		t.Errorf("combinedChunks don't match %v %v", sf.staticMetadata.CombinedChunks, snap.staticCombinedChunks)
+	}
 	if !bytes.Equal(sf.staticMetadata.StaticMasterKey, snap.staticMasterKey.Key()) {
 		t.Error("masterkeys don't match")
 	}
@@ -57,8 +55,9 @@ func TestSnapshot(t *testing.T) {
 	if sf.staticMetadata.Mode != snap.staticMode {
 		t.Error("modes don't match")
 	}
-	if !reflect.DeepEqual(sf.pubKeyTable, snap.staticPubKeyTable) {
-		t.Error("pubkeytables don't match")
+	if len(sf.pubKeyTable) > 0 && len(snap.staticPubKeyTable) > 0 &&
+		!reflect.DeepEqual(sf.pubKeyTable, snap.staticPubKeyTable) {
+		t.Error("pubkeytables don't match", sf.pubKeyTable, snap.staticPubKeyTable)
 	}
 	sf.staticSiaFileSet.mu.Lock()
 	if sf.staticSiaFileSet.siaPath(sf) != snap.staticSiaPath {
@@ -67,11 +66,11 @@ func TestSnapshot(t *testing.T) {
 	sf.staticSiaFileSet.mu.Unlock()
 	// Compare the pieces.
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
-		sfPieces, err1 := sf.Pieces(uint64(chunk.Index))
-		snapPieces, err2 := snap.Pieces(uint64(chunk.Index))
-		if err := errors.Compose(err1, err2); err != nil {
+		sfPieces, err := sf.Pieces(uint64(chunk.Index))
+		if err != nil {
 			t.Fatal(err)
 		}
+		snapPieces := snap.Pieces(uint64(chunk.Index))
 		if !reflect.DeepEqual(sfPieces, snapPieces) {
 			t.Error("Pieces don't match")
 		}
@@ -109,29 +108,13 @@ func BenchmarkSnapshot10GB(b *testing.B) {
 // benchmarkSnapshot is a helper function for benchmarking the creation of
 // snapshots of Siafiles with different sizes.
 func benchmarkSnapshot(b *testing.B, fileSize uint64) {
-	// Setup the file.
-	siaFilePath, siaPath, source, rc, sk, _, _, fileMode := newTestFileParams()
-
-	// Create the path to the file.
-	dir, _ := filepath.Split(siaFilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		b.Fatal(err)
-	}
 	// Create the file.
-	chunkSize := (modules.SectorSize - crypto.TypeDefaultRenter.Overhead()) * uint64(rc.MinPieces())
-	numChunks := fileSize / chunkSize
-	if fileSize%chunkSize != 0 {
-		numChunks++
-	}
-	wal, _ := newTestWAL()
-	siafile, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	siafile := newBlankTestFile()
 	sf := dummyEntry(siafile)
+	rc := sf.staticMetadata.staticErasureCode
 	// Add a host key to the table.
 	sf.addRandomHostKeys(1)
-	// Add numPieces to each chunks.
+	// Add numPieces to each chunk.
 	for i := uint64(0); i < sf.NumChunks(); i++ {
 		for j := uint64(0); j < uint64(rc.NumPieces()); j++ {
 			if err := sf.AddPiece(types.SiaPublicKey{}, i, j, crypto.Hash{}); err != nil {
@@ -144,7 +127,7 @@ func benchmarkSnapshot(b *testing.B, fileSize uint64) {
 
 	// Create snapshots as fast as possible.
 	for i := 0; i < b.N; i++ {
-		_, err = sf.Snapshot()
+		_, err := sf.Snapshot()
 		if err != nil {
 			b.Fatal(err)
 		}

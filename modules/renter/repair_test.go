@@ -229,7 +229,7 @@ func TestBubbleHealth(t *testing.T) {
 	// Note: this tests the edge case of bubbling a directory with a file
 	// but no sub directories
 	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{f})
-	fileHealth, _, _ := f.Health(offline, goodForRenew)
+	fileHealth, _, _, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
 	}
@@ -811,8 +811,8 @@ func TestCalculateFileMetadata(t *testing.T) {
 
 	// Grab initial metadata values
 	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
-	health, stuckHealth, numStuckChunks := sf.Health(offline, goodForRenew)
-	redundancy, err := sf.Redundancy(offline, goodForRenew)
+	health, stuckHealth, _, _, numStuckChunks := sf.Health(offline, goodForRenew)
+	redundancy, _, err := sf.Redundancy(offline, goodForRenew)
 	if err != nil {
 		t.Fatal(err)
 	}
