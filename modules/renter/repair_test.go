@@ -931,9 +931,8 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
-			downloadChan: make(chan struct{}, 1),
 			killChan:     make(chan struct{}),
-			uploadChan:   make(chan struct{}, 1),
+			wakeChan:   make(chan struct{}, 1),
 		}
 	}
 
