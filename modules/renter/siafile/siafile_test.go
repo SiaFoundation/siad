@@ -97,8 +97,8 @@ func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error 
 	} else if numCombinedChunks == 2 {
 		combinedChunks[0].Offset = sf.ChunkSize() - 1
 		combinedChunks[0].Length = 1
-		combinedChunks[0].Offset = 0
-		combinedChunks[0].Length = partialChunkSize - 1
+		combinedChunks[1].Offset = 0
+		combinedChunks[1].Length = partialChunkSize - 1
 		err = sf.SetCombinedChunk(combinedChunks, nil)
 	}
 	if err != nil {
