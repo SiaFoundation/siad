@@ -223,9 +223,9 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 		t.Fatalf("Expected threadCount to be 0, got %v", len(entry.threadMap))
 	}
 
-	// Confirm file was removed from memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatalf("Expected SiaFileSet map to contain 1 file, instead is length %v", len(sfs.siaFileMap))
+	// Confirm file and partialsSiaFile were removed from memory
+	if len(sfs.siaFileMap) != 0 {
+		t.Fatalf("Expected SiaFileSet map to contain 0 files, instead is length %v", len(sfs.siaFileMap))
 	}
 
 	// Open siafile again and confirm threadCount was incremented
@@ -259,7 +259,8 @@ func TestFilesInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there are 2 files in memory
+	// Confirm there are 2 files in memory. The partialsSiafile and the regular
+	// file.
 	if len(sfs.siaFileMap) != 2 {
 		t.Fatal("Expected 2 files in memory, got:", len(sfs.siaFileMap))
 	}
@@ -268,9 +269,9 @@ func TestFilesInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is one file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	// Confirm there are no files in memory
+	if len(sfs.siaFileMap) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
 	}
 
 	// Test accessing the same file from two separate threads

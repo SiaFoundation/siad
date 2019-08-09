@@ -956,15 +956,15 @@ func TestStuckChunks(t *testing.T) {
 		t.Fatalf("Wrong number of stuck chunks, got %v expected %v", numStuckChunks, expectedStuckChunks)
 	}
 
-	// Close file and confirm it is out of memory
+	// Close file and confirm it and its partialsSiaFile are out of memory
 	siaPath := sfs.SiaPath(sf)
 	if err = sf.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(sfs.siaFileMap) != 1 {
+	if len(sfs.siaFileMap) != 0 {
 		t.Fatal("File not removed from memory")
 	}
-	if len(sfs.siapathToUID) != 1 {
+	if len(sfs.siapathToUID) != 0 {
 		t.Fatal("File not removed from uid map")
 	}
 
