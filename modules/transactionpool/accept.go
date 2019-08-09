@@ -263,6 +263,10 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	if requiredFees.Cmp(setFees) > 0 {
 		// TODO: check if there is an existing set with lower fees that we can
 		// kick out.
+		tp.log.Debugln("Incoming transaction was rejected for having low fees", requiredFees, setFees)
+		for _, txn := range ts {
+			tp.log.Debugln(txn.ID())
+		}
 		return errLowMinerFees
 	}
 
