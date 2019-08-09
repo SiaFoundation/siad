@@ -36,6 +36,10 @@ type fetchBackupsJobResult struct {
 // callQueueFetchBackupsJob will add the fetch backups job to the worker's
 // queue. A channel will be returned, this channel will have the result of the
 // job returned down it when the job is completed.
+//
+// Testing happens via an integration test. siatest/renter/TestRemoteBackup has
+// a test where a backup is fetched from a host, an action which reaches this
+// code.
 func (w *worker) callQueueFetchBackupsJob() chan fetchBackupsJobResult {
 	resultChan := make(chan fetchBackupsJobResult)
 	w.staticFetchBackupsJobQueue.mu.Lock()
@@ -47,6 +51,8 @@ func (w *worker) callQueueFetchBackupsJob() chan fetchBackupsJobResult {
 
 // managedKillFetchBackupsJobs will throw an error for all queued backup jobs,
 // as they will not complete due to the worker being shut down.
+//
+// TODO: Need to write testing around the Kill functions for workers.
 func (w *worker) managedKillFetchBackupsJobs() {
 	w.staticFetchBackupsJobQueue.mu.Lock()
 	for _, job := range w.staticFetchBackupsJobQueue.queue {
@@ -60,6 +66,10 @@ func (w *worker) managedKillFetchBackupsJobs() {
 
 // managedPerformFetchBackupsJob will fetch the list of backups from the host
 // and return them down the provided struct.
+//
+// Testing happens via an integration test. siatest/renter/TestRemoteBackup has
+// a test where a backup is fetched from a host, an action which reaches this
+// code.
 func (w *worker) managedPerformFetchBackupsJob() bool {
 	// Check whether there is any work to be performed.
 	var resultChan chan fetchBackupsJobResult

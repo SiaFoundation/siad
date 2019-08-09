@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -477,5 +479,55 @@ func TestRemoteBackup(t *testing.T) {
 	}
 	if len(rd.Files) != 2 {
 		t.Fatal("Expected 2 files but got", rd.Files)
+	}
+
+	// Get the list of contracts so we know what hosts to check for backups.
+	contracts, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test coverage intended for workers in the renter. Ensure that the renter
+	// can balance having a queue'd download and also having a queue'd request
+	// to fetch the list of backups from a particular host.
+	var wg sync.WaitGroup
+	threads := 5
+	wg.Add(threads)
+	for i := 0; i < threads; i++ {
+		// Queue a bunch of threads to download files in the background.
+		go func() {
+			defer wg.Done()
+
+			// Download both files and return. This is here to saturate the
+			// workers and ensure that any request to download the list of
+			// backups from a host has to wait for a queue of downloads.
+			if _, err := r.DownloadToDisk(rf, false); err != nil {
+				t.Error(err)
+			}
+			if _, err := r.DownloadToDisk(rf2, false); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	// Wait for all of the threads to finish before returning.
+	defer wg.Wait()
+
+	// While the downloads are happening in the background, request the list of
+	// backups from a host.
+	for _, c := range contracts.ActiveContracts {
+		backups, err := r.RenterBackupsOnHost(c.HostPublicKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(backups.Backups) != 2 {
+			t.Error("Not enough backups detected", len(backups.Backups))
+		}
+	}
+
+	// Error check, find out what happens when you call BackupsOnHost with a bad
+	// pubkey.
+	_, err = r.RenterBackupsOnHost(types.SiaPublicKey{})
+	if err == nil {
+		t.Error(err)
 	}
 }

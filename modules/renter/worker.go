@@ -16,6 +16,9 @@ package renter
 //
 // TODO: The upload and download code needs to be moved into properly separated
 // subsystems.
+//
+// TODO: Need to write testing around the kill functions in the worker, to clean
+// up any queued jobs after a worker has been killed.
 
 import (
 	"sync"
@@ -133,6 +136,9 @@ func (w *worker) staticWake() {
 func (w *worker) threadedWorkLoop() {
 	// Ensure that all queued jobs are gracefully cleaned up when the worker is
 	// shut down.
+	//
+	// TODO: Need to write testing around these kill functions and ensure they
+	// are executing correctly.
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
