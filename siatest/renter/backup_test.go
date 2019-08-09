@@ -260,7 +260,7 @@ func TestRemoteBackup(t *testing.T) {
 	t.Parallel()
 
 	// Test Params.
-	filesSize := int(30e3)
+	filesSize := int(20e3)
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -502,7 +502,7 @@ func TestRemoteBackup(t *testing.T) {
 	// can balance having a queue'd download and also having a queue'd request
 	// to fetch the list of backups from a particular host.
 	var wg sync.WaitGroup
-	threads := 5
+	threads := 3
 	wg.Add(threads)
 	for i := 0; i < threads; i++ {
 		// Queue a bunch of threads to download files in the background.
