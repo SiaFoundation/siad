@@ -196,13 +196,11 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	if len(currentEntry.threadMap) == 0 {
 		delete(sfs.siaFileMap, entry.UID())
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
+		// If the entry had a partialSiaFile, close that as well.
+		if entry.partialsSiaFile != nil {
+			sfs.closeEntry(entry.partialsSiaFile)
+		}
 	}
-	// If the entry had a partialSiaFile, close that as well.
-	// TODO: Closing it like this is not working. Maybe we just never close partial
-	// SiaFiles? There are not many of them.
-	//	if entry.partialsSiaFile != nil {
-	//		sfs.closeEntry(entry.partialsSiaFile)
-	//	}
 }
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
@@ -394,11 +392,6 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Load the corresponding partialsSiaFile.
-		partialsSiaFile, err := sfs.openPartialsSiaFile(sf.ErasureCode(), true)
-		if err != nil {
-			return nil, err
-		}
 		// Check for duplicate uid.
 		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
 			err := fmt.Errorf("%v and %v share the same UID '%v'", sfs.siaPath(conflictingEntry), siaPath, sf.UID())
@@ -408,14 +401,19 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		// Create the entry for the SiaFile and assign the partials file.
 		entry, err = sfs.newSiaFileSetEntry(sf)
 		if err != nil {
-			sfs.closeEntry(partialsSiaFile)
 			return nil, err
 		}
-		entry.SetPartialsSiaFile(partialsSiaFile)
 	}
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
 	}
+	// Load the corresponding partialsSiaFile.
+	partialsSiaFile, err := sfs.openPartialsSiaFile(entry.ErasureCode(), true)
+	if err != nil {
+		return nil, err
+	}
+	entry.SetPartialsSiaFile(partialsSiaFile)
+
 	threadUID := randomThreadUID()
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
@@ -529,7 +527,11 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, chunks []chunk, suffix ui
 			return err
 		}
 		sf.SetPartialsSiaFile(psf)
-		return sf.SaveWithChunks(chunks)
+		err = sf.SaveWithChunks(chunks)
+		if err != nil {
+			sfs.closeEntry(psf)
+		}
+		return err
 	}
 	// If it exists and the UID matches too, skip the file.
 	if sf.UID() == oldFile.UID() {
