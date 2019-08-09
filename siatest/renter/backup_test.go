@@ -259,6 +259,9 @@ func TestRemoteBackup(t *testing.T) {
 	}
 	t.Parallel()
 
+	// Test Params.
+	filesSize := int(30e3)
+
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
 		Hosts:   2,
@@ -282,7 +285,7 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Add a file to that dir.
-	lf, err := subDir.NewFile(100)
+	lf, err := subDir.NewFile(filesSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +324,7 @@ func TestRemoteBackup(t *testing.T) {
 	}
 
 	// Upload another file and take another snapshot.
-	lf2, err := subDir.NewFile(100)
+	lf2, err := subDir.NewFile(filesSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,6 +486,14 @@ func TestRemoteBackup(t *testing.T) {
 
 	// Get the list of contracts so we know what hosts to check for backups.
 	contracts, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set a ratelimit on the renter to ensure that it takes time for the
+	// concurrent downloads to complete, so that the backup query does have to
+	// wait through a queue.
+	err = r.RenterPostRateLimit(25e3, 25e3)
 	if err != nil {
 		t.Fatal(err)
 	}
