@@ -114,7 +114,7 @@ const (
 
 	// CombinedChunksRoot is the name of the directory that contains combined
 	// chunks consisting of multiple partial chunks.
-	CombinedChunksRoot = ".combined_chunks"
+	CombinedChunksRoot = "combinedchunks"
 
 	// EstimatedFileContractTransactionSetSize is the estimated blockchain size
 	// of a transaction set between a renter and a host that contains a file
@@ -134,12 +134,12 @@ type (
 	// part of its filename on disk.
 	CombinedChunkID string
 
-	// CombinedChunk holds some information about a combined chunk
-	CombinedChunk struct {
-		ChunkID          CombinedChunkID
-		HasPartialsChunk bool
-		Length           uint64
-		Offset           uint64
+	// PartialChunk holds some information about a combined chunk
+	PartialChunk struct {
+		ChunkID          CombinedChunkID // The ChunkID of the combined chunk the partial is in.
+		HasPartialsChunk bool            // 'true' if the combined chunk is already in the partials siafile.
+		Length           uint64          // length of the partial chunk within the combined chunk.
+		Offset           uint64          // offset of the partial chunk within the combined chunk.
 	}
 )
 

@@ -73,17 +73,17 @@ func LoadSiaFileMetadata(path string) (Metadata, error) {
 	return loadSiaFileMetadata(path, modules.ProdDependencies)
 }
 
-// SetCombinedChunk informs the SiaFile about a partial chunk that has been
+// SetPartialChunks informs the SiaFile about a partial chunk that has been
 // saved by the partial chunk set. As such it should be exclusively called by
 // the partial chunk set. It updates the metadata of the SiaFile and also adds a
 // new chunk to the partial SiaFile if necessary. At the end it applies the
 // updates of the partial chunk set, the SiaFile and the partial SiaFile
 // atomically.
-func (sf *SiaFile) SetCombinedChunk(combinedChunks []modules.CombinedChunk, updates []writeaheadlog.Update) error {
+func (sf *SiaFile) SetPartialChunks(combinedChunks []modules.PartialChunk, updates []writeaheadlog.Update) error {
 	// SavePartialChunk can only be called when there is no partial chunk yet.
-	if !sf.staticMetadata.HasPartialChunk || len(sf.staticMetadata.CombinedChunks) > 0 {
-		return fmt.Errorf("can't call SetCombinedChunk unless file has a partial chunk and doesn't have combined chunks assigned to it yet: %v %v",
-			sf.staticMetadata.HasPartialChunk, len(sf.staticMetadata.CombinedChunks))
+	if !sf.staticMetadata.HasPartialChunk || len(sf.staticMetadata.PartialChunks) > 0 {
+		return fmt.Errorf("can't call SetPartialChunk unless file has a partial chunk and doesn't have combined chunks assigned to it yet: %v %v",
+			sf.staticMetadata.HasPartialChunk, len(sf.staticMetadata.PartialChunks))
 	}
 	// Check the number of combinedChunks for sanity.
 	if len(combinedChunks) != 1 && len(combinedChunks) != 2 {
@@ -110,25 +110,25 @@ func (sf *SiaFile) SetCombinedChunk(combinedChunks []modules.CombinedChunk, upda
 	defer sf.partialsSiaFile.mu.Unlock()
 	// For each combined chunk that is not yet tracked within the partials sia
 	// file, add a chunk to the partials sia file.
-	ccs := make([]CombinedChunkInfo, 0, len(combinedChunks))
+	pcs := make([]PartialChunkInfo, 0, len(combinedChunks))
 	for _, c := range combinedChunks {
-		cc := CombinedChunkInfo{
+		pc := PartialChunkInfo{
 			ID:     c.ChunkID,
 			Length: c.Length,
 			Offset: c.Offset,
 			Status: CombinedChunkStatusInComplete,
 		}
 		if c.HasPartialsChunk {
-			cc.Index = uint64(sf.partialsSiaFile.numChunks - 1)
+			pc.Index = uint64(sf.partialsSiaFile.numChunks - 1)
 		} else {
-			cc.Index = uint64(sf.partialsSiaFile.numChunks)
+			pc.Index = uint64(sf.partialsSiaFile.numChunks)
 			u, err := sf.partialsSiaFile.addCombinedChunk()
 			if err != nil {
 				return err
 			}
 			updates = append(updates, u...)
 		}
-		ccs = append(ccs, cc)
+		pcs = append(pcs, pc)
 	}
 	// Update the combined chunk metadata on disk.
 	u, err := sf.saveMetadataUpdates()
@@ -141,7 +141,7 @@ func (sf *SiaFile) SetCombinedChunk(combinedChunks []modules.CombinedChunk, upda
 		return err
 	}
 	sf.numChunks = sf.numChunks - 1 + len(combinedChunks)
-	sf.staticMetadata.CombinedChunks = ccs
+	sf.staticMetadata.PartialChunks = pcs
 	return nil
 }
 
@@ -292,8 +292,8 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		numChunks++
 	}
 	sf.numChunks = int(numChunks)
-	if len(sf.staticMetadata.CombinedChunks) > 0 {
-		sf.numChunks = sf.numChunks - 1 + len(sf.staticMetadata.CombinedChunks)
+	if len(sf.staticMetadata.PartialChunks) > 0 {
+		sf.numChunks = sf.numChunks - 1 + len(sf.staticMetadata.PartialChunks)
 	}
 	return sf, nil
 }
@@ -535,7 +535,6 @@ func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]w
 
 // iterateChunksReadonly iterates over all the chunks on disk and calls iterFunc
 // on each one without modifying them.
-// TODO: This should also iterate over potential partial chunk
 func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error {
 	// Open the file.
 	f, err := os.Open(sf.siaFilePath)
@@ -612,8 +611,9 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	return nil
 }
 
-// createAndApplyTransacton is a generic version of the
-// createAndApplyTransaction method of the SiaFile.
+// createAndApplyTransaction is a generic version of the
+// createAndApplyTransaction method of the SiaFile. This will result in 2 fsyncs
+// independent of the number of updates.
 func createAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) error {
 	if len(updates) == 0 {
 		return nil

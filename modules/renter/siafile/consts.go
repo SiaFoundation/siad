@@ -14,7 +14,7 @@ const (
 	// defaultReservedMDPages is the number of pages we reserve for the
 	// metadata when we create a new siaFile. Should the metadata ever grow
 	// larger than that, new pages are added on demand.
-	defaultReservedMDPages = 2
+	defaultReservedMDPages = 1
 
 	// updateInsertName is the name of a siaFile update that inserts data at a specific index.
 	updateInsertName = "SiaFileInsert"

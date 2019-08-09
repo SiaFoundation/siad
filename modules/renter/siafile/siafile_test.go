@@ -82,24 +82,24 @@ func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error 
 		// no partial chunk
 		return nil
 	}
-	var combinedChunks []modules.CombinedChunk
+	var partialChunks []modules.PartialChunk
 	for i := 0; i < numCombinedChunks; i++ {
-		combinedChunks = append(combinedChunks, modules.CombinedChunk{
+		partialChunks = append(partialChunks, modules.PartialChunk{
 			ChunkID:          modules.CombinedChunkID(hex.EncodeToString(fastrand.Bytes(16))),
 			HasPartialsChunk: false,
 		})
 	}
 	var err error
 	if numCombinedChunks == 1 {
-		combinedChunks[0].Offset = 0
-		combinedChunks[0].Length = partialChunkSize
-		err = sf.SetCombinedChunk(combinedChunks, nil)
+		partialChunks[0].Offset = 0
+		partialChunks[0].Length = partialChunkSize
+		err = sf.SetPartialChunks(partialChunks, nil)
 	} else if numCombinedChunks == 2 {
-		combinedChunks[0].Offset = sf.ChunkSize() - 1
-		combinedChunks[0].Length = 1
-		combinedChunks[1].Offset = 0
-		combinedChunks[1].Length = partialChunkSize - 1
-		err = sf.SetCombinedChunk(combinedChunks, nil)
+		partialChunks[0].Offset = sf.ChunkSize() - 1
+		partialChunks[0].Length = 1
+		partialChunks[1].Offset = 0
+		partialChunks[1].Length = partialChunkSize - 1
+		err = sf.SetPartialChunks(partialChunks, nil)
 	}
 	if err != nil {
 		return err
@@ -356,7 +356,7 @@ func TestFileHealth(t *testing.T) {
 	if err := setCustomCombinedChunkOfTestFile(f, 1); err != nil {
 		t.Fatal(err)
 	}
-	if f.CombinedChunks()[0].Status != CombinedChunkStatusCompleted {
+	if f.PartialChunks()[0].Status != CombinedChunkStatusCompleted {
 		t.Fatal("File has wrong combined chunk status")
 	}
 	for i := 0; i < 2; i++ {
@@ -941,7 +941,7 @@ func TestStuckChunks(t *testing.T) {
 		if (chunkIndex % 2) != 0 {
 			continue
 		}
-		if sf.staticMetadata.HasPartialChunk && len(sf.CombinedChunks()) == 0 && chunkIndex == sf.numChunks-1 {
+		if sf.staticMetadata.HasPartialChunk && len(sf.PartialChunks()) == 0 && chunkIndex == sf.numChunks-1 {
 			continue // not included partial chunk at the end can't be stuck
 		}
 		if err := sf.SetStuck(uint64(chunkIndex), true); err != nil {
@@ -981,7 +981,7 @@ func TestStuckChunks(t *testing.T) {
 
 	// Check chunks and Stuck Chunk Table
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
-		if sf.staticMetadata.HasPartialChunk && len(sf.staticMetadata.CombinedChunks) == 0 &&
+		if sf.staticMetadata.HasPartialChunk && len(sf.staticMetadata.PartialChunks) == 0 &&
 			uint64(chunk.Index) == sf.NumChunks()-1 {
 			return nil // partial chunk at the end can't be stuck
 		}
