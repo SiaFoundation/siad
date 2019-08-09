@@ -363,6 +363,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 			if tp.blockHeight-seenHeight <= maxTxnAge || !seen {
 				validTxns = append(validTxns, txn)
 			} else {
+				tp.log.Debugln("Dropping a transaction because it has reached the maxTxnAge", txn.ID())
 				delete(tp.transactionHeights, txn.ID())
 			}
 		}
