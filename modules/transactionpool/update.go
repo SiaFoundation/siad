@@ -173,6 +173,10 @@ func (tp *TransactionPool) purge() {
 func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	tp.mu.Lock()
 
+	// Grab the current size of the transaction pool so that we can log it after
+	// the block is found later.
+	oldTxnListSize := tp.transactionListSize
+
 	tp.log.Debugf("CCID %v (height %v): %v applied blocks, %v reverted blocks", crypto.Hash(cc.ID).String()[:8], tp.blockHeight, len(cc.AppliedBlocks), len(cc.RevertedBlocks))
 
 	// Get the recent block ID for a sanity check that the consensus change is
@@ -411,6 +415,11 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 			}
 		}
 	}
+
+	// Log the size of the transaction pool following an integration of the
+	// block, this will tell us if all of the transactions have been consumed or
+	// not.
+	tp.log.Debugln("A new block has been found. After processing, the transaction pool has dropped from a size of", oldTxnListSize, "to a size of", tp.transactionListSize)
 
 	// Inform subscribers that an update has executed.
 	tp.mu.Demote()
