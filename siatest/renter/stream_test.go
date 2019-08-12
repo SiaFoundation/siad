@@ -223,7 +223,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(5 * modules.SectorSize)
+	fileSize := int(5*modules.SectorSize) + siatest.Fuzz()
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
