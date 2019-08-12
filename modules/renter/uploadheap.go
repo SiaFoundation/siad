@@ -1,5 +1,11 @@
 package renter
 
+// TODO: replace managedRefreshHostsAndWorkers with structural updates to the
+// worker pool. The worker pool should maintain the map of hosts that
+// managedRefreshHostsAndWorkers builds every call, and the contractor should
+// work with the worker pool to instantly notify the worker pool of any changes
+// to the set of contracts.
+
 import (
 	"container/heap"
 	"io/ioutil"
@@ -882,7 +888,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 // managedRefreshHostsAndWorkers will reset the set of hosts and the set of
 // workers for the renter.
 //
-// TODO: This function can be ditched entirely if the worker pool is made to
+// TODO: This function can be removed entirely if the worker pool is made to
 // keep a list of hosts. Then instead of passing around the hosts as a parameter
 // the cached value in the worker pool can be used instead. Using the cached
 // value in the worker pool is more accurate anyway because the hosts field will
@@ -902,7 +908,7 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 		hosts[contract.HostPublicKey.String()] = struct{}{}
 	}
 	// Refresh the worker pool as well.
-	r.staticWorkerPool.managedUpdate()
+	r.staticWorkerPool.callUpdate()
 	return hosts
 }
 

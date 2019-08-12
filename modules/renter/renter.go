@@ -2,23 +2,26 @@
 // network.
 package renter
 
-// NOTE: Some of the concurrency patterns in the renter are fairly complex. A
-// lot of this has been cleaned up, though some shadows of previous demons still
-// remain. Be careful when working with anything that involves concurrency.
-
 // TODO: Allow the 'baseMemory' to be set by the user.
-
+//
 // TODO: The repair loop currently receives new upload jobs through a channel.
 // The download loop has a better model, a heap that can be pushed to and popped
 // from concurrently without needing complex channel communication. Migrating
 // the renter to this model should clean up some of the places where uploading
 // bottlenecks, and reduce the amount of channel-ninjitsu required to make the
 // uploading function.
-
+//
 // TODO: Allow user to configure the packet size when ratelimiting the renter.
 // Currently the default is set to 16kb. That's going to require updating the
 // API and extending the settings object, and then tweaking the
 // setBandwidthLimits function.
+//
+// TODO: Currently 'callUpdate()' is used after setting the allowance, though
+// this doesn't guarantee that anything interesting will happen because the
+// contractor's 'threadedContractMaintenance' will run in the background and
+// choose to update the hosts and contracts. Really, we should have the
+// contractor notify the renter whenever there has been a change in the contract
+// set so that 'callUpdate()' can be used. Implementation in renter.SetSettings.
 
 import (
 	"fmt"
@@ -575,7 +578,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 
 	// Update the worker pool so that the changes are immediately apparent to
 	// users.
-	r.staticWorkerPool.managedUpdate()
+	r.staticWorkerPool.callUpdate()
 	return nil
 }
 

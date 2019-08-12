@@ -130,7 +130,7 @@ func (udc *unfinishedDownloadChunk) managedCleanUp() {
 	udc.workersStandby = udc.workersStandby[:0] // Workers have been taken off of standby.
 	udc.mu.Unlock()
 	for i := 0; i < len(standbyWorkers); i++ {
-		standbyWorkers[i].managedQueueDownloadChunk(udc)
+		standbyWorkers[i].callQueueDownloadChunk(udc)
 	}
 }
 
