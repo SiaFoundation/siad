@@ -334,8 +334,12 @@ func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
 		tp.mu.Lock()
 		defer tp.mu.Unlock()
 		err := tp.acceptTransactionSet(ts, txnFn)
+		if err == modules.ErrDuplicateTransactionSet {
+			tp.log.Debugln("Transaction set is a duplicate:", err)
+			return err
+		}
 		if err != nil {
-			tp.log.Debugln("Transaction set broadcast has failed:", err)
+			tp.log.Debugln("Transaction set will not be broadcast due to an error:", err)
 			return err
 		}
 		go tp.gateway.Broadcast("RelayTransactionSet", ts, tp.gateway.Peers())
