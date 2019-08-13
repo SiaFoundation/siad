@@ -302,7 +302,7 @@ func (tp *TransactionPool) threadedLogListSize() {
 		select {
 		case <-tp.tg.StopChan():
 			return
-		case <-time.After(time.Minute * 5):
+		case <-time.After(logSizeFrequency):
 		}
 		tp.mu.Lock()
 		tp.log.Debugln("Current tpool size:", tp.transactionListSize)
