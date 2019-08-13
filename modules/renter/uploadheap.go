@@ -160,25 +160,34 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	// Check if chunk is in any of the heap maps
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	_, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
-	_, existsRepairing := uh.repairingChunks[uuc.id]
-	_, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
+	unstuckUUC, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
+	repairingUUC, existsRepairing := uh.repairingChunks[uuc.id]
+	stuckUUC, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
 
 	// If the added chunk has a sourceReader and the existing one doesn't, replace
 	// them.
 	if uuc.sourceReader != nil && (existsUnstuckHeap || existsRepairing || existsStuckHeap) {
+		// Get the existing chunk.
+		var existingUUC *unfinishedUploadChunk
 		if existsStuckHeap {
-			// Move stuck chunk to unstuck heap.
-			delete(uh.stuckHeapChunks, uuc.id)
-			existsStuckHeap = false
+			existingUUC = stuckUUC
 		} else if existsRepairing {
-			// Ignore the chunk we are repairing right now.
-			delete(uh.repairingChunks, uuc.id)
-			existsRepairing = false
+			existingUUC = repairingUUC
 		} else if existsUnstuckHeap {
-			delete(uh.unstuckHeapChunks, uuc.id)
-			existsUnstuckHeap = false
+			existingUUC = unstuckUUC
 		}
+		// Cancel the chunk.
+		existingUUC.cancelMU.Lock()
+		existingUUC.canceled = true
+		existingUUC.cancelMU.Unlock()
+		// Wait for all workers to finish ongoing work on that chunk and try to push
+		// the new chunk again. This happens in a separate thread to avoid holding the
+		// uploadHeap lock while waiting.
+		go func() {
+			existingUUC.cancelWG.Wait()
+			uh.managedPush(uuc)
+		}()
+		return true // It's not pushed yet but it is guranteed to be pushed eventually.
 	}
 
 	// Check if the chunk can be added to the heap

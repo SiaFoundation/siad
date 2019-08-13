@@ -91,6 +91,10 @@ type unfinishedUploadChunk struct {
 	unusedHosts      map[string]struct{} // hosts that aren't yet storing any pieces or performing any work.
 	workersRemaining int                 // number of inactive workers still able to upload a piece.
 	workersStandby   []*worker           // workers that can be used if other workers fail.
+
+	cancelMU sync.Mutex     // cancelMU needs to be held when adding to cancelWG and reading/writing canceled.
+	canceled bool           // cancel the work on this chunk.
+	cancelWG sync.WaitGroup // WaitGroup to wait on after canceling the uploadchunk.
 }
 
 // managedNotifyStandbyWorkers is called when a worker fails to upload a piece, meaning
