@@ -143,8 +143,8 @@ func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
 func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	// Set the weight function in the hostdb.
 	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
 	hdb.weightFunc = wf
-	hdb.mu.Unlock()
 	// Update the hosttree and also the filteredTree if they are not the same.
 	err := hdb.hostTree.SetWeightFunction(wf)
 	if hdb.filteredTree != hdb.hostTree {
