@@ -25,6 +25,70 @@ possible without sacrificing performance.
 - Loading a a SiaFile's header into memory
     - i9-9900K with Intel SSDPEKNW010T8 -> 20,000 reads/second
 
+## Partial Uploads
+This section contains information about how partial uploads are handled
+within the siafile package. "Partial Upload" refers to being able to upload a
+so-called partial chunk without padding it to the size of a full chunk and
+therefore not wasting money when uploading many small files or files with
+trailing partial chunks. This is achieved by combining multiple partial
+chunks of different `SiaFiles` into a combined chunk.
+
+A `SiaFile` can contain at most a single partial chnk. This partial chunk can
+either be contained within a single combined chunk or spread across two
+combined chunks. If a `SiaFile` has a partial chunk, the `HasPartialChunk`
+field in the metadata will be set accordingly. Once it is clear which
+combined chunks the partial chunk is part of, `SetPartialChunks` will be
+called on the `SiaFile` to set the `PartialChunks` field in the `Metadata`.
+This field will contain one or two entries, depending on whether the partial
+chunk is split across two combined chunks or just one. These entries contain
+the required information to retrieve a partial chunk from a combined chunk
+and the status of the combined chunk to be able to determine whether to
+expect the combined chunk to be uploaded or not. Since multiple `SiaFiles`
+can reference the same combined chunks, a special type of `SiaFile` was
+introduced, called the "Partials Siafile" which also uses the `SiaFile` type
+but was a different file extension since it is never used directly.
+
+### Partials Siafiles
+Partials siafiles are a special type of `SiaFile`. A partials siafile doesn't
+contain metadata about an individual file but rather contains metadata about
+so-called combined chunks which are referenced by the regular `SiaFile` type.
+A combined chunk is a chunk which contains multiple partial chunks which were
+combined into a combined chunk. As such, a `SiaFile` with a partial chunk
+contains a reference to a partials siafile and forwards calls to its exported
+methods to the partials siafile as necessary.
+
+A partials siafile can't itself have partial chunks since that would require
+the partials siafile to reference another partials siafile. Instead it only
+contains combined chunks which are full chunks by definition. Since a
+combined chunk's size depends on its erasure code settings the same way that
+a regular full chunk's size does, we can only combined partial chunks with
+the same erasure code settings into a combined chunk which has the same
+settings as well. This means that for every new erasure code setting, a
+unique partials siafile will be created.
+
+One implication of having a `SiaFile` point to a partials siafile is the fact
+that we don't know the corresponding partials siafile before loading the
+`SiaFile` unless we create a new `SiaFile` using `New`. That means when we
+load a `SiaFile` from a backup or from disk, we need to manually set the
+partials siafile afterwards using `SetPartialsSiaFile`.
+
+### Partial Upload Workflow
+Upon the creation of a `SiaFile` we can determine if it contains a partial
+chunk by looking at the filesize. If the filesize is not a multiple of the
+chunk size of the file, we set the `HasPartialChunk` field in the metadata to
+'true'. In this state, the reported `Health` and `Redundancy` of the partial
+chunk will be the worst possible value for both the repair code and users of
+the API since the chunk isn't downloadable. Once the repair code picks up the
+chunk, it will move the chunk into a combined chunk and call
+`SetPartialChunks` on the `SiaFile`, effectively moving the status of the
+partial chunk to `CombinedChunkStatusIncomplete`. At this point, the `Health`
+and `Redundancy` reported to users are the highest possible values while for
+the repair loop it is still the lowest. That way we guarantee that the repair
+loop periodically checks if the combined chunk is ready for uploading. Once
+it is, the status of the partial chunk will be moved to
+`CombinedChunkStatusComplete` and both `Health` and `Redundancy` will start
+reporting the actual values for the combined chunk.
+
 ## Structure of the SiaFile:
 - Header
     - [Metadata](#metadata)
@@ -65,6 +129,7 @@ The SiaFile is split up into the following subsystems.
 - [Persistence Subsystem](#persistence-subsystem)
 - [SiaFileSet Subsystem](#siafileset-subsystem)
 - [Snapshot Subsystem](#snapshot-subsystem)
+- [Partials Siafile Subsystem](#partials-siafile-subsystem)
 
 ### Erasure Coding Subsystem
 **Key Files**
@@ -111,3 +176,11 @@ SiaFile. A snapshot contains most of the information a SiaFile does but can't
 be used to modify the underlying SiaFile directly. It is used to reduce
 locking contention within parts of the codebase where readonly access is good
 enough like the download code for example.
+
+### Partials Siafile Subsystem
+**Key Files**
+- [partialssiafile.go](./partialssiafile.go)
+
+The partials siafile subsystem contains code which is exclusively used by
+partials siafiles or partial upload related helper functions. All other
+methods are shared by regular siafiles and partials siafiles.

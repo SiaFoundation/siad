@@ -915,10 +915,10 @@ func TestSetCombinedChunkSingle(t *testing.T) {
 	cid := modules.CombinedChunkID("chunkid")
 	partialChunks := []modules.PartialChunk{
 		{
-			ChunkID:          cid,
-			HasPartialsChunk: false,
-			Length:           uint64(partialChunkSize),
-			Offset:           0,
+			ChunkID:        cid,
+			InPartialsFile: false,
+			Length:         uint64(partialChunkSize),
+			Offset:         0,
 		},
 	}
 	if err := sf.SetPartialChunks(partialChunks, nil); err != nil {
@@ -957,22 +957,22 @@ func TestSetCombinedChunkSingle(t *testing.T) {
 
 	// The first combined chunk's HasPartialsChunk can be set to 'true' now since
 	// it was added to the partials file.
-	partialChunks[0].HasPartialsChunk = true
+	partialChunks[0].InPartialsFile = true
 	// The second chunk should start at an offset at the end of the combined chunk
 	// to force it to be spread across 2 combined chunks.
 	cid2 := modules.CombinedChunkID("chunkid2")
 	partialChunks = []modules.PartialChunk{
 		{
-			ChunkID:          cid,
-			HasPartialsChunk: true,
-			Length:           1,
-			Offset:           uint64(sf2.ChunkSize() - 1),
+			ChunkID:        cid,
+			InPartialsFile: true,
+			Length:         1,
+			Offset:         uint64(sf2.ChunkSize() - 1),
 		},
 		{
-			ChunkID:          cid2,
-			HasPartialsChunk: false,
-			Length:           uint64(partialChunkSize2) - 1,
-			Offset:           0,
+			ChunkID:        cid2,
+			InPartialsFile: false,
+			Length:         uint64(partialChunkSize2) - 1,
+			Offset:         0,
 		},
 	}
 	// Set the combined chunk of the second file to have offset chunkSize-1.

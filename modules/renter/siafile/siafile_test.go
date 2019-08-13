@@ -85,8 +85,8 @@ func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error 
 	var partialChunks []modules.PartialChunk
 	for i := 0; i < numCombinedChunks; i++ {
 		partialChunks = append(partialChunks, modules.PartialChunk{
-			ChunkID:          modules.CombinedChunkID(hex.EncodeToString(fastrand.Bytes(16))),
-			HasPartialsChunk: false,
+			ChunkID:        modules.CombinedChunkID(hex.EncodeToString(fastrand.Bytes(16))),
+			InPartialsFile: false,
 		})
 	}
 	var err error

@@ -136,10 +136,10 @@ type (
 
 	// PartialChunk holds some information about a combined chunk
 	PartialChunk struct {
-		ChunkID          CombinedChunkID // The ChunkID of the combined chunk the partial is in.
-		HasPartialsChunk bool            // 'true' if the combined chunk is already in the partials siafile.
-		Length           uint64          // length of the partial chunk within the combined chunk.
-		Offset           uint64          // offset of the partial chunk within the combined chunk.
+		ChunkID        CombinedChunkID // The ChunkID of the combined chunk the partial is in.
+		InPartialsFile bool            // 'true' if the combined chunk is already in the partials siafile.
+		Length         uint64          // length of the partial chunk within the combined chunk.
+		Offset         uint64          // offset of the partial chunk within the combined chunk.
 	}
 )
 

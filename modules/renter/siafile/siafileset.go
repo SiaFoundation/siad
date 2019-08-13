@@ -520,7 +520,8 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, chunks []chunk, suffix ui
 			siaFilePath := siaPath.AddSuffix(suffix).SiaFileSysPath(sfs.staticSiaFileDir)
 			sf.SetSiaFilePath(siaFilePath)
 		}
-		// Set the correct partials SiaFile.
+		// Set the correct partials SiaFile since the file we are adding wasn't part
+		// of a SiaFileSet before and therefore doesn't have one yet.
 		ec := sf.ErasureCode()
 		psf, err := sfs.openPartialsSiaFile(ec, true)
 		if err != nil {

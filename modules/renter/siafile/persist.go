@@ -118,7 +118,7 @@ func (sf *SiaFile) SetPartialChunks(combinedChunks []modules.PartialChunk, updat
 			Offset: c.Offset,
 			Status: CombinedChunkStatusInComplete,
 		}
-		if c.HasPartialsChunk {
+		if c.InPartialsFile {
 			pc.Index = uint64(sf.partialsSiaFile.numChunks - 1)
 		} else {
 			pc.Index = uint64(sf.partialsSiaFile.numChunks)
