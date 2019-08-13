@@ -2879,7 +2879,7 @@ returns whether the requested transaction has been seen on the blockchain. Note,
 
 ### Path Parameters
 #### REQUIRED
-**id** | hash
+**id** | hash  
 id of the transaction being queried
 
 ### JSON Response
@@ -2890,7 +2890,7 @@ id of the transaction being queried
   "confirmed": true // boolean
 }
 ```
-**confirmed** | boolean
+**confirmed** | boolean  
 indicates if a transaction is confirmed on the blockchain
 
 ## /tpool/fee [GET]
@@ -2911,10 +2911,10 @@ returns the minimum and maximum estimated fees expected by the transaction pool.
   "maximum": "5678"  // hastings / byte
 }
 ```
-**minimum** | hastings / byte
+**minimum** | hastings / byte  
 the minimum estimated fee
 
-**maximum** | hastings / byte
+**maximum** | hastings / byte  
 the maximum estimated fee
 
 ## /tpool/raw/:id [GET]
@@ -2928,7 +2928,7 @@ returns the ID for the requested transaction and its raw encoded parents and tra
 
 ### Path Parameters
 #### REQUIRED
-**id** | hash 
+**id** | hash  
 id of the transaction being queried
 
 ### JSON Response
@@ -2961,38 +2961,15 @@ submits a raw transaction to the transaction pool, broadcasting it to the transa
 
 ### Query String Parameters
 #### REQUIRED
-**parents** | string 
+**parents** | string  
 JSON- or base64-encoded transaction parents
 
-**transaction** | string
+**transaction** | string  
 JSON- or base64-encoded transaction
 
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
-
-## /tpool/confirmed/:id [GET]
-> curl example  
-
-```go
-curl -A "Sia-Agent" "localhost:9980/tpool/confirmed/9028cc285ad755b81c0cfead3710c1344044175e59cdc4ca097374fe188c9acf"
-```
-
-### Query String Parameters
-#### REQUIRED
-**id** | hash
-id of the transaction being queried
-
-### JSON Response
-> JSON Response Example
-
-```go
-{
-  "confirmed": true,
-}
-```
-**confirmed** | boolean
-boolean that indicates if transaction was confirmed
 
 # Wallet
 
