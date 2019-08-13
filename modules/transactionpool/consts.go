@@ -16,6 +16,10 @@ const (
 
 // Constants related to the size and ease-of-entry of the transaction pool.
 const (
+	// logSizeFrequency is how often the transaction pool size will be logged
+	// when running in debug mode.
+	logSizeFrequency = time.Minute * 5
+
 	// maxTxnAge determines the maximum age of a transaction (in block height)
 	// allowed before the transaction is pruned from the transaction pool.
 	maxTxnAge = types.BlockHeight(24)
