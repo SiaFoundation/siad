@@ -50,6 +50,16 @@ const (
 	// and the minimum recommended fee.
 	maxMultiplier = 3
 
+	// feeEstimationConstantPadding is the constant amount of padding added to
+	// the current tpool size when estimating a good fee rate for new
+	// transactions.
+	feeEstimationConstantPadding = 250e3
+
+	// feeEstimationProportionalPadding is the amount of proportional padding
+	// added to the current tpool size when estimating a good fee rate for new
+	// transactions.
+	feeEstimationProportionalPadding = 1.25
+
 	// minExtendMultiplier defines the amount we multiply into the minimum
 	// amount required to extend the fee pool when coming up with a min fee
 	// recommendation.
