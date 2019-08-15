@@ -30,10 +30,6 @@ type (
 	// rejecting them based on internal criteria such as fees and unconfirmed
 	// double spends.
 	TransactionPool struct {
-		// Dependencies of the transaction pool.
-		consensusSet modules.ConsensusSet
-		gateway      modules.Gateway
-
 		// To prevent double spends in the unconfirmed transaction set, the
 		// transaction pool keeps a list of all objects that have either been
 		// created or consumed by the current unconfirmed transaction pool. All
@@ -64,12 +60,15 @@ type (
 		subscribers []modules.TransactionPoolSubscriber
 
 		// Utilities.
-		db         *persist.BoltDatabase
-		dbTx       *bolt.Tx
-		log        *persist.Logger
-		mu         demotemutex.DemoteMutex
-		tg         sync.ThreadGroup
-		persistDir string
+		consensusSet modules.ConsensusSet
+		db           *persist.BoltDatabase
+		dbTx         *bolt.Tx
+		gateway      modules.Gateway
+		log          *persist.Logger
+		mu           demotemutex.DemoteMutex
+		persistDir   string
+		synced       bool
+		tg           sync.ThreadGroup
 	}
 )
 

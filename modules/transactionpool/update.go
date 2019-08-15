@@ -411,6 +411,9 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 		}
 	}
 
+	// Set the sync status of the tpool equal to the sync status of consensus.
+	tp.synced = cc.Synced
+
 	// Inform subscribers that an update has executed.
 	tp.mu.Demote()
 	tp.updateSubscribersTransactions()
