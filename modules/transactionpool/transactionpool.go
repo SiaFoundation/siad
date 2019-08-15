@@ -26,7 +26,7 @@ type (
 	// the transaction pool.
 	ObjectID crypto.Hash
 	// TransactionSetID is the hash of a transaction set.
-	TransactionSetID crypto.Hash
+	// TransactionSetID modules.TransactionSetID
 
 	// The TransactionPool tracks incoming transactions, accepting them or
 	// rejecting them based on internal criteria such as fees and unconfirmed
@@ -47,11 +47,11 @@ type (
 		//
 		// transactionSetDiffs map form a transaction set id to the set of
 		// diffs that resulted from the transaction set.
-		knownObjects        map[ObjectID]TransactionSetID
-		subscriberSets      map[TransactionSetID]*modules.UnconfirmedTransactionSet
+		knownObjects        map[ObjectID]modules.TransactionSetID
+		subscriberSets      map[modules.TransactionSetID]*modules.UnconfirmedTransactionSet
 		transactionHeights  map[types.TransactionID]types.BlockHeight
-		transactionSets     map[TransactionSetID][]types.Transaction
-		transactionSetDiffs map[TransactionSetID]*modules.ConsensusChange
+		transactionSets     map[modules.TransactionSetID][]types.Transaction
+		transactionSetDiffs map[modules.TransactionSetID]*modules.ConsensusChange
 		transactionListSize int
 
 		// Variables related to the blockchain.
@@ -90,11 +90,11 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 		consensusSet: cs,
 		gateway:      g,
 
-		knownObjects:        make(map[ObjectID]TransactionSetID),
-		subscriberSets:      make(map[TransactionSetID]*modules.UnconfirmedTransactionSet),
+		knownObjects:        make(map[ObjectID]modules.TransactionSetID),
+		subscriberSets:      make(map[modules.TransactionSetID]*modules.UnconfirmedTransactionSet),
 		transactionHeights:  make(map[types.TransactionID]types.BlockHeight),
-		transactionSets:     make(map[TransactionSetID][]types.Transaction),
-		transactionSetDiffs: make(map[TransactionSetID]*modules.ConsensusChange),
+		transactionSets:     make(map[modules.TransactionSetID][]types.Transaction),
+		transactionSetDiffs: make(map[modules.TransactionSetID]*modules.ConsensusChange),
 
 		persistDir: persistDir,
 	}
@@ -264,8 +264,10 @@ func (tp *TransactionPool) Transaction(id types.TransactionID) (types.Transactio
 	return txn, necessaryParents, exists
 }
 
-// TransactionSet returns the transaction set the provided object
-// appears in.
+// TransactionSet returns the transaction set the provided object appears in.
+//
+// TODO - why is parents defined? This method should be able to just return
+// tSet. If there is a specific reason there should be a comment
 func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
@@ -280,6 +282,13 @@ func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 	}
 	parents = append(parents, tSet...)
 	return parents
+}
+
+// TransactionSets returns the transaction sets of the transaction pool
+func (tp *TransactionPool) TransactionSets() map[modules.TransactionSetID][]types.Transaction {
+	tp.mu.RLock()
+	defer tp.mu.RUnlock()
+	return tp.transactionSets
 }
 
 // Broadcast broadcasts a transaction set to all of the transaction pool's

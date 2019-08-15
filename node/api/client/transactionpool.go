@@ -24,3 +24,10 @@ func (c *Client) TransactionPoolRawPost(txn types.Transaction, parents []types.T
 	err = c.post("/tpool/raw", values.Encode(), nil)
 	return
 }
+
+// TransactionPoolSetsGET uses the /tpool/transactions endpoint to get the
+// transaction sets of the tpool
+func (c *Client) TransactionPoolSetsGET() (tpsg api.TpoolSetsGET, err error) {
+	err = c.get("/tpool/transactionsets", &tpsg)
+	return
+}

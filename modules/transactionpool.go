@@ -147,6 +147,9 @@ type (
 		// appears in.
 		TransactionSet(crypto.Hash) []types.Transaction
 
+		// TransactionSets returns the transaction sets of the transaction pool
+		TransactionSets() map[TransactionSetID][]types.Transaction
+
 		// Unsubscribe removes a subscriber from the transaction pool.
 		// This is necessary for clean shutdown of the miner.
 		Unsubscribe(TransactionPoolSubscriber)
