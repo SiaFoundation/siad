@@ -91,7 +91,7 @@ func (tp *TransactionPool) managedBroadcastTpoolToNewPeers(finishedPeers map[mod
 
 	// Get the set of transactions that will be sent to the new peers.
 	tp.mu.Lock()
-	transactionSetIDs := make([]TransactionSetID, 0, len(tp.transactionSets))
+	transactionSetIDs := make([]modules.TransactionSetID, 0, len(tp.transactionSets))
 	transactionSets := make([][]types.Transaction, 0, len(tp.transactionSets))
 	for id, set := range tp.transactionSets {
 		transactionSetIDs = append(transactionSetIDs, id)
