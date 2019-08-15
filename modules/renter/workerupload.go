@@ -85,6 +85,17 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	w.unprocessedChunks = w.unprocessedChunks[1:]
 	w.mu.Unlock()
 
+	// Make sure the chunk wasn't canceled.
+	nextChunk.cancelMU.Lock()
+	if nextChunk.canceled {
+		nextChunk.cancelMU.Unlock()
+		return true
+	}
+	// Add this worker to the chunk's cancelWG for the duration of this method.
+	nextChunk.cancelWG.Add(1)
+	defer nextChunk.cancelWG.Done()
+	nextChunk.cancelMU.Unlock()
+
 	// Check if this particular chunk is necessary. If not, return 'true'
 	// because there may be more chunks in the queue.
 	uc, pieceIndex := w.managedProcessUploadChunk(nextChunk)

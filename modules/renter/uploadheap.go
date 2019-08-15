@@ -97,9 +97,9 @@ type uploadHeap struct {
 	//
 	// repairingChunks is a map containing all the chunks are that currently
 	// assigned to workers and are being repaired/worked on.
-	repairingChunks   map[uploadChunkID]struct{}
-	stuckHeapChunks   map[uploadChunkID]struct{}
-	unstuckHeapChunks map[uploadChunkID]struct{}
+	repairingChunks   map[uploadChunkID]*unfinishedUploadChunk
+	stuckHeapChunks   map[uploadChunkID]*unfinishedUploadChunk
+	unstuckHeapChunks map[uploadChunkID]*unfinishedUploadChunk
 
 	// Control channels
 	newUploads        chan struct{}
@@ -160,19 +160,45 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	// Check if chunk is in any of the heap maps
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	_, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
-	_, existsRepairing := uh.repairingChunks[uuc.id]
-	_, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
+	unstuckUUC, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
+	repairingUUC, existsRepairing := uh.repairingChunks[uuc.id]
+	stuckUUC, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
+
+	// If the added chunk has a sourceReader and the existing one doesn't, replace
+	// them.
+	if uuc.sourceReader != nil && (existsUnstuckHeap || existsRepairing || existsStuckHeap) {
+		// Get the existing chunk.
+		var existingUUC *unfinishedUploadChunk
+		if existsStuckHeap {
+			existingUUC = stuckUUC
+		} else if existsRepairing {
+			existingUUC = repairingUUC
+		} else if existsUnstuckHeap {
+			existingUUC = unstuckUUC
+		}
+		// Cancel the chunk.
+		existingUUC.cancelMU.Lock()
+		existingUUC.canceled = true
+		existingUUC.cancelMU.Unlock()
+		// Wait for all workers to finish ongoing work on that chunk and try to push
+		// the new chunk again. This happens in a separate thread to avoid holding the
+		// uploadHeap lock while waiting.
+		go func() {
+			existingUUC.cancelWG.Wait()
+			uh.managedPush(uuc)
+		}()
+		return true // It's not pushed yet but it is guranteed to be pushed eventually.
+	}
 
 	// Check if the chunk can be added to the heap
 	canAddStuckChunk := chunkStuck && !existsStuckHeap && !existsRepairing && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
 	canAddUnstuckChunk := !chunkStuck && !existsUnstuckHeap && !existsRepairing
 	if canAddStuckChunk {
-		uh.stuckHeapChunks[uuc.id] = struct{}{}
+		uh.stuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
 		return true
 	} else if canAddUnstuckChunk {
-		uh.unstuckHeapChunks[uuc.id] = struct{}{}
+		uh.unstuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
 		return true
 	}
@@ -189,7 +215,7 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 		if _, exists := uh.repairingChunks[uc.id]; exists {
 			build.Critical("There should not be a chunk in the heap that can be popped that is currently being repaired")
 		}
-		uh.repairingChunks[uc.id] = struct{}{}
+		uh.repairingChunks[uc.id] = uc
 	}
 	uh.mu.Unlock()
 	return uc
@@ -199,8 +225,8 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 func (uh *uploadHeap) managedReset() error {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	uh.unstuckHeapChunks = make(map[uploadChunkID]struct{})
-	uh.stuckHeapChunks = make(map[uploadChunkID]struct{})
+	uh.unstuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
+	uh.stuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
 	return uh.heap.reset()
 }
 
