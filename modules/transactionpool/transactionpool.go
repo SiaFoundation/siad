@@ -167,7 +167,7 @@ func (tp *TransactionPool) FeeEstimation() (min, max types.Currency) {
 		min = feeByCurrentTpoolSize
 	}
 
-	// Third method: enusre the fee is above an absolute minimum.
+	// Third method: ensure the fee is above an absolute minimum.
 	if min.Cmp(minEstimation) < 0 {
 		min = minEstimation
 	}
