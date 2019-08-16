@@ -133,6 +133,9 @@ func (r *Renter) managedInitPersist() error {
 	if err != nil {
 		return err
 	}
+	if err := r.tg.AfterStop(r.log.Close); err != nil {
+		return err
+	}
 
 	// Initialize the writeaheadlog.
 	options := writeaheadlog.Options{
@@ -141,6 +144,9 @@ func (r *Renter) managedInitPersist() error {
 	}
 	txns, wal, err := writeaheadlog.NewWithOptions(options)
 	if err != nil {
+		return err
+	}
+	if err := r.tg.AfterStop(wal.Close); err != nil {
 		return err
 	}
 
