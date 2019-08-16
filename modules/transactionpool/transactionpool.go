@@ -25,8 +25,6 @@ type (
 	// contracts, and is used to see if there is are conflicts or overlaps within
 	// the transaction pool.
 	ObjectID crypto.Hash
-	// TransactionSetID is the hash of a transaction set.
-	// TransactionSetID modules.TransactionSetID
 
 	// The TransactionPool tracks incoming transactions, accepting them or
 	// rejecting them based on internal criteria such as fees and unconfirmed
@@ -265,13 +263,11 @@ func (tp *TransactionPool) Transaction(id types.TransactionID) (types.Transactio
 }
 
 // TransactionSet returns the transaction set the provided object appears in.
-//
-// TODO - why is parents defined? This method should be able to just return
-// tSet. If there is a specific reason there should be a comment
 func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
-	var parents []types.Transaction
+	// Define txns as to not use the memory that stores the actual map
+	var txns []types.Transaction
 	tSetID, exists := tp.knownObjects[ObjectID(oid)]
 	if !exists {
 		return nil
@@ -280,15 +276,23 @@ func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 	if !exists {
 		return nil
 	}
-	parents = append(parents, tSet...)
-	return parents
+	txns = append(txns, tSet...)
+	return txns
 }
 
 // TransactionSets returns the transaction sets of the transaction pool
-func (tp *TransactionPool) TransactionSets() map[modules.TransactionSetID][]types.Transaction {
+func (tp *TransactionPool) TransactionSets() []modules.TransactionSet {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
-	return tp.transactionSets
+	var txnSets []modules.TransactionSet
+	for ID, txns := range tp.transactionSets {
+		txnSet := modules.TransactionSet{
+			TransactionSetID: ID,
+			Transactions:     txns,
+		}
+		txnSets = append(txnSets, txnSet)
+	}
+	return txnSets
 }
 
 // Broadcast broadcasts a transaction set to all of the transaction pool's

@@ -32,12 +32,12 @@ type stubTPool struct{}
 func (stubTPool) AcceptTransactionSet(ts []types.Transaction) error {
 	return errTxFail
 }
-func (stubTPool) FeeEstimation() (min, max types.Currency)                          { return types.Currency{}, types.Currency{} }
-func (stubTPool) TransactionSet(oid crypto.Hash) []types.Transaction                { return nil }
-func (stubTPool) TransactionSets() map[modules.TransactionSetID][]types.Transaction { return nil }
-func (stubTPool) Broadcast(ts []types.Transaction)                                  {}
-func (stubTPool) Close() error                                                      { return nil }
-func (stubTPool) TransactionList() []types.Transaction                              { return nil }
+func (stubTPool) FeeEstimation() (min, max types.Currency)           { return types.Currency{}, types.Currency{} }
+func (stubTPool) TransactionSet(oid crypto.Hash) []types.Transaction { return nil }
+func (stubTPool) TransactionSets() []modules.TransactionSet          { return nil }
+func (stubTPool) Broadcast(ts []types.Transaction)                   {}
+func (stubTPool) Close() error                                       { return nil }
+func (stubTPool) TransactionList() []types.Transaction               { return nil }
 func (stubTPool) Transaction(id types.TransactionID) (types.Transaction, []types.Transaction, bool) {
 	return types.Transaction{}, nil, false
 }

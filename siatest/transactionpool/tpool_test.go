@@ -27,7 +27,7 @@ func TestTpoolTransactionSetGet(t *testing.T) {
 		}
 	}()
 
-	// Transaction set should be empty to start
+	// Transaction pool should be empty to start
 	tpsg, err := miner.TransactionPoolSetsGET()
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestTpoolTransactionSetGet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify the transaction set
+	// Verify the transaction pool
 	tpsg, err = miner.TransactionPoolSetsGET()
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func TestTpoolTransactionSetGet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Transaction set should now be empty
+	// Transaction pool should now be empty
 	tpsg, err = miner.TransactionPoolSetsGET()
 	if err != nil {
 		t.Fatal(err)

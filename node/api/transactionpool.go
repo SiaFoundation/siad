@@ -36,13 +36,7 @@ type (
 
 	// TpoolSetsGET contains the information about the tpool's transaction sets
 	TpoolSetsGET struct {
-		TransactionSets []TransactionSet `json:"transactionsets"`
-	}
-
-	// TransactionSet contain information about a tpool transaction set
-	TransactionSet struct {
-		TransactionSetID modules.TransactionSetID `json:"transactionsetid"`
-		Transactions     []types.Transaction      `json:"transactions"`
+		TransactionSets []modules.TransactionSet `json:"transactionsets"`
 	}
 )
 
@@ -148,15 +142,7 @@ func (api *API) tpoolConfirmedGET(w http.ResponseWriter, req *http.Request, ps h
 // tpoolTransactionSetsHandler returns the current transaction sets of the
 // transaction pool
 func (api *API) tpoolTransactionSetsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	var txnSets []TransactionSet
-	tSetsMap := api.tpool.TransactionSets()
-	for ID, txns := range tSetsMap {
-		set := TransactionSet{
-			TransactionSetID: ID,
-			Transactions:     txns,
-		}
-		txnSets = append(txnSets, set)
-	}
+	txnSets := api.tpool.TransactionSets()
 	WriteJSON(w, TpoolSetsGET{
 		TransactionSets: txnSets,
 	})
