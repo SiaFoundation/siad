@@ -202,7 +202,7 @@ Fraction of each file contract payout given to siafund holders.
 Number of coins given to the miner of the first block. Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
 
 **minimumcoinbase** | siacoin
-Minimum number of coins paid out to the miner of a block (the coinbase decreases with each block). Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
+Minimum number of coins paid j to the miner of a block (the coinbase decreases with each block). Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
 
 **roottarget** | hash
 Initial target.  
@@ -2970,6 +2970,117 @@ JSON- or base64-encoded transaction
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
+
+## /tpool/transactionsets [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/tpool/transactionsets"
+```
+
+returns the transaction sets of the transaction pool.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "transactionsets": [
+    {
+      "transactions": [     
+        {
+          "siacoininputs":  [ // []SiacoinInput
+            {
+              "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+              "unlockconditions": {
+                "publickeys": [
+                   {
+                    "algorithm": "ed25519",
+                    "key": "EKjiRsUyMOLER+8u3uXxemOEKMxRc2TxCh0QkcSCVHY="
+                   }
+                  ],
+                "signaturesrequired": 1,
+                "timelock": 0
+              }
+            },
+          ]      
+          "siacoinoutputs": []        // []SiacoinOutput        
+          "filecontracts":  []        // []FileContract
+          "filecontractrevisions": [] // []FileContractRevision 
+          "storageproofs":  []        // []StorageProof         
+          "siafundinputs":  []        // []SiafundInput
+          "siafundoutputs": []        // []SiafundOutput      
+          "minerfees": [              // []Currency   
+            "61440000000000000000000"
+          ],          
+          "arbitrarydata": [          // [][]byte
+            "RkNJZGVudGlmaWVyAAAAACYzhrmGh2OL2Y9eBn5UYIFxCi4HKFvtR43pEgaBpkDqEa3LrQlWGyk+a0tBXi4nkIIaISIfTJMZs3sBgi0PFl4NyGOgqYppVQGaYnPuaRZKONJWE2jYZUu/iY3xLvpYIciu5JVlRIStwfGepaPWW4jLe4tf3AabKINgFk6p52m6"
+          ],
+          "transactionsignatures": [ // []TransactionSignature
+                        {
+                            "coveredfields": {
+                                "arbitrarydata": [],
+                                "filecontractrevisions": [],
+                                "filecontracts": [],
+                                "minerfees": [],
+                                "siacoininputs": [],
+                                "siacoinoutputs": [],
+                                "siafundinputs": [],
+                                "siafundoutputs": [],
+                                "storageproofs": [],
+                                "transactionsignatures": [],
+                                "wholetransaction": true
+                            },
+                            "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+                            "publickeyindex": 0,
+                            "signature": "QAVQSrcTv2xBHjWiTuuxVgWtUYECEZNbud41u7wgFIGcsKuBnbtT2yaH/GMw00/aMCpZ70qqBpQwQ/akAn/pAA==",
+                            "timelock": 0
+                        },
+        }
+      ]
+      "transactionsetid": [ // TransactionSetID
+          37,
+          69,
+          151,
+          209,
+          229,
+          28,
+          22,
+          142,
+          201,
+          205,
+          141,
+          43,
+          189,
+          178,
+          71,
+          136,
+          40,
+          77,
+          128,
+          123,
+          13,
+          136,
+          208,
+          190,
+          249,
+          88,
+          41,
+          37,
+          7,
+          185,
+          214,
+          130
+      ]
+    }
+  ]
+}
+```
+**minimum** | hastings / byte  
+the minimum estimated fee
+
+**maximum** | hastings / byte  
+the maximum estimated fee
 
 # Wallet
 
