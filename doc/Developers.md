@@ -86,6 +86,43 @@ if agent != "SiaAgent" && agent != "" {
 }
 ```
 
+### Module READMEs
+Below is the standard format for the README files for the modules.
+
+># Modules Name
+>Module overview.
+>
+>## Subsystems
+>List subsystems
+> - Subsystem 1
+> - Subsystem 2
+> - etc..
+>
+>### Subsystem 1
+>**Key Files**  
+>List files
+> - file1.go
+> - file2.go
+> - etc..
+>
+>Description of Subsystem
+>
+>**Exports**  
+>List Exported methods
+>
+>**State Complexities**  
+>List any internal complexities that the subsytem has.
+>
+>**Inbound Complexities**  
+>List any interactions with other subsystems that have dependencies on this subsystem.
+>
+>**Outbound Complexities**  
+>List any interactions with other subsystems that this subsystem has dependencies on.
+>
+>**TODOs**  
+>List any outstanding TODOs for the subsystem
+>
+
 Naming
 ------
 
