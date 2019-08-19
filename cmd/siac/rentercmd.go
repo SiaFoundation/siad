@@ -232,6 +232,31 @@ func rentercmd() {
 	if err != nil {
 		die(err)
 	}
+
+	if !renterListVerbose {
+		return
+	}
+
+	// Print out ratelimit info about the renter
+	fmt.Println()
+	fmt.Printf(`Rate limits: `)
+	if rg.Settings.MaxDownloadSpeed == 0 {
+		fmt.Printf(`
+  Download Speed: %v`, "no limit")
+	} else {
+		fmt.Printf(`
+  Download Speed: %v Mbps`, rg.Settings.MaxDownloadSpeed)
+	}
+	if rg.Settings.MaxUploadSpeed == 0 {
+		fmt.Printf(`
+  Upload Speed:   %v
+`, "no limit")
+	} else {
+		fmt.Printf(`
+  Upload Speed:   %v Mbps
+`, rg.Settings.MaxUploadSpeed)
+	}
+	fmt.Println()
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
