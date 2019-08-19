@@ -465,6 +465,10 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 // threadedSynchronizeSnapshots continuously scans hosts to ensure that all
 // current hosts are storing all known snapshots.
 func (r *Renter) threadedSynchronizeSnapshots() {
+	if err := r.tg.Add(); err != nil {
+		return
+	}
+	defer r.tg.Done()
 	// calcOverlap takes a host's entry table and the set of known snapshots,
 	// and calculates which snapshots the host is missing and which snapshots it
 	// has that we don't.
