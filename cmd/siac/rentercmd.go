@@ -204,6 +204,9 @@ func abs(path string) string {
 
 // rentercmd displays the renter's financial metrics and high level renter info
 func rentercmd() {
+	// For UX formating
+	defer fmt.Println()
+
 	// Get Renter
 	rg, err := httpClient.RenterGet()
 	if err != nil {
@@ -239,24 +242,7 @@ func rentercmd() {
 
 	// Print out ratelimit info about the renter
 	fmt.Println()
-	fmt.Printf(`Rate limits: `)
-	if rg.Settings.MaxDownloadSpeed == 0 {
-		fmt.Printf(`
-  Download Speed: %v`, "no limit")
-	} else {
-		fmt.Printf(`
-  Download Speed: %v Mbps`, rg.Settings.MaxDownloadSpeed)
-	}
-	if rg.Settings.MaxUploadSpeed == 0 {
-		fmt.Printf(`
-  Upload Speed:   %v
-`, "no limit")
-	} else {
-		fmt.Printf(`
-  Upload Speed:   %v Mbps
-`, rg.Settings.MaxUploadSpeed)
-	}
-	fmt.Println()
+	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
@@ -276,7 +262,6 @@ func renterFilesAndContractSummary() error {
   Total Stored:   %v
   Min Redundancy: %v
   Contracts:      %v
-
 `, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].AggregateMinRedundancy, len(rc.ActiveContracts))
 
 	return nil
