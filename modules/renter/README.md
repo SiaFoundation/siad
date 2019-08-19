@@ -339,6 +339,13 @@ connection with the host by creating an `editor`. Next the `editor` is used to
 update the file contract with the next data being uploaded. This will update the
 merkle root and the contract revision.
 
+**Outbound Complexities**  
+ - `Upload` calls `threadedBubbleMetadata` from the Health Loop to update the
+   filesystem of the new upload
+ - `Upload` calls `managedBuildAndPushChunks` to add upload chunks to the
+   `uploadHeap` and then signals the heap's `newUploads` channel so that the
+   Repair Loop will work through the heap and upload the chunks
+
 ### Upload Streaming Subsystem
 **Key Files**
  - [uploadstreamer.go](./uploadstreamer.go)
@@ -363,6 +370,7 @@ merkle root and the contract revision.
   - Pull out stuck loop code from uploadheap.go and put in repair.go
   - Review naming of files associated with this subsystem
   - Create benchmark for health loop and add print outs to Health Loop section
+  - Break out Health, Repair, and Stuck code into 3 distinct subsystems
   
 There are 3 main functions that work together to make up Sia's file repair
 mechanism, `threadedUpdateRenterHealth`, `threadedUploadAndRepairLoop`, and
@@ -432,7 +440,12 @@ status is an active bubble then it is removed from the renter's tracking. If the
 status was a pending bubble then the status is set to active and bubble is
 called on the directory again. 
 
-**Assumptions / Complexities**
+**Inbound Complexities**  
+ - The Repair loop relies on Health Loop and `threadedBubbleMetadata` to keep
+   the filesystem accurately updated in order to work through the file system in
+   the correct order.
+
+**Outbound Complexities**   
  - The Health Loop triggers the Repair Loop when unhealthy files are found
  - The Health Loop triggers the Stuck Loop when stuck files are found
 
@@ -493,21 +506,23 @@ to be successful the chunk must be at 1x redundancy or better. If a chunk is
 below 1x redundancy and the local file is not present the chunk, and therefore
 the file, is considered lost as there is no way to repair it. 
 
-**Assumptions / Complexities**
+**Inbound Complexities**  
  - `Upload` adds chunks directly to the upload heap by calling
    `managedBuildAndPushChunks`
  - Repair loop will sleep until work is needed meaning other threads will wake
    up the repair loop by calling the `repairNeeded` channel
  - There is always enough space in the heap, or the number of backup chunks is
    few enough that all the backup chunks are always added to the upload heap.
+ - Stuck chunks get added directly to the upload heap and have priority over
+   normal uploads and repairs
+ - Streaming upload chunks are added directory to the upload heap and have the
+   highest priority
+
+**Outbound Complexities**  
  - The repair loop relies on the directory heap being accurate which in terms
    relies on the health loop keeping the filesystem up to date.
  - The repair loop passes chunks on to the upload subsystem and expects that
    subsystem to handle the request 
- - Stuck chunks get added directory to the upload heap and have priority over
-   normal uploads and repairs
- - Streaming upload chunks are added directory to the upload heap and have the
-   highest priority
 
 #### Stuck Loop
 File's are marked as `stuck` if the Renter is unable to fully upload the file.
@@ -561,11 +576,13 @@ If the repair wasn't successful, the stuck loop will wait for the
 the stuck loop doesn't find any stuck chunks, it will sleep until a bubble wakes
 it up by finding a stuck chunk.
 
-**Assumptions / Complexities**
+**Inbound Complexities**  
  - Chunk repair code signals the stuck loop when a stuck chunk is successfully
    repaired
  - Health loop signals the stuck loop when aggregateNumStuckChunks for the root
    directory is > 0
+
+**State Complexities**  
  - The stuck loop and the repair loop use a number of the same methods when
    building `unfinishedUploadChunks` to add to the `uploadHeap`. These methods
    rely on the `repairTarget` to know if they should target stuck chunks or
