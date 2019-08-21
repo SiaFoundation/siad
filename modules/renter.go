@@ -19,13 +19,13 @@ var (
 	DefaultAllowance = Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(500),
 		Hosts:       uint64(PriceEstimationScope),
-		Period:      types.BlockHeight(3 * types.BlocksPerMonth),
-		RenewWindow: types.BlockHeight(types.BlocksPerMonth),
+		Period:      3 * types.BlocksPerMonth,
+		RenewWindow: types.BlocksPerMonth,
 
-		ExpectedStorage:    1e12,                                 // 1 TB
-		ExpectedUpload:     uint64(200e9) / types.BlocksPerMonth, // 200 GB per month
-		ExpectedDownload:   uint64(100e9) / types.BlocksPerMonth, // 100 GB per month
-		ExpectedRedundancy: 3.0,                                  // default is 10/30 erasure coding
+		ExpectedStorage:    1e12,                                         // 1 TB
+		ExpectedUpload:     uint64(200e9) / uint64(types.BlocksPerMonth), // 200 GB per month
+		ExpectedDownload:   uint64(100e9) / uint64(types.BlocksPerMonth), // 100 GB per month
+		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
 	}
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")

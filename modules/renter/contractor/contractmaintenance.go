@@ -931,7 +931,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// renewal.
 		utility, ok := c.managedContractUtility(contract.ID)
 		if !ok || !utility.GoodForRenew {
-			if uint64(blockHeight-contract.StartHeight) < types.BlocksPerWeek {
+			if blockHeight-contract.StartHeight < types.BlocksPerWeek {
 				c.log.Debugln("Contract did not last 1 week and is not being renewed", contract.ID)
 			}
 			c.log.Debugln("Contract skipped because it is not good for renew (utility.GoodForRenew, exists)", utility.GoodForRenew, ok)

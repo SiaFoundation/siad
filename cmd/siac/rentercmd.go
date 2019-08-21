@@ -2069,7 +2069,7 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	if err != nil {
 		die("Could not read the renter prices:", err)
 	}
-	periodFactor := uint64(rpg.Allowance.Period / types.BlockHeight(4032))
+	periodFactor := uint64(rpg.Allowance.Period / types.BlocksPerMonth)
 
 	// Display Estimate
 	fmt.Println("Renter Prices (estimated):")
