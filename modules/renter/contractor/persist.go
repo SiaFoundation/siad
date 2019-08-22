@@ -21,10 +21,13 @@ type contractorPersist struct {
 	LastChange           modules.ConsensusChangeID       `json:"lastchange"`
 	RecentRecoveryChange modules.ConsensusChangeID       `json:"recentrecoverychange"`
 	OldContracts         []modules.RenterContract        `json:"oldcontracts"`
+	DoubleSpentContracts map[string]types.BlockHeight    `json:"doublespentcontracts"`
 	RecoverableContracts []modules.RecoverableContract   `json:"recoverablecontracts"`
 	RenewedFrom          map[string]types.FileContractID `json:"renewedfrom"`
 	RenewedTo            map[string]types.FileContractID `json:"renewedto"`
 	Synced               bool                            `json:"synced"`
+
+	WatchdogData watchdogPersist `json:"watchdog"`
 }
 
 // persistData returns the data in the Contractor that will be saved to disk.
@@ -43,6 +46,7 @@ func (c *Contractor) persistData() contractorPersist {
 		RecentRecoveryChange: c.recentRecoveryChange,
 		RenewedFrom:          make(map[string]types.FileContractID),
 		RenewedTo:            make(map[string]types.FileContractID),
+		DoubleSpentContracts: make(map[string]types.BlockHeight),
 		Synced:               synced,
 	}
 	for k, v := range c.renewedFrom {
@@ -54,9 +58,13 @@ func (c *Contractor) persistData() contractorPersist {
 	for _, contract := range c.oldContracts {
 		data.OldContracts = append(data.OldContracts, contract)
 	}
+	for fcID, height := range c.doubleSpentContracts {
+		data.DoubleSpentContracts[fcID.String()] = height
+	}
 	for _, contract := range c.recoverableContracts {
 		data.RecoverableContracts = append(data.RecoverableContracts, contract)
 	}
+	data.WatchdogData = c.staticWatchdog.persistData()
 	return data
 }
 
@@ -106,11 +114,20 @@ func (c *Contractor) load() error {
 	for _, contract := range data.OldContracts {
 		c.oldContracts[contract.ID] = contract
 	}
+	for fcIDString, height := range data.DoubleSpentContracts {
+		if err := fcid.LoadString(fcIDString); err != nil {
+			return err
+		}
+		c.doubleSpentContracts[fcid] = height
+	}
 	for _, contract := range data.RecoverableContracts {
 		c.recoverableContracts[contract.ID] = contract
 	}
 
-	return nil
+	c.staticWatchdog, err = newWatchdogFromPersist(c, data.WatchdogData)
+	c.staticWatchdog.renewWindow = data.Allowance.RenewWindow
+	c.staticWatchdog.blockHeight = data.BlockHeight
+	return err
 }
 
 // save saves the Contractor persistence data to disk.

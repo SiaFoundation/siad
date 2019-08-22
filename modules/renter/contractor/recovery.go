@@ -218,7 +218,20 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 		return errors.New("can't recover contract with a host that we already have a contract with")
 	}
 	c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	return nil
+
+	// Tell the watchdog to watch this transaction for revisions and storage
+	// proofs.
+	monitorContractArgs := monitorContractArgs{
+		recovered:   true,
+		fcID:        contract.ID,
+		revisionTxn: contract.Transaction,
+	}
+	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
+	if err == errAlreadyWatchingContract {
+		c.log.Debugln("Watchdog already aware of recovered contract")
+		err = nil
+	}
+	return err
 }
 
 // callRecoverContracts recovers known recoverable contracts.

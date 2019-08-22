@@ -97,6 +97,7 @@ func (hs *hostSession) Close() error {
 	hs.contractor.mu.Lock()
 	delete(hs.contractor.sessions, hs.id)
 	hs.contractor.mu.Unlock()
+
 	return hs.session.Close()
 }
 

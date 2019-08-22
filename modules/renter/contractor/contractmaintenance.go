@@ -34,6 +34,37 @@ type (
 	}
 )
 
+// callNotifyDoubleSpend is used by the watchdog to alert the contractor
+// whenever a monitored file contract input is double-spent. This function
+// marks down the host score, and marks the contract as !GoodForRenew and
+// !GoodForUpload.
+func (c *Contractor) callNotifyDoubleSpend(fcID types.FileContractID, blockHeight types.BlockHeight) {
+	c.log.Debugln("Watchdog found  a double-spend: ", fcID, blockHeight)
+
+	// Mark the contract as double-spent. This will cause the contract to be
+	// excluded in period spending.
+	c.mu.Lock()
+	c.doubleSpentContracts[fcID] = blockHeight
+	c.mu.Unlock()
+
+	// Acquire the contract from the contract set to get its metadata, and to
+	// mark it as !GoodForUpload.
+	sc, ok := c.staticContracts.Acquire(fcID)
+	if !ok {
+		c.log.Debugln("unable to acquire contract marked for invalidation")
+		return
+	}
+	defer c.staticContracts.Return(sc)
+
+	utility := sc.Metadata().Utility
+	utility.GoodForUpload = false
+	utility.GoodForRenew = false
+	err := sc.UpdateUtility(utility)
+	if err != nil {
+		c.log.Debugln("Error updating contract utility", err)
+	}
+}
+
 // managedCheckForDuplicates checks for static contracts that have the same host
 // key and moves the older one to old contracts.
 func (c *Contractor) managedCheckForDuplicates() {
@@ -262,6 +293,7 @@ func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, t
 	if err != nil {
 		return err, types.Currency{}, types.Currency{}
 	}
+
 	lowestScore := sb.Score
 	for i := 1; i < len(hosts); i++ {
 		score, err := c.hdb.ScoreBreakdown(hosts[i])
@@ -340,9 +372,24 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
-	contract, err := c.staticContracts.FormContract(params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+
+	contract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.FormContract(params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 	if err != nil {
 		txnBuilder.Drop()
+		return types.ZeroCurrency, modules.RenterContract{}, err
+	}
+
+	monitorContractArgs := monitorContractArgs{
+		false,
+		contract.ID,
+		contract.Transaction,
+		formationTxnSet,
+		sweepTxn,
+		sweepParents,
+		params.StartHeight,
+	}
+	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
+	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
 
@@ -494,9 +541,23 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	newContract, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+	newContract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 	if err != nil {
 		txnBuilder.Drop() // return unused outputs to wallet
+		return modules.RenterContract{}, err
+	}
+
+	monitorContractArgs := monitorContractArgs{
+		false,
+		newContract.ID,
+		newContract.Transaction,
+		formationTxnSet,
+		sweepTxn,
+		sweepParents,
+		params.StartHeight,
+	}
+	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
+	if err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -658,6 +719,10 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	c.mu.Unlock()
 	// Delete the old contract.
 	c.staticContracts.Delete(oldContract)
+
+	// Signal to the watchdog that it should immediately post the last
+	// revision for this contract.
+	go c.staticWatchdog.callSendMostRecentRevision(oldContract.Metadata())
 	return amount, nil
 }
 
