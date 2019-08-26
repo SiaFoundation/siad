@@ -202,7 +202,7 @@ Fraction of each file contract payout given to siafund holders.
 Number of coins given to the miner of the first block. Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
 
 **minimumcoinbase** | siacoin
-Minimum number of coins paid j to the miner of a block (the coinbase decreases with each block). Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
+Minimum number of coins paid out to the miner of a block (the coinbase decreases with each block). Note that elsewhere in the API currency is typically returned in hastings and as a bignum. This is not the case here.  
 
 **roottarget** | hash
 Initial target.  
