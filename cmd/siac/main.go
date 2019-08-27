@@ -27,6 +27,7 @@ var (
 	renterListRecursive     bool   // List files of folder recursively.
 	renterShowHistory       bool   // Show download history in addition to download queue.
 	siaDir                  string // Path to sia data dir
+	statusVerbose           bool   // Display additional siac information
 	walletRawTxn            bool   // Encode/decode transactions in base64-encoded binary.
 
 	allowanceFunds              string // amount of money to be used within a period
@@ -89,6 +90,8 @@ func die(args ...interface{}) {
 // statuscmd is the handler for the command `siac`
 // prints basic information about Sia.
 func statuscmd() {
+	// For UX formating
+	defer fmt.Println()
 
 	// Consensus Info
 	cg, err := httpClient.ConsensusGet()
@@ -125,6 +128,49 @@ func statuscmd() {
 	if err != nil {
 		die(err)
 	}
+
+	if !statusVerbose {
+		return
+	}
+
+	// Gateway Rate Limits
+	gg, err := httpClient.GatewayGet()
+	if err != nil {
+		die("Could not get gateway:", err)
+	}
+	fmt.Printf(`
+Gateway `)
+	rateLimitSummary(gg.MaxDownloadSpeed, gg.MaxUploadSpeed)
+
+	// Renter Rate Limits
+	rg, err := httpClient.RenterGet()
+	if err != nil {
+		die("Error getting renter:", err)
+	}
+	fmt.Printf(`
+Renter `)
+	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
+}
+
+// rateLimitSummary displays the a summary of the provided rate limits
+func rateLimitSummary(download, upload int64) {
+	fmt.Printf(`Rate limits: `)
+	if download == 0 {
+		fmt.Printf(`
+  Download Speed: %v`, "no limit")
+	} else {
+		fmt.Printf(`
+  Download Speed: %v Mbps`, download)
+	}
+	if upload == 0 {
+		fmt.Printf(`
+  Upload Speed:   %v
+`, "no limit")
+	} else {
+		fmt.Printf(`
+  Upload Speed:   %v Mbps
+`, upload)
+	}
 }
 
 func main() {
@@ -140,6 +186,7 @@ func main() {
 	// create command tree
 	root.AddCommand(versionCmd)
 	root.AddCommand(stopCmd)
+	root.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
 
 	root.AddCommand(updateCmd)
 	updateCmd.AddCommand(updateCheckCmd)
