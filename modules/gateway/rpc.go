@@ -62,8 +62,13 @@ func (g *Gateway) managedRPC(addr modules.NetAddress, name string, fn modules.RP
 		return err
 	}
 	conn.SetDeadline(time.Time{})
+
 	// call fn
-	return fn(conn)
+	startRPCTime := time.Now()
+	err = fn(conn)
+	// Log the amount of time it took to do the RPC.
+	g.log.Debugf("%s RPC time: %s", name, time.Now().Sub(startRPCTime).String())
+	return err
 }
 
 // RPC calls an RPC on the given address. RPC cannot be called on an address
@@ -217,6 +222,7 @@ func (g *Gateway) threadedHandleConn(conn modules.PeerConn) {
 	g.log.Debugf("INFO: incoming conn %v requested RPC \"%v\"", conn.RPCAddr(), id)
 
 	// call fn
+	startRPCTime := time.Now()
 	err = fn(conn)
 	// don't log benign errors
 	if err == modules.ErrDuplicateTransactionSet || err == modules.ErrBlockKnown {
@@ -225,6 +231,8 @@ func (g *Gateway) threadedHandleConn(conn modules.PeerConn) {
 	if err != nil {
 		g.log.Debugf("WARN: incoming RPC \"%v\" from conn %v failed: %v", id, conn.RPCAddr(), err)
 	}
+	// Log the amount of time it took the handler to do the RPC.
+	g.log.Debugf("%s RPC time: %s", string(id[:]), time.Now().Sub(startRPCTime).String())
 }
 
 // Broadcast calls an RPC on all of the specified peers. The calls are run in
