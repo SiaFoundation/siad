@@ -50,15 +50,21 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		return &SiaFileSetEntry{}, err
 	}
 	zeroHealth := float64(1 + fd.ErasureCode.MinPieces()/(fd.ErasureCode.NumPieces()-fd.ErasureCode.MinPieces()))
+	partialsSiaFile, err := sfs.openPartialsSiaFile(fd.ErasureCode, true)
+	if err != nil {
+		return nil, err
+	}
 	file := &SiaFile{
 		staticMetadata: Metadata{
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
+			HasPartialChunk:         false,
 			CreateTime:              currentTime,
 			CachedHealth:            zeroHealth,
 			CachedStuckHealth:       0,
 			CachedRedundancy:        0,
+			CachedUserRedundancy:    0,
 			CachedUploadProgress:    0,
 			FileSize:                int64(fd.FileSize),
 			LocalPath:               fd.RepairPath,
@@ -73,16 +79,18 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticPieceSize:         fd.PieceSize,
 			UniqueID:                SiafileUID(fd.UID),
 		},
-		siaFilePath: siaPath.SiaFileSysPath(sfs.staticSiaFileDir),
-		deps:        modules.ProdDependencies,
-		deleted:     fd.Deleted,
-		wal:         sfs.wal,
+		deps:            modules.ProdDependencies,
+		deleted:         fd.Deleted,
+		partialsSiaFile: partialsSiaFile,
+		siaFilePath:     siaPath.SiaFileSysPath(sfs.staticSiaFileDir),
+		wal:             sfs.wal,
 	}
 	// Update cached fields for 0-Byte files.
 	if file.staticMetadata.FileSize == 0 {
 		file.staticMetadata.CachedHealth = 0
 		file.staticMetadata.CachedStuckHealth = 0
 		file.staticMetadata.CachedRedundancy = float64(fd.ErasureCode.NumPieces()) / float64(fd.ErasureCode.MinPieces())
+		file.staticMetadata.CachedUserRedundancy = file.staticMetadata.CachedRedundancy
 		file.staticMetadata.CachedUploadProgress = 100
 	}
 

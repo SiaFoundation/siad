@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -35,11 +36,14 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	fdd.disable()
 
 	// Create a new blank siafile.
-	siafile, wal, walPath := newBlankTestFileAndWAL()
+	siafile, wal, walPath := newBlankTestFileAndWAL(1)
 	siafile.deps = fdd
 
 	// Wrap it in a file set entry.
 	sf := dummyEntry(siafile)
+	if err := setCombinedChunkOfTestFile(sf.SiaFile); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create 50 hostkeys from which to choose from.
 	hostkeys := make([]types.SiaPublicKey, 0, 50)
@@ -143,6 +147,15 @@ OUTER:
 				}
 			}
 			// Load file again.
+			partialsSiaFile, err := loadSiaFile(sf.partialsSiaFile.siaFilePath, wal, fdd)
+			if err != nil {
+				if errors.Contains(err, errDiskFault) {
+					numRecoveries++
+					continue // try again
+				} else {
+					t.Fatal(err)
+				}
+			}
 			siafile, err = loadSiaFile(sf.siaFilePath, wal, fdd)
 			if err != nil {
 				if errors.Contains(err, errDiskFault) {
@@ -152,8 +165,13 @@ OUTER:
 					t.Fatal(err)
 				}
 			}
+			partialsEntry := &SiaFileSetEntry{
+				dummyEntry(partialsSiaFile),
+				uint64(fastrand.Intn(math.MaxInt32)),
+			}
 			siafile.deps = fdd
 			sf = dummyEntry(siafile)
+			sf.SetPartialsSiaFile(partialsEntry)
 			break
 		}
 

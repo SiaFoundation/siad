@@ -218,14 +218,14 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 
 	// Calculate file health
-	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 
 	// Set the LastHealthCheckTime
 	sf.SetLastHealthCheckTime()
 
 	// Calculate file Redundancy and check if local file is missing and
 	// redundancy is less than one
-	redundancy, err := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
+	redundancy, _, err := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
 	if err != nil {
 		return siafile.BubbledMetadata{}, err
 	}

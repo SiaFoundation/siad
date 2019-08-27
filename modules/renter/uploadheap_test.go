@@ -493,7 +493,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	}
 	// The directory health should be that of the file since none of the chunks
 	// were added
-	health, _, _ := f.Health(offline, goodForRenew)
+	health, _, _, _, _ := f.Health(offline, goodForRenew)
 	if d.health != health {
 		t.Fatalf("Expected directory health to be %v but was %v", health, d.health)
 	}
