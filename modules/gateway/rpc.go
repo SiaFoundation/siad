@@ -67,7 +67,7 @@ func (g *Gateway) managedRPC(addr modules.NetAddress, name string, fn modules.RP
 	startRPCTime := time.Now()
 	err = fn(conn)
 	// Log the amount of time it took to do the RPC.
-	g.log.Debugf("%s RPC time: %s", name, time.Now().Sub(startRPCTime).String())
+	g.log.Debugf("%s RPC time: %s, err: %v", name, time.Now().Sub(startRPCTime).String(), err)
 	return err
 }
 
