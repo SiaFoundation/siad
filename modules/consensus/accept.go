@@ -251,7 +251,7 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 			startTime := time.Now()
 			parent, err := cs.validateHeaderAndBlock(boltTxWrapper{tx}, blocks[i], blockIDs[i])
 			checkHeaderTime := time.Now()
-			cs.log.Debugln("validateHeaderAndBlock time: ", checkHeaderTime.Sub(startTime))
+			cs.log.Debugf("validateHeaderAndBlock time: %v", checkHeaderTime.Sub(startTime).Round(time.Millisecond))
 
 			if err == modules.ErrBlockKnown {
 				// Skip over known blocks.
@@ -267,9 +267,8 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 
 			// Try adding the block to consensus.
 			changeEntry, err := cs.addBlockToTree(tx, blocks[i], parent)
-			addBlockToTreeTime := time.Now()
-			cs.log.Debugln("Total validation time: ", addBlockToTreeTime.Sub(startTime))
-			cs.log.Debugln("addBlockToTreeTime time: ", addBlockToTreeTime.Sub(checkHeaderTime))
+			cs.log.Debugf("Total validation time: %v", time.Since(startTime).Round(time.Millisecond))
+			cs.log.Debugf("addBlockToTreeTime time: %v", time.Since(checkHeaderTime).Round(time.Millisecond))
 			if err == nil {
 				cs.log.Debugln("addBlockToTree error: ", err)
 

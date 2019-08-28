@@ -67,7 +67,7 @@ func (g *Gateway) managedRPC(addr modules.NetAddress, name string, fn modules.RP
 	startRPCTime := time.Now()
 	err = fn(conn)
 	// Log the amount of time it took to do the RPC.
-	g.log.Debugf("%s RPC time: %s, err: %v", name, time.Now().Sub(startRPCTime).String(), err)
+	g.log.Debugf("%s RPC time: %v, err: %v", name, time.Since(startRPCTime).Round(time.Millisecond), err)
 	return err
 }
 
@@ -232,7 +232,7 @@ func (g *Gateway) threadedHandleConn(conn modules.PeerConn) {
 		g.log.Debugf("WARN: incoming RPC \"%v\" from conn %v failed: %v", id, conn.RPCAddr(), err)
 	}
 	// Log the amount of time it took the handler to do the RPC.
-	g.log.Debugf("%s RPC time: %s", string(id[:]), time.Now().Sub(startRPCTime).String())
+	g.log.Debugf("%s RPC time: %v", string(id[:]), time.Since(startRPCTime).Round(time.Millisecond))
 }
 
 // Broadcast calls an RPC on all of the specified peers. The calls are run in
