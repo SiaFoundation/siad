@@ -69,7 +69,8 @@ var (
 	keyPrimarySeedProgress    = []byte("keyPrimarySeedProgress")
 	keySiafundPool            = []byte("keySiafundPool")
 	keySpendableKeyFiles      = []byte("keySpendableKeyFiles")
-	keyUID                    = []byte("keyUID")
+	keySalt                   = []byte("keyUID")
+	keyWalletPassword         = []byte("keyWalletPassword")
 	keyWatchedAddrs           = []byte("keyWatchedAddrs")
 )
 
@@ -143,7 +144,7 @@ func dbReset(tx *bolt.Tx) error {
 
 	// reinitialize the database with default values
 	wb := tx.Bucket(bucketWallet)
-	wb.Put(keyUID, fastrand.Bytes(len(uniqueID{})))
+	wb.Put(keySalt, fastrand.Bytes(len(walletSalt{})))
 	wb.Put(keyConsensusHeight, encoding.Marshal(uint64(0)))
 	wb.Put(keyAuxiliarySeedFiles, encoding.Marshal([]seedFile{}))
 	wb.Put(keySpendableKeyFiles, encoding.Marshal([]spendableKeyFile{}))
@@ -441,9 +442,9 @@ func dbProcessedTransactionsIterator(tx *bolt.Tx) *processedTransactionsIter {
 	}
 }
 
-// dbGetWalletUID returns the UID assigned to the wallet's primary seed.
-func dbGetWalletUID(tx *bolt.Tx) (uid uniqueID) {
-	copy(uid[:], tx.Bucket(bucketWallet).Get(keyUID))
+// dbGetWalletSalt returns the salt used by the wallet to derive encryption keys.
+func dbGetWalletSalt(tx *bolt.Tx) (uid walletSalt) {
+	copy(uid[:], tx.Bucket(bucketWallet).Get(keySalt))
 	return
 }
 

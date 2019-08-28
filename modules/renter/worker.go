@@ -1,11 +1,29 @@
 package renter
 
+// worker.go defines a worker with a work loop. Each worker is connected to a
+// single host, and the work loop will listen for jobs and then perform them.
+//
+// The worker has a set of jobs that it is capable of performing. The standard
+// functions for a job are Queue, Kill, and Perform. Queue will add a job to the
+// queue of work of that type. Kill will empty the queue and close out any work
+// that will not be completed. Perform will grab a job from the queue if one
+// exists and complete that piece of work. See snapshotworkerfetchbackups.go for
+// a clean example.
+
+// TODO: A single session should be added to the worker that gets maintained
+// within the work loop. All jobs performed by the worker will use the worker's
+// single session.
+//
+// TODO: The upload and download code needs to be moved into properly separated
+// subsystems.
+//
+// TODO: Need to write testing around the kill functions in the worker, to clean
+// up any queued jobs after a worker has been killed.
+
 import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -40,14 +58,15 @@ type worker struct {
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
-	downloadChan       chan struct{}              // Notifications of new work. Takes priority over uploads.
 	downloadChunks     []*unfinishedDownloadChunk // Yet unprocessed work items.
 	downloadMu         sync.Mutex
 	downloadTerminated bool // Has downloading been terminated for this worker?
 
+	// Fetch backups queue for the worker.
+	staticFetchBackupsJobQueue fetchBackupsJobQueue
+
 	// Upload variables.
 	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
-	uploadChan                chan struct{}            // Notifications of new work.
 	uploadConsecutiveFailures int                      // How many times in a row uploading has failed.
 	uploadRecentFailure       time.Time                // How recent was the last failure?
 	uploadRecentFailureErr    error                    // What was the reason for the last failure?
@@ -61,59 +80,108 @@ type worker struct {
 	killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 	mu       sync.Mutex
 	renter   *Renter
+	wakeChan chan struct{} // Worker will check queues if given a wake signal.
 }
 
-// workerPool is the collection of workers that the renter can use for
-// uploading, downloading, and other tasks related to communicating with the
-// host. There is one worker per host that the renter has a contract with. This
-// includes hosts that have been disabled or otherwise been marked as
-// !GoodForRenew or !GoodForUpload. We keep all of these workers so that they
-// can be used in emergencies in the event that there seems to be no other way
-// to recover data.
+// managedBlockUntilReady will block until the worker has internet connectivity.
+// 'false' will be returned if a kill signal is received or if the renter is
+// shut down before internet connectivity is restored. 'true' will be returned
+// if internet connectivity is successfully restored.
+func (w *worker) managedBlockUntilReady() bool {
+	// Check if the worker has received a kill signal, or if the renter has
+	// received a stop signal.
+	select {
+	case <-w.renter.tg.StopChan():
+		return false
+	case <-w.killChan:
+		return false
+	default:
+	}
+
+	// Check internet connectivity. If the worker does not have internet
+	// connectivity, block until connectivity is restored.
+	for !w.renter.g.Online() {
+		select {
+		case <-w.renter.tg.StopChan():
+			return false
+		case <-w.killChan:
+			return false
+		case <-time.After(offlineCheckFrequency):
+		}
+	}
+	return true
+}
+
+// staticWake needs to be called any time that a job queued.
+func (w *worker) staticWake() {
+	select {
+	case w.wakeChan <- struct{}{}:
+	default:
+	}
+}
+
+// threadedWorkLoop continually checks if work has been issued to a worker. The
+// work loop checks for different types of work in a specific order, forming a
+// priority queue for the various types of work. It is possible for continuous
+// requests for one type of work to drown out a worker's ability to perform
+// other types of work.
 //
-// TODO: Currently the repair loop does a lot of fetching and passing of host
-// maps and offline maps and goodforrenew maps. All of those objects should be
-// cached in the worker pool, which will both improve performance and reduce the
-// calling complexity of the functions that currently need to pass this
-// information around.
-type workerPool struct {
-	workers map[string]*worker // The string is the host's public key.
-	mu      sync.RWMutex
-	renter  *Renter
-}
-
-// threadedWorkLoop repeatedly issues work to a worker, stopping when the worker
-// is killed or when the thread group is closed.
+// If no work is found, the worker will sleep until woken up. Because each
+// iteration is stateless, it may be possible to reduce the goroutine count in
+// Sia by spinning down the worker / expiring the thread when there is no work,
+// and then checking if the thread exists and creating a new one if not when
+// alerting / waking the worker. This will not interrupt any connections that
+// the worker has because the worker object will be kept in memory via the
+// worker map.
 func (w *worker) threadedWorkLoop() {
+	// Ensure that all queued jobs are gracefully cleaned up when the worker is
+	// shut down.
+	//
+	// TODO: Need to write testing around these kill functions and ensure they
+	// are executing correctly.
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
+	defer w.managedKillFetchBackupsJobs()
 
+	// Primary work loop. There are several types of jobs that the worker can
+	// perform, and they are attempted with a specific priority. If any type of
+	// work is attempted, the loop resets to check for higher priority work
+	// again. This means that a stream of higher priority tasks can starve a
+	// building set of lower priority tasks.
+	//
+	// 'workAttempted' indicates that there was a job to perform, and that a
+	// nontrivial amount of time was spent attempting to perform the job. The
+	// job may or may not have been successful, that is irrelevant.
 	for {
-		// Perform one step of processing download work.
-		downloadChunk := w.managedNextDownloadChunk()
-		if downloadChunk != nil {
-			// managedDownload will handle removing the worker internally. If
-			// the chunk is dropped from the worker, the worker will be removed
-			// from the chunk. If the worker executes a download (success or
-			// failure), the worker will be removed from the chunk. If the
-			// worker is put on standby, it will not be removed from the chunk.
-			w.managedDownload(downloadChunk)
-			continue
+		// There are certain conditions under which the worker should either
+		// block or exit. This function will block until those conditions are
+		// met, returning 'true' when the worker can proceed and 'false' if the
+		// worker should exit.
+		if !w.managedBlockUntilReady() {
+			return
 		}
 
-		// Perform one step of processing upload work.
-		chunk, pieceIndex := w.managedNextUploadChunk()
-		if chunk != nil {
-			w.managedUpload(chunk, pieceIndex)
+		var workAttempted bool
+		// Perform any job to fetch the list of backups from the host.
+		workAttempted = w.managedPerformFetchBackupsJob()
+		if workAttempted {
+			continue
+		}
+		// Perform any job to help download a chunk.
+		workAttempted = w.managedPerformDownloadChunkJob()
+		if workAttempted {
+			continue
+		}
+		// Perform any job to help upload a chunk.
+		workAttempted = w.managedPerformUploadChunkJob()
+		if workAttempted {
 			continue
 		}
 
 		// Block until new work is received via the upload or download channels,
 		// or until a kill or stop signal is received.
 		select {
-		case <-w.downloadChan:
-			continue
-		case <-w.uploadChan:
+		case <-w.wakeChan:
 			continue
 		case <-w.killChan:
 			return
@@ -123,91 +191,14 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
-// managedUpdate will grab the set of contracts from the contractor and update
-// the worker pool to match.
-func (wp *workerPool) managedUpdate() {
-	contractSlice := wp.renter.hostContractor.Contracts()
-	contractMap := make(map[string]modules.RenterContract, len(contractSlice))
-	for _, contract := range contractSlice {
-		contractMap[contract.HostPublicKey.String()] = contract
+// newWorker will create and return a worker that is ready to receive jobs.
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
+	return &worker{
+		staticHostPubKey: hostPubKey,
+
+		killChan: make(chan struct{}),
+		wakeChan: make(chan struct{}, 1),
+
+		renter: r,
 	}
-
-	// Lock the worker pool for the duration of updating its fields.
-	wp.mu.Lock()
-	defer wp.mu.Unlock()
-
-	// Add a worker for any contract that does not already have a worker.
-	for id, contract := range contractMap {
-		_, exists := wp.workers[id]
-		if !exists {
-			w := &worker{
-				staticHostPubKey: contract.HostPublicKey,
-
-				downloadChan: make(chan struct{}, 1),
-				killChan:     make(chan struct{}),
-				uploadChan:   make(chan struct{}, 1),
-
-				renter: wp.renter,
-			}
-			wp.workers[id] = w
-			if err := wp.renter.tg.Add(); err != nil {
-				// Renter shutdown is happening, abort the loop to create more
-				// workers.
-				break
-			}
-			go func() {
-				defer wp.renter.tg.Done()
-				w.threadedWorkLoop()
-			}()
-		}
-	}
-
-	// Remove a worker for any worker that is not in the set of new contracts.
-	totalCoolDown := 0
-	for id, worker := range wp.workers {
-		select {
-		case <-wp.renter.tg.StopChan():
-			// Release the lock and return to prevent error of trying to close
-			// the worker channel after a shutdown
-			return
-		default:
-		}
-		contract, exists := contractMap[id]
-		if !exists {
-			delete(wp.workers, id)
-			close(worker.killChan)
-		}
-
-		// A lock is grabbed on the worker to fetch some info for a debugging
-		// statement. build.DEBUG is used so that worker lock contention is not
-		// introduced needlessly.
-		if build.DEBUG {
-			worker.mu.Lock()
-			onCoolDown, coolDownTime := worker.onUploadCooldown()
-			if onCoolDown {
-				totalCoolDown++
-			}
-			wp.renter.log.Debugf("Worker %v is GoodForUpload %v for contract %v\n    and is on uploadCooldown %v for %v because of %v", worker.staticHostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
-			worker.mu.Unlock()
-		}
-	}
-	wp.renter.log.Debugf("Refreshed Worker Pool has %v total workers and %v are on cooldown", len(wp.workers), totalCoolDown)
-}
-
-// newWorkerPool will initialize and return a worker pool.
-func (r *Renter) newWorkerPool() *workerPool {
-	wp := &workerPool{
-		workers: make(map[string]*worker),
-		renter:  r,
-	}
-	wp.renter.tg.OnStop(func() error {
-		wp.mu.RLock()
-		for _, w := range wp.workers {
-			close(w.killChan)
-		}
-		wp.mu.RUnlock()
-		return nil
-	})
-	wp.managedUpdate()
-	return wp
 }

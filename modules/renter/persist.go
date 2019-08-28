@@ -133,30 +133,44 @@ func (r *Renter) managedInitPersist() error {
 	if err != nil {
 		return err
 	}
+	if err := r.tg.AfterStop(r.log.Close); err != nil {
+		return err
+	}
 
 	// Initialize the writeaheadlog.
 	options := writeaheadlog.Options{
-		Logger: r.log,
+		StaticLog: r.log,
+		Path:      filepath.Join(r.persistDir, walFile),
 	}
-	txns, wal, err := writeaheadlog.NewWithOptions(filepath.Join(r.persistDir, walFile), options)
+	txns, wal, err := writeaheadlog.NewWithOptions(options)
 	if err != nil {
+		return err
+	}
+	if err := r.tg.AfterStop(wal.Close); err != nil {
 		return err
 	}
 
 	// Apply unapplied wal txns before loading the persistence structure to
 	// avoid loading potentially corrupted files.
+	if len(txns) > 0 {
+		r.log.Println("Wal initalized", len(txns), "transactions to apply")
+	}
 	for _, txn := range txns {
 		applyTxn := true
+		r.log.Println("applying transaction with", len(txn.Updates), "updates")
 		for _, update := range txn.Updates {
 			if siafile.IsSiaFileUpdate(update) {
+				r.log.Println("Applying a siafile update:", update.Name)
 				if err := siafile.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaFile update")
 				}
 			} else if siadir.IsSiaDirUpdate(update) {
+				r.log.Println("Applying a siadir update:", update.Name)
 				if err := siadir.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaDir update")
 				}
 			} else {
+				r.log.Println("wal update not applied, marking transaction as not applied")
 				applyTxn = false
 			}
 		}

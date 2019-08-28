@@ -2,10 +2,12 @@ package transactionpool
 
 import (
 	"errors"
+	"time"
 
 	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/demotemutex"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -108,6 +110,12 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 	tp.tg.OnStop(func() {
 		tp.gateway.UnregisterRPC("RelayTransactionSet")
 	})
+
+	// Spin up a thread to periodically dump the tpool size. (debug mode)
+	if build.DEBUG {
+		go tp.threadedLogListSize()
+	}
+
 	return tp, nil
 }
 
@@ -278,4 +286,27 @@ func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 // peers.
 func (tp *TransactionPool) Broadcast(ts []types.Transaction) {
 	go tp.gateway.Broadcast("RelayTransactionSet", ts, tp.gateway.Peers())
+}
+
+// threadedLogListSize will periodically log the current size of the transaction
+// pool.
+func (tp *TransactionPool) threadedLogListSize() {
+	err := tp.tg.Add()
+	if err != nil {
+		return
+	}
+	defer tp.tg.Done()
+
+	// Infinite loop to keep printing the size of the tpool.
+	for {
+		// Soft sleep for 5 minutes between each log line.
+		select {
+		case <-tp.tg.StopChan():
+			return
+		case <-time.After(logSizeFrequency):
+		}
+		tp.mu.Lock()
+		tp.log.Debugln("Current tpool size:", tp.transactionListSize)
+		tp.mu.Unlock()
+	}
 }

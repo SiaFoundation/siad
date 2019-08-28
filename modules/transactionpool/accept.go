@@ -263,6 +263,10 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	if requiredFees.Cmp(setFees) > 0 {
 		// TODO: check if there is an existing set with lower fees that we can
 		// kick out.
+		tp.log.Debugln("Incoming transaction was rejected for having low fees", requiredFees, setFees)
+		for _, txn := range ts {
+			tp.log.Debugln(txn.ID())
+		}
 		return errLowMinerFees
 	}
 
@@ -330,8 +334,12 @@ func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
 		tp.mu.Lock()
 		defer tp.mu.Unlock()
 		err := tp.acceptTransactionSet(ts, txnFn)
+		if err == modules.ErrDuplicateTransactionSet {
+			tp.log.Debugln("Transaction set is a duplicate:", err)
+			return err
+		}
 		if err != nil {
-			tp.log.Debugln("Transaction set broadcast has failed:", err)
+			tp.log.Debugln("Transaction set will not be broadcast due to an error:", err)
 			return err
 		}
 		go tp.gateway.Broadcast("RelayTransactionSet", ts, tp.gateway.Peers())
