@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -1039,7 +1040,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Println("Attempting to perform a renewal:", renewal.id)
 		// Skip this renewal if we don't have enough funds remaining.
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
-			c.log.Debugln("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
+			c.log.Println("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
 			continue
 		}
 
@@ -1169,9 +1170,11 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Attempt forming a contract with this host.
+		start := time.Now().Unix()
 		fundsSpent, newContract, err := c.managedNewContract(host, initialContractFunds, endHeight)
+		end := time.Now().Unix()
 		if err != nil {
-			c.log.Printf("Attempted to form a contract with %v, but negotiation failed: %v\n", host.NetAddress, err)
+			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, end-start, err)
 			continue
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
