@@ -613,7 +613,14 @@ func TestLinkedContracts(t *testing.T) {
 	}
 
 	// Wait for Contract creation
+	numRetries := 0
 	err = build.Retry(200, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if _, err := m.AddBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
 		if len(c.Contracts()) != 1 {
 			return errors.New("no contract created")
 		}
