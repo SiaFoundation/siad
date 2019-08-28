@@ -298,7 +298,11 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 		}
 	}
 	if len(conflicts) > 0 {
-		return tp.handleConflicts(ts, conflicts, txnFn)
+		err := tp.handleConflicts(ts, conflicts, txnFn)
+		if err != nil && build.DEBUG {
+			tp.printConflicts(ts)
+		}
+		return err
 	}
 	cc, err := txnFn(ts)
 	if err != nil {

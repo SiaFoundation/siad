@@ -2,6 +2,7 @@ package transactionpool
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	bolt "github.com/coreos/bbolt"
@@ -324,4 +325,42 @@ func (tp *TransactionPool) threadedLogListSize() {
 		tp.log.Debugln("Current tpool size:", tp.transactionListSize)
 		tp.mu.Unlock()
 	}
+}
+
+// printConflicts prints the rejected transaction set and the transaction sets
+// in the TransactionPool that it conflicts with using human-readable
+// strings for each transaction.
+func (tp *TransactionPool) printConflicts(ts []types.Transaction) {
+	relatedObjects := relatedObjectIDs(ts)
+	var conflictSets []TransactionSetID
+	for _, oid := range relatedObjects {
+		conflict, exists := tp.knownObjects[oid]
+		if exists {
+			conflictSets = append(conflictSets, conflict)
+		}
+	}
+
+	logStr := "Rejected transaction set with conflicts"
+	for i, txn := range ts {
+		if i != 0 {
+			logStr += "\n"
+		}
+		logStr += txn.PrettyString()
+	}
+
+	logStr += "\n\nPrinting conflict transaction sets:\n\n"
+	for i, conflictSetID := range conflictSets {
+		if i != 0 {
+			logStr += "\n\n"
+		}
+		logStr += "ConflictSetID: " + crypto.Hash(conflictSetID).String()
+
+		for j, txn := range tp.transactionSets[conflictSetID] {
+			if j != 0 {
+				logStr += "\n"
+			}
+			logStr += strings.Replace(txn.PrettyString(), "\n", "\n\t", -1)
+		}
+	}
+	tp.log.Println(logStr)
 }

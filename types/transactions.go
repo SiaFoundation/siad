@@ -7,6 +7,8 @@ package types
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -230,4 +232,69 @@ func (t Transaction) SiacoinOutputSum() (sum Currency) {
 // the siafund output is spent. The ID is the hash the SiafundOutputID.
 func (id SiafundOutputID) SiaClaimOutputID() SiacoinOutputID {
 	return SiacoinOutputID(crypto.HashObject(id))
+}
+
+// PrettyString returns a string that summarizes the transaction's
+// inputs/outputs, but is pretty.
+func (t Transaction) PrettyString() string {
+	txIDString := crypto.Hash(t.ID()).String()
+	res := fmt.Sprintf("\nTransaction ID: %s", txIDString)
+
+	if len(t.SiacoinInputs) != 0 {
+		res += "\nSiacoinInputs:\n"
+		for i, input := range t.SiacoinInputs {
+			parentIDString := crypto.Hash(input.ParentID).String()
+			res += fmt.Sprintf("\t%d: %s\n", i, parentIDString)
+		}
+	}
+
+	if len(t.SiacoinOutputs) != 0 {
+		res += "SiacoinOutputs:\n"
+		for i := range t.SiacoinOutputs {
+			oidString := crypto.Hash(t.SiacoinOutputID(uint64(i))).String()
+			res += fmt.Sprintf("\t%d: %s\n", i, oidString)
+		}
+	}
+
+	if len(t.FileContracts) != 0 {
+		res += "\nFileContracts:\n"
+		for i := range t.FileContracts {
+			fcIDString := crypto.Hash(t.FileContractID(uint64(i))).String()
+			res += fmt.Sprintf("\t%d: %s\n", i, fcIDString)
+		}
+	}
+
+	if len(t.FileContractRevisions) != 0 {
+		res += "\nFileContractRevisions:\n"
+		for _, fcr := range t.FileContractRevisions {
+			parentIDString := crypto.Hash(fcr.ParentID).String()
+			res += fmt.Sprintf("\t%d, %s\n", fcr.NewRevisionNumber, parentIDString)
+		}
+	}
+
+	if len(t.StorageProofs) != 0 {
+		res += "\nStorageProofs:\n"
+		for _, sp := range t.StorageProofs {
+			parentIDString := crypto.Hash(sp.ParentID).String()
+			res += fmt.Sprintf("\t%s\n", parentIDString)
+		}
+	}
+
+	if len(t.SiafundInputs) != 0 {
+		res += "\nSiafundInputs:\n"
+		for i, input := range t.SiafundInputs {
+			parentIDString := crypto.Hash(input.ParentID).String()
+			res += fmt.Sprintf("\t%d: %s\n", i, parentIDString)
+		}
+	}
+
+	if len(t.SiafundOutputs) != 0 {
+		res += "\nSiacoinOutputs:\n"
+		for i := range t.SiafundOutputs {
+			oidString := crypto.Hash(t.SiafundOutputID(uint64(i))).String()
+			res += fmt.Sprintf("\t%d: %s\n", i, oidString)
+		}
+	}
+
+	return strings.TrimSuffix(res, "\n")
 }
