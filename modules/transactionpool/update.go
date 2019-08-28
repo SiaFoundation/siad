@@ -359,19 +359,31 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// after the consensus change.
 	tp.purge()
 
-	// prune transactions older than maxTxnAge.
+	// Prune transaction sets where all transactions have hit the max
+	// transaction age.
 	for i, tSet := range unconfirmedSets {
-		var validTxns []types.Transaction
+		// Check whether all transactions in this transaction set are old.
+		old := true
 		for _, txn := range tSet {
 			seenHeight, seen := tp.transactionHeights[txn.ID()]
 			if tp.blockHeight-seenHeight <= maxTxnAge || !seen {
-				validTxns = append(validTxns, txn)
-			} else {
-				tp.log.Debugln("Dropping a transaction because it has reached the maxTxnAge", txn.ID())
-				delete(tp.transactionHeights, txn.ID())
+				old = false
+				break
 			}
 		}
-		unconfirmedSets[i] = validTxns
+
+		// If all transactions in this transaction set are old, skip this
+		// transaction set.
+		if !old {
+			unconfirmedSets[i] = tSet
+			continue
+		}
+		unconfirmedSets[i] = []types.Transaction{}
+		// Need to delete all of the keys in the transaction heights map.
+		for _, txn := range tSet {
+			tp.log.Debugln("Dropping a transaction because it has reached the maxTxnAge", txn.ID())
+			delete(tp.transactionHeights, txn.ID())
+		}
 	}
 
 	// Scan through the reverted blocks and re-add any transactions that got
