@@ -232,7 +232,7 @@ func (g *Gateway) threadedHandleConn(conn modules.PeerConn) {
 		g.log.Debugf("WARN: incoming RPC \"%v\" from conn %v failed: %v", id, conn.RPCAddr(), err)
 	}
 	// Log the amount of time it took the handler to do the RPC.
-	g.log.Debugf("%s RPC time: %v", string(id[:]), time.Since(startRPCTime).Round(time.Millisecond))
+	g.log.Debugf("%s RPC time: %v", id, time.Since(startRPCTime).Round(time.Millisecond))
 }
 
 // Broadcast calls an RPC on all of the specified peers. The calls are run in
