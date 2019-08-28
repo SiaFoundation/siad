@@ -372,17 +372,14 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 			}
 		}
 
-		// If all transactions in this transaction set are old, skip this
-		// transaction set.
-		if !old {
-			unconfirmedSets[i] = tSet
-			continue
-		}
-		unconfirmedSets[i] = []types.Transaction{}
-		// Need to delete all of the keys in the transaction heights map.
-		for _, txn := range tSet {
-			tp.log.Debugln("Dropping a transaction because it has reached the maxTxnAge", txn.ID())
-			delete(tp.transactionHeights, txn.ID())
+		// All of the transactions in this set are old, this set should be
+		// evicted.
+		if old {
+			unconfirmedSets[i] = []types.Transaction{}
+			for _, txn := range tSet {
+				tp.log.Debugln("Dropping a transaction because it has reached the maxTxnAge", txn.ID())
+				delete(tp.transactionHeights, txn.ID())
+			}
 		}
 	}
 
