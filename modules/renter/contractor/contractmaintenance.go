@@ -1170,11 +1170,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Attempt forming a contract with this host.
-		start := time.Now().Unix()
+		start := time.Now()
 		fundsSpent, newContract, err := c.managedNewContract(host, initialContractFunds, endHeight)
-		end := time.Now().Unix()
 		if err != nil {
-			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, end-start, err)
+			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
 			continue
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
