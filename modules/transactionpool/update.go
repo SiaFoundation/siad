@@ -385,6 +385,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 
 	// Scan through the reverted blocks and re-add any transactions that got
 	// reverted to the tpool.
+	addTransactionsBackTime := time.Now()
 	for i := len(cc.RevertedBlocks) - 1; i >= 0; i-- {
 		block := cc.RevertedBlocks[i]
 		for _, txn := range block.Transactions {
@@ -428,7 +429,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Log the size of the transaction pool following an integration of the
 	// block, this will tell us if all of the transactions have been consumed or
 	// not.
-	tp.log.Debugln("A new block has been found. After processing, the transaction pool has dropped from a size of", oldTxnListSize, "to a size of", tp.transactionListSize)
+	tp.log.Debugln("A new block has been found. After processing, the transaction pool has dropped from a size of", oldTxnListSize, "to a size of", tp.transactionListSize, "taking", time.Since(addTransactionBackTime).Round(time.Millisecond), "milliseconds")
 
 	// Inform subscribers that an update has executed.
 	tp.mu.Demote()
