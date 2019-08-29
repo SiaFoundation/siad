@@ -254,10 +254,15 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 
 	// Construct the final transaction.
 	txn, parentTxns = txnBuilder.View()
-	txnSet = append(parentTxns, txn)
+
+	// Grab the minimum superset of the transaction. This will ensure that only
+	// the parents that are absolutely necessary are used when trying to
+	// broadcast the new file contract, which improves the likelyhood of
+	// successful propagation.
+	minSet := types.MinimumCombinedSet([]types.Transaction{txn}, parentTxns)
 
 	// Submit to blockchain.
-	err = tpool.AcceptTransactionSet(txnSet)
+	err = tpool.AcceptTransactionSet(minSet)
 	if err == modules.ErrDuplicateTransactionSet {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
@@ -475,10 +480,15 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 
 	// Construct the final transaction.
 	txn, parentTxns = txnBuilder.View()
-	txnSet = append(parentTxns, txn)
+
+	// Grab the minimum superset of the transaction. This will ensure that only
+	// the parents that are absolutely necessary are used when trying to
+	// broadcast the new file contract, which improves the likelyhood of
+	// successful propagation.
+	minSet := types.MinimumCombinedSet([]types.Transaction{txn}, parentTxns)
 
 	// Submit to blockchain.
-	err = tpool.AcceptTransactionSet(txnSet)
+	err = tpool.AcceptTransactionSet(minSet)
 	if err == modules.ErrDuplicateTransactionSet {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
