@@ -124,7 +124,14 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = build.Retry(50, 100*time.Millisecond, func() error {
+	numRetries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if _, err := m.AddBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
 		if len(c.Contracts()) == 0 {
 			return errors.New("contracts were not formed")
 		}
