@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -429,7 +430,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Log the size of the transaction pool following an integration of the
 	// block, this will tell us if all of the transactions have been consumed or
 	// not.
-	tp.log.Debugln("A new block has been found. After processing, the transaction pool has dropped from a size of", oldTxnListSize, "to a size of", tp.transactionListSize, "taking", time.Since(addTransactionBackTime).Round(time.Millisecond), "milliseconds")
+	tp.log.Debugln("A new block has been found. After processing, the transaction pool has dropped from a size of", oldTxnListSize, "to a size of", tp.transactionListSize, "taking", time.Since(addTransactionsBackTime).Round(time.Millisecond), "milliseconds")
 
 	// Inform subscribers that an update has executed.
 	tp.mu.Demote()
