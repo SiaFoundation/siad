@@ -398,12 +398,6 @@ func (tp *TransactionPool) relayTransactionSet(conn modules.PeerConn) error {
 // set is already sorted so that no parent comes after a child in the array and
 // has no missing dependencies. It is okay if the input sets are overlapping.
 func MinimumCombinedSet(requiredTxns []types.Transaction, relatedTxns []types.Transaction) ([]types.Transaction, error) {
-	err := tp.tg.Add()
-	if err != nil {
-		return err
-	}
-	defer tp.tg.Done()
-
 	// Track which transactions have already been scanned and added to the final
 	// set of required transactions.
 	includedTxns := make(map[types.TransactionID]struct{})
@@ -431,7 +425,7 @@ func MinimumCombinedSet(requiredTxns []types.Transaction, relatedTxns []types.Tr
 	}
 
 	// Create a list of which related transactions create which outputs.
-	potenialSources := make(map[ObjectID]*types.Transaction)
+	potentialSources := make(map[ObjectID]*types.Transaction)
 	for i := 0; i < len(relatedTxns); i++ {
 		for j := range relatedTxns[i].SiacoinOutputs {
 			potentialSources[ObjectID(relatedTxns[i].SiacoinOutputID(uint64(j)))] = &relatedTxns[i]
@@ -471,7 +465,7 @@ func MinimumCombinedSet(requiredTxns []types.Transaction, relatedTxns []types.Tr
 
 			// Check if this transcation has already been scanned and added as a
 			// requirement.
-			_, exists := includedTxns[txn.ID()]
+			_, exists = includedTxns[txn.ID()]
 			if exists {
 				continue
 			}
