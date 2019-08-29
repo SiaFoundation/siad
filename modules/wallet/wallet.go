@@ -27,7 +27,7 @@ const (
 	// before spending an output that has been spent in the past. If the
 	// transaction spending the output has not made it to the transaction pool
 	// after the limit, the assumption is that it never will.
-	RespendTimeout = 40
+	RespendTimeout = 100
 )
 
 var (
