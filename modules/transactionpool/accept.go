@@ -502,7 +502,7 @@ func MinimumCombinedSet(requiredTxns []types.Transaction, relatedTxns []types.Tr
 	// correct order (per the input requirements) but the required parents were
 	// constructed in reverse order, and therefore need to be reversed as they
 	// are appended.
-	for i := len(requiredParents)-1; i >= 0; i-- {
+	for i := len(requiredParents) - 1; i >= 0; i-- {
 		requiredTxns = append(requiredTxns, requiredParents[i])
 	}
 	return requiredTxns, nil
