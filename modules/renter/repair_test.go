@@ -930,10 +930,12 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
+		rt.renter.staticWorkerPool.mu.Lock()
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 			wakeChan: make(chan struct{}, 1),
 		}
+		rt.renter.staticWorkerPool.mu.Unlock()
 	}
 
 	// call managedAddStuckChunksToHeap, no chunks should be added

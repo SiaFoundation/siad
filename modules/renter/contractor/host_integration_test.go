@@ -390,7 +390,7 @@ func TestIntegrationRenew(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, m, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,14 @@ func TestIntegrationRenew(t *testing.T) {
 	if err := c.SetAllowance(modules.DefaultAllowance); err != nil {
 		t.Fatal(err)
 	}
+	numRetries := 0
 	if err := build.Retry(10, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if _, err := m.AddBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
 		if len(c.Contracts()) == 0 {
 			return errors.New("no contracts were formed")
 		}
