@@ -2,6 +2,7 @@ package transactionpool
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -332,34 +333,26 @@ func (tp *TransactionPool) threadedLogListSize() {
 // strings for each transaction.
 func (tp *TransactionPool) printConflicts(ts []types.Transaction) {
 	relatedObjects := relatedObjectIDs(ts)
-	var conflictSets []TransactionSetID
+	conflictSets := make(map[TransactionSetID]bool)
 	for _, oid := range relatedObjects {
 		conflict, exists := tp.knownObjects[oid]
 		if exists {
-			conflictSets = append(conflictSets, conflict)
+			conflictSets[conflict] = true
 		}
 	}
 
-	logStr := "Rejected transaction set with conflicts"
-	for i, txn := range ts {
-		if i != 0 {
-			logStr += "\n"
-		}
-		logStr += txn.PrettyString()
+	latestBlock, _ := tp.consensusSet.BlockAtHeight(tp.blockHeight)
+	logStr := fmt.Sprintf("Rejected transaction set with conflicts.\nBlockHeight: %d BlockID: %s\n", tp.blockHeight, latestBlock.ID())
+	for _, txn := range ts {
+		logStr += fmt.Sprintf("%h", txn)
 	}
 
-	logStr += "\n\nPrinting conflict transaction sets:\n\n"
-	for i, conflictSetID := range conflictSets {
-		if i != 0 {
-			logStr += "\n\n"
-		}
+	logStr += "\nPrinting conflict transaction sets:\n\n"
+	for conflictSetID := range conflictSets {
 		logStr += "ConflictSetID: " + crypto.Hash(conflictSetID).String()
-
-		for j, txn := range tp.transactionSets[conflictSetID] {
-			if j != 0 {
-				logStr += "\n"
-			}
-			logStr += strings.Replace(txn.PrettyString(), "\n", "\n\t", -1)
+		for _, txn := range tp.transactionSets[conflictSetID] {
+			// Add an extra level of indentation to conflict set transactions.
+			logStr += strings.Replace(fmt.Sprintf("%h", txn), "\n", "\n\t", -1)
 		}
 	}
 	tp.log.Println(logStr)

@@ -8,7 +8,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -234,67 +233,63 @@ func (id SiafundOutputID) SiaClaimOutputID() SiacoinOutputID {
 	return SiacoinOutputID(crypto.HashObject(id))
 }
 
-// PrettyString returns a string that summarizes the transaction's
-// inputs/outputs, but is pretty.
-func (t Transaction) PrettyString() string {
+// Format implements fmt.Formatter for creating human-readable strings under the
+// format directive "%h".
+func (t Transaction) Format(state fmt.State, verb rune) {
+	if verb != 'h' {
+		return
+	}
+
 	txIDString := crypto.Hash(t.ID()).String()
-	res := fmt.Sprintf("\nTransaction ID: %s", txIDString)
+	fmt.Fprintf(state, "\nTransaction ID: %s", txIDString)
 
 	if len(t.SiacoinInputs) != 0 {
-		res += "\nSiacoinInputs:\n"
+		fmt.Fprintf(state, "\nSiacoinInputs:\n")
 		for i, input := range t.SiacoinInputs {
 			parentIDString := crypto.Hash(input.ParentID).String()
-			res += fmt.Sprintf("\t%d: %s\n", i, parentIDString)
+			fmt.Fprintf(state, "\t%d: %s\n", i, parentIDString)
 		}
 	}
-
 	if len(t.SiacoinOutputs) != 0 {
-		res += "SiacoinOutputs:\n"
+		fmt.Fprintf(state, "SiacoinOutputs:\n")
 		for i := range t.SiacoinOutputs {
 			oidString := crypto.Hash(t.SiacoinOutputID(uint64(i))).String()
-			res += fmt.Sprintf("\t%d: %s\n", i, oidString)
+			fmt.Fprintf(state, "\t%d: %s\n", i, oidString)
 		}
 	}
-
 	if len(t.FileContracts) != 0 {
-		res += "\nFileContracts:\n"
+		fmt.Fprintf(state, "FileContracts:\n")
 		for i := range t.FileContracts {
 			fcIDString := crypto.Hash(t.FileContractID(uint64(i))).String()
-			res += fmt.Sprintf("\t%d: %s\n", i, fcIDString)
+			fmt.Fprintf(state, "\t%d: %s\n", i, fcIDString)
 		}
 	}
-
 	if len(t.FileContractRevisions) != 0 {
-		res += "\nFileContractRevisions:\n"
+		fmt.Fprintf(state, "FileContractRevisions:\n")
 		for _, fcr := range t.FileContractRevisions {
 			parentIDString := crypto.Hash(fcr.ParentID).String()
-			res += fmt.Sprintf("\t%d, %s\n", fcr.NewRevisionNumber, parentIDString)
+			fmt.Fprintf(state, "\t%d, %s\n", fcr.NewRevisionNumber, parentIDString)
 		}
 	}
-
 	if len(t.StorageProofs) != 0 {
-		res += "\nStorageProofs:\n"
+		fmt.Fprintf(state, "StorageProofs:\n")
 		for _, sp := range t.StorageProofs {
 			parentIDString := crypto.Hash(sp.ParentID).String()
-			res += fmt.Sprintf("\t%s\n", parentIDString)
+			fmt.Fprintf(state, "\t%s\n", parentIDString)
 		}
 	}
-
 	if len(t.SiafundInputs) != 0 {
-		res += "\nSiafundInputs:\n"
+		fmt.Fprintf(state, "SiafundInputs:\n")
 		for i, input := range t.SiafundInputs {
 			parentIDString := crypto.Hash(input.ParentID).String()
-			res += fmt.Sprintf("\t%d: %s\n", i, parentIDString)
+			fmt.Fprintf(state, "\t%d: %s\n", i, parentIDString)
 		}
 	}
-
 	if len(t.SiafundOutputs) != 0 {
-		res += "\nSiacoinOutputs:\n"
+		fmt.Fprintf(state, "SiafundOutputs:\n")
 		for i := range t.SiafundOutputs {
 			oidString := crypto.Hash(t.SiafundOutputID(uint64(i))).String()
-			res += fmt.Sprintf("\t%d: %s\n", i, oidString)
+			fmt.Fprintf(state, "\t%d: %s\n", i, oidString)
 		}
 	}
-
-	return strings.TrimSuffix(res, "\n")
 }
