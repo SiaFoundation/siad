@@ -8,9 +8,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// TestTpoolTransactionSetGet probes the API end point from returning the
-// transaction sets of the tpool
-func TestTpoolTransactionSetGet(t *testing.T) {
+// TestTpoolTransactionsGet probes the API end point from returning the
+// transactions of the tpool
+func TestTpoolTransactionsGet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}

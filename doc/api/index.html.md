@@ -3038,11 +3038,8 @@ returns the transactions of the transaction pool.
   ]
 }
 ```
-**minimum** | hastings / byte  
-the minimum estimated fee
-
-**maximum** | hastings / byte  
-the maximum estimated fee
+See [/wallet/transaction/:id](#wallettransactionid-get) for description of
+transaction fields.
 
 # Wallet
 
