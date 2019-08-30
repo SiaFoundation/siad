@@ -8,6 +8,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// TestTpoolTransactionSetGet probes the API end point from returning the
+// transaction sets of the tpool
 func TestTpoolTransactionSetGet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -36,7 +38,7 @@ func TestTpoolTransactionSetGet(t *testing.T) {
 		t.Fatal("expected no transaction sets got", len(tpsg.TransactionSets))
 	}
 
-	// miner sends a txn to itself and mines it.
+	// miner sends a txn to itself
 	uc, err := miner.WalletAddressGet()
 	if err != nil {
 		t.Fatal(err)

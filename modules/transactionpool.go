@@ -73,8 +73,7 @@ type (
 
 	// TransactionSet contain information about a tpool transaction set
 	TransactionSet struct {
-		TransactionSetID TransactionSetID    `json:"transactionsetid"`
-		Transactions     []types.Transaction `json:"transactions"`
+		Transactions []types.Transaction `json:"transactions"`
 	}
 
 	// UnconfirmedTransactionSet defines a new unconfirmed transaction that has

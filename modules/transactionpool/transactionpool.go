@@ -285,10 +285,9 @@ func (tp *TransactionPool) TransactionSets() []modules.TransactionSet {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	var txnSets []modules.TransactionSet
-	for ID, txns := range tp.transactionSets {
+	for _, txns := range tp.transactionSets {
 		txnSet := modules.TransactionSet{
-			TransactionSetID: ID,
-			Transactions:     txns,
+			Transactions: txns,
 		}
 		txnSets = append(txnSets, txnSet)
 	}
