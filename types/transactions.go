@@ -236,60 +236,72 @@ func (id SiafundOutputID) SiaClaimOutputID() SiacoinOutputID {
 // Format implements fmt.Formatter for creating human-readable strings under the
 // format directive "%h".
 func (t Transaction) Format(state fmt.State, verb rune) {
-	if verb != 'h' {
-		return
-	}
+	switch verb {
+	case 'h':
+		txIDString := crypto.Hash(t.ID()).String()
+		fmt.Fprintf(state, "\nTransaction ID: %s", txIDString)
 
-	txIDString := crypto.Hash(t.ID()).String()
-	fmt.Fprintf(state, "\nTransaction ID: %s", txIDString)
+		if len(t.SiacoinInputs) != 0 {
+			fmt.Fprintf(state, "\nSiacoinInputs:\n")
+			for i, input := range t.SiacoinInputs {
+				parentIDString := crypto.Hash(input.ParentID).String()
+				fmt.Fprintf(state, "\t%d: %s\n", i, parentIDString)
+			}
+		}
+		if len(t.SiacoinOutputs) != 0 {
+			fmt.Fprintf(state, "SiacoinOutputs:\n")
+			for i := range t.SiacoinOutputs {
+				oidString := crypto.Hash(t.SiacoinOutputID(uint64(i))).String()
+				fmt.Fprintf(state, "\t%d: %s\n", i, oidString)
+			}
+		}
+		if len(t.FileContracts) != 0 {
+			fmt.Fprintf(state, "FileContracts:\n")
+			for i := range t.FileContracts {
+				fcIDString := crypto.Hash(t.FileContractID(uint64(i))).String()
+				fmt.Fprintf(state, "\t%d: %s\n", i, fcIDString)
+			}
+		}
+		if len(t.FileContractRevisions) != 0 {
+			fmt.Fprintf(state, "FileContractRevisions:\n")
+			for _, fcr := range t.FileContractRevisions {
+				parentIDString := crypto.Hash(fcr.ParentID).String()
+				fmt.Fprintf(state, "\t%d, %s\n", fcr.NewRevisionNumber, parentIDString)
+			}
+		}
+		if len(t.StorageProofs) != 0 {
+			fmt.Fprintf(state, "StorageProofs:\n")
+			for _, sp := range t.StorageProofs {
+				parentIDString := crypto.Hash(sp.ParentID).String()
+				fmt.Fprintf(state, "\t%s\n", parentIDString)
+			}
+		}
+		if len(t.SiafundInputs) != 0 {
+			fmt.Fprintf(state, "SiafundInputs:\n")
+			for i, input := range t.SiafundInputs {
+				parentIDString := crypto.Hash(input.ParentID).String()
+				fmt.Fprintf(state, "\t%d: %s\n", i, parentIDString)
+			}
+		}
+		if len(t.SiafundOutputs) != 0 {
+			fmt.Fprintf(state, "SiafundOutputs:\n")
+			for i := range t.SiafundOutputs {
+				oidString := crypto.Hash(t.SiafundOutputID(uint64(i))).String()
+				fmt.Fprintf(state, "\t%d: %s\n", i, oidString)
+			}
+		}
 
-	if len(t.SiacoinInputs) != 0 {
-		fmt.Fprintf(state, "\nSiacoinInputs:\n")
-		for i, input := range t.SiacoinInputs {
-			parentIDString := crypto.Hash(input.ParentID).String()
-			fmt.Fprintf(state, "\t%d: %s\n", i, parentIDString)
+	case 'v':
+		directive := "v"
+		if state.Flag('+') {
+			directive = "+v"
 		}
-	}
-	if len(t.SiacoinOutputs) != 0 {
-		fmt.Fprintf(state, "SiacoinOutputs:\n")
-		for i := range t.SiacoinOutputs {
-			oidString := crypto.Hash(t.SiacoinOutputID(uint64(i))).String()
-			fmt.Fprintf(state, "\t%d: %s\n", i, oidString)
-		}
-	}
-	if len(t.FileContracts) != 0 {
-		fmt.Fprintf(state, "FileContracts:\n")
-		for i := range t.FileContracts {
-			fcIDString := crypto.Hash(t.FileContractID(uint64(i))).String()
-			fmt.Fprintf(state, "\t%d: %s\n", i, fcIDString)
-		}
-	}
-	if len(t.FileContractRevisions) != 0 {
-		fmt.Fprintf(state, "FileContractRevisions:\n")
-		for _, fcr := range t.FileContractRevisions {
-			parentIDString := crypto.Hash(fcr.ParentID).String()
-			fmt.Fprintf(state, "\t%d, %s\n", fcr.NewRevisionNumber, parentIDString)
-		}
-	}
-	if len(t.StorageProofs) != 0 {
-		fmt.Fprintf(state, "StorageProofs:\n")
-		for _, sp := range t.StorageProofs {
-			parentIDString := crypto.Hash(sp.ParentID).String()
-			fmt.Fprintf(state, "\t%s\n", parentIDString)
-		}
-	}
-	if len(t.SiafundInputs) != 0 {
-		fmt.Fprintf(state, "SiafundInputs:\n")
-		for i, input := range t.SiafundInputs {
-			parentIDString := crypto.Hash(input.ParentID).String()
-			fmt.Fprintf(state, "\t%d: %s\n", i, parentIDString)
-		}
-	}
-	if len(t.SiafundOutputs) != 0 {
-		fmt.Fprintf(state, "SiafundOutputs:\n")
-		for i := range t.SiafundOutputs {
-			oidString := crypto.Hash(t.SiafundOutputID(uint64(i))).String()
-			fmt.Fprintf(state, "\t%d: %s\n", i, oidString)
-		}
+		type opaque Transaction
+		fmt.Fprintf(state, "%"+directive, opaque(t))
+
+	default:
+		// Print the address of the Transaction struct if an unknown directive is
+		// given.
+		fmt.Fprintf(state, "(Unimplemented Format Directive) (*Transaction=%p)", &t)
 	}
 }
