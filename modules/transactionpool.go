@@ -71,11 +71,6 @@ type (
 		RevertedTransactions []TransactionSetID
 	}
 
-	// TransactionSet contain information about a tpool transaction set
-	TransactionSet struct {
-		Transactions []types.Transaction `json:"transactions"`
-	}
-
 	// UnconfirmedTransactionSet defines a new unconfirmed transaction that has
 	// been added to the transaction pool. ID is the ID of the set, IDs contains
 	// an ID for each transaction, eliminating the need to recompute it (because
@@ -133,6 +128,9 @@ type (
 		// corresponding to the provided transaction id.
 		Transaction(id types.TransactionID) (txn types.Transaction, unconfirmedParents []types.Transaction, exists bool)
 
+		// Transactions returns the transactions of the transaction pool
+		Transactions() []types.Transaction
+
 		// TransactionConfirmed returns true if the transaction has been seen on the
 		// blockchain. Note, however, that the block containing the transaction may
 		// later be invalidated by a reorg.
@@ -151,9 +149,6 @@ type (
 		// TransactionSet returns the transaction set the provided object
 		// appears in.
 		TransactionSet(crypto.Hash) []types.Transaction
-
-		// TransactionSets returns the transaction sets of the transaction pool
-		TransactionSets() []TransactionSet
 
 		// Unsubscribe removes a subscriber from the transaction pool.
 		// This is necessary for clean shutdown of the miner.

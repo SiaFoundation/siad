@@ -34,9 +34,9 @@ type (
 		Confirmed bool `json:"confirmed"`
 	}
 
-	// TpoolSetsGET contains the information about the tpool's transaction sets
-	TpoolSetsGET struct {
-		TransactionSets []modules.TransactionSet `json:"transactionsets"`
+	// TpoolTxnsGET contains the information about the tpool's transactions
+	TpoolTxnsGET struct {
+		Transactions []types.Transaction `json:"transactions"`
 	}
 )
 
@@ -139,11 +139,11 @@ func (api *API) tpoolConfirmedGET(w http.ResponseWriter, req *http.Request, ps h
 	})
 }
 
-// tpoolTransactionSetsHandler returns the current transaction sets of the
-// transaction pool
-func (api *API) tpoolTransactionSetsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	txnSets := api.tpool.TransactionSets()
-	WriteJSON(w, TpoolSetsGET{
-		TransactionSets: txnSets,
+// tpoolTransactionsHandler returns the current transactions of the transaction
+// pool
+func (api *API) tpoolTransactionsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	txns := api.tpool.Transactions()
+	WriteJSON(w, TpoolTxnsGET{
+		Transactions: txns,
 	})
 }

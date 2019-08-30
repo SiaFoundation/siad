@@ -262,6 +262,17 @@ func (tp *TransactionPool) Transaction(id types.TransactionID) (types.Transactio
 	return txn, necessaryParents, exists
 }
 
+// Transactions returns the transactions of the transaction pool
+func (tp *TransactionPool) Transactions() []types.Transaction {
+	tp.mu.RLock()
+	defer tp.mu.RUnlock()
+	var txns []types.Transaction
+	for _, txn := range tp.transactionSets {
+		txns = append(txns, txn...)
+	}
+	return txns
+}
+
 // TransactionSet returns the transaction set the provided object appears in.
 func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 	tp.mu.RLock()
@@ -278,20 +289,6 @@ func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 	}
 	txns = append(txns, tSet...)
 	return txns
-}
-
-// TransactionSets returns the transaction sets of the transaction pool
-func (tp *TransactionPool) TransactionSets() []modules.TransactionSet {
-	tp.mu.RLock()
-	defer tp.mu.RUnlock()
-	var txnSets []modules.TransactionSet
-	for _, txns := range tp.transactionSets {
-		txnSet := modules.TransactionSet{
-			Transactions: txns,
-		}
-		txnSets = append(txnSets, txnSet)
-	}
-	return txnSets
 }
 
 // Broadcast broadcasts a transaction set to all of the transaction pool's

@@ -136,10 +136,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/tpool/raw/:id", api.tpoolRawHandlerGET)
 		router.POST("/tpool/raw", api.tpoolRawHandlerPOST)
 		router.GET("/tpool/confirmed/:id", api.tpoolConfirmedGET)
-
-		// TODO: re-enable this route once the transaction pool API has been finalized
-		// router.GET("/transactionpool/transactions", api.transactionpoolTransactionsHandler)
-		router.GET("/tpool/transactionsets", api.tpoolTransactionSetsHandler)
+		router.GET("/tpool/transactions", api.tpoolTransactionsHandler)
 	}
 
 	// Wallet API Calls

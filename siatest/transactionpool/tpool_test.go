@@ -30,12 +30,12 @@ func TestTpoolTransactionSetGet(t *testing.T) {
 	}()
 
 	// Transaction pool should be empty to start
-	tpsg, err := miner.TransactionPoolSetsGET()
+	tptg, err := miner.TransactionPoolTxnsGET()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tpsg.TransactionSets) != 0 {
-		t.Fatal("expected no transaction sets got", len(tpsg.TransactionSets))
+	if len(tptg.Transactions) != 0 {
+		t.Fatal("expected no transactions got", len(tptg.Transactions))
 	}
 
 	// miner sends a txn to itself
@@ -49,12 +49,12 @@ func TestTpoolTransactionSetGet(t *testing.T) {
 	}
 
 	// Verify the transaction pool
-	tpsg, err = miner.TransactionPoolSetsGET()
+	tptg, err = miner.TransactionPoolTxnsGET()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tpsg.TransactionSets) != 1 {
-		t.Fatal("expected 1 transaction set got", len(tpsg.TransactionSets))
+	if len(tptg.Transactions) != 1 {
+		t.Fatal("expected 1 transaction got", len(tptg.Transactions))
 	}
 
 	// Mine a block to confirm the transaction
@@ -63,11 +63,11 @@ func TestTpoolTransactionSetGet(t *testing.T) {
 	}
 
 	// Transaction pool should now be empty
-	tpsg, err = miner.TransactionPoolSetsGET()
+	tptg, err = miner.TransactionPoolTxnsGET()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tpsg.TransactionSets) != 0 {
-		t.Fatal("expected no transaction sets got", len(tpsg.TransactionSets))
+	if len(tptg.Transactions) != 0 {
+		t.Fatal("expected no transactions got", len(tptg.Transactions))
 	}
 }
