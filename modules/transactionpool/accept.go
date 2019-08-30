@@ -57,6 +57,18 @@ func relatedObjectIDs(ts []types.Transaction) []ObjectID {
 	return oids
 }
 
+// requiredFeesToExtendTpoolAtSize returns the fees that should be required to
+// extend the transaction pool for a given size of transaction pool.
+//
+// NOTE: This function ignores the minimum transaction pool size required for a
+// fee.
+func requiredFeesToExtendTpoolAtSize(size int) types.Currency {
+	// Calculate the fee required to bump out the size of the transaction pool.
+	ratioToTarget := float64(size) / TransactionPoolSizeTarget
+	feeFactor := math.Pow(ratioToTarget, TransactionPoolExponentiation)
+	return types.SiacoinPrecision.MulFloat(feeFactor).Div64(1000) // Divide by 1000 to get SC / kb
+}
+
 // requiredFeesToExtendTpool returns the amount of fees required to extend the
 // transaction pool to fit another transaction set. The amount returned has the
 // unit 'currency per byte'.
@@ -67,10 +79,7 @@ func (tp *TransactionPool) requiredFeesToExtendTpool() types.Currency {
 		return types.ZeroCurrency
 	}
 
-	// Calculate the fee required to bump out the size of the transaction pool.
-	ratioToTarget := float64(tp.transactionListSize) / TransactionPoolSizeTarget
-	feeFactor := math.Pow(ratioToTarget, TransactionPoolExponentiation)
-	return types.SiacoinPrecision.MulFloat(feeFactor).Div64(1000) // Divide by 1000 to get SC / kb
+	return requiredFeesToExtendTpoolAtSize(tp.transactionListSize)
 }
 
 // checkTransactionSetComposition checks if the transaction set is valid given
