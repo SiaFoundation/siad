@@ -113,6 +113,8 @@ func TransactionGraph(sourceOutput SiacoinOutputID, edges []TransactionGraphEdge
 	return ts, nil
 }
 
+// objectID is used internally to the MinimumCombinedSet function to identiy
+// which transactions create outputs for eachother.
 type objectID [32]byte
 
 // MinimumCombinedSet takes two transaction sets as input and returns a combined
@@ -234,8 +236,10 @@ func MinimumCombinedSet(requiredTxns []Transaction, relatedTxns []Transaction) [
 	// correct order (per the input requirements) but the required parents were
 	// constructed in reverse order, and therefore need to be reversed as they
 	// are appended.
+	var minSet []Transaction
 	for i := len(requiredParents) - 1; i >= 0; i-- {
-		requiredTxns = append(requiredTxns, requiredParents[i])
+		minSet = append(minSet, requiredParents[i])
 	}
-	return requiredTxns
+	minSet = append(minSet, requiredTxns...)
+	return minSet
 }

@@ -96,13 +96,18 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 	// Add miner fee.
 	txnBuilder.AddMinerFee(txnFee)
 
-	// Create initial transaction set.
+	// Create initial transaction set. Before sending the transaction set to the
+	// host, ensure that all transactions which may be necessary to get accepted
+	// into the transaction pool are included. Also ensure that only the minimum
+	// set of transactions is supplied, if there are non-necessary transactions
+	// included the chance of a double spend or poor propagation increases.
 	txn, parentTxns := txnBuilder.View()
 	unconfirmedParents, err := txnBuilder.UnconfirmedParents()
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
+	txnSet := append(unconfirmedParents, parentTxns...)
+	txnSet = types.MinimumCombinedSet([]types.Transaction{txn}, txnSet)
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
@@ -252,17 +257,17 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 	}
 	revisionTxn.TransactionSignatures = append(revisionTxn.TransactionSignatures, hostRevisionSig)
 
-	// Construct the final transaction.
+	// Construct the final transaction that gets sent to the transaction pool.
 	txn, parentTxns = txnBuilder.View()
-
-	// Grab the minimum superset of the transaction. This will ensure that only
-	// the parents that are absolutely necessary are used when trying to
-	// broadcast the new file contract, which improves the likelyhood of
-	// successful propagation.
-	minSet := types.MinimumCombinedSet([]types.Transaction{txn}, parentTxns)
+	unconfirmedParents, err = txnBuilder.UnconfirmedParents()
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	txnSet = append(unconfirmedParents, parentTxns...)
+	txnSet = types.MinimumCombinedSet([]types.Transaction{txn}, txnSet)
 
 	// Submit to blockchain.
-	err = tpool.AcceptTransactionSet(minSet)
+	err = tpool.AcceptTransactionSet(txnSet)
 	if err == modules.ErrDuplicateTransactionSet {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
@@ -374,6 +379,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 		return modules.RenterContract{}, err
 	}
 	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
+	txnSet = types.MinimumCombinedSet([]types.Transaction{txn}, txnSet)
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
@@ -478,13 +484,11 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	}
 	revisionTxn.TransactionSignatures = append(revisionTxn.TransactionSignatures, hostSigs.RevisionSignature)
 
-	// Construct the final transaction.
+	// Construct the final transaction, and then grab the minimum necessary
+	// final set to submit to the transaction pool. Minimizing the set will
+	// greatly improve the chances of the transaction propagating through an
+	// actively attacked network.
 	txn, parentTxns = txnBuilder.View()
-
-	// Grab the minimum superset of the transaction. This will ensure that only
-	// the parents that are absolutely necessary are used when trying to
-	// broadcast the new file contract, which improves the likelyhood of
-	// successful propagation.
 	minSet := types.MinimumCombinedSet([]types.Transaction{txn}, parentTxns)
 
 	// Submit to blockchain.
