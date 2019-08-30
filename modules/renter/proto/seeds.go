@@ -173,7 +173,7 @@ func PrefixedSignedIdentifier(renterSeed EphemeralRenterSeed, txn types.Transact
 	encryptedKey := sk.EncryptBytes(append(marshaledKey, make([]byte, padding)...))
 	// Create the signed identifer object.
 	var csi ContractSignedIdentifier
-	copy(csi[:16], modules.PrefixFileContractIdentifier[:])
+	copy(csi[:16], modules.PrefixNonSia[:])
 	copy(csi[16:48], identifier[:])
 	copy(csi[48:80], signature[:])
 	return csi, encryptedKey
