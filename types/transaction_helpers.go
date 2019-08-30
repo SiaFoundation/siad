@@ -13,17 +13,23 @@ type TransactionGraphEdge struct {
 	Value  Currency
 }
 
-// TransactionGraph will return a set of valid transactions that all spend
-// outputs according to the input graph. Each [source, dest] pair defines an
-// edge of the graph. The graph must be fully connected and the granparent of
-// the graph must be the sourceOutput. '0' refers to an edge from the source
-// output. Each edge also specifies a value for the output, and an amount of
-// fees. If the fees are zero, no fees will be added for that edge. 'sources'
-// must be sorted.
+// TransactionGraph will take a set of edges as input and use those edges to
+// create a transaction graph. The code interprets the edges as going from a
+// source node to a sink node. For all nodes, all of the inputs will be part of
+// the same transaction. And for all nodes, all of the outputs will be part of
+// the same transaction. For nodes that have only outputs (the source node, node
+// 0), these nodes will appear in only one transaction. And for nodes that have
+// only inputs (the sink nodes), these nodes will also only appear in one
+// transaction.
 //
-// Example of acceptable input:
+// Two nodes will only appear in the same transaction if required to satisfy the
+// above requirements, otherwise the nodes will be created using distinct
+// transactions.
 //
-// sourceOutput: // a valid siacoin output spending to UnlockConditions{}.UnlockHash()
+// Node zero will use the 'sourceOutput' as its input, and is the only node that
+// is allowed to have no inputs specifed.
+//
+// Example Input:
 //
 // Sources: [0, 0, 1, 2, 3, 3, 3, 4]
 // Dests:   [1, 2, 3, 3, 4, 4, 5, 6]
@@ -37,11 +43,60 @@ type TransactionGraphEdge struct {
 //    o
 //   /|\
 //   \| \
-//    o  x // 'x' transactions are symbolic, not actually created
+//    o  o
 //    |
-//    x
+//    o
 //
+// This graph will result in 4 transactions:
+//
+//    t1: [0->1],[0->2]
+//    t2: [1->3],[2->3]
+//    t3: [3->4],[3->4],[3->5]
+//    t4: [4->6]
+//
+// NOTE: the edges must be specified so that the inputs and outputs of the
+// resulting transaction add up correctly.
 func TransactionGraph(sourceOutput SiacoinOutputID, edges []TransactionGraphEdge) ([]Transaction, error) {
+	// Generating the transaction graph based on a set of edges is non-trivial.
+	//
+	// Step 1: Generate a map of nodes. Each node records which nodes use it for
+	// input, and which nodes use it for output. The map goes from node index to
+	// node data.
+	//
+	// Step 2: Create a list of outputs that need to be added to a transaction.
+	// The first element of this list will be node 0, which uses the source
+	// output as its input.
+	//
+	// Step 3: For each node in the list, check whether that node has already
+	// been added to a transaction for its outputs. If so, skip that node.
+	//
+	// Step 4: For the nodes whose outputs do not yet appear in a transaction,
+	// create a transaction to house that node. Then follow each output of the
+	// node to the inputs of the destination nodes.
+	//
+	// Step 5: For each input in a destination node, follow that input back to
+	// the node that created the output. If that output already appears in a
+	// transaction, the graph is invalid and an error must be returned. If that
+	// node's outputs do not appear in a transaction yet, that node's inputs
+	// need to be checked. If that node's inputs do not appear in a transaction
+	// yet, the current transaction has to be put on hold and the transaction
+	// for those inputs needs to be created by following the inputs back to
+	// their corresponding outputs and starting back at step 2.
+	//
+	// Step 6: As the transactions are searched, any outputs created by the
+	// transaction will need to be added to the list of outputs that haven't had
+	// their transctions finished yet to be searched later.
+	//
+	// Step 7: Once all transaction diagrams are complete, translate into
+	// transactions.
+	//
+	// In short, the algorithm we use is essentially a recursive
+	// depth-first-search that builds the correct transaction graph, and then
+	// the transactions are processed in an order that allows us to create all
+	// of their IDs.
+
+
+
 	// Basic input validation.
 	if len(edges) < 1 {
 		return nil, errors.New("no graph specificed")
