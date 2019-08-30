@@ -333,7 +333,7 @@ func (tp *TransactionPool) threadedLogListSize() {
 // strings for each transaction.
 func (tp *TransactionPool) printConflicts(ts []types.Transaction) {
 	relatedObjects := relatedObjectIDs(ts)
-	conflictSets := make(map[TransactionSetID]bool)
+	conflictSets := make(map[modules.TransactionSetID]bool)
 	for _, oid := range relatedObjects {
 		conflict, exists := tp.knownObjects[oid]
 		if exists {

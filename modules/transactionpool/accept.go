@@ -298,11 +298,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 		}
 	}
 	if len(conflicts) > 0 {
-		err := tp.handleConflicts(ts, conflicts, txnFn)
-		if err != nil && build.DEBUG {
-			tp.printConflicts(ts)
-		}
-		return err
+		return tp.handleConflicts(ts, conflicts, txnFn)
 	}
 	cc, err := txnFn(ts)
 	if err != nil {
@@ -354,7 +350,15 @@ func (tp *TransactionPool) submitTransactionSet(ts []types.Transaction) ([]types
 
 		// Attempt to get the transaction set into the transaction pool.
 		superset, acceptErr = tp.acceptTransactionSet(ts, txnFn)
+		if acceptErr == modules.ErrDuplicateTransactionSet {
+			tp.log.Debugln("Transaction set is a duplicate:", acceptErr)
+			return acceptErr
+		}
 		if acceptErr != nil {
+			tp.log.Debugln("Transaction set broadcast has failed:", acceptErr)
+			if build.DEBUG && modules.IsConsensusConflict(acceptErr) {
+				tp.printConflicts(ts)
+			}
 			return acceptErr
 		}
 		// Notify subscribers of an accepted transaction set
