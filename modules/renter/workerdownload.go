@@ -102,6 +102,10 @@ func (w *worker) managedDownload(udc *unfinishedDownloadChunk) {
 	if udc.piecesCompleted <= udc.erasureCode.MinPieces() {
 		atomic.AddUint64(&udc.download.atomicDataReceived, udc.staticFetchLength/uint64(udc.erasureCode.MinPieces()))
 		udc.physicalChunkData[pieceIndex] = decryptedPiece
+	} else {
+		// This worker's piece was not needed, another worker was faster. Nil
+		// the piece so the GC can find it faster.
+		decryptedPiece = nil
 	}
 	if udc.piecesCompleted == udc.erasureCode.MinPieces() {
 		// Uint division might not always cause atomicDataReceived to cleanly
