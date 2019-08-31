@@ -214,6 +214,9 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 	// trigger the memory cleanup along with some extra checks that everything
 	// is consistent.
 	udc.mu.Lock()
+	for i := range udc.physicalChunkData {
+		udc.physicalChunkData[i] = nil
+	}
 	udc.recoveryComplete = true
 	udc.mu.Unlock()
 
