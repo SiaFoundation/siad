@@ -27,6 +27,10 @@ type TransactionGraph struct {
 // SimpleTransaction specifies what outputs it spends, and what outputs it
 // creates, by index. When passed in TransactionGraph, it will be automatically
 // transformed into a valid transaction.
+//
+// Currently, there is only support for SiacoinInputs, SiacoinOutputs, and
+// MinerFees, however the code has been structured so that support for Siafunds
+// and FileContracts can be easily added in the future.
 type SimpleTransaction struct {
 	SiacoinInputs  []int            // Which inputs to use, by index.
 	SiacoinOutputs []types.Currency // The values of each output.
