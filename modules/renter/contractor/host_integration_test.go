@@ -105,11 +105,12 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 	if err != nil {
 		return nil, err
 	}
-	hdb, err := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
-	if err != nil {
+	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	return New(cs, w, tp, hdb, filepath.Join(testdir, "contractor"))
+	contractor, errChan := New(cs, w, tp, hdb, filepath.Join(testdir, "contractor"))
+	return contractor, <-errChan
 }
 
 // newTestingTrio creates a Host, Contractor, and TestMiner that can be used
@@ -122,8 +123,8 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		return nil, nil, nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))

@@ -103,8 +103,9 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 
 	// load should now load the files into memory.
-	rt.renter, err = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(rt.dir, modules.RenterDir))
-	if err != nil {
+	var errChan <-chan error
+	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(rt.dir, modules.RenterDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 
@@ -180,8 +181,9 @@ func TestRenterPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt.renter, err = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(rt.dir, modules.RenterDir))
-	if err != nil {
+	var errChan <-chan error
+	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(rt.dir, modules.RenterDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 

@@ -752,24 +752,31 @@ func (r *Renter) SetIPViolationCheck(enabled bool) {
 var _ modules.Renter = (*Renter)(nil)
 
 // NewCustomRenter initializes a renter and returns it.
-func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, persistDir string, deps modules.Dependencies) (*Renter, error) {
+func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, persistDir string, deps modules.Dependencies) (*Renter, <-chan error) {
+	errChan := make(chan error, 1)
 	if g == nil {
-		return nil, errNilGateway
+		errChan <- errNilGateway
+		return nil, errChan
 	}
 	if cs == nil {
-		return nil, errNilCS
+		errChan <- errNilCS
+		return nil, errChan
 	}
 	if tpool == nil {
-		return nil, errNilTpool
+		errChan <- errNilTpool
+		return nil, errChan
 	}
 	if hc == nil {
-		return nil, errNilContractor
+		errChan <- errNilContractor
+		return nil, errChan
 	}
 	if hdb == nil && build.Release != "testing" {
-		return nil, errNilHdb
+		errChan <- errNilHdb
+		return nil, errChan
 	}
 	if w == nil {
-		return nil, errNilWallet
+		errChan <- errNilWallet
+		return nil, errChan
 	}
 
 	r := &Renter{
@@ -814,7 +821,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 
 	// Load all saved data.
 	if err := r.managedInitPersist(); err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 	// After persist is initialized, push the root directory onto the directory
 	// heap for the repair process.
@@ -825,17 +833,20 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// Subscribe to the consensus set in a separate goroutine.
 	done := make(chan struct{})
 	if err := r.tg.Add(); err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 	go func() {
+		defer close(errChan)
 		defer r.tg.Done()
 		defer close(done)
 		err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
 		if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+			errChan <- err
 			return
 		}
 		if err != nil {
-			r.log.Critical("Renter failed to subscribe to consensus set", err)
+			errChan <- err
 		}
 	}()
 	err := r.tg.OnStop(func() error {
@@ -843,7 +854,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Spin up background threads which are not depending on the renter being
@@ -868,18 +880,36 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		// Spin up the snapshot synchronization thread.
 		go r.threadedSynchronizeSnapshots()
 	}()
-	return r, nil
+	return r, errChan
 }
 
 // New returns an initialized renter.
-func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, persistDir string) (*Renter, error) {
-	hdb, err := hostdb.New(g, cs, tpool, persistDir)
-	if err != nil {
-		return nil, err
+func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, persistDir string) (*Renter, <-chan error) {
+	errChan := make(chan error, 1)
+	hdb, errChanHDB := hostdb.New(g, cs, tpool, persistDir)
+	select {
+	case err := <-errChanHDB:
+		errChan <- err
+		return nil, errChan
+	default:
 	}
-	hc, err := contractor.New(cs, wallet, tpool, hdb, persistDir)
-	if err != nil {
-		return nil, err
+	hc, errChanContractor := contractor.New(cs, wallet, tpool, hdb, persistDir)
+	select {
+	case err := <-errChanContractor:
+		errChan <- err
+		return nil, errChan
+	default:
 	}
-	return NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, modules.ProdDependencies)
+	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, modules.ProdDependencies)
+	select {
+	case err := <-errChanRenter:
+		errChan <- err
+		return nil, errChan
+	default:
+	}
+	go func() {
+		errChan <- errors.Compose(<-errChanHDB, <-errChanContractor, <-errChanRenter)
+		close(errChan)
+	}()
+	return renter, errChan
 }

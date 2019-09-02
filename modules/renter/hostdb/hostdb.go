@@ -181,7 +181,7 @@ func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 }
 
 // New returns a new HostDB.
-func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, error) {
+func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, <-chan error) {
 	// Create HostDB using production dependencies.
 	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
 }
@@ -189,16 +189,20 @@ func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPo
 // NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
 // persistence data, spawns the HostDB's scanning threads, and subscribes it to
 // the consensusSet.
-func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
+func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, <-chan error) {
+	errChan := make(chan error, 1)
 	// Check for nil inputs.
 	if g == nil {
-		return nil, errNilGateway
+		errChan <- errNilGateway
+		return nil, errChan
 	}
 	if cs == nil {
-		return nil, errNilCS
+		errChan <- errNilCS
+		return nil, errChan
 	}
 	if tpool == nil {
-		return nil, errNilTPool
+		errChan <- errNilTPool
+		return nil, errChan
 	}
 
 	// Create the HostDB object.
@@ -222,13 +226,15 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// Create the persist directory if it does not yet exist.
 	err := os.MkdirAll(persistDir, 0700)
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Create the logger.
 	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "hostdb.log"))
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 	hdb.log = logger
 	err = hdb.tg.AfterStop(func() error {
@@ -240,7 +246,8 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// The host tree is used to manage hosts and query them at random. The
@@ -253,7 +260,8 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	err = hdb.load()
 	hdb.mu.Unlock()
 	if err != nil && !os.IsNotExist(err) {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 	err = hdb.tg.AfterStop(func() error {
 		hdb.mu.Lock()
@@ -266,7 +274,8 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Loading is complete, establish the save loop.
@@ -275,7 +284,8 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// Don't perform the remaining startup in the presence of a quitAfterLoad
 	// disruption.
 	if hdb.deps.Disrupt("quitAfterLoad") {
-		return hdb, nil
+		errChan <- nil
+		return hdb, errChan
 	}
 
 	// COMPATv1.1.0
@@ -291,12 +301,15 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 
 	// Subscribe to the consensus set in a separate goroutine.
 	if err := hdb.tg.Add(); err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 	go func() {
+		defer close(errChan)
 		defer hdb.tg.Done()
 		err := cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
 		if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+			errChan <- err
 			return
 		}
 		if err == modules.ErrInvalidConsensusChangeID {
@@ -309,10 +322,12 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
 		}
 		if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+			errChan <- err
 			return
 		}
 		if err != nil {
-			hdb.log.Critical("HostDB failed to subscribe to consensus set")
+			errChan <- err
+			return
 		}
 	}()
 	err = hdb.tg.OnStop(func() error {
@@ -320,7 +335,8 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Spawn the scan loop during production, but allow it to be disrupted
@@ -332,7 +348,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		hdb.initialScanComplete = true
 	}
 
-	return hdb, nil
+	return hdb, errChan
 }
 
 // ActiveHosts returns a list of hosts that are currently online, sorted by

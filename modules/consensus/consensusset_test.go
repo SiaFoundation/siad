@@ -100,8 +100,8 @@ func blankConsensusSetTester(name string, deps modules.Dependencies) (*consensus
 	if err != nil {
 		return nil, err
 	}
-	cs, err := NewCustomConsensusSet(g, false, filepath.Join(testdir, modules.ConsensusDir), deps)
-	if err != nil {
+	cs, errChan := NewCustomConsensusSet(g, false, filepath.Join(testdir, modules.ConsensusDir), deps)
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.ConsensusDir))
@@ -175,8 +175,8 @@ func TestNilInputs(t *testing.T) {
 	}
 	t.Parallel()
 	testdir := build.TempDir(modules.ConsensusDir, t.Name())
-	_, err := New(nil, false, testdir)
-	if err != errNilGateway {
+	_, errChan := New(nil, false, testdir)
+	if err := <-errChan; err != errNilGateway {
 		t.Fatal(err)
 	}
 }
@@ -194,8 +194,8 @@ func TestDatabaseClosing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := New(g, false, testdir)
-	if err != nil {
+	cs, errChan := New(g, false, testdir)
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 	err = cs.Close()

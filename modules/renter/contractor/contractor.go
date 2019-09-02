@@ -239,38 +239,47 @@ func (c *Contractor) Close() error {
 }
 
 // New returns a new Contractor.
-func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, persistDir string) (*Contractor, error) {
+func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, persistDir string) (*Contractor, <-chan error) {
+	errChan := make(chan error, 1)
+	defer close(errChan)
 	// Check for nil inputs.
 	if cs == nil {
-		return nil, errNilCS
+		errChan <- errNilCS
+		return nil, errChan
 	}
 	if wallet == nil {
-		return nil, errNilWallet
+		errChan <- errNilWallet
+		return nil, errChan
 	}
 	if tpool == nil {
-		return nil, errNilTpool
+		errChan <- errNilTpool
+		return nil, errChan
 	}
 
 	// Create the persist directory if it does not yet exist.
 	if err := os.MkdirAll(persistDir, 0700); err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Convert the old persist file(s), if necessary. This must occur before
 	// loading the contract set.
 	if err := convertPersist(persistDir); err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Create the contract set.
 	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), modules.ProdDependencies)
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 	// Create the logger.
 	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "contractor.log"))
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Create Contractor using production dependencies.
@@ -278,7 +287,8 @@ func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, 
 }
 
 // NewCustomContractor creates a Contractor using the provided dependencies.
-func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
+func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, <-chan error) {
+	errChan := make(chan error, 1)
 	// Create the Contractor object.
 	c := &Contractor{
 		cs:         cs,
@@ -316,7 +326,8 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	// Load the prior persistence structures.
 	err := c.load()
 	if err != nil && !os.IsNotExist(err) {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Initialize the contractIDToPubKey map
@@ -329,10 +340,12 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 
 	// Subscribe to the consensus set in a separate goroutine.
 	if err := c.tg.Add(); err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 	go func() {
 		defer c.tg.Done()
+		defer close(errChan)
 		err := cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
 		if err == modules.ErrInvalidConsensusChangeID {
 			// Reset the contractor consensus variables and try rescanning.
@@ -342,10 +355,12 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 			err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
 		}
 		if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+			errChan <- err
 			return
 		}
 		if err != nil {
-			c.log.Critical("Contractor failed to subscribe to consensus set", err)
+			errChan <- err
+			return
 		}
 	}()
 	// Unsubscribe from the consensus set upon shutdown.
@@ -359,16 +374,18 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	err = c.save()
 	c.mu.Unlock()
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Update the allowance in the hostdb with the one that was loaded from
 	// disk.
 	err = c.hdb.SetAllowance(c.allowance)
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
-	return c, nil
+	return c, errChan
 }
 
 // managedInitRecoveryScan starts scanning the whole blockchain at a certain

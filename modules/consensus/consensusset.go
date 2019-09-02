@@ -98,17 +98,19 @@ type ConsensusSet struct {
 // New returns a new ConsensusSet, containing at least the genesis block. If
 // there is an existing block database present in the persist directory, it
 // will be loaded.
-func New(gateway modules.Gateway, bootstrap bool, persistDir string) (*ConsensusSet, error) {
+func New(gateway modules.Gateway, bootstrap bool, persistDir string) (*ConsensusSet, <-chan error) {
 	return NewCustomConsensusSet(gateway, bootstrap, persistDir, modules.ProdDependencies)
 }
 
 // NewCustomConsensusSet returns a new ConsensusSet, containing at least the genesis block. If
 // there is an existing block database present in the persist directory, it
 // will be loaded.
-func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir string, deps modules.Dependencies) (*ConsensusSet, error) {
+func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir string, deps modules.Dependencies) (*ConsensusSet, <-chan error) {
+	errChan := make(chan error)
 	// Check for nil dependencies.
 	if gateway == nil {
-		return nil, errNilGateway
+		errChan <- errNilGateway
+		return nil, errChan
 	}
 
 	// Create the ConsensusSet object.
@@ -160,10 +162,12 @@ func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir s
 	// Initialize the consensus persistence structures.
 	err := cs.initPersist()
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	go func() {
+		defer close(errChan)
 		// Sync with the network. Don't sync if we are testing because
 		// typically we don't have any mock peers to synchronize with in
 		// testing.
@@ -172,6 +176,7 @@ func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir s
 			// function without a goroutine is okay.
 			err = cs.threadedInitialBlockchainDownload()
 			if err != nil {
+				errChan <- err
 				return
 			}
 		}
@@ -181,6 +186,7 @@ func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir s
 		// goroutine.
 		err = cs.tg.Add()
 		if err != nil {
+			errChan <- err
 			return
 		}
 		defer cs.tg.Done()
@@ -203,7 +209,7 @@ func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir s
 		cs.mu.Unlock()
 	}()
 
-	return cs, nil
+	return cs, errChan
 }
 
 // BlockAtHeight returns the block at a given height.
