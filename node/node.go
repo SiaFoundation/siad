@@ -247,14 +247,15 @@ func New(params NodeParams) (*Node, <-chan error) {
 		defer close(c)
 		if params.CreateConsensusSet && params.ConsensusSet != nil {
 			c <- errors.New("cannot both create consensus and use passed in consensus")
+			close(c)
 			return nil, c
 		}
 		if params.ConsensusSet != nil {
-			c <- nil
+			close(c)
 			return params.ConsensusSet, c
 		}
 		if !params.CreateConsensusSet {
-			c <- nil
+			close(c)
 			return nil, c
 		}
 		i++
@@ -390,14 +391,15 @@ func New(params NodeParams) (*Node, <-chan error) {
 		c := make(chan error, 1)
 		if params.CreateRenter && params.Renter != nil {
 			c <- errors.New("cannot create renter and also use custom renter")
+			close(c)
 			return nil, c
 		}
 		if params.Renter != nil {
-			c <- nil
+			close(c)
 			return params.Renter, c
 		}
 		if !params.CreateRenter {
-			c <- nil
+			close(c)
 			return nil, c
 		}
 		contractorDeps := params.ContractorDeps
@@ -430,6 +432,7 @@ func New(params NodeParams) (*Node, <-chan error) {
 		case err := <-errChanHDB:
 			if err != nil {
 				c <- err
+				close(c)
 				return nil, c
 			}
 		default:
@@ -438,12 +441,14 @@ func New(params NodeParams) (*Node, <-chan error) {
 		contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), contractSetDeps)
 		if err != nil {
 			c <- err
+			close(c)
 			return nil, c
 		}
 		// Contractor
 		logger, err := persist.NewFileLogger(filepath.Join(persistDir, "contractor.log"))
 		if err != nil {
 			c <- err
+			close(c)
 			return nil, c
 		}
 		hc, errChanContractor := contractor.NewCustomContractor(cs, &contractor.WalletBridge{W: w}, tp, hdb, contractSet, contractor.NewPersist(persistDir), logger, contractorDeps)
@@ -451,6 +456,7 @@ func New(params NodeParams) (*Node, <-chan error) {
 		case err := <-errChanContractor:
 			if err != nil {
 				c <- err
+				close(c)
 				return nil, c
 			}
 		default:
