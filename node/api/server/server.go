@@ -17,6 +17,7 @@ import (
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
@@ -211,7 +212,9 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 	case err := <-errChan:
 		if err != nil {
 			// Error occured during async load. Close all modules.
-			fmt.Println("ERROR:", err)
+			if build.Release == "standard" {
+				fmt.Println("ERROR:", err)
+			}
 			return nil, errors.Compose(err, node.Close())
 		}
 	}

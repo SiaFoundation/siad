@@ -106,7 +106,7 @@ func New(gateway modules.Gateway, bootstrap bool, persistDir string) (*Consensus
 // there is an existing block database present in the persist directory, it
 // will be loaded.
 func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir string, deps modules.Dependencies) (*ConsensusSet, <-chan error) {
-	errChan := make(chan error)
+	errChan := make(chan error, 1)
 	// Check for nil dependencies.
 	if gateway == nil {
 		errChan <- errNilGateway
