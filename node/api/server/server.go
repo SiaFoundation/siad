@@ -211,7 +211,8 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 	case err := <-errChan:
 		if err != nil {
 			// Error occured during async load. Close all modules.
-			return nil, node.Close()
+			fmt.Println("ERROR:", err)
+			return nil, errors.Compose(err, node.Close())
 		}
 	}
 	return srv, nil

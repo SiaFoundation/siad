@@ -253,6 +253,9 @@ type Renter struct {
 
 // Close closes the Renter and its dependencies
 func (r *Renter) Close() error {
+	if r == nil {
+		return nil
+	}
 	r.tg.Stop()
 	r.hostDB.Close()
 	return r.hostContractor.Close()
@@ -889,22 +892,28 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 	hdb, errChanHDB := hostdb.New(g, cs, tpool, persistDir)
 	select {
 	case err := <-errChanHDB:
-		errChan <- err
-		return nil, errChan
+		if err != nil {
+			errChan <- err
+			return nil, errChan
+		}
 	default:
 	}
 	hc, errChanContractor := contractor.New(cs, wallet, tpool, hdb, persistDir)
 	select {
 	case err := <-errChanContractor:
-		errChan <- err
-		return nil, errChan
+		if err != nil {
+			errChan <- err
+			return nil, errChan
+		}
 	default:
 	}
 	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, modules.ProdDependencies)
 	select {
 	case err := <-errChanRenter:
-		errChan <- err
-		return nil, errChan
+		if err != nil {
+			errChan <- err
+			return nil, errChan
+		}
 	default:
 	}
 	go func() {
