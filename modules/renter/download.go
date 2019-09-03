@@ -432,9 +432,12 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		memoryManager: r.memoryManager,
 	}
 
-	// Update the endTime of the download when it's done.
+	// Update the endTime of the download when it's done. Also nil out the
+	// destination pointer so that the garbage collector does not think any
+	// memory is still being used.
 	d.onComplete(func(_ error) error {
 		d.endTime = time.Now()
+		d.destination = nil
 		return nil
 	})
 
