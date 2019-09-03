@@ -33,6 +33,7 @@ func (stubTPool) AcceptTransactionSet(ts []types.Transaction) error {
 	return errTxFail
 }
 func (stubTPool) FeeEstimation() (min, max types.Currency)           { return types.Currency{}, types.Currency{} }
+func (stubTPool) Transactions() []types.Transaction                  { return nil }
 func (stubTPool) TransactionSet(oid crypto.Hash) []types.Transaction { return nil }
 func (stubTPool) Broadcast(ts []types.Transaction)                   {}
 func (stubTPool) Close() error                                       { return nil }

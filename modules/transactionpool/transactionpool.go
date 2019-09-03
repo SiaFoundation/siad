@@ -25,8 +25,6 @@ type (
 	// contracts, and is used to see if there is are conflicts or overlaps within
 	// the transaction pool.
 	ObjectID crypto.Hash
-	// TransactionSetID is the hash of a transaction set.
-	TransactionSetID crypto.Hash
 
 	// The TransactionPool tracks incoming transactions, accepting them or
 	// rejecting them based on internal criteria such as fees and unconfirmed
@@ -47,11 +45,11 @@ type (
 		//
 		// transactionSetDiffs map form a transaction set id to the set of
 		// diffs that resulted from the transaction set.
-		knownObjects        map[ObjectID]TransactionSetID
-		subscriberSets      map[TransactionSetID]*modules.UnconfirmedTransactionSet
+		knownObjects        map[ObjectID]modules.TransactionSetID
+		subscriberSets      map[modules.TransactionSetID]*modules.UnconfirmedTransactionSet
 		transactionHeights  map[types.TransactionID]types.BlockHeight
-		transactionSets     map[TransactionSetID][]types.Transaction
-		transactionSetDiffs map[TransactionSetID]*modules.ConsensusChange
+		transactionSets     map[modules.TransactionSetID][]types.Transaction
+		transactionSetDiffs map[modules.TransactionSetID]*modules.ConsensusChange
 		transactionListSize int
 
 		// Variables related to the blockchain.
@@ -90,11 +88,11 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 		consensusSet: cs,
 		gateway:      g,
 
-		knownObjects:        make(map[ObjectID]TransactionSetID),
-		subscriberSets:      make(map[TransactionSetID]*modules.UnconfirmedTransactionSet),
+		knownObjects:        make(map[ObjectID]modules.TransactionSetID),
+		subscriberSets:      make(map[modules.TransactionSetID]*modules.UnconfirmedTransactionSet),
 		transactionHeights:  make(map[types.TransactionID]types.BlockHeight),
-		transactionSets:     make(map[TransactionSetID][]types.Transaction),
-		transactionSetDiffs: make(map[TransactionSetID]*modules.ConsensusChange),
+		transactionSets:     make(map[modules.TransactionSetID][]types.Transaction),
+		transactionSetDiffs: make(map[modules.TransactionSetID]*modules.ConsensusChange),
 
 		persistDir: persistDir,
 	}
@@ -270,12 +268,23 @@ func (tp *TransactionPool) Transaction(id types.TransactionID) (types.Transactio
 	return txn, necessaryParents, exists
 }
 
-// TransactionSet returns the transaction set the provided object
-// appears in.
+// Transactions returns the transactions of the transaction pool
+func (tp *TransactionPool) Transactions() []types.Transaction {
+	tp.mu.RLock()
+	defer tp.mu.RUnlock()
+	var txns []types.Transaction
+	for _, set := range tp.transactionSets {
+		txns = append(txns, set...)
+	}
+	return txns
+}
+
+// TransactionSet returns the transaction set the provided object appears in.
 func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
-	var parents []types.Transaction
+	// Define txns as to not use the memory that stores the actual map
+	var txns []types.Transaction
 	tSetID, exists := tp.knownObjects[ObjectID(oid)]
 	if !exists {
 		return nil
@@ -284,8 +293,8 @@ func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 	if !exists {
 		return nil
 	}
-	parents = append(parents, tSet...)
-	return parents
+	txns = append(txns, tSet...)
+	return txns
 }
 
 // Broadcast broadcasts a transaction set to all of the transaction pool's
