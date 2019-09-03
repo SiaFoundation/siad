@@ -267,7 +267,7 @@ func (tp *TransactionPool) Transactions() []types.Transaction {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
 	var txns []types.Transaction
-	for _, txn := range tp.transactionSets {
+	for _, set := range tp.transactionSets {
 		txns = append(txns, txn...)
 	}
 	return txns
