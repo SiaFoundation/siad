@@ -2117,7 +2117,7 @@ func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 		die(err)
 	}
 
-	err = httpClient.RenterPostRateLimit(downloadSpeedInt, uploadSpeedInt)
+	err = httpClient.RenterRateLimitPost(downloadSpeedInt, uploadSpeedInt)
 	if err != nil {
 		die("Could not set renter ratelimit speed")
 	}
