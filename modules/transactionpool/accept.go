@@ -112,7 +112,7 @@ func (tp *TransactionPool) checkTransactionSetComposition(ts []types.Transaction
 // handleConflicts will return a transaction set which contains all unconfirmed
 // transactions which are related (descendent or ancestor) in some way to any of
 // the input transaction set.
-func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []TransactionSetID, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) ([]types.Transaction, error) {
+func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []modules.TransactionSetID, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) ([]types.Transaction, error) {
 	// Create a list of all the transaction ids that compose the set of
 	// conflicts.
 	conflictMap := make(map[types.TransactionID]modules.TransactionSetID)
