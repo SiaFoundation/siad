@@ -57,6 +57,18 @@ func relatedObjectIDs(ts []types.Transaction) []ObjectID {
 	return oids
 }
 
+// requiredFeesToExtendTpoolAtSize returns the fees that should be required to
+// extend the transaction pool for a given size of transaction pool.
+//
+// NOTE: This function ignores the minimum transaction pool size required for a
+// fee.
+func requiredFeesToExtendTpoolAtSize(size int) types.Currency {
+	// Calculate the fee required to bump out the size of the transaction pool.
+	ratioToTarget := float64(size) / TransactionPoolSizeTarget
+	feeFactor := math.Pow(ratioToTarget, TransactionPoolExponentiation)
+	return types.SiacoinPrecision.MulFloat(feeFactor).Div64(1000) // Divide by 1000 to get SC / kb
+}
+
 // requiredFeesToExtendTpool returns the amount of fees required to extend the
 // transaction pool to fit another transaction set. The amount returned has the
 // unit 'currency per byte'.
@@ -67,10 +79,7 @@ func (tp *TransactionPool) requiredFeesToExtendTpool() types.Currency {
 		return types.ZeroCurrency
 	}
 
-	// Calculate the fee required to bump out the size of the transaction pool.
-	ratioToTarget := float64(tp.transactionListSize) / TransactionPoolSizeTarget
-	feeFactor := math.Pow(ratioToTarget, TransactionPoolExponentiation)
-	return types.SiacoinPrecision.MulFloat(feeFactor).Div64(1000) // Divide by 1000 to get SC / kb
+	return requiredFeesToExtendTpoolAtSize(tp.transactionListSize)
 }
 
 // checkTransactionSetComposition checks if the transaction set is valid given
@@ -79,7 +88,7 @@ func (tp *TransactionPool) requiredFeesToExtendTpool() types.Currency {
 // IsStandard.
 func (tp *TransactionPool) checkTransactionSetComposition(ts []types.Transaction) (uint64, error) {
 	// Check that the transaction set is not already known.
-	setID := TransactionSetID(crypto.HashObject(ts))
+	setID := modules.TransactionSetID(crypto.HashObject(ts))
 	_, exists := tp.transactionSets[setID]
 	if exists {
 		return 0, modules.ErrDuplicateTransactionSet
@@ -100,16 +109,13 @@ func (tp *TransactionPool) checkTransactionSetComposition(ts []types.Transaction
 	return setSize, nil
 }
 
-// handleConflicts detects whether the conflicts in the transaction pool are
-// legal children of the new transaction pool set or not.
-//
 // handleConflicts will return a transaction set which contains all unconfirmed
 // transactions which are related (descendent or ancestor) in some way to any of
 // the input transaction set.
 func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []TransactionSetID, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) ([]types.Transaction, error) {
 	// Create a list of all the transaction ids that compose the set of
 	// conflicts.
-	conflictMap := make(map[types.TransactionID]TransactionSetID)
+	conflictMap := make(map[types.TransactionID]modules.TransactionSetID)
 	for _, conflict := range conflicts {
 		conflictSet := tp.transactionSets[conflict]
 		for _, conflictTxn := range conflictSet {
@@ -139,7 +145,7 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 	// deduplication is guaranteed to be complete.
 	if len(dedupSet) < len(ts) {
 		oids := relatedObjectIDs(dedupSet)
-		var conflicts []TransactionSetID
+		var conflicts []modules.TransactionSetID
 		for _, oid := range oids {
 			conflict, exists := tp.knownObjects[oid]
 			if exists {
@@ -156,7 +162,7 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 	// diff objects can be repeated, (no need to remove those). Just need to
 	// remove the conflicts from tp.transactionSets.
 	var superset []types.Transaction
-	supersetMap := make(map[TransactionSetID]struct{})
+	supersetMap := make(map[modules.TransactionSetID]struct{})
 	for _, conflict := range conflictMap {
 		supersetMap[conflict] = struct{}{}
 	}
@@ -202,7 +208,7 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 	}
 
 	// Add the transaction set to the pool.
-	setID := TransactionSetID(crypto.HashObject(superset))
+	setID := modules.TransactionSetID(crypto.HashObject(superset))
 	tp.transactionSets[setID] = superset
 	for _, diff := range cc.SiacoinOutputDiffs {
 		tp.knownObjects[ObjectID(diff.ID)] = setID
@@ -278,7 +284,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	// double-spend. Legal children of a transaction set will also trigger the
 	// conflict-detector.
 	oids := relatedObjectIDs(ts)
-	var conflicts []TransactionSetID
+	var conflicts []modules.TransactionSetID
 	for _, oid := range oids {
 		conflict, exists := tp.knownObjects[oid]
 		if exists {
@@ -294,7 +300,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	}
 
 	// Add the transaction set to the pool.
-	setID := TransactionSetID(crypto.HashObject(ts))
+	setID := modules.TransactionSetID(crypto.HashObject(ts))
 	tp.transactionSets[setID] = ts
 	for _, oid := range oids {
 		tp.knownObjects[oid] = setID

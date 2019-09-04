@@ -128,6 +128,9 @@ type (
 		// corresponding to the provided transaction id.
 		Transaction(id types.TransactionID) (txn types.Transaction, unconfirmedParents []types.Transaction, exists bool)
 
+		// Transactions returns the transactions of the transaction pool
+		Transactions() []types.Transaction
+
 		// TransactionConfirmed returns true if the transaction has been seen on the
 		// blockchain. Note, however, that the block containing the transaction may
 		// later be invalidated by a reorg.

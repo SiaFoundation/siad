@@ -884,7 +884,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Get the file info of the fully uploaded file. Tha way we can compare the
-	// redundancieslater.
+	// redundancies later.
 	_, err = r.File(remoteFile)
 	if err != nil {
 		t.Fatal("failed to get file info", err)
@@ -924,8 +924,9 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// We should be able to download
-	if _, err := r.DownloadByStream(remoteFile); err != nil {
-		t.Fatal("Failed to download file", err)
+	_, err = r.DownloadByStream(remoteFile)
+	if err != nil {
+		t.Error("Failed to download file", err)
 	}
 }
 
