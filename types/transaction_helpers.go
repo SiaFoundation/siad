@@ -95,8 +95,6 @@ func TransactionGraph(sourceOutput SiacoinOutputID, edges []TransactionGraphEdge
 	// the transactions are processed in an order that allows us to create all
 	// of their IDs.
 
-
-
 	// Basic input validation.
 	if len(edges) < 1 {
 		return nil, errors.New("no graph specificed")
@@ -168,10 +166,6 @@ func TransactionGraph(sourceOutput SiacoinOutputID, edges []TransactionGraphEdge
 	return ts, nil
 }
 
-// objectID is used internally to the MinimumCombinedSet function to identiy
-// which transactions create outputs for eachother.
-type objectID [32]byte
-
 // MinimumCombinedSet takes two transaction sets as input and returns a combined
 // transaction set. The first input is the set of required transactions, which
 // the caller is indicating must all be a part of the final set. The second
@@ -187,6 +181,10 @@ type objectID [32]byte
 // NOTE: Both of the inputs are proper transaction sets. A proper transaction
 // set is already sorted so that no parent comes after a child in the array.
 func MinimumCombinedSet(requiredTxns []Transaction, relatedTxns []Transaction) []Transaction {
+	// objectID is used internally to the MinimumCombinedSet function to
+	// identify which transactions create outputs for eachother.
+	type objectID [32]byte
+
 	// Track which transactions have already been scanned and added to the final
 	// set of required transactions.
 	includedTxns := make(map[TransactionID]struct{})
