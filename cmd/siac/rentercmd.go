@@ -2112,13 +2112,9 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 // which sets the maxuploadspeed and maxdownloadspeed in bytes-per-second for
 // the renter module
 func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
-	downloadSpeedInt, err := strconv.ParseInt(downloadSpeedStr, 10, 64)
+	downloadSpeedInt, uploadSpeedInt, err := parseRateLimits(downloadSpeedStr, uploadSpeedStr)
 	if err != nil {
-		die("Could not parse downloadspeed")
-	}
-	uploadSpeedInt, err := strconv.ParseInt(uploadSpeedStr, 10, 64)
-	if err != nil {
-		die("Could not parse uploadspeed")
+		die(err)
 	}
 
 	err = httpClient.RenterPostRateLimit(downloadSpeedInt, uploadSpeedInt)

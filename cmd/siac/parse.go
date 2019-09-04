@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -200,4 +201,18 @@ func parseTxn(s string) (types.Transaction, error) {
 		}
 	}
 	return txn, nil
+}
+
+// parseRateLimits converts a string value into an int64 for use with the
+// ratelimit commands
+func parseRateLimits(downloadSpeedStr, uploadSpeedStr string) (int64, int64, error) {
+	downloadSpeedInt, err := strconv.ParseInt(downloadSpeedStr, 10, 64)
+	if err != nil {
+		return 0, 0, errors.New("Could not parse download speed: " + err.Error())
+	}
+	uploadSpeedInt, err := strconv.ParseInt(uploadSpeedStr, 10, 64)
+	if err != nil {
+		return 0, 0, errors.New("Could not parse upload speed: " + err.Error())
+	}
+	return downloadSpeedInt, uploadSpeedInt, err
 }

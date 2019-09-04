@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -123,13 +122,9 @@ func gatewaylistcmd() {
 // sets the maximum upload & download bandwidth the gateway module is permitted
 // to use.
 func gatewayratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
-	downloadSpeedInt, err := strconv.ParseInt(downloadSpeedStr, 10, 64)
+	downloadSpeedInt, uploadSpeedInt, err := parseRateLimits(downloadSpeedStr, uploadSpeedStr)
 	if err != nil {
-		die("Could not parse downloadspeed")
-	}
-	uploadSpeedInt, err := strconv.ParseInt(uploadSpeedStr, 10, 64)
-	if err != nil {
-		die("Could not parse uploadspeed")
+		die(err)
 	}
 
 	err = httpClient.GatewayRateLimitPost(downloadSpeedInt, uploadSpeedInt)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -118,18 +117,13 @@ func updatecheckcmd() {
 	}
 }
 
-// globalratelimitcmd is the handler for the command `siac gateway ratelimit`.
+// globalratelimitcmd is the handler for the command `siac ratelimit`.
 // Sets the global maxuploadspeed and maxdownloadspeed the daemon can use.
 func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
-	downloadSpeedInt, err := strconv.ParseInt(downloadSpeedStr, 10, 64)
+	downloadSpeedInt, uploadSpeedInt, err := parseRateLimits(downloadSpeedStr, uploadSpeedStr)
 	if err != nil {
-		die("Could not parse downloadspeed")
+		die(err)
 	}
-	uploadSpeedInt, err := strconv.ParseInt(uploadSpeedStr, 10, 64)
-	if err != nil {
-		die("Could not parse uploadspeed")
-	}
-
 	err = httpClient.DaemonGlobalRateLimitPost(downloadSpeedInt, uploadSpeedInt)
 	if err != nil {
 		die("Could not set global ratelimit speed")
