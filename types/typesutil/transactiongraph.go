@@ -12,14 +12,25 @@ var (
 	EmptyUnlockHash types.UnlockHash = types.UnlockConditions{}.UnlockHash()
 )
 
+// siacoinInput defines a siacoin input within the transaction graph, containing
+// the input itself, the value of the input, and a flag indicating whether or
+// not the input has been used within the graph already.
+type siacoinInput struct {
+	input types.SiacoinInput
+	used  bool
+	value types.Currency
+}
+
 // TransactionGraph is a helper tool to allow a user to easily construct
 // elaborate transaction graphs. The transaction tool will handle creating valid
 // transactions, providing the user with a clean interface for building
 // transactions.
 type TransactionGraph struct {
-	siacoinInputs      []types.SiacoinInput
-	siacoinInputsUsed  map[int]struct{}
-	siacoinInputsValue []types.Currency
+	// A map that tracks which source inputs have been consumed, to double check
+	// that the user is not supplying the same source inputs multiple times.
+	usedSiacoinInputSources map[types.SiacoinOutputID]struct{}
+
+	siacoinInputs []siacoinInput
 
 	transactions []types.Transaction
 }
@@ -36,18 +47,18 @@ type SimpleTransaction struct {
 	SiacoinOutputs []types.Currency // The values of each output.
 
 	/*
-		SiafundInputs []int // Which inputs to use, by index.
+		SiafundInputs  []int            // Which inputs to use, by index.
 		SiafundOutputs []types.Currency // The values of each output.
 
-		FileContracts int // The number of file contracts to create.
+		FileContracts         int   // The number of file contracts to create.
 		FileContractRevisions []int // Which file contracts to revise.
-		StorageProofs []int // Which file contracts to create proofs for.
+		StorageProofs         []int // Which file contracts to create proofs for.
 	*/
 
 	MinerFees []types.Currency // The fees used.
 
 	/*
-		ArbitraryData [][]byte
+		ArbitraryData [][]byte // Arbitrary data to include in the transaction.
 	*/
 }
 
@@ -58,11 +69,19 @@ type SimpleTransaction struct {
 // The value is used as an input so that the graph can check whether all
 // transactions are spending as many siacoins as they create.
 func (tg *TransactionGraph) AddSiacoinSource(scoid types.SiacoinOutputID, value types.Currency) (int, error) {
+	// Check if this scoid has already been used.
+	_, exists := tg.usedSiacoinInputSources[scoid]
+	if exists {
+		return -1, errors.New("source siacoin input has already been used")
+	}
+
 	i := len(tg.siacoinInputs)
-	tg.siacoinInputs = append(tg.siacoinInputs, types.SiacoinInput{
-		ParentID: scoid,
+	tg.siacoinInputs = append(tg.siacoinInputs, siacoinInput{
+		input: types.SiacoinInput{
+			ParentID: scoid,
+		},
+		value: value,
 	})
-	tg.siacoinInputsValue = append(tg.siacoinInputsValue, value)
 	return i, nil
 }
 
@@ -76,15 +95,14 @@ func (tg *TransactionGraph) AddTransaction(st SimpleTransaction) (newSiacoinInpu
 
 	// Consume all of the inputs.
 	for _, sci := range st.SiacoinInputs {
-		_, exists := tg.siacoinInputsUsed[sci]
-		if exists {
-			return nil, errors.New("cannot use the same input twice in a graph")
-		}
 		if sci >= len(tg.siacoinInputs) {
 			return nil, errors.New("no input of that index exists in the graph")
 		}
-		txn.SiacoinInputs = append(txn.SiacoinInputs, tg.siacoinInputs[sci])
-		totalIn = totalIn.Add(tg.siacoinInputsValue[sci])
+		if tg.siacoinInputs[sci].used {
+			return nil, errors.New("cannot use the same input twice in a graph")
+		}
+		txn.SiacoinInputs = append(txn.SiacoinInputs, tg.siacoinInputs[sci].input)
+		totalIn = totalIn.Add(tg.siacoinInputs[sci].value)
 	}
 
 	// Create all of the outputs.
@@ -110,15 +128,17 @@ func (tg *TransactionGraph) AddTransaction(st SimpleTransaction) (newSiacoinInpu
 	// Update the set of siacoin inputs that have been used successfully. This
 	// must be done after all error checking is complete.
 	for _, sci := range st.SiacoinInputs {
-		tg.siacoinInputsUsed[sci] = struct{}{}
+		tg.siacoinInputs[sci].used = true
 	}
 	tg.transactions = append(tg.transactions, txn)
 	for i, sco := range txn.SiacoinOutputs {
 		newSiacoinInputs = append(newSiacoinInputs, len(tg.siacoinInputs))
-		tg.siacoinInputs = append(tg.siacoinInputs, types.SiacoinInput{
-			ParentID: txn.SiacoinOutputID(uint64(i)),
+		tg.siacoinInputs = append(tg.siacoinInputs, siacoinInput{
+			input: types.SiacoinInput{
+				ParentID: txn.SiacoinOutputID(uint64(i)),
+			},
+			value: sco.Value,
 		})
-		tg.siacoinInputsValue = append(tg.siacoinInputsValue, sco.Value)
 	}
 	return newSiacoinInputs, nil
 }
@@ -132,6 +152,6 @@ func (tg *TransactionGraph) Transactions() []types.Transaction {
 // use.
 func NewTransactionGraph() *TransactionGraph {
 	return &TransactionGraph{
-		siacoinInputsUsed: make(map[int]struct{}),
+		usedSiacoinInputSources: make(map[types.SiacoinOutputID]struct{}),
 	}
 }
