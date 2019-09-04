@@ -133,6 +133,15 @@ func statuscmd() {
 		return
 	}
 
+	// Global Daemon Rate Limits
+	dg, err := httpClient.DaemonSettingsGet()
+	if err != nil {
+		die("Could not get daemon:", err)
+	}
+	fmt.Printf(`
+Global `)
+	rateLimitSummary(dg.MaxDownloadSpeed, dg.MaxUploadSpeed)
+
 	// Gateway Rate Limits
 	gg, err := httpClient.GatewayGet()
 	if err != nil {
