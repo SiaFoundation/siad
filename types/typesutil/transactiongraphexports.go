@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	// EmptyUnlockHash is the unlock hash of unlock conditions that are
+	// AnyoneCanSpendUnlockHash is the unlock hash of unlock conditions that are
 	// trivially spendable.
-	EmptyUnlockHash types.UnlockHash = types.UnlockConditions{}.UnlockHash()
+	AnyoneCanSpendUnlockHash types.UnlockHash = types.UnlockConditions{}.UnlockHash()
 )
 
 var (
@@ -85,7 +85,7 @@ type SimpleTransaction struct {
 
 // AddSiacoinSource will add a new source of siacoins to the transaction graph,
 // returning the index that this source can be referenced by. The provided
-// output must have the address EmptyUnlockHash.
+// output must have the address AnyoneCanSpendUnlockHash.
 //
 // The value is used as an input so that the graph can check whether all
 // transactions are spending as many siacoins as they create.
@@ -130,7 +130,7 @@ func (tg *TransactionGraph) AddTransaction(st SimpleTransaction) (newSiacoinInpu
 	// Create all of the outputs.
 	for _, scov := range st.SiacoinOutputs {
 		txn.SiacoinOutputs = append(txn.SiacoinOutputs, types.SiacoinOutput{
-			UnlockHash: EmptyUnlockHash,
+			UnlockHash: AnyoneCanSpendUnlockHash,
 			Value:      scov,
 		})
 		totalOut = totalOut.Add(scov)
