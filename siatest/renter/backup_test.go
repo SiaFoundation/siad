@@ -493,7 +493,7 @@ func TestRemoteBackup(t *testing.T) {
 	// Set a ratelimit on the renter to ensure that it takes time for the
 	// concurrent downloads to complete, so that the backup query does have to
 	// wait through a queue.
-	err = r.RenterPostRateLimit(25e3, 25e3)
+	err = r.RenterRateLimitPost(25e3, 25e3)
 	if err != nil {
 		t.Fatal(err)
 	}

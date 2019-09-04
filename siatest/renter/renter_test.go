@@ -759,11 +759,11 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// set download limits and reset them after test.
-	if err := renter.RenterPostRateLimit(int64(fileSize)*2, 0); err != nil {
+	if err := renter.RenterRateLimitPost(int64(fileSize)*2, 0); err != nil {
 		t.Fatal("failed to set renter bandwidth limit", err)
 	}
 	defer func() {
-		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+		if err := renter.RenterRateLimitPost(0, 0); err != nil {
 			t.Error("failed to reset renter bandwidth limit", err)
 		}
 	}()
@@ -981,11 +981,11 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	// Set a ratelimit that only allows for downloading a sector every second.
-	if err := renter.RenterPostRateLimit(int64(modules.SectorSize), 0); err != nil {
+	if err := renter.RenterRateLimitPost(int64(modules.SectorSize), 0); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+		if err := renter.RenterRateLimitPost(0, 0); err != nil {
 			t.Fatal(err)
 		}
 	}()
@@ -1293,11 +1293,11 @@ func testDownloadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := renter.RenterPostRateLimit(int64(chunkSize), int64(chunkSize)); err != nil {
+	if err := renter.RenterRateLimitPost(int64(chunkSize), int64(chunkSize)); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+		if err := renter.RenterRateLimitPost(0, 0); err != nil {
 			t.Fatal(err)
 		}
 	}()
@@ -1352,11 +1352,11 @@ func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependenci
 	dataPieces := uint64(len(tg.Hosts())) - 1
 	parityPieces := uint64(1)
 	chunkSize := siatest.ChunkSize(dataPieces, ct)
-	if err := renter.RenterPostRateLimit(int64(chunkSize), int64(chunkSize)); err != nil {
+	if err := renter.RenterRateLimitPost(int64(chunkSize), int64(chunkSize)); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := renter.RenterPostRateLimit(0, 0); err != nil {
+		if err := renter.RenterRateLimitPost(0, 0); err != nil {
 			t.Fatal(err)
 		}
 	}()
@@ -2424,11 +2424,11 @@ func TestRenterPersistData(t *testing.T) {
 	if err := r.RenterSetStreamCacheSizePost(cacheSize); err != nil {
 		t.Fatalf("%v: Could not set StreamCacheSize to %v", err, cacheSize)
 	}
-	if err := r.RenterPostRateLimit(ds, us); err != nil {
+	if err := r.RenterRateLimitPost(ds, us); err != nil {
 		t.Fatalf("%v: Could not set RateLimits to %v and %v", err, ds, us)
 	}
 	defer func() {
-		if err := r.RenterPostRateLimit(0, 0); err != nil {
+		if err := r.RenterRateLimitPost(0, 0); err != nil {
 			t.Fatal(err)
 		}
 	}()
@@ -2631,11 +2631,11 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	}
 
 	// Set the bandwidth limit to 1 chunk per second.
-	if err := r.RenterPostRateLimit(chunkSize, chunkSize); err != nil {
+	if err := r.RenterRateLimitPost(chunkSize, chunkSize); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := r.RenterPostRateLimit(0, 0); err != nil {
+		if err := r.RenterRateLimitPost(0, 0); err != nil {
 			t.Fatal(err)
 		}
 	}()
