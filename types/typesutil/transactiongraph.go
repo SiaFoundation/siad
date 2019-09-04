@@ -12,6 +12,25 @@ var (
 	EmptyUnlockHash types.UnlockHash = types.UnlockConditions{}.UnlockHash()
 )
 
+var (
+	// ErrSiacoinSourceAlreadyAdded is the error returned when a user tries to
+	// provide the same source siacoin input multiple times.
+	ErrSiacoinSourceAlreadyAdded = errors.New("source siacoin input has already been used")
+
+	// ErrSiacoinInputAlreadyUsed warns a user that a siacoin input has already
+	// been used in the transaction graph.
+	ErrSiacoinInputAlreadyUsed = errors.New("cannot use the same siacoin input twice in a graph")
+
+	// ErrNoSuchSiacoinInput warns a user that they are trying to reference a
+	// siacoin input which does not yet exist.
+	ErrNoSuchSiacoinInput = errors.New("no siacoin input exists with that index")
+
+	// ErrSiacoinInputsOutputsMismatch warns a user that they have constructed a
+	// transaction which does not spend the same amount of siacoins that it
+	// consumes.
+	ErrSiacoinInputsOutputsMismatch = errors.New("siacoin input value to transaction does not match siacoin output value of transaction")
+)
+
 // siacoinInput defines a siacoin input within the transaction graph, containing
 // the input itself, the value of the input, and a flag indicating whether or
 // not the input has been used within the graph already.
@@ -72,7 +91,7 @@ func (tg *TransactionGraph) AddSiacoinSource(scoid types.SiacoinOutputID, value 
 	// Check if this scoid has already been used.
 	_, exists := tg.usedSiacoinInputSources[scoid]
 	if exists {
-		return -1, errors.New("source siacoin input has already been used")
+		return -1, ErrSiacoinSourceAlreadyAdded
 	}
 
 	i := len(tg.siacoinInputs)
@@ -82,6 +101,7 @@ func (tg *TransactionGraph) AddSiacoinSource(scoid types.SiacoinOutputID, value 
 		},
 		value: value,
 	})
+	tg.usedSiacoinInputSources[scoid] = struct{}{}
 	return i, nil
 }
 
@@ -96,10 +116,10 @@ func (tg *TransactionGraph) AddTransaction(st SimpleTransaction) (newSiacoinInpu
 	// Consume all of the inputs.
 	for _, sci := range st.SiacoinInputs {
 		if sci >= len(tg.siacoinInputs) {
-			return nil, errors.New("no input of that index exists in the graph")
+			return nil, ErrNoSuchSiacoinInput
 		}
 		if tg.siacoinInputs[sci].used {
-			return nil, errors.New("cannot use the same input twice in a graph")
+			return nil, ErrSiacoinInputAlreadyUsed
 		}
 		txn.SiacoinInputs = append(txn.SiacoinInputs, tg.siacoinInputs[sci].input)
 		totalIn = totalIn.Add(tg.siacoinInputs[sci].value)
@@ -122,7 +142,8 @@ func (tg *TransactionGraph) AddTransaction(st SimpleTransaction) (newSiacoinInpu
 
 	// Check that the transaction is consistent.
 	if totalIn.Cmp(totalOut) != 0 {
-		return nil, errors.New("txn inputs and outputs mismatch " + totalIn.String() + " " + totalOut.String())
+		extendedErr := errors.AddContext(ErrSiacoinInputsOutputsMismatch, "total input: "+totalIn.String()+"total output: "+totalOut.String())
+		return nil, extendedErr
 	}
 
 	// Update the set of siacoin inputs that have been used successfully. This

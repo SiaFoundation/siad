@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestTransactionGraph will check that the basic construction of a transaction
@@ -15,6 +17,10 @@ func TestTransactionGraph(t *testing.T) {
 	index, err := tg.AddSiacoinSource(source, types.SiacoinPrecision.Mul64(3))
 	if err != nil {
 		t.Fatal(err)
+	}
+	_, err = tg.AddSiacoinSource(source, types.SiacoinPrecision.Mul64(3))
+	if !errors.Contains(err, ErrSiacoinSourceAlreadyAdded) {
+		t.Fatal("should not be able to add the same siacoin input source multiple times")
 	}
 	newIndexes, err := tg.AddTransaction(SimpleTransaction{
 		SiacoinInputs:  []int{index},
@@ -41,8 +47,7 @@ func TestTransactionGraph(t *testing.T) {
 		SiacoinOutputs: []types.Currency{types.SiacoinPrecision.Mul64(2)},
 		MinerFees:      []types.Currency{types.SiacoinPrecision},
 	})
-	t.Log(err)
-	if err == nil {
+	if !errors.Contains(err, ErrSiacoinInputsOutputsMismatch) {
 		t.Fatal("An error should be returned when a transaction's outputs and inputs mismatch")
 	}
 	_, err = tg.AddTransaction(SimpleTransaction{
@@ -50,8 +55,7 @@ func TestTransactionGraph(t *testing.T) {
 		SiacoinOutputs: []types.Currency{types.SiacoinPrecision},
 		MinerFees:      []types.Currency{types.SiacoinPrecision},
 	})
-	t.Log(err)
-	if err == nil {
+	if !errors.Contains(err, ErrNoSuchSiacoinInput) {
 		t.Fatal("An error should be returned when a transaction spends a missing input")
 	}
 	_, err = tg.AddTransaction(SimpleTransaction{
@@ -59,8 +63,7 @@ func TestTransactionGraph(t *testing.T) {
 		SiacoinOutputs: []types.Currency{types.SiacoinPrecision},
 		MinerFees:      []types.Currency{types.SiacoinPrecision},
 	})
-	t.Log(err)
-	if err == nil {
+	if !errors.Contains(err, ErrSiacoinInputAlreadyUsed) {
 		t.Fatal("Error should be returned when a transaction spends an input that has been spent before")
 	}
 
