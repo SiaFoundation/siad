@@ -1,6 +1,8 @@
 package typesutil
 
 import (
+	"fmt"
+
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -142,7 +144,8 @@ func (tg *TransactionGraph) AddTransaction(st SimpleTransaction) (newSiacoinInpu
 
 	// Check that the transaction is consistent.
 	if totalIn.Cmp(totalOut) != 0 {
-		extendedErr := errors.AddContext(ErrSiacoinInputsOutputsMismatch, "total input: "+totalIn.String()+"total output: "+totalOut.String())
+		valuesErr := fmt.Errorf("total input: %s, total output: %s", totalIn, totalOut)
+		extendedErr := errors.Extend(ErrSiacoinInputsOutputsMismatch, valuesErr)
 		return nil, extendedErr
 	}
 

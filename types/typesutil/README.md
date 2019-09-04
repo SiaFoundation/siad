@@ -10,7 +10,7 @@ Typesutils has the following subsystems:
 
 ### Transaction Graph
 **Key Files**
- - [transactiongraph.go](./transactiongraph.go)
+ - [transactiongraphexports.go](./transactiongraphexports.go)
 
 The Transaction Graph is a tool for building sets of transactions that have
 specific properties. This can be useful for testing modules such as the
@@ -18,6 +18,9 @@ transaction pool to see how the transaction pool responds to certain dependency
 graphs or fee structures. The goal of the transaction graph is to be a much
 simpler method for constructing elaborate transaction setups vs. constructing
 these setups by hand.
+
+Note: With the exception of one struct, all of the code in the transaction graph
+subsystem is exported.
 
 ##### Exports
 
