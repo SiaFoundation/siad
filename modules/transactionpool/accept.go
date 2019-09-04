@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 )
 
 var (
@@ -357,7 +358,7 @@ func (tp *TransactionPool) submitTransactionSet(ts []types.Transaction) ([]types
 
 	// Get the minimum required set from the superset for the input transaction
 	// set.
-	minSuperSet := types.MinimumCombinedSet(ts, superset)
+	minSuperSet := typesutil.MinimumTransactionSet(ts, superset)
 	return minSuperSet, nil
 }
 

@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 )
 
 // Renew negotiates a new contract for data already stored with a host, and
@@ -113,7 +114,7 @@ func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams
 		return modules.RenterContract{}, err
 	}
 	txnSet := append(unconfirmedParents, parentTxns...)
-	txnSet = types.MinimumCombinedSet([]types.Transaction{txn}, txnSet)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
@@ -277,7 +278,7 @@ func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams
 		return modules.RenterContract{}, err
 	}
 	txnSet = append(unconfirmedParents, parentTxns...)
-	txnSet = types.MinimumCombinedSet([]types.Transaction{txn}, txnSet)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(txnSet)
@@ -406,7 +407,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 		return modules.RenterContract{}, err
 	}
 	txnSet := append(unconfirmedParents, parentTxns...)
-	txnSet = types.MinimumCombinedSet([]types.Transaction{txn}, txnSet)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
@@ -526,7 +527,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 		return modules.RenterContract{}, err
 	}
 	txnSet = append(unconfirmedParents, parentTxns...)
-	txnSet = types.MinimumCombinedSet([]types.Transaction{txn}, txnSet)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(txnSet)
