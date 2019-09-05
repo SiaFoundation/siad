@@ -203,12 +203,6 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		return chunk.fileEntry.SiaFile.UpdateAccessTime()
 	})
 
-	// Set the in-memory buffer to nil just to be safe in case of a memory
-	// leak.
-	defer func() {
-		d.destination = nil
-	}()
-
 	// Wait for the download to complete.
 	select {
 	case <-d.completeChan:
