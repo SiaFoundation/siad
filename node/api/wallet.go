@@ -56,12 +56,14 @@ type (
 	// WalletSiacoinsPOST contains the transaction sent in the POST call to
 	// /wallet/siacoins.
 	WalletSiacoinsPOST struct {
+		Transactions   []types.Transaction   `json:"transactions"`
 		TransactionIDs []types.TransactionID `json:"transactionids"`
 	}
 
 	// WalletSiafundsPOST contains the transaction sent in the POST call to
 	// /wallet/siafunds.
 	WalletSiafundsPOST struct {
+		Transactions   []types.Transaction   `json:"transactions"`
 		TransactionIDs []types.TransactionID `json:"transactionids"`
 	}
 
@@ -528,6 +530,7 @@ func (api *API) walletSiacoinsHandler(w http.ResponseWriter, req *http.Request, 
 		txids = append(txids, txn.ID())
 	}
 	WriteJSON(w, WalletSiacoinsPOST{
+		Transactions:   txns,
 		TransactionIDs: txids,
 	})
 }
@@ -555,6 +558,7 @@ func (api *API) walletSiafundsHandler(w http.ResponseWriter, req *http.Request, 
 		txids = append(txids, txn.ID())
 	}
 	WriteJSON(w, WalletSiafundsPOST{
+		Transactions:   txns,
 		TransactionIDs: txids,
 	})
 }
