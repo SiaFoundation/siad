@@ -72,6 +72,7 @@ func (api *API) buildHTTPRoutes() {
 	// Miner API Calls
 	if api.miner != nil {
 		router.GET("/miner", api.minerHandler)
+		router.POST("/miner/block", RequirePassword(api.minerBlockHandlerPOST, requiredPassword))
 		router.GET("/miner/header", RequirePassword(api.minerHeaderHandlerGET, requiredPassword))
 		router.POST("/miner/header", RequirePassword(api.minerHeaderHandlerPOST, requiredPassword))
 		router.GET("/miner/start", RequirePassword(api.minerStartHandler, requiredPassword))
