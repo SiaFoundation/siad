@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -14,10 +13,18 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
-var errUnableToParseSize = errors.New("unable to parse size")
-var errUnableToParseRateLimit = errors.New("unable to parse rate limit")
+var (
+	// errUnableToParseSize is returned when the input is unable to be parsed
+	// into a file size unit
+	errUnableToParseSize = errors.New("unable to parse size")
+
+	// errUnableToParseRateLimit is returned when the input is unable to be
+	// parsed into a rate limit unit
+	errUnableToParseRateLimit = errors.New("unable to parse ratelimit")
+)
 
 // filesize returns a string that displays a filesize in human-readable units.
 func filesizeUnits(size uint64) string {
@@ -166,6 +173,63 @@ func parseCurrency(amount string) (string, error) {
 	return "", errors.New("amount is missing units; run 'wallet --help' for a list of units")
 }
 
+// parseRatelimit converts a ratelimit input string to an int64.
+func parseRatelimit(rateLimitStr string) (int64, error) {
+	units := []string{"Bps", "Kbps", "Mbps", "Gbps", "Tbps"}
+	for i, unit := range units {
+		if !strings.HasSuffix(rateLimitStr, unit) {
+			continue
+		}
+
+		// trim units and spaces
+		rateLimitStr = strings.TrimSuffix(rateLimitStr, unit)
+		rateLimitStr = strings.TrimSpace(rateLimitStr)
+
+		// Check for empty string meaning only the units were provided
+		if rateLimitStr == "" {
+			return 0, errUnableToParseRateLimit
+		}
+
+		// convert string to float for exponation
+		rateLimitFloat, err := strconv.ParseFloat(rateLimitStr, 64)
+		if err != nil {
+			return 0, errors.Compose(errUnableToParseRateLimit, err)
+		}
+
+		// Determine factor and convert to in64 for bps
+		factor := math.Pow(float64(1e3), float64(i))
+		rateLimit := int64(factor * rateLimitFloat)
+
+		return rateLimit, nil
+	}
+
+	return 0, errUnableToParseRateLimit
+}
+
+// ratelimitUnits converts an int64 to a string with human-readable
+// units. The unit used will be the largest unit that results in a value
+// greater than 1. The value is rounded to 4 significant digits.
+func ratelimitUnits(ratelimit int64) string {
+	// Check for bps
+	if ratelimit < 1e3 {
+		return fmt.Sprintf("%v %s", ratelimit, "Bps")
+	}
+	// iterate until we find a unit greater than c
+	mag := 1e3
+	unit := ""
+	for _, unit = range []string{"Kbps", "Mbps", "Gbps", "Tbps"} {
+		if float64(ratelimit) < mag*1e3 {
+			break
+		} else if unit != "Tbps" {
+			// don't want to perform this multiply on the last iter; that
+			// would give us 1.235 tbps instead of 1235 tbps
+			mag = mag * 1e3
+		}
+	}
+
+	return fmt.Sprintf("%.4g %s", float64(ratelimit)/mag, unit)
+}
+
 // yesNo returns "Yes" if b is true, and "No" if b is false.
 func yesNo(b bool) string {
 	if b {
@@ -202,18 +266,4 @@ func parseTxn(s string) (types.Transaction, error) {
 		}
 	}
 	return txn, nil
-}
-
-// parseRateLimits converts a string value into an int64 for use with the
-// ratelimit commands
-func parseRateLimits(downloadSpeedStr, uploadSpeedStr string) (int64, int64, error) {
-	downloadSpeedInt, err := strconv.ParseInt(downloadSpeedStr, 10, 64)
-	if err != nil {
-		return 0, 0, errUnableToParseRateLimit
-	}
-	uploadSpeedInt, err := strconv.ParseInt(uploadSpeedStr, 10, 64)
-	if err != nil {
-		return 0, 0, errUnableToParseRateLimit
-	}
-	return downloadSpeedInt, uploadSpeedInt, err
 }
