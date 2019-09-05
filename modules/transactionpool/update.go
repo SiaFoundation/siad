@@ -166,6 +166,7 @@ func (tp *TransactionPool) purge() {
 	tp.knownObjects = make(map[ObjectID]modules.TransactionSetID)
 	tp.transactionSets = make(map[modules.TransactionSetID][]types.Transaction)
 	tp.transactionSetDiffs = make(map[modules.TransactionSetID]*modules.ConsensusChange)
+	tp.transactionHeights = make(map[types.TransactionID]types.BlockHeight)
 	tp.transactionListSize = 0
 }
 
@@ -355,6 +356,8 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 		}
 		unconfirmedSets = append(unconfirmedSets, newTSet)
 	}
+	// Save all of the old transaction heights.
+	oldHeights := tp.transactionHeights
 
 	// Purge the transaction pool. Some of the transactions sets may be invalid
 	// after the consensus change.
@@ -366,7 +369,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 		// Check whether all transactions in this transaction set are old.
 		old := true
 		for _, txn := range tSet {
-			seenHeight, seen := tp.transactionHeights[txn.ID()]
+			seenHeight, seen := oldHeights[txn.ID()]
 			if !seen {
 				// If the transaction hasn't been seen before, add it to the set
 				// of seen transactions.
@@ -424,12 +427,11 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// more rules need to be put in place.
 	for _, set := range unconfirmedSets {
 		for _, txn := range set {
-			_, err := tp.acceptTransactionSet([]types.Transaction{txn}, cc.TryTransactionSet)
-			if err != nil {
-				// The transaction is no longer valid, delete it from the
-				// heights map to prevent a memory leak.
-				delete(tp.transactionHeights, txn.ID())
-			}
+			tp.acceptTransactionSet([]types.Transaction{txn}, cc.TryTransactionSet) // Error is ignored.
+			// acceptTransactionSet will set the transaction height to the
+			// current height because of the purge mechanism. Reset the height
+			// to the original height before the purge.
+			tp.transactionHeights[txn.ID()] = oldHeights[txn.ID()]
 		}
 	}
 

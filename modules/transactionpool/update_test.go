@@ -221,14 +221,14 @@ func TestValidRevertedTransaction(t *testing.T) {
 		txnSets = append(txnSets, txns)
 	}
 	// mine some blocks to cause a re-org
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		_, err = tpt.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 	// put tpt2 at a higher height
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		_, err = tpt2.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)
@@ -261,7 +261,7 @@ func TestValidRevertedTransaction(t *testing.T) {
 		}
 	}
 
-	// Try to get the transactoins into a block.
+	// Try to get the transactions into a block.
 	_, err = tpt.miner.AddBlock()
 	if err != nil {
 		t.Fatal(err)
