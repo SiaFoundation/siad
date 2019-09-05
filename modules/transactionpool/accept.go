@@ -223,6 +223,11 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []m
 	tp.transactionSetDiffs[setID] = &cc
 	tsetSize := len(encoding.Marshal(superset))
 	tp.transactionListSize += tsetSize
+	for _, txn := range superset {
+		if _, exists := tp.transactionHeights[txn.ID()]; !exists {
+			tp.transactionHeights[txn.ID()] = tp.blockHeight
+		}
+	}
 
 	// debug logging
 	if build.DEBUG {

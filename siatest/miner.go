@@ -92,19 +92,3 @@ func emptyBlockForWork(currentBlockHeight types.BlockHeight, address types.Unloc
 	}}
 	return b
 }
-
-// solveHeader solves the header by finding a nonce for the target
-func solveHeader(target types.Target, bh types.BlockHeader) (types.BlockHeader, error) {
-	header := encoding.Marshal(bh)
-	var nonce uint64
-	for i := 0; i < 256; i++ {
-		id := crypto.HashBytes(header)
-		if bytes.Compare(target[:], id[:]) >= 0 {
-			copy(bh.Nonce[:], header[32:40])
-			return bh, nil
-		}
-		*(*uint64)(unsafe.Pointer(&header[32])) = nonce
-		nonce += types.ASICHardforkFactor
-	}
-	return bh, errors.New("couldn't solve block")
-}
