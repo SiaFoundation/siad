@@ -104,7 +104,7 @@ func (tn *TestNode) DownloadByStream(rf *RemoteFile) (data []byte, err error) {
 	}
 	data, err = tn.RenterDownloadHTTPResponseGet(rf.SiaPath(), 0, fi.Filesize)
 	if err == nil && rf.Checksum() != crypto.HashBytes(data) {
-		err = errors.New("downloaded bytes don't match requested data")
+		err = fmt.Errorf("downloaded bytes don't match requested data (len %v)", len(data))
 	}
 	return
 }
