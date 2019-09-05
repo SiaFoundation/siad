@@ -530,7 +530,7 @@ func (api *API) walletSiacoinsHandler(w http.ResponseWriter, req *http.Request, 
 		txids = append(txids, txn.ID())
 	}
 	WriteJSON(w, WalletSiacoinsPOST{
-		Transactions: txns,
+		Transactions:   txns,
 		TransactionIDs: txids,
 	})
 }
@@ -558,7 +558,7 @@ func (api *API) walletSiafundsHandler(w http.ResponseWriter, req *http.Request, 
 		txids = append(txids, txn.ID())
 	}
 	WriteJSON(w, WalletSiafundsPOST{
-		Transactions: txns,
+		Transactions:   txns,
 		TransactionIDs: txids,
 	})
 }
