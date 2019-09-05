@@ -126,7 +126,7 @@ func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 	}
 	err = httpClient.DaemonGlobalRateLimitPost(downloadSpeedInt, uploadSpeedInt)
 	if err != nil {
-		die("Could not set global ratelimit speed")
+		die("Could not set global ratelimit speed:", err)
 	}
 	fmt.Println("Set global maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }

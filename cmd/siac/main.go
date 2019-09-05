@@ -169,7 +169,7 @@ func rateLimitSummary(download, upload int64) {
   Download Speed: %v`, "no limit")
 	} else {
 		fmt.Printf(`
-  Download Speed: %v Mbps`, download)
+  Download Speed: %v B/s`, download)
 	}
 	if upload == 0 {
 		fmt.Printf(`
@@ -177,7 +177,7 @@ func rateLimitSummary(download, upload int64) {
 `, "no limit")
 	} else {
 		fmt.Printf(`
-  Upload Speed:   %v Mbps
+  Upload Speed:   %v B/s
 `, upload)
 	}
 }
