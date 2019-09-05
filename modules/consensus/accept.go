@@ -270,8 +270,6 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 			cs.log.Debugf("Total validation time: %v", time.Since(startTime).Round(time.Millisecond))
 			cs.log.Debugf("addBlockToTreeTime time: %v", time.Since(addBlockTreeStartTime).Round(time.Millisecond))
 			if err == nil {
-				cs.log.Debugln("addBlockToTree error: ", err)
-
 				changes = append(changes, changeEntry)
 				chainExtended = true
 				var applied, reverted []string
@@ -286,6 +284,7 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 				err = nil
 			}
 			if err != nil {
+				cs.log.Debugln("addBlockToTree error: ", err)
 				return err
 			}
 			// Sanity check - we should never apply fewer blocks than we revert.
