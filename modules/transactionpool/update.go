@@ -367,7 +367,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 		old := true
 		for _, txn := range tSet {
 			seenHeight, seen := tp.transactionHeights[txn.ID()]
-			if tp.blockHeight-seenHeight <= maxTxnAge || !seen {
+			if tp.blockHeight-seenHeight <= MaxTransactionAge || !seen {
 				old = false
 				break
 			}
@@ -378,7 +378,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 		if old {
 			unconfirmedSets[i] = []types.Transaction{}
 			for _, txn := range tSet {
-				tp.log.Debugln("Dropping a transaction because it has reached the maxTxnAge", txn.ID())
+				tp.log.Debugln("Dropping a transaction because it has reached the MaxTransactionAge", txn.ID())
 				delete(tp.transactionHeights, txn.ID())
 			}
 		}
