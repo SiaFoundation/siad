@@ -114,9 +114,6 @@ Below is the standard format for the README files for the modules.
 >**Exports**  
 >List Exported methods
 >
->**State Complexities**  
->List any internal complexities that the subsytem has.
->
 >**Inbound Complexities**  
 >List any interactions with other subsystems that have dependencies on this subsystem.
 >
