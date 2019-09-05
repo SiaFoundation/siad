@@ -71,3 +71,20 @@ func (api *API) minerHeaderHandlerPOST(w http.ResponseWriter, req *http.Request,
 	}
 	WriteSuccess(w)
 }
+
+// minerBlockHandlerPOST handles the API call to submit a solved block to the
+// miner.
+func (api *API) minerBlockHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var b types.Block
+	err := encoding.NewDecoder(req.Body, encoding.DefaultAllocLimit).Decode(&b)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	err = api.miner.SubmitBlock(b)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
