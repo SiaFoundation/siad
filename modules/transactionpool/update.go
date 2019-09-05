@@ -370,7 +370,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 			if !seen {
 				// If the transaction hasn't been seen before, add it to the set
 				// of seen transactions.
-				tp.transactionHeights[txn.ID()] = tp.blockHeight-1
+				tp.transactionHeights[txn.ID()] = tp.blockHeight - 1
 				tp.log.Critical("transaction found in tpool which did not have its height recorded")
 			}
 			if tp.blockHeight-seenHeight < MaxTransactionAge || !seen {
