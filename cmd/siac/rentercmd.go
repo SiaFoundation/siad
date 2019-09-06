@@ -2124,7 +2124,7 @@ func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 
 	err = httpClient.RenterRateLimitPost(downloadSpeedInt, uploadSpeedInt)
 	if err != nil {
-		die("Could not set renter ratelimit speed")
+		die(errors.AddContext(err, "Could not set renter ratelimit speed"))
 	}
 	fmt.Println("Set renter maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }

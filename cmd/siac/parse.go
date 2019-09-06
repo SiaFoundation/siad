@@ -175,6 +175,10 @@ func parseCurrency(amount string) (string, error) {
 
 // parseRatelimit converts a ratelimit input string to an int64.
 func parseRatelimit(rateLimitStr string) (int64, error) {
+	// Check for 0 values signifying that the no limit is being set
+	if rateLimitStr == "0" {
+		return 0, nil
+	}
 	units := []string{"Bps", "Kbps", "Mbps", "Gbps", "Tbps"}
 	for i, unit := range units {
 		if !strings.HasSuffix(rateLimitStr, unit) {
