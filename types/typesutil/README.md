@@ -26,7 +26,7 @@ each set much be independently ordered correctly and valid.
 ##### Exports
 
  - `MinimizeTransactionSet` is an independent function which returns a
-   transaciton set that contains all transactions of its first input plus any
+   transaction set that contains all transactions of its first input plus any
    required dependencies from its second input.
 
 ### Transaction Graph
