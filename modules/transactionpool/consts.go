@@ -20,10 +20,6 @@ const (
 	// when running in debug mode.
 	logSizeFrequency = time.Minute * 5
 
-	// maxTxnAge determines the maximum age of a transaction (in block height)
-	// allowed before the transaction is pruned from the transaction pool.
-	maxTxnAge = types.BlockHeight(24)
-
 	// TransactionPoolFeeExponentiation defines the polynomial rate of growth
 	// required to keep putting transactions into the transaction pool. If the
 	// exponentiation is 2, then doubling the size of the transaction pool
@@ -94,4 +90,13 @@ var (
 		Dev:      20 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
+
+	// MaxTransactionAge determines the maximum age of a transaction (in block
+	// height) allowed before the transaction is pruned from the transaction
+	// pool.
+	MaxTransactionAge = build.Select(build.Var{
+		Standard: types.BlockHeight(24),
+		Dev:      types.BlockHeight(12),
+		Testing:  types.BlockHeight(5),
+	}).(types.BlockHeight)
 )
