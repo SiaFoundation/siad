@@ -53,9 +53,10 @@ release:
 release-race:
 	GO111MODULE=on go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
 
-# rpi builds and installs raspberry pi binaries
-rpi:
-	GO111MODULE=on GOARCH=arm64 GOARM=7 GOOS=linux go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
+# raspi builds and installs arm64 binaries most commonly used for the raspberry
+# pi version 3 and 4
+raspi:
+	GO111MODULE=on GOARCH=arm64 GOOS=linux go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
 
 # clean removes all directories that get automatically created during
 # development.
