@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 )
 
 // Renew negotiates a new contract for data already stored with a host, and
@@ -102,13 +103,18 @@ func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams
 	si, hk := PrefixedSignedIdentifier(params.RenterSeed, fcTxn, host.PublicKey)
 	_ = txnBuilder.AddArbitraryData(append(si[:], hk[:]...))
 
-	// Create initial transaction set.
+	// Create initial transaction set. Before sending the transaction set to the
+	// host, ensure that all transactions which may be necessary to get accepted
+	// into the transaction pool are included. Also ensure that only the minimum
+	// set of transactions is supplied, if there are non-necessary transactions
+	// included the chance of a double spend or poor propagation increases.
 	txn, parentTxns := txnBuilder.View()
 	unconfirmedParents, err := txnBuilder.UnconfirmedParents()
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
+	txnSet := append(unconfirmedParents, parentTxns...)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
@@ -267,12 +273,17 @@ func (cs *ContractSet) oldRenew(oldContract *SafeContract, params ContractParams
 
 	// Construct the final transaction.
 	txn, parentTxns = txnBuilder.View()
-	txnSet = append(parentTxns, txn)
+	unconfirmedParents, err = txnBuilder.UnconfirmedParents()
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	txnSet = append(unconfirmedParents, parentTxns...)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(txnSet)
 	if err == modules.ErrDuplicateTransactionSet {
-		// as long as it made it into the transaction pool, we're good
+		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}
 	if err != nil {
@@ -385,13 +396,18 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	si, hk := PrefixedSignedIdentifier(params.RenterSeed, fcTxn, host.PublicKey)
 	_ = txnBuilder.AddArbitraryData(append(si[:], hk[:]...))
 
-	// Create initial transaction set.
+	// Create initial transaction set. Before sending the transaction set to the
+	// host, ensure that all transactions which may be necessary to get accepted
+	// into the transaction pool are included. Also ensure that only the minimum
+	// set of transactions is supplied, if there are non-necessary transactions
+	// included the chance of a double spend or poor propagation increases.
 	txn, parentTxns := txnBuilder.View()
 	unconfirmedParents, err := txnBuilder.UnconfirmedParents()
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
+	txnSet := append(unconfirmedParents, parentTxns...)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
@@ -506,12 +522,17 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 
 	// Construct the final transaction.
 	txn, parentTxns = txnBuilder.View()
-	txnSet = append(parentTxns, txn)
+	unconfirmedParents, err = txnBuilder.UnconfirmedParents()
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	txnSet = append(unconfirmedParents, parentTxns...)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(txnSet)
 	if err == modules.ErrDuplicateTransactionSet {
-		// as long as it made it into the transaction pool, we're good
+		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}
 	if err != nil {

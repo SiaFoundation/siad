@@ -6,7 +6,28 @@ especially during testing and debugging.
 ## Subsystems
 
 Typesutils has the following subsystems:
+ - [Minimum Transaction Set](#minimum-transaction-set)
  - [Transaction Graph](#transaction-graph)
+
+### Minimum Transaction Set
+**Key Files**
+ - [minimumtransactionsetexports.go](./minimumtransactionsetexports.go)
+
+The minimum transaction set function takes two transaction sets as input. The
+first is a set of required transactions (often just one transaction), and the
+second is a set of transactions that may be required dependencies. The function
+will return a single transaction set which contains all of the required
+transactions and all of their direct/required dependencies, and no other
+transactions.
+
+It is fine for the two input sets to contain overlapping transactions, however
+each set much be independently ordered correctly and valid.
+
+##### Exports
+
+ - `MinimizeTransactionSet` is an independent function which returns a
+   transaction set that contains all transactions of its first input plus any
+   required dependencies from its second input.
 
 ### Transaction Graph
 **Key Files**
@@ -43,4 +64,3 @@ subsystem is exported.
    - `TransactionGraph.Transactions` will return all of the transactions that
 	 have been built to be a part of the transaction graph.
 - `NewTransactionGraph` will initialize and return a `TransactionGraph`.
-

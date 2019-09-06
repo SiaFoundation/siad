@@ -30,7 +30,7 @@ func TestTpoolTransactionsGet(t *testing.T) {
 	}()
 
 	// Transaction pool should be empty to start
-	tptg, err := miner.TransactionPoolTxnsGET()
+	tptg, err := miner.TransactionPoolTransactionsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,12 +49,12 @@ func TestTpoolTransactionsGet(t *testing.T) {
 	}
 
 	// Verify the transaction pool
-	tptg, err = miner.TransactionPoolTxnsGET()
+	tptg, err = miner.TransactionPoolTransactionsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tptg.Transactions) != 1 {
-		t.Fatal("expected 1 transaction got", len(tptg.Transactions))
+	if len(tptg.Transactions) != 2 {
+		t.Fatal("expected 2 transaction got", len(tptg.Transactions))
 	}
 
 	// Mine a block to confirm the transaction
@@ -63,7 +63,7 @@ func TestTpoolTransactionsGet(t *testing.T) {
 	}
 
 	// Transaction pool should now be empty
-	tptg, err = miner.TransactionPoolTxnsGET()
+	tptg, err = miner.TransactionPoolTransactionsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
