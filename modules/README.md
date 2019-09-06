@@ -98,7 +98,7 @@ The Alert System provides the `Alerter` interface and an implementation of the i
 
 The following levels of severity are currently available:
 
-- **Unknown**: This should never be used and is a safeguard agains developer errors	
+- **Unknown**: This should never be used and is a safeguard against developer errors	
 - **Warning**: Warns the user about potential issues which might require preventive actions
 - **Error**: Alerts the user of an issue that requires immediate action to prevent further issues like loss of data
 - **Critical**: Indicates that a critical error is imminent. e.g. lack of funds causing contracts to get lost
