@@ -757,131 +757,131 @@ var _ modules.Renter = (*Renter)(nil)
 // NewCustomRenter initializes a renter and returns it.
 func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, persistDir string, deps modules.Dependencies) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
-	if g == nil {
-		errChan <- errNilGateway
-		return nil, errChan
-	}
-	if cs == nil {
-		errChan <- errNilCS
-		return nil, errChan
-	}
-	if tpool == nil {
-		errChan <- errNilTpool
-		return nil, errChan
-	}
-	if hc == nil {
-		errChan <- errNilContractor
-		return nil, errChan
-	}
-	if hdb == nil && build.Release != "testing" {
-		errChan <- errNilHdb
-		return nil, errChan
-	}
-	if w == nil {
-		errChan <- errNilWallet
-		return nil, errChan
-	}
 
-	r := &Renter{
-		// Making newDownloads a buffered channel means that most of the time, a
-		// new download will trigger an unnecessary extra iteration of the
-		// download heap loop, searching for a chunk that's not there. This is
-		// preferable to the alternative, where in rare cases the download heap
-		// will miss work altogether.
-		newDownloads: make(chan struct{}, 1),
-		downloadHeap: new(downloadChunkHeap),
-
-		uploadHeap: uploadHeap{
-			repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
-			stuckHeapChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
-			unstuckHeapChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
-
-			newUploads:        make(chan struct{}, 1),
-			repairNeeded:      make(chan struct{}, 1),
-			stuckChunkFound:   make(chan struct{}, 1),
-			stuckChunkSuccess: make(chan struct{}, 1),
-		},
-		directoryHeap: directoryHeap{
-			heapDirectories: make(map[modules.SiaPath]*directory),
-		},
-
-		bubbleUpdates: make(map[string]bubbleStatus),
-
-		cs:               cs,
-		deps:             deps,
-		g:                g,
-		w:                w,
-		hostDB:           hdb,
-		hostContractor:   hc,
-		persistDir:       persistDir,
-		staticFilesDir:   filepath.Join(persistDir, modules.SiapathRoot),
-		staticBackupsDir: filepath.Join(persistDir, modules.BackupRoot),
-		mu:               siasync.New(modules.SafeMutexDelay, 1),
-		tpool:            tpool,
-	}
-	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
-	r.stuckStack = callNewStuckStack()
-
-	// Load all saved data.
-	if err := r.managedInitPersist(); err != nil {
-		errChan <- err
-		return nil, errChan
-	}
-	// After persist is initialized, push the root directory onto the directory
-	// heap for the repair process.
-	r.managedPushUnexploredDirectory(modules.RootSiaPath())
-	// After persist is initialized, create the worker pool.
-	r.staticWorkerPool = r.newWorkerPool()
-
-	// Subscribe to the consensus set in a separate goroutine.
-	done := make(chan struct{})
-	if err := r.tg.Add(); err != nil {
-		errChan <- err
-		return nil, errChan
-	}
-	go func() {
-		defer close(errChan)
-		defer r.tg.Done()
-		defer close(done)
-		err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
-		if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
-			errChan <- err
-			return
+	// Blocking startup.
+	r, err := func() (*Renter, error) {
+		if g == nil {
+			return nil, errNilGateway
 		}
+		if cs == nil {
+			return nil, errNilCS
+		}
+		if tpool == nil {
+			return nil, errNilTpool
+		}
+		if hc == nil {
+			return nil, errNilContractor
+		}
+		if hdb == nil && build.Release != "testing" {
+			return nil, errNilHdb
+		}
+		if w == nil {
+			return nil, errNilWallet
+		}
+
+		r := &Renter{
+			// Making newDownloads a buffered channel means that most of the time, a
+			// new download will trigger an unnecessary extra iteration of the
+			// download heap loop, searching for a chunk that's not there. This is
+			// preferable to the alternative, where in rare cases the download heap
+			// will miss work altogether.
+			newDownloads: make(chan struct{}, 1),
+			downloadHeap: new(downloadChunkHeap),
+
+			uploadHeap: uploadHeap{
+				repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
+				stuckHeapChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
+				unstuckHeapChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
+
+				newUploads:        make(chan struct{}, 1),
+				repairNeeded:      make(chan struct{}, 1),
+				stuckChunkFound:   make(chan struct{}, 1),
+				stuckChunkSuccess: make(chan struct{}, 1),
+			},
+			directoryHeap: directoryHeap{
+				heapDirectories: make(map[modules.SiaPath]*directory),
+			},
+
+			bubbleUpdates: make(map[string]bubbleStatus),
+
+			cs:               cs,
+			deps:             deps,
+			g:                g,
+			w:                w,
+			hostDB:           hdb,
+			hostContractor:   hc,
+			persistDir:       persistDir,
+			staticFilesDir:   filepath.Join(persistDir, modules.SiapathRoot),
+			staticBackupsDir: filepath.Join(persistDir, modules.BackupRoot),
+			mu:               siasync.New(modules.SafeMutexDelay, 1),
+			tpool:            tpool,
+		}
+		r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+		r.stuckStack = callNewStuckStack()
+
+		// Load all saved data.
+		if err := r.managedInitPersist(); err != nil {
+			return nil, err
+		}
+		// After persist is initialized, push the root directory onto the directory
+		// heap for the repair process.
+		r.managedPushUnexploredDirectory(modules.RootSiaPath())
+		// After persist is initialized, create the worker pool.
+		r.staticWorkerPool = r.newWorkerPool()
+
+		// Spin up background threads which are not depending on the renter being
+		// up-to-date with consensus.
+		if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
+			go r.threadedUpdateRenterHealth()
+		}
+		// Unsubscribe on shutdown.
+		err := r.tg.OnStop(func() error {
+			cs.Unsubscribe(r)
+			return nil
+		})
 		if err != nil {
-			errChan <- err
+			return nil, err
 		}
+		return r, nil
 	}()
-	err := r.tg.OnStop(func() error {
-		cs.Unsubscribe(r)
-		return nil
-	})
 	if err != nil {
 		errChan <- err
 		return nil, errChan
 	}
 
-	// Spin up background threads which are not depending on the renter being
-	// up-to-date with consensus.
-	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
-		go r.threadedUpdateRenterHealth()
-	}
-	// Spin up the remaining background threads once we are caught up with the
-	// consensus set.
+	// non-blocking startup
 	go func() {
-		select {
-		case <-r.tg.StopChan():
-			return
-		case <-done:
+		defer close(errChan)
+		err := func() error {
+			// Subscribe to the consensus set in a separate goroutine.
+			done := make(chan struct{})
+			if err := r.tg.Add(); err != nil {
+				return err
+			}
+			defer r.tg.Done()
+			defer close(done)
+			err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
+			if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+				return err
+			}
+			if err != nil {
+				return err
+			}
+			// Spin up the remaining background threads once we are caught up with the
+			// consensus set.
+			// Spin up the workers for the work pool.
+			go r.threadedDownloadLoop()
+			if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
+				go r.threadedUploadAndRepair()
+				go r.threadedStuckFileLoop()
+			}
+			// Spin up the snapshot synchronization thread.
+			go r.threadedSynchronizeSnapshots()
+			return nil
+		}()
+		if err != nil {
+			errChan <- err
 		}
-		// Spin up the workers for the work pool.
-		go r.threadedDownloadLoop()
-		if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
-			go r.threadedUploadAndRepair()
-			go r.threadedStuckFileLoop()
-		}
-		// Spin up the snapshot synchronization thread.
-		go r.threadedSynchronizeSnapshots()
 	}()
 	return r, errChan
 }
@@ -890,31 +890,19 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, persistDir string) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 	hdb, errChanHDB := hostdb.New(g, cs, tpool, persistDir)
-	select {
-	case err := <-errChanHDB:
-		if err != nil {
-			errChan <- err
-			return nil, errChan
-		}
-	default:
+	if err := modules.PeekErr(errChanHDB); err != nil {
+		errChan <- err
+		return nil, errChan
 	}
 	hc, errChanContractor := contractor.New(cs, wallet, tpool, hdb, persistDir)
-	select {
-	case err := <-errChanContractor:
-		if err != nil {
-			errChan <- err
-			return nil, errChan
-		}
-	default:
+	if err := modules.PeekErr(errChanContractor); err != nil {
+		errChan <- err
+		return nil, errChan
 	}
 	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, modules.ProdDependencies)
-	select {
-	case err := <-errChanRenter:
-		if err != nil {
-			errChan <- err
-			return nil, errChan
-		}
-	default:
+	if err := modules.PeekErr(errChanRenter); err != nil {
+		errChan <- err
+		return nil, errChan
 	}
 	go func() {
 		errChan <- errors.Compose(<-errChanHDB, <-errChanContractor, <-errChanRenter)

@@ -183,15 +183,11 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 
 	// Create the Sia node for the server after the server was started.
 	node, errChan := node.New(nodeParams)
-	select {
-	case err := <-errChan:
-		if err != nil {
-			if isAddrInUseErr(err) {
-				return nil, fmt.Errorf("%v; are you running another instance of siad?", err.Error())
-			}
-			return nil, errors.AddContext(err, "server is unable to create the Sia node")
+	if err := modules.PeekErr(errChan); err != nil {
+		if isAddrInUseErr(err) {
+			return nil, fmt.Errorf("%v; are you running another instance of siad?", err.Error())
 		}
-	default:
+		return nil, errors.AddContext(err, "server is unable to create the Sia node")
 	}
 
 	// Make sure that the server wasn't shut down while loading the modules.
@@ -208,15 +204,12 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 	api.SetModules(node.ConsensusSet, node.Explorer, node.Gateway, node.Host, node.Miner, node.Renter, node.TransactionPool, node.Wallet)
 
 	// Wait for the node to be done loading.
-	select {
-	case err := <-errChan:
-		if err != nil {
-			// Error occured during async load. Close all modules.
-			if build.Release == "standard" {
-				fmt.Println("ERROR:", err)
-			}
-			return nil, errors.Compose(err, node.Close())
+	if err := <-errChan; err != nil {
+		// Error occured during async load. Close all modules.
+		if build.Release == "standard" {
+			fmt.Println("ERROR:", err)
 		}
+		return nil, errors.Compose(err, node.Close())
 	}
 	return srv, nil
 }

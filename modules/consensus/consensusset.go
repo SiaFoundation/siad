@@ -162,6 +162,7 @@ func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir s
 		if err != nil {
 			return nil, err
 		}
+		return cs, nil
 	}()
 	if err != nil {
 		errChan <- err
@@ -210,7 +211,7 @@ func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir s
 			cs.synced = true
 			cs.mu.Unlock()
 			return nil
-		}
+		}()
 		if err != nil {
 			errChan <- err
 		}

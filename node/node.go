@@ -262,13 +262,9 @@ func New(params NodeParams) (*Node, <-chan error) {
 		printfRelease("(%d/%d) Loading consensus...\n", i, numModules)
 		return consensus.New(g, params.Bootstrap, filepath.Join(dir, modules.ConsensusDir))
 	}()
-	select {
-	case err := <-errChanCS:
-		if err != nil {
-			errChan <- errors.Extend(err, errors.New("unable to create consensus set"))
-			return nil, errChan
-		}
-	default:
+	if err := modules.PeekErr(errChanCS); err != nil {
+		errChan <- errors.Extend(err, errors.New("unable to create consensus set"))
+		return nil, errChan
 	}
 
 	// Explorer.
@@ -425,17 +421,10 @@ func New(params NodeParams) (*Node, <-chan error) {
 
 		// HostDB
 		hdb, errChanHDB := hostdb.NewCustomHostDB(g, cs, tp, persistDir, hostDBDeps)
-		if err != nil {
-			return nil, errChanHDB
-		}
-		select {
-		case err := <-errChanHDB:
-			if err != nil {
-				c <- err
-				close(c)
-				return nil, c
-			}
-		default:
+		if err := modules.PeekErr(errChanHDB); err != nil {
+			c <- err
+			close(c)
+			return nil, c
 		}
 		// ContractSet
 		contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), contractSetDeps)
@@ -452,14 +441,10 @@ func New(params NodeParams) (*Node, <-chan error) {
 			return nil, c
 		}
 		hc, errChanContractor := contractor.NewCustomContractor(cs, &contractor.WalletBridge{W: w}, tp, hdb, contractSet, contractor.NewPersist(persistDir), logger, contractorDeps)
-		select {
-		case err := <-errChanContractor:
-			if err != nil {
-				c <- err
-				close(c)
-				return nil, c
-			}
-		default:
+		if err := modules.PeekErr(errChanContractor); err != nil {
+			c <- err
+			close(c)
+			return nil, c
 		}
 		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, persistDir, renterDeps)
 		go func() {
@@ -468,15 +453,10 @@ func New(params NodeParams) (*Node, <-chan error) {
 		}()
 		return renter, c
 	}()
-	select {
-	case err := <-errChanRenter:
-		if err != nil {
-			errChan <- errors.Extend(err, errors.New("unable to create renter"))
-			return nil, errChan
-		}
-	default:
+	if err := modules.PeekErr(errChanRenter); err != nil {
+		errChan <- errors.Extend(err, errors.New("unable to create renter"))
+		return nil, errChan
 	}
-
 	go func() {
 		errChan <- errors.Compose(<-errChanCS, <-errChanRenter)
 		close(errChan)
