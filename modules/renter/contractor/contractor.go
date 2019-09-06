@@ -371,6 +371,9 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	go func() {
 		// Subscribe to the consensus set in a separate goroutine.
 		defer close(errChan)
+		if c.staticDeps.Disrupt("BlockAsyncStartup") {
+			return
+		}
 		err := func() error {
 			if err := c.tg.Add(); err != nil {
 				return err

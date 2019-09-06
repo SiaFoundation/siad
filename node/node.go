@@ -79,11 +79,12 @@ type NodeParams struct {
 	Wallet          modules.Wallet
 
 	// Dependencies for each module supporting dependency injection.
-	ContractorDeps  modules.Dependencies
-	ContractSetDeps modules.Dependencies
-	HostDBDeps      modules.Dependencies
-	RenterDeps      modules.Dependencies
-	WalletDeps      modules.Dependencies
+	ConsensusSetDeps modules.Dependencies
+	ContractorDeps   modules.Dependencies
+	ContractSetDeps  modules.Dependencies
+	HostDBDeps       modules.Dependencies
+	RenterDeps       modules.Dependencies
+	WalletDeps       modules.Dependencies
 
 	// Custom settings for modules
 	Allowance   modules.Allowance
@@ -260,7 +261,11 @@ func New(params NodeParams) (*Node, <-chan error) {
 		}
 		i++
 		printfRelease("(%d/%d) Loading consensus...\n", i, numModules)
-		return consensus.New(g, params.Bootstrap, filepath.Join(dir, modules.ConsensusDir))
+		consensusSetDeps := params.ConsensusSetDeps
+		if consensusSetDeps == nil {
+			consensusSetDeps = modules.ProdDependencies
+		}
+		return consensus.NewCustomConsensusSet(g, params.Bootstrap, filepath.Join(dir, modules.ConsensusDir), consensusSetDeps)
 	}()
 	if err := modules.PeekErr(errChanCS); err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create consensus set"))

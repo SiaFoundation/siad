@@ -318,6 +318,9 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// non-blocking startup.
 	go func() {
 		defer close(errChan)
+		if hdb.deps.Disrupt("BlockAsyncStartup") {
+			return
+		}
 		// Subscribe to the consensus set in a separate goroutine.
 		err := func() error {
 			if err := hdb.tg.Add(); err != nil {

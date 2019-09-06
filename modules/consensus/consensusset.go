@@ -172,6 +172,9 @@ func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir s
 	// non-blocking consensus startup.
 	go func() {
 		defer close(errChan)
+		if cs.staticDeps.Disrupt("BlockAsyncStartup") {
+			return
+		}
 		err := func() error {
 			// Sync with the network. Don't sync if we are testing because
 			// typically we don't have any mock peers to synchronize with in

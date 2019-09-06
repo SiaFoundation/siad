@@ -3523,3 +3523,75 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestAsyncStartupRace queries some of the modules endpoints during an async
+// startup.
+func TestAsyncStartupRace(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	testDir := renterTestDir(t.Name())
+	np := node.AllModules(testDir)
+	// Disable the async startup part of the modules.
+	deps := &dependencies.DependencyDisableAsyncStartup{}
+	np.ConsensusSetDeps = deps
+	np.ContractorDeps = deps
+	np.HostDBDeps = deps
+	np.RenterDeps = deps
+	// Disable the modules which aren't loaded async anyway.
+	np.CreateWallet = false
+	np.CreateExplorer = false
+	np.CreateTransactionPool = false
+	np.CreateHost = false
+	node, err := siatest.NewCleanNodeAsync(np)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Call some endpoints a few times.
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		// ConsensusSet
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := node.ConsensusGet()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+		// Contractor
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := node.RenterContractsGet()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+		// HostDB
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := node.HostDbAllGet()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = node.HostDbGet()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+		// Renter
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := node.RenterGet()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+		wg.Wait()
+	}
+}

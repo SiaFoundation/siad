@@ -852,6 +852,9 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// non-blocking startup
 	go func() {
 		defer close(errChan)
+		if r.deps.Disrupt("BlockAsyncStartup") {
+			return
+		}
 		err := func() error {
 			// Subscribe to the consensus set in a separate goroutine.
 			done := make(chan struct{})
