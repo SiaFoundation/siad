@@ -374,9 +374,9 @@ func (c *Client) RenterPricesGet(allowance modules.Allowance) (rpg api.RenterPri
 	return
 }
 
-// RenterPostRateLimit uses the /renter endpoint to change the renter's bandwidth rate
+// RenterRateLimitPost uses the /renter endpoint to change the renter's bandwidth rate
 // limit.
-func (c *Client) RenterPostRateLimit(readBPS, writeBPS int64) (err error) {
+func (c *Client) RenterRateLimitPost(readBPS, writeBPS int64) (err error) {
 	values := url.Values{}
 	values.Set("maxdownloadspeed", strconv.FormatInt(readBPS, 10))
 	values.Set("maxuploadspeed", strconv.FormatInt(writeBPS, 10))

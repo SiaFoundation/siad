@@ -133,6 +133,15 @@ func statuscmd() {
 		return
 	}
 
+	// Global Daemon Rate Limits
+	dg, err := httpClient.DaemonSettingsGet()
+	if err != nil {
+		die("Could not get daemon:", err)
+	}
+	fmt.Printf(`
+Global `)
+	rateLimitSummary(dg.MaxDownloadSpeed, dg.MaxUploadSpeed)
+
 	// Gateway Rate Limits
 	gg, err := httpClient.GatewayGet()
 	if err != nil {
@@ -160,7 +169,7 @@ func rateLimitSummary(download, upload int64) {
   Download Speed: %v`, "no limit")
 	} else {
 		fmt.Printf(`
-  Download Speed: %v Mbps`, download)
+  Download Speed: %v B/s`, download)
 	}
 	if upload == 0 {
 		fmt.Printf(`
@@ -168,7 +177,7 @@ func rateLimitSummary(download, upload int64) {
 `, "no limit")
 	} else {
 		fmt.Printf(`
-  Upload Speed:   %v Mbps
+  Upload Speed:   %v B/s
 `, upload)
 	}
 }
@@ -186,6 +195,7 @@ func main() {
 	// create command tree
 	root.AddCommand(versionCmd)
 	root.AddCommand(stopCmd)
+	root.AddCommand(globalRatelimitCmd)
 	root.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
 
 	root.AddCommand(updateCmd)
@@ -226,7 +236,7 @@ func main() {
 		renterFilesUploadCmd, renterUploadsCmd, renterExportCmd,
 		renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
 		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
-		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd)
+		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)

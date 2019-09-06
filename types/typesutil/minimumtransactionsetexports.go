@@ -89,7 +89,7 @@ func MinimumTransactionSet(requiredTxns []types.Transaction, relatedTxns []types
 				continue
 			}
 
-			// Check if this transcation has already been scanned and added as a
+			// Check if this transaction has already been scanned and added as a
 			// requirement.
 			_, exists = includedTxns[txn.ID()]
 			if exists {
