@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 )
 
@@ -20,6 +21,14 @@ var (
 		Short: "Check for available updates",
 		Long:  "Check for available updates.",
 		Run:   wrap(updatecheckcmd),
+	}
+
+	globalRatelimitCmd = &cobra.Command{
+		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
+		Short: "set the global maxdownloadspeed and maxuploadspeed",
+		Long: `Set the global maxdownloadspeed and maxuploadspeed in
+bytes-per-second (B/s).  Set them to 0 for no limit.`,
+		Run: wrap(globalratelimitcmd),
 	}
 
 	updateCmd = &cobra.Command{
@@ -72,6 +81,8 @@ func stopcmd() {
 	fmt.Println("Sia daemon stopped.")
 }
 
+// updatecmd is the handler for the command `siac update`.
+// Updates the daemon version to latest general release.
 func updatecmd() {
 	update, err := httpClient.DaemonUpdateGet()
 	if err != nil {
@@ -91,6 +102,8 @@ func updatecmd() {
 	fmt.Printf("Updated to version %s! Restart siad now.\n", update.Version)
 }
 
+// updatecheckcmd is the handler for the command `siac check`.
+// Checks is there is an newer daemon version available.
 func updatecheckcmd() {
 	update, err := httpClient.DaemonUpdateGet()
 	if err != nil {
@@ -102,4 +115,18 @@ func updatecheckcmd() {
 	} else {
 		fmt.Println("Up to date.")
 	}
+}
+
+// globalratelimitcmd is the handler for the command `siac ratelimit`.
+// Sets the global maxuploadspeed and maxdownloadspeed the daemon can use.
+func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
+	downloadSpeedInt, uploadSpeedInt, err := parseRateLimits(downloadSpeedStr, uploadSpeedStr)
+	if err != nil {
+		die(err)
+	}
+	err = httpClient.DaemonGlobalRateLimitPost(downloadSpeedInt, uploadSpeedInt)
+	if err != nil {
+		die("Could not set global ratelimit speed:", err)
+	}
+	fmt.Println("Set global maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }

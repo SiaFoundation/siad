@@ -1,10 +1,12 @@
 package siafile
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 
 	"github.com/klauspost/reedsolomon"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -52,6 +54,22 @@ func (rs *RSCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 		return nil, err
 	}
 	return pieces, nil
+}
+
+// Identifier returns an identifier for an erasure coder which can be used to
+// identify erasure coders of the same type, dataPieces and parityPieces.
+func (rs *RSCode) Identifier() modules.ErasureCoderIdentifier {
+	t := rs.Type()
+	dataPieces := rs.MinPieces()
+	parityPieces := rs.NumPieces() - dataPieces
+	id := fmt.Sprintf("%v+%v+%v", binary.BigEndian.Uint32(t[:]), dataPieces, parityPieces)
+	return modules.ErasureCoderIdentifier(id)
+}
+
+// Reconstruct recovers the full set of encoded shards from the provided pieces,
+// of which at least MinPieces must be non-nil.
+func (rs *RSCode) Reconstruct(pieces [][]byte) error {
+	return rs.enc.Reconstruct(pieces)
 }
 
 // Recover recovers the original data from pieces and writes it to w.

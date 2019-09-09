@@ -8,13 +8,15 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -45,9 +47,9 @@ var (
 		Period:      50,
 		RenewWindow: 24,
 
-		ExpectedStorage:    modules.SectorSize,
-		ExpectedUpload:     modules.SectorSize / 50,
-		ExpectedDownload:   modules.SectorSize / 50,
+		ExpectedStorage:    modules.SectorSize * 50e3,
+		ExpectedUpload:     modules.SectorSize * 5e3,
+		ExpectedDownload:   modules.SectorSize * 5e3,
 		ExpectedRedundancy: 5.0,
 	}
 
@@ -155,7 +157,11 @@ func addStorageFolderToHosts(hosts map[*TestNode]struct{}) error {
 	for host := range hosts {
 		wg.Add(1)
 		go func(i int, host *TestNode) {
-			errs[i] = host.HostStorageFoldersAddPost(host.Dir, 1048576)
+			storage := 4 * contractmanager.MinimumSectorsPerStorageFolder * modules.SectorSize
+			if host.params.HostStorage > 0 {
+				storage = host.params.HostStorage
+			}
+			errs[i] = host.HostStorageFoldersAddPost(host.Dir, storage)
 			wg.Done()
 		}(i, host)
 		i++
@@ -498,7 +504,7 @@ func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
 		randomNodeDir(tg.dir, &np)
 		node, err := NewCleanNode(np)
 		if err != nil {
-			return mapToSlice(newNodes), build.ExtendErr("failed to create host", err)
+			return mapToSlice(newNodes), build.ExtendErr("failed to create new clean node", err)
 		}
 		// Add node to nodes
 		tg.nodes[node] = struct{}{}
@@ -655,6 +661,22 @@ func (tg *TestGroup) StartNode(tn *TestNode) error {
 		return errors.New("cannot start node that's not part of the group")
 	}
 	err := tn.StartNode()
+	if err != nil {
+		return err
+	}
+	if err := fullyConnectNodes(tg.Nodes()); err != nil {
+		return err
+	}
+	return synchronizationCheck(tg.nodes)
+}
+
+// StartNodeCleanDeps starts a node from the group that has previously been
+// stopped without its previously assigned dependencies.
+func (tg *TestGroup) StartNodeCleanDeps(tn *TestNode) error {
+	if _, exists := tg.nodes[tn]; !exists {
+		return errors.New("cannot start node that's not part of the group")
+	}
+	err := tn.StartNodeCleanDeps()
 	if err != nil {
 		return err
 	}

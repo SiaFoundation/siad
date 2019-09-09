@@ -11,11 +11,17 @@ const (
 
 var (
 	// BlockBytesPerMonthTerabyte is the conversion rate between block-bytes and month-TB.
+	//
+	// TODO: Convert to `BytesPerTerabyte.Mul64(types.BlocksPerMonth)` - not a
+	// simple change because it means the number for testing changes from 4320
+	// to 2592e3, and this breaks some of the tests.
 	BlockBytesPerMonthTerabyte = BytesPerTerabyte.Mul64(4320)
 
 	// BytesPerTerabyte is the conversion rate between bytes and terabytes.
 	BytesPerTerabyte = types.NewCurrency64(1e12)
+)
 
+var (
 	// HostConnectabilityStatusChecking is returned from ConnectabilityStatus()
 	// if the host is still determining if it is connectable.
 	HostConnectabilityStatusChecking = HostConnectabilityStatus("checking")

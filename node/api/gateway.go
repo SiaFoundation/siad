@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-
 	"github.com/julienschmidt/httprouter"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // GatewayGET contains the fields returned by a GET call to "/gateway".
@@ -64,7 +64,7 @@ func (api *API) gatewayHandlerPOST(w http.ResponseWriter, req *http.Request, _ h
 // gatewayConnectHandler handles the API call to add a peer to the gateway.
 func (api *API) gatewayConnectHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	addr := modules.NetAddress(ps.ByName("netaddress"))
-	err := api.gateway.Connect(addr)
+	err := api.gateway.ConnectManual(addr)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -76,7 +76,7 @@ func (api *API) gatewayConnectHandler(w http.ResponseWriter, req *http.Request, 
 // gatewayDisconnectHandler handles the API call to remove a peer from the gateway.
 func (api *API) gatewayDisconnectHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	addr := modules.NetAddress(ps.ByName("netaddress"))
-	err := api.gateway.Disconnect(addr)
+	err := api.gateway.DisconnectManual(addr)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

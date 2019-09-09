@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +13,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestTransactionReorg makes sure that a processedTransaction isn't returned
@@ -555,5 +559,92 @@ func TestWalletLastAddresses(t *testing.T) {
 		if addresses[i] != wlag.Addresses[len(wlag.Addresses)-1-i] {
 			t.Fatal("addresses don't match for i =", i)
 		}
+	}
+}
+
+// TestWalletSendUnsynced confirms that the wallet will return an error when
+// trying to send siacoins or siafunds if the consensus is not fully synced
+func TestWalletSendUnsynced(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a wallet with an unsynced consensus dependency
+	testDir := walletTestDir(t.Name())
+	walletTemplate := node.Wallet(testDir + "/wallet")
+	walletTemplate.WalletDeps = &dependencies.DependencyUnsyncedConsensus{}
+	walletTemplate.CreateMiner = true
+	wallet, err := siatest.NewNode(walletTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check error returned from siacoins multi post
+	_, err = wallet.WalletSiacoinsMultiPost([]types.SiacoinOutput{})
+	if err == nil {
+		t.Fatal("expected an error to be returned for not being synced")
+	}
+	if !strings.Contains(err.Error(), "cannot send siacoin until fully synced") {
+		t.Fatal("expected to get synced error but got:", err)
+	}
+
+	// Check error returned from single siacoin post
+	_, err = wallet.WalletSiacoinsPost(types.ZeroCurrency, types.UnlockHash{})
+	if err == nil {
+		t.Fatal("expected an error to be returned for not being synced")
+	}
+	if !strings.Contains(err.Error(), "cannot send siacoin until fully synced") {
+		t.Fatal("expected to get synced error but got:", err)
+	}
+
+	// Check error returned from siafund post
+	_, err = wallet.WalletSiafundsPost(types.ZeroCurrency, types.UnlockHash{})
+	if err == nil {
+		t.Fatal("expected an error to be returned for not being synced")
+	}
+	if !strings.Contains(err.Error(), "cannot send siafunds until fully synced") {
+		t.Fatal("expected to get synced error but got:", err)
+	}
+}
+
+// TestWalletChangePasswordWithSeed initializes a wallet with a custom password
+// and uses the primary seed to change that password.
+func TestWalletChangePasswordWithSeed(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a new server
+	testNode, err := siatest.NewNode(node.AllModules(walletTestDir(t.Name())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := testNode.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Reinit the wallet by using a specific password.
+	seed := modules.Seed{}
+	fastrand.Read(seed[:])
+	seedStr, err := modules.SeedToString(seed, mnemonics.DictionaryID("english"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := "password"
+	if err := testNode.WalletInitSeedPost(seedStr, password, true); err != nil {
+		t.Fatal(err)
+	}
+	// Change the password again without using the password.
+	newPassword := "newpassword"
+	if err := testNode.WalletChangePasswordWithSeedPost(seed, newPassword); err != nil {
+		t.Fatal(err)
+	}
+	// Try unlocking the wallet using the old password.
+	if err := testNode.WalletUnlockPost(password); err == nil {
+		t.Fatal("Shouldn't be able to unlock the wallet with the old password")
+	}
+	// Unlock the wallet using the new password.
+	if err := testNode.WalletUnlockPost(newPassword); err != nil {
+		t.Fatal("Failed to unlock wallet")
 	}
 }

@@ -12,11 +12,12 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 )
 
 var (
@@ -113,10 +114,13 @@ party integrations such as Duplicati`,
 	}
 )
 
+// bashcmlcmd is the handler for the command `siac utils bash-completion`.
 func bashcomplcmd(path string) {
 	rootCmd.GenBashCompletionFile(path)
 }
 
+// mangencmd is the handler for the command `siac utils man-generation`.
+// generates siac man pages
 func mangencmd(path string) {
 	doc.GenManTree(rootCmd, &doc.GenManHeader{
 		Section: "1",
@@ -125,6 +129,8 @@ func mangencmd(path string) {
 	}, path)
 }
 
+// utilshastingscmd is the handler for the command `siac utils hastings`.
+// converts a Siacoin amount into hastings.
 func utilshastingscmd(amount string) {
 	hastings, err := parseCurrency(amount)
 	if err != nil {
@@ -133,6 +139,8 @@ func utilshastingscmd(amount string) {
 	fmt.Println(hastings)
 }
 
+// utilsdecoderawtxncmd is the handler for command `siac utils decoderawtxn`.
+// converts a base64-encoded transaction to JSON encoding
 func utilsdecoderawtxncmd(b64 string) {
 	bin, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
@@ -146,6 +154,8 @@ func utilsdecoderawtxncmd(b64 string) {
 	fmt.Println(string(js))
 }
 
+// utilsencoderawtxncmd is the handler for command `siac utils encoderawtxn`.
+// converts a JSON encoded transaction to base64-encoding
 func utilsencoderawtxncmd(jstxn string) {
 	var jsBytes []byte
 	if strings.HasPrefix(strings.TrimSpace(jstxn), "{") {
@@ -166,6 +176,8 @@ func utilsencoderawtxncmd(jstxn string) {
 	fmt.Println(base64.StdEncoding.EncodeToString(encoding.Marshal(txn)))
 }
 
+// utilssighashcmd is the handler for the command `siac utils sighash`.
+// calculates the SigHash of a transaction
 func utilssighashcmd(indexStr, txnStr string) {
 	index, err := strconv.Atoi(indexStr)
 	if err != nil {
@@ -199,6 +211,8 @@ func utilssighashcmd(indexStr, txnStr string) {
 	fmt.Println(txn.SigHash(index, 180e3))
 }
 
+// utilschecksigcmd is the handler for the command `siac utils checksig`.
+// verifies the signature of a hash
 func utilschecksigcmd(base64Sig, hexHash, pkStr string) {
 	var sig crypto.Signature
 	sigBytes, err := base64.StdEncoding.DecodeString(base64Sig)
@@ -228,6 +242,9 @@ func utilschecksigcmd(base64Sig, hexHash, pkStr string) {
 	}
 }
 
+// utilsverifyseed is the handler for the command `siac utils verify-seed`.
+// verifies a seed matches the required formatting.  This can be used to help
+// troubleshot seeds that are not being accepted by siad.
 func utilsverifyseed() {
 	seed, err := passwordPrompt("Please enter your seed: ")
 	if err != nil {
@@ -242,6 +259,9 @@ func utilsverifyseed() {
 
 }
 
+// utilsdisplayapipassword is the handler for the command `siac utils
+// display-api-password`.
+// displays the API Password to the user.
 func utilsdisplayapipassword() {
 	fmt.Println(httpClient.Password)
 }

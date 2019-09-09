@@ -6,9 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -175,7 +176,7 @@ func (s *streamer) managedFillCache() bool {
 		destinationString: "httpresponse",
 		file:              s.staticFile,
 
-		latencyTarget: 50 * time.Millisecond, // TODO: low default until full latency suport is added.
+		latencyTarget: 50 * time.Millisecond, // TODO: low default until full latency support is added.
 		length:        uint64(fetchLen),
 		needsMemory:   true,
 		offset:        uint64(fetchOffset),
@@ -196,11 +197,6 @@ func (s *streamer) managedFillCache() bool {
 		// close the destination buffer to avoid deadlocks.
 		return ddw.Close()
 	})
-	// Set the in-memory buffer to nil just to be safe in case of a memory
-	// leak.
-	defer func() {
-		d.destination = nil
-	}()
 	// Block until the download has completed.
 	select {
 	case <-d.completeChan:
@@ -440,6 +436,16 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 		return s.offset, errors.New("cannot seek to negative offset")
 	}
 
+	// Reset the target cache size upon seek to be the default again. This is in
+	// place because some programs will rapidly consume the cache to build up
+	// their own buffer. This can result in the cache growing very large, which
+	// hurts seek times. By resetting the cache size upon seek, we ensure that
+	// the user gets a consistent experience when seeking. In a perfect world,
+	// we'd have an easy way to measure the bitrate of the file being streamed,
+	// so that we could set a target cache size according to that, but at the
+	// moment we don't have an easy way to get that information.
+	s.targetCacheSize = initialStreamerCacheSize
+
 	// Update the offset of the stream and immediately send a thread to update
 	// the cache.
 	s.offset = newOffset
@@ -468,15 +474,25 @@ func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, er
 	defer entry.Close()
 
 	// Create the streamer
+	snap, err := entry.Snapshot()
+	if err != nil {
+		return "", nil, err
+	}
+	s := r.managedStreamer(snap)
+	return r.staticFileSet.SiaPath(entry).String(), s, nil
+}
+
+// managedStreamer creates a streamer from a siafile snapshot and starts filling
+// its cache.
+func (r *Renter) managedStreamer(snapshot *siafile.Snapshot) modules.Streamer {
 	s := &streamer{
-		staticFile: entry.Snapshot(),
+		staticFile: snapshot,
 		r:          r,
 
 		activateCache:   make(chan struct{}),
 		cacheReady:      make(chan struct{}),
 		targetCacheSize: initialStreamerCacheSize,
 	}
-
 	go s.threadedFillCache()
-	return entry.SiaPath().String(), s, nil
+	return s
 }

@@ -13,13 +13,14 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/threadgroup"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -30,6 +31,12 @@ var (
 	errNilGateway            = errors.New("cannot create hostdb with nil gateway")
 	errNilTPool              = errors.New("cannot create hostdb with nil transaction pool")
 )
+
+// contractInfo contains information about a contract relevant to the HostDB.
+type contractInfo struct {
+	HostPublicKey types.SiaPublicKey
+	StoredData    uint64 `json:"storeddata"`
+}
 
 // The HostDB is a database of potential hosts. It assigns a weight to each
 // host based on their hosting parameters, and then can select hosts at random
@@ -45,6 +52,11 @@ type HostDB struct {
 	mu         sync.RWMutex
 	persistDir string
 	tg         threadgroup.ThreadGroup
+
+	// knownContracts are contracts which the HostDB was informed about by the
+	// Contractor. It contains infos about active contracts we have formed with
+	// hosts. The mapkey is a serialized SiaPublicKey.
+	knownContracts map[string]contractInfo
 
 	// The hostdb gets initialized with an allowance that can be modified. The
 	// allowance is used to build a weightFunc that the hosttree depends on to
@@ -132,8 +144,8 @@ func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
 func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	// Set the weight function in the hostdb.
 	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
 	hdb.weightFunc = wf
-	hdb.mu.Unlock()
 	// Update the hosttree and also the filteredTree if they are not the same.
 	err := hdb.hostTree.SetWeightFunction(wf)
 	if hdb.filteredTree != hdb.hostTree {
@@ -142,8 +154,33 @@ func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	return err
 }
 
+// updateContracts rebuilds the knownContracts of the HostDB using the provided
+// contracts.
+func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
+	knownContracts := make(map[string]contractInfo)
+	for _, contract := range contracts {
+		if n := len(contract.Transaction.FileContractRevisions); n != 1 {
+			build.Critical("contract's transaction should contain 1 revision but had ", n)
+			continue
+		}
+		knownContracts[contract.HostPublicKey.String()] = contractInfo{
+			HostPublicKey: contract.HostPublicKey,
+			StoredData:    contract.Transaction.FileContractRevisions[0].NewFileSize,
+		}
+	}
+	hdb.knownContracts = knownContracts
+}
+
 // New returns a new HostDB.
 func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, error) {
+	// Create HostDB using production dependencies.
+	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
+}
+
+// NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
+// persistence data, spawns the HostDB's scanning threads, and subscribes it to
+// the consensusSet.
+func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Check for nil inputs.
 	if g == nil {
 		return nil, errNilGateway
@@ -154,14 +191,7 @@ func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPo
 	if tpool == nil {
 		return nil, errNilTPool
 	}
-	// Create HostDB using production dependencies.
-	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
-}
 
-// NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
-// persistence data, spawns the HostDB's scanning threads, and subscribes it to
-// the consensusSet.
-func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Create the HostDB object.
 	hdb := &HostDB{
 		cs:         cs,
@@ -170,9 +200,9 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		persistDir: persistDir,
 		tpool:      tpool,
 
-		scanMap: make(map[string]struct{}),
-
-		filteredHosts: make(map[string]types.SiaPublicKey),
+		filteredHosts:  make(map[string]types.SiaPublicKey),
+		knownContracts: make(map[string]contractInfo),
+		scanMap:        make(map[string]struct{}),
 	}
 
 	// Set the allowance, txnFees and hostweight function.
@@ -287,7 +317,9 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 // weight. If hostdb is in black or white list mode, then only active hosts from
 // the filteredTree will be returned
 func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry) {
+	hdb.mu.RLock()
 	allHosts := hdb.filteredTree.All()
+	hdb.mu.RUnlock()
 	for _, entry := range allHosts {
 		if len(entry.ScanHistory) == 0 {
 			continue
@@ -306,6 +338,8 @@ func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry) {
 // AllHosts returns all of the hosts known to the hostdb, including the inactive
 // ones. AllHosts is not filtered by blacklist or whitelist mode.
 func (hdb *HostDB) AllHosts() (allHosts []modules.HostDBEntry) {
+	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
 	return hdb.hostTree.All()
 }
 
@@ -408,6 +442,14 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	}
 	// Check if disabling
 	if fm == modules.HostDBDisableFilter {
+		// Reset filtered field for hosts
+		for _, pk := range hdb.filteredHosts {
+			err := hdb.hostTree.SetFiltered(pk, false)
+			if err != nil {
+				hdb.log.Println("Unable to mark entry as not filtered:", err)
+			}
+		}
+		// Reset filtered fields
 		hdb.filteredTree = hdb.hostTree
 		hdb.filteredHosts = make(map[string]types.SiaPublicKey)
 		hdb.filterMode = fm
@@ -426,10 +468,17 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	// Create filteredHosts map
 	filteredHosts := make(map[string]types.SiaPublicKey)
 	for _, h := range hosts {
+		// Add host to filtered host map
 		if _, ok := filteredHosts[h.String()]; ok {
 			continue
 		}
 		filteredHosts[h.String()] = h
+
+		// Update host in unfiltered hosttree
+		err := hdb.hostTree.SetFiltered(h, true)
+		if err != nil {
+			hdb.log.Println("Unable to mark entry as filtered:", err)
+		}
 	}
 	var allErrs error
 	allHosts := hdb.hostTree.All()
@@ -470,67 +519,6 @@ func (hdb *HostDB) IPViolationsCheck() bool {
 	return !hdb.disableIPViolationCheck
 }
 
-// RandomHosts implements the HostDB interface's RandomHosts() method. It takes
-// a number of hosts to return, and a slice of netaddresses to ignore, and
-// returns a slice of entries. If the IP violation check was disabled, the
-// addressBlacklist is ignored.
-func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
-	hdb.mu.RLock()
-	initialScanComplete := hdb.initialScanComplete
-	ipCheckDisabled := hdb.disableIPViolationCheck
-	hdb.mu.RUnlock()
-	if !initialScanComplete {
-		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
-	}
-	if ipCheckDisabled {
-		return hdb.filteredTree.SelectRandom(n, blacklist, nil), nil
-	}
-	return hdb.filteredTree.SelectRandom(n, blacklist, addressBlacklist), nil
-}
-
-// SetIPViolationCheck enables or disables the IP violation check. If disabled,
-// CheckForIPViolations won't return bad hosts and RandomHosts will return the
-// address blacklist.
-func (hdb *HostDB) SetIPViolationCheck(enabled bool) {
-	hdb.mu.Lock()
-	defer hdb.mu.Unlock()
-	hdb.disableIPViolationCheck = !enabled
-}
-
-// RandomHostsWithAllowance works as RandomHosts but uses a temporary hosttree
-// created from the specified allowance. This is a very expensive call and
-// should be used with caution.
-func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist []types.SiaPublicKey, allowance modules.Allowance) ([]modules.HostDBEntry, error) {
-	hdb.mu.RLock()
-	initialScanComplete := hdb.initialScanComplete
-	filteredHosts := hdb.filteredHosts
-	filterType := hdb.filterMode
-	hdb.mu.RUnlock()
-	if !initialScanComplete {
-		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
-	}
-	// Create a temporary hosttree from the given allowance.
-	ht := hosttree.New(hdb.managedCalculateHostWeightFn(allowance), hdb.deps.Resolver())
-
-	// Insert all known hosts.
-	var insertErrs error
-	allHosts := hdb.hostTree.All()
-	isWhitelist := filterType == modules.HostDBActiveWhitelist
-	for _, host := range allHosts {
-		// Filter out listed hosts
-		_, ok := filteredHosts[host.PublicKey.String()]
-		if isWhitelist != ok {
-			continue
-		}
-		if err := ht.Insert(host); err != nil {
-			insertErrs = errors.Compose(insertErrs, err)
-		}
-	}
-
-	// Select hosts from the temporary hosttree.
-	return ht.SelectRandom(n, blacklist, addressBlacklist), insertErrs
-}
-
 // SetAllowance updates the allowance used by the hostdb for weighing hosts by
 // updating the host weight function. It will completely rebuild the hosttree so
 // it should be used with care.
@@ -549,4 +537,26 @@ func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 	// Update the weight function.
 	wf := hdb.managedCalculateHostWeightFn(allowance)
 	return hdb.managedSetWeightFunction(wf)
+}
+
+// SetIPViolationCheck enables or disables the IP violation check. If disabled,
+// CheckForIPViolations won't return bad hosts and RandomHosts will return the
+// address blacklist.
+func (hdb *HostDB) SetIPViolationCheck(enabled bool) {
+	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
+	hdb.disableIPViolationCheck = !enabled
+}
+
+// UpdateContracts rebuilds the knownContracts of the HostBD using the provided
+// contracts.
+func (hdb *HostDB) UpdateContracts(contracts []modules.RenterContract) error {
+	if err := hdb.tg.Add(); err != nil {
+		return err
+	}
+	defer hdb.tg.Done()
+	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
+	hdb.updateContracts(contracts)
+	return nil
 }

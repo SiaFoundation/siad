@@ -29,6 +29,15 @@ var (
 		Standard: 20,
 		Testing:  8,
 	}).(int)
+
+	// RepairThreshold defines the threshold at which the renter decides to
+	// repair a file. The renter will start repairing the file when the health
+	// is equal to or greater than this value.
+	RepairThreshold = build.Select(build.Var{
+		Dev:      0.25,
+		Standard: 0.25,
+		Testing:  0.25,
+	}).(float64)
 )
 
 // Default memory usage parameters.
@@ -52,7 +61,7 @@ var (
 	// growth.
 	initialStreamerCacheSize = build.Select(build.Var{
 		Dev:      int64(1 << 13), // 8 KiB
-		Standard: int64(1 << 18), // 256 KiB
+		Standard: int64(1 << 19), // 512 KiB
 		Testing:  int64(1 << 10), // 1 KiB
 	}).(int64)
 
@@ -70,7 +79,7 @@ var (
 	// time of writing we don't have an easy way to get that information.
 	maxStreamerCacheSize = build.Select(build.Var{
 		Dev:      int64(1 << 20), // 1 MiB
-		Standard: int64(1 << 16), // 16 MiB
+		Standard: int64(1 << 25), // 32 MiB
 		Testing:  int64(1 << 13), // 8 KiB
 	}).(int64)
 )
@@ -100,15 +109,13 @@ const (
 )
 
 // Constants that tune the health and repair processes.
-var (
-	// fileRepairInterval defines how long the renter should wait before
-	// continuing to repair a file that was recently repaired.
-	fileRepairInterval = build.Select(build.Var{
-		Dev:      30 * time.Second,
-		Standard: 5 * time.Minute,
-		Testing:  1 * time.Second,
-	}).(time.Duration)
+const (
+	// maxStuckChunksInHeap is the maximum number of stuck chunks that the
+	// repair code will add to the heap at a time
+	maxStuckChunksInHeap = 5
+)
 
+var (
 	// healthCheckInterval defines the maximum amount of time that should pass
 	// in between checking the health of a file or directory.
 	healthCheckInterval = build.Select(build.Var{
@@ -117,12 +124,47 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
-	// maxConsecutiveChunkRepairs is the maximum number of chunks we want to pop of
-	// the repair heap before rebuilding the heap.
-	maxConsecutiveChunkRepairs = build.Select(build.Var{
-		Dev:      20,
-		Standard: 100,
+	// healthLoopErrorSleepDuration indicates how long the health loop should
+	// sleep before retrying if there is an error preventing progress.
+	healthLoopErrorSleepDuration = build.Select(build.Var{
+		Dev:      10 * time.Second,
+		Standard: 30 * time.Second,
+		Testing:  3 * time.Second,
+	}).(time.Duration)
+
+	// maxRepairLoopTime indicates the maximum amount of time that the repair
+	// loop will spend popping chunks off of the repair heap.
+	maxRepairLoopTime = build.Select(build.Var{
+		Dev:      1 * time.Minute,
+		Standard: 15 * time.Minute,
+		Testing:  15 * time.Second,
+	}).(time.Duration)
+
+	// maxSuccessfulStuckRepairFiles is the maximum number of files that the
+	// stuck loop will track when there is a successful stuck chunk repair
+	maxSuccessfulStuckRepairFiles = build.Select(build.Var{
+		Dev:      3,
+		Standard: 20,
+		Testing:  2,
+	}).(int)
+
+	// maxUploadHeapChunks is the maximum number of chunks that we should add to
+	// the upload heap. This also will be used as the target number of chunks to
+	// add to the upload heap which which will mean for small directories we
+	// will add multiple directories.
+	maxUploadHeapChunks = build.Select(build.Var{
+		Dev:      25,
+		Standard: 250,
 		Testing:  5,
+	}).(int)
+
+	// minUploadHeapSize is the minimum number of chunks we want in the upload
+	// heap before trying to add more in order to maintain back pressure on the
+	// workers, repairs, and uploads.
+	minUploadHeapSize = build.Select(build.Var{
+		Dev:      5,
+		Standard: 20,
+		Testing:  1,
 	}).(int)
 
 	// offlineCheckFrequency is how long the renter will wait to check the
@@ -133,12 +175,15 @@ var (
 		Testing:  250 * time.Millisecond,
 	}).(time.Duration)
 
-	// rebuildChunkHeapInterval defines how long the renter sleeps between
-	// checking on the filesystem health.
-	rebuildChunkHeapInterval = build.Select(build.Var{
-		Dev:      90 * time.Second,
-		Standard: 15 * time.Minute,
-		Testing:  3 * time.Second,
+	// repairLoopResetFrequency is the frequency with which the repair loop will
+	// reset entirely, pushing the root directory back on top. This is a
+	// temporary measure to ensure that even if a user is continuously
+	// uploading, the repair heap is occasionally reset to push the root
+	// directory on top.
+	repairLoopResetFrequency = build.Select(build.Var{
+		Dev:      15 * time.Minute,
+		Standard: 1 * time.Hour,
+		Testing:  40 * time.Second,
 	}).(time.Duration)
 
 	// repairStuckChunkInterval defines how long the renter sleeps between
@@ -152,6 +197,14 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
+	// stuckLoopErrorSleepDuration indicates how long the stuck loop should
+	// sleep before retrying if there is an error preventing progress.
+	stuckLoopErrorSleepDuration = build.Select(build.Var{
+		Dev:      10 * time.Second,
+		Standard: 30 * time.Second,
+		Testing:  3 * time.Second,
+	}).(time.Duration)
+
 	// uploadAndRepairErrorSleepDuration indicates how long a repair process
 	// should sleep before retrying if there is an error fetching the metadata
 	// of the root directory of the renter's filesystem.
@@ -159,6 +212,30 @@ var (
 		Dev:      20 * time.Second,
 		Standard: 15 * time.Minute,
 		Testing:  3 * time.Second,
+	}).(time.Duration)
+
+	// uploadPollTimeout defines the maximum amount of time the renter will poll
+	// for an upload to complete.
+	uploadPollTimeout = build.Select(build.Var{
+		Dev:      5 * time.Minute,
+		Standard: 60 * time.Minute,
+		Testing:  10 * time.Second,
+	}).(time.Duration)
+
+	// uploadPollInterval defines the renter's polling interval when waiting for
+	// file to upload.
+	uploadPollInterval = build.Select(build.Var{
+		Dev:      5 * time.Second,
+		Standard: 5 * time.Second,
+		Testing:  1 * time.Second,
+	}).(time.Duration)
+
+	// snapshotSyncSleepDuration defines how long the renter sleeps between
+	// trying to synchronize snapshots across hosts.
+	snapshotSyncSleepDuration = build.Select(build.Var{
+		Dev:      10 * time.Second,
+		Standard: 5 * time.Minute,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
 

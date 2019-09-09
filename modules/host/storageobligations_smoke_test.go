@@ -8,17 +8,18 @@ package host
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
+
+	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
-
-	"github.com/coreos/bbolt"
 )
 
 var (
@@ -32,6 +33,7 @@ func (stubTPool) AcceptTransactionSet(ts []types.Transaction) error {
 	return errTxFail
 }
 func (stubTPool) FeeEstimation() (min, max types.Currency)           { return types.Currency{}, types.Currency{} }
+func (stubTPool) Transactions() []types.Transaction                  { return nil }
 func (stubTPool) TransactionSet(oid crypto.Hash) []types.Transaction { return nil }
 func (stubTPool) Broadcast(ts []types.Transaction)                   {}
 func (stubTPool) Close() error                                       { return nil }
@@ -204,9 +206,15 @@ func TestBlankStorageObligation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fm = ht.host.FinancialMetrics()
-	if fm.ContractCount != 0 {
-		t.Error("host should have 0 contracts, the contracts were all completed:", fm.ContractCount)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fm = ht.host.FinancialMetrics()
+		if fm.ContractCount != 0 {
+			return fmt.Errorf("host should have 0 contracts, the contracts were all completed: %v", fm.ContractCount)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

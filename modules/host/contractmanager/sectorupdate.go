@@ -68,7 +68,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 				// None of the storage folders have enough room to house the
 				// sector.
 				wal.mu.Unlock()
-				return errInsufficientStorageForSector
+				return modules.ErrInsufficientStorageForSector
 			}
 			defer sf.mu.RUnlock()
 
@@ -151,7 +151,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 		break
 	}
 	if len(storageFolders) < 1 {
-		return errInsufficientStorageForSector
+		return modules.ErrInsufficientStorageForSector
 	}
 
 	// Wait for the synchronize.

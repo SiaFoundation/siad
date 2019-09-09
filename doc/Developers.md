@@ -17,27 +17,17 @@ and install binaries in `$GOPATH/bin`.
 
 After downloading, you can find the Sia source code in
 `$GOPATH/src/gitlab.com/NebulousLabs/Sia`. To build the release binary, run
-`make release-std` from this directory. To build the release binary with a
-(slow) race detector and an array of debugging asserts, run `make release`. To
+`make release` from this directory. To build the release binary with a (slow)
+race detector and an array of debugging asserts, run `make release-race`. To
 build the developer binary (which has a different genesis block, faster block
-times, and a few other tweaks), just run `make`.
+times, and a few other tweaks), run `make dev`.
 
 If you intend to contribute to Sia, you should start by forking the project on
-GitHub, and then adding your fork as a "remote" in the Sia git repository via
+GitLab, and then adding your fork as a "remote" in the Sia git repository via
 `git remote add [fork name] [fork url]`. Now you can develop by pulling changes
 from `origin`, pushing your modifications to `[fork name]`, and then making a
-pull request on GitHub.
+merge request on GitLab.
 
-If you see an error like the one below, it means that you either forgot to run
-`make dependencies`, or you cloned the project into a path that the go tool
-does not recognize (usually the wrong path, or symbolic links were somehow
-involved).
-
-```
-consensus/fork.go:4:2: cannot find package "gitlab.com/NebulousLabs/Sia/crypto" in any of:
-    /usr/lib/go/src/gitlab.com/NebulousLabs/Sia/crypto (from $GOROOT)
-    /home/user/gopath/src/gitlab.com/NebulousLabs/Sia/crypto (from $GOPATH)
-```
 
 Developer Conventions
 =====================
@@ -147,6 +137,19 @@ if the module is stopped than any exported methods that are called will return
 an appropriate error. This is important for export methods that are either
 returning a status that another modules will act on or performing a action that
 will alter the module in some way.
+
+File Ordering
+-------------
+
+Each tracked file in the repository should be laid out in the following order.
+
+1. Vars
+2. Types
+3. Functions
+4. Methods
+
+Ordering should be: category (vars, types, etc) -> exported then non-exported 
+-> alphabetical
 
 Control Flow
 ------------

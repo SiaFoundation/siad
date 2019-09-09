@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -16,13 +17,14 @@ import (
 )
 
 var errUnableToParseSize = errors.New("unable to parse size")
+var errUnableToParseRateLimit = errors.New("unable to parse rate limit")
 
 // filesize returns a string that displays a filesize in human-readable units.
-func filesizeUnits(size int64) string {
+func filesizeUnits(size uint64) string {
 	if size == 0 {
-		return "0 B"
+		return "0  B"
 	}
-	sizes := []string{"B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}
+	sizes := []string{" B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}
 	i := int(math.Log10(float64(size)) / 3)
 	return fmt.Sprintf("%.*f %s", i, float64(size)/math.Pow10(3*i), sizes[i])
 }
@@ -200,4 +202,18 @@ func parseTxn(s string) (types.Transaction, error) {
 		}
 	}
 	return txn, nil
+}
+
+// parseRateLimits converts a string value into an int64 for use with the
+// ratelimit commands
+func parseRateLimits(downloadSpeedStr, uploadSpeedStr string) (int64, int64, error) {
+	downloadSpeedInt, err := strconv.ParseInt(downloadSpeedStr, 10, 64)
+	if err != nil {
+		return 0, 0, errUnableToParseRateLimit
+	}
+	uploadSpeedInt, err := strconv.ParseInt(uploadSpeedStr, 10, 64)
+	if err != nil {
+		return 0, 0, errUnableToParseRateLimit
+	}
+	return downloadSpeedInt, uploadSpeedInt, err
 }

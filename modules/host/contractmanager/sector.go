@@ -17,16 +17,6 @@ var (
 	// disk have prevented the host from successfully adding the sector.
 	errDiskTrouble = errors.New("host unable to add sector despite having the storage capacity to do so")
 
-	// errInsufficientStorageForSector is returned if the host tries to add a
-	// sector when there is not enough storage remaining on the host to accept
-	// the sector.
-	//
-	// Ideally, the host will adjust pricing as the host starts to fill up, so
-	// this error should be pretty rare. Demand should drive the price up
-	// faster than the Host runs out of space, such that the host is always
-	// hovering around 95% capacity and rarely over 98% or under 90% capacity.
-	errInsufficientStorageForSector = errors.New("not enough storage remaining to accept sector")
-
 	// errMaxVirtualSectors is returned when a sector cannot be added because
 	// the maximum number of virtual sectors for that sector id already exist.
 	errMaxVirtualSectors = errors.New("sector collides with a physical sector that already has the maximum allowed number of virtual sectors")

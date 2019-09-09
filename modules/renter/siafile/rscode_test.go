@@ -5,6 +5,9 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -54,6 +57,44 @@ func TestRSEncode(t *testing.T) {
 
 	if !bytes.Equal(data, buf.Bytes()) {
 		t.Fatal("recovered data does not match original")
+	}
+}
+
+// TestIdentifierAndCombinedSiaPath checks that different erasure coders produce
+// unique identifiers and that CombinedSiaFilePath also produces unique siapaths
+// using the identifiers.
+func TestIdentifierAndCombinedSiaPath(t *testing.T) {
+	ec1, err1 := NewRSCode(1, 2)
+	ec2, err2 := NewRSCode(1, 2)
+	ec3, err3 := NewRSCode(1, 3)
+	ec4, err4 := NewRSSubCode(1, 2, 64)
+	if err := errors.Compose(err1, err2, err3, err4); err != nil {
+		t.Fatal(err)
+	}
+	if ec1.Identifier() != "1+1+2" {
+		t.Error("wrong identifier for ec1")
+	}
+	if ec2.Identifier() != "1+1+2" {
+		t.Error("wrong identifier for ec2")
+	}
+	if ec3.Identifier() != "1+1+3" {
+		t.Error("wrong identifier for ec3")
+	}
+	if ec4.Identifier() != "2+1+2" {
+		t.Error("wrong identifier for ec4")
+	}
+	sp1 := modules.CombinedSiaFilePath(ec1)
+	sp2 := modules.CombinedSiaFilePath(ec2)
+	sp3 := modules.CombinedSiaFilePath(ec3)
+	sp4 := modules.CombinedSiaFilePath(ec4)
+	if !sp1.Equals(sp2) {
+		t.Error("sp1 and sp2 should have the same path")
+	}
+	if sp1.Equals(sp3) {
+		t.Error("sp1 and sp3 should have different path")
+	}
+	if sp1.Equals(sp4) {
+		t.Error("sp1 and sp4 should have different path")
 	}
 }
 

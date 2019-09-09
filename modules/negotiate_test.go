@@ -125,3 +125,39 @@ func TestNegotiationResponses(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRenterPayoutsPreTax probes the RenterPayoutsPreTax function
+func TestRenterPayoutsPreTax(t *testing.T) {
+	// Initialize inputs
+	var host HostDBEntry
+	var period types.BlockHeight
+	var baseCollateral types.Currency
+	var expectedStorage uint64
+
+	// Set currency values to trigger underflow check
+	funding := types.NewCurrency64(10)
+	txnFee := types.NewCurrency64(5)
+	basePrice := types.NewCurrency64(5)
+
+	// Check for underflow condition
+	_, _, _, err := RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, expectedStorage)
+	if err == nil {
+		t.Fatal("Expected underflow error but got nil")
+	}
+
+	// Confirm no underflow
+	funding = types.NewCurrency64(11)
+	renterPayout, hostPayout, hostCollateral, err := RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, expectedStorage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renterPayout.Cmp(types.ZeroCurrency) < 0 {
+		t.Fatal("Negative currency returned for renter payout", renterPayout)
+	}
+	if hostPayout.Cmp(types.ZeroCurrency) < 0 {
+		t.Fatal("Negative currency returned for host payout", hostPayout)
+	}
+	if hostCollateral.Cmp(types.ZeroCurrency) < 0 {
+		t.Fatal("Negative currency returned for host collateral", hostCollateral)
+	}
+}

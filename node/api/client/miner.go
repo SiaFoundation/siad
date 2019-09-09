@@ -12,9 +12,15 @@ func (c *Client) MinerGet() (mg api.MinerGET, err error) {
 	return
 }
 
+// MinerBlockPost uses the /miner/block endpoint to submit a solved block.
+func (c *Client) MinerBlockPost(b types.Block) (err error) {
+	err = c.post("/miner/block", string(encoding.Marshal(b)), nil)
+	return
+}
+
 // MinerHeaderGet uses the /miner/header endpoint to get a header for work.
 func (c *Client) MinerHeaderGet() (target types.Target, bh types.BlockHeader, err error) {
-	targetAndHeader, err := c.getRawResponse("/miner/header")
+	_, targetAndHeader, err := c.getRawResponse("/miner/header")
 	if err != nil {
 		return types.Target{}, types.BlockHeader{}, err
 	}

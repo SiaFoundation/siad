@@ -5,11 +5,12 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TODO If we already have an active contract with a host for
@@ -44,18 +45,34 @@ func (c *Contractor) newRecoveryScanner(rs proto.RenterSeed) *recoveryScanner {
 // filecontracts belonging to the wallet's seed. Once done, all recoverable
 // contracts should be known to the contractor after which it will periodically
 // try to recover them.
-func (rs *recoveryScanner) threadedScan(cs consensusSet, cancel <-chan struct{}) error {
+func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.ConsensusChangeID, cancel <-chan struct{}) error {
 	if err := rs.c.tg.Add(); err != nil {
 		return err
 	}
 	defer rs.c.tg.Done()
-	// Subscribe to the consensus set from the beginning.
-	err := cs.ConsensusSetSubscribe(rs, modules.ConsensusChangeBeginning, cancel)
+	// Check that the scanStart matches the recently missed change id.
+	rs.c.mu.RLock()
+	if scanStart != rs.c.recentRecoveryChange && scanStart != modules.ConsensusChangeBeginning {
+		rs.c.mu.RUnlock()
+		return errors.New("scanStart doesn't match recentRecoveryChange")
+	}
+	rs.c.mu.RUnlock()
+	// Subscribe to the consensus set from scanStart.
+	err := cs.ConsensusSetSubscribe(rs, scanStart, cancel)
 	if err != nil {
 		return err
 	}
 	// Unsubscribe once done.
 	cs.Unsubscribe(rs)
+	// If cancel is closed we need to assume that the scan didn't finish. Just to
+	// be safe we reset it to scanStart.
+	select {
+	case <-cancel:
+		rs.c.mu.Lock()
+		rs.c.recentRecoveryChange = scanStart
+		rs.c.mu.Unlock()
+	default:
+	}
 	return nil
 }
 
@@ -64,12 +81,18 @@ func (rs *recoveryScanner) threadedScan(cs consensusSet, cancel <-chan struct{})
 func (rs *recoveryScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
 	for _, block := range cc.AppliedBlocks {
 		// Find lost contracts for recovery.
+		rs.c.mu.Lock()
 		rs.c.findRecoverableContracts(rs.rs, block)
+		rs.c.mu.Unlock()
 		atomic.AddInt64(&rs.c.atomicRecoveryScanHeight, 1)
 	}
 	for range cc.RevertedBlocks {
 		atomic.AddInt64(&rs.c.atomicRecoveryScanHeight, -1)
 	}
+	// Update the recentRecoveryChange
+	rs.c.mu.Lock()
+	rs.c.recentRecoveryChange = cc.ID
+	rs.c.mu.Unlock()
 }
 
 // findRecoverableContracts scans the block for contracts that could
@@ -244,7 +267,7 @@ func (c *Contractor) managedRecoverContracts() {
 				// merge them.
 				// For now we ignore that contract and don't delete it. We
 				// might want to recover it later.
-				c.log.Println("Not recovering contract since we already have a contract with that host",
+				c.log.Debugln("Not recovering contract since we already have a contract with that host",
 					rc.ID, rc.HostPublicKey.String())
 				return
 			}

@@ -7,17 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-
 	"gitlab.com/NebulousLabs/fastrand"
 )
-
-// newTestingFile initializes a file object with random parameters.
-func newTestingFile() (*siafile.SiaFile, error) {
-	siaPath, rsc := testingFileParams()
-	return newFileTesting(siaPath.String(), newTestingWal(), rsc, 1000, 0777, "")
-}
 
 // testingFileParams generates the ErasureCoder and a random name for a testing
 // file
@@ -25,7 +19,7 @@ func testingFileParams() (modules.SiaPath, modules.ErasureCoder) {
 	nData := fastrand.Intn(10)
 	nParity := fastrand.Intn(10)
 	rsc, _ := siafile.NewRSCode(nData+1, nParity+1)
-	return newRandSiaPath(), rsc
+	return modules.RandomSiaPath(), rsc
 }
 
 // equalFiles is a helper function that compares two files for equality.
@@ -33,8 +27,8 @@ func equalFiles(f1, f2 *siafile.SiaFile) error {
 	if f1 == nil || f2 == nil {
 		return fmt.Errorf("one or both files are nil")
 	}
-	if f1.SiaPath() != f2.SiaPath() {
-		return fmt.Errorf("names do not match: %v %v", f1.SiaPath(), f2.SiaPath())
+	if f1.UID() != f2.UID() {
+		return fmt.Errorf("uids do not match: %v %v", f1.UID(), f2.UID())
 	}
 	if f1.Size() != f2.Size() {
 		return fmt.Errorf("sizes do not match: %v %v", f1.Size(), f2.Size())
@@ -83,7 +77,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siapath := entry.SiaPath()
+	siapath := rt.renter.staticFileSet.SiaPath(entry)
 	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -160,21 +154,26 @@ func TestRenterPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f1, err := newTestingFile()
+	wal := rt.renter.wal
+	rc, err := siafile.NewRSSubCode(1, 1, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f1.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir))
-	f2, err := newTestingFile()
+	sk := crypto.GenerateSiaKey(crypto.TypeThreefish)
+	fileSize := uint64(modules.SectorSize)
+	fileMode := os.FileMode(0600)
+	f1, err := siafile.New(siaPath1.SiaFileSysPath(rt.renter.staticFilesDir), "", wal, rc, sk, fileSize, fileMode, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f2.Rename(siaPath2, siaPath2.SiaFileSysPath(rt.renter.staticFilesDir))
-	f3, err := newTestingFile()
+	f2, err := siafile.New(siaPath2.SiaFileSysPath(rt.renter.staticFilesDir), "", wal, rc, sk, fileSize, fileMode, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f3.Rename(siaPath3, siaPath3.SiaFileSysPath(rt.renter.staticFilesDir))
+	f3, err := siafile.New(siaPath3.SiaFileSysPath(rt.renter.staticFilesDir), "", wal, rc, sk, fileSize, fileMode, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Restart the renter to re-do the init cycle.
 	err = rt.renter.Close()
@@ -187,25 +186,25 @@ func TestRenterPaths(t *testing.T) {
 	}
 
 	// Check that the files were loaded properly.
-	entry, err := rt.renter.staticFileSet.Open(siaPath1)
+	entry1, err := rt.renter.staticFileSet.Open(siaPath1)
 	if err != nil {
 		t.Fatal("File not found in renter", err)
 	}
-	if err := equalFiles(f1, entry.SiaFile); err != nil {
+	if err := equalFiles(f1, entry1.SiaFile); err != nil {
 		t.Fatal(err)
 	}
-	entry, err = rt.renter.staticFileSet.Open(siaPath2)
+	entry2, err := rt.renter.staticFileSet.Open(siaPath2)
 	if err != nil {
 		t.Fatal("File not found in renter", err)
 	}
-	if err := equalFiles(f2, entry.SiaFile); err != nil {
+	if err := equalFiles(f2, entry2.SiaFile); err != nil {
 		t.Fatal(err)
 	}
-	entry, err = rt.renter.staticFileSet.Open(siaPath3)
+	entry3, err := rt.renter.staticFileSet.Open(siaPath3)
 	if err != nil {
 		t.Fatal("File not found in renter", err)
 	}
-	if err := equalFiles(f3, entry.SiaFile); err != nil {
+	if err := equalFiles(f3, entry3.SiaFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,7 +222,8 @@ func TestRenterPaths(t *testing.T) {
 		return nil
 	})
 	// walk will descend into foo/bar/, reading baz, bar, and finally foo
-	expWalkStr := (f3.SiaPath().String() + ".sia") + (f2.SiaPath().String() + ".sia") + (f1.SiaPath().String() + ".sia")
+	sfs := rt.renter.staticFileSet
+	expWalkStr := (sfs.SiaPath(entry3).String() + ".sia") + (sfs.SiaPath(entry2).String() + ".sia") + (sfs.SiaPath(entry1).String() + ".sia")
 	if filepath.ToSlash(walkStr) != expWalkStr {
 		t.Fatalf("Bad walk string: expected %v, got %v", expWalkStr, walkStr)
 	}

@@ -2,7 +2,6 @@ package siafile
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -10,15 +9,14 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
-
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 var (
@@ -41,25 +39,31 @@ type (
 		// size of the staticMetadata on disk should always be a multiple of 4kib.
 		// The staticMetadata is also the only part of the file that is JSON encoded
 		// and can therefore be easily extended.
-		staticMetadata metadata
+		staticMetadata Metadata
 
 		// pubKeyTable stores the public keys of the hosts this file's pieces are uploaded to.
 		// Since multiple pieces from different chunks might be uploaded to the same host, this
 		// allows us to deduplicate the rather large public keys.
 		pubKeyTable []HostPublicKey
 
-		// staticChunks are the staticChunks the file was split into.
-		staticChunks []chunk
+		// numChunks is the number of chunks the file was split into including a
+		// potential partial chunk at the end.
+		numChunks int
 
 		// utility fields. These are not persisted.
-		deleted        bool
-		deps           modules.Dependencies
-		mu             sync.RWMutex
-		staticUniqueID string
-		wal            *writeaheadlog.WAL // the wal that is used for SiaFiles
+		deleted bool
+		deps    modules.Dependencies
+		mu      sync.RWMutex
+		wal     *writeaheadlog.WAL // the wal that is used for SiaFiles
 
 		// siaFilePath is the path to the .sia file on disk.
 		siaFilePath string
+
+		// partialSiaFile is the SiaFile that holds or could hold the partial chunk of
+		// this siafile. Since we don't know if a file is going to have a partial
+		// chunk we simply keep the megafiles always open and assign them to SiaFiles
+		// with matching redundancy.
+		partialsSiaFile *SiaFileSetEntry
 	}
 
 	// chunk represents a single chunk of a file on disk
@@ -67,6 +71,9 @@ type (
 		// ExtensionInfo is some reserved space for each chunk that allows us
 		// to indicate if a chunk is special.
 		ExtensionInfo [16]byte
+
+		// Index is the index of the chunk.
+		Index int
 
 		// Pieces are the Pieces of the file the chunk consists of.
 		Pieces [][]piece
@@ -83,6 +90,8 @@ type (
 
 	// piece represents a single piece of a chunk on disk
 	piece struct {
+		offset          uint32      // offset of the piece within the sector
+		length          uint32      // length of the piece within the sector
 		HostTableOffset uint32      // offset of the host's key within the pubKeyTable
 		MerkleRoot      crypto.Hash // merkle root of the piece
 	}
@@ -109,6 +118,13 @@ func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 	return e.Err()
 }
 
+// SiaFilePath returns the siaFilePath field of the SiaFile.
+func (sf *SiaFile) SiaFilePath() string {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.siaFilePath
+}
+
 // UnmarshalSia implements the encoding.SiaUnmarshaler interface.
 func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
@@ -128,16 +144,23 @@ func (c *chunk) numPieces() (numPieces int) {
 }
 
 // New create a new SiaFile.
-func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
+func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFileSetEntry, disablePartialUpload bool) (*SiaFile, error) {
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
+	zeroHealth := float64(1 + erasureCode.MinPieces()/(erasureCode.NumPieces()-erasureCode.MinPieces()))
 	file := &SiaFile{
-		staticMetadata: metadata{
+		staticMetadata: Metadata{
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
 			CreateTime:              currentTime,
-			StaticFileSize:          int64(fileSize),
+			CachedHealth:            zeroHealth,
+			CachedStuckHealth:       0,
+			CachedRedundancy:        0,
+			CachedUserRedundancy:    0,
+			CachedUploadProgress:    0,
+			DisablePartialChunk:     disablePartialUpload,
+			FileSize:                int64(fileSize),
 			LocalPath:               source,
 			StaticMasterKey:         masterKey.Key(),
 			StaticMasterKeyType:     masterKey.Type(),
@@ -148,24 +171,104 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
-			SiaPath:                 siaPath,
+			UniqueID:                uniqueID(),
 		},
-		deps:           modules.ProdDependencies,
-		siaFilePath:    siaFilePath,
-		staticUniqueID: hex.EncodeToString(fastrand.Bytes(20)),
-		wal:            wal,
+		deps:            modules.ProdDependencies,
+		partialsSiaFile: partialsSiaFile,
+		siaFilePath:     siaFilePath,
+		wal:             wal,
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()
-	if fileSize%file.staticChunkSize() != 0 || numChunks == 0 {
+	if fileSize%file.staticChunkSize() != 0 && partialsSiaFile != nil && !disablePartialUpload {
+		// This file has a partial chunk
+		file.staticMetadata.HasPartialChunk = true
 		numChunks++
+	} else if fileSize%file.staticChunkSize() != 0 && disablePartialUpload {
+		// This file does have a partial chunk but we treat it as a full chunk.
+		numChunks++
+	} else if fileSize%file.staticChunkSize() != 0 && partialsSiaFile == nil {
+		return nil, errors.New("can't create a file with a partial chunk without assigning a partialsSiaFile")
 	}
-	file.staticChunks = make([]chunk, numChunks)
-	for i := range file.staticChunks {
-		file.staticChunks[i].Pieces = make([][]piece, erasureCode.NumPieces())
+	file.numChunks = int(numChunks)
+	// Update cached fields for 0-Byte files.
+	if file.staticMetadata.FileSize == 0 {
+		file.staticMetadata.CachedHealth = 0
+		file.staticMetadata.CachedStuckHealth = 0
+		file.staticMetadata.CachedRedundancy = float64(erasureCode.NumPieces()) / float64(erasureCode.MinPieces())
+		file.staticMetadata.CachedUserRedundancy = file.staticMetadata.CachedRedundancy
+		file.staticMetadata.CachedUploadProgress = 100
 	}
 	// Save file.
-	return file, file.saveFile()
+	initialChunks := make([]chunk, file.numChunks)
+	for chunkIndex := range initialChunks {
+		initialChunks[chunkIndex].Index = chunkIndex
+		initialChunks[chunkIndex].Pieces = make([][]piece, erasureCode.NumPieces())
+	}
+	return file, file.saveFile(initialChunks)
+}
+
+// GrowNumChunks increases the number of chunks in the SiaFile to numChunks. If
+// the file already contains >= numChunks chunks then GrowNumChunks is a no-op.
+func (sf *SiaFile) GrowNumChunks(numChunks uint64) (err error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	updates, err := sf.growNumChunks(numChunks)
+
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// RemoveLastChunk removes the last chunk of the SiaFile and truncates the file
+// accordingly.
+func (sf *SiaFile) RemoveLastChunk() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.removeLastChunk()
+}
+
+// SetFileSize changes the fileSize of the SiaFile.
+func (sf *SiaFile) SetFileSize(fileSize uint64) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	if sf.deleted {
+		return errors.New("can't set filesize of deleted file")
+	}
+	if sf.staticMetadata.HasPartialChunk {
+		return errors.New("can't call SetFileSize on file with partial chunk")
+	}
+	// Make sure that SetFileSize doesn't affect the number of total chunks within
+	// the file.
+	newNumChunks := fileSize / sf.staticChunkSize()
+	if fileSize%sf.staticChunkSize() != 0 {
+		newNumChunks++
+	}
+	if uint64(sf.numChunks) != newNumChunks {
+		return fmt.Errorf("can't change fileSize since it would change the number of chunks from %v to %v",
+			sf.numChunks, newNumChunks)
+	}
+	// Update filesize.
+	sf.staticMetadata.FileSize = int64(fileSize)
+	// Check if the file changed from not having a partial chunk to having one.
+	if !sf.staticMetadata.DisablePartialChunk && uint64(sf.staticMetadata.FileSize)%sf.staticChunkSize() != 0 {
+		if sf.numChunks > 0 {
+			// Last fullChunk is replaced by a partial chunk so we remove it.
+			if err := sf.removeLastChunk(); err != nil {
+				return (err)
+			}
+		}
+		sf.staticMetadata.HasPartialChunk = true
+		if sf.partialsSiaFile == nil {
+			return errors.New("can't turn file without partial chunk into a file with one if partialsSiaFile == nil")
+		}
+	}
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // AddPiece adds an uploaded piece to the file. It also updates the host table
@@ -177,6 +280,19 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// the file to disk again.
 	if sf.deleted {
 		return errors.New("can't add piece to deleted file")
+	}
+	// Don't allow adding pieces to incomplete chunk which is not yet part of a
+	// combined chunk.
+	if sf.isIncompletePartialChunk(chunkIndex) {
+		return errors.New("can't add piece to incomplete partial chunk")
+	}
+
+	// Update cache.
+	defer sf.uploadProgressAndBytes()
+
+	// Handle piece being added to the partial chunk.
+	if cci, ok := sf.isIncludedPartialChunk(chunkIndex); ok {
+		return sf.partialsSiaFile.AddPiece(pk, cci.Index, pieceIndex, merkleRoot)
 	}
 
 	// Get the index of the host in the public key table.
@@ -198,15 +314,20 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		tableChanged = true
 	}
 	// Check if the chunkIndex is valid.
-	if chunkIndex >= uint64(len(sf.staticChunks)) {
-		return fmt.Errorf("chunkIndex %v out of bounds (%v)", chunkIndex, len(sf.staticChunks))
+	if chunkIndex >= uint64(sf.numChunks) {
+		return fmt.Errorf("chunkIndex %v out of bounds (%v)", chunkIndex, sf.numChunks)
+	}
+	// Get the chunk from disk.
+	chunk, err := sf.chunk(int(chunkIndex))
+	if err != nil {
+		return errors.AddContext(err, "failed to get chunk")
 	}
 	// Check if the pieceIndex is valid.
-	if pieceIndex >= uint64(len(sf.staticChunks[chunkIndex].Pieces)) {
-		return fmt.Errorf("pieceIndex %v out of bounds (%v)", pieceIndex, len(sf.staticChunks[chunkIndex].Pieces))
+	if pieceIndex >= uint64(len(chunk.Pieces)) {
+		return fmt.Errorf("pieceIndex %v out of bounds (%v)", pieceIndex, len(chunk.Pieces))
 	}
 	// Add the piece to the chunk.
-	sf.staticChunks[chunkIndex].Pieces[pieceIndex] = append(sf.staticChunks[chunkIndex].Pieces[pieceIndex], piece{
+	chunk.Pieces[pieceIndex] = append(chunk.Pieces[pieceIndex], piece{
 		HostTableOffset: uint32(tableIndex),
 		MerkleRoot:      merkleRoot,
 	})
@@ -217,11 +338,10 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	sf.staticMetadata.ModTime = sf.staticMetadata.AccessTime
 
 	// Defrag the chunk if necessary.
-	chunk := &sf.staticChunks[chunkIndex]
 	chunkSize := marshaledChunkSize(chunk.numPieces())
 	maxChunkSize := int64(sf.staticMetadata.StaticPagesPerChunk) * pageSize
 	if chunkSize > maxChunkSize {
-		sf.defragChunk(chunk)
+		sf.defragChunk(&chunk)
 	}
 
 	// If the chunk is still too large after the defrag, we abort.
@@ -229,10 +349,8 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	if chunkSize > maxChunkSize {
 		return fmt.Errorf("chunk doesn't fit into allocated space %v > %v", chunkSize, maxChunkSize)
 	}
-
 	// Update the file atomically.
 	var updates []writeaheadlog.Update
-	var err error
 	// Get the updates for the header.
 	if tableChanged {
 		// If the table changed we update the whole header.
@@ -245,48 +363,52 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		return err
 	}
 	// Save the changed chunk to disk.
-	chunkUpdate, err := sf.saveChunkUpdate(int(chunkIndex))
-	if err != nil {
-		return err
-	}
+	chunkUpdate := sf.saveChunkUpdate(chunk)
 	return sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
 }
 
-// chunkHealth returns the health of the chunk which is defined as the percent
-// of parity pieces remaining.
+// chunkHealth returns the health and user health of the chunk which is defined
+// as the percent of parity pieces remaining. When calculating the user health
+// we assume that an incomplete partial chunk has full health. For the regular
+// health we don't assume that.
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk or repair by upload streaming
-func (sf *SiaFile) chunkHealth(chunkIndex int, offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
+func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForRenewMap map[string]bool) (h float64, uh float64, err error) {
+	// Handle returning health of complete partial chunk.
+	incomplete := sf.isIncompletePartialChunk(uint64(chunk.Index))
+	if cci, ok := sf.isIncludedPartialChunk(uint64(chunk.Index)); ok && !incomplete {
+		return sf.partialsSiaFile.ChunkHealth(int(cci.Index), offlineMap, goodForRenewMap)
+	}
 	// The max number of good pieces that a chunk can have is NumPieces()
 	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
 	minPieces := sf.staticMetadata.staticErasureCode.MinPieces()
 	targetPieces := float64(numPieces - minPieces)
 	// Find the good pieces that are good for renew
-	goodPieces, _ := sf.goodPieces(chunkIndex, offlineMap, goodForRenewMap)
+	goodPieces, _ := sf.goodPieces(chunk, offlineMap, goodForRenewMap)
+	chunkHealth := 1 - (float64(int(goodPieces)-minPieces) / targetPieces)
+	// Handle health of incomplete partial chunk.
+	if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+		return chunkHealth, 0, nil // Partial chunk has full health if not yet included in combined chunk
+	}
 	// Sanity Check, if something went wrong, default to minimum health
 	if int(goodPieces) > numPieces || goodPieces < 0 {
 		build.Critical("unexpected number of goodPieces for chunkHealth")
 		goodPieces = 0
 	}
-	return 1 - (float64(int(goodPieces)-minPieces) / targetPieces)
+	return chunkHealth, chunkHealth, nil
 }
 
 // ChunkHealth returns the health of the chunk which is defined as the percent
 // of parity pieces remaining.
-func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	return sf.chunkHealth(index, offlineMap, goodForRenewMap)
-}
-
-// ChunkIndexByOffset will return the chunkIndex that contains the provided
-// offset of a file and also the relative offset within the chunk. If the
-// offset is out of bounds, chunkIndex will be equal to NumChunk().
-func (sf *SiaFile) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64) {
-	chunkIndex = offset / sf.staticChunkSize()
-	off = offset % sf.staticChunkSize()
-	return
+func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (float64, float64, error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	chunk, err := sf.chunk(index)
+	if err != nil {
+		return 0, 0, errors.AddContext(err, "failed to read chunk")
+	}
+	return sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
 }
 
 // Delete removes the file from disk and marks it as deleted. Once the file is
@@ -316,16 +438,81 @@ func (sf *SiaFile) ErasureCode() modules.ErasureCoder {
 	return sf.staticMetadata.staticErasureCode
 }
 
-// Expiration returns the lowest height at which any of the file's contracts
-// will expire.
+// SaveWithChunks saves the file's header to disk and appends the raw chunks provided at
+// the end of the file.
+func (sf *SiaFile) SaveWithChunks(chunks []chunk) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	updates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return errors.AddContext(err, "failed to create header updates")
+	}
+	for _, chunk := range chunks {
+		updates = append(updates, sf.saveChunkUpdate(chunk))
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// SaveHeader saves the file's header to disk.
+func (sf *SiaFile) SaveHeader() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	updates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// SaveMetadata saves the file's metadata to disk.
+func (sf *SiaFile) SaveMetadata() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	if sf.deleted {
+		return errors.New("can't SaveMetadata of deleted file")
+	}
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// Expiration updates CachedExpiration with the lowest height at which any of
+// the file's contracts will expire and returns the new value.
 func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types.BlockHeight {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
 	if len(sf.pubKeyTable) == 0 {
+		sf.staticMetadata.CachedExpiration = 0
 		return 0
 	}
 
+	// If the file has a combined chunk, also take the pubkeys from that chunk into
+	// account.
 	lowest := ^types.BlockHeight(0)
+	var pieceSets [][]Piece
+	for _, pc := range sf.staticMetadata.PartialChunks {
+		if pc.Status != CombinedChunkStatusCompleted {
+			continue
+		}
+		ps, err := sf.partialsSiaFile.Pieces(pc.Index)
+		if err == nil {
+			pieceSets = append(pieceSets, ps...)
+		}
+	}
+	for _, pieceSet := range pieceSets {
+		for _, piece := range pieceSet {
+			contract, exists := contracts[piece.HostPubKey.String()]
+			if !exists {
+				continue
+			}
+			if contract.EndHeight < lowest {
+				lowest = contract.EndHeight
+			}
+		}
+	}
+
 	for _, pk := range sf.pubKeyTable {
 		contract, exists := contracts[pk.PublicKey.String()]
 		if !exists {
@@ -335,86 +522,104 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 			lowest = contract.EndHeight
 		}
 	}
+	sf.staticMetadata.CachedExpiration = lowest
 	return lowest
 }
 
 // Health calculates the health of the file to be used in determining repair
 // priority. Health of the file is the lowest health of any of the chunks and is
-// defined as the percent of parity pieces remaining.  Additionally the
-// NumStuckChunks will be updated for the SiaFile and returned
+// defined as the percent of parity pieces remaining. The NumStuckChunks will be
+// calculated for the SiaFile and returned.
+//
+// NOTE: The cached values of the health and stuck health will be set but not
+// saved to disk as Health() does not write to disk. If the cached values need
+// to be updated on disk then a metadata save method should be called in
+// conjunction with Health()
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
-func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (float64, float64, uint64) {
+func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (h float64, sh float64, uh float64, ush float64, nsc uint64) {
 	numPieces := float64(sf.staticMetadata.staticErasureCode.NumPieces())
 	minPieces := float64(sf.staticMetadata.staticErasureCode.MinPieces())
 	worstHealth := 1 - ((0 - minPieces) / (numPieces - minPieces))
 
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Update the cache.
+	defer func() {
+		sf.staticMetadata.CachedHealth = h
+		sf.staticMetadata.CachedStuckHealth = sh
+	}()
+
 	// Check if siafile is deleted
 	if sf.deleted {
 		// Don't return health information of a deleted file to prevent
 		// misrepresenting the health information of a directory
-		return 0, 0, 0
+		return 0, 0, 0, 0, 0
 	}
 	// Check for Zero byte files
-	if sf.staticMetadata.StaticFileSize == 0 {
+	if sf.staticMetadata.FileSize == 0 {
 		// Return default health information for zero byte files to prevent
 		// misrepresenting the health information of a directory
-		return 0, 0, 0
+		return 0, 0, 0, 0, 0
 	}
-	var health, stuckHealth float64
+	var health, stuckHealth, userHealth, userStuckHealth float64
 	var numStuckChunks uint64
-	for chunkIndex, chunk := range sf.staticChunks {
-		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
+	err := sf.iterateChunksReadonly(func(c chunk) error {
+		chunkHealth, userChunkHealth, err := sf.chunkHealth(c, offline, goodForRenew)
+		if err != nil {
+			return err
+		}
 
 		// Update the health or stuckHealth of the file according to the health
 		// of the chunk. The health of the file is the worst health (highest
 		// number) of all the chunks in the file.
-		if chunk.Stuck {
+		if c.Stuck {
 			numStuckChunks++
 			if chunkHealth > stuckHealth {
 				stuckHealth = chunkHealth
 			}
-		} else if chunkHealth > health {
-			health = chunkHealth
+			if userChunkHealth > userStuckHealth {
+				userStuckHealth = userChunkHealth
+			}
+		} else {
+			if chunkHealth > health {
+				health = chunkHealth
+			}
+			if userChunkHealth > userHealth {
+				userHealth = userChunkHealth
+			}
 		}
+		return nil
+	})
+	if err != nil {
+		build.Critical("failed to iterate over chunks: ", err)
+		return 0, 0, 0, 0, 0
 	}
 
 	// Check if all chunks are stuck, if so then set health to max health to
-	// avoid file being targeted for repair
-	if int(numStuckChunks) == len(sf.staticChunks) {
+	// avoid file being targetted for repair
+	if int(numStuckChunks) == sf.numChunks {
 		health = float64(0)
 	}
 	// Sanity check, verify that the calculated health is not worse (greater)
 	// than the worst health.
-	if health > worstHealth {
-		build.Critical("WARN: health out of bounds. Max value, Min value, health found", worstHealth, 0, health)
+	if userHealth > worstHealth || health > worstHealth {
+		build.Critical("WARN: health out of bounds. Max value, Min value, health found", worstHealth, 0, health, userHealth)
 		health = worstHealth
 	}
 	// Sanity check, verify that the calculated stuck health is not worse
 	// (greater) than the worst health.
-	if stuckHealth > worstHealth {
-		build.Critical("WARN: stuckHealth out of bounds. Max value, Min value, stuckHealth found", worstHealth, 0, stuckHealth)
+	if userStuckHealth > worstHealth || stuckHealth > worstHealth {
+		build.Critical("WARN: stuckHealth out of bounds. Max value, Min value, stuckHealth found", worstHealth, 0, stuckHealth, userStuckHealth)
 		stuckHealth = worstHealth
 	}
 	// Sanity Check that the number of stuck chunks makes sense
-	if numStuckChunks != sf.staticMetadata.NumStuckChunks {
-		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, sf.staticMetadata.NumStuckChunks)
+	expectedStuckChunks := sf.numStuckChunks()
+	if numStuckChunks != expectedStuckChunks {
+		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, expectedStuckChunks)
 	}
-	return health, stuckHealth, numStuckChunks
-}
-
-// HealthPercentage returns the health in a more human understandable format out
-// of 100%
-func (sf *SiaFile) HealthPercentage(health float64) float64 {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	dataPieces := sf.staticMetadata.staticErasureCode.MinPieces()
-	parityPieces := sf.staticMetadata.staticErasureCode.NumPieces() - dataPieces
-	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
-	return 100 * ((worstHealth - health) / worstHealth)
+	return health, stuckHealth, userHealth, userStuckHealth, numStuckChunks
 }
 
 // HostPublicKeys returns all the public keys of hosts the file has ever been
@@ -430,101 +635,21 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 	return keys
 }
 
-// MarkAllHealthyChunksAsUnstuck marks all health chunks as unstuck in the
-// siafile
-func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// If the file has been deleted we can't mark a chunk as stuck.
-	if sf.deleted {
-		return errors.New("can't call SetStuck on deleted file")
-	}
-	var updates []writeaheadlog.Update
-	for chunkIndex := range sf.staticChunks {
-		// Check if chunk is already unstuck
-		if !sf.staticChunks[chunkIndex].Stuck {
-			continue
-		}
-		// Check health of chunk
-		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
-		// If chunk is unhealthy then we don't need to mark it as unstuck. We
-		// are only want to mark chunks that are 100% healthy as unstuck.
-		if chunkHealth != 0 {
-			continue
-		}
-		// In case an error happens we need to revert the changes we are going
-		// to make.
-		defer func() {
-			if err != nil {
-				sf.staticChunks[chunkIndex].Stuck = true
-				sf.staticMetadata.NumStuckChunks++
-			}
-		}()
-		// Update chunk and NumStuckChunks in siafile metadata
-		sf.staticChunks[chunkIndex].Stuck = false
-		sf.staticMetadata.NumStuckChunks--
-		// Create chunk update
-		update, err := sf.saveChunkUpdate(chunkIndex)
-		if err != nil {
-			return err
-		}
-		updates = append(updates, update)
-	}
-	// Create metadata update and apply updates on disk
-	metadataUpdates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	updates = append(updates, metadataUpdates...)
-	return sf.createAndApplyTransaction(updates...)
+// IsIncludedPartialChunk returns 'true' if the provided index points to a
+// partial chunk which has been added to the partials sia file already.
+func (sf *SiaFile) IsIncludedPartialChunk(chunkIndex uint64) bool {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	_, b := sf.isIncludedPartialChunk(chunkIndex)
+	return b
 }
 
-// MarkAllUnhealthyChunksAsStuck marks all unhealthy chunks as stuck in the
-// siafile
-func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// If the file has been deleted we can't mark a chunk as stuck.
-	if sf.deleted {
-		return errors.New("can't call SetStuck on deleted file")
-	}
-	var updates []writeaheadlog.Update
-	for chunkIndex := range sf.staticChunks {
-		// Check if chunk is already stuck
-		if sf.staticChunks[chunkIndex].Stuck {
-			continue
-		}
-		// Check health of chunk
-		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
-		// If chunk is healthy then we don't need to mark it as stuck
-		if chunkHealth < RemoteRepairDownloadThreshold {
-			continue
-		}
-		// In case an error happens we need to revert the changes we are going
-		// to make.
-		defer func() {
-			if err != nil {
-				sf.staticChunks[chunkIndex].Stuck = false
-				sf.staticMetadata.NumStuckChunks--
-			}
-		}()
-		// Update chunk and NumStuckChunks in siafile metadata
-		sf.staticChunks[chunkIndex].Stuck = true
-		sf.staticMetadata.NumStuckChunks++
-		// Create chunk update
-		update, err := sf.saveChunkUpdate(chunkIndex)
-		if err != nil {
-			return err
-		}
-		updates = append(updates, update)
-	}
-	// Create metadata update and apply updates on disk
-	metadataUpdates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	updates = append(updates, metadataUpdates...)
-	return sf.createAndApplyTransaction(updates...)
+// IsIncompletePartialChunk returns 'true' if the provided index points to a
+// partial chunk which hasn't been added to a partials siafile yet.
+func (sf *SiaFile) IsIncompletePartialChunk(chunkIndex uint64) bool {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.isIncompletePartialChunk(chunkIndex)
 }
 
 // NumChunks returns the number of chunks the file consists of. This will
@@ -533,7 +658,7 @@ func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodFo
 func (sf *SiaFile) NumChunks() uint64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return uint64(len(sf.staticChunks))
+	return uint64(sf.numChunks)
 }
 
 // Pieces returns all the pieces for a chunk in a slice of slices that contains
@@ -541,18 +666,29 @@ func (sf *SiaFile) NumChunks() uint64 {
 func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	if chunkIndex >= uint64(len(sf.staticChunks)) {
-		err := fmt.Errorf("index %v out of bounds (%v)", chunkIndex, len(sf.staticChunks))
+	if chunkIndex >= uint64(sf.numChunks) {
+		err := fmt.Errorf("index %v out of bounds (%v)", chunkIndex, sf.numChunks)
 		build.Critical(err)
+		return [][]Piece{}, err
+	}
+	// Handle partial chunk.
+	if cc, ok := sf.isIncludedPartialChunk(chunkIndex); ok {
+		return sf.partialsSiaFile.Pieces(cc.Index) // get pieces from linked siafile
+	}
+	if sf.isIncompletePartialChunk(chunkIndex) {
+		return make([][]Piece, sf.staticMetadata.staticErasureCode.NumPieces()), nil
+	}
+	chunk, err := sf.chunk(int(chunkIndex))
+	if err != nil {
 		return nil, err
 	}
-	// Return a deep-copy to avoid race conditions.
-	pieces := make([][]Piece, len(sf.staticChunks[chunkIndex].Pieces))
+	// Resolve pieces to Pieces.
+	pieces := make([][]Piece, len(chunk.Pieces))
 	for pieceIndex := range pieces {
-		pieces[pieceIndex] = make([]Piece, len(sf.staticChunks[chunkIndex].Pieces[pieceIndex]))
-		for i, piece := range sf.staticChunks[chunkIndex].Pieces[pieceIndex] {
+		pieces[pieceIndex] = make([]Piece, len(chunk.Pieces[pieceIndex]))
+		for i, piece := range chunk.Pieces[pieceIndex] {
 			pieces[pieceIndex][i] = Piece{
-				HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
+				HostPubKey: sf.hostKey(piece.HostTableOffset).PublicKey,
 				MerkleRoot: piece.MerkleRoot,
 			}
 		}
@@ -564,111 +700,163 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 // becomes available when this redundancy is >= 1. Assumes that every piece is
 // unique within a file contract. -1 is returned if the file has size 0. It
 // takes two arguments, a map of offline contracts for this file and a map that
-// indicates if a contract is goodForRenew.
-func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	if sf.staticMetadata.StaticFileSize == 0 {
+// indicates if a contract is goodForRenew. The first redundancy returned is the
+// one that should be used by the repair code and is more accurate. The other
+// one is the redundancy presented to users.
+func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) (r, ur float64, err error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Update the cache.
+	defer func() {
+		sf.staticMetadata.CachedRedundancy = r
+		sf.staticMetadata.CachedUserRedundancy = ur
+	}()
+	if sf.staticMetadata.FileSize == 0 {
 		// TODO change this once tiny files are supported.
-		if len(sf.staticChunks) != 1 {
+		if sf.numChunks != 1 {
 			// should never happen
-			return -1
+			return -1, -1, nil
 		}
 		ec := sf.staticMetadata.staticErasureCode
-		return float64(ec.NumPieces()) / float64(ec.MinPieces())
+		r = float64(ec.NumPieces()) / float64(ec.MinPieces())
+		ur = r
+		return
 	}
 
+	ec := sf.staticMetadata.staticErasureCode
 	minRedundancy := math.MaxFloat64
+	minRedundancyUser := minRedundancy
+	minRedundancyNoRenewUser := math.MaxFloat64
 	minRedundancyNoRenew := math.MaxFloat64
-	for chunkIndex := range sf.staticChunks {
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
 		// Loop over chunks and remember how many unique pieces of the chunk
 		// were goodForRenew and how many were not.
-		numPiecesRenew, numPiecesNoRenew := sf.goodPieces(chunkIndex, offlineMap, goodForRenewMap)
+		numPiecesRenew, numPiecesNoRenew := sf.goodPieces(chunk, offlineMap, goodForRenewMap)
 		redundancy := float64(numPiecesRenew) / float64(sf.staticMetadata.staticErasureCode.MinPieces())
+		redundancyUser := redundancy
+		if incomplete := sf.isIncompletePartialChunk(uint64(chunk.Index)); incomplete {
+			// If the partial chunk is incomplete it has full redundancy.
+			redundancyUser = float64(ec.NumPieces()) / float64(ec.MinPieces())
+		}
 		if redundancy < minRedundancy {
 			minRedundancy = redundancy
 		}
-		redundancyNoRenew := float64(numPiecesNoRenew) / float64(sf.staticMetadata.staticErasureCode.MinPieces())
+		if redundancyUser < minRedundancyUser {
+			minRedundancyUser = redundancyUser
+		}
+		redundancyNoRenew := float64(numPiecesNoRenew) / float64(ec.MinPieces())
+		redundancyNoRenewUser := redundancyNoRenew
+		if incomplete := sf.isIncompletePartialChunk(uint64(chunk.Index)); incomplete {
+			// If the partial chunk is incomplete it has full redundancy.
+			redundancyNoRenewUser = float64(ec.NumPieces()) / float64(ec.MinPieces())
+		}
+		if redundancyNoRenewUser < minRedundancyNoRenewUser {
+			minRedundancyNoRenewUser = redundancyNoRenewUser
+		}
 		if redundancyNoRenew < minRedundancyNoRenew {
 			minRedundancyNoRenew = redundancyNoRenew
 		}
+		return nil
+	})
+	if err != nil {
+		return 0, 0, err
 	}
 
-	// If the redundancy is smaller than 1x we return the redundancy that
-	// includes contracts that are not good for renewal. The reason for this is
-	// a better user experience. If the renter operates correctly, redundancy
-	// should never go above numPieces / minPieces and redundancyNoRenew should
+	// If the redundancyUser is smaller than 1x we return the redundancy that
+	// includes contracts that are not good for renewal. The reason for this is a
+	// better user experience. If the renter operates correctly, redundancyUser
+	// should never go above numPieces / minPieces and redundancyNoRenewUser should
 	// never go below 1.
-	if minRedundancy < 1 && minRedundancyNoRenew >= 1 {
-		return 1
+	if minRedundancyUser < 1 && minRedundancyNoRenewUser >= 1 {
+		ur = 1
 	} else if minRedundancy < 1 {
-		return minRedundancyNoRenew
+		ur = minRedundancyNoRenewUser
+	} else {
+		ur = minRedundancyUser
 	}
-	return minRedundancy
+	r = minRedundancy
+	return
+}
+
+// SetAllStuck sets the Stuck field of all chunks to stuck.
+func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+
+	// If the file has been deleted we can't mark a chunk as stuck.
+	if sf.deleted {
+		return errors.New("can't call SetStuck on deleted file")
+	}
+	// Update all the Stuck field for each chunk.
+	updates, errIter := sf.iterateChunks(func(chunk *chunk) (bool, error) {
+		if chunk.Stuck != stuck {
+			chunk.Stuck = stuck
+			return true, nil
+		}
+		return false, nil
+	})
+	if errIter != nil {
+		return errIter
+	}
+	// Update NumStuckChunks in siafile metadata
+	nsc := sf.staticMetadata.NumStuckChunks
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.NumStuckChunks = nsc
+		}
+	}()
+	if stuck && sf.staticMetadata.HasPartialChunk && len(sf.staticMetadata.PartialChunks) == 0 {
+		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks) - 1 // partial chunk can't be stuck in this state
+	} else if stuck {
+		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks)
+	} else {
+		sf.staticMetadata.NumStuckChunks = 0
+	}
+	// Create metadata update and apply updates on disk
+	metadataUpdates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	updates = append(updates, metadataUpdates...)
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// SetChunkStatusCompleted sets the CombinedChunkStatus field of the metadata to
+// completed.
+func (sf *SiaFile) SetChunkStatusCompleted(pci uint64) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.PartialChunks[pci].Status = CombinedChunkStatusCompleted
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // SetStuck sets the Stuck field of the chunk at the given index
 func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	// If the file has been deleted we can't mark a chunk as stuck.
-	if sf.deleted {
-		return errors.New("can't call SetStuck on deleted file")
-	}
-	// Check for change
-	if stuck == sf.staticChunks[index].Stuck {
-		return nil
-	}
-	// Remember the currenct number of stuck chunks in case an error happens.
-	nsc := sf.staticMetadata.NumStuckChunks
-	s := sf.staticChunks[index].Stuck
-	defer func() {
-		if err != nil {
-			sf.staticMetadata.NumStuckChunks = nsc
-			sf.staticChunks[index].Stuck = s
-		}
-	}()
-	// Update chunk and NumStuckChunks in siafile metadata
-	sf.staticChunks[index].Stuck = stuck
-	if stuck {
-		sf.staticMetadata.NumStuckChunks++
-	} else {
-		sf.staticMetadata.NumStuckChunks--
-	}
-	// Update chunk and metadata on disk
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	update, err := sf.saveChunkUpdate(int(index))
-	if err != nil {
-		return err
-	}
-	updates = append(updates, update)
-	return sf.createAndApplyTransaction(updates...)
+	return sf.setStuck(index, stuck)
 }
 
 // StuckChunkByIndex returns if the chunk at the index is marked as Stuck or not
-func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
+func (sf *SiaFile) StuckChunkByIndex(index uint64) (bool, error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	return sf.staticChunks[index].Stuck
+	chunk, err := sf.chunk(int(index))
+	if err != nil {
+		return false, errors.AddContext(err, "failed to read chunk")
+	}
+	return chunk.Stuck, nil
 }
 
 // UID returns a unique identifier for this file.
-func (sf *SiaFile) UID() string {
-	return sf.staticUniqueID
-}
-
-// UploadedBytes indicates how many bytes of the file have been uploaded via
-// current file contracts. Note that this is total uploaded bytes so it includes
-// padding and redundancy, so uploadedBytes can return a value much larger than
-// the file's original filesize.
-func (sf *SiaFile) UploadedBytes() uint64 {
+func (sf *SiaFile) UID() SiafileUID {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	uploaded, _ := sf.uploadedBytes()
-	return uploaded
+	return sf.staticMetadata.UniqueID
 }
 
 // UpdateUsedHosts updates the 'Used' flag for the entries in the pubKeyTable
@@ -697,9 +885,14 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 			unusedHosts++
 		}
 	}
-	// Prune the pubKeyTable if necessary.
+	// Prune the pubKeyTable if necessary. If we have too many unused hosts we
+	// want to remove them from the table but only if we have enough used hosts.
+	// Otherwise we might be pruning hosts that could become used again since
+	// the file might be in flux while it uploads or repairs
 	pruned := false
-	if unusedHosts > pubKeyTablePruneThreshold {
+	tooManyUnusedHosts := unusedHosts > pubKeyTablePruneThreshold
+	enoughUsedHosts := len(usedMap) > sf.staticMetadata.staticErasureCode.NumPieces()
+	if tooManyUnusedHosts && enoughUsedHosts {
 		sf.pruneHosts()
 		pruned = true
 	}
@@ -710,27 +903,23 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	}
 	// If we pruned the hosts we also need to save the body.
 	if pruned {
-		chunkUpdates, err := sf.saveChunksUpdates()
+		chunkUpdates, err := sf.iterateChunks(func(chunk *chunk) (bool, error) {
+			return true, nil
+		})
 		if err != nil {
 			return err
 		}
 		updates = append(updates, chunkUpdates...)
 	}
-	return sf.createAndApplyTransaction(updates...)
-}
-
-// UploadProgress indicates what percentage of the file has been uploaded based
-// on the unique pieces that have been uploaded. Note that a file may be
-// Available long before UploadProgress reaches 100%.
-func (sf *SiaFile) UploadProgress() float64 {
-	if sf.Size() == 0 {
-		return 100
+	err = sf.createAndApplyTransaction(updates...)
+	if err != nil {
+		return err
 	}
-	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	_, uploaded := sf.uploadedBytes()
-	return math.Min(100*(float64(uploaded)/float64(desired)), 100)
+	// Also update used hosts for potential partial chunk.
+	if sf.partialsSiaFile != nil {
+		return sf.partialsSiaFile.UpdateUsedHosts(used)
+	}
+	return nil
 }
 
 // defragChunk removes pieces which belong to bad hosts and if that wasn't
@@ -750,7 +939,7 @@ func (sf *SiaFile) defragChunk(chunk *chunk) {
 			if int64(len(newPieceSet)) == maxPiecesPerSet {
 				break
 			}
-			if sf.pubKeyTable[piece.HostTableOffset].Used {
+			if sf.hostKey(piece.HostTableOffset).Used {
 				newPieceSet = append(newPieceSet, piece)
 			}
 		}
@@ -758,10 +947,50 @@ func (sf *SiaFile) defragChunk(chunk *chunk) {
 	}
 }
 
+// hostKey fetches a host's key from the map. It also checks an offset against
+// the hostTable to make sure it's not out of bounds. If it is, build.Critical
+// is called and to avoid a crash in production, dummy hosts are added.
+func (sf *SiaFile) hostKey(offset uint32) HostPublicKey {
+	// Add dummy hostkeys to the table in case of siafile corruption and mark
+	// them as unused. The next time the table is pruned, the keys will be
+	// removed which is fine. This doesn't fix heavy corruption and the file but
+	// still be lost but it's better than crashing.
+	if offset >= uint32(len(sf.pubKeyTable)) {
+		// Causes tests to fail. The following for loop will try to fix the
+		// corruption on release builds.
+		build.Critical("piece.HostTableOffset", offset, " >= len(sf.pubKeyTable)", len(sf.pubKeyTable))
+		for offset >= uint32(len(sf.pubKeyTable)) {
+			sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+		}
+	}
+	return sf.pubKeyTable[offset]
+}
+
+// isIncludedPartialChunk returns 'true' if the provided index points to a
+// partial chunk which has been added to the partials sia file already.
+func (sf *SiaFile) isIncludedPartialChunk(chunkIndex uint64) (PartialChunkInfo, bool) {
+	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.PartialChunks))
+	if idx == -1 {
+		return PartialChunkInfo{}, false
+	}
+	cc := sf.staticMetadata.PartialChunks[idx]
+	return cc, cc.Status >= CombinedChunkStatusInComplete
+}
+
+// isIncompletePartialChunk returns 'true' if the provided index points to a
+// partial chunk which hasn't been added to a partials siafile yet.
+func (sf *SiaFile) isIncompletePartialChunk(chunkIndex uint64) bool {
+	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.PartialChunks))
+	if idx == -1 {
+		return sf.staticMetadata.HasPartialChunk && chunkIndex == uint64(sf.numChunks-1)
+	}
+	return sf.staticMetadata.PartialChunks[idx].Status < CombinedChunkStatusCompleted
+}
+
 // pruneHosts prunes the unused hostkeys from the file, updates the
 // HostTableOffset of the pieces and removes pieces which do no longer have a
 // host.
-func (sf *SiaFile) pruneHosts() {
+func (sf *SiaFile) pruneHosts() ([]writeaheadlog.Update, error) {
 	var prunedTable []HostPublicKey
 	// Create a map to track how the indices of the hostkeys changed when being
 	// pruned.
@@ -775,37 +1004,61 @@ func (sf *SiaFile) pruneHosts() {
 	sf.pubKeyTable = prunedTable
 	// With this map we loop over all the chunks and pieces and update the ones
 	// who got a new offset and remove the ones that no longer have one.
-	for chunkIndex := range sf.staticChunks {
-		for pieceIndex, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+	return sf.iterateChunks(func(chunk *chunk) (bool, error) {
+		for pieceIndex, pieceSet := range chunk.Pieces {
 			var newPieceSet []piece
 			for i, piece := range pieceSet {
 				newOffset, exists := offsetMap[piece.HostTableOffset]
 				if exists {
 					pieceSet[i].HostTableOffset = newOffset
 					newPieceSet = append(newPieceSet, pieceSet[i])
-
 				}
 			}
-			sf.staticChunks[chunkIndex].Pieces[pieceIndex] = newPieceSet
+			chunk.Pieces[pieceIndex] = newPieceSet
 		}
+		return true, nil
+	})
+}
+
+// GoodPieces loops over the pieces of a chunk and tracks the number of unique
+// pieces that are good for upload, meaning the host is online, and the number
+// of unique pieces that are good for renew, meaning the contract is set to
+// renew.
+func (sf *SiaFile) GoodPieces(chunkIndex int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (uint64, uint64) {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	chunk, err := sf.chunk(chunkIndex)
+	if err != nil {
+		build.Critical("failed to retrieve chunk for goodPieces: ", err)
+		return 0, 0
 	}
+	return sf.goodPieces(chunk, offlineMap, goodForRenewMap)
 }
 
 // goodPieces loops over the pieces of a chunk and tracks the number of unique
 // pieces that are good for upload, meaning the host is online, and the number
 // of unique pieces that are good for renew, meaning the contract is set to
 // renew.
-func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (uint64, uint64) {
+func (sf *SiaFile) goodPieces(chunk chunk, offlineMap map[string]bool, goodForRenewMap map[string]bool) (uint64, uint64) {
 	numPiecesGoodForRenew := uint64(0)
 	numPiecesGoodForUpload := uint64(0)
-	for _, pieceSet := range sf.staticChunks[chunkIndex].Pieces {
+
+	// Handle partial chunk.
+	if cci, ok := sf.isIncludedPartialChunk(uint64(chunk.Index)); ok {
+		return sf.partialsSiaFile.GoodPieces(int(cci.Index), offlineMap, goodForRenewMap)
+	}
+	if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+		return 0, 0
+	}
+
+	for _, pieceSet := range chunk.Pieces {
 		// Remember if we encountered a goodForRenew piece or a
 		// !goodForRenew piece that was at least online.
 		foundGoodForRenew := false
 		foundOnline := false
 		for _, piece := range pieceSet {
-			offline, exists1 := offlineMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
-			goodForRenew, exists2 := goodForRenewMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
+			offline, exists1 := offlineMap[sf.hostKey(piece.HostTableOffset).PublicKey.String()]
+			goodForRenew, exists2 := goodForRenewMap[sf.hostKey(piece.HostTableOffset).PublicKey.String()]
 			if exists1 != exists2 {
 				build.Critical("contract can't be in one map but not in the other")
 			}
@@ -832,16 +1085,174 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 	return numPiecesGoodForRenew, numPiecesGoodForUpload
 }
 
+// UploadProgressAndBytes is the exported wrapped for uploadProgressAndBytes.
+func (sf *SiaFile) UploadProgressAndBytes() (float64, uint64, error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.uploadProgressAndBytes()
+}
+
+// Chunk returns the chunk of a SiaFile at a given index.
+func (sf *SiaFile) Chunk(chunkIndex uint64) (chunk, error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.chunk(int(chunkIndex))
+}
+
+// growNumChunks increases the number of chunks in the SiaFile to numChunks. If
+// the file already contains >= numChunks chunks then GrowNumChunks is a no-op.
+func (sf *SiaFile) growNumChunks(numChunks uint64) (updates []writeaheadlog.Update, err error) {
+	if sf.deleted {
+		return nil, errors.New("can't grow number of chunks of deleted file")
+	}
+	// Don't allow a SiaFile with a partial chunk to grow.
+	if sf.staticMetadata.HasPartialChunk {
+		return nil, errors.New("can't grow a siafile with a partial chunk")
+	}
+	// Check if we need to grow the file.
+	if uint64(sf.numChunks) >= numChunks {
+		// Handle edge case where file has 1 chunk but has a size of 0. When we grow
+		// such a file to 1 chunk we want to increment the size to >0.
+		sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(sf.numChunks))
+		return nil, nil
+	}
+	// Remember the number of chunks we have before adding any and restore it in case of an error.
+	ncb := sf.numChunks
+	defer func() {
+		if err != nil {
+			sf.numChunks = ncb
+		}
+	}()
+	// Update the chunks.
+	for uint64(sf.numChunks) < numChunks {
+		newChunk := chunk{
+			Index:  int(sf.numChunks),
+			Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces()),
+		}
+		sf.numChunks++
+		updates = append(updates, sf.saveChunkUpdate(newChunk))
+	}
+	// Update the fileSize.
+	sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(sf.numChunks))
+	mdu, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return nil, err
+	}
+	return append(updates, mdu...), nil
+}
+
+// removeLastChunk removes the last chunk of the SiaFile and truncates the file
+// accordingly. This method might change the metadata but doesn't persist the
+// change itself. Handle this accordingly.
+func (sf *SiaFile) removeLastChunk() error {
+	if sf.deleted {
+		return errors.New("can't remove last chunk of deleted file")
+	}
+	if sf.staticMetadata.HasPartialChunk {
+		return errors.New("can't remove last chunk if it is a partial chunk")
+	}
+	// Remove a chunk. If the removed chunk was stuck, update the metadata.
+	chunk, err := sf.chunk(sf.numChunks - 1)
+	if err != nil {
+		return err
+	}
+	if chunk.Stuck {
+		sf.staticMetadata.NumStuckChunks--
+	}
+	// Truncate the file on disk.
+	fi, err := os.Stat(sf.siaFilePath)
+	if err != nil {
+		return err
+	}
+	err = os.Truncate(sf.siaFilePath, fi.Size()-int64(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// setStuck sets the Stuck field of the chunk at the given index
+func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
+	// Handle partial chunk.
+	if cci, ok := sf.isIncludedPartialChunk(index); ok {
+		return sf.partialsSiaFile.SetStuck(cci.Index, stuck)
+	}
+	if sf.isIncompletePartialChunk(index) {
+		return nil // do nothing
+	}
+
+	// If the file has been deleted we can't mark a chunk as stuck.
+	if sf.deleted {
+		return errors.New("can't call SetStuck on deleted file")
+	}
+	//  Get chunk.
+	chunk, err := sf.chunk(int(index))
+	if err != nil {
+		return err
+	}
+	// Check for change
+	if stuck == chunk.Stuck {
+		return nil
+	}
+	// Remember the current number of stuck chunks in case an error happens.
+	nsc := sf.staticMetadata.NumStuckChunks
+	s := chunk.Stuck
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.NumStuckChunks = nsc
+			chunk.Stuck = s
+		}
+	}()
+	// Update chunk and NumStuckChunks in siafile metadata
+	chunk.Stuck = stuck
+	if stuck {
+		sf.staticMetadata.NumStuckChunks++
+	} else {
+		sf.staticMetadata.NumStuckChunks--
+	}
+	// Update chunk and metadata on disk
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	update := sf.saveChunkUpdate(chunk)
+	updates = append(updates, update)
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// uploadProgressAndBytes updates the CachedUploadProgress and
+// CachedUploadedBytes fields to indicate what percentage of the file has been
+// uploaded based on the unique pieces that have been uploaded and also how many
+// bytes have been uploaded of that file in total. Note that a file may be
+// Available long before UploadProgress reaches 100%.
+func (sf *SiaFile) uploadProgressAndBytes() (float64, uint64, error) {
+	_, uploaded, err := sf.uploadedBytes()
+	if err != nil {
+		return 0, 0, err
+	}
+	if sf.staticMetadata.FileSize == 0 {
+		// Update cache.
+		sf.staticMetadata.CachedUploadProgress = 100
+		return 100, uploaded, nil
+	}
+	desired := uint64(sf.numChunks) * modules.SectorSize * uint64(sf.staticMetadata.staticErasureCode.NumPieces())
+	// Update cache.
+	sf.staticMetadata.CachedUploadProgress = math.Min(100*(float64(uploaded)/float64(desired)), 100)
+	return sf.staticMetadata.CachedUploadProgress, uploaded, nil
+}
+
 // uploadedBytes indicates how many bytes of the file have been uploaded via
 // current file contracts in total as well as unique uploaded bytes. Note that
 // this includes padding and redundancy, so uploadedBytes can return a value
 // much larger than the file's original filesize.
-func (sf *SiaFile) uploadedBytes() (uint64, uint64) {
+func (sf *SiaFile) uploadedBytes() (uint64, uint64, error) {
 	var total, unique uint64
-	for _, chunk := range sf.staticChunks {
+	err := sf.iterateChunksReadonly(func(chunk chunk) error {
 		for _, pieceSet := range chunk.Pieces {
 			// Move onto the next pieceSet if nothing has been uploaded yet
-			if len(pieceSet) == 0 {
+			idx := CombinedChunkIndex(uint64(sf.numChunks), uint64(chunk.Index), len(sf.staticMetadata.PartialChunks))
+			if len(pieceSet) == 0 &&
+				(idx == -1 || sf.staticMetadata.PartialChunks[idx].Status != CombinedChunkStatusInComplete) {
 				continue
 			}
 
@@ -854,6 +1265,12 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64) {
 			// Sum the unique bytes uploaded
 			unique += modules.SectorSize
 		}
+		return nil
+	})
+	if err != nil {
+		return 0, 0, errors.AddContext(err, "failed to compute uploaded bytes")
 	}
-	return total, unique
+	// Update cache.
+	sf.staticMetadata.CachedUploadedBytes = total
+	return total, unique, nil
 }

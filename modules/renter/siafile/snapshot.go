@@ -3,9 +3,10 @@ package siafile
 import (
 	"os"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -13,14 +14,17 @@ type (
 	// can be accessed without locking at the cost of being a frozen readonly
 	// representation of a siafile which only exists in memory.
 	Snapshot struct {
-		staticChunks      []Chunk
-		staticFileSize    int64
-		staticPieceSize   uint64
-		staticErasureCode modules.ErasureCoder
-		staticMasterKey   crypto.CipherKey
-		staticMode        os.FileMode
-		staticPubKeyTable []HostPublicKey
-		staticSiaPath     modules.SiaPath
+		staticChunks          []Chunk
+		staticFileSize        int64
+		staticPieceSize       uint64
+		staticErasureCode     modules.ErasureCoder
+		staticHasPartialChunk bool
+		staticMasterKey       crypto.CipherKey
+		staticMode            os.FileMode
+		staticPubKeyTable     []HostPublicKey
+		staticSiaPath         modules.SiaPath
+		staticPartialChunks   []PartialChunkInfo
+		staticUID             SiafileUID
 	}
 )
 
@@ -48,7 +52,18 @@ func (sfr *SnapshotReader) Stat() (os.FileInfo, error) {
 }
 
 // SnapshotReader creates a io.ReadCloser that can be used to read the raw
-// Siafile from disk.
+// Siafile from disk. Note that the underlying siafile holds a readlock until
+// the SnapshotReader is closed, which means that no operations can be called to
+// the underlying siafile which may cause it to grab a lock, because that will
+// cause a deadlock.
+//
+// Operations which require grabbing a readlock on the underlying siafile are
+// also not okay, because if some other thread has attempted to grab a writelock
+// on the siafile, the readlock will block and then the Close() statement may
+// never be reached for the SnapshotReader.
+//
+// TODO: Things upstream would be a lot easier if we could drop the requirement
+// to hold a lock for the duration of the life of the snapshot reader.
 func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
 	// Lock the file.
 	sf.mu.RLock()
@@ -74,6 +89,17 @@ func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
 func (s *Snapshot) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64) {
 	chunkIndex = offset / s.ChunkSize()
 	off = offset % s.ChunkSize()
+	// If the offset points within a partial chunk, we need to adjust our
+	// calculation to compensate for the potential offset within a combined chunk.
+	var totalOffset uint64
+	for _, cc := range s.staticPartialChunks {
+		totalOffset += cc.Offset
+	}
+	if _, ok := s.IsIncludedPartialChunk(chunkIndex); ok {
+		offset += totalOffset
+		chunkIndex = offset / s.ChunkSize()
+		off = offset % s.ChunkSize()
+	}
 	return
 }
 
@@ -82,9 +108,35 @@ func (s *Snapshot) ChunkSize() uint64 {
 	return s.staticPieceSize * uint64(s.staticErasureCode.MinPieces())
 }
 
+// PartialChunks returns the snapshot's PartialChunks.
+func (s *Snapshot) PartialChunks() []PartialChunkInfo {
+	return s.staticPartialChunks
+}
+
 // ErasureCode returns the erasure coder used by the file.
 func (s *Snapshot) ErasureCode() modules.ErasureCoder {
 	return s.staticErasureCode
+}
+
+// IsIncludedPartialChunk returns 'true' if the provided index points to a
+// partial chunk which has been added to the partials sia file already.
+func (s *Snapshot) IsIncludedPartialChunk(chunkIndex uint64) (PartialChunkInfo, bool) {
+	idx := CombinedChunkIndex(s.NumChunks(), chunkIndex, len(s.staticPartialChunks))
+	if idx == -1 {
+		return PartialChunkInfo{}, false
+	}
+	cc := s.staticPartialChunks[idx]
+	return cc, cc.Status >= CombinedChunkStatusInComplete
+}
+
+// IsIncompletePartialChunk returns 'true' if the provided index points to a
+// partial chunk which hasn't been added to a partials siafile yet.
+func (s *Snapshot) IsIncompletePartialChunk(chunkIndex uint64) bool {
+	idx := CombinedChunkIndex(s.NumChunks(), chunkIndex, len(s.staticPartialChunks))
+	if idx == -1 {
+		return s.staticHasPartialChunk && chunkIndex == uint64(len(s.staticChunks)-1)
+	}
+	return s.staticPartialChunks[idx].Status < CombinedChunkStatusCompleted
 }
 
 // MasterKey returns the masterkey used to encrypt the file.
@@ -106,10 +158,10 @@ func (s *Snapshot) NumChunks() uint64 {
 
 // Pieces returns all the pieces for a chunk in a slice of slices that contains
 // all the pieces for a certain index.
-func (s *Snapshot) Pieces(chunkIndex uint64) ([][]Piece, error) {
+func (s *Snapshot) Pieces(chunkIndex uint64) [][]Piece {
 	// Return the pieces. Since the snapshot is meant to be used read-only, we
 	// don't have to return a deep-copy here.
-	return s.staticChunks[chunkIndex].Pieces, nil
+	return s.staticChunks[chunkIndex].Pieces
 }
 
 // PieceSize returns the size of a single piece of the file.
@@ -127,38 +179,70 @@ func (s *Snapshot) Size() uint64 {
 	return uint64(s.staticFileSize)
 }
 
+// UID returns the UID of the file.
+func (s *Snapshot) UID() SiafileUID {
+	return s.staticUID
+}
+
 // Snapshot creates a snapshot of the SiaFile.
-func (sf *SiaFile) Snapshot() *Snapshot {
+func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	mk := sf.MasterKey()
+
+	//////////////////////////////////////////////////////////////////////////////
+	// RLock starts here. Make sure to unlock if the method exits early.
+	//////////////////////////////////////////////////////////////////////////////
 	sf.mu.RLock()
-	defer sf.mu.RUnlock()
 
 	// Copy PubKeyTable.
 	pkt := make([]HostPublicKey, len(sf.pubKeyTable))
 	copy(pkt, sf.pubKeyTable)
 
-	chunks := make([]Chunk, 0, len(sf.staticChunks))
+	chunks := make([]Chunk, 0, sf.numChunks)
 	// Figure out how much memory we need to allocate for the piece sets and
 	// pieces.
 	var numPieceSets, numPieces int
-	for chunkIndex := range sf.staticChunks {
-		numPieceSets += len(sf.staticChunks[chunkIndex].Pieces)
-		for pieceIndex := range sf.staticChunks[chunkIndex].Pieces {
-			numPieces += len(sf.staticChunks[chunkIndex].Pieces[pieceIndex])
+	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+		numPieceSets += len(chunk.Pieces)
+		for pieceIndex := range chunk.Pieces {
+			numPieces += len(chunk.Pieces[pieceIndex])
 		}
+		return nil
+	})
+	if err != nil {
+		sf.mu.RUnlock()
+		return nil, err
 	}
 	// Allocate all the piece sets and pieces at once.
 	allPieceSets := make([][]Piece, numPieceSets)
 	allPieces := make([]Piece, numPieces)
 
 	// Copy chunks.
-	for chunkIndex := range sf.staticChunks {
-		pieces := allPieceSets[:len(sf.staticChunks[chunkIndex].Pieces)]
-		allPieceSets = allPieceSets[len(sf.staticChunks[chunkIndex].Pieces):]
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
+		// Handle complete partial chunk.
+		if cci, ok := sf.isIncludedPartialChunk(uint64(chunk.Index)); ok {
+			pieces, err := sf.partialsSiaFile.Pieces(cci.Index)
+			if err != nil {
+				return err
+			}
+			chunks = append(chunks, Chunk{
+				Pieces: pieces,
+			})
+			return nil
+		}
+		// Handle incomplete partial chunk.
+		if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+			chunks = append(chunks, Chunk{
+				Pieces: make([][]Piece, sf.staticMetadata.staticErasureCode.NumPieces()),
+			})
+			return nil
+		}
+		// Handle full chunk
+		pieces := allPieceSets[:len(chunk.Pieces)]
+		allPieceSets = allPieceSets[len(chunk.Pieces):]
 		for pieceIndex := range pieces {
-			pieces[pieceIndex] = allPieces[:len(sf.staticChunks[chunkIndex].Pieces[pieceIndex])]
-			allPieces = allPieces[len(sf.staticChunks[chunkIndex].Pieces[pieceIndex]):]
-			for i, piece := range sf.staticChunks[chunkIndex].Pieces[pieceIndex] {
+			pieces[pieceIndex] = allPieces[:len(chunk.Pieces[pieceIndex])]
+			allPieces = allPieces[len(chunk.Pieces[pieceIndex]):]
+			for i, piece := range chunk.Pieces[pieceIndex] {
 				pieces[pieceIndex][i] = Piece{
 					HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
 					MerkleRoot: piece.MerkleRoot,
@@ -168,16 +252,37 @@ func (sf *SiaFile) Snapshot() *Snapshot {
 		chunks = append(chunks, Chunk{
 			Pieces: pieces,
 		})
+		return nil
+	})
+	if err != nil {
+		sf.mu.RUnlock()
+		return nil, err
 	}
+	// Get non-static metadata fields under lock.
+	fileSize := sf.staticMetadata.FileSize
+	mode := sf.staticMetadata.Mode
+	uid := sf.staticMetadata.UniqueID
+	hasPartial := sf.staticMetadata.HasPartialChunk
+	pcs := sf.staticMetadata.PartialChunks
+	sf.mu.RUnlock()
+	//////////////////////////////////////////////////////////////////////////////
+	// RLock ends here.
+	//////////////////////////////////////////////////////////////////////////////
 
+	sf.staticSiaFileSet.mu.Lock()
+	sp := sf.staticSiaFileSet.siaPath(sf)
+	sf.staticSiaFileSet.mu.Unlock()
 	return &Snapshot{
-		staticChunks:      chunks,
-		staticFileSize:    sf.staticMetadata.StaticFileSize,
-		staticPieceSize:   sf.staticMetadata.StaticPieceSize,
-		staticErasureCode: sf.staticMetadata.staticErasureCode,
-		staticMasterKey:   mk,
-		staticMode:        sf.staticMetadata.Mode,
-		staticPubKeyTable: pkt,
-		staticSiaPath:     sf.staticMetadata.SiaPath,
-	}
+		staticChunks:          chunks,
+		staticPartialChunks:   pcs,
+		staticHasPartialChunk: hasPartial,
+		staticFileSize:        fileSize,
+		staticPieceSize:       sf.staticMetadata.StaticPieceSize,
+		staticErasureCode:     sf.staticMetadata.staticErasureCode,
+		staticMasterKey:       mk,
+		staticMode:            mode,
+		staticPubKeyTable:     pkt,
+		staticSiaPath:         sp,
+		staticUID:             uid,
+	}, nil
 }

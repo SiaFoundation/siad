@@ -4,12 +4,12 @@ import (
 	"sort"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -250,6 +250,16 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 	return nil
 }
 
+// SetFiltered updates a host entry filtered field.
+func (ht *HostTree) SetFiltered(pubKey types.SiaPublicKey, filtered bool) error {
+	entry, ok := ht.Select(pubKey)
+	if !ok {
+		return ErrNoSuchHost
+	}
+	entry.Filtered = filtered
+	return ht.Modify(entry)
+}
+
 // SetWeightFunction resets the HostTree and assigns it a new weight
 // function. This resets the tree and reinserts all the hosts.
 func (ht *HostTree) SetWeightFunction(wf WeightFunc) error {
@@ -294,13 +304,20 @@ func (ht *HostTree) Select(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
 
 // SelectRandom grabs a random n hosts from the tree. There will be no repeats,
 // but the length of the slice returned may be less than n, and may even be
-// zero.  The hosts that are returned first have the higher priority. Hosts
-// passed to 'blacklist' will not be considered; pass `nil` if no blacklist is
-// desired. 'addressBlacklist' is similar to 'blacklist' but instead of not
-// considering the hosts in the list, hosts that use the same IP subnet as
-// those hosts will be ignored. In most cases those blacklists contain the same
-// elements but sometimes it is useful to block a host without blocking its IP
-// range.
+// zero.  The hosts that are returned first have the higher priority.
+//
+// Hosts passed to 'blacklist' will not be considered; pass `nil` if no
+// blacklist is desired. 'addressBlacklist' is similar to 'blacklist' but
+// instead of not considering the hosts in the list, hosts that use the same IP
+// subnet as those hosts will be ignored. In most cases those blacklists contain
+// the same elements but sometimes it is useful to block a host without blocking
+// its IP range.
+//
+// Hosts with a score of 1 will be ignored. 1 is the lowest score possible, at
+// which point it's impossible to distinguish between hosts. Any sane scoring
+// system should always have scores greater than 1 unless the host is
+// intentionally being given a low score to indicate that the host should not be
+// used.
 func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaPublicKey) []modules.HostDBEntry {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
@@ -339,11 +356,13 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 	for len(hosts) < n && len(ht.hosts) > 0 {
 		randWeight := fastrand.BigIntn(ht.root.weight.Big())
 		node := ht.root.nodeAtWeight(types.NewCurrency(randWeight))
+		weightOne := types.NewCurrency64(1)
 
 		if node.entry.AcceptingContracts &&
 			len(node.entry.ScanHistory) > 0 &&
 			node.entry.ScanHistory[len(node.entry.ScanHistory)-1].Success &&
-			!filter.Filtered(node.entry.NetAddress) {
+			!filter.Filtered(node.entry.NetAddress) &&
+			node.entry.weight.Cmp(weightOne) > 0 {
 			// The host must be online and accepting contracts to be returned
 			// by the random function. It also has to pass the addressFilter
 			// check.

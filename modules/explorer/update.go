@@ -3,12 +3,12 @@ package explorer
 import (
 	"fmt"
 
+	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 // ProcessConsensusChange follows the most recent changes to the consensus set,
@@ -528,14 +528,29 @@ func dbCalculateBlockFacts(tx *bolt.Tx, cs modules.ConsensusSet, block types.Blo
 func dbAddGenesisBlock(tx *bolt.Tx) {
 	id := types.GenesisID
 	dbAddBlockID(tx, id, 0)
-	txid := types.GenesisBlock.Transactions[0].ID()
-	dbAddTransactionID(tx, txid, 0)
-	for i, sfo := range types.GenesisSiafundAllocation {
-		sfoid := types.GenesisBlock.Transactions[0].SiafundOutputID(uint64(i))
-		dbAddSiafundOutputID(tx, sfoid, txid)
-		dbAddUnlockHash(tx, sfo.UnlockHash, txid)
-		dbAddSiafundOutput(tx, sfoid, sfo)
+
+	// Add Genesis transactions to database
+	for _, transaction := range types.GenesisBlock.Transactions {
+		// Add Genesis Transaction to database
+		txid := transaction.ID()
+		dbAddTransactionID(tx, txid, 0)
+		// Add Genesis Siacoin outputs to database
+		for i, sco := range transaction.SiacoinOutputs {
+			scoid := transaction.SiacoinOutputID(uint64(i))
+			dbAddSiacoinOutputID(tx, scoid, txid)
+			dbAddUnlockHash(tx, sco.UnlockHash, txid)
+			dbAddSiacoinOutput(tx, scoid, sco)
+		}
+
+		// Add Geesis Siafund outputs to database
+		for i, sfo := range transaction.SiafundOutputs {
+			sfoid := transaction.SiafundOutputID(uint64(i))
+			dbAddSiafundOutputID(tx, sfoid, txid)
+			dbAddUnlockHash(tx, sfo.UnlockHash, txid)
+			dbAddSiafundOutput(tx, sfoid, sfo)
+		}
 	}
+
 	dbAddBlockFacts(tx, blockFacts{
 		BlockFacts: modules.BlockFacts{
 			BlockID:            id,
@@ -543,7 +558,8 @@ func dbAddGenesisBlock(tx *bolt.Tx) {
 			Difficulty:         types.RootTarget.Difficulty(),
 			Target:             types.RootTarget,
 			TotalCoins:         types.CalculateCoinbase(0),
-			TransactionCount:   1,
+			TransactionCount:   uint64(len(types.GenesisBlock.Transactions)),
+			SiacoinOutputCount: uint64(len(types.GenesisSiacoinAllocation)),
 			SiafundOutputCount: uint64(len(types.GenesisSiafundAllocation)),
 		},
 		Timestamp: types.GenesisBlock.Timestamp,

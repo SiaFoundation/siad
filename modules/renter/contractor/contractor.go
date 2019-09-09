@@ -1,12 +1,13 @@
 package contractor
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -56,6 +57,12 @@ type Contractor struct {
 	currentPeriod types.BlockHeight
 	lastChange    modules.ConsensusChangeID
 
+	// recentRecoveryChange is the first ConsensusChange that was missed while
+	// trying to find recoverable contracts. This is where we need to start
+	// rescanning the blockchain for recoverable contracts the next time the wallet
+	// is unlocked.
+	recentRecoveryChange modules.ConsensusChangeID
+
 	downloaders         map[types.FileContractID]*hostDownloader
 	editors             map[types.FileContractID]*hostEditor
 	sessions            map[types.FileContractID]*hostSession
@@ -86,43 +93,7 @@ func (c *Contractor) InitRecoveryScan() (err error) {
 		return err
 	}
 	defer c.tg.Done()
-	// Check if we are already scanning the blockchain.
-	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
-		return errors.New("scan for recoverable contracts is already in progress")
-	}
-	// Reset the progress and status if there was an error.
-	defer func() {
-		if err != nil {
-			atomic.StoreUint32(&c.atomicScanInProgress, 0)
-			atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
-		}
-	}()
-	// Get the wallet seed.
-	s, _, err := c.wallet.PrimarySeed()
-	if err != nil {
-		return err
-	}
-	// Get the renter seed and wipe it once done.
-	rs := proto.DeriveRenterSeed(s)
-	// Reset the scan progress before starting the scan.
-	atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
-	// Create the scanner.
-	scanner := c.newRecoveryScanner(rs)
-	// Start the scan.
-	go func() {
-		if err := scanner.threadedScan(c.cs, c.tg.StopChan()); err != nil {
-			c.log.Println("Scan failed", err)
-		}
-		if c.staticDeps.Disrupt("disableRecoveryStatusReset") {
-			return
-		}
-		// Reset the scan related fields.
-		if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 1, 0) {
-			build.Critical("finished recovery scan but scanInProgress was already set to 0")
-		}
-		atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
-	}()
-	return nil
+	return c.managedInitRecoveryScan(modules.ConsensusChangeBeginning)
 }
 
 // PeriodSpending returns the amount spent on contracts during the current
@@ -211,6 +182,47 @@ func (c *Contractor) RecoveryScanStatus() (bool, types.BlockHeight) {
 	bh := types.BlockHeight(atomic.LoadInt64(&c.atomicRecoveryScanHeight))
 	sip := atomic.LoadUint32(&c.atomicScanInProgress)
 	return sip == 1, bh
+}
+
+// RefreshedContract returns a bool indicating if the contract was a refreshed
+// contract. A refreshed contract refers to a contract that ran out of funds
+// prior to the end height and so was renewed with the host in the same period.
+// Both the old and the new contract have the same end height
+func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
+	// Add thread and acquire lock
+	if err := c.tg.Add(); err != nil {
+		return false
+	}
+	defer c.tg.Done()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Check if contract ID is found in the renewedTo map indicating that the
+	// contract was renewed
+	newFCID, renewed := c.renewedTo[fcid]
+	if !renewed {
+		return renewed
+	}
+
+	// Grab the contract to check its end height
+	contract, ok := c.oldContracts[fcid]
+	if !ok {
+		build.Critical("contract not found in oldContracts, this should never happen")
+		return renewed
+	}
+
+	// Grab the contract it was renewed to to check its end height
+	newContract, ok := c.staticContracts.View(newFCID)
+	if !ok {
+		newContract, ok = c.oldContracts[newFCID]
+		if !ok {
+			build.Critical("contract not tracked in staticContracts of old contracts, this should never happen")
+			return renewed
+		}
+	}
+
+	// The contract was refreshed if the endheights are the same
+	return newContract.EndHeight == contract.EndHeight
 }
 
 // SetRateLimits sets the bandwidth limits for connections created by the
@@ -328,6 +340,7 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		// Reset the contractor consensus variables and try rescanning.
 		c.blockHeight = 0
 		c.lastChange = modules.ConsensusChangeBeginning
+		c.recentRecoveryChange = modules.ConsensusChangeBeginning
 		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
 	}
 	if err != nil {
@@ -354,4 +367,56 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		return nil, err
 	}
 	return c, nil
+}
+
+// managedInitRecoveryScan starts scanning the whole blockchain at a certain
+// ChangeID for recoverable contracts within a separate thread.
+func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
+	// Check if we are already scanning the blockchain.
+	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
+		return errors.New("scan for recoverable contracts is already in progress")
+	}
+	// Reset the progress and status if there was an error.
+	defer func() {
+		if err != nil {
+			atomic.StoreUint32(&c.atomicScanInProgress, 0)
+			atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
+		}
+	}()
+	// Get the wallet seed.
+	s, _, err := c.wallet.PrimarySeed()
+	if err != nil {
+		return errors.AddContext(err, "failed to get wallet seed")
+	}
+	// Get the renter seed and wipe it once done.
+	rs := proto.DeriveRenterSeed(s)
+	// Reset the scan progress before starting the scan.
+	atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
+	// Create the scanner.
+	scanner := c.newRecoveryScanner(rs)
+	// Start the scan.
+	go func() {
+		// Add scanning thread to threadgroup.
+		if err := c.tg.Add(); err != nil {
+			return
+		}
+		defer c.tg.Done()
+		// Scan blockchain.
+		if err := scanner.threadedScan(c.cs, scanStart, c.tg.StopChan()); err != nil {
+			c.log.Println("Scan failed", err)
+		}
+		if c.staticDeps.Disrupt("disableRecoveryStatusReset") {
+			return
+		}
+		// Reset the scan related fields.
+		if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 1, 0) {
+			build.Critical("finished recovery scan but scanInProgress was already set to 0")
+		}
+		atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
+		// Save the renter.
+		c.mu.Lock()
+		c.save()
+		c.mu.Unlock()
+	}()
+	return nil
 }

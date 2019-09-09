@@ -41,9 +41,11 @@ type hdbTester struct {
 // dependencies or scanning threads. It is only intended for use in unit tests.
 func bareHostDB() *HostDB {
 	hdb := &HostDB{
-		log: persist.NewLogger(ioutil.Discard),
+		allowance:      modules.DefaultAllowance,
+		log:            persist.NewLogger(ioutil.Discard),
+		knownContracts: make(map[string]contractInfo),
 	}
-	hdb.weightFunc = hdb.managedCalculateHostWeightFn(modules.DefaultAllowance)
+	hdb.weightFunc = hdb.managedCalculateHostWeightFn(hdb.allowance)
 	hdb.hostTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
 	hdb.filteredTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
 	return hdb
@@ -51,10 +53,9 @@ func bareHostDB() *HostDB {
 
 // makeHostDBEntry makes a new host entry with a random public key
 func makeHostDBEntry() modules.HostDBEntry {
-	dbe := modules.HostDBEntry{}
+	dbe := DefaultHostDBEntry
 	_, pk := crypto.GenerateKeyPair()
 
-	dbe.AcceptingContracts = true
 	dbe.PublicKey = types.Ed25519PublicKey(pk)
 	dbe.ScanHistory = modules.HostDBScans{{
 		Timestamp: time.Now(),

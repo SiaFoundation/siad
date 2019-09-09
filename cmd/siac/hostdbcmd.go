@@ -28,6 +28,22 @@ var (
 		Run:   wrap(hostdbcmd),
 	}
 
+	hostdbFiltermodeCmd = &cobra.Command{
+		Use:   "filtermode",
+		Short: "View hostDB filtermode.",
+		Long:  "View the hostDB filtermode and the filtered hosts",
+		Run:   wrap(hostdbfiltermodecmd),
+	}
+
+	hostdbSetFiltermodeCmd = &cobra.Command{
+		Use:   "setfiltermode [filtermode] [host] [host] [host]...",
+		Short: "Set the filtermode.",
+		Long: `Set the hostdb filtermode and specify hosts.
+        [filtermode] can be whitelist, blacklist, or disable.
+        [host] is the host public key.`,
+		Run: hostdbsetfiltermodecmd,
+	}
+
 	hostdbViewCmd = &cobra.Command{
 		Use:   "view [pubkey]",
 		Short: "View the full information for a host.",
@@ -43,6 +59,7 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 	fmt.Fprintf(w, "\t\tAge:\t %.3f\n", info.ScoreBreakdown.AgeAdjustment)
 	fmt.Fprintf(w, "\t\tBurn:\t %.3f\n", info.ScoreBreakdown.BurnAdjustment)
 	fmt.Fprintf(w, "\t\tCollateral:\t %.3f\n", info.ScoreBreakdown.CollateralAdjustment/1e96)
+	fmt.Fprintf(w, "\t\tDuration:\t %.3f\n", info.ScoreBreakdown.DurationAdjustment)
 	fmt.Fprintf(w, "\t\tInteraction:\t %.3f\n", info.ScoreBreakdown.InteractionAdjustment)
 	fmt.Fprintf(w, "\t\tPrice:\t %.3f\n", info.ScoreBreakdown.PriceAdjustment*1e24)
 	fmt.Fprintf(w, "\t\tStorage:\t %.3f\n", info.ScoreBreakdown.StorageRemainingAdjustment)
@@ -51,6 +68,8 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 	w.Flush()
 }
 
+// hostdbcmd is the handler for the command `siac hostdb`.
+// Lists hosts known to the hostdb
 func hostdbcmd() {
 	if !hostdbVerbose {
 		info, err := httpClient.HostDbActiveGet()
@@ -112,7 +131,7 @@ func hostdbcmd() {
 		fmt.Println()
 		fmt.Println(len(offlineHosts), "Offline Hosts:")
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tPrice (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tRemaining Storage\tPrice (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
 		for i, host := range offlineHosts {
 			// Compute the total measured uptime and total measured downtime for this
 			// host.
@@ -152,15 +171,15 @@ func hostdbcmd() {
 			// recent scans.
 			price := host.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)
 			downloadBWPrice := host.StoragePrice.Mul(modules.BytesPerTerabyte)
-			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(offlineHosts)-i, host.PublicKeyString,
-				host.NetAddress, host.Version, currencyUnits(price), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
+			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(offlineHosts)-i, host.PublicKeyString,
+				host.NetAddress, host.Version, filesizeUnits(host.RemainingStorage), currencyUnits(price), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
 		}
 		w.Flush()
 
 		fmt.Println()
 		fmt.Println(len(inactiveHosts), "Inactive Hosts:")
 		w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tRemaining Storage\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
 		for i, host := range inactiveHosts {
 			// Compute the total measured uptime and total measured downtime for this
 			// host.
@@ -200,9 +219,9 @@ func hostdbcmd() {
 			price := host.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)
 			collateral := host.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)
 			downloadBWPrice := host.DownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)
-			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(inactiveHosts)-i, host.PublicKeyString, host.NetAddress, host.Version, currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
+			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(inactiveHosts)-i, host.PublicKeyString, host.NetAddress, host.Version, filesizeUnits(host.RemainingStorage), currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
 		}
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tRemaining Storage\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
 		w.Flush()
 
 		// Grab the host at the 3/5th point and use it as the reference. (it's
@@ -223,7 +242,7 @@ func hostdbcmd() {
 		fmt.Println()
 		fmt.Println(len(activeHosts), "Active Hosts:")
 		w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tScore\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tScore\tRemaining Storage\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
 		for i, host := range activeHosts {
 			// Compute the total measured uptime and total measured downtime for this
 			// host.
@@ -270,13 +289,68 @@ func hostdbcmd() {
 			price := host.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)
 			collateral := host.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)
 			downloadBWPrice := host.DownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)
-			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%12.6g\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(activeHosts)-i, host.PublicKeyString, host.NetAddress, host.Version, score, currencyUnits(host.ContractPrice), currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
+			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%12.6g\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(activeHosts)-i, host.PublicKeyString, host.NetAddress, host.Version, score, filesizeUnits(host.RemainingStorage), currencyUnits(host.ContractPrice), currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
 		}
-		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tScore\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
+		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tScore\tRemaining Storage\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
 		w.Flush()
 	}
 }
 
+// hostdbfiltermodecmd is the handler for the command `siac hostdb
+// filtermode`.
+func hostdbfiltermodecmd() {
+	hdfmg, err := httpClient.HostDbFilterModeGet()
+	if err != nil {
+		die(err)
+	}
+	fmt.Println()
+	fmt.Println("  HostDB Filter Mode:", hdfmg.FilterMode)
+	fmt.Println("  Hosts:")
+	for _, host := range hdfmg.Hosts {
+		fmt.Println("    ", host)
+	}
+	fmt.Println()
+}
+
+// hostdbsetfiltermodecmd is the handler for the command `siac hostdb
+// setfiltermode`. sets the hostdb filtermode (whitelist, blacklist, disable)
+func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
+	var fm modules.FilterMode
+	var filterModeStr string
+	var host types.SiaPublicKey
+	var hosts []types.SiaPublicKey
+	switch len(args) {
+	case 0:
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	case 1:
+		filterModeStr = args[0]
+		if filterModeStr != "disable" {
+			die("if only submitting filtermode it should be `disable`")
+		}
+	default:
+		filterModeStr = args[0]
+		for i := 1; i < len(args); i++ {
+			host.LoadString(args[i])
+			hosts = append(hosts, host)
+		}
+	}
+	err := fm.FromString(filterModeStr)
+	if err != nil {
+		fmt.Println("Could not parse filtermode: ", err)
+		die()
+	}
+
+	err = httpClient.HostDbFilterModePost(fm, hosts)
+	if err != nil {
+		fmt.Println("Could not set hostdb filtermode: ", err)
+		die()
+	}
+	fmt.Println("Successfully set the filter mode")
+}
+
+// hostdbviewcmd is the handler for the command `siac hostdb view`.
+// shows detailed information about a host in the hostdb.
 func hostdbviewcmd(pubkey string) {
 	var publicKey types.SiaPublicKey
 	publicKey.LoadString(pubkey)
@@ -291,6 +365,7 @@ func hostdbviewcmd(pubkey string) {
 	fmt.Println("  Version:         ", info.Entry.Version)
 	fmt.Println("  Block First Seen:", info.Entry.FirstSeen)
 	fmt.Println("  Absolute Score:  ", info.ScoreBreakdown.Score)
+	fmt.Println("  Filtered:        ", info.Entry.Filtered)
 
 	fmt.Println("\n  Host Settings:")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -298,6 +373,7 @@ func hostdbviewcmd(pubkey string) {
 	fmt.Fprintln(w, "\t\tTotal Storage:\t", info.Entry.TotalStorage/1e9, "GB")
 	fmt.Fprintln(w, "\t\tRemaining Storage:\t", info.Entry.RemainingStorage/1e9, "GB")
 	fmt.Fprintln(w, "\t\tOffered Collateral (TB / Mo):\t", currencyUnits(info.Entry.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)))
+	fmt.Fprintln(w, "\t\tMax Collateral:\t", currencyUnits(info.Entry.MaxCollateral))
 	fmt.Fprintln(w, "\n\t\tContract Price:\t", currencyUnits(info.Entry.ContractPrice))
 	fmt.Fprintln(w, "\t\tStorage Price (TB / Mo):\t", currencyUnits(info.Entry.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)))
 	fmt.Fprintln(w, "\t\tDownload Price (1 TB):\t", currencyUnits(info.Entry.DownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)))

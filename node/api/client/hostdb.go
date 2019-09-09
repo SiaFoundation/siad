@@ -26,7 +26,13 @@ func (c *Client) HostDbAllGet() (hdag api.HostdbAllGET, err error) {
 	return
 }
 
-// HostDbFilterModePost requests the /hostdb/filtermode endpoint
+// HostDbFilterModeGet requests the /hostdb/filtermode GET endpoint
+func (c *Client) HostDbFilterModeGet() (hdfmg api.HostdbFilterModeGET, err error) {
+	err = c.get("/hostdb/filtermode", &hdfmg)
+	return
+}
+
+// HostDbFilterModePost requests the /hostdb/filtermode POST endpoint
 func (c *Client) HostDbFilterModePost(fm modules.FilterMode, hosts []types.SiaPublicKey) (err error) {
 	filterMode := fm.String()
 	hdblp := api.HostdbFilterModePOST{

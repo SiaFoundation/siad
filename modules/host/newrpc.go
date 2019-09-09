@@ -9,10 +9,11 @@ import (
 	"time"
 
 	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // managedRPCLoopSettings writes an RPC response containing the host's
@@ -159,11 +160,11 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
-	h.mu.RLock()
+	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
 	settings := h.externalSettings()
-	h.mu.RUnlock()
+	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Process each action.
@@ -418,11 +419,11 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
-	h.mu.RLock()
+	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
 	settings := h.externalSettings()
-	h.mu.RUnlock()
+	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Validate the request.
@@ -564,7 +565,7 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 
 	// Read the contract request.
 	var req modules.LoopFormContractRequest
-	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
+	if err := s.readRequest(&req, modules.TransactionSetSizeLimit); err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -643,7 +644,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 
 	// Read the renewal request.
 	var req modules.LoopRenewContractRequest
-	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
+	if err := s.readRequest(&req, modules.TransactionSetSizeLimit); err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -742,11 +743,11 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
-	h.mu.RLock()
+	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
 	settings := h.externalSettings()
-	h.mu.RUnlock()
+	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Validate the request.

@@ -139,24 +139,50 @@ the transactions (one leaf per transaction).
 Block Target
 ------------
 
-For a block to be valid, the id of the block must be below a certain target.
-The target is adjusted once every 500 blocks, and it is adjusted by looking at
-the timestamps of the previous 1000 blocks. The expected amount of time passed
-between the most recent block and the 1000th previous block is 10e3 minutes. If
-more time has passed, the target is lowered. If less time has passed, the
-target is increased. Each adjustment can adjust the target by up to 2.5x.
+A running tally is maintained which keeps the total difficulty and total time
+passed across all blocks. The total difficulty can be divided by the total time
+to get a hashrate. The total is multiplied by 0.995 each block, to keep
+exponential preference on recent blocks with a half life of 144 data points.
+This is about 24 hours. This estimated hashrate is assumed to closely match the
+actual hashrate on the network.
 
-The target is changed in proportion to the difference in time (If the time was
-half of what was expected, the new target is 1/2 the old target). There is a
-clamp on the adjustment. In one block, the target cannot adjust upwards by more
-more than 1001/1000, and cannot adjust downwards by more than 999/1000.
+There is a target block time. If the difficulty increases or decreases, the
+total amount of time that has passed will be more or less than the target amount
+of time passed for the current height. To counteract this, the target block time
+for each block is adjusted based on how far away from the desired total time
+passed the current total time passed is. If the total time passed is too low,
+blocks are targeted to be slightly longer, which helps to correct the network.
+And if the total time passed is too high, blocks are targeted to be slightly
+shorter, to help correct the network.
 
-The new target is calculated using (expected time passed in seconds) / (actual
-time passed in seconds) * (current target). The division and multiplication
-should be done using infinite precision, and the result should be truncated.
+High variance in block times means that the corrective action should not be very
+strong if the total time passed has only missed the target time passed by a few
+hours. But if the total time passed is significantly off, the block time
+corrections should be much stronger. The square of the total deviation is used
+to figure out what the adjustment should be. At 10,000 seconds variance (about 3
+hours), blocks will be adjusted by 10 seconds each. At 20,000 seconds, blocks
+will be adjusted by 40 seconds each, a 4x adjustment for 2x the error. And at
+40,000 seconds, blocks will be adjusted by 160 seconds each, and so on.
 
-If there are not 1000 blocks, the genesis timestamp is used for comparison.
-The expected time is (10 minutes * block height).
+The total amount of blocktime adjustment is capped to 1/3 and 3x the target
+blocktime, to prevent too much disruption on the network. If blocks are actually
+coming out 3x as fast as intended, there will be a (temporary) significant
+increase on the amount of strain on nodes to process blocks. And at 1/3 the
+target blocktime, the total blockchain throughput will decrease dramatically.
+
+Finally, one extra cap is applied to the difficulty adjustment - the difficulty
+of finding a block is not allowed to change more than 0.4% every block. This
+maps to a total possible difficulty change of 55x across 1008 blocks. This clamp
+helps to prevent wild swings when the hashrate increases or decreases rapidly on
+the network, and it also limits the amount of damange that a malicious attacker
+can do if performing a difficulty raising attack.
+
+It should be noted that the timestamp of a block does not impact the difficulty
+of the block that follows it, as this can be exploited by selfish miners.
+Instead, a block does not impact the difficulty adjustment for 2 blocks. This
+can still be exploited by selfish miners, however the gains they get from
+exploiting this are massively reduced and make no substantial impact on the
+overall effectiveness of selfish mining.
 
 Block Subsidy
 -------------

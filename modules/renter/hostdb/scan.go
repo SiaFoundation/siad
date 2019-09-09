@@ -11,13 +11,14 @@ import (
 	"sort"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // equalIPNets checks if two slices of IP subnets contain the same subnets.
@@ -413,6 +414,9 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		if err != nil {
 			return err
 		}
+		// Create go routine that will close the channel if the hostdb shuts
+		// down or when this method returns as signalled by closing the
+		// connCloseChan channel
 		connCloseChan := make(chan struct{})
 		go func() {
 			select {
@@ -432,6 +436,7 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			if err != nil {
 				return err
 			}
+			defer s.WriteRequest(modules.RPCLoopExit, nil) // make sure we close cleanly
 			if err := s.WriteRequest(modules.RPCLoopSettings, nil); err != nil {
 				return err
 			}
@@ -447,23 +452,41 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 
 		// Failed to get settings with the new protocol; fall back to the old
 		// protocol, filling in the missing fields with default values.
+		//
+		// Close current connection
 		conn.Close()
+
+		// Start new connection. We cannot assign this to the first connection
+		// as it creates a Data Race and conflicts with the deferred channel
+		// closing. Additionally, we can't assign the result of Dial to conn,
+		// because if the Dial fails and conn is nil, then the deferred call to
+		// Close will segfault.
 		conn2, err := dialer.Dial("tcp", string(netAddr))
 		if err != nil {
 			return err
 		}
-		// NOTE: we can't assign the result of Dial directly to conn, because if
-		// the Dial fails and conn is nil, then the deferred call to Close will
-		// segfault.
-		conn = conn2
-		err = encoding.WriteObject(conn, modules.RPCSettings)
+		// Create go routine that will close this second channel if the hostdb
+		// shuts down or when this method returns as signalled by closing the
+		// connCloseChan2 channel
+		connCloseChan2 := make(chan struct{})
+		go func() {
+			select {
+			case <-hdb.tg.StopChan():
+			case <-connCloseChan2:
+			}
+			conn2.Close()
+		}()
+		defer close(connCloseChan2)
+		conn2.SetDeadline(time.Now().Add(hostScanDeadline))
+
+		err = encoding.WriteObject(conn2, modules.RPCSettings)
 		if err != nil {
 			return err
 		}
 		var pubkey crypto.PublicKey
 		copy(pubkey[:], pubKey.Key)
 		var oldSettings modules.HostOldExternalSettings
-		err = crypto.ReadSignedObject(conn, &oldSettings, maxSettingsLen, pubkey)
+		err = crypto.ReadSignedObject(conn2, &oldSettings, maxSettingsLen, pubkey)
 		if err != nil {
 			return err
 		}
@@ -604,9 +627,14 @@ func (hdb *HostDB) threadedScan() {
 	hdb.mu.Unlock()
 	hdb.managedWaitForScans()
 
-	// Set the flag to indicate that the initial scan is complete.
 	hdb.mu.Lock()
+	// Set the flag to indicate that the initial scan is complete.
 	hdb.initialScanComplete = true
+	// Copy the known contracts to avoid having to lock the hdb later.
+	knownContracts := make(map[string]contractInfo)
+	for k, c := range hdb.knownContracts {
+		knownContracts[k] = c
+	}
 	hdb.mu.Unlock()
 
 	for {
@@ -620,19 +648,24 @@ func (hdb *HostDB) threadedScan() {
 		// most part only online hosts are getting scanned unless there are
 		// fewer than hostCheckupQuantity of them.
 
-		// Grab a set of hosts to scan, grab hosts that are active, inactive,
-		// and offline to get high diversity.
-		var onlineHosts, offlineHosts []modules.HostDBEntry
+		// Grab a set of hosts to scan, grab hosts that are active, inactive, offline
+		// and known to get high diversity.
+		var onlineHosts, offlineHosts, knownHosts []modules.HostDBEntry
 		allHosts := hdb.hostTree.All()
 		for i := len(allHosts) - 1; i >= 0; i-- {
-			if len(onlineHosts) >= hostCheckupQuantity && len(offlineHosts) >= hostCheckupQuantity {
+			if len(onlineHosts) >= hostCheckupQuantity &&
+				len(offlineHosts) >= hostCheckupQuantity &&
+				len(knownHosts) == len(knownContracts) {
 				break
 			}
 
-			// Figure out if the host is online or offline.
+			// Figure out if the host is known, online or offline.
 			host := allHosts[i]
 			online := len(host.ScanHistory) > 0 && host.ScanHistory[len(host.ScanHistory)-1].Success
-			if online && len(onlineHosts) < hostCheckupQuantity {
+			_, known := knownContracts[host.PublicKey.String()]
+			if known {
+				knownHosts = append(knownHosts, host)
+			} else if online && len(onlineHosts) < hostCheckupQuantity {
 				onlineHosts = append(onlineHosts, host)
 			} else if !online && len(offlineHosts) < hostCheckupQuantity {
 				offlineHosts = append(offlineHosts, host)
@@ -640,8 +673,11 @@ func (hdb *HostDB) threadedScan() {
 		}
 
 		// Queue the scans for each host.
-		hdb.log.Println("Performing scan on", len(onlineHosts), "online hosts and", len(offlineHosts), "offline hosts.")
+		hdb.log.Println("Performing scan on", len(onlineHosts), "online hosts and", len(offlineHosts), "offline hosts and", len(knownHosts), "known hosts.")
 		hdb.mu.Lock()
+		for _, host := range knownHosts {
+			hdb.queueScan(host)
+		}
 		for _, host := range onlineHosts {
 			hdb.queueScan(host)
 		}

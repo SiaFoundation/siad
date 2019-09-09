@@ -6,12 +6,14 @@ import (
 	"path/filepath"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 const (
@@ -123,8 +125,7 @@ func (h *contractHeader) EndHeight() types.BlockHeight {
 // A SafeContract contains the most recent revision transaction negotiated
 // with a host, and the secret key used to sign it.
 type SafeContract struct {
-	headerMu sync.Mutex
-	header   contractHeader
+	header contractHeader
 
 	// merkleRoots are the sector roots covered by this contract.
 	merkleRoots *merkleRoots
@@ -136,12 +137,18 @@ type SafeContract struct {
 	headerFile *fileSection
 	wal        *writeaheadlog.WAL
 	mu         sync.Mutex
+
+	// revisionMu serializes revisions to the contract. It is acquired by
+	// (ContractSet).Acquire and released by (ContractSet).Return. When holding
+	// revisionMu, it is still necessary to lock mu when modifying fields of the
+	// SafeContract.
+	revisionMu sync.Mutex
 }
 
 // Metadata returns the metadata of a renter contract
 func (c *SafeContract) Metadata() modules.RenterContract {
-	c.headerMu.Lock()
-	defer c.headerMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	h := c.header
 	return modules.RenterContract{
 		ID:               h.ID(),
@@ -163,12 +170,10 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 
 // UpdateUtility updates the utility field of a contract.
 func (c *SafeContract) UpdateUtility(utility modules.ContractUtility) error {
-	// Get current header
-	c.headerMu.Lock()
-	newHeader := c.header
-	c.headerMu.Unlock()
-
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// Construct new header
+	newHeader := c.header
 	newHeader.Utility = utility
 
 	// Record the intent to change the header in the wal.
@@ -199,15 +204,13 @@ func (c *SafeContract) UpdateUtility(utility modules.ContractUtility) error {
 
 // Utility returns the contract utility for the contract.
 func (c *SafeContract) Utility() modules.ContractUtility {
-	c.headerMu.Lock()
-	defer c.headerMu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.header.Utility
 }
 
 func (c *SafeContract) makeUpdateSetHeader(h contractHeader) writeaheadlog.Update {
-	c.headerMu.Lock()
 	id := c.header.ID()
-	c.headerMu.Unlock()
 	return writeaheadlog.Update{
 		Name: updateNameSetHeader,
 		Instructions: encoding.Marshal(updateSetHeader{
@@ -218,9 +221,7 @@ func (c *SafeContract) makeUpdateSetHeader(h contractHeader) writeaheadlog.Updat
 }
 
 func (c *SafeContract) makeUpdateSetRoot(root crypto.Hash, index int) writeaheadlog.Update {
-	c.headerMu.Lock()
 	id := c.header.ID()
-	c.headerMu.Unlock()
 	return writeaheadlog.Update{
 		Name: updateNameSetRoot,
 		Instructions: encoding.Marshal(updateSetRoot{
@@ -232,14 +233,26 @@ func (c *SafeContract) makeUpdateSetRoot(root crypto.Hash, index int) writeahead
 }
 
 func (c *SafeContract) applySetHeader(h contractHeader) error {
+	if build.DEBUG {
+		// read the existing header on disk, to make sure we aren't overwriting
+		// it with an older revision
+		var oldHeader contractHeader
+		headerBytes := make([]byte, contractHeaderSize)
+		if _, err := c.headerFile.ReadAt(headerBytes, 0); err == nil {
+			if err := encoding.Unmarshal(headerBytes, &oldHeader); err == nil {
+				if oldHeader.LastRevision().NewRevisionNumber > h.LastRevision().NewRevisionNumber {
+					build.Critical("overwriting a newer revision:", oldHeader.LastRevision().NewRevisionNumber, h.LastRevision().NewRevisionNumber)
+				}
+			}
+		}
+	}
+
 	headerBytes := make([]byte, contractHeaderSize)
 	copy(headerBytes, encoding.Marshal(h))
 	if _, err := c.headerFile.WriteAt(headerBytes, 0); err != nil {
 		return err
 	}
-	c.headerMu.Lock()
 	c.header = h
-	c.headerMu.Unlock()
 	return nil
 }
 
@@ -247,13 +260,14 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 	return c.merkleRoots.insert(index, root)
 }
 
-func (c *SafeContract) recordUploadIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// construct new header
 	// NOTE: this header will not include the host signature
-	c.headerMu.Lock()
 	newHeader := c.header
-	c.headerMu.Unlock()
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
+	newHeader.Transaction.TransactionSignatures = nil
 	newHeader.StorageSpending = newHeader.StorageSpending.Add(storageCost)
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
 
@@ -271,11 +285,11 @@ func (c *SafeContract) recordUploadIntent(rev types.FileContractRevision, root c
 	return t, nil
 }
 
-func (c *SafeContract) commitUpload(t *writeaheadlog.Transaction, signedTxn types.Transaction, root crypto.Hash, storageCost, bandwidthCost types.Currency) error {
+func (c *SafeContract) managedCommitUpload(t *writeaheadlog.Transaction, signedTxn types.Transaction, root crypto.Hash, storageCost, bandwidthCost types.Currency) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// construct new header
-	c.headerMu.Lock()
 	newHeader := c.header
-	c.headerMu.Unlock()
 	newHeader.Transaction = signedTxn
 	newHeader.StorageSpending = newHeader.StorageSpending.Add(storageCost)
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
@@ -296,13 +310,14 @@ func (c *SafeContract) commitUpload(t *writeaheadlog.Transaction, signedTxn type
 	return nil
 }
 
-func (c *SafeContract) recordDownloadIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+func (c *SafeContract) managedRecordDownloadIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// construct new header
 	// NOTE: this header will not include the host signature
-	c.headerMu.Lock()
 	newHeader := c.header
-	c.headerMu.Unlock()
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
+	newHeader.Transaction.TransactionSignatures = nil
 	newHeader.DownloadSpending = newHeader.DownloadSpending.Add(bandwidthCost)
 
 	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
@@ -318,11 +333,11 @@ func (c *SafeContract) recordDownloadIntent(rev types.FileContractRevision, band
 	return t, nil
 }
 
-func (c *SafeContract) commitDownload(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
+func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// construct new header
-	c.headerMu.Lock()
 	newHeader := c.header
-	c.headerMu.Unlock()
 	newHeader.Transaction = signedTxn
 	newHeader.DownloadSpending = newHeader.DownloadSpending.Add(bandwidthCost)
 
@@ -339,9 +354,11 @@ func (c *SafeContract) commitDownload(t *writeaheadlog.Transaction, signedTxn ty
 	return nil
 }
 
-// commitTxns commits the unapplied transactions to the contract file and marks
+// managedCommitTxns commits the unapplied transactions to the contract file and marks
 // the transactions as applied.
-func (c *SafeContract) commitTxns() error {
+func (c *SafeContract) managedCommitTxns() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, t := range c.unappliedTxns {
 		for _, update := range t.Updates {
 			switch update.Name {
@@ -374,41 +391,96 @@ func (c *SafeContract) commitTxns() error {
 	return nil
 }
 
-// unappliedHeader returns the most recent header contained within the unapplied
-// transactions relevant to the contract.
-func (c *SafeContract) unappliedHeader() (h contractHeader) {
+// managedSyncRevision checks whether rev accords with the SafeContract's most
+// recent revision; if it does not, managedSyncRevision attempts to synchronize
+// with rev by committing any uncommitted WAL transactions. If the revisions
+// still do not match, and the host's revision is ahead of the renter's,
+// managedSyncRevision uses the host's revision.
+func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Our current revision should always be signed. If it isn't, we have no
+	// choice but to accept the host's revision.
+	if len(c.header.Transaction.TransactionSignatures) == 0 {
+		c.header.Transaction.FileContractRevisions[0] = rev
+		c.header.Transaction.TransactionSignatures = sigs
+		return nil
+	}
+
+	ourRev := c.header.LastRevision()
+
+	// If the revision number and Merkle root match, we don't need to do anything.
+	if rev.NewRevisionNumber == ourRev.NewRevisionNumber && rev.NewFileMerkleRoot == ourRev.NewFileMerkleRoot {
+		// If any other fields mismatch, it must be our fault, since we signed
+		// the revision reported by the host. So, to ensure things are
+		// consistent, we blindly overwrite our revision with the host's.
+		c.header.Transaction.FileContractRevisions[0] = rev
+		c.header.Transaction.TransactionSignatures = sigs
+		return nil
+	}
+
+	// The host should never report a lower revision number than ours. If they
+	// do, it may mean they are intentionally (and maliciously) trying to
+	// "rewind" the contract to an earlier state. Even if the host does not have
+	// ill intent, this would mean that they failed to commit one or more
+	// revisions to durable storage, which reflects very poorly on them.
+	if rev.NewRevisionNumber < ourRev.NewRevisionNumber {
+		return &revisionNumberMismatchError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
+	}
+
+	// At this point, we know that either the host's revision number is above
+	// ours, or their Merkle root differs. Search our unapplied WAL transactions
+	// for one that might synchronize us with the host.
 	for _, t := range c.unappliedTxns {
 		for _, update := range t.Updates {
 			if update.Name == updateNameSetHeader {
 				var u updateSetHeader
 				if err := unmarshalHeader(update.Instructions, &u); err != nil {
+					return err
+				}
+				unappliedRev := u.Header.LastRevision()
+				if unappliedRev.NewRevisionNumber != rev.NewRevisionNumber || unappliedRev.NewFileMerkleRoot != rev.NewFileMerkleRoot {
 					continue
 				}
-				h = u.Header
+				// found a matching header, but it still won't have the host's
+				// signatures, since those aren't added until the transaction is
+				// committed. Add the signatures supplied by the host and commit
+				// the header.
+				u.Header.Transaction.TransactionSignatures = sigs
+				if err := c.applySetHeader(u.Header); err != nil {
+					return err
+				}
+				if err := c.headerFile.Sync(); err != nil {
+					return err
+				}
+				// drop all unapplied transactions
+				for _, t := range c.unappliedTxns {
+					if err := t.SignalUpdatesApplied(); err != nil {
+						return err
+					}
+				}
+				c.unappliedTxns = nil
+				return nil
 			}
 		}
 	}
-	return
-}
 
-// syncRevision checks whether rev accords with the SafeContract's most recent
-// revision; if it does not, syncRevision attempts to synchronize with rev by
-// committing any uncommitted WAL transactions.
-func (c *SafeContract) syncRevision(rev types.FileContractRevision) error {
-	ourRev := c.header.LastRevision()
-	if rev.UnlockConditions.UnlockHash() != ourRev.UnlockConditions.UnlockHash() {
-		return errors.New("unlock conditions do not match")
-	} else if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
-		// If the revision number doesn't match, try to commit potential
-		// unapplied transactions and check again.
-		if err := c.commitTxns(); err != nil {
-			return errors.AddContext(err, "failed to commit transactions")
-		}
-		ourRev = c.header.LastRevision()
-		if rev.NewRevisionNumber != ourRev.NewRevisionNumber {
-			return &recentRevisionError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
+	// The host's revision is still different, and we have no unapplied
+	// transactions containing their revision. At this point, the best we can do
+	// is accept their revision. This isn't ideal, but at least there's no
+	// security risk, since we *did* sign the revision that the host is
+	// claiming. Worst case, certain contract metadata (e.g. UploadSpending)
+	// will be incorrect.
+	c.header.Transaction.FileContractRevisions[0] = rev
+	c.header.Transaction.TransactionSignatures = sigs
+	// Drop the WAL transactions, since they can't conceivably help us.
+	for _, t := range c.unappliedTxns {
+		if err := t.SignalUpdatesApplied(); err != nil {
+			return err
 		}
 	}
+	c.unappliedTxns = nil
 	return nil
 }
 
@@ -521,7 +593,7 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 
 	// apply the wal txns if necessary.
 	if applyTxns {
-		if err := sc.commitTxns(); err != nil {
+		if err := sc.managedCommitTxns(); err != nil {
 			return err
 		}
 	}
@@ -556,9 +628,9 @@ func (cs *ContractSet) ConvertV130Contract(c V130Contract, cr V130CachedRevision
 		defer cs.Return(sc)
 		if len(cr.MerkleRoots) == sc.merkleRoots.len()+1 {
 			root := cr.MerkleRoots[len(cr.MerkleRoots)-1]
-			_, err = sc.recordUploadIntent(cr.Revision, root, types.ZeroCurrency, types.ZeroCurrency)
+			_, err = sc.managedRecordUploadIntent(cr.Revision, root, types.ZeroCurrency, types.ZeroCurrency)
 		} else {
-			_, err = sc.recordDownloadIntent(cr.Revision, types.ZeroCurrency)
+			_, err = sc.managedRecordDownloadIntent(cr.Revision, types.ZeroCurrency)
 		}
 		if err != nil {
 			return err

@@ -8,13 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestInitialScanComplete tests if the initialScanComplete field is set
@@ -31,7 +33,7 @@ func TestInitialScanComplete(t *testing.T) {
 
 	// Create a group. The renter should block the scanning thread using a
 	// dependency.
-	deps := &dependencyBlockScan{}
+	deps := &dependencies.DependencyBlockScan{}
 	renterTemplate := node.Renter(filepath.Join(testDir, "renter"))
 	renterTemplate.SkipSetAllowance = true
 	renterTemplate.SkipHostDiscovery = true
@@ -160,7 +162,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 
 	// Add a renter with a custom resolver to the group.
 	renterTemplate := node.Renter(testDir + "/renter")
-	renterTemplate.HostDBDeps = siatest.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
+	renterTemplate.HostDBDeps = dependencies.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1.com":
 			return []net.IP{{128, 0, 0, 1}}, nil
@@ -342,7 +344,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 
 	// Add a renter with a custom resolver to the group.
 	renterTemplate := node.Renter(testDir + "/renter")
-	renterTemplate.HostDBDeps = siatest.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
+	renterTemplate.HostDBDeps = dependencies.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1.com":
 			return []net.IP{{128, 0, 0, 1}}, nil
@@ -510,7 +512,7 @@ func TestDisableIPViolationCheck(t *testing.T) {
 
 	// Add a renter with a custom resolver to the group.
 	renterTemplate := node.Renter(testDir + "/renter")
-	renterTemplate.HostDBDeps = siatest.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
+	renterTemplate.HostDBDeps = dependencies.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1.com":
 			return []net.IP{{128, 0, 0, 1}}, nil
@@ -736,11 +738,43 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 		return err
 	}
 
-	// confirm contracts are dropped and replaced appropriately for the FilterMode
+	// Confirm filter mode is set as expected
+	hdfmg, err := renter.HostDbFilterModeGet()
+	if err != nil {
+		return err
+	}
+	if hdfmg.FilterMode != fm.String() {
+		return fmt.Errorf("filter mode not set as expected, got %v expected %v", hdfmg.FilterMode, fm.String())
+	}
+	if len(hdfmg.Hosts) != len(filteredHosts) {
+		return fmt.Errorf("Number of filtered hosts incorrect, got %v expected %v", len(hdfmg.Hosts), len(filteredHosts))
+	}
+	// Create map for comparison
 	filteredHostsMap := make(map[string]struct{})
 	for _, pk := range filteredHosts {
 		filteredHostsMap[pk.String()] = struct{}{}
 	}
+	for _, host := range hdfmg.Hosts {
+		if _, ok := filteredHostsMap[host]; !ok {
+			return errors.New("host returned not found in filtered hosts")
+		}
+	}
+
+	// Confirm hosts are marked as filtered in original hosttree by querying AllHost
+	hbag, err := renter.HostDbAllGet()
+	if err != nil {
+		return err
+	}
+	for _, host := range hbag.Hosts {
+		if _, ok := filteredHostsMap[host.PublicKeyString]; !ok {
+			continue
+		}
+		if !host.Filtered {
+			return errors.New("Host not marked as filtered")
+		}
+	}
+
+	// confirm contracts are dropped and replaced appropriately for the FilterMode
 	loop = 0
 	err = build.Retry(50, 100*time.Millisecond, func() error {
 		// Mine a block every 10 iterations to make sure

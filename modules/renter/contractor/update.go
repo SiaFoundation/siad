@@ -1,11 +1,12 @@
 package contractor
 
 import (
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // hasFCIdentifier checks the transaction for a ContractSignedIdentifier and
@@ -18,11 +19,10 @@ func hasFCIdentifier(txn types.Transaction) (proto.ContractSignedIdentifier, cry
 		return proto.ContractSignedIdentifier{}, nil, false
 	}
 	// Verify the prefix.
-	// TODO In the future we can remove checking for PrefixNonSia.
 	var prefix types.Specifier
 	copy(prefix[:], txn.ArbitraryData[0])
-	if prefix != modules.PrefixNonSia &&
-		prefix != modules.PrefixFileContractIdentifier {
+	if prefix != modules.PrefixFileContractIdentifier &&
+		prefix != modules.PrefixNonSia {
 		return proto.ContractSignedIdentifier{}, nil, false
 	}
 	// We found an identifier.
@@ -76,13 +76,18 @@ func (c *Contractor) managedArchiveContracts() {
 // is a change in the blockchain. Updates will always be called in order.
 func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Get the wallet's seed for contract recovery.
+	haveSeed := true
+	missedRecovery := false
 	s, _, err := c.wallet.PrimarySeed()
 	if err != nil {
-		c.log.Println("Failed to get the wallet's seed:", err)
+		haveSeed = false
 	}
 	// Get the master renter seed and wipe it once we are done with it.
-	renterSeed := proto.DeriveRenterSeed(s)
-	defer fastrand.Read(renterSeed[:])
+	var renterSeed proto.RenterSeed
+	if haveSeed {
+		renterSeed = proto.DeriveRenterSeed(s)
+		defer fastrand.Read(renterSeed[:])
+	}
 
 	c.mu.Lock()
 	for _, block := range cc.RevertedBlocks {
@@ -97,7 +102,15 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 			c.blockHeight++
 		}
 		// Find lost contracts for recovery.
-		c.findRecoverableContracts(renterSeed, block)
+		if haveSeed {
+			c.findRecoverableContracts(renterSeed, block)
+		} else {
+			missedRecovery = true
+		}
+	}
+	// If we didn't miss the recover, we update the recentRecoverChange
+	if !missedRecovery && c.recentRecoveryChange == c.lastChange {
+		c.recentRecoveryChange = cc.ID
 	}
 
 	// If we have entered the next period, update currentPeriod

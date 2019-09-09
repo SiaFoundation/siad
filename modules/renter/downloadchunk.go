@@ -1,17 +1,16 @@
 package renter
 
 import (
-	"bytes"
 	"fmt"
 	"sync"
 	"time"
+
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // downloadPieceInfo contains all the information required to download and
@@ -131,7 +130,7 @@ func (udc *unfinishedDownloadChunk) managedCleanUp() {
 	udc.workersStandby = udc.workersStandby[:0] // Workers have been taken off of standby.
 	udc.mu.Unlock()
 	for i := 0; i < len(standbyWorkers); i++ {
-		standbyWorkers[i].managedQueueDownloadChunk(udc)
+		standbyWorkers[i].callQueueDownloadChunk(udc)
 	}
 }
 
@@ -200,45 +199,20 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 	// succeeds or fails.
 	defer udc.managedCleanUp()
 
-	// Calculate the number of bytes we need to recover. This doesn't
-	// necessarily equal the staticFetchLength
-	btr := bytesToRecover(udc.staticFetchOffset, udc.staticFetchLength, udc.staticChunkSize, udc.erasureCode)
-
-	// Recover the pieces into the logical chunk data.
-	//
-	recoverWriter := new(bytes.Buffer)
-	err := udc.erasureCode.Recover(udc.physicalChunkData, btr, recoverWriter)
-	if err != nil {
-		udc.mu.Lock()
-		udc.fail(err)
-		udc.mu.Unlock()
-		return errors.AddContext(err, "unable to recover chunk")
-	}
-	// Clear out the physical chunk pieces, we do not need them anymore.
-	for i := range udc.physicalChunkData {
-		udc.physicalChunkData[i] = nil
-	}
-
-	// Get recovered data
-	recoveredData := recoverWriter.Bytes()
-
-	// Write the bytes to the requested output.
-	start := recoveredDataOffset(udc.staticFetchOffset, udc.erasureCode)
-	end := start + udc.staticFetchLength
-	_, err = udc.destination.WriteAt(recoveredData[start:end], udc.staticWriteOffset)
+	// Write the pieces to the requested output.
+	dataOffset := recoveredDataOffset(udc.staticFetchOffset, udc.erasureCode)
+	err := udc.destination.WritePieces(udc.erasureCode, udc.physicalChunkData, dataOffset, udc.staticWriteOffset, udc.staticFetchLength)
 	if err != nil {
 		udc.mu.Lock()
 		udc.fail(err)
 		udc.mu.Unlock()
 		return errors.AddContext(err, "unable to write to download destination")
 	}
-	recoverWriter = nil
 
-	// Now that the download has completed and been flushed from memory, we can
-	// release the memory that was used to store the data. Call 'cleanUp' to
-	// trigger the memory cleanup along with some extra checks that everything
-	// is consistent.
+	// Directly nil out the physical chunk data, it's not going to be used
+	// anymore. Also signal that data recovery has completed.
 	udc.mu.Lock()
+	udc.physicalChunkData = nil
 	udc.recoveryComplete = true
 	udc.mu.Unlock()
 

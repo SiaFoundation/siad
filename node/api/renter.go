@@ -1,12 +1,20 @@
 package api
 
 import (
+	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"net/url"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"time"
+
+	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -14,10 +22,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
-
-	"github.com/julienschmidt/httprouter"
 )
 
 var (
@@ -116,11 +120,18 @@ type (
 
 	// RenterContracts contains the renter's contracts.
 	RenterContracts struct {
-		Contracts            []RenterContract              `json:"contracts"`
-		ActiveContracts      []RenterContract              `json:"activecontracts"`
-		InactiveContracts    []RenterContract              `json:"inactivecontracts"`
-		ExpiredContracts     []RenterContract              `json:"expiredcontracts"`
-		RecoverableContracts []modules.RecoverableContract `json:"recoverablecontracts"`
+		// Compatibility Fields
+		Contracts         []RenterContract `json:"contracts"`
+		InactiveContracts []RenterContract `json:"inactivecontracts"`
+
+		// Current Fields
+		ActiveContracts           []RenterContract              `json:"activecontracts"`
+		PassiveContracts          []RenterContract              `json:"passivecontracts"`
+		RefreshedContracts        []RenterContract              `json:"refreshedcontracts"`
+		DisabledContracts         []RenterContract              `json:"disabledcontracts"`
+		ExpiredContracts          []RenterContract              `json:"expiredcontracts"`
+		ExpiredRefreshedContracts []RenterContract              `json:"expiredrefreshedcontracts"`
+		RecoverableContracts      []modules.RecoverableContract `json:"recoverablecontracts"`
 	}
 
 	// RenterDirectory lists the files and directories contained in the queried
@@ -167,14 +178,30 @@ type (
 		ASCIIsia string `json:"asciisia"`
 	}
 
+	// RenterUploadedBackup describes an uploaded backup.
+	RenterUploadedBackup struct {
+		Name           string          `json:"name"`
+		CreationDate   types.Timestamp `json:"creationdate"`
+		Size           uint64          `json:"size"`
+		UploadProgress float64         `json:"uploadprogress"`
+	}
+
+	// RenterBackupsGET lists the renter's uploaded backups, as well as the
+	// set of contracts storing all known backups.
+	RenterBackupsGET struct {
+		Backups       []RenterUploadedBackup `json:"backups"`
+		SyncedHosts   []types.SiaPublicKey   `json:"syncedhosts"`
+		UnsyncedHosts []types.SiaPublicKey   `json:"unsyncedhosts"`
+	}
+
 	// DownloadInfo contains all client-facing information of a file.
 	DownloadInfo struct {
-		Destination     string `json:"destination"`     // The destination of the download.
-		DestinationType string `json:"destinationtype"` // Can be "file", "memory buffer", or "http stream".
-		Filesize        uint64 `json:"filesize"`        // DEPRECATED. Same as 'Length'.
-		Length          uint64 `json:"length"`          // The length requested for the download.
-		Offset          uint64 `json:"offset"`          // The offset within the siafile requested for the download.
-		SiaPath         string `json:"siapath"`         // The siapath of the file used for the download.
+		Destination     string          `json:"destination"`     // The destination of the download.
+		DestinationType string          `json:"destinationtype"` // Can be "file", "memory buffer", or "http stream".
+		Filesize        uint64          `json:"filesize"`        // DEPRECATED. Same as 'Length'.
+		Length          uint64          `json:"length"`          // The length requested for the download.
+		Offset          uint64          `json:"offset"`          // The offset within the siafile requested for the download.
+		SiaPath         modules.SiaPath `json:"siapath"`         // The siapath of the file used for the download.
 
 		Completed            bool      `json:"completed"`            // Whether or not the download has completed.
 		EndTime              time.Time `json:"endtime"`              // The time when the download fully completed.
@@ -185,6 +212,138 @@ type (
 		TotalDataTransferred uint64    `json:"totaldatatransferred"` // The total amount of data transferred, including negotiation, overdrive etc.
 	}
 )
+
+// renterBackupsHandlerGET handles the API calls to /renter/backups.
+func (api *API) renterBackupsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	backups, syncedHosts, err := api.renter.UploadedBackups()
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	var unsyncedHosts []types.SiaPublicKey
+outer:
+	for _, c := range api.renter.Contracts() {
+		for _, h := range syncedHosts {
+			if c.HostPublicKey.String() == h.String() {
+				continue outer
+			}
+		}
+		unsyncedHosts = append(unsyncedHosts, c.HostPublicKey)
+	}
+
+	// if requested, fetch the backups stored on a specific host
+	if req.FormValue("host") != "" {
+		var hostKey types.SiaPublicKey
+		hostKey.LoadString(req.FormValue("host"))
+		if hostKey.Key == nil {
+			WriteError(w, Error{"invalid host public key"}, http.StatusBadRequest)
+			return
+		}
+		backups, err = api.renter.BackupsOnHost(hostKey)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	rups := make([]RenterUploadedBackup, len(backups))
+	for i, b := range backups {
+		rups[i] = RenterUploadedBackup{
+			Name:           b.Name,
+			CreationDate:   b.CreationDate,
+			Size:           b.Size,
+			UploadProgress: b.UploadProgress,
+		}
+	}
+	WriteJSON(w, RenterBackupsGET{
+		Backups:       rups,
+		SyncedHosts:   syncedHosts,
+		UnsyncedHosts: unsyncedHosts,
+	})
+}
+
+// renterBackupsCreateHandlerPOST handles the API calls to /renter/backups/create
+func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Check that a name was specified.
+	name := req.FormValue("name")
+	if name == "" {
+		WriteError(w, Error{"name not specified"}, http.StatusBadRequest)
+		return
+	}
+
+	// Write the backup to a temporary file and delete it after uploading.
+	tmpDir, err := ioutil.TempDir("", "sia-backup")
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+	backupPath := filepath.Join(tmpDir, name)
+
+	// Get the wallet seed.
+	ws, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
+		return
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, backupKeySpecifier)
+	defer fastrand.Read(secret[:])
+	// Create the backup.
+	if err := api.renter.CreateBackup(backupPath, secret[:32]); err != nil {
+		WriteError(w, Error{"failed to create backup: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Upload the backup.
+	if err := api.renter.UploadBackup(backupPath, name); err != nil {
+		WriteError(w, Error{"failed to upload backup: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterBackupsRestoreHandlerGET handles the API calls to /renter/backups/restore
+func (api *API) renterBackupsRestoreHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Check that a name was specified.
+	name := req.FormValue("name")
+	if name == "" {
+		WriteError(w, Error{"name not specified"}, http.StatusBadRequest)
+		return
+	}
+	// Write the backup to a temporary file and delete it after loading.
+	tmpDir, err := ioutil.TempDir("", "sia-backup")
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+	backupPath := filepath.Join(tmpDir, name)
+	if err := api.renter.DownloadBackup(backupPath, name); err != nil {
+		WriteError(w, Error{"failed to download backup: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Get the wallet seed.
+	ws, _, err := api.wallet.PrimarySeed()
+	if err != nil {
+		WriteError(w, Error{"failed to get wallet's primary seed"}, http.StatusInternalServerError)
+		return
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, backupKeySpecifier)
+	defer fastrand.Read(secret[:])
+	// Load the backup.
+	if err := api.renter.LoadBackup(backupPath, secret[:32]); err != nil {
+		WriteError(w, Error{"failed to load backup: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
 
 // renterBackupHandlerPOST handles the API calls to /renter/backup
 func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -213,7 +372,7 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 	defer fastrand.Read(secret[:])
 	// Create the backup.
 	if err := api.renter.CreateBackup(dst, secret[:32]); err != nil {
-		WriteError(w, Error{"failed to create backup" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to create backup: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
@@ -246,20 +405,61 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 	defer fastrand.Read(secret[:])
 	// Load the backup.
 	if err := api.renter.LoadBackup(src, secret[:32]); err != nil {
-		WriteError(w, Error{"failed to load backup" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to load backup: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
 }
 
+// parseErasureCodingParameters parses the supplied string values and creates
+// an erasure coder. If values haven't been supplied it will fill in sane
+// defaults.
+func parseErasureCodingParameters(strDataPieces, strParityPieces string) (modules.ErasureCoder, error) {
+	// Check whether the erasure coding parameters have been supplied.
+	if strDataPieces != "" || strParityPieces != "" {
+		// Check that both values have been supplied.
+		if strDataPieces == "" || strParityPieces == "" {
+			err := errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
+			return nil, err
+		}
+
+		// Parse the erasure coding parameters.
+		var dataPieces, parityPieces int
+		_, err := fmt.Sscan(strDataPieces, &dataPieces)
+		if err != nil {
+			err = errors.AddContext(err, "unable to read parameter 'datapieces'")
+			return nil, err
+		}
+		_, err = fmt.Sscan(strParityPieces, &parityPieces)
+		if err != nil {
+			err = errors.AddContext(err, "unable to read parameter 'paritypieces'")
+			return nil, err
+		}
+
+		// Verify that sane values for parityPieces and redundancy are being
+		// supplied.
+		if parityPieces < requiredParityPieces {
+			err := fmt.Errorf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)
+			return nil, err
+		}
+		redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
+		if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
+			err := fmt.Errorf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)
+			return nil, err
+		}
+
+		// Create the erasure coder.
+		return siafile.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
+	}
+	return nil, nil
+}
+
 // renterHandlerGET handles the API call to /renter.
 func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	settings := api.renter.Settings()
-	periodStart := api.renter.CurrentPeriod()
 	WriteJSON(w, RenterGET{
-		Settings:         settings,
+		Settings:         api.renter.Settings(),
 		FinancialMetrics: api.renter.PeriodSpending(),
-		CurrentPeriod:    periodStart,
+		CurrentPeriod:    api.renter.CurrentPeriod(),
 	})
 }
 
@@ -422,20 +622,47 @@ func (api *API) renterContractCancelHandler(w http.ResponseWriter, req *http.Req
 }
 
 // renterContractsHandler handles the API call to request the Renter's
-// contracts.
+// contracts. Active and renewed contracts are returned by default
 //
-// Active contracts are contracts that the renter is actively using to store
-// data and can upload, download, and renew
+// Contracts are returned for Compatibility and are the contracts returned from
+// renter.Contracts()
 //
 // Inactive contracts are contracts that are not currently being used by the
 // renter because they are !goodForRenew, but have endheights that are in the
 // future so could potentially become active again
 //
-// Expired contracts are contracts who's endheights are in the past
+// Active contracts are contracts that the renter is actively using to store
+// data and can upload, download, and renew. These contracts are GoodForUpload
+// and GoodForRenew
+//
+// Refreshed contracts are contracts that are in the current period and were
+// refreshed due to running out of funds. A new contract that replaced a
+// refreshed contract can either be in Active or Disabled contracts. These
+// contracts are broken out as to not double count the data recorded in the
+// contract.
+//
+// Disabled Contracts are contracts that are no longer active as there are Not
+// GoodForUpload and Not GoodForRenew but still have endheights in the current
+// period.
+//
+// Expired contracts are contracts who's endheights are in the past.
+//
+// ExpiredRefreshed contracts are refreshed contracts who's endheights are in
+// the past.
+//
+// Recoverable contracts are contracts of the renter that are recovered from the
+// blockchain by using the renter's seed.
 func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse flags
-	var inactive, expired, recoverable bool
+	var disabled, inactive, expired, recoverable bool
 	var err error
+	if s := req.FormValue("disabled"); s != "" {
+		disabled, err = scanBool(s)
+		if err != nil {
+			WriteError(w, Error{"unable to parse disabled:" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
 	if s := req.FormValue("inactive"); s != "" {
 		inactive, err = scanBool(s)
 		if err != nil {
@@ -458,14 +685,23 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 		}
 	}
 
-	// Get current block height for reference
-	blockHeight := api.cs.Height()
+	// Parse the renter's contracts into their appropriate categories
+	contracts := api.parseRenterContracts(disabled, inactive, expired)
 
-	// Get active contracts
-	contracts := []RenterContract{}
-	activeContracts := []RenterContract{}
-	inactiveContracts := []RenterContract{}
-	expiredContracts := []RenterContract{}
+	// Get recoverable contracts
+	var recoverableContracts []modules.RecoverableContract
+	if recoverable {
+		recoverableContracts = api.renter.RecoverableContracts()
+	}
+	contracts.RecoverableContracts = recoverableContracts
+
+	WriteJSON(w, contracts)
+}
+
+// parseRenterContracts categorized the Renter's contracts from Contracts() and
+// OldContracts().
+func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterContracts {
+	var rc RenterContracts
 	for _, c := range api.renter.Contracts() {
 		var size uint64
 		if len(c.Transaction.FileContractRevisions) != 0 {
@@ -499,68 +735,96 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 			TotalCost:                 c.TotalCost,
 			UploadSpending:            c.UploadSpending,
 		}
-		if c.Utility.GoodForRenew {
-			activeContracts = append(activeContracts, contract)
-		} else if inactive && !c.Utility.GoodForRenew {
-			inactiveContracts = append(inactiveContracts, contract)
+
+		// Determine contract status
+		refreshed := api.renter.RefreshedContract(c.ID)
+		active := c.Utility.GoodForUpload && c.Utility.GoodForRenew && !refreshed
+		passive := !c.Utility.GoodForUpload && c.Utility.GoodForRenew && !refreshed
+		disabledContract := disabled && !active && !passive && !refreshed
+
+		// A contract can either be active, passive, refreshed, or disabled
+		statusErr := active && passive && refreshed || active && refreshed || active && passive || passive && refreshed
+		if statusErr {
+			build.Critical("Contract has multiple status types, this should never happen")
+		} else if active {
+			rc.ActiveContracts = append(rc.ActiveContracts, contract)
+		} else if passive {
+			rc.PassiveContracts = append(rc.PassiveContracts, contract)
+		} else if refreshed {
+			rc.RefreshedContracts = append(rc.RefreshedContracts, contract)
+		} else if disabledContract {
+			rc.DisabledContracts = append(rc.DisabledContracts, contract)
 		}
-		contracts = append(contracts, contract)
+
+		// Record InactiveContracts and Contracts for compatibility
+		if !active && inactive {
+			rc.InactiveContracts = append(rc.InactiveContracts, contract)
+		}
+		rc.Contracts = append(rc.Contracts, contract)
 	}
 
-	// Get expired contracts
-	if expired || inactive {
-		for _, c := range api.renter.OldContracts() {
-			var size uint64
-			if len(c.Transaction.FileContractRevisions) != 0 {
-				size = c.Transaction.FileContractRevisions[0].NewFileSize
-			}
+	// Get current block height for reference
+	currentPeriod := api.renter.CurrentPeriod()
+	for _, c := range api.renter.OldContracts() {
+		var size uint64
+		if len(c.Transaction.FileContractRevisions) != 0 {
+			size = c.Transaction.FileContractRevisions[0].NewFileSize
+		}
 
-			// Fetch host address
-			var netAddress modules.NetAddress
-			hdbe, exists := api.renter.Host(c.HostPublicKey)
-			if exists {
-				netAddress = hdbe.NetAddress
-			}
+		// Fetch host address
+		var netAddress modules.NetAddress
+		hdbe, exists := api.renter.Host(c.HostPublicKey)
+		if exists {
+			netAddress = hdbe.NetAddress
+		}
 
-			contract := RenterContract{
-				DownloadSpending:          c.DownloadSpending,
-				EndHeight:                 c.EndHeight,
-				Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
-				GoodForUpload:             c.Utility.GoodForUpload,
-				GoodForRenew:              c.Utility.GoodForRenew,
-				HostPublicKey:             c.HostPublicKey,
-				HostVersion:               hdbe.Version,
-				ID:                        c.ID,
-				LastTransaction:           c.Transaction,
-				NetAddress:                netAddress,
-				RenterFunds:               c.RenterFunds,
-				Size:                      size,
-				StartHeight:               c.StartHeight,
-				StorageSpending:           c.StorageSpending,
-				StorageSpendingDeprecated: c.StorageSpending,
-				TotalCost:                 c.TotalCost,
-				UploadSpending:            c.UploadSpending,
-			}
-			if expired && c.EndHeight < blockHeight {
-				expiredContracts = append(expiredContracts, contract)
-			} else if inactive && c.EndHeight >= blockHeight {
-				inactiveContracts = append(inactiveContracts, contract)
-			}
+		// Build contract
+		contract := RenterContract{
+			DownloadSpending:          c.DownloadSpending,
+			EndHeight:                 c.EndHeight,
+			Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
+			GoodForUpload:             c.Utility.GoodForUpload,
+			GoodForRenew:              c.Utility.GoodForRenew,
+			HostPublicKey:             c.HostPublicKey,
+			HostVersion:               hdbe.Version,
+			ID:                        c.ID,
+			LastTransaction:           c.Transaction,
+			NetAddress:                netAddress,
+			RenterFunds:               c.RenterFunds,
+			Size:                      size,
+			StartHeight:               c.StartHeight,
+			StorageSpending:           c.StorageSpending,
+			StorageSpendingDeprecated: c.StorageSpending,
+			TotalCost:                 c.TotalCost,
+			UploadSpending:            c.UploadSpending,
+		}
+
+		// Determine contract status
+		refreshed := api.renter.RefreshedContract(c.ID)
+		currentPeriodContract := c.StartHeight >= currentPeriod
+		expiredContract := expired && !currentPeriodContract && !refreshed
+		expiredRefreshed := expired && !currentPeriodContract && refreshed
+		refreshedContract := refreshed && currentPeriodContract
+		disabledContract := disabled && !refreshed && currentPeriodContract
+
+		// A contract can only be refreshed, disabled, expired, or expired refreshed
+		if expiredContract {
+			rc.ExpiredContracts = append(rc.ExpiredContracts, contract)
+		} else if expiredRefreshed {
+			rc.ExpiredRefreshedContracts = append(rc.ExpiredRefreshedContracts, contract)
+		} else if refreshedContract {
+			rc.RefreshedContracts = append(rc.RefreshedContracts, contract)
+		} else if disabledContract {
+			rc.DisabledContracts = append(rc.DisabledContracts, contract)
+		}
+
+		// Record inactive contracts for compatibility
+		if inactive && currentPeriodContract {
+			rc.InactiveContracts = append(rc.InactiveContracts, contract)
 		}
 	}
 
-	var recoverableContracts []modules.RecoverableContract
-	if recoverable {
-		recoverableContracts = api.renter.RecoverableContracts()
-	}
-
-	WriteJSON(w, RenterContracts{
-		Contracts:            contracts,
-		ActiveContracts:      activeContracts,
-		InactiveContracts:    inactiveContracts,
-		ExpiredContracts:     expiredContracts,
-		RecoverableContracts: recoverableContracts,
-	})
+	return rc
 }
 
 // renterClearDownloadsHandler handles the API call to request to clear the download queue.
@@ -679,16 +943,28 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 // renterFileHandler handles POST requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	newTrackingPath := req.FormValue("trackingpath")
-
+	stuck := req.FormValue("stuck")
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{"unable to parse siapath" + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	// Handle changing the tracking path of a file.
 	if newTrackingPath != "" {
-		siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
-		if err != nil {
-			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-			return
-		}
 		if err := api.renter.SetFileTrackingPath(siaPath, newTrackingPath); err != nil {
 			WriteError(w, Error{fmt.Sprintf("unable set tracking path: %v", err)}, http.StatusBadRequest)
+			return
+		}
+	}
+	// Handle changing the 'stuck' status of a file.
+	if stuck != "" {
+		s, err := strconv.ParseBool(stuck)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'stuck' arg"}, http.StatusBadRequest)
+			return
+		}
+		if err := api.renter.SetFileStuck(siaPath, s); err != nil {
+			WriteError(w, Error{"failed to change file 'stuck' status: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -697,7 +973,16 @@ func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, 
 
 // renterFilesHandler handles the API call to list all of the files.
 func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	files, err := api.renter.FileList()
+	var c bool
+	var err error
+	if cached := req.FormValue("cached"); cached != "" {
+		c, err = strconv.ParseBool(cached)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'cached' arg"}, http.StatusBadRequest)
+			return
+		}
+	}
+	files, err := api.renter.FileList(modules.RootSiaPath(), true, c)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -805,6 +1090,28 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 	WriteSuccess(w)
 }
 
+// renterCancelDownloadHandler handles the API call to cancel a download.
+func (api *API) renterCancelDownloadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Get the id.
+	id := req.FormValue("id")
+	if id == "" {
+		WriteError(w, Error{"id not specified"}, http.StatusBadRequest)
+		return
+	}
+	// Get the download from the map and delete it.
+	api.downloadMu.Lock()
+	cancel, ok := api.downloads[id]
+	delete(api.downloads, id)
+	api.downloadMu.Unlock()
+	if !ok {
+		WriteError(w, Error{"download for id not found"}, http.StatusBadRequest)
+		return
+	}
+	// Cancel download and delete it from the map.
+	cancel()
+	WriteSuccess(w)
+}
+
 // renterDownloadHandler handles the API call to download a file.
 func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	params, err := parseDownloadParameters(w, req, ps)
@@ -813,7 +1120,20 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 		return
 	}
 	if params.Async {
-		err = api.renter.DownloadAsync(params)
+		var cancel func()
+		id := hex.EncodeToString(fastrand.Bytes(16))
+		cancel, err = api.renter.DownloadAsync(params, func(_ error) error {
+			api.downloadMu.Lock()
+			delete(api.downloads, id)
+			api.downloadMu.Unlock()
+			return nil
+		})
+		if err == nil {
+			w.Header().Set("ID", id)
+			api.downloadMu.Lock()
+			api.downloads[id] = cancel
+			api.downloadMu.Unlock()
+		}
 	} else {
 		err = api.renter.Download(params)
 	}
@@ -919,7 +1239,9 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 
 // renterUploadHandler handles the API call to upload a file.
 func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Get the source path.
 	source := req.FormValue("source")
+	// Source must be absolute path.
 	if !filepath.IsAbs(source) {
 		WriteError(w, Error{"source must be an absolute path"}, http.StatusBadRequest)
 		return
@@ -934,47 +1256,11 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 			return
 		}
 	}
-
-	// Check whether the erasure coding parameters have been supplied.
-	var ec modules.ErasureCoder
-	if req.FormValue("datapieces") != "" || req.FormValue("paritypieces") != "" {
-		// Check that both values have been supplied.
-		if req.FormValue("datapieces") == "" || req.FormValue("paritypieces") == "" {
-			WriteError(w, Error{"must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters"}, http.StatusBadRequest)
-			return
-		}
-
-		// Parse the erasure coding parameters.
-		var dataPieces, parityPieces int
-		_, err := fmt.Sscan(req.FormValue("datapieces"), &dataPieces)
-		if err != nil {
-			WriteError(w, Error{"unable to read parameter 'datapieces': " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(req.FormValue("paritypieces"), &parityPieces)
-		if err != nil {
-			WriteError(w, Error{"unable to read parameter 'paritypieces': " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-
-		// Verify that sane values for parityPieces and redundancy are being
-		// supplied.
-		if parityPieces < requiredParityPieces {
-			WriteError(w, Error{fmt.Sprintf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)}, http.StatusBadRequest)
-			return
-		}
-		redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
-		if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
-			WriteError(w, Error{fmt.Sprintf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)}, http.StatusBadRequest)
-			return
-		}
-
-		// Create the erasure coder.
-		ec, err = siafile.NewRSSubCode(dataPieces, parityPieces, 64)
-		if err != nil {
-			WriteError(w, Error{"unable to encode file using the provided parameters: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
+	// Parse the erasure coder.
+	ec, err := parseErasureCodingParameters(req.FormValue("datapieces"), req.FormValue("paritypieces"))
+	if err != nil {
+		WriteError(w, Error{"unable to parse erasure code settings" + err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Call the renter to upload the file.
@@ -996,7 +1282,76 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 	WriteSuccess(w)
 }
 
-// renterDirHandlerGET handles the API call to create a directory
+// renterUploadStreamHandler handles the API call to upload a file using a
+// stream.
+func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+	// Check whether existing file should be overwritten
+	force := false
+	if f := queryForm.Get("force"); f != "" {
+		force, err = strconv.ParseBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	// Check whether existing file should be repaired
+	repair := false
+	if r := queryForm.Get("repair"); r != "" {
+		repair, err = strconv.ParseBool(r)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'repair' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	// Parse the erasure coder.
+	ec, err := parseErasureCodingParameters(queryForm.Get("datapieces"), queryForm.Get("paritypieces"))
+	if err != nil && !repair {
+		WriteError(w, Error{"unable to parse erasure code settings" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	if repair && ec != nil {
+		WriteError(w, Error{"can't provide erasure code settings when doing a repair"}, http.StatusBadRequest)
+		return
+	}
+
+	// Call the renter to upload the file.
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	up := modules.FileUploadParams{
+		SiaPath:     siaPath,
+		ErasureCode: ec,
+		Force:       force,
+		Repair:      repair,
+	}
+	err = api.renter.UploadStreamFromReader(up, req.Body)
+	if err != nil {
+		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterValidateSiaPathHandler handles the API call that validates a siapath
+func (api *API) renterValidateSiaPathHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+	// Try and create a new siapath, this will validate the potential siapath
+	_, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterDirHandlerGET handles the API call to query a directory
 func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	var siaPath modules.SiaPath
 	var err error
@@ -1010,9 +1365,14 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	directories, files, err := api.renter.DirList(siaPath)
+	directories, err := api.renter.DirList(siaPath)
 	if err != nil {
 		WriteError(w, Error{"failed to get directory contents:" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	files, err := api.renter.FileList(siaPath, false, true)
+	if err != nil {
+		WriteError(w, Error{"failed to get file infos:" + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 	WriteJSON(w, RenterDirectory{
@@ -1022,7 +1382,8 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 	return
 }
 
-// renterDirHandlerPOST handles the API call to create a directory
+// renterDirHandlerPOST handles the API call to create, delete and rename a
+// directory
 func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse action
 	action := req.FormValue("action")
@@ -1048,17 +1409,24 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	if action == "delete" {
 		err := api.renter.DeleteDir(siaPath)
 		if err != nil {
-			WriteError(w, Error{"failed to create directory: " + err.Error()}, http.StatusInternalServerError)
+			WriteError(w, Error{"failed to delete directory: " + err.Error()}, http.StatusInternalServerError)
 			return
 		}
 		WriteSuccess(w)
 		return
 	}
 	if action == "rename" {
-		fmt.Println("rename")
-		// newsiapath := ps.ByName("newsiapath")
-		// TODO - implement
-		WriteError(w, Error{"not implemented"}, http.StatusNotImplemented)
+		newSiaPath, err := modules.NewSiaPath(req.FormValue("newsiapath"))
+		if err != nil {
+			WriteError(w, Error{"failed to parse newsiapath: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		err = api.renter.RenameDir(siaPath, newSiaPath)
+		if err != nil {
+			WriteError(w, Error{"failed to rename directory: " + err.Error()}, http.StatusInternalServerError)
+			return
+		}
+		WriteSuccess(w)
 		return
 	}
 

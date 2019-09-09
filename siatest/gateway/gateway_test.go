@@ -25,7 +25,7 @@ func TestGatewayRatelimit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	// Get the current ratelimit.
+	// Get the current ratelimits.
 	gg, err := testNode.GatewayGet()
 	if err != nil {
 		t.Fatal(err)

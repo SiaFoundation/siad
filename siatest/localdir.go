@@ -6,10 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // LocalDir is a helper struct that represents a directory on disk that is to be
@@ -64,7 +65,13 @@ func (ld *LocalDir) Name() string {
 // NewFile creates a new LocalFile in the current LocalDir
 func (ld *LocalDir) NewFile(size int) (*LocalFile, error) {
 	fileName := fmt.Sprintf("%dbytes - %s", size, persist.RandomSuffix())
-	path := filepath.Join(ld.path, fileName)
+	return ld.NewFileWithName(fileName, size)
+}
+
+// NewFileWithName creates a new LocalFile in the current LocalDir with the
+// given name and size.
+func (ld *LocalDir) NewFileWithName(name string, size int) (*LocalFile, error) {
+	path := filepath.Join(ld.path, name)
 	bytes := fastrand.Bytes(size)
 	err := ioutil.WriteFile(path, bytes, 0600)
 	return &LocalFile{

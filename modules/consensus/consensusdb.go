@@ -7,12 +7,12 @@ package consensus
 // ignored otherwise, which is suboptimal.
 
 import (
+	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 var (
@@ -109,6 +109,13 @@ func (cs *ConsensusSet) createConsensusDB(tx *bolt.Tx) error {
 	err := blockHeight.Put(BlockHeight, encoding.Marshal(underflow-1))
 	if err != nil {
 		return err
+	}
+
+	// Update the siacoin output diffs map for the genesis block on disk. This
+	// needs to happen between the database being opened/initilized and the
+	// consensus set hash being calculated
+	for _, scod := range cs.blockRoot.SiacoinOutputDiffs {
+		commitSiacoinOutputDiff(tx, scod, modules.DiffApply)
 	}
 
 	// Set the siafund pool to 0.

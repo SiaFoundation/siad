@@ -120,12 +120,10 @@ func (g *Gateway) threadedLearnHostname() {
 		g.mu.RUnlock()
 		if err := addr.IsValid(); err != nil {
 			g.log.Printf("WARN: discovered hostname %q is invalid: %v", addr, err)
-			if err != nil {
-				if !g.managedSleep(rediscoverIPIntervalFailure) {
-					return // shutdown interrupted sleep
-				}
-				continue
+			if !g.managedSleep(rediscoverIPIntervalFailure) {
+				return // shutdown interrupted sleep
 			}
+			continue
 		}
 
 		g.mu.Lock()

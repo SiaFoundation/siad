@@ -9,8 +9,9 @@ import (
 	"net/http"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/errors"
+
+	"gitlab.com/NebulousLabs/Sia/node/api"
 )
 
 // A Client makes requests to the siad HTTP API.
@@ -71,32 +72,33 @@ func readAPIError(r io.Reader) error {
 
 // getRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
-func (c *Client) getRawResponse(resource string) ([]byte, error) {
+func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	req, err := c.NewRequest("GET", resource, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, errors.AddContext(err, "request failed")
+		return nil, nil, errors.AddContext(err, "request failed")
 	}
 	defer drainAndClose(res.Body)
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, errors.New("API call not recognized: " + resource)
+		return nil, nil, errors.New("API call not recognized: " + resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, readAPIError(res.Body)
+		return nil, nil, readAPIError(res.Body)
 	}
 
 	if res.StatusCode == http.StatusNoContent {
 		// no reason to read the response
-		return []byte{}, nil
+		return res.Header, []byte{}, nil
 	}
-	return ioutil.ReadAll(res.Body)
+	d, err := ioutil.ReadAll(res.Body)
+	return res.Header, d, err
 }
 
 // getRawResponse requests part of the specified resource. The response, if
@@ -135,7 +137,7 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 // decoded into obj. The resource path must begin with /.
 func (c *Client) get(resource string, obj interface{}) error {
 	// Request resource
-	data, err := c.getRawResponse(resource)
+	_, data, err := c.getRawResponse(resource)
 	if err != nil {
 		return err
 	}
@@ -155,8 +157,8 @@ func (c *Client) get(resource string, obj interface{}) error {
 
 // postRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
-func (c *Client) postRawResponse(resource string, data string) ([]byte, error) {
-	req, err := c.NewRequest("POST", resource, strings.NewReader(data))
+func (c *Client) postRawResponse(resource string, body io.Reader) ([]byte, error) {
+	req, err := c.NewRequest("POST", resource, body)
 	if err != nil {
 		return nil, err
 	}
@@ -182,14 +184,15 @@ func (c *Client) postRawResponse(resource string, data string) ([]byte, error) {
 		// no reason to read the response
 		return []byte{}, nil
 	}
-	return ioutil.ReadAll(res.Body)
+	d, err := ioutil.ReadAll(res.Body)
+	return d, err
 }
 
 // post makes a POST request to the resource at `resource`, using `data` as the
 // request body. The response, if provided, will be decoded into `obj`.
 func (c *Client) post(resource string, data string, obj interface{}) error {
 	// Request resource
-	body, err := c.postRawResponse(resource, data)
+	body, err := c.postRawResponse(resource, strings.NewReader(data))
 	if err != nil {
 		return err
 	}

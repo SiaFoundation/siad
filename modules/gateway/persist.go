@@ -1,8 +1,11 @@
 package gateway
 
 import (
+	"os"
 	"path/filepath"
 	"time"
+
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -41,6 +44,9 @@ type (
 		// rate limit settings
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
+
+		// blacklisted IPs
+		Blacklist []string
 	}
 )
 
@@ -54,20 +60,40 @@ func (g *Gateway) nodePersistData() (nodes []*node) {
 
 // load loads the Gateway's persistent data from disk.
 func (g *Gateway) load() error {
-	g.persist = persistence{}
-	return persist.LoadJSON(persistMetadata, &g.persist, filepath.Join(g.persistDir, persistFilename))
-}
-
-// loadNodes loads the Gateway's persistent node data from disk.
-func (g *Gateway) loadNodes() error {
+	// load nodes
 	var nodes []*node
+	var v130 bool
 	err := persist.LoadJSON(nodePersistMetadata, &nodes, filepath.Join(g.persistDir, nodesFile))
 	if err != nil {
 		// COMPATv1.3.0
-		return g.loadv033persist()
+		compatErr := g.loadv033persist()
+		if compatErr != nil {
+			return err
+		}
+		v130 = true
 	}
 	for i := range nodes {
 		g.nodes[nodes[i].NetAddress] = nodes[i]
+	}
+
+	// If we were loading a 1.3.0 gateway we are done. It doesn't have a
+	// gateway.json.
+	if v130 {
+		return nil
+	}
+
+	// load g.persist
+	err = persist.LoadJSON(persistMetadata, &g.persist, filepath.Join(g.persistDir, persistFilename))
+	if os.IsNotExist(err) {
+		// There is no gateway.json, nothing to load.
+		return nil
+	}
+	if err != nil {
+		return errors.AddContext(err, "failed to load gateway persistence")
+	}
+	// create map from blacklist
+	for _, ip := range g.persist.Blacklist {
+		g.blacklist[ip] = struct{}{}
 	}
 	return nil
 }
@@ -75,6 +101,10 @@ func (g *Gateway) loadNodes() error {
 // saveSync stores the Gateway's persistent data on disk, and then syncs to
 // disk to minimize the possibility of data loss.
 func (g *Gateway) saveSync() error {
+	g.persist.Blacklist = make([]string, 0, len(g.blacklist))
+	for ip := range g.blacklist {
+		g.persist.Blacklist = append(g.persist.Blacklist, ip)
+	}
 	return persist.SaveJSON(persistMetadata, g.persist, filepath.Join(g.persistDir, persistFilename))
 }
 
