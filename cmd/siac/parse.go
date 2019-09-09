@@ -179,14 +179,25 @@ func parseRatelimit(rateLimitStr string) (int64, error) {
 	if rateLimitStr == "0" {
 		return 0, nil
 	}
-	units := []string{"Bps", "Kbps", "Mbps", "Gbps", "Tbps"}
-	for i, unit := range units {
-		if !strings.HasSuffix(rateLimitStr, unit) {
+	// Create struct of rates. Have to start at the high end so that B/s is
+	// checked last, otherwise it would return false positives
+	rates := []struct {
+		unit   string
+		factor float64
+	}{
+		{"TB/s", 4},
+		{"GB/s", 3},
+		{"MB/s", 2},
+		{"KB/s", 1},
+		{"B/s", 0},
+	}
+	for _, rate := range rates {
+		if !strings.HasSuffix(rateLimitStr, rate.unit) {
 			continue
 		}
 
 		// trim units and spaces
-		rateLimitStr = strings.TrimSuffix(rateLimitStr, unit)
+		rateLimitStr = strings.TrimSuffix(rateLimitStr, rate.unit)
 		rateLimitStr = strings.TrimSpace(rateLimitStr)
 
 		// Check for empty string meaning only the units were provided
@@ -201,7 +212,7 @@ func parseRatelimit(rateLimitStr string) (int64, error) {
 		}
 
 		// Determine factor and convert to in64 for bps
-		factor := math.Pow(float64(1e3), float64(i))
+		factor := math.Pow(float64(1e3), rate.factor)
 		rateLimit := int64(factor * rateLimitFloat)
 
 		return rateLimit, nil
@@ -216,15 +227,15 @@ func parseRatelimit(rateLimitStr string) (int64, error) {
 func ratelimitUnits(ratelimit int64) string {
 	// Check for bps
 	if ratelimit < 1e3 {
-		return fmt.Sprintf("%v %s", ratelimit, "Bps")
+		return fmt.Sprintf("%v %s", ratelimit, "B/s")
 	}
 	// iterate until we find a unit greater than c
 	mag := 1e3
 	unit := ""
-	for _, unit = range []string{"Kbps", "Mbps", "Gbps", "Tbps"} {
+	for _, unit = range []string{"KB/s", "MB/s", "GB/s", "TB/s"} {
 		if float64(ratelimit) < mag*1e3 {
 			break
-		} else if unit != "Tbps" {
+		} else if unit != "TB/s" {
 			// don't want to perform this multiply on the last iter; that
 			// would give us 1.235 tbps instead of 1235 tbps
 			mag = mag * 1e3

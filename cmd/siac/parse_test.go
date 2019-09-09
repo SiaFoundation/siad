@@ -133,12 +133,12 @@ func TestRatelimitUnits(t *testing.T) {
 		in  int64
 		out string
 	}{
-		{0, "0 Bps"},
-		{123, "123 Bps"},
-		{1234, "1.234 Kbps"},
-		{1234000, "1.234 Mbps"},
-		{1234000000, "1.234 Gbps"},
-		{1234000000000, "1.234 Tbps"},
+		{0, "0 B/s"},
+		{123, "123 B/s"},
+		{1234, "1.234 KB/s"},
+		{1234000, "1.234 MB/s"},
+		{1234000000, "1.234 GB/s"},
+		{1234000000000, "1.234 TB/s"},
 	}
 	for _, test := range tests {
 		out := ratelimitUnits(test.in)
@@ -157,17 +157,17 @@ func TestParseRatelimit(t *testing.T) {
 	}{
 		{"x", 0, errUnableToParseRateLimit},
 		{"1", 0, errUnableToParseRateLimit},
-		{"Bps", 0, errUnableToParseRateLimit},
-		{"1Bps", 1, nil},
-		{"1 Bps", 1, nil},
-		{"1Kbps", 1000, nil},
-		{"1 Kbps", 1000, nil},
-		{"1Mbps", 1000000, nil},
-		{"1 Mbps", 1000000, nil},
-		{"1Gbps", 1000000000, nil},
-		{"1 Gbps", 1000000000, nil},
-		{"1Tbps", 1000000000000, nil},
-		{"1 Tbps", 1000000000000, nil},
+		{"B/s", 0, errUnableToParseRateLimit},
+		{"1B/s", 1, nil},
+		{"1 B/s", 1, nil},
+		{"1KB/s", 1000, nil},
+		{"1 KB/s", 1000, nil},
+		{"1MB/s", 1000000, nil},
+		{"1 MB/s", 1000000, nil},
+		{"1GB/s", 1000000000, nil},
+		{"1 GB/s", 1000000000, nil},
+		{"1TB/s", 1000000000000, nil},
+		{"1 TB/s", 1000000000000, nil},
 	}
 
 	for _, test := range tests {
