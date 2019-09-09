@@ -122,3 +122,24 @@ func TestCurrencyUnits(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRateLimits(t *testing.T) {
+	tests := []struct {
+		inDown, inUp   string
+		outDown, outUp int64
+		err            error
+	}{
+		{"0", "0", 0, 0, nil},
+		{"1024", "0", 1024, 0, nil},
+		{"1024", "1024", 1024, 1024, nil},
+		{"1280000", "2560000", 1280000, 2560000, nil},
+		{"-1", "0", -1, 0, nil},
+		{"abcd", "efgh", 0, 0, errUnableToParseRateLimit},
+	}
+	for _, test := range tests {
+		down, up, err := parseRateLimits(test.inDown, test.inUp)
+		if test.outDown != down || test.outUp != up || test.err != err {
+			t.Errorf("parseRateLimit(%v %v): expected %v %v %v, got %v %v %v", test.inDown, test.inUp, test.outDown, test.outUp, test.err, down, up, err)
+		}
+	}
+}

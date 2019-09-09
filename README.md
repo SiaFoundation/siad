@@ -101,6 +101,14 @@ go get -u gitlab.com/NebulousLabs/Sia/...
 This will download the Sia repo to your `$GOPATH/src` folder and install the
 `siad` and `siac` binaries in your `$GOPATH/bin` folder.
 
+If you do not have `$GOPATH` set, or you prefer to use `git clone`, the following 
+commands can be used to build from source:
+
+```
+git clone https://gitlab.com/NebulousLabs/Sia
+cd Sia && make
+``` 
+
 To stay up-to-date, run the previous `go get` command again. Alternatively, you
 can use the Makefile provided in this repo. Run `git pull origin master` to
 pull the latest changes, and `make release` to build the new binaries. You

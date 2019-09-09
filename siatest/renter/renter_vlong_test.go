@@ -14,13 +14,402 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// TestRenterSpendingReporting checks the accuracy for the reported
+// spending
+func TestRenterSpendingReporting(t *testing.T) {
+	if testing.Short() || !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup, creating without renter so the renter's
+	// initial balance can be obtained
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a Renter node
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Get largest WindowSize from Hosts
+	var windowSize types.BlockHeight
+	for _, h := range tg.Hosts() {
+		hg, err := h.HostGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hg.ExternalSettings.WindowSize >= windowSize {
+			windowSize = hg.ExternalSettings.WindowSize
+		}
+	}
+
+	// Get renter's initial siacoin balance
+	wg, err := r.WalletGet()
+	if err != nil {
+		t.Fatal("Failed to get wallet:", err)
+	}
+	initialBalance := wg.ConfirmedSiacoinBalance
+
+	// Set allowance
+	if err = tg.SetRenterAllowance(r, siatest.DefaultAllowance); err != nil {
+		t.Fatal("Failed to set renter allowance:", err)
+	}
+
+	// Confirm Contracts were created as expected, check that the funds
+	// allocated when setting the allowance are reflected correctly in the
+	// wallet balance
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
+		if err != nil {
+			return err
+		}
+		err = checkBalanceVsSpending(r, initialBalance)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload and download files to show spending
+	var remoteFiles []*siatest.RemoteFile
+	for i := 0; i < 10; i++ {
+		dataPieces := uint64(1)
+		parityPieces := uint64(1)
+		fileSize := 100 + siatest.Fuzz()
+		_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+		if err != nil {
+			t.Fatal("Failed to upload a file for testing: ", err)
+		}
+		remoteFiles = append(remoteFiles, rf)
+	}
+	for _, rf := range remoteFiles {
+		_, _, err = r.DownloadToDisk(rf, false)
+		if err != nil {
+			t.Fatal("Could not DownloadToDisk:", err)
+		}
+	}
+
+	// Check to confirm upload and download spending was captured correctly
+	// and reflected in the wallet balance
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		err = checkBalanceVsSpending(r, initialBalance)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine blocks to force contract renewal
+	if err = renewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm Contracts were renewed as expected
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+		if err != nil {
+			return err
+		}
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine Block to confirm contracts and spending into blockchain
+	m := tg.Miners()[0]
+	if err = m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check contract spending against reported spending
+	rc, err := r.RenterInactiveContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rcExpired, err := r.RenterExpiredContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check to confirm reported spending is still accurate with the renewed contracts
+	// and reflected in the wallet balance
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		err = checkBalanceVsSpending(r, initialBalance)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Record current Wallet Balance
+	wg, err = r.WalletGet()
+	if err != nil {
+		t.Fatal("Failed to get wallet:", err)
+	}
+	initialPeriodEndBalance := wg.ConfirmedSiacoinBalance
+
+	// Mine blocks to force contract renewal and new period
+	cg, err := r.ConsensusGet()
+	if err != nil {
+		t.Fatal("Failed to get consensus:", err)
+	}
+	blockHeight := cg.Height
+	endHeight := rc.ActiveContracts[0].EndHeight
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal("Failed to get renter:", err)
+	}
+	rw := rg.Settings.Allowance.RenewWindow
+	for i := 0; i < int(endHeight-rw-blockHeight+types.MaturityDelay); i++ {
+		if err = m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check if Unspent unallocated funds were released after allowance period
+	// was exceeded
+	wg, err = r.WalletGet()
+	if err != nil {
+		t.Fatal("Failed to get wallet:", err)
+	}
+	if initialPeriodEndBalance.Cmp(wg.ConfirmedSiacoinBalance) > 0 {
+		t.Fatal("Unspent Unallocated funds not released after contract renewal and maturity delay")
+	}
+
+	// Confirm Contracts were renewed as expected
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, 0)
+		if err != nil {
+			return err
+		}
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine Block to confirm contracts and spending on blockchain
+	if err = m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check contract spending against reported spending
+	rc, err = r.RenterInactiveContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rcExpired, err = r.RenterExpiredContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check to confirm reported spending is still accurate with the renewed contracts
+	// and a new period and reflected in the wallet balance
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		err = checkBalanceVsSpending(r, initialBalance)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Renew contracts by running out of funds
+	_, err = drainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
+	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+
+	// Confirm Contracts were renewed as expected
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts())*2, 0)
+		if err != nil {
+			return err
+		}
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine Block to confirm contracts and spending on blockchain
+	if err = m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check contract spending against reported spending
+	rc, err = r.RenterInactiveContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rcExpired, err = r.RenterExpiredContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check to confirm reported spending is still accurate with the renewed contracts
+	// and a new period and reflected in the wallet balance
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		err = checkBalanceVsSpending(r, initialBalance)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine blocks to force contract renewal
+	if err = renewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm Contracts were renewed as expected
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
+		if err != nil {
+			return err
+		}
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine Block to confirm contracts and spending into blockchain
+	if err = m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check contract spending against reported spending
+	rc, err = r.RenterInactiveContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rcExpired, err = r.RenterExpiredContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check to confirm reported spending is still accurate with the renewed contracts
+	// and reflected in the wallet balance
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		err = checkBalanceVsSpending(r, initialBalance)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestStresstestSiaFileSet is a vlong test that performs multiple operations
 // which modify the siafileset in parallel for a period of time.

@@ -112,6 +112,10 @@ const (
 	// snapshot siafiles.
 	BackupRoot = "snapshots"
 
+	// CombinedChunksRoot is the name of the directory that contains combined
+	// chunks consisting of multiple partial chunks.
+	CombinedChunksRoot = "combinedchunks"
+
 	// EstimatedFileContractTransactionSetSize is the estimated blockchain size
 	// of a transaction set between a renter and a host that contains a file
 	// contract. This transaction set will contain a setup transaction from each
@@ -130,9 +134,27 @@ type (
 	// download history.
 	DownloadID string
 
+	// CombinedChunkID is a unique identifier for a combined chunk which makes up
+	// part of its filename on disk.
+	CombinedChunkID string
+
+	// PartialChunk holds some information about a combined chunk
+	PartialChunk struct {
+		ChunkID        CombinedChunkID // The ChunkID of the combined chunk the partial is in.
+		InPartialsFile bool            // 'true' if the combined chunk is already in the partials siafile.
+		Length         uint64          // length of the partial chunk within the combined chunk.
+		Offset         uint64          // offset of the partial chunk within the combined chunk.
+	}
+)
+
+type (
 	// ErasureCoderType is an identifier for the individual types of erasure
 	// coders.
 	ErasureCoderType [4]byte
+
+	// ErasureCoderIdentifier is an identifier that only matches another
+	// ErasureCoder's identifier if they both are of the same type and settings.
+	ErasureCoderIdentifier string
 
 	// An ErasureCoder is an error-correcting encoder and decoder.
 	ErasureCoder interface {
@@ -146,6 +168,9 @@ type (
 		// Encode splits data into equal-length pieces, with some pieces
 		// containing parity data.
 		Encode(data []byte) ([][]byte, error)
+
+		// Identifier returns the ErasureCoderIdentifier of the ErasureCoder.
+		Identifier() ErasureCoderIdentifier
 
 		// EncodeShards encodes the input data like Encode but accepts an already
 		// sharded input.
@@ -258,11 +283,12 @@ type DownloadInfo struct {
 // FileUploadParams contains the information used by the Renter to upload a
 // file.
 type FileUploadParams struct {
-	Source      string
-	SiaPath     SiaPath
-	ErasureCode ErasureCoder
-	Force       bool
-	Repair      bool
+	Source              string
+	SiaPath             SiaPath
+	ErasureCode         ErasureCoder
+	Force               bool
+	DisablePartialChunk bool
+	Repair              bool
 }
 
 // FileInfo provides information about a file.
