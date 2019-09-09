@@ -19,11 +19,10 @@ func hasFCIdentifier(txn types.Transaction) (proto.ContractSignedIdentifier, cry
 		return proto.ContractSignedIdentifier{}, nil, false
 	}
 	// Verify the prefix.
-	// TODO In the future we can remove checking for PrefixNonSia.
 	var prefix types.Specifier
 	copy(prefix[:], txn.ArbitraryData[0])
-	if prefix != modules.PrefixNonSia &&
-		prefix != modules.PrefixFileContractIdentifier {
+	if prefix != modules.PrefixFileContractIdentifier &&
+		prefix != modules.PrefixNonSia {
 		return proto.ContractSignedIdentifier{}, nil, false
 	}
 	// We found an identifier.

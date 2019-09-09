@@ -218,14 +218,14 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 
 	// Calculate file health
-	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 
 	// Set the LastHealthCheckTime
 	sf.SetLastHealthCheckTime()
 
 	// Calculate file Redundancy and check if local file is missing and
 	// redundancy is less than one
-	redundancy, err := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
+	redundancy, _, err := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
 	if err != nil {
 		return siafile.BubbledMetadata{}, err
 	}
@@ -313,6 +313,61 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 	return siaDir.Metadata(), nil
 }
 
+// managedUpdateLastHealthCheckTime updates the LastHealthCheckTime and
+// AggregateLastHealthCheckTime fields of the directory metadata by reading all
+// the subdirs of the directory.
+func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error {
+	// Open dir and fetch current metadata.
+	entry, err := r.staticDirSet.Open(siaPath)
+	if err != nil {
+		return err
+	}
+	metadata := entry.Metadata()
+
+	// Set the LastHealthCheckTimes to the current time.
+	metadata.LastHealthCheckTime = time.Now()
+	metadata.AggregateLastHealthCheckTime = time.Now()
+
+	// Read directory
+	fileinfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
+	if err != nil {
+		r.log.Printf("WARN: Error in reading files in directory %v : %v\n", siaPath.SiaDirSysPath(r.staticFilesDir), err)
+		return err
+	}
+
+	// Iterate over directory
+	for _, fi := range fileinfos {
+		// Check to make sure renter hasn't been shutdown
+		select {
+		case <-r.tg.StopChan():
+			return err
+		default:
+		}
+		// Check for SiaFiles and Directories
+		if fi.IsDir() {
+			// Directory is found, read the directory metadata file
+			dirSiaPath, err := siaPath.Join(fi.Name())
+			if err != nil {
+				return err
+			}
+			dirMetadata, err := r.managedDirectoryMetadata(dirSiaPath)
+			if err != nil {
+				return err
+			}
+			// Update AggregateLastHealthCheckTime.
+			if dirMetadata.AggregateLastHealthCheckTime.Before(metadata.AggregateLastHealthCheckTime) {
+				metadata.AggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
+			}
+		} else {
+			// Ignore everything that is not a directory since files should be updated
+			// already by the ongoing bubble.
+			continue
+		}
+	}
+	// Write changes to disk.
+	return entry.UpdateMetadata(metadata)
+}
+
 // threadedBubbleMetadata is the thread safe method used to call
 // managedBubbleMetadata when the call does not need to be blocking
 func (r *Renter) threadedBubbleMetadata(siaPath modules.SiaPath) {
@@ -398,14 +453,7 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 	if !proceedWithBubble {
 		// Update the AggregateLastHealthCheckTime even if we weren't able to bubble
 		// right away.
-		entry, err := r.staticDirSet.Open(siaPath)
-		if err != nil {
-			return err
-		}
-		defer entry.Close()
-		md := entry.Metadata()
-		md.AggregateLastHealthCheckTime = time.Now()
-		return entry.UpdateMetadata(md)
+		return r.managedUpdateLastHealthCheckTime(siaPath)
 	}
 	return r.managedPerformBubbleMetadata(siaPath)
 }

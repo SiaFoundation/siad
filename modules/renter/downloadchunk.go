@@ -130,7 +130,7 @@ func (udc *unfinishedDownloadChunk) managedCleanUp() {
 	udc.workersStandby = udc.workersStandby[:0] // Workers have been taken off of standby.
 	udc.mu.Unlock()
 	for i := 0; i < len(standbyWorkers); i++ {
-		standbyWorkers[i].managedQueueDownloadChunk(udc)
+		standbyWorkers[i].callQueueDownloadChunk(udc)
 	}
 }
 
@@ -209,11 +209,10 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 		return errors.AddContext(err, "unable to write to download destination")
 	}
 
-	// Now that the download has completed and been flushed from memory, we can
-	// release the memory that was used to store the data. Call 'cleanUp' to
-	// trigger the memory cleanup along with some extra checks that everything
-	// is consistent.
+	// Directly nil out the physical chunk data, it's not going to be used
+	// anymore. Also signal that data recovery has completed.
 	udc.mu.Lock()
+	udc.physicalChunkData = nil
 	udc.recoveryComplete = true
 	udc.mu.Unlock()
 

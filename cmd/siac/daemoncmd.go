@@ -23,6 +23,14 @@ var (
 		Run:   wrap(updatecheckcmd),
 	}
 
+	globalRatelimitCmd = &cobra.Command{
+		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
+		Short: "set the global maxdownloadspeed and maxuploadspeed",
+		Long: `Set the global maxdownloadspeed and maxuploadspeed in
+bytes-per-second (B/s).  Set them to 0 for no limit.`,
+		Run: wrap(globalratelimitcmd),
+	}
+
 	updateCmd = &cobra.Command{
 		Use:   "update",
 		Short: "Update Sia",
@@ -107,4 +115,18 @@ func updatecheckcmd() {
 	} else {
 		fmt.Println("Up to date.")
 	}
+}
+
+// globalratelimitcmd is the handler for the command `siac ratelimit`.
+// Sets the global maxuploadspeed and maxdownloadspeed the daemon can use.
+func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
+	downloadSpeedInt, uploadSpeedInt, err := parseRateLimits(downloadSpeedStr, uploadSpeedStr)
+	if err != nil {
+		die(err)
+	}
+	err = httpClient.DaemonGlobalRateLimitPost(downloadSpeedInt, uploadSpeedInt)
+	if err != nil {
+		die("Could not set global ratelimit speed:", err)
+	}
+	fmt.Println("Set global maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -90,6 +91,10 @@ type unfinishedUploadChunk struct {
 	unusedHosts      map[string]struct{} // hosts that aren't yet storing any pieces or performing any work.
 	workersRemaining int                 // number of inactive workers still able to upload a piece.
 	workersStandby   []*worker           // workers that can be used if other workers fail.
+
+	cancelMU sync.Mutex     // cancelMU needs to be held when adding to cancelWG and reading/writing canceled.
+	canceled bool           // cancel the work on this chunk.
+	cancelWG sync.WaitGroup // WaitGroup to wait on after canceling the uploadchunk.
 }
 
 // managedNotifyStandbyWorkers is called when a worker fails to upload a piece, meaning
@@ -105,7 +110,7 @@ func (uc *unfinishedUploadChunk) managedNotifyStandbyWorkers() {
 	uc.mu.Unlock()
 
 	for i := 0; i < len(standbyWorkers); i++ {
-		standbyWorkers[i].managedQueueUploadChunk(uc)
+		standbyWorkers[i].callQueueUploadChunk(uc)
 	}
 }
 
@@ -159,7 +164,7 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	}
 	r.staticWorkerPool.mu.RUnlock()
 	for _, worker := range workers {
-		worker.managedQueueUploadChunk(uc)
+		worker.callQueueUploadChunk(uc)
 	}
 }
 
@@ -206,12 +211,6 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		// Update the access time when the download is done.
 		return chunk.fileEntry.SiaFile.UpdateAccessTime()
 	})
-
-	// Set the in-memory buffer to nil just to be safe in case of a memory
-	// leak.
-	defer func() {
-		d.destination = nil
-	}()
 
 	// Wait for the download to complete.
 	select {
@@ -336,6 +335,13 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			// Encrypt the piece.
 			key := chunk.fileEntry.MasterKey().Derive(chunk.index, uint64(i))
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
+			// If the piece was not a full sector, pad it accordingly with random bytes.
+			if short := int(modules.SectorSize) - len(chunk.physicalChunkData[i]); short > 0 {
+				// The form `append(obj, make([]T, n))` will be optimized by the
+				// compiler to eliminate unneeded allocations starting go 1.11.
+				chunk.physicalChunkData[i] = append(chunk.physicalChunkData[i], make([]byte, short)...)
+				fastrand.Read(chunk.physicalChunkData[i][len(chunk.physicalChunkData[i])-short:])
+			}
 		}
 	}
 	// Return the released memory.
@@ -540,13 +546,19 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop
 	if stuck && successfulRepair && stuckRepair {
-		// Signal the stuck loop that the chunk was successfully repaired
 		r.log.Debugln("Stuck chunk", uc.id, "successfully repaired")
+		// Add file to the successful stuck repair stack if there are still
+		// stuck chunks to repair
+		if uc.fileEntry.NumStuckChunks() > 0 {
+			r.stuckStack.managedPush(r.staticFileSet.SiaPath(uc.fileEntry))
+		}
+		// Signal the stuck loop that the chunk was successfully repaired
 		select {
 		case <-r.tg.StopChan():
 			r.log.Debugln("WARN: renter shut down before the stuck loop was signalled that the stuck repair was successful")
 			return
-		case r.uploadHeap.stuckChunkSuccess <- r.staticFileSet.SiaPath(uc.fileEntry):
+		case r.uploadHeap.stuckChunkSuccess <- struct{}{}:
+		default:
 		}
 	}
 }

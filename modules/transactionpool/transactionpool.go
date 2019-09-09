@@ -2,10 +2,12 @@ package transactionpool
 
 import (
 	"errors"
+	"time"
 
 	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/demotemutex"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -23,8 +25,6 @@ type (
 	// contracts, and is used to see if there is are conflicts or overlaps within
 	// the transaction pool.
 	ObjectID crypto.Hash
-	// TransactionSetID is the hash of a transaction set.
-	TransactionSetID crypto.Hash
 
 	// The TransactionPool tracks incoming transactions, accepting them or
 	// rejecting them based on internal criteria such as fees and unconfirmed
@@ -45,11 +45,11 @@ type (
 		//
 		// transactionSetDiffs map form a transaction set id to the set of
 		// diffs that resulted from the transaction set.
-		knownObjects        map[ObjectID]TransactionSetID
-		subscriberSets      map[TransactionSetID]*modules.UnconfirmedTransactionSet
+		knownObjects        map[ObjectID]modules.TransactionSetID
+		subscriberSets      map[modules.TransactionSetID]*modules.UnconfirmedTransactionSet
 		transactionHeights  map[types.TransactionID]types.BlockHeight
-		transactionSets     map[TransactionSetID][]types.Transaction
-		transactionSetDiffs map[TransactionSetID]*modules.ConsensusChange
+		transactionSets     map[modules.TransactionSetID][]types.Transaction
+		transactionSetDiffs map[modules.TransactionSetID]*modules.ConsensusChange
 		transactionListSize int
 
 		// Variables related to the blockchain.
@@ -88,11 +88,11 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 		consensusSet: cs,
 		gateway:      g,
 
-		knownObjects:        make(map[ObjectID]TransactionSetID),
-		subscriberSets:      make(map[TransactionSetID]*modules.UnconfirmedTransactionSet),
+		knownObjects:        make(map[ObjectID]modules.TransactionSetID),
+		subscriberSets:      make(map[modules.TransactionSetID]*modules.UnconfirmedTransactionSet),
 		transactionHeights:  make(map[types.TransactionID]types.BlockHeight),
-		transactionSets:     make(map[TransactionSetID][]types.Transaction),
-		transactionSetDiffs: make(map[TransactionSetID]*modules.ConsensusChange),
+		transactionSets:     make(map[modules.TransactionSetID][]types.Transaction),
+		transactionSetDiffs: make(map[modules.TransactionSetID]*modules.ConsensusChange),
 
 		persistDir: persistDir,
 	}
@@ -108,6 +108,12 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 	tp.tg.OnStop(func() {
 		tp.gateway.UnregisterRPC("RelayTransactionSet")
 	})
+
+	// Spin up a thread to periodically dump the tpool size. (debug mode)
+	if build.DEBUG {
+		go tp.threadedLogListSize()
+	}
+
 	return tp, nil
 }
 
@@ -129,43 +135,49 @@ func (tp *TransactionPool) FeeEstimation() (min, max types.Currency) {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
 
-	// Use three methods to determine an acceptable fee, and then take the
-	// largest result of the two methods. The first method checks the historic
-	// blocks, to make sure that we don't under-estimate the number of fees
-	// needed in the event that we just purged the tpool.
+	// Use three methods to determine an acceptable fee. The first method looks
+	// at what fee is required to get into a block on the blockchain based on
+	// the actual fees of transactions confirmed in recent blocks. The second
+	// method looks at the current tpool and performs fee estimation based on
+	// the other transactions in the tpool. The third method is an absolute
+	// minimum.
+
+	// First method: use the median fees calculated while looking at
+	// transactions that have been confirmed in the recent blocks.
+	feeByBlockchain := tp.recentMedianFee
+
+	// Second method: use the median fees calculated while looking at the
+	// current size of the transaction pool. For the min fee, use a size that's
+	// a fixed size larger than the current pool, and then also add some
+	// proportional padding. The fixed size handles cases where the tpool is
+	// really small, and a low number of transactions can move the fee
+	// substantially. The proportional padding is for when the tpool is large
+	// and there is a lot of activity which is adding to the tpool.
 	//
-	// The second method looks at the existing tpool. Sudden congestion won't be
-	// represented on the blockchain right away, but should be immediately
-	// influencing how you set fees. Using the current tpool fullness will help
-	// pick appropriate fees in the event of sudden congestion.
-	//
-	// The third method just has hardcoded minimums as a sanity check. In the
-	// event of empty blocks, there should still be some fees being added to the
-	// chain.
-
-	// Set the minimum fee to the numbers recommended by the blockchain.
-	min = tp.recentMedianFee
-	max = tp.recentMedianFee.Mul64(maxMultiplier)
-
-	// Method two: use 'requiredFeesToExtendPool'.
-	required := tp.requiredFeesToExtendTpool()
-	requiredMin := required.MulFloat(minExtendMultiplier) // Clear the local requirement by a little bit.
-	requiredMax := requiredMin.MulFloat(maxMultiplier)    // Clear the local requirement by a lot.
-	if min.Cmp(requiredMin) < 0 {
-		min = requiredMin
-	}
-	if max.Cmp(requiredMax) < 0 {
-		max = requiredMax
+	// The sizes for proportional and constant are computed independently, and
+	// then the max is taken of the two.
+	sizeAfterConstantPadding := tp.transactionListSize + feeEstimationConstantPadding
+	sizeAfterProportionalPadding := int(float64(tp.transactionListSize) * float64(feeEstimationProportionalPadding))
+	var feeByCurrentTpoolSize types.Currency
+	if sizeAfterConstantPadding > sizeAfterProportionalPadding {
+		feeByCurrentTpoolSize = requiredFeesToExtendTpoolAtSize(sizeAfterConstantPadding)
+	} else {
+		feeByCurrentTpoolSize = requiredFeesToExtendTpoolAtSize(sizeAfterProportionalPadding)
 	}
 
-	// Method three: sane mimimums.
+	// Pick the larger of the first two methods to be compared with the third
+	// method.
+	if feeByBlockchain.Cmp(feeByCurrentTpoolSize) > 0 {
+		min = feeByBlockchain
+	} else {
+		min = feeByCurrentTpoolSize
+	}
+
+	// Third method: ensure the fee is above an absolute minimum.
 	if min.Cmp(minEstimation) < 0 {
 		min = minEstimation
 	}
-	if max.Cmp(minEstimation.Mul64(maxMultiplier)) < 0 {
-		max = minEstimation.Mul64(maxMultiplier)
-	}
-
+	max = min.Mul64(maxMultiplier)
 	return
 }
 
@@ -256,12 +268,23 @@ func (tp *TransactionPool) Transaction(id types.TransactionID) (types.Transactio
 	return txn, necessaryParents, exists
 }
 
-// TransactionSet returns the transaction set the provided object
-// appears in.
+// Transactions returns the transactions of the transaction pool
+func (tp *TransactionPool) Transactions() []types.Transaction {
+	tp.mu.RLock()
+	defer tp.mu.RUnlock()
+	var txns []types.Transaction
+	for _, set := range tp.transactionSets {
+		txns = append(txns, set...)
+	}
+	return txns
+}
+
+// TransactionSet returns the transaction set the provided object appears in.
 func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()
-	var parents []types.Transaction
+	// Define txns as to not use the memory that stores the actual map
+	var txns []types.Transaction
 	tSetID, exists := tp.knownObjects[ObjectID(oid)]
 	if !exists {
 		return nil
@@ -270,12 +293,35 @@ func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 	if !exists {
 		return nil
 	}
-	parents = append(parents, tSet...)
-	return parents
+	txns = append(txns, tSet...)
+	return txns
 }
 
 // Broadcast broadcasts a transaction set to all of the transaction pool's
 // peers.
 func (tp *TransactionPool) Broadcast(ts []types.Transaction) {
 	go tp.gateway.Broadcast("RelayTransactionSet", ts, tp.gateway.Peers())
+}
+
+// threadedLogListSize will periodically log the current size of the transaction
+// pool.
+func (tp *TransactionPool) threadedLogListSize() {
+	err := tp.tg.Add()
+	if err != nil {
+		return
+	}
+	defer tp.tg.Done()
+
+	// Infinite loop to keep printing the size of the tpool.
+	for {
+		// Soft sleep for 5 minutes between each log line.
+		select {
+		case <-tp.tg.StopChan():
+			return
+		case <-time.After(logSizeFrequency):
+		}
+		tp.mu.Lock()
+		tp.log.Debugln("Current tpool size:", tp.transactionListSize)
+		tp.mu.Unlock()
+	}
 }

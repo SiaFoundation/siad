@@ -16,7 +16,8 @@ pkgs = ./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modul
        ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor       \
        ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir            \
        ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./node ./node/api ./persist    \
-       ./siatest ./siatest/consensus ./siatest/gateway ./siatest/renter ./siatest/wallet ./node/api/server ./sync ./types
+       ./siatest ./siatest/consensus ./siatest/gateway ./siatest/miner ./siatest/renter ./siatest/transactionpool         \
+       ./siatest/wallet ./node/api/server ./sync ./types ./types/typesutil
 
 # fmt calls go fmt on all packages.
 fmt:
@@ -25,7 +26,7 @@ fmt:
 # vet calls go vet on all packages.
 # NOTE: go vet requires packages to be built in order to obtain type info.
 vet:
-	go vet $(pkgs)
+	GO111MODULE=on go vet $(pkgs)
 
 lint:
 	go get golang.org/x/lint/golint

@@ -10,12 +10,25 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 type (
+	// PartialChunkInfo contains all the essential information about a partial
+	// chunk relevant to SiaFiles. A SiaFile with a partial chunk may contain 1 or
+	// 2 PartialChunkInfos since the partial chunk might be split between 2
+	// combined chunks.
+	PartialChunkInfo struct {
+		ID     modules.CombinedChunkID `json:"id"`     // ID of the combined chunk
+		Index  uint64                  `json:"index"`  // Index of the combined chunk within partialsSiaFile
+		Offset uint64                  `json:"offset"` // Offset of partial chunk within combined chunk
+		Length uint64                  `json:"length"` // Length of partial chunk within combined chunk
+		Status uint8                   `json:"status"` // Status of combined chunk
+	}
+
 	// SiafileUID is a unique identifier for siafile which is used to track
 	// siafiles even after renaming them.
 	SiafileUID string
@@ -30,11 +43,16 @@ type (
 		StaticPieceSize     uint64   `json:"piecesize"`     // size of a single piece of the file
 		LocalPath           string   `json:"localpath"`     // file to the local copy of the file used for repairing
 
-		// fields for encryption
+		// Fields for encryption
 		StaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
 		StaticMasterKeyType  crypto.CipherType `json:"masterkeytype"`
 		StaticSharingKey     []byte            `json:"sharingkey"` // key used to encrypt shared pieces
 		StaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
+
+		// Fields for partial uploads
+		DisablePartialChunk bool               `json:"disablepartialchunk"` // determines whether the file should be treated like legacy files
+		PartialChunks       []PartialChunkInfo `json:"partialchunks"`       // information about the partial chunk.
+		HasPartialChunk     bool               `json:"haspartialchunk"`     // indicates whether this file is supposed to have a partial chunk or not
 
 		// The following fields are the usual unix timestamps of files.
 		ModTime    time.Time `json:"modtime"`    // time of last content modification
@@ -53,6 +71,10 @@ type (
 		// updated within the 'Redundancy' method which is periodically called by the
 		// repair code.
 		//
+		// CachedUserRedundancy is the redundancy of the file on the network as
+		// visible to the user and is updated within the 'Redundancy' method which is
+		// periodically called by the repair code.
+		//
 		// CachedHealth is the health of the file on the network and is also
 		// periodically updated by the health check loop whenever 'Health' is called.
 		//
@@ -69,6 +91,7 @@ type (
 		// every time a piece is added to the siafile.
 		//
 		CachedRedundancy     float64           `json:"cachedredundancy"`
+		CachedUserRedundancy float64           `json:"cacheduserredundancy"`
 		CachedHealth         float64           `json:"cachedhealth"`
 		CachedStuckHealth    float64           `json:"cachedstuckhealth"`
 		CachedExpiration     types.BlockHeight `json:"cachedexpiration"`
@@ -84,7 +107,9 @@ type (
 		// health was checked by Health()
 		//
 		// NumStuckChunks is the number of all the SiaFile's chunks that have
-		// been marked as stuck by the repair loop
+		// been marked as stuck by the repair loop. This doesn't include a potential
+		// partial chunk at the end of the file though. Use 'numStuckChunks()' for
+		// that instead.
 		//
 		// Redundancy is the cached value of the last time the file's redundancy
 		// was checked
@@ -101,11 +126,6 @@ type (
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
 		UserID  int         `json:"userid"`  // id of the user who owns the file
 		GroupID int         `json:"groupid"` // id of the group that owns the file
-
-		// staticChunkMetadataSize is the amount of space allocated within the
-		// siafile for the metadata of a single chunk. It allows us to do
-		// random access operations on the file in constant time.
-		StaticChunkMetadataSize uint64 `json:"chunkmetadatasize"`
 
 		// The following fields are the offsets for data that is written to disk
 		// after the pubKeyTable. We reserve a generous amount of space for the
@@ -171,6 +191,13 @@ func (sf *SiaFile) ChangeTime() time.Time {
 	return sf.staticMetadata.ChangeTime
 }
 
+// PartialChunks returns the partial chunk infos of the siafile.
+func (sf *SiaFile) PartialChunks() []PartialChunkInfo {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.PartialChunks
+}
+
 // CreateTime returns the CreateTime timestamp of the file.
 func (sf *SiaFile) CreateTime() time.Time {
 	sf.mu.RLock()
@@ -181,6 +208,14 @@ func (sf *SiaFile) CreateTime() time.Time {
 // ChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) ChunkSize() uint64 {
 	return sf.staticChunkSize()
+}
+
+// HasPartialChunk returns whether this file is supposed to have a partial chunk
+// or not.
+func (sf *SiaFile) HasPartialChunk() bool {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.HasPartialChunk
 }
 
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
@@ -209,11 +244,14 @@ func (sf *SiaFile) MasterKey() crypto.CipherKey {
 	return sk
 }
 
-// Metadata returns the metadata of the SiaFile.
+// Metadata returns the SiaFile's metadata, resolving any fields related to
+// partial chunks.
 func (sf *SiaFile) Metadata() Metadata {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata
+	md := sf.staticMetadata
+	md.NumStuckChunks = sf.numStuckChunks()
+	return md
 }
 
 // Mode returns the FileMode of the SiaFile.
@@ -235,7 +273,7 @@ func (sf *SiaFile) ModTime() time.Time {
 func (sf *SiaFile) NumStuckChunks() uint64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.NumStuckChunks
+	return sf.numStuckChunks()
 }
 
 // PieceSize returns the size of a single piece of the file.
@@ -246,22 +284,32 @@ func (sf *SiaFile) PieceSize() uint64 {
 // Rename changes the name of the file to a new one. To guarantee that renaming
 // the file is atomic across all operating systems, we create a wal transaction
 // that moves over all the chunks one-by-one and deletes the src file.
-func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) error {
+func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	if sf.deleted {
+		return errors.New("can't rename deleted siafile")
+	}
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	err := os.MkdirAll(dir, 0700)
+	if err != nil {
 		return err
 	}
 	// Create the delete update before changing the path to the new one.
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
 	// Load all the chunks.
 	chunks := make([]chunk, 0, sf.numChunks)
-	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
+		if _, ok := sf.isIncludedPartialChunk(uint64(chunk.Index)); ok {
+			return nil // Ignore partial chunk
+		}
 		chunks = append(chunks, chunk)
 		return nil
 	})
+	if err != nil {
+		return err
+	}
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
 	// Update the ChangeTime because the metadata changed.
@@ -277,7 +325,7 @@ func (sf *SiaFile) Rename(newSiaPath modules.SiaPath, newSiaFilePath string) err
 		updates = append(updates, sf.saveChunkUpdate(chunk))
 	}
 	// Apply updates.
-	return sf.createAndApplyTransaction(updates...)
+	return createAndApplyTransaction(sf.wal, updates...)
 }
 
 // SetMode sets the filemode of the sia file.
@@ -345,6 +393,22 @@ func (sf *SiaFile) UpdateAccessTime() error {
 		return err
 	}
 	return sf.createAndApplyTransaction(updates...)
+}
+
+// numStuckChunks returns the number of stuck chunks recorded in the file's
+// metadata.
+func (sf *SiaFile) numStuckChunks() uint64 {
+	numStuckChunks := sf.staticMetadata.NumStuckChunks
+	for _, cc := range sf.staticMetadata.PartialChunks {
+		stuck, err := sf.partialsSiaFile.StuckChunkByIndex(cc.Index)
+		if err != nil {
+			build.Critical("failed to get 'stuck' status of partial chunk")
+		}
+		if stuck {
+			numStuckChunks++
+		}
+	}
+	return numStuckChunks
 }
 
 // staticChunkSize returns the size of a single chunk of the file.

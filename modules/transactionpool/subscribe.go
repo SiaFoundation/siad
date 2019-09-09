@@ -27,7 +27,7 @@ func (tp *TransactionPool) updateSubscribersTransactions() {
 
 	// Clear the subscriber sets map.
 	for _, revert := range diff.RevertedTransactions {
-		delete(tp.subscriberSets, TransactionSetID(revert))
+		delete(tp.subscriberSets, modules.TransactionSetID(revert))
 	}
 
 	// Create all of the diffs for sets that have been recently created.

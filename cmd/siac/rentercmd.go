@@ -157,6 +157,14 @@ and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w r
 		Run: renterpricescmd,
 	}
 
+	renterRatelimitCmd = &cobra.Command{
+		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
+		Short: "set maxdownloadspeed and maxuploadspeed",
+		Long: `Set the maxdownloadspeed and maxuploadspeed in bytes-per-second
+(B/s).  Set them to 0 for no limit.`,
+		Run: wrap(renterratelimitcmd),
+	}
+
 	renterSetAllowanceCmd = &cobra.Command{
 		Use:   "setallowance",
 		Short: "Set the allowance",
@@ -204,6 +212,9 @@ func abs(path string) string {
 
 // rentercmd displays the renter's financial metrics and high level renter info
 func rentercmd() {
+	// For UX formating
+	defer fmt.Println()
+
 	// Get Renter
 	rg, err := httpClient.RenterGet()
 	if err != nil {
@@ -232,6 +243,14 @@ func rentercmd() {
 	if err != nil {
 		die(err)
 	}
+
+	if !renterListVerbose {
+		return
+	}
+
+	// Print out ratelimit info about the renter
+	fmt.Println()
+	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
@@ -251,7 +270,6 @@ func renterFilesAndContractSummary() error {
   Total Stored:   %v
   Min Redundancy: %v
   Contracts:      %v
-
 `, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].AggregateMinRedundancy, len(rc.ActiveContracts))
 
 	return nil
@@ -1019,7 +1037,7 @@ func rentercontractscmd() {
 		totalSpent = totalSpent.Add(contractTotalSpent)
 	}
 	// Refreshed Contracts are duplicate data
-	for _, c := range rc.PassiveContracts {
+	for _, c := range rc.RefreshedContracts {
 		totalRemaining = totalRemaining.Add(c.RenterFunds)
 		totalFees = totalFees.Add(c.Fees)
 		// Negative Currency Check
@@ -1032,7 +1050,7 @@ func rentercontractscmd() {
 		totalSpent = totalSpent.Add(contractTotalSpent)
 	}
 	// Disabled Contracts are wasted data
-	for _, c := range rc.PassiveContracts {
+	for _, c := range rc.DisabledContracts {
 		totalWasted += c.Size
 		totalRemaining = totalRemaining.Add(c.RenterFunds)
 		totalFees = totalFees.Add(c.Fees)
@@ -1216,7 +1234,7 @@ func rentercontractscmd() {
 			die("Could not get expired contracts:", err)
 		}
 		// Build Historical summary
-		fmt.Println("Historical Summary")
+		fmt.Println("\nHistorical Summary")
 		var totalStored uint64
 		var totalRemaining, totalSpent, totalFees types.Currency
 		// Expired Contracts are all good data
@@ -1294,11 +1312,11 @@ func rentercontractscmd() {
 		if len(rce.ExpiredRefreshedContracts) == 0 {
 			fmt.Println("  No expired refreshed contracts.")
 		} else {
-			sort.Sort(byValue(rce.ExpiredContracts))
+			sort.Sort(byValue(rce.ExpiredRefreshedContracts))
 			fmt.Println("	 Number of Contracts:", len(rce.ExpiredRefreshedContracts))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
-			for _, c := range rce.ExpiredContracts {
+			for _, c := range rce.ExpiredRefreshedContracts {
 				address := c.NetAddress
 				hostVersion := c.HostVersion
 				if address == "" {
@@ -2088,4 +2106,20 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	fmt.Fprintln(w, "\tHosts:\t", rpg.Allowance.Hosts)
 	fmt.Fprintln(w, "\tRenew Window:\t", rpg.Allowance.RenewWindow)
 	w.Flush()
+}
+
+// renterratelimitcmd is the handler for the command `siac renter ratelimit`
+// which sets the maxuploadspeed and maxdownloadspeed in bytes-per-second for
+// the renter module
+func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
+	downloadSpeedInt, uploadSpeedInt, err := parseRateLimits(downloadSpeedStr, uploadSpeedStr)
+	if err != nil {
+		die(err)
+	}
+
+	err = httpClient.RenterRateLimitPost(downloadSpeedInt, uploadSpeedInt)
+	if err != nil {
+		die("Could not set renter ratelimit speed")
+	}
+	fmt.Println("Set renter maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }

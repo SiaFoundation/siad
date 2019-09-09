@@ -215,6 +215,15 @@ func (c *Client) RenterBackups() (ubs api.RenterBackupsGET, err error) {
 	return
 }
 
+// RenterBackupsOnHost lists the backups that the renter has uploaded to a
+// specific host.
+func (c *Client) RenterBackupsOnHost(host types.SiaPublicKey) (ubs api.RenterBackupsGET, err error) {
+	values := url.Values{}
+	values.Set("host", host.String())
+	err = c.get("/renter/backups?"+values.Encode(), &ubs)
+	return
+}
+
 // RenterCreateBackupPost creates a backup of the SiaFiles of the renter and
 // uploads it to hosts.
 func (c *Client) RenterCreateBackupPost(name string) (err error) {
@@ -365,9 +374,9 @@ func (c *Client) RenterPricesGet(allowance modules.Allowance) (rpg api.RenterPri
 	return
 }
 
-// RenterPostRateLimit uses the /renter endpoint to change the renter's bandwidth rate
+// RenterRateLimitPost uses the /renter endpoint to change the renter's bandwidth rate
 // limit.
-func (c *Client) RenterPostRateLimit(readBPS, writeBPS int64) (err error) {
+func (c *Client) RenterRateLimitPost(readBPS, writeBPS int64) (err error) {
 	values := url.Values{}
 	values.Set("maxdownloadspeed", strconv.FormatInt(readBPS, 10))
 	values.Set("maxuploadspeed", strconv.FormatInt(writeBPS, 10))

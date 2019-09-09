@@ -378,12 +378,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		} else if filepath.Ext(info.Name()) == modules.SiaFileExtension {
 			// Load the file as a SiaFile.
 			reader := bytes.NewReader(b)
-			sf, err := siafile.LoadSiaFileFromReader(reader, dst, r.wal)
-			if err != nil {
-				return err
-			}
-			// Read the chunks from the reader.
-			chunks, err := ioutil.ReadAll(reader)
+			sf, chunks, err := siafile.LoadSiaFileFromReaderWithChunks(reader, dst, r.wal)
 			if err != nil {
 				return err
 			}
