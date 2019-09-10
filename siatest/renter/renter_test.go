@@ -3543,7 +3543,6 @@ func TestAsyncStartupRace(t *testing.T) {
 	// Disable the modules which aren't loaded async anyway.
 	np.CreateWallet = false
 	np.CreateExplorer = false
-	np.CreateTransactionPool = false
 	np.CreateHost = false
 	node, err := siatest.NewCleanNodeAsync(np)
 	if err != nil {

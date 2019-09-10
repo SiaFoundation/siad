@@ -95,6 +95,100 @@ type ConsensusSet struct {
 	tg         siasync.ThreadGroup
 }
 
+// consensusSetBlockingStartup handles the blocking portion of NewCustomConsensusSet.
+func consensusSetBlockingStartup(gateway modules.Gateway, persistDir string, deps modules.Dependencies) (*ConsensusSet, error) {
+	// Check for nil dependencies.
+	if gateway == nil {
+		return nil, errNilGateway
+	}
+	// Create the ConsensusSet object.
+	cs := &ConsensusSet{
+		gateway: gateway,
+
+		blockRoot: processedBlock{
+			Block:       types.GenesisBlock,
+			ChildTarget: types.RootTarget,
+			Depth:       types.RootDepth,
+
+			DiffsGenerated: true,
+		},
+
+		dosBlocks: make(map[types.BlockID]struct{}),
+
+		marshaler:       stdMarshaler{},
+		blockRuleHelper: stdBlockRuleHelper{},
+		blockValidator:  NewBlockValidator(),
+
+		staticDeps: deps,
+		persistDir: persistDir,
+	}
+	// Create the diffs for the genesis transaction outputs
+	for _, transaction := range types.GenesisBlock.Transactions {
+		// Create the diffs for the genesis siacoin outputs.
+		for i, siacoinOutput := range transaction.SiacoinOutputs {
+			scid := transaction.SiacoinOutputID(uint64(i))
+			scod := modules.SiacoinOutputDiff{
+				Direction:     modules.DiffApply,
+				ID:            scid,
+				SiacoinOutput: siacoinOutput,
+			}
+			cs.blockRoot.SiacoinOutputDiffs = append(cs.blockRoot.SiacoinOutputDiffs, scod)
+		}
+		// Create the diffs for the genesis siafund outputs.
+		for i, siafundOutput := range transaction.SiafundOutputs {
+			sfid := transaction.SiafundOutputID(uint64(i))
+			sfod := modules.SiafundOutputDiff{
+				Direction:     modules.DiffApply,
+				ID:            sfid,
+				SiafundOutput: siafundOutput,
+			}
+			cs.blockRoot.SiafundOutputDiffs = append(cs.blockRoot.SiafundOutputDiffs, sfod)
+		}
+	}
+	// Initialize the consensus persistence structures.
+	err := cs.initPersist()
+	if err != nil {
+		return nil, err
+	}
+	return cs, nil
+}
+
+// consensusSetAsyncStartup handles the async portion of NewCustomConsensusSet.
+func consensusSetAsyncStartup(cs *ConsensusSet, bootstrap bool) error {
+	if cs.staticDeps.Disrupt("BlockAsyncStartup") {
+		return nil
+	}
+	// Sync with the network. Don't sync if we are testing because
+	// typically we don't have any mock peers to synchronize with in
+	// testing.
+	if bootstrap {
+		// We are in a virgin goroutine right now, so calling the threaded
+		// function without a goroutine is okay.
+		err := cs.threadedInitialBlockchainDownload()
+		if err != nil {
+			return err
+		}
+	}
+
+	// Register RPCs
+	cs.gateway.RegisterRPC("SendBlocks", cs.rpcSendBlocks)
+	cs.gateway.RegisterRPC("RelayHeader", cs.threadedRPCRelayHeader)
+	cs.gateway.RegisterRPC("SendBlk", cs.rpcSendBlk)
+	cs.gateway.RegisterConnectCall("SendBlocks", cs.threadedReceiveBlocks)
+	cs.tg.OnStop(func() {
+		cs.gateway.UnregisterRPC("SendBlocks")
+		cs.gateway.UnregisterRPC("RelayHeader")
+		cs.gateway.UnregisterRPC("SendBlk")
+		cs.gateway.UnregisterConnectCall("SendBlocks")
+	})
+
+	// Mark that we are synced with the network.
+	cs.mu.Lock()
+	cs.synced = true
+	cs.mu.Unlock()
+	return nil
+}
+
 // New returns a new ConsensusSet, containing at least the genesis block. If
 // there is an existing block database present in the persist directory, it
 // will be loaded.
@@ -108,62 +202,7 @@ func New(gateway modules.Gateway, bootstrap bool, persistDir string) (*Consensus
 func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir string, deps modules.Dependencies) (*ConsensusSet, <-chan error) {
 	// Handle blocking consensus startup first.
 	errChan := make(chan error, 1)
-	cs, err := func() (*ConsensusSet, error) {
-		// Check for nil dependencies.
-		if gateway == nil {
-			return nil, errNilGateway
-		}
-		// Create the ConsensusSet object.
-		cs := &ConsensusSet{
-			gateway: gateway,
-
-			blockRoot: processedBlock{
-				Block:       types.GenesisBlock,
-				ChildTarget: types.RootTarget,
-				Depth:       types.RootDepth,
-
-				DiffsGenerated: true,
-			},
-
-			dosBlocks: make(map[types.BlockID]struct{}),
-
-			marshaler:       stdMarshaler{},
-			blockRuleHelper: stdBlockRuleHelper{},
-			blockValidator:  NewBlockValidator(),
-
-			staticDeps: deps,
-			persistDir: persistDir,
-		}
-		// Create the diffs for the genesis transaction outputs
-		for _, transaction := range types.GenesisBlock.Transactions {
-			// Create the diffs for the genesis siacoin outputs.
-			for i, siacoinOutput := range transaction.SiacoinOutputs {
-				scid := transaction.SiacoinOutputID(uint64(i))
-				scod := modules.SiacoinOutputDiff{
-					Direction:     modules.DiffApply,
-					ID:            scid,
-					SiacoinOutput: siacoinOutput,
-				}
-				cs.blockRoot.SiacoinOutputDiffs = append(cs.blockRoot.SiacoinOutputDiffs, scod)
-			}
-			// Create the diffs for the genesis siafund outputs.
-			for i, siafundOutput := range transaction.SiafundOutputs {
-				sfid := transaction.SiafundOutputID(uint64(i))
-				sfod := modules.SiafundOutputDiff{
-					Direction:     modules.DiffApply,
-					ID:            sfid,
-					SiafundOutput: siafundOutput,
-				}
-				cs.blockRoot.SiafundOutputDiffs = append(cs.blockRoot.SiafundOutputDiffs, sfod)
-			}
-		}
-		// Initialize the consensus persistence structures.
-		err := cs.initPersist()
-		if err != nil {
-			return nil, err
-		}
-		return cs, nil
-	}()
+	cs, err := consensusSetBlockingStartup(gateway, persistDir, deps)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
@@ -172,51 +211,17 @@ func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir s
 	// non-blocking consensus startup.
 	go func() {
 		defer close(errChan)
-		if cs.staticDeps.Disrupt("BlockAsyncStartup") {
-			return
-		}
-		err := func() error {
-			// Sync with the network. Don't sync if we are testing because
-			// typically we don't have any mock peers to synchronize with in
-			// testing.
-			if bootstrap {
-				// We are in a virgin goroutine right now, so calling the threaded
-				// function without a goroutine is okay.
-				err = cs.threadedInitialBlockchainDownload()
-				if err != nil {
-					return err
-				}
-			}
-
-			// threadedInitialBlockchainDownload will release the threadgroup 'Add'
-			// it was holding, so another needs to be grabbed to finish off this
-			// goroutine.
-			err = cs.tg.Add()
-			if err != nil {
-				return err
-			}
-			defer cs.tg.Done()
-
-			// Register RPCs
-			gateway.RegisterRPC("SendBlocks", cs.rpcSendBlocks)
-			gateway.RegisterRPC("RelayHeader", cs.threadedRPCRelayHeader)
-			gateway.RegisterRPC("SendBlk", cs.rpcSendBlk)
-			gateway.RegisterConnectCall("SendBlocks", cs.threadedReceiveBlocks)
-			cs.tg.OnStop(func() {
-				cs.gateway.UnregisterRPC("SendBlocks")
-				cs.gateway.UnregisterRPC("RelayHeader")
-				cs.gateway.UnregisterRPC("SendBlk")
-				cs.gateway.UnregisterConnectCall("SendBlocks")
-			})
-
-			// Mark that we are synced with the network.
-			cs.mu.Lock()
-			cs.synced = true
-			cs.mu.Unlock()
-			return nil
-		}()
+		err := cs.tg.Add()
 		if err != nil {
 			errChan <- err
+			return
+		}
+		defer cs.tg.Done()
+
+		err = consensusSetAsyncStartup(cs, bootstrap)
+		if err != nil {
+			errChan <- err
+			return
 		}
 	}()
 	return cs, errChan

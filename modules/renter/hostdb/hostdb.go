@@ -180,6 +180,152 @@ func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 	hdb.knownContracts = knownContracts
 }
 
+// hostdbBlockingStartup handles the blocking portion of NewCustomHostDB.
+func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
+	// Check for nil inputs.
+	if g == nil {
+		return nil, errNilGateway
+	}
+	if cs == nil {
+		return nil, errNilCS
+	}
+	if tpool == nil {
+		return nil, errNilTPool
+	}
+
+	// Create the HostDB object.
+	hdb := &HostDB{
+		cs:         cs,
+		deps:       deps,
+		gateway:    g,
+		persistDir: persistDir,
+		tpool:      tpool,
+
+		filteredHosts:  make(map[string]types.SiaPublicKey),
+		knownContracts: make(map[string]contractInfo),
+		scanMap:        make(map[string]struct{}),
+	}
+
+	// Set the allowance, txnFees and hostweight function.
+	hdb.allowance = modules.DefaultAllowance
+	_, hdb.txnFees = hdb.tpool.FeeEstimation()
+	hdb.weightFunc = hdb.managedCalculateHostWeightFn(hdb.allowance)
+
+	// Create the persist directory if it does not yet exist.
+	err := os.MkdirAll(persistDir, 0700)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the logger.
+	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "hostdb.log"))
+	if err != nil {
+		return nil, err
+	}
+	hdb.log = logger
+	err = hdb.tg.AfterStop(func() error {
+		if err := hdb.log.Close(); err != nil {
+			// Resort to println as the logger is in an uncertain state.
+			fmt.Println("Failed to close the hostdb logger:", err)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// The host tree is used to manage hosts and query them at random. The
+	// filteredTree is used when whitelist or blacklist is enabled
+	hdb.hostTree = hosttree.New(hdb.weightFunc, deps.Resolver())
+	hdb.filteredTree = hdb.hostTree
+
+	// Load the prior persistence structures.
+	hdb.mu.Lock()
+	err = hdb.load()
+	hdb.mu.Unlock()
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	err = hdb.tg.AfterStop(func() error {
+		hdb.mu.Lock()
+		err := hdb.saveSync()
+		hdb.mu.Unlock()
+		if err != nil {
+			hdb.log.Println("Unable to save the hostdb:", err)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Loading is complete, establish the save loop.
+	go hdb.threadedSaveLoop()
+
+	// Don't perform the remaining startup in the presence of a quitAfterLoad
+	// disruption.
+	if hdb.deps.Disrupt("quitAfterLoad") {
+		return hdb, nil
+	}
+
+	// COMPATv1.1.0
+	//
+	// If the block height has loaded as zero, the most recent consensus change
+	// needs to be set to perform a full rescan. This will also help the hostdb
+	// to pick up any hosts that it has incorrectly dropped in the past.
+	hdb.mu.Lock()
+	if hdb.blockHeight == 0 {
+		hdb.lastChange = modules.ConsensusChangeBeginning
+	}
+	hdb.mu.Unlock()
+
+	// Spawn the scan loop during production, but allow it to be disrupted
+	// during testing. Primary reason is so that we can fill the hostdb with
+	// fake hosts and not have them marked as offline as the scanloop operates.
+	if !hdb.deps.Disrupt("disableScanLoop") {
+		go hdb.threadedScan()
+	} else {
+		hdb.initialScanComplete = true
+	}
+	err = hdb.tg.OnStop(func() error {
+		cs.Unsubscribe(hdb)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return hdb, nil
+}
+
+// hostdbAsyncStartup handles the async portion of NewCustomHostDB.
+func hostdbAsyncStartup(hdb *HostDB, cs modules.ConsensusSet) error {
+	if hdb.deps.Disrupt("BlockAsyncStartup") {
+		return nil
+	}
+	err := cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
+	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+		return err
+	}
+	if err == modules.ErrInvalidConsensusChangeID {
+		// Subscribe again using the new ID. This will cause a triggered scan
+		// on all of the hosts, but that should be acceptable.
+		hdb.mu.Lock()
+		hdb.blockHeight = 0
+		hdb.lastChange = modules.ConsensusChangeBeginning
+		hdb.mu.Unlock()
+		err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
+	}
+	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // New returns a new HostDB.
 func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, <-chan error) {
 	// Create HostDB using production dependencies.
@@ -193,123 +339,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	errChan := make(chan error, 1)
 
 	// Blocking startup.
-	hdb, err := func() (*HostDB, error) {
-		// Check for nil inputs.
-		if g == nil {
-			return nil, errNilGateway
-		}
-		if cs == nil {
-			return nil, errNilCS
-		}
-		if tpool == nil {
-			return nil, errNilTPool
-		}
-
-		// Create the HostDB object.
-		hdb := &HostDB{
-			cs:         cs,
-			deps:       deps,
-			gateway:    g,
-			persistDir: persistDir,
-			tpool:      tpool,
-
-			filteredHosts:  make(map[string]types.SiaPublicKey),
-			knownContracts: make(map[string]contractInfo),
-			scanMap:        make(map[string]struct{}),
-		}
-
-		// Set the allowance, txnFees and hostweight function.
-		hdb.allowance = modules.DefaultAllowance
-		_, hdb.txnFees = hdb.tpool.FeeEstimation()
-		hdb.weightFunc = hdb.managedCalculateHostWeightFn(hdb.allowance)
-
-		// Create the persist directory if it does not yet exist.
-		err := os.MkdirAll(persistDir, 0700)
-		if err != nil {
-			return nil, err
-		}
-
-		// Create the logger.
-		logger, err := persist.NewFileLogger(filepath.Join(persistDir, "hostdb.log"))
-		if err != nil {
-			return nil, err
-		}
-		hdb.log = logger
-		err = hdb.tg.AfterStop(func() error {
-			if err := hdb.log.Close(); err != nil {
-				// Resort to println as the logger is in an uncertain state.
-				fmt.Println("Failed to close the hostdb logger:", err)
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		// The host tree is used to manage hosts and query them at random. The
-		// filteredTree is used when whitelist or blacklist is enabled
-		hdb.hostTree = hosttree.New(hdb.weightFunc, deps.Resolver())
-		hdb.filteredTree = hdb.hostTree
-
-		// Load the prior persistence structures.
-		hdb.mu.Lock()
-		err = hdb.load()
-		hdb.mu.Unlock()
-		if err != nil && !os.IsNotExist(err) {
-			return nil, err
-		}
-		err = hdb.tg.AfterStop(func() error {
-			hdb.mu.Lock()
-			err := hdb.saveSync()
-			hdb.mu.Unlock()
-			if err != nil {
-				hdb.log.Println("Unable to save the hostdb:", err)
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		// Loading is complete, establish the save loop.
-		go hdb.threadedSaveLoop()
-
-		// Don't perform the remaining startup in the presence of a quitAfterLoad
-		// disruption.
-		if hdb.deps.Disrupt("quitAfterLoad") {
-			return hdb, nil
-		}
-
-		// COMPATv1.1.0
-		//
-		// If the block height has loaded as zero, the most recent consensus change
-		// needs to be set to perform a full rescan. This will also help the hostdb
-		// to pick up any hosts that it has incorrectly dropped in the past.
-		hdb.mu.Lock()
-		if hdb.blockHeight == 0 {
-			hdb.lastChange = modules.ConsensusChangeBeginning
-		}
-		hdb.mu.Unlock()
-
-		// Spawn the scan loop during production, but allow it to be disrupted
-		// during testing. Primary reason is so that we can fill the hostdb with
-		// fake hosts and not have them marked as offline as the scanloop operates.
-		if !hdb.deps.Disrupt("disableScanLoop") {
-			go hdb.threadedScan()
-		} else {
-			hdb.initialScanComplete = true
-		}
-		err = hdb.tg.OnStop(func() error {
-			cs.Unsubscribe(hdb)
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
-		return hdb, nil
-	}()
+	hdb, err := hostdbBlockingStartup(g, cs, tpool, persistDir, deps)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
@@ -318,36 +348,13 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// non-blocking startup.
 	go func() {
 		defer close(errChan)
-		if hdb.deps.Disrupt("BlockAsyncStartup") {
+		if err := hdb.tg.Add(); err != nil {
+			errChan <- err
 			return
 		}
+		defer hdb.tg.Done()
 		// Subscribe to the consensus set in a separate goroutine.
-		err := func() error {
-			if err := hdb.tg.Add(); err != nil {
-				return err
-			}
-			defer hdb.tg.Done()
-			err := cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
-			if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
-				return err
-			}
-			if err == modules.ErrInvalidConsensusChangeID {
-				// Subscribe again using the new ID. This will cause a triggered scan
-				// on all of the hosts, but that should be acceptable.
-				hdb.mu.Lock()
-				hdb.blockHeight = 0
-				hdb.lastChange = modules.ConsensusChangeBeginning
-				hdb.mu.Unlock()
-				err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
-			}
-			if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
-				return err
-			}
-			if err != nil {
-				return err
-			}
-			return nil
-		}()
+		err := hostdbAsyncStartup(hdb, cs)
 		if err != nil {
 			errChan <- err
 		}

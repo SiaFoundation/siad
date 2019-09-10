@@ -403,7 +403,7 @@ func TestIntegrationRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 	numRetries := 0
-	if err := build.Retry(10, time.Second, func() error {
+	if err := build.Retry(100, time.Millisecond, func() error {
 		if numRetries%10 == 0 {
 			if _, err := m.AddBlock(); err != nil {
 				return err

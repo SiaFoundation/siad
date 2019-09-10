@@ -286,82 +286,107 @@ func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, 
 	return NewCustomContractor(cs, &WalletBridge{W: wallet}, tpool, hdb, contractSet, NewPersist(persistDir), logger, modules.ProdDependencies)
 }
 
+// contractorBlockingStartup handles the blocking portion of NewCustomContractor.
+func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
+	// Create the Contractor object.
+	c := &Contractor{
+		cs:         cs,
+		staticDeps: deps,
+		hdb:        hdb,
+		log:        l,
+		persist:    p,
+		tpool:      tp,
+		wallet:     w,
+
+		interruptMaintenance: make(chan struct{}),
+
+		staticContracts:      contractSet,
+		downloaders:          make(map[types.FileContractID]*hostDownloader),
+		editors:              make(map[types.FileContractID]*hostEditor),
+		sessions:             make(map[types.FileContractID]*hostSession),
+		oldContracts:         make(map[types.FileContractID]modules.RenterContract),
+		recoverableContracts: make(map[types.FileContractID]modules.RecoverableContract),
+		pubKeysToContractID:  make(map[string]types.FileContractID),
+		renewing:             make(map[types.FileContractID]bool),
+		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
+		renewedTo:            make(map[types.FileContractID]types.FileContractID),
+	}
+
+	// Close the contract set and logger upon shutdown.
+	c.tg.AfterStop(func() {
+		if err := c.staticContracts.Close(); err != nil {
+			c.log.Println("Failed to close contract set:", err)
+		}
+		if err := c.log.Close(); err != nil {
+			fmt.Println("Failed to close the contractor logger:", err)
+		}
+	})
+
+	// Load the prior persistence structures.
+	err := c.load()
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	// Initialize the contractIDToPubKey map
+	for _, contract := range c.oldContracts {
+		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
+	}
+	for _, contract := range c.staticContracts.ViewAll() {
+		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
+	}
+
+	// Unsubscribe from the consensus set upon shutdown.
+	c.tg.OnStop(func() {
+		cs.Unsubscribe(c)
+	})
+
+	// We may have upgraded persist or resubscribed. Save now so that we don't
+	// lose our work.
+	c.mu.Lock()
+	err = c.save()
+	c.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the allowance in the hostdb with the one that was loaded from
+	// disk.
+	err = c.hdb.SetAllowance(c.allowance)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// contractorAsyncStartup handles the async portion of NewCustomContractor.
+func contractorAsyncStartup(c *Contractor, cs consensusSet) error {
+	if c.staticDeps.Disrupt("BlockAsyncStartup") {
+		return nil
+	}
+	err := cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
+	if err == modules.ErrInvalidConsensusChangeID {
+		// Reset the contractor consensus variables and try rescanning.
+		c.blockHeight = 0
+		c.lastChange = modules.ConsensusChangeBeginning
+		c.recentRecoveryChange = modules.ConsensusChangeBeginning
+		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
+	}
+	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // NewCustomContractor creates a Contractor using the provided dependencies.
 func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Handle blocking startup.
-	c, err := func() (*Contractor, error) {
-		// Create the Contractor object.
-		c := &Contractor{
-			cs:         cs,
-			staticDeps: deps,
-			hdb:        hdb,
-			log:        l,
-			persist:    p,
-			tpool:      tp,
-			wallet:     w,
-
-			interruptMaintenance: make(chan struct{}),
-
-			staticContracts:      contractSet,
-			downloaders:          make(map[types.FileContractID]*hostDownloader),
-			editors:              make(map[types.FileContractID]*hostEditor),
-			sessions:             make(map[types.FileContractID]*hostSession),
-			oldContracts:         make(map[types.FileContractID]modules.RenterContract),
-			recoverableContracts: make(map[types.FileContractID]modules.RecoverableContract),
-			pubKeysToContractID:  make(map[string]types.FileContractID),
-			renewing:             make(map[types.FileContractID]bool),
-			renewedFrom:          make(map[types.FileContractID]types.FileContractID),
-			renewedTo:            make(map[types.FileContractID]types.FileContractID),
-		}
-
-		// Close the contract set and logger upon shutdown.
-		c.tg.AfterStop(func() {
-			if err := c.staticContracts.Close(); err != nil {
-				c.log.Println("Failed to close contract set:", err)
-			}
-			if err := c.log.Close(); err != nil {
-				fmt.Println("Failed to close the contractor logger:", err)
-			}
-		})
-
-		// Load the prior persistence structures.
-		err := c.load()
-		if err != nil && !os.IsNotExist(err) {
-			return nil, err
-		}
-
-		// Initialize the contractIDToPubKey map
-		for _, contract := range c.oldContracts {
-			c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-		}
-		for _, contract := range c.staticContracts.ViewAll() {
-			c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-		}
-
-		// Unsubscribe from the consensus set upon shutdown.
-		c.tg.OnStop(func() {
-			cs.Unsubscribe(c)
-		})
-
-		// We may have upgraded persist or resubscribed. Save now so that we don't
-		// lose our work.
-		c.mu.Lock()
-		err = c.save()
-		c.mu.Unlock()
-		if err != nil {
-			return nil, err
-		}
-
-		// Update the allowance in the hostdb with the one that was loaded from
-		// disk.
-		err = c.hdb.SetAllowance(c.allowance)
-		if err != nil {
-			return nil, err
-		}
-		return c, nil
-	}()
+	c, err := contractorBlockingStartup(cs, w, tp, hdb, contractSet, p, l, deps)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
@@ -371,30 +396,12 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	go func() {
 		// Subscribe to the consensus set in a separate goroutine.
 		defer close(errChan)
-		if c.staticDeps.Disrupt("BlockAsyncStartup") {
+		if err := c.tg.Add(); err != nil {
+			errChan <- err
 			return
 		}
-		err := func() error {
-			if err := c.tg.Add(); err != nil {
-				return err
-			}
-			defer c.tg.Done()
-			err := cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
-			if err == modules.ErrInvalidConsensusChangeID {
-				// Reset the contractor consensus variables and try rescanning.
-				c.blockHeight = 0
-				c.lastChange = modules.ConsensusChangeBeginning
-				c.recentRecoveryChange = modules.ConsensusChangeBeginning
-				err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
-			}
-			if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
-				return err
-			}
-			if err != nil {
-				return err
-			}
-			return nil
-		}()
+		defer c.tg.Done()
+		err := contractorAsyncStartup(c, cs)
 		if err != nil {
 			errChan <- err
 		}
