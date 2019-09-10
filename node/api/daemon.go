@@ -227,23 +227,18 @@ func updateToRelease(version string) error {
 // loaded modules.
 func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	alerts := make([]modules.Alert, 0) // initialize slice to avoid "null" in response.
-	if api.gateway != nil {
-		alerts = append(alerts, api.gateway.Alerts()...)
+	alerters := []modules.Alerter{
+		api.gateway,
+		api.cs,
+		api.tpool,
+		api.wallet,
+		api.renter,
+		api.host,
 	}
-	if api.cs != nil {
-		alerts = append(alerts, api.cs.Alerts()...)
-	}
-	if api.tpool != nil {
-		alerts = append(alerts, api.tpool.Alerts()...)
-	}
-	if api.wallet != nil {
-		alerts = append(alerts, api.wallet.Alerts()...)
-	}
-	if api.renter != nil {
-		alerts = append(alerts, api.renter.Alerts()...)
-	}
-	if api.host != nil {
-		alerts = append(alerts, api.host.Alerts()...)
+	for _, a := range alerters {
+		if a != nil {
+			alerts = append(alerts, a.Alerts()...)
+		}
 	}
 	WriteJSON(w, DaemonAlertsGet{
 		Alerts: alerts,
