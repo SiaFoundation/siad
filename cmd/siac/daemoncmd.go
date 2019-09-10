@@ -28,8 +28,8 @@ var (
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
 		Short: "set the global maxdownloadspeed and maxuploadspeed",
 		Long: `Set the global maxdownloadspeed and maxuploadspeed in
-Bps (Bytes/s), Kbps (Kilobytes/s), Mbps (Megabytes/s), Gbps (Gigabytes/s), 
-or Tbps (Terabytes/s).  Set them to 0 for no limit.`,
+B/s (Bytes/s), KB/s (Kilobytes/s), MB/s (Megabytes/s), GB/s (Gigabytes/s), 
+or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
 		Run: wrap(globalratelimitcmd),
 	}
 

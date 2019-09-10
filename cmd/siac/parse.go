@@ -173,7 +173,8 @@ func parseCurrency(amount string) (string, error) {
 	return "", errors.New("amount is missing units; run 'wallet --help' for a list of units")
 }
 
-// parseRatelimit converts a ratelimit input string to an int64.
+// parseRatelimit converts a ratelimit input string of to an int64 representing
+// the bytes per second ratelimit.
 func parseRatelimit(rateLimitStr string) (int64, error) {
 	// Check for 0 values signifying that the no limit is being set
 	if rateLimitStr == "0" {
@@ -221,9 +222,9 @@ func parseRatelimit(rateLimitStr string) (int64, error) {
 	return 0, errUnableToParseRateLimit
 }
 
-// ratelimitUnits converts an int64 to a string with human-readable
-// units. The unit used will be the largest unit that results in a value
-// greater than 1. The value is rounded to 4 significant digits.
+// ratelimitUnits converts an int64 to a string with human-readable ratelimit
+// units. The unit used will be the largest unit that results in a value greater
+// than 1. The value is rounded to 4 significant digits.
 func ratelimitUnits(ratelimit int64) string {
 	// Check for bps
 	if ratelimit < 1e3 {
