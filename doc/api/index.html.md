@@ -2344,7 +2344,7 @@ Lists a file in the download history by UID.
 
 ### Query String Parameters
 #### REQUIRED
-**uid** | string
+**uid** | string  
 UID returned by the /renter/download/*siapath* endpoint. It is set in the
 http header's 'ID' field.
 
@@ -2367,19 +2367,19 @@ http header's 'ID' field.
   "totaldatatransfered": 10031                    // bytes
 }
 ```
-**destination** | string
+**destination** | string  
 Local path that the file will be downloaded to.  
 
-**destinationtype** | string
+**destinationtype** | string  
 What type of destination was used. Can be "file", indicating a download to disk, can be "buffer", indicating a download to memory, and can be "http stream", indicating that the download was streamed through the http API.  
 
 **length** | bytes  
 Length of the download. If the download was a partial download, this will indicate the length of the partial download, and not the length of the full file.  
 
-**offset** | bytes
+**offset** | bytes  
 Offset within the file of the download. For full file downloads, the offset will be '0'. For partial downloads, the offset may be anywhere within the file. offset+length will never exceed the full file size.  
 
-**siapath** | string
+**siapath** | string  
 Siapath given to the file when it was uploaded.  
 
 **completed** | boolean  
@@ -2388,7 +2388,7 @@ Whether or not the download has completed. Will be false initially, and set to t
 **endtime** | date, RFC 3339 time  
 Time at which the download completed. Will be zero if the download has not yet completed.  
 
-**error** | string
+**error** | string  
 Error encountered while downloading. If there was no error (yet), it will be the empty string.  
 
 **received** | bytes  
@@ -2397,7 +2397,7 @@ Number of bytes downloaded thus far. Will only be updated as segments of the fil
 **starttime** | date, RFC 3339 time  
 Time at which the download was initiated.
 
-**totaldatatransfered** | bytes
+**totaldatatransfered** | bytes  
 The total amount of data transfered when downloading the file. This will eventually include data transferred during contract + payment negotiation, as well as data from failed piece downloads.  
 
 ## /renter/downloads [GET]
