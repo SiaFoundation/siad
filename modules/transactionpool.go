@@ -19,7 +19,7 @@ const (
 	// rules.
 	TransactionSizeLimit = 32e3
 
-	//  consensusConflictPreix is the prefix of every ConsensusConflict.
+	// consensusConflictPrefix is the prefix of every ConsensusConflict.
 	consensusConflictPrefix = "consensus conflict: "
 )
 

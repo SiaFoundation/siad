@@ -345,7 +345,7 @@ func (tp *TransactionPool) printConflicts(ts []types.Transaction) {
 	latestBlock, _ := tp.consensusSet.BlockAtHeight(tp.blockHeight)
 	logStr := fmt.Sprintf("Rejected transaction set with conflicts.\nBlockHeight: %d BlockID: %s\n", tp.blockHeight, latestBlock.ID())
 	for _, txn := range ts {
-		logStr += typesutil.PrintTxnWithObjectIDs(txn)
+		logStr += typesutil.SprintTxnWithObjectIDs(txn)
 	}
 
 	logStr += "\nPrinting conflict transaction sets:\n\n"
@@ -353,7 +353,7 @@ func (tp *TransactionPool) printConflicts(ts []types.Transaction) {
 		logStr += "ConflictSetID: " + crypto.Hash(conflictSetID).String()
 		for _, txn := range tp.transactionSets[conflictSetID] {
 			// Add an extra level of indentation to conflict set transactions.
-			logStr += strings.Replace(typesutil.PrintTxnWithObjectIDs(txn), "\n", "\n\t", -1)
+			logStr += strings.Replace(typesutil.SprintTxnWithObjectIDs(txn), "\n", "\n\t", -1)
 		}
 	}
 	tp.log.Println(logStr)

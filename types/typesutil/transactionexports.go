@@ -8,10 +8,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// PrintTxnWithObjectIDs prints the Transaction in human-readable form with all
-// object IDs printed to allow for easy dependency matching (by humans) in
+// SprintTxnWithObjectIDs creates a string representing this Transaction in human-readable form with all
+// object IDs included to allow for easy dependency matching (by humans) in
 // debug-logs.
-func PrintTxnWithObjectIDs(t types.Transaction) string {
+func SprintTxnWithObjectIDs(t types.Transaction) string {
 	var str strings.Builder
 	txIDString := crypto.Hash(t.ID()).String()
 	fmt.Fprintf(&str, "\nTransaction ID: %s", txIDString)
