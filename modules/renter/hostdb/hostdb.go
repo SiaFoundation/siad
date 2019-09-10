@@ -344,7 +344,12 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		errChan <- err
 		return nil, errChan
 	}
-
+	// Parts of the blocking startup and the whole async startup should be
+	// skipped.
+	if hdb.deps.Disrupt("quitAfterLoad") {
+		close(errChan)
+		return hdb, errChan
+	}
 	// non-blocking startup.
 	go func() {
 		defer close(errChan)

@@ -403,7 +403,7 @@ func TestIntegrationRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 	numRetries := 0
-	if err := build.Retry(100, time.Millisecond, func() error {
+	err = build.Retry(100, time.Millisecond, func() error {
 		if numRetries%10 == 0 {
 			if _, err := m.AddBlock(); err != nil {
 				return err
@@ -414,7 +414,8 @@ func TestIntegrationRenew(t *testing.T) {
 			return errors.New("no contracts were formed")
 		}
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	// get the contract
