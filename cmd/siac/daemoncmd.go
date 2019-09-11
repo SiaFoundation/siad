@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -27,7 +28,8 @@ var (
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
 		Short: "set the global maxdownloadspeed and maxuploadspeed",
 		Long: `Set the global maxdownloadspeed and maxuploadspeed in
-bytes-per-second (B/s).  Set them to 0 for no limit.`,
+B/s (Bytes/s), KB/s (Kilobytes/s), MB/s (Megabytes/s), GB/s (Gigabytes/s), 
+or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
 		Run: wrap(globalratelimitcmd),
 	}
 
@@ -120,9 +122,13 @@ func updatecheckcmd() {
 // globalratelimitcmd is the handler for the command `siac ratelimit`.
 // Sets the global maxuploadspeed and maxdownloadspeed the daemon can use.
 func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
-	downloadSpeedInt, uploadSpeedInt, err := parseRateLimits(downloadSpeedStr, uploadSpeedStr)
+	downloadSpeedInt, err := parseRatelimit(downloadSpeedStr)
 	if err != nil {
-		die(err)
+		die(errors.AddContext(err, "unable to parse download speed"))
+	}
+	uploadSpeedInt, err := parseRatelimit(uploadSpeedStr)
+	if err != nil {
+		die(errors.AddContext(err, "unable to parse upload speed"))
 	}
 	err = httpClient.DaemonGlobalRateLimitPost(downloadSpeedInt, uploadSpeedInt)
 	if err != nil {

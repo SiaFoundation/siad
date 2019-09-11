@@ -160,8 +160,9 @@ and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w r
 	renterRatelimitCmd = &cobra.Command{
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
 		Short: "set maxdownloadspeed and maxuploadspeed",
-		Long: `Set the maxdownloadspeed and maxuploadspeed in bytes-per-second
-(B/s).  Set them to 0 for no limit.`,
+		Long: `Set the maxdownloadspeed and maxuploadspeed in 
+B/s (Bytes/s), KB/s (Kilobytes/s), MB/s (Megabytes/s), GB/s (Gigabytes/s), 
+or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
 		Run: wrap(renterratelimitcmd),
 	}
 
@@ -2112,14 +2113,18 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 // which sets the maxuploadspeed and maxdownloadspeed in bytes-per-second for
 // the renter module
 func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
-	downloadSpeedInt, uploadSpeedInt, err := parseRateLimits(downloadSpeedStr, uploadSpeedStr)
+	downloadSpeedInt, err := parseRatelimit(downloadSpeedStr)
 	if err != nil {
-		die(err)
+		die(errors.AddContext(err, "unable to parse download speed"))
+	}
+	uploadSpeedInt, err := parseRatelimit(uploadSpeedStr)
+	if err != nil {
+		die(errors.AddContext(err, "unable to parse upload speed"))
 	}
 
 	err = httpClient.RenterRateLimitPost(downloadSpeedInt, uploadSpeedInt)
 	if err != nil {
-		die("Could not set renter ratelimit speed")
+		die(errors.AddContext(err, "Could not set renter ratelimit speed"))
 	}
 	fmt.Println("Set renter maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }
