@@ -458,6 +458,17 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *siafile.SiaFileSetEntry, ho
 	return incompleteChunks
 }
 
+// managedBlockUntilSynced will block until the contractor is synced with the
+// peer-to-peer network.
+func (r *Renter) managedBlockUntilSynced() bool {
+	select {
+	case <-r.tg.StopChan():
+		return false
+	case <-r.hostContractor.Synced():
+		return true
+	}
+}
+
 // managedAddChunksToHeap will add chunks to the upload heap one directory at a
 // time until the directory heap is empty or the uploadheap is full. It does
 // this by popping directories off the directory heap and adding the chunks from
@@ -1067,6 +1078,12 @@ func (r *Renter) threadedUploadAndRepair() {
 		case <-r.tg.StopChan():
 			return
 		default:
+		}
+
+		// Wait until the contractor is synced.
+		if !r.managedBlockUntilSynced() {
+			// The renter shut down before the contract was synced.
+			return
 		}
 
 		// Wait until the renter is online to proceed. This function will return
