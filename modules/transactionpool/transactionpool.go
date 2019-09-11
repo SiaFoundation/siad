@@ -2,6 +2,8 @@ package transactionpool
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	bolt "github.com/coreos/bbolt"
@@ -13,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 )
 
 var (
@@ -324,4 +327,34 @@ func (tp *TransactionPool) threadedLogListSize() {
 		tp.log.Debugln("Current tpool size:", tp.transactionListSize)
 		tp.mu.Unlock()
 	}
+}
+
+// printConflicts prints the rejected transaction set and the transaction sets
+// in the TransactionPool that it conflicts with using human-readable
+// strings for each transaction.
+func (tp *TransactionPool) printConflicts(ts []types.Transaction) {
+	relatedObjects := relatedObjectIDs(ts)
+	conflictSets := make(map[modules.TransactionSetID]bool)
+	for _, oid := range relatedObjects {
+		conflict, exists := tp.knownObjects[oid]
+		if exists {
+			conflictSets[conflict] = true
+		}
+	}
+
+	latestBlock, _ := tp.consensusSet.BlockAtHeight(tp.blockHeight)
+	logStr := fmt.Sprintf("Rejected transaction set with conflicts.\nBlockHeight: %d BlockID: %s\n", tp.blockHeight, latestBlock.ID())
+	for _, txn := range ts {
+		logStr += typesutil.SprintTxnWithObjectIDs(txn)
+	}
+
+	logStr += "\nPrinting conflict transaction sets:\n\n"
+	for conflictSetID := range conflictSets {
+		logStr += "ConflictSetID: " + crypto.Hash(conflictSetID).String()
+		for _, txn := range tp.transactionSets[conflictSetID] {
+			// Add an extra level of indentation to conflict set transactions.
+			logStr += strings.Replace(typesutil.SprintTxnWithObjectIDs(txn), "\n", "\n\t", -1)
+		}
+	}
+	tp.log.Println(logStr)
 }
