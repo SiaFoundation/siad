@@ -373,7 +373,7 @@ func contractorAsyncStartup(c *Contractor, cs consensusSet) error {
 		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
 	}
 	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
-		return err
+		return nil
 	}
 	if err != nil {
 		return err

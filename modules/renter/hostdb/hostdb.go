@@ -318,7 +318,7 @@ func hostdbAsyncStartup(hdb *HostDB, cs modules.ConsensusSet) error {
 		err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
 	}
 	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
-		return err
+		return nil
 	}
 	if err != nil {
 		return err
