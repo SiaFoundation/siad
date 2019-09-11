@@ -898,6 +898,7 @@ how large the files are.`)
 	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedRedundancy)
 
 	var expectedRedundancy float64
+	var err error
 	if allowance.ExpectedRedundancy == 0 {
 		expectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -908,11 +909,7 @@ how large the files are.`)
 	fmt.Print("Expected Redundancy: ")
 	allowanceExpectedRedundancy := readString()
 	if allowanceExpectedRedundancy != "" {
-		er, err := parseFilesize(allowanceExpectedRedundancy)
-		if err != nil {
-			die("Could not parse expected redundancy")
-		}
-		_, err = fmt.Sscan(er, &expectedRedundancy)
+		expectedRedundancy, err = strconv.ParseFloat(allowanceExpectedRedundancy, 64)
 		if err != nil {
 			die("Could not parse expected redundancy")
 		}
