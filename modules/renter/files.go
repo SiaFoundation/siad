@@ -13,14 +13,14 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 	}
 	defer r.tg.Done()
 
-	// Call threadedBubbleMetadata on the old directory to make sure the system
-	// metadata is updated to reflect the move
+	// Call callThreadedBubbleMetadata on the old directory to make sure the
+	// system metadata is updated to reflect the move
 	defer func() error {
 		dirSiaPath, err := siaPath.Dir()
 		if err != nil {
 			return err
 		}
-		go r.threadedBubbleMetadata(dirSiaPath)
+		go r.callThreadedBubbleMetadata(dirSiaPath)
 		return nil
 	}()
 
@@ -61,13 +61,13 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	// Call threadedBubbleMetadata on the old directory to make sure the system
-	// metadata is updated to reflect the move
+	// Call callThreadedBubbleMetadata on the old directory to make sure the
+	// system metadata is updated to reflect the move
 	dirSiaPath, err := currentName.Dir()
 	if err != nil {
 		return err
 	}
-	go r.threadedBubbleMetadata(dirSiaPath)
+	go r.callThreadedBubbleMetadata(dirSiaPath)
 
 	// Create directory metadata for new path, ignore errors if siadir already
 	// exists
@@ -79,9 +79,9 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	if err != siadir.ErrPathOverload && err != nil {
 		return err
 	}
-	// Call threadedBubbleMetadata on the new directory to make sure the system
-	// metadata is updated to reflect the move
-	go r.threadedBubbleMetadata(dirSiaPath)
+	// Call callThreadedBubbleMetadata on the new directory to make sure the
+	// system metadata is updated to reflect the move
+	go r.callThreadedBubbleMetadata(dirSiaPath)
 	return nil
 }
 
