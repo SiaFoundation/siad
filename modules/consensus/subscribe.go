@@ -118,6 +118,12 @@ func (cs *ConsensusSet) updateSubscribers(ce changeEntry) {
 		cs.log.Critical("computeConsensusChange failed:", err)
 		return
 	}
+
+	// Log re-orgs.
+	if len(cc.RevertedBlocks) > 0 {
+		cs.log.Println("ConsensusChange with re-org detected: ", cc.ID, len(cc.RevertedBlocks))
+	}
+
 	for _, subscriber := range cs.subscribers {
 		subscriber.ProcessConsensusChange(cc)
 	}

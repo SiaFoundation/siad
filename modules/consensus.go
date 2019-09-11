@@ -267,3 +267,8 @@ func (cc ConsensusChange) Append(cc2 ConsensusChange) ConsensusChange {
 		DelayedSiacoinOutputDiffs: append(cc.DelayedSiacoinOutputDiffs, cc2.DelayedSiacoinOutputDiffs...),
 	}
 }
+
+// String returns the ConsensusChangeID as a string.
+func (ccID ConsensusChangeID) String() string {
+	return crypto.Hash(ccID).String()
+}

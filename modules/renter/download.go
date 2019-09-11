@@ -1,77 +1,5 @@
 package renter
 
-// The download code follows a hopefully clean/intuitive flow for getting super
-// high and computationally efficient parallelism on downloads. When a download
-// is requested, it gets split into its respective chunks (which are downloaded
-// individually) and then put into the download heap. The primary purpose of the
-// download heap is to keep downloads on standby until there is enough memory
-// available to send the downloads off to the workers. The heap is sorted first
-// by priority, but then a few other criteria as well.
-//
-// Some downloads, in particular downloads issued by the repair code, have
-// already had their memory allocated. These downloads get to skip the heap and
-// go straight for the workers.
-//
-// When a download is distributed to workers, it is given to every single worker
-// without checking whether that worker is appropriate for the download. Each
-// worker has their own queue, which is bottlenecked by the fact that a worker
-// can only process one item at a time. When the worker gets to a download
-// request, it determines whether it is suited for downloading that particular
-// file. The criteria it uses include whether or not it has a piece of that
-// chunk, how many other workers are currently downloading pieces or have
-// completed pieces for that chunk, and finally things like worker latency and
-// worker price.
-//
-// If the worker chooses to download a piece, it will register itself with that
-// piece, so that other workers know how many workers are downloading each
-// piece. This keeps everything cleanly coordinated and prevents too many
-// workers from downloading a given piece, while at the same time you don't need
-// a giant messy coordinator tracking everything. If a worker chooses not to
-// download a piece, it will add itself to the list of standby workers, so that
-// in the event of a failure, the worker can be returned to and used again as a
-// backup worker. The worker may also decide that it is not suitable at all (for
-// example, if the worker has recently had some consecutive failures, or if the
-// worker doesn't have access to a piece of that chunk), in which case it will
-// mark itself as unavailable to the chunk.
-//
-// As workers complete, they will release memory and check on the overall state
-// of the chunk. If some workers fail, they will enlist the standby workers to
-// pick up the slack.
-//
-// When the final required piece finishes downloading, the worker who completed
-// the final piece will spin up a separate thread to decrypt, decode, and write
-// out the download. That thread will then clean up any remaining resources, and
-// if this was the final unfinished chunk in the download, it'll mark the
-// download as complete.
-
-// The download process has a slightly complicating factor, which is overdrive
-// workers. Traditionally, if you need 10 pieces to recover a file, you will use
-// 10 workers. But if you have an overdrive of '2', you will actually use 12
-// workers, meaning you download 2 more pieces than you need. This means that up
-// to two of the workers can be slow or fail and the download can still complete
-// quickly. This complicates resource handling, because not all memory can be
-// released as soon as a download completes - there may be overdrive workers
-// still out fetching the file. To handle this, a catchall 'cleanUp' function is
-// used which gets called every time a worker finishes, and every time recovery
-// completes. The result is that memory gets cleaned up as required, and no
-// overarching coordination is needed between the overdrive workers (who do not
-// even know that they are overdrive workers) and the recovery function.
-
-// By default, the download code organizes itself around having maximum possible
-// throughput. That is, it is highly parallel, and exploits that parallelism as
-// efficiently and effectively as possible. The hostdb does a good of selecting
-// for hosts that have good traits, so we can generally assume that every host
-// or worker at our disposable is reasonably effective in all dimensions, and
-// that the overall selection is generally geared towards the user's
-// preferences.
-//
-// We can leverage the standby workers in each unfinishedDownloadChunk to
-// emphasize various traits. For example, if we want to prioritize latency,
-// we'll put a filter in the 'managedProcessDownloadChunk' function that has a
-// worker go standby instead of accept a chunk if the latency is higher than the
-// targeted latency. These filters can target other traits as well, such as
-// price and total throughput.
-
 import (
 	"fmt"
 	"io"
@@ -337,7 +265,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		if err != nil {
 			return nil, err
 		}
-		dw = &downloadDestinationFile{f: osFile}
+		dw = &downloadDestinationFile{deps: r.deps, f: osFile, staticChunkSize: int64(entry.ChunkSize())}
 		destinationType = "file"
 	}
 
@@ -381,6 +309,10 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		// close the destination if possible.
 		if closer, ok := dw.(io.Closer); ok {
 			return closer.Close()
+		}
+		// sanity check that we close files.
+		if destinationType == "file" {
+			build.Critical("file wasn't closed after download")
 		}
 		return nil
 	})
@@ -433,9 +365,12 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		memoryManager: r.memoryManager,
 	}
 
-	// Update the endTime of the download when it's done.
+	// Update the endTime of the download when it's done. Also nil out the
+	// destination pointer so that the garbage collector does not think any
+	// memory is still being used.
 	d.onComplete(func(_ error) error {
 		d.endTime = time.Now()
+		d.destination = nil
 		return nil
 	})
 
@@ -467,10 +402,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		// Create the map.
 		chunkMaps[chunkIndex-minChunk] = make(map[string]downloadPieceInfo)
 		// Get the pieces for the chunk.
-		pieces, err := params.file.Pieces(uint64(chunkIndex))
-		if err != nil {
-			return nil, err
-		}
+		pieces := params.file.Pieces(uint64(chunkIndex))
 		for pieceIndex, pieceSet := range pieces {
 			for _, piece := range pieceSet {
 				// Sanity check - the same worker should not have two pieces for

@@ -64,6 +64,8 @@ gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20180919184411-4f883ffbdd01 h1:LDXY
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20180919184411-4f883ffbdd01/go.mod h1:Lhpa9AcbWcYKcc4amZsOHqJdQglnkWrGuUI68XC7U2Q=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190703190009-cb822c37bc94 h1:JJFFedB70d+aO54OFq/m8iOp2MhpA3u8dPMjwJx5J40=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190703190009-cb822c37bc94/go.mod h1:Lhpa9AcbWcYKcc4amZsOHqJdQglnkWrGuUI68XC7U2Q=
+gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190729190618-012a9d4274dd h1:bWtlk+P39lQ3269x4xCnUeulORd+dGwheYKnXqnIKgI=
+gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190729190618-012a9d4274dd/go.mod h1:Lhpa9AcbWcYKcc4amZsOHqJdQglnkWrGuUI68XC7U2Q=
 golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20190530122614-20be4c3c3ed5 h1:8dUaAV7K4uHsF56JQWkprecIQKdPHtR9jCHF5nB8uzc=

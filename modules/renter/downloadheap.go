@@ -7,6 +7,10 @@ package renter
 //
 // Download jobs are added to the heap via a function call.
 
+// TODO: renter.threadedDownloadLoop will not need to call `callUpdate` once the
+// contractor is reporting changes in the contract set back to the worker
+// subsystem.
+
 import (
 	"container/heap"
 	"errors"
@@ -126,7 +130,7 @@ func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownload
 	udc.workersRemaining = len(r.staticWorkerPool.workers)
 	udc.mu.Unlock()
 	for _, worker := range r.staticWorkerPool.workers {
-		worker.managedQueueDownloadChunk(udc)
+		worker.callQueueDownloadChunk(udc)
 	}
 	r.staticWorkerPool.mu.RUnlock()
 
@@ -173,7 +177,7 @@ LOOP:
 
 		// Update the worker pool and fetch the current time. The loop will
 		// reset after a certain amount of time has passed.
-		r.staticWorkerPool.managedUpdate()
+		r.staticWorkerPool.callUpdate()
 		workerUpdateTime := time.Now()
 
 		// Pull downloads out of the heap. Will break if the heap is empty, and
