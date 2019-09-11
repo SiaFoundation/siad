@@ -558,12 +558,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	}
 	// parse expectedRedundancy
 	if allowanceExpectedRedundancy != "" {
-		er, err := parseFilesize(allowanceExpectedRedundancy)
-		if err != nil {
-			die("Could not parse expected redundancy")
-		}
-		var expectedRedundancy float64
-		_, err = fmt.Sscan(er, &expectedRedundancy)
+		expectedRedundancy, err := strconv.ParseFloat(allowanceExpectedRedundancy, 64)
 		if err != nil {
 			die("Could not parse expected redundancy")
 		}
