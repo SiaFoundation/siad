@@ -178,6 +178,8 @@ type (
 	// A ConsensusSet accepts blocks and builds an understanding of network
 	// consensus.
 	ConsensusSet interface {
+		Alerter
+
 		// AcceptBlock adds a block to consensus. An error will be returned if the
 		// block is invalid, has been seen before, is an orphan, or doesn't
 		// contribute to the heaviest fork known to the consensus set. If the block

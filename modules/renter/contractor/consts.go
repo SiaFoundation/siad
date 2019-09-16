@@ -6,6 +6,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// Constants related to the contractor's alerts.
+var (
+	// AlertMSGWalletLockedDuringMaintenance indicates that forming/renewing a
+	// contract during contract maintenance isn't possible due to a locked wallet.
+	AlertMSGWalletLockedDuringMaintenance = "contractor is attempting to renew/form contracts, however the wallet is locked"
+)
+
 // Constants related to contract formation parameters.
 var (
 	// consecutiveRenewalsBeforeReplacement is the number of times a contract

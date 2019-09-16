@@ -32,15 +32,16 @@ var (
 // contracts.
 type Contractor struct {
 	// dependencies
-	cs         consensusSet
-	hdb        hostDB
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persist    persister
-	staticDeps modules.Dependencies
-	tg         siasync.ThreadGroup
-	tpool      transactionPool
-	wallet     wallet
+	cs            consensusSet
+	hdb           hostDB
+	log           *persist.Logger
+	mu            sync.RWMutex
+	persist       persister
+	staticAlerter *modules.GenericAlerter
+	staticDeps    modules.Dependencies
+	tg            siasync.ThreadGroup
+	tpool         transactionPool
+	wallet        wallet
 
 	// Only one thread should be performing contract maintenance at a time.
 	interruptMaintenance chan struct{}
@@ -287,13 +288,14 @@ func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, 
 func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
 	// Create the Contractor object.
 	c := &Contractor{
-		cs:         cs,
-		staticDeps: deps,
-		hdb:        hdb,
-		log:        l,
-		persist:    p,
-		tpool:      tp,
-		wallet:     w,
+		staticAlerter: modules.NewAlerter("contractor"),
+		cs:            cs,
+		staticDeps:    deps,
+		hdb:           hdb,
+		log:           l,
+		persist:       p,
+		tpool:         tp,
+		wallet:        w,
 
 		interruptMaintenance: make(chan struct{}),
 		synced:               make(chan struct{}),

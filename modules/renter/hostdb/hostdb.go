@@ -48,10 +48,11 @@ type HostDB struct {
 	gateway modules.Gateway
 	tpool   modules.TransactionPool
 
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persistDir string
-	tg         threadgroup.ThreadGroup
+	log           *persist.Logger
+	mu            sync.RWMutex
+	staticAlerter *modules.GenericAlerter
+	persistDir    string
+	tg            threadgroup.ThreadGroup
 
 	// knownContracts are contracts which the HostDB was informed about by the
 	// Contractor. It contains infos about active contracts we have formed with
@@ -203,6 +204,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		filteredHosts:  make(map[string]types.SiaPublicKey),
 		knownContracts: make(map[string]contractInfo),
 		scanMap:        make(map[string]struct{}),
+		staticAlerter:  modules.NewAlerter("hostdb"),
 	}
 
 	// Set the allowance, txnFees and hostweight function.
