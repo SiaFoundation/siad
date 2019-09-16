@@ -67,7 +67,7 @@ func readAPIError(r io.Reader) error {
 		return errors.AddContext(err, "could not read error response")
 	}
 
-	if apiErr.Error() == ErrPeerExists.Error() {
+	if strings.Contains(apiErr.Error(), ErrPeerExists.Error()) {
 		return ErrPeerExists
 	}
 
