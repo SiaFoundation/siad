@@ -2,14 +2,23 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
+	alertsCmd = &cobra.Command{
+		Use:   "alerts",
+		Short: "view daemon alerts",
+		Long:  "view daemon alerts",
+		Run:   wrap(alertscmd),
+	}
+
 	stopCmd = &cobra.Command{
 		Use:   "stop",
 		Short: "Stop the Sia daemon",
@@ -47,6 +56,28 @@ or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
 		Run:   wrap(versioncmd),
 	}
 )
+
+// alertscmd prints the alerts from the daemon.
+func alertscmd() {
+	al, err := httpClient.DaemonAlertsGet()
+	if err != nil {
+		fmt.Println("Could nete get daemon alerts:", err)
+	}
+	fmt.Println("There are " + strconv.Itoa(len(al.Alerts)) + " alerts\n")
+	for id, a := range al.Alerts {
+		var alert modules.AlertSeverity = a.Severity
+		sev, err := alert.MarshalJSON()
+		if err != nil {
+			fmt.Println("Could not marshal alert severity")
+		}
+		fmt.Printf(`Alert Number: %v
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s
+`, id, a.Module, sev, a.Msg, a.Cause)
+	}
+}
 
 // version prints the version of siac and siad.
 func versioncmd() {
