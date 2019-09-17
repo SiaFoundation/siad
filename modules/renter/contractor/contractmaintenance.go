@@ -1035,6 +1035,15 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	c.log.Debugln("The allowance has this many remaning funds:", fundsRemaining)
 
+	// Register the AllowanceLowFunds alert if necessary.
+	var registerLowFundsAlert bool
+	defer func() {
+		if registerLowFundsAlert {
+			c.staticAlerter.RegisterAlert(modules.AlertIDAllowanceLowFunds, AlertMSGAllowanceLowFunds, modules.ErrLockedWallet.Error(), modules.SeverityWarning)
+		} else {
+			c.staticAlerter.UnregisterAlert(modules.AlertIDAllowanceLowFunds)
+		}
+	}()
 	// Go through the contracts we've assembled for renewal. Any contracts that
 	// need to be renewed because they are expiring (renewSet) get priority over
 	// contracts that need to be renewed because they have exhausted their funds
@@ -1052,6 +1061,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// Skip this renewal if we don't have enough funds remaining.
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
 			c.log.Println("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
+			registerLowFundsAlert = true
 			continue
 		}
 
@@ -1171,6 +1181,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 		// Determine if we have enough money to form a new contract.
 		if fundsRemaining.Cmp(initialContractFunds) < 0 {
+			registerLowFundsAlert = true
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
 		}
