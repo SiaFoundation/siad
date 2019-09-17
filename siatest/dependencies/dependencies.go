@@ -8,6 +8,16 @@ import (
 )
 
 type (
+	// DependencyLowFundsFormationFail will cause contract formation to fail due to
+	// low funds in the allowance.
+	DependencyLowFundsFormationFail struct {
+		modules.ProductionDependencies
+	}
+	// DependencyLowFundsRenewalFail will cause contract renewal to fail due to low
+	// funds in the allowance.
+	DependencyLowFundsRenewalFail struct {
+		modules.ProductionDependencies
+	}
 	// DependencyBlockScan blocks the scan progress of the hostdb until Scan is
 	// called on the dependency.
 	DependencyBlockScan struct {
@@ -140,6 +150,16 @@ func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAf
 		},
 		n: n,
 	}
+}
+
+// Disrupt causes contract formation to fail due to low allowance funds.
+func (d *DependencyLowFundsFormationFail) Disrupt(s string) bool {
+	return s == "LowFundsFormation"
+}
+
+// Disrupt causes contract renewal to fail due to low allowance funds.
+func (d *DependencyLowFundsRenewalFail) Disrupt(s string) bool {
+	return s == "LowFundsRenewal"
 }
 
 // Disrupt returns true if the correct string is provided and if the flag was

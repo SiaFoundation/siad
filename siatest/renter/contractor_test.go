@@ -1047,3 +1047,106 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestLowAllowance alert checks if an allowance too low to form/renew contracts
+// will trigger the corresponding alert.
+func TestLowAllowanceAlert(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Add a renter which won't be able to renew a contract due to low funds.
+	renterParams := node.Renter(filepath.Join(testDir, "renter_renew"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Period = 10
+	renterParams.Allowance.RenewWindow = 5
+	renterParams.ContractorDeps = &dependencies.DependencyLowFundsRenewalFail{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+	// Wait for the alert to be registered.
+	numRetries := 0
+	err = build.Retry(100, 600*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if err := tg.Miners()[0].MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		dag, err := renter.DaemonAlertsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found bool
+		for _, alert := range dag.Alerts {
+			if alert.Msg == contractor.AlertMSGAllowanceLowFunds {
+				found = true
+			}
+		}
+		if !found {
+			return errors.New("alert wasn't registered")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a renter which won't be able to form a contract due to low funds.
+	renterParams = node.Renter(filepath.Join(testDir, "renter_form"))
+	renterParams.SkipSetAllowance = true
+	renterParams.ContractorDeps = &dependencies.DependencyLowFundsFormationFail{}
+	nodes, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter = nodes[0]
+	// Manually set the allowance.
+	if err := renter.RenterPostAllowance(siatest.DefaultAllowance); err != nil {
+		t.Fatal(err)
+	}
+	// Wait for the alert to be registered.
+	numRetries = 0
+	err = build.Retry(100, 600*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if err := tg.Miners()[0].MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		dag, err := renter.DaemonAlertsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found bool
+		for _, alert := range dag.Alerts {
+			if alert.Msg == contractor.AlertMSGAllowanceLowFunds {
+				found = true
+			}
+		}
+		if !found {
+			return errors.New("alert wasn't registered")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
