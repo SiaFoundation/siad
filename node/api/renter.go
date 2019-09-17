@@ -196,8 +196,8 @@ type (
 		UnsyncedHosts []types.SiaPublicKey   `json:"unsyncedhosts"`
 	}
 
-	// RenterUploadReady lists the upload ready status of the renter
-	RenterUploadReady struct {
+	// RenterUploadReadyGet lists the upload ready status of the renter
+	RenterUploadReadyGet struct {
 		// Ready indicates whether of not the renter is ready to successfully
 		// upload to full redundancy based on the erasure coding provided and
 		// the number of contracts
@@ -1366,7 +1366,7 @@ func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Reques
 
 	// Get contracts - compare against data and parity pieces
 	contracts := api.parseRenterContracts(false, false, false)
-	WriteJSON(w, RenterUploadReady{
+	WriteJSON(w, RenterUploadReadyGet{
 		Ready:              len(contracts.ActiveContracts) >= contractsNeeded,
 		ContractsNeeded:    contractsNeeded,
 		NumActiveContracts: len(contracts.ActiveContracts),

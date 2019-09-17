@@ -2912,7 +2912,9 @@ Returns the whether or not the renter is ready for upload.
 
 ### Path Parameters
 #### OPTIONAL
-datapieces and paritypieces are both optional, however if one is supplied then the other needs to be supplied. If neither are supplied 
+datapieces and paritypieces are both optional, however if one is supplied then
+the other needs to be supplied. If neither are supplied then the deafult values
+for the erasure coding will be used 
 
 **datapieces** | int  
 The number of data pieces to use when erasure coding the file.  
