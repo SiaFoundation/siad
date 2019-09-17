@@ -814,7 +814,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Take down hosts until enough are missing that the chunks get marked as
 	// stuck after repairs.
 	var hostsRemoved uint64
-	for hostsRemoved = 0; float64(hostsRemoved)/float64(parityPieces) < renter.RepairThreshold; hostsRemoved++ {
+	for hostsRemoved = 0; float64(hostsRemoved)/float64(parityPieces) < renter.AlertSiafileLowRedundancyThreshold; hostsRemoved++ {
 		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
 			t.Fatal("Failed to shutdown host", err)
 		}
@@ -826,6 +826,31 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	// We should still be able to download
 	if _, err := renterNode.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
+	}
+	// Check that the alert for low redundancy was set.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		dag, err := renterNode.DaemonAlertsGet()
+		if err != nil {
+			return errors.AddContext(err, "Failed to get alerts")
+		}
+		f, err := renterNode.File(remoteFile)
+		if err != nil {
+			return err
+		}
+		var found bool
+		for _, alert := range dag.Alerts {
+			if alert.Msg == renter.AlertMSGSiafileLowRedundancy &&
+				alert.Cause == renter.AlertCauseSiafileLowRedundancy(remoteFile.SiaPath(), f.Health) {
+				found = true
+			}
+		}
+		if !found {
+			return fmt.Errorf("Correct alert wasn't registered (#alerts: %v)", len(dag.Alerts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	// Bring up hosts to replace the ones that went offline.
 	for hostsRemoved > 0 {

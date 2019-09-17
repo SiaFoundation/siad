@@ -28,11 +28,20 @@ const (
 // should be unique and listed here.
 const (
 	// alertIDUnknown is the id of an unknown alert.
-	alertIDUnknown = iota
+	alertIDUnknown = "unknown"
 	// AlertIDWalletLockedDuringMaintenance is the id of the alert that is
 	// registered if the wallet is locked during a contract renewal or formation.
-	AlertIDWalletLockedDuringMaintenance
+	AlertIDWalletLockedDuringMaintenance = "wallet-locked"
+	// AlertIDAllowanceLowFunds is the id of the alert that is registered if at least one
+	// contract failed to renew/form due to low allowance.
+	AlertIDAllowanceLowFunds = "low-funds"
 )
+
+// AlertIDSiafileLowRedundancy uses a Siafile's UID to create a unique AlertID
+// for a low redundancy alert.
+func AlertIDSiafileLowRedundancy(uid string) AlertID {
+	return AlertID(fmt.Sprintf("low-redundancy:%v", uid))
+}
 
 type (
 	// Alerter is the interface implemented by all top-level modules. It's an
@@ -56,7 +65,7 @@ type (
 	}
 
 	// AlertID is a helper type for an Alert's ID.
-	AlertID uint64
+	AlertID string
 
 	// AlertSeverity describes the severity of an alert.
 	AlertSeverity uint64
