@@ -7,16 +7,15 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/fastrand"
 )
-
-// TODO - Adding testing for interruptions
 
 // equalBubbledMetadata is a helper that checks for equality in the siadir
 // metadata that gets bubbled
@@ -228,7 +227,7 @@ func TestBubbleHealth(t *testing.T) {
 	// Note: this tests the edge case of bubbling a directory with a file
 	// but no sub directories
 	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{f})
-	fileHealth, _, _ := f.Health(offline, goodForRenew)
+	fileHealth, _, _, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
 	}
@@ -810,8 +809,11 @@ func TestCalculateFileMetadata(t *testing.T) {
 
 	// Grab initial metadata values
 	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
-	health, stuckHealth, numStuckChunks := sf.Health(offline, goodForRenew)
-	redundancy := sf.Redundancy(offline, goodForRenew)
+	health, stuckHealth, _, _, numStuckChunks := sf.Health(offline, goodForRenew)
+	redundancy, _, err := sf.Redundancy(offline, goodForRenew)
+	if err != nil {
+		t.Fatal(err)
+	}
 	lastHealthCheckTime := sf.LastHealthCheckTime()
 	modTime := sf.ModTime()
 
@@ -891,5 +893,69 @@ func TestCreateMissingSiaDir(t *testing.T) {
 	_, err = os.Stat(siaDirPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestAddStuckChunksToHeap probes the managedAddStuckChunksToHeap method
+func TestAddStuckChunksToHeap(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create renter with dependencies, first to disable the background health,
+	// repair, and stuck loops from running, then update it to bypass the worker
+	// pool length check in managedBuildUnfinishedChunks
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create file with no stuck chunks
+	rsc, _ := siafile.NewRSCode(1, 1)
+	up := modules.FileUploadParams{
+		Source:      "",
+		SiaPath:     modules.RandomSiaPath(),
+		ErasureCode: rsc,
+	}
+	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create maps for method inputs
+	hosts := make(map[string]struct{})
+	offline := make(map[string]bool)
+	goodForRenew := make(map[string]bool)
+
+	// Manually add workers to worker pool
+	for i := 0; i < int(f.NumChunks()); i++ {
+		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+			killChan: make(chan struct{}),
+			wakeChan: make(chan struct{}, 1),
+		}
+	}
+
+	// call managedAddStuckChunksToHeap, no chunks should be added
+	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath, hosts, offline, goodForRenew)
+	if err != errNoStuckChunks {
+		t.Fatal(err)
+	}
+	if rt.renter.uploadHeap.managedLen() != 0 {
+		t.Fatal("Expected uploadHeap to be of length 0 got", rt.renter.uploadHeap.managedLen())
+	}
+
+	// make chunk stuck
+	if err = f.SetStuck(uint64(0), true); err != nil {
+		t.Fatal(err)
+	}
+
+	// call managedAddStuckChunksToHeap, chunk should be added to heap
+	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath, hosts, offline, goodForRenew)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt.renter.uploadHeap.managedLen() != 1 {
+		t.Fatal("Expected uploadHeap to be of length 1 got", rt.renter.uploadHeap.managedLen())
 	}
 }

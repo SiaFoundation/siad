@@ -2,11 +2,13 @@ package siafile
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // RSSubCode is a Reed-Solomon encoder/decoder. It implements the
@@ -25,7 +27,7 @@ func (rs *RSSubCode) Encode(data []byte) ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return rs.EncodeShards(pieces)
+	return rs.EncodeShards(pieces[:rs.MinPieces()])
 }
 
 // EncodeShards encodes data in a way that every segmentSize bytes of the
@@ -84,6 +86,68 @@ func (rs *RSSubCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	return pieces, nil
 }
 
+// Identifier returns an identifier for an erasure coder which can be used to
+// identify erasure coders of the same type, dataPieces and parityPieces.
+func (rs *RSSubCode) Identifier() modules.ErasureCoderIdentifier {
+	t := rs.Type()
+	dataPieces := rs.MinPieces()
+	parityPieces := rs.NumPieces() - dataPieces
+	id := fmt.Sprintf("%v+%v+%v", binary.BigEndian.Uint32(t[:]), dataPieces, parityPieces)
+	return modules.ErasureCoderIdentifier(id)
+}
+
+// Reconstruct recovers the full set of encoded shards from the provided
+// pieces, of which at least MinPieces must be non-nil.
+func (rs *RSSubCode) Reconstruct(pieces [][]byte) error {
+	// Check the length of pieces.
+	if len(pieces) != rs.NumPieces() {
+		return fmt.Errorf("expected pieces to have len %v but was %v",
+			rs.NumPieces(), len(pieces))
+	}
+
+	// Since all the pieces should have the same length, get the pieceSize from
+	// the first piece that was set.
+	var pieceSize uint64
+	for _, piece := range pieces {
+		if uint64(len(piece)) > pieceSize {
+			pieceSize = uint64(len(piece))
+			break
+		}
+	}
+
+	// pieceSize must be divisible by segmentSize
+	if pieceSize%rs.staticSegmentSize != 0 {
+		return errors.New("pieceSize not divisible by segmentSize")
+	}
+
+	isNil := make([]bool, len(pieces))
+	for i := range pieces {
+		isNil[i] = len(pieces[i]) == 0
+		pieces[i] = pieces[i][:0]
+	}
+
+	// Extract the segment from the pieces.
+	segment := make([][]byte, len(pieces))
+	for segmentIndex := 0; uint64(segmentIndex) < pieceSize/rs.staticSegmentSize; segmentIndex++ {
+		off := uint64(segmentIndex) * rs.staticSegmentSize
+		for i, piece := range pieces {
+			if isNil[i] {
+				segment[i] = piece[off:off]
+			} else {
+				segment[i] = piece[off:][:rs.staticSegmentSize]
+			}
+		}
+		// Reconstruct the segment.
+		if err := rs.RSCode.Reconstruct(segment); err != nil {
+			return err
+		}
+		for i := range pieces {
+			pieces[i] = append(pieces[i], segment[i]...)
+		}
+	}
+	return nil
+}
+
 // Recover accepts encoded pieces and decodes the segment at
 // segmentIndex. The size of the decoded data is segmentSize * dataPieces.
 func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
@@ -109,8 +173,19 @@ func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 
 	// Extract the segment from the pieces.
 	decodedSegmentSize := rs.staticSegmentSize * uint64(rs.MinPieces())
+	segment := make([][]byte, len(pieces))
+	for i := range segment {
+		segment[i] = make([]byte, 0, rs.staticSegmentSize)
+	}
 	for segmentIndex := 0; uint64(segmentIndex) < pieceSize/rs.staticSegmentSize && n > 0; segmentIndex++ {
-		segment := ExtractSegment(pieces, segmentIndex, rs.staticSegmentSize)
+		off := uint64(segmentIndex) * rs.staticSegmentSize
+		for i, piece := range pieces {
+			if uint64(len(piece)) >= off+rs.staticSegmentSize {
+				segment[i] = append(segment[i][:0], piece[off:off+rs.staticSegmentSize]...)
+			} else {
+				segment[i] = segment[i][:0]
+			}
+		}
 		// Reconstruct the segment.
 		if n < decodedSegmentSize {
 			decodedSegmentSize = n

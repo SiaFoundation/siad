@@ -338,6 +338,42 @@ standard success or error response. See [standard responses](#standard-responses
 
 The daemon is responsible for starting and stopping the modules which make up the rest of Sia.
 
+## /daemon/alerts [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/daemon/alerts"
+```
+
+Returns the alerts of the Sia instance.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "alerts": [
+    {
+      "cause": "wallet is locked",
+      "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
+      "module": "contractor",
+      "severity": "warning",
+    }
+  ],
+}
+```
+**cause** | string  
+Cause is the cause for the information contained in msg if known.
+
+**msg** | string  
+Msg contains information about an issue.
+
+**module** | string  
+Module is the module which caused the alert.
+
+**severity** | string  
+Severity is either "warning", "error" or "critical" where "error" might be a lack of internet access and "critical" would be a lack of funds and contracts that are about to expire due to that.
+
 ## /daemon/constants [GET]
 > curl example  
 
@@ -575,7 +611,7 @@ returns information about the gateway, including the list of connected peers.
     "netaddress":"333.333.333.333:9981",  // string
     "peers":[
         {
-            "inbound":    alse,                    // boolean
+            "inbound":    false,                   // boolean
             "local":      false,                   // boolean
             "netaddress": "222.222.222.222:9981",  // string
             "version":    "1.0.0",                 // string
@@ -1527,7 +1563,7 @@ curl -A "Sia-Agent" "localhost:9980/hostdb/all"
 Lists all of the hosts known to the renter. Hosts are not guaranteed to be in any particular order, and the order may change in subsequent calls.
 
 ### JSON Response 
-Repsonse is the same as [`/hostdb/active`](#hosts)
+Response is the same as [`/hostdb/active`](#hosts)
 
 ## /hostdb/hosts/:*pubkey* [GET]
 > curl example  
@@ -1611,6 +1647,33 @@ The multiplier that gets applied to a host based on the uptime percentage of the
 **versionadjustment** | float64 
 The multiplier that gets applied to a host based on the version of Sia that they are running. Versions get penalties if there are known bugs, scaling limitations, performance limitations, etc. Generally, the most recent version is always the one with the highest score.  
 
+## /hostdb/filtermode [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" --user "":<apipassword> "localhost:9980/hostdb/filtermode"
+```  
+Returns the current filter mode of the hostDB and any filtered hosts.
+
+### JSON Response 
+> JSON Response Example
+ 
+```go
+{
+  "filtermode": "blacklist",  // string
+  "hosts":
+    [
+      "ed25519:122218260fb74b20a8be3000ad56a931f7461ea990a6dc5676c31bdf65fc668f"  // string
+    ]
+}
+
+```
+**filtermode** | string  
+Can be either whitelist, blacklist, or disable.  
+
+**hosts** | array of strings
+Comma separated pubkeys.  
+
 ## /hostdb/filtermode [POST]
 > curl example  
 
@@ -1620,7 +1683,7 @@ curl -A "Sia-Agent" --user "":<apipassword> --data '{"filtermode" : "whitelist",
 ```go
 curl -A "Sia-Agent" --user "":<apipassword> --data '{"filtermode" : "disable"}' "localhost:9980/hostdb/filtermode"
 ```
-Lets you enable and disable a filter mode for the hostdb. Currenlty the two modes supported are `blacklist` mode and `whitelist` mode. In `blacklist` mode, any hosts you identify as being on the `blacklist` will not be used to form contracts. In `whitelist` mode, only the hosts identified as being on the `whitelist` will be used to form contracts. In both modes, hosts that you are blacklisted will be filtered from your hostdb. To enable either mode, set `filtermode` to the desired mode and submit a list of host pubkeys as the corresponding `blacklist` or `whitelist`. To disable either list, the `host` field can be left blank (e.g. empty slice) and the `filtermode` should be set to `disable`.  
+Lets you enable and disable a filter mode for the hostdb. Currently the two modes supported are `blacklist` mode and `whitelist` mode. In `blacklist` mode, any hosts you identify as being on the `blacklist` will not be used to form contracts. In `whitelist` mode, only the hosts identified as being on the `whitelist` will be used to form contracts. In both modes, hosts that you are blacklisted will be filtered from your hostdb. To enable either mode, set `filtermode` to the desired mode and submit a list of host pubkeys as the corresponding `blacklist` or `whitelist`. To disable either list, the `host` field can be left blank (e.g. empty slice) and the `filtermode` should be set to `disable`.  
 
 **NOTE:** Enabling and disabling a filter mode can result in changes with your current contracts with can result in an increase in contract fee spending. For example, if `blacklist` mode is enabled, any hosts that you currently have contracts with that are also on the provide list of `hosts` will have their contracts replaced with non-blacklisted hosts. When `whitelist` mode is enabled, contracts will be replaced until there are only contracts with whitelisted hosts. Even disabling a filter mode can result in a change in contracts if there are better scoring hosts in your hostdb that were previously being filtered out.  
 
@@ -1629,7 +1692,7 @@ Lets you enable and disable a filter mode for the hostdb. Currenlty the two mode
 **filtermode** | string  
 Can be either whitelist, blacklist, or disable.  
 
-**hosts** | array of string
+**hosts** | array of string  
 Comma separated pubkeys.  
 
 ### Response
@@ -1698,6 +1761,24 @@ stops the cpu miner. Does nothing if the cpu miner is not running.
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /miner/block [POST]
+> curl example  
+
+```
+curl -A "Sia-Agent" -data "<byte-encoded-block>" -u "":<apipassword> "localhost:9980/miner/block"
+```
+
+Submits a solved block and broadcasts it.
+
+### Byte Request
+
+For efficiency the block is submitted in a raw byte encoding using the Sia encoding.
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+
 ## /miner/header [GET]
 > curl example  
 
@@ -1732,14 +1813,14 @@ curl -A "Sia-Agent" -data "<byte-encoded-header>" -u "":<apipassword> "localhost
 
 submits a header that has passed the POW.
 
-### Byte Response
+### Byte Request
 For efficiency headers are submitted as raw byte encodings of the header in the body of the request, rather than as a query string parameter or path parameter. The request body should contain only the 80 bytes of the encoded header. The encoding is the same encoding used in `/miner/header [GET]` endpoint.
 
 Blocks are mined by repeatedly changing the nonce of the header, hashing the header's bytes, and comparing the resulting hash to the target. The block with that nonce is valid if the hash is less than the target. If none of the 2^64 possible nonces result in a header with a hash less than the target, call /miner/header [GET] again to get a new block header with a different merkle root. The above process can then be repeated for the new block header.  
 
 The other fields can generally be ignored. The parent block ID field is the hash of the parent block's header. Modifying this field will result in an orphan block. The timestamp is the time at which the block was mined and is set by the Sia Daemon. Modifying this field can result in invalid block. The merkle root is the merkle root of a merkle tree consisting of the timestamp, the miner outputs (one leaf per payout), and the transactions (one leaf per transaction). Modifying this field will result in an invalid block.
 
-Field | Byte range within response | Byte range within header
+Field | Byte range within request | Byte range within header
 -------------- | -------------- | --------------
 target | [0-32)
 header | [32-112)
@@ -1768,10 +1849,14 @@ Returns the current settings along with metrics on the renter's spending.
 {
   "settings": {
     "allowance": {
-      "funds":       "1234",  // hastings
-      "hosts":       24,      // int
-      "period":      6048,    // blocks
-      "renewwindow": 3024     // blocks
+      "funds":              "1234",         // hastings
+      "hosts":              24,             // int
+      "period":             6048,           // blocks
+      "renewwindow":        3024            // blocks
+      "expectedstorage":    1000000000000,  // uint64
+      "expectedupload":     2,              // uint64
+      "expecteddownload":   1,              // uint64
+      "expectedredundancy": 3               // uint64
     },
     "maxuploadspeed":     1234, // BPS
     "maxdownloadspeed":   1234, // BPS
@@ -1796,16 +1881,92 @@ Settings that control the behavior of the renter.
 Allowance dictates how much the renter is allowed to spend in a given period. Note that funds are spent on both storage and bandwidth.  
 
 **funds** | hastings  
-Amount of money allocated for contracts. Funds are spent on both storage and bandwidth.  
+Funds determines the number of siacoins that the renter will spend when forming
+contracts with hosts. The renter will not allocate more than this amount of
+siacoins into the set of contracts each billing period. If the renter spends all
+of the funds but then needs to form new contracts, the renter will wait until
+either until the user increase the allowance funds, or until a new billing
+period is reached. If there are not enough funds to repair all files, then files
+may be at risk of getting lost.
 
 **hosts** | int
-Number of hosts that contracts will be formed with.  
+Hosts sets the number of hosts that will be used to form the allowance. Sia
+gains most of its resiliancy from having a large number of hosts. More hosts
+will mean both more robustness and higher speeds when using the network, however
+will also result in more memory consumption and higher blockchain fees. It is
+recommended that the default number of hosts be treated as a minimum, and that
+double the default number of default hosts be treated as a maximum.
 
 **period** | blocks  
-Duration of contracts formed, in number of blocks.  
+The period is equivalent to the billing cycle length. The renter will not spend
+more than the full balance of its funds every billing period. When the billing
+period is over, the contracts will be renewed and the spending will be reset.
 
 **renewwindow** | blocks  
-If the current blockheight + the renew window >= the height the contract is scheduled to end, the contract is renewed automatically. Is always nonzero.  
+The renew window is how long the user has to renew their contracts. At the end
+of the period, all of the contracts expire. The contracts need to be renewewd
+before they expire, otherwise the user will lose all of their files. The renew
+window is the window of time at the end of the period during which the renter
+will renew the users contracts. For example, if the renew window is 1 week long,
+then during the final week of each period the user will renew their contracts.
+If the user is offline for that whole week, the user's data will be lost.
+
+Each billing period begins at the beginning of the renew window for the previous
+period. For example, if the period is 12 weeks long and the renew window is 4
+weeks long, then the first billing period technically begins at -4 weeks, or 4
+weeks before the allowance is created. And the second billing period begins at
+week 8, or 8 weeks after the allowance is created. The third billing period will
+begin at week 20.
+
+**expectedstorage** | bytes  
+Expected storage is the amount of storage that the user expects to keep on the
+Sia network. This value is important to calibrate the spending habits of siad.
+Because Sia is decentralized, there is no easy way for siad to know what the
+real world cost of storage is, nor what the real world price of a siacoin is. To
+overcome this deficiency, siad depends on the user for guidance.
+
+If the user has a low allowance and a high amount of expected storage, siad will
+more heavily prioritize cheaper hosts, and will also be more comfortable with
+hosts that post lower amounts of collateral. If the user has a high allowance
+and a low amount of expected storage, siad will prioritize hosts that post more
+collateral, as well as giving preference to hosts better overall traits such as
+uptime and age.
+
+Even when the user has a large allowance and a low amount of expected storage,
+siad will try to optimize for saving money; siad tries to meet the users storage
+and bandwidth needs while spending significantly less than the overall allowance.
+
+**expectedupload** | bytes  
+Expected upload tells siad how much uploading the user expects to do each month.
+If this value is high, siad will more strongly prefer hosts that have a low
+upload bandwidth price. If this value is low, siad will focus on other metrics
+than upload bandwidth pricing, because even if the host charges a lot for upload
+bandwidth, it will not impact the total cost to the user very much.
+
+The user should not consider upload bandwidth used during repairs, siad will
+consider repair bandwidth separately.
+
+**expecteddownload** | bytes  
+Expected download tells siad how much downloading the user expects to do each
+month. If this value is high, siad will more strongly prefer hosts that have a
+low download bandwidth price. If this value is low, siad will focus on other
+metrics than download bandwidth pricing, because even if the host charges a lot
+for downloads, it will not impact the total cost to the user very much.
+
+The user should not consider download bandwidth used during repairs, siad will
+consider repair bandwidth separately.
+
+**expectedredundancy** | bytes    
+Expected redundancy is used in conjunction with expected storage to determine
+the total amount of raw storage that will be stored on hosts. If the expected
+storage is 1 TB and the expected redundancy is 3, then the renter will calculate
+that the total amount of storage in the user's contracts will be 3 TiB.
+
+This value does not need to be changed from the default unless the user is
+manually choosing redundancy settings for their file. If different files are
+being given different redundancy settings, then the average of all the
+redundancies should be used as the value for expected redundancy, weighted by
+how large the files are.
 
 **maxuploadspeed** | bytes per second  
 MaxUploadSpeed by default is unlimited but can be set by the user to manage bandwidth.  
@@ -2271,7 +2432,7 @@ Number of bytes downloaded thus far. Will only be updated as segments of the fil
 Time at which the download was initiated.
 
 **totaldatatransfered** | bytes
-The total amount of data transfered when downloading the file. This will eventually include data transferred during contract + payment negotiation, as well as data from failed piece downloads.  
+The total amount of data transferred when downloading the file. This will eventually include data transferred during contract + payment negotiation, as well as data from failed piece downloads.  
 
 ## /renter/downloads/clear [POST]
 > curl example  
@@ -2817,7 +2978,7 @@ returns whether the requested transaction has been seen on the blockchain. Note,
 
 ### Path Parameters
 #### REQUIRED
-**id** | hash
+**id** | hash  
 id of the transaction being queried
 
 ### JSON Response
@@ -2828,7 +2989,7 @@ id of the transaction being queried
   "confirmed": true // boolean
 }
 ```
-**confirmed** | boolean
+**confirmed** | boolean  
 indicates if a transaction is confirmed on the blockchain
 
 ## /tpool/fee [GET]
@@ -2849,10 +3010,10 @@ returns the minimum and maximum estimated fees expected by the transaction pool.
   "maximum": "5678"  // hastings / byte
 }
 ```
-**minimum** | hastings / byte
+**minimum** | hastings / byte  
 the minimum estimated fee
 
-**maximum** | hastings / byte
+**maximum** | hastings / byte  
 the maximum estimated fee
 
 ## /tpool/raw/:id [GET]
@@ -2866,7 +3027,7 @@ returns the ID for the requested transaction and its raw encoded parents and tra
 
 ### Path Parameters
 #### REQUIRED
-**id** | hash 
+**id** | hash  
 id of the transaction being queried
 
 ### JSON Response
@@ -2899,38 +3060,85 @@ submits a raw transaction to the transaction pool, broadcasting it to the transa
 
 ### Query String Parameters
 #### REQUIRED
-**parents** | string 
+**parents** | string  
 JSON- or base64-encoded transaction parents
 
-**transaction** | string
+**transaction** | string  
 JSON- or base64-encoded transaction
 
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
 
-## /tpool/confirmed/:id [GET]
+## /tpool/transactions [GET]
 > curl example  
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/tpool/confirmed/9028cc285ad755b81c0cfead3710c1344044175e59cdc4ca097374fe188c9acf"
+curl -A "Sia-Agent" "localhost:9980/tpool/transactions"
 ```
 
-### Query String Parameters
-#### REQUIRED
-**id** | hash
-id of the transaction being queried
+returns the transactions of the transaction pool.
 
 ### JSON Response
 > JSON Response Example
-
+ 
 ```go
 {
-  "confirmed": true,
+  "transactions": [     
+    {
+      "siacoininputs":  [ // []SiacoinInput
+        {
+          "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+          "unlockconditions": {
+            "publickeys": [
+               {
+                "algorithm": "ed25519",
+                "key": "EKjiRsUyMOLER+8u3uXxemOEKMxRc2TxCh0QkcSCVHY="
+               }
+              ],
+            "signaturesrequired": 1,
+            "timelock": 0
+          }
+        },
+      ]      
+      "siacoinoutputs": []        // []SiacoinOutput        
+      "filecontracts":  []        // []FileContract
+      "filecontractrevisions": [] // []FileContractRevision 
+      "storageproofs":  []        // []StorageProof         
+      "siafundinputs":  []        // []SiafundInput
+      "siafundoutputs": []        // []SiafundOutput      
+      "minerfees": [              // []Currency   
+        "61440000000000000000000"
+      ],          
+      "arbitrarydata": [          // [][]byte
+        "RkNJZGVudGlmaWVyAAAAACYzhrmGh2OL2Y9eBn5UYIFxCi4HKFvtR43pEgaBpkDqEa3LrQlWGyk+a0tBXi4nkIIaISIfTJMZs3sBgi0PFl4NyGOgqYppVQGaYnPuaRZKONJWE2jYZUu/iY3xLvpYIciu5JVlRIStwfGepaPWW4jLe4tf3AabKINgFk6p52m6"
+      ],
+      "transactionsignatures": [ // []TransactionSignature
+                    {
+                        "coveredfields": {
+                            "arbitrarydata": [],
+                            "filecontractrevisions": [],
+                            "filecontracts": [],
+                            "minerfees": [],
+                            "siacoininputs": [],
+                            "siacoinoutputs": [],
+                            "siafundinputs": [],
+                            "siafundoutputs": [],
+                            "storageproofs": [],
+                            "transactionsignatures": [],
+                            "wholetransaction": true
+                        },
+                        "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+                        "publickeyindex": 0,
+                        "signature": "QAVQSrcTv2xBHjWiTuuxVgWtUYECEZNbud41u7wgFIGcsKuBnbtT2yaH/GMw00/aMCpZ70qqBpQwQ/akAn/pAA==",
+                        "timelock": 0
+                    },
+    }
+  ]
 }
 ```
-**confirmed** | boolean
-boolean that indicates if transaction was confirmed
+See [/wallet/transaction/:id](#wallettransactionid-get) for description of
+transaction fields.
 
 # Wallet
 
@@ -3118,7 +3326,7 @@ Changes the wallet's encryption key.
 ### Query String Parameters
 #### REQUIRED
 **encryptionpassword** | string
-encryptionpassword is the wallet's current encryption password.  
+encryptionpassword is the wallet's current encryption password or primary seed.  
 
 **newpassword** | string
 newpassword is the new password for the wallet.  
@@ -3264,6 +3472,57 @@ JSON array of outputs. The structure of each output is: {"unlockhash": "<destina
 
 ```go
 {
+  "transactions": [     
+    {
+      "siacoininputs":  [ // []SiacoinInput
+        {
+          "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+          "unlockconditions": {
+            "publickeys": [
+               {
+                "algorithm": "ed25519",
+                "key": "EKjiRsUyMOLER+8u3uXxemOEKMxRc2TxCh0QkcSCVHY="
+               }
+              ],
+            "signaturesrequired": 1,
+            "timelock": 0
+          }
+        },
+      ]      
+      "siacoinoutputs": []        // []SiacoinOutput        
+      "filecontracts":  []        // []FileContract
+      "filecontractrevisions": [] // []FileContractRevision 
+      "storageproofs":  []        // []StorageProof         
+      "siafundinputs":  []        // []SiafundInput
+      "siafundoutputs": []        // []SiafundOutput      
+      "minerfees": [              // []Currency   
+        "61440000000000000000000"
+      ],          
+      "arbitrarydata": [          // [][]byte
+        "RkNJZGVudGlmaWVyAAAAACYzhrmGh2OL2Y9eBn5UYIFxCi4HKFvtR43pEgaBpkDqEa3LrQlWGyk+a0tBXi4nkIIaISIfTJMZs3sBgi0PFl4NyGOgqYppVQGaYnPuaRZKONJWE2jYZUu/iY3xLvpYIciu5JVlRIStwfGepaPWW4jLe4tf3AabKINgFk6p52m6"
+      ],
+      "transactionsignatures": [ // []TransactionSignature
+                    {
+                        "coveredfields": {
+                            "arbitrarydata": [],
+                            "filecontractrevisions": [],
+                            "filecontracts": [],
+                            "minerfees": [],
+                            "siacoininputs": [],
+                            "siacoinoutputs": [],
+                            "siafundinputs": [],
+                            "siafundoutputs": [],
+                            "storageproofs": [],
+                            "transactionsignatures": [],
+                            "wholetransaction": true
+                        },
+                        "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+                        "publickeyindex": 0,
+                        "signature": "QAVQSrcTv2xBHjWiTuuxVgWtUYECEZNbud41u7wgFIGcsKuBnbtT2yaH/GMw00/aMCpZ70qqBpQwQ/akAn/pAA==",
+                        "timelock": 0
+                    },
+    }
+  ]
   "transactionids": [
     "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -3271,8 +3530,11 @@ JSON array of outputs. The structure of each output is: {"unlockhash": "<destina
   ]
 }
 ```
+**transactions**
+Array of transactions that were created when sending the coins. The last transaction contains the output headed to the 'destination'. Transaction IDs are 64 character long hex strings.
+
 **transactionids**  
-Array of IDs of the transactions that were created when sending the coins. The last transaction contains the output headed to the 'destination'. Transaction IDs are 64 character long hex strings.  
+Array of IDs of the transactions that were created when sending the coins.
 
 ## /wallet/siafunds [POST]
 > curl example  
@@ -3296,6 +3558,57 @@ Address that is receiving the funds.
  
 ```go
 {
+  "transactions": [     
+    {
+      "siacoininputs":  [ // []SiacoinInput
+        {
+          "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+          "unlockconditions": {
+            "publickeys": [
+               {
+                "algorithm": "ed25519",
+                "key": "EKjiRsUyMOLER+8u3uXxemOEKMxRc2TxCh0QkcSCVHY="
+               }
+              ],
+            "signaturesrequired": 1,
+            "timelock": 0
+          }
+        },
+      ]      
+      "siacoinoutputs": []        // []SiacoinOutput        
+      "filecontracts":  []        // []FileContract
+      "filecontractrevisions": [] // []FileContractRevision 
+      "storageproofs":  []        // []StorageProof         
+      "siafundinputs":  []        // []SiafundInput
+      "siafundoutputs": []        // []SiafundOutput      
+      "minerfees": [              // []Currency   
+        "61440000000000000000000"
+      ],          
+      "arbitrarydata": [          // [][]byte
+        "RkNJZGVudGlmaWVyAAAAACYzhrmGh2OL2Y9eBn5UYIFxCi4HKFvtR43pEgaBpkDqEa3LrQlWGyk+a0tBXi4nkIIaISIfTJMZs3sBgi0PFl4NyGOgqYppVQGaYnPuaRZKONJWE2jYZUu/iY3xLvpYIciu5JVlRIStwfGepaPWW4jLe4tf3AabKINgFk6p52m6"
+      ],
+      "transactionsignatures": [ // []TransactionSignature
+                    {
+                        "coveredfields": {
+                            "arbitrarydata": [],
+                            "filecontractrevisions": [],
+                            "filecontracts": [],
+                            "minerfees": [],
+                            "siacoininputs": [],
+                            "siacoinoutputs": [],
+                            "siafundinputs": [],
+                            "siafundoutputs": [],
+                            "storageproofs": [],
+                            "transactionsignatures": [],
+                            "wholetransaction": true
+                        },
+                        "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+                        "publickeyindex": 0,
+                        "signature": "QAVQSrcTv2xBHjWiTuuxVgWtUYECEZNbud41u7wgFIGcsKuBnbtT2yaH/GMw00/aMCpZ70qqBpQwQ/akAn/pAA==",
+                        "timelock": 0
+                    },
+    }
+  ]
   "transactionids": [
     "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -3304,7 +3617,10 @@ Address that is receiving the funds.
 }
 ```
 **transactionids**  
-Array of IDs of the transactions that were created when sending the coins. The last transaction contains the output headed to the 'destination'. Transaction IDs are 64 character long hex strings.  
+Array of transactions that were created when sending the funds. The last transaction contains the output headed to the 'destination'. Transaction IDs are 64 character long hex strings.  
+
+**transactionids**  
+Array of IDs of the transactions that were created when sending the coins.
 
 ## /wallet/siagkey [POST]
 > curl example  
@@ -3827,4 +4143,5 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "<requestbody>" "localhost:9980/w
 standard success or error response. See [standard responses](#standard-responses).
 
 # Version
+<a href='https://sia.tech/docs/v141'>**v141**
 <a href='https://sia.tech/docs/v140'>**v140**

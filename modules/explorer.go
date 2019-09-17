@@ -48,6 +48,8 @@ type (
 	// Explorer tracks the blockchain and provides tools for gathering
 	// statistics and finding objects or patterns within the blockchain.
 	Explorer interface {
+		Alerter
+
 		// Block returns the block that matches the input block id. The bool
 		// indicates whether the block appears in the blockchain.
 		Block(types.BlockID) (types.Block, types.BlockHeight, bool)

@@ -17,6 +17,7 @@ import (
 	"github.com/inconshreveable/go-update"
 	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -53,6 +54,12 @@ bwIDAQAB
 )
 
 type (
+	// DaemonAlertsGet contains information about currently registered alerts
+	// across all loaded modules.
+	DaemonAlertsGet struct {
+		Alerts []modules.Alert `json:"alerts"`
+	}
+
 	// DaemonVersionGet contains information about the running daemon's version.
 	DaemonVersionGet struct {
 		Version     string
@@ -214,6 +221,28 @@ func updateToRelease(version string) error {
 	}
 
 	return nil
+}
+
+// daemonAlertsHandlerGET handles the API call that returns the alerts of all
+// loaded modules.
+func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	alerts := make([]modules.Alert, 0) // initialize slice to avoid "null" in response.
+	alerters := []modules.Alerter{
+		api.gateway,
+		api.cs,
+		api.tpool,
+		api.wallet,
+		api.renter,
+		api.host,
+	}
+	for _, a := range alerters {
+		if a != nil {
+			alerts = append(alerts, a.Alerts()...)
+		}
+	}
+	WriteJSON(w, DaemonAlertsGet{
+		Alerts: alerts,
+	})
 }
 
 // daemonUpdateHandlerGET handles the API call that checks for an update.

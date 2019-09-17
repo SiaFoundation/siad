@@ -7,17 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-
 	"gitlab.com/NebulousLabs/fastrand"
 )
-
-// newTestingFile initializes a file object with random parameters.
-func newTestingFile() (*siafile.SiaFile, error) {
-	siaPath, rsc := testingFileParams()
-	return newFileTesting(siaPath.String(), newTestingWal(), rsc, 1000, 0777, "")
-}
 
 // testingFileParams generates the ErasureCoder and a random name for a testing
 // file
@@ -160,21 +154,26 @@ func TestRenterPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f1, err := newTestingFile()
+	wal := rt.renter.wal
+	rc, err := siafile.NewRSSubCode(1, 1, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f1.Rename(siaPath1, siaPath1.SiaFileSysPath(rt.renter.staticFilesDir))
-	f2, err := newTestingFile()
+	sk := crypto.GenerateSiaKey(crypto.TypeThreefish)
+	fileSize := uint64(modules.SectorSize)
+	fileMode := os.FileMode(0600)
+	f1, err := siafile.New(siaPath1.SiaFileSysPath(rt.renter.staticFilesDir), "", wal, rc, sk, fileSize, fileMode, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f2.Rename(siaPath2, siaPath2.SiaFileSysPath(rt.renter.staticFilesDir))
-	f3, err := newTestingFile()
+	f2, err := siafile.New(siaPath2.SiaFileSysPath(rt.renter.staticFilesDir), "", wal, rc, sk, fileSize, fileMode, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f3.Rename(siaPath3, siaPath3.SiaFileSysPath(rt.renter.staticFilesDir))
+	f3, err := siafile.New(siaPath3.SiaFileSysPath(rt.renter.staticFilesDir), "", wal, rc, sk, fileSize, fileMode, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Restart the renter to re-do the init cycle.
 	err = rt.renter.Close()

@@ -14,15 +14,15 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/spf13/cobra"
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/spf13/cobra"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -157,10 +157,23 @@ and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w r
 		Run: renterpricescmd,
 	}
 
+	renterRatelimitCmd = &cobra.Command{
+		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
+		Short: "set maxdownloadspeed and maxuploadspeed",
+		Long: `Set the maxdownloadspeed and maxuploadspeed in 
+B/s (Bytes/s), KB/s (Kilobytes/s), MB/s (Megabytes/s), GB/s (Gigabytes/s), 
+or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
+		Run: wrap(renterratelimitcmd),
+	}
+
 	renterSetAllowanceCmd = &cobra.Command{
-		Use:   "setallowance --amount [amount] --period [period] --hosts [hosts] --renew-window [renew window]",
+		Use:   "setallowance",
 		Short: "Set the allowance",
 		Long: `Set the amount of money that can be spent over a given period.
+
+If no flags are set you will be walked through the interactive allowance
+setting. To update only certain fields, pass in those values with the
+corresponding field flag, for example '--amount 500SC'.
 
 Allowance can be automatically renewed periodically. If the current
 blockheight + the renew window >= the end height the contract,
@@ -200,6 +213,9 @@ func abs(path string) string {
 
 // rentercmd displays the renter's financial metrics and high level renter info
 func rentercmd() {
+	// For UX formating
+	defer fmt.Println()
+
 	// Get Renter
 	rg, err := httpClient.RenterGet()
 	if err != nil {
@@ -228,6 +244,14 @@ func rentercmd() {
 	if err != nil {
 		die(err)
 	}
+
+	if !renterListVerbose {
+		return
+	}
+
+	// Print out ratelimit info about the renter
+	fmt.Println()
+	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
@@ -247,7 +271,6 @@ func renterFilesAndContractSummary() error {
   Total Stored:   %v
   Min Redundancy: %v
   Contracts:      %v
-
 `, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].AggregateMinRedundancy, len(rc.ActiveContracts))
 
 	return nil
@@ -438,16 +461,6 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		die("Could not get renter settings")
 	}
 
-	if allowanceInteractive {
-		req := httpClient.RenterPostPartialAllowance()
-		req = rentersetallowancecmdInteractive(req, rg.Settings.Allowance)
-		if err := req.Send(); err != nil {
-			die("Could not set allowance:", err)
-		}
-		fmt.Println("Allowance updated")
-		return
-	}
-
 	req := httpClient.RenterPostPartialAllowance()
 	changedFields := 0
 	period := rg.Settings.Allowance.Period
@@ -546,12 +559,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	}
 	// parse expectedRedundancy
 	if allowanceExpectedRedundancy != "" {
-		er, err := parseFilesize(allowanceExpectedRedundancy)
-		if err != nil {
-			die("Could not parse expected redundancy")
-		}
-		var expectedRedundancy float64
-		_, err = fmt.Sscan(er, &expectedRedundancy)
+		expectedRedundancy, err := strconv.ParseFloat(allowanceExpectedRedundancy, 64)
 		if err != nil {
 			die("Could not parse expected redundancy")
 		}
@@ -560,7 +568,13 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	}
 	// check if any fields were updated.
 	if changedFields == 0 {
-		fmt.Println("No flags specified. Allowance not updated.")
+		// If no fields were set then walk the user through the interactive
+		// allowance setting
+		req = rentersetallowancecmdInteractive(req, rg.Settings.Allowance)
+		if err := req.Send(); err != nil {
+			die("Could not set allowance:", err)
+		}
+		fmt.Println("Allowance updated")
 		return
 	}
 	// check for required initial fields
@@ -782,7 +796,7 @@ uptime and age.
 
 Even when the user has a large allowance and a low amount of expected storage,
 siad will try to optimize for saving money; siad tries to meet the users storage
-and bandwith needs while spending significantly less than the overall allowance.`)
+and bandwidth needs while spending significantly less than the overall allowance.`)
 	fmt.Println()
 	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedStorage))
 	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedStorage))
@@ -828,7 +842,7 @@ consider repair bandwidth separately.`)
 		expectedUpload = modules.DefaultAllowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedUpload = allowance.ExpectedUpload
+		expectedUpload = allowance.ExpectedUpload * uint64(types.BlocksPerMonth)
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Upload: ")
@@ -864,7 +878,7 @@ consider repair bandwidth separately.`)
 		expectedDownload = modules.DefaultAllowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedDownload = allowance.ExpectedDownload
+		expectedDownload = allowance.ExpectedDownload * uint64(types.BlocksPerMonth)
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Download: ")
@@ -898,6 +912,7 @@ how large the files are.`)
 	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedRedundancy)
 
 	var expectedRedundancy float64
+	var err error
 	if allowance.ExpectedRedundancy == 0 {
 		expectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -908,11 +923,7 @@ how large the files are.`)
 	fmt.Print("Expected Redundancy: ")
 	allowanceExpectedRedundancy := readString()
 	if allowanceExpectedRedundancy != "" {
-		er, err := parseFilesize(allowanceExpectedRedundancy)
-		if err != nil {
-			die("Could not parse expected redundancy")
-		}
-		_, err = fmt.Sscan(er, &expectedRedundancy)
+		expectedRedundancy, err = strconv.ParseFloat(allowanceExpectedRedundancy, 64)
 		if err != nil {
 			die("Could not parse expected redundancy")
 		}
@@ -1019,7 +1030,7 @@ func rentercontractscmd() {
 		totalSpent = totalSpent.Add(contractTotalSpent)
 	}
 	// Refreshed Contracts are duplicate data
-	for _, c := range rc.PassiveContracts {
+	for _, c := range rc.RefreshedContracts {
 		totalRemaining = totalRemaining.Add(c.RenterFunds)
 		totalFees = totalFees.Add(c.Fees)
 		// Negative Currency Check
@@ -1032,7 +1043,7 @@ func rentercontractscmd() {
 		totalSpent = totalSpent.Add(contractTotalSpent)
 	}
 	// Disabled Contracts are wasted data
-	for _, c := range rc.PassiveContracts {
+	for _, c := range rc.DisabledContracts {
 		totalWasted += c.Size
 		totalRemaining = totalRemaining.Add(c.RenterFunds)
 		totalFees = totalFees.Add(c.Fees)
@@ -1062,7 +1073,7 @@ func rentercontractscmd() {
 		fmt.Println("  Number of Contracts:", len(rc.ActiveContracts))
 		sort.Sort(byValue(rc.ActiveContracts))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.ActiveContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
@@ -1077,8 +1088,9 @@ func rentercontractscmd() {
 			} else {
 				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 			}
-			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
+				c.HostPublicKey.String(),
 				hostVersion,
 				currencyUnits(c.RenterFunds),
 				currencyUnits(contractTotalSpent),
@@ -1100,7 +1112,7 @@ func rentercontractscmd() {
 		sort.Sort(byValue(rc.PassiveContracts))
 		fmt.Println("  Number of Contracts:", len(rc.PassiveContracts))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.PassiveContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
@@ -1115,8 +1127,9 @@ func rentercontractscmd() {
 			} else {
 				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 			}
-			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
+				c.HostPublicKey.String(),
 				hostVersion,
 				currencyUnits(c.RenterFunds),
 				currencyUnits(contractTotalSpent),
@@ -1138,7 +1151,7 @@ func rentercontractscmd() {
 		sort.Sort(byValue(rc.RefreshedContracts))
 		fmt.Println("  Number of Contracts:", len(rc.RefreshedContracts))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.RefreshedContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
@@ -1153,8 +1166,9 @@ func rentercontractscmd() {
 			} else {
 				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 			}
-			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
+				c.HostPublicKey.String(),
 				hostVersion,
 				currencyUnits(c.RenterFunds),
 				currencyUnits(contractTotalSpent),
@@ -1176,7 +1190,7 @@ func rentercontractscmd() {
 		sort.Sort(byValue(rc.DisabledContracts))
 		fmt.Println("  Number of Contracts:", len(rc.DisabledContracts))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
 		for _, c := range rc.DisabledContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
@@ -1191,8 +1205,9 @@ func rentercontractscmd() {
 			} else {
 				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 			}
-			fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 				address,
+				c.HostPublicKey.String(),
 				hostVersion,
 				currencyUnits(c.RenterFunds),
 				currencyUnits(contractTotalSpent),
@@ -1212,7 +1227,7 @@ func rentercontractscmd() {
 			die("Could not get expired contracts:", err)
 		}
 		// Build Historical summary
-		fmt.Println("Historical Summary")
+		fmt.Println("\nHistorical Summary")
 		var totalStored uint64
 		var totalRemaining, totalSpent, totalFees types.Currency
 		// Expired Contracts are all good data
@@ -1255,7 +1270,7 @@ func rentercontractscmd() {
 			sort.Sort(byValue(rce.ExpiredContracts))
 			fmt.Println("	 Number of Contracts:", len(rce.ExpiredContracts))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  \nHost\tHost Version\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
+			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
 			for _, c := range rce.ExpiredContracts {
 				address := c.NetAddress
 				hostVersion := c.HostVersion
@@ -1270,8 +1285,9 @@ func rentercontractscmd() {
 				} else {
 					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 				}
-				fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+				fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 					address,
+					c.HostPublicKey.String(),
 					hostVersion,
 					currencyUnits(c.RenterFunds),
 					currencyUnits(contractTotalSpent),
@@ -1289,11 +1305,11 @@ func rentercontractscmd() {
 		if len(rce.ExpiredRefreshedContracts) == 0 {
 			fmt.Println("  No expired refreshed contracts.")
 		} else {
-			sort.Sort(byValue(rce.ExpiredContracts))
+			sort.Sort(byValue(rce.ExpiredRefreshedContracts))
 			fmt.Println("	 Number of Contracts:", len(rce.ExpiredRefreshedContracts))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  \nHost\tHost Version\tWithheld Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tID\tGoodForUpload\tGoodForRenew")
-			for _, c := range rce.ExpiredContracts {
+			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
+			for _, c := range rce.ExpiredRefreshedContracts {
 				address := c.NetAddress
 				hostVersion := c.HostVersion
 				if address == "" {
@@ -1307,8 +1323,9 @@ func rentercontractscmd() {
 				} else {
 					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 				}
-				fmt.Fprintf(w, "  %v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+				fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
 					address,
+					c.HostPublicKey.String(),
 					hostVersion,
 					currencyUnits(c.RenterFunds),
 					currencyUnits(contractTotalSpent),
@@ -1448,7 +1465,7 @@ func renterdirdownload(path, destination string) {
 	start := time.Now()
 	tfs, skipped, totalSize, downloadErr := downloadDir(siaPath, destination)
 	if renterDownloadAsync && downloadErr != nil {
-		fmt.Println("At least one error occured when initializing the download:", downloadErr)
+		fmt.Println("At least one error occurred when initializing the download:", downloadErr)
 	}
 	// If the download is async, report success.
 	if renterDownloadAsync {
@@ -1468,7 +1485,7 @@ func renterdirdownload(path, destination string) {
 	}
 	// Print errors.
 	if downloadErr != nil {
-		fmt.Println("At least one error occured when initializing the download:", downloadErr)
+		fmt.Println("At least one error occurred when initializing the download:", downloadErr)
 	}
 	for _, fd := range failedDownloads {
 		fmt.Printf("Download of file '%v' to destination '%v' failed: %v\n", fd.SiaPath, fd.Destination, fd.Error)
@@ -2082,4 +2099,24 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	fmt.Fprintln(w, "\tHosts:\t", rpg.Allowance.Hosts)
 	fmt.Fprintln(w, "\tRenew Window:\t", rpg.Allowance.RenewWindow)
 	w.Flush()
+}
+
+// renterratelimitcmd is the handler for the command `siac renter ratelimit`
+// which sets the maxuploadspeed and maxdownloadspeed in bytes-per-second for
+// the renter module
+func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
+	downloadSpeedInt, err := parseRatelimit(downloadSpeedStr)
+	if err != nil {
+		die(errors.AddContext(err, "unable to parse download speed"))
+	}
+	uploadSpeedInt, err := parseRatelimit(uploadSpeedStr)
+	if err != nil {
+		die(errors.AddContext(err, "unable to parse upload speed"))
+	}
+
+	err = httpClient.RenterRateLimitPost(downloadSpeedInt, uploadSpeedInt)
+	if err != nil {
+		die(errors.AddContext(err, "Could not set renter ratelimit speed"))
+	}
+	fmt.Println("Set renter maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }

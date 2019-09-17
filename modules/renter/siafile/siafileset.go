@@ -12,14 +12,14 @@ import (
 	"time"
 
 	"github.com/karrick/godirwalk"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/errors"
-
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // The SiaFileSet structure helps track the number of threads using a siafile
@@ -196,6 +196,10 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	if len(currentEntry.threadMap) == 0 {
 		delete(sfs.siaFileMap, entry.UID())
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
+		// If the entry had a partialSiaFile, close that as well.
+		if entry.partialsSiaFile != nil {
+			sfs.closeEntry(entry.partialsSiaFile)
+		}
 	}
 }
 
@@ -289,14 +293,8 @@ func (sfs *SiaFileSet) siaPathToEntryAndUID(siaPath modules.SiaPath) (*siaFileSe
 // the renter
 func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file in Memory
-	_, UID, exists1 := sfs.siaPathToEntryAndUID(siaPath)
-	_, exists2 := sfs.siaFileMap[UID]
-	// Sanity check that the maps are consistent
-	if exists1 != exists2 {
-		build.Critical("SiaFileSet in memory maps are inconsistent", exists1, exists2)
-	}
-	// Since maps are consistent, only need to check one
-	if exists1 {
+	_, _, exists := sfs.siaPathToEntryAndUID(siaPath)
+	if exists {
 		return true
 	}
 	// Check for file on disk
@@ -324,7 +322,7 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 	maxHealth := math.Max(md.CachedHealth, md.CachedStuckHealth)
 	fileInfo := modules.FileInfo{
 		AccessTime:       md.AccessTime,
-		Available:        md.CachedRedundancy >= 1,
+		Available:        md.CachedUserRedundancy >= 1,
 		ChangeTime:       md.ChangeTime,
 		CipherType:       md.StaticMasterKeyType.String(),
 		CreateTime:       md.CreateTime,
@@ -337,8 +335,8 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 		ModTime:          md.ModTime,
 		NumStuckChunks:   md.NumStuckChunks,
 		OnDisk:           onDisk,
-		Recoverable:      onDisk || md.CachedRedundancy >= 1,
-		Redundancy:       md.CachedRedundancy,
+		Recoverable:      onDisk || md.CachedUserRedundancy >= 1,
+		Redundancy:       md.CachedUserRedundancy,
 		Renewing:         true,
 		SiaPath:          siaPath,
 		Stuck:            md.NumStuckChunks > 0,
@@ -359,7 +357,7 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) (*siaFileSetEntry, error)
 	}
 	// Sanity check that the UID is in fact unique.
 	if _, exists := sfs.siaFileMap[entry.UID()]; exists {
-		err := errors.New("siafile was already loaded")
+		err := fmt.Errorf("siafile '%v' with uid '%v' was already loaded", sfs.siaPath(entry), entry.UID())
 		build.Critical(err)
 		return nil, err
 	}
@@ -377,6 +375,11 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) (*siaFileSetEntry, error)
 
 // open will return the siaFileSetEntry in memory or load it from disk
 func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
+	if strings.HasPrefix(siaPath.String(), ".") {
+		err := errors.New("never open a hidden siafile with 'open'")
+		build.Critical(err)
+		return nil, err
+	}
 	var entry *siaFileSetEntry
 	var exists bool
 	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)
@@ -391,10 +394,11 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		}
 		// Check for duplicate uid.
 		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
-			err := fmt.Errorf("%v and %v share the same UID", sfs.siaPath(conflictingEntry), siaPath)
+			err := fmt.Errorf("%v and %v share the same UID '%v'", sfs.siaPath(conflictingEntry), siaPath, sf.UID())
 			build.Critical(err)
 			return nil, err
 		}
+		// Create the entry for the SiaFile and assign the partials file.
 		entry, err = sfs.newSiaFileSetEntry(sf)
 		if err != nil {
 			return nil, err
@@ -403,6 +407,13 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
 	}
+	// Load the corresponding partialsSiaFile.
+	partialsSiaFile, err := sfs.openPartialsSiaFile(entry.ErasureCode(), true)
+	if err != nil {
+		return nil, err
+	}
+	entry.SetPartialsSiaFile(partialsSiaFile)
+
 	threadUID := randomThreadUID()
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
@@ -411,6 +422,15 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
 	}, nil
+}
+
+// AddExistingPartialsSiaFile adds an existing partial SiaFile to the set and
+// stores it on disk. If the file already exists this will produce an error
+// since we can't just add a suffix to it.
+func (sfs *SiaFileSet) AddExistingPartialsSiaFile(sf *SiaFile, chunks []chunk) (map[uint64]uint64, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.addExistingPartialsSiaFile(sf, chunks)
 }
 
 // readLockMetadata returns the metadata of the SiaFile at siaPath. NOTE: The
@@ -441,10 +461,30 @@ func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, erro
 // exists with a different UID, the UID will be updated and a unique path will
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
-func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
+func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile, chunks []chunk) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.addExistingSiaFile(sf, 0)
+	return sfs.addExistingSiaFile(sf, chunks, 0)
+}
+
+// addExistingPartialsSiaFile adds an existing partial SiaFile to the set and
+// stores it on disk. If the file already exists this will produce an error
+// since we can't just add a suffix to it.
+func (sfs *SiaFileSet) addExistingPartialsSiaFile(sf *SiaFile, chunks []chunk) (map[uint64]uint64, error) {
+	// Check if a file with that path exists already.
+	var siaPath modules.SiaPath
+	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
+	if err != nil {
+		return nil, err
+	}
+	oldFile, err := sfs.openPartialsSiaFile(sf.ErasureCode(), false)
+	if err == nil {
+		defer sfs.closeEntry(oldFile)
+		return oldFile.Merge(sf)
+	} else if os.IsNotExist(err) {
+		return nil, sf.SaveWithChunks(chunks)
+	}
+	return nil, err
 }
 
 // addExistingSiaFile adds an existing SiaFile to the set and stores it on disk.
@@ -452,7 +492,7 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 // exists with a different UID, the UID will be updated and a unique path will
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
-func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
+func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, chunks []chunk, suffix uint) error {
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
 	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
@@ -480,14 +520,26 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
 			siaFilePath := siaPath.AddSuffix(suffix).SiaFileSysPath(sfs.staticSiaFileDir)
 			sf.SetSiaFilePath(siaFilePath)
 		}
-		return sf.Save()
+		// Set the correct partials SiaFile since the file we are adding wasn't part
+		// of a SiaFileSet before and therefore doesn't have one yet.
+		ec := sf.ErasureCode()
+		psf, err := sfs.openPartialsSiaFile(ec, true)
+		if err != nil {
+			return err
+		}
+		sf.SetPartialsSiaFile(psf)
+		err = sf.SaveWithChunks(chunks)
+		if err != nil {
+			sfs.closeEntry(psf)
+		}
+		return err
 	}
 	// If it exists and the UID matches too, skip the file.
 	if sf.UID() == oldFile.UID() {
 		return nil
 	}
 	// If it exists and the UIDs don't match, increment the suffix and try again.
-	return sfs.addExistingSiaFile(sf, suffix+1)
+	return sfs.addExistingSiaFile(sf, chunks, suffix+1)
 }
 
 // Delete deletes the SiaFileSetEntry's SiaFile
@@ -522,9 +574,15 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		_, err = os.Stat(localPath)
 		onDisk = err == nil
 	}
-	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
-	redundancy := entry.Redundancy(offline, goodForRenew)
-	uploadProgress, uploadedBytes := entry.UploadProgressAndBytes()
+	_, _, health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
+	_, redundancy, err := entry.Redundancy(offline, goodForRenew)
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "failed to get file redundancy")
+	}
+	uploadProgress, uploadedBytes, err := entry.UploadProgressAndBytes()
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "failed to get upload progress and bytes")
+	}
 	maxHealth := math.Max(health, stuckHealth)
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
@@ -648,22 +706,25 @@ func (sfs *SiaFileSet) FileList(siaPath modules.SiaPath, recursive, cached bool,
 	return fileList, nil
 }
 
-// NewSiaFile create a new SiaFile, adds it to the SiaFileSet, adds the thread
+// newSiaFile create a new SiaFile, adds it to the SiaFileSet, adds the thread
 // to the threadMap, and returns the SiaFileSetEntry. Since this method returns
 // the SiaFileSetEntry, wherever NewSiaFile is called there should be a Close
 // called on the SiaFileSetEntry to avoid the file being stuck in memory due the
 // thread never being removed from the threadMap
-func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFileSetEntry, error) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
+func (sfs *SiaFileSet) newSiaFile(up modules.FileUploadParams, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFileSetEntry, error) {
 	// Check is SiaFile already exists
 	exists := sfs.exists(up.SiaPath)
 	if exists && !up.Force {
 		return nil, ErrPathOverload
 	}
+	// Open the corresponding partials file.
+	partialsSiaFile, err := sfs.openPartialsSiaFile(up.ErasureCode, true)
+	if err != nil {
+		return nil, err
+	}
 	// Make sure there are no leading slashes
 	siaFilePath := up.SiaPath.SiaFileSysPath(sfs.staticSiaFileDir)
-	sf, err := New(up.SiaPath, siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode)
+	sf, err := New(siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode, partialsSiaFile, true)
 	if err != nil {
 		return nil, err
 	}
@@ -679,6 +740,17 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 	}, nil
 }
 
+// NewSiaFile create a new SiaFile, adds it to the SiaFileSet, adds the thread
+// to the threadMap, and returns the SiaFileSetEntry. Since this method returns
+// the SiaFileSetEntry, wherever NewSiaFile is called there should be a Close
+// called on the SiaFileSetEntry to avoid the file being stuck in memory due the
+// thread never being removed from the threadMap
+func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFileSetEntry, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.newSiaFile(up, masterKey, fileSize, fileMode)
+}
+
 // Open returns the siafile from the SiaFileSet for the corresponding key and
 // adds the thread to the entry's threadMap. If the siafile is not in memory it
 // will load it from disk
@@ -686,6 +758,24 @@ func (sfs *SiaFileSet) Open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.open(siaPath)
+}
+
+// LoadPartialSiaFile loads a SiaFile containing combined chunks.
+func (sfs *SiaFileSet) LoadPartialSiaFile(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.loadPartialsSiaFile(siaPath)
+}
+
+// Metadata returns the metadata of a SiaFile.
+func (sfs *SiaFileSet) Metadata(siaPath modules.SiaPath) (Metadata, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	sf, err := sfs.open(siaPath)
+	if err != nil {
+		return Metadata{}, err
+	}
+	return sf.Metadata(), sf.Close()
 }
 
 // Rename will move a siafile from one path to a new path. Existing entries that
@@ -714,7 +804,7 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 	delete(sfs.siapathToUID, siaPath)
 
 	// Update the siafile to have a new name.
-	return entry.Rename(newSiaPath, newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir))
+	return entry.Rename(newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir))
 }
 
 // DeleteDir deletes a siadir and all the siadirs and siafiles within it
@@ -817,4 +907,89 @@ func (sfs *SiaFileSet) RenameDir(oldPath, newPath modules.SiaPath, rename siadir
 		entry.siaFilePath = sp.SiaFileSysPath(sfs.staticSiaFileDir)
 	}
 	return nil
+}
+
+// OpenPartialsSiaFile opens a partials SiaFile and creates it if it doesn't
+// exist yet.
+func (sfs *SiaFileSet) OpenPartialsSiaFile(ec modules.ErasureCoder) (*SiaFileSetEntry, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.openPartialsSiaFile(ec, true)
+}
+
+// openPartialsSiaFile opens a SiaFile which will be used to upload chunks
+// consisting of partial chunks. If the SiaFile doesn't exist, it will be
+// created.
+func (sfs *SiaFileSet) openPartialsSiaFile(ec modules.ErasureCoder, create bool) (*SiaFileSetEntry, error) {
+	siaPath := modules.CombinedSiaFilePath(ec)
+	var entry *siaFileSetEntry
+	var exists bool
+	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)
+	if !exists && !create {
+		return nil, os.ErrNotExist
+	} else if !exists {
+		// Try and Load File from disk.
+		sf, err := LoadSiaFile(siaPath.SiaPartialsFileSysPath(sfs.staticSiaFileDir), sfs.wal)
+		if os.IsNotExist(err) {
+			// File doesn't exist. Create a new one.
+			siaFilePath := siaPath.SiaPartialsFileSysPath(sfs.staticSiaFileDir)
+			sf, err = New(siaFilePath, "", sfs.wal, ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 0, 0600, nil, true)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		// Create the entry for the SiaFile and assign the partials file.
+		entry, err = sfs.newSiaFileSetEntry(sf)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if entry.Deleted() {
+		return nil, ErrUnknownPath
+	}
+	threadUID := randomThreadUID()
+	entry.threadMapMu.Lock()
+	defer entry.threadMapMu.Unlock()
+	entry.threadMap[threadUID] = newThreadInfo()
+	return &SiaFileSetEntry{
+		siaFileSetEntry: entry,
+		threadUID:       threadUID,
+	}, nil
+}
+
+// loadPartialsSiaFile loads a SiaFile which will be used to upload chunks
+// consisting of partial chunks.
+func (sfs *SiaFileSet) loadPartialsSiaFile(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
+	var entry *siaFileSetEntry
+	var exists bool
+	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)
+	if !exists {
+		// Try and Load File from disk.
+		sf, err := LoadSiaFile(siaPath.SiaPartialsFileSysPath(sfs.staticSiaFileDir), sfs.wal)
+		if os.IsNotExist(err) {
+			return nil, ErrUnknownPath
+		}
+		if err != nil {
+			return nil, err
+		}
+		// Create the entry for the SiaFile and assign the partials file.
+		entry, err = sfs.newSiaFileSetEntry(sf)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if entry.Deleted() {
+		return nil, ErrUnknownPath
+	}
+	threadUID := randomThreadUID()
+	entry.threadMapMu.Lock()
+	defer entry.threadMapMu.Unlock()
+	entry.threadMap[threadUID] = newThreadInfo()
+	return &SiaFileSetEntry{
+		siaFileSetEntry: entry,
+		threadUID:       threadUID,
+	}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -162,9 +163,10 @@ func findSets(ts []types.Transaction) [][]types.Transaction {
 
 // purge removes all transactions from the transaction pool.
 func (tp *TransactionPool) purge() {
-	tp.knownObjects = make(map[ObjectID]TransactionSetID)
-	tp.transactionSets = make(map[TransactionSetID][]types.Transaction)
-	tp.transactionSetDiffs = make(map[TransactionSetID]*modules.ConsensusChange)
+	tp.knownObjects = make(map[ObjectID]modules.TransactionSetID)
+	tp.transactionSets = make(map[modules.TransactionSetID][]types.Transaction)
+	tp.transactionSetDiffs = make(map[modules.TransactionSetID]*modules.ConsensusChange)
+	tp.transactionHeights = make(map[types.TransactionID]types.BlockHeight)
 	tp.transactionListSize = 0
 }
 
@@ -172,6 +174,10 @@ func (tp *TransactionPool) purge() {
 // to the consensus set.
 func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	tp.mu.Lock()
+
+	// Grab the current size of the transaction pool so that we can log it after
+	// the block is found later.
+	oldTxnListSize := tp.transactionListSize
 
 	tp.log.Debugf("CCID %v (height %v): %v applied blocks, %v reverted blocks", crypto.Hash(cc.ID).String()[:8], tp.blockHeight, len(cc.AppliedBlocks), len(cc.RevertedBlocks))
 
@@ -350,27 +356,46 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 		}
 		unconfirmedSets = append(unconfirmedSets, newTSet)
 	}
+	// Save all of the old transaction heights.
+	oldHeights := tp.transactionHeights
 
 	// Purge the transaction pool. Some of the transactions sets may be invalid
 	// after the consensus change.
 	tp.purge()
 
-	// prune transactions older than maxTxnAge.
+	// Prune transaction sets where all transactions have hit the max
+	// transaction age.
 	for i, tSet := range unconfirmedSets {
-		var validTxns []types.Transaction
+		// Check whether all transactions in this transaction set are old.
+		old := true
 		for _, txn := range tSet {
-			seenHeight, seen := tp.transactionHeights[txn.ID()]
-			if tp.blockHeight-seenHeight <= maxTxnAge || !seen {
-				validTxns = append(validTxns, txn)
-			} else {
+			seenHeight, seen := oldHeights[txn.ID()]
+			if !seen {
+				// If the transaction hasn't been seen before, add it to the set
+				// of seen transactions.
+				tp.transactionHeights[txn.ID()] = tp.blockHeight - 1
+				tp.log.Critical("transaction found in tpool which did not have its height recorded")
+			}
+			if tp.blockHeight-seenHeight < MaxTransactionAge || !seen {
+				old = false
+				break
+			}
+		}
+
+		// All of the transactions in this set are old, this set should be
+		// evicted.
+		if old {
+			unconfirmedSets[i] = []types.Transaction{}
+			for _, txn := range tSet {
+				tp.log.Debugln("Dropping a transaction because it has reached the MaxTransactionAge", txn.ID())
 				delete(tp.transactionHeights, txn.ID())
 			}
 		}
-		unconfirmedSets[i] = validTxns
 	}
 
 	// Scan through the reverted blocks and re-add any transactions that got
 	// reverted to the tpool.
+	addTransactionsBackTime := time.Now()
 	for i := len(cc.RevertedBlocks) - 1; i >= 0; i-- {
 		block := cc.RevertedBlocks[i]
 		for _, txn := range block.Transactions {
@@ -402,14 +427,18 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// more rules need to be put in place.
 	for _, set := range unconfirmedSets {
 		for _, txn := range set {
-			err := tp.acceptTransactionSet([]types.Transaction{txn}, cc.TryTransactionSet)
-			if err != nil {
-				// The transaction is no longer valid, delete it from the
-				// heights map to prevent a memory leak.
-				delete(tp.transactionHeights, txn.ID())
-			}
+			tp.acceptTransactionSet([]types.Transaction{txn}, cc.TryTransactionSet) // Error is ignored.
+			// acceptTransactionSet will set the transaction height to the
+			// current height because of the purge mechanism. Reset the height
+			// to the original height before the purge.
+			tp.transactionHeights[txn.ID()] = oldHeights[txn.ID()]
 		}
 	}
+
+	// Log the size of the transaction pool following an integration of the
+	// block, this will tell us if all of the transactions have been consumed or
+	// not.
+	tp.log.Debugln("A new block has been found. After processing, the transaction pool has dropped from a size of", oldTxnListSize, "to a size of", tp.transactionListSize, "taking", time.Since(addTransactionsBackTime).Round(time.Millisecond), "milliseconds")
 
 	// Inform subscribers that an update has executed.
 	tp.mu.Demote()

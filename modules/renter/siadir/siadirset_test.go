@@ -376,3 +376,25 @@ func TestSiaDirRename(t *testing.T) {
 		}
 	}
 }
+
+// TestHealthPercentage checks the values returned from HealthPercentage
+func TestHealthPercentage(t *testing.T) {
+	var tests = []struct {
+		health           float64
+		healthPercentage float64
+	}{
+		{1.5, 0},
+		{1.25, 0},
+		{1.0, 25},
+		{0.75, 50},
+		{0.5, 75},
+		{0.25, 100},
+		{0, 100},
+	}
+	for _, test := range tests {
+		hp := HealthPercentage(test.health)
+		if hp != test.healthPercentage {
+			t.Fatalf("Expect %v got %v", test.healthPercentage, hp)
+		}
+	}
+}

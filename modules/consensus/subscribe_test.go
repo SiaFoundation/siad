@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 

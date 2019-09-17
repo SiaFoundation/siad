@@ -4,6 +4,7 @@ import (
 	"net"
 
 	"github.com/xtaci/smux"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 )
 

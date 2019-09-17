@@ -12,17 +12,18 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
-
-	"github.com/julienschmidt/httprouter"
 )
 
 var (
@@ -496,12 +497,15 @@ func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 	})
 }
 
-// renterHandlerPOST handles the API call to set the Renter's settings.
+// renterHandlerPOST handles the API call to set the Renter's settings. This API
+// call handles multiple settings and so each setting is optional on it's own.
+// Groups of settings, such as the allowance, have certain requirements if they
+// are being set in which case certain fields are no longer optional.
 func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get the existing settings
 	settings := api.renter.Settings()
 
-	// Scan the allowance amount. (optional parameter)
+	// Scan for all allowance fields
 	if f := req.FormValue("funds"); f != "" {
 		funds, ok := scanAmount(f)
 		if !ok {
@@ -510,7 +514,6 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		}
 		settings.Allowance.Funds = funds
 	}
-	// Scan the number of hosts to use. (optional parameter)
 	if h := req.FormValue("hosts"); h != "" {
 		var hosts uint64
 		if _, err := fmt.Sscan(h, &hosts); err != nil {
@@ -522,11 +525,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		} else {
 			settings.Allowance.Hosts = hosts
 		}
-	} else if settings.Allowance.Hosts == 0 {
-		// Sane defaults if host haven't been set before.
-		settings.Allowance.Hosts = modules.DefaultAllowance.Hosts
 	}
-	// Scan the period. (optional parameter)
 	if p := req.FormValue("period"); p != "" {
 		var period types.BlockHeight
 		if _, err := fmt.Sscan(p, &period); err != nil {
@@ -534,11 +533,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		}
 		settings.Allowance.Period = types.BlockHeight(period)
-	} else if settings.Allowance.Period == 0 {
-		WriteError(w, Error{"period needs to be set if it hasn't been set before"}, http.StatusBadRequest)
-		return
 	}
-	// Scan the renew window. (optional parameter)
 	if rw := req.FormValue("renewwindow"); rw != "" {
 		var renewWindow types.BlockHeight
 		if _, err := fmt.Sscan(rw, &renewWindow); err != nil {
@@ -547,14 +542,13 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		} else if renewWindow != 0 && types.BlockHeight(renewWindow) < requiredRenewWindow {
 			WriteError(w, Error{fmt.Sprintf("renew window is too small, must be at least %v blocks but have %v blocks", requiredRenewWindow, renewWindow)}, http.StatusBadRequest)
 			return
+		} else if renewWindow == 0 && settings.Allowance.Period != 0 {
+			WriteError(w, Error{contractor.ErrAllowanceZeroWindow.Error()}, http.StatusBadRequest)
+			return
 		} else {
 			settings.Allowance.RenewWindow = types.BlockHeight(renewWindow)
 		}
-	} else if settings.Allowance.RenewWindow == 0 {
-		// Sane defaults if renew window hasn't been set before.
-		settings.Allowance.RenewWindow = settings.Allowance.Period / 2
 	}
-	// Scan the expected storage. (optional parameter)
 	if es := req.FormValue("expectedstorage"); es != "" {
 		var expectedStorage uint64
 		if _, err := fmt.Sscan(es, &expectedStorage); err != nil {
@@ -562,11 +556,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		}
 		settings.Allowance.ExpectedStorage = expectedStorage
-	} else if settings.Allowance.ExpectedStorage == 0 {
-		// Sane defaults if it hasn't been set before.
-		settings.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 	}
-	// Scan the upload bandwidth. (optional parameter)
 	if euf := req.FormValue("expectedupload"); euf != "" {
 		var expectedUpload uint64
 		if _, err := fmt.Sscan(euf, &expectedUpload); err != nil {
@@ -574,11 +564,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		}
 		settings.Allowance.ExpectedUpload = expectedUpload
-	} else if settings.Allowance.ExpectedUpload == 0 {
-		// Sane defaults if it hasn't been set before.
-		settings.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 	}
-	// Scan the download bandwidth. (optional parameter)
 	if edf := req.FormValue("expecteddownload"); edf != "" {
 		var expectedDownload uint64
 		if _, err := fmt.Sscan(edf, &expectedDownload); err != nil {
@@ -586,11 +572,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		}
 		settings.Allowance.ExpectedDownload = expectedDownload
-	} else if settings.Allowance.ExpectedDownload == 0 {
-		// Sane defaults if it hasn't been set before.
-		settings.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 	}
-	// Scan the expected redundancy. (optional parameter)
 	if er := req.FormValue("expectedredundancy"); er != "" {
 		var expectedRedundancy float64
 		if _, err := fmt.Sscan(er, &expectedRedundancy); err != nil {
@@ -598,10 +580,56 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		}
 		settings.Allowance.ExpectedRedundancy = expectedRedundancy
-	} else if settings.Allowance.ExpectedRedundancy == 0 {
-		// Sane defaults if it hasn't been set before.
-		settings.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 	}
+
+	// Validate any allowance changes
+	if !reflect.DeepEqual(settings.Allowance, modules.Allowance{}) {
+		// Allowance has been set at least partially. Validate that all fields
+		// are set correctly
+
+		// If Funds is still 0 return an error since we need the user to set the period initially
+		if settings.Allowance.Funds.Cmp(types.ZeroCurrency) == 0 {
+			WriteError(w, Error{"funds needs to be set if it hasn't been set before"}, http.StatusBadRequest)
+			return
+		}
+
+		// If Period is still 0 return an error since we need the user to set the period initially
+		if settings.Allowance.Period == 0 {
+			WriteError(w, Error{"period needs to be set if it hasn't been set before"}, http.StatusBadRequest)
+			return
+		}
+
+		// If Hosts is still 0 set to the sane default
+		if settings.Allowance.Hosts == 0 {
+			settings.Allowance.Hosts = modules.DefaultAllowance.Hosts
+		}
+
+		// If Renew Window is still 0 set to the sane default
+		if settings.Allowance.RenewWindow == 0 {
+			settings.Allowance.RenewWindow = settings.Allowance.Period / 2
+		}
+
+		// If Expected Storage is still 0 set to the sane default
+		if settings.Allowance.ExpectedStorage == 0 {
+			settings.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
+		}
+
+		// If Expected Upload is still 0 set to the sane default
+		if settings.Allowance.ExpectedUpload == 0 {
+			settings.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
+		}
+
+		// If Expected Download is still 0 set to the sane default
+		if settings.Allowance.ExpectedDownload == 0 {
+			settings.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
+		}
+
+		// If Expected Redundancy is still 0 set to the sane default
+		if settings.Allowance.ExpectedRedundancy == 0 {
+			settings.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+		}
+	}
+
 	// Scan the download speed limit. (optional parameter)
 	if d := req.FormValue("maxdownloadspeed"); d != "" {
 		var downloadSpeed int64
@@ -620,6 +648,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		}
 		settings.MaxUploadSpeed = uploadSpeed
 	}
+
 	// Scan the checkforipviolation flag.
 	if ipc := req.FormValue("checkforipviolation"); ipc != "" {
 		var ipviolationcheck bool

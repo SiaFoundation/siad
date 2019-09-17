@@ -7,13 +7,14 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -31,15 +32,16 @@ var (
 // contracts.
 type Contractor struct {
 	// dependencies
-	cs         consensusSet
-	hdb        hostDB
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persist    persister
-	staticDeps modules.Dependencies
-	tg         siasync.ThreadGroup
-	tpool      transactionPool
-	wallet     wallet
+	cs            consensusSet
+	hdb           hostDB
+	log           *persist.Logger
+	mu            sync.RWMutex
+	persist       persister
+	staticAlerter *modules.GenericAlerter
+	staticDeps    modules.Dependencies
+	tg            siasync.ThreadGroup
+	tpool         transactionPool
+	wallet        wallet
 
 	// Only one thread should be performing contract maintenance at a time.
 	interruptMaintenance chan struct{}
@@ -52,6 +54,7 @@ type Contractor struct {
 
 	allowance     modules.Allowance
 	blockHeight   types.BlockHeight
+	synced        chan struct{}
 	currentPeriod types.BlockHeight
 	lastChange    modules.ConsensusChangeID
 
@@ -229,6 +232,14 @@ func (c *Contractor) SetRateLimits(readBPS int64, writeBPS int64, packetSize uin
 	c.staticContracts.SetRateLimits(readBPS, writeBPS, packetSize)
 }
 
+// Synced returns a channel that is closed when the contractor is synced with
+// the peer-to-peer network.
+func (c *Contractor) Synced() <-chan struct{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.synced
+}
+
 // Close closes the Contractor.
 func (c *Contractor) Close() error {
 	return c.tg.Stop()
@@ -277,15 +288,17 @@ func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, 
 func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
 	// Create the Contractor object.
 	c := &Contractor{
-		cs:         cs,
-		staticDeps: deps,
-		hdb:        hdb,
-		log:        l,
-		persist:    p,
-		tpool:      tp,
-		wallet:     w,
+		staticAlerter: modules.NewAlerter("contractor"),
+		cs:            cs,
+		staticDeps:    deps,
+		hdb:           hdb,
+		log:           l,
+		persist:       p,
+		tpool:         tp,
+		wallet:        w,
 
 		interruptMaintenance: make(chan struct{}),
+		synced:               make(chan struct{}),
 
 		staticContracts:      contractSet,
 		downloaders:          make(map[types.FileContractID]*hostDownloader),

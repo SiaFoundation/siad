@@ -6,11 +6,11 @@ import (
 	"io"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -112,6 +112,10 @@ const (
 	// snapshot siafiles.
 	BackupRoot = "snapshots"
 
+	// CombinedChunksRoot is the name of the directory that contains combined
+	// chunks consisting of multiple partial chunks.
+	CombinedChunksRoot = "combinedchunks"
+
 	// EstimatedFileContractTransactionSetSize is the estimated blockchain size
 	// of a transaction set between a renter and a host that contains a file
 	// contract. This transaction set will contain a setup transaction from each
@@ -126,9 +130,27 @@ const (
 )
 
 type (
+	// CombinedChunkID is a unique identifier for a combined chunk which makes up
+	// part of its filename on disk.
+	CombinedChunkID string
+
+	// PartialChunk holds some information about a combined chunk
+	PartialChunk struct {
+		ChunkID        CombinedChunkID // The ChunkID of the combined chunk the partial is in.
+		InPartialsFile bool            // 'true' if the combined chunk is already in the partials siafile.
+		Length         uint64          // length of the partial chunk within the combined chunk.
+		Offset         uint64          // offset of the partial chunk within the combined chunk.
+	}
+)
+
+type (
 	// ErasureCoderType is an identifier for the individual types of erasure
 	// coders.
 	ErasureCoderType [4]byte
+
+	// ErasureCoderIdentifier is an identifier that only matches another
+	// ErasureCoder's identifier if they both are of the same type and settings.
+	ErasureCoderIdentifier string
 
 	// An ErasureCoder is an error-correcting encoder and decoder.
 	ErasureCoder interface {
@@ -143,9 +165,16 @@ type (
 		// containing parity data.
 		Encode(data []byte) ([][]byte, error)
 
+		// Identifier returns the ErasureCoderIdentifier of the ErasureCoder.
+		Identifier() ErasureCoderIdentifier
+
 		// EncodeShards encodes the input data like Encode but accepts an already
 		// sharded input.
 		EncodeShards(data [][]byte) ([][]byte, error)
+
+		// Reconstruct recovers the full set of encoded shards from the provided
+		// pieces, of which at least MinPieces must be non-nil.
+		Reconstruct(pieces [][]byte) error
 
 		// Recover recovers the original data from pieces and writes it to w.
 		// pieces should be identical to the slice returned by Encode (length and
@@ -250,11 +279,12 @@ type DownloadInfo struct {
 // FileUploadParams contains the information used by the Renter to upload a
 // file.
 type FileUploadParams struct {
-	Source      string
-	SiaPath     SiaPath
-	ErasureCode ErasureCoder
-	Force       bool
-	Repair      bool
+	Source              string
+	SiaPath             SiaPath
+	ErasureCode         ErasureCoder
+	Force               bool
+	DisablePartialChunk bool
+	Repair              bool
 }
 
 // FileInfo provides information about a file.
@@ -526,6 +556,8 @@ type UploadedBackup struct {
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
+	Alerter
+
 	// ActiveHosts provides the list of hosts that the renter is selecting,
 	// sorted by preference.
 	ActiveHosts() []HostDBEntry
@@ -628,6 +660,9 @@ type Renter interface {
 	// specified folder. The 'cached' argument specifies whether cached values
 	// should be returned or not.
 	FileList(siaPath SiaPath, recursive, cached bool) ([]FileInfo, error)
+
+	// Filter returns the renter's hostdb's filterMode and filteredHosts
+	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
 	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error

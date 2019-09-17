@@ -6,22 +6,24 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 )
 
 // newTestSiaFileSetWithFile creates a new SiaFileSet and SiaFile and makes sure
 // that they are linked
 func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 	// Create new SiaFile params
-	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams(1, true)
 	dir := filepath.Join(os.TempDir(), "siafiles", hex.EncodeToString(fastrand.Bytes(16)))
 	// Create SiaFileSet
 	wal, _ := newTestWAL()
@@ -51,7 +53,7 @@ func TestAddExistingSiafile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Add the existing file to the set again this shouldn't do anything.
-	if err := sfs.AddExistingSiaFile(sf.SiaFile); err != nil {
+	if err := sfs.AddExistingSiaFile(sf.SiaFile, []chunk{}); err != nil {
 		t.Fatal(err)
 	}
 	numSiaFiles := 0
@@ -73,7 +75,8 @@ func TestAddExistingSiafile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newSF, err := LoadSiaFileFromReader(bytes.NewReader(b), sf.SiaFilePath(), sf.wal)
+	reader := bytes.NewReader(b)
+	newSF, newChunks, err := LoadSiaFileFromReaderWithChunks(reader, sf.SiaFilePath(), sf.wal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,8 +85,21 @@ func TestAddExistingSiafile(t *testing.T) {
 	preImportUID := newSF.UID()
 	// Import the file. This should work because the files no longer share the same
 	// UID.
-	if err := sfs.AddExistingSiaFile(newSF); err != nil {
+	if err := sfs.AddExistingSiaFile(newSF, newChunks); err != nil {
 		t.Fatal(err)
+	}
+	// sf and newSF should have the same pieces.
+	for chunkIndex := uint64(0); chunkIndex < sf.NumChunks(); chunkIndex++ {
+		piecesOld, err1 := sf.Pieces(chunkIndex)
+		piecesNew, err2 := newSF.Pieces(chunkIndex)
+		if err := errors.Compose(err1, err2); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(piecesOld, piecesNew) {
+			t.Log("piecesOld: ", piecesOld)
+			t.Log("piecesNew: ", piecesNew)
+			t.Fatal("old pieces don't match new pieces")
+		}
 	}
 	numSiaFiles = 0
 	err = filepath.Walk(sfs.staticSiaFileDir, func(path string, info os.FileInfo, err error) error {
@@ -122,7 +138,7 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 	t.Parallel()
 
 	// Create new SiaFile params
-	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams(1, true)
 	// Create SiaFileSet
 	wal, _ := newTestWAL()
 	dir := filepath.Join(os.TempDir(), "siafiles")
@@ -147,9 +163,9 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 		if err := sfs.Delete(sfs.SiaPath(entry)); err != nil {
 			t.Fatal(err)
 		}
-		// The set should be empty.
-		if len(sfs.siaFileMap) != 0 {
-			t.Fatal("SiaFileMap should be empty")
+		// The set should be empty except for the partials file.
+		if len(sfs.siaFileMap) != 1 {
+			t.Fatal("SiaFileMap should have 1 file")
 		}
 		// Append the entry to make sure we can close it later.
 		entries = append(entries, entry)
@@ -189,9 +205,9 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Confirm file is in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatalf("Expected SiaFileSet map to be of length 1, instead is length %v", len(sfs.siaFileMap))
+	// Confirm 2 files are in memory
+	if len(sfs.siaFileMap) != 2 {
+		t.Fatalf("Expected SiaFileSet map to be of length 2, instead is length %v", len(sfs.siaFileMap))
 	}
 
 	// Confirm threadCount is incremented properly
@@ -207,9 +223,9 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 		t.Fatalf("Expected threadCount to be 0, got %v", len(entry.threadMap))
 	}
 
-	// Confirm file was removed from memory
+	// Confirm file and partialsSiaFile were removed from memory
 	if len(sfs.siaFileMap) != 0 {
-		t.Fatalf("Expected SiaFileSet map to be empty, instead is length %v", len(sfs.siaFileMap))
+		t.Fatalf("Expected SiaFileSet map to contain 0 files, instead is length %v", len(sfs.siaFileMap))
 	}
 
 	// Open siafile again and confirm threadCount was incremented
@@ -243,16 +259,17 @@ func TestFilesInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	// Confirm there are 2 files in memory. The partialsSiafile and the regular
+	// file.
+	if len(sfs.siaFileMap) != 2 {
+		t.Fatal("Expected 2 files in memory, got:", len(sfs.siaFileMap))
 	}
 	// Close File
 	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm therte are no files in memory
+	// Confirm there are no files in memory
 	if len(sfs.siaFileMap) != 0 {
 		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
 	}
@@ -264,27 +281,27 @@ func TestFilesInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	// Confirm there is 2 file in memory
+	if len(sfs.siaFileMap) != 2 {
+		t.Fatal("Expected 2 files in memory, got:", len(sfs.siaFileMap))
 	}
 	// Access the file again
 	entry2, err := sfs.Open(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is still only has 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	// Confirm there is still only has 2 files in memory
+	if len(sfs.siaFileMap) != 2 {
+		t.Fatal("Expected 2 files in memory, got:", len(sfs.siaFileMap))
 	}
 	// Close one of the file instances
 	err = entry1.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is still only has 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	// Confirm there is still only has 2 files in memory
+	if len(sfs.siaFileMap) != 2 {
+		t.Fatal("Expected 2 files in memory, got:", len(sfs.siaFileMap))
 	}
 
 	// Confirm closing out remaining files removes all files from memory
@@ -294,9 +311,9 @@ func TestFilesInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there are no files in memory
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
+	// Confirm there is one file in memory
+	if len(sfs.siaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
 	}
 }
 
@@ -308,7 +325,7 @@ func TestRenameFileInMemory(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create SiaFileSet with SiaFile
+	// Create SiaFileSet with SiaFile and corresponding combined siafile.
 	entry, sfs, err := newTestSiaFileSetWithFile()
 	if err != nil {
 		t.Fatal(err)
@@ -322,9 +339,9 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Confirm there is 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	// Confirm there are 2 files in memory
+	if len(sfs.siaFileMap) != 2 {
+		t.Fatal("Expected  file in memory, got:", len(sfs.siaFileMap))
 	}
 
 	// Test renaming an instance of a file
@@ -334,9 +351,13 @@ func TestRenameFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm that renter still only has 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	// Confirm that renter still only has 2 files in memory
+	if len(sfs.siaFileMap) != 2 {
+		t.Fatal("Expected 2 file in memory, got:", len(sfs.siaFileMap))
+	}
+	_, err = os.Stat(entry.SiaFilePath())
+	if err != nil {
+		println("err2", err.Error())
 	}
 	// Rename second instance
 	newSiaPath := modules.RandomSiaPath()
@@ -344,28 +365,28 @@ func TestRenameFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is still only has 1 file in memory as renaming doesn't
-	// add the new name to memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 files in memory, got:", len(sfs.siaFileMap))
+	// Confirm there are still only 2 files in memory as renaming doesn't add
+	// the new name to memory
+	if len(sfs.siaFileMap) != 2 {
+		t.Fatal("Expected 2 files in memory, got:", len(sfs.siaFileMap))
 	}
 	// Close instance of renamed file
 	err = entry2.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is still has 1 file1 in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 files in memory, got:", len(sfs.siaFileMap))
+	// Confirm there are still only 2 files in memory
+	if len(sfs.siaFileMap) != 2 {
+		t.Fatal("Expected 2 files in memory, got:", len(sfs.siaFileMap))
 	}
 	// Close other instance of second file
 	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there are no files in memory
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
+	// Confirm there is only 1 file in memory
+	if len(sfs.siaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
 	}
 }
 
@@ -391,8 +412,8 @@ func TestDeleteFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Confirm there is 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
+	// Confirm there are 2 files in memory
+	if len(sfs.siaFileMap) != 2 {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
 	}
 
@@ -403,9 +424,9 @@ func TestDeleteFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is still only has 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	// Confirm there is still only has 2 files in memory
+	if len(sfs.siaFileMap) != 2 {
+		t.Fatal("Expected 2 files in memory, got:", len(sfs.siaFileMap))
 	}
 	// delete and close instance of file
 	if err := sfs.Delete(siaPath); err != nil {
@@ -415,9 +436,9 @@ func TestDeleteFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// There should be no more file in the set after deleting it.
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
+	// There should be one file in the set after deleting it.
+	if len(sfs.siaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
 	}
 	// confirm other instance is still in memory by calling methods on it
 	if !entry.Deleted() {
@@ -431,9 +452,9 @@ func TestDeleteFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm renter has no files in memory
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
+	// Confirm renter has one file in memory
+	if len(sfs.siaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
 	}
 }
 
@@ -523,8 +544,8 @@ func TestSiaDirDelete(t *testing.T) {
 				return
 			default:
 			}
-			err := entry.Save()
-			if err != nil && !strings.Contains(err.Error(), "can't call saveFile on deleted file") {
+			err := entry.SaveHeader()
+			if err != nil && !strings.Contains(err.Error(), "can't call createAndApplyTransaction on deleted file") {
 				t.Fatal(err)
 			}
 			time.Sleep(50 * time.Millisecond)
@@ -550,7 +571,7 @@ func TestSiaDirDelete(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams(1, true)
 		sf, err := sfs.NewSiaFile(modules.FileUploadParams{Source: source, SiaPath: fileSP, ErasureCode: rc}, sk, fileSize, fileMode)
 		if err != nil {
 			t.Fatal(err)
@@ -581,16 +602,23 @@ func TestSiaDirDelete(t *testing.T) {
 	close(stop)
 	wg.Wait()
 	time.Sleep(time.Second)
-	// The root siafile dir should be empty except for 1 .siadir file.
+	// The root siafile dir should be empty except for 1 .siadir file and a .csia
+	// file.
 	files, err := ioutil.ReadDir(sfs.staticSiaFileDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 1 || filepath.Ext(files[0].Name()) != modules.SiaDirExtension {
+	if len(files) != 2 {
 		for _, file := range files {
 			t.Log("Found ", file.Name())
 		}
 		t.Fatalf("There should be %v files/folders in the root dir but found %v\n", 1, len(files))
+	}
+	for _, file := range files {
+		if filepath.Ext(file.Name()) != modules.SiaDirExtension &&
+			filepath.Ext(file.Name()) != modules.PartialsSiaFileExtension {
+			t.Fatal("Encountered unexpected file:", file.Name())
+		}
 	}
 }
 
@@ -636,7 +664,7 @@ func TestSiaDirRename(t *testing.T) {
 				return
 			default:
 			}
-			err := entry.Save()
+			err := entry.SaveHeader()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -663,7 +691,7 @@ func TestSiaDirRename(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams(1, true)
 		sf, err := sfs.NewSiaFile(modules.FileUploadParams{Source: source, SiaPath: fileSP, ErasureCode: rc}, sk, fileSize, fileMode)
 		if err != nil {
 			t.Fatal(err)

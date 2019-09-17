@@ -7,9 +7,10 @@ import (
 	"sync"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestParallelFileAccess using a single file handle + ReadAt and WriteAt to

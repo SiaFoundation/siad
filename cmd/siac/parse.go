@@ -3,19 +3,28 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
-var errUnableToParseSize = errors.New("unable to parse size")
+var (
+	// errUnableToParseSize is returned when the input is unable to be parsed
+	// into a file size unit
+	errUnableToParseSize = errors.New("unable to parse size")
+
+	// errUnableToParseRateLimit is returned when the input is unable to be
+	// parsed into a rate limit unit
+	errUnableToParseRateLimit = errors.New("unable to parse ratelimit")
+)
 
 // filesize returns a string that displays a filesize in human-readable units.
 func filesizeUnits(size uint64) string {
@@ -162,6 +171,79 @@ func parseCurrency(amount string) (string, error) {
 	}
 
 	return "", errors.New("amount is missing units; run 'wallet --help' for a list of units")
+}
+
+// parseRatelimit converts a ratelimit input string of to an int64 representing
+// the bytes per second ratelimit.
+func parseRatelimit(rateLimitStr string) (int64, error) {
+	// Check for 0 values signifying that the no limit is being set
+	if rateLimitStr == "0" {
+		return 0, nil
+	}
+	// Create struct of rates. Have to start at the high end so that B/s is
+	// checked last, otherwise it would return false positives
+	rates := []struct {
+		unit   string
+		factor float64
+	}{
+		{"TB/s", 4},
+		{"GB/s", 3},
+		{"MB/s", 2},
+		{"KB/s", 1},
+		{"B/s", 0},
+	}
+	for _, rate := range rates {
+		if !strings.HasSuffix(rateLimitStr, rate.unit) {
+			continue
+		}
+
+		// trim units and spaces
+		rateLimitStr = strings.TrimSuffix(rateLimitStr, rate.unit)
+		rateLimitStr = strings.TrimSpace(rateLimitStr)
+
+		// Check for empty string meaning only the units were provided
+		if rateLimitStr == "" {
+			return 0, errUnableToParseRateLimit
+		}
+
+		// convert string to float for exponation
+		rateLimitFloat, err := strconv.ParseFloat(rateLimitStr, 64)
+		if err != nil {
+			return 0, errors.Compose(errUnableToParseRateLimit, err)
+		}
+
+		// Determine factor and convert to in64 for bps
+		factor := math.Pow(float64(1e3), rate.factor)
+		rateLimit := int64(factor * rateLimitFloat)
+
+		return rateLimit, nil
+	}
+
+	return 0, errUnableToParseRateLimit
+}
+
+// ratelimitUnits converts an int64 to a string with human-readable ratelimit
+// units. The unit used will be the largest unit that results in a value greater
+// than 1. The value is rounded to 4 significant digits.
+func ratelimitUnits(ratelimit int64) string {
+	// Check for bps
+	if ratelimit < 1e3 {
+		return fmt.Sprintf("%v %s", ratelimit, "B/s")
+	}
+	// iterate until we find a unit greater than c
+	mag := 1e3
+	unit := ""
+	for _, unit = range []string{"KB/s", "MB/s", "GB/s", "TB/s"} {
+		if float64(ratelimit) < mag*1e3 {
+			break
+		} else if unit != "TB/s" {
+			// don't want to perform this multiply on the last iter; that
+			// would give us 1.235 tbps instead of 1235 tbps
+			mag = mag * 1e3
+		}
+	}
+
+	return fmt.Sprintf("%.4g %s", float64(ratelimit)/mag, unit)
 }
 
 // yesNo returns "Yes" if b is true, and "No" if b is false.

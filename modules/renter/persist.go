@@ -1,20 +1,17 @@
 package renter
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 const (
@@ -67,147 +64,9 @@ type (
 	}
 )
 
-// MarshalSia implements the encoding.SiaMarshaller interface, writing the
-// file data to w.
-func (f *file) MarshalSia(w io.Writer) error {
-	enc := encoding.NewEncoder(w)
-
-	// encode easy fields
-	err := enc.EncodeAll(
-		f.name,
-		f.size,
-		f.masterKey,
-		f.pieceSize,
-		f.mode,
-	)
-	if err != nil {
-		return err
-	}
-	// COMPATv0.4.3 - encode the bytesUploaded and chunksUploaded fields
-	// TODO: the resulting .sia file may confuse old clients.
-	err = enc.EncodeAll(f.pieceSize*f.numChunks()*uint64(f.erasureCode.NumPieces()), f.numChunks())
-	if err != nil {
-		return err
-	}
-
-	// encode erasureCode
-	switch code := f.erasureCode.(type) {
-	case *siafile.RSCode:
-		err = enc.EncodeAll(
-			"Reed-Solomon",
-			uint64(code.MinPieces()),
-			uint64(code.NumPieces()-code.MinPieces()),
-		)
-		if err != nil {
-			return err
-		}
-	default:
-		if build.DEBUG {
-			panic("unknown erasure code")
-		}
-		return errors.New("unknown erasure code")
-	}
-	// encode contracts
-	if err := enc.Encode(uint64(len(f.contracts))); err != nil {
-		return err
-	}
-	for _, c := range f.contracts {
-		if err := enc.Encode(c); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// UnmarshalSia implements the encoding.SiaUnmarshaler interface,
-// reconstructing a file from the encoded bytes read from r.
-func (f *file) UnmarshalSia(r io.Reader) error {
-	dec := encoding.NewDecoder(r, 100e6)
-
-	// COMPATv0.4.3 - decode bytesUploaded and chunksUploaded into dummy vars.
-	var bytesUploaded, chunksUploaded uint64
-
-	// Decode easy fields.
-	err := dec.DecodeAll(
-		&f.name,
-		&f.size,
-		&f.masterKey,
-		&f.pieceSize,
-		&f.mode,
-		&bytesUploaded,
-		&chunksUploaded,
-	)
-	if err != nil {
-		return err
-	}
-	f.staticUID = persist.RandomSuffix()
-
-	// Decode erasure coder.
-	var codeType string
-	if err := dec.Decode(&codeType); err != nil {
-		return err
-	}
-	switch codeType {
-	case "Reed-Solomon":
-		var nData, nParity uint64
-		err = dec.DecodeAll(
-			&nData,
-			&nParity,
-		)
-		if err != nil {
-			return err
-		}
-		rsc, err := siafile.NewRSCode(int(nData), int(nParity))
-		if err != nil {
-			return err
-		}
-		f.erasureCode = rsc
-	default:
-		return errors.New("unrecognized erasure code type: " + codeType)
-	}
-
-	// Decode contracts.
-	var nContracts uint64
-	if err := dec.Decode(&nContracts); err != nil {
-		return err
-	}
-	f.contracts = make(map[types.FileContractID]fileContract)
-	var contract fileContract
-	for i := uint64(0); i < nContracts; i++ {
-		if err := dec.Decode(&contract); err != nil {
-			return err
-		}
-		f.contracts[contract.ID] = contract
-	}
-	return nil
-}
-
-// saveBubbleUpdates stores the current bubble updates to disk and then syncs to disk.
-func (r *Renter) saveBubbleUpdates() error {
-	return persist.SaveJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, repairLoopFilename))
-}
-
 // saveSync stores the current renter data to disk and then syncs to disk.
 func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
-}
-
-// loadAndExecuteBubbleUpdates loads any bubble updates from disk and calls each
-// update in its own thread
-func (r *Renter) loadAndExecuteBubbleUpdates() error {
-	err := persist.LoadJSON(persist.Metadata{}, r.bubbleUpdates, filepath.Join(r.persistDir, repairLoopFilename))
-	if os.IsNotExist(err) {
-		err = r.saveBubbleUpdates()
-	}
-	if err != nil {
-		return err
-	}
-	var siaPath modules.SiaPath
-	for dir := range r.bubbleUpdates {
-		siaPath.LoadString(dir)
-		go r.threadedBubbleMetadata(siaPath)
-	}
-	return nil
 }
 
 // managedLoadSettings fetches the saved renter data from disk.
@@ -274,27 +133,44 @@ func (r *Renter) managedInitPersist() error {
 	if err != nil {
 		return err
 	}
+	if err := r.tg.AfterStop(r.log.Close); err != nil {
+		return err
+	}
 
 	// Initialize the writeaheadlog.
-	txns, wal, err := writeaheadlog.New(filepath.Join(r.persistDir, walFile))
+	options := writeaheadlog.Options{
+		StaticLog: r.log,
+		Path:      filepath.Join(r.persistDir, walFile),
+	}
+	txns, wal, err := writeaheadlog.NewWithOptions(options)
 	if err != nil {
+		return err
+	}
+	if err := r.tg.AfterStop(wal.Close); err != nil {
 		return err
 	}
 
 	// Apply unapplied wal txns before loading the persistence structure to
 	// avoid loading potentially corrupted files.
+	if len(txns) > 0 {
+		r.log.Println("Wal initalized", len(txns), "transactions to apply")
+	}
 	for _, txn := range txns {
 		applyTxn := true
+		r.log.Println("applying transaction with", len(txn.Updates), "updates")
 		for _, update := range txn.Updates {
 			if siafile.IsSiaFileUpdate(update) {
+				r.log.Println("Applying a siafile update:", update.Name)
 				if err := siafile.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaFile update")
 				}
 			} else if siadir.IsSiaDirUpdate(update) {
+				r.log.Println("Applying a siadir update:", update.Name)
 				if err := siadir.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaDir update")
 				}
 			} else {
+				r.log.Println("wal update not applied, marking transaction as not applied")
 				applyTxn = false
 			}
 		}

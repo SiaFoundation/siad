@@ -3,11 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -49,8 +50,9 @@ var (
 	gatewayRatelimitCmd = &cobra.Command{
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
 		Short: "set maxdownloadspeed and maxuploadspeed",
-		Long: `Set the maxdownloadspeed and maxuploadspeed in bytes-per-second
-(B/s).  Set them to 0 for no limit.`,
+		Long: `Set the maxdownloadspeed and maxuploadspeed in 
+B/s (Bytes/s), KB/s (Kilobytes/s), MB/s (Megabytes/s), GB/s (Gigabytes/s), 
+or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
 		Run: wrap(gatewayratelimitcmd),
 	}
 )
@@ -122,13 +124,13 @@ func gatewaylistcmd() {
 // sets the maximum upload & download bandwidth the gateway module is permitted
 // to use.
 func gatewayratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
-	downloadSpeedInt, err := strconv.ParseInt(downloadSpeedStr, 10, 64)
+	downloadSpeedInt, err := parseRatelimit(downloadSpeedStr)
 	if err != nil {
-		die("Could not parse downloadspeed")
+		die(errors.AddContext(err, "unable to parse download speed"))
 	}
-	uploadSpeedInt, err := strconv.ParseInt(uploadSpeedStr, 10, 64)
+	uploadSpeedInt, err := parseRatelimit(uploadSpeedStr)
 	if err != nil {
-		die("Could not parse uploadspeed")
+		die(errors.AddContext(err, "unable to parse upload speed"))
 	}
 
 	err = httpClient.GatewayRateLimitPost(downloadSpeedInt, uploadSpeedInt)

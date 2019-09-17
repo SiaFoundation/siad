@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	"gitlab.com/NebulousLabs/entropy-mnemonics"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -292,6 +292,10 @@ type (
 		// re-encrypting the wallet with the provided key.
 		ChangeKey(masterKey crypto.CipherKey, newKey crypto.CipherKey) error
 
+		// ChangeKeyWithSeed is the same as ChangeKey but uses the primary seed
+		// instead of the current masterKey.
+		ChangeKeyWithSeed(seed Seed, newKey crypto.CipherKey) error
+
 		// Unlocked returns true if the wallet is currently unlocked, false
 		// otherwise.
 		Unlocked() (bool, error)
@@ -370,6 +374,7 @@ type (
 	// encrypted using a user-specified password. Common addresses are all
 	// derived from a single address seed.
 	Wallet interface {
+		Alerter
 		EncryptionManager
 		KeyManager
 

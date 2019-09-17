@@ -67,13 +67,13 @@ func TestEstimateWeight(t *testing.T) {
 	defer st.server.panicClose()
 
 	// announce a host, create an allowance, upload some data.
+	if err := st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -196,13 +196,13 @@ func TestWorkingStatus(t *testing.T) {
 	defer st.server.panicClose()
 
 	// announce a host, create an allowance, upload some data.
+	if err := st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -317,13 +317,13 @@ func TestStorageHandler(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	if err := st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -485,13 +485,13 @@ func TestResizeEmptyStorageFolder(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	if err := st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -567,13 +567,13 @@ func TestResizeNonemptyStorageFolder(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	if err := st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -927,13 +927,13 @@ func TestRemoveStorageFolderForced(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host.
+	if err := st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1017,13 +1017,13 @@ func TestDeleteSector(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Set up the host for forming contracts.
+	if err := st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 

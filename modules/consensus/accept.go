@@ -8,10 +8,10 @@ import (
 	"os"
 	"time"
 
+	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 var (
@@ -248,7 +248,10 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 	setErr := cs.db.Update(func(tx *bolt.Tx) error {
 		for i := 0; i < len(blocks); i++ {
 			// Start by checking the header of the block.
+			startTime := time.Now()
 			parent, err := cs.validateHeaderAndBlock(boltTxWrapper{tx}, blocks[i], blockIDs[i])
+			cs.log.Debugf("validateHeaderAndBlock time: %v", time.Since(startTime).Round(time.Millisecond))
+
 			if err == modules.ErrBlockKnown {
 				// Skip over known blocks.
 				continue
@@ -262,7 +265,10 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 			}
 
 			// Try adding the block to consensus.
+			addBlockTreeStartTime := time.Now()
 			changeEntry, err := cs.addBlockToTree(tx, blocks[i], parent)
+			cs.log.Debugf("Total validation time: %v", time.Since(startTime).Round(time.Millisecond))
+			cs.log.Debugf("addBlockToTreeTime time: %v", time.Since(addBlockTreeStartTime).Round(time.Millisecond))
 			if err == nil {
 				changes = append(changes, changeEntry)
 				chainExtended = true
@@ -278,6 +284,7 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 				err = nil
 			}
 			if err != nil {
+				cs.log.Debugln("addBlockToTree error: ", err)
 				return err
 			}
 			// Sanity check - we should never apply fewer blocks than we revert.

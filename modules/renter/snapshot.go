@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -69,33 +68,30 @@ func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, []types.SiaPublicK
 	return backups, hosts, nil
 }
 
-// BackupsOnHost returns the backups stored on a particular host.
+// BackupsOnHost returns the backups stored on a particular host. This operation
+// can take multiple minutes if the renter is performing many other operations
+// on this host, however this operation is given high priority over other types
+// of operations.
 func (r *Renter) BackupsOnHost(hostKey types.SiaPublicKey) ([]modules.UploadedBackup, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer r.tg.Done()
 
-	host, err := r.hostContractor.Session(hostKey, r.tg.StopChan())
+	// Find the relevant worker.
+	w, err := r.staticWorkerPool.callWorker(hostKey)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "host not found in the worker table")
 	}
-	defer host.Close()
-	entryTable, err := r.managedDownloadSnapshotTable(host)
-	if err != nil {
-		return nil, err
-	}
-	backups := make([]modules.UploadedBackup, len(entryTable))
-	for i, e := range entryTable {
-		backups[i] = modules.UploadedBackup{
-			Name:           string(bytes.TrimRight(e.Name[:], string(0))),
-			UID:            e.UID,
-			CreationDate:   e.CreationDate,
-			Size:           e.Size,
-			UploadProgress: 100,
-		}
-	}
-	return backups, nil
+
+	// Create and queue the job.
+	resultChan := w.callQueueFetchBackupsJob()
+
+	// Block until a result is returned from the worker. Note that `AddContext`
+	// will return nil if result.err is nil.
+	result := <-resultChan
+	result.err = errors.AddContext(result.err, "fetch backups job failed")
+	return result.uploadedBackups, result.err
 }
 
 // UploadBackup creates a backup of the renter which is uploaded to the sia
@@ -121,7 +117,6 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return errors.AddContext(err, "failed to open backup for uploading")
 	}
 	defer backup.Close()
-	// TODO: verify that src is actually a backup file
 
 	// Prepare the siapath.
 	sp, err := modules.NewSiaPath(name)
@@ -214,7 +209,11 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	}
 	defer entry.Close()
 	// Use .sia file to download snapshot.
-	s := r.managedStreamer(entry.Snapshot())
+	snap, err := entry.Snapshot()
+	if err != nil {
+		return err
+	}
+	s := r.managedStreamer(snap)
 	defer s.Close()
 	_, err = io.Copy(dstFile, s)
 	return err
@@ -382,48 +381,6 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	return nil
 }
 
-// managedDownloadSnapshotTable downloads the snapshot entry table from the specified host.
-func (r *Renter) managedDownloadSnapshotTable(host contractor.Session) ([]snapshotEntry, error) {
-	// Get the wallet seed.
-	ws, _, err := r.w.PrimarySeed()
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to get wallet's primary seed")
-	}
-	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := proto.DeriveRenterSeed(ws)
-	defer fastrand.Read(rs[:])
-	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, snapshotKeySpecifier)
-	defer fastrand.Read(secret[:])
-
-	// download the entry table
-	tableSector, err := host.DownloadIndex(0, 0, uint32(modules.SectorSize))
-	if err != nil {
-		if strings.Contains(err.Error(), "invalid sector bounds") {
-			// host is not storing any data yet; return an empty table.
-			return nil, nil
-		}
-		return nil, err
-	}
-	// decrypt the table
-	c, _ := crypto.NewSiaKey(crypto.TypeThreefish, secret[:])
-	encTable, err := c.DecryptBytesInPlace(tableSector, 0)
-	if err != nil || !bytes.Equal(encTable[:16], snapshotTableSpecifier[:]) {
-		// either the first sector was not an entry table, or it got corrupted
-		// somehow; either way, it's not retrievable, so we'll treat this as
-		// equivalent to having no entry table at all. This is not an error; it
-		// just means that when we upload a snapshot, we'll have to create a new
-		// table.
-		return nil, nil
-	}
-
-	var entryTable []snapshotEntry
-	if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
-		return nil, err
-	}
-	return entryTable, nil
-}
-
 // managedDownloadSnapshot downloads and returns the specified snapshot.
 func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBackup, dotSia []byte, err error) {
 	if err := r.tg.Add(); err != nil {
@@ -508,6 +465,10 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 // threadedSynchronizeSnapshots continuously scans hosts to ensure that all
 // current hosts are storing all known snapshots.
 func (r *Renter) threadedSynchronizeSnapshots() {
+	if err := r.tg.Add(); err != nil {
+		return
+	}
+	defer r.tg.Done()
 	// calcOverlap takes a host's entry table and the set of known snapshots,
 	// and calculates which snapshots the host is missing and which snapshots it
 	// has that we don't.

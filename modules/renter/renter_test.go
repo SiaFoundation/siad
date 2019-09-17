@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -18,7 +20,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // renterTester contains all of the modules that are used while testing the renter.
@@ -215,6 +216,7 @@ type pricesStub struct {
 	dbEntries []modules.HostDBEntry
 }
 
+func (pricesStub) Alerts() []modules.Alert            { return []modules.Alert{} }
 func (pricesStub) InitialScanComplete() (bool, error) { return true, nil }
 func (pricesStub) IPViolationsCheck() bool            { return true }
 

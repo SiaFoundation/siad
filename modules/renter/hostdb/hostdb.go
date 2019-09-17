@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/threadgroup"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -34,7 +34,8 @@ var (
 
 // contractInfo contains information about a contract relevant to the HostDB.
 type contractInfo struct {
-	StoredData uint64 `json:"storeddata"`
+	HostPublicKey types.SiaPublicKey
+	StoredData    uint64 `json:"storeddata"`
 }
 
 // The HostDB is a database of potential hosts. It assigns a weight to each
@@ -47,10 +48,11 @@ type HostDB struct {
 	gateway modules.Gateway
 	tpool   modules.TransactionPool
 
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persistDir string
-	tg         threadgroup.ThreadGroup
+	log           *persist.Logger
+	mu            sync.RWMutex
+	staticAlerter *modules.GenericAlerter
+	persistDir    string
+	tg            threadgroup.ThreadGroup
 
 	// knownContracts are contracts which the HostDB was informed about by the
 	// Contractor. It contains infos about active contracts we have formed with
@@ -143,8 +145,8 @@ func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
 func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	// Set the weight function in the hostdb.
 	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
 	hdb.weightFunc = wf
-	hdb.mu.Unlock()
 	// Update the hosttree and also the filteredTree if they are not the same.
 	err := hdb.hostTree.SetWeightFunction(wf)
 	if hdb.filteredTree != hdb.hostTree {
@@ -163,7 +165,8 @@ func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 			continue
 		}
 		knownContracts[contract.HostPublicKey.String()] = contractInfo{
-			StoredData: contract.Transaction.FileContractRevisions[0].NewFileSize,
+			HostPublicKey: contract.HostPublicKey,
+			StoredData:    contract.Transaction.FileContractRevisions[0].NewFileSize,
 		}
 	}
 	hdb.knownContracts = knownContracts
@@ -171,6 +174,14 @@ func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 
 // New returns a new HostDB.
 func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, error) {
+	// Create HostDB using production dependencies.
+	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
+}
+
+// NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
+// persistence data, spawns the HostDB's scanning threads, and subscribes it to
+// the consensusSet.
+func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Check for nil inputs.
 	if g == nil {
 		return nil, errNilGateway
@@ -181,14 +192,7 @@ func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPo
 	if tpool == nil {
 		return nil, errNilTPool
 	}
-	// Create HostDB using production dependencies.
-	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
-}
 
-// NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
-// persistence data, spawns the HostDB's scanning threads, and subscribes it to
-// the consensusSet.
-func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Create the HostDB object.
 	hdb := &HostDB{
 		cs:         cs,
@@ -200,6 +204,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		filteredHosts:  make(map[string]types.SiaPublicKey),
 		knownContracts: make(map[string]contractInfo),
 		scanMap:        make(map[string]struct{}),
+		staticAlerter:  modules.NewAlerter("hostdb"),
 	}
 
 	// Set the allowance, txnFees and hostweight function.
@@ -439,6 +444,14 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	}
 	// Check if disabling
 	if fm == modules.HostDBDisableFilter {
+		// Reset filtered field for hosts
+		for _, pk := range hdb.filteredHosts {
+			err := hdb.hostTree.SetFiltered(pk, false)
+			if err != nil {
+				hdb.log.Println("Unable to mark entry as not filtered:", err)
+			}
+		}
+		// Reset filtered fields
 		hdb.filteredTree = hdb.hostTree
 		hdb.filteredHosts = make(map[string]types.SiaPublicKey)
 		hdb.filterMode = fm
@@ -457,10 +470,17 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	// Create filteredHosts map
 	filteredHosts := make(map[string]types.SiaPublicKey)
 	for _, h := range hosts {
+		// Add host to filtered host map
 		if _, ok := filteredHosts[h.String()]; ok {
 			continue
 		}
 		filteredHosts[h.String()] = h
+
+		// Update host in unfiltered hosttree
+		err := hdb.hostTree.SetFiltered(h, true)
+		if err != nil {
+			hdb.log.Println("Unable to mark entry as filtered:", err)
+		}
 	}
 	var allErrs error
 	allHosts := hdb.hostTree.All()

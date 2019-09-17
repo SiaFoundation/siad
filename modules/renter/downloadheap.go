@@ -7,6 +7,10 @@ package renter
 //
 // Download jobs are added to the heap via a function call.
 
+// TODO: renter.threadedDownloadLoop will not need to call `callUpdate` once the
+// contractor is reporting changes in the contract set back to the worker
+// subsystem.
+
 import (
 	"container/heap"
 	"errors"
@@ -121,14 +125,14 @@ func (r *Renter) managedBlockUntilOnline() bool {
 func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownloadChunk) {
 	// Distribute the chunk to workers, marking the number of workers
 	// that have received the work.
-	id := r.mu.Lock()
+	r.staticWorkerPool.mu.RLock()
 	udc.mu.Lock()
-	udc.workersRemaining = len(r.workerPool)
+	udc.workersRemaining = len(r.staticWorkerPool.workers)
 	udc.mu.Unlock()
-	for _, worker := range r.workerPool {
-		worker.managedQueueDownloadChunk(udc)
+	for _, worker := range r.staticWorkerPool.workers {
+		worker.callQueueDownloadChunk(udc)
 	}
-	r.mu.Unlock(id)
+	r.staticWorkerPool.mu.RUnlock()
 
 	// If there are no workers, there will be no workers to attempt to clean up
 	// the chunk, so we must make sure that managedCleanUp is called at least
@@ -173,7 +177,7 @@ LOOP:
 
 		// Update the worker pool and fetch the current time. The loop will
 		// reset after a certain amount of time has passed.
-		r.managedUpdateWorkerPool()
+		r.staticWorkerPool.callUpdate()
 		workerUpdateTime := time.Now()
 
 		// Pull downloads out of the heap. Will break if the heap is empty, and

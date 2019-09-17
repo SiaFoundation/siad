@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"gitlab.com/NebulousLabs/Sia/types"
-
 	"github.com/spf13/cobra"
+
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (

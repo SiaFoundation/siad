@@ -27,6 +27,7 @@ var (
 	renterListRecursive     bool   // List files of folder recursively.
 	renterShowHistory       bool   // Show download history in addition to download queue.
 	siaDir                  string // Path to sia data dir
+	statusVerbose           bool   // Display additional siac information
 	walletRawTxn            bool   // Encode/decode transactions in base64-encoded binary.
 
 	allowanceFunds              string // amount of money to be used within a period
@@ -37,7 +38,6 @@ var (
 	allowanceExpectedUpload     string // expected data uploaded within period
 	allowanceExpectedDownload   string // expected data downloaded within period
 	allowanceExpectedRedundancy string // expected redundancy of most uploaded files
-	allowanceInteractive        bool   // set allowance interactively
 )
 
 var (
@@ -90,6 +90,8 @@ func die(args ...interface{}) {
 // statuscmd is the handler for the command `siac`
 // prints basic information about Sia.
 func statuscmd() {
+	// For UX formating
+	defer fmt.Println()
 
 	// Consensus Info
 	cg, err := httpClient.ConsensusGet()
@@ -126,6 +128,58 @@ func statuscmd() {
 	if err != nil {
 		die(err)
 	}
+
+	if !statusVerbose {
+		return
+	}
+
+	// Global Daemon Rate Limits
+	dg, err := httpClient.DaemonSettingsGet()
+	if err != nil {
+		die("Could not get daemon:", err)
+	}
+	fmt.Printf(`
+Global `)
+	rateLimitSummary(dg.MaxDownloadSpeed, dg.MaxUploadSpeed)
+
+	// Gateway Rate Limits
+	gg, err := httpClient.GatewayGet()
+	if err != nil {
+		die("Could not get gateway:", err)
+	}
+	fmt.Printf(`
+Gateway `)
+	rateLimitSummary(gg.MaxDownloadSpeed, gg.MaxUploadSpeed)
+
+	// Renter Rate Limits
+	rg, err := httpClient.RenterGet()
+	if err != nil {
+		die("Error getting renter:", err)
+	}
+	fmt.Printf(`
+Renter `)
+	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
+}
+
+// rateLimitSummary displays the a summary of the provided rate limits
+func rateLimitSummary(download, upload int64) {
+	fmt.Printf(`Rate limits: `)
+	if download == 0 {
+		fmt.Printf(`
+  Download Speed: %v`, "no limit")
+	} else {
+		fmt.Printf(`
+  Download Speed: %v`, ratelimitUnits(download))
+	}
+	if upload == 0 {
+		fmt.Printf(`
+  Upload Speed:   %v
+`, "no limit")
+	} else {
+		fmt.Printf(`
+  Upload Speed:   %v
+`, ratelimitUnits(upload))
+	}
 }
 
 func main() {
@@ -141,6 +195,8 @@ func main() {
 	// create command tree
 	root.AddCommand(versionCmd)
 	root.AddCommand(stopCmd)
+	root.AddCommand(globalRatelimitCmd)
+	root.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
 
 	root.AddCommand(updateCmd)
 	updateCmd.AddCommand(updateCheckCmd)
@@ -153,7 +209,7 @@ func main() {
 	hostContractCmd.Flags().StringVarP(&hostContractOutputType, "type", "t", "value", "Select output type")
 
 	root.AddCommand(hostdbCmd)
-	hostdbCmd.AddCommand(hostdbViewCmd, hostdbFiltermodeCmd)
+	hostdbCmd.AddCommand(hostdbViewCmd, hostdbFiltermodeCmd, hostdbSetFiltermodeCmd)
 	hostdbCmd.Flags().IntVarP(&hostdbNumHosts, "numhosts", "n", 0, "Number of hosts to display from the hostdb")
 	hostdbCmd.Flags().BoolVarP(&hostdbVerbose, "verbose", "v", false, "Display full hostdb information")
 
@@ -180,7 +236,7 @@ func main() {
 		renterFilesUploadCmd, renterUploadsCmd, renterExportCmd,
 		renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
 		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
-		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd)
+		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -202,7 +258,6 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedUpload, "expected-upload", "", "expected upload in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedRedundancy, "expected-redundancy", "", "expected redundancy of most uploaded files")
-	renterSetAllowanceCmd.Flags().BoolVarP(&allowanceInteractive, "interactive", "i", true, "Set allowance interactively, with guided prompts")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd)

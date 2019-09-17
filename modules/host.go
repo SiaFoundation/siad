@@ -161,6 +161,8 @@ type (
 	// things such as announcements, settings, and implementing all of the RPCs
 	// of the host protocol.
 	Host interface {
+		Alerter
+
 		// Announce submits a host announcement to the blockchain.
 		Announce() error
 

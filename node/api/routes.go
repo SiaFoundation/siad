@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 )
 
@@ -21,6 +22,7 @@ func (api *API) buildHTTPRoutes() {
 	router.RedirectTrailingSlash = false
 
 	// Daemon API Calls
+	router.GET("/daemon/alerts", api.daemonAlertsHandlerGET)
 	router.GET("/daemon/constants", api.daemonConstantsHandler)
 	router.GET("/daemon/version", api.daemonVersionHandler)
 	router.GET("/daemon/update", api.daemonUpdateHandlerGET)
@@ -71,6 +73,7 @@ func (api *API) buildHTTPRoutes() {
 	// Miner API Calls
 	if api.miner != nil {
 		router.GET("/miner", api.minerHandler)
+		router.POST("/miner/block", RequirePassword(api.minerBlockHandlerPOST, requiredPassword))
 		router.GET("/miner/header", RequirePassword(api.minerHeaderHandlerGET, requiredPassword))
 		router.POST("/miner/header", RequirePassword(api.minerHeaderHandlerPOST, requiredPassword))
 		router.GET("/miner/start", RequirePassword(api.minerStartHandler, requiredPassword))
@@ -122,6 +125,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/hostdb/active", api.hostdbActiveHandler)
 		router.GET("/hostdb/all", api.hostdbAllHandler)
 		router.GET("/hostdb/hosts/:pubkey", api.hostdbHostsHandler)
+		router.GET("/hostdb/filtermode", api.hostdbFilterModeHandlerGET)
 		router.POST("/hostdb/filtermode", RequirePassword(api.hostdbFilterModeHandlerPOST, requiredPassword))
 
 		// Deprecated endpoints.
@@ -135,9 +139,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/tpool/raw/:id", api.tpoolRawHandlerGET)
 		router.POST("/tpool/raw", api.tpoolRawHandlerPOST)
 		router.GET("/tpool/confirmed/:id", api.tpoolConfirmedGET)
-
-		// TODO: re-enable this route once the transaction pool API has been finalized
-		//router.GET("/transactionpool/transactions", api.transactionpoolTransactionsHandler)
+		router.GET("/tpool/transactions", api.tpoolTransactionsHandler)
 	}
 
 	// Wallet API Calls
