@@ -30,19 +30,27 @@ var (
 // random stuck chunks to the upload heap
 func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modules.SiaPath, error) {
 	var dirSiaPaths []modules.SiaPath
-	prevNumStuckChunks := r.uploadHeap.managedNumStuckChunks()
 	for r.uploadHeap.managedNumStuckChunks() < maxStuckChunksInHeap {
+		// Remember number of stuck chunks we are starting with
+		prevNumStuckChunks := r.uploadHeap.managedNumStuckChunks()
+
 		// Randomly get directory with stuck files
 		dirSiaPath, err := r.managedStuckDirectory()
 		if err != nil {
 			return dirSiaPaths, errors.AddContext(err, "unable to get random stuck directory")
 		}
-		// Remember the directory so bubble can be called on it at the end
-		// of the iteration
-		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
 
-		// Add stuck chunks to upload heap and signal repair needed
-		r.managedBuildChunkHeap(dirSiaPath, hosts, targetStuckChunks)
+		// Get Random stuck file from directory
+		siaPath, err := r.managedStuckFile(dirSiaPath)
+		if err != nil {
+			return dirSiaPaths, errors.AddContext(err, "unable to get random stuck file")
+		}
+
+		// Add stuck chunk to upload heap and signal repair needed
+		err = r.managedBuildAndPushRandomChunk(siaPath, hosts, targetStuckChunks)
+		if err != nil {
+			return dirSiaPaths, errors.AddContext(err, "unable to push random stuck chunk")
+		}
 
 		// Sanity check that stuck chunks were added
 		currentNumStuckChunks := r.uploadHeap.managedNumStuckChunks()
@@ -52,6 +60,10 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modul
 			// in an infinite loop
 			break
 		}
+
+		// Remember the directory so bubble can be called on it at the end of
+		// the iteration
+		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
 		r.log.Debugf("Added %v stuck chunks from directory `%s`", currentNumStuckChunks-prevNumStuckChunks, dirSiaPath.String())
 		prevNumStuckChunks = currentNumStuckChunks
 	}
@@ -374,7 +386,6 @@ func (r *Renter) threadedStuckFileLoop() {
 	defer r.tg.Done()
 
 	// Loop until the renter has shutdown or until there are no stuck chunks
-	var dirsToBubble []modules.SiaPath
 	for {
 		// Return if the renter has shut down.
 		select {
@@ -434,54 +445,13 @@ func (r *Renter) threadedStuckFileLoop() {
 			continue
 		}
 
-		// Get Random stuck file from directory
-		siaPath, err := r.managedStuckFile(dirSiaPath)
-		if err != nil {
-			r.log.Debugln("WARN: error getting random stuck file:", err)
-			// Sleep for a little bit before continuing
-			select {
-			case <-time.After(stuckLoopErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-			continue
-		}
-
-		// Refresh the worker pool and get the set of hosts that are currently
-		// useful for uploading.
-		hosts = r.managedRefreshHostsAndWorkers()
-
-		// Add stuck chunk to upload heap and signal repair needed
-		err = r.managedBuildAndPushRandomChunk(siaPath, hosts, targetStuckChunks)
-		if err != nil {
-			r.log.Debugln("WARN: error pushing random stuck to uploadheap:", err)
-			// Sleep for a little bit before continuing
-			select {
-			case <-time.After(stuckLoopErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-			continue
-		}
-		r.log.Debugf("Attempting to repair stuck chunk from file `%s`", siaPath.String())
+		// Signal that a repair is needed because stuck chunks were added to the
+		// upload heap
 		select {
 		case r.uploadHeap.repairNeeded <- struct{}{}:
 		default:
 		}
 		r.log.Println(numStuckChunks, "stuck chunks added to the upload heap, repair signal sent")
-
-		// Remember directory so we can call bubble since we successfully added
-		// a stuck chunk to the upload heap
-		dirsToBubble = append(dirsToBubble, dirSiaPath)
-
-		// Check if number of stuck chunks in uploadHeap is sufficient
-		r.uploadHeap.mu.Lock()
-		numStuckChunks = len(r.uploadHeap.stuckHeapChunks)
-		r.uploadHeap.mu.Unlock()
-		if numStuckChunks < maxStuckChunksInHeap {
-			// Add another stuck chunk
-			continue
-		}
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
@@ -512,9 +482,6 @@ func (r *Renter) threadedStuckFileLoop() {
 				}
 			}
 		}
-
-		// Clear directories
-		dirsToBubble = []modules.SiaPath{}
 	}
 }
 

@@ -544,8 +544,8 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 	return siaPaths, nil
 }
 
-// managedBuildAndPushRandomChunk randomly selects a file and builds the
-// unfinished chunks, then randomly adds a chunk to the upload heap
+// managedBuildAndPushRandomChunk randomly selects a stuck chunk from a file and
+// adds it to the upload heap
 func (r *Renter) managedBuildAndPushRandomChunk(siaPath modules.SiaPath, hosts map[string]struct{}, target repairTarget) error {
 	// Open file
 	file, err := r.staticFileSet.Open(siaPath)
