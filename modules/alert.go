@@ -73,17 +73,11 @@ type (
 
 // MarshalJSON defines a JSON encoding for the AlertSeverity.
 func (a AlertSeverity) MarshalJSON() ([]byte, error) {
-	switch a {
-	case SeverityWarning:
-		return json.Marshal("warning")
-	case SeverityError:
-		return json.Marshal("error")
-	case SeverityCritical:
-		return json.Marshal("critical")
-	case SeverityUnknown:
-	default:
+	if a == SeverityWarning || a == SeverityError || a == SeverityCritical {
+		return json.Marshal(a.String())
+	} else {
+		return nil, errors.New("unknown AlertSeverity")
 	}
-	return nil, errors.New("unknown AlertSeverity")
 }
 
 // UnmarshalJSON attempts to decode an AlertSeverity.
