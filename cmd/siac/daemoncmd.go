@@ -60,15 +60,16 @@ or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
 func alertscmd() {
 	al, err := httpClient.DaemonAlertsGet()
 	if err != nil {
-		fmt.Println("Could nete get daemon alerts:", err)
+		fmt.Println("Could not get daemon alerts:", err)
 	}
 	fmt.Println("There are " + strconv.Itoa(len(al.Alerts)) + " alerts\n")
 	for id, a := range al.Alerts {
-		fmt.Printf(`Alert Number: %v
+		fmt.Printf(`Alert ID: %v
   Module:   %s
   Severity: %s
   Message:  %s
   Cause:    %s
+
 `, id, a.Module, a.Severity.String(), a.Msg, a.Cause)
 	}
 }
