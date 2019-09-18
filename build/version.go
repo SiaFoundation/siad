@@ -14,7 +14,7 @@ const (
 	MaxEncodedVersionLength = 100
 
 	// Version is the current version of siad.
-	Version = "1.4.1"
+	Version = "1.4.1.2"
 )
 
 // ReleaseTag contains the release tag, such as "rc3". It is supplied at build
