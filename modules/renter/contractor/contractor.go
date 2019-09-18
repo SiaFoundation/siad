@@ -34,15 +34,16 @@ var (
 // contracts.
 type Contractor struct {
 	// dependencies
-	cs         consensusSet
-	hdb        hostDB
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persist    persister
-	staticDeps modules.Dependencies
-	tg         siasync.ThreadGroup
-	tpool      transactionPool
-	wallet     wallet
+	cs            consensusSet
+	hdb           hostDB
+	log           *persist.Logger
+	mu            sync.RWMutex
+	persist       persister
+	staticAlerter *modules.GenericAlerter
+	staticDeps    modules.Dependencies
+	tg            siasync.ThreadGroup
+	tpool         transactionPool
+	wallet        wallet
 
 	// Only one thread should be performing contract maintenance at a time.
 	interruptMaintenance chan struct{}
@@ -55,9 +56,9 @@ type Contractor struct {
 
 	allowance     modules.Allowance
 	blockHeight   types.BlockHeight
+	synced        chan struct{}
 	currentPeriod types.BlockHeight
 	lastChange    modules.ConsensusChangeID
-	synced        bool
 
 	// recentRecoveryChange is the first ConsensusChange that was missed while
 	// trying to find recoverable contracts. This is where we need to start
@@ -233,6 +234,14 @@ func (c *Contractor) SetRateLimits(readBPS int64, writeBPS int64, packetSize uin
 	c.staticContracts.SetRateLimits(readBPS, writeBPS, packetSize)
 }
 
+// Synced returns a channel that is closed when the contractor is synced with
+// the peer-to-peer network.
+func (c *Contractor) Synced() <-chan struct{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.synced
+}
+
 // Close closes the Contractor.
 func (c *Contractor) Close() error {
 	return c.tg.Stop()
@@ -290,15 +299,17 @@ func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, 
 func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
 	// Create the Contractor object.
 	c := &Contractor{
-		cs:         cs,
-		staticDeps: deps,
-		hdb:        hdb,
-		log:        l,
-		persist:    p,
-		tpool:      tp,
-		wallet:     w,
+		staticAlerter: modules.NewAlerter("contractor"),
+		cs:            cs,
+		staticDeps:    deps,
+		hdb:           hdb,
+		log:           l,
+		persist:       p,
+		tpool:         tp,
+		wallet:        w,
 
 		interruptMaintenance: make(chan struct{}),
+		synced:               make(chan struct{}),
 
 		staticContracts:      contractSet,
 		downloaders:          make(map[types.FileContractID]*hostDownloader),
@@ -463,8 +474,10 @@ func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID
 
 // managedSynced returns true if the contractor is synced with the consensusset.
 func (c *Contractor) managedSynced() bool {
-	c.mu.RLock()
-	synced := c.synced
-	c.mu.RUnlock()
-	return synced
+	select {
+	case <-c.synced:
+		return true
+	default:
+	}
+	return false
 }

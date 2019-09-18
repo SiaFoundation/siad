@@ -197,11 +197,6 @@ func (s *streamer) managedFillCache() bool {
 		// close the destination buffer to avoid deadlocks.
 		return ddw.Close()
 	})
-	// Set the in-memory buffer to nil just to be safe in case of a memory
-	// leak.
-	defer func() {
-		d.destination = nil
-	}()
 	// Block until the download has completed.
 	select {
 	case <-d.completeChan:

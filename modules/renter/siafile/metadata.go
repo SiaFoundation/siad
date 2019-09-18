@@ -166,6 +166,7 @@ type (
 		Redundancy          float64
 		Size                uint64
 		StuckHealth         float64
+		UID                 SiafileUID
 	}
 
 	// CachedHealthMetadata is a healper struct that contains the siafile health

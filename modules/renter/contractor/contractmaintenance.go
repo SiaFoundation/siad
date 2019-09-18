@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -867,6 +868,16 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	defer c.maintenanceLock.Unlock()
 
+	// Register the WalletLockedDuringMaintenance alert if necessary.
+	var registerWalletLockedDuringMaintenance bool
+	defer func() {
+		if registerWalletLockedDuringMaintenance {
+			c.staticAlerter.RegisterAlert(modules.AlertIDWalletLockedDuringMaintenance, AlertMSGWalletLockedDuringMaintenance, modules.ErrLockedWallet.Error(), modules.SeverityWarning)
+		} else {
+			c.staticAlerter.UnregisterAlert(modules.AlertIDWalletLockedDuringMaintenance)
+		}
+	}()
+
 	// Perform general cleanup of the contracts. This includes recovering lost
 	// contracts, archiving contracts, and other cleanup work. This should all
 	// happen before the rest of the maintenance.
@@ -1030,6 +1041,15 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	c.log.Debugln("The allowance has this many remaning funds:", fundsRemaining)
 
+	// Register the AllowanceLowFunds alert if necessary.
+	var registerLowFundsAlert bool
+	defer func() {
+		if registerLowFundsAlert {
+			c.staticAlerter.RegisterAlert(modules.AlertIDAllowanceLowFunds, AlertMSGAllowanceLowFunds, "", modules.SeverityWarning)
+		} else {
+			c.staticAlerter.UnregisterAlert(modules.AlertIDAllowanceLowFunds)
+		}
+	}()
 	// Go through the contracts we've assembled for renewal. Any contracts that
 	// need to be renewed because they are expiring (renewSet) get priority over
 	// contracts that need to be renewed because they have exhausted their funds
@@ -1038,14 +1058,16 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, renewal := range renewSet {
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
-			c.log.Println("contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
+			registerWalletLockedDuringMaintenance = true
+			c.log.Println("Contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
 			return
 		}
 
 		c.log.Println("Attempting to perform a renewal:", renewal.id)
 		// Skip this renewal if we don't have enough funds remaining.
-		if renewal.amount.Cmp(fundsRemaining) > 0 {
-			c.log.Debugln("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
+		if renewal.amount.Cmp(fundsRemaining) > 0 || c.staticDeps.Disrupt("LowFundsRenewal") {
+			c.log.Println("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
+			registerLowFundsAlert = true
 			continue
 		}
 
@@ -1074,6 +1096,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, renewal := range refreshSet {
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
 			c.log.Println("contractor is attempting to refresh contracts that have run out of funds, however the wallet is locked")
 			return
 		}
@@ -1157,12 +1180,14 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, host := range hosts {
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
 			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
 			return
 		}
 
 		// Determine if we have enough money to form a new contract.
-		if fundsRemaining.Cmp(initialContractFunds) < 0 {
+		if fundsRemaining.Cmp(initialContractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
+			registerLowFundsAlert = true
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
 		}
@@ -1175,9 +1200,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Attempt forming a contract with this host.
+		start := time.Now()
 		fundsSpent, newContract, err := c.managedNewContract(host, initialContractFunds, endHeight)
 		if err != nil {
-			c.log.Printf("Attempted to form a contract with %v, but negotiation failed: %v\n", host.NetAddress, err)
+			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
 			continue
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)

@@ -12,6 +12,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
+// TODO - once bubbling metadata has been updated to be more I/O
+// efficient this code should be removed and we should call bubble when
+// we clean up the upload chunk after a successful repair.
+
 var (
 	// errNoStuckFiles is a helper to indicate that there are no stuck files in
 	// the renter's directory
@@ -406,6 +410,10 @@ func (r *Renter) threadedStuckFileLoop() {
 
 		// Call bubble before continuing on next iteration to ensure filesystem
 		// is updated.
+		//
+		// TODO - once bubbling metadata has been updated to be more I/O
+		// efficient this code should be removed and we should call bubble when
+		// we clean up the upload chunk after a successful repair.
 		for _, dirSiaPath := range dirSiaPaths {
 			err = r.managedBubbleMetadata(dirSiaPath)
 			if err != nil {

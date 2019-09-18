@@ -20,10 +20,6 @@ const (
 	// when running in debug mode.
 	logSizeFrequency = time.Minute * 5
 
-	// maxTxnAge determines the maximum age of a transaction (in block height)
-	// allowed before the transaction is pruned from the transaction pool.
-	maxTxnAge = types.BlockHeight(24)
-
 	// TransactionPoolFeeExponentiation defines the polynomial rate of growth
 	// required to keep putting transactions into the transaction pool. If the
 	// exponentiation is 2, then doubling the size of the transaction pool
@@ -53,6 +49,16 @@ const (
 	// maxMultiplier defines the general gap between the maximum recommended fee
 	// and the minimum recommended fee.
 	maxMultiplier = 3
+
+	// feeEstimationConstantPadding is the constant amount of padding added to
+	// the current tpool size when estimating a good fee rate for new
+	// transactions.
+	feeEstimationConstantPadding = 250e3
+
+	// feeEstimationProportionalPadding is the amount of proportional padding
+	// added to the current tpool size when estimating a good fee rate for new
+	// transactions.
+	feeEstimationProportionalPadding = 1.25
 
 	// minExtendMultiplier defines the amount we multiply into the minimum
 	// amount required to extend the fee pool when coming up with a min fee
@@ -84,4 +90,13 @@ var (
 		Dev:      20 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
+
+	// MaxTransactionAge determines the maximum age of a transaction (in block
+	// height) allowed before the transaction is pruned from the transaction
+	// pool.
+	MaxTransactionAge = build.Select(build.Var{
+		Standard: types.BlockHeight(24),
+		Dev:      types.BlockHeight(12),
+		Testing:  types.BlockHeight(5),
+	}).(types.BlockHeight)
 )

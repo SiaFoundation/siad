@@ -217,6 +217,7 @@ type pricesStub struct {
 	dbEntries []modules.HostDBEntry
 }
 
+func (pricesStub) Alerts() []modules.Alert            { return []modules.Alert{} }
 func (pricesStub) InitialScanComplete() (bool, error) { return true, nil }
 func (pricesStub) IPViolationsCheck() bool            { return true }
 

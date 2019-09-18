@@ -571,6 +571,11 @@ it up by finding a stuck chunk.
    rely on the `repairTarget` to know if they should target stuck chunks or
    unstuck chunks 
 
+**TODOs**  
+ - once bubbling metadata has been updated to be more I/O efficient this code
+   should be removed and we should call bubble when we clean up the upload chunk
+   after a successful repair.
+
 ### Backup Subsystem
 **Key Files**
  - [backup.go](./backup.go)
