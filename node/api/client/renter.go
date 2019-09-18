@@ -544,10 +544,6 @@ func (c *Client) RenterValidateSiaPathPost(siaPathStr string) (err error) {
 // RenterUploadReadyGet uses the /renter/uploadready endpoint to determine if
 // the renter is ready for upload.
 func (c *Client) RenterUploadReadyGet(dataPieces, parityPieces uint64) (rur api.RenterUploadReadyGet, err error) {
-	if dataPieces == 0 || parityPieces == 0 {
-		err = errors.New("data pieces and parity pieces can not be 0")
-		return
-	}
 	strDataPieces := strconv.FormatUint(dataPieces, 10)
 	strParityPieces := strconv.FormatUint(parityPieces, 10)
 	query := fmt.Sprintf("?datapieces=%v&paritypieces=%v",
