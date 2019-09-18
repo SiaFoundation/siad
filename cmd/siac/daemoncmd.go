@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -65,17 +64,12 @@ func alertscmd() {
 	}
 	fmt.Println("There are " + strconv.Itoa(len(al.Alerts)) + " alerts\n")
 	for id, a := range al.Alerts {
-		var alert modules.AlertSeverity = a.Severity
-		sev, err := alert.MarshalJSON()
-		if err != nil {
-			fmt.Println("Could not marshal alert severity")
-		}
 		fmt.Printf(`Alert Number: %v
   Module:   %s
   Severity: %s
   Message:  %s
   Cause:    %s
-`, id, a.Module, sev, a.Msg, a.Cause)
+`, id, a.Module, a.Severity.String(), a.Msg, a.Cause)
 	}
 }
 

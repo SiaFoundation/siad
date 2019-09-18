@@ -105,6 +105,21 @@ func (a *AlertSeverity) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// String converts an alertSeverity to a String
+func (a AlertSeverity) String() string {
+	switch a {
+	case SeverityWarning:
+		return "warning"
+	case SeverityError:
+		return "error"
+	case SeverityCritical:
+		return "critical"
+	case SeverityUnknown:
+	default:
+	}
+	return "unknown"
+}
+
 // GenericAlerter implements the Alerter interface. It can be used as a helper
 // type to implement the Alerter interface for modules and submodules.
 type (
