@@ -77,7 +77,6 @@ func (a AlertSeverity) MarshalJSON() ([]byte, error) {
 		return json.Marshal(a.String())
 	}
 	return nil, errors.New("unknown AlertSeverity")
-
 }
 
 // UnmarshalJSON attempts to decode an AlertSeverity.

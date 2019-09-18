@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -62,14 +61,14 @@ func alertscmd() {
 	if err != nil {
 		fmt.Println("Could not get daemon alerts:", err)
 	}
-	fmt.Println("There are " + strconv.Itoa(len(al.Alerts)) + " alerts\n")
+	fmt.Println("There are", len(al.Alerts), "alerts")
 	for id, a := range al.Alerts {
-		fmt.Printf(`Alert ID: %v
+		fmt.Printf(`
+Alert ID: %v
   Module:   %s
   Severity: %s
   Message:  %s
   Cause:    %s
-
 `, id, a.Module, a.Severity.String(), a.Msg, a.Cause)
 	}
 }
