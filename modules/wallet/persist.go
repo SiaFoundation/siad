@@ -32,7 +32,7 @@ var (
 
 // spendableKeyFile stores an encrypted spendable key on disk.
 type spendableKeyFile struct {
-	UID                    uniqueID
+	Salt                   walletSalt
 	EncryptionVerification crypto.Ciphertext
 	SpendableKey           crypto.Ciphertext
 }
@@ -55,10 +55,10 @@ func (w *Wallet) openDB(filename string) (err error) {
 			}
 		}
 		// if the wallet does not have a UID, create one
-		if tx.Bucket(bucketWallet).Get(keyUID) == nil {
-			uid := make([]byte, len(uniqueID{}))
+		if tx.Bucket(bucketWallet).Get(keySalt) == nil {
+			uid := make([]byte, len(walletSalt{}))
 			fastrand.Read(uid[:])
-			tx.Bucket(bucketWallet).Put(keyUID, uid)
+			tx.Bucket(bucketWallet).Put(keySalt, uid)
 		}
 		// if fields in bucketWallet are nil, set them to zero to prevent unmarshal errors
 		wb := tx.Bucket(bucketWallet)
@@ -199,7 +199,7 @@ func (w *Wallet) CreateBackup(backupFilepath string) error {
 
 // compat112Persist is the structure of the wallet.json file used in v1.1.2
 type compat112Persist struct {
-	UID                    uniqueID
+	UID                    walletSalt
 	EncryptionVerification crypto.Ciphertext
 	PrimarySeedFile        seedFile
 	PrimarySeedProgress    uint64
@@ -235,7 +235,7 @@ func (w *Wallet) convertPersistFrom112To120(dbFilename, compatFilename string) e
 			}
 		}
 		// set UID, verification, seeds, and seed progress
-		tx.Bucket(bucketWallet).Put(keyUID, data.UID[:])
+		tx.Bucket(bucketWallet).Put(keySalt, data.UID[:])
 		tx.Bucket(bucketWallet).Put(keyEncryptionVerification, data.EncryptionVerification)
 		tx.Bucket(bucketWallet).Put(keyPrimarySeedFile, encoding.Marshal(data.PrimarySeedFile))
 		tx.Bucket(bucketWallet).Put(keyAuxiliarySeedFiles, encoding.Marshal(data.AuxiliarySeedFiles))

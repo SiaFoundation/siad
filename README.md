@@ -1,4 +1,4 @@
-# [![Sia Logo](https://sia.tech/static/assets/svg/sia-green-logo.svg)](http://sia.tech) v1.4.1 (Draco)
+# [![Sia Logo](https://sia.tech/static/assets/svg/sia-green-logo.svg)](http://sia.tech)
 
 [![Build Status](https://gitlab.com/NebulousLabs/Sia/badges/master/build.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
 [![Coverage Report](https://gitlab.com/NebulousLabs/Sia/badges/master/coverage.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
@@ -100,6 +100,14 @@ go get -u gitlab.com/NebulousLabs/Sia/...
 
 This will download the Sia repo to your `$GOPATH/src` folder and install the
 `siad` and `siac` binaries in your `$GOPATH/bin` folder.
+
+If you do not have `$GOPATH` set, or you prefer to use `git clone`, the following 
+commands can be used to build from source:
+
+```
+git clone https://gitlab.com/NebulousLabs/Sia
+cd Sia && make
+``` 
 
 To stay up-to-date, run the previous `go get` command again. Alternatively, you
 can use the Makefile provided in this repo. Run `git pull origin master` to

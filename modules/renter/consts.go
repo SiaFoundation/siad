@@ -1,9 +1,11 @@
 package renter
 
 import (
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // Version and system parameters.
@@ -12,6 +14,20 @@ const (
 	// last updated
 	persistVersion = "1.4.0"
 )
+
+const (
+	// AlertMSGSiafileLowRedundancy indicates that a file is below 75% redundancy.
+	AlertMSGSiafileLowRedundancy = "The SiaFile mentioned in the 'Cause' is below 75% redundancy"
+	// AlertSiafileLowRedundancyThreshold is the health threshold at which we start
+	// registering the LowRedundancy alert for a Siafile.
+	AlertSiafileLowRedundancyThreshold = 0.75
+)
+
+// AlertCauseSiafileLowRedundancy creates a customized "cause" for a siafile
+// with a certain path and health.
+func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health float64) string {
+	return fmt.Sprintf("Siafile '%v' has a health of %v", siaPath.String(), health)
+}
 
 // Default redundancy parameters.
 var (
@@ -139,6 +155,14 @@ var (
 		Standard: 15 * time.Minute,
 		Testing:  15 * time.Second,
 	}).(time.Duration)
+
+	// maxSuccessfulStuckRepairFiles is the maximum number of files that the
+	// stuck loop will track when there is a successful stuck chunk repair
+	maxSuccessfulStuckRepairFiles = build.Select(build.Var{
+		Dev:      3,
+		Standard: 20,
+		Testing:  2,
+	}).(int)
 
 	// maxUploadHeapChunks is the maximum number of chunks that we should add to
 	// the upload heap. This also will be used as the target number of chunks to

@@ -338,6 +338,42 @@ standard success or error response. See [standard responses](#standard-responses
 
 The daemon is responsible for starting and stopping the modules which make up the rest of Sia.
 
+## /daemon/alerts [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/daemon/alerts"
+```
+
+Returns the alerts of the Sia instance.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "alerts": [
+    {
+      "cause": "wallet is locked",
+      "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
+      "module": "contractor",
+      "severity": "warning",
+    }
+  ],
+}
+```
+**cause** | string  
+Cause is the cause for the information contained in msg if known.
+
+**msg** | string  
+Msg contains information about an issue.
+
+**module** | string  
+Module is the module which caused the alert.
+
+**severity** | string  
+Severity is either "warning", "error" or "critical" where "error" might be a lack of internet access and "critical" would be a lack of funds and contracts that are about to expire due to that.
+
 ## /daemon/constants [GET]
 > curl example  
 
@@ -1725,6 +1761,24 @@ stops the cpu miner. Does nothing if the cpu miner is not running.
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /miner/block [POST]
+> curl example  
+
+```
+curl -A "Sia-Agent" -data "<byte-encoded-block>" -u "":<apipassword> "localhost:9980/miner/block"
+```
+
+Submits a solved block and broadcasts it.
+
+### Byte Request
+
+For efficiency the block is submitted in a raw byte encoding using the Sia encoding.
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+
 ## /miner/header [GET]
 > curl example  
 
@@ -1759,14 +1813,14 @@ curl -A "Sia-Agent" -data "<byte-encoded-header>" -u "":<apipassword> "localhost
 
 submits a header that has passed the POW.
 
-### Byte Response
+### Byte Request
 For efficiency headers are submitted as raw byte encodings of the header in the body of the request, rather than as a query string parameter or path parameter. The request body should contain only the 80 bytes of the encoded header. The encoding is the same encoding used in `/miner/header [GET]` endpoint.
 
 Blocks are mined by repeatedly changing the nonce of the header, hashing the header's bytes, and comparing the resulting hash to the target. The block with that nonce is valid if the hash is less than the target. If none of the 2^64 possible nonces result in a header with a hash less than the target, call /miner/header [GET] again to get a new block header with a different merkle root. The above process can then be repeated for the new block header.  
 
 The other fields can generally be ignored. The parent block ID field is the hash of the parent block's header. Modifying this field will result in an orphan block. The timestamp is the time at which the block was mined and is set by the Sia Daemon. Modifying this field can result in invalid block. The merkle root is the merkle root of a merkle tree consisting of the timestamp, the miner outputs (one leaf per payout), and the transactions (one leaf per transaction). Modifying this field will result in an invalid block.
 
-Field | Byte range within response | Byte range within header
+Field | Byte range within request | Byte range within header
 -------------- | -------------- | --------------
 target | [0-32)
 header | [32-112)
@@ -2879,7 +2933,7 @@ returns whether the requested transaction has been seen on the blockchain. Note,
 
 ### Path Parameters
 #### REQUIRED
-**id** | hash
+**id** | hash  
 id of the transaction being queried
 
 ### JSON Response
@@ -2890,7 +2944,7 @@ id of the transaction being queried
   "confirmed": true // boolean
 }
 ```
-**confirmed** | boolean
+**confirmed** | boolean  
 indicates if a transaction is confirmed on the blockchain
 
 ## /tpool/fee [GET]
@@ -2911,10 +2965,10 @@ returns the minimum and maximum estimated fees expected by the transaction pool.
   "maximum": "5678"  // hastings / byte
 }
 ```
-**minimum** | hastings / byte
+**minimum** | hastings / byte  
 the minimum estimated fee
 
-**maximum** | hastings / byte
+**maximum** | hastings / byte  
 the maximum estimated fee
 
 ## /tpool/raw/:id [GET]
@@ -2928,7 +2982,7 @@ returns the ID for the requested transaction and its raw encoded parents and tra
 
 ### Path Parameters
 #### REQUIRED
-**id** | hash 
+**id** | hash  
 id of the transaction being queried
 
 ### JSON Response
@@ -2961,38 +3015,85 @@ submits a raw transaction to the transaction pool, broadcasting it to the transa
 
 ### Query String Parameters
 #### REQUIRED
-**parents** | string 
+**parents** | string  
 JSON- or base64-encoded transaction parents
 
-**transaction** | string
+**transaction** | string  
 JSON- or base64-encoded transaction
 
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
 
-## /tpool/confirmed/:id [GET]
+## /tpool/transactions [GET]
 > curl example  
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/tpool/confirmed/9028cc285ad755b81c0cfead3710c1344044175e59cdc4ca097374fe188c9acf"
+curl -A "Sia-Agent" "localhost:9980/tpool/transactions"
 ```
 
-### Query String Parameters
-#### REQUIRED
-**id** | hash
-id of the transaction being queried
+returns the transactions of the transaction pool.
 
 ### JSON Response
 > JSON Response Example
-
+ 
 ```go
 {
-  "confirmed": true,
+  "transactions": [     
+    {
+      "siacoininputs":  [ // []SiacoinInput
+        {
+          "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+          "unlockconditions": {
+            "publickeys": [
+               {
+                "algorithm": "ed25519",
+                "key": "EKjiRsUyMOLER+8u3uXxemOEKMxRc2TxCh0QkcSCVHY="
+               }
+              ],
+            "signaturesrequired": 1,
+            "timelock": 0
+          }
+        },
+      ]      
+      "siacoinoutputs": []        // []SiacoinOutput        
+      "filecontracts":  []        // []FileContract
+      "filecontractrevisions": [] // []FileContractRevision 
+      "storageproofs":  []        // []StorageProof         
+      "siafundinputs":  []        // []SiafundInput
+      "siafundoutputs": []        // []SiafundOutput      
+      "minerfees": [              // []Currency   
+        "61440000000000000000000"
+      ],          
+      "arbitrarydata": [          // [][]byte
+        "RkNJZGVudGlmaWVyAAAAACYzhrmGh2OL2Y9eBn5UYIFxCi4HKFvtR43pEgaBpkDqEa3LrQlWGyk+a0tBXi4nkIIaISIfTJMZs3sBgi0PFl4NyGOgqYppVQGaYnPuaRZKONJWE2jYZUu/iY3xLvpYIciu5JVlRIStwfGepaPWW4jLe4tf3AabKINgFk6p52m6"
+      ],
+      "transactionsignatures": [ // []TransactionSignature
+                    {
+                        "coveredfields": {
+                            "arbitrarydata": [],
+                            "filecontractrevisions": [],
+                            "filecontracts": [],
+                            "minerfees": [],
+                            "siacoininputs": [],
+                            "siacoinoutputs": [],
+                            "siafundinputs": [],
+                            "siafundoutputs": [],
+                            "storageproofs": [],
+                            "transactionsignatures": [],
+                            "wholetransaction": true
+                        },
+                        "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+                        "publickeyindex": 0,
+                        "signature": "QAVQSrcTv2xBHjWiTuuxVgWtUYECEZNbud41u7wgFIGcsKuBnbtT2yaH/GMw00/aMCpZ70qqBpQwQ/akAn/pAA==",
+                        "timelock": 0
+                    },
+    }
+  ]
 }
 ```
-**confirmed** | boolean
-boolean that indicates if transaction was confirmed
+See [/wallet/transaction/:id](#wallettransactionid-get) for description of
+transaction fields.
 
 # Wallet
 
@@ -3180,7 +3281,7 @@ Changes the wallet's encryption key.
 ### Query String Parameters
 #### REQUIRED
 **encryptionpassword** | string
-encryptionpassword is the wallet's current encryption password.  
+encryptionpassword is the wallet's current encryption password or primary seed.  
 
 **newpassword** | string
 newpassword is the new password for the wallet.  
@@ -3326,6 +3427,57 @@ JSON array of outputs. The structure of each output is: {"unlockhash": "<destina
 
 ```go
 {
+  "transactions": [     
+    {
+      "siacoininputs":  [ // []SiacoinInput
+        {
+          "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+          "unlockconditions": {
+            "publickeys": [
+               {
+                "algorithm": "ed25519",
+                "key": "EKjiRsUyMOLER+8u3uXxemOEKMxRc2TxCh0QkcSCVHY="
+               }
+              ],
+            "signaturesrequired": 1,
+            "timelock": 0
+          }
+        },
+      ]      
+      "siacoinoutputs": []        // []SiacoinOutput        
+      "filecontracts":  []        // []FileContract
+      "filecontractrevisions": [] // []FileContractRevision 
+      "storageproofs":  []        // []StorageProof         
+      "siafundinputs":  []        // []SiafundInput
+      "siafundoutputs": []        // []SiafundOutput      
+      "minerfees": [              // []Currency   
+        "61440000000000000000000"
+      ],          
+      "arbitrarydata": [          // [][]byte
+        "RkNJZGVudGlmaWVyAAAAACYzhrmGh2OL2Y9eBn5UYIFxCi4HKFvtR43pEgaBpkDqEa3LrQlWGyk+a0tBXi4nkIIaISIfTJMZs3sBgi0PFl4NyGOgqYppVQGaYnPuaRZKONJWE2jYZUu/iY3xLvpYIciu5JVlRIStwfGepaPWW4jLe4tf3AabKINgFk6p52m6"
+      ],
+      "transactionsignatures": [ // []TransactionSignature
+                    {
+                        "coveredfields": {
+                            "arbitrarydata": [],
+                            "filecontractrevisions": [],
+                            "filecontracts": [],
+                            "minerfees": [],
+                            "siacoininputs": [],
+                            "siacoinoutputs": [],
+                            "siafundinputs": [],
+                            "siafundoutputs": [],
+                            "storageproofs": [],
+                            "transactionsignatures": [],
+                            "wholetransaction": true
+                        },
+                        "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+                        "publickeyindex": 0,
+                        "signature": "QAVQSrcTv2xBHjWiTuuxVgWtUYECEZNbud41u7wgFIGcsKuBnbtT2yaH/GMw00/aMCpZ70qqBpQwQ/akAn/pAA==",
+                        "timelock": 0
+                    },
+    }
+  ]
   "transactionids": [
     "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -3333,8 +3485,11 @@ JSON array of outputs. The structure of each output is: {"unlockhash": "<destina
   ]
 }
 ```
+**transactions**
+Array of transactions that were created when sending the coins. The last transaction contains the output headed to the 'destination'. Transaction IDs are 64 character long hex strings.
+
 **transactionids**  
-Array of IDs of the transactions that were created when sending the coins. The last transaction contains the output headed to the 'destination'. Transaction IDs are 64 character long hex strings.  
+Array of IDs of the transactions that were created when sending the coins.
 
 ## /wallet/siafunds [POST]
 > curl example  
@@ -3358,6 +3513,57 @@ Address that is receiving the funds.
  
 ```go
 {
+  "transactions": [     
+    {
+      "siacoininputs":  [ // []SiacoinInput
+        {
+          "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+          "unlockconditions": {
+            "publickeys": [
+               {
+                "algorithm": "ed25519",
+                "key": "EKjiRsUyMOLER+8u3uXxemOEKMxRc2TxCh0QkcSCVHY="
+               }
+              ],
+            "signaturesrequired": 1,
+            "timelock": 0
+          }
+        },
+      ]      
+      "siacoinoutputs": []        // []SiacoinOutput        
+      "filecontracts":  []        // []FileContract
+      "filecontractrevisions": [] // []FileContractRevision 
+      "storageproofs":  []        // []StorageProof         
+      "siafundinputs":  []        // []SiafundInput
+      "siafundoutputs": []        // []SiafundOutput      
+      "minerfees": [              // []Currency   
+        "61440000000000000000000"
+      ],          
+      "arbitrarydata": [          // [][]byte
+        "RkNJZGVudGlmaWVyAAAAACYzhrmGh2OL2Y9eBn5UYIFxCi4HKFvtR43pEgaBpkDqEa3LrQlWGyk+a0tBXi4nkIIaISIfTJMZs3sBgi0PFl4NyGOgqYppVQGaYnPuaRZKONJWE2jYZUu/iY3xLvpYIciu5JVlRIStwfGepaPWW4jLe4tf3AabKINgFk6p52m6"
+      ],
+      "transactionsignatures": [ // []TransactionSignature
+                    {
+                        "coveredfields": {
+                            "arbitrarydata": [],
+                            "filecontractrevisions": [],
+                            "filecontracts": [],
+                            "minerfees": [],
+                            "siacoininputs": [],
+                            "siacoinoutputs": [],
+                            "siafundinputs": [],
+                            "siafundoutputs": [],
+                            "storageproofs": [],
+                            "transactionsignatures": [],
+                            "wholetransaction": true
+                        },
+                        "parentid": "b44db5d70f50b5c81b81d049fbdf9af27b4468f877d26c23a04c1093a7c4b541",
+                        "publickeyindex": 0,
+                        "signature": "QAVQSrcTv2xBHjWiTuuxVgWtUYECEZNbud41u7wgFIGcsKuBnbtT2yaH/GMw00/aMCpZ70qqBpQwQ/akAn/pAA==",
+                        "timelock": 0
+                    },
+    }
+  ]
   "transactionids": [
     "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -3366,7 +3572,10 @@ Address that is receiving the funds.
 }
 ```
 **transactionids**  
-Array of IDs of the transactions that were created when sending the coins. The last transaction contains the output headed to the 'destination'. Transaction IDs are 64 character long hex strings.  
+Array of transactions that were created when sending the funds. The last transaction contains the output headed to the 'destination'. Transaction IDs are 64 character long hex strings.  
+
+**transactionids**  
+Array of IDs of the transactions that were created when sending the coins.
 
 ## /wallet/siagkey [POST]
 > curl example  

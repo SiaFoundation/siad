@@ -1,5 +1,11 @@
 package renter
 
+// TODO: replace managedRefreshHostsAndWorkers with structural updates to the
+// worker pool. The worker pool should maintain the map of hosts that
+// managedRefreshHostsAndWorkers builds every call, and the contractor should
+// work with the worker pool to instantly notify the worker pool of any changes
+// to the set of contracts.
+
 import (
 	"container/heap"
 	"fmt"
@@ -92,15 +98,15 @@ type uploadHeap struct {
 	//
 	// repairingChunks is a map containing all the chunks are that currently
 	// assigned to workers and are being repaired/worked on.
-	repairingChunks   map[uploadChunkID]struct{}
-	stuckHeapChunks   map[uploadChunkID]struct{}
-	unstuckHeapChunks map[uploadChunkID]struct{}
+	repairingChunks   map[uploadChunkID]*unfinishedUploadChunk
+	stuckHeapChunks   map[uploadChunkID]*unfinishedUploadChunk
+	unstuckHeapChunks map[uploadChunkID]*unfinishedUploadChunk
 
 	// Control channels
 	newUploads        chan struct{}
 	repairNeeded      chan struct{}
 	stuckChunkFound   chan struct{}
-	stuckChunkSuccess chan modules.SiaPath
+	stuckChunkSuccess chan struct{}
 
 	mu sync.Mutex
 }
@@ -137,6 +143,13 @@ func (uh *uploadHeap) managedMarkRepairDone(id uploadChunkID) {
 	delete(uh.repairingChunks, id)
 }
 
+// managedNumStuckChunks returns the number of stuck chunks in the heap
+func (uh *uploadHeap) managedNumStuckChunks() int {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	return len(uh.stuckHeapChunks)
+}
+
 // managedPush will try and add a chunk to the upload heap. If the chunk is
 // added it will return true otherwise it will return false
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
@@ -148,19 +161,45 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	// Check if chunk is in any of the heap maps
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	_, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
-	_, existsRepairing := uh.repairingChunks[uuc.id]
-	_, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
+	unstuckUUC, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
+	repairingUUC, existsRepairing := uh.repairingChunks[uuc.id]
+	stuckUUC, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
+
+	// If the added chunk has a sourceReader and the existing one doesn't, replace
+	// them.
+	if uuc.sourceReader != nil && (existsUnstuckHeap || existsRepairing || existsStuckHeap) {
+		// Get the existing chunk.
+		var existingUUC *unfinishedUploadChunk
+		if existsStuckHeap {
+			existingUUC = stuckUUC
+		} else if existsRepairing {
+			existingUUC = repairingUUC
+		} else if existsUnstuckHeap {
+			existingUUC = unstuckUUC
+		}
+		// Cancel the chunk.
+		existingUUC.cancelMU.Lock()
+		existingUUC.canceled = true
+		existingUUC.cancelMU.Unlock()
+		// Wait for all workers to finish ongoing work on that chunk and try to push
+		// the new chunk again. This happens in a separate thread to avoid holding the
+		// uploadHeap lock while waiting.
+		go func() {
+			existingUUC.cancelWG.Wait()
+			uh.managedPush(uuc)
+		}()
+		return true // It's not pushed yet but it is guranteed to be pushed eventually.
+	}
 
 	// Check if the chunk can be added to the heap
 	canAddStuckChunk := chunkStuck && !existsStuckHeap && !existsRepairing && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
 	canAddUnstuckChunk := !chunkStuck && !existsUnstuckHeap && !existsRepairing
 	if canAddStuckChunk {
-		uh.stuckHeapChunks[uuc.id] = struct{}{}
+		uh.stuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
 		return true
 	} else if canAddUnstuckChunk {
-		uh.unstuckHeapChunks[uuc.id] = struct{}{}
+		uh.unstuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
 		return true
 	}
@@ -177,7 +216,7 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 		if _, exists := uh.repairingChunks[uc.id]; exists {
 			build.Critical("There should not be a chunk in the heap that can be popped that is currently being repaired")
 		}
-		uh.repairingChunks[uc.id] = struct{}{}
+		uh.repairingChunks[uc.id] = uc
 	}
 	uh.mu.Unlock()
 	return uc
@@ -187,8 +226,8 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 func (uh *uploadHeap) managedReset() error {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	uh.unstuckHeapChunks = make(map[uploadChunkID]struct{})
-	uh.stuckHeapChunks = make(map[uploadChunkID]struct{})
+	uh.unstuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
+	uh.stuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
 	return uh.heap.reset()
 }
 
@@ -420,6 +459,17 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *siafile.SiaFileSetEntry, ho
 	return incompleteChunks
 }
 
+// managedBlockUntilSynced will block until the contractor is synced with the
+// peer-to-peer network.
+func (r *Renter) managedBlockUntilSynced() bool {
+	select {
+	case <-r.tg.StopChan():
+		return false
+	case <-r.hostContractor.Synced():
+		return true
+	}
+}
+
 // managedAddChunksToHeap will add chunks to the upload heap one directory at a
 // time until the directory heap is empty or the uploadheap is full. It does
 // this by popping directories off the directory heap and adding the chunks from
@@ -645,7 +695,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		chunk := heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
 		if !r.uploadHeap.managedPush(chunk) {
 			// We don't track the health of this chunk since the only reason it
-			// wouldn't be added. To the heap is if it is already in the heap or
+			// wouldn't be added to the heap is if it is already in the heap or
 			// is currently being repaired. Close the file.
 			err := chunk.fileEntry.Close()
 			if err != nil {
@@ -873,7 +923,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 // managedRefreshHostsAndWorkers will reset the set of hosts and the set of
 // workers for the renter.
 //
-// TODO: This function can be ditched entirely if the worker pool is made to
+// TODO: This function can be removed entirely if the worker pool is made to
 // keep a list of hosts. Then instead of passing around the hosts as a parameter
 // the cached value in the worker pool can be used instead. Using the cached
 // value in the worker pool is more accurate anyway because the hosts field will
@@ -893,7 +943,7 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 		hosts[contract.HostPublicKey.String()] = struct{}{}
 	}
 	// Refresh the worker pool as well.
-	r.staticWorkerPool.managedUpdate()
+	r.staticWorkerPool.callUpdate()
 	return hosts
 }
 
@@ -1026,6 +1076,12 @@ func (r *Renter) threadedUploadAndRepair() {
 		case <-r.tg.StopChan():
 			return
 		default:
+		}
+
+		// Wait until the contractor is synced.
+		if !r.managedBlockUntilSynced() {
+			// The renter shut down before the contract was synced.
+			return
 		}
 
 		// Wait until the renter is online to proceed. This function will return

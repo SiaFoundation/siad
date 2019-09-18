@@ -1,7 +1,25 @@
 Version History
 ---------------
 
-Apr 2018:
+Sep 2019:
+
+v1.4.1.2 (hotfix)
+- Fix memory leak
+- Add /tpool/transactions endpoint
+
+Aug 2019:
+
+v1.4.1.1 (hotfix)
+- Fix download corruption bug
+- Fix transaction propagation bug
+
+Jul 2019:
+
+v1.4.1 (minor release)
+- Support upload streaming
+- Enable seed-based snapshot backups
+
+Apr 2019:
 
 v1.4.0 (minor release)
 - Support "snapshot" backups

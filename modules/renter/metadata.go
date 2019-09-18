@@ -112,6 +112,16 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				continue
 			}
 
+			// If 75% or more of the redundancy are missing, register an alert for the file.
+			uid := string(fileMetadata.UID)
+			if maxHealth := math.Max(fileMetadata.Health, fileMetadata.StuckHealth); maxHealth >= AlertSiafileLowRedundancyThreshold {
+				r.staticAlerter.RegisterAlert(modules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,
+					AlertCauseSiafileLowRedundancy(fileSiaPath, fileMetadata.Health),
+					modules.SeverityWarning)
+			} else {
+				r.staticAlerter.UnregisterAlert(modules.AlertIDSiafileLowRedundancy(uid))
+			}
+
 			// Record Values that compare against sub directories
 			aggregateHealth = fileMetadata.Health
 			aggregateStuckHealth = fileMetadata.StuckHealth
@@ -218,14 +228,14 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 
 	// Calculate file health
-	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 
 	// Set the LastHealthCheckTime
 	sf.SetLastHealthCheckTime()
 
 	// Calculate file Redundancy and check if local file is missing and
 	// redundancy is less than one
-	redundancy, err := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
+	redundancy, _, err := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
 	if err != nil {
 		return siafile.BubbledMetadata{}, err
 	}
@@ -241,6 +251,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 		Redundancy:          redundancy,
 		Size:                sf.Size(),
 		StuckHealth:         stuckHealth,
+		UID:                 sf.UID(),
 	}, sf.SaveMetadata()
 }
 

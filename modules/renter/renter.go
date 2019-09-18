@@ -2,23 +2,26 @@
 // network.
 package renter
 
-// NOTE: Some of the concurrency patterns in the renter are fairly complex. A
-// lot of this has been cleaned up, though some shadows of previous demons still
-// remain. Be careful when working with anything that involves concurrency.
-
 // TODO: Allow the 'baseMemory' to be set by the user.
-
+//
 // TODO: The repair loop currently receives new upload jobs through a channel.
 // The download loop has a better model, a heap that can be pushed to and popped
 // from concurrently without needing complex channel communication. Migrating
 // the renter to this model should clean up some of the places where uploading
 // bottlenecks, and reduce the amount of channel-ninjitsu required to make the
 // uploading function.
-
+//
 // TODO: Allow user to configure the packet size when ratelimiting the renter.
 // Currently the default is set to 16kb. That's going to require updating the
 // API and extending the settings object, and then tweaking the
 // setBandwidthLimits function.
+//
+// TODO: Currently 'callUpdate()' is used after setting the allowance, though
+// this doesn't guarantee that anything interesting will happen because the
+// contractor's 'threadedContractMaintenance' will run in the background and
+// choose to update the hosts and contracts. Really, we should have the
+// contractor notify the renter whenever there has been a change in the contract
+// set so that 'callUpdate()' can be used. Implementation in renter.SetSettings.
 
 import (
 	"fmt"
@@ -54,6 +57,8 @@ var (
 // A hostDB is a database of hosts that the renter can use for figuring out who
 // to upload to, and download from.
 type hostDB interface {
+	modules.Alerter
+
 	// ActiveHosts returns the list of hosts that are actively being selected
 	// from.
 	ActiveHosts() []modules.HostDBEntry
@@ -108,6 +113,8 @@ type hostDB interface {
 // A hostContractor negotiates, revises, renews, and provides access to file
 // contracts.
 type hostContractor interface {
+	modules.Alerter
+
 	// SetAllowance sets the amount of money the contractor is allowed to
 	// spend on contracts over a given time period, divided among the number
 	// of hosts specified. Note that contractor can start forming contracts as
@@ -182,11 +189,18 @@ type hostContractor interface {
 	// SetRateLimits sets the bandwidth limits for connections created by the
 	// contractor and its submodules.
 	SetRateLimits(int64, int64, uint64)
+
+	// Synced returns a channel that is closed when the contractor is fully
+	// synced with the peer-to-peer network.
+	Synced() <-chan struct{}
 }
 
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
+	// Alert management.
+	staticAlerter *modules.GenericAlerter
+
 	// File management.
 	staticFileSet       *siafile.SiaFileSet
 	staticBackupFileSet *siafile.SiaFileSet
@@ -212,6 +226,7 @@ type Renter struct {
 	// Upload management.
 	uploadHeap    uploadHeap
 	directoryHeap directoryHeap
+	stuckStack    stuckStack
 
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
@@ -574,7 +589,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 
 	// Update the worker pool so that the changes are immediately apparent to
 	// users.
-	r.staticWorkerPool.managedUpdate()
+	r.staticWorkerPool.callUpdate()
 	return nil
 }
 
@@ -777,14 +792,14 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		downloadHeap: new(downloadChunkHeap),
 
 		uploadHeap: uploadHeap{
-			repairingChunks:   make(map[uploadChunkID]struct{}),
-			stuckHeapChunks:   make(map[uploadChunkID]struct{}),
-			unstuckHeapChunks: make(map[uploadChunkID]struct{}),
+			repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
+			stuckHeapChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
+			unstuckHeapChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
 
 			newUploads:        make(chan struct{}, 1),
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
-			stuckChunkSuccess: make(chan modules.SiaPath, 1),
+			stuckChunkSuccess: make(chan struct{}, 1),
 		},
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]*directory),
@@ -799,12 +814,14 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		hostDB:           hdb,
 		hostContractor:   hc,
 		persistDir:       persistDir,
+		staticAlerter:    modules.NewAlerter("renter"),
 		staticFilesDir:   filepath.Join(persistDir, modules.SiapathRoot),
 		staticBackupsDir: filepath.Join(persistDir, modules.BackupRoot),
 		mu:               siasync.New(modules.SafeMutexDelay, 1),
 		tpool:            tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.stuckStack = callNewStuckStack()
 
 	// Load all saved data.
 	if err := r.managedInitPersist(); err != nil {

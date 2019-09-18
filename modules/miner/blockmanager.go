@@ -165,6 +165,21 @@ func (m *Miner) managedSubmitBlock(b types.Block) error {
 	return m.saveSync()
 }
 
+// SubmitBlock accepts a solved block.
+func (m *Miner) SubmitBlock(b types.Block) error {
+	if err := m.tg.Add(); err != nil {
+		return err
+	}
+	defer m.tg.Done()
+
+	err := m.managedSubmitBlock(b)
+	if err != nil {
+		m.log.Println("ERROR returned by managedSubmitBlock:", err)
+		return err
+	}
+	return nil
+}
+
 // SubmitHeader accepts a block header.
 func (m *Miner) SubmitHeader(bh types.BlockHeader) error {
 	if err := m.tg.Add(); err != nil {

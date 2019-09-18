@@ -178,6 +178,8 @@ type (
 	// A ConsensusSet accepts blocks and builds an understanding of network
 	// consensus.
 	ConsensusSet interface {
+		Alerter
+
 		// AcceptBlock adds a block to consensus. An error will be returned if the
 		// block is invalid, has been seen before, is an orphan, or doesn't
 		// contribute to the heaviest fork known to the consensus set. If the block
@@ -264,4 +266,9 @@ func (cc ConsensusChange) Append(cc2 ConsensusChange) ConsensusChange {
 		SiafundOutputDiffs:        append(cc.SiafundOutputDiffs, cc2.SiafundOutputDiffs...),
 		DelayedSiacoinOutputDiffs: append(cc.DelayedSiacoinOutputDiffs, cc2.DelayedSiacoinOutputDiffs...),
 	}
+}
+
+// String returns the ConsensusChangeID as a string.
+func (ccID ConsensusChangeID) String() string {
+	return crypto.Hash(ccID).String()
 }

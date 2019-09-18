@@ -2,6 +2,7 @@ package siafile
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -85,6 +86,16 @@ func (rs *RSSubCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	return pieces, nil
 }
 
+// Identifier returns an identifier for an erasure coder which can be used to
+// identify erasure coders of the same type, dataPieces and parityPieces.
+func (rs *RSSubCode) Identifier() modules.ErasureCoderIdentifier {
+	t := rs.Type()
+	dataPieces := rs.MinPieces()
+	parityPieces := rs.NumPieces() - dataPieces
+	id := fmt.Sprintf("%v+%v+%v", binary.BigEndian.Uint32(t[:]), dataPieces, parityPieces)
+	return modules.ErasureCoderIdentifier(id)
+}
+
 // Reconstruct recovers the full set of encoded shards from the provided
 // pieces, of which at least MinPieces must be non-nil.
 func (rs *RSSubCode) Reconstruct(pieces [][]byte) error {
@@ -135,7 +146,6 @@ func (rs *RSSubCode) Reconstruct(pieces [][]byte) error {
 		}
 	}
 	return nil
-
 }
 
 // Recover accepts encoded pieces and decodes the segment at

@@ -177,7 +177,7 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 // than the period of the allowance. The host's score is heavily minimized if
 // not.
 func (hdb *HostDB) durationAdjustments(entry modules.HostDBEntry, allowance modules.Allowance) float64 {
-	if entry.MaxDuration < allowance.Period {
+	if entry.MaxDuration < allowance.Period+allowance.RenewWindow {
 		return math.SmallestNonzeroFloat64
 	}
 	return 1

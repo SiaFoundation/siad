@@ -21,7 +21,8 @@ func hasFCIdentifier(txn types.Transaction) (proto.ContractSignedIdentifier, cry
 	// Verify the prefix.
 	var prefix types.Specifier
 	copy(prefix[:], txn.ArbitraryData[0])
-	if prefix != modules.PrefixFileContractIdentifier {
+	if prefix != modules.PrefixFileContractIdentifier &&
+		prefix != modules.PrefixNonSia {
 		return proto.ContractSignedIdentifier{}, nil, false
 	}
 	// We found an identifier.
@@ -121,6 +122,20 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 		delete(c.oldContracts, metricsContractID)
 	}
 
+	// Check if c.synced already signals that the contractor is synced.
+	synced := false
+	select {
+	case <-c.synced:
+		synced = true
+	default:
+	}
+	// If we weren't synced but are now, we close the channel. If we were
+	// synced but aren't anymore, we need a new channel.
+	if !synced && cc.Synced {
+		close(c.synced)
+	} else if synced && !cc.Synced {
+		c.synced = make(chan struct{})
+	}
 	c.lastChange = cc.ID
 	err = c.save()
 	if err != nil {
