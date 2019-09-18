@@ -439,6 +439,10 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 	if newOffset < 0 {
 		return s.offset, errors.New("cannot seek to negative offset")
 	}
+	// If the Seek is a no-op, do not invalidate the cache.
+	if newOffset == s.offset {
+		return 0, nil
+	}
 
 	// Reset the target cache size upon seek to be the default again. This is in
 	// place because some programs will rapidly consume the cache to build up

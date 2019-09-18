@@ -571,7 +571,8 @@ type RenterFile interface {
 	Stat() (os.FileInfo, error)
 	Readdir(n int) ([]os.FileInfo, error)
 	Dirnames(n int) ([]string, error)
-	io.ReaderAt
+	io.Reader
+	io.Seeker
 	io.Closer
 }
 

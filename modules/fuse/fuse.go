@@ -1,7 +1,6 @@
 package fuse
 
 import (
-	"bufio"
 	"errors"
 	"io"
 	"log"
@@ -59,7 +58,8 @@ func (f *FUSE) Mount(root string, sp modules.SiaPath) error {
 	// the FUSE mount flag `AllowOther`, which enables non-permissioned users to
 	// access the FUSE mount. This makes life easier in Docker.
 	mountOpts := &fuse.MountOptions{
-		AllowOther: true,
+		AllowOther:   true,
+		MaxReadAhead: 1,
 	}
 	server, _, err := nodefs.Mount(root, nfs.Root(), mountOpts, nil)
 	if err != nil {
@@ -219,29 +219,19 @@ func (fs *fuseFS) Chmod(name string, mode uint32, context *fuse.Context) (code f
 type fuseFile struct {
 	nodefs.File
 	rf modules.RenterFile
-
-	mu      sync.Mutex
-	br      *bufio.Reader
-	lastOff int64
+	mu sync.Mutex
 }
 
 func (f *fuseFile) Read(p []byte, off int64) (fuse.ReadResult, fuse.Status) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.br == nil || off != f.lastOff {
-		stat, _ := f.rf.Stat()
-		sr := io.NewSectionReader(f.rf, off, stat.Size()-off)
-		if f.br == nil {
-			f.br = bufio.NewReaderSize(sr, 1<<20) // 1 MB
-		} else {
-			f.br.Reset(sr)
-		}
+	if _, err := f.rf.Seek(off, io.SeekStart); err != nil {
+		return nil, errToStatus("Read", f.rf.Name(), err)
 	}
-	n, err := f.br.Read(p)
+	n, err := f.rf.Read(p)
 	if err != nil && err != io.EOF {
 		return nil, errToStatus("Read", f.rf.Name(), err)
 	}
-	f.lastOff = off + int64(n)
 	return fuse.ReadResultData(p[:n]), fuse.OK
 }
 

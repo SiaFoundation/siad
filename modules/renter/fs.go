@@ -1,8 +1,6 @@
 package renter
 
 import (
-	"bytes"
-	"io"
 	"os"
 	"time"
 
@@ -70,9 +68,15 @@ func (fs *fsImpl) OpenFile(name string, perm int, mode os.FileMode) (modules.Ren
 			r:  fs.r,
 		}, nil
 	}
+	sp := fs.path(name)
+	_, s, err := fs.r.Streamer(sp)
+	if err != nil {
+		return nil, err
+	}
 	return &fsFile{
-		sp: fs.path(name),
+		sp: sp,
 		r:  fs.r,
+		s:  s,
 	}, nil
 }
 
@@ -128,8 +132,12 @@ func (d *fsDir) Stat() (os.FileInfo, error) {
 	return dirInfoShim{di}, err
 }
 
-func (d *fsDir) ReadAt(p []byte, off int64) (int, error) {
-	return 0, errors.New("cannot call ReadAt on directory")
+func (d *fsDir) Read(p []byte) (int, error) {
+	return 0, errors.New("cannot call Read on directory")
+}
+
+func (f *fsDir) Seek(off int64, whence int) (int64, error) {
+	return 0, errors.New("cannot call Seek on directory")
 }
 
 func (d *fsDir) Close() error {
@@ -139,6 +147,7 @@ func (d *fsDir) Close() error {
 type fsFile struct {
 	sp modules.SiaPath
 	r  *Renter
+	s  modules.Streamer
 }
 
 func (f *fsFile) Name() string {
@@ -158,19 +167,12 @@ func (f *fsFile) Dirnames(n int) ([]string, error) {
 	return nil, errors.New("cannot call Dirnames on file")
 }
 
-func (f *fsFile) ReadAt(p []byte, off int64) (int, error) {
-	var buf bytes.Buffer
-	_, _, err := f.r.Download(modules.RenterDownloadParameters{
-		SiaPath:    f.sp,
-		Httpwriter: &buf,
-		Offset:     uint64(off),
-		Length:     uint64(len(p)),
-	})
-	n := copy(p, buf.Bytes())
-	if err == nil && n != len(p) {
-		err = io.ErrUnexpectedEOF
-	}
-	return n, err
+func (f *fsFile) Read(p []byte) (int, error) {
+	return f.s.Read(p)
+}
+
+func (f *fsFile) Seek(off int64, whence int) (int64, error) {
+	return f.s.Seek(off, whence)
 }
 
 func (f *fsFile) Close() error {
