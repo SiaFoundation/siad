@@ -75,9 +75,9 @@ type (
 func (a AlertSeverity) MarshalJSON() ([]byte, error) {
 	if a == SeverityWarning || a == SeverityError || a == SeverityCritical {
 		return json.Marshal(a.String())
-	} else {
-		return nil, errors.New("unknown AlertSeverity")
 	}
+	return nil, errors.New("unknown AlertSeverity")
+
 }
 
 // UnmarshalJSON attempts to decode an AlertSeverity.
