@@ -474,6 +474,8 @@ func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID
 
 // managedSynced returns true if the contractor is synced with the consensusset.
 func (c *Contractor) managedSynced() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	select {
 	case <-c.synced:
 		return true
