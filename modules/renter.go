@@ -645,9 +645,11 @@ type Renter interface {
 	// start the download.
 	Download(params RenterDownloadParameters) (DownloadID, func() error, error)
 
-	// Download creates a download according to the parameters passed without
-	// blocking, including downloads of `offset` and `length` type. It returns a
-	// method to start the download and one to cancel it.
+	// DownloadAsync creates a file download using the passed parameters without
+	// blocking until the download is finished. The download needs to be started
+	// using the method returned by DownloadAsync. DownloadAsync also accepts an
+	// optional input function which will be registered to be called when the
+	// download is finished.
 	DownloadAsync(params RenterDownloadParameters, onComplete func(error) error) (uid DownloadID, start func() error, cancel func(), err error)
 
 	// ClearDownloadHistory clears the download history of the renter

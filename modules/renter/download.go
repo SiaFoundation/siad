@@ -215,7 +215,9 @@ func (r *Renter) Download(p modules.RenterDownloadParameters) (modules.DownloadI
 
 // DownloadAsync creates a file download using the passed parameters without
 // blocking until the download is finished. The download needs to be started
-// using the method returned by DownloadAsync.
+// using the method returned by DownloadAsync. DownloadAsync also accepts an
+// optional input function which will be registered to be called when the
+// download is finished.
 func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error) error) (id modules.DownloadID, start func() error, cancel func(), err error) {
 	if err := r.tg.Add(); err != nil {
 		return "", nil, nil, err
