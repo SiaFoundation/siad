@@ -66,6 +66,10 @@ var (
 	//BackupKeySpecifier is the specifier used for deriving the secret used to
 	//encrypt a backup from the RenterSeed.
 	backupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
+
+	// errNeedBothDataAndParityPieces is the error returned when only one of the
+	// erasure coding parameters is set
+	errNeedBothDataAndParityPieces = errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
 )
 
 type (
@@ -465,8 +469,7 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 func parseDataAndParityPieces(strDataPieces, strParityPieces string) (dataPieces, parityPieces int, err error) {
 	// Check that both values have been supplied.
 	if (strDataPieces == "") != (strParityPieces == "") {
-		err = errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
-		return 0, 0, err
+		return 0, 0, errNeedBothDataAndParityPieces
 	}
 
 	// Check for blank strings.
@@ -485,6 +488,12 @@ func parseDataAndParityPieces(strDataPieces, strParityPieces string) (dataPieces
 		err = errors.AddContext(err, "unable to read parameter 'paritypieces'")
 		return 0, 0, err
 	}
+
+	// Check that either both values are zero or neither are zero
+	if (dataPieces == 0) != (parityPieces == 0) {
+		return 0, 0, errNeedBothDataAndParityPieces
+	}
+
 	return dataPieces, parityPieces, nil
 }
 
