@@ -193,9 +193,7 @@ func main() {
 	rootCmd = root
 
 	// create command tree
-	root.AddCommand(versionCmd)
-	root.AddCommand(stopCmd)
-	root.AddCommand(globalRatelimitCmd)
+	root.AddCommand(versionCmd, stopCmd, globalRatelimitCmd, alertsCmd)
 	root.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
 
 	root.AddCommand(updateCmd)

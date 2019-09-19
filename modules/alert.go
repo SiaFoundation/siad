@@ -73,15 +73,8 @@ type (
 
 // MarshalJSON defines a JSON encoding for the AlertSeverity.
 func (a AlertSeverity) MarshalJSON() ([]byte, error) {
-	switch a {
-	case SeverityWarning:
-		return json.Marshal("warning")
-	case SeverityError:
-		return json.Marshal("error")
-	case SeverityCritical:
-		return json.Marshal("critical")
-	case SeverityUnknown:
-	default:
+	if a == SeverityWarning || a == SeverityError || a == SeverityCritical {
+		return json.Marshal(a.String())
 	}
 	return nil, errors.New("unknown AlertSeverity")
 }
@@ -103,6 +96,21 @@ func (a *AlertSeverity) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("unknown severity '%v'", severityStr)
 	}
 	return nil
+}
+
+// String converts an alertSeverity to a String
+func (a AlertSeverity) String() string {
+	switch a {
+	case SeverityWarning:
+		return "warning"
+	case SeverityError:
+		return "error"
+	case SeverityCritical:
+		return "critical"
+	case SeverityUnknown:
+	default:
+	}
+	return "unknown"
 }
 
 // GenericAlerter implements the Alerter interface. It can be used as a helper

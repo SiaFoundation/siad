@@ -10,6 +10,13 @@ import (
 )
 
 var (
+	alertsCmd = &cobra.Command{
+		Use:   "alerts",
+		Short: "view daemon alerts",
+		Long:  "view daemon alerts",
+		Run:   wrap(alertscmd),
+	}
+
 	stopCmd = &cobra.Command{
 		Use:   "stop",
 		Short: "Stop the Sia daemon",
@@ -47,6 +54,24 @@ or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
 		Run:   wrap(versioncmd),
 	}
 )
+
+// alertscmd prints the alerts from the daemon.
+func alertscmd() {
+	al, err := httpClient.DaemonAlertsGet()
+	if err != nil {
+		fmt.Println("Could not get daemon alerts:", err)
+	}
+	fmt.Println("There are", len(al.Alerts), "alerts")
+	for id, a := range al.Alerts {
+		fmt.Printf(`
+Alert ID: %v
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s
+`, id, a.Module, a.Severity.String(), a.Msg, a.Cause)
+	}
+}
 
 // version prints the version of siac and siad.
 func versioncmd() {
