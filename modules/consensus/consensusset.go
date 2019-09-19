@@ -162,9 +162,7 @@ func consensusSetAsyncStartup(cs *ConsensusSet, bootstrap bool) error {
 	// typically we don't have any mock peers to synchronize with in
 	// testing.
 	if bootstrap {
-		// We are in a virgin goroutine right now, so calling the threaded
-		// function without a goroutine is okay.
-		err := cs.threadedInitialBlockchainDownload()
+		err := cs.managedInitialBlockchainDownload()
 		if err != nil {
 			return err
 		}
