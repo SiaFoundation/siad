@@ -31,19 +31,19 @@ func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health float64) str
 
 // Default redundancy parameters.
 var (
-	// defaultDataPieces is the number of data pieces per erasure-coded chunk
-	defaultDataPieces = build.Select(build.Var{
+	// DefaultDataPieces is the number of data pieces per erasure-coded chunk
+	DefaultDataPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 10,
 		Testing:  1,
 	}).(int)
 
-	// defaultParityPieces is the number of parity pieces per erasure-coded
+	// DefaultParityPieces is the number of parity pieces per erasure-coded
 	// chunk
-	defaultParityPieces = build.Select(build.Var{
+	DefaultParityPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 20,
-		Testing:  8,
+		Testing:  4,
 	}).(int)
 
 	// RepairThreshold defines the threshold at which the renter decides to

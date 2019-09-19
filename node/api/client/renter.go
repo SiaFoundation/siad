@@ -540,3 +540,21 @@ func (c *Client) RenterValidateSiaPathPost(siaPathStr string) (err error) {
 	err = c.post(fmt.Sprintf("/renter/validatesiapath/%s", siaPathStr), "", nil)
 	return
 }
+
+// RenterUploadReadyGet uses the /renter/uploadready endpoint to determine if
+// the renter is ready for upload.
+func (c *Client) RenterUploadReadyGet(dataPieces, parityPieces uint64) (rur api.RenterUploadReadyGet, err error) {
+	strDataPieces := strconv.FormatUint(dataPieces, 10)
+	strParityPieces := strconv.FormatUint(parityPieces, 10)
+	query := fmt.Sprintf("?datapieces=%v&paritypieces=%v",
+		strDataPieces, strParityPieces)
+	err = c.get("/renter/uploadready"+query, &rur)
+	return
+}
+
+// RenterUploadReadyDefaultGet uses the /renter/uploadready endpoint to
+// determine if the renter is ready for upload.
+func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, err error) {
+	err = c.get("/renter/uploadready", &rur)
+	return
+}

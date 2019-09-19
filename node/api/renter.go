@@ -19,6 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -65,6 +66,10 @@ var (
 	//BackupKeySpecifier is the specifier used for deriving the secret used to
 	//encrypt a backup from the RenterSeed.
 	backupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
+
+	// errNeedBothDataAndParityPieces is the error returned when only one of the
+	// erasure coding parameters is set
+	errNeedBothDataAndParityPieces = errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
 )
 
 type (
@@ -193,6 +198,22 @@ type (
 		Backups       []RenterUploadedBackup `json:"backups"`
 		SyncedHosts   []types.SiaPublicKey   `json:"syncedhosts"`
 		UnsyncedHosts []types.SiaPublicKey   `json:"unsyncedhosts"`
+	}
+
+	// RenterUploadReadyGet lists the upload ready status of the renter
+	RenterUploadReadyGet struct {
+		// Ready indicates whether of not the renter is ready to successfully
+		// upload to full redundancy based on the erasure coding provided and
+		// the number of contracts
+		Ready bool `json:"ready"`
+
+		// Contract information
+		ContractsNeeded    int `json:"contractsneeded"`
+		NumActiveContracts int `json:"numactivecontracts"`
+
+		// Erasure Coding information
+		DataPieces   int `json:"datapieces"`
+		ParityPieces int `json:"paritypieces"`
 	}
 
 	// DownloadInfo contains all client-facing information of a file.
@@ -416,43 +437,64 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 // an erasure coder. If values haven't been supplied it will fill in sane
 // defaults.
 func parseErasureCodingParameters(strDataPieces, strParityPieces string) (modules.ErasureCoder, error) {
-	// Check whether the erasure coding parameters have been supplied.
-	if strDataPieces != "" || strParityPieces != "" {
-		// Check that both values have been supplied.
-		if strDataPieces == "" || strParityPieces == "" {
-			err := errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
-			return nil, err
-		}
-
-		// Parse the erasure coding parameters.
-		var dataPieces, parityPieces int
-		_, err := fmt.Sscan(strDataPieces, &dataPieces)
-		if err != nil {
-			err = errors.AddContext(err, "unable to read parameter 'datapieces'")
-			return nil, err
-		}
-		_, err = fmt.Sscan(strParityPieces, &parityPieces)
-		if err != nil {
-			err = errors.AddContext(err, "unable to read parameter 'paritypieces'")
-			return nil, err
-		}
-
-		// Verify that sane values for parityPieces and redundancy are being
-		// supplied.
-		if parityPieces < requiredParityPieces {
-			err := fmt.Errorf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)
-			return nil, err
-		}
-		redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
-		if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
-			err := fmt.Errorf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)
-			return nil, err
-		}
-
-		// Create the erasure coder.
-		return siafile.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
+	// Parse data and parity pieces
+	dataPieces, parityPieces, err := parseDataAndParityPieces(strDataPieces, strParityPieces)
+	if err != nil {
+		return nil, err
 	}
-	return nil, nil
+
+	// Check if data and parity pieces were set
+	if dataPieces == 0 && parityPieces == 0 {
+		return nil, nil
+	}
+
+	// Verify that sane values for parityPieces and redundancy are being
+	// supplied.
+	if parityPieces < requiredParityPieces {
+		err := fmt.Errorf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)
+		return nil, err
+	}
+	redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
+	if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
+		err := fmt.Errorf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)
+		return nil, err
+	}
+
+	// Create the erasure coder.
+	return siafile.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
+}
+
+// parseDataAndParityPieces parse the numeric values for dataPieces and
+// parityPieces from the input strings
+func parseDataAndParityPieces(strDataPieces, strParityPieces string) (dataPieces, parityPieces int, err error) {
+	// Check that both values have been supplied.
+	if (strDataPieces == "") != (strParityPieces == "") {
+		return 0, 0, errNeedBothDataAndParityPieces
+	}
+
+	// Check for blank strings.
+	if strDataPieces == "" && strParityPieces == "" {
+		return 0, 0, nil
+	}
+
+	// Parse dataPieces and Parity Pieces.
+	_, err = fmt.Sscan(strDataPieces, &dataPieces)
+	if err != nil {
+		err = errors.AddContext(err, "unable to read parameter 'datapieces'")
+		return 0, 0, err
+	}
+	_, err = fmt.Sscan(strParityPieces, &parityPieces)
+	if err != nil {
+		err = errors.AddContext(err, "unable to read parameter 'paritypieces'")
+		return 0, 0, err
+	}
+
+	// Check that either both values are zero or neither are zero
+	if (dataPieces == 0) != (parityPieces == 0) {
+		return 0, 0, errNeedBothDataAndParityPieces
+	}
+
+	return dataPieces, parityPieces, nil
 }
 
 // renterHandlerGET handles the API call to /renter.
@@ -1309,6 +1351,37 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		return
 	}
 	WriteSuccess(w)
+}
+
+// renterUploadReadyHandler handles the API call to check whether or not the
+// renter is ready to upload files
+func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Gather params
+	dataPiecesStr := req.FormValue("datapieces")
+	parityPiecesStr := req.FormValue("paritypieces")
+
+	// Check params
+	dataPieces, parityPieces, err := parseDataAndParityPieces(dataPiecesStr, parityPiecesStr)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Check if we need to set to defaults
+	if dataPieces == 0 && parityPieces == 0 {
+		dataPieces = renter.DefaultDataPieces
+		parityPieces = renter.DefaultParityPieces
+	}
+	contractsNeeded := dataPieces + parityPieces
+
+	// Get contracts - compare against data and parity pieces
+	contracts := api.parseRenterContracts(false, false, false)
+	WriteJSON(w, RenterUploadReadyGet{
+		Ready:              len(contracts.ActiveContracts) >= contractsNeeded,
+		ContractsNeeded:    contractsNeeded,
+		NumActiveContracts: len(contracts.ActiveContracts),
+		DataPieces:         dataPieces,
+		ParityPieces:       parityPieces,
+	})
 }
 
 // renterUploadStreamHandler handles the API call to upload a file using a

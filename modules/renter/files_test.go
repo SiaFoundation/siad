@@ -390,7 +390,7 @@ func TestRenterFileDir(t *testing.T) {
 	}
 
 	// Upload local file
-	ec, err := siafile.NewRSCode(defaultDataPieces, defaultParityPieces)
+	ec, err := siafile.NewRSCode(DefaultDataPieces, DefaultParityPieces)
 	if err != nil {
 		t.Fatal(err)
 	}
