@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -246,46 +248,55 @@ func (c *Contractor) Close() error {
 }
 
 // New returns a new Contractor.
-func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, persistDir string) (*Contractor, error) {
+func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, persistDir string) (*Contractor, <-chan error) {
+	errChan := make(chan error, 1)
+	defer close(errChan)
 	// Check for nil inputs.
 	if cs == nil {
-		return nil, errNilCS
+		errChan <- errNilCS
+		return nil, errChan
 	}
 	if wallet == nil {
-		return nil, errNilWallet
+		errChan <- errNilWallet
+		return nil, errChan
 	}
 	if tpool == nil {
-		return nil, errNilTpool
+		errChan <- errNilTpool
+		return nil, errChan
 	}
 
 	// Create the persist directory if it does not yet exist.
 	if err := os.MkdirAll(persistDir, 0700); err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Convert the old persist file(s), if necessary. This must occur before
 	// loading the contract set.
 	if err := convertPersist(persistDir); err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Create the contract set.
 	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), modules.ProdDependencies)
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 	// Create the logger.
 	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "contractor.log"))
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Create Contractor using production dependencies.
 	return NewCustomContractor(cs, &WalletBridge{W: wallet}, tpool, hdb, contractSet, NewPersist(persistDir), logger, modules.ProdDependencies)
 }
 
-// NewCustomContractor creates a Contractor using the provided dependencies.
-func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
+// contractorBlockingStartup handles the blocking portion of NewCustomContractor.
+func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
 	// Create the Contractor object.
 	c := &Contractor{
 		staticAlerter: modules.NewAlerter("contractor"),
@@ -336,18 +347,6 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	}
 
-	// Subscribe to the consensus set.
-	err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
-	if err == modules.ErrInvalidConsensusChangeID {
-		// Reset the contractor consensus variables and try rescanning.
-		c.blockHeight = 0
-		c.lastChange = modules.ConsensusChangeBeginning
-		c.recentRecoveryChange = modules.ConsensusChangeBeginning
-		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
-	}
-	if err != nil {
-		return nil, errors.New("contractor subscription failed: " + err.Error())
-	}
 	// Unsubscribe from the consensus set upon shutdown.
 	c.tg.OnStop(func() {
 		cs.Unsubscribe(c)
@@ -369,6 +368,56 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		return nil, err
 	}
 	return c, nil
+}
+
+// contractorAsyncStartup handles the async portion of NewCustomContractor.
+func contractorAsyncStartup(c *Contractor, cs consensusSet) error {
+	if c.staticDeps.Disrupt("BlockAsyncStartup") {
+		return nil
+	}
+	err := cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
+	if err == modules.ErrInvalidConsensusChangeID {
+		// Reset the contractor consensus variables and try rescanning.
+		c.blockHeight = 0
+		c.lastChange = modules.ConsensusChangeBeginning
+		c.recentRecoveryChange = modules.ConsensusChangeBeginning
+		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
+	}
+	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// NewCustomContractor creates a Contractor using the provided dependencies.
+func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, <-chan error) {
+	errChan := make(chan error, 1)
+
+	// Handle blocking startup.
+	c, err := contractorBlockingStartup(cs, w, tp, hdb, contractSet, p, l, deps)
+	if err != nil {
+		errChan <- err
+		return nil, errChan
+	}
+
+	// non-blocking startup.
+	go func() {
+		// Subscribe to the consensus set in a separate goroutine.
+		defer close(errChan)
+		if err := c.tg.Add(); err != nil {
+			errChan <- err
+			return
+		}
+		defer c.tg.Done()
+		err := contractorAsyncStartup(c, cs)
+		if err != nil {
+			errChan <- err
+		}
+	}()
+	return c, errChan
 }
 
 // managedInitRecoveryScan starts scanning the whole blockchain at a certain
@@ -421,4 +470,16 @@ func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID
 		c.mu.Unlock()
 	}()
 	return nil
+}
+
+// managedSynced returns true if the contractor is synced with the consensusset.
+func (c *Contractor) managedSynced() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	select {
+	case <-c.synced:
+		return true
+	default:
+	}
+	return false
 }

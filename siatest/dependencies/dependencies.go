@@ -26,6 +26,12 @@ type (
 		c      chan struct{}
 	}
 
+	// DependencyDisableAsyncStartup prevents the async part of a module's creation
+	// from being executed.
+	DependencyDisableAsyncStartup struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyDisableCloseUploadEntry prevents SiaFileEntries in the upload code
 	// from being closed.
 	DependencyDisableCloseUploadEntry struct {
@@ -150,6 +156,11 @@ func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAf
 		},
 		n: n,
 	}
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyDisableAsyncStartup) Disrupt(s string) bool {
+	return s == "BlockAsyncStartup"
 }
 
 // Disrupt causes contract formation to fail due to low allowance funds.

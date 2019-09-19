@@ -847,6 +847,12 @@ func (c *Contractor) threadedContractMaintenance() {
 		return
 	}
 	defer c.tg.Done()
+
+	// No contract maintenance unless contractor is synced.
+	if !c.managedSynced() {
+		c.log.Debugln("Skipping contract maintenance since consensus isn't synced yet")
+		return
+	}
 	c.log.Debugln("starting contract maintenance")
 
 	// Only one instance of this thread should be running at a time. Under

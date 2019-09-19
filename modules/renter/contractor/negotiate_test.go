@@ -50,8 +50,8 @@ func newContractorTester(name string) (*contractorTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
@@ -71,16 +71,16 @@ func newContractorTester(name string) (*contractorTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	hdb, err := hostdb.New(g, cs, tp, filepath.Join(testdir, modules.RenterDir))
-	if err != nil {
+	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, modules.RenterDir))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
 	if err != nil {
 		return nil, err
 	}
-	c, err := New(cs, w, tp, hdb, filepath.Join(testdir, modules.RenterDir))
-	if err != nil {
+	c, errChan := New(cs, w, tp, hdb, filepath.Join(testdir, modules.RenterDir))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 

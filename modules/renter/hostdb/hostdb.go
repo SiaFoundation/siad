@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -86,6 +87,7 @@ type HostDB struct {
 	scanMap                 map[string]struct{}
 	scanWait                bool
 	scanningThreads         int
+	synced                  bool
 
 	// filteredTree is a hosttree that only contains the hosts that align with
 	// the filterMode. The filteredHosts are the hosts that are submitted with
@@ -155,6 +157,13 @@ func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	return err
 }
 
+// managedSynced returns true if the hostdb is synced with the consensusset.
+func (hdb *HostDB) managedSynced() bool {
+	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
+	return hdb.synced
+}
+
 // updateContracts rebuilds the knownContracts of the HostDB using the provided
 // contracts.
 func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
@@ -172,16 +181,8 @@ func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 	hdb.knownContracts = knownContracts
 }
 
-// New returns a new HostDB.
-func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, error) {
-	// Create HostDB using production dependencies.
-	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
-}
-
-// NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
-// persistence data, spawns the HostDB's scanning threads, and subscribes it to
-// the consensusSet.
-func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
+// hostdbBlockingStartup handles the blocking portion of NewCustomHostDB.
+func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Check for nil inputs.
 	if g == nil {
 		return nil, errNilGateway
@@ -282,7 +283,33 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 	hdb.mu.Unlock()
 
-	err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
+	// Spawn the scan loop during production, but allow it to be disrupted
+	// during testing. Primary reason is so that we can fill the hostdb with
+	// fake hosts and not have them marked as offline as the scanloop operates.
+	if !hdb.deps.Disrupt("disableScanLoop") {
+		go hdb.threadedScan()
+	} else {
+		hdb.initialScanComplete = true
+	}
+	err = hdb.tg.OnStop(func() error {
+		cs.Unsubscribe(hdb)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return hdb, nil
+}
+
+// hostdbAsyncStartup handles the async portion of NewCustomHostDB.
+func hostdbAsyncStartup(hdb *HostDB, cs modules.ConsensusSet) error {
+	if hdb.deps.Disrupt("BlockAsyncStartup") {
+		return nil
+	}
+	err := cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
+	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+		return err
+	}
 	if err == modules.ErrInvalidConsensusChangeID {
 		// Subscribe again using the new ID. This will cause a triggered scan
 		// on all of the hosts, but that should be acceptable.
@@ -292,27 +319,54 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		hdb.mu.Unlock()
 		err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
 	}
-	if err != nil {
-		return nil, errors.New("hostdb subscription failed: " + err.Error())
-	}
-	err = hdb.tg.OnStop(func() error {
-		cs.Unsubscribe(hdb)
+	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 		return nil
-	})
+	}
 	if err != nil {
-		return nil, err
+		return err
 	}
+	return nil
+}
 
-	// Spawn the scan loop during production, but allow it to be disrupted
-	// during testing. Primary reason is so that we can fill the hostdb with
-	// fake hosts and not have them marked as offline as the scanloop operates.
-	if !hdb.deps.Disrupt("disableScanLoop") {
-		go hdb.threadedScan()
-	} else {
-		hdb.initialScanComplete = true
+// New returns a new HostDB.
+func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, <-chan error) {
+	// Create HostDB using production dependencies.
+	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
+}
+
+// NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
+// persistence data, spawns the HostDB's scanning threads, and subscribes it to
+// the consensusSet.
+func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, <-chan error) {
+	errChan := make(chan error, 1)
+
+	// Blocking startup.
+	hdb, err := hostdbBlockingStartup(g, cs, tpool, persistDir, deps)
+	if err != nil {
+		errChan <- err
+		return nil, errChan
 	}
-
-	return hdb, nil
+	// Parts of the blocking startup and the whole async startup should be
+	// skipped.
+	if hdb.deps.Disrupt("quitAfterLoad") {
+		close(errChan)
+		return hdb, errChan
+	}
+	// non-blocking startup.
+	go func() {
+		defer close(errChan)
+		if err := hdb.tg.Add(); err != nil {
+			errChan <- err
+			return
+		}
+		defer hdb.tg.Done()
+		// Subscribe to the consensus set in a separate goroutine.
+		err := hostdbAsyncStartup(hdb, cs)
+		if err != nil {
+			errChan <- err
+		}
+	}()
+	return hdb, errChan
 }
 
 // ActiveHosts returns a list of hosts that are currently online, sorted by

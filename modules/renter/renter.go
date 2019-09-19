@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -263,6 +264,9 @@ type Renter struct {
 
 // Close closes the Renter and its dependencies
 func (r *Renter) Close() error {
+	if r == nil {
+		return nil
+	}
 	r.tg.Stop()
 	r.hostDB.Close()
 	return r.hostContractor.Close()
@@ -761,8 +765,8 @@ func (r *Renter) SetIPViolationCheck(enabled bool) {
 // Enforce that Renter satisfies the modules.Renter interface.
 var _ modules.Renter = (*Renter)(nil)
 
-// NewCustomRenter initializes a renter and returns it.
-func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, persistDir string, deps modules.Dependencies) (*Renter, error) {
+// renterBlockingStartup handles the blocking portion of NewCustomRenter.
+func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, persistDir string, deps modules.Dependencies) (*Renter, error) {
 	if g == nil {
 		return nil, errNilGateway
 	}
@@ -834,35 +838,98 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
 
-	// Subscribe to the consensus set.
-	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
+	// Spin up background threads which are not depending on the renter being
+	// up-to-date with consensus.
+	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
+		go r.threadedUpdateRenterHealth()
+	}
+	// Unsubscribe on shutdown.
+	err := r.tg.OnStop(func() error {
+		cs.Unsubscribe(r)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
+	return r, nil
+}
 
+// renterAsyncStartup handles the non-blocking portion of NewCustomRenter.
+func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
+	if r.deps.Disrupt("BlockAsyncStartup") {
+		return nil
+	}
+	// Subscribe to the consensus set in a separate goroutine.
+	done := make(chan struct{})
+	defer close(done)
+	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
+	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	// Spin up the remaining background threads once we are caught up with the
+	// consensus set.
 	// Spin up the workers for the work pool.
 	go r.threadedDownloadLoop()
 	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
 		go r.threadedUploadAndRepair()
-		go r.threadedUpdateRenterHealth()
 		go r.threadedStuckFileLoop()
 	}
-
 	// Spin up the snapshot synchronization thread.
 	go r.threadedSynchronizeSnapshots()
+	return nil
+}
 
-	return r, nil
+// NewCustomRenter initializes a renter and returns it.
+func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, persistDir string, deps modules.Dependencies) (*Renter, <-chan error) {
+	errChan := make(chan error, 1)
+
+	// Blocking startup.
+	r, err := renterBlockingStartup(g, cs, tpool, hdb, w, hc, persistDir, deps)
+	if err != nil {
+		errChan <- err
+		return nil, errChan
+	}
+
+	// non-blocking startup
+	go func() {
+		defer close(errChan)
+		if err := r.tg.Add(); err != nil {
+			errChan <- err
+			return
+		}
+		defer r.tg.Done()
+		err := renterAsyncStartup(r, cs)
+		if err != nil {
+			errChan <- err
+		}
+	}()
+	return r, errChan
 }
 
 // New returns an initialized renter.
-func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, persistDir string) (*Renter, error) {
-	hdb, err := hostdb.New(g, cs, tpool, persistDir)
-	if err != nil {
-		return nil, err
+func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, persistDir string) (*Renter, <-chan error) {
+	errChan := make(chan error, 1)
+	hdb, errChanHDB := hostdb.New(g, cs, tpool, persistDir)
+	if err := modules.PeekErr(errChanHDB); err != nil {
+		errChan <- err
+		return nil, errChan
 	}
-	hc, err := contractor.New(cs, wallet, tpool, hdb, persistDir)
-	if err != nil {
-		return nil, err
+	hc, errChanContractor := contractor.New(cs, wallet, tpool, hdb, persistDir)
+	if err := modules.PeekErr(errChanContractor); err != nil {
+		errChan <- err
+		return nil, errChan
 	}
-	return NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, modules.ProdDependencies)
+	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, modules.ProdDependencies)
+	if err := modules.PeekErr(errChanRenter); err != nil {
+		errChan <- err
+		return nil, errChan
+	}
+	go func() {
+		errChan <- errors.Compose(<-errChanHDB, <-errChanContractor, <-errChanRenter)
+		close(errChan)
+	}()
+	return renter, errChan
 }

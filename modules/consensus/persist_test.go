@@ -32,8 +32,9 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := filepath.Join(build.SiaTestingDir, modules.ConsensusDir, t.Name(), modules.ConsensusDir)
-	cst.cs, err = New(g, false, d)
-	if err != nil {
+	var errChan <-chan error
+	cst.cs, errChan = New(g, false, d)
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 	newHash := cst.cs.dbConsensusChecksum()

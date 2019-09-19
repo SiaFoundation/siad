@@ -64,32 +64,32 @@ func TestNew(t *testing.T) {
 	dir := build.TempDir("contractor", t.Name())
 
 	// Sane values.
-	_, err := New(stub, stub, stub, stub, dir)
-	if err != nil {
+	_, errChan := New(stub, stub, stub, stub, dir)
+	if err := <-errChan; err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 
 	// Nil consensus set.
-	_, err = New(nil, stub, stub, stub, dir)
-	if err != errNilCS {
+	_, errChan = New(nil, stub, stub, stub, dir)
+	if err := <-errChan; err != errNilCS {
 		t.Fatalf("expected %v, got %v", errNilCS, err)
 	}
 
 	// Nil wallet.
-	_, err = New(stub, nil, stub, stub, dir)
-	if err != errNilWallet {
+	_, errChan = New(stub, nil, stub, stub, dir)
+	if err := <-errChan; err != errNilWallet {
 		t.Fatalf("expected %v, got %v", errNilWallet, err)
 	}
 
 	// Nil transaction pool.
-	_, err = New(stub, stub, nil, stub, dir)
-	if err != errNilTpool {
+	_, errChan = New(stub, stub, nil, stub, dir)
+	if err := <-errChan; err != errNilTpool {
 		t.Fatalf("expected %v, got %v", errNilTpool, err)
 	}
 
 	// Bad persistDir.
-	_, err = New(stub, stub, stub, stub, "")
-	if !os.IsNotExist(err) {
+	_, errChan = New(stub, stub, stub, stub, "")
+	if err := <-errChan; !os.IsNotExist(err) {
 		t.Fatalf("expected invalid directory, got %v", err)
 	}
 }
@@ -613,7 +613,14 @@ func TestLinkedContracts(t *testing.T) {
 	}
 
 	// Wait for Contract creation
+	numRetries := 0
 	err = build.Retry(200, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if _, err := m.AddBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
 		if len(c.Contracts()) != 1 {
 			return errors.New("no contract created")
 		}
