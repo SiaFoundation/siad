@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -884,7 +885,7 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 
 // renterDownloadByUIDHandlerGET handles the API call to /renter/downloadinfo.
 func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	uid := ps.ByName("uid")
+	uid := strings.TrimPrefix(ps.ByName("uid"), "/")
 	di, exists := api.renter.DownloadByUID(modules.DownloadID(uid))
 	if !exists {
 		WriteError(w, Error{fmt.Sprintf("Download with id '%v' doesn't exist", string(uid))}, http.StatusBadRequest)
