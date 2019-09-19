@@ -883,8 +883,8 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 }
 
 // renterDownloadByUIDHandlerGET handles the API call to /renter/downloadinfo.
-func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	uid := req.FormValue("uid")
+func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	uid := ps.ByName("uid")
 	di, exists := api.renter.DownloadByUID(modules.DownloadID(uid))
 	if !exists {
 		WriteError(w, Error{fmt.Sprintf("Download with id '%v' doesn't exist", string(uid))}, http.StatusBadRequest)

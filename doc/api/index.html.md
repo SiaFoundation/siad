@@ -2333,16 +2333,16 @@ Action can be either `create`, `delete` or `rename`.
 
 standard success or error response. See [standard responses](#standard-responses).
 
-## /renter/downloadinfo [GET]
+## /renter/downloadinfo/*uid [GET]
 > curl example  
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/renter/downloadinfo?uid=9d8dd0d5b306f5bb412230bd12b590ae"
+curl -A "Sia-Agent" "localhost:9980/renter/downloadinfo/9d8dd0d5b306f5bb412230bd12b590ae"
 ```
 
 Lists a file in the download history by UID.
 
-### Query String Parameters
+### Path Parameters
 #### REQUIRED
 **uid** | string  
 UID returned by the /renter/download/*siapath* endpoint. It is set in the
@@ -2736,7 +2736,7 @@ Offset relative to the file start from where the download starts.
 
 ### Response
 
-A download will set the 'ID' field in the http response header to a unique identifier which can be used to cancel an async download with the /renter/download/cancel endpoint and retrieve a download's info from the download history using the /renter/downloadinfo endpoint. Apart from that the response is a standard success or error response. See [standard responses](#standard-responses).
+Unlike most responses, this response modifies the http response header. The download will set the 'ID' field in the http response header to a unique identifier which can be used to cancel an async download with the /renter/download/cancel endpoint and retrieve a download's info from the download history using the /renter/downloadinfo endpoint. Apart from that the response is a standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/download/cancel [POST]
 > curl example  
