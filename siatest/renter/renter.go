@@ -296,7 +296,7 @@ func deleteDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 	wgDelete.Add(1)
 	go func() {
 		defer wgDelete.Done()
-		_, err := r.DownloadToDisk(rf, false)
+		_, _, err := r.DownloadToDisk(rf, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -337,7 +337,7 @@ func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 	wgRename.Add(1)
 	go func() {
 		defer wgRename.Done()
-		_, err := r.DownloadToDisk(rf, false)
+		_, _, err := r.DownloadToDisk(rf, false)
 		if err != nil {
 			t.Fatal(err)
 		}

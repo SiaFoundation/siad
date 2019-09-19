@@ -1495,7 +1495,7 @@ func renterdirdownload(path, destination string) {
 
 // renterdownloadcancelcmd is the handler for the command `siac renter download cancel [cancelID]`
 // Cancels the ongoing download.
-func renterdownloadcancelcmd(cancelID string) {
+func renterdownloadcancelcmd(cancelID modules.DownloadID) {
 	if err := httpClient.RenterCancelDownloadPost(cancelID); err != nil {
 		die("Couldn't cancel download:", err)
 	}

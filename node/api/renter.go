@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -954,6 +954,32 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 	})
 }
 
+// renterDownloadByUIDHandlerGET handles the API call to /renter/downloadinfo.
+func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	uid := strings.TrimPrefix(ps.ByName("uid"), "/")
+	di, exists := api.renter.DownloadByUID(modules.DownloadID(uid))
+	if !exists {
+		WriteError(w, Error{fmt.Sprintf("Download with id '%v' doesn't exist", string(uid))}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, DownloadInfo{
+		Destination:     di.Destination,
+		DestinationType: di.DestinationType,
+		Filesize:        di.Length,
+		Length:          di.Length,
+		Offset:          di.Offset,
+		SiaPath:         di.SiaPath,
+
+		Completed:            di.Completed,
+		EndTime:              di.EndTime,
+		Error:                di.Error,
+		Received:             di.Received,
+		StartTime:            di.StartTime,
+		StartTimeUnix:        di.StartTimeUnix,
+		TotalDataTransferred: di.TotalDataTransferred,
+	})
+}
+
 // renterRecoveryScanHandlerPOST handles the API call to /renter/recoveryscan.
 func (api *API) renterRecoveryScanHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	if err := api.renter.InitRecoveryScan(); err != nil {
@@ -1164,7 +1190,7 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 // renterCancelDownloadHandler handles the API call to cancel a download.
 func (api *API) renterCancelDownloadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Get the id.
-	id := req.FormValue("id")
+	id := modules.DownloadID(req.FormValue("id"))
 	if id == "" {
 		WriteError(w, Error{"id not specified"}, http.StatusBadRequest)
 		return
@@ -1190,25 +1216,33 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	var id modules.DownloadID
+	var start func() error
 	if params.Async {
 		var cancel func()
-		id := hex.EncodeToString(fastrand.Bytes(16))
-		cancel, err = api.renter.DownloadAsync(params, func(_ error) error {
+		id, start, cancel, err = api.renter.DownloadAsync(params, func(_ error) error {
 			api.downloadMu.Lock()
 			delete(api.downloads, id)
 			api.downloadMu.Unlock()
 			return nil
 		})
+		// Add download to API's map for cancellation.
 		if err == nil {
-			w.Header().Set("ID", id)
 			api.downloadMu.Lock()
 			api.downloads[id] = cancel
 			api.downloadMu.Unlock()
 		}
 	} else {
-		err = api.renter.Download(params)
+		id, start, err = api.renter.Download(params)
 	}
 	if err != nil {
+		WriteError(w, Error{"download creation failed: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	// Set ID before starting download.
+	w.Header().Set("ID", string(id))
+	// Start download.
+	if err := start(); err != nil {
 		WriteError(w, Error{"download failed: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}

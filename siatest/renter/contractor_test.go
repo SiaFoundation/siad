@@ -662,7 +662,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Download the whole file again to see if all roots were recovered.
-	_, err = r.DownloadByStream(rf)
+	_, _, err = r.DownloadByStream(rf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -799,7 +799,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Download the whole file again to see if all roots were recovered.
-	_, err = r.DownloadByStream(rf)
+	_, _, err = r.DownloadByStream(rf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -964,7 +964,7 @@ func TestRenterContractRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Download the whole file again to see if all roots were recovered.
-	_, err = newRenter.DownloadByStream(rf)
+	_, _, err = newRenter.DownloadByStream(rf)
 	if err != nil {
 		t.Fatal(err)
 	}

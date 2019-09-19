@@ -99,7 +99,7 @@ type API struct {
 	wallet   modules.Wallet
 
 	downloadMu sync.Mutex
-	downloads  map[string]func()
+	downloads  map[modules.DownloadID]func()
 	router     http.Handler
 	routerMu   sync.RWMutex
 
@@ -142,7 +142,7 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 		renter:            r,
 		tpool:             tp,
 		wallet:            w,
-		downloads:         make(map[string]func()),
+		downloads:         make(map[modules.DownloadID]func()),
 		requiredUserAgent: requiredUserAgent,
 		requiredPassword:  requiredPassword,
 		siadConfig:        cfg,
