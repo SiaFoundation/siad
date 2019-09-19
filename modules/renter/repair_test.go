@@ -828,7 +828,7 @@ func TestRandomStuckFile(t *testing.T) {
 	// Find a stuck file randomly, it should never find file 3 and should find
 	// file 1 more than file 2.
 	var count1, count2 int
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		siaPath, err := rt.renter.managedStuckFile(modules.RootSiaPath())
 		if err != nil {
 			t.Fatal(err)
@@ -844,12 +844,21 @@ func TestRandomStuckFile(t *testing.T) {
 		}
 	}
 
+	// Randomness is weighted so we should always find file 1 more often
 	if count2 > count1 {
-		t.Fatal("Should have found file 1 more than file 2")
-	}
-	if count1 == 0 || count2 == 0 {
+		t.Log("Should have found file 1 more than file 2")
 		t.Fatalf("Found file 1 %v times and file 2 %v times", count1, count2)
 	}
+	// If we never find file 1 then that is a failure
+	if count1 == 0 {
+		t.Fatal("Found file 1 0 times")
+	}
+	// If we never find file 2 that is not ideal, Log this error. If it happens
+	// a lot then the weighted randomness should be improved
+	if count2 == 0 {
+		t.Logf("Found file 2 0 times. Consider improving the weighted randomness")
+	}
+	t.Log("Found file1", count1, "times and file2", count2, "times")
 }
 
 // TestCalculateFileMetadata checks that the values returned from
