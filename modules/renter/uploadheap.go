@@ -302,9 +302,9 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chu
 			goodForRenew, exists2 := goodForRenew[hpk]
 			offline, exists := offline[hpk]
 			if !exists || !exists2 || !goodForRenew || offline {
-				// This piece cannot be counted towards redudnacy if the host is
-				// offline, is marked no good for renew, or is not available in
-				// the lookup maps.
+				// This piece cannot be counted towards redundancy if the host
+				// is offline, is marked no good for renew, or is not available
+				// in the lookup maps.
 				continue
 			}
 
@@ -590,15 +590,15 @@ func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry
 	return
 }
 
-// managedBuildAndPushChunks builds the unfinished upload chunks and adds them
-// to the upload heap
+// callBuildAndPushChunks builds the unfinished upload chunks and adds them to
+// the upload heap
 //
 // NOTE: the files submitted to this function should all be from the same
 // directory
-func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
+func (r *Renter) callBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
 	// Sanity check that at least one file was provided
 	if len(files) == 0 {
-		build.Critical("managedBuildAndPushChunks called without providing any files")
+		build.Critical("callBuildAndPushChunks called without providing any files")
 		return
 	}
 
@@ -859,7 +859,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	//
 	// v1.4.1 Benchmark: on a computer with an SSD, the time to sort 6,000 files
 	// is less than 50 milliseconds, while the time to process 250 files with 40
-	// chunks each using 'managedBuildAndPushChunks' is several seconds. Even in
+	// chunks each using 'callBuildAndPushChunks' is several seconds. Even in
 	// the worst case, where we are sorting 251 files with 1 chunk each, there
 	// is not much slowdown compared to skipping the sort, because the sort is
 	// so fast.
@@ -884,13 +884,13 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	switch target {
 	case targetBackupChunks:
 		r.log.Debugln("Attempting to add backup chunks to heap")
-		r.managedBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
+		r.callBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
 	case targetStuckChunks:
 		r.log.Debugln("Attempting to add stuck chunk to heap")
 		r.managedBuildAndPushRandomChunk(files, maxStuckChunksInHeap, hosts, target, offline, goodForRenew)
 	case targetUnstuckChunks:
 		r.log.Debugln("Attempting to add chunks to heap")
-		r.managedBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
+		r.callBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
 	default:
 		r.log.Println("WARN: repair target not recognized", target)
 	}
@@ -1189,14 +1189,14 @@ func (r *Renter) threadedUploadAndRepair() {
 			}
 		}
 
-		// Call threadedBubbleMetadata to update the filesystem.
+		// Call callThreadedBubbleMetadata to update the filesystem.
 		for dirSiaPath := range dirSiaPaths {
 			// We call bubble in a go routine so that it is not a bottle neck
 			// for the repair loop iterations. This however can lead to some
 			// additional unneeded cycles of the repair loop as a result of when
 			// these bubbles reach root. This cycles however will be handled and
 			// can be seen in the logs.
-			go r.threadedBubbleMetadata(dirSiaPath)
+			go r.callThreadedBubbleMetadata(dirSiaPath)
 		}
 	}
 }
