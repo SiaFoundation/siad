@@ -403,7 +403,7 @@ func drainContractsByUploading(renter *siatest.TestNode, tg *siatest.TestGroup, 
 	// Renew contracts by running out of funds
 	// Set upload price to max price
 	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte)
-	maxUploadPrice := maxStoragePrice.Mul64(100 * 4320)
+	maxUploadPrice := maxStoragePrice.Mul64(100 * uint64(types.BlocksPerMonth))
 	hosts := tg.Hosts()
 	for _, h := range hosts {
 		err := h.HostModifySettingPost(client.HostParamMinUploadBandwidthPrice, maxUploadPrice)

@@ -76,16 +76,16 @@ var (
 // contracts.
 var (
 	maxCollateral    = types.SiacoinPrecision.Mul64(1e3) // 1k SC
-	maxDownloadPrice = maxStoragePrice.Mul64(3 * 4320)
+	maxDownloadPrice = maxStoragePrice.Mul64(3 * uint64(types.BlocksPerMonth))
 	maxStoragePrice  = build.Select(build.Var{
 		Dev:      types.SiacoinPrecision.Mul64(300e3).Div(modules.BlockBytesPerMonthTerabyte), // 1 order of magnitude greater
 		Standard: types.SiacoinPrecision.Mul64(30e3).Div(modules.BlockBytesPerMonthTerabyte),  // 30k SC / TB / Month
 		Testing:  types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte),   // 2 orders of magnitude greater
 	}).(types.Currency)
 	maxUploadPrice = build.Select(build.Var{
-		Dev:      maxStoragePrice.Mul64(30 * 4320),  // 1 order of magnitude greater
-		Standard: maxStoragePrice.Mul64(3 * 4320),   // 3 months of storage
-		Testing:  maxStoragePrice.Mul64(300 * 4320), // 2 orders of magnitude greater
+		Dev:      maxStoragePrice.Mul64(30 * uint64(types.BlocksPerMonth)),  // 1 order of magnitude greater
+		Standard: maxStoragePrice.Mul64(3 * uint64(types.BlocksPerMonth)),   // 3 months of storage
+		Testing:  maxStoragePrice.Mul64(300 * uint64(types.BlocksPerMonth)), // 2 orders of magnitude greater
 	}).(types.Currency)
 
 	// scoreLeewayGoodForRenew defines the factor by which a host can miss the

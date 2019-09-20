@@ -45,7 +45,7 @@ var (
 	// that is permitted by the consensus rules.
 	BlockSizeLimit = uint64(2e6)
 	// BlocksPerHour is the number of blocks expected to be mined per hour.
-	BlocksPerHour = uint64(6)
+	BlocksPerHour = BlockHeight(6)
 	// BlocksPerDay is the number of blocks expected to be mined per day.
 	BlocksPerDay = 24 * BlocksPerHour
 	// BlocksPerWeek is the number of blocks expected to be mined per week.

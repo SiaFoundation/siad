@@ -273,8 +273,8 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	allowance := modules.Allowance{
 		Funds:       types.SiacoinPrecision,
 		Hosts:       1,
-		Period:      12096,
-		RenewWindow: 4032,
+		Period:      3 * types.BlocksPerMonth,
+		RenewWindow: types.BlocksPerMonth,
 	}
 	dbe.ContractPrice = allowance.Funds.Mul64(2)
 
