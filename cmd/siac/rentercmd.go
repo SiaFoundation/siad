@@ -437,42 +437,7 @@ Expectations for period:
 	// Show detailed current Period spending metrics
 	renterallowancespending(rg)
 
-	// Show spending detail
 	fm := rg.FinancialMetrics
-	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
-		Add(fm.DownloadSpending).Add(fm.StorageSpending)
-	// Calculate unspent allocated
-	unspentAllocated := types.ZeroCurrency
-	if fm.TotalAllocated.Cmp(totalSpent) >= 0 {
-		unspentAllocated = fm.TotalAllocated.Sub(totalSpent)
-	}
-	// Calculate unspent unallocated
-	unspentUnallocated := types.ZeroCurrency
-	if fm.Unspent.Cmp(unspentAllocated) >= 0 {
-		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
-	}
-
-	fmt.Printf(`
-Spending:
-  Current Period Spending:`)
-
-	if rg.Settings.Allowance.Funds.IsZero() {
-		fmt.Printf("\n    No current period spending.\n")
-	} else {
-		fmt.Printf(`
-    Spent Funds:     %v
-      Storage:       %v
-      Upload:        %v
-      Download:      %v
-      Fees:          %v
-    Unspent Funds:   %v
-      Allocated:     %v
-      Unallocated:   %v
-`, currencyUnits(totalSpent), currencyUnits(fm.StorageSpending),
-			currencyUnits(fm.UploadSpending), currencyUnits(fm.DownloadSpending),
-			currencyUnits(fm.ContractFees), currencyUnits(fm.Unspent),
-			currencyUnits(unspentAllocated), currencyUnits(unspentUnallocated))
-	}
 
 	fmt.Printf("\n  Previous Spending:")
 	if fm.PreviousSpending.IsZero() && fm.WithheldFunds.IsZero() {
