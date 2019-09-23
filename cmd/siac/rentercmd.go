@@ -241,6 +241,11 @@ func rentercmd() {
 `, currencyUnits(rg.Settings.Allowance.Funds), currencyUnits(totalSpent), currencyUnits(fm.Unspent))
 	}
 
+	// detailed allowance spending for current period
+	if renterVerbose {
+		renterallowancespending(rg)
+	}
+
 	// File and Contract Data
 	fmt.Println()
 	fmt.Printf(`Data Storage:`)
@@ -359,6 +364,48 @@ func renterdownloadscmd() {
 	}
 }
 
+// renterallowancespending prints info about the current period spending
+// this also get called by 'siac renter -v' which is why it's in its own
+// function
+func renterallowancespending(rg api.RenterGET) {
+	// Show spending detail
+	fm := rg.FinancialMetrics
+	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
+		Add(fm.DownloadSpending).Add(fm.StorageSpending)
+	// Calculate unspent allocated
+	unspentAllocated := types.ZeroCurrency
+	if fm.TotalAllocated.Cmp(totalSpent) >= 0 {
+		unspentAllocated = fm.TotalAllocated.Sub(totalSpent)
+	}
+	// Calculate unspent unallocated
+	unspentUnallocated := types.ZeroCurrency
+	if fm.Unspent.Cmp(unspentAllocated) >= 0 {
+		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
+	}
+
+	fmt.Printf(`
+Spending:
+  Current Period Spending:`)
+
+	if rg.Settings.Allowance.Funds.IsZero() {
+		fmt.Printf("\n    No current period spending.\n")
+	} else {
+		fmt.Printf(`
+    Spent Funds:     %v
+      Storage:       %v
+      Upload:        %v
+      Download:      %v
+      Fees:          %v
+    Unspent Funds:   %v
+      Allocated:     %v
+      Unallocated:   %v
+`, currencyUnits(totalSpent), currencyUnits(fm.StorageSpending),
+			currencyUnits(fm.UploadSpending), currencyUnits(fm.DownloadSpending),
+			currencyUnits(fm.ContractFees), currencyUnits(fm.Unspent),
+			currencyUnits(unspentAllocated), currencyUnits(unspentUnallocated))
+	}
+}
+
 // renterallowancecmd is the handler for the command `siac renter allowance`.
 // displays the current allowance.
 func renterallowancecmd() {
@@ -386,6 +433,9 @@ Expectations for period:
 	Expected Redundancy:  %v
 `, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, filesizeUnits(allowance.ExpectedStorage),
 		filesizeUnits(allowance.ExpectedUpload), filesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy)
+
+	// Show detailed current Period spending metrics
+	renterallowancespending(rg)
 
 	// Show spending detail
 	fm := rg.FinancialMetrics
