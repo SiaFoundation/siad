@@ -10,7 +10,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -95,21 +97,27 @@ func statuscmd() {
 
 	// Consensus Info
 	cg, err := httpClient.ConsensusGet()
-	if err != nil {
+	if errors.Contains(err, api.ErrAPICallNotRecognized) {
+		// Assume module is not loaded if status command is not recognized.
+		fmt.Printf("Consensus:\n  Status: %s\n\n", moduleNotReadyStatus)
+	} else if err != nil {
 		die("Could not get consensus status:", err)
-	}
-	fmt.Printf(`Consensus:
+	} else {
+		fmt.Printf(`Consensus:
   Synced: %v
   Height: %v
 
 `, yesNo(cg.Synced), cg.Height)
+	}
 
 	// Wallet Info
 	walletStatus, err := httpClient.WalletGet()
-	if err != nil {
+	if errors.Contains(err, api.ErrAPICallNotRecognized) {
+		// Assume module is not loaded if status command is not recognized.
+		fmt.Printf("Wallet:\n  Status: %s\n\n", moduleNotReadyStatus)
+	} else if err != nil {
 		die("Could not get wallet status:", err)
-	}
-	if walletStatus.Unlocked {
+	} else if walletStatus.Unlocked {
 		fmt.Printf(`Wallet:
   Status:          unlocked
   Siacoin Balance: %v

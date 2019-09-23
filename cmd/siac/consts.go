@@ -16,4 +16,8 @@ const (
 	// SpeedEstimationWindow is the size of the window which we use to
 	// determine download speeds.
 	SpeedEstimationWindow = 60 * time.Second
+
+	// moduleNotReadyStatus is the error message displayed when an API call error
+	// suggests that a modules is not yet ready for usage.
+	moduleNotReadyStatus = "Module not loaded or still starting up"
 )
