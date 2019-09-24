@@ -186,11 +186,16 @@ func parseRatelimit(rateLimitStr string) (int64, error) {
 		unit   string
 		factor float64
 	}{
-		{"TB/s", 4},
-		{"GB/s", 3},
-		{"MB/s", 2},
-		{"KB/s", 1},
-		{"B/s", 0},
+		{"TB/s", 1e12},
+		{"GB/s", 1e9},
+		{"MB/s", 1e6},
+		{"KB/s", 1e3},
+		{"B/s", 1e0},
+		{"Tbps", 1e12 / 8},
+		{"Gbps", 1e9 / 8},
+		{"Mbps", 1e6 / 8},
+		{"Kbps", 1e3 / 8},
+		{"Bps", 1e0 / 8},
 	}
 	for _, rate := range rates {
 		if !strings.HasSuffix(rateLimitStr, rate.unit) {
@@ -211,10 +216,14 @@ func parseRatelimit(rateLimitStr string) (int64, error) {
 		if err != nil {
 			return 0, errors.Compose(errUnableToParseRateLimit, err)
 		}
+		// Check for Bps to make sure it is greater than 8 Bps meaning that it is at
+		// least 1 B/s
+		if rateLimitFloat < 8 && rate.unit == "Bps" {
+			return 0, errors.AddContext(errUnableToParseRateLimit, "Bps rate limit cannot be < 8 Bps")
+		}
 
 		// Determine factor and convert to in64 for bps
-		factor := math.Pow(float64(1e3), rate.factor)
-		rateLimit := int64(factor * rateLimitFloat)
+		rateLimit := int64(rateLimitFloat * rate.factor)
 
 		return rateLimit, nil
 	}

@@ -51,8 +51,10 @@ var (
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
 		Short: "set maxdownloadspeed and maxuploadspeed",
 		Long: `Set the maxdownloadspeed and maxuploadspeed in 
-B/s (Bytes/s), KB/s (Kilobytes/s), MB/s (Megabytes/s), GB/s (Gigabytes/s), 
-or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
+Bytes per second: B/s, KB/s, MB/s, GB/s, TB/s
+or
+Bits per second: Bps, Kbps, Mbps, Gbps, Tbps
+Set them to 0 for no limit.`,
 		Run: wrap(gatewayratelimitcmd),
 	}
 )
