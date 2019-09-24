@@ -117,7 +117,7 @@ suites, respectively. Finally, `make cover` will generate code coverage reports
 for each package; they are stored in the `cover` folder and can be viewed in
 your browser.
 
-## Running Sia on a Raspberry Pi
+### Running Sia on a Raspberry Pi
 
 Official binaries are not provided for the Raspberry Pi, but you can easily
 compile them yourself by installing the Go toolchain on your Raspberry Pi.
