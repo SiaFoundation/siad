@@ -3,6 +3,7 @@ package renter
 import (
 	"fmt"
 	"io/ioutil"
+	"sort"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -30,10 +31,9 @@ var (
 // random stuck chunks to the upload heap
 func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modules.SiaPath, error) {
 	var dirSiaPaths []modules.SiaPath
-	for r.uploadHeap.managedNumStuckChunks() < maxStuckChunksInHeap {
-		// Remember number of stuck chunks we are starting with
-		prevNumStuckChunks := r.uploadHeap.managedNumStuckChunks()
-
+	// Remember number of stuck chunks we are starting with
+	prevNumStuckChunks := r.uploadHeap.managedNumStuckChunks()
+	for prevNumStuckChunks < maxStuckChunksInHeap {
 		// Randomly get directory with stuck files
 		dirSiaPath, err := r.managedStuckDirectory()
 		if err != nil {
@@ -228,6 +228,16 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 	// Iterating of the renter directory until randomly ending up in a
 	// directory, break and return that directory
 	siaPath := modules.RootSiaPath()
+	root, err := r.staticDirSet.Open(siaPath)
+	if err != nil {
+		return modules.SiaPath{}, err
+	}
+	// Get random int
+	aggregateNumStuckChunks := root.Metadata().AggregateNumStuckChunks
+	if aggregateNumStuckChunks == 0 {
+		return modules.SiaPath{}, errNoStuckChunks
+	}
+	rand := fastrand.Uint64n(aggregateNumStuckChunks)
 	for {
 		select {
 		// Check to make sure renter hasn't been shutdown
@@ -240,20 +250,17 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		if err != nil {
 			return modules.SiaPath{}, err
 		}
-		files, err := r.FileList(siaPath, false, false)
-		if err != nil {
-			return modules.SiaPath{}, err
-		}
 		// Sanity check that there is at least the current directory
 		if len(directories) == 0 {
 			build.Critical("No directories returned from DirList")
 		}
+
 		// Check if we are in an empty Directory. This will be the case before
 		// any files have been uploaded so the root directory is empty. Also it
 		// could happen if the only file in a directory was stuck and was very
 		// recently deleted so the health of the directory has not yet been
 		// updated.
-		emptyDir := len(directories) == 1 && len(files) == 0
+		emptyDir := len(directories) == 1 && directories[0].NumFiles == 0
 		if emptyDir {
 			return siaPath, errNoStuckFiles
 		}
@@ -270,40 +277,37 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 			return siaPath, nil
 		}
 
-		// Get random int
-		rand := fastrand.Intn(int(directories[0].AggregateNumStuckChunks))
+		// Sort the slice of directories by aggregate Number of stuck chunks.
+		// This will put the current directory in the 0th position every time
+		sort.Slice(directories, func(i, j int) bool {
+			return directories[i].AggregateNumStuckChunks > directories[j].AggregateNumStuckChunks
+		})
 
-		// Use rand to decide which directory to go into. Work backwards over
-		// the slice of directories. Since the first element is the current
-		// directory that means that it is the sum of all the files and
-		// directories.  We can chose a directory by subtracting the number of
-		// stuck chunks a directory has from rand and if rand gets to 0 or less
-		// we choose that directory
-		for i := len(directories) - 1; i >= 0; i-- {
-			// If we make it to the last iteration double check that the current
-			// directory has files
-			if i == 0 && len(files) == 0 {
-				break
-			}
-
-			// If we are on the last iteration and the directory does have files
-			// then return the current directory
+		// Use rand to decide which directory to go into. We can chose a
+		// directory by subtracting the aggregate number of stuck chunks a
+		// directory has from rand and if rand gets to 0 or less we choose that
+		// directory
+		for i := 0; i < len(directories); i++ {
+			var numStuckChunks uint64
+			// If it is the first directory just use the NumStuckChunks
+			// otherwise each directory we start with would have double impact
 			if i == 0 {
-				siaPath = directories[0].SiaPath
-				return siaPath, nil
+				numStuckChunks = directories[i].NumStuckChunks
+			} else {
+				numStuckChunks = directories[i].AggregateNumStuckChunks
 			}
 
 			// Skip directories with no stuck chunks
-			if directories[i].AggregateNumStuckChunks == uint64(0) {
+			if numStuckChunks == uint64(0) {
 				continue
 			}
 
-			rand = rand - int(directories[i].AggregateNumStuckChunks)
+			rand = rand - numStuckChunks
 			siaPath = directories[i].SiaPath
 			// If rand is less than 0 break out of the loop and continue into
 			// that directory
 			if rand <= 0 {
-				break
+				return siaPath, nil
 			}
 		}
 	}
@@ -312,8 +316,8 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 // managedStuckFile finds a weighted random stuck file from a directory based on
 // the number of stuck chunks in the stuck files of the directory
 func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (modules.SiaPath, error) {
-	// Get all list of files in the directory
-	files, err := r.FileList(dirSiaPath, false, false)
+	// Get the list of files in the directory
+	files, err := r.FileList(dirSiaPath, false, true)
 	if err != nil {
 		return modules.SiaPath{}, err
 	}
@@ -321,31 +325,34 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (modules.SiaPath, 
 		return modules.SiaPath{}, errors.New("no files in directory")
 	}
 
-	// Pull out stuck files and track the number of stuck chunks
-	var stuckFiles []modules.FileInfo
-	var totalStuckChunks int
-	for _, f := range files {
-		if f.Stuck {
-			stuckFiles = append(stuckFiles, f)
-			totalStuckChunks += int(f.NumStuckChunks)
-		}
+	// Grab Aggregate number of stuck chunks from the directory
+	//
+	// NOTE: using the aggregate number of stuck chunks assumes that the
+	// directory and the files within the directory are in sync. This is ok to
+	// do as the risks associated with being out of sync are low.
+	siaDir, err := r.staticDirSet.Open(dirSiaPath)
+	if err != nil {
+		return modules.SiaPath{}, err
 	}
-
-	// Confirm there are stuck files and stuck chunks
-	if len(stuckFiles) == 0 {
-		return modules.SiaPath{}, errNoStuckFiles
-	}
-	if totalStuckChunks == 0 {
+	aggregateNumStuckChunks := siaDir.Metadata().AggregateNumStuckChunks
+	if aggregateNumStuckChunks == 0 {
 		return modules.SiaPath{}, errors.New("No stuck chunks found in stuck files")
 	}
 
 	// Use rand to decide which file to select. We can chose a file by
 	// subtracting the number of stuck chunks a file has from rand and if rand
 	// gets to 0 or less we choose that file
+	rand := fastrand.Uint64n(aggregateNumStuckChunks)
+	// Sort the files in ascending number of stuck chunks. This will give files
+	// with a large number of stuck chunks a higher chance of being selected as
+	// we decrement the number of stuck chunks from rand
+	sort.Slice(files, func(i, j int) bool { return files[i].NumStuckChunks < files[j].NumStuckChunks })
 	var siaPath modules.SiaPath
-	rand := fastrand.Intn(totalStuckChunks)
-	for _, f := range stuckFiles {
-		rand = rand - int(f.NumStuckChunks)
+	for _, f := range files {
+		if !f.Stuck {
+			continue
+		}
+		rand = rand - f.NumStuckChunks
 		siaPath = f.SiaPath
 		if rand <= 0 {
 			break
