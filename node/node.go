@@ -13,11 +13,12 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules/explorer"
+	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
+	"gitlab.com/NebulousLabs/Sia/modules/explorer"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
@@ -28,8 +29,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // NodeParams contains a bunch of parameters for creating a new test node. As
@@ -80,11 +79,12 @@ type NodeParams struct {
 	Wallet          modules.Wallet
 
 	// Dependencies for each module supporting dependency injection.
-	ContractorDeps  modules.Dependencies
-	ContractSetDeps modules.Dependencies
-	HostDBDeps      modules.Dependencies
-	RenterDeps      modules.Dependencies
-	WalletDeps      modules.Dependencies
+	ConsensusSetDeps modules.Dependencies
+	ContractorDeps   modules.Dependencies
+	ContractSetDeps  modules.Dependencies
+	HostDBDeps       modules.Dependencies
+	RenterDeps       modules.Dependencies
+	WalletDeps       modules.Dependencies
 
 	// Custom settings for modules
 	Allowance   modules.Allowance
@@ -212,8 +212,9 @@ func (n *Node) Close() (err error) {
 // of initialization because the siatest package cannot import any of the
 // modules directly (so that the modules may use the siatest package to test
 // themselves).
-func New(params NodeParams) (*Node, error) {
+func New(params NodeParams) (*Node, <-chan error) {
 	dir := params.Dir
+	errChan := make(chan error, 1)
 
 	numModules := params.NumModules()
 	i := 1
@@ -237,26 +238,38 @@ func New(params NodeParams) (*Node, error) {
 		return gateway.New(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir))
 	}()
 	if err != nil {
-		return nil, errors.Extend(err, errors.New("unable to create gateway"))
+		errChan <- errors.Extend(err, errors.New("unable to create gateway"))
+		return nil, errChan
 	}
 
 	// Consensus.
-	cs, err := func() (modules.ConsensusSet, error) {
+	cs, errChanCS := func() (modules.ConsensusSet, <-chan error) {
+		c := make(chan error, 1)
+		defer close(c)
 		if params.CreateConsensusSet && params.ConsensusSet != nil {
-			return nil, errors.New("cannot both create consensus and use passed in consensus")
+			c <- errors.New("cannot both create consensus and use passed in consensus")
+			close(c)
+			return nil, c
 		}
 		if params.ConsensusSet != nil {
-			return params.ConsensusSet, nil
+			close(c)
+			return params.ConsensusSet, c
 		}
 		if !params.CreateConsensusSet {
-			return nil, nil
+			close(c)
+			return nil, c
 		}
 		i++
 		printfRelease("(%d/%d) Loading consensus...\n", i, numModules)
-		return consensus.New(g, params.Bootstrap, filepath.Join(dir, modules.ConsensusDir))
+		consensusSetDeps := params.ConsensusSetDeps
+		if consensusSetDeps == nil {
+			consensusSetDeps = modules.ProdDependencies
+		}
+		return consensus.NewCustomConsensusSet(g, params.Bootstrap, filepath.Join(dir, modules.ConsensusDir), consensusSetDeps)
 	}()
-	if err != nil {
-		return nil, errors.Extend(err, errors.New("unable to create consensus set"))
+	if err := modules.PeekErr(errChanCS); err != nil {
+		errChan <- errors.Extend(err, errors.New("unable to create consensus set"))
+		return nil, errChan
 	}
 
 	// Explorer.
@@ -279,7 +292,8 @@ func New(params NodeParams) (*Node, error) {
 		return e, nil
 	}()
 	if err != nil {
-		return nil, errors.Extend(err, errors.New("unable to create explorer"))
+		errChan <- errors.Extend(err, errors.New("unable to create explorer"))
+		return nil, errChan
 	}
 
 	// Transaction Pool.
@@ -298,7 +312,8 @@ func New(params NodeParams) (*Node, error) {
 		return transactionpool.New(cs, g, filepath.Join(dir, modules.TransactionPoolDir))
 	}()
 	if err != nil {
-		return nil, errors.Extend(err, errors.New("unable to create transaction pool"))
+		errChan <- errors.Extend(err, errors.New("unable to create transaction pool"))
+		return nil, errChan
 	}
 
 	// Wallet.
@@ -321,7 +336,8 @@ func New(params NodeParams) (*Node, error) {
 		return wallet.NewCustomWallet(cs, tp, filepath.Join(dir, modules.WalletDir), walletDeps)
 	}()
 	if err != nil {
-		return nil, errors.Extend(err, errors.New("unable to create wallet"))
+		errChan <- errors.Extend(err, errors.New("unable to create wallet"))
+		return nil, errChan
 	}
 
 	// Miner.
@@ -344,7 +360,8 @@ func New(params NodeParams) (*Node, error) {
 		return m, nil
 	}()
 	if err != nil {
-		return nil, errors.Extend(err, errors.New("unable to create miner"))
+		errChan <- errors.Extend(err, errors.New("unable to create miner"))
+		return nil, errChan
 	}
 
 	// Host.
@@ -366,19 +383,25 @@ func New(params NodeParams) (*Node, error) {
 		return host.New(cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
 	}()
 	if err != nil {
-		return nil, errors.Extend(err, errors.New("unable to create host"))
+		errChan <- errors.Extend(err, errors.New("unable to create host"))
+		return nil, errChan
 	}
 
 	// Renter.
-	r, err := func() (modules.Renter, error) {
+	r, errChanRenter := func() (modules.Renter, <-chan error) {
+		c := make(chan error, 1)
 		if params.CreateRenter && params.Renter != nil {
-			return nil, errors.New("cannot create renter and also use custom renter")
+			c <- errors.New("cannot create renter and also use custom renter")
+			close(c)
+			return nil, c
 		}
 		if params.Renter != nil {
-			return params.Renter, nil
+			close(c)
+			return params.Renter, c
 		}
 		if !params.CreateRenter {
-			return nil, nil
+			close(c)
+			return nil, c
 		}
 		contractorDeps := params.ContractorDeps
 		if contractorDeps == nil {
@@ -402,29 +425,47 @@ func New(params NodeParams) (*Node, error) {
 		printfRelease("(%d/%d) Loading renter...\n", i, numModules)
 
 		// HostDB
-		hdb, err := hostdb.NewCustomHostDB(g, cs, tp, persistDir, hostDBDeps)
-		if err != nil {
-			return nil, err
+		hdb, errChanHDB := hostdb.NewCustomHostDB(g, cs, tp, persistDir, hostDBDeps)
+		if err := modules.PeekErr(errChanHDB); err != nil {
+			c <- err
+			close(c)
+			return nil, c
 		}
 		// ContractSet
 		contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), contractSetDeps)
 		if err != nil {
-			return nil, err
+			c <- err
+			close(c)
+			return nil, c
 		}
 		// Contractor
 		logger, err := persist.NewFileLogger(filepath.Join(persistDir, "contractor.log"))
 		if err != nil {
-			return nil, err
+			c <- err
+			close(c)
+			return nil, c
 		}
-		hc, err := contractor.NewCustomContractor(cs, &contractor.WalletBridge{W: w}, tp, hdb, contractSet, contractor.NewPersist(persistDir), logger, contractorDeps)
-		if err != nil {
-			return nil, err
+		hc, errChanContractor := contractor.NewCustomContractor(cs, &contractor.WalletBridge{W: w}, tp, hdb, contractSet, contractor.NewPersist(persistDir), logger, contractorDeps)
+		if err := modules.PeekErr(errChanContractor); err != nil {
+			c <- err
+			close(c)
+			return nil, c
 		}
-		return renter.NewCustomRenter(g, cs, tp, hdb, w, hc, persistDir, renterDeps)
+		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, persistDir, renterDeps)
+		go func() {
+			c <- errors.Compose(<-errChanHDB, <-errChanContractor, <-errChanRenter)
+			close(c)
+		}()
+		return renter, c
 	}()
-	if err != nil {
-		return nil, errors.Extend(err, errors.New("unable to create renter"))
+	if err := modules.PeekErr(errChanRenter); err != nil {
+		errChan <- errors.Extend(err, errors.New("unable to create renter"))
+		return nil, errChan
 	}
+	go func() {
+		errChan <- errors.Compose(<-errChanCS, <-errChanRenter)
+		close(errChan)
+	}()
 
 	return &Node{
 		ConsensusSet:    cs,
@@ -437,5 +478,5 @@ func New(params NodeParams) (*Node, error) {
 		Wallet:          w,
 
 		Dir: dir,
-	}, nil
+	}, errChan
 }

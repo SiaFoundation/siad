@@ -2,17 +2,19 @@ package wallet
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"time"
 
-	"github.com/coreos/bbolt"
+	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"golang.org/x/crypto/pbkdf2"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -28,10 +30,20 @@ var (
 	verificationPlaintext = make([]byte, 32)
 )
 
-// uidEncryptionKey creates an encryption key that is used to decrypt a
+// saltedEncryptionKey creates an encryption key that is used to decrypt a
 // specific key file.
-func uidEncryptionKey(masterKey crypto.CipherKey, uid uniqueID) (key crypto.CipherKey) {
-	key = crypto.NewWalletKey(crypto.HashAll(masterKey, uid))
+func saltedEncryptionKey(masterKey crypto.CipherKey, salt walletSalt) (key crypto.CipherKey) {
+	key = crypto.NewWalletKey(crypto.HashAll(masterKey, salt))
+	return
+}
+
+// walletPasswordEncryptionKey creates an encryption key that is used to
+// encrypt/decrypt the master encryption key.
+func walletPasswordEncryptionKey(seed modules.Seed, salt walletSalt) (key crypto.CipherKey) {
+	var h crypto.Hash
+	entropy := pbkdf2.Key(seed[:], salt[:], 10000, crypto.HashSize, crypto.NewHash)
+	copy(h[:], entropy)
+	key = crypto.NewWalletKey(h)
 	return
 }
 
@@ -53,7 +65,7 @@ func checkMasterKey(tx *bolt.Tx, masterKey crypto.CipherKey) error {
 	if masterKey == nil {
 		return modules.ErrBadEncryptionKey
 	}
-	uk := uidEncryptionKey(masterKey, dbGetWalletUID(tx))
+	uk := saltedEncryptionKey(masterKey, dbGetWalletSalt(tx))
 	encryptedVerification := tx.Bucket(bucketWallet).Get(keyEncryptionVerification)
 	return verifyEncryption(uk, encryptedVerification)
 }
@@ -81,11 +93,18 @@ func (w *Wallet) initEncryption(masterKey crypto.CipherKey, seed modules.Seed, p
 
 	// Establish the encryption verification using the masterKey. After this
 	// point, the wallet is encrypted.
-	uk := uidEncryptionKey(masterKey, dbGetWalletUID(w.dbTx))
+	uk := saltedEncryptionKey(masterKey, dbGetWalletSalt(w.dbTx))
+	err = wb.Put(keyEncryptionVerification, uk.EncryptBytes(verificationPlaintext))
 	if err != nil {
 		return modules.Seed{}, err
 	}
-	err = wb.Put(keyEncryptionVerification, uk.EncryptBytes(verificationPlaintext))
+
+	// Encrypt the masterkey using the seed to allow for a masterkey recovery using
+	// the seed.
+	wpk := walletPasswordEncryptionKey(seed, dbGetWalletSalt(w.dbTx))
+	mkt := masterKey.Type()
+	mke := masterKey.Key()
+	err = wb.Put(keyWalletPassword, wpk.EncryptBytes(append(mkt[:], mke...)))
 	if err != nil {
 		return modules.Seed{}, err
 	}
@@ -94,6 +113,33 @@ func (w *Wallet) initEncryption(masterKey crypto.CipherKey, seed modules.Seed, p
 	w.encrypted = true
 
 	return seed, nil
+}
+
+// managedMasterKey retrieves the masterkey that was stored encrypted in the
+// wallet's database.
+func (w *Wallet) managedMasterKey(seed modules.Seed) (crypto.CipherKey, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	// Check if wallet is encrypted.
+	if !w.encrypted {
+		return nil, errUnencryptedWallet
+	}
+	// Compute password from seed.
+	wb := w.dbTx.Bucket(bucketWallet)
+	wpk := walletPasswordEncryptionKey(seed, dbGetWalletSalt(w.dbTx))
+	// Grab the encrypted masterkey.
+	encryptedMK := wb.Get(keyWalletPassword)
+	if len(encryptedMK) == 0 {
+		return nil, errors.New("wallet is encrypted but masterkey is missing")
+	}
+	// Decrypt the masterkey.
+	masterKey, err := wpk.DecryptBytes(encryptedMK)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to decrypt masterkey")
+	}
+	var ct crypto.CipherType
+	copy(ct[:], masterKey)
+	return crypto.NewSiaKey(ct, masterKey[len(ct):])
 }
 
 // managedUnlock loads all of the encrypted file structures into wallet memory. Even
@@ -203,6 +249,15 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 			w.watchedAddrs[addr] = struct{}{}
 		}
 
+		// COMPATv141 if the wallet password hasn't been encrypted yet using the seed,
+		// do it.
+		wpk := walletPasswordEncryptionKey(primarySeed, dbGetWalletSalt(w.dbTx))
+		mkt := masterKey.Type()
+		mke := masterKey.Key()
+		wb := w.dbTx.Bucket(bucketWallet)
+		if len(wb.Get(keyWalletPassword)) == 0 {
+			return w.dbTx.Bucket(bucketWallet).Put(keyWalletPassword, wpk.EncryptBytes(append(mkt[:], mke...)))
+		}
 		return nil
 	}()
 	if err != nil {
@@ -446,6 +501,20 @@ func (w *Wallet) ChangeKey(masterKey crypto.CipherKey, newKey crypto.CipherKey) 
 	return w.managedChangeKey(masterKey, newKey)
 }
 
+// ChangeKeyWithSeed is the same as ChangeKey but uses the primary seed
+// instead of the current masterKey.
+func (w *Wallet) ChangeKeyWithSeed(seed modules.Seed, newKey crypto.CipherKey) error {
+	if err := w.tg.Add(); err != nil {
+		return err
+	}
+	defer w.tg.Done()
+	mk, err := w.managedMasterKey(seed)
+	if err != nil {
+		return errors.AddContext(err, "failed to retrieve masterkey by seed")
+	}
+	return w.managedChangeKey(mk, newKey)
+}
+
 // Unlock will decrypt the wallet seed and load all of the addresses into
 // memory.
 func (w *Wallet) Unlock(masterKey crypto.CipherKey) error {
@@ -559,8 +628,8 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 	}
 	for _, sk := range spendableKeys {
 		var skf spendableKeyFile
-		fastrand.Read(skf.UID[:])
-		encryptionKey := uidEncryptionKey(newKey, skf.UID)
+		fastrand.Read(skf.Salt[:])
+		encryptionKey := saltedEncryptionKey(newKey, skf.Salt)
 		skf.EncryptionVerification = encryptionKey.EncryptBytes(verificationPlaintext)
 
 		// Encrypt and save the key.
@@ -588,8 +657,16 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 			return err
 		}
 
-		uk := uidEncryptionKey(newKey, dbGetWalletUID(w.dbTx))
+		uk := saltedEncryptionKey(newKey, dbGetWalletSalt(w.dbTx))
 		err = wb.Put(keyEncryptionVerification, uk.EncryptBytes(verificationPlaintext))
+		if err != nil {
+			return err
+		}
+
+		wpk := walletPasswordEncryptionKey(primarySeed, dbGetWalletSalt(w.dbTx))
+		mkt := newKey.Type()
+		mke := newKey.Key()
+		err = wb.Put(keyWalletPassword, wpk.EncryptBytes(append(mkt[:], mke...)))
 		if err != nil {
 			return err
 		}

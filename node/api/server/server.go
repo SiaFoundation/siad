@@ -14,14 +14,15 @@ import (
 	"syscall"
 	"time"
 
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+	"gitlab.com/NebulousLabs/errors"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
-	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // A Server is a collection of siad modules that can be communicated with over
@@ -122,86 +123,118 @@ func (srv *Server) Unlock(password string) error {
 	return modules.ErrBadEncryptionKey
 }
 
+// NewAsync creates a new API server from the provided modules. The API will
+// require authentication using HTTP basic auth if the supplied password is not
+// the empty string. Usernames are ignored for authentication. This type of
+// authentication sends passwords in plaintext and should therefore only be
+// used if the APIaddr is localhost.
+func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string, nodeParams node.NodeParams) (*Server, <-chan error) {
+	c := make(chan error, 1)
+	defer close(c)
+
+	var errChan <-chan error
+	var n *node.Node
+	s, err := func() (*Server, error) {
+		// Create the server listener.
+		listener, err := net.Listen("tcp", APIaddr)
+		if err != nil {
+			return nil, err
+		}
+
+		// Load the config file.
+		cfg, err := modules.NewConfig(filepath.Join(nodeParams.Dir, configName))
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to load siad config")
+		}
+
+		// Create the api for the server.
+		api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil)
+		srv := &Server{
+			api: api,
+			apiServer: &http.Server{
+				Handler: api,
+
+				// set reasonable timeout windows for requests, to prevent the Sia API
+				// server from leaking file descriptors due to slow, disappearing, or
+				// unreliable API clients.
+
+				// ReadTimeout defines the maximum amount of time allowed to fully read
+				// the request body. This timeout is applied to every handler in the
+				// server.
+				ReadTimeout: time.Minute * 60,
+
+				// ReadHeaderTimeout defines the amount of time allowed to fully read the
+				// request headers.
+				ReadHeaderTimeout: time.Minute * 2,
+
+				// IdleTimeout defines the maximum duration a HTTP Keep-Alive connection
+				// the API is kept open with no activity before closing.
+				IdleTimeout: time.Minute * 5,
+			},
+			done:              make(chan struct{}),
+			listener:          listener,
+			requiredUserAgent: requiredUserAgent,
+			Dir:               nodeParams.Dir,
+		}
+
+		// Set the shutdown method to allow the api to shutdown the server.
+		api.Shutdown = srv.Close
+
+		// Spin up a goroutine that serves the API and closes srv.done when
+		// finished.
+		go func() {
+			srv.serveErr = srv.serve()
+			close(srv.done)
+		}()
+
+		// Create the Sia node for the server after the server was started.
+		n, errChan = node.New(nodeParams)
+		if err := modules.PeekErr(errChan); err != nil {
+			if isAddrInUseErr(err) {
+				return nil, fmt.Errorf("%v; are you running another instance of siad?", err.Error())
+			}
+			return nil, errors.AddContext(err, "server is unable to create the Sia node")
+		}
+
+		// Make sure that the server wasn't shut down while loading the modules.
+		srv.closeMu.Lock()
+		defer srv.closeMu.Unlock()
+		select {
+		case <-srv.done:
+			// Server was shut down. Close node and exit.
+			return srv, n.Close()
+		default:
+		}
+		// Server wasn't shut down. Add node and replace modules.
+		srv.node = n
+		api.SetModules(n.ConsensusSet, n.Explorer, n.Gateway, n.Host, n.Miner, n.Renter, n.TransactionPool, n.Wallet)
+		return srv, nil
+	}()
+	if err != nil {
+		if n != nil {
+			err = errors.Compose(err, n.Close())
+		}
+		c <- err
+		return nil, c
+	}
+	return s, errChan
+}
+
 // New creates a new API server from the provided modules. The API will
 // require authentication using HTTP basic auth if the supplied password is not
 // the empty string. Usernames are ignored for authentication. This type of
 // authentication sends passwords in plaintext and should therefore only be
 // used if the APIaddr is localhost.
 func New(APIaddr string, requiredUserAgent string, requiredPassword string, nodeParams node.NodeParams) (*Server, error) {
-	// Create the server listener.
-	listener, err := net.Listen("tcp", APIaddr)
-	if err != nil {
+	// Wait for the node to be done loading.
+	srv, errChan := NewAsync(APIaddr, requiredUserAgent, requiredPassword, nodeParams)
+	if err := <-errChan; err != nil {
+		// Error occured during async load. Close all modules.
+		if build.Release == "standard" {
+			fmt.Println("ERROR:", err)
+		}
 		return nil, err
 	}
-
-	// Load the config file.
-	cfg, err := modules.NewConfig(filepath.Join(nodeParams.Dir, configName))
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to load siad config")
-	}
-
-	// Create the api for the server.
-	api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil)
-	srv := &Server{
-		api: api,
-		apiServer: &http.Server{
-			Handler: api,
-
-			// set reasonable timeout windows for requests, to prevent the Sia API
-			// server from leaking file descriptors due to slow, disappearing, or
-			// unreliable API clients.
-
-			// ReadTimeout defines the maximum amount of time allowed to fully read
-			// the request body. This timeout is applied to every handler in the
-			// server.
-			ReadTimeout: time.Minute * 60,
-
-			// ReadHeaderTimeout defines the amount of time allowed to fully read the
-			// request headers.
-			ReadHeaderTimeout: time.Minute * 2,
-
-			// IdleTimeout defines the maximum duration a HTTP Keep-Alive connection
-			// the API is kept open with no activity before closing.
-			IdleTimeout: time.Minute * 5,
-		},
-		done:              make(chan struct{}),
-		listener:          listener,
-		requiredUserAgent: requiredUserAgent,
-		Dir:               nodeParams.Dir,
-	}
-
-	// Set the shutdown method to allow the api to shutdown the server.
-	api.Shutdown = srv.Close
-
-	// Spin up a goroutine that serves the API and closes srv.done when
-	// finished.
-	go func() {
-		srv.serveErr = srv.serve()
-		close(srv.done)
-	}()
-
-	// Create the Sia node for the server after the server was started.
-	node, err := node.New(nodeParams)
-	if err != nil {
-		if isAddrInUseErr(err) {
-			return nil, fmt.Errorf("%v; are you running another instance of siad?", err.Error())
-		}
-		return nil, errors.AddContext(err, "server is unable to create the Sia node")
-	}
-
-	// Make sure that the server wasn't shut down while loading the modules.
-	srv.closeMu.Lock()
-	defer srv.closeMu.Unlock()
-	select {
-	case <-srv.done:
-		// Server was shut down. Close node and exit.
-		return srv, node.Close()
-	default:
-	}
-	// Server wasn't shut down. Add node and replace modules.
-	srv.node = node
-	api.SetModules(node.ConsensusSet, node.Explorer, node.Gateway, node.Host, node.Miner, node.Renter, node.TransactionPool, node.Wallet)
-
 	return srv, nil
 }
 

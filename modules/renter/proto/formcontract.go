@@ -3,13 +3,14 @@ package proto
 import (
 	"net"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 )
 
 // FormContract forms a contract with a host and submits the contract
@@ -96,13 +97,18 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 	// Add miner fee.
 	txnBuilder.AddMinerFee(txnFee)
 
-	// Create initial transaction set.
+	// Create initial transaction set. Before sending the transaction set to the
+	// host, ensure that all transactions which may be necessary to get accepted
+	// into the transaction pool are included. Also ensure that only the minimum
+	// set of transactions is supplied, if there are non-necessary transactions
+	// included the chance of a double spend or poor propagation increases.
 	txn, parentTxns := txnBuilder.View()
 	unconfirmedParents, err := txnBuilder.UnconfirmedParents()
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
+	txnSet := append(unconfirmedParents, parentTxns...)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
@@ -252,9 +258,14 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 	}
 	revisionTxn.TransactionSignatures = append(revisionTxn.TransactionSignatures, hostRevisionSig)
 
-	// Construct the final transaction.
+	// Construct the final transaction that gets sent to the transaction pool.
 	txn, parentTxns = txnBuilder.View()
-	txnSet = append(parentTxns, txn)
+	unconfirmedParents, err = txnBuilder.UnconfirmedParents()
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	txnSet = append(unconfirmedParents, parentTxns...)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(txnSet)
@@ -369,6 +380,7 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 		return modules.RenterContract{}, err
 	}
 	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
+	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
@@ -473,12 +485,15 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	}
 	revisionTxn.TransactionSignatures = append(revisionTxn.TransactionSignatures, hostSigs.RevisionSignature)
 
-	// Construct the final transaction.
+	// Construct the final transaction, and then grab the minimum necessary
+	// final set to submit to the transaction pool. Minimizing the set will
+	// greatly improve the chances of the transaction propagating through an
+	// actively attacked network.
 	txn, parentTxns = txnBuilder.View()
-	txnSet = append(parentTxns, txn)
+	minSet := typesutil.MinimumTransactionSet([]types.Transaction{txn}, parentTxns)
 
 	// Submit to blockchain.
-	err = tpool.AcceptTransactionSet(txnSet)
+	err = tpool.AcceptTransactionSet(minSet)
 	if err == modules.ErrDuplicateTransactionSet {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil

@@ -1,10 +1,10 @@
 package siafile
 
 import (
-	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 const (
@@ -22,6 +22,10 @@ const (
 	// updateDeleteName is the name of a siaFile update that deletes the
 	// specified file.
 	updateDeleteName = "SiaFileDelete"
+
+	// updateDeletePartialName is the name of a wal update that deletes the
+	// specified file.
+	updateDeletePartialName = "PartialChunkDelete"
 
 	// marshaledPieceSize is the size of a piece on disk. It consists of a 4
 	// byte pieceIndex, a 4 byte table offset and a hash.
@@ -45,6 +49,14 @@ const (
 	fileListRoutines = 20
 )
 
+// Constants to indicate which part of the partial upload the combined chunk is
+// currently at.
+const (
+	CombinedChunkStatusInvalid    = iota // status wasn't initialized
+	CombinedChunkStatusInComplete        // partial chunk is included in an incomplete combined chunk.
+	CombinedChunkStatusCompleted         // partial chunk is included in a completed combined chunk.
+)
+
 var (
 	// ecReedSolomon is the marshaled type of the reed solomon coder.
 	ecReedSolomon = modules.ErasureCoderType{0, 0, 0, 1}
@@ -53,14 +65,6 @@ var (
 	// for files where every 64 bytes of an encoded piece can be decoded
 	// separately.
 	ecReedSolomonSubShards64 = modules.ErasureCoderType{0, 0, 0, 2}
-
-	// RemoteRepairDownloadThreshold defines the threshold in percent under
-	// which the renter starts repairing a file that is not available on disk.
-	RemoteRepairDownloadThreshold = build.Select(build.Var{
-		Dev:      0.25,
-		Standard: 0.25,
-		Testing:  0.25,
-	}).(float64)
 )
 
 // marshaledChunkSize is a helper method that returns the size of a chunk on
@@ -73,7 +77,7 @@ func marshaledChunkSize(numPieces int) int64 {
 // to the SiaFile package.
 func IsSiaFileUpdate(update writeaheadlog.Update) bool {
 	switch update.Name {
-	case updateInsertName, updateDeleteName:
+	case updateInsertName, updateDeleteName, updateDeletePartialName:
 		return true
 	default:
 		return false

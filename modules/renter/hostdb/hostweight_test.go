@@ -4,22 +4,25 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (
-	// An allowance to give to every hostdb for testing.
+	// Set the default test allowance
 	DefaultTestAllowance = modules.Allowance{
-		Funds:              types.SiacoinPrecision.Mul64(500),
-		Hosts:              uint64(50),
-		Period:             types.BlockHeight(12096),
-		RenewWindow:        types.BlockHeight(4032),
-		ExpectedStorage:    modules.DefaultAllowance.ExpectedStorage,
-		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
-		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
-		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		Funds:       types.SiacoinPrecision.Mul64(500),
+		Hosts:       uint64(50),
+		Period:      3 * types.BlocksPerMonth,
+		RenewWindow: types.BlocksPerMonth,
+
+		ExpectedStorage:    1e12,                                         // 1 TB
+		ExpectedUpload:     uint64(200e9) / uint64(types.BlocksPerMonth), // 200 GB per month
+		ExpectedDownload:   uint64(100e9) / uint64(types.BlocksPerMonth), // 100 GB per month
+		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
 	}
 
 	// The default entry to use when performing scoring.
@@ -221,16 +224,40 @@ func TestHostWeightStorageRemainingDifferences(t *testing.T) {
 	}
 	hdb := bareHostDB()
 
+	// Create two entries with different host keys.
 	entry := DefaultHostDBEntry
+	entry.PublicKey.Key = fastrand.Bytes(16)
 	entry2 := DefaultHostDBEntry
-	entry2.RemainingStorage = 50e3
+	entry2.PublicKey.Key = fastrand.Bytes(16)
+
+	// The first entry has more storage remaining than the second.
+	entry.RemainingStorage = modules.DefaultAllowance.ExpectedStorage // 1e12
+	entry2.RemainingStorage = 1e3
+
+	// The entry with more storage should have the higher score.
 	w1 := hdb.weightFunc(entry).Score()
 	w2 := hdb.weightFunc(entry2).Score()
-
 	if w1.Cmp(w2) <= 0 {
 		t.Log(w1)
 		t.Log(w2)
 		t.Error("Larger storage remaining should have more weight")
+	}
+
+	// Change both entries to have the same remaining storage but add contractInfo
+	// to the HostDB to make it think that we already uploaded some data to one of
+	// the entries. This entry should have the higher score.
+	entry.RemainingStorage = 1e3
+	entry2.RemainingStorage = 1e3
+	hdb.knownContracts[entry.PublicKey.String()] = contractInfo{
+		HostPublicKey: entry.PublicKey,
+		StoredData:    hdb.allowance.ExpectedStorage,
+	}
+	w1 = hdb.weightFunc(entry).Score()
+	w2 = hdb.weightFunc(entry2).Score()
+	if w1.Cmp(w2) <= 0 {
+		t.Log(w1)
+		t.Log(w2)
+		t.Error("Entry with uploaded data should have higher score")
 	}
 }
 

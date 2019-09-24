@@ -4,10 +4,19 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
+	alertsCmd = &cobra.Command{
+		Use:   "alerts",
+		Short: "view daemon alerts",
+		Long:  "view daemon alerts",
+		Run:   wrap(alertscmd),
+	}
+
 	stopCmd = &cobra.Command{
 		Use:   "stop",
 		Short: "Stop the Sia daemon",
@@ -20,6 +29,15 @@ var (
 		Short: "Check for available updates",
 		Long:  "Check for available updates.",
 		Run:   wrap(updatecheckcmd),
+	}
+
+	globalRatelimitCmd = &cobra.Command{
+		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
+		Short: "set the global maxdownloadspeed and maxuploadspeed",
+		Long: `Set the global maxdownloadspeed and maxuploadspeed in
+B/s (Bytes/s), KB/s (Kilobytes/s), MB/s (Megabytes/s), GB/s (Gigabytes/s), 
+or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
+		Run: wrap(globalratelimitcmd),
 	}
 
 	updateCmd = &cobra.Command{
@@ -36,6 +54,24 @@ var (
 		Run:   wrap(versioncmd),
 	}
 )
+
+// alertscmd prints the alerts from the daemon.
+func alertscmd() {
+	al, err := httpClient.DaemonAlertsGet()
+	if err != nil {
+		fmt.Println("Could not get daemon alerts:", err)
+	}
+	fmt.Println("There are", len(al.Alerts), "alerts")
+	for id, a := range al.Alerts {
+		fmt.Printf(`
+Alert ID: %v
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s
+`, id, a.Module, a.Severity.String(), a.Msg, a.Cause)
+	}
+}
 
 // version prints the version of siac and siad.
 func versioncmd() {
@@ -106,4 +142,22 @@ func updatecheckcmd() {
 	} else {
 		fmt.Println("Up to date.")
 	}
+}
+
+// globalratelimitcmd is the handler for the command `siac ratelimit`.
+// Sets the global maxuploadspeed and maxdownloadspeed the daemon can use.
+func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
+	downloadSpeedInt, err := parseRatelimit(downloadSpeedStr)
+	if err != nil {
+		die(errors.AddContext(err, "unable to parse download speed"))
+	}
+	uploadSpeedInt, err := parseRatelimit(uploadSpeedStr)
+	if err != nil {
+		die(errors.AddContext(err, "unable to parse upload speed"))
+	}
+	err = httpClient.DaemonGlobalRateLimitPost(downloadSpeedInt, uploadSpeedInt)
+	if err != nil {
+		die("Could not set global ratelimit speed:", err)
+	}
+	fmt.Println("Set global maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }

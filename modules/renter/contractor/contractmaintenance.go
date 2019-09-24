@@ -8,14 +8,15 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"time"
+
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -65,13 +66,6 @@ func (c *Contractor) managedCheckForDuplicates() {
 
 			// Link the contracts to each other and then store the old contract
 			// in the record of historic contracts.
-			//
-			// TODO: This code assumes that the contracts are linked because
-			// they share a host, but it's not guaranteed that just be cause two
-			// contracts have the same host that one is a renewal of the other.
-			// This code also ensures that a renter can only ever have a single
-			// contract with a host, which is not a restriction that we want to
-			// be locked into.
 			c.mu.Lock()
 			c.renewedFrom[newContract.ID] = oldContract.ID
 			c.renewedTo[oldContract.ID] = newContract.ID
@@ -259,7 +253,8 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 	// Find the minimum score that a host is allowed to have to be considered
 	// good for upload.
-	var minScore types.Currency
+	var minScoreGFR types.Currency
+	var minScoreGFU types.Currency
 	if len(hosts) > 0 {
 		sb, err := c.hdb.ScoreBreakdown(hosts[0])
 		if err != nil {
@@ -276,7 +271,8 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			}
 		}
 		// Set the minimum acceptable score to a factor of the lowest score.
-		minScore = lowestScore.Div(scoreLeeway)
+		minScoreGFR = lowestScore.Div(scoreLeewayGoodForRenew)
+		minScoreGFU = lowestScore.Div(scoreLeewayGoodForUpload)
 	}
 
 	// Update utility fields for each contract.
@@ -307,10 +303,21 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			if err != nil {
 				return u, err
 			}
-			if !minScore.IsZero() && sb.Score.Cmp(minScore) < 0 {
+			if !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0 {
 				// Log if the utility has changed.
 				if u.GoodForUpload || u.GoodForRenew {
-					c.log.Printf("Marking contract as having no utility because of host score: %v, minScore: %v - %v", sb.Score, minScore, contract.ID)
+					c.log.Printf("Marking contract as having no utility because of host score: %v", contract.ID)
+					c.log.Println("Min Score:", minScoreGFR)
+					c.log.Println("Score:    ", sb.Score)
+					c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
+					c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
+					c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
+					c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
+					c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
+					c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
+					c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
+					c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
+					c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
 				}
 				u.GoodForUpload = false
 				u.GoodForRenew = false
@@ -325,6 +332,30 @@ func (c *Contractor) managedMarkContractsUtility() error {
 				}
 				u.GoodForUpload = false
 				u.GoodForRenew = false
+				return u, nil
+			}
+
+			// Contract should not be used for uplodaing if the score is poor.
+			if !minScoreGFU.IsZero() && sb.Score.Cmp(minScoreGFU) < 0 {
+				if u.GoodForUpload {
+					c.log.Println("Marking contract as not good for upload because of a poor score", contract.ID)
+					c.log.Println("Min Score:", minScoreGFU)
+					c.log.Println("Score:    ", sb.Score)
+					c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
+					c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
+					c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
+					c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
+					c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
+					c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
+					c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
+					c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
+					c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
+				}
+				if !u.GoodForRenew {
+					c.log.Println("Marking contract as being good for renew", contract.ID)
+				}
+				u.GoodForUpload = false
+				u.GoodForRenew = true
 				return u, nil
 			}
 
@@ -791,6 +822,17 @@ func (c *Contractor) managedFindRecoverableContracts() {
 	}
 }
 
+// managedUpdateContractUtility is a helper function that acquires a contract, updates
+// its ContractUtility and returns the contract again.
+func (c *Contractor) managedUpdateContractUtility(id types.FileContractID, utility modules.ContractUtility) error {
+	safeContract, ok := c.staticContracts.Acquire(id)
+	if !ok {
+		return errors.New("failed to acquire contract for update")
+	}
+	defer c.staticContracts.Return(safeContract)
+	return safeContract.UpdateUtility(utility)
+}
+
 // threadedContractMaintenance checks the set of contracts that the contractor
 // has against the allownace, renewing any contracts that need to be renewed,
 // dropping contracts which are no longer worthwhile, and adding contracts if
@@ -805,6 +847,12 @@ func (c *Contractor) threadedContractMaintenance() {
 		return
 	}
 	defer c.tg.Done()
+
+	// No contract maintenance unless contractor is synced.
+	if !c.managedSynced() {
+		c.log.Debugln("Skipping contract maintenance since consensus isn't synced yet")
+		return
+	}
 	c.log.Debugln("starting contract maintenance")
 
 	// Only one instance of this thread should be running at a time. Under
@@ -820,6 +868,16 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	defer c.maintenanceLock.Unlock()
 
+	// Register the WalletLockedDuringMaintenance alert if necessary.
+	var registerWalletLockedDuringMaintenance bool
+	defer func() {
+		if registerWalletLockedDuringMaintenance {
+			c.staticAlerter.RegisterAlert(modules.AlertIDWalletLockedDuringMaintenance, AlertMSGWalletLockedDuringMaintenance, modules.ErrLockedWallet.Error(), modules.SeverityWarning)
+		} else {
+			c.staticAlerter.UnregisterAlert(modules.AlertIDWalletLockedDuringMaintenance)
+		}
+	}()
+
 	// Perform general cleanup of the contracts. This includes recovering lost
 	// contracts, archiving contracts, and other cleanup work. This should all
 	// happen before the rest of the maintenance.
@@ -832,6 +890,11 @@ func (c *Contractor) threadedContractMaintenance() {
 	err = c.managedMarkContractsUtility()
 	if err != nil {
 		c.log.Debugln("Unable to mark contract utilities:", err)
+		return
+	}
+	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	if err != nil {
+		c.log.Debugln("Unable to update hostdb contracts:", err)
 		return
 	}
 
@@ -885,7 +948,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// renewal.
 		utility, ok := c.managedContractUtility(contract.ID)
 		if !ok || !utility.GoodForRenew {
-			if uint64(blockHeight-contract.StartHeight) < types.BlocksPerWeek {
+			if blockHeight-contract.StartHeight < types.BlocksPerWeek {
 				c.log.Debugln("Contract did not last 1 week and is not being renewed", contract.ID)
 			}
 			c.log.Debugln("Contract skipped because it is not good for renew (utility.GoodForRenew, exists)", utility.GoodForRenew, ok)
@@ -978,19 +1041,33 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	c.log.Debugln("The allowance has this many remaning funds:", fundsRemaining)
 
+	// Register the AllowanceLowFunds alert if necessary.
+	var registerLowFundsAlert bool
+	defer func() {
+		if registerLowFundsAlert {
+			c.staticAlerter.RegisterAlert(modules.AlertIDAllowanceLowFunds, AlertMSGAllowanceLowFunds, "", modules.SeverityWarning)
+		} else {
+			c.staticAlerter.UnregisterAlert(modules.AlertIDAllowanceLowFunds)
+		}
+	}()
 	// Go through the contracts we've assembled for renewal. Any contracts that
 	// need to be renewed because they are expiring (renewSet) get priority over
 	// contracts that need to be renewed because they have exhausted their funds
 	// (refreshSet). If there is not enough money available, the more expensive
 	// contracts will be skipped.
 	for _, renewal := range renewSet {
-		// TODO: Check if the wallet is unlocked here. If the wallet is locked,
-		// exit here.
+		unlocked, err := c.wallet.Unlocked()
+		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
+			c.log.Println("Contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
+			return
+		}
 
 		c.log.Println("Attempting to perform a renewal:", renewal.id)
 		// Skip this renewal if we don't have enough funds remaining.
-		if renewal.amount.Cmp(fundsRemaining) > 0 {
-			c.log.Debugln("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
+		if renewal.amount.Cmp(fundsRemaining) > 0 || c.staticDeps.Disrupt("LowFundsRenewal") {
+			c.log.Println("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
+			registerLowFundsAlert = true
 			continue
 		}
 
@@ -1017,8 +1094,12 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 	}
 	for _, renewal := range refreshSet {
-		// TODO: Check if the wallet is unlocked here. If the wallet is locked,
-		// exit here.
+		unlocked, err := c.wallet.Unlocked()
+		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
+			c.log.Println("contractor is attempting to refresh contracts that have run out of funds, however the wallet is locked")
+			return
+		}
 
 		// Skip this renewal if we don't have enough funds remaining.
 		c.log.Debugln("Attempting to perform a contract refresh:", renewal.id)
@@ -1097,11 +1178,16 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
-		// TODO: Check if the wallet is unlocked here. If the wallet is locked,
-		// exit here.
+		unlocked, err := c.wallet.Unlocked()
+		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
+			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
+			return
+		}
 
 		// Determine if we have enough money to form a new contract.
-		if fundsRemaining.Cmp(initialContractFunds) < 0 {
+		if fundsRemaining.Cmp(initialContractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
+			registerLowFundsAlert = true
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
 		}
@@ -1114,12 +1200,28 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Attempt forming a contract with this host.
+		start := time.Now()
 		fundsSpent, newContract, err := c.managedNewContract(host, initialContractFunds, endHeight)
 		if err != nil {
-			c.log.Printf("Attempted to form a contract with %v, but negotiation failed: %v\n", host.NetAddress, err)
+			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
 			continue
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
+
+		sb, err := c.hdb.ScoreBreakdown(host)
+		if err == nil {
+			c.log.Println("A new contract has been formed with a host:", newContract.ID)
+			c.log.Println("Score:    ", sb.Score)
+			c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
+			c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
+			c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
+			c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
+			c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
+			c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
+			c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
+			c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
+			c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
+		}
 
 		// Add this contract to the contractor and save.
 		err = c.managedUpdateContractUtility(newContract.ID, modules.ContractUtility{
@@ -1152,15 +1254,4 @@ func (c *Contractor) threadedContractMaintenance() {
 		default:
 		}
 	}
-}
-
-// managedUpdateContractUtility is a helper function that acquires a contract, updates
-// its ContractUtility and returns the contract again.
-func (c *Contractor) managedUpdateContractUtility(id types.FileContractID, utility modules.ContractUtility) error {
-	safeContract, ok := c.staticContracts.Acquire(id)
-	if !ok {
-		return errors.New("failed to acquire contract for update")
-	}
-	defer c.staticContracts.Return(safeContract)
-	return safeContract.UpdateUtility(utility)
 }

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -21,7 +23,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	modWallet "gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // newTestingWallet is a helper function that creates a ready-to-use wallet
@@ -104,11 +105,12 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 	if err != nil {
 		return nil, err
 	}
-	hdb, err := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
-	if err != nil {
+	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	return New(cs, w, tp, hdb, filepath.Join(testdir, "contractor"))
+	contractor, errChan := New(cs, w, tp, hdb, filepath.Join(testdir, "contractor"))
+	return contractor, <-errChan
 }
 
 // newTestingTrio creates a Host, Contractor, and TestMiner that can be used
@@ -121,8 +123,8 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		return nil, nil, nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
@@ -200,6 +202,11 @@ func TestIntegrationFormContract(t *testing.T) {
 	defer h.Close()
 	defer c.Close()
 
+	// acquire the contract maintenance lock for the duration of the test. This
+	// prevents theadedContractMaintenance from running.
+	c.maintenanceLock.Lock()
+	defer c.maintenanceLock.Unlock()
+
 	// get the host's entry from the db
 	hostEntry, ok := c.hdb.Host(h.PublicKey())
 	if !ok {
@@ -270,6 +277,11 @@ func TestIntegrationReviseContract(t *testing.T) {
 	}
 	defer h.Close()
 	defer c.Close()
+
+	// acquire the contract maintenance lock for the duration of the test. This
+	// prevents theadedContractMaintenance from running.
+	c.maintenanceLock.Lock()
+	defer c.maintenanceLock.Unlock()
 
 	// get the host's entry from the db
 	hostEntry, ok := c.hdb.Host(h.PublicKey())
@@ -379,7 +391,7 @@ func TestIntegrationRenew(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, m, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,12 +402,20 @@ func TestIntegrationRenew(t *testing.T) {
 	if err := c.SetAllowance(modules.DefaultAllowance); err != nil {
 		t.Fatal(err)
 	}
-	if err := build.Retry(10, time.Second, func() error {
+	numRetries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if _, err := m.AddBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
 		if len(c.Contracts()) == 0 {
 			return errors.New("no contracts were formed")
 		}
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	// get the contract
@@ -495,7 +515,7 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, m, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,6 +527,10 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := build.Retry(10, time.Second, func() error {
+		_, err := m.AddBlock()
+		if err != nil {
+			return err
+		}
 		if len(c.Contracts()) == 0 {
 			return errors.New("no contracts were formed")
 		}
@@ -591,18 +615,26 @@ func TestIntegrationEditorCaching(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, m, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer h.Close()
 	defer c.Close()
+	defer m.Close()
 
 	// set an allowance and wait for a contract to be formed.
 	if err := c.SetAllowance(modules.DefaultAllowance); err != nil {
 		t.Fatal(err)
 	}
-	if err := build.Retry(10, time.Second, func() error {
+	numRetries := 0
+	if err := build.Retry(2000, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if _, err := m.AddBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
 		if len(c.Contracts()) == 0 {
 			return errors.New("no contracts were formed")
 		}

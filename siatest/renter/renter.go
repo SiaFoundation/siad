@@ -10,13 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // The following are helper functions for the renter tests
@@ -295,7 +296,7 @@ func deleteDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 	wgDelete.Add(1)
 	go func() {
 		defer wgDelete.Done()
-		_, err := r.DownloadToDisk(rf, false)
+		_, _, err := r.DownloadToDisk(rf, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -336,7 +337,7 @@ func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 	wgRename.Add(1)
 	go func() {
 		defer wgRename.Done()
-		_, err := r.DownloadToDisk(rf, false)
+		_, _, err := r.DownloadToDisk(rf, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -402,7 +403,7 @@ func drainContractsByUploading(renter *siatest.TestNode, tg *siatest.TestGroup, 
 	// Renew contracts by running out of funds
 	// Set upload price to max price
 	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte)
-	maxUploadPrice := maxStoragePrice.Mul64(100 * 4320)
+	maxUploadPrice := maxStoragePrice.Mul64(100 * uint64(types.BlocksPerMonth))
 	hosts := tg.Hosts()
 	for _, h := range hosts {
 		err := h.HostModifySettingPost(client.HostParamMinUploadBandwidthPrice, maxUploadPrice)

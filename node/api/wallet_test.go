@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -18,8 +21,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestWalletGETEncrypted probes the GET call to /wallet when the
@@ -35,8 +36,8 @@ func TestWalletGETEncrypted(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create gateway:", err)
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChanCS := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChanCS; err != nil {
 		t.Fatal("Failed to create consensus set:", err)
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
@@ -174,8 +175,8 @@ func TestWalletBlankEncrypt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
@@ -242,8 +243,8 @@ func TestIntegrationWalletInitSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
@@ -1177,15 +1178,15 @@ func TestWalletSiafunds(t *testing.T) {
 
 	// Announce the host and form an allowance with it. This will result in a
 	// siafund claim.
-	err = st.announceHost()
-	if err != nil {
-		t.Fatal(err)
-	}
 	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}

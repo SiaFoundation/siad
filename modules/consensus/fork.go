@@ -3,10 +3,10 @@ package consensus
 import (
 	"errors"
 
+	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-
-	"github.com/coreos/bbolt"
 )
 
 var (

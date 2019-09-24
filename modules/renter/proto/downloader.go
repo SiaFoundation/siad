@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // A Downloader retrieves sectors by calling the download RPC on a host.
@@ -69,7 +69,7 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ modul
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
-	walTxn, err := sc.recordDownloadIntent(rev, sectorPrice)
+	walTxn, err := sc.managedRecordDownloadIntent(rev, sectorPrice)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -137,7 +137,7 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ modul
 	}
 
 	// update contract and metrics
-	if err := sc.commitDownload(walTxn, signedTxn, sectorPrice); err != nil {
+	if err := sc.managedCommitDownload(walTxn, signedTxn, sectorPrice); err != nil {
 		return modules.RenterContract{}, nil, err
 	}
 

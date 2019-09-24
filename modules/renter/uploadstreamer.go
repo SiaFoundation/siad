@@ -5,14 +5,14 @@ import (
 	"io"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // Upload Streaming Overview:
@@ -97,7 +97,7 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 	// Check if ec was set. If not use defaults.
 	var err error
 	if ec == nil && !repair {
-		up.ErasureCode, err = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, 64)
+		up.ErasureCode, err = siafile.NewRSSubCode(DefaultDataPieces, DefaultParityPieces, 64)
 		if err != nil {
 			return nil, err
 		}
@@ -186,9 +186,9 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 
 	// Check if we currently have enough workers for the specified redundancy.
 	minWorkers := entry.ErasureCode().MinPieces()
-	id := r.mu.RLock()
-	availableWorkers := len(r.workerPool)
-	r.mu.RUnlock(id)
+	r.staticWorkerPool.mu.RLock()
+	availableWorkers := len(r.staticWorkerPool.workers)
+	r.staticWorkerPool.mu.RUnlock()
 	if availableWorkers < minWorkers {
 		return fmt.Errorf("Need at least %v workers for upload but got only %v",
 			minWorkers, availableWorkers)
@@ -213,9 +213,11 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		}
 
 		// Start the chunk upload.
-		id := r.mu.Lock()
-		uuc := r.buildUnfinishedChunk(entry, chunkIndex, hosts, pks, true)
-		r.mu.Unlock(id)
+		offline, goodForRenew, _ := r.managedContractUtilityMaps()
+		uuc, err := r.managedBuildUnfinishedChunk(entry, chunkIndex, hosts, pks, true, offline, goodForRenew)
+		if err != nil {
+			return errors.AddContext(err, "unable to fetch chunk for stream")
+		}
 
 		// Create a new shard set it to be the source reader of the chunk.
 		ss := NewStreamShard(reader)

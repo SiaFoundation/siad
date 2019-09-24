@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 const (

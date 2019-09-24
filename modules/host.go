@@ -11,11 +11,13 @@ const (
 
 var (
 	// BlockBytesPerMonthTerabyte is the conversion rate between block-bytes and month-TB.
-	BlockBytesPerMonthTerabyte = BytesPerTerabyte.Mul64(4320)
+	BlockBytesPerMonthTerabyte = BytesPerTerabyte.Mul64(uint64(types.BlocksPerMonth))
 
 	// BytesPerTerabyte is the conversion rate between bytes and terabytes.
 	BytesPerTerabyte = types.NewCurrency64(1e12)
+)
 
+var (
 	// HostConnectabilityStatusChecking is returned from ConnectabilityStatus()
 	// if the host is still determining if it is connectable.
 	HostConnectabilityStatusChecking = HostConnectabilityStatus("checking")
@@ -155,6 +157,8 @@ type (
 	// things such as announcements, settings, and implementing all of the RPCs
 	// of the host protocol.
 	Host interface {
+		Alerter
+
 		// Announce submits a host announcement to the blockchain.
 		Announce() error
 

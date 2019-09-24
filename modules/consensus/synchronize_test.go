@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
+	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 // TestSynchronize tests that the consensus set can successfully synchronize
@@ -553,8 +553,8 @@ func TestRPCSendBlockSendsOnlyNecessaryBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 	defer cs.Close()

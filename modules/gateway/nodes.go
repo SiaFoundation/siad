@@ -6,11 +6,12 @@ import (
 	"net"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -62,7 +63,8 @@ func (g *Gateway) staticPingNode(addr modules.NetAddress) error {
 	}
 
 	if err := acceptableVersion(remoteVersion); err != nil {
-		return nil // for older versions, this is where pinging ends
+		// Return an error so that bad version peers are purged
+		return err
 	}
 
 	// Send our header.

@@ -63,15 +63,15 @@ func TestHostDBHostsActiveHandler(t *testing.T) {
 	}
 
 	// announce the host and start accepting contracts
+	err = st.setHostStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +156,10 @@ func TestHostDBHostsHandler(t *testing.T) {
 
 	// Announce the host and then get the list of hosts.
 	var ah HostdbActiveGET
+	err = st.setHostStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err = st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
@@ -250,8 +254,8 @@ func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string)
 	if err != nil {
 		return nil, err
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
@@ -284,8 +288,8 @@ func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string)
 	if err != nil {
 		return nil, err
 	}
-	r, err := renter.New(g, cs, w, tp, filepath.Join(testdir, modules.RenterDir))
-	if err != nil {
+	r, errChan := renter.New(g, cs, w, tp, filepath.Join(testdir, modules.RenterDir))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	srv, err := NewServer(testdir, "localhost:0", "Sia-Agent", "", cs, nil, g, h, m, r, tp, w)

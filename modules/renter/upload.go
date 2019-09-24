@@ -12,12 +12,13 @@ import (
 	"fmt"
 	"os"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -58,7 +59,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Fill in any missing upload params with sensible defaults.
 	if up.ErasureCode == nil {
-		up.ErasureCode, _ = siafile.NewRSSubCode(defaultDataPieces, defaultParityPieces, crypto.SegmentSize)
+		up.ErasureCode, _ = siafile.NewRSSubCode(DefaultDataPieces, DefaultParityPieces, crypto.SegmentSize)
 	}
 
 	// Check that we have contracts to upload to. We need at least data +
@@ -77,7 +78,8 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	if err != nil {
 		return err
 	}
-	// Try to create the directory. If ErrPathOverload is returned it already exists.
+	// Try to create the directory. If ErrPathOverload is returned it already
+	// exists.
 	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
 	if err != siadir.ErrPathOverload && err != nil {
 		return errors.AddContext(err, "unable to create sia directory for new file")
@@ -99,17 +101,17 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Bubble the health of the SiaFile directory to ensure the health is
 	// updated with the new file
-	go r.threadedBubbleMetadata(dirSiaPath)
+	go r.callThreadedBubbleMetadata(dirSiaPath)
 
 	// Create nil maps for offline and goodForRenew to pass in to
-	// managedBuildAndPushChunks. These maps are used to determine the health of
+	// callBuildAndPushChunks. These maps are used to determine the health of
 	// the file and its chunks. Nil maps will result in the file and its chunks
 	// having the worst possible health which is accurate since the file hasn't
 	// been uploaded yet
 	nilMap := make(map[string]bool)
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
-	r.managedBuildAndPushChunks([]*siafile.SiaFileSetEntry{entry}, hosts, targetUnstuckChunks, nilMap, nilMap)
+	r.callBuildAndPushChunks([]*siafile.SiaFileSetEntry{entry}, hosts, targetUnstuckChunks, nilMap, nilMap)
 	select {
 	case r.uploadHeap.newUploads <- struct{}{}:
 	default:

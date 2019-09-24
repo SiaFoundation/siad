@@ -10,16 +10,18 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/threadgroup"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -31,6 +33,12 @@ var (
 	errNilTPool              = errors.New("cannot create hostdb with nil transaction pool")
 )
 
+// contractInfo contains information about a contract relevant to the HostDB.
+type contractInfo struct {
+	HostPublicKey types.SiaPublicKey
+	StoredData    uint64 `json:"storeddata"`
+}
+
 // The HostDB is a database of potential hosts. It assigns a weight to each
 // host based on their hosting parameters, and then can select hosts at random
 // for uploading files.
@@ -41,10 +49,16 @@ type HostDB struct {
 	gateway modules.Gateway
 	tpool   modules.TransactionPool
 
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persistDir string
-	tg         threadgroup.ThreadGroup
+	log           *persist.Logger
+	mu            sync.RWMutex
+	staticAlerter *modules.GenericAlerter
+	persistDir    string
+	tg            threadgroup.ThreadGroup
+
+	// knownContracts are contracts which the HostDB was informed about by the
+	// Contractor. It contains infos about active contracts we have formed with
+	// hosts. The mapkey is a serialized SiaPublicKey.
+	knownContracts map[string]contractInfo
 
 	// The hostdb gets initialized with an allowance that can be modified. The
 	// allowance is used to build a weightFunc that the hosttree depends on to
@@ -73,6 +87,7 @@ type HostDB struct {
 	scanMap                 map[string]struct{}
 	scanWait                bool
 	scanningThreads         int
+	synced                  bool
 
 	// filteredTree is a hosttree that only contains the hosts that align with
 	// the filterMode. The filteredHosts are the hosts that are submitted with
@@ -132,8 +147,8 @@ func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
 func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	// Set the weight function in the hostdb.
 	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
 	hdb.weightFunc = wf
-	hdb.mu.Unlock()
 	// Update the hosttree and also the filteredTree if they are not the same.
 	err := hdb.hostTree.SetWeightFunction(wf)
 	if hdb.filteredTree != hdb.hostTree {
@@ -142,8 +157,32 @@ func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	return err
 }
 
-// New returns a new HostDB.
-func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, error) {
+// managedSynced returns true if the hostdb is synced with the consensusset.
+func (hdb *HostDB) managedSynced() bool {
+	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
+	return hdb.synced
+}
+
+// updateContracts rebuilds the knownContracts of the HostDB using the provided
+// contracts.
+func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
+	knownContracts := make(map[string]contractInfo)
+	for _, contract := range contracts {
+		if n := len(contract.Transaction.FileContractRevisions); n != 1 {
+			build.Critical("contract's transaction should contain 1 revision but had ", n)
+			continue
+		}
+		knownContracts[contract.HostPublicKey.String()] = contractInfo{
+			HostPublicKey: contract.HostPublicKey,
+			StoredData:    contract.Transaction.FileContractRevisions[0].NewFileSize,
+		}
+	}
+	hdb.knownContracts = knownContracts
+}
+
+// hostdbBlockingStartup handles the blocking portion of NewCustomHostDB.
+func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Check for nil inputs.
 	if g == nil {
 		return nil, errNilGateway
@@ -154,14 +193,7 @@ func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPo
 	if tpool == nil {
 		return nil, errNilTPool
 	}
-	// Create HostDB using production dependencies.
-	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
-}
 
-// NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
-// persistence data, spawns the HostDB's scanning threads, and subscribes it to
-// the consensusSet.
-func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Create the HostDB object.
 	hdb := &HostDB{
 		cs:         cs,
@@ -170,9 +202,10 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		persistDir: persistDir,
 		tpool:      tpool,
 
-		scanMap: make(map[string]struct{}),
-
-		filteredHosts: make(map[string]types.SiaPublicKey),
+		filteredHosts:  make(map[string]types.SiaPublicKey),
+		knownContracts: make(map[string]contractInfo),
+		scanMap:        make(map[string]struct{}),
+		staticAlerter:  modules.NewAlerter("hostdb"),
 	}
 
 	// Set the allowance, txnFees and hostweight function.
@@ -250,7 +283,33 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 	hdb.mu.Unlock()
 
-	err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
+	// Spawn the scan loop during production, but allow it to be disrupted
+	// during testing. Primary reason is so that we can fill the hostdb with
+	// fake hosts and not have them marked as offline as the scanloop operates.
+	if !hdb.deps.Disrupt("disableScanLoop") {
+		go hdb.threadedScan()
+	} else {
+		hdb.initialScanComplete = true
+	}
+	err = hdb.tg.OnStop(func() error {
+		cs.Unsubscribe(hdb)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return hdb, nil
+}
+
+// hostdbAsyncStartup handles the async portion of NewCustomHostDB.
+func hostdbAsyncStartup(hdb *HostDB, cs modules.ConsensusSet) error {
+	if hdb.deps.Disrupt("BlockAsyncStartup") {
+		return nil
+	}
+	err := cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
+	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
+		return err
+	}
 	if err == modules.ErrInvalidConsensusChangeID {
 		// Subscribe again using the new ID. This will cause a triggered scan
 		// on all of the hosts, but that should be acceptable.
@@ -260,27 +319,54 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		hdb.mu.Unlock()
 		err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
 	}
-	if err != nil {
-		return nil, errors.New("hostdb subscription failed: " + err.Error())
-	}
-	err = hdb.tg.OnStop(func() error {
-		cs.Unsubscribe(hdb)
+	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 		return nil
-	})
+	}
 	if err != nil {
-		return nil, err
+		return err
 	}
+	return nil
+}
 
-	// Spawn the scan loop during production, but allow it to be disrupted
-	// during testing. Primary reason is so that we can fill the hostdb with
-	// fake hosts and not have them marked as offline as the scanloop operates.
-	if !hdb.deps.Disrupt("disableScanLoop") {
-		go hdb.threadedScan()
-	} else {
-		hdb.initialScanComplete = true
+// New returns a new HostDB.
+func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string) (*HostDB, <-chan error) {
+	// Create HostDB using production dependencies.
+	return NewCustomHostDB(g, cs, tpool, persistDir, modules.ProdDependencies)
+}
+
+// NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
+// persistence data, spawns the HostDB's scanning threads, and subscribes it to
+// the consensusSet.
+func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*HostDB, <-chan error) {
+	errChan := make(chan error, 1)
+
+	// Blocking startup.
+	hdb, err := hostdbBlockingStartup(g, cs, tpool, persistDir, deps)
+	if err != nil {
+		errChan <- err
+		return nil, errChan
 	}
-
-	return hdb, nil
+	// Parts of the blocking startup and the whole async startup should be
+	// skipped.
+	if hdb.deps.Disrupt("quitAfterLoad") {
+		close(errChan)
+		return hdb, errChan
+	}
+	// non-blocking startup.
+	go func() {
+		defer close(errChan)
+		if err := hdb.tg.Add(); err != nil {
+			errChan <- err
+			return
+		}
+		defer hdb.tg.Done()
+		// Subscribe to the consensus set in a separate goroutine.
+		err := hostdbAsyncStartup(hdb, cs)
+		if err != nil {
+			errChan <- err
+		}
+	}()
+	return hdb, errChan
 }
 
 // ActiveHosts returns a list of hosts that are currently online, sorted by
@@ -412,6 +498,14 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	}
 	// Check if disabling
 	if fm == modules.HostDBDisableFilter {
+		// Reset filtered field for hosts
+		for _, pk := range hdb.filteredHosts {
+			err := hdb.hostTree.SetFiltered(pk, false)
+			if err != nil {
+				hdb.log.Println("Unable to mark entry as not filtered:", err)
+			}
+		}
+		// Reset filtered fields
 		hdb.filteredTree = hdb.hostTree
 		hdb.filteredHosts = make(map[string]types.SiaPublicKey)
 		hdb.filterMode = fm
@@ -430,10 +524,17 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	// Create filteredHosts map
 	filteredHosts := make(map[string]types.SiaPublicKey)
 	for _, h := range hosts {
+		// Add host to filtered host map
 		if _, ok := filteredHosts[h.String()]; ok {
 			continue
 		}
 		filteredHosts[h.String()] = h
+
+		// Update host in unfiltered hosttree
+		err := hdb.hostTree.SetFiltered(h, true)
+		if err != nil {
+			hdb.log.Println("Unable to mark entry as filtered:", err)
+		}
 	}
 	var allErrs error
 	allHosts := hdb.hostTree.All()
@@ -501,4 +602,17 @@ func (hdb *HostDB) SetIPViolationCheck(enabled bool) {
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
 	hdb.disableIPViolationCheck = !enabled
+}
+
+// UpdateContracts rebuilds the knownContracts of the HostBD using the provided
+// contracts.
+func (hdb *HostDB) UpdateContracts(contracts []modules.RenterContract) error {
+	if err := hdb.tg.Add(); err != nil {
+		return err
+	}
+	defer hdb.tg.Done()
+	hdb.mu.Lock()
+	defer hdb.mu.Unlock()
+	hdb.updateContracts(contracts)
+	return nil
 }

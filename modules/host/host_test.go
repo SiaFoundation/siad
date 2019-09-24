@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
+
 	// "gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
@@ -115,8 +116,8 @@ func blankMockHostTester(d modules.Dependencies, name string) (*hostTester, erro
 	if err != nil {
 		return nil, err
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))

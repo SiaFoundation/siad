@@ -4,9 +4,10 @@ import (
 	"net/url"
 	"strconv"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -20,7 +21,7 @@ var (
 // the gateway at address
 func (c *Client) GatewayConnectPost(address modules.NetAddress) (err error) {
 	err = c.post("/gateway/connect/"+string(address), "", nil)
-	if err != nil && err.Error() == ErrPeerExists.Error() {
+	if err != nil && errors.Contains(err, ErrPeerExists) {
 		err = ErrPeerExists
 	}
 	return

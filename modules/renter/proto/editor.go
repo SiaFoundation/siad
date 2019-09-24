@@ -5,14 +5,14 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // cachedMerkleRoot calculates the root of a set of existing Merkle roots.
@@ -133,7 +133,7 @@ func (he *Editor) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
-	walTxn, err := sc.recordUploadIntent(rev, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
+	walTxn, err := sc.managedRecordUploadIntent(rev, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}
@@ -168,7 +168,7 @@ func (he *Editor) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	}
 
 	// update contract
-	err = sc.commitUpload(walTxn, signedTxn, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
+	err = sc.managedCommitUpload(walTxn, signedTxn, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}

@@ -5,12 +5,13 @@ import (
 	"os"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/ratelimit"
+
+	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
 type (
-	// SiadConfig is a helper type to manage the globald siad config.
+	// SiadConfig is a helper type to manage the global siad config.
 	SiadConfig struct {
 		// Ratelimit related fields
 		ReadBPS    int64  `json:"readbps"`

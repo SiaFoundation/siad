@@ -49,7 +49,7 @@ var (
 	defaultContractLockTimeout = build.Select(build.Var{
 		Dev:      uint64(60 * 1000),     // 1 minute
 		Standard: uint64(5 * 60 * 1000), // 5 minutes
-		Testing:  uint64(5 * 1000),      // 5 seconds
+		Testing:  uint64(25 * 1000),     // 25 seconds
 	}).(uint64)
 
 	// ephemeralSeedInterval is the amount of blocks after which we use a new

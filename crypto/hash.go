@@ -13,9 +13,9 @@ import (
 	"errors"
 	"hash"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
-
 	"golang.org/x/crypto/blake2b"
+
+	"gitlab.com/NebulousLabs/Sia/encoding"
 )
 
 const (

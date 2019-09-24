@@ -41,9 +41,11 @@ type hdbTester struct {
 // dependencies or scanning threads. It is only intended for use in unit tests.
 func bareHostDB() *HostDB {
 	hdb := &HostDB{
-		log: persist.NewLogger(ioutil.Discard),
+		allowance:      modules.DefaultAllowance,
+		log:            persist.NewLogger(ioutil.Discard),
+		knownContracts: make(map[string]contractInfo),
 	}
-	hdb.weightFunc = hdb.managedCalculateHostWeightFn(modules.DefaultAllowance)
+	hdb.weightFunc = hdb.managedCalculateHostWeightFn(hdb.allowance)
 	hdb.hostTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
 	hdb.filteredTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
 	return hdb
@@ -80,8 +82,8 @@ func newHDBTesterDeps(name string, deps modules.Dependencies) (*hdbTester, error
 	if err != nil {
 		return nil, err
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testDir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testDir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testDir, modules.TransactionPoolDir))
@@ -96,8 +98,8 @@ func newHDBTesterDeps(name string, deps modules.Dependencies) (*hdbTester, error
 	if err != nil {
 		return nil, err
 	}
-	hdb, err := NewCustomHostDB(g, cs, tp, filepath.Join(testDir, modules.RenterDir), deps)
-	if err != nil {
+	hdb, errChan := NewCustomHostDB(g, cs, tp, filepath.Join(testDir, modules.RenterDir), deps)
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 
@@ -145,8 +147,8 @@ func TestNew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testDir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testDir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testDir, modules.TransactionPoolDir))
@@ -156,29 +158,29 @@ func TestNew(t *testing.T) {
 
 	// Vanilla HDB, nothing should go wrong.
 	hdbName := filepath.Join(testDir, modules.RenterDir)
-	_, err = New(g, cs, tp, hdbName+"1")
-	if err != nil {
+	_, errChan = New(g, cs, tp, hdbName+"1")
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 
 	// Nil gateway.
-	_, err = New(nil, cs, tp, hdbName+"2")
-	if err != errNilGateway {
+	_, errChan = New(nil, cs, tp, hdbName+"2")
+	if err := <-errChan; err != errNilGateway {
 		t.Fatalf("expected %v, got %v", errNilGateway, err)
 	}
 	// Nil consensus set.
-	_, err = New(g, nil, tp, hdbName+"3")
-	if err != errNilCS {
+	_, errChan = New(g, nil, tp, hdbName+"3")
+	if err := <-errChan; err != errNilCS {
 		t.Fatalf("expected %v, got %v", errNilCS, err)
 	}
 	// Nil tpool.
-	_, err = New(g, cs, nil, hdbName+"3")
-	if err != errNilTPool {
+	_, errChan = New(g, cs, nil, hdbName+"3")
+	if err := <-errChan; err != errNilTPool {
 		t.Fatalf("expected %v, got %v", errNilTPool, err)
 	}
 	// Bad persistDir.
-	_, err = New(g, cs, tp, "")
-	if !os.IsNotExist(err) {
+	_, errChan = New(g, cs, tp, "")
+	if err := <-errChan; !os.IsNotExist(err) {
 		t.Fatalf("expected invalid directory, got %v", err)
 	}
 }

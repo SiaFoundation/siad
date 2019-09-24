@@ -1,9 +1,10 @@
 package gateway
 
 import (
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // managedPeerManagerConnect is a blocking function which tries to connect to

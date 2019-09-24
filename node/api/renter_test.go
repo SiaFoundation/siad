@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -43,15 +43,15 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 	}
 
 	// Announce the host and start accepting contracts.
+	err = st.setHostStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = st.announceHost()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.acceptContracts()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,10 +91,10 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 	if waitOnRedundancy {
 		// wait for the file to have a redundancy > 1
 		err = build.Retry(200, time.Second, func() error {
-			var rf RenterFiles
-			st.getAPI("/renter/files", &rf)
-			if len(rf.Files) != 1 || rf.Files[0].Redundancy < 1 {
-				return fmt.Errorf("the uploading is not succeeding for some reason: %v", rf.Files[0])
+			var rf RenterFile
+			st.getAPI("/renter/file/"+name, &rf)
+			if rf.File.Redundancy < 1 {
+				return fmt.Errorf("the uploading is not succeeding for some reason: %v", rf.File)
 			}
 			return nil
 		})
@@ -152,7 +152,9 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 			return errors.AddContext(err, "unable to make an http request")
 		}
 		defer resp.Body.Close()
-
+		if non2xx(resp.StatusCode) {
+			return decodeError(resp)
+		}
 		_, err = io.Copy(&downbytes, resp.Body)
 		if err != nil {
 			return errors.AddContext(err, "unable to make a copy after the http request")
@@ -600,13 +602,13 @@ func TestRenterHandlerContracts(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	if err = st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err = st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -625,6 +627,10 @@ func TestRenterHandlerContracts(t *testing.T) {
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
 	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("expectedstorage", fmt.Sprint(modules.DefaultAllowance.ExpectedStorage))
+	allowanceValues.Set("expectedupload", fmt.Sprint(modules.DefaultAllowance.ExpectedStorage))
+	allowanceValues.Set("expecteddownload", fmt.Sprint(modules.DefaultAllowance.ExpectedStorage))
+	allowanceValues.Set("expectedredundancy", fmt.Sprint(modules.DefaultAllowance.ExpectedRedundancy))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -636,13 +642,16 @@ func TestRenterHandlerContracts(t *testing.T) {
 		if err != nil {
 			return errors.New("couldn't get renter stats")
 		}
-		if len(rc.Contracts) != 1 {
+		if len(rc.Contracts) == 0 {
 			return errors.New("no contracts")
+		}
+		if len(rc.Contracts) > 1 {
+			return errors.New("more than one contract")
 		}
 		return nil
 	})
 	if err != nil {
-		t.Fatal("allowance setting failed")
+		t.Fatal("allowance setting failed:", err)
 	}
 
 	// The renter should now have 1 contract.
@@ -685,13 +694,13 @@ func TestRenterHandlerGetAndPost(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	if err = st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err = st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -773,13 +782,13 @@ func TestRenterLoadNonexistent(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	if err = st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err = st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -833,13 +842,13 @@ func TestRenterHandlerRename(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	if err = st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err = st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -949,13 +958,13 @@ func TestRenterHandlerDelete(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	if err = st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err = st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1016,13 +1025,13 @@ func TestRenterRelativePathErrorUpload(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	if err = st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err = st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1079,13 +1088,13 @@ func TestRenterRelativePathErrorDownload(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Announce the host and start accepting contracts.
+	if err = st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.acceptContracts(); err != nil {
-		t.Fatal(err)
-	}
-	if err = st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1099,7 +1108,7 @@ func TestRenterRelativePathErrorDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	renterDownloadAbsoluteError := "download failed: destination must be an absolute path"
+	renterDownloadAbsoluteError := "download creation failed: destination must be an absolute path"
 
 	// Create a file, and upload it.
 	path := filepath.Join(st.dir, "test.dat")
@@ -1163,6 +1172,9 @@ func TestRenterPricesHandler(t *testing.T) {
 	// Announce the host and then get the calculated prices for when there is a
 	// single host.
 	var rpeSingle modules.RenterPriceEstimation
+	if err := st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
@@ -1237,6 +1249,9 @@ func TestRenterPricesHandlerPricey(t *testing.T) {
 	// Announce the host and then get the calculated prices for when there is a
 	// single host.
 	var rpeSingle modules.RenterPriceEstimation
+	if err := st.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.announceHost(); err != nil {
 		t.Fatal(err)
 	}
@@ -1249,8 +1264,14 @@ func TestRenterPricesHandlerPricey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := stHost1.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	stHost2, err := blankServerTester(t.Name() + " - Host 2")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stHost2.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
 

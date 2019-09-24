@@ -5,12 +5,12 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // contractorPersist defines what Contractor data persists across sessions.
@@ -24,10 +24,17 @@ type contractorPersist struct {
 	RecoverableContracts []modules.RecoverableContract   `json:"recoverablecontracts"`
 	RenewedFrom          map[string]types.FileContractID `json:"renewedfrom"`
 	RenewedTo            map[string]types.FileContractID `json:"renewedto"`
+	Synced               bool                            `json:"synced"`
 }
 
 // persistData returns the data in the Contractor that will be saved to disk.
 func (c *Contractor) persistData() contractorPersist {
+	synced := false
+	select {
+	case <-c.synced:
+		synced = true
+	default:
+	}
 	data := contractorPersist{
 		Allowance:            c.allowance,
 		BlockHeight:          c.blockHeight,
@@ -36,6 +43,7 @@ func (c *Contractor) persistData() contractorPersist {
 		RecentRecoveryChange: c.recentRecoveryChange,
 		RenewedFrom:          make(map[string]types.FileContractID),
 		RenewedTo:            make(map[string]types.FileContractID),
+		Synced:               synced,
 	}
 	for k, v := range c.renewedFrom {
 		data.RenewedFrom[k.String()] = v
@@ -77,6 +85,10 @@ func (c *Contractor) load() error {
 	c.blockHeight = data.BlockHeight
 	c.currentPeriod = data.CurrentPeriod
 	c.lastChange = data.LastChange
+	c.synced = make(chan struct{})
+	if data.Synced {
+		close(c.synced)
+	}
 	c.recentRecoveryChange = data.RecentRecoveryChange
 	var fcid types.FileContractID
 	for k, v := range data.RenewedFrom {

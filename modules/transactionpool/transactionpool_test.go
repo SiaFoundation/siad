@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -12,7 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // A tpoolTester is used during testing to initialize a transaction pool and
@@ -37,8 +38,8 @@ func blankTpoolTester(name string) (*tpoolTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	tp, err := New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
@@ -123,8 +124,8 @@ func TestIntegrationNewNilInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 	tpDir := filepath.Join(testdir, modules.TransactionPoolDir)

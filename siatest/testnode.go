@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestNode is a helper struct for testing that contains a server and a client
@@ -204,11 +204,29 @@ func NewNode(nodeParams node.NodeParams) (*TestNode, error) {
 
 // NewCleanNode creates a new TestNode that's not yet funded
 func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
+	return newCleanNode(nodeParams, false)
+}
+
+// NewCleanNodeAsync creates a new TestNode that's not yet funded
+func NewCleanNodeAsync(nodeParams node.NodeParams) (*TestNode, error) {
+	return newCleanNode(nodeParams, true)
+}
+
+// newCleanNode creates a new TestNode that's not yet funded
+func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error) {
 	userAgent := "Sia-Agent"
 	password := "password"
 
 	// Create server
-	s, err := server.New(":0", userAgent, password, nodeParams)
+	var s *server.Server
+	var err error
+	if asyncSync {
+		var errChan <-chan error
+		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams)
+		err = modules.PeekErr(errChan)
+	} else {
+		s, err = server.New(":0", userAgent, password, nodeParams)
+	}
 	if err != nil {
 		return nil, err
 	}

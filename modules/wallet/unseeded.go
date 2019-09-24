@@ -3,11 +3,12 @@ package wallet
 import (
 	"errors"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -61,7 +62,7 @@ type savedKey033x struct {
 // spendableKey.
 func decryptSpendableKeyFile(masterKey crypto.CipherKey, uk spendableKeyFile) (sk spendableKey, err error) {
 	// Verify that the decryption key is correct.
-	decryptionKey := uidEncryptionKey(masterKey, uk.UID)
+	decryptionKey := saltedEncryptionKey(masterKey, uk.Salt)
 	err = verifyEncryption(decryptionKey, uk.EncryptionVerification)
 	if err != nil {
 		return
@@ -99,8 +100,8 @@ func (w *Wallet) loadSpendableKey(masterKey crypto.CipherKey, sk spendableKey) e
 
 	// Create a UID and encryption verification.
 	var skf spendableKeyFile
-	fastrand.Read(skf.UID[:])
-	encryptionKey := uidEncryptionKey(masterKey, skf.UID)
+	fastrand.Read(skf.Salt[:])
+	encryptionKey := saltedEncryptionKey(masterKey, skf.Salt)
 	skf.EncryptionVerification = encryptionKey.EncryptBytes(verificationPlaintext)
 
 	// Encrypt and save the key.

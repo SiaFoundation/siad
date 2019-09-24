@@ -1,15 +1,17 @@
 package siafile
 
 import (
+	"math"
 	"testing"
 	"time"
+
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // TestSiaFileFaultyDisk simulates interacting with a SiaFile on a faulty disk.
@@ -34,11 +36,14 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	fdd.disable()
 
 	// Create a new blank siafile.
-	siafile, wal, walPath := newBlankTestFileAndWAL()
+	siafile, wal, walPath := newBlankTestFileAndWAL(1)
 	siafile.deps = fdd
 
 	// Wrap it in a file set entry.
 	sf := dummyEntry(siafile)
+	if err := setCombinedChunkOfTestFile(sf.SiaFile); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create 50 hostkeys from which to choose from.
 	hostkeys := make([]types.SiaPublicKey, 0, 50)
@@ -78,7 +83,17 @@ OUTER:
 			if fastrand.Intn(100) < 80 {
 				spk := hostkeys[fastrand.Intn(len(hostkeys))]
 				offset := uint64(fastrand.Intn(int(sf.staticMetadata.FileSize)))
-				chunkIndex, _ := sf.Snapshot().ChunkIndexByOffset(offset)
+				snap, err := sf.Snapshot()
+				if err != nil {
+					if errors.Contains(err, errDiskFault) {
+						numRecoveries++
+						break
+					}
+					// If the error wasn't caused by the dependency, the test
+					// fails.
+					t.Fatal(err)
+				}
+				chunkIndex, _ := snap.ChunkIndexByOffset(offset)
 				pieceIndex := uint64(fastrand.Intn(sf.staticMetadata.staticErasureCode.NumPieces()))
 				if err := sf.AddPiece(spk, chunkIndex, pieceIndex, crypto.Hash{}); err != nil {
 					if errors.Contains(err, errDiskFault) {
@@ -132,6 +147,15 @@ OUTER:
 				}
 			}
 			// Load file again.
+			partialsSiaFile, err := loadSiaFile(sf.partialsSiaFile.siaFilePath, wal, fdd)
+			if err != nil {
+				if errors.Contains(err, errDiskFault) {
+					numRecoveries++
+					continue // try again
+				} else {
+					t.Fatal(err)
+				}
+			}
 			siafile, err = loadSiaFile(sf.siaFilePath, wal, fdd)
 			if err != nil {
 				if errors.Contains(err, errDiskFault) {
@@ -141,8 +165,13 @@ OUTER:
 					t.Fatal(err)
 				}
 			}
+			partialsEntry := &SiaFileSetEntry{
+				dummyEntry(partialsSiaFile),
+				uint64(fastrand.Intn(math.MaxInt32)),
+			}
 			siafile.deps = fdd
 			sf = dummyEntry(siafile)
+			sf.SetPartialsSiaFile(partialsEntry)
 			break
 		}
 

@@ -3,9 +3,6 @@ package consensus
 /*
 import (
 	"testing"
-
-	"github.com/coreos/bbolt"
-
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )

@@ -12,11 +12,12 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 )
 
 var (

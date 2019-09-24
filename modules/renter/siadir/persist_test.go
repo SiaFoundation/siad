@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // equalMetadatas is a helper that compares two siaDirMetadatas. If using this

@@ -28,8 +28,8 @@ func TestIntegrationMinimumValidChildTimestamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))

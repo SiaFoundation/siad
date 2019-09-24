@@ -24,6 +24,19 @@ var (
 
 	// SiaFileExtension is the extension for siafiles on disk
 	SiaFileExtension = ".sia"
+
+	// PartialsSiaFileExtension is the extension for siafiles which contain
+	// combined chunks.
+	PartialsSiaFileExtension = ".csia"
+
+	// CombinedChunkExtension is the extension for a combined chunk on disk.
+	CombinedChunkExtension = ".cc"
+	// UnfinishedChunkExtension is the extension for an unfinished combined chunk
+	// and is appended to the file in addition to CombinedChunkExtension.
+	UnfinishedChunkExtension = ".unfinished"
+	// ChunkMetadataExtension is the extension of a metadata file for a combined
+	// chunk.
+	ChunkMetadataExtension = ".ccmd"
 )
 
 type (
@@ -52,6 +65,12 @@ func RootSiaPath() SiaPath {
 	return SiaPath{}
 }
 
+// CombinedSiaFilePath returns the SiaPath to a hidden siafile which is used to
+// store chunks that contain pieces of multiple siafiles.
+func CombinedSiaFilePath(ec ErasureCoder) SiaPath {
+	return SiaPath{Path: fmt.Sprintf(".%v", ec.Identifier())}
+}
+
 // clean cleans up the string by converting an OS separators to forward slashes
 // and trims leading and trailing slashes
 func clean(s string) string {
@@ -66,7 +85,7 @@ func newSiaPath(s string) (SiaPath, error) {
 	sp := SiaPath{
 		Path: clean(s),
 	}
-	return sp, sp.validate(false)
+	return sp, sp.Validate(false)
 }
 
 // AddSuffix adds a numeric suffix to the end of the SiaPath.
@@ -107,7 +126,7 @@ func (sp SiaPath) Join(s string) (SiaPath, error) {
 // LoadString sets the path of the SiaPath to the provided string
 func (sp *SiaPath) LoadString(s string) error {
 	sp.Path = clean(s)
-	return sp.validate(false)
+	return sp.Validate(false)
 }
 
 // LoadSysPath loads a SiaPath from a given system path by trimming the dir at
@@ -151,7 +170,7 @@ func (sp *SiaPath) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	sp.Path = clean(sp.Path)
-	return sp.validate(true)
+	return sp.Validate(true)
 }
 
 // SiaDirSysPath returns the system path needed to read a directory on disk, the
@@ -172,6 +191,13 @@ func (sp SiaPath) SiaFileSysPath(dir string) string {
 	return filepath.Join(dir, filepath.FromSlash(sp.Path)+SiaFileExtension)
 }
 
+// SiaPartialsFileSysPath returns the system path needed to read the
+// PartialsSiaFile from disk, the input dir is the root siafile directory on
+// disk
+func (sp SiaPath) SiaPartialsFileSysPath(dir string) string {
+	return filepath.Join(dir, filepath.FromSlash(sp.Path)+PartialsSiaFileExtension)
+}
+
 // String returns the SiaPath's path
 func (sp SiaPath) String() string {
 	return sp.Path
@@ -185,13 +211,14 @@ func (sp *SiaPath) FromSysPath(siaFilePath, dir string) (err error) {
 	}
 	relPath := strings.TrimPrefix(siaFilePath, dir)
 	relPath = strings.TrimSuffix(relPath, SiaFileExtension)
+	relPath = strings.TrimSuffix(relPath, PartialsSiaFileExtension)
 	*sp, err = newSiaPath(relPath)
 	return
 }
 
-// validate checks that a Siapath is a legal filename. ../ is disallowed to
+// Validate checks that a Siapath is a legal filename. ../ is disallowed to
 // prevent directory traversal, and paths must not begin with / or be empty.
-func (sp SiaPath) validate(isRoot bool) error {
+func (sp SiaPath) Validate(isRoot bool) error {
 	if sp.Path == "" && !isRoot {
 		return ErrEmptySiaPath
 	}

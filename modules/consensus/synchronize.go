@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
+	bolt "github.com/coreos/bbolt"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 const (
@@ -26,7 +26,7 @@ var (
 	errNilProcBlock      = errors.New("nil processed block was fetched from the database")
 	errSendBlocksStalled = errors.New("SendBlocks RPC timed and never received any blocks")
 
-	// ibdLoopDelay is the time that threadedInitialBlockchainDownload waits
+	// ibdLoopDelay is the time that managedInitialBlockchainDownload waits
 	// between attempts to synchronize with the network if the last attempt
 	// failed.
 	ibdLoopDelay = build.Select(build.Var{
@@ -44,7 +44,7 @@ var (
 		Testing:  types.BlockHeight(3),
 	}).(types.BlockHeight)
 
-	// minIBDWaitTime is the time threadedInitialBlockchainDownload waits before
+	// minIBDWaitTime is the time managedInitialBlockchainDownload waits before
 	// exiting if there are >= 1 and <= minNumOutbound peers synced. This timeout
 	// will primarily affect miners who have multiple nodes daisy chained off each
 	// other. Those nodes will likely have to wait minIBDWaitTime on every startup
@@ -537,7 +537,7 @@ func (cs *ConsensusSet) managedReceiveBlock(id types.BlockID) modules.RPCFunc {
 	}
 }
 
-// threadedInitialBlockchainDownload performs the IBD on outbound peers. Blocks
+// managedInitialBlockchainDownload performs the IBD on outbound peers. Blocks
 // are downloaded from one peer at a time in 5 minute intervals, so as to
 // prevent any one peer from significantly slowing down IBD.
 //
@@ -545,7 +545,7 @@ func (cs *ConsensusSet) managedReceiveBlock(id types.BlockID) modules.RPCFunc {
 // The height and the block id of the remote peers' current blocks are not
 // checked to be the same. This can cause issues if you are connected to
 // outbound peers <= v0.5.1 that are stalled in IBD.
-func (cs *ConsensusSet) threadedInitialBlockchainDownload() error {
+func (cs *ConsensusSet) managedInitialBlockchainDownload() error {
 	// The consensus set will not recognize IBD as complete until it has enough
 	// peers. After the deadline though, it will recognize the blockchain
 	// download as complete even with only one peer. This deadline is helpful
