@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -111,6 +112,14 @@ and all words appear in the Sia dictionary. The language may be english (default
 		Long: `Display the API password.  The API password is required for some 3rd 
 party integrations such as Duplicati`,
 		Run: wrap(utilsdisplayapipassword),
+	}
+
+	utilsBruteForceSeedCmd = &cobra.Command{
+		Use:   "bruteforce-seed",
+		Short: "attempt to brute force seed",
+		Long: `Attempts to brute force a partial Sia seed.  Accepts a 27 or 28 word
+seed and returns a valid 28 or 29 word seed`,
+		Run: wrap(utilsbruteforceseed),
 	}
 )
 
@@ -264,4 +273,40 @@ func utilsverifyseed() {
 // displays the API Password to the user.
 func utilsdisplayapipassword() {
 	fmt.Println(httpClient.Password)
+}
+
+// utilsbruteforceseed is the handler for the command `siac utils
+// bruteforce-seed`
+// attempts to find the one word missing from a seed.
+func utilsbruteforceseed() {
+	fmt.Println("Enter partial seed: ")
+	s := bufio.NewScanner(os.Stdin)
+	s.Scan()
+	if s.Err() != nil {
+		log.Fatal("Couldn't read seed:", s.Err())
+	}
+	knownWords := strings.Fields(s.Text())
+	if len(knownWords) != 27 && len(knownWords) != 28 {
+		log.Fatalln("Expected 27 or 28 words in partial seed, got", len(knownWords))
+	}
+	allWords := make([]string, len(knownWords)+1)
+	var checked int
+	total := len(allWords) * len(mnemonics.EnglishDictionary)
+	for i := range allWords {
+		copy(allWords[:i], knownWords[:i])
+		copy(allWords[i+1:], knownWords[i:])
+		for _, word := range mnemonics.EnglishDictionary {
+			allWords[i] = word
+			seed := strings.Join(allWords, " ")
+			if _, err := modules.StringToSeed(seed, mnemonics.English); err == nil {
+				fmt.Printf("\nFound valid seed! The missing word was %q\n", word)
+				fmt.Println(seed)
+				return
+			}
+			checked++
+			fmt.Printf("\rChecked %v/%v...", checked, total)
+		}
+	}
+	fmt.Printf("\nNo valid seed found :(\n")
+
 }
