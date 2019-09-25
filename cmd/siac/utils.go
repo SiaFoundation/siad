@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
@@ -290,23 +292,33 @@ func utilsbruteforceseed() {
 		log.Fatalln("Expected 27 or 28 words in partial seed, got", len(knownWords))
 	}
 	allWords := make([]string, len(knownWords)+1)
+	var did mnemonics.DictionaryID = "english"
 	var checked int
 	total := len(allWords) * len(mnemonics.EnglishDictionary)
+	start := time.Now()
 	for i := range allWords {
 		copy(allWords[:i], knownWords[:i])
 		copy(allWords[i+1:], knownWords[i:])
 		for _, word := range mnemonics.EnglishDictionary {
 			allWords[i] = word
-			seed := strings.Join(allWords, " ")
-			if _, err := modules.StringToSeed(seed, mnemonics.English); err == nil {
-				fmt.Printf("\nFound valid seed! The missing word was %q\n", word)
-				fmt.Println(seed)
-				return
+			s := strings.Join(allWords, " ")
+			checksumSeedBytes, _ := mnemonics.FromString(s, did)
+			var seed modules.Seed
+			copy(seed[:], checksumSeedBytes)
+			fullChecksum := crypto.HashObject(seed)
+			if len(checksumSeedBytes) == crypto.EntropySize+modules.SeedChecksumSize && bytes.Equal(fullChecksum[:modules.SeedChecksumSize], checksumSeedBytes[crypto.EntropySize:]) {
+
+				if _, err := modules.StringToSeed(s, mnemonics.English); err == nil {
+					fmt.Printf("\nFound valid seed! The missing word was %q\n", word)
+					fmt.Println(s)
+					elapsed := time.Since(start)
+					fmt.Println("Took", elapsed)
+					return
+				}
 			}
 			checked++
 			fmt.Printf("\rChecked %v/%v...", checked, total)
 		}
 	}
 	fmt.Printf("\nNo valid seed found :(\n")
-
 }
