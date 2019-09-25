@@ -11,7 +11,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
@@ -295,7 +294,6 @@ func utilsbruteforceseed() {
 	var did mnemonics.DictionaryID = "english"
 	var checked int
 	total := len(allWords) * len(mnemonics.EnglishDictionary)
-	start := time.Now()
 	for i := range allWords {
 		copy(allWords[:i], knownWords[:i])
 		copy(allWords[i+1:], knownWords[i:])
@@ -311,8 +309,6 @@ func utilsbruteforceseed() {
 				if _, err := modules.StringToSeed(s, mnemonics.English); err == nil {
 					fmt.Printf("\nFound valid seed! The missing word was %q\n", word)
 					fmt.Println(s)
-					elapsed := time.Since(start)
-					fmt.Println("Took", elapsed)
 					return
 				}
 			}
