@@ -362,7 +362,7 @@ func (h *Host) queueActionItem(height types.BlockHeight, id types.FileContractID
 // which means that addStorageObligation should be exclusively called when
 // creating a new, empty file contract or when renewing an existing file
 // contract.
-func (h *Host) managedAddStorageObligation(so storageObligation) error {
+func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) error {
 	var soid types.FileContractID
 	err := func() error {
 		h.mu.Lock()
@@ -402,7 +402,7 @@ func (h *Host) managedAddStorageObligation(so storageObligation) error {
 			// file contract is being renewed, and that the sector should be
 			// re-added with a new expiration height. If there is an error at any
 			// point, all of the sectors should be removed.
-			if len(so.SectorRoots) != 0 {
+			if len(so.SectorRoots) != 0 && !renewal {
 				err := h.AddSectorBatch(so.SectorRoots)
 				if err != nil {
 					return err

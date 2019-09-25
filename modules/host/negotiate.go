@@ -164,7 +164,7 @@ func createRevisionSignature(fcr types.FileContractRevision, renterSig types.Tra
 // collateral, and then try submitting the file contract to the transaction
 // pool. If there is no error, the completed transaction set will be returned
 // to the caller.
-func (h *Host) managedFinalizeContract(builder modules.TransactionBuilder, renterPK crypto.PublicKey, renterSignatures []types.TransactionSignature, renterRevisionSignature types.TransactionSignature, initialSectorRoots []crypto.Hash, hostCollateral, hostInitialRevenue, hostInitialRisk types.Currency, settings modules.HostExternalSettings) ([]types.TransactionSignature, types.TransactionSignature, types.FileContractID, error) {
+func (h *Host) managedFinalizeContract(builder modules.TransactionBuilder, renewal bool, renterPK crypto.PublicKey, renterSignatures []types.TransactionSignature, renterRevisionSignature types.TransactionSignature, initialSectorRoots []crypto.Hash, hostCollateral, hostInitialRevenue, hostInitialRisk types.Currency, settings modules.HostExternalSettings) ([]types.TransactionSignature, types.TransactionSignature, types.FileContractID, error) {
 	for _, sig := range renterSignatures {
 		builder.AddTransactionSignature(sig)
 	}
@@ -251,7 +251,7 @@ func (h *Host) managedFinalizeContract(builder modules.TransactionBuilder, rente
 		// just when the actual modification is happening.
 		i := 0
 		for {
-			err = h.managedAddStorageObligation(so)
+			err = h.managedAddStorageObligation(so, renewal)
 			if err == nil {
 				return nil
 			}

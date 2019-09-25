@@ -618,7 +618,7 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	h.mu.RLock()
 	hostCollateral := contractCollateral(settings, txnSet[len(txnSet)-1].FileContracts[0])
 	h.mu.RUnlock()
-	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, renterPK, renterSigs.ContractSignatures, renterSigs.RevisionSignature, nil, hostCollateral, types.ZeroCurrency, types.ZeroCurrency, settings)
+	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, false, renterPK, renterSigs.ContractSignatures, renterSigs.RevisionSignature, nil, hostCollateral, types.ZeroCurrency, types.ZeroCurrency, settings)
 	if err != nil {
 		s.writeError(err)
 		return err
@@ -702,7 +702,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	renewRevenue := renewBasePrice(s.so, settings, fc)
 	renewRisk := renewBaseCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
-	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, renterPK, renterSigs.ContractSignatures, renterSigs.RevisionSignature, s.so.SectorRoots, renewCollateral, renewRevenue, renewRisk, settings)
+	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, false, renterPK, renterSigs.ContractSignatures, renterSigs.RevisionSignature, s.so.SectorRoots, renewCollateral, renewRevenue, renewRisk, settings)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to finalize contract: ", err)
@@ -838,5 +838,156 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	if err := s.writeResponse(resp); err != nil {
 		return err
 	}
+	return nil
+}
+
+// managedRPCLoopRenewAndClearContract handles the LoopRenewClearContract RPC.
+func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
+	// NOTE: this RPC contains two request/response exchanges.
+	s.extendDeadline(modules.NegotiateRenewContractTime)
+
+	// Read the renewal request.
+	var req modules.LoopRenewAndClearContractRequest
+	if err := s.readRequest(&req, modules.TransactionSetSizeLimit); err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// Read some internal fields for later.
+	h.mu.Lock()
+	blockHeight := h.blockHeight
+	secretKey := h.secretKey
+	settings := h.externalSettings()
+	h.mu.Unlock()
+
+	// Check that the old contract is locked.
+	if len(s.so.OriginTransactionSet) == 0 {
+		err := errors.New("no contract locked")
+		s.writeError(err)
+		return err
+	}
+	if !settings.AcceptingContracts {
+		s.writeError(errors.New("host is not accepting new contracts"))
+		return nil
+	} else if len(s.so.RevisionTransactionSet) == 0 {
+		err := errors.New("no such contract")
+		s.writeError(err)
+		return err
+	}
+
+	// Prepare the final revision of the old contract.
+	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
+	newRevision := currentRevision
+	newRevision.NewRevisionNumber = req.FinalRevisionNumber
+	newRevision.NewFileMerkleRoot = crypto.Hash{}
+	newRevision.NewFileSize = 0
+	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
+	for i := range newRevision.NewValidProofOutputs {
+		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.FinalValidProofValues[i],
+			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
+		}
+	}
+	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
+	for i := range newRevision.NewMissedProofOutputs {
+		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.FinalMissedProofValues[i],
+			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
+		}
+	}
+
+	// Verifiy the final revision of the old contract.
+	newRevenue := settings.BaseRPCPrice
+	newRoots := []crypto.Hash{}
+	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots // verifyRevision assumes new roots
+	err := verifyRevision(s.so, newRevision, blockHeight, newRevenue, types.ZeroCurrency)
+	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// Verify that the transaction coming over the wire is a proper renewal.
+	var renterPK crypto.PublicKey
+	copy(renterPK[:], req.RenterKey.Key)
+	err := h.managedVerifyRenewedContract(s.so, req.Transactions, renterPK)
+	if err != nil {
+		s.writeError(err)
+		return extendErr("verification of renewal failed: ", err)
+	}
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(s.so, settings, req.Transactions)
+	if err != nil {
+		s.writeError(err)
+		return extendErr("failed to add collateral: ", err)
+	}
+	// Send any new inputs and outputs that were added to the transaction.
+	resp := modules.LoopContractAdditions{
+		Parents: newParents,
+		Inputs:  newInputs,
+		Outputs: newOutputs,
+	}
+	if err := s.writeResponse(resp); err != nil {
+		return err
+	}
+
+	// The renter will now send transaction signatures for the file contract
+	// transaction and a signature for the implicit no-op file contract
+	// revision.
+	var renterSigs modules.LoopRenewAndClearContractSignatures
+	if err := s.readResponse(&renterSigs, modules.RPCMinLen); err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// Sign the new revision.
+	renterSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(newRevision.ParentID),
+		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+		PublicKeyIndex: 0,
+		Signature:      renterSigs.FinalRevisionSignature,
+	}
+	finalRevTxn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// The host adds the renter transaction signatures, then signs the
+	// transaction and submits it to the blockchain, creating a storage
+	// obligation in the process.
+	h.mu.RLock()
+	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
+	renewCollateral := renewContractCollateral(s.so, settings, fc)
+	renewRevenue := renewBasePrice(s.so, settings, fc)
+	renewRisk := renewBaseCollateral(s.so, settings, fc)
+	h.mu.RUnlock()
+	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, true, renterPK, renterSigs.ContractSignatures, renterSigs.RevisionSignature, s.so.SectorRoots, renewCollateral, renewRevenue, renewRisk, settings)
+	if err != nil {
+		s.writeError(err)
+		return extendErr("failed to finalize contract: ", err)
+	}
+	defer h.managedUnlockStorageObligation(newSOID)
+
+	// Clear the old storage obligatoin.
+	s.so.SectorRoots = []crypto.Hash{}
+	s.so.RevisionTransactionSet = []types.Transaction{finalRevTxn}
+	h.mu.Lock()
+	// we don't count the sectors as being removed since we prevented
+	// managedFinalizeContract from incrementing the counters on virtual sectors
+	// before
+	h.modifyStorageObligation(s.so, nil, nil, nil)
+	h.mu.Unlock()
+
+	// Send our signatures for the contract transaction and initial revision.
+	hostSigs := modules.LoopRenewAndClearContractSignatures{
+		ContractSignatures: hostTxnSignatures,
+		RevisionSignature:  hostRevisionSignature,
+
+		FinalRevisionSignature: finalRevTxn.TransactionSignatures[1].Signature,
+	}
+	if err := s.writeResponse(hostSigs); err != nil {
+		return err
+	}
+
 	return nil
 }

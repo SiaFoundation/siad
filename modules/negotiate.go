@@ -338,16 +338,17 @@ type (
 
 // New RPC IDs
 var (
-	RPCLoopEnter         = types.Specifier{'L', 'o', 'o', 'p', 'E', 'n', 't', 'e', 'r'}
-	RPCLoopExit          = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
-	RPCLoopFormContract  = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
-	RPCLoopLock          = types.Specifier{'L', 'o', 'o', 'p', 'L', 'o', 'c', 'k'}
-	RPCLoopRead          = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
-	RPCLoopRenewContract = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
-	RPCLoopSectorRoots   = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
-	RPCLoopSettings      = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
-	RPCLoopUnlock        = types.Specifier{'L', 'o', 'o', 'p', 'U', 'n', 'l', 'o', 'c', 'k'}
-	RPCLoopWrite         = types.Specifier{'L', 'o', 'o', 'p', 'W', 'r', 'i', 't', 'e'}
+	RPCLoopEnter              = types.Specifier{'L', 'o', 'o', 'p', 'E', 'n', 't', 'e', 'r'}
+	RPCLoopExit               = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
+	RPCLoopFormContract       = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
+	RPCLoopLock               = types.Specifier{'L', 'o', 'o', 'p', 'L', 'o', 'c', 'k'}
+	RPCLoopRead               = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
+	RPCLoopRenewContract      = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
+	RPCLoopRenewClearContract = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w', 'C', 'l', 'e', 'a', 'r'}
+	RPCLoopSectorRoots        = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
+	RPCLoopSettings           = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
+	RPCLoopUnlock             = types.Specifier{'L', 'o', 'o', 'p', 'U', 'n', 'l', 'o', 'c', 'k'}
+	RPCLoopWrite              = types.Specifier{'L', 'o', 'o', 'p', 'W', 'r', 'i', 't', 'e'}
 )
 
 // RPC ciphers
@@ -509,6 +510,26 @@ type (
 	LoopRenewContractRequest struct {
 		Transactions []types.Transaction
 		RenterKey    types.SiaPublicKey
+	}
+
+	// LoopRenewAndClearContractSignatures contains the signatures for a contract
+	// transaction, initial revision and final revision of the old contract. These
+	// signatures are sent by the renter during contract renewal.
+	LoopRenewAndClearContractSignatures struct {
+		ContractSignatures []types.TransactionSignature
+		RevisionSignature  types.TransactionSignature
+
+		FinalRevisionSignature []byte
+	}
+
+	// LoopRenewAndClearContractRequest contains the request parameters for RPCLoopRenewClearContract.
+	LoopRenewAndClearContractRequest struct {
+		Transactions []types.Transaction
+		RenterKey    types.SiaPublicKey
+
+		FinalRevisionNumber    uint64
+		FinalValidProofValues  []types.Currency
+		FinalMissedProofValues []types.Currency
 	}
 
 	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.
