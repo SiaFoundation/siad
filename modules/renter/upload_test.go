@@ -27,7 +27,7 @@ func TestRenterUploadDirectory(t *testing.T) {
 	}
 	defer os.RemoveAll(testUploadPath)
 
-	ec, err := siafile.NewRSCode(defaultDataPieces, defaultParityPieces)
+	ec, err := siafile.NewRSCode(DefaultDataPieces, DefaultParityPieces)
 	if err != nil {
 		t.Fatal(err)
 	}

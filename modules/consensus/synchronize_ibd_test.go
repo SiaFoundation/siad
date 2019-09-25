@@ -18,7 +18,7 @@ import (
 )
 
 // TestSimpleInitialBlockchainDownload tests that
-// threadedInitialBlockchainDownload synchronizes with peers in the simple case
+// managedInitialBlockchainDownload synchronizes with peers in the simple case
 // where there are 8 outbound peers with the same blockchain.
 func TestSimpleInitialBlockchainDownload(t *testing.T) {
 	if testing.Short() || !build.VLONG {
@@ -53,7 +53,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 	// Test IBD when all peers have only the genesis block.
 	doneChan := make(chan struct{})
 	go func() {
-		localCST.cs.threadedInitialBlockchainDownload()
+		localCST.cs.managedInitialBlockchainDownload()
 		doneChan <- struct{}{}
 	}()
 	select {
@@ -79,7 +79,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 	}
 	go func() {
-		localCST.cs.threadedInitialBlockchainDownload()
+		localCST.cs.managedInitialBlockchainDownload()
 		doneChan <- struct{}{}
 	}()
 	select {
@@ -105,7 +105,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 	}
 	go func() {
-		localCST.cs.threadedInitialBlockchainDownload()
+		localCST.cs.managedInitialBlockchainDownload()
 		doneChan <- struct{}{}
 	}()
 	select {
@@ -142,7 +142,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 	}
 	go func() {
-		localCST.cs.threadedInitialBlockchainDownload()
+		localCST.cs.managedInitialBlockchainDownload()
 		doneChan <- struct{}{}
 	}()
 	select {
@@ -180,7 +180,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 	}
 	localCurrentBlock := localCST.cs.CurrentBlock()
 	go func() {
-		localCST.cs.threadedInitialBlockchainDownload()
+		localCST.cs.managedInitialBlockchainDownload()
 		doneChan <- struct{}{}
 	}()
 	select {
@@ -209,7 +209,7 @@ func (g *mockGatewayRPCError) RPC(addr modules.NetAddress, name string, fn modul
 }
 
 // TestInitialBlockChainDownloadDisconnects tests that
-// threadedInitialBlockchainDownload only disconnects from peers that error
+// managedInitialBlockchainDownload only disconnects from peers that error
 // with anything but a timeout.
 func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 	if testing.Short() {
@@ -226,8 +226,8 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 		Gateway: g,
 		rpcErrs: make(map[modules.NetAddress]error),
 	}
-	localCS, err := New(&mg, false, filepath.Join(testdir, "local", modules.ConsensusDir))
-	if err != nil {
+	localCS, errChan := New(&mg, false, filepath.Join(testdir, "local", modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 	defer localCS.Close()
@@ -243,7 +243,7 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 			timeout: true,
 		},
 		// Need at least minNumOutbound peers that return nil for
-		// threadedInitialBlockchainDownload to mark IBD done.
+		// managedInitialBlockchainDownload to mark IBD done.
 		nil, nil, nil, nil, nil,
 	}
 	for i, rpcErr := range rpcErrs {
@@ -261,10 +261,10 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 	// Sleep to to give the OnConnectRPCs time to finish.
 	time.Sleep(500 * time.Millisecond)
 	// Do IBD.
-	localCS.threadedInitialBlockchainDownload()
+	localCS.managedInitialBlockchainDownload()
 	// Check that localCS disconnected from peers that errored but did not time out during SendBlocks.
 	if len(localCS.gateway.Peers()) != 6 {
-		t.Error("threadedInitialBlockchainDownload disconnected from peers that timedout or didn't error", len(localCS.gateway.Peers()))
+		t.Error("managedInitialBlockchainDownload disconnected from peers that timedout or didn't error", len(localCS.gateway.Peers()))
 	}
 	for _, p := range localCS.gateway.Peers() {
 		err = mg.rpcErrs[p.NetAddress]
@@ -274,12 +274,12 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			continue
 		}
-		t.Fatalf("threadedInitialBlockchainDownload didn't disconnect from a peer that returned '%v', %v", err, p.NetAddress)
+		t.Fatalf("managedInitialBlockchainDownload didn't disconnect from a peer that returned '%v', %v", err, p.NetAddress)
 	}
 }
 
 // TestInitialBlockchainDownloadDoneRules tests that
-// threadedInitialBlockchainDownload only terminates under the appropriate
+// managedInitialBlockchainDownload only terminates under the appropriate
 // conditions. Appropriate conditions are:
 //  - at least minNumOutbound synced outbound peers
 //  - or at least 1 synced outbound peer and minIBDWaitTime has passed since beginning IBD.
@@ -300,8 +300,8 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 		Gateway: g,
 		rpcErrs: make(map[modules.NetAddress]error),
 	}
-	cs, err := New(&mg, false, filepath.Join(testdir, "local", modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := New(&mg, false, filepath.Join(testdir, "local", modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 	defer cs.Close()
@@ -310,16 +310,16 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	// zero peers.
 	doneChan := make(chan struct{})
 	go func() {
-		cs.threadedInitialBlockchainDownload()
+		cs.managedInitialBlockchainDownload()
 		doneChan <- struct{}{}
 	}()
 	select {
 	case <-doneChan:
-		t.Error("threadedInitialBlockchainDownload finished with 0 synced peers")
+		t.Error("managedInitialBlockchainDownload finished with 0 synced peers")
 	case <-time.After(minIBDWaitTime + ibdLoopDelay):
 	}
 
-	// threadedInitialBlockchainDownload is already running. Feed some inbound
+	// managedInitialBlockchainDownload is already running. Feed some inbound
 	// peers to the consensus set. The gateway, through its own process of
 	// trying to find outbound peers, will eventually convert one of the
 	// inbound peers to an outbound peer. IBD should not complete until there
@@ -347,7 +347,7 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 			}
 		}
 		if !outbound {
-			t.Error("threadedInitialBlockchainDownload finished with only inbound peers")
+			t.Error("managedInitialBlockchainDownload finished with only inbound peers")
 		}
 	}()
 
@@ -357,7 +357,7 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	//
 	// 'NotSynced' is simulated in this peer by having all RPCs return errors.
 	go func() {
-		cs.threadedInitialBlockchainDownload()
+		cs.managedInitialBlockchainDownload()
 		doneChan <- struct{}{}
 	}()
 	gatewayTimesout, err := gateway.New("localhost:0", false, filepath.Join(testdir, "remote - timesout", modules.GatewayDir))
@@ -377,7 +377,7 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	}
 	select {
 	case <-doneChan:
-		t.Error("threadedInitialBlockchainDownload finished with 0 synced peers")
+		t.Error("managedInitialBlockchainDownload finished with 0 synced peers")
 	case <-time.After(minIBDWaitTime + ibdLoopDelay):
 	}
 
@@ -398,7 +398,7 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	}
 	select {
 	case <-doneChan:
-		t.Fatal("threadedInitialBlockchainDownload finished with 1 synced peer and 1 non-synced peer")
+		t.Fatal("managedInitialBlockchainDownload finished with 1 synced peer and 1 non-synced peer")
 	case <-time.After(minIBDWaitTime + ibdLoopDelay):
 	}
 
@@ -420,7 +420,7 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	select {
 	case <-doneChan:
 	case <-time.After(4 * (minIBDWaitTime + ibdLoopDelay)):
-		t.Fatal("threadedInitialBlockchainDownload never finished with 2 synced peers and 1 non-synced peer")
+		t.Fatal("managedInitialBlockchainDownload never finished with 2 synced peers and 1 non-synced peer")
 	}
 
 	// Test when there are >= minNumOutbound peers and >= minNumOutbound peers are synced.
@@ -441,13 +441,13 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 		}
 	}
 	go func() {
-		cs.threadedInitialBlockchainDownload()
+		cs.managedInitialBlockchainDownload()
 		doneChan <- struct{}{}
 	}()
 	select {
 	case <-doneChan:
 	case <-time.After(minIBDWaitTime):
-		t.Fatal("threadedInitialBlockchainDownload didn't finish in less than minIBDWaitTime")
+		t.Fatal("managedInitialBlockchainDownload didn't finish in less than minIBDWaitTime")
 	}
 }
 

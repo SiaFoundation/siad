@@ -25,17 +25,24 @@ var (
 
 // DownloadToDisk downloads a previously uploaded file. The file will be downloaded
 // to a random location and returned as a LocalFile object.
-func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, error) {
+func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (modules.DownloadID, *LocalFile, error) {
 	fi, err := tn.File(rf)
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to retrieve FileInfo")
+		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	if _, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async); err != nil {
-		return nil, errors.AddContext(err, "failed to download file")
+	uid, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async)
+	if err != nil {
+		return "", nil, errors.AddContext(err, "failed to download file")
 	}
+	// Make sure the download is in the history.
+	_, err = tn.RenterDownloadInfoGet(uid)
+	if err != nil {
+		return "", nil, errors.AddContext(err, "failed to fetch download info")
+	}
+
 	// Create the TestFile
 	lf := &LocalFile{
 		path:     dest,
@@ -44,28 +51,34 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (*LocalFile, erro
 	}
 	// If we download the file asynchronously we are done
 	if async {
-		return lf, nil
+		return uid, lf, nil
 	}
 	// Verify checksum if we downloaded the file blocking
 	if err := lf.checkIntegrity(); err != nil {
-		return lf, errors.AddContext(err, "downloaded file's checksum doesn't match")
+		return "", lf, errors.AddContext(err, "downloaded file's checksum doesn't match")
 	}
-	return lf, nil
+	return uid, lf, nil
 }
 
 // DownloadToDiskPartial downloads a part of a previously uploaded file. The
 // file will be downloaded to a random location and returned as a LocalFile
 // object.
-func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async bool, offset, length uint64) (*LocalFile, error) {
+func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async bool, offset, length uint64) (modules.DownloadID, *LocalFile, error) {
 	fi, err := tn.File(rf)
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to retrieve FileInfo")
+		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	if _, err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async); err != nil {
-		return nil, errors.AddContext(err, "failed to download file")
+	uid, err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async)
+	if err != nil {
+		return "", nil, errors.AddContext(err, "failed to download file")
+	}
+	// Make sure the download is in the history.
+	_, err = tn.RenterDownloadInfoGet(uid)
+	if err != nil {
+		return "", nil, errors.AddContext(err, "failed to fetch download info")
 	}
 	// Create the TestFile
 	destFile := &LocalFile{
@@ -75,7 +88,7 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 	}
 	// If we download the file asynchronously we are done
 	if async {
-		return destFile, nil
+		return uid, destFile, nil
 	}
 	// Verify checksum if we downloaded the file blocking and if lf was
 	// provided.
@@ -83,28 +96,33 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 		var checksum crypto.Hash
 		checksum, err = lf.partialChecksum(offset, offset+length)
 		if err != nil {
-			return nil, errors.AddContext(err, "failed to get partial checksum")
+			return "", nil, errors.AddContext(err, "failed to get partial checksum")
 		}
 		data, err := ioutil.ReadFile(dest)
 		if err != nil {
-			return nil, errors.AddContext(err, "failed to read downloaded file")
+			return "", nil, errors.AddContext(err, "failed to read downloaded file")
 		}
 		if checksum != crypto.HashBytes(data) {
-			return nil, fmt.Errorf("downloaded bytes don't match requested data %v-%v", offset, length)
+			return "", nil, fmt.Errorf("downloaded bytes don't match requested data %v-%v", offset, length)
 		}
 	}
-	return destFile, nil
+	return uid, destFile, nil
 }
 
 // DownloadByStream downloads a file and returns its contents as a slice of bytes.
-func (tn *TestNode) DownloadByStream(rf *RemoteFile) (data []byte, err error) {
+func (tn *TestNode) DownloadByStream(rf *RemoteFile) (uid modules.DownloadID, data []byte, err error) {
 	fi, err := tn.File(rf)
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to retrieve FileInfo")
+		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
-	data, err = tn.RenterDownloadHTTPResponseGet(rf.SiaPath(), 0, fi.Filesize)
+	uid, data, err = tn.RenterDownloadHTTPResponseGet(rf.SiaPath(), 0, fi.Filesize)
 	if err == nil && rf.Checksum() != crypto.HashBytes(data) {
 		err = fmt.Errorf("downloaded bytes don't match requested data (len %v)", len(data))
+	}
+	// Make sure the download is in the history.
+	_, err = tn.RenterDownloadInfoGet(uid)
+	if err != nil {
+		return "", nil, errors.AddContext(err, "failed to fetch download info")
 	}
 	return
 }

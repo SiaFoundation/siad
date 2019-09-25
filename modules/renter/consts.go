@@ -1,9 +1,11 @@
 package renter
 
 import (
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // Version and system parameters.
@@ -13,21 +15,35 @@ const (
 	persistVersion = "1.4.0"
 )
 
+const (
+	// AlertMSGSiafileLowRedundancy indicates that a file is below 75% redundancy.
+	AlertMSGSiafileLowRedundancy = "The SiaFile mentioned in the 'Cause' is below 75% redundancy"
+	// AlertSiafileLowRedundancyThreshold is the health threshold at which we start
+	// registering the LowRedundancy alert for a Siafile.
+	AlertSiafileLowRedundancyThreshold = 0.75
+)
+
+// AlertCauseSiafileLowRedundancy creates a customized "cause" for a siafile
+// with a certain path and health.
+func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health float64) string {
+	return fmt.Sprintf("Siafile '%v' has a health of %v", siaPath.String(), health)
+}
+
 // Default redundancy parameters.
 var (
-	// defaultDataPieces is the number of data pieces per erasure-coded chunk
-	defaultDataPieces = build.Select(build.Var{
+	// DefaultDataPieces is the number of data pieces per erasure-coded chunk
+	DefaultDataPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 10,
 		Testing:  1,
 	}).(int)
 
-	// defaultParityPieces is the number of parity pieces per erasure-coded
+	// DefaultParityPieces is the number of parity pieces per erasure-coded
 	// chunk
-	defaultParityPieces = build.Select(build.Var{
+	DefaultParityPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 20,
-		Testing:  8,
+		Testing:  4,
 	}).(int)
 
 	// RepairThreshold defines the threshold at which the renter decides to

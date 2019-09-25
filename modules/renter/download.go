@@ -1,21 +1,24 @@
 package renter
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -39,13 +42,16 @@ type (
 		endTime         time.Time // Set immediately before closing 'completeChan'.
 		staticStartTime time.Time // Set immediately when the download object is created.
 
-		// Basic information about the file.
+		// Basic information about the file/download.
 		destination           downloadDestination
-		destinationString     string          // The string reported to the user to indicate the download's destination.
-		staticDestinationType string          // "memory buffer", "http stream", "file", etc.
-		staticLength          uint64          // Length to download starting from the offset.
-		staticOffset          uint64          // Offset within the file to start the download.
-		staticSiaPath         modules.SiaPath // The path of the siafile at the time the download started.
+		destinationString     string             // The string reported to the user to indicate the download's destination.
+		staticDestinationType string             // "memory buffer", "http stream", "file", etc.
+		staticLength          uint64             // Length to download starting from the offset.
+		staticOffset          uint64             // Offset within the file to start the download.
+		staticSiaPath         modules.SiaPath    // The path of the siafile at the time the download started.
+		staticUID             modules.DownloadID // unique identifier for the download
+
+		staticParams downloadParams
 
 		// Retrieval settings for the file.
 		staticLatencyTarget time.Duration // In milliseconds. Lower latency results in lower total system throughput.
@@ -53,9 +59,8 @@ type (
 		staticPriority      uint64        // Downloads with higher priority will complete first.
 
 		// Utilities.
-		log           *persist.Logger // Same log as the renter.
-		memoryManager *memoryManager  // Same memoryManager used across the renter.
-		mu            sync.Mutex      // Unique to the download object.
+		r  *Renter    // The renter that was used to create the download.
+		mu sync.Mutex // Unique to the download object.
 	}
 
 	// downloadParams is the set of parameters to use when downloading a file.
@@ -91,7 +96,7 @@ func (d *download) managedFail(err error) {
 	if complete && d.err != nil {
 		return
 	} else if complete && d.err == nil {
-		d.log.Critical("download is marked as completed without error, but then managedFail was called with err:", err)
+		d.r.log.Critical("download is marked as completed without error, but then managedFail was called with err:", err)
 		return
 	}
 
@@ -123,7 +128,7 @@ func (d *download) markComplete() {
 	}
 	// Log potential errors.
 	if err != nil {
-		d.log.Println("Failed to execute at least one downloadCompleteFunc", err)
+		d.r.log.Println("Failed to execute at least one downloadCompleteFunc", err)
 	}
 	// Set downloadCompleteFuncs to nil to avoid executing them multiple times.
 	d.downloadCompleteFuncs = nil
@@ -138,7 +143,7 @@ func (d *download) onComplete(f func(error) error) {
 	select {
 	case <-d.completeChan:
 		if err := f(d.err); err != nil {
-			d.log.Println("Failed to execute downloadCompleteFunc", err)
+			d.r.log.Println("Failed to execute downloadCompleteFunc", err)
 		}
 		return
 	default:
@@ -176,41 +181,58 @@ func (d *download) OnComplete(f func(error) error) {
 	d.onComplete(f)
 }
 
-// Download performs a file download using the passed parameters and blocks
-// until the download is finished.
-func (r *Renter) Download(p modules.RenterDownloadParameters) error {
-	if err := r.tg.Add(); err != nil {
-		return err
-	}
-	defer r.tg.Done()
-	d, err := r.managedDownload(p)
-	if err != nil {
-		return err
-	}
-	// Block until the download has completed
-	select {
-	case <-d.completeChan:
-		return d.Err()
-	case <-r.tg.StopChan():
-		return errors.New("download interrupted by shutdown")
-	}
+// UID returns the unique identifier of the download.
+func (d *download) UID() modules.DownloadID {
+	return d.staticUID
 }
 
-// DownloadAsync performs a file download using the passed parameters without
-// blocking until the download is finished.
-func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error) error) (cancel func(), err error) {
+// Download creates a file download using the passed parameters and blocks until
+// the download is finished. The download needs to be started by calling the
+// returned method.
+func (r *Renter) Download(p modules.RenterDownloadParameters) (modules.DownloadID, func() error, error) {
 	if err := r.tg.Add(); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	defer r.tg.Done()
 	d, err := r.managedDownload(p)
 	if err != nil {
-		return nil, err
+		return "", nil, err
+	}
+	return d.UID(), func() error {
+		// Start download.
+		if err := d.Start(); err != nil {
+			return err
+		}
+		// Block until the download has completed
+		select {
+		case <-d.completeChan:
+			return d.Err()
+		case <-r.tg.StopChan():
+			return errors.New("download interrupted by shutdown")
+		}
+	}, nil
+}
+
+// DownloadAsync creates a file download using the passed parameters without
+// blocking until the download is finished. The download needs to be started
+// using the method returned by DownloadAsync. DownloadAsync also accepts an
+// optional input function which will be registered to be called when the
+// download is finished.
+func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error) error) (id modules.DownloadID, start func() error, cancel func(), err error) {
+	if err := r.tg.Add(); err != nil {
+		return "", nil, nil, err
+	}
+	defer r.tg.Done()
+	d, err := r.managedDownload(p)
+	if err != nil {
+		return "", nil, nil, err
 	}
 	if f != nil {
 		d.onComplete(f)
 	}
-	return d.managedCancel, err
+	return d.UID(), func() error {
+		return d.Start()
+	}, d.managedCancel, nil
 }
 
 // managedDownload performs a file download using the passed parameters and
@@ -320,7 +342,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	// Add the download object to the download history if it's not a stream.
 	if destinationType != destinationTypeSeekStream {
 		r.downloadHistoryMu.Lock()
-		r.downloadHistory = append(r.downloadHistory, d)
+		r.downloadHistory[d.UID()] = d
 		r.downloadHistoryMu.Unlock()
 	}
 
@@ -354,6 +376,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		destination:           params.destination,
 		destinationString:     params.destinationString,
 		staticDestinationType: params.destinationType,
+		staticUID:             modules.DownloadID(hex.EncodeToString(fastrand.Bytes(16))),
 		staticLatencyTarget:   params.latencyTarget,
 		staticLength:          params.length,
 		staticOffset:          params.offset,
@@ -361,8 +384,8 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		staticSiaPath:         params.file.SiaPath(),
 		staticPriority:        params.priority,
 
-		log:           r.log,
-		memoryManager: r.memoryManager,
+		r:            r,
+		staticParams: params,
 	}
 
 	// Update the endTime of the download when it's done. Also nil out the
@@ -374,15 +397,22 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		return nil
 	})
 
+	return d, nil
+}
+
+// Start starts a download previously created with `managedNewDownload`.
+func (d *download) Start() error {
 	// Nothing more to do for 0-byte files or 0-length downloads.
 	if d.staticLength == 0 {
 		d.markComplete()
-		return d, nil
+		return nil
 	}
 
 	// Determine which chunks to download.
+	params := d.staticParams
 	minChunk, minChunkOffset := params.file.ChunkIndexByOffset(params.offset)
 	maxChunk, maxChunkOffset := params.file.ChunkIndexByOffset(params.offset + params.length)
+
 	// If the maxChunkOffset is exactly 0 we need to subtract 1 chunk. e.g. if
 	// the chunkSize is 100 bytes and we want to download 100 bytes from offset
 	// 0, maxChunk would be 1 and maxChunkOffset would be 0. We want maxChunk
@@ -392,7 +422,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 	}
 	// Make sure the requested chunks are within the boundaries.
 	if minChunk == params.file.NumChunks() || maxChunk == params.file.NumChunks() {
-		return nil, errors.New("download is requesting a chunk that is past the boundary of the file")
+		return errors.New("download is requesting a chunk that is past the boundary of the file")
 	}
 
 	// For each chunk, assemble a mapping from the contract id to the index of
@@ -409,7 +439,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 				// the same chunk.
 				_, exists := chunkMaps[chunkIndex-minChunk][piece.HostPubKey.String()]
 				if exists {
-					r.log.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.", params.file.SiaPath(), chunkIndex, pieceIndex, piece.HostPubKey.String())
+					d.r.log.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.", params.file.SiaPath(), chunkIndex, pieceIndex, piece.HostPubKey.String())
 				}
 				chunkMaps[chunkIndex-minChunk][piece.HostPubKey.String()] = downloadPieceInfo{
 					index: uint64(pieceIndex),
@@ -443,7 +473,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 			// TODO: There is some sane minimum latency that should actually be
 			// set based on the number of pieces 'n', and the 'n' fastest
 			// workers that we have.
-			staticLatencyTarget: params.latencyTarget + (25 * time.Duration(i-minChunk)), // Increase target by 25ms per chunk.
+			staticLatencyTarget: d.staticLatencyTarget + (25 * time.Duration(i-minChunk)), // Increase target by 25ms per chunk.
 			staticNeedsMemory:   params.needsMemory,
 			staticPriority:      params.priority,
 
@@ -481,13 +511,37 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 
 		// Add this chunk to the chunk heap, and notify the download loop that
 		// there is work to do.
-		r.managedAddChunkToDownloadHeap(udc)
+		d.r.managedAddChunkToDownloadHeap(udc)
 		select {
-		case r.newDownloads <- struct{}{}:
+		case d.r.newDownloads <- struct{}{}:
 		default:
 		}
 	}
-	return d, nil
+	return nil
+}
+
+// DownloadByUID returns a single download from the history by it's UID.
+func (r *Renter) DownloadByUID(uid modules.DownloadID) (modules.DownloadInfo, bool) {
+	r.downloadHistoryMu.Lock()
+	defer r.downloadHistoryMu.Unlock()
+	d, exists := r.downloadHistory[uid]
+	if !exists {
+		return modules.DownloadInfo{}, false
+	}
+	return modules.DownloadInfo{
+		Destination:     d.destinationString,
+		DestinationType: d.staticDestinationType,
+		Length:          d.staticLength,
+		Offset:          d.staticOffset,
+		SiaPath:         d.staticSiaPath,
+
+		Completed:            d.staticComplete(),
+		EndTime:              d.endTime,
+		Received:             atomic.LoadUint64(&d.atomicDataReceived),
+		StartTime:            d.staticStartTime,
+		StartTimeUnix:        d.staticStartTime.UnixNano(),
+		TotalDataTransferred: atomic.LoadUint64(&d.atomicTotalDataTransferred),
+	}, true
 }
 
 // DownloadHistory returns the list of downloads that have been performed. Will
@@ -504,10 +558,19 @@ func (r *Renter) DownloadHistory() []modules.DownloadInfo {
 	r.downloadHistoryMu.Lock()
 	defer r.downloadHistoryMu.Unlock()
 
-	downloads := make([]modules.DownloadInfo, len(r.downloadHistory))
-	for i := range r.downloadHistory {
+	// Get a slice of the history sorted from least recent to most recent.
+	downloadHistory := make([]*download, 0, len(r.downloadHistory))
+	for _, d := range r.downloadHistory {
+		downloadHistory = append(downloadHistory, d)
+	}
+	sort.Slice(downloadHistory, func(i, j int) bool {
+		return downloadHistory[i].staticStartTime.Before(downloadHistory[j].staticStartTime)
+	})
+
+	downloads := make([]modules.DownloadInfo, len(downloadHistory))
+	for i := range downloadHistory {
 		// Order from most recent to least recent.
-		d := r.downloadHistory[len(r.downloadHistory)-i-1]
+		d := downloadHistory[len(r.downloadHistory)-i-1]
 		d.mu.Lock() // Lock required for d.endTime only.
 		downloads[i] = modules.DownloadInfo{
 			Destination:     d.destinationString,
@@ -562,7 +625,7 @@ func (r *Renter) ClearDownloadHistory(after, before time.Time) error {
 
 	// Clear download history if both before and after timestamps are zero values
 	if before.Equal(types.EndOfTime) && after.IsZero() {
-		r.downloadHistory = r.downloadHistory[:0]
+		r.downloadHistory = make(map[modules.DownloadID]*download)
 		return nil
 	}
 
@@ -570,10 +633,10 @@ func (r *Renter) ClearDownloadHistory(after, before time.Time) error {
 	withinTimespan := func(t time.Time) bool {
 		return (t.After(after) || t.Equal(after)) && (t.Before(before) || t.Equal(before))
 	}
-	filtered := r.downloadHistory[:0]
+	filtered := make(map[modules.DownloadID]*download)
 	for _, d := range r.downloadHistory {
 		if !withinTimespan(d.staticStartTime) {
-			filtered = append(filtered, d)
+			filtered[d.UID()] = d
 		}
 	}
 	r.downloadHistory = filtered

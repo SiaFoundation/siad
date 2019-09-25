@@ -113,7 +113,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 		remoteFiles = append(remoteFiles, rf)
 	}
 	for _, rf := range remoteFiles {
-		_, err = r.DownloadToDisk(rf, false)
+		_, _, err = r.DownloadToDisk(rf, false)
 		if err != nil {
 			t.Fatal("Could not DownloadToDisk:", err)
 		}
@@ -789,7 +789,7 @@ func TestUploadStreamFailAndRepair(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Make sure we can download the file.
-	downloadedData, err := renter.RenterDownloadHTTPResponseGet(sp, 0, uint64(len(data)))
+	_, downloadedData, err := renter.RenterDownloadHTTPResponseGet(sp, 0, uint64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}

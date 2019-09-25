@@ -601,7 +601,7 @@ func (hdb *HostDB) threadedScan() {
 	// Wait until the consensus set is synced. Only then we can be sure that
 	// the initial scan covers the whole network.
 	for {
-		if hdb.cs.Synced() {
+		if hdb.managedSynced() {
 			break
 		}
 		select {

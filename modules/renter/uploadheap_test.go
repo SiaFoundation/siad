@@ -416,9 +416,11 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 
 	// Manually add workers to worker pool
 	for i := 0; i < int(f.NumChunks()); i++ {
+		rt.renter.staticWorkerPool.mu.Lock()
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
+		rt.renter.staticWorkerPool.mu.Unlock()
 	}
 
 	// Confirm we are starting with an empty upload and directory heap
@@ -435,7 +437,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	rt.renter.directoryHeap.managedReset()
 
 	// Add chunks from file to uploadHeap
-	rt.renter.managedBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
+	rt.renter.callBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
 
 	// Upload heap should now have NumChunks chunks and directory heap should still be empty
 	if rt.renter.uploadHeap.managedLen() != int(f.NumChunks()) {
@@ -471,7 +473,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	uploadHeapLen := rt.renter.uploadHeap.managedLen()
 
 	// Try and add chunks to upload heap again
-	rt.renter.managedBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
+	rt.renter.callBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
 
 	// No chunks should have been added to the upload heap
 	if rt.renter.uploadHeap.managedLen() != uploadHeapLen {

@@ -19,13 +19,13 @@ var (
 	DefaultAllowance = Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(500),
 		Hosts:       uint64(PriceEstimationScope),
-		Period:      types.BlockHeight(3 * types.BlocksPerMonth),
-		RenewWindow: types.BlockHeight(types.BlocksPerMonth),
+		Period:      3 * types.BlocksPerMonth,
+		RenewWindow: types.BlocksPerMonth,
 
-		ExpectedStorage:    1e12,                                 // 1 TB
-		ExpectedUpload:     uint64(200e9) / types.BlocksPerMonth, // 200 GB per month
-		ExpectedDownload:   uint64(100e9) / types.BlocksPerMonth, // 100 GB per month
-		ExpectedRedundancy: 3.0,                                  // default is 10/30 erasure coding
+		ExpectedStorage:    1e12,                                         // 1 TB
+		ExpectedUpload:     uint64(200e9) / uint64(types.BlocksPerMonth), // 200 GB per month
+		ExpectedDownload:   uint64(100e9) / uint64(types.BlocksPerMonth), // 100 GB per month
+		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
 	}
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
@@ -130,6 +130,10 @@ const (
 )
 
 type (
+	// DownloadID is a unique identifier used to identify downloads within the
+	// download history.
+	DownloadID string
+
 	// CombinedChunkID is a unique identifier for a combined chunk which makes up
 	// part of its filename on disk.
 	CombinedChunkID string
@@ -556,6 +560,8 @@ type UploadedBackup struct {
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
+	Alerter
+
 	// ActiveHosts provides the list of hosts that the renter is selecting,
 	// sorted by preference.
 	ActiveHosts() []HostDBEntry
@@ -636,17 +642,24 @@ type Renter interface {
 	// DeleteFile deletes a file entry from the renter.
 	DeleteFile(siaPath SiaPath) error
 
-	// Download performs a download according to the parameters passed, including
-	// downloads of `offset` and `length` type.
-	Download(params RenterDownloadParameters) error
+	// Download creates a download according to the parameters passed, including
+	// downloads of `offset` and `length` type. It returns a method to
+	// start the download.
+	Download(params RenterDownloadParameters) (DownloadID, func() error, error)
 
-	// Download performs a download according to the parameters passed without
-	// blocking, including downloads of `offset` and `length` type.
-	DownloadAsync(params RenterDownloadParameters, onComplete func(error) error) (cancel func(), err error)
+	// DownloadAsync creates a file download using the passed parameters without
+	// blocking until the download is finished. The download needs to be started
+	// using the method returned by DownloadAsync. DownloadAsync also accepts an
+	// optional input function which will be registered to be called when the
+	// download is finished.
+	DownloadAsync(params RenterDownloadParameters, onComplete func(error) error) (uid DownloadID, start func() error, cancel func(), err error)
 
 	// ClearDownloadHistory clears the download history of the renter
 	// inclusive for before and after times.
 	ClearDownloadHistory(after, before time.Time) error
+
+	// DownloadByUID returns a download from the download history given its uid.
+	DownloadByUID(uid DownloadID) (DownloadInfo, bool)
 
 	// DownloadHistory lists all the files that have been scheduled for download.
 	DownloadHistory() []DownloadInfo

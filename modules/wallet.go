@@ -374,6 +374,7 @@ type (
 	// encrypted using a user-specified password. Common addresses are all
 	// derived from a single address seed.
 	Wallet interface {
+		Alerter
 		EncryptionManager
 		KeyManager
 

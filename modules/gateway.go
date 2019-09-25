@@ -130,6 +130,8 @@ type (
 	// it is responsible for ensuring that the local consensus set is consistent
 	// with the "network" consensus set.
 	Gateway interface {
+		Alerter
+
 		// Connect establishes a persistent connection to a peer.
 		Connect(NetAddress) error
 

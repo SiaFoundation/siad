@@ -22,6 +22,7 @@ func (api *API) buildHTTPRoutes() {
 	router.RedirectTrailingSlash = false
 
 	// Daemon API Calls
+	router.GET("/daemon/alerts", api.daemonAlertsHandlerGET)
 	router.GET("/daemon/constants", api.daemonConstantsHandler)
 	router.GET("/daemon/version", api.daemonVersionHandler)
 	router.GET("/daemon/update", api.daemonUpdateHandlerGET)
@@ -88,6 +89,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/backups/restore", RequirePassword(api.renterBackupsRestoreHandlerGET, requiredPassword))
 		router.POST("/renter/contract/cancel", RequirePassword(api.renterContractCancelHandler, requiredPassword))
 		router.GET("/renter/contracts", api.renterContractsHandler)
+		router.GET("/renter/downloadinfo/*uid", api.renterDownloadByUIDHandlerGET)
 		router.GET("/renter/downloads", api.renterDownloadsHandler)
 		router.POST("/renter/downloads/clear", RequirePassword(api.renterClearDownloadsHandler, requiredPassword))
 		router.GET("/renter/files", api.renterFilesHandler)
@@ -111,6 +113,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/rename/*siapath", RequirePassword(api.renterRenameHandler, requiredPassword))
 		router.GET("/renter/stream/*siapath", api.renterStreamHandler)
 		router.POST("/renter/upload/*siapath", RequirePassword(api.renterUploadHandler, requiredPassword))
+		router.GET("/renter/uploadready", api.renterUploadReadyHandler)
 		router.POST("/renter/uploadstream/*siapath", RequirePassword(api.renterUploadStreamHandler, requiredPassword))
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 

@@ -847,6 +847,12 @@ func (c *Contractor) threadedContractMaintenance() {
 		return
 	}
 	defer c.tg.Done()
+
+	// No contract maintenance unless contractor is synced.
+	if !c.managedSynced() {
+		c.log.Debugln("Skipping contract maintenance since consensus isn't synced yet")
+		return
+	}
 	c.log.Debugln("starting contract maintenance")
 
 	// Only one instance of this thread should be running at a time. Under
@@ -861,6 +867,16 @@ func (c *Contractor) threadedContractMaintenance() {
 		return
 	}
 	defer c.maintenanceLock.Unlock()
+
+	// Register the WalletLockedDuringMaintenance alert if necessary.
+	var registerWalletLockedDuringMaintenance bool
+	defer func() {
+		if registerWalletLockedDuringMaintenance {
+			c.staticAlerter.RegisterAlert(modules.AlertIDWalletLockedDuringMaintenance, AlertMSGWalletLockedDuringMaintenance, modules.ErrLockedWallet.Error(), modules.SeverityWarning)
+		} else {
+			c.staticAlerter.UnregisterAlert(modules.AlertIDWalletLockedDuringMaintenance)
+		}
+	}()
 
 	// Perform general cleanup of the contracts. This includes recovering lost
 	// contracts, archiving contracts, and other cleanup work. This should all
@@ -932,7 +948,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// renewal.
 		utility, ok := c.managedContractUtility(contract.ID)
 		if !ok || !utility.GoodForRenew {
-			if uint64(blockHeight-contract.StartHeight) < types.BlocksPerWeek {
+			if blockHeight-contract.StartHeight < types.BlocksPerWeek {
 				c.log.Debugln("Contract did not last 1 week and is not being renewed", contract.ID)
 			}
 			c.log.Debugln("Contract skipped because it is not good for renew (utility.GoodForRenew, exists)", utility.GoodForRenew, ok)
@@ -1025,6 +1041,15 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	c.log.Debugln("The allowance has this many remaning funds:", fundsRemaining)
 
+	// Register the AllowanceLowFunds alert if necessary.
+	var registerLowFundsAlert bool
+	defer func() {
+		if registerLowFundsAlert {
+			c.staticAlerter.RegisterAlert(modules.AlertIDAllowanceLowFunds, AlertMSGAllowanceLowFunds, "", modules.SeverityWarning)
+		} else {
+			c.staticAlerter.UnregisterAlert(modules.AlertIDAllowanceLowFunds)
+		}
+	}()
 	// Go through the contracts we've assembled for renewal. Any contracts that
 	// need to be renewed because they are expiring (renewSet) get priority over
 	// contracts that need to be renewed because they have exhausted their funds
@@ -1033,14 +1058,16 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, renewal := range renewSet {
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
-			c.log.Println("contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
+			registerWalletLockedDuringMaintenance = true
+			c.log.Println("Contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
 			return
 		}
 
 		c.log.Println("Attempting to perform a renewal:", renewal.id)
 		// Skip this renewal if we don't have enough funds remaining.
-		if renewal.amount.Cmp(fundsRemaining) > 0 {
+		if renewal.amount.Cmp(fundsRemaining) > 0 || c.staticDeps.Disrupt("LowFundsRenewal") {
 			c.log.Println("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
+			registerLowFundsAlert = true
 			continue
 		}
 
@@ -1069,6 +1096,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, renewal := range refreshSet {
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
 			c.log.Println("contractor is attempting to refresh contracts that have run out of funds, however the wallet is locked")
 			return
 		}
@@ -1152,12 +1180,14 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, host := range hosts {
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
 			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
 			return
 		}
 
 		// Determine if we have enough money to form a new contract.
-		if fundsRemaining.Cmp(initialContractFunds) < 0 {
+		if fundsRemaining.Cmp(initialContractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
+			registerLowFundsAlert = true
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
 		}

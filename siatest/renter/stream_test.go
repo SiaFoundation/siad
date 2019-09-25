@@ -51,7 +51,7 @@ func TestRenterDownloadStreamCache(t *testing.T) {
 	}
 
 	// Download that file using a download stream.
-	downloadedData, err := renter.DownloadByStream(remoteFile)
+	_, downloadedData, err := renter.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// We should be able to download
-	if _, err := r.DownloadByStream(remoteFile); err != nil {
+	if _, _, err := r.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
 	}
 	// Repair the file again to make sure we don't get stuck on chunks that are
@@ -321,7 +321,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Download the file again.
-	downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)))
+	_, downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}

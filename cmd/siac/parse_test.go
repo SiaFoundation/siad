@@ -2,11 +2,13 @@ package main
 
 import (
 	"math/big"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// TestParseFileSize probes the parseFilesize function
 func TestParseFilesize(t *testing.T) {
 	tests := []struct {
 		in, out string
@@ -43,6 +45,7 @@ func TestParseFilesize(t *testing.T) {
 	}
 }
 
+// TestParsePeriod probes the parsePeriod function
 func TestParsePeriod(t *testing.T) {
 	tests := []struct {
 		in, out string
@@ -92,6 +95,7 @@ func TestParsePeriod(t *testing.T) {
 	}
 }
 
+// TestCurrencyUnits probes the currencyUnits function
 func TestCurrencyUnits(t *testing.T) {
 	tests := []struct {
 		in, out string
@@ -123,23 +127,65 @@ func TestCurrencyUnits(t *testing.T) {
 	}
 }
 
-func TestParseRateLimits(t *testing.T) {
+// TestRateLimitUnits probes the ratelimitUnits function
+func TestRatelimitUnits(t *testing.T) {
 	tests := []struct {
-		inDown, inUp   string
-		outDown, outUp int64
-		err            error
+		in  int64
+		out string
 	}{
-		{"0", "0", 0, 0, nil},
-		{"1024", "0", 1024, 0, nil},
-		{"1024", "1024", 1024, 1024, nil},
-		{"1280000", "2560000", 1280000, 2560000, nil},
-		{"-1", "0", -1, 0, nil},
-		{"abcd", "efgh", 0, 0, errUnableToParseRateLimit},
+		{0, "0 B/s"},
+		{123, "123 B/s"},
+		{1234, "1.234 KB/s"},
+		{1234000, "1.234 MB/s"},
+		{1234000000, "1.234 GB/s"},
+		{1234000000000, "1.234 TB/s"},
 	}
 	for _, test := range tests {
-		down, up, err := parseRateLimits(test.inDown, test.inUp)
-		if test.outDown != down || test.outUp != up || test.err != err {
-			t.Errorf("parseRateLimit(%v %v): expected %v %v %v, got %v %v %v", test.inDown, test.inUp, test.outDown, test.outUp, test.err, down, up, err)
+		out := ratelimitUnits(test.in)
+		if out != test.out {
+			t.Errorf("ratelimitUnits(%v): expected %v, got %v", test.in, test.out, out)
+		}
+	}
+}
+
+// TestParseRateLimit probes the parseRatelimit function
+func TestParseRatelimit(t *testing.T) {
+	tests := []struct {
+		in  string
+		out int64
+		err error
+	}{
+		{"x", 0, errUnableToParseRateLimit},
+		{"1", 0, errUnableToParseRateLimit},
+		{"B/s", 0, errUnableToParseRateLimit},
+		{"Bps", 0, errUnableToParseRateLimit},
+		{"1Bps", 0, errUnableToParseRateLimit},
+		{"1B/s", 1, nil},
+		{"1 B/s", 1, nil},
+		{"8Bps", 1, nil},
+		{"8 Bps", 1, nil},
+		{"1KB/s", 1000, nil},
+		{"1 KB/s", 1000, nil},
+		{"8Kbps", 1000, nil},
+		{"8 Kbps", 1000, nil},
+		{"1MB/s", 1000000, nil},
+		{"1 MB/s", 1000000, nil},
+		{"8Mbps", 1000000, nil},
+		{"8 Mbps", 1000000, nil},
+		{"1GB/s", 1000000000, nil},
+		{"1 GB/s", 1000000000, nil},
+		{"8Gbps", 1000000000, nil},
+		{"8 Gbps", 1000000000, nil},
+		{"1TB/s", 1000000000000, nil},
+		{"1 TB/s", 1000000000000, nil},
+		{"8Tbps", 1000000000000, nil},
+		{"8 Tbps", 1000000000000, nil},
+	}
+
+	for _, test := range tests {
+		res, err := parseRatelimit(test.in)
+		if res != test.out || (err != test.err && !strings.Contains(err.Error(), test.err.Error())) {
+			t.Errorf("parsePeriod(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
 		}
 	}
 }

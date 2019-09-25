@@ -8,7 +8,12 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
+
+// ErrAPICallNotRecognized is returned by API client calls made to modules that
+// are not yet loaded.
+var ErrAPICallNotRecognized = errors.New("API call not recognized")
 
 // Error is a type that is encoded as JSON and returned in an API response in
 // the event of an error. Only the Message field is required. More fields may
@@ -99,7 +104,7 @@ type API struct {
 	wallet   modules.Wallet
 
 	downloadMu sync.Mutex
-	downloads  map[string]func()
+	downloads  map[modules.DownloadID]func()
 	router     http.Handler
 	routerMu   sync.RWMutex
 
@@ -142,7 +147,7 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 		renter:            r,
 		tpool:             tp,
 		wallet:            w,
-		downloads:         make(map[string]func()),
+		downloads:         make(map[modules.DownloadID]func()),
 		requiredUserAgent: requiredUserAgent,
 		requiredPassword:  requiredPassword,
 		siadConfig:        cfg,

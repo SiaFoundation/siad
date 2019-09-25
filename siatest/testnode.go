@@ -204,11 +204,29 @@ func NewNode(nodeParams node.NodeParams) (*TestNode, error) {
 
 // NewCleanNode creates a new TestNode that's not yet funded
 func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
+	return newCleanNode(nodeParams, false)
+}
+
+// NewCleanNodeAsync creates a new TestNode that's not yet funded
+func NewCleanNodeAsync(nodeParams node.NodeParams) (*TestNode, error) {
+	return newCleanNode(nodeParams, true)
+}
+
+// newCleanNode creates a new TestNode that's not yet funded
+func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error) {
 	userAgent := "Sia-Agent"
 	password := "password"
 
 	// Create server
-	s, err := server.New(":0", userAgent, password, nodeParams)
+	var s *server.Server
+	var err error
+	if asyncSync {
+		var errChan <-chan error
+		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams)
+		err = modules.PeekErr(errChan)
+	} else {
+		s, err = server.New(":0", userAgent, password, nodeParams)
+	}
 	if err != nil {
 		return nil, err
 	}

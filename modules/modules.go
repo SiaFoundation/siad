@@ -26,3 +26,13 @@ func init() {
 		SafeMutexDelay = 30 * time.Second
 	}
 }
+
+// PeekErr checks if a chan error has an error waiting to be returned. If it has
+// it will return that error. Otherwise it returns 'nil'.
+func PeekErr(errChan <-chan error) (err error) {
+	select {
+	case err = <-errChan:
+	default:
+	}
+	return
+}

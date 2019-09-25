@@ -78,6 +78,11 @@ responsibilities.
 *TODO* 
   - fill out subsystem explanation
 
+#### Outbound Complexities
+ - `DeleteFile` calls `callThreadedBubbleMetadata` after the file is deleted
+ - `RenameFile` calls `callThreadedBubbleMetadata` on the current and new
+   directories when a file is renamed
+
 ### Persistance Subsystem
 **Key Files**
  - [persist_compat.go](./persist_compat.go)
@@ -110,7 +115,7 @@ updated) that involve working with hosts will pass through the worker subsystem.
 The heart of the worker subsystem is the worker pool, implemented in
 [workerpool.go](./workerpool.go). The worker pool contains the set of workers
 that can be used to communicate with the hosts, one worker per host. The
-function `callWorker` can be used to retreive a specific worker from the pool,
+function `callWorker` can be used to retrieve a specific worker from the pool,
 and the function `callUpdate` can be used to update the set of workers in the
 worker pool. `callUpdate` will create new workers for any new contracts, will
 update workers for any contracts that changed, and will kill workers for any
@@ -168,7 +173,7 @@ over uploads. When the worker performs a piece of work, it will jump back to the
 top of the loop, meaning that a continuous stream of higher priority work can
 stall out all lower priority work.
 
-When a worker is killed, the worker is repsonsible for going through the list of
+When a worker is killed, the worker is responsible for going through the list of
 jobs that have been queued and gracefully terminating the jobs, returning or
 signaling errors where appropriate.
 
@@ -328,7 +333,7 @@ price and total throughput.
 The Renter uploads `siafiles` in 40MB chunks. Redundancy kept at the chunk level
 which means each chunk will then be split in `datapieces` number of pieces. For
 example, a 10/20 scheme would mean that each 40MB chunk will be split into 10
-4MB pieces, which is turn will be uploaded to 30 different hosts (10 data piecs
+4MB pieces, which is turn will be uploaded to 30 different hosts (10 data pieces
 and 20 parity pieces).
 
 Chunks are uploaded by first distributing the chunk to the worker pool. The
@@ -338,6 +343,13 @@ will receive this channel and begin the upload. First the worker creates a
 connection with the host by creating an `editor`. Next the `editor` is used to
 update the file contract with the next data being uploaded. This will update the
 merkle root and the contract revision.
+
+**Outbound Complexities**  
+ - The upload subsystem calls `callThreadedBubbleMetadata` from the Health Loop
+   to update the filesystem of the new upload
+ - `Upload` calls `callBuildAndPushChunks` to add upload chunks to the
+   `uploadHeap` and then signals the heap's `newUploads` channel so that the
+   Repair Loop will work through the heap and upload the chunks
 
 ### Upload Streaming Subsystem
 **Key Files**
@@ -363,6 +375,7 @@ merkle root and the contract revision.
   - Pull out stuck loop code from uploadheap.go and put in repair.go
   - Review naming of files associated with this subsystem
   - Create benchmark for health loop and add print outs to Health Loop section
+  - Break out Health, Repair, and Stuck code into 3 distinct subsystems
   
 There are 3 main functions that work together to make up Sia's file repair
 mechanism, `threadedUpdateRenterHealth`, `threadedUploadAndRepairLoop`, and
@@ -432,9 +445,25 @@ status is an active bubble then it is removed from the renter's tracking. If the
 status was a pending bubble then the status is set to active and bubble is
 called on the directory again. 
 
-**Assumptions / Complexities**
- - The Health Loop triggers the Repair Loop when unhealthy files are found
- - The Health Loop triggers the Stuck Loop when stuck files are found
+**Inbound Complexities**  
+ - The Repair loop relies on Health Loop and `callThreadedBubbleMetadata` to
+   keep the filesystem accurately updated in order to work through the file
+   system in the correct order.
+ - `DeleteFile` calls `callThreadedBubbleMetadata` after the file is deleted
+ - `RenameFile` calls `callThreadedBubbleMetadata` on the current and new
+   directories when a file is renamed
+ - The upload subsystem calls `callThreadedBubbleMetadata` from the Health Loop
+   to update the filesystem of the new upload
+
+**Outbound Complexities**   
+ - The Health Loop triggers the Repair Loop when unhealthy files are found. This
+   is done by `managedPerformBubbleMetadata` signaling the
+   `r.uploadHeap.repairNeeded` channel when it is at the root directory and the
+   `AggregateHealth` is above the `RepairThreshold`.
+ - The Health Loop triggers the Stuck Loop when stuck files are found. This is
+   done by `managedPerformBubbleMetadata` signaling the
+   `r.uploadHeap.stuckChunkFound` channel when it is at the root directory and
+   `AggregateNumStuckChunks` is greater than zero.
 
 #### Repair Loop
 The repair loop is responsible for uploading new files to the renter and
@@ -493,21 +522,27 @@ to be successful the chunk must be at 1x redundancy or better. If a chunk is
 below 1x redundancy and the local file is not present the chunk, and therefore
 the file, is considered lost as there is no way to repair it. 
 
-**Assumptions / Complexities**
+**Inbound Complexities**  
  - `Upload` adds chunks directly to the upload heap by calling
-   `managedBuildAndPushChunks`
+   `callBuildAndPushChunks`
  - Repair loop will sleep until work is needed meaning other threads will wake
    up the repair loop by calling the `repairNeeded` channel
  - There is always enough space in the heap, or the number of backup chunks is
    few enough that all the backup chunks are always added to the upload heap.
- - The repair loop relies on the directory heap being accurate which in terms
-   relies on the health loop keeping the filesystem up to date.
- - The repair loop passes chunks on to the upload subsystem and expects that
-   subsystem to handle the request 
- - Stuck chunks get added directory to the upload heap and have priority over
+ - Stuck chunks get added directly to the upload heap and have priority over
    normal uploads and repairs
  - Streaming upload chunks are added directory to the upload heap and have the
    highest priority
+
+**Outbound Complexities**  
+ - The Repair loop relies on Health Loop and `callThreadedBubbleMetadata` to
+   keep the filesystem accurately updated in order to work through the file
+   system in the correct order.
+ - The repair loop passes chunks on to the upload subsystem and expects that
+   subsystem to handle the request 
+ - `Upload` calls `callBuildAndPushChunks` to add upload chunks to the
+   `uploadHeap` and then signals the heap's `newUploads` channel so that the
+   Repair Loop will work through the heap and upload the chunks
 
 #### Stuck Loop
 File's are marked as `stuck` if the Renter is unable to fully upload the file.
@@ -561,15 +596,22 @@ If the repair wasn't successful, the stuck loop will wait for the
 the stuck loop doesn't find any stuck chunks, it will sleep until a bubble wakes
 it up by finding a stuck chunk.
 
-**Assumptions / Complexities**
+**Inbound Complexities**  
  - Chunk repair code signals the stuck loop when a stuck chunk is successfully
    repaired
  - Health loop signals the stuck loop when aggregateNumStuckChunks for the root
    directory is > 0
+
+**State Complexities**  
  - The stuck loop and the repair loop use a number of the same methods when
    building `unfinishedUploadChunks` to add to the `uploadHeap`. These methods
    rely on the `repairTarget` to know if they should target stuck chunks or
    unstuck chunks 
+
+**TODOs**  
+ - once bubbling metadata has been updated to be more I/O efficient this code
+   should be removed and we should call bubble when we clean up the upload chunk
+   after a successful repair.
 
 ### Backup Subsystem
 **Key Files**

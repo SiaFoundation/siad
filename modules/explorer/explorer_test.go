@@ -42,8 +42,8 @@ func createExplorerTester(name string) (*explorerTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChanCS := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChanCS; err != nil {
 		return nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
@@ -106,8 +106,8 @@ func (et *explorerTester) reorgToBlank() error {
 	if err != nil {
 		return err
 	}
-	cs, err := consensus.New(g, false, filepath.Join(dir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChanCS := consensus.New(g, false, filepath.Join(dir, modules.ConsensusDir))
+	if err := <-errChanCS; err != nil {
 		return err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(dir, modules.TransactionPoolDir))
@@ -166,8 +166,8 @@ func TestExplorerGenesisHeight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
 

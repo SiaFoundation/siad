@@ -2,6 +2,7 @@ package modules
 
 import (
 	"errors"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -17,6 +18,9 @@ const (
 	// will be accepted by the transaction pool according to the IsStandard
 	// rules.
 	TransactionSizeLimit = 32e3
+
+	// consensusConflictPrefix is the prefix of every ConsensusConflict.
+	consensusConflictPrefix = "consensus conflict: "
 )
 
 var (
@@ -98,6 +102,8 @@ type (
 
 	// A TransactionPool manages unconfirmed transactions.
 	TransactionPool interface {
+		Alerter
+
 		// AcceptTransactionSet accepts a set of potentially interdependent
 		// transactions.
 		AcceptTransactionSet([]types.Transaction) error
@@ -159,13 +165,18 @@ type (
 // NewConsensusConflict returns a consensus conflict, which implements the
 // error interface.
 func NewConsensusConflict(s string) ConsensusConflict {
-	return ConsensusConflict("consensus conflict: " + s)
+	return ConsensusConflict(consensusConflictPrefix + s)
 }
 
 // Error implements the error interface, turning the consensus conflict into an
 // acceptable error type.
 func (cc ConsensusConflict) Error() string {
 	return string(cc)
+}
+
+// IsConsensusConflict returns true iff err is a ConsensusConflict.
+func IsConsensusConflict(err error) bool {
+	return strings.HasPrefix(err.Error(), consensusConflictPrefix)
 }
 
 // CalculateFee returns the fee-per-byte of a transaction set.

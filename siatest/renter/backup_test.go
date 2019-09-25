@@ -132,7 +132,7 @@ func TestCreateLoadBackup(t *testing.T) {
 		t.Fatal(".siadir_1 file does exist")
 	}
 	// The file should be available and ready for download again.
-	if _, err := r.DownloadByStream(rf); err != nil {
+	if _, _, err := r.DownloadByStream(rf); err != nil {
 		t.Fatal(err)
 	}
 	// Delete the file and upload another file to the same siapath. This one should
@@ -378,14 +378,14 @@ func TestRemoteBackup(t *testing.T) {
 	}
 	// We should be able to download the first file.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		_, err = r.DownloadToDisk(rf, false)
+		_, _, err = r.DownloadToDisk(rf, false)
 		return err
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The second file should still fail.
-	if _, err := r.DownloadToDisk(rf2, false); err == nil {
+	if _, _, err := r.DownloadToDisk(rf2, false); err == nil {
 		t.Fatal("expected second file to be unavailable")
 	}
 	// Delete the first file again.
@@ -399,11 +399,11 @@ func TestRemoteBackup(t *testing.T) {
 	}
 	// We should be able to download both files now.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		_, err = r.DownloadToDisk(rf, false)
+		_, _, err = r.DownloadToDisk(rf, false)
 		if err != nil {
 			return err
 		}
-		_, err = r.DownloadToDisk(rf2, false)
+		_, _, err = r.DownloadToDisk(rf2, false)
 		if err != nil {
 			return err
 		}
@@ -474,10 +474,10 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// We should be able to download both files now.
-	if _, err := r.DownloadToDisk(rf, false); err != nil {
+	if _, _, err := r.DownloadToDisk(rf, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.DownloadToDisk(rf2, false); err != nil {
+	if _, _, err := r.DownloadToDisk(rf2, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -531,10 +531,10 @@ func TestRemoteBackup(t *testing.T) {
 			// Download both files and return. This is here to saturate the
 			// workers and ensure that any request to download the list of
 			// backups from a host has to wait for a queue of downloads.
-			if _, err := r.DownloadToDisk(rf, false); err != nil {
+			if _, _, err := r.DownloadToDisk(rf, false); err != nil {
 				t.Error(err)
 			}
-			if _, err := r.DownloadToDisk(rf2, false); err != nil {
+			if _, _, err := r.DownloadToDisk(rf2, false); err != nil {
 				t.Error(err)
 			}
 		}()

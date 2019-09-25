@@ -338,6 +338,42 @@ standard success or error response. See [standard responses](#standard-responses
 
 The daemon is responsible for starting and stopping the modules which make up the rest of Sia.
 
+## /daemon/alerts [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/daemon/alerts"
+```
+
+Returns the alerts of the Sia instance.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "alerts": [
+    {
+      "cause": "wallet is locked",
+      "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
+      "module": "contractor",
+      "severity": "warning",
+    }
+  ],
+}
+```
+**cause** | string  
+Cause is the cause for the information contained in msg if known.
+
+**msg** | string  
+Msg contains information about an issue.
+
+**module** | string  
+Module is the module which caused the alert.
+
+**severity** | string  
+Severity is either "warning", "error" or "critical" where "error" might be a lack of internet access and "critical" would be a lack of funds and contracts that are about to expire due to that.
+
 ## /daemon/constants [GET]
 > curl example  
 
@@ -2333,6 +2369,73 @@ Action can be either `create`, `delete` or `rename`.
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /renter/downloadinfo/*uid [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/renter/downloadinfo/9d8dd0d5b306f5bb412230bd12b590ae"
+```
+
+Lists a file in the download history by UID.
+
+### Path Parameters
+#### REQUIRED
+**uid** | string  
+UID returned by the /renter/download/*siapath* endpoint. It is set in the
+http header's 'ID' field.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "destination":     "/home/users/alice/bar.txt", // string
+  "destinationtype": "file",                      // string
+  "length":          8192,                        // bytes
+  "offset":          2000,                        // bytes
+  "siapath":         "foo/bar.txt",               // string
+
+  "completed":           true,                    // boolean
+  "endtime":             "2009-11-10T23:10:00Z",  // RFC 3339 time
+  "error":               "",                      // string
+  "received":            8192,                    // bytes
+  "starttime":           "2009-11-10T23:00:00Z",  // RFC 3339 time
+  "totaldatatransfered": 10031                    // bytes
+}
+```
+**destination** | string  
+Local path that the file will be downloaded to.  
+
+**destinationtype** | string  
+What type of destination was used. Can be "file", indicating a download to disk, can be "buffer", indicating a download to memory, and can be "http stream", indicating that the download was streamed through the http API.  
+
+**length** | bytes  
+Length of the download. If the download was a partial download, this will indicate the length of the partial download, and not the length of the full file.  
+
+**offset** | bytes  
+Offset within the file of the download. For full file downloads, the offset will be '0'. For partial downloads, the offset may be anywhere within the file. offset+length will never exceed the full file size.  
+
+**siapath** | string  
+Siapath given to the file when it was uploaded.  
+
+**completed** | boolean  
+Whether or not the download has completed. Will be false initially, and set to true immediately as the download has been fully written out to the file, to the http stream, or to the in-memory buffer. Completed will also be set to true if there is an error that causes the download to fail.  
+
+**endtime** | date, RFC 3339 time  
+Time at which the download completed. Will be zero if the download has not yet completed.  
+
+**error** | string  
+Error encountered while downloading. If there was no error (yet), it will be the empty string.  
+
+**received** | bytes  
+Number of bytes downloaded thus far. Will only be updated as segments of the file complete fully. This typically has a resolution of tens of megabytes.  
+
+**starttime** | date, RFC 3339 time  
+Time at which the download was initiated.
+
+**totaldatatransfered** | bytes  
+The total amount of data transfered when downloading the file. This will eventually include data transferred during contract + payment negotiation, as well as data from failed piece downloads.  
+
 ## /renter/downloads [GET]
 > curl example  
 
@@ -2380,7 +2483,7 @@ Offset within the file of the download. For full file downloads, the offset will
 **siapath** | string
 Siapath given to the file when it was uploaded.  
 
-**completed** | oolean  
+**completed** | boolean  
 Whether or not the download has completed. Will be false initially, and set to true immediately as the download has been fully written out to the file, to the http stream, or to the in-memory buffer. Completed will also be set to true if there is an error that causes the download to fail.  
 
 **endtime** | date, RFC 3339 time  
@@ -2659,9 +2762,7 @@ If httresp is true, the data will be written to the http response.
 #### OPTIONAL
 **async** | boolean
 If async is true, the http request will be non blocking. Can't be used with
-httpresp. An async download will also set the 'ID' field in the http response
-header to a unique identifier for the async download which can be used to
-cancel the download with the /renter/download/cancel endpoint.
+httpresp.
 
 **length** | bytes
 Length of the requested data. Has to be <= filesize-offset.  
@@ -2671,7 +2772,7 @@ Offset relative to the file start from where the download starts.
 
 ### Response
 
-standard success or error response. See [standard responses](#standard-responses).
+Unlike most responses, this response modifies the http response header. The download will set the 'ID' field in the http response header to a unique identifier which can be used to cancel an async download with the /renter/download/cancel endpoint and retrieve a download's info from the download history using the /renter/downloadinfo endpoint. Apart from that the response is a standard success or error response. See [standard responses](#standard-responses).
 
 ## /renter/download/cancel [POST]
 > curl example  
@@ -2684,8 +2785,8 @@ cancels the download with the given id.
 
 ### Query String Parameters
 **id** | string
-ID returned by the /renter/download/*siapath* endpoint when setting
-async=true. It is set in the http header's 'ID' field.
+ID returned by the /renter/download/*siapath* endpoint. It is set in the http
+header's 'ID' field.
 
 ### Response
 
@@ -2864,6 +2965,53 @@ Repair existing file from stream. Can't be specified together with datapieces, p
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/uploadready [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/renter/uploadready?datapieces=10&paritypieces=20"
+```
+
+Returns the whether or not the renter is ready for upload.
+
+### Path Parameters
+#### OPTIONAL
+datapieces and paritypieces are both optional, however if one is supplied then
+the other needs to be supplied. If neither are supplied then the deafult values
+for the erasure coding will be used 
+
+**datapieces** | int  
+The number of data pieces to use when erasure coding the file.  
+
+**paritypieces** | int  
+The number of parity pieces to use when erasure coding the file.   
+
+### JSON Response
+> JSON Response Example
+```go
+{
+  "ready":false,            // bool
+  "contractsneeded":30,     // int
+  "numactivecontracts":20,  // int
+  "datapieces":10,          // int
+  "paritypieces":20         // int 
+}
+```
+**ready** | boolean    
+ready indicates if the renter is ready to fully upload a file based on the erasure coding.  
+
+**contractsneeded** | int    
+contractsneeded is how many contracts are needed to fully upload a file.  
+
+**numactivecontracts** | int    
+numactivecontracts is the number of active contracts the renter has.
+
+**datapieces** | int  
+The number of data pieces to use when erasure coding the file.  
+
+**paritypieces** | int  
+The number of parity pieces to use when erasure coding the file.   
 
 ## /renter/validate/*siapath* [POST]
 > curl example  

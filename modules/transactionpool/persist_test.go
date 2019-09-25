@@ -1,12 +1,15 @@
 package transactionpool
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	bolt "github.com/coreos/bbolt"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -54,9 +57,15 @@ func TestRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = tpt.tpool.AcceptTransactionSet(txns)
-	if err != modules.ErrDuplicateTransactionSet {
-		t.Fatal("expecting modules.ErrDuplicateTransactionSet, got:", err)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		err := tpt.tpool.AcceptTransactionSet(txns)
+		if err != modules.ErrDuplicateTransactionSet {
+			return fmt.Errorf("expecting modules.ErrDuplicateTransactionSet, got: %v", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Close the tpool, corrupt the database, then restart the tpool. The tpool

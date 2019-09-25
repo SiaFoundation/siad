@@ -76,8 +76,8 @@ func newRenterTester(name string) (*renterTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, err := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(testdir, modules.RenterDir))
-	if err != nil {
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(testdir, modules.RenterDir))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	err = rt.addRenter(r)
@@ -96,8 +96,8 @@ func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	cs, err := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err != nil {
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
@@ -155,15 +155,16 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 
 // newRenterWithDependency creates a Renter with custom dependency
 func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*Renter, error) {
-	hdb, err := hostdb.New(g, cs, tpool, persistDir)
-	if err != nil {
+	hdb, errChan := hostdb.New(g, cs, tpool, persistDir)
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	hc, err := contractor.New(cs, wallet, tpool, hdb, persistDir)
-	if err != nil {
+	hc, errChan := contractor.New(cs, wallet, tpool, hdb, persistDir)
+	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	return NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, deps)
+	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, deps)
+	return renter, <-errChan
 }
 
 // stubHostDB is the minimal implementation of the hostDB interface. It can be
@@ -216,6 +217,7 @@ type pricesStub struct {
 	dbEntries []modules.HostDBEntry
 }
 
+func (pricesStub) Alerts() []modules.Alert            { return []modules.Alert{} }
 func (pricesStub) InitialScanComplete() (bool, error) { return true, nil }
 func (pricesStub) IPViolationsCheck() bool            { return true }
 
@@ -271,8 +273,8 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	allowance := modules.Allowance{
 		Funds:       types.SiacoinPrecision,
 		Hosts:       1,
-		Period:      12096,
-		RenewWindow: 4032,
+		Period:      3 * types.BlocksPerMonth,
+		RenewWindow: types.BlocksPerMonth,
 	}
 	dbe.ContractPrice = allowance.Funds.Mul64(2)
 

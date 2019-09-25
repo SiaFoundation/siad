@@ -182,9 +182,9 @@ func (c *Client) RenterRecoverableContractsGet() (rc api.RenterContracts, err er
 
 // RenterCancelDownloadPost requests the /renter/download/cancel endpoint to
 // cancel an ongoing doing.
-func (c *Client) RenterCancelDownloadPost(id string) (err error) {
+func (c *Client) RenterCancelDownloadPost(id modules.DownloadID) (err error) {
 	values := url.Values{}
-	values.Set("id", id)
+	values.Set("id", string(id))
 	err = c.post("/renter/download/cancel", values.Encode(), nil)
 	return
 }
@@ -198,7 +198,7 @@ func (c *Client) RenterDeletePost(siaPath modules.SiaPath) (err error) {
 
 // RenterDownloadGet uses the /renter/download endpoint to download a file to a
 // destination on disk.
-func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool) (string, error) {
+func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool) (modules.DownloadID, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("destination", destination)
@@ -206,7 +206,17 @@ func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, 
 	values.Set("length", fmt.Sprint(length))
 	values.Set("async", fmt.Sprint(async))
 	h, _, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
-	return h.Get("ID"), err
+	if err != nil {
+		return "", err
+	}
+	return modules.DownloadID(h.Get("ID")), nil
+}
+
+// RenterDownloadInfoGet uses the /renter/downloadinfo endpoint to fetch
+// information about a download from the history.
+func (c *Client) RenterDownloadInfoGet(uid modules.DownloadID) (di api.DownloadInfo, err error) {
+	err = c.get(fmt.Sprintf("/renter/downloadinfo/%s", uid), &di)
+	return
 }
 
 // RenterBackups lists the backups the renter has uploaded to hosts.
@@ -264,14 +274,17 @@ func (c *Client) RenterRecoverLocalBackupPost(src string) (err error) {
 
 // RenterDownloadFullGet uses the /renter/download endpoint to download a full
 // file.
-func (c *Client) RenterDownloadFullGet(siaPath modules.SiaPath, destination string, async bool) (string, error) {
+func (c *Client) RenterDownloadFullGet(siaPath modules.SiaPath, destination string, async bool) (modules.DownloadID, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("destination", destination)
 	values.Set("httpresp", fmt.Sprint(false))
 	values.Set("async", fmt.Sprint(async))
 	h, _, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
-	return h.Get("ID"), err
+	if err != nil {
+		return "", err
+	}
+	return modules.DownloadID(h.Get("ID")), nil
 }
 
 // RenterClearAllDownloadsPost requests the /renter/downloads/clear resource
@@ -317,14 +330,17 @@ func (c *Client) RenterDownloadsGet() (rdq api.RenterDownloadQueue, err error) {
 
 // RenterDownloadHTTPResponseGet uses the /renter/download endpoint to download
 // a file and return its data.
-func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, length uint64) (resp []byte, err error) {
+func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, length uint64) (modules.DownloadID, []byte, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("httpresp", fmt.Sprint(true))
-	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
-	return
+	h, resp, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
+	if err != nil {
+		return "", nil, err
+	}
+	return modules.DownloadID(h.Get("ID")), resp, nil
 }
 
 // RenterFileGet uses the /renter/file/:siapath endpoint to query a file.
@@ -538,5 +554,23 @@ func (c *Client) RenterGetDir(siaPath modules.SiaPath) (rd api.RenterDirectory, 
 // SiaPath
 func (c *Client) RenterValidateSiaPathPost(siaPathStr string) (err error) {
 	err = c.post(fmt.Sprintf("/renter/validatesiapath/%s", siaPathStr), "", nil)
+	return
+}
+
+// RenterUploadReadyGet uses the /renter/uploadready endpoint to determine if
+// the renter is ready for upload.
+func (c *Client) RenterUploadReadyGet(dataPieces, parityPieces uint64) (rur api.RenterUploadReadyGet, err error) {
+	strDataPieces := strconv.FormatUint(dataPieces, 10)
+	strParityPieces := strconv.FormatUint(parityPieces, 10)
+	query := fmt.Sprintf("?datapieces=%v&paritypieces=%v",
+		strDataPieces, strParityPieces)
+	err = c.get("/renter/uploadready"+query, &rur)
+	return
+}
+
+// RenterUploadReadyDefaultGet uses the /renter/uploadready endpoint to
+// determine if the renter is ready for upload.
+func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, err error) {
+	err = c.get("/renter/uploadready", &rur)
 	return
 }

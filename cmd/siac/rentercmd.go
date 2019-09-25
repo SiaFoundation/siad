@@ -160,8 +160,11 @@ and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w r
 	renterRatelimitCmd = &cobra.Command{
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
 		Short: "set maxdownloadspeed and maxuploadspeed",
-		Long: `Set the maxdownloadspeed and maxuploadspeed in bytes-per-second
-(B/s).  Set them to 0 for no limit.`,
+		Long: `Set the maxdownloadspeed and maxuploadspeed in 
+Bytes per second: B/s, KB/s, MB/s, GB/s, TB/s
+or
+Bits per second: Bps, Kbps, Mbps, Gbps, Tbps
+Set them to 0 for no limit.`,
 		Run: wrap(renterratelimitcmd),
 	}
 
@@ -217,7 +220,11 @@ func rentercmd() {
 
 	// Get Renter
 	rg, err := httpClient.RenterGet()
-	if err != nil {
+	if errors.Contains(err, api.ErrAPICallNotRecognized) {
+		// Assume module is not loaded if status command is not recognized.
+		fmt.Printf("Renter:\n  Status: %s\n\n", moduleNotReadyStatus)
+		return
+	} else if err != nil {
 		die("Could not get renter info:", err)
 	}
 
@@ -257,9 +264,14 @@ func rentercmd() {
 // storing
 func renterFilesAndContractSummary() error {
 	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
-	if err != nil {
+	if errors.Contains(err, api.ErrAPICallNotRecognized) {
+		// Assume module is not loaded if status command is not recognized.
+		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
+		return nil
+	} else if err != nil {
 		return err
 	}
+
 	rc, err := httpClient.RenterContractsGet()
 	if err != nil {
 		return err
@@ -558,12 +570,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	}
 	// parse expectedRedundancy
 	if allowanceExpectedRedundancy != "" {
-		er, err := parseFilesize(allowanceExpectedRedundancy)
-		if err != nil {
-			die("Could not parse expected redundancy")
-		}
-		var expectedRedundancy float64
-		_, err = fmt.Sscan(er, &expectedRedundancy)
+		expectedRedundancy, err := strconv.ParseFloat(allowanceExpectedRedundancy, 64)
 		if err != nil {
 			die("Could not parse expected redundancy")
 		}
@@ -916,6 +923,7 @@ how large the files are.`)
 	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedRedundancy)
 
 	var expectedRedundancy float64
+	var err error
 	if allowance.ExpectedRedundancy == 0 {
 		expectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -926,11 +934,7 @@ how large the files are.`)
 	fmt.Print("Expected Redundancy: ")
 	allowanceExpectedRedundancy := readString()
 	if allowanceExpectedRedundancy != "" {
-		er, err := parseFilesize(allowanceExpectedRedundancy)
-		if err != nil {
-			die("Could not parse expected redundancy")
-		}
-		_, err = fmt.Sscan(er, &expectedRedundancy)
+		expectedRedundancy, err = strconv.ParseFloat(allowanceExpectedRedundancy, 64)
 		if err != nil {
 			die("Could not parse expected redundancy")
 		}
@@ -1502,7 +1506,7 @@ func renterdirdownload(path, destination string) {
 
 // renterdownloadcancelcmd is the handler for the command `siac renter download cancel [cancelID]`
 // Cancels the ongoing download.
-func renterdownloadcancelcmd(cancelID string) {
+func renterdownloadcancelcmd(cancelID modules.DownloadID) {
 	if err := httpClient.RenterCancelDownloadPost(cancelID); err != nil {
 		die("Couldn't cancel download:", err)
 	}
@@ -2087,7 +2091,7 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	if err != nil {
 		die("Could not read the renter prices:", err)
 	}
-	periodFactor := uint64(rpg.Allowance.Period / types.BlockHeight(4032))
+	periodFactor := uint64(rpg.Allowance.Period / types.BlocksPerMonth)
 
 	// Display Estimate
 	fmt.Println("Renter Prices (estimated):")
@@ -2112,14 +2116,18 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 // which sets the maxuploadspeed and maxdownloadspeed in bytes-per-second for
 // the renter module
 func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
-	downloadSpeedInt, uploadSpeedInt, err := parseRateLimits(downloadSpeedStr, uploadSpeedStr)
+	downloadSpeedInt, err := parseRatelimit(downloadSpeedStr)
 	if err != nil {
-		die(err)
+		die(errors.AddContext(err, "unable to parse download speed"))
+	}
+	uploadSpeedInt, err := parseRatelimit(uploadSpeedStr)
+	if err != nil {
+		die(errors.AddContext(err, "unable to parse upload speed"))
 	}
 
 	err = httpClient.RenterRateLimitPost(downloadSpeedInt, uploadSpeedInt)
 	if err != nil {
-		die("Could not set renter ratelimit speed")
+		die(errors.AddContext(err, "Could not set renter ratelimit speed"))
 	}
 	fmt.Println("Set renter maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }
