@@ -93,16 +93,6 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) error {
 	// before encrypting it.
 	h := crypto.NewHash()
 	archive = io.MultiWriter(archive, h)
-	// Write the allowance after adding encryption and hashing, but before adding
-	// compression.
-	allowanceBytes, err := json.Marshal(r.hostContractor.Allowance())
-	if err != nil {
-		return errors.AddContext(err, "failed to marshal allowance")
-	}
-	_, err = archive.Write(allowanceBytes)
-	if err != nil {
-		return errors.AddContext(err, "failed to write allowance to backup")
-	}
 	// Wrap the potentially encrypted writer into a gzip writer.
 	gzw := gzip.NewWriter(archive)
 	// Wrap the gzip writer into a tar writer.
@@ -113,8 +103,20 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) error {
 		gzwErr := gzw.Close()
 		return errors.Compose(err, twErr, gzwErr)
 	}
-	// Close writers to flush them before computing the hash.
+	// Close tar writer to flush it before writing the allowance.
 	twErr := tw.Close()
+	// Write the allowance.
+	allowanceBytes, err := json.Marshal(r.hostContractor.Allowance())
+	if err != nil {
+		gzwErr := gzw.Close()
+		return errors.Compose(err, twErr, gzwErr)
+	}
+	_, err = gzw.Write(allowanceBytes)
+	if err != nil {
+		gzwErr := gzw.Close()
+		return errors.Compose(err, twErr, gzwErr)
+	}
+	// Close the gzip writer to flush it.
 	gzwErr := gzw.Close()
 	// Write the hash to the beginning of the file.
 	_, err = f.WriteAt(h.Sum(nil), 0)
@@ -192,9 +194,21 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if err != nil {
 		return err
 	}
+	// Wrap the potentially encrypted reader in a gzip reader.
+	gzr, err := gzip.NewReader(archive)
+	if err != nil {
+		return err
+	}
+	defer gzr.Close()
+	// Wrap the gzip reader in a tar reader.
+	tr := tar.NewReader(gzr)
+	// Untar the files.
+	if err := r.managedUntarDir(tr); err != nil {
+		return errors.AddContext(err, "failed to untar dir")
+	}
 	// Unmarshal the allowance if available. This needs to happen after adding
 	// decryption and confirming the hash but before adding decompression.
-	dec = json.NewDecoder(archive)
+	dec = json.NewDecoder(gzr)
 	var allowance modules.Allowance
 	if err := dec.Decode(&allowance); err != nil {
 		// legacy backup without allowance
@@ -208,18 +222,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 			return errors.AddContext(err, "unable to set allowance from backup")
 		}
 	}
-	// Prepend the decoder's buffer to the remaining archive.
-	archive = io.MultiReader(dec.Buffered(), archive)
-	// Wrap the potentially encrypted reader in a gzip reader.
-	gzr, err := gzip.NewReader(archive)
-	if err != nil {
-		return err
-	}
-	defer gzr.Close()
-	// Wrap the gzip reader in a tar reader.
-	tr := tar.NewReader(gzr)
-	// Untar the files.
-	return r.managedUntarDir(tr)
+	return nil
 }
 
 // managedTarSiaFiles creates a tarball from the renter's siafiles and writes
