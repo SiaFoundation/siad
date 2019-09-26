@@ -48,13 +48,17 @@ Documentation
 
 All structs, functions, and interfaces must have a docstring.
 
-Anytime that something is left unfinished, place a comment containing the
-string 'TODO:'. This sends a clear message to other developers, and creates a
-greppable way to find unfinished parts of the codebase. 'TODO' statements are
-currently discouraged.  As the codebase matures, 'TODO' statements will become
+Anytime that something is left unfinished, place a comment containing the string
+'TODO:'. This sends a clear message to other developers, and creates a greppable
+way to find unfinished parts of the codebase. 'TODO' statements are currently
+discouraged.  As the codebase matures, 'TODO' statements will become
 increasingly frowned upon. 'TODO' statements should not document feature
 requests, but instead document incompleteness where the incompleteness causes
-disruption to user experience or causes a security vulnerability.
+disruption to user experience or causes a security vulnerability. Any TODOs
+added to the code base should be documented in the following places:
+1. At the exact spot in the file where the implementation belongs
+2. At the top of the relevant file
+3. In the README file of the relevant module
 
 Documentation should give a sense of what each function does, but should also
 give a sense of the overall architecture of the code. Where useful, examples
@@ -85,6 +89,40 @@ if agent != "SiaAgent" && agent != "" {
 	return errors.New("unrecognized agent!")
 }
 ```
+
+### Module READMEs
+Below is the standard format for the README files for the modules.
+
+># Modules Name
+>Module overview.
+>
+>## Subsystems
+>List subsystems
+> - Subsystem 1
+> - Subsystem 2
+> - etc..
+>
+>### Subsystem 1
+>**Key Files**  
+>List files
+> - file1.go
+> - file2.go
+> - etc..
+>
+>Description of Subsystem
+>
+>**Exports**  
+>List Exported methods
+>
+>**Inbound Complexities**  
+>List any interactions with other subsystems that have dependencies on this subsystem.
+>
+>**Outbound Complexities**  
+>List any interactions with other subsystems that this subsystem has dependencies on.
+>
+>**TODOs**  
+>List any outstanding TODOs for the subsystem
+>
 
 Naming
 ------
