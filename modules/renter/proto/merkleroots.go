@@ -160,6 +160,14 @@ func (mr *merkleRoots) appendRootMemory(roots ...crypto.Hash) {
 	}
 }
 
+// clearRoots deletes all roots from the contract.
+func (mr *merkleRoots) clearRoots() error {
+	mr.cachedSubTrees = []*cachedSubTree{}
+	mr.uncachedRoots = []crypto.Hash{}
+	mr.numMerkleRoots = 0
+	return mr.rootsFile.Truncate(0)
+}
+
 // delete deletes the sector root at a certain index by replacing it with the
 // last root and truncates the file to truncateSize after that. This ensures
 // that the operation is indempotent.

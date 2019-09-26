@@ -21,13 +21,18 @@ const (
 	// portion of a contract can consume.
 	contractHeaderSize = writeaheadlog.MaxPayloadSize // TODO: test this
 
-	updateNameSetHeader = "setHeader"
-	updateNameSetRoot   = "setRoot"
+	updateNameClearContract = "clearContract"
+	updateNameSetHeader     = "setHeader"
+	updateNameSetRoot       = "setRoot"
 )
 
 type updateSetHeader struct {
 	ID     types.FileContractID
 	Header contractHeader
+}
+
+type updateClearContract struct {
+	ID types.FileContractID
 }
 
 // v132UpdateHeader was introduced due to backwards compatibility reasons after
@@ -209,6 +214,16 @@ func (c *SafeContract) Utility() modules.ContractUtility {
 	return c.header.Utility
 }
 
+func (c *SafeContract) makeUpdateClearContract() writeaheadlog.Update {
+	id := c.header.ID()
+	return writeaheadlog.Update{
+		Name: updateNameClearContract,
+		Instructions: encoding.Marshal(updateClearContract{
+			ID: id,
+		}),
+	}
+}
+
 func (c *SafeContract) makeUpdateSetHeader(h contractHeader) writeaheadlog.Update {
 	id := c.header.ID()
 	return writeaheadlog.Update{
@@ -258,6 +273,10 @@ func (c *SafeContract) applySetHeader(h contractHeader) error {
 
 func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 	return c.merkleRoots.insert(index, root)
+}
+
+func (c *SafeContract) applyClearContract() error {
+	return c.merkleRoots.clearRoots()
 }
 
 func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
@@ -354,6 +373,54 @@ func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signe
 	return nil
 }
 
+func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// construct new header
+	// NOTE: this header will not include the host signature
+	newHeader := c.header
+	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
+	newHeader.Transaction.TransactionSignatures = nil
+	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
+
+	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
+		c.makeUpdateSetHeader(newHeader),
+		c.makeUpdateClearContract(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := <-t.SignalSetupComplete(); err != nil {
+		return nil, err
+	}
+	c.unappliedTxns = append(c.unappliedTxns, t)
+	return t, nil
+}
+
+func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// construct new header
+	newHeader := c.header
+	newHeader.Transaction = signedTxn
+	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
+
+	if err := c.applySetHeader(newHeader); err != nil {
+		return err
+	}
+	if err := c.applyClearContract(); err != nil {
+		return err
+	}
+	if err := c.headerFile.Sync(); err != nil {
+		return err
+	}
+	if err := t.SignalUpdatesApplied(); err != nil {
+		return err
+	}
+	c.unappliedTxns = nil
+	return nil
+}
+
 // managedCommitTxns commits the unapplied transactions to the contract file and marks
 // the transactions as applied.
 func (c *SafeContract) managedCommitTxns() error {
@@ -362,6 +429,10 @@ func (c *SafeContract) managedCommitTxns() error {
 	for _, t := range c.unappliedTxns {
 		for _, update := range t.Updates {
 			switch update.Name {
+			case updateNameClearContract:
+				if err := c.applyClearContract(); err != nil {
+					return err
+				}
 			case updateNameSetHeader:
 				var u updateSetHeader
 				if err := unmarshalHeader(update.Instructions, &u); err != nil {

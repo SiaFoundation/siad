@@ -687,7 +687,8 @@ func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params Contra
 	}
 
 	// Create the final revision of the old contract.
-	finalRev := newRevision(contract.LastRevision(), host.BaseRPCPrice)
+	bandwidthCost := host.BaseRPCPrice
+	finalRev := newRevision(contract.LastRevision(), bandwidthCost)
 	finalRev.NewFileSize = 0
 	finalRev.NewFileMerkleRoot = crypto.Hash{}
 
@@ -707,6 +708,12 @@ func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params Contra
 
 	// Send the request.
 	if err := s.writeRequest(modules.RPCLoopRenewClearContract, req); err != nil {
+		return modules.RenterContract{}, err
+	}
+
+	// Record the changes we are about to make to the contract.
+	walTxn, err := oldContract.managedRecordClearContractIntent(finalRev, bandwidthCost)
+	if err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -865,6 +872,9 @@ func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params Contra
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	// NOTE: Delete roots from oldContract?
+	// Commit changes to old contract.
+	if err := oldContract.managedCommitClearContract(walTxn, finalRevTxn, bandwidthCost); err != nil {
+		return modules.RenterContract{}, err
+	}
 	return meta, nil
 }
