@@ -8,6 +8,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -191,11 +192,19 @@ func consensusBlocksGetFromBlock(b types.Block, h types.BlockHeight) ConsensusBl
 
 // consensusHandler handles the API calls to /consensus.
 func (api *API) consensusHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	cbid := api.cs.CurrentBlock().ID()
+	height := api.cs.Height()
+	b, found := api.cs.BlockAtHeight(height)
+	if !found {
+		err := "Failed to fetch block for current height"
+		WriteError(w, Error{err}, http.StatusInternalServerError)
+		build.Critical(err)
+		return
+	}
+	cbid := b.ID()
 	currentTarget, _ := api.cs.ChildTarget(cbid)
 	WriteJSON(w, ConsensusGET{
 		Synced:       api.cs.Synced(),
-		Height:       api.cs.Height(),
+		Height:       height,
 		CurrentBlock: cbid,
 		Target:       currentTarget,
 		Difficulty:   currentTarget.Difficulty(),
