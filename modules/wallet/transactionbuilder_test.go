@@ -562,3 +562,56 @@ func TestUnconfirmedParents(t *testing.T) {
 		}
 	}
 }
+// TestReplaceOutput tests the ReplaceSiacoinOutput feature of the
+// transactionbuilder. It makes sure that after swapping an output, the builder
+// can still produce a valid transaction.
+func TestReplaceOutput(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	b, err := wt.wallet.StartTransaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+	txnFund := types.NewCurrency64(100e9)
+	err = b.FundSiacoins(txnFund)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	uc, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: uc.UnlockHash(),
+	}
+	b.AddSiacoinOutput(output)
+
+	uc2, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output2 := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: uc2.UnlockHash(),
+	}
+	b.ReplaceSiacoinOutput(0, output2)
+
+	txnSet, err := b.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = wt.tpool.AcceptTransactionSet(txnSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+}

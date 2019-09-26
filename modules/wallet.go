@@ -175,6 +175,10 @@ type (
 		// the index of the siacoin output within the transaction.
 		AddSiacoinOutput(types.SiacoinOutput) uint64
 
+		// ReplaceSiacoinOutput replaces the siacoin output in the transaction at the
+		// given index.
+		ReplaceSiacoinOutput(index uint64, output types.SiacoinOutput) error
+
 		// AddFileContract adds a file contract to the transaction, returning
 		// the index of the file contract within the transaction.
 		AddFileContract(types.FileContract) uint64

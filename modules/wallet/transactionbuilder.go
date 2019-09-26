@@ -28,6 +28,10 @@ var (
 	// errSpendHeightTooHigh indicates an output's spend height is greater than
 	// the allowed height.
 	errSpendHeightTooHigh = errors.New("output spend height exceeds the allowed height")
+
+	// errReplaceIndexOutOfBounds indicated that the output index is out of
+	// bounds.
+	errReplaceIndexOutOfBounds = errors.New("replacement output index out of bounds")
 )
 
 // transactionBuilder allows transactions to be manually constructed, including
@@ -439,6 +443,16 @@ func (tb *transactionBuilder) AddSiacoinInput(input types.SiacoinInput) uint64 {
 func (tb *transactionBuilder) AddSiacoinOutput(output types.SiacoinOutput) uint64 {
 	tb.transaction.SiacoinOutputs = append(tb.transaction.SiacoinOutputs, output)
 	return uint64(len(tb.transaction.SiacoinOutputs) - 1)
+}
+
+// ReplaceSiacoinOutput replaces the siacoin output in the transaction at the
+// given index.
+func (tb *transactionBuilder) ReplaceSiacoinOutput(index uint64, output types.SiacoinOutput) error {
+	if index >= uint64(len(tb.transaction.SiacoinOutputs)) {
+		return errReplaceIndexOutOfBounds
+	}
+	tb.transaction.SiacoinOutputs[index] = output
+	return nil
 }
 
 // AddFileContract adds a file contract to the transaction, returning the index
