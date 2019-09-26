@@ -409,8 +409,8 @@ func TestHostAndRentVanilla(t *testing.T) {
 			break
 		}
 	}
-	if !success {
-		t.Error("does not seem like the host has submitted a storage proof successfully to the network")
+	if success {
+		t.Error("host shouldn't have submitted a storage proof since the contract gets cleared after being renewed")
 	}
 }
 
