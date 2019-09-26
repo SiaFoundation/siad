@@ -910,7 +910,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// Verify that the transaction coming over the wire is a proper renewal.
 	var renterPK crypto.PublicKey
 	copy(renterPK[:], req.RenterKey.Key)
-	err := h.managedVerifyRenewedContract(s.so, req.Transactions, renterPK)
+	err = h.managedVerifyRenewedContract(s.so, req.Transactions, renterPK)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("verification of renewal failed: ", err)

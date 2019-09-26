@@ -18,8 +18,10 @@ import (
 // submits the new contract transaction to tpool. The new contract is added to
 // the ContractSet and its metadata is returned.
 func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
-	// use the new renter-host protocol for hosts that support it.
-	//
+	// Choose the appropriate protocol depending on the host version.
+	if build.VersionCmp(params.Host.Version, "1.4.1") >= 0 {
+		return cs.newRenewAndClean(oldContract, params, txnBuilder, tpool, hdb, cancel)
+	}
 	// NOTE: due to a bug, we use the old protocol even for v1.4.0 hosts.
 	if build.VersionCmp(params.Host.Version, "1.4.1") >= 0 {
 		return cs.newRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
