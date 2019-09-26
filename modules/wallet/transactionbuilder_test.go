@@ -562,6 +562,80 @@ func TestUnconfirmedParents(t *testing.T) {
 		}
 	}
 }
+
+// TestDoubleSpendCreation tests functionality used by the renter watchdog to
+// create double-spend sweep transactions.
+// when trying to call 'Sign' on a transaction twice.
+func TestDoubleSpendCreation(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	// Create a transaction, add money to it.
+	b, err := wt.wallet.StartTransaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+	txnFund := types.NewCurrency64(100e9)
+	err = b.FundSiacoins(txnFund)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a copy of this builder for double-spending.
+	copyBuilder, err := b.Copy()
+	if err != nil {
+		t.Fatal(err, copyBuilder)
+	}
+
+	// Add an output to the original builder, and then a different output to the
+	// double-spend copy.
+	unlockConditions, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: unlockConditions.UnlockHash(),
+	}
+	b.AddSiacoinOutput(output)
+
+	unlockConditions2, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output2 := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: unlockConditions2.UnlockHash(),
+	}
+	copyBuilder.AddSiacoinOutput(output2)
+
+	// Sign both transaction sets.
+	originalSet, err := b.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doubleSpendSet, err := copyBuilder.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the original set is acceptable, and that the double-spend fails.
+	err = wt.tpool.AcceptTransactionSet(originalSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wt.tpool.AcceptTransactionSet(doubleSpendSet)
+	if err == nil {
+		t.Fatal("Expected double spend to fail", err)
+	}
+}
+
 // TestReplaceOutput tests the ReplaceSiacoinOutput feature of the
 // transactionbuilder. It makes sure that after swapping an output, the builder
 // can still produce a valid transaction.

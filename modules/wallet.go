@@ -213,6 +213,11 @@ type (
 		// 'FundSiafunds'.
 		AddTransactionSignature(types.TransactionSignature) uint64
 
+		// Copy creates a copy of the current transactionBuilder that can be used to
+		// extend the transaction in an alternate way (i.e. create a double spend
+		// transaction).
+		Copy() (TransactionBuilder, error)
+
 		// Sign will sign any inputs added by 'FundSiacoins' or 'FundSiafunds'
 		// and return a transaction set that contains all parents prepended to
 		// the transaction. If more fields need to be added, a new transaction

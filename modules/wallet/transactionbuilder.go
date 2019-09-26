@@ -116,6 +116,32 @@ func (w *Wallet) checkOutput(tx *bolt.Tx, currentHeight types.BlockHeight, id ty
 	return nil
 }
 
+// Copy creates a deep copy of the current transactionBuilder that can be used to
+// extend the transaction in an alternate way (i.e. create a double spend
+// transaction).
+func (tb *transactionBuilder) Copy() (modules.TransactionBuilder, error) {
+	copyBuilder, err := tb.wallet.registerTransaction(tb.transaction, tb.parents)
+	if err != nil {
+		return nil, err
+	}
+
+	// Copy the non-transaction fields over to the new builder.
+	copyBuilder.newParents = make([]int, len(tb.newParents))
+	copy(copyBuilder.newParents, tb.newParents)
+
+	copyBuilder.siacoinInputs = make([]int, len(tb.siacoinInputs))
+	copy(copyBuilder.siacoinInputs, tb.siacoinInputs)
+
+	copyBuilder.siafundInputs = make([]int, len(tb.siafundInputs))
+	copy(copyBuilder.siafundInputs, tb.siafundInputs)
+
+	copyBuilder.transactionSignatures = make([]int, len(tb.transactionSignatures))
+	copy(copyBuilder.transactionSignatures, tb.transactionSignatures)
+
+	copyBuilder.signed = tb.signed
+	return copyBuilder, err
+}
+
 // FundSiacoins will add a siacoin input of exactly 'amount' to the
 // transaction. A parent transaction may be needed to achieve an input with the
 // correct value. The siacoin input will not be signed until 'Sign' is called
