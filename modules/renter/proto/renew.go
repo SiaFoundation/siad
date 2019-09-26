@@ -687,8 +687,9 @@ func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params Contra
 	}
 
 	// Create the final revision of the old contract.
-	finalRev := newRevision(contract.LastRevision(), types.ZeroCurrency)
+	finalRev := newRevision(contract.LastRevision(), host.BaseRPCPrice)
 	finalRev.NewFileSize = 0
+	finalRev.NewFileMerkleRoot = crypto.Hash{}
 
 	// Create the RenewContract request.
 	req := modules.LoopRenewAndClearContractRequest{
@@ -742,7 +743,7 @@ func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params Contra
 			},
 		},
 	}
-	finalRevSig := crypto.SignHash(txn.SigHash(0, s.height), contract.SecretKey)
+	finalRevSig := crypto.SignHash(finalRevTxn.SigHash(0, s.height), contract.SecretKey)
 	finalRevTxn.TransactionSignatures[0].Signature = finalRevSig[:]
 
 	// sign the txn

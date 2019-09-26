@@ -1038,7 +1038,7 @@ func TestRenterRenew(t *testing.T) {
 	// Set an allowance for the renter, allowing a contract to be formed.
 	allowanceValues := url.Values{}
 	testFunds := "10000000000000000000000000000" // 10k SC
-	testPeriod := 10
+	testPeriod := 20
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", strconv.Itoa(testPeriod))
 	allowanceValues.Set("renewwindow", strconv.Itoa(testPeriod/2))
