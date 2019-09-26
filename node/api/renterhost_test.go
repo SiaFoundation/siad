@@ -1096,6 +1096,11 @@ func TestRenterRenew(t *testing.T) {
 	}
 	contractID := rc.Contracts[0].ID
 
+	// Contract size should be >0.
+	if rc.Contracts[0].Size == 0 {
+		t.Fatalf("contract size should be greater 0 but was %v", rc.Contracts[0].Size)
+	}
+
 	// Mine enough blocks to enter the renewal window.
 	testWindow := testPeriod / 2
 	for i := 0; i < testWindow+1; i++ {
@@ -1106,11 +1111,14 @@ func TestRenterRenew(t *testing.T) {
 	}
 	// Wait for the contract to be renewed.
 	for i := 0; i < 200 && (len(rc.Contracts) != 1 || rc.Contracts[0].ID == contractID); i++ {
-		st.getAPI("/renter/contracts", &rc)
+		st.getAPI("/renter/contracts?expired=true", &rc)
 		time.Sleep(100 * time.Millisecond)
 	}
 	if rc.Contracts[0].ID == contractID {
 		t.Fatal("contract was not renewed:", rc.Contracts[0])
+	}
+	if rc.ExpiredContracts[0].Size != 0 {
+		t.Fatalf("contract size after renewal should be 0 but was %v", rc.Contracts[0].Size)
 	}
 
 	// Try downloading the file.

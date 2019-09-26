@@ -712,23 +712,6 @@ func testDownloadAfterRenew(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal(err)
 		}
 	}
-	// There should be active and expired contracts now. The expired contracts
-	// should have a size of 0.
-	cg, err := renter.RenterAllContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cg.ActiveContracts) == 0 {
-		t.Fatal("There are no active contracts")
-	}
-	if len(cg.ExpiredContracts) == 0 {
-		t.Fatal("There are no expired refreshed contracts")
-	}
-	for _, ec := range cg.ExpiredContracts {
-		if ec.Size != 0 {
-			t.Fatalf("size of renewed contract should be 0 but was %v", ec.Size)
-		}
-	}
 	// Download the file synchronously directly into memory.
 	_, _, err = renter.DownloadByStream(remoteFile)
 	if err != nil {
