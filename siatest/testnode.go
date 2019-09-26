@@ -252,6 +252,11 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 		return tn, nil
 	}
 
+	// If the SkipWalletInit flag is set then we are done
+	if nodeParams.SkipWalletInit {
+		return tn, nil
+	}
+
 	// Init wallet
 	if nodeParams.PrimarySeed != "" {
 		err := tn.WalletInitSeedPost(nodeParams.PrimarySeed, "", false)
