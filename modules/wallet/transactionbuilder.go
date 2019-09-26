@@ -632,7 +632,7 @@ func (tb *transactionBuilder) ViewAdded() (newParents, siacoinInputs, siafundInp
 // wallet.TransactionBuilder which can be used to expand the transaction. The
 // most typical call is 'RegisterTransaction(types.Transaction{}, nil)', which
 // registers a new transaction without parents.
-func (w *Wallet) registerTransaction(t types.Transaction, parents []types.Transaction) *transactionBuilder {
+func (w *Wallet) registerTransaction(t types.Transaction, parents []types.Transaction) (*transactionBuilder, error) {
 	// Create a deep copy of the transaction and parents by encoding them. A
 	// deep copy ensures that there are no pointer or slice related errors -
 	// the builder will be working directly on the transaction, and the
@@ -642,20 +642,20 @@ func (w *Wallet) registerTransaction(t types.Transaction, parents []types.Transa
 	var pCopy []types.Transaction
 	err := encoding.Unmarshal(pBytes, &pCopy)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	tBytes := encoding.Marshal(t)
 	var tCopy types.Transaction
 	err = encoding.Unmarshal(tBytes, &tCopy)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	return &transactionBuilder{
 		parents:     pCopy,
 		transaction: tCopy,
 
 		wallet: w,
-	}
+	}, nil
 }
 
 // RegisterTransaction takes a transaction and its parents and returns a
@@ -669,7 +669,7 @@ func (w *Wallet) RegisterTransaction(t types.Transaction, parents []types.Transa
 	defer w.tg.Done()
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.registerTransaction(t, parents), nil
+	return w.registerTransaction(t, parents)
 }
 
 // StartTransaction is a convenience function that calls
