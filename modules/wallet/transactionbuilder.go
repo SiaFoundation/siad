@@ -142,7 +142,7 @@ func (tb *transactionBuilder) Copy() (modules.TransactionBuilder, error) {
 	return copyBuilder, err
 }
 
-// MarkWalletInputs updates transacionBuilder state by inferring which inputs
+// MarkWalletInputs updates transactionBuilder state by inferring which inputs
 // belong to this wallet. This allows inputs those to be signed. Returns true
 // iff any inputs belonging to the wallet are found.
 func (tb *transactionBuilder) MarkWalletInputs() bool {

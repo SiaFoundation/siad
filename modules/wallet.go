@@ -218,7 +218,7 @@ type (
 		// transaction).
 		Copy() (TransactionBuilder, error)
 
-		// MarkWalletInputs updates transacionBuilder state by inferring which inputs
+		// MarkWalletInputs updates internal TransactionBuilder state by inferring which inputs
 		// belong to this wallet. This allows inputs those to be signed. Returns true
 		// iff any inputs belonging to the wallet are found.
 		MarkWalletInputs() bool
