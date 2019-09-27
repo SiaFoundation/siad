@@ -731,14 +731,8 @@ func (w *Wallet) RegisterTransaction(t types.Transaction, parents []types.Transa
 	defer w.tg.Done()
 
 	w.mu.Lock()
-	tb, err := w.registerTransaction(t, parents)
-	w.mu.Unlock()
-
-	if err != nil {
-		return nil, err
-	}
-	tb.MarkWalletInputs()
-	return tb, nil
+	defer w.mu.Unlock()
+	return w.registerTransaction(t, parents)
 }
 
 // StartTransaction is a convenience function that calls

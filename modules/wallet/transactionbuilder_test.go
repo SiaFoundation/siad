@@ -730,6 +730,10 @@ func TestMarkWalletInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	markedAnyInputs := newBuilder.MarkWalletInputs()
+	if !markedAnyInputs {
+		t.Fatal("Expected to mark some inputs")
+	}
 
 	// Check that the new builder is signable and that it creates a good
 	// transaction set.
@@ -743,11 +747,10 @@ func TestMarkWalletInputs(t *testing.T) {
 	}
 }
 
-// TestDoubleSpendViaReregistration tests functionality used by the renter
+// TestDoubleSpendAfterMarking tests functionality used by the renter
 // watchdog to create double-spend sweep transactions.  when trying to call
-// 'Sign' on a transaction twice. It does so by making a copy of the transaction
-// builder, editing it and re-registering it from the transaction view.
-func TestDoubleSpendViaReregistration(t *testing.T) {
+// 'Sign' on a transaction twice.
+func TestDoubleSpendAfterMarking(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -796,9 +799,14 @@ func TestDoubleSpendViaReregistration(t *testing.T) {
 	}
 	outputIndex := copyBuilder.AddSiacoinOutput(output2)
 
-	// Get a view of the copyBuilder and re-register the transactions.
+	// Get a view of the copyBuilder and re-register the transactions and mark the
+	// spendable inputs.
 	copyTxn, copyParents := copyBuilder.View()
 	newCopyBuilder, err := wt.wallet.RegisterTransaction(copyTxn, copyParents)
+	markedAnyInputs := newCopyBuilder.MarkWalletInputs()
+	if !markedAnyInputs {
+		t.Fatal("expected to mark inputs")
+	}
 
 	// Replace the output with a a completely different one.
 	unlockConditions3, err := wt.wallet.NextAddress()
