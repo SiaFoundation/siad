@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
@@ -687,5 +688,162 @@ func TestReplaceOutput(t *testing.T) {
 	err = wt.tpool.AcceptTransactionSet(txnSet)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestMarkWalletInputs tests that MarkWalletInputs marks spendable inputs
+// correctly by checking that a re-registered transaction is still spendable.
+func TestMarkWalletInputs(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	b, err := wt.wallet.StartTransaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add an input and output to the transaction.
+	txnFund := types.NewCurrency64(100e9)
+	err = b.FundSiacoins(txnFund)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uc, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: uc.UnlockHash(),
+	}
+	b.AddSiacoinOutput(output)
+
+	// Create a new builder from the View outpu.
+	txn, parents := b.View()
+	newBuilder, err := wt.wallet.RegisterTransaction(txn, parents)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the new builder is signable and that it creates a good
+	// transaction set.
+	txnSet, err := newBuilder.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wt.tpool.AcceptTransactionSet(txnSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDoubleSpendViaReregistration tests functionality used by the renter
+// watchdog to create double-spend sweep transactions.  when trying to call
+// 'Sign' on a transaction twice. It does so by making a copy of the transaction
+// builder, editing it and re-registering it from the transaction view.
+func TestDoubleSpendViaReregistration(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	// Create a transaction, add money to it.
+	b, err := wt.wallet.StartTransaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+	txnFund := types.NewCurrency64(100e9)
+	err = b.FundSiacoins(txnFund)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a copy of this builder for double-spending.
+	copyBuilder, err := b.Copy()
+	if err != nil {
+		t.Fatal(err, copyBuilder)
+	}
+
+	// Add an output to the original builder, and then a different output to the
+	// double-spend copy.
+	unlockConditions, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: unlockConditions.UnlockHash(),
+	}
+	b.AddSiacoinOutput(output)
+
+	unlockConditions2, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output2 := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: unlockConditions2.UnlockHash(),
+	}
+	outputIndex := copyBuilder.AddSiacoinOutput(output2)
+
+	// Get a view of the copyBuilder and re-register the transactions.
+	copyTxn, copyParents := copyBuilder.View()
+	newCopyBuilder, err := wt.wallet.RegisterTransaction(copyTxn, copyParents)
+
+	// Replace the output with a a completely different one.
+	unlockConditions3, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output3 := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: unlockConditions3.UnlockHash(),
+	}
+	err = newCopyBuilder.ReplaceSiacoinOutput(outputIndex, output3)
+
+	// Sign both transaction sets.
+	originalSet, err := b.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doubleSpendSet, err := newCopyBuilder.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the output we just added is there by checking the unlockhash.
+	if len(doubleSpendSet) < 1 {
+		t.Fatal(err)
+	}
+	if len(doubleSpendSet[1].SiacoinOutputs) < int(outputIndex) {
+		t.Fatal(err)
+	}
+	foundUnlockHash := doubleSpendSet[1].SiacoinOutputs[outputIndex].UnlockHash
+	if foundUnlockHash != unlockConditions3.UnlockHash() {
+		fmt.Println(len(doubleSpendSet), outputIndex)
+		fmt.Println(foundUnlockHash)
+		fmt.Println(unlockConditions.UnlockHash(), unlockConditions2.UnlockHash(), unlockConditions3.UnlockHash())
+
+		t.Fatal(err)
+	}
+
+	// Check that the second set is acceptable, and that the original set fails.
+	err = wt.tpool.AcceptTransactionSet(originalSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wt.tpool.AcceptTransactionSet(doubleSpendSet)
+	if err == nil {
+		t.Fatal("Expected double spend to fail", err)
 	}
 }

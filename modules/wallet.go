@@ -218,6 +218,11 @@ type (
 		// transaction).
 		Copy() (TransactionBuilder, error)
 
+		// MarkWalletInputs updates transacionBuilder state by inferring which inputs
+		// belong to this wallet. This allows inputs those to be signed. Returns true
+		// iff any inputs belonging to the wallet are found.
+		MarkWalletInputs() bool
+
 		// Sign will sign any inputs added by 'FundSiacoins' or 'FundSiafunds'
 		// and return a transaction set that contains all parents prepended to
 		// the transaction. If more fields need to be added, a new transaction

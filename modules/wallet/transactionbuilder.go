@@ -142,6 +142,28 @@ func (tb *transactionBuilder) Copy() (modules.TransactionBuilder, error) {
 	return copyBuilder, err
 }
 
+// MarkWalletInputs updates transacionBuilder state by inferring which inputs
+// belong to this wallet. This allows inputs those to be signed. Returns true
+// iff any inputs belonging to the wallet are found.
+func (tb *transactionBuilder) MarkWalletInputs() bool {
+	markedAnyInputs := false
+	for i, scInput := range tb.transaction.SiacoinInputs {
+		unlockHash := scInput.UnlockConditions.UnlockHash()
+		if tb.wallet.CanSpendUnlockHash(unlockHash) {
+			markedAnyInputs = true
+			tb.siacoinInputs = append(tb.siacoinInputs, i)
+		}
+	}
+	for i, sfInput := range tb.transaction.SiafundInputs {
+		unlockHash := sfInput.UnlockConditions.UnlockHash()
+		if tb.wallet.CanSpendUnlockHash(unlockHash) {
+			markedAnyInputs = true
+			tb.siafundInputs = append(tb.siafundInputs, i)
+		}
+	}
+	return markedAnyInputs
+}
+
 // FundSiacoins will add a siacoin input of exactly 'amount' to the
 // transaction. A parent transaction may be needed to achieve an input with the
 // correct value. The siacoin input will not be signed until 'Sign' is called
@@ -707,9 +729,16 @@ func (w *Wallet) RegisterTransaction(t types.Transaction, parents []types.Transa
 		return nil, err
 	}
 	defer w.tg.Done()
+
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.registerTransaction(t, parents)
+	tb, err := w.registerTransaction(t, parents)
+	w.mu.Unlock()
+
+	if err != nil {
+		return nil, err
+	}
+	tb.MarkWalletInputs()
+	return tb, nil
 }
 
 // StartTransaction is a convenience function that calls

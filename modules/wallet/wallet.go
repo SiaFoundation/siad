@@ -296,3 +296,11 @@ func (w *Wallet) SetSettings(s modules.WalletSettings) error {
 	w.mu.Unlock()
 	return nil
 }
+
+func (w *Wallet) CanSpendUnlockHash(unlockHash types.UnlockHash) bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	_, isSpendable := w.keys[unlockHash]
+	return isSpendable
+}
