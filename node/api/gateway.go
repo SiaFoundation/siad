@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -9,14 +10,28 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// GatewayGET contains the fields returned by a GET call to "/gateway".
-type GatewayGET struct {
-	NetAddress modules.NetAddress `json:"netaddress"`
-	Peers      []modules.Peer     `json:"peers"`
+type (
+	// GatewayGET contains the fields returned by a GET call to "/gateway".
+	GatewayGET struct {
+		NetAddress modules.NetAddress `json:"netaddress"`
+		Peers      []modules.Peer     `json:"peers"`
 
-	MaxDownloadSpeed int64 `json:"maxdownloadspeed"`
-	MaxUploadSpeed   int64 `json:"maxuploadspeed"`
-}
+		MaxDownloadSpeed int64 `json:"maxdownloadspeed"`
+		MaxUploadSpeed   int64 `json:"maxuploadspeed"`
+	}
+
+	// GatewayBlacklistPOST contains the information needed to set the Blacklist
+	// of the gateway
+	GatewayBlacklistPOST struct {
+		GatewayBlacklistOp string               `json:"gatewayblacklistop"`
+		Addressess         []modules.NetAddress `json:"addresses"`
+	}
+
+	// GatewayBlacklistGET contains the Blacklist of the gateway
+	GatewayBlacklistGET struct {
+		Blacklist []modules.NetAddress `json:"blacklist"`
+	}
+)
 
 // gatewayHandlerGET handles the API call asking for the gatway status.
 func (api *API) gatewayHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -82,5 +97,45 @@ func (api *API) gatewayDisconnectHandler(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	WriteSuccess(w)
+}
+
+// gatewayBlacklistHandlerGET handles the API call to get the gateway's
+// blacklist
+func (api *API) gatewayFilterModeHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get Blacklist
+	blacklist, err := api.gateway.Blacklist()
+	if err != nil {
+		WriteError(w, Error{"unable to get blacklist mode: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, GatewayBlacklistGET{
+		Blacklist: blacklist,
+	})
+}
+
+// gatewayBlacklistModeHandlerPOST handles the API call to set the gateway's filter
+//
+// Addresses will be passed in as an array of strings, comma separated net
+// addresses
+func (api *API) gatewayFilterModeHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse parameters
+	var params GatewayBlacklistPOST
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	var gbo modules.GatewayBlacklistOp
+	if err = gbo.FromString(params.GatewayBlacklistOp); err != nil {
+		WriteError(w, Error{"unable to load filter mode from string: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Set filter mode
+	if err := api.gateway.SetBlacklist(gbo, params.Addressess); err != nil {
+		WriteError(w, Error{"failed to set the blacklist: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	WriteSuccess(w)
 }

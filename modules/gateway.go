@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"fmt"
 	"net"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -99,6 +100,52 @@ var (
 	}).([]NetAddress)
 )
 
+// GatewayBlacklistOp is the helper type for the enum constants for the
+// Gateway Blacklist operations
+type GatewayBlacklistOp int
+
+// GatewayBlacklistError, GatewayDisableBlacklist, GatewayAppendToBlacklist, and
+// GatewayRemoveFromBlacklist are the constants used to perform operations on
+// the Gateway's blacklsit
+const (
+	GatewayBlacklistError GatewayBlacklistOp = iota
+	GatewayDisableBlacklist
+	GatewayAppendToBlacklist
+	GatewayRemoveFromBlacklist
+)
+
+// String returns the string value for the GatewayBlacklistOp
+func (gbo GatewayBlacklistOp) String() string {
+	switch gbo {
+	case GatewayBlacklistError:
+		return "error"
+	case GatewayDisableBlacklist:
+		return "disable"
+	case GatewayAppendToBlacklist:
+		return "append"
+	case GatewayRemoveFromBlacklist:
+		return "remove"
+	default:
+		return ""
+	}
+}
+
+// FromString assigned the GatewayBlacklistMode from the provide string
+func (gbo *GatewayBlacklistOp) FromString(s string) error {
+	switch s {
+	case "disable":
+		*gbo = GatewayDisableBlacklist
+	case "append":
+		*gbo = GatewayAppendToBlacklist
+	case "remove":
+		*gbo = GatewayRemoveFromBlacklist
+	default:
+		*gbo = GatewayBlacklistError
+		return fmt.Errorf("Could not assigned GatewayBlacklistMode from string %v", s)
+	}
+	return nil
+}
+
 type (
 	// Peer contains all the info necessary to Broadcast to a peer.
 	Peer struct {
@@ -153,6 +200,12 @@ type (
 
 		// DisconnectManual is a Disconnect wrapper for a user-initiated disconnect
 		DisconnectManual(NetAddress) error
+
+		// Blacklist returns the current blacklist of the Gateway
+		Blacklist() ([]NetAddress, error)
+
+		// SetBlacklist sets the blacklist of the gateway
+		SetBlacklist(gbo GatewayBlacklistOp, addresses []NetAddress) error
 
 		// Address returns the Gateway's address.
 		Address() NetAddress

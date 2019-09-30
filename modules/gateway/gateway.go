@@ -226,6 +226,63 @@ func (g *Gateway) ForwardPort(port string) error {
 	return g.managedForwardPort(port)
 }
 
+// Blacklist returns the Gateway's blacklist
+func (g *Gateway) Blacklist() ([]modules.NetAddress, error) {
+	if err := g.threads.Add(); err != nil {
+		return []modules.NetAddress{}, err
+	}
+	defer g.threads.Done()
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	var blacklist []modules.NetAddress
+	for addr := range g.blacklist {
+		blacklist = append(blacklist, modules.NetAddress(addr))
+	}
+	return blacklist, nil
+}
+
+// SetBlacklist sets the blacklist of the gateway
+func (g *Gateway) SetBlacklist(gbo modules.GatewayBlacklistOp, address []modules.NetAddress) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	switch gbo {
+	case modules.GatewayDisableBlacklist:
+		// Reset the gateway blacklist
+		g.blacklist = make(map[string]struct{})
+		return g.saveSync()
+	case modules.GatewayAppendToBlacklist:
+		// Add addresses to the blacklist and disconnect from them
+		var err error
+		for _, addr := range address {
+			p, exists := g.peers[addr]
+			if exists {
+				err = errors.Compose(err, p.sess.Close())
+			}
+
+			// Peer is removed from the peer list as well as the node list, to prevent
+			// the node from being re-connected while looking for a replacement peer.
+			delete(g.peers, addr)
+			delete(g.nodes, addr)
+			g.blacklist[addr.Host()] = struct{}{}
+		}
+		return errors.Compose(err, g.saveSync())
+	case modules.GatewayRemoveFromBlacklist:
+		// Remove addresses from the blacklist
+		for _, addr := range address {
+			delete(g.blacklist, addr.Host())
+		}
+		return g.saveSync()
+	default:
+		return errors.New("Cannot set gateway blacklist, provided blacklist mode was unrecognized")
+	}
+}
+
 // RateLimits returns the currently set bandwidth limits of the gateway.
 func (g *Gateway) RateLimits() (int64, int64) {
 	g.mu.RLock()

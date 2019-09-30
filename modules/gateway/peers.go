@@ -507,7 +507,7 @@ func (g *Gateway) Connect(addr modules.NetAddress) error {
 }
 
 // Disconnect terminates a connection to a peer and removes it from the
-// Gateway's peer list. The peer's address remains in the node list.
+// Gateway's peer list.
 func (g *Gateway) Disconnect(addr modules.NetAddress) error {
 	if err := g.threads.Add(); err != nil {
 		return err
