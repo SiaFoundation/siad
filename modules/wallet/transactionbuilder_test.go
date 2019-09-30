@@ -656,29 +656,46 @@ func TestReplaceOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uc, err := wt.wallet.NextAddress()
+	unusedUC, err := wt.wallet.NextAddress()
 	if err != nil {
 		t.Fatal(err)
 	}
-	output := types.SiacoinOutput{
+	unusedOutput := types.SiacoinOutput{
 		Value:      txnFund,
-		UnlockHash: uc.UnlockHash(),
+		UnlockHash: unusedUC.UnlockHash(),
 	}
-	b.AddSiacoinOutput(output)
+	b.AddSiacoinOutput(unusedOutput)
 
-	uc2, err := wt.wallet.NextAddress()
+	replacementOutputUC, err := wt.wallet.NextAddress()
 	if err != nil {
 		t.Fatal(err)
 	}
-	output2 := types.SiacoinOutput{
+	replacementOutput := types.SiacoinOutput{
 		Value:      txnFund,
-		UnlockHash: uc2.UnlockHash(),
+		UnlockHash: replacementOutputUC.UnlockHash(),
 	}
-	b.ReplaceSiacoinOutput(0, output2)
+	b.ReplaceSiacoinOutput(0, replacementOutput)
 
 	txnSet, err := b.Sign(true)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Check that the unused output is not in the transaction set, and that the
+	// replacement output is found.
+	foundReplacementOutput := false
+	for _, txn := range txnSet {
+		for _, scOutput := range txn.SiacoinOutputs {
+			if scOutput.UnlockHash == unusedOutput.UnlockHash {
+				t.Fatal("Did not expect to find replaced output in set")
+			}
+			if scOutput.UnlockHash == replacementOutput.UnlockHash {
+				foundReplacementOutput = true
+			}
+		}
+	}
+	if !foundReplacementOutput {
+		t.Fatal("Did not find output added via replacement")
 	}
 
 	err = wt.tpool.AcceptTransactionSet(txnSet)
