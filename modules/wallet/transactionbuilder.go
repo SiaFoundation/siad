@@ -149,14 +149,14 @@ func (tb *transactionBuilder) MarkWalletInputs() bool {
 	markedAnyInputs := false
 	for i, scInput := range tb.transaction.SiacoinInputs {
 		unlockHash := scInput.UnlockConditions.UnlockHash()
-		if tb.wallet.CanSpendUnlockHash(unlockHash) {
+		if tb.wallet.managedCanSpendUnlockHash(unlockHash) {
 			markedAnyInputs = true
 			tb.siacoinInputs = append(tb.siacoinInputs, i)
 		}
 	}
 	for i, sfInput := range tb.transaction.SiafundInputs {
 		unlockHash := sfInput.UnlockConditions.UnlockHash()
-		if tb.wallet.CanSpendUnlockHash(unlockHash) {
+		if tb.wallet.managedCanSpendUnlockHash(unlockHash) {
 			markedAnyInputs = true
 			tb.siafundInputs = append(tb.siafundInputs, i)
 		}
