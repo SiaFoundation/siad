@@ -7,6 +7,7 @@ import (
 
 	bolt "github.com/coreos/bbolt"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -119,11 +120,8 @@ func (w *Wallet) checkOutput(tx *bolt.Tx, currentHeight types.BlockHeight, id ty
 // Copy creates a deep copy of the current transactionBuilder that can be used to
 // extend the transaction in an alternate way (i.e. create a double spend
 // transaction).
-func (tb *transactionBuilder) Copy() (modules.TransactionBuilder, error) {
-	copyBuilder, err := tb.wallet.registerTransaction(tb.transaction, tb.parents)
-	if err != nil {
-		return nil, err
-	}
+func (tb *transactionBuilder) Copy() modules.TransactionBuilder {
+	copyBuilder := tb.wallet.registerTransaction(tb.transaction, tb.parents)
 
 	// Copy the non-transaction fields over to the new builder.
 	copyBuilder.newParents = make([]int, len(tb.newParents))
@@ -139,7 +137,7 @@ func (tb *transactionBuilder) Copy() (modules.TransactionBuilder, error) {
 	copy(copyBuilder.transactionSignatures, tb.transactionSignatures)
 
 	copyBuilder.signed = tb.signed
-	return copyBuilder, err
+	return copyBuilder
 }
 
 // MarkWalletInputs updates transactionBuilder state by inferring which inputs
@@ -694,7 +692,7 @@ func (tb *transactionBuilder) ViewAdded() (newParents, siacoinInputs, siafundInp
 // wallet.TransactionBuilder which can be used to expand the transaction. The
 // most typical call is 'RegisterTransaction(types.Transaction{}, nil)', which
 // registers a new transaction without parents.
-func (w *Wallet) registerTransaction(t types.Transaction, parents []types.Transaction) (*transactionBuilder, error) {
+func (w *Wallet) registerTransaction(t types.Transaction, parents []types.Transaction) *transactionBuilder {
 	// Create a deep copy of the transaction and parents by encoding them. A
 	// deep copy ensures that there are no pointer or slice related errors -
 	// the builder will be working directly on the transaction, and the
@@ -704,20 +702,20 @@ func (w *Wallet) registerTransaction(t types.Transaction, parents []types.Transa
 	var pCopy []types.Transaction
 	err := encoding.Unmarshal(pBytes, &pCopy)
 	if err != nil {
-		return nil, err
+		build.Critical(err)
 	}
 	tBytes := encoding.Marshal(t)
 	var tCopy types.Transaction
 	err = encoding.Unmarshal(tBytes, &tCopy)
 	if err != nil {
-		return nil, err
+		build.Critical(err)
 	}
 	return &transactionBuilder{
 		parents:     pCopy,
 		transaction: tCopy,
 
 		wallet: w,
-	}, nil
+	}
 }
 
 // RegisterTransaction takes a transaction and its parents and returns a
@@ -732,7 +730,7 @@ func (w *Wallet) RegisterTransaction(t types.Transaction, parents []types.Transa
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.registerTransaction(t, parents)
+	return w.registerTransaction(t, parents), nil
 }
 
 // StartTransaction is a convenience function that calls

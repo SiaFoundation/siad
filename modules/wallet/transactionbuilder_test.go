@@ -588,10 +588,7 @@ func TestDoubleSpendCreation(t *testing.T) {
 	}
 
 	// Create a copy of this builder for double-spending.
-	copyBuilder, err := b.Copy()
-	if err != nil {
-		t.Fatal(err, copyBuilder)
-	}
+	copyBuilder := b.Copy()
 
 	// Add an output to the original builder, and then a different output to the
 	// double-spend copy.
@@ -771,10 +768,7 @@ func TestDoubleSpendAfterMarking(t *testing.T) {
 	}
 
 	// Create a copy of this builder for double-spending.
-	copyBuilder, err := b.Copy()
-	if err != nil {
-		t.Fatal(err, copyBuilder)
-	}
+	copyBuilder := b.Copy()
 
 	// Add an output to the original builder, and then a different output to the
 	// double-spend copy.

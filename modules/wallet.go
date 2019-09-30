@@ -216,7 +216,7 @@ type (
 		// Copy creates a copy of the current transactionBuilder that can be used to
 		// extend the transaction in an alternate way (i.e. create a double spend
 		// transaction).
-		Copy() (TransactionBuilder, error)
+		Copy() TransactionBuilder
 
 		// MarkWalletInputs updates internal TransactionBuilder state by inferring which inputs
 		// belong to this wallet. This allows inputs those to be signed. Returns true
