@@ -24,7 +24,7 @@ func TestEvictionPolicy(t *testing.T) {
 
 	// Create a test group with two miners. The miners will be sending
 	// transactions to eachother in a way that ensures transaction set
-	// minimization is occuring correctly.
+	// minimization is occurring correctly.
 	groupParams := siatest.GroupParams{
 		Miners: 1,
 	}
