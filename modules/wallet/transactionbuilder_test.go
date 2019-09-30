@@ -818,45 +818,48 @@ func TestDoubleSpendAfterMarking(t *testing.T) {
 		t.Fatal("expected to mark inputs")
 	}
 
-	// Replace the output with a a completely different one.
+	// Replace the output with a a completely different one, and add a fee.
+	fee := types.NewCurrency64(50e9)
 	unlockConditions3, err := wt.wallet.NextAddress()
 	if err != nil {
 		t.Fatal(err)
 	}
 	output3 := types.SiacoinOutput{
-		Value:      txnFund,
+		Value:      txnFund.Sub(fee),
 		UnlockHash: unlockConditions3.UnlockHash(),
 	}
 	err = newCopyBuilder.ReplaceSiacoinOutput(outputIndex, output3)
+	newCopyBuilder.AddMinerFee(fee)
 
 	// Sign both transaction sets.
 	originalSet, err := b.Sign(true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	doubleSpendSet, err := newCopyBuilder.Sign(true)
+	alteredSet, err := newCopyBuilder.Sign(true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Check that the output we just added is there by checking the unlockhash.
-	if len(doubleSpendSet) < 1 {
+	if len(alteredSet) < 1 {
 		t.Fatal(err)
 	}
-	if len(doubleSpendSet[1].SiacoinOutputs) < int(outputIndex) {
+	if len(alteredSet[1].SiacoinOutputs) < int(outputIndex) {
 		t.Fatal(err)
 	}
-	foundUnlockHash := doubleSpendSet[1].SiacoinOutputs[outputIndex].UnlockHash
+	foundUnlockHash := alteredSet[1].SiacoinOutputs[outputIndex].UnlockHash
 	if foundUnlockHash != unlockConditions3.UnlockHash() {
 		t.Fatal(err)
 	}
 
-	// Check that the second set is acceptable, and that the original set fails.
-	err = wt.tpool.AcceptTransactionSet(originalSet)
+	// Check that the altered set is acceptable, and that the original set fails
+	// because it is a double-spend.
+	err = wt.tpool.AcceptTransactionSet(alteredSet)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = wt.tpool.AcceptTransactionSet(doubleSpendSet)
+	err = wt.tpool.AcceptTransactionSet(originalSet)
 	if err == nil {
 		t.Fatal("Expected double spend to fail", err)
 	}
