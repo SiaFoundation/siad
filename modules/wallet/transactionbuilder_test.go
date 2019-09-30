@@ -1,7 +1,6 @@
 package wallet
 
 import (
-	"fmt"
 	"sync"
 	"testing"
 
@@ -838,10 +837,6 @@ func TestDoubleSpendAfterMarking(t *testing.T) {
 	}
 	foundUnlockHash := doubleSpendSet[1].SiacoinOutputs[outputIndex].UnlockHash
 	if foundUnlockHash != unlockConditions3.UnlockHash() {
-		fmt.Println(len(doubleSpendSet), outputIndex)
-		fmt.Println(foundUnlockHash)
-		fmt.Println(unlockConditions.UnlockHash(), unlockConditions2.UnlockHash(), unlockConditions3.UnlockHash())
-
 		t.Fatal(err)
 	}
 
