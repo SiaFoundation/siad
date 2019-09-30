@@ -82,6 +82,7 @@ type NodeParams struct {
 	ConsensusSetDeps modules.Dependencies
 	ContractorDeps   modules.Dependencies
 	ContractSetDeps  modules.Dependencies
+	GatewayDeps      modules.Dependencies
 	HostDBDeps       modules.Dependencies
 	RenterDeps       modules.Dependencies
 	WalletDeps       modules.Dependencies
@@ -234,9 +235,13 @@ func New(params NodeParams) (*Node, <-chan error) {
 		if params.RPCAddress == "" {
 			params.RPCAddress = "localhost:0"
 		}
+		gatewayDeps := params.GatewayDeps
+		if gatewayDeps == nil {
+			gatewayDeps = modules.ProdDependencies
+		}
 		i++
 		printfRelease("(%d/%d) Loading gateway...\n", i, numModules)
-		return gateway.New(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir))
+		return gateway.NewCustomGateway(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir), gatewayDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create gateway"))
@@ -249,15 +254,12 @@ func New(params NodeParams) (*Node, <-chan error) {
 		defer close(c)
 		if params.CreateConsensusSet && params.ConsensusSet != nil {
 			c <- errors.New("cannot both create consensus and use passed in consensus")
-			close(c)
 			return nil, c
 		}
 		if params.ConsensusSet != nil {
-			close(c)
 			return params.ConsensusSet, c
 		}
 		if !params.CreateConsensusSet {
-			close(c)
 			return nil, c
 		}
 		i++

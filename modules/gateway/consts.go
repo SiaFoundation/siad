@@ -7,6 +7,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
+// Constants related to the gateway's alerts.
+var (
+	// AlertMSGGatewayOffline indicates that the last time the gateway checked
+	// the network status it was offline.
+	AlertMSGGatewayOffline = "not connected to the internet"
+)
+
 const (
 	// handshakeUpgradeVersion is the version where the gateway handshake RPC
 	// was altered to include additional information transfer.

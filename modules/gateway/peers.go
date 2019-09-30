@@ -563,15 +563,23 @@ func (g *Gateway) DisconnectManual(addr modules.NetAddress) error {
 
 // Online returns true if the node is connected to the internet. During testing
 // we always assume that the node is online
-func (g *Gateway) Online() bool {
-	if build.Release == "dev" || build.Release == "testing" {
+func (g *Gateway) Online() (online bool) {
+	defer func() {
+		if online {
+			g.staticAlerter.UnregisterAlert(modules.AlertIDGatewayOffline)
+		} else {
+			g.staticAlerter.RegisterAlert(modules.AlertIDGatewayOffline, AlertMSGGatewayOffline, "", modules.SeverityWarning)
+		}
+	}()
+	ignoreTestingCheck := g.staticDeps.Disrupt("DisableGatewayAutoOnline")
+	if (build.Release == "dev" || build.Release == "testing") && !ignoreTestingCheck {
 		return true
 	}
 
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	for _, p := range g.peers {
-		if !p.Local {
+		if !p.Local || ignoreTestingCheck {
 			return true
 		}
 	}
