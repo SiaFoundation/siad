@@ -297,7 +297,7 @@ func (w *Wallet) SetSettings(s modules.WalletSettings) error {
 	return nil
 }
 
-// managedcanSpendUnlockHash returns true iff the the wallet has keys to spend from
+// managedCanSpendUnlockHash returns true iff the the wallet has keys to spend from
 // outputs with the given unlockHash.
 func (w *Wallet) managedCanSpendUnlockHash(unlockHash types.UnlockHash) bool {
 	w.mu.RLock()
