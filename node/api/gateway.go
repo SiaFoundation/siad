@@ -23,8 +23,8 @@ type (
 	// GatewayBlacklistPOST contains the information needed to set the Blacklist
 	// of the gateway
 	GatewayBlacklistPOST struct {
-		GatewayBlacklistOp string               `json:"gatewayblacklistop"`
-		Addressess         []modules.NetAddress `json:"addresses"`
+		Action    string               `json:"action"`
+		Addresses []modules.NetAddress `json:"addresses"`
 	}
 
 	// GatewayBlacklistGET contains the Blacklist of the gateway
@@ -102,7 +102,7 @@ func (api *API) gatewayDisconnectHandler(w http.ResponseWriter, req *http.Reques
 
 // gatewayBlacklistHandlerGET handles the API call to get the gateway's
 // blacklist
-func (api *API) gatewayFilterModeHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func (api *API) gatewayBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get Blacklist
 	blacklist, err := api.gateway.Blacklist()
 	if err != nil {
@@ -114,11 +114,11 @@ func (api *API) gatewayFilterModeHandlerGET(w http.ResponseWriter, _ *http.Reque
 	})
 }
 
-// gatewayBlacklistModeHandlerPOST handles the API call to set the gateway's filter
+// gatewayBlacklistHandlerPOST handles the API call to set the gateway's filter
 //
 // Addresses will be passed in as an array of strings, comma separated net
 // addresses
-func (api *API) gatewayFilterModeHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) gatewayBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
 	var params GatewayBlacklistPOST
 	err := json.NewDecoder(req.Body).Decode(&params)
@@ -127,13 +127,24 @@ func (api *API) gatewayFilterModeHandlerPOST(w http.ResponseWriter, req *http.Re
 		return
 	}
 	var gbo modules.GatewayBlacklistOp
-	if err = gbo.FromString(params.GatewayBlacklistOp); err != nil {
+	if err = gbo.FromString(params.Action); err != nil {
 		WriteError(w, Error{"unable to load filter mode from string: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
+	// Check that addresses where submitted if the action is append or remove
+	switch gbo {
+	case modules.GatewayAppendToBlacklist:
+		fallthrough
+	case modules.GatewayRemoveFromBlacklist:
+		if len(params.Addresses) == 0 {
+			WriteError(w, Error{"no addresses submitted to append or remove"}, http.StatusBadRequest)
+		}
+	default:
+	}
+
 	// Set filter mode
-	if err := api.gateway.SetBlacklist(gbo, params.Addressess); err != nil {
+	if err := api.gateway.SetBlacklist(gbo, params.Addresses); err != nil {
 		WriteError(w, Error{"failed to set the blacklist: " + err.Error()}, http.StatusBadRequest)
 		return
 	}

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"net/url"
 	"strconv"
 
@@ -48,5 +49,28 @@ func (c *Client) GatewayRateLimitPost(downloadSpeed, uploadSpeed int64) (err err
 	values.Set("maxdownloadspeed", strconv.FormatInt(downloadSpeed, 10))
 	values.Set("maxuploadspeed", strconv.FormatInt(uploadSpeed, 10))
 	err = c.post("/gateway", values.Encode(), nil)
+	return
+}
+
+// GatewayBlacklistGet uses the /gateway/blacklist endpoint to request the
+// Gateway's blacklist
+func (c *Client) GatewayBlacklistGet() (gbg api.GatewayBlacklistGET, err error) {
+	err = c.get("/gateway/blacklist", &gbg)
+	return
+}
+
+// GatewayBlacklistPost uses the /gateway/blacklist endpoint to append, remove,
+// or reset the Gateway's blacklist
+func (c *Client) GatewayBlacklistPost(gbo modules.GatewayBlacklistOp, addresses []modules.NetAddress) (err error) {
+	action := gbo.String()
+	gbp := api.GatewayBlacklistPOST{
+		Action:    action,
+		Addresses: addresses,
+	}
+	data, err := json.Marshal(gbp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/gateway/blacklist", string(data), nil)
 	return
 }

@@ -104,12 +104,12 @@ var (
 // Gateway Blacklist operations
 type GatewayBlacklistOp int
 
-// GatewayBlacklistError, GatewayDisableBlacklist, GatewayAppendToBlacklist, and
+// GatewayBlacklistError, GatewayResetBlacklist, GatewayAppendToBlacklist, and
 // GatewayRemoveFromBlacklist are the constants used to perform operations on
 // the Gateway's blacklsit
 const (
 	GatewayBlacklistError GatewayBlacklistOp = iota
-	GatewayDisableBlacklist
+	GatewayResetBlacklist
 	GatewayAppendToBlacklist
 	GatewayRemoveFromBlacklist
 )
@@ -119,7 +119,7 @@ func (gbo GatewayBlacklistOp) String() string {
 	switch gbo {
 	case GatewayBlacklistError:
 		return "error"
-	case GatewayDisableBlacklist:
+	case GatewayResetBlacklist:
 		return "disable"
 	case GatewayAppendToBlacklist:
 		return "append"
@@ -133,8 +133,8 @@ func (gbo GatewayBlacklistOp) String() string {
 // FromString assigned the GatewayBlacklistMode from the provide string
 func (gbo *GatewayBlacklistOp) FromString(s string) error {
 	switch s {
-	case "disable":
-		*gbo = GatewayDisableBlacklist
+	case "reset":
+		*gbo = GatewayResetBlacklist
 	case "append":
 		*gbo = GatewayAppendToBlacklist
 	case "remove":

@@ -706,6 +706,53 @@ Example IPV6 address: [123::456]:789
 ### Response
 standard success or error response. See [standard responses](#standard-responses).
 
+## /gateway/blacklist [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/gateway/blacklist"
+```
+
+fetches the list of blacklisted addresses.
+
+### JSON Response
+> JSON Response Example
+```go
+{
+  "blacklist":
+  [
+    "123.456.789.0:9981",  // string
+    "123.456.789.0:9981",  // string
+    "123.456.789.0:9981",  // string
+  ],
+}
+```
+**blacklist** | string  
+blacklist is a list of blacklisted address
+
+## /gateway/blacklist [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.456.789.0:9981","123.456.789.0:9981","123.456.789.0:9981"]}' "localhost:9980/gateway/blacklist"
+```
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"reset"}' "localhost:9980/gateway/blacklist"
+```
+
+appends, removes, or resets the Gateway's blacklist.
+
+### Path Parameters
+#### REQUIRED
+**action** | string  
+this is the action to be performed on the blacklist. Allowed inputs are `append`, `remove`, and `reset`.
+
+**addresses** | string  
+this is a comma separated list of addresses that are to be appended to or removed from the blacklist. If the action is `append` or `remove` this field is required.
+
+### Response
+standard success or error response. See [standard responses](#standard-responses).
+
 # Host
 
 The host provides storage from local disks to the network. The host negotiates file contracts with remote renters to earn money for storing other users' files. The host's endpoints expose methods for viewing and modifying host settings, announcing to the network, and managing how files are stored on disk.

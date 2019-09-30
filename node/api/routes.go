@@ -51,8 +51,8 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/gateway", api.gatewayHandlerPOST)
 		router.POST("/gateway/connect/:netaddress", RequirePassword(api.gatewayConnectHandler, requiredPassword))
 		router.POST("/gateway/disconnect/:netaddress", RequirePassword(api.gatewayDisconnectHandler, requiredPassword))
-		router.GET("/gateway/filtermode", api.gatewayFilterModeHandlerGET)
-		router.POST("/gateway/filtermode", RequirePassword(api.gatewayFilterModeHandlerPOST, requiredPassword))
+		router.GET("/gateway/blacklist", api.gatewayBlacklistHandlerGET)
+		router.POST("/gateway/blacklist", RequirePassword(api.gatewayBlacklistHandlerPOST, requiredPassword))
 	}
 
 	// Host API Calls

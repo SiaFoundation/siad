@@ -252,7 +252,7 @@ func (g *Gateway) SetBlacklist(gbo modules.GatewayBlacklistOp, address []modules
 	defer g.mu.Unlock()
 
 	switch gbo {
-	case modules.GatewayDisableBlacklist:
+	case modules.GatewayResetBlacklist:
 		// Reset the gateway blacklist
 		g.blacklist = make(map[string]struct{})
 		return g.saveSync()
