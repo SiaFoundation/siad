@@ -7,7 +7,6 @@ import (
 
 	bolt "github.com/coreos/bbolt"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -702,13 +701,13 @@ func (w *Wallet) registerTransaction(t types.Transaction, parents []types.Transa
 	var pCopy []types.Transaction
 	err := encoding.Unmarshal(pBytes, &pCopy)
 	if err != nil {
-		build.Critical(err)
+		w.log.Critical(err)
 	}
 	tBytes := encoding.Marshal(t)
 	var tCopy types.Transaction
 	err = encoding.Unmarshal(tBytes, &tCopy)
 	if err != nil {
-		build.Critical(err)
+		w.log.Critical(err)
 	}
 	return &transactionBuilder{
 		parents:     pCopy,
