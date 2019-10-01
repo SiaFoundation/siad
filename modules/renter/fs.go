@@ -49,11 +49,12 @@ func (d dirInfoShim) Sys() interface{}   { return nil }
 func (fs *fsImpl) Stat(name string) (os.FileInfo, error) {
 	path := fs.path(name)
 	fi, err := fs.r.File(path)
-	if err == nil {
-		return fileInfoShim{fi}, nil
+	if err != nil {
+		// not a file; might be a directory
+		di, err := fs.r.staticDirSet.DirInfo(path)
+		return dirInfoShim{di}, err
 	}
-	di, err := fs.r.staticDirSet.DirInfo(path)
-	return dirInfoShim{di}, err
+	return fileInfoShim{fi}, nil
 }
 
 func (fs *fsImpl) OpenFile(name string, perm int, mode os.FileMode) (modules.RenterFile, error) {
