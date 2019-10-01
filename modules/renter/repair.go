@@ -3,7 +3,6 @@ package renter
 import (
 	"fmt"
 	"io/ioutil"
-	"sort"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -237,7 +236,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 	if aggregateNumStuckChunks == 0 {
 		return modules.SiaPath{}, errNoStuckChunks
 	}
-	rand := fastrand.Uint64n(aggregateNumStuckChunks)
+	rand := fastrand.Intn(int(aggregateNumStuckChunks))
 	for {
 		select {
 		// Check to make sure renter hasn't been shutdown
@@ -277,12 +276,6 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 			return siaPath, nil
 		}
 
-		// Sort the slice of directories by aggregate Number of stuck chunks.
-		// This will put the current directory in the 0th position every time
-		sort.Slice(directories, func(i, j int) bool {
-			return directories[i].AggregateNumStuckChunks > directories[j].AggregateNumStuckChunks
-		})
-
 		// Use rand to decide which directory to go into. We can chose a
 		// directory by subtracting the aggregate number of stuck chunks a
 		// directory has from rand and if rand gets to 0 or less we choose that
@@ -302,7 +295,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 				continue
 			}
 
-			rand = rand - numStuckChunks
+			rand = rand - int(numStuckChunks)
 			siaPath = directories[i].SiaPath
 			// If rand is less than 0 break out of the loop and continue into
 			// that directory
@@ -342,17 +335,13 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (modules.SiaPath, 
 	// Use rand to decide which file to select. We can chose a file by
 	// subtracting the number of stuck chunks a file has from rand and if rand
 	// gets to 0 or less we choose that file
-	rand := fastrand.Uint64n(aggregateNumStuckChunks)
-	// Sort the files in ascending number of stuck chunks. This will give files
-	// with a large number of stuck chunks a higher chance of being selected as
-	// we decrement the number of stuck chunks from rand
-	sort.Slice(files, func(i, j int) bool { return files[i].NumStuckChunks < files[j].NumStuckChunks })
+	rand := fastrand.Intn(int(aggregateNumStuckChunks))
 	var siaPath modules.SiaPath
 	for _, f := range files {
 		if !f.Stuck {
 			continue
 		}
-		rand = rand - f.NumStuckChunks
+		rand = rand - int(f.NumStuckChunks)
 		siaPath = f.SiaPath
 		if rand <= 0 {
 			break
