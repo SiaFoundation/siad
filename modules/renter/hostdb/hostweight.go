@@ -348,12 +348,8 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	if build.VersionCmp(entry.Version, "1.4.2") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
 	}
-	// Light penalty for hosts below 1.4.1
+	// Heavy penalty for hosts below 1.4.1 that use the old renter-host protocol.
 	if build.VersionCmp(entry.Version, "1.4.1") < 0 {
-		base = base * 0.7
-	}
-	// Heavy penalty for hosts below v1.4.0
-	if build.VersionCmp(entry.Version, "1.4.0") < 0 {
 		base = math.SmallestNonzeroFloat64
 	}
 	return base
