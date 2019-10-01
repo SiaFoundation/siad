@@ -120,7 +120,7 @@ func (gbo GatewayBlacklistOp) String() string {
 	case GatewayBlacklistError:
 		return "error"
 	case GatewayResetBlacklist:
-		return "disable"
+		return "reset"
 	case GatewayAppendToBlacklist:
 		return "append"
 	case GatewayRemoveFromBlacklist:
@@ -130,7 +130,7 @@ func (gbo GatewayBlacklistOp) String() string {
 	}
 }
 
-// FromString assigned the GatewayBlacklistMode from the provide string
+// FromString assigned the GatewayBlacklistOp from the provide string
 func (gbo *GatewayBlacklistOp) FromString(s string) error {
 	switch s {
 	case "reset":
@@ -202,7 +202,7 @@ type (
 		DisconnectManual(NetAddress) error
 
 		// Blacklist returns the current blacklist of the Gateway
-		Blacklist() ([]NetAddress, error)
+		Blacklist() ([]string, error)
 
 		// SetBlacklist sets the blacklist of the gateway
 		SetBlacklist(gbo GatewayBlacklistOp, addresses []NetAddress) error

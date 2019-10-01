@@ -721,9 +721,9 @@ fetches the list of blacklisted addresses.
 {
   "blacklist":
   [
-    "123.456.789.0:9981",  // string
-    "123.456.789.0:9981",  // string
-    "123.456.789.0:9981",  // string
+    "123.456.789.0",  // string
+    "123.456.789.0",  // string
+    "123.456.789.0",  // string
   ],
 }
 ```

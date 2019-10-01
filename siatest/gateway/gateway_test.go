@@ -96,14 +96,10 @@ func TestGatewayBlacklist(t *testing.T) {
 	}
 
 	// Add addresses to blacklist
-	addr1 := "123.123.123.123"
-	addr2 := "456.456.456.456"
-	addr3 := "789.789.789.789"
-	addresses := []modules.NetAddress{
-		modules.NetAddress(addr1),
-		modules.NetAddress(addr2),
-		modules.NetAddress(addr3),
-	}
+	addr1 := modules.NetAddress("123.123.123.123:0")
+	addr2 := modules.NetAddress("456.456.456.456:0")
+	addr3 := modules.NetAddress("789.789.789.789:0")
+	addresses := []modules.NetAddress{addr1, addr2, addr3}
 	err = gateway.GatewayBlacklistPost(modules.GatewayAppendToBlacklist, []modules.NetAddress{})
 	if err == nil {
 		t.Fatal("Should be an error if submitting append without a list of addresses")
@@ -121,13 +117,13 @@ func TestGatewayBlacklist(t *testing.T) {
 	if len(blacklist.Blacklist) != len(addresses) {
 		t.Fatalf("Expected blacklist to be %v, got %v", len(addresses), blacklist)
 	}
-	blacklistMap := make(map[modules.NetAddress]struct{})
+	blacklistMap := make(map[string]struct{})
 	blacklistMap[blacklist.Blacklist[0]] = struct{}{}
 	blacklistMap[blacklist.Blacklist[1]] = struct{}{}
 	blacklistMap[blacklist.Blacklist[2]] = struct{}{}
 	for _, addr := range addresses {
-		if _, ok := blacklistMap[addr]; !ok {
-			t.Fatalf("Did not find %v in the blacklist", addr)
+		if _, ok := blacklistMap[addr.Host()]; !ok {
+			t.Fatalf("Did not find %v in the blacklist", addr.Host())
 		}
 	}
 
@@ -136,7 +132,7 @@ func TestGatewayBlacklist(t *testing.T) {
 	if err == nil {
 		t.Fatal("Should be an error if submitting remove without a list of addresses")
 	}
-	err = gateway.GatewayBlacklistPost(modules.GatewayResetBlacklist, []modules.NetAddress{modules.NetAddress(addr1)})
+	err = gateway.GatewayBlacklistPost(modules.GatewayRemoveFromBlacklist, []modules.NetAddress{modules.NetAddress(addr1)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,8 +146,8 @@ func TestGatewayBlacklist(t *testing.T) {
 		t.Fatalf("Expected blacklist to be %v, got %v", len(addresses)-1, blacklist)
 	}
 	for _, addr := range blacklist.Blacklist {
-		if addr.Host() == addr1 {
-			t.Fatalf("Found %v in the blacklist even though it should have been removed", addr1)
+		if addr == addr1.Host() {
+			t.Fatalf("Found %v in the blacklist even though it should have been removed", addr1.Host())
 		}
 	}
 

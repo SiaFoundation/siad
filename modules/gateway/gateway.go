@@ -227,17 +227,17 @@ func (g *Gateway) ForwardPort(port string) error {
 }
 
 // Blacklist returns the Gateway's blacklist
-func (g *Gateway) Blacklist() ([]modules.NetAddress, error) {
+func (g *Gateway) Blacklist() ([]string, error) {
 	if err := g.threads.Add(); err != nil {
-		return []modules.NetAddress{}, err
+		return nil, err
 	}
 	defer g.threads.Done()
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	var blacklist []modules.NetAddress
+	var blacklist []string
 	for addr := range g.blacklist {
-		blacklist = append(blacklist, modules.NetAddress(addr))
+		blacklist = append(blacklist, addr)
 	}
 	return blacklist, nil
 }
@@ -279,7 +279,7 @@ func (g *Gateway) SetBlacklist(gbo modules.GatewayBlacklistOp, address []modules
 		}
 		return g.saveSync()
 	default:
-		return errors.New("Cannot set gateway blacklist, provided blacklist mode was unrecognized")
+		return errors.New("Cannot set gateway blacklist, provided blacklist operation was unrecognized")
 	}
 }
 

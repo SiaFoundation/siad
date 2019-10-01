@@ -248,15 +248,12 @@ func New(params NodeParams) (*Node, <-chan error) {
 		defer close(c)
 		if params.CreateConsensusSet && params.ConsensusSet != nil {
 			c <- errors.New("cannot both create consensus and use passed in consensus")
-			close(c)
 			return nil, c
 		}
 		if params.ConsensusSet != nil {
-			close(c)
 			return params.ConsensusSet, c
 		}
 		if !params.CreateConsensusSet {
-			close(c)
 			return nil, c
 		}
 		i++

@@ -29,7 +29,7 @@ type (
 
 	// GatewayBlacklistGET contains the Blacklist of the gateway
 	GatewayBlacklistGET struct {
-		Blacklist []modules.NetAddress `json:"blacklist"`
+		Blacklist []string `json:"blacklist"`
 	}
 )
 
@@ -139,11 +139,12 @@ func (api *API) gatewayBlacklistHandlerPOST(w http.ResponseWriter, req *http.Req
 	case modules.GatewayRemoveFromBlacklist:
 		if len(params.Addresses) == 0 {
 			WriteError(w, Error{"no addresses submitted to append or remove"}, http.StatusBadRequest)
+			return
 		}
 	default:
 	}
 
-	// Set filter mode
+	// Set Blacklist
 	if err := api.gateway.SetBlacklist(gbo, params.Addresses); err != nil {
 		WriteError(w, Error{"failed to set the blacklist: " + err.Error()}, http.StatusBadRequest)
 		return
