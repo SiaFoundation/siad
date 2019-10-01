@@ -171,63 +171,6 @@ func (fs *fuseFS) Open(name string, flags uint32, _ *fuse.Context) (file nodefs.
 	}, fuse.OK
 }
 
-/*
-
-// Create implements pathfs.FileSystem.
-func (fs *fuseFS) Create(name string, flags uint32, mode uint32, _ *fuse.Context) (file nodefs.File, code fuse.Status) {
-	rf, err := fs.rfs.OpenFile(name, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.FileMode(mode))
-	if err != nil {
-		return nil, errToStatus("Create", name, err)
-	}
-	return &fuseFile{
-		File: nodefs.NewDefaultFile(),
-		rf:   rf,
-	}, fuse.OK
-}
-
-
-// Unlink implements pathfs.FileSystem.
-func (fs *fuseFS) Unlink(name string, _ *fuse.Context) (code fuse.Status) {
-	if err := fs.rfs.Remove(name); err != nil {
-		return errToStatus("Unlink", name, err)
-	}
-	return fuse.OK
-}
-
-// Rename implements pathfs.FileSystem.
-func (fs *fuseFS) Rename(oldName string, newName string, context *fuse.Context) (code fuse.Status) {
-	if err := fs.rfs.Rename(oldName, newName); err != nil {
-		return errToStatus("Rename", oldName, err)
-	}
-	return fuse.OK
-}
-
-// Mkdir implements pathfs.FileSystem.
-func (fs *fuseFS) Mkdir(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	if err := fs.rfs.MkdirAll(name, os.FileMode(mode)); err != nil {
-		return errToStatus("Mkdir", name, err)
-	}
-	return fuse.OK
-}
-
-// Rmdir implements pathfs.FileSystem.
-func (fs *fuseFS) Rmdir(name string, _ *fuse.Context) (code fuse.Status) {
-	if err := fs.rfs.RemoveAll(name); err != nil {
-		return errToStatus("Rmdir", name, err)
-	}
-	return fuse.OK
-}
-
-// Chmod implements pathfs.FileSystem.
-func (fs *fuseFS) Chmod(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	if err := fs.rfs.Chmod(name, os.FileMode(mode)); err != nil {
-		return errToStatus("Chmod", name, err)
-	}
-	return fuse.OK
-}
-
-*/
-
 type fuseFile struct {
 	nodefs.File
 	rf modules.RenterFile
@@ -246,39 +189,3 @@ func (f *fuseFile) Read(p []byte, off int64) (fuse.ReadResult, fuse.Status) {
 	}
 	return fuse.ReadResultData(p[:n]), fuse.OK
 }
-
-/*
-
-func (f *fuseFile) Write(p []byte, off int64) (written uint32, code fuse.Status) {
-	n, err := f.rf.WriteAt(p, off)
-	if err != nil {
-		return 0, errToStatus("Write", f.rf.Name(), err)
-	}
-	return uint32(n), fuse.OK
-}
-
-func (f *fuseFile) Truncate(size uint64) fuse.Status {
-	if err := f.rf.Truncate(int64(size)); err != nil {
-		return errToStatus("Truncate", f.rf.Name(), err)
-	}
-	return fuse.OK
-}
-
-func (f *fuseFile) Flush() fuse.Status {
-	return fuse.OK
-}
-
-func (f *fuseFile) Release() {
-	if err := f.rf.Close(); err != nil {
-		_ = errToStatus("Release", f.rf.Name(), err)
-	}
-}
-
-func (f *fuseFile) Fsync(flags int) fuse.Status {
-	if err := f.rf.Sync(); err != nil {
-		return errToStatus("Fsync", f.rf.Name(), err)
-	}
-	return fuse.OK
-}
-
-*/
