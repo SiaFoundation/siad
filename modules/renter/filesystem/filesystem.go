@@ -16,12 +16,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-const (
-	// threadDepth is how deep the ThreadType will track calling files and
-	// calling lines
-	threadDepth = 3
-)
-
 var (
 	// ErrNotExist is returned when a file or folder can't be found on disk.
 	ErrNotExist = errors.New("path does not exist")
@@ -32,18 +26,19 @@ type (
 	// SiaFiles, SiaDirs and potentially other supported Sia types in the
 	// future.
 	FileSystem struct {
-		root string
 		dNode
 	}
 
+	// node is a struct that contains the commmon fields of every node.
 	node struct {
-		parent     *dNode
-		staticName string
-		threads    map[threadUID]threadInfo
-		threadUID  threadUID
-		mu         sync.Mutex
+		staticParent *dNode
+		staticName   string
+		threads      map[threadUID]threadInfo
+		threadUID    threadUID
+		mu           sync.Mutex
 	}
 
+	// dNode is a node which references a SiaDir.
 	dNode struct {
 		node
 
@@ -52,6 +47,7 @@ type (
 		*siadir.SiaDir
 	}
 
+	// fNode is a node which references a SiaFile.
 	fNode struct {
 		node
 
@@ -76,13 +72,12 @@ func New(root string) (*FileSystem, error) {
 		return nil, errors.AddContext(err, "failed to create root dir")
 	}
 	return &FileSystem{
-		root: root,
 		dNode: dNode{
 			node: node{
-				parent:     nil,
-				staticName: "",
-				threads:    make(map[threadUID]threadInfo),
-				threadUID:  threadUID(0),
+				staticParent: nil,  // the root doesn't have a parent
+				staticName:   root, // the root doesn't have a name
+				threads:      make(map[threadUID]threadInfo),
+				threadUID:    threadUID(0), // the root doesn't require a uid
 			},
 			directories: make(map[string]*dNode),
 			files:       make(map[string]*fNode),
@@ -109,7 +104,7 @@ func newThreadUID() threadUID {
 	return threadUID(fastrand.Uint64n(math.MaxUint64))
 }
 
-func (fs *FileSystem) openDir(path string) (*dNode, error) {
+func (fs *FileSystem) managedOpenDir(path string) (*dNode, error) {
 	// Make sure the path is absolute.
 	path, err := filepath.Abs(path)
 	if err != nil {
@@ -118,29 +113,65 @@ func (fs *FileSystem) openDir(path string) (*dNode, error) {
 	// Split the path up.
 	pathList := filepath.SplitList(path)
 	// Recursively call open.
-	return fs.dNode.openDir(pathList)
+	return fs.dNode.managedOpenDir(pathList)
 }
 
+// close removes a thread from the node's threads map. This should only be
+// called from within other 'close' methods.
 func (n *node) close() {
 	if _, exists := n.threads[n.threadUID]; !exists {
 		build.Critical("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
 	}
 	delete(n.threads, n.threadUID)
+}
 
-	// The entry that exists in the siafile set may not be the same as the entry
+// close calls close on the underlying node and also removes the dNode from its
+// parent if it's no longer being used and if it doesn't have any children which
+// are currently in use.
+func (n *dNode) close() {
+	// Call common close method.
+	n.node.close()
+
+	// The entry that exists in the parent may not be the same as the entry
 	// that is being closed, this can happen if there was a rename or a delete
-	// and then a new/different file was uploaded with the same siapath.
+	// and then a new/different file was uploaded with the same path.
 	//
-	// If they are not the same entry, there is nothing more to do.
-	if n.threadUID != n.parent.directories[n.staticName].node.threadUID &&
-		n.threadUID != n.parent.files[n.staticName].node.threadUID {
+	// If they are not the same node, there is nothing more to do.
+	if n.threadUID != n.staticParent.directories[n.staticName].node.threadUID {
+		return
+	}
+
+	// Remove node from parent if there are no more children.
+	if len(n.directories)+len(n.files) == 0 {
+		n.staticParent.removeChild(&n.node)
+	}
+}
+
+// close calls close on the underlying node and also removes the fNode from its
+// parent.
+func (n *fNode) close() {
+	// Call common close method.
+	n.node.close()
+
+	// The entry that exists in the parent may not be the same as the entry
+	// that is being closed, this can happen if there was a rename or a delete
+	// and then a new/different file was uploaded with the same path.
+	//
+	// If they are not the same node, there is nothing more to do.
+	n.staticParent.mu.Lock()
+	currentUID := n.staticParent.files[n.staticName].node.threadUID
+	n.staticParent.mu.Unlock()
+	if n.threadUID != currentUID {
 		return
 	}
 
 	// Remove node from parent.
-	n.parent.removeChild(n)
+	n.staticParent.removeChild(&n.node)
 }
 
+// removeChild removes a child from a dNode. If as a result the dNode ends up
+// without children and if the threads map of the dNode is empty, the dNode will
+// remove itself from its parent.
 func (n *dNode) removeChild(child *node) {
 	// Remove the child node.
 	_, existsDir := n.directories[child.staticName]
@@ -154,20 +185,22 @@ func (n *dNode) removeChild(child *node) {
 	// If there are no more children and the threads map is empty, remove the
 	// parent as well. This happens when a directory was added to the tree
 	// because one of its children was opened.
-	if n.parent != nil && len(n.threads) == 0 && len(n.files) == 0 && len(n.directories) == 0 {
-		n.parent.removeChild(&n.node)
+	if n.staticParent != nil && len(n.threads) == 0 && len(n.files) == 0 && len(n.directories) == 0 {
+		n.staticParent.removeChild(&n.node)
 	}
 }
 
-func (n *node) path() string {
+// staticPath returns the absolute path of the node on disk.
+func (n *node) staticPath() string {
 	path := n.staticName
-	for parent := n.parent; parent != nil; parent = parent.parent {
+	for parent := n.staticParent; parent != nil; parent = parent.staticParent {
 		path = filepath.Join(parent.staticName, path)
 	}
 	return path
 }
 
-func (n *dNode) openDir(pathList []string) (*dNode, error) {
+// openDir opens a SiaDir.
+func (n *dNode) managedOpenDir(pathList []string) (*dNode, error) {
 	// If pathList is empty we are done.
 	if len(pathList) == 0 {
 		n.mu.Lock()
@@ -186,18 +219,19 @@ func (n *dNode) openDir(pathList []string) (*dNode, error) {
 	subNode, exists := n.directories[subDir]
 	if exists {
 		n.mu.Unlock()
-		return subNode.openDir(pathList)
+		return subNode.managedOpenDir(pathList)
 	}
 	// Otherwise load the dir.
-	sd, err := siadir.LoadSiaDir(filepath.Join(n.path(), subDir, siadir.SiaDirExtension))
+	sd, err := siadir.LoadSiaDir(filepath.Join(n.staticPath(), subDir, siadir.SiaDirExtension))
 	if err != nil {
+		n.mu.Unlock()
 		return nil, err
 	}
 	subNode = &dNode{
 		node: node{
-			parent:     n,
-			staticName: subDir,
-			threadUID:  newThreadUID(),
+			staticParent: n,
+			staticName:   subDir,
+			threadUID:    newThreadUID(),
 		},
 
 		directories: make(map[string]*dNode),
@@ -205,5 +239,6 @@ func (n *dNode) openDir(pathList []string) (*dNode, error) {
 		SiaDir:      sd,
 	}
 	n.directories[subDir] = subNode
-	return subNode.openDir(pathList)
+	n.mu.Unlock()
+	return subNode.managedOpenDir(pathList)
 }

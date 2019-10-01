@@ -32,14 +32,11 @@ func TestNew(t *testing.T) {
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
 	// Check fields.
-	if fs.root != root {
-		t.Fatalf("fs.root shoud be %v but was %v", root, fs.root)
-	}
-	if fs.parent != nil {
+	if fs.staticParent != nil {
 		t.Fatalf("fs.parent shoud be 'nil' but wasn't")
 	}
-	if fs.staticName != "" {
-		t.Fatalf("fs.staticName should be empty string but was %v", fs.staticName)
+	if fs.staticName != root {
+		t.Fatalf("fs.staticName should be %v but was %v", root, fs.staticName)
 	}
 	if fs.threads == nil || len(fs.threads) != 0 {
 		t.Fatal("fs.threads is not an empty initialized map")
@@ -54,5 +51,5 @@ func TestNew(t *testing.T) {
 		t.Fatal("fs.files is not an empty initialized map")
 	}
 	// Create the filesystem again at the same location.
-	_ = newTestFileSystem(fs.root)
+	_ = newTestFileSystem(fs.staticName)
 }
