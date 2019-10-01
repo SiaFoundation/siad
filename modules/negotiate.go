@@ -527,7 +527,6 @@ type (
 		Transactions []types.Transaction
 		RenterKey    types.SiaPublicKey
 
-		FinalRevisionNumber    uint64
 		FinalValidProofValues  []types.Currency
 		FinalMissedProofValues []types.Currency
 	}

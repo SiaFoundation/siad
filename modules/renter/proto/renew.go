@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"math"
 	"net"
 	"time"
 
@@ -691,13 +692,12 @@ func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params Contra
 	finalRev := newRevision(contract.LastRevision(), bandwidthCost)
 	finalRev.NewFileSize = 0
 	finalRev.NewFileMerkleRoot = crypto.Hash{}
+	finalRev.NewRevisionNumber = math.MaxUint64
 
 	// Create the RenewContract request.
 	req := modules.LoopRenewAndClearContractRequest{
 		Transactions: txnSet,
 		RenterKey:    lastRev.UnlockConditions.PublicKeys[0],
-
-		FinalRevisionNumber: contract.LastRevision().NewRevisionNumber + 1,
 	}
 	for _, vpo := range finalRev.NewValidProofOutputs {
 		req.FinalValidProofValues = append(req.FinalValidProofValues, vpo.Value)

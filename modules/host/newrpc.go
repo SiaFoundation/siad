@@ -3,6 +3,7 @@ package host
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"math/bits"
 	"sort"
 	"sync/atomic"
@@ -878,7 +879,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// Prepare the final revision of the old contract.
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 	newRevision := currentRevision
-	newRevision.NewRevisionNumber = req.FinalRevisionNumber
+	newRevision.NewRevisionNumber = math.MaxUint64
 	newRevision.NewFileMerkleRoot = crypto.Hash{}
 	newRevision.NewFileSize = 0
 	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
