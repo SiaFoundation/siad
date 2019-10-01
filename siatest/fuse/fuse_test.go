@@ -12,7 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest"
 )
 
-func TestFuse(t *testing.T) {
+func TestFUSE(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -61,7 +61,7 @@ func TestFuse(t *testing.T) {
 
 	// We should be able to download the first file.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		_, err = r.DownloadToDisk(rf, false)
+		_, _, err = r.DownloadToDisk(rf, false)
 		return err
 	})
 	if err != nil {
@@ -83,7 +83,7 @@ func TestFuse(t *testing.T) {
 	infos, err := ioutil.ReadDir(filepath.Join(mountpoint, "subDir"))
 	if err != nil {
 		t.Fatal(err)
-	} else if len(infos) != 1 || infos[0].Name() != lf.FileName() {
+	} else if len(infos) != 1 || infos[0].Name() != lf.FileName() || infos[0].Size() != 100 {
 		t.Fatal("wrong dir info")
 	}
 
