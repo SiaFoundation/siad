@@ -142,7 +142,7 @@ func TestGlobalRatelimitRenter(t *testing.T) {
 	}
 
 	// Set the bandwidth limit to 10 chunks per second.
-	if err := r.RenterPostRateLimit(10*chunkSize, 10*chunkSize); err != nil {
+	if err := r.RenterRateLimitPost(10*chunkSize, 10*chunkSize); err != nil {
 		t.Fatal(err)
 	}
 	// Set the daemon's limit to 1 chunk per second.
@@ -160,7 +160,7 @@ func TestGlobalRatelimitRenter(t *testing.T) {
 			timePassed, time.Second*time.Duration(expectedSeconds))
 	}
 	// Swap the limits and make sure the limit is still in effect.
-	if err := r.RenterPostRateLimit(chunkSize, chunkSize); err != nil {
+	if err := r.RenterRateLimitPost(chunkSize, chunkSize); err != nil {
 		t.Fatal(err)
 	}
 	// Set the daemon's limit to 1 chunk per second.
