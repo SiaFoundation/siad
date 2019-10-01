@@ -26,6 +26,8 @@ type FUSE struct {
 	srv  *fuse.Server
 	root string
 	sp   modules.SiaPath
+
+	mu sync.Mutex
 }
 
 func New(r modules.Renter) *FUSE {
@@ -35,6 +37,8 @@ func New(r modules.Renter) *FUSE {
 }
 
 func (f *FUSE) Info() Info {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return Info{
 		SiaPath: f.sp,
 		Mount:   f.root,
@@ -42,6 +46,8 @@ func (f *FUSE) Info() Info {
 }
 
 func (f *FUSE) Mount(root string, sp modules.SiaPath) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.srv != nil {
 		return errors.New("already mounted")
 	}
@@ -73,6 +79,8 @@ func (f *FUSE) Mount(root string, sp modules.SiaPath) error {
 }
 
 func (f *FUSE) Unmount() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.srv == nil {
 		return errors.New("no server mounted")
 	}
