@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
@@ -104,6 +105,16 @@ func newThreadUID() threadUID {
 	return threadUID(fastrand.Uint64n(math.MaxUint64))
 }
 
+// NewSiaDir creates the folder for the specified siaPath. This doesn't create
+// the folder metadata since that will be created on demand as the individual
+// folders are accessed.
+func (fs *FileSystem) NewSiaDir(siaPath modules.SiaPath) error {
+	dirPath := siaPath.SiaDirSysPath(fs.staticName)
+	return errors.AddContext(os.MkdirAll(dirPath, 0600), "NewSiaDir: failed to create folder")
+}
+
+// managedOpenDir opens a directory within the filesystem and all of its
+// parents.
 func (fs *FileSystem) managedOpenDir(path string) (*dNode, error) {
 	// Make sure the path is absolute.
 	path, err := filepath.Abs(path)
