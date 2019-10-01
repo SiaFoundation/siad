@@ -218,9 +218,10 @@ type (
 		// transaction).
 		Copy() TransactionBuilder
 
-		// MarkWalletInputs updates internal TransactionBuilder state by inferring which inputs
-		// belong to this wallet. This allows inputs those to be signed. Returns true
-		// iff any inputs belonging to the wallet are found.
+		// MarkWalletInputs updates internal TransactionBuilder state by inferring
+		// which inputs belong to this wallet. This allows those inputs to be
+		// signed. Returns true if and only if any inputs belonging to the wallet
+		// are found.
 		MarkWalletInputs() bool
 
 		// Sign will sign any inputs added by 'FundSiacoins' or 'FundSiafunds'

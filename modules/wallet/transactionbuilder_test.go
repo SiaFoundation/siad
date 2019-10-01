@@ -737,7 +737,7 @@ func TestMarkWalletInputs(t *testing.T) {
 	}
 	b.AddSiacoinOutput(output)
 
-	// Create a new builder from the View outpu.
+	// Create a new builder from the View output.
 	txn, parents := b.View()
 	newBuilder, err := wt.wallet.RegisterTransaction(txn, parents)
 	if err != nil {
@@ -769,8 +769,7 @@ func TestMarkWalletInputs(t *testing.T) {
 }
 
 // TestDoubleSpendAfterMarking tests functionality used by the renter
-// watchdog to create double-spend sweep transactions.  when trying to call
-// 'Sign' on a transaction twice.
+// watchdog to create double-spend sweep transactions.
 func TestDoubleSpendAfterMarking(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()

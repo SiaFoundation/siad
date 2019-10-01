@@ -140,8 +140,8 @@ func (tb *transactionBuilder) Copy() modules.TransactionBuilder {
 }
 
 // MarkWalletInputs updates transactionBuilder state by inferring which inputs
-// belong to this wallet. This allows inputs those to be signed. Returns true
-// if and only if any inputs belonging to the wallet are found.
+// belong to this wallet. This allows those inputs to be signed. Returns true if
+// and only if any inputs belonging to the wallet are found.
 func (tb *transactionBuilder) MarkWalletInputs() bool {
 	markedAnyInputs := false
 	for i, scInput := range tb.transaction.SiacoinInputs {
