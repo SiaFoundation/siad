@@ -3,6 +3,7 @@ package renter
 import (
 	"fmt"
 	"io/ioutil"
+	"path/filepath"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -308,16 +309,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 
 // managedStuckFile finds a weighted random stuck file from a directory based on
 // the number of stuck chunks in the stuck files of the directory
-func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (modules.SiaPath, error) {
-	// Get the list of files in the directory
-	files, err := r.FileList(dirSiaPath, false, true)
-	if err != nil {
-		return modules.SiaPath{}, err
-	}
-	if len(files) == 0 {
-		return modules.SiaPath{}, errors.New("no files in directory")
-	}
-
+func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.SiaPath, err error) {
 	// Grab Aggregate number of stuck chunks from the directory
 	//
 	// NOTE: using the aggregate number of stuck chunks assumes that the
@@ -327,27 +319,67 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (modules.SiaPath, 
 	if err != nil {
 		return modules.SiaPath{}, err
 	}
-	aggregateNumStuckChunks := siaDir.Metadata().AggregateNumStuckChunks
+	defer siaDir.Close()
+	metadata := siaDir.Metadata()
+	aggregateNumStuckChunks := metadata.AggregateNumStuckChunks
 	if aggregateNumStuckChunks == 0 {
 		return modules.SiaPath{}, errors.New("No stuck chunks found in stuck files")
+	}
+	numFiles := metadata.NumFiles
+	if numFiles == 0 {
+		return modules.SiaPath{}, errors.New("no files in directory")
 	}
 
 	// Use rand to decide which file to select. We can chose a file by
 	// subtracting the number of stuck chunks a file has from rand and if rand
 	// gets to 0 or less we choose that file
 	rand := fastrand.Intn(int(aggregateNumStuckChunks))
-	var siaPath modules.SiaPath
-	for _, f := range files {
-		if !f.Stuck {
+
+	// Read the directory, using ReadDir so we don't read all the siafiles
+	// unless we need to
+	dir := dirSiaPath.SiaDirSysPath(r.staticFilesDir)
+	fileinfos, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return modules.SiaPath{}, err
+	}
+	// Iterate over the fileinfos
+	for _, fi := range fileinfos {
+		// Check for SiaFile
+		if fi.IsDir() || filepath.Ext(fi.Name()) != modules.SiaFileExtension {
 			continue
 		}
-		rand = rand - int(f.NumStuckChunks)
-		siaPath = f.SiaPath
+
+		// Get SiaPath
+		var sp modules.SiaPath
+		err = sp.FromSysPath(filepath.Join(dir, fi.Name()), dir)
+		if err != nil {
+			return modules.SiaPath{}, err
+		}
+
+		// Open SiaFile, grab the number of stuck chunks and close the file
+		f, err := r.staticFileSet.Open(sp)
+		if err != nil {
+			return modules.SiaPath{}, err
+		}
+		numStuckChunks := int(f.NumStuckChunks())
+		err = f.Close()
+		if err != nil {
+			return modules.SiaPath{}, err
+		}
+
+		//Check if stuck
+		if numStuckChunks == 0 {
+			continue
+		}
+
+		// Decrement rand and check if we have decremented fully
+		rand = rand - numStuckChunks
 		if rand <= 0 {
+			siapath = sp
 			break
 		}
 	}
-	return siaPath, nil
+	return siapath, nil
 }
 
 // managedSubDirectories reads a directory and returns a slice of all the sub
