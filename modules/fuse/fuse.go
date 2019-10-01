@@ -3,7 +3,6 @@ package fuse
 import (
 	"errors"
 	"io"
-	"log"
 	"os"
 	"path"
 	"sync"
@@ -100,7 +99,8 @@ func errToStatus(op, name string, err error) fuse.Status {
 	} else if os.IsNotExist(err) {
 		return fuse.ENOENT
 	}
-	log.Printf("%v %v: %v", op, name, err)
+	// TODO: log to a file
+	//log.Printf("%v %v: %v", op, name, err)
 	return fuse.EIO
 }
 
