@@ -14,11 +14,13 @@ import (
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
+// Info contains information about the current FUSE mount.
 type Info struct {
 	SiaPath modules.SiaPath
 	Mount   string
 }
 
+// FUSE wraps a modules.Renter to implement FUSE bindings.
 type FUSE struct {
 	r modules.Renter
 
@@ -29,12 +31,14 @@ type FUSE struct {
 	mu sync.Mutex
 }
 
+// New initializes a FUSE instance.
 func New(r modules.Renter) *FUSE {
 	return &FUSE{
 		r: r,
 	}
 }
 
+// Info reports information about the FUSE instance.
 func (f *FUSE) Info() Info {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -44,6 +48,8 @@ func (f *FUSE) Info() Info {
 	}
 }
 
+// Mount mounts the files under the specified siapath under the 'root' folder on
+// the local filesystem.
 func (f *FUSE) Mount(root string, sp modules.SiaPath) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -77,6 +83,7 @@ func (f *FUSE) Mount(root string, sp modules.SiaPath) error {
 	return nil
 }
 
+// Unmount unmounts the current FUSE mount.
 func (f *FUSE) Unmount() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -93,6 +100,7 @@ func (f *FUSE) Unmount() error {
 	return nil
 }
 
+// errToStatus converts a Go error to a fuse.Status code.
 func errToStatus(op, name string, err error) fuse.Status {
 	if err == nil {
 		return fuse.OK
@@ -104,6 +112,7 @@ func errToStatus(op, name string, err error) fuse.Status {
 	return fuse.EIO
 }
 
+// fuseFS implements pathfs.FileSystem using a modules.Renter.
 type fuseFS struct {
 	pathfs.FileSystem
 	rfs modules.RenterFS
@@ -171,12 +180,14 @@ func (fs *fuseFS) Open(name string, flags uint32, _ *fuse.Context) (file nodefs.
 	}, fuse.OK
 }
 
+// fuseFile implements nodefs.File using a modules.Renter.
 type fuseFile struct {
 	nodefs.File
 	rf modules.RenterFile
 	mu sync.Mutex
 }
 
+// Read implements nodefs.File.
 func (f *fuseFile) Read(p []byte, off int64) (fuse.ReadResult, fuse.Status) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

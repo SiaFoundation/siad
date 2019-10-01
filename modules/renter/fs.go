@@ -136,7 +136,7 @@ func (d *fsDir) Read(p []byte) (int, error) {
 	return 0, errors.New("cannot call Read on directory")
 }
 
-func (f *fsDir) Seek(off int64, whence int) (int64, error) {
+func (d *fsDir) Seek(off int64, whence int) (int64, error) {
 	return 0, errors.New("cannot call Seek on directory")
 }
 
