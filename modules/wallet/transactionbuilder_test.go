@@ -748,6 +748,14 @@ func TestMarkWalletInputs(t *testing.T) {
 		t.Fatal("Expected to mark some inputs")
 	}
 
+	// Call MarkWalletInputs 10 more times. None of these iterations should mark
+	// any inputs again.
+	for i := 0; i < 10; i++ {
+		if newBuilder.MarkWalletInputs() {
+			t.Fatal("Expected no inputs to be marked")
+		}
+	}
+
 	// Check that the new builder is signable and that it creates a good
 	// transaction set.
 	txnSet, err := newBuilder.Sign(true)
