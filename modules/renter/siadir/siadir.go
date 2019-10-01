@@ -210,15 +210,9 @@ func loadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, er
 }
 
 // LoadSiaDir loads the directory metadata from disk
-func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
-	sd = &SiaDir{
-		deps:    deps,
-		siaPath: siaPath,
-		rootDir: rootDir,
-		wal:     wal,
-	}
-	sd.metadata, err = loadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(rootDir), modules.ProdDependencies)
-	return sd, err
+// TODO: implement
+func LoadSiaDir(path string) (sd *SiaDir, err error) {
+	return &SiaDir{}, nil
 }
 
 // delete removes the directory from disk and marks it as deleted. Once the directory is
