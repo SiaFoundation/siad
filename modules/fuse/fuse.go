@@ -67,6 +67,8 @@ func (f *FUSE) Mount(root string, sp modules.SiaPath) error {
 	}
 	go server.Serve()
 	f.srv = server
+	f.sp = sp
+	f.root = root
 	return nil
 }
 
@@ -79,6 +81,8 @@ func (f *FUSE) Unmount() error {
 		return err
 	}
 	f.srv = nil
+	f.sp = modules.SiaPath{}
+	f.root = ""
 	return nil
 }
 
