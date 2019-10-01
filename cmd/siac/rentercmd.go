@@ -690,7 +690,7 @@ The following units can be used to set the period:
 
     b (blocks - 10 minutes)
     d (days - 144 blocks or 1440 minutes)
-    w (weeks - 1008 blocks or 10080 blocks)`)
+    w (weeks - 1008 blocks or 10080 minutes)`)
 	fmt.Println()
 	fmt.Println("Current value:", periodUnits(allowance.Period), "weeks")
 	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.Period), "weeks")
@@ -775,7 +775,7 @@ The following units can be used to set the renew window:
 
     b (blocks - 10 minutes)
     d (days - 144 blocks or 1440 minutes)
-    w (weeks - 1008 blocks or 10080 blocks)`)
+    w (weeks - 1008 blocks or 10080 minutes)`)
 	fmt.Println()
 	fmt.Println("Current value:", periodUnits(allowance.RenewWindow), "weeks")
 	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.RenewWindow), "weeks")
