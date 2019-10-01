@@ -2,6 +2,7 @@ package renter
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -47,6 +48,10 @@ func (d dirInfoShim) IsDir() bool        { return true }
 func (d dirInfoShim) Sys() interface{}   { return nil }
 
 func (fs *fsImpl) Stat(name string) (os.FileInfo, error) {
+	if strings.HasPrefix(name, ".") {
+		// opening a "hidden" siafile results in a panic
+		return nil, os.ErrNotExist
+	}
 	path := fs.path(name)
 	fi, err := fs.r.File(path)
 	if err != nil {
