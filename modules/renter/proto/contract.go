@@ -31,10 +31,6 @@ type updateSetHeader struct {
 	Header contractHeader
 }
 
-type updateClearContract struct {
-	ID types.FileContractID
-}
-
 // v132UpdateHeader was introduced due to backwards compatibility reasons after
 // changing the format of the contractHeader. It contains the legacy
 // v132ContractHeader.
@@ -214,16 +210,6 @@ func (c *SafeContract) Utility() modules.ContractUtility {
 	return c.header.Utility
 }
 
-func (c *SafeContract) makeUpdateClearContract() writeaheadlog.Update {
-	id := c.header.ID()
-	return writeaheadlog.Update{
-		Name: updateNameClearContract,
-		Instructions: encoding.Marshal(updateClearContract{
-			ID: id,
-		}),
-	}
-}
-
 func (c *SafeContract) makeUpdateSetHeader(h contractHeader) writeaheadlog.Update {
 	id := c.header.ID()
 	return writeaheadlog.Update{
@@ -373,6 +359,8 @@ func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signe
 	return nil
 }
 
+// mangagedRecordClearContractIntent records the changes we are about to make to
+// the revision in the WAL of the contract.
 func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -385,7 +373,6 @@ func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRe
 
 	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
-		c.makeUpdateClearContract(),
 	})
 	if err != nil {
 		return nil, err
@@ -397,6 +384,8 @@ func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRe
 	return t, nil
 }
 
+// managedCommitClearContract commits the changes we made to the revision when
+// clearing a contract to the WAL of the contract.
 func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

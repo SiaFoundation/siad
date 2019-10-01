@@ -572,6 +572,9 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	return meta, nil
 }
 
+// newRenewAndClean uses the new RPC to renew and simultaneously clean a
+// contract. That way the host doesn't need to provide a storage proof for the
+// renewed contract.
 func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
 	// for convenience
 	contract := oldContract.header
