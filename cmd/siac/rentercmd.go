@@ -243,6 +243,11 @@ func rentercmd() {
 `, currencyUnits(rg.Settings.Allowance.Funds), currencyUnits(totalSpent), currencyUnits(fm.Unspent))
 	}
 
+	// detailed allowance spending for current period
+	if renterVerbose {
+		renterallowancespending(rg)
+	}
+
 	// File and Contract Data
 	fmt.Println()
 	fmt.Printf(`Data Storage:`)
@@ -361,34 +366,10 @@ func renterdownloadscmd() {
 	}
 }
 
-// renterallowancecmd is the handler for the command `siac renter allowance`.
-// displays the current allowance.
-func renterallowancecmd() {
-	rg, err := httpClient.RenterGet()
-	if err != nil {
-		die("Could not get allowance:", err)
-	}
-	allowance := rg.Settings.Allowance
-
-	// Normalize the expectations over the period.
-	allowance.ExpectedUpload *= uint64(allowance.Period)
-	allowance.ExpectedDownload *= uint64(allowance.Period)
-
-	// Show allowance info
-	fmt.Printf(`Allowance:
-	Amount:               %v
-	Period:               %v blocks
-	Renew Window:         %v blocks
-	Hosts:                %v
-
-Expectations for period:
-	Expected Storage:     %v
-	Expected Upload:      %v
-	Expected Download:    %v
-	Expected Redundancy:  %v
-`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, filesizeUnits(allowance.ExpectedStorage),
-		filesizeUnits(allowance.ExpectedUpload), filesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy)
-
+// renterallowancespending prints info about the current period spending
+// this also get called by 'siac renter -v' which is why it's in its own
+// function
+func renterallowancespending(rg api.RenterGET) {
 	// Show spending detail
 	fm := rg.FinancialMetrics
 	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
@@ -425,6 +406,40 @@ Spending:
 			currencyUnits(fm.ContractFees), currencyUnits(fm.Unspent),
 			currencyUnits(unspentAllocated), currencyUnits(unspentUnallocated))
 	}
+}
+
+// renterallowancecmd is the handler for the command `siac renter allowance`.
+// displays the current allowance.
+func renterallowancecmd() {
+	rg, err := httpClient.RenterGet()
+	if err != nil {
+		die("Could not get allowance:", err)
+	}
+	allowance := rg.Settings.Allowance
+
+	// Normalize the expectations over the period.
+	allowance.ExpectedUpload *= uint64(allowance.Period)
+	allowance.ExpectedDownload *= uint64(allowance.Period)
+
+	// Show allowance info
+	fmt.Printf(`Allowance:
+	Amount:               %v
+	Period:               %v blocks
+	Renew Window:         %v blocks
+	Hosts:                %v
+
+Expectations for period:
+	Expected Storage:     %v
+	Expected Upload:      %v
+	Expected Download:    %v
+	Expected Redundancy:  %v
+`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, filesizeUnits(allowance.ExpectedStorage),
+		filesizeUnits(allowance.ExpectedUpload), filesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy)
+
+	// Show detailed current Period spending metrics
+	renterallowancespending(rg)
+
+	fm := rg.FinancialMetrics
 
 	fmt.Printf("\n  Previous Spending:")
 	if fm.PreviousSpending.IsZero() && fm.WithheldFunds.IsZero() {
