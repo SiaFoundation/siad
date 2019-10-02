@@ -943,8 +943,8 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Debugln("Contract skipped because it is filtered")
 			continue
 		}
-		// Skip hosts that don't use the new renter-host protocol.
-		if build.VersionCmp(host.Version, "1.4.1") < 0 {
+		// Skip hosts that can't use the current renter-host protocol.
+		if build.VersionCmp(host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
 			c.log.Debugln("Contract skipped because host is using an outdated version", host.Version)
 		}
 

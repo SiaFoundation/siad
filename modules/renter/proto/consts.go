@@ -92,5 +92,5 @@ var (
 var (
 	// ErrBadHostVersion indicates that the host is using an older, incompatible
 	// version of the renter-host protocol.
-	ErrBadHostVersion = errors.New("Bad host version; can't use new renter-host protocol")
+	ErrBadHostVersion = errors.New("Bad host version; host does not support required protocols")
 )
