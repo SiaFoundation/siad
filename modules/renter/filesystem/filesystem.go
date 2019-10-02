@@ -1,11 +1,11 @@
 package filesystem
 
 import (
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,7 +36,7 @@ type (
 		staticName   string
 		threads      map[threadUID]threadInfo
 		threadUID    threadUID
-		mu           sync.Mutex
+		mu           *sync.Mutex
 	}
 
 	// dNode is a node which references a SiaDir.
@@ -69,7 +69,7 @@ type (
 // New creates a new FileSystem at the specified root path. The folder will be
 // created if it doesn't exist already.
 func New(root string) (*FileSystem, error) {
-	if err := os.Mkdir(root, 0600); err != nil && !os.IsExist(err) {
+	if err := os.Mkdir(root, 0700); err != nil && !os.IsExist(err) {
 		return nil, errors.AddContext(err, "failed to create root dir")
 	}
 	return &FileSystem{
@@ -79,6 +79,7 @@ func New(root string) (*FileSystem, error) {
 				staticName:   root, // the root doesn't have a name
 				threads:      make(map[threadUID]threadInfo),
 				threadUID:    threadUID(0), // the root doesn't require a uid
+				mu:           new(sync.Mutex),
 			},
 			directories: make(map[string]*dNode),
 			files:       make(map[string]*fNode),
@@ -110,21 +111,14 @@ func newThreadUID() threadUID {
 // folders are accessed.
 func (fs *FileSystem) NewSiaDir(siaPath modules.SiaPath) error {
 	dirPath := siaPath.SiaDirSysPath(fs.staticName)
-	return errors.AddContext(os.MkdirAll(dirPath, 0600), "NewSiaDir: failed to create folder")
+	return errors.AddContext(os.MkdirAll(dirPath, 0700), "NewSiaDir: failed to create folder")
 }
 
-// managedOpenDir opens a directory within the filesystem and all of its
-// parents.
-func (fs *FileSystem) managedOpenDir(path string) (*dNode, error) {
-	// Make sure the path is absolute.
-	path, err := filepath.Abs(path)
-	if err != nil {
-		return nil, errors.New("can't get absolute path")
-	}
-	// Split the path up.
-	pathList := filepath.SplitList(path)
-	// Recursively call open.
-	return fs.dNode.managedOpenDir(pathList)
+// OpenSiaDir opens a SiaDir and adds it and all of its parents to the
+// filesystem tree.
+func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*dNode, error) {
+	path := siaPath.String()
+	return fs.dNode.managedOpenDir(path)
 }
 
 // close removes a thread from the node's threads map. This should only be
@@ -211,26 +205,29 @@ func (n *node) staticPath() string {
 }
 
 // openDir opens a SiaDir.
-func (n *dNode) managedOpenDir(pathList []string) (*dNode, error) {
+func (n *dNode) managedOpenDir(path string) (*dNode, error) {
 	// If pathList is empty we are done.
-	if len(pathList) == 0 {
+	if path == "" {
 		n.mu.Lock()
 		defer n.mu.Unlock()
-		if existing, exists := n.threads[n.threadUID]; exists {
-			err := fmt.Errorf("node with uid %v was already registered: %v", n.threadUID, existing)
-			build.Critical(err)
-			return nil, err
-		}
-		n.threads[n.threadUID] = newThreadType()
-		return n, nil
+		// Copy the dNode and change the uid to a unique one.
+		newNode := *n
+		newNode.threadUID = newThreadUID()
+		newNode.threads[newNode.threadUID] = newThreadType()
+		return &newNode, nil
 	}
 	// Check if the next element is loaded already.
-	subDir, pathList := pathList[0], pathList[1:]
+	subDir, path := filepath.Split(path)
+	if subDir == "" && path != "" {
+		subDir = path
+		path = ""
+	}
+	subDir = strings.Trim(subDir, string(filepath.Separator))
 	n.mu.Lock()
 	subNode, exists := n.directories[subDir]
 	if exists {
 		n.mu.Unlock()
-		return subNode.managedOpenDir(pathList)
+		return subNode.managedOpenDir(path)
 	}
 	// Otherwise load the dir.
 	sd, err := siadir.LoadSiaDir(filepath.Join(n.staticPath(), subDir, siadir.SiaDirExtension))
@@ -242,14 +239,16 @@ func (n *dNode) managedOpenDir(pathList []string) (*dNode, error) {
 		node: node{
 			staticParent: n,
 			staticName:   subDir,
-			threadUID:    newThreadUID(),
+			threadUID:    0,
+			threads:      make(map[threadUID]threadInfo),
+			mu:           new(sync.Mutex),
 		},
 
 		directories: make(map[string]*dNode),
 		files:       make(map[string]*fNode),
 		SiaDir:      sd,
 	}
-	n.directories[subDir] = subNode
+	n.directories[subNode.staticName] = subNode
 	n.mu.Unlock()
-	return subNode.managedOpenDir(pathList)
+	return subNode.managedOpenDir(path)
 }
