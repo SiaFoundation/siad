@@ -25,6 +25,9 @@ func (stubHostDB) IncrementFailedInteractions(types.SiaPublicKey)     {}
 // TestSession tests the new RPC loop by creating a host and requesting new
 // RPCs via the proto.Session type.
 func TestSession(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	gp := siatest.GroupParams{
 		Hosts:   1,
 		Renters: 1,
@@ -153,6 +156,9 @@ func TestSession(t *testing.T) {
 // TestHostLockTimeout tests that the host respects the requested timeout in the
 // Lock RPC.
 func TestHostLockTimeout(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	gp := siatest.GroupParams{
 		Hosts:   1,
 		Renters: 1,
@@ -212,6 +218,9 @@ func TestHostLockTimeout(t *testing.T) {
 // TestHostBaseRPCPrice tests that the host rejects RPCs when its base RPC price
 // is not respected.
 func TestHostBaseRPCPrice(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	gp := siatest.GroupParams{
 		Hosts:   1,
 		Renters: 1,
@@ -269,6 +278,9 @@ func TestHostBaseRPCPrice(t *testing.T) {
 
 // TestMultiRead tests the Read RPC.
 func TestMultiRead(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	gp := siatest.GroupParams{
 		Hosts:   1,
 		Renters: 1,
