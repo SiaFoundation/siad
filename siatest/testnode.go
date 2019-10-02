@@ -155,7 +155,7 @@ func (tn *TestNode) RestartNode() error {
 // StartNode starts a TestNode from an active group
 func (tn *TestNode) StartNode() error {
 	// Create server
-	s, err := server.New(":0", tn.UserAgent, tn.Password, tn.params)
+	s, err := server.New(tn.params.GatewayAddress, tn.UserAgent, tn.Password, tn.params)
 	if err != nil {
 		return err
 	}
@@ -217,15 +217,20 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 	userAgent := "Sia-Agent"
 	password := "password"
 
+	// Check if a gateway address is set
+	if nodeParams.GatewayAddress == "" {
+		nodeParams.GatewayAddress = ":0"
+	}
+
 	// Create server
 	var s *server.Server
 	var err error
 	if asyncSync {
 		var errChan <-chan error
-		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams)
+		s, errChan = server.NewAsync(nodeParams.GatewayAddress, userAgent, password, nodeParams)
 		err = modules.PeekErr(errChan)
 	} else {
-		s, err = server.New(":0", userAgent, password, nodeParams)
+		s, err = server.New(nodeParams.GatewayAddress, userAgent, password, nodeParams)
 	}
 	if err != nil {
 		return nil, err

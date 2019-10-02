@@ -2,6 +2,7 @@ package siatest
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -140,5 +141,84 @@ func TestAddNewNode(t *testing.T) {
 		if oldRenter.primarySeed == renter.primarySeed {
 			t.Fatal("Returned renter is not the new renter")
 		}
+	}
+}
+
+// TestGatewayAddress tests that you can blacklist a peer and use the Gateway
+// Address to add a new peer with a new host address
+func TestGatewayAddress(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create testgroup
+	groupParams := GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  2,
+	}
+	testDir := siatestTestDir(t.Name())
+	tg, err := NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer tg.Close()
+
+	// Grab the renter
+	r := tg.Renters()[0]
+
+	// Grab the current peers
+	gg, err := r.GatewayGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 3 peers
+	if len(gg.Peers) != 3 {
+		t.Fatalf("Expected %v peers, got %v", 3, len(gg.Peers))
+	}
+
+	// Blacklist one of the peers by manually disconnecting from them
+	m := tg.Miners()[0]
+	gg, err = m.GatewayGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.GatewayDisconnectPost(gg.NetAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the list of renter peers again
+	gg, err = r.GatewayGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 2 peers
+	if len(gg.Peers) != 2 {
+		t.Fatalf("Expected %v peers, got %v", 2, len(gg.Peers))
+	}
+
+	// Add node to the test group. This should fail because the default nodes
+	// have the same local address and since we have blacklisted a previous node
+	// that will blacklist future nodes.
+	nodeParams := node.Renter(filepath.Join(testDir, "node"))
+	_, err = tg.AddNodes(nodeParams)
+	if err == nil {
+		t.Fatal("Shouldn't be able to add a node")
+	}
+	if !strings.Contains(err.Error(), "failed to connect to peer") {
+		t.Fatal("expected err to contain `failed to connect to peer` but got", err)
+	}
+
+	// Add a renter with a unique gateway address, this will work as the default
+	// address that was blacklisted is 127.0.0.1
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.GatewayAddress = "127.0.0.2:"
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
