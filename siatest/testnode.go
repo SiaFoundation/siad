@@ -1,12 +1,14 @@
 package siatest
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -219,7 +221,8 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 
 	// Check if a gateway address is set
 	if nodeParams.GatewayAddress == "" {
-		nodeParams.GatewayAddress = ":0"
+		nodeParams.GatewayAddress = fmt.Sprintf("127.%v.%v.%v:0",
+			fastrand.Intn(256), fastrand.Intn(256), fastrand.Intn(256))
 	}
 
 	// Create server

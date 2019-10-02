@@ -181,11 +181,11 @@ func TestGatewayAddress(t *testing.T) {
 
 	// Blacklist one of the peers by manually disconnecting from them
 	m := tg.Miners()[0]
-	gg, err = m.GatewayGet()
+	mgg, err := m.GatewayGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.GatewayDisconnectPost(gg.NetAddress)
+	err = r.GatewayDisconnectPost(mgg.NetAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,10 +201,10 @@ func TestGatewayAddress(t *testing.T) {
 		t.Fatalf("Expected %v peers, got %v", 2, len(gg.Peers))
 	}
 
-	// Add node to the test group. This should fail because the default nodes
-	// have the same local address and since we have blacklisted a previous node
-	// that will blacklist future nodes.
+	// Add node to the test group with the same host address as the node that
+	// was blacklisted. This should fail
 	nodeParams := node.Renter(filepath.Join(testDir, "node"))
+	nodeParams.GatewayAddress = mgg.NetAddress.Host() + ":0"
 	_, err = tg.AddNodes(nodeParams)
 	if err == nil {
 		t.Fatal("Shouldn't be able to add a node")
@@ -213,10 +213,9 @@ func TestGatewayAddress(t *testing.T) {
 		t.Fatal("expected err to contain `failed to connect to peer` but got", err)
 	}
 
-	// Add a renter with a unique gateway address, this will work as the default
-	// address that was blacklisted is 127.0.0.1
+	// Add a renter with a unique gateway address. Nodes are given unique
+	// addresses if one is not defined.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.GatewayAddress = "127.0.0.2:"
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
