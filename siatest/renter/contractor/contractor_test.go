@@ -1,4 +1,4 @@
-package renter
+package contractor
 
 import (
 	"fmt"
@@ -34,7 +34,7 @@ func TestContractorIncompleteMaintenanceAlert(t *testing.T) {
 		Miners:  1,
 		Renters: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -131,7 +131,7 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 		Miners:  1,
 		Renters: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -264,7 +264,7 @@ func TestRenterContracts(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
@@ -548,7 +548,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 		Hosts:  2,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -681,7 +681,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		Hosts:  2,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -835,7 +835,7 @@ func TestRenterContractRecovery(t *testing.T) {
 		Miners:  1,
 		Renters: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -984,7 +984,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 		Hosts:  2,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
@@ -1061,7 +1061,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 		Hosts:  2,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
