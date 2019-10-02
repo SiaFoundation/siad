@@ -228,16 +228,6 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 	// Iterating of the renter directory until randomly ending up in a
 	// directory, break and return that directory
 	siaPath := modules.RootSiaPath()
-	root, err := r.staticDirSet.Open(siaPath)
-	if err != nil {
-		return modules.SiaPath{}, err
-	}
-	// Get random int
-	aggregateNumStuckChunks := root.Metadata().AggregateNumStuckChunks
-	if aggregateNumStuckChunks == 0 {
-		return modules.SiaPath{}, errNoStuckChunks
-	}
-	rand := fastrand.Intn(int(aggregateNumStuckChunks))
 	for {
 		select {
 		// Check to make sure renter hasn't been shutdown
@@ -277,31 +267,34 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 			return siaPath, nil
 		}
 
-		// Use rand to decide which directory to go into. We can chose a
-		// directory by subtracting the aggregate number of stuck chunks a
-		// directory has from rand and if rand gets to 0 or less we choose that
-		// directory
-		for i := 0; i < len(directories); i++ {
-			var numStuckChunks uint64
-			// If it is the first directory just use the NumStuckChunks
-			// otherwise each directory we start with would have double impact
+		// Get random int
+		rand := fastrand.Intn(int(directories[0].AggregateNumStuckChunks))
+
+		// Use rand to decide which directory to go into. Work backwards over
+		// the slice of directories. Since the first element is the current
+		// directory that means that it is the sum of all the files and
+		// directories.  We can chose a directory by subtracting the number of
+		// stuck chunks a directory has from rand and if rand gets to 0 or less
+		// we choose that directory
+		for i := len(directories) - 1; i >= 0; i-- {
+			// If we are on the last iteration and the directory does have files
+			// then return the current directory
 			if i == 0 {
-				numStuckChunks = directories[i].NumStuckChunks
-			} else {
-				numStuckChunks = directories[i].AggregateNumStuckChunks
+				siaPath = directories[0].SiaPath
+				return siaPath, nil
 			}
 
 			// Skip directories with no stuck chunks
-			if numStuckChunks == uint64(0) {
+			if directories[i].AggregateNumStuckChunks == uint64(0) {
 				continue
 			}
 
-			rand = rand - int(numStuckChunks)
+			rand = rand - int(directories[i].AggregateNumStuckChunks)
 			siaPath = directories[i].SiaPath
 			// If rand is less than 0 break out of the loop and continue into
 			// that directory
 			if rand <= 0 {
-				return siaPath, nil
+				break
 			}
 		}
 	}
