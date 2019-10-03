@@ -354,6 +354,8 @@ func TestMultiRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(buf.Bytes(), sector) {
+		t.Log("buf:", buf.Bytes())
+		t.Log("sector:", sector)
 		t.Fatal("downloaded sector does not match")
 	}
 }
