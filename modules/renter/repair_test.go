@@ -702,7 +702,8 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = f.SetStuck(uint64(0), true); err != nil {
+	err = rt.renter.SetFileStuck(up.SiaPath, true)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err = f.Close(); err != nil {
@@ -716,7 +717,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = f.GrowNumChunks(3)
+	err = f.GrowNumChunks(2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -729,9 +730,9 @@ func TestRandomStuckDirectory(t *testing.T) {
 	}
 
 	// Bubble directory information so NumStuckChunks is updated, there should
-	// be at least 4 stuck chunks because of the 4 we manually marked as stuck,
+	// be at least 3 stuck chunks because of the 3 we manually marked as stuck,
 	// but the repair loop could have marked the rest as stuck so we just want
-	// to ensure that the root directory reflects at least the 4 we marked as
+	// to ensure that the root directory reflects at least the 3 we marked as
 	// stuck
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
@@ -741,8 +742,8 @@ func TestRandomStuckDirectory(t *testing.T) {
 			return err
 		}
 		// Check Aggregate number of stuck chunks
-		if metadata.AggregateNumStuckChunks != uint64(4) {
-			return fmt.Errorf("Incorrect number of stuck chunks, should be 4")
+		if metadata.AggregateNumStuckChunks != uint64(3) {
+			return fmt.Errorf("Incorrect number of stuck chunks, should be 3")
 		}
 		return nil
 	})

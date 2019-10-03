@@ -293,7 +293,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 			siaPath = directories[i].SiaPath
 			// If rand is less than 0 break out of the loop and continue into
 			// that directory
-			if rand <= 0 {
+			if rand < 0 {
 				break
 			}
 		}
@@ -367,7 +367,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 
 		// Decrement rand and check if we have decremented fully
 		rand = rand - numStuckChunks
-		if rand <= 0 {
+		if rand < 0 {
 			siapath = sp
 			break
 		}
