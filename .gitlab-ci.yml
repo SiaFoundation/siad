@@ -65,7 +65,7 @@ siatest-renter-tests:
       - $CI_PROJECT_DIR/cover/cover.out
     when: always
   script:
-    - make test-long run=. pkgs="./siatest/renter ./siatest/renterhost"
+    - make test-long run=. pkgs="./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 legacy-tests-nightly:
@@ -121,7 +121,7 @@ siatest-renter--tests-nightly:
       - $CI_PROJECT_DIR/cover/cover.out
     when: always
   script:
-    - make test-vlong run=. pkgs="./siatest/renter ./siatest/renterhost"
+    - make test-vlong run=. pkgs="./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 deploy:
