@@ -340,10 +340,16 @@ func TestMultiRead(t *testing.T) {
 		t.Fatal("downloaded sector does not match")
 	}
 
-	// download two sections, but interrupt immediately; we should receive the
-	// first section
+	// download multiple sections, but interrupt immediately; we should not
+	// receive all the sections
 	buf.Reset()
 	req.Sections = []modules.LoopReadRequestSection{
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
 		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
 		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
 	}
@@ -353,9 +359,7 @@ func TestMultiRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(buf.Bytes(), sector) {
-		t.Log("buf:", buf.Bytes())
-		t.Log("sector:", sector)
-		t.Fatal("downloaded sector does not match")
+	if len(buf.Bytes()) == len(sector)*len(req.Sections) {
+		t.Fatal("read did not quit early")
 	}
 }
