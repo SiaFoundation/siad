@@ -187,7 +187,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 			existingUUC.cancelWG.Wait()
 			uh.managedPush(uuc)
 		}()
-		return true // It's not pushed yet but it is guranteed to be pushed eventually.
+		return true // It's not pushed yet but it is guaranteed to be pushed eventually.
 	}
 
 	// Check if the chunk can be added to the heap

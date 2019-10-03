@@ -27,7 +27,7 @@ type TransactionGraphEdge struct {
 // transactions.
 //
 // Node zero will use the 'sourceOutput' as its input, and is the only node that
-// is allowed to have no inputs specifed.
+// is allowed to have no inputs specified.
 //
 // Example Input:
 //
@@ -85,7 +85,7 @@ func TransactionGraph(sourceOutput SiacoinOutputID, edges []TransactionGraphEdge
 	//
 	// Step 6: As the transactions are searched, any outputs created by the
 	// transaction will need to be added to the list of outputs that haven't had
-	// their transctions finished yet to be searched later.
+	// their transactions finished yet to be searched later.
 	//
 	// Step 7: Once all transaction diagrams are complete, translate into
 	// transactions.
