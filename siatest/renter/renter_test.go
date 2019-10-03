@@ -1235,7 +1235,7 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 	}()
 
 	// Renew contracts.
-	if err = renewContractsByRenewWindow(renter, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(renter, tg); err != nil {
 		t.Fatal(err)
 	}
 

@@ -303,7 +303,7 @@ func TestRenterContracts(t *testing.T) {
 	// Confirm Contracts were created as expected.  There should only be active
 	// contracts and no passive,refreshed, disabled, or expired contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		return checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
+		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -332,7 +332,7 @@ func TestRenterContracts(t *testing.T) {
 	}
 
 	// Mine blocks to force contract renewal
-	if err = renewContractsByRenewWindow(r, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -343,7 +343,7 @@ func TestRenterContracts(t *testing.T) {
 	// active contracts.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		// Confirm we have the expected number of each type of contract
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(originalContracts), 0)
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(originalContracts), 0)
 		if err != nil {
 			return err
 		}
@@ -352,11 +352,11 @@ func TestRenterContracts(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractIDs(rc.ExpiredContracts, rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractIDs(rc.ExpiredContracts, rc.ActiveContracts); err != nil {
 			return err
 		}
 		// Confirm the spending makes sense
-		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -400,7 +400,7 @@ func TestRenterContracts(t *testing.T) {
 	endHeight := rc.ActiveContracts[0].EndHeight
 
 	// Renew contracts by running out of funds
-	startingUploadSpend, err := drainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
+	startingUploadSpend, err := siatest.DrainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -409,7 +409,7 @@ func TestRenterContracts(t *testing.T) {
 	// Confirm contracts were renewed as expected.  Active contracts prior to
 	// renewal should now be in the refreshed contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts()), 0)
+		err = siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts()), 0)
 		if err != nil {
 			return err
 		}
@@ -454,13 +454,13 @@ func TestRenterContracts(t *testing.T) {
 	}
 
 	// Mine blocks to force contract renewal to start with fresh set of contracts
-	if err = renewContractsByRenewWindow(r, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
+		err = siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
 		if err != nil {
 			return err
 		}
@@ -469,7 +469,7 @@ func TestRenterContracts(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractIDs(rc.ExpiredContracts, rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractIDs(rc.ExpiredContracts, rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -1006,7 +1006,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	miner := tg.Miners()[0]
 	// Drain the contracts until they are supposed to no longer be good for
 	// uploading.
-	_, err = drainContractsByUploading(renter, tg, contractor.MinContractFundUploadThreshold)
+	_, err = siatest.DrainContractsByUploading(renter, tg, contractor.MinContractFundUploadThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
