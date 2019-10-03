@@ -737,15 +737,15 @@ blacklist is a list of blacklisted address
 curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.456.789.0:9981","123.456.789.0:9981","123.456.789.0:9981"]}' "localhost:9980/gateway/blacklist"
 ```
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"reset"}' "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blacklist"
 ```
 
-appends, removes, or resets the Gateway's blacklist.
+performs actions on the Gateway's blacklist. There are three `actions` that can be performed. `append` and `remove` are used for appending or removing addresses from the Gateway's blacklist. `set` is used to define all the addresses in the blacklist. If a list of addresses is provided with `set`, that list of addresses will become the Gateway's blacklist, replacing any blacklist that was currently in place. To clear the Gateway's blacklist, submit an empty list with `set`.
 
 ### Path Parameters
 #### REQUIRED
 **action** | string  
-this is the action to be performed on the blacklist. Allowed inputs are `append`, `remove`, and `reset`.
+this is the action to be performed on the blacklist. Allowed inputs are `append`, `remove`, and `set`.
 
 **addresses** | string  
 this is a comma separated list of addresses that are to be appended to or removed from the blacklist. If the action is `append` or `remove` this field is required.

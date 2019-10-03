@@ -114,7 +114,8 @@ func (api *API) gatewayBlacklistHandlerGET(w http.ResponseWriter, _ *http.Reques
 	})
 }
 
-// gatewayBlacklistHandlerPOST handles the API call to set the gateway's filter
+// gatewayBlacklistHandlerPOST handles the API call to modify the gateway's
+// blacklist
 //
 // Addresses will be passed in as an array of strings, comma separated net
 // addresses
@@ -126,28 +127,40 @@ func (api *API) gatewayBlacklistHandlerPOST(w http.ResponseWriter, req *http.Req
 		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	var gbo modules.GatewayBlacklistOp
-	if err = gbo.FromString(params.Action); err != nil {
-		WriteError(w, Error{"unable to load filter mode from string: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
 
-	// Check that addresses where submitted if the action is append or remove
-	switch gbo {
-	case modules.GatewayAppendToBlacklist:
-		fallthrough
-	case modules.GatewayRemoveFromBlacklist:
+	switch params.Action {
+	case "append":
+		// Check that addresses where submitted
 		if len(params.Addresses) == 0 {
 			WriteError(w, Error{"no addresses submitted to append or remove"}, http.StatusBadRequest)
 			return
 		}
+		// Add addresses to Blacklist
+		if err := api.gateway.AddToBlacklist(params.Addresses); err != nil {
+			WriteError(w, Error{"failed to add addresses to the blacklist: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	case "remove":
+		// Check that addresses where submitted
+		if len(params.Addresses) == 0 {
+			WriteError(w, Error{"no addresses submitted to append or remove"}, http.StatusBadRequest)
+			return
+		}
+		// Remove addresses from the Blacklist
+		if err := api.gateway.RemoveFromBlacklist(params.Addresses); err != nil {
+			WriteError(w, Error{"failed to remove addresses from the blacklist: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	case "set":
+		// Set Blacklist
+		if err := api.gateway.SetBlacklist(params.Addresses); err != nil {
+			WriteError(w, Error{"failed to set the blacklist: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
 	default:
-	}
-
-	// Set Blacklist
-	if err := api.gateway.SetBlacklist(gbo, params.Addresses); err != nil {
-		WriteError(w, Error{"failed to set the blacklist: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+
 	WriteSuccess(w)
 }

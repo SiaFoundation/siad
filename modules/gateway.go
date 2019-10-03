@@ -1,7 +1,6 @@
 package modules
 
 import (
-	"fmt"
 	"net"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -100,52 +99,6 @@ var (
 	}).([]NetAddress)
 )
 
-// GatewayBlacklistOp is the helper type for the enum constants for the
-// Gateway Blacklist operations
-type GatewayBlacklistOp int
-
-// GatewayBlacklistError, GatewayResetBlacklist, GatewayAppendToBlacklist, and
-// GatewayRemoveFromBlacklist are the constants used to perform operations on
-// the Gateway's blacklsit
-const (
-	GatewayBlacklistError GatewayBlacklistOp = iota
-	GatewayResetBlacklist
-	GatewayAppendToBlacklist
-	GatewayRemoveFromBlacklist
-)
-
-// String returns the string value for the GatewayBlacklistOp
-func (gbo GatewayBlacklistOp) String() string {
-	switch gbo {
-	case GatewayBlacklistError:
-		return "error"
-	case GatewayResetBlacklist:
-		return "reset"
-	case GatewayAppendToBlacklist:
-		return "append"
-	case GatewayRemoveFromBlacklist:
-		return "remove"
-	default:
-		return ""
-	}
-}
-
-// FromString assigned the GatewayBlacklistOp from the provide string
-func (gbo *GatewayBlacklistOp) FromString(s string) error {
-	switch s {
-	case "reset":
-		*gbo = GatewayResetBlacklist
-	case "append":
-		*gbo = GatewayAppendToBlacklist
-	case "remove":
-		*gbo = GatewayRemoveFromBlacklist
-	default:
-		*gbo = GatewayBlacklistError
-		return fmt.Errorf("Could not assigned GatewayBlacklistMode from string %v", s)
-	}
-	return nil
-}
-
 type (
 	// Peer contains all the info necessary to Broadcast to a peer.
 	Peer struct {
@@ -198,19 +151,28 @@ type (
 		// the mapping is established or until it is interrupted by a shutdown.
 		ForwardPort(port string) error
 
-		// DisconnectManual is a Disconnect wrapper for a user-initiated disconnect
+		// DisconnectManual is a Disconnect wrapper for a user-initiated
+		// disconnect
 		DisconnectManual(NetAddress) error
+
+		// AddToBlacklist adds addresses to the blacklist of the gateway
+		AddToBlacklist(addresses []NetAddress) error
 
 		// Blacklist returns the current blacklist of the Gateway
 		Blacklist() ([]string, error)
 
+		// RemoveFromBlacklist removes addresses from the blacklist of the
+		// gateway
+		RemoveFromBlacklist(addresses []NetAddress) error
+
 		// SetBlacklist sets the blacklist of the gateway
-		SetBlacklist(gbo GatewayBlacklistOp, addresses []NetAddress) error
+		SetBlacklist(addresses []NetAddress) error
 
 		// Address returns the Gateway's address.
 		Address() NetAddress
 
-		// Peers returns the addresses that the Gateway is currently connected to.
+		// Peers returns the addresses that the Gateway is currently connected
+		// to.
 		Peers() []Peer
 
 		// RegisterRPC registers a function to handle incoming connections that
@@ -224,10 +186,11 @@ type (
 		// gateway.
 		SetRateLimits(downloadSpeed, uploadSpeed int64) error
 
-		// UnregisterRPC unregisters an RPC and removes all references to the RPCFunc
-		// supplied in the corresponding RegisterRPC call. References to RPCFuncs
-		// registered with RegisterConnectCall are not removed and should be removed
-		// with UnregisterConnectCall. If the RPC does not exist no action is taken.
+		// UnregisterRPC unregisters an RPC and removes all references to the
+		// RPCFunc supplied in the corresponding RegisterRPC call. References to
+		// RPCFuncs registered with RegisterConnectCall are not removed and
+		// should be removed with UnregisterConnectCall. If the RPC does not
+		// exist no action is taken.
 		UnregisterRPC(string)
 
 		// RegisterConnectCall registers an RPC name and function to be called
