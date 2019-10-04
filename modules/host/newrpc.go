@@ -897,7 +897,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	newRevenue := settings.BaseRPCPrice
 	newRoots := []crypto.Hash{}
 	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots // verifyRevision assumes new roots
-	err := verifyRevision(s.so, newRevision, blockHeight, newRevenue, types.ZeroCurrency)
+	err := verifyClearingRevision(s.so, newRevision, blockHeight, newRevenue, types.ZeroCurrency)
 	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots
 	if err != nil {
 		s.writeError(err)

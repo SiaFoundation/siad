@@ -3,7 +3,9 @@ package host
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
+	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -331,6 +333,89 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 
 	// Check that the revision count has increased.
 	if revision.NewRevisionNumber <= oldFCR.NewRevisionNumber {
+		return errBadRevisionNumber
+	}
+
+	// The Merkle root is checked last because it is the most expensive check.
+	if revision.NewFileMerkleRoot != cachedMerkleRoot(so.SectorRoots) {
+		return errBadFileMerkleRoot
+	}
+
+	return nil
+}
+
+// verifyClearingRevision checks that the final revision pays the host
+// correctly, and that the revision does not attempt any malicious or unexpected
+// changes.
+func verifyClearingRevision(so storageObligation, revision types.FileContractRevision, blockHeight types.BlockHeight, expectedExchange, expectedCollateral types.Currency) error {
+	// Check that the revision is well-formed.
+	if len(revision.NewValidProofOutputs) != 2 || len(revision.NewMissedProofOutputs) != 2 {
+		return errBadContractOutputCounts
+	}
+	if !reflect.DeepEqual(revision.NewValidProofOutputs, revision.NewMissedProofOutputs) {
+		return errBadPayoutUnlockHashes
+	}
+
+	// Check that the time to finalize and submit the file contract revision
+	// has not already passed.
+	if so.expiration()-revisionSubmissionBuffer <= blockHeight {
+		return errLateRevision
+	}
+
+	oldFCR := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
+
+	// Host payout addresses shouldn't change
+	if revision.NewValidProofOutputs[1].UnlockHash != oldFCR.NewValidProofOutputs[1].UnlockHash {
+		return errors.New("host payout address changed")
+	}
+
+	// Check that all non-volatile fields are the same.
+	if oldFCR.ParentID != revision.ParentID {
+		return errBadContractParent
+	}
+	if oldFCR.UnlockConditions.UnlockHash() != revision.UnlockConditions.UnlockHash() {
+		return errBadUnlockConditions
+	}
+	if oldFCR.NewRevisionNumber >= revision.NewRevisionNumber {
+		return errBadRevisionNumber
+	}
+	if revision.NewFileSize != uint64(len(so.SectorRoots))*modules.SectorSize {
+		return errBadFileSize
+	}
+	if oldFCR.NewWindowStart != revision.NewWindowStart {
+		return errBadWindowStart
+	}
+	if oldFCR.NewWindowEnd != revision.NewWindowEnd {
+		return errBadWindowEnd
+	}
+	if oldFCR.NewUnlockHash != revision.NewUnlockHash {
+		return errBadUnlockHash
+	}
+
+	// Determine the amount that was transferred from the renter.
+	if revision.NewValidProofOutputs[0].Value.Cmp(oldFCR.NewValidProofOutputs[0].Value) > 0 {
+		return extendErr("renter increased its valid proof output: ", errHighRenterValidOutput)
+	}
+	fromRenter := oldFCR.NewValidProofOutputs[0].Value.Sub(revision.NewValidProofOutputs[0].Value)
+	// Verify that enough money was transferred.
+	if fromRenter.Cmp(expectedExchange) < 0 {
+		s := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", expectedExchange, fromRenter)
+		return extendErr(s, errHighRenterValidOutput)
+	}
+
+	// Determine the amount of money that was transferred to the host.
+	if oldFCR.NewValidProofOutputs[1].Value.Cmp(revision.NewValidProofOutputs[1].Value) > 0 {
+		return extendErr("host valid proof output was decreased: ", errLowHostValidOutput)
+	}
+	toHost := revision.NewValidProofOutputs[1].Value.Sub(oldFCR.NewValidProofOutputs[1].Value)
+	// Verify that enough money was transferred.
+	if !toHost.Equals(fromRenter) {
+		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
+		return extendErr(s, errLowHostValidOutput)
+	}
+
+	// Check that the revision is set to the maximum.
+	if revision.NewRevisionNumber != math.MaxUint64 {
 		return errBadRevisionNumber
 	}
 
