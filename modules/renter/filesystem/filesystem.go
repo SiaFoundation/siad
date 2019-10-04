@@ -142,12 +142,15 @@ func (n *dNode) close() {
 	// and then a new/different file was uploaded with the same path.
 	//
 	// If they are not the same node, there is nothing more to do.
-	if n.threadUID != n.staticParent.directories[n.staticName].node.threadUID {
+	n.staticParent.mu.Lock()
+	sd := n.staticParent.directories[n.staticName].SiaDir
+	n.staticParent.mu.Unlock()
+	if n.SiaDir != sd {
 		return
 	}
 
 	// Remove node from parent if there are no more children.
-	if len(n.directories)+len(n.files) == 0 {
+	if len(n.threads)+len(n.directories)+len(n.files) == 0 {
 		n.staticParent.removeChild(&n.node)
 	}
 }
@@ -164,9 +167,9 @@ func (n *fNode) close() {
 	//
 	// If they are not the same node, there is nothing more to do.
 	n.staticParent.mu.Lock()
-	currentUID := n.staticParent.files[n.staticName].node.threadUID
+	sf := n.staticParent.files[n.staticName].SiaFile
 	n.staticParent.mu.Unlock()
-	if n.threadUID != currentUID {
+	if n.SiaFile != sf {
 		return
 	}
 

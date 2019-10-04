@@ -189,5 +189,80 @@ func TestOpenSiaDir(t *testing.T) {
 // TestCloseSiaDir tests that closing an opened directory shrings the tree
 // accordingly.
 func TestCloseSiaDir(t *testing.T) {
-	t.Fatal("not implemented yet")
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	// Create dir /sub/foo
+	sp := newSiaPath("sub/foo")
+	if err := fs.NewSiaDir(sp); err != nil {
+		t.Fatal(err)
+	}
+	// Open the newly created dir.
+	sd, err := fs.OpenSiaDir(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sd.threads) != 1 {
+		t.Fatalf("There should be 1 thread in sd.threads but got %v", len(sd.threads))
+	}
+	if len(sd.staticParent.threads) != 0 {
+		t.Fatalf("The parent shouldn't have any threads but had %v", len(sd.staticParent.threads))
+	}
+	if len(fs.directories) != 1 {
+		t.Fatalf("There should be 1 directory in fs.directories but got %v", len(fs.directories))
+	}
+	if len(sd.staticParent.directories) != 1 {
+		t.Fatalf("The parent should have 1 directory but got %v", len(sd.staticParent.directories))
+	}
+	// After closing it the thread should be gone.
+	sd.close()
+	if len(fs.threads) != 0 {
+		t.Fatalf("There should be 0 threads in fs.threads but got %v", len(fs.threads))
+	}
+	if len(sd.threads) != 0 {
+		t.Fatalf("There should be 0 threads in sd.threads but got %v", len(sd.threads))
+	}
+	if len(fs.directories) != 0 {
+		t.Fatalf("There should be 0 directories in fs.directories but got %v", len(fs.directories))
+	}
+	// Open the dir again. This time twice.
+	sd1, err := fs.OpenSiaDir(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sd2, err := fs.OpenSiaDir(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sd1.threads) != 2 || len(sd2.threads) != 2 {
+		t.Fatalf("There should be 2 threads in sd.threads but got %v", len(sd1.threads))
+	}
+	if len(fs.directories) != 1 {
+		t.Fatalf("There should be 1 directory in fs.directories but got %v", len(fs.directories))
+	}
+	if len(sd1.staticParent.directories) != 1 || len(sd2.staticParent.directories) != 1 {
+		t.Fatalf("The parent should have 1 directory but got %v", len(sd.staticParent.directories))
+	}
+	// Close one instance.
+	sd1.close()
+	if len(sd1.threads) != 1 || len(sd2.threads) != 1 {
+		t.Fatalf("There should be 1 thread in sd.threads but got %v", len(sd1.threads))
+	}
+	if len(fs.directories) != 1 {
+		t.Fatalf("There should be 1 directory in fs.directories but got %v", len(fs.directories))
+	}
+	if len(sd1.staticParent.directories) != 1 || len(sd2.staticParent.directories) != 1 {
+		t.Fatalf("The parent should have 1 directory but got %v", len(sd.staticParent.directories))
+	}
+	// Close the second one.
+	sd2.close()
+	if len(fs.threads) != 0 {
+		t.Fatalf("There should be 0 threads in fs.threads but got %v", len(fs.threads))
+	}
+	if len(sd1.threads) != 0 || len(sd2.threads) != 0 {
+		t.Fatalf("There should be 0 threads in sd.threads but got %v", len(sd1.threads))
+	}
+	if len(fs.directories) != 0 {
+		t.Fatalf("There should be 0 directories in fs.directories but got %v", len(fs.directories))
+	}
 }
