@@ -404,6 +404,10 @@ func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params Contra
 	finalRev.NewFileMerkleRoot = crypto.Hash{}
 	finalRev.NewRevisionNumber = math.MaxUint64
 
+	// The valid proof outputs become the missed ones since the host won't need
+	// to provide a storage proof.
+	finalRev.NewMissedProofOutputs = finalRev.NewValidProofOutputs
+
 	// Create the RenewContract request.
 	req := modules.LoopRenewAndClearContractRequest{
 		Transactions: txnSet,
@@ -411,9 +415,7 @@ func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params Contra
 	}
 	for _, vpo := range finalRev.NewValidProofOutputs {
 		req.FinalValidProofValues = append(req.FinalValidProofValues, vpo.Value)
-	}
-	for _, mpo := range finalRev.NewMissedProofOutputs {
-		req.FinalMissedProofValues = append(req.FinalMissedProofValues, mpo.Value)
+		req.FinalMissedProofValues = append(req.FinalMissedProofValues, vpo.Value)
 	}
 
 	// Send the request.

@@ -889,13 +889,9 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
 		}
 	}
-	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
-	for i := range newRevision.NewMissedProofOutputs {
-		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
-			Value:      req.FinalMissedProofValues[i],
-			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
-		}
-	}
+	// The valid proof outputs become the missed ones since the host won't need
+	// to provide a storage proof.
+	newRevision.NewMissedProofOutputs = newRevision.NewValidProofOutputs
 
 	// Verifiy the final revision of the old contract.
 	newRevenue := settings.BaseRPCPrice
