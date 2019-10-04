@@ -598,7 +598,7 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	}
 
 	// Check if all chunks are stuck, if so then set health to max health to
-	// avoid file being targetted for repair
+	// avoid file being targeted for repair
 	if int(numStuckChunks) == sf.numChunks {
 		health = float64(0)
 	}

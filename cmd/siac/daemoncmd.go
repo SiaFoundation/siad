@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -35,8 +36,10 @@ var (
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
 		Short: "set the global maxdownloadspeed and maxuploadspeed",
 		Long: `Set the global maxdownloadspeed and maxuploadspeed in
-B/s (Bytes/s), KB/s (Kilobytes/s), MB/s (Megabytes/s), GB/s (Gigabytes/s), 
-or TB/s (Terabytes/s).  Set them to 0 for no limit.`,
+Bytes per second: B/s, KB/s, MB/s, GB/s, TB/s
+or
+Bits per second: Bps, Kbps, Mbps, Gbps, Tbps
+Set them to 0 for no limit.`,
 		Run: wrap(globalratelimitcmd),
 	}
 
@@ -60,16 +63,26 @@ func alertscmd() {
 	al, err := httpClient.DaemonAlertsGet()
 	if err != nil {
 		fmt.Println("Could not get daemon alerts:", err)
+		return
 	}
 	fmt.Println("There are", len(al.Alerts), "alerts")
-	for id, a := range al.Alerts {
-		fmt.Printf(`
-Alert ID: %v
-  Module:   %s
-  Severity: %s
-  Message:  %s
-  Cause:    %s
-`, id, a.Module, a.Severity.String(), a.Msg, a.Cause)
+	alertCount := 0
+	for sev := 3; sev > 0; sev-- { // print the alerts in order of critical, warning, error
+		for _, a := range al.Alerts {
+			if a.Severity == modules.AlertSeverity(sev) {
+				if alertCount > 1000 {
+					fmt.Println("Only the first 1000 alerts are displayed in siac")
+					return
+				}
+				alertCount += 1
+				fmt.Printf(`------------------
+Module:   %s
+Severity: %s
+Message:  %s
+Cause:    %s
+`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+			}
+		}
 	}
 }
 

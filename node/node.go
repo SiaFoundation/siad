@@ -100,6 +100,7 @@ type NodeParams struct {
 	SkipSetAllowance     bool
 	SkipHostDiscovery    bool
 	SkipHostAnnouncement bool
+	SkipWalletInit       bool
 
 	// The high level directory where all the persistence gets stored for the
 	// modules.

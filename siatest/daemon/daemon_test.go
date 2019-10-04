@@ -151,7 +151,7 @@ func TestGlobalRatelimitRenter(t *testing.T) {
 	}
 	// Download the file. It should take at least expectedSeconds seconds.
 	start := time.Now()
-	if _, err := r.DownloadByStream(rf); err != nil {
+	if _, _, err := r.DownloadByStream(rf); err != nil {
 		t.Fatal(err)
 	}
 	timePassed := time.Since(start)
@@ -169,7 +169,7 @@ func TestGlobalRatelimitRenter(t *testing.T) {
 	}
 	// Download the file. It should take at least expectedSeconds seconds.
 	start = time.Now()
-	if _, err := r.DownloadByStream(rf); err != nil {
+	if _, _, err := r.DownloadByStream(rf); err != nil {
 		t.Fatal(err)
 	}
 	timePassed = time.Since(start)

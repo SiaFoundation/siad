@@ -20,7 +20,7 @@ import (
 )
 
 // TestTransactionReorg makes sure that a processedTransaction isn't returned
-// by the API after bein reverted.
+// by the API after being reverted.
 func TestTransactionReorg(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -646,5 +646,46 @@ func TestWalletChangePasswordWithSeed(t *testing.T) {
 	// Unlock the wallet using the new password.
 	if err := testNode.WalletUnlockPost(newPassword); err != nil {
 		t.Fatal("Failed to unlock wallet")
+	}
+}
+
+// TestWalletForceInit confirms that the force flag can be set to true even if
+// there wasn't a wallet previously created and encrypted
+func TestWalletForceInit(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create Wallet without the wallet initialized
+	walletParams := node.Wallet(filepath.Join(walletTestDir(t.Name()), "wallet"))
+	walletParams.SkipWalletInit = true
+	wallet, err := siatest.NewCleanNode(walletParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Force initialize the wallet, this should still worked even if a wallet
+	// wasn't initialized and encrypted yet
+	wip, err := wallet.WalletInitPost("", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that we can unlock the wallet
+	err = wallet.WalletUnlockPost(wip.PrimarySeed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Force initialize a new wallet
+	wip, err = wallet.WalletInitPost("", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that we can unlock the wallet
+	err = wallet.WalletUnlockPost(wip.PrimarySeed)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
