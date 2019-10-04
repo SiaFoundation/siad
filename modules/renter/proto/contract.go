@@ -261,10 +261,6 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 	return c.merkleRoots.insert(index, root)
 }
 
-func (c *SafeContract) applyClearContract() error {
-	return c.merkleRoots.clearRoots()
-}
-
 func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -397,9 +393,6 @@ func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err
 	}
-	if err := c.applyClearContract(); err != nil {
-		return err
-	}
 	if err := c.headerFile.Sync(); err != nil {
 		return err
 	}
@@ -418,10 +411,6 @@ func (c *SafeContract) managedCommitTxns() error {
 	for _, t := range c.unappliedTxns {
 		for _, update := range t.Updates {
 			switch update.Name {
-			case updateNameClearContract:
-				if err := c.applyClearContract(); err != nil {
-					return err
-				}
 			case updateNameSetHeader:
 				var u updateSetHeader
 				if err := unmarshalHeader(update.Instructions, &u); err != nil {
