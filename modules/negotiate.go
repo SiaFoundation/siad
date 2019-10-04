@@ -528,7 +528,8 @@ type (
 		FinalRevisionSignature []byte
 	}
 
-	// LoopRenewAndClearContractRequest contains the request parameters for RPCLoopRenewClearContract.
+	// LoopRenewAndClearContractRequest contains the request parameters for
+	// RPCLoopRenewClearContract.
 	LoopRenewAndClearContractRequest struct {
 		Transactions []types.Transaction
 		RenterKey    types.SiaPublicKey
