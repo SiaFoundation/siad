@@ -165,7 +165,10 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 // was formed with and retrieving the latest revision and sector roots.
 func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs proto.EphemeralRenterSeed, blockHeight types.BlockHeight) error {
 	// Get the corresponding host.
-	host, ok := c.hdb.Host(rc.HostPublicKey)
+	host, ok, err := c.hdb.Host(rc.HostPublicKey)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		return errors.New("Can't recover contract with unknown host")
 	}

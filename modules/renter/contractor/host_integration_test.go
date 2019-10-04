@@ -178,10 +178,18 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 	}
 
 	// wait for hostdb to scan host
-	for i := 0; i < 50 && len(c.hdb.ActiveHosts()) == 0; i++ {
+	activeHosts, err := c.hdb.ActiveHosts()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for i := 0; i < 50 && len(activeHosts) == 0; i++ {
 		time.Sleep(time.Millisecond * 100)
 	}
-	if len(c.hdb.ActiveHosts()) == 0 {
+	activeHosts, err = c.hdb.ActiveHosts()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(activeHosts) == 0 {
 		return nil, nil, nil, errors.New("host did not make it into the contractor hostdb in time")
 	}
 
@@ -208,7 +216,10 @@ func TestIntegrationFormContract(t *testing.T) {
 	defer c.maintenanceLock.Unlock()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -241,7 +252,10 @@ func TestFormContractSmallAllowance(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -284,7 +298,10 @@ func TestIntegrationReviseContract(t *testing.T) {
 	defer c.maintenanceLock.Unlock()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -333,7 +350,10 @@ func TestIntegrationUploadDownload(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -727,7 +747,10 @@ func TestContractPresenceLeak(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}

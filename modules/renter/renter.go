@@ -62,23 +62,23 @@ type hostDB interface {
 
 	// ActiveHosts returns the list of hosts that are actively being selected
 	// from.
-	ActiveHosts() []modules.HostDBEntry
+	ActiveHosts() ([]modules.HostDBEntry, error)
 
 	// AllHosts returns the full list of hosts known to the hostdb, sorted in
 	// order of preference.
-	AllHosts() []modules.HostDBEntry
+	AllHosts() ([]modules.HostDBEntry, error)
 
 	// Close closes the hostdb.
 	Close() error
 
 	// Filter returns the hostdb's filterMode and filteredHosts
-	Filter() (modules.FilterMode, map[string]types.SiaPublicKey)
+	Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
 	SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error
 
 	// Host returns the HostDBEntry for a given host.
-	Host(pk types.SiaPublicKey) (modules.HostDBEntry, bool)
+	Host(pk types.SiaPublicKey) (modules.HostDBEntry, bool, error)
 
 	// initialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
@@ -86,7 +86,7 @@ type hostDB interface {
 
 	// IPViolationsCheck returns a boolean indicating if the IP violation check is
 	// enabled or not.
-	IPViolationsCheck() bool
+	IPViolationsCheck() (bool, error)
 
 	// RandomHosts returns a set of random hosts, weighted by their estimated
 	// usefulness / attractiveness to the renter. RandomHosts will not return
@@ -104,7 +104,7 @@ type hostDB interface {
 
 	// SetIPViolationCheck enables/disables the IP violation check within the
 	// hostdb.
-	SetIPViolationCheck(enabled bool)
+	SetIPViolationCheck(enabled bool) error
 
 	// EstimateHostScore returns the estimated score breakdown of a host with the
 	// provided settings.
@@ -151,7 +151,7 @@ type hostContractor interface {
 
 	// PeriodSpending returns the amount spent on contracts during the current
 	// billing period.
-	PeriodSpending() modules.ContractorSpending
+	PeriodSpending() (modules.ContractorSpending, error)
 
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []modules.RenterContract
@@ -285,7 +285,10 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	// Use provide allowance. If no allowance provided use the existing
 	// allowance. If no allowance exists, use a sane default allowance.
 	if reflect.DeepEqual(allowance, modules.Allowance{}) {
-		rs := r.Settings()
+		rs, err := r.Settings()
+		if err != nil {
+			return modules.RenterPriceEstimation{}, modules.Allowance{}, err
+		}
 		allowance = rs.Allowance
 		if reflect.DeepEqual(allowance, modules.Allowance{}) {
 			allowance = modules.DefaultAllowance
@@ -313,8 +316,8 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	}
 	// Get hosts from pubkeys
 	for _, pk := range pks {
-		host, ok := r.hostDB.Host(pk)
-		if !ok || host.Filtered {
+		host, ok, err := r.hostDB.Host(pk)
+		if !ok || host.Filtered || err != nil {
 			continue
 		}
 		// confirm host wasn't already added
@@ -630,10 +633,10 @@ func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) er
 }
 
 // ActiveHosts returns an array of hostDB's active hosts
-func (r *Renter) ActiveHosts() []modules.HostDBEntry { return r.hostDB.ActiveHosts() }
+func (r *Renter) ActiveHosts() ([]modules.HostDBEntry, error) { return r.hostDB.ActiveHosts() }
 
 // AllHosts returns an array of all hosts
-func (r *Renter) AllHosts() []modules.HostDBEntry { return r.hostDB.AllHosts() }
+func (r *Renter) AllHosts() ([]modules.HostDBEntry, error) { return r.hostDB.AllHosts() }
 
 // Filter returns the renter's hostdb's filterMode and filteredHosts
 func (r *Renter) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
@@ -643,7 +646,10 @@ func (r *Renter) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, er
 		return fm, hosts, err
 	}
 	defer r.tg.Done()
-	fm, hosts = r.hostDB.Filter()
+	fm, hosts, err := r.hostDB.Filter()
+	if err != nil {
+		return fm, hosts, err
+	}
 	return fm, hosts, nil
 }
 
@@ -654,7 +660,11 @@ func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey
 	}
 	defer r.tg.Done()
 	// Check to see how many hosts are needed for the allowance
-	minHosts := r.Settings().Allowance.Hosts
+	settings, err := r.Settings()
+	if err != nil {
+		return err
+	}
+	minHosts := settings.Allowance.Hosts
 	if len(hosts) < int(minHosts) && lm == modules.HostDBActiveWhitelist {
 		r.log.Printf("WARN: There are fewer whitelisted hosts than the allowance requires.  Have %v whitelisted hosts, need %v to support allowance\n", len(hosts), minHosts)
 	}
@@ -668,7 +678,9 @@ func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey
 }
 
 // Host returns the host associated with the given public key
-func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) { return r.hostDB.Host(spk) }
+func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool, error) {
+	return r.hostDB.Host(spk)
+}
 
 // InitialScanComplete returns a boolean indicating if the initial scan of the
 // hostdb is completed.
@@ -682,7 +694,11 @@ func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) (modules.HostScoreBreakdo
 // EstimateHostScore returns the estimated host score
 func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) (modules.HostScoreBreakdown, error) {
 	if reflect.DeepEqual(a, modules.Allowance{}) {
-		a = r.Settings().Allowance
+		settings, err := r.Settings()
+		if err != nil {
+			return modules.HostScoreBreakdown{}, err
+		}
+		a = settings.Allowance
 	}
 	if reflect.DeepEqual(a, modules.Allowance{}) {
 		a = modules.DefaultAllowance
@@ -725,7 +741,9 @@ func (r *Renter) OldContracts() []modules.RenterContract {
 }
 
 // PeriodSpending returns the host contractor's period spending
-func (r *Renter) PeriodSpending() modules.ContractorSpending { return r.hostContractor.PeriodSpending() }
+func (r *Renter) PeriodSpending() (modules.ContractorSpending, error) {
+	return r.hostContractor.PeriodSpending()
+}
 
 // RecoverableContracts returns the host contractor's recoverable contracts.
 func (r *Renter) RecoverableContracts() []modules.RecoverableContract {
@@ -739,14 +757,18 @@ func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
 }
 
 // Settings returns the renter's allowance
-func (r *Renter) Settings() modules.RenterSettings {
+func (r *Renter) Settings() (modules.RenterSettings, error) {
 	download, upload, _ := r.hostContractor.RateLimits()
+	enabled, err := r.hostDB.IPViolationsCheck()
+	if err != nil {
+		return modules.RenterSettings{}, err
+	}
 	return modules.RenterSettings{
 		Allowance:         r.hostContractor.Allowance(),
-		IPViolationsCheck: r.hostDB.IPViolationsCheck(),
+		IPViolationsCheck: enabled,
 		MaxDownloadSpeed:  download,
 		MaxUploadSpeed:    upload,
-	}
+	}, nil
 }
 
 // ProcessConsensusChange returns the process consensus change
