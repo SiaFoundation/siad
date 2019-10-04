@@ -1703,7 +1703,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 
 	// Test Resetting allowance
 	// Cancel the allowance
-	if err := renter.RenterCancelAllowance(); err != nil {
+	if err := renter.RenterAllowanceCancelPost(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1783,7 +1783,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Cancel the allowance
-	if err := renter.RenterCancelAllowance(); err != nil {
+	if err := renter.RenterAllowanceCancelPost(); err != nil {
 		t.Fatal(err)
 	}
 

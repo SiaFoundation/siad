@@ -2024,6 +2024,19 @@ Enables or disables the check for hosts using the same ip subnets within the hos
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /renter/allowance/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword>  "localhost:9980/renter/allowance/cancel"
+```
+
+Cancel the Renter's allowance.
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
 ## /renter/contract/cancel [POST]
 > curl example  
 

@@ -677,6 +677,24 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 	WriteSuccess(w)
 }
 
+// renterAllowanceCancelHandlerPOST handles the API call to cancel the Renter's
+// allowance
+func (api *API) renterAllowanceCancelHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the existing settings
+	settings := api.renter.Settings()
+
+	// Set the allownace to nil
+	settings.Allowance = modules.Allowance{}
+
+	// Set the settings in the renter.
+	err := api.renter.SetSettings(settings)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
 // renterContractCancelHandler handles the API call to cancel a specific Renter contract.
 func (api *API) renterContractCancelHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var fcid types.FileContractID

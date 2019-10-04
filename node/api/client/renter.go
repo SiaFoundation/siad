@@ -376,9 +376,10 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) error {
 	return a.Send()
 }
 
-// RenterCancelAllowance uses the /renter endpoint to cancel the allowance.
-func (c *Client) RenterCancelAllowance() (err error) {
-	err = c.RenterPostAllowance(modules.Allowance{})
+// RenterAllowanceCancelPost uses the /renter/allowance/cancel endpoint to cancel
+// the allowance.
+func (c *Client) RenterAllowanceCancelPost() (err error) {
+	err = c.post("/renter/allowance/cancel", "", nil)
 	return
 }
 
