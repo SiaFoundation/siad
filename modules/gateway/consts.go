@@ -40,6 +40,10 @@ const (
 	// codebase were made that weren't backwards compatible. This might include
 	// changes to the protocol or hardforks.
 	minimumAcceptablePeerVersion = "1.3.7"
+
+	// onlineCheckFrequency defines how often the gateway calls 'Online' in
+	// threadedOnlineCheck.
+	onlineCheckFrequency = time.Minute
 )
 
 var (

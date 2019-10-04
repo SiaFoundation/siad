@@ -571,15 +571,15 @@ func (g *Gateway) Online() (online bool) {
 			g.staticAlerter.RegisterAlert(modules.AlertIDGatewayOffline, AlertMSGGatewayOffline, "", modules.SeverityWarning)
 		}
 	}()
-	ignoreTestingCheck := g.staticDeps.Disrupt("DisableGatewayAutoOnline")
-	if (build.Release == "dev" || build.Release == "testing") && !ignoreTestingCheck {
+	disableAutoOnline := g.staticDeps.Disrupt("DisableGatewayAutoOnline")
+	if (build.Release == "dev" || build.Release == "testing") && !disableAutoOnline {
 		return true
 	}
 
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	for _, p := range g.peers {
-		if !p.Local || ignoreTestingCheck {
+		if !p.Local || disableAutoOnline {
 			return true
 		}
 	}

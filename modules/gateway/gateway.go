@@ -407,7 +407,27 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	go g.threadedForwardPort(g.port)
 	go g.threadedLearnHostname()
 
+	// Spawn thread to periodically check if the gateway is online.
+	go g.threadedOnlineCheck()
+
 	return g, nil
+}
+
+// threadedOnlineCheck periodically calls 'Online' to register the
+// GatewayOffline alert.
+func (g *Gateway) threadedOnlineCheck() {
+	if err := g.threads.Add(); err != nil {
+		return
+	}
+	defer g.threads.Done()
+	for {
+		select {
+		case <-g.threads.StopChan:
+			return
+		case <-time.After(onlineCheckFrequency):
+		}
+		_ = g.Online()
+	}
 }
 
 // enforce that Gateway satisfies the modules.Gateway interface
