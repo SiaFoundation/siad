@@ -151,7 +151,7 @@ func (n *dNode) close() {
 
 	// Remove node from parent if there are no more children.
 	if len(n.threads)+len(n.directories)+len(n.files) == 0 {
-		n.staticParent.removeChild(&n.node)
+		n.staticParent.managedRemoveChild(&n.node)
 	}
 }
 
@@ -174,14 +174,15 @@ func (n *fNode) close() {
 	}
 
 	// Remove node from parent.
-	n.staticParent.removeChild(&n.node)
+	n.staticParent.managedRemoveChild(&n.node)
 }
 
-// removeChild removes a child from a dNode. If as a result the dNode ends up
-// without children and if the threads map of the dNode is empty, the dNode will
-// remove itself from its parent.
-func (n *dNode) removeChild(child *node) {
+// managedRemoveChild removes a child from a dNode. If as a result the dNode
+// ends up without children and if the threads map of the dNode is empty, the
+// dNode will remove itself from its parent.
+func (n *dNode) managedRemoveChild(child *node) {
 	// Remove the child node.
+	n.mu.Lock()
 	_, existsDir := n.directories[child.staticName]
 	_, existsFile := n.directories[child.staticName]
 	if !existsDir && !existsFile {
@@ -189,12 +190,14 @@ func (n *dNode) removeChild(child *node) {
 	}
 	delete(n.directories, child.staticName)
 	delete(n.files, child.staticName)
+	removeChild := len(n.threads) == 0 && len(n.files) == 0 && len(n.directories) == 0
+	n.mu.Unlock()
 
 	// If there are no more children and the threads map is empty, remove the
 	// parent as well. This happens when a directory was added to the tree
 	// because one of its children was opened.
-	if n.staticParent != nil && len(n.threads) == 0 && len(n.files) == 0 && len(n.directories) == 0 {
-		n.staticParent.removeChild(&n.node)
+	if n.staticParent != nil && removeChild {
+		n.staticParent.managedRemoveChild(&n.node)
 	}
 }
 
