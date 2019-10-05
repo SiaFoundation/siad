@@ -4186,6 +4186,8 @@ The addresses currently watched by the wallet.
 curl -A "Sia-Agent" -u "":<apipassword> --data "<requestbody>" "localhost:9980/wallet/watch"
 ```
 
+Update the set of addresses for the wallet to watch.
+
 ### Request Body
 > Request Body Example
 
