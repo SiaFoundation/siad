@@ -266,7 +266,7 @@ Odds are, someone else is wondering the same thing.
 [pkg/testing]: https://golang.org/pkg/testing/
 [makefile]: https://gitlab.com/NebulousLabs/Sia/blob/master/Makefile
 [luke]: https://gist.github.com/lukechampine/6418449
-[guide]: https://gitlab.com/NebulousLabs/Sia/blob/master/CONTRIBUTING.md
+[guide]: https://gitlab.com/NebulousLabs/Sia/blob/master/doc/Guide%20to%20Contributing%20to%20Sia.md
 [developers]: https://gitlab.com/NebulousLabs/Sia/blob/master/doc/Developers.md
 [table]: http://dave.cheney.net/2013/06/09/writing-table-driven-tests-in-go
 [boltdb_test.go]: https://gitlab.com/NebulousLabs/Sia/blob/master/persist/boltdb_test.go
