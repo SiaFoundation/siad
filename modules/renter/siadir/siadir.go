@@ -211,12 +211,14 @@ func loadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, er
 }
 
 // LoadSiaDir loads the directory metadata from disk
-// TODO: implement
-func LoadSiaDir(path string) (sd *SiaDir, err error) {
-	if _, err := os.Stat(filepath.Dir(path)); err != nil {
-		return nil, err
+func LoadSiaDir(path string, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
+	sd = &SiaDir{
+		deps: deps,
+		path: path,
+		wal:  wal,
 	}
-	return &SiaDir{}, nil
+	sd.metadata, err = loadSiaDirMetadata(filepath.Join(path, modules.SiaDirExtension), modules.ProdDependencies)
+	return sd, err
 }
 
 // delete removes the directory from disk and marks it as deleted. Once the directory is
