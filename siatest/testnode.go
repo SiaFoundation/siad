@@ -1,14 +1,13 @@
 package siatest
 
 import (
-	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -16,6 +15,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
 	"gitlab.com/NebulousLabs/Sia/types"
+)
+
+var (
+	// testNodeAddressCounter is a channel that tracks the counter for the test
+	// node addresses
+	testNodeAddressCounter = newNodeAddressCounter()
 )
 
 // TestNode is a helper struct for testing that contains a server and a client
@@ -28,6 +33,37 @@ type TestNode struct {
 
 	downloadDir *LocalDir
 	filesDir    *LocalDir
+}
+
+// newNodeAddressCounter creates a new counter channel and returns it
+//
+// The counter is initialize with an IP address of 127.0.1.0 so that testers can
+// manually add nodes in the address range of 127.0.0.X without causing a
+// conflict
+func newNodeAddressCounter() chan net.IP {
+	counter := make(chan net.IP, 1)
+	counter <- net.IPv4(127, 0, 1, 0)
+	return counter
+}
+
+// nextNodeAddress returns the next node address based on the
+// testNodeAddressCounter
+func nextNodeAddress() (string, error) {
+	currIP := <-testNodeAddressCounter
+	// IPs are byte slices with a length of 16, the IPv4 address range is stored
+	// in the last 4 indexes, 12-15
+	for i := len(currIP) - 1; i >= 12; i-- {
+		if i == 12 {
+			return "", errors.New("ran out of IP addresses")
+		}
+		currIP[i]++
+		if currIP[i] > 0 {
+			break
+		}
+	}
+	testNodeAddressCounter <- currIP
+	return currIP.String(), nil
+
 }
 
 // PrintDebugInfo prints out helpful debug information when debug tests and ndfs, the
@@ -221,8 +257,11 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 
 	// Check if a gateway address is set
 	if nodeParams.GatewayAddress == "" {
-		nodeParams.GatewayAddress = fmt.Sprintf("127.%v.%v.%v:0",
-			fastrand.Intn(256), fastrand.Intn(256), fastrand.Intn(256))
+		addr, err := nextNodeAddress()
+		if err != nil {
+			return nil, errors.AddContext(err, "error getting next node address")
+		}
+		nodeParams.GatewayAddress = addr + ":0"
 	}
 
 	// Create server
