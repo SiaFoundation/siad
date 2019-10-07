@@ -643,22 +643,34 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		}
 
 		// If Expected Storage is still 0 set to the sane default
-		if settings.Allowance.ExpectedStorage == 0 && !expectedStorageSet {
+		if settings.Allowance.ExpectedStorage == 0 && expectedStorageSet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedStorage.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.ExpectedStorage == 0 {
 			settings.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 		}
 
 		// If Expected Upload is still 0 set to the sane default
-		if settings.Allowance.ExpectedUpload == 0 && !expectedUploadSet {
+		if settings.Allowance.ExpectedUpload == 0 && expectedUploadSet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedUpload.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.ExpectedUpload == 0 {
 			settings.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 		}
 
 		// If Expected Download is still 0 set to the sane default
-		if settings.Allowance.ExpectedDownload == 0 && !expectedDownloadSet {
+		if settings.Allowance.ExpectedDownload == 0 && expectedDownloadSet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedDownload.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.ExpectedDownload == 0 {
 			settings.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 		}
 
 		// If Expected Redundancy is still 0 set to the sane default
-		if settings.Allowance.ExpectedRedundancy == 0 && !expectedRedundancySet {
+		if settings.Allowance.ExpectedRedundancy == 0 && expectedRedundancySet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedRedundancy.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.ExpectedRedundancy == 0 {
 			settings.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 		}
 	}
