@@ -168,7 +168,7 @@ func (fs *FileSystem) managedOpenFile(path string) (*fNode, error) {
 		}
 		// Close the dir since we are not returning it. The open file keeps it
 		// loaded in memory.
-		defer dir.close()
+		defer dir.Close()
 	}
 	return dir.managedOpenFile(fileName)
 }
@@ -176,6 +176,8 @@ func (fs *FileSystem) managedOpenFile(path string) (*fNode, error) {
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
 func (n *dNode) managedOpenFile(fileName string) (*fNode, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	fn, exists := n.files[fileName]
 	if !exists {
 		// Load file from disk.
@@ -193,6 +195,9 @@ func (n *dNode) managedOpenFile(fileName string) (*fNode, error) {
 		}
 		n.files[fileName] = fn
 	}
+	// lock new node before releasing parent.
+	fn.mu.Lock()
+	defer fn.mu.Unlock()
 	// Clone the node, give it a new UID and return it.
 	newNode := *fn
 	newNode.threadUID = newThreadUID()
@@ -202,7 +207,7 @@ func (n *dNode) managedOpenFile(fileName string) (*fNode, error) {
 
 // close removes a thread from the node's threads map. This should only be
 // called from within other 'close' methods.
-func (n *node) close() {
+func (n *node) _close() {
 	if _, exists := n.threads[n.threadUID]; !exists {
 		build.Critical("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
 	}
@@ -212,64 +217,70 @@ func (n *node) close() {
 // close calls close on the underlying node and also removes the dNode from its
 // parent if it's no longer being used and if it doesn't have any children which
 // are currently in use.
-func (n *dNode) close() {
+func (n *dNode) Close() {
+	n.mu.Lock()
 	// Call common close method.
-	n.node.close()
-
-	// The entry that exists in the parent may not be the same as the entry
-	// that is being closed, this can happen if there was a rename or a delete
-	// and then a new/different file was uploaded with the same path.
-	//
-	// If they are not the same node, there is nothing more to do.
-	n.staticParent.mu.Lock()
-	sd := n.staticParent.directories[n.staticName].SiaDir
-	n.staticParent.mu.Unlock()
-	if n.SiaDir != sd {
-		return
-	}
+	n.node._close()
 
 	// Remove node from parent if there are no more children.
-	if len(n.threads)+len(n.directories)+len(n.files) == 0 {
-		n.staticParent.managedRemoveChild(&n.node)
+	if n.staticParent != nil && len(n.threads)+len(n.directories)+len(n.files) == 0 {
+		n.mu.Unlock()
+		n.staticParent.managedRemoveDir(n)
+		return
 	}
+	n.mu.Unlock()
 }
 
 // close calls close on the underlying node and also removes the fNode from its
 // parent.
-func (n *fNode) close() {
+func (n *fNode) Close() {
+	n.mu.Lock()
 	// Call common close method.
-	n.node.close()
-
-	// The entry that exists in the parent may not be the same as the entry
-	// that is being closed, this can happen if there was a rename or a delete
-	// and then a new/different file was uploaded with the same path.
-	//
-	// If they are not the same node, there is nothing more to do.
-	n.staticParent.mu.Lock()
-	sf := n.staticParent.files[n.staticName].SiaFile
-	n.staticParent.mu.Unlock()
-	if n.SiaFile != sf {
-		return
-	}
+	n.node._close()
 
 	// Remove node from parent.
 	if len(n.threads) == 0 {
-		n.staticParent.managedRemoveChild(&n.node)
+		n.mu.Unlock()
+		n.staticParent.managedRemoveFile(n)
+		return
+	}
+	n.mu.Unlock()
+}
+
+// managedRemoveChild removes a child from a dNode. If as a result the dNode
+// ends up without children and if the threads map of the dNode is empty, the
+// dNode will remove itself from its parent.
+func (n *dNode) managedRemoveDir(child *dNode) {
+	// Remove the child node.
+	n.mu.Lock()
+	currentChild, exists := n.directories[child.staticName]
+	if !exists || child.SiaDir != currentChild.SiaDir {
+		n.mu.Unlock()
+		return // Nothing to do
+	}
+	delete(n.directories, child.staticName)
+	removeChild := len(n.threads) == 0 && len(n.files) == 0 && len(n.directories) == 0
+	n.mu.Unlock()
+
+	// If there are no more children and the threads map is empty, remove the
+	// parent as well. This happens when a directory was added to the tree
+	// because one of its children was opened.
+	if n.staticParent != nil && removeChild {
+		n.staticParent.managedRemoveDir(n)
 	}
 }
 
 // managedRemoveChild removes a child from a dNode. If as a result the dNode
 // ends up without children and if the threads map of the dNode is empty, the
 // dNode will remove itself from its parent.
-func (n *dNode) managedRemoveChild(child *node) {
+func (n *dNode) managedRemoveFile(child *fNode) {
 	// Remove the child node.
 	n.mu.Lock()
-	_, existsDir := n.directories[child.staticName]
-	_, existsFile := n.files[child.staticName]
-	if !existsDir && !existsFile {
-		build.Critical("removeChild: unknown child")
+	currentChild, exists := n.files[child.staticName]
+	if !exists || currentChild.SiaFile != child.SiaFile {
+		n.mu.Unlock()
+		return // Nothing to do
 	}
-	delete(n.directories, child.staticName)
 	delete(n.files, child.staticName)
 	removeChild := len(n.threads) == 0 && len(n.files) == 0 && len(n.directories) == 0
 	n.mu.Unlock()
@@ -278,7 +289,7 @@ func (n *dNode) managedRemoveChild(child *node) {
 	// parent as well. This happens when a directory was added to the tree
 	// because one of its children was opened.
 	if n.staticParent != nil && removeChild {
-		n.staticParent.managedRemoveChild(&n.node)
+		n.staticParent.managedRemoveDir(n)
 	}
 }
 

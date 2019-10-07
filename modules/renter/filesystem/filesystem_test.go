@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -72,6 +74,9 @@ func (fs *FileSystem) AddTestSiaFile(siaPath modules.SiaPath) {
 
 // TestNew tests creating a new FileSystem.
 func TestNew(t *testing.T) {
+	if testing.Short && !build.VLONG {
+		t.SkipNow()
+	}
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -101,6 +106,9 @@ func TestNew(t *testing.T) {
 // TestNewSiaDir tests if creating a new directory using NewSiaDir creates the
 // correct folder structure.
 func TestNewSiaDir(t *testing.T) {
+	if testing.Short && !build.VLONG {
+		t.SkipNow()
+	}
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -118,6 +126,9 @@ func TestNewSiaDir(t *testing.T) {
 // TestNewSiaDir tests if creating a new directory using NewSiaDir creates the
 // correct folder structure.
 func TestNewSiaFile(t *testing.T) {
+	if testing.Short && !build.VLONG {
+		t.SkipNow()
+	}
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -144,6 +155,9 @@ func TestNewSiaFile(t *testing.T) {
 // TestOpenSiaDir confirms that a previoiusly created SiaDir can be opened and
 // that the filesystem tree is extended accordingly in the process.
 func TestOpenSiaDir(t *testing.T) {
+	if testing.Short && !build.VLONG {
+		t.SkipNow()
+	}
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -157,7 +171,7 @@ func TestOpenSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer foo.close()
+	defer foo.Close()
 	// Create dir /sub/foo
 	sp = newSiaPath("sub/foo")
 	if err := fs.NewSiaDir(sp); err != nil {
@@ -168,7 +182,7 @@ func TestOpenSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sd.close()
+	defer sd.Close()
 	// Confirm the integrity of the root node.
 	if len(fs.threads) != 0 {
 		t.Fatalf("Expected fs.threads to have length 0 but was %v", len(fs.threads))
@@ -218,7 +232,7 @@ func TestOpenSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sd2.close()
+	defer sd2.Close()
 	// They should have different UIDs.
 	if sd.threadUID == 0 {
 		t.Fatal("threaduid shouldn't be 0")
@@ -244,7 +258,7 @@ func TestOpenSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sdSub.close()
+	defer sdSub.Close()
 	if len(subNode.threads) != 1 || len(sdSub.threads) != 1 {
 		t.Fatal("subNode and sdSub should both have 1 thread registered")
 	}
@@ -259,6 +273,9 @@ func TestOpenSiaDir(t *testing.T) {
 // TestOpenSiaFile confirms that a previously created SiaFile can be opened and
 // that the filesystem tree is extended accordingly in the process.
 func TestOpenSiaFile(t *testing.T) {
+	if testing.Short && !build.VLONG {
+		t.SkipNow()
+	}
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -270,7 +287,7 @@ func TestOpenSiaFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sf.close()
+	defer sf.Close()
 	// Confirm the integrity of the file.
 	if sf.staticName != "file" {
 		t.Fatalf("name of file should be file but was %v", sf.staticName)
@@ -305,7 +322,7 @@ func TestOpenSiaFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sf2.close()
+	defer sf2.Close()
 	// Confirm the integrity of the file.
 	if sf2.staticName != "file" {
 		t.Fatalf("name of file should be file but was %v", sf2.staticName)
@@ -338,6 +355,9 @@ func TestOpenSiaFile(t *testing.T) {
 // TestCloseSiaDir tests that closing an opened directory shrinks the tree
 // accordingly.
 func TestCloseSiaDir(t *testing.T) {
+	if testing.Short && !build.VLONG {
+		t.SkipNow()
+	}
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -364,7 +384,7 @@ func TestCloseSiaDir(t *testing.T) {
 		t.Fatalf("The parent should have 1 directory but got %v", len(sd.staticParent.directories))
 	}
 	// After closing it the thread should be gone.
-	sd.close()
+	sd.Close()
 	if len(fs.threads) != 0 {
 		t.Fatalf("There should be 0 threads in fs.threads but got %v", len(fs.threads))
 	}
@@ -393,7 +413,7 @@ func TestCloseSiaDir(t *testing.T) {
 		t.Fatalf("The parent should have 1 directory but got %v", len(sd.staticParent.directories))
 	}
 	// Close one instance.
-	sd1.close()
+	sd1.Close()
 	if len(sd1.threads) != 1 || len(sd2.threads) != 1 {
 		t.Fatalf("There should be 1 thread in sd.threads but got %v", len(sd1.threads))
 	}
@@ -404,7 +424,7 @@ func TestCloseSiaDir(t *testing.T) {
 		t.Fatalf("The parent should have 1 directory but got %v", len(sd.staticParent.directories))
 	}
 	// Close the second one.
-	sd2.close()
+	sd2.Close()
 	if len(fs.threads) != 0 {
 		t.Fatalf("There should be 0 threads in fs.threads but got %v", len(fs.threads))
 	}
@@ -419,6 +439,9 @@ func TestCloseSiaDir(t *testing.T) {
 // TestCloseSiaFile tests that closing an opened file shrinks the tree
 // accordingly.
 func TestCloseSiaFile(t *testing.T) {
+	if testing.Short && !build.VLONG {
+		t.SkipNow()
+	}
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -443,7 +466,7 @@ func TestCloseSiaFile(t *testing.T) {
 		t.Fatalf("The parent should have 1 file but got %v", len(sf.staticParent.files))
 	}
 	// After closing it the thread should be gone.
-	sf.close()
+	sf.Close()
 	if len(fs.threads) != 0 {
 		t.Fatalf("There should be 0 threads in fs.threads but got %v", len(fs.threads))
 	}
@@ -472,7 +495,7 @@ func TestCloseSiaFile(t *testing.T) {
 		t.Fatalf("The parent should have 1 file but got %v", len(sf1.staticParent.files))
 	}
 	// Close one instance.
-	sf1.close()
+	sf1.Close()
 	if len(sf1.threads) != 1 || len(sf2.threads) != 1 {
 		t.Fatalf("There should be 1 thread in sf1.threads but got %v", len(sf1.threads))
 	}
@@ -483,7 +506,7 @@ func TestCloseSiaFile(t *testing.T) {
 		t.Fatalf("The parent should have 1 file but got %v", len(sf1.staticParent.files))
 	}
 	// Close the second one.
-	sf2.close()
+	sf2.Close()
 	if len(fs.threads) != 0 {
 		t.Fatalf("There should be 0 threads in fs.threads but got %v", len(fs.threads))
 	}
@@ -495,5 +518,100 @@ func TestCloseSiaFile(t *testing.T) {
 	}
 	if len(sf1.staticParent.files) != 0 || len(sf2.staticParent.files) != 0 {
 		t.Fatalf("The parent should have 0 files but got %v", len(sf1.staticParent.files))
+	}
+}
+
+// TestThreadedAccess tests rapidly opening and closing files and directories
+// from multiple threads to check the locking conventions.
+func TestThreadedAccess(t *testing.T) {
+	if testing.Short && !build.VLONG {
+		t.SkipNow()
+	}
+	// Specify the file structure for the test.
+	filePaths := []string{
+		"f0",
+		"f1",
+		"f2",
+
+		"d0/f0", "d0/f1", "d0/f2",
+		"d1/f0", "d1/f1", "d1/f2",
+		"d2/f0", "d2/f1", "d2/f2",
+
+		"d0/d0/f0", "d0/d0/f1", "d0/d0/f2",
+		"d0/d1/f0", "d0/d1/f1", "d0/d1/f2",
+		"d0/d2/f0", "d0/d2/f1", "d0/d2/f2",
+
+		"d1/d0/f0", "d1/d0/f1", "d1/d0/f2",
+		"d1/d1/f0", "d1/d1/f1", "d1/d1/f2",
+		"d1/d2/f0", "d1/d2/f1", "d1/d2/f2",
+
+		"d2/d0/f0", "d2/d0/f1", "d2/d0/f2",
+		"d2/d1/f0", "d2/d1/f1", "d2/d1/f2",
+		"d2/d2/f0", "d2/d2/f1", "d2/d2/f2",
+	}
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	for _, fp := range filePaths {
+		fs.AddTestSiaFile(newSiaPath(fp))
+	}
+	// Create a few threads which open files
+	var wg sync.WaitGroup
+	numThreads := 5
+	maxNumActions := uint64(50000)
+	numActions := uint64(0)
+	for i := 0; i < numThreads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				if atomic.LoadUint64(&numActions) >= maxNumActions {
+					break
+				}
+				atomic.AddUint64(&numActions, 1)
+				sp := newSiaPath(filePaths[fastrand.Intn(len(filePaths))])
+				sf, err := fs.OpenSiaFile(sp)
+				if err != nil {
+					t.Fatal(err)
+				}
+				sf.Close()
+			}
+		}()
+	}
+	// Create a few threads which open dirs
+	for i := 0; i < numThreads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				if atomic.LoadUint64(&numActions) >= maxNumActions {
+					break
+				}
+				atomic.AddUint64(&numActions, 1)
+				sp := newSiaPath(filePaths[fastrand.Intn(len(filePaths))])
+				sp, err := sp.Dir()
+				if err != nil {
+					t.Fatal(err)
+				}
+				sd, err := fs.OpenSiaDir(sp)
+				if err != nil {
+					t.Fatal(err)
+				}
+				sd.Close()
+			}
+		}()
+	}
+	wg.Wait()
+
+	// Check the root's integrity. Since all files and dirs were closed, the
+	// node's maps should reflect that.
+	if len(fs.threads) != 0 {
+		t.Fatalf("fs should have 0 threads but had %v", len(fs.threads))
+	}
+	if len(fs.files) != 0 {
+		t.Fatalf("fs should have 0 files but had %v", len(fs.files))
+	}
+	if len(fs.directories) != 0 {
+		t.Fatalf("fs should have 0 directories but had %v", len(fs.directories))
 	}
 }
