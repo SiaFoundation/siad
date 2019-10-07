@@ -5,22 +5,37 @@ import (
 	"reflect"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (
-	errAllowanceNoHosts                = errors.New("hosts must be non-zero")
-	errAllowanceNotSynced              = errors.New("you must be synced to set an allowance")
-	errAllowanceWindowSize             = errors.New("renew window must be less than period")
-	errAllowanceZeroPeriod             = errors.New("period must be non-zero")
-	errAllowanceZeroExpectedStorage    = errors.New("expected storage must be non-zero")
-	errAllowanceZeroExpectedUpload     = errors.New("expected upload  must be non-zero")
-	errAllowanceZeroExpectedDownload   = errors.New("expected download  must be non-zero")
-	errAllowanceZeroExpectedRedundancy = errors.New("expected redundancy must be non-zero")
+	errAllowanceNotSynced  = errors.New("you must be synced to set an allowance")
+	errAllowanceWindowSize = errors.New("renew window must be less than period")
 
-	// ErrAllowanceZeroWindow is returned when the caller requests a
-	// zero-length renewal window. This will happen if the caller sets the
-	// period to 1 block, since RenewWindow := period / 2.
+	// ErrAllowanceZeroFunds is returned if the allowance funds are being set to
+	// zero when not cancelling the allowance
+	ErrAllowanceZeroFunds = errors.New("funds must be non-zero")
+	// ErrAllowanceZeroPeriod is returned if the allowance period are being set
+	// to zero when not cancelling the allowance
+	ErrAllowanceZeroPeriod = errors.New("period must be non-zero")
+	// ErrAllowanceZeroWindow is returned if the allowance renew window are
+	// being set to zero when not cancelling the allowance
 	ErrAllowanceZeroWindow = errors.New("renew window must be non-zero")
+	// ErrAllowanceNoHosts is returned if the allowance hosts are being set to
+	// zero when not cancelling the allowance
+	ErrAllowanceNoHosts = errors.New("hosts must be non-zero")
+	// ErrAllowanceZeroExpectedStorage is returned if the allowance expect
+	// storage are being set to zero when not cancelling the allowance
+	ErrAllowanceZeroExpectedStorage = errors.New("expected storage must be non-zero")
+	// ErrAllowanceZeroExpectedUpload is returned if the allowance expected
+	// upload are being set to zero when not cancelling the allowance
+	ErrAllowanceZeroExpectedUpload = errors.New("expected upload  must be non-zero")
+	// ErrAllowanceZeroExpectedDownload is returned if the allowance expect
+	// download are being set to zero when not cancelling the allowance
+	ErrAllowanceZeroExpectedDownload = errors.New("expected download  must be non-zero")
+	// ErrAllowanceZeroExpectedRedundancy is returned if the allowance expected
+	// redundancy are being set to zero when not cancelling the allowance
+	ErrAllowanceZeroExpectedRedundancy = errors.New("expected redundancy must be non-zero")
 )
 
 // SetAllowance sets the amount of money the Contractor is allowed to spend on
@@ -49,22 +64,24 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	}
 
 	// sanity checks
-	if a.Hosts == 0 {
-		return errAllowanceNoHosts
+	if a.Funds.Cmp(types.ZeroCurrency) <= 0 {
+		return ErrAllowanceZeroFunds
+	} else if a.Hosts == 0 {
+		return ErrAllowanceNoHosts
 	} else if a.Period == 0 {
-		return errAllowanceZeroPeriod
+		return ErrAllowanceZeroPeriod
 	} else if a.RenewWindow == 0 {
 		return ErrAllowanceZeroWindow
 	} else if a.RenewWindow >= a.Period {
 		return errAllowanceWindowSize
 	} else if a.ExpectedStorage == 0 {
-		return errAllowanceZeroExpectedStorage
+		return ErrAllowanceZeroExpectedStorage
 	} else if a.ExpectedUpload == 0 {
-		return errAllowanceZeroExpectedUpload
+		return ErrAllowanceZeroExpectedUpload
 	} else if a.ExpectedDownload == 0 {
-		return errAllowanceZeroExpectedDownload
+		return ErrAllowanceZeroExpectedDownload
 	} else if a.ExpectedRedundancy == 0 {
-		return errAllowanceZeroExpectedRedundancy
+		return ErrAllowanceZeroExpectedRedundancy
 	} else if !c.cs.Synced() {
 		return errAllowanceNotSynced
 	}

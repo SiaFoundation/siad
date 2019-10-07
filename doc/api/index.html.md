@@ -2014,6 +2014,9 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&fu
 Modify settings that control the renter's behavior.
 
 ### Query String Parameters
+#### REQUIRED
+When setting the allowance the Funds and Period are required. Since these are the two required fields, the allowance can be cancelled by submitted the zero values for these fields.
+
 #### OPTIONAL
 Any of the renter settings can be set, see fields [here](#settings)
 

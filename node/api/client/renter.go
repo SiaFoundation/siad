@@ -575,3 +575,9 @@ func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, er
 	err = c.get("/renter/uploadready", &rur)
 	return
 }
+
+// RenterPost uses the /renter POST endpoint to set fields of the renter
+func (c *Client) RenterPost(values url.Values) (err error) {
+	err = c.post("/renter", values.Encode(), nil)
+	return
+}

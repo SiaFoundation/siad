@@ -329,8 +329,19 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	// bad args
 	a.Hosts = 1
 	err = c.SetAllowance(a)
-	if err != errAllowanceZeroPeriod {
-		t.Errorf("expected %q, got %q", errAllowanceZeroPeriod, err)
+	if err != ErrAllowanceZeroFunds {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroFunds, err)
+	}
+	a.Funds = types.SiacoinPrecision
+	a.Hosts = 0
+	err = c.SetAllowance(a)
+	if err != ErrAllowanceNoHosts {
+		t.Errorf("expected %q, got %q", ErrAllowanceNoHosts, err)
+	}
+	a.Hosts = 1
+	err = c.SetAllowance(a)
+	if err != ErrAllowanceZeroPeriod {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroPeriod, err)
 	}
 	a.Period = 20
 	err = c.SetAllowance(a)
@@ -344,23 +355,23 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	}
 	a.RenewWindow = 10
 	err = c.SetAllowance(a)
-	if err != errAllowanceZeroExpectedStorage {
-		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedStorage, err)
+	if err != ErrAllowanceZeroExpectedStorage {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
 	}
 	a.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 	err = c.SetAllowance(a)
-	if err != errAllowanceZeroExpectedUpload {
-		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedUpload, err)
+	if err != ErrAllowanceZeroExpectedUpload {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedUpload, err)
 	}
 	a.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 	err = c.SetAllowance(a)
-	if err != errAllowanceZeroExpectedDownload {
-		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedDownload, err)
+	if err != ErrAllowanceZeroExpectedDownload {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedDownload, err)
 	}
 	a.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 	err = c.SetAllowance(a)
-	if err != errAllowanceZeroExpectedRedundancy {
-		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedRedundancy, err)
+	if err != ErrAllowanceZeroExpectedRedundancy {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedRedundancy, err)
 	}
 	a.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 
