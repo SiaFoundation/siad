@@ -253,7 +253,9 @@ func (n *fNode) close() {
 	}
 
 	// Remove node from parent.
-	n.staticParent.managedRemoveChild(&n.node)
+	if len(n.threads) == 0 {
+		n.staticParent.managedRemoveChild(&n.node)
+	}
 }
 
 // managedRemoveChild removes a child from a dNode. If as a result the dNode

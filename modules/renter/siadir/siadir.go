@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -212,6 +213,9 @@ func loadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, er
 // LoadSiaDir loads the directory metadata from disk
 // TODO: implement
 func LoadSiaDir(path string) (sd *SiaDir, err error) {
+	if _, err := os.Stat(filepath.Dir(path)); err != nil {
+		return nil, err
+	}
 	return &SiaDir{}, nil
 }
 
