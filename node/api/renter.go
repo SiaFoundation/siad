@@ -1001,8 +1001,8 @@ func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.R
 	})
 }
 
-// renterFUSEHandler handles the API call to /renter/fuse.
-func (api *API) renterFUSEHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// renterFUSEHandlerGET handles the API call to /renter/fuse.
+func (api *API) renterFUSEHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	fi := api.fuse.Info()
 	WriteJSON(w, RenterFUSEInfo{
 		SiaPath: fi.SiaPath,
@@ -1010,8 +1010,8 @@ func (api *API) renterFUSEHandler(w http.ResponseWriter, req *http.Request, _ ht
 	})
 }
 
-// renterFUSEMountHandler handles the API call to /renter/fuse/mount.
-func (api *API) renterFUSEMountHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// renterFUSEMountHandlerPOST handles the API call to /renter/fuse/mount.
+func (api *API) renterFUSEMountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var sp modules.SiaPath
 	spfv := req.FormValue("siapath")
 	// Check the form value for root path before attempting to call
@@ -1034,8 +1034,8 @@ func (api *API) renterFUSEMountHandler(w http.ResponseWriter, req *http.Request,
 	WriteSuccess(w)
 }
 
-// renterFUSEUnmountHandler handles the API call to /renter/fuse/unmount.
-func (api *API) renterFUSEUnmountHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// renterFUSEUnmountHandlerPOST handles the API call to /renter/fuse/unmount.
+func (api *API) renterFUSEUnmountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	if err := api.fuse.Unmount(); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
