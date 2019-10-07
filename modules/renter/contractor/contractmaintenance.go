@@ -104,7 +104,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	// Fetch the host pricing to use in the estimate.
 	host, exists, err := c.hdb.Host(contract.HostPublicKey)
 	if err != nil {
-		return types.ZeroCurrency, err
+		return types.ZeroCurrency, errors.AddContext(err, "error geting host from hostdb:")
 	}
 	if !exists {
 		return types.ZeroCurrency, errors.New("could not find host in hostdb")
@@ -589,7 +589,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// Fetch the host associated with this contract.
 	host, ok, err := c.hdb.Host(contract.HostPublicKey)
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, errors.AddContext(err, "error getting host from hostdb:")
 	}
 	c.mu.Lock()
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {

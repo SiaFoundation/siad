@@ -167,7 +167,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	// Get the corresponding host.
 	host, ok, err := c.hdb.Host(rc.HostPublicKey)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "error geting host from hostdb:")
 	}
 	if !ok {
 		return errors.New("Can't recover contract with unknown host")

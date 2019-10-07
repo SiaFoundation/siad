@@ -287,7 +287,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	if reflect.DeepEqual(allowance, modules.Allowance{}) {
 		rs, err := r.Settings()
 		if err != nil {
-			return modules.RenterPriceEstimation{}, modules.Allowance{}, err
+			return modules.RenterPriceEstimation{}, modules.Allowance{}, errors.AddContext(err, "error getting renter settings:")
 		}
 		allowance = rs.Allowance
 		if reflect.DeepEqual(allowance, modules.Allowance{}) {
@@ -648,7 +648,7 @@ func (r *Renter) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, er
 	defer r.tg.Done()
 	fm, hosts, err := r.hostDB.Filter()
 	if err != nil {
-		return fm, hosts, err
+		return fm, hosts, errors.AddContext(err, "error getting hostdb filter:")
 	}
 	return fm, hosts, nil
 }
@@ -662,7 +662,7 @@ func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey
 	// Check to see how many hosts are needed for the allowance
 	settings, err := r.Settings()
 	if err != nil {
-		return err
+		return errors.AddContext(err, "error getting renter settings:")
 	}
 	minHosts := settings.Allowance.Hosts
 	if len(hosts) < int(minHosts) && lm == modules.HostDBActiveWhitelist {
@@ -696,7 +696,7 @@ func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) (
 	if reflect.DeepEqual(a, modules.Allowance{}) {
 		settings, err := r.Settings()
 		if err != nil {
-			return modules.HostScoreBreakdown{}, err
+			return modules.HostScoreBreakdown{}, errors.AddContext(err, "error getting renter settings:")
 		}
 		a = settings.Allowance
 	}
@@ -761,7 +761,7 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 	download, upload, _ := r.hostContractor.RateLimits()
 	enabled, err := r.hostDB.IPViolationsCheck()
 	if err != nil {
-		return modules.RenterSettings{}, err
+		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	return modules.RenterSettings{
 		Allowance:         r.hostContractor.Allowance(),
