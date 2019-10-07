@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	// testNodeAddressCounter is a channel that tracks the counter for the test
-	// node addresses
+	// testNodeAddressCounter is a global channel that tracks the counter for
+	// the test node addresses for all tests. It starts at 127.1.0.0 and
+	// iterates through the entire range of 127.X.X.X above 127.1.0.0
 	testNodeAddressCounter = newNodeAddressCounter()
 )
 
@@ -35,14 +36,15 @@ type TestNode struct {
 	filesDir    *LocalDir
 }
 
-// newNodeAddressCounter creates a new counter channel and returns it
+// newNodeAddressCounter creates a new counter channel and returns it. The
+// counter will cover the entire range 127.X.X.X above 127.1.0.0
 //
-// The counter is initialize with an IP address of 127.0.1.0 so that testers can
-// manually add nodes in the address range of 127.0.0.X without causing a
+// The counter is initialize with an IP address of 127.1.0.0 so that testers can
+// manually add nodes in the address range of 127.0.X.X without causing a
 // conflict
 func newNodeAddressCounter() chan net.IP {
 	counter := make(chan net.IP, 1)
-	counter <- net.IPv4(127, 0, 1, 0)
+	counter <- net.IPv4(127, 1, 0, 0)
 	return counter
 }
 

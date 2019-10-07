@@ -10,8 +10,8 @@ import (
 func TestNextNodeAddress(t *testing.T) {
 	// Confirm testNodeAddressCounter is initialized correctly
 	IP := <-testNodeAddressCounter
-	if IP.String() != "127.0.1.0" {
-		t.Fatalf("testNodeAddressCounter inital value incorrect; got %v expected %v", IP.String(), "127.0.1.0")
+	if IP.String() != "127.1.0.0" {
+		t.Fatalf("testNodeAddressCounter inital value incorrect; got %v expected %v", IP.String(), "127.1.0.0")
 	}
 
 	// Send IP back to channel
@@ -22,8 +22,8 @@ func TestNextNodeAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if nextIP != "127.0.1.1" {
-		t.Fatalf("nextNodeAddress value incorrect; got %v expected %v", nextIP, "127.0.1.1")
+	if nextIP != "127.1.0.1" {
+		t.Fatalf("nextNodeAddress value incorrect; got %v expected %v", nextIP, "127.1.0.1")
 	}
 
 	// Test address iteration across range
