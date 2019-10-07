@@ -147,8 +147,19 @@ func TestOpenSiaDir(t *testing.T) {
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
+	// Create dir /foo
+	sp := newSiaPath("foo")
+	if err := fs.NewSiaDir(sp); err != nil {
+		t.Fatal(err)
+	}
+	// Open the newly created dir.
+	foo, err := fs.OpenSiaDir(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer foo.close()
 	// Create dir /sub/foo
-	sp := newSiaPath("sub/foo")
+	sp = newSiaPath("sub/foo")
 	if err := fs.NewSiaDir(sp); err != nil {
 		t.Fatal(err)
 	}
@@ -162,8 +173,8 @@ func TestOpenSiaDir(t *testing.T) {
 	if len(fs.threads) != 0 {
 		t.Fatalf("Expected fs.threads to have length 0 but was %v", len(fs.threads))
 	}
-	if len(fs.directories) != 1 {
-		t.Fatalf("Expected 1 subdirectory in the root but got %v", len(fs.directories))
+	if len(fs.directories) != 2 {
+		t.Fatalf("Expected 2 subdirectories in the root but got %v", len(fs.directories))
 	}
 	if len(fs.files) != 0 {
 		t.Fatalf("Expected 0 files in the root but got %v", len(fs.files))
@@ -242,6 +253,85 @@ func TestOpenSiaDir(t *testing.T) {
 	}
 	if len(subNode.files) != 0 || len(sdSub.files) != 0 {
 		t.Fatal("subNode and sdSub should both have 0 files")
+	}
+}
+
+// TestOpenSiaFile confirms that a previously created SiaFile can be opened and
+// that the filesystem tree is extended accordingly in the process.
+func TestOpenSiaFile(t *testing.T) {
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	// Create file /file
+	sp := newSiaPath("file")
+	fs.AddTestSiaFile(sp)
+	// Open the newly created file.
+	sf, err := fs.OpenSiaFile(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sf.close()
+	// Confirm the integrity of the file.
+	if sf.staticName != "file" {
+		t.Fatalf("name of file should be file but was %v", sf.staticName)
+	}
+	if sf.staticParent != &fs.dNode {
+		t.Fatalf("parent of file should be %v but was %v", &fs.node, sf.staticParent)
+	}
+	if sf.threadUID == 0 {
+		t.Fatal("threaduid wasn't set")
+	}
+	if len(sf.threads) != 1 {
+		t.Fatalf("len(threads) should be 1 but was %v", len(sf.threads))
+	}
+	if _, exists := sf.threads[sf.threadUID]; !exists {
+		t.Fatal("threaduid doesn't exist in threads map")
+	}
+	// Confirm the integrity of the root node.
+	if len(fs.threads) != 0 {
+		t.Fatalf("Expected fs.threads to have length 0 but was %v", len(fs.threads))
+	}
+	if len(fs.directories) != 0 {
+		t.Fatalf("Expected 0 subdirectories in the root but got %v", len(fs.directories))
+	}
+	if len(fs.files) != 1 {
+		t.Fatalf("Expected 1 file in the root but got %v", len(fs.files))
+	}
+	// Create file /sub/file
+	sp = newSiaPath("/sub/file")
+	fs.AddTestSiaFile(sp)
+	// Open the newly created file.
+	sf2, err := fs.OpenSiaFile(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sf2.close()
+	// Confirm the integrity of the file.
+	if sf2.staticName != "file" {
+		t.Fatalf("name of file should be file but was %v", sf2.staticName)
+	}
+	if sf2.staticParent.staticName != "sub" {
+		t.Fatalf("parent of file should be %v but was %v", "sub", sf2.staticParent.staticName)
+	}
+	if sf2.threadUID == 0 {
+		t.Fatal("threaduid wasn't set")
+	}
+	if len(sf2.threads) != 1 {
+		t.Fatalf("len(threads) should be 1 but was %v", len(sf2.threads))
+	}
+	// Confirm the integrity of the "sub" folder.
+	sub := sf2.staticParent
+	if len(sub.threads) != 0 {
+		t.Fatalf("Expected sub.threads to have length 0 but was %v", len(sub.threads))
+	}
+	if len(sub.directories) != 0 {
+		t.Fatalf("Expected 0 subdirectories in sub but got %v", len(sub.directories))
+	}
+	if len(sub.files) != 1 {
+		t.Fatalf("Expected 1 file in sub but got %v", len(sub.files))
+	}
+	if _, exists := sf2.threads[sf2.threadUID]; !exists {
+		t.Fatal("threaduid doesn't exist in threads map")
 	}
 }
 

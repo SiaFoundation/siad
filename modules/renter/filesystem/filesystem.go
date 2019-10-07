@@ -88,11 +88,11 @@ func New(root string, wal *writeaheadlog.WAL) (*FileSystem, error) {
 // newNode is a convenience function to initialize a node.
 func newNode(parent *dNode, name string, uid threadUID, wal *writeaheadlog.WAL) node {
 	return node{
-		staticParent: nil,  // the root doesn't have a parent
-		staticName:   name, // for convenience the root's name is its absolute path
+		staticParent: parent,
+		staticName:   name,
 		staticWal:    wal,
 		threads:      make(map[threadUID]threadInfo),
-		threadUID:    uid, // the root doesn't require a uid
+		threadUID:    uid,
 		mu:           new(sync.Mutex),
 	}
 }
@@ -158,7 +158,7 @@ func (fs *FileSystem) managedOpenFile(path string) (*fNode, error) {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(path)
 	var dir *dNode
-	if dirPath == string(filepath.Separator) {
+	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
 		dir = &fs.dNode // file is in the root dir
 	} else {
 		var err error
@@ -179,7 +179,7 @@ func (n *dNode) managedOpenFile(fileName string) (*fNode, error) {
 	fn, exists := n.files[fileName]
 	if !exists {
 		// Load file from disk.
-		filePath := filepath.Join(n.staticPath(), fileName)
+		filePath := filepath.Join(n.staticPath(), fileName+modules.SiaFileExtension)
 		sf, err := siafile.LoadSiaFile(filePath, n.staticWal)
 		if err == siafile.ErrUnknownPath {
 			return nil, ErrNotExist
@@ -263,7 +263,7 @@ func (n *dNode) managedRemoveChild(child *node) {
 	// Remove the child node.
 	n.mu.Lock()
 	_, existsDir := n.directories[child.staticName]
-	_, existsFile := n.directories[child.staticName]
+	_, existsFile := n.files[child.staticName]
 	if !existsDir && !existsFile {
 		build.Critical("removeChild: unknown child")
 	}
