@@ -16,9 +16,9 @@ const (
 	threadDepth = 3
 )
 
-// IsFilesystemUpdate is a helper method that makes sure that a wal update
+// IsFileSystemUpdate is a helper method that makes sure that a wal update
 // belongs to the filesystem package.
-func IsFilesystemUpdate(update writeaheadlog.Update) bool {
+func IsFileSystemUpdate(update writeaheadlog.Update) bool {
 	switch update.Name {
 	case updateMetadataName, updateDeleteName:
 		return true

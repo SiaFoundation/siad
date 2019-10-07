@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 var (
@@ -34,6 +36,7 @@ type (
 	node struct {
 		staticParent *dNode
 		staticName   string
+		staticWal    *writeaheadlog.WAL
 		threads      map[threadUID]threadInfo
 		threadUID    threadUID
 		mu           *sync.Mutex
@@ -68,23 +71,30 @@ type (
 
 // New creates a new FileSystem at the specified root path. The folder will be
 // created if it doesn't exist already.
-func New(root string) (*FileSystem, error) {
+func New(root string, wal *writeaheadlog.WAL) (*FileSystem, error) {
 	if err := os.Mkdir(root, 0700); err != nil && !os.IsExist(err) {
 		return nil, errors.AddContext(err, "failed to create root dir")
 	}
 	return &FileSystem{
 		dNode: dNode{
-			node: node{
-				staticParent: nil,  // the root doesn't have a parent
-				staticName:   root, // the root doesn't have a name
-				threads:      make(map[threadUID]threadInfo),
-				threadUID:    threadUID(0), // the root doesn't require a uid
-				mu:           new(sync.Mutex),
-			},
+			// The root doesn't require a parent, the name is its absolute path for convenience and it doesn't require a uid.
+			node:        newNode(nil, root, 0, wal),
 			directories: make(map[string]*dNode),
 			files:       make(map[string]*fNode),
 		},
 	}, nil
+}
+
+// newNode is a convenience function to initialize a node.
+func newNode(parent *dNode, name string, uid threadUID, wal *writeaheadlog.WAL) node {
+	return node{
+		staticParent: nil,  // the root doesn't have a parent
+		staticName:   name, // for convenience the root's name is its absolute path
+		staticWal:    wal,
+		threads:      make(map[threadUID]threadInfo),
+		threadUID:    uid, // the root doesn't require a uid
+		mu:           new(sync.Mutex),
+	}
 }
 
 // newThreadType created a threadInfo entry for the threadMap
@@ -114,11 +124,80 @@ func (fs *FileSystem) NewSiaDir(siaPath modules.SiaPath) error {
 	return errors.AddContext(os.MkdirAll(dirPath, 0700), "NewSiaDir: failed to create folder")
 }
 
+// NewSiaFile creates a SiaFile at the specified siaPath.
+func (fs *FileSystem) NewSiaFile(siaPath modules.SiaPath, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
+	// Create SiaDir for file.
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		return err
+	}
+	if err := fs.NewSiaDir(dirSiaPath); err != nil {
+		return errors.AddContext(err, "failed to create SiaDir for SiaFile")
+	}
+	// Create SiaFile.
+	siaFilePath := siaPath.SiaFileSysPath(fs.staticName)
+	_, err = siafile.New(siaFilePath, source, fs.staticWal, ec, mk, fileSize, fileMode, nil, disablePartialUpload)
+	return errors.AddContext(err, "NewSiaFile: failed to create file")
+}
+
 // OpenSiaDir opens a SiaDir and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*dNode, error) {
-	path := siaPath.String()
-	return fs.dNode.managedOpenDir(path)
+	return fs.dNode.managedOpenDir(siaPath.String())
+}
+
+// OpenSiaFile opens a SiaFile and adds it and all of its parents to the
+// filesystem tree.
+func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*fNode, error) {
+	return fs.managedOpenFile(siaPath.String())
+}
+
+// managedOpenFile opens a SiaFile and adds it and all of its parents to the
+// filesystem tree.
+func (fs *FileSystem) managedOpenFile(path string) (*fNode, error) {
+	// Open the folder that contains the file.
+	dirPath, fileName := filepath.Split(path)
+	var dir *dNode
+	if dirPath == string(filepath.Separator) {
+		dir = &fs.dNode // file is in the root dir
+	} else {
+		var err error
+		dir, err = fs.managedOpenDir(filepath.Dir(path))
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to open parent dir of file")
+		}
+		// Close the dir since we are not returning it. The open file keeps it
+		// loaded in memory.
+		defer dir.close()
+	}
+	return dir.managedOpenFile(fileName)
+}
+
+// managedOpenFile opens a SiaFile and adds it and all of its parents to the
+// filesystem tree.
+func (n *dNode) managedOpenFile(fileName string) (*fNode, error) {
+	fn, exists := n.files[fileName]
+	if !exists {
+		// Load file from disk.
+		filePath := filepath.Join(n.staticPath(), fileName)
+		sf, err := siafile.LoadSiaFile(filePath, n.staticWal)
+		if err == siafile.ErrUnknownPath {
+			return nil, ErrNotExist
+		}
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to load SiaFile from disk")
+		}
+		fn = &fNode{
+			node:    newNode(n, fileName, 0, n.staticWal),
+			SiaFile: sf,
+		}
+		n.files[fileName] = fn
+	}
+	// Clone the node, give it a new UID and return it.
+	newNode := *fn
+	newNode.threadUID = newThreadUID()
+	newNode.threads[newNode.threadUID] = newThreadType()
+	return &newNode, nil
 }
 
 // close removes a thread from the node's threads map. This should only be
@@ -212,7 +291,7 @@ func (n *node) staticPath() string {
 
 // openDir opens a SiaDir.
 func (n *dNode) managedOpenDir(path string) (*dNode, error) {
-	// If pathList is empty we are done.
+	// If path is empty we are done.
 	if path == "" {
 		n.mu.Lock()
 		defer n.mu.Unlock()

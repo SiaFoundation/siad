@@ -1,11 +1,16 @@
 package filesystem
 
 import (
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 )
@@ -30,11 +35,39 @@ func newSiaPath(path string) modules.SiaPath {
 
 // newTestFileSystem creates a new filesystem for testing.
 func newTestFileSystem(root string) *FileSystem {
-	fs, err := New(root)
+	wal, _ := newTestWAL()
+	fs, err := New(root, wal)
 	if err != nil {
 		panic(err.Error())
 	}
 	return fs
+}
+
+// newTestWal is a helper method to create a WAL for testing.
+func newTestWAL() (*writeaheadlog.WAL, string) {
+	// Create the wal.
+	walsDir := filepath.Join(os.TempDir(), "wals")
+	if err := os.MkdirAll(walsDir, 0700); err != nil {
+		panic(err)
+	}
+	walFilePath := filepath.Join(walsDir, hex.EncodeToString(fastrand.Bytes(8)))
+	_, wal, err := writeaheadlog.New(walFilePath)
+	if err != nil {
+		panic(err)
+	}
+	return wal, walFilePath
+}
+
+// AddTestSiaFile is a convenience method to add a SiaFile for testing to a FileSystem.
+func (fs *FileSystem) AddTestSiaFile(siaPath modules.SiaPath) {
+	ec, err := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
+	if err != nil {
+		panic(err)
+	}
+	err = fs.NewSiaFile(siaPath, "", ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fastrand.Intn(100)), 0777, true)
+	if err != nil {
+		panic(err)
+	}
 }
 
 // TestNew tests creating a new FileSystem.
@@ -77,6 +110,32 @@ func TestNewSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The whole path should exist.
+	if _, err := os.Stat(filepath.Join(root, sp.String())); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestNewSiaDir tests if creating a new directory using NewSiaDir creates the
+// correct folder structure.
+func TestNewSiaFile(t *testing.T) {
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	// Create file /sub/foo/file
+	sp := newSiaPath("sub/foo/file")
+	fs.AddTestSiaFile(sp)
+	if err := fs.NewSiaDir(sp); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, sp.String())); err != nil {
+		t.Fatal(err)
+	}
+	// Create a file in the root dir.
+	sp = newSiaPath("file")
+	fs.AddTestSiaFile(sp)
+	if err := fs.NewSiaDir(sp); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(filepath.Join(root, sp.String())); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +245,7 @@ func TestOpenSiaDir(t *testing.T) {
 	}
 }
 
-// TestCloseSiaDir tests that closing an opened directory shrings the tree
+// TestCloseSiaDir tests that closing an opened directory shrinks the tree
 // accordingly.
 func TestCloseSiaDir(t *testing.T) {
 	// Create filesystem.
