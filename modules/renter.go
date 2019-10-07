@@ -305,7 +305,7 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
-	ModTime          time.Time         `json:"modtime"`
+	ModificationTime time.Time         `json:"modtime"` // avoid conflict with ModTime method
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
 	Recoverable      bool              `json:"recoverable"`
@@ -317,6 +317,24 @@ type FileInfo struct {
 	UploadedBytes    uint64            `json:"uploadedbytes"`
 	UploadProgress   float64           `json:"uploadprogress"`
 }
+
+// Name implements os.FileInfo.
+func (f FileInfo) Name() string { return f.SiaPath.String() }
+
+// Size implements os.FileInfo.
+func (f FileInfo) Size() int64 { return int64(f.Filesize) }
+
+// Mode implements os.FileInfo.
+func (f FileInfo) Mode() os.FileMode { return 0666 }
+
+// ModTime implements os.FileInfo.
+func (f FileInfo) ModTime() time.Time { return f.ModificationTime }
+
+// IsDir implements os.FileInfo.
+func (f FileInfo) IsDir() bool { return false }
+
+// Sys implements os.FileInfo.
+func (f FileInfo) Sys() interface{} { return nil }
 
 // A HostDBEntry represents one host entry in the Renter's host DB. It
 // aggregates the host's external settings and metrics with its public key.

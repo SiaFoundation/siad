@@ -25,17 +25,6 @@ func (fs *fsImpl) path(name string) modules.SiaPath {
 	return sp
 }
 
-type fileInfoShim struct {
-	modules.FileInfo
-}
-
-func (f fileInfoShim) Name() string       { return f.SiaPath.String() }
-func (f fileInfoShim) Size() int64        { return int64(f.Filesize) }
-func (f fileInfoShim) Mode() os.FileMode  { return 0666 }
-func (f fileInfoShim) ModTime() time.Time { return f.FileInfo.ModTime }
-func (f fileInfoShim) IsDir() bool        { return false }
-func (f fileInfoShim) Sys() interface{}   { return nil }
-
 type dirInfoShim struct {
 	modules.DirectoryInfo
 }
@@ -59,7 +48,7 @@ func (fs *fsImpl) Stat(name string) (os.FileInfo, error) {
 		di, err := fs.r.staticDirSet.DirInfo(path)
 		return dirInfoShim{di}, err
 	}
-	return fileInfoShim{fi}, nil
+	return fi, nil
 }
 
 func (fs *fsImpl) OpenFile(name string, perm int, mode os.FileMode) (modules.RenterFile, error) {
@@ -109,7 +98,7 @@ func (d *fsDir) Readdir(n int) ([]os.FileInfo, error) {
 		infos = append(infos, dirInfoShim{di})
 	}
 	for _, fi := range fis {
-		infos = append(infos, fileInfoShim{fi})
+		infos = append(infos, fi)
 	}
 	return infos, nil
 }
@@ -155,8 +144,7 @@ func (f *fsFile) Name() string {
 }
 
 func (f *fsFile) Stat() (os.FileInfo, error) {
-	fi, err := f.r.File(f.sp)
-	return fileInfoShim{fi}, err
+	return f.r.File(f.sp)
 }
 
 func (f *fsFile) Readdir(n int) ([]os.FileInfo, error) {
