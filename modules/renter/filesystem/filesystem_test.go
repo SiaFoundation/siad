@@ -74,7 +74,7 @@ func (fs *FileSystem) AddTestSiaFile(siaPath modules.SiaPath) {
 
 // TestNew tests creating a new FileSystem.
 func TestNew(t *testing.T) {
-	if testing.Short && !build.VLONG {
+	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
 	// Create filesystem.
@@ -106,7 +106,7 @@ func TestNew(t *testing.T) {
 // TestNewSiaDir tests if creating a new directory using NewSiaDir creates the
 // correct folder structure.
 func TestNewSiaDir(t *testing.T) {
-	if testing.Short && !build.VLONG {
+	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
 	// Create filesystem.
@@ -126,7 +126,7 @@ func TestNewSiaDir(t *testing.T) {
 // TestNewSiaDir tests if creating a new directory using NewSiaDir creates the
 // correct folder structure.
 func TestNewSiaFile(t *testing.T) {
-	if testing.Short && !build.VLONG {
+	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
 	// Create filesystem.
@@ -155,7 +155,7 @@ func TestNewSiaFile(t *testing.T) {
 // TestOpenSiaDir confirms that a previoiusly created SiaDir can be opened and
 // that the filesystem tree is extended accordingly in the process.
 func TestOpenSiaDir(t *testing.T) {
-	if testing.Short && !build.VLONG {
+	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
 	// Create filesystem.
@@ -273,7 +273,7 @@ func TestOpenSiaDir(t *testing.T) {
 // TestOpenSiaFile confirms that a previously created SiaFile can be opened and
 // that the filesystem tree is extended accordingly in the process.
 func TestOpenSiaFile(t *testing.T) {
-	if testing.Short && !build.VLONG {
+	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
 	// Create filesystem.
@@ -355,7 +355,7 @@ func TestOpenSiaFile(t *testing.T) {
 // TestCloseSiaDir tests that closing an opened directory shrinks the tree
 // accordingly.
 func TestCloseSiaDir(t *testing.T) {
-	if testing.Short && !build.VLONG {
+	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
 	// Create filesystem.
@@ -439,7 +439,7 @@ func TestCloseSiaDir(t *testing.T) {
 // TestCloseSiaFile tests that closing an opened file shrinks the tree
 // accordingly.
 func TestCloseSiaFile(t *testing.T) {
-	if testing.Short && !build.VLONG {
+	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
 	// Create filesystem.
@@ -524,7 +524,7 @@ func TestCloseSiaFile(t *testing.T) {
 // TestThreadedAccess tests rapidly opening and closing files and directories
 // from multiple threads to check the locking conventions.
 func TestThreadedAccess(t *testing.T) {
-	if testing.Short && !build.VLONG {
+	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
 	// Specify the file structure for the test.

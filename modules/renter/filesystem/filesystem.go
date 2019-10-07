@@ -48,6 +48,13 @@ type (
 
 		directories map[string]*dNode
 		files       map[string]*fNode
+
+		// Since we create dNodes implicitly whenever one of a dNodes children
+		// is opened, the SiaDir will be loaded lazily only when a dNode is
+		// manually opened by the user. This way we can keep disk i/o to a
+		// minimum. The SiaDir is also cleared once a dNode doesn't have any
+		// threads accessing it anymore to avoid caching the metadata of a
+		// SiaDir any longer than a user has any need for it.
 		*siadir.SiaDir
 	}
 
@@ -222,6 +229,11 @@ func (n *dNode) Close() {
 	// Call common close method.
 	n.node._close()
 
+	// If no more threads are accessing this node, clear the SiaDir metadata.
+	if len(n.threads) == 0 {
+		n.SiaDir = nil
+	}
+
 	// Remove node from parent if there are no more children.
 	if n.staticParent != nil && len(n.threads)+len(n.directories)+len(n.files) == 0 {
 		n.mu.Unlock()
@@ -312,6 +324,14 @@ func (n *dNode) managedOpenDir(path string) (*dNode, error) {
 		newNode := *n
 		newNode.threadUID = newThreadUID()
 		newNode.threads[newNode.threadUID] = newThreadType()
+		// Load the SiaDir if necessary.
+		if newNode.SiaDir == nil {
+			sd, err := siadir.LoadSiaDir(filepath.Join(n.staticPath(), siadir.SiaDirExtension))
+			if err != nil {
+				return nil, err
+			}
+			newNode.SiaDir = sd
+		}
 		return &newNode, nil
 	}
 	// Check if the next element is loaded already.
@@ -327,11 +347,10 @@ func (n *dNode) managedOpenDir(path string) (*dNode, error) {
 		n.mu.Unlock()
 		return subNode.managedOpenDir(path)
 	}
-	// Otherwise load the dir.
-	sd, err := siadir.LoadSiaDir(filepath.Join(n.staticPath(), subDir, siadir.SiaDirExtension))
-	if err != nil {
+	// Check if the dir exists.
+	if _, err := os.Stat(filepath.Join(n.staticPath(), subDir)); err != nil {
 		n.mu.Unlock()
-		return nil, err
+		return nil, ErrNotExist
 	}
 	subNode = &dNode{
 		node: node{
@@ -344,7 +363,7 @@ func (n *dNode) managedOpenDir(path string) (*dNode, error) {
 
 		directories: make(map[string]*dNode),
 		files:       make(map[string]*fNode),
-		SiaDir:      sd,
+		SiaDir:      nil, // will be lazy-loaded
 	}
 	n.directories[subNode.staticName] = subNode
 	n.mu.Unlock()
