@@ -224,6 +224,9 @@ type Renter struct {
 	downloadHistory   map[modules.DownloadID]*download
 	downloadHistoryMu sync.Mutex
 
+	// Set of mounted FUSE servers.
+	fuseMounts map[string]*fuseFS
+
 	// Upload management.
 	uploadHeap    uploadHeap
 	directoryHeap directoryHeap
@@ -268,6 +271,11 @@ func (r *Renter) Close() error {
 		return nil
 	}
 	r.tg.Stop()
+	// unmount any mounted FUSE servers
+	for path, fs := range r.fuseMounts {
+		delete(r.fuseMounts, path)
+		fs.srv.Unmount()
+	}
 	r.hostDB.Close()
 	return r.hostContractor.Close()
 }
@@ -833,6 +841,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
+
+		fuseMounts: make(map[string]*fuseFS),
 
 		cs:               cs,
 		deps:             deps,

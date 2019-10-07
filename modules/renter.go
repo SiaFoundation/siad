@@ -418,6 +418,12 @@ type HostScoreBreakdown struct {
 	VersionAdjustment          float64 `json:"versionadjustment"`
 }
 
+// MountInfo contains information about a mounted FUSE filesystem.
+type MountInfo struct {
+	MountPoint string  `json:"mountpoint"`
+	SiaPath    SiaPath `json:"siapath"`
+}
+
 // RenterPriceEstimation contains a bunch of files estimating the costs of
 // various operations on the network.
 type RenterPriceEstimation struct {
@@ -594,24 +600,6 @@ type UploadedBackup struct {
 	UploadProgress float64
 }
 
-// A RenterFS supports generic filesystem operations.
-type RenterFS interface {
-	Stat(name string) (os.FileInfo, error)
-	OpenFile(name string, perm int, mode os.FileMode) (RenterFile, error)
-	io.Closer
-}
-
-// A RenterFile supports generic file operations.
-type RenterFile interface {
-	Name() string
-	Stat() (os.FileInfo, error)
-	Readdir(n int) ([]os.FileInfo, error)
-	Dirnames(n int) ([]string, error)
-	io.Reader
-	io.Seeker
-	io.Closer
-}
-
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -660,8 +648,15 @@ type Renter interface {
 	// began.
 	CurrentPeriod() types.BlockHeight
 
-	// FileSystem returns a filesystem at the given root.
-	FileSystem(root SiaPath) (RenterFS, error)
+	// Mount mounts a FUSE filesystem at mountPoint, making the contents of sp
+	// available via the local filesystem.
+	Mount(mountPoint string, sp SiaPath) error
+
+	// MountInfo returns the list of currently mounted FUSE filesystems.
+	MountInfo() []MountInfo
+
+	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
+	Unmount(mountPoint string) error
 
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.

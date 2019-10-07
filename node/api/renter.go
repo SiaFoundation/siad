@@ -1003,11 +1003,7 @@ func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.R
 
 // renterFUSEHandlerGET handles the API call to /renter/fuse.
 func (api *API) renterFUSEHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	fi := api.fuse.Info()
-	WriteJSON(w, RenterFUSEInfo{
-		SiaPath: fi.SiaPath,
-		Mount:   fi.Mount,
-	})
+	WriteJSON(w, api.renter.MountInfo())
 }
 
 // renterFUSEMountHandlerPOST handles the API call to /renter/fuse/mount.
@@ -1027,7 +1023,7 @@ func (api *API) renterFUSEMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 		sp = s
 	}
 	mount := req.FormValue("mount")
-	if err := api.fuse.Mount(mount, sp); err != nil {
+	if err := api.renter.Mount(mount, sp); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
@@ -1036,7 +1032,7 @@ func (api *API) renterFUSEMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 
 // renterFUSEUnmountHandlerPOST handles the API call to /renter/fuse/unmount.
 func (api *API) renterFUSEUnmountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	if err := api.fuse.Unmount(); err != nil {
+	if err := api.renter.Unmount(req.FormValue("mount")); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
