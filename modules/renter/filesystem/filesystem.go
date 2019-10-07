@@ -128,7 +128,8 @@ func newThreadUID() threadUID {
 // folders are accessed.
 func (fs *FileSystem) NewSiaDir(siaPath modules.SiaPath) error {
 	dirPath := siaPath.SiaDirSysPath(fs.staticName)
-	return errors.AddContext(os.MkdirAll(dirPath, 0700), "NewSiaDir: failed to create folder")
+	_, err := siadir.New(dirPath, fs.staticName, fs.staticWal)
+	return err
 }
 
 // NewSiaFile creates a SiaFile at the specified siaPath.
@@ -326,7 +327,7 @@ func (n *dNode) managedOpenDir(path string) (*dNode, error) {
 		newNode.threads[newNode.threadUID] = newThreadType()
 		// Load the SiaDir if necessary.
 		if newNode.SiaDir == nil {
-			sd, err := siadir.LoadSiaDir(filepath.Join(n.staticPath(), siadir.SiaDirExtension))
+			sd, err := siadir.LoadSiaDir(n.staticPath(), modules.ProdDependencies, n.staticWal)
 			if err != nil {
 				return nil, err
 			}

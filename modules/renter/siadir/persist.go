@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
+	"path/filepath"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -119,9 +119,9 @@ func managedCreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeah
 
 // createDirMetadataAll creates a path on disk to the provided siaPath and make
 // sure that all the parent directories have metadata files.
-func createDirMetadataAll(siaPath modules.SiaPath, rootDir string) ([]writeaheadlog.Update, error) {
+func createDirMetadataAll(dirPath, rootPath string) ([]writeaheadlog.Update, error) {
 	// Create path to directory
-	if err := os.MkdirAll(siaPath.SiaDirSysPath(rootDir), 0700); err != nil {
+	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return nil, err
 	}
 
@@ -129,18 +129,21 @@ func createDirMetadataAll(siaPath modules.SiaPath, rootDir string) ([]writeahead
 	var updates []writeaheadlog.Update
 	var err error
 	for {
-		siaPath, err = siaPath.Dir()
+		dirPath = filepath.Dir(dirPath)
 		if err != nil {
 			return nil, err
 		}
-		_, update, err := createDirMetadata(siaPath, rootDir)
-		if err != nil {
+		if dirPath == string(filepath.Separator) {
+			dirPath = rootPath
+		}
+		_, update, err := createDirMetadata(dirPath)
+		if err != nil && !os.IsExist(err) {
 			return nil, err
 		}
-		if !reflect.DeepEqual(update, writeaheadlog.Update{}) {
+		if !os.IsExist(err) {
 			updates = append(updates, update)
 		}
-		if siaPath.IsRoot() {
+		if dirPath == rootPath {
 			break
 		}
 	}
@@ -200,7 +203,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 	}
 
 	// Open the file
-	siaDirPath := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
+	siaDirPath := filepath.Join(sd.staticPath, modules.SiaDirExtension)
 	file, err := sd.deps.OpenFile(siaDirPath, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
 	if err != nil {
 		return err
@@ -267,7 +270,7 @@ func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) err
 func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
 	return writeaheadlog.Update{
 		Name:         updateDeleteName,
-		Instructions: []byte(sd.siaPath.SiaDirSysPath(sd.rootDir)),
+		Instructions: []byte(sd.staticPath),
 	}
 }
 
@@ -281,7 +284,7 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 	}
 
 	// Sanity check path belongs to siadir
-	siaDirPath := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
+	siaDirPath := filepath.Join(sd.staticPath, modules.SiaDirExtension)
 	if path != siaDirPath {
 		build.Critical(fmt.Sprintf("can't apply update for file %s to SiaDir %s", path, siaDirPath))
 		return nil
@@ -309,6 +312,6 @@ func (sd *SiaDir) saveDir() error {
 
 // saveMetadataUpdate saves the metadata of the SiaDir
 func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
-	path := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
+	path := filepath.Join(sd.staticPath, modules.SiaDirExtension)
 	return createMetadataUpdate(path, sd.metadata)
 }

@@ -39,11 +39,8 @@ type (
 	SiaDir struct {
 		metadata Metadata
 
-		// siaPath is the path to the siadir on the sia network
-		siaPath modules.SiaPath
-
-		// rootDir is the path to the root directory on disk
-		rootDir string
+		// staticPath is the path of the SiaDir folder.
+		staticPath string
 
 		// Utility fields
 		deleted bool
@@ -139,26 +136,25 @@ func (sdr *DirReader) Stat() (os.FileInfo, error) {
 // also make sure that all the parent directories are created and have metadata
 // files as well and will return the SiaDir containing the information for the
 // directory that matches the siaPath provided
-func New(siaPath modules.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
+func New(path, rootPath string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	// Create path to directory and ensure path contains all metadata
-	updates, err := createDirMetadataAll(siaPath, rootDir)
+	updates, err := createDirMetadataAll(path, rootPath)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create metadata for directory
-	md, update, err := createDirMetadata(siaPath, rootDir)
+	md, update, err := createDirMetadata(path)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create SiaDir
 	sd := &SiaDir{
-		metadata: md,
-		deps:     modules.ProdDependencies,
-		siaPath:  siaPath,
-		rootDir:  rootDir,
-		wal:      wal,
+		metadata:   md,
+		deps:       modules.ProdDependencies,
+		staticPath: path,
+		wal:        wal,
 	}
 
 	return sd, managedCreateAndApplyTransaction(wal, append(updates, update)...)
@@ -166,11 +162,11 @@ func New(siaPath modules.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaD
 
 // createDirMetadata makes sure there is a metadata file in the directory and
 // creates one as needed
-func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, writeaheadlog.Update, error) {
+func createDirMetadata(path string) (Metadata, writeaheadlog.Update, error) {
 	// Check if metadata file exists
-	_, err := os.Stat(siaPath.SiaDirMetadataSysPath(rootDir))
-	if err == nil || !os.IsNotExist(err) {
-		return Metadata{}, writeaheadlog.Update{}, err
+	_, err := os.Stat(filepath.Join(path, modules.SiaDirExtension))
+	if !os.IsNotExist(err) {
+		return Metadata{}, writeaheadlog.Update{}, os.ErrExist
 	}
 
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
@@ -185,7 +181,7 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 		ModTime:     time.Now(),
 		StuckHealth: DefaultDirHealth,
 	}
-	path := siaPath.SiaDirMetadataSysPath(rootDir)
+	path = filepath.Join(path, modules.SiaDirExtension)
 	update, err := createMetadataUpdate(path, md)
 	return md, update, err
 }
@@ -213,9 +209,9 @@ func loadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, er
 // LoadSiaDir loads the directory metadata from disk
 func LoadSiaDir(path string, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
 	sd = &SiaDir{
-		deps: deps,
-		path: path,
-		wal:  wal,
+		deps:       deps,
+		staticPath: path,
+		wal:        wal,
 	}
 	sd.metadata, err = loadSiaDirMetadata(filepath.Join(path, modules.SiaDirExtension), modules.ProdDependencies)
 	return sd, err
@@ -254,7 +250,7 @@ func (sd *SiaDir) DirReader() (*DirReader, error) {
 		return nil, errors.New("can't copy deleted SiaDir")
 	}
 	// Open file.
-	path := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
+	path := filepath.Join(sd.staticPath, modules.SiaDirExtension)
 	f, err := os.Open(path)
 	if err != nil {
 		sd.mu.Unlock()
@@ -273,11 +269,9 @@ func (sd *SiaDir) Metadata() Metadata {
 	return sd.metadata
 }
 
-// SiaPath returns the SiaPath of the SiaDir
-func (sd *SiaDir) SiaPath() modules.SiaPath {
-	sd.mu.Lock()
-	defer sd.mu.Unlock()
-	return sd.siaPath
+// Path returns the SiaPath of the SiaDir
+func (sd *SiaDir) Path() string {
+	return sd.staticPath
 }
 
 // UpdateMetadata updates the SiaDir metadata on disk

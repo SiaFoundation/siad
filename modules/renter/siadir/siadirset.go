@@ -184,7 +184,7 @@ func (sds *SiaDirSet) open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
 	entry, exists := sds.siaDirMap[siaPath]
 	if !exists {
 		// Try and Load File from disk
-		sd, err := LoadSiaDir("")
+		sd, err := LoadSiaDir(siaPath.SiaDirSysPath(sds.staticRootDir), modules.ProdDependencies, sds.wal)
 		if os.IsNotExist(err) {
 			return nil, ErrUnknownPath
 		}
@@ -242,7 +242,11 @@ func (sds *SiaDirSet) closeEntry(entry *SiaDirSetEntry) {
 	// and then a new/different file was uploaded with the same siapath.
 	//
 	// If they are not the same entry, there is nothing more to do.
-	currentEntry := sds.siaDirMap[entry.siaPath]
+	var sp modules.SiaPath
+	if err := sp.FromSysPath(entry.staticPath, sds.staticRootDir); err != nil {
+		return // should never happen
+	}
+	currentEntry := sds.siaDirMap[sp]
 	if currentEntry != entry.siaDirSetEntry {
 		return
 	}
@@ -250,7 +254,7 @@ func (sds *SiaDirSet) closeEntry(entry *SiaDirSetEntry) {
 	// If there are no more threads that have the current entry open, delete
 	// this entry from the set cache.
 	if len(currentEntry.threadMap) == 0 {
-		delete(sds.siaDirMap, entry.siaPath)
+		delete(sds.siaDirMap, sp)
 	}
 }
 
@@ -336,7 +340,7 @@ func (sds *SiaDirSet) InitRootDir() error {
 	if !os.IsNotExist(err) && err != nil {
 		return err
 	}
-	_, err = New(rootSiaDir, sds.staticRootDir, sds.wal)
+	_, err = New(sds.staticRootDir, sds.staticRootDir, sds.wal)
 	return err
 }
 
@@ -420,7 +424,8 @@ func (sds *SiaDirSet) NewSiaDir(siaPath modules.SiaPath) (*SiaDirSetEntry, error
 	if !os.IsNotExist(err) && err != nil {
 		return nil, err
 	}
-	sd, err := New(siaPath, sds.staticRootDir, sds.wal)
+	path := siaPath.SiaDirSysPath(sds.staticRootDir)
+	sd, err := New(path, sds.staticRootDir, sds.wal)
 	if err != nil {
 		return nil, err
 	}
@@ -502,14 +507,18 @@ func (sds *SiaDirSet) Rename(oldPath, newPath modules.SiaPath) error {
 	}
 	// Renaming the target dir was successful. Rename the open dirs.
 	for _, entry := range lockedDirs {
-		sp, err := entry.siaPath.Rebase(oldPath, newPath)
+		var sp modules.SiaPath
+		if err := sp.FromSysPath(entry.staticPath, sds.staticRootDir); err != nil {
+			return err
+		}
+		sp, err := sp.Rebase(oldPath, newPath)
 		if err != nil {
 			build.Critical("Rebasing siapaths shouldn't fail", err)
 			continue
 		}
 		// Update the siapath of the entry and the siaDirMap.
-		delete(sds.siaDirMap, entry.siaPath)
-		entry.siaPath = sp
+		delete(sds.siaDirMap, sp)
+		entry.staticPath = sp.SiaDirSysPath(sds.staticRootDir)
 		sds.siaDirMap[sp] = entry
 	}
 	return err
