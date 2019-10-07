@@ -474,7 +474,7 @@ func (hdb *HostDB) Close() error {
 // being filtered from the filtered hosttree
 func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool, error) {
 	if err := hdb.tg.Add(); err != nil {
-		return modules.HostDBEntry{}, false, err
+		return modules.HostDBEntry{}, false, errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 
@@ -497,7 +497,7 @@ func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool, erro
 // Filter returns the hostdb's filterMode and filteredHosts
 func (hdb *HostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
 	if err := hdb.tg.Add(); err != nil {
-		return modules.HostDBFilterError, nil, err
+		return modules.HostDBFilterError, nil, errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 
@@ -513,7 +513,7 @@ func (hdb *HostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, 
 // SetFilterMode sets the hostdb filter mode
 func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error {
 	if err := hdb.tg.Add(); err != nil {
-		return err
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 	hdb.mu.Lock()
@@ -585,7 +585,7 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 // hostdb is completed.
 func (hdb *HostDB) InitialScanComplete() (complete bool, err error) {
 	if err = hdb.tg.Add(); err != nil {
-		return
+		return false, errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 	hdb.mu.Lock()
@@ -598,7 +598,7 @@ func (hdb *HostDB) InitialScanComplete() (complete bool, err error) {
 // enabled or not.
 func (hdb *HostDB) IPViolationsCheck() (bool, error) {
 	if err := hdb.tg.Add(); err != nil {
-		return false, err
+		return false, errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 	hdb.mu.RLock()
@@ -611,7 +611,7 @@ func (hdb *HostDB) IPViolationsCheck() (bool, error) {
 // it should be used with care.
 func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 	if err := hdb.tg.Add(); err != nil {
-		return err
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 
@@ -636,7 +636,7 @@ func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 // address blacklist.
 func (hdb *HostDB) SetIPViolationCheck(enabled bool) error {
 	if err := hdb.tg.Add(); err != nil {
-		return err
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 
@@ -650,7 +650,7 @@ func (hdb *HostDB) SetIPViolationCheck(enabled bool) error {
 // contracts.
 func (hdb *HostDB) UpdateContracts(contracts []modules.RenterContract) error {
 	if err := hdb.tg.Add(); err != nil {
-		return err
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 	hdb.mu.Lock()

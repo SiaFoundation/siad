@@ -540,7 +540,7 @@ func (hdb *HostDB) ScoreBreakdown(entry modules.HostDBEntry) (modules.HostScoreB
 func (hdb *HostDB) managedEstimatedScoreBreakdown(entry modules.HostDBEntry, allowance modules.Allowance, ignoreAge, ignoreDuration, ignoreUptime bool) (modules.HostScoreBreakdown, error) {
 	hosts, err := hdb.ActiveHosts()
 	if err != nil {
-		return modules.HostScoreBreakdown{}, err
+		return modules.HostScoreBreakdown{}, errors.AddContext(err, "error getting Active hosts:")
 	}
 	weightFunc := hdb.managedCalculateHostWeightFn(allowance)
 
@@ -561,7 +561,7 @@ func (hdb *HostDB) managedEstimatedScoreBreakdown(entry modules.HostDBEntry, all
 func (hdb *HostDB) managedScoreBreakdown(entry modules.HostDBEntry, ignoreAge, ignoreDuration, ignoreUptime bool) (modules.HostScoreBreakdown, error) {
 	hosts, err := hdb.ActiveHosts()
 	if err != nil {
-		return modules.HostScoreBreakdown{}, err
+		return modules.HostScoreBreakdown{}, errors.AddContext(err, "error getting Active hosts:")
 	}
 
 	// Compute the totalScore.

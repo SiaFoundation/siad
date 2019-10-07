@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // updateHostDBEntry updates a HostDBEntries's historic interactions if more
@@ -76,7 +77,7 @@ func updateHostHistoricInteractions(host *modules.HostDBEntry, bh types.BlockHei
 // interactions with a host for a given key
 func (hdb *HostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) error {
 	if err := hdb.tg.Add(); err != nil {
-		return err
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 
@@ -86,7 +87,7 @@ func (hdb *HostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) error
 	// Fetch the host.
 	host, haveHost := hdb.hostTree.Select(key)
 	if !haveHost {
-		return errHostNotFoundInTree
+		return errors.AddContext(errHostNotFoundInTree, "unable to increment successful interaction:")
 	}
 
 	// Update historic values if necessary
@@ -102,7 +103,7 @@ func (hdb *HostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) error
 // a host for a given key
 func (hdb *HostDB) IncrementFailedInteractions(key types.SiaPublicKey) error {
 	if err := hdb.tg.Add(); err != nil {
-		return err
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 
@@ -117,7 +118,7 @@ func (hdb *HostDB) IncrementFailedInteractions(key types.SiaPublicKey) error {
 	// Fetch the host.
 	host, haveHost := hdb.hostTree.Select(key)
 	if !haveHost {
-		return errHostNotFoundInTree
+		return errors.AddContext(errHostNotFoundInTree, "unable to increment failed interaction:")
 	}
 
 	// Update historic values if necessary

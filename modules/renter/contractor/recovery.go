@@ -1,10 +1,10 @@
 package contractor
 
 import (
-	"errors"
 	"sync"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"

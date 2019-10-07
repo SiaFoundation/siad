@@ -1,8 +1,9 @@
 package contractor
 
 import (
-	"errors"
 	"sync"
+
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
