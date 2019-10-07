@@ -259,9 +259,27 @@ type DirectoryInfo struct {
 	NumStuckChunks      uint64    `json:"numstuckchunks"`
 	NumSubDirs          uint64    `json:"numsubdirs"`
 	SiaPath             SiaPath   `json:"siapath"`
-	Size                uint64    `json:"size"`
+	DirSize             uint64    `json:"size"`
 	StuckHealth         float64   `json:"stuckhealth"`
 }
+
+// Name implements os.FileInfo.
+func (d DirectoryInfo) Name() string { return d.SiaPath.String() }
+
+// Size implements os.FileInfo.
+func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
+
+// Mode implements os.FileInfo.
+func (d DirectoryInfo) Mode() os.FileMode { return 0700 }
+
+// ModTime implements os.FileInfo.
+func (d DirectoryInfo) ModTime() time.Time { return d.MostRecentModTime }
+
+// IsDir implements os.FileInfo.
+func (d DirectoryInfo) IsDir() bool { return true }
+
+// Sys implements os.FileInfo.
+func (d DirectoryInfo) Sys() interface{} { return nil }
 
 // DownloadInfo provides information about a file that has been requested for
 // download.

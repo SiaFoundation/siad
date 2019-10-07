@@ -3,7 +3,6 @@ package renter
 import (
 	"os"
 	"strings"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
@@ -25,17 +24,6 @@ func (fs *fsImpl) path(name string) modules.SiaPath {
 	return sp
 }
 
-type dirInfoShim struct {
-	modules.DirectoryInfo
-}
-
-func (d dirInfoShim) Name() string       { return d.SiaPath.String() }
-func (d dirInfoShim) Size() int64        { return 0 }
-func (d dirInfoShim) Mode() os.FileMode  { return 0700 }
-func (d dirInfoShim) ModTime() time.Time { return d.DirectoryInfo.MostRecentModTime }
-func (d dirInfoShim) IsDir() bool        { return true }
-func (d dirInfoShim) Sys() interface{}   { return nil }
-
 func (fs *fsImpl) Stat(name string) (os.FileInfo, error) {
 	if strings.HasPrefix(name, ".") {
 		// opening a "hidden" siafile results in a panic
@@ -45,8 +33,7 @@ func (fs *fsImpl) Stat(name string) (os.FileInfo, error) {
 	fi, err := fs.r.File(path)
 	if err != nil {
 		// not a file; might be a directory
-		di, err := fs.r.staticDirSet.DirInfo(path)
-		return dirInfoShim{di}, err
+		return fs.r.staticDirSet.DirInfo(path)
 	}
 	return fi, nil
 }
@@ -95,7 +82,7 @@ func (d *fsDir) Readdir(n int) ([]os.FileInfo, error) {
 	}
 	var infos []os.FileInfo
 	for _, di := range dis {
-		infos = append(infos, dirInfoShim{di})
+		infos = append(infos, di)
 	}
 	for _, fi := range fis {
 		infos = append(infos, fi)
@@ -117,8 +104,7 @@ func (d *fsDir) Name() string {
 }
 
 func (d *fsDir) Stat() (os.FileInfo, error) {
-	di, err := d.r.staticDirSet.DirInfo(d.sp)
-	return dirInfoShim{di}, err
+	return d.r.staticDirSet.DirInfo(d.sp)
 }
 
 func (d *fsDir) Read(p []byte) (int, error) {

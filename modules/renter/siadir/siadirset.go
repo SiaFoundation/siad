@@ -309,7 +309,7 @@ func (sds *SiaDirSet) readLockDirInfo(siaPath modules.SiaPath) (modules.Director
 		NumStuckChunks:      metadata.NumStuckChunks,
 		NumSubDirs:          metadata.NumSubDirs,
 		SiaPath:             siaPath,
-		Size:                metadata.Size,
+		DirSize:             metadata.Size,
 		StuckHealth:         metadata.StuckHealth,
 	}, nil
 }
