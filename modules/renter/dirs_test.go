@@ -287,8 +287,8 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 	if md.NumSubDirs != di.NumSubDirs {
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, di.NumSubDirs)
 	}
-	if md.Size != di.Size {
-		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, di.Size)
+	if md.Size != uint64(di.Size()) {
+		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, di.Size())
 	}
 	if md.StuckHealth != di.StuckHealth {
 		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, di.StuckHealth)

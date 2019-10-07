@@ -160,13 +160,13 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi.ChangeTime.Before(beforeUploadTime) || fi.ChangeTime.After(afterUploadTime) {
 		t.Fatal("ChangeTime was not within the correct interval")
 	}
-	if fi.ModTime.Before(beforeUploadTime) || fi.ModTime.After(afterUploadTime) {
+	if fi.ModTime().Before(beforeUploadTime) || fi.ModTime().After(afterUploadTime) {
 		t.Fatal("ModTime was not within the correct interval")
 	}
 
 	// After uploading a file the AccessTime, ChangeTime and ModTime should be
 	// the same.
-	if fi.AccessTime != fi.ChangeTime || fi.ChangeTime != fi.ModTime {
+	if !fi.AccessTime.Equal(fi.ChangeTime) || !fi.ChangeTime.Equal(fi.ModTime()) {
 		t.Fatal("AccessTime, ChangeTime and ModTime are not the same")
 	}
 
@@ -203,7 +203,7 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi.ChangeTime != fi2.ChangeTime {
 		t.Fatal("ChangeTime changed after download")
 	}
-	if fi.ModTime != fi2.ModTime {
+	if fi.ModTime() != fi2.ModTime() {
 		t.Fatal("ModTime changed after download")
 	}
 
@@ -242,7 +242,7 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi2.AccessTime != fi3.AccessTime {
 		t.Fatal("AccessTime changed after download")
 	}
-	if fi2.ModTime != fi3.ModTime {
+	if fi2.ModTime() != fi3.ModTime() {
 		t.Fatal("ModTime changed after download")
 	}
 }
@@ -3131,7 +3131,7 @@ func TestSiafileCompatCode(t *testing.T) {
 		if sf.CreateTime.IsZero() {
 			return errors.New("CreateTime wasn't set correctly")
 		}
-		if sf.ModTime.IsZero() {
+		if sf.ModTime().IsZero() {
 			return errors.New("ModTime wasn't set correctly")
 		}
 		if sf.Available {
