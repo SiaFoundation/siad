@@ -1233,6 +1233,19 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&size=1000000000000"
 
 adds a storage folder to the manager. The manager may not check that there is enough space available on-disk to support as much storage as requested
 
+### Storage Folder Requirements
+
+*Storage folders are subject to a set of requirements that put upper or lower bounds on certain properties such as the size or the amount.*
+
+- **MaximumSectorsPerStorageFolder** | 16 PiB  
+ sets an upper bound on how large storage folders in the host are allowed to be
+
+- **MaximumStorageFolders** | 65536  
+defines the maximum number of storage folders that the host can support
+
+- **MinimumSectorsPerStorageFolder** | 256 MiB  
+defines the minimum number of sectors that a storage folder is allowed to have
+
 ### Query String Parameters
 #### REQUIRED
 **path** | string  
@@ -1275,6 +1288,9 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&newsize=10000000000
 ```
 
 Grows or shrinks a storage file in the manager. The manager may not check that there is enough space on-disk to support growing the storasge folder, but should gracefully handle running out of space unexpectedly. When shrinking a storage folder, any data in the folder that neeeds to be moved will be placed into other storage folders, meaning that no data will be lost. If the manager is unable to migrate the data, an error will be returned and the operation will be stopped.
+
+### Storage Folder Requirements
+See [/host/storage/folders/add](#host-storage-folders-add-post)
 
 ### Query String Parameters
 #### REQUIRED
