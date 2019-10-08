@@ -28,6 +28,7 @@ func TestSession(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	gp := siatest.GroupParams{
 		Hosts:   1,
 		Renters: 1,
@@ -159,6 +160,7 @@ func TestHostLockTimeout(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	gp := siatest.GroupParams{
 		Hosts:   1,
 		Renters: 1,
@@ -221,6 +223,7 @@ func TestHostBaseRPCPrice(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	gp := siatest.GroupParams{
 		Hosts:   1,
 		Renters: 1,
@@ -281,6 +284,7 @@ func TestMultiRead(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	gp := siatest.GroupParams{
 		Hosts:   1,
 		Renters: 1,
@@ -344,6 +348,14 @@ func TestMultiRead(t *testing.T) {
 	// receive all the sections
 	buf.Reset()
 	req.Sections = []modules.LoopReadRequestSection{
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
 		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
 		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
 		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
