@@ -190,7 +190,6 @@ func announceHosts(hosts map[*TestNode]struct{}) error {
 func connectNodes(nodeA, nodeB *TestNode) error {
 	err := build.Retry(100, 100*time.Millisecond, func() error {
 		if err := nodeA.GatewayConnectPost(nodeB.GatewayAddress()); err != nil && err != client.ErrPeerExists {
-			fmt.Println(errors.AddContext(err, "failed to connect to peer"))
 			return errors.AddContext(err, "failed to connect to peer")
 		}
 		isPeer1, err1 := nodeA.hasPeer(nodeB)
@@ -202,7 +201,6 @@ func connectNodes(nodeA, nodeB *TestNode) error {
 		if isPeer1 && isPeer2 {
 			return nil
 		}
-		fmt.Println("isPeer1, isPeer2", isPeer1, isPeer2)
 		return errors.New("nodeA and nodeB are not peers of each other")
 	})
 	return err

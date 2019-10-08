@@ -1,7 +1,6 @@
 package siatest
 
 import (
-	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -141,115 +140,5 @@ func TestAddNewNode(t *testing.T) {
 		if oldRenter.primarySeed == renter.primarySeed {
 			t.Fatal("Returned renter is not the new renter")
 		}
-	}
-}
-
-// TestGatewayAddress tests that you can blacklist a peer and use the Gateway
-// Address to add a new peer with a new host address
-func TestGatewayAddress(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a host and a renter and connect them
-	testDir := siatestTestDir(t.Name())
-	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renter, err := NewCleanNode(renterParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	hostParams := node.Renter(filepath.Join(testDir, "host"))
-	host, err := NewCleanNode(hostParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = connectNodes(renter, host)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Confirm the renter and host are each other's peers
-	isPeer, err := renter.hasPeer(host)
-	if !isPeer || err != nil {
-		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
-	}
-	isPeer, err = host.hasPeer(renter)
-	if !isPeer || err != nil {
-		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
-	}
-
-	// Have the host Blacklist the renter, confirm they are no longer peers
-	err = host.GatewayDisconnectPost(renter.GatewayAddress())
-	if err != nil {
-		t.Fatal(err)
-	}
-	isPeer, err = renter.hasPeer(host)
-	if isPeer || err != nil {
-		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
-	}
-	isPeer, err = host.hasPeer(renter)
-	if isPeer || err != nil {
-		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
-	}
-
-	// Create a miner and connect to the group
-	fmt.Println("++ CREATE MINER")
-	minerParams := node.Miner(filepath.Join(testDir, "miner"))
-	miner, err := NewCleanNode(minerParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	fmt.Println("++ CONNNECT MINER AND HOST")
-	err = connectNodes(miner, host)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = connectNodes(miner, renter)
-	if err != nil {
-		t.Fatal(err)
-	}
-	isPeer, err = miner.hasPeer(host)
-	if !isPeer || err != nil {
-		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
-	}
-	isPeer, err = miner.hasPeer(renter)
-	if !isPeer || err != nil {
-		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
-	}
-
-	// Add another renter to the group that has the same address as the original
-	// renter. This renter should not connect to the host since the host had
-	// disconnected and blacklisted the original renter
-	renterParams = node.Renter(filepath.Join(testDir, "renterTwo"))
-	renterParams.RPCAddress = renter.GatewayAddress().Host() + ":0"
-	renterTwo, err := NewCleanNode(renterParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = renterTwo.GatewayConnectPost(host.GatewayAddress())
-	if err == nil {
-		t.Fatal("expected to not be able to connect to host")
-	}
-	err = renterTwo.GatewayConnectPost(renter.GatewayAddress())
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = renterTwo.GatewayConnectPost(miner.GatewayAddress())
-	if err != nil {
-		t.Fatal(err)
-	}
-	isPeer, err = renterTwo.hasPeer(host)
-	if isPeer || err != nil {
-		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
-	}
-	isPeer, err = renterTwo.hasPeer(renter)
-	if !isPeer || err != nil {
-		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
-	}
-	isPeer, err = renterTwo.hasPeer(miner)
-	if !isPeer || err != nil {
-		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
 	}
 }
