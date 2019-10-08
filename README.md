@@ -91,28 +91,18 @@ files, and advertise yourself as a host.
 Building From Source
 --------------------
 
-To build from source, [Go 1.11 or above must be installed](https://golang.org/doc/install)
-on the system. Make sure your `$GOPATH` is set, and then simply use `go get`:
-
-```
-go get -u gitlab.com/NebulousLabs/Sia/...
-```
-
-This will download the Sia repo to your `$GOPATH/src` folder and install the
-`siad` and `siac` binaries in your `$GOPATH/bin` folder.
-
-If you do not have `$GOPATH` set, or you prefer to use `git clone`, the following 
-commands can be used to build from source:
+To build from source, [Go 1.13 or above must be installed](https://golang.org/doc/install)
+on the system. Clone the repo and run `make`:
 
 ```
 git clone https://gitlab.com/NebulousLabs/Sia
 cd Sia && make
-``` 
+```
 
-To stay up-to-date, run the previous `go get` command again. Alternatively, you
-can use the Makefile provided in this repo. Run `git pull origin master` to
-pull the latest changes, and `make release` to build the new binaries. You
-can also run `make test` and `make test-long` to run the short and full test
+This will install the `siad` and `siac` binaries in your `$GOPATH/bin` folder.
+(By default, this is `$HOME/go/bin`.)
+
+You can also run `make test` and `make test-long` to run the short and full test
 suites, respectively. Finally, `make cover` will generate code coverage reports
 for each package; they are stored in the `cover` folder and can be viewed in
 your browser.
