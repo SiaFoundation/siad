@@ -229,10 +229,10 @@ Returns the block for a given id or height.
 #### REQUIRED
 One of the following parameters must be specified.
 
-**id** | blockID
+**id** | blockID  
 BlockID of the requested block.  
 
-**height** | blockheight
+**height** | blockheight  
 BlockHeight of the requested block.  
 
 ### JSON Response
@@ -240,28 +240,25 @@ BlockHeight of the requested block.
 
 ```go
 {
-    "height": 20032, 
-    "id": "00000000000033b9eb57fa63a51adeea857e70f6415ebbfe5df2a01f0d0477f4", 
-    "minerpayouts": [
+    "height": 20032, // block height
+    "id": "00000000000033b9eb57fa63a51adeea857e70f6415ebbfe5df2a01f0d0477f4", // hash
+    "minerpayouts": [ // []SiacoinOutput
         {
             "unlockhash": "c199cd180e19ef7597bcf4beecdd4f211e121d085e24432959c42bdf9030e32b9583e1c2727c",
             "value": "279978000000000000000000000000"
         }
     ],
-    "nonce": [4,12,219,7,0,0,0,0],
-    "parentid": "0000000000009615e8db750eb1226aa5e629bfa7badbfe0b79607ec8b918a44c",
+    "nonce": [4,12,219,7,0,0,0,0], // [8]byte
+    "parentid": "0000000000009615e8db750eb1226aa5e629bfa7badbfe0b79607ec8b918a44c", // hash
     "difficulty": "440908097469850", // arbitrary-precision integer
-    "timestamp": 1444516982,
-    "transactions": [
-	{
-	    // ...
-	}
+    "timestamp": 1444516982, // timestamp
+    "transactions": [ // []ConsensusBlocksGetTxn
         {
-            "arbitrarydata": [],
-            "filecontractrevisions": [],
-            "filecontracts": [],
-            "minerfees": [],
-            "siacoininputs": [
+            "arbitrarydata": [],          // [][]byte
+            "filecontractrevisions": [],  // []FileContractRevision
+            "filecontracts": [],          // []ConsensusBlocksGetFileContract
+            "minerfees": [],              // []Currency
+            "siacoininputs": [            // []SiacoinInput
                 {
                     "parentid": "24cbeb9df7eb2d81d0025168fc94bd179909d834f49576e65b51feceaf957a64",
                     "unlockconditions": {
@@ -276,7 +273,7 @@ BlockHeight of the requested block.
                     }
                 }
             ],
-            "siacoinoutputs": [
+            "siacoinoutputs": [ // []SiacoinOutput
                 {
                     "unlockhash": "d54f500f6c1774d518538dbe87114fe6f7e6c76b5bc8373a890b12ce4b8909a336106a4cd6db",
                     "value": "1010000000000000000000000000"
@@ -286,10 +283,10 @@ BlockHeight of the requested block.
                     "value": "5780000000000000000000000000"
                 }
             ],
-            "siafundinputs": [],
-            "siafundoutputs": [],
-            "storageproofs": [],
-            "transactionsignatures": [
+            "siafundinputs": [],          // []SiafundInput
+            "siafundoutputs": [],         // []SiafundOutput
+            "storageproofs": [],          // []StorageProof
+            "transactionsignatures": [    // []TransactionSignature
                 {
                     "coveredfields": {
                         "arbitrarydata": [],
@@ -312,11 +309,34 @@ BlockHeight of the requested block.
             ]
         },
         {
-	    // ...
+          // ...
         }
     ]
 }
 ```
+**height** | block height  
+Height of the block
+
+**id** | hash  
+ID of the block
+
+**minerpayouts** |  []SiacoinOutput  
+Siacoin output that holds the amount of siacoins spent on the miner payout
+
+**nonce** | bytes  
+Block nonce
+
+**parentid** | hash  
+ID of the previous block
+
+**difficulty** | timestamp  
+Historic difficulty at height of the block
+
+**timestamp** | timestamp  
+Block timestamp
+
+**transactions** | []ConsensusBlocksGetTxn  
+Transactions contained within the block
 
 ## /consensus/validate/transactionset [POST]
 > curl example  
