@@ -240,7 +240,7 @@ BlockHeight of the requested block.
 
 ```go
 {
-    "height": 20032,  // block height
+    "height": 20032, // block height
     "id": "00000000000033b9eb57fa63a51adeea857e70f6415ebbfe5df2a01f0d0477f4", // hash
     "minerpayouts": [ // []SiacoinOutput
         {
@@ -250,11 +250,8 @@ BlockHeight of the requested block.
     ],
     "nonce": [4,12,219,7,0,0,0,0], // [8]byte
     "parentid": "0000000000009615e8db750eb1226aa5e629bfa7badbfe0b79607ec8b918a44c", // hash
-    "timestamp": 1444516982,  // timestamp
-    "transactions": [         // []ConsensusBlocksGetTxn
-	{
-	    // ...
-	}
+    "timestamp": 1444516982, // timestamp
+    "transactions": [ // []ConsensusBlocksGetTxn
         {
             "arbitrarydata": [],          // [][]byte
             "filecontractrevisions": [],  // []FileContractRevision
@@ -275,7 +272,7 @@ BlockHeight of the requested block.
                     }
                 }
             ],
-            "siacoinoutputs": [           // []SiacoinOutput
+            "siacoinoutputs": [ // []SiacoinOutput
                 {
                     "unlockhash": "d54f500f6c1774d518538dbe87114fe6f7e6c76b5bc8373a890b12ce4b8909a336106a4cd6db",
                     "value": "1010000000000000000000000000"
@@ -311,11 +308,31 @@ BlockHeight of the requested block.
             ]
         },
         {
-	    // ...
+          // ...
         }
     ]
 }
 ```
+**height** | block height  
+Height of the block
+
+**id** | hash  
+ID of the block
+
+**minerpayouts** |  []SiacoinOutput  
+Siacoin output that holds the amount of siacoins spent on the miner payout
+
+**nonce** | bytes  
+Block nonce
+
+**parentid** | hash  
+ID of the previous block
+
+**timestamp** | timestamp  
+Block timestamp
+
+**transactions** | []ConsensusBlocksGetTxn  
+Transactions contained within the block
 
 ## /consensus/validate/transactionset [POST]
 > curl example  
@@ -1538,16 +1555,16 @@ List of IP subnet masks used by the host. For IPv4 the /24 and for IPv6 the /54 
 **lastipnetchange** | date  
 The last time the list of IP subnet masks was updated. When equal subnet masks are found for different hosts, the host that occupies the subnet mask for a longer time is preferred.  
 
-**publickey** 
+**publickey**  
 Public key used to identify and verify hosts.  
-        
+
 **algorithm** | string  
 Algorithm used for signing and verification. Typically "ed25519".  
 
 **key** | hash  
 Key used to verify signed host messages.  
 
-**publickeystring** | string 
+**publickeystring** | string  
 The string representation of the full public key, used when calling /hostdb/hosts.  
 
 **filtered** | boolean  
