@@ -178,6 +178,26 @@ func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*fNode, error) {
 	return fs.managedOpenFile(siaPath.String())
 }
 
+// RenameFile renames the file with oldSiaPath to newSiaPath.
+func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) error {
+	// Open the file.
+	sf, err := fs.managedOpenFile(oldSiaPath.String())
+	if err != nil {
+		return errors.AddContext(err, "failed to open file for renaming")
+	}
+	defer sf.Close()
+	// Create SiaDir for file at new location.
+	dirSiaPath, err := newSiaPath.Dir()
+	if err != nil {
+		return err
+	}
+	if err := fs.NewSiaDir(dirSiaPath); err != nil {
+		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", dirSiaPath.String(), oldSiaPath.String()))
+	}
+	// Rename the file.
+	return sf.managedRename(filepath.Join(fs.staticName, newSiaPath.String()))
+}
+
 // managedDeleteFile opens the parent folder of the file to delete and calls
 // managedDeleteFile on it.
 func (fs *FileSystem) managedDeleteFile(path string) error {

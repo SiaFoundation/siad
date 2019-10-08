@@ -96,7 +96,7 @@ func (n *dNode) managedDelete() error {
 			if err != nil {
 				return err
 			}
-			if err := file.Delete(); err != nil {
+			if err := file.managedDelete(); err != nil {
 				return err
 			}
 		}
@@ -115,7 +115,7 @@ func (n *dNode) managedDeleteFile(fileName string) error {
 	}
 	defer sf.Close()
 	// Delete it.
-	return sf.Delete()
+	return sf.managedDelete()
 }
 
 // managedNewSiaFile creates a new SiaFile in the directory.
@@ -146,7 +146,7 @@ func (n *dNode) openFile(fileName string) (*fNode, error) {
 		// Load file from disk.
 		filePath := filepath.Join(n.staticPath(), fileName+modules.SiaFileExtension)
 		sf, err := siafile.LoadSiaFile(filePath, n.staticWal)
-		if err == siafile.ErrUnknownPath {
+		if err == siafile.ErrUnknownPath || os.IsNotExist(err) {
 			return nil, ErrNotExist
 		}
 		if err != nil {

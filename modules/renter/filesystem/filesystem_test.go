@@ -589,7 +589,7 @@ func TestDeleteDirectory(t *testing.T) {
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
-	// Add a file to the root dir.
+	// Add some files.
 	fs.AddTestSiaFile(newSiaPath("dir/foo/bar/file1"))
 	fs.AddTestSiaFile(newSiaPath("dir/foo/bar/file2"))
 	fs.AddTestSiaFile(newSiaPath("dir/foo/bar/file3"))
@@ -610,6 +610,44 @@ func TestDeleteDirectory(t *testing.T) {
 		}
 		t.Fatalf("expected 1 file in 'dir' but contains %v files", len(fis))
 	}
+}
+
+// TestRenameFile tests if renaming a single file works as expected.
+func TestRenameFile(t *testing.T) {
+	if testing.Short() && !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	// Add a file to the root dir.
+	foo := newSiaPath("foo")
+	foobar := newSiaPath("foobar")
+	barfoo := newSiaPath("bar/foo")
+	fs.AddTestSiaFile(foo)
+	// Rename the file.
+	if err := fs.RenameFile(foo, foobar); err != nil {
+		t.Fatal(err)
+	}
+	// Check if the file was renamed.
+	if _, err := fs.OpenSiaFile(foo); err != ErrNotExist {
+		t.Fatal("expected ErrNotExist but got:", err)
+	}
+	sf, err := fs.OpenSiaFile(foobar)
+	if err != nil {
+		t.Fatal("expected ErrNotExist but got:", err)
+	}
+	sf.Close()
+	// Rename the file again. This time it changes to a non-existent folder.
+	if err := fs.RenameFile(foobar, barfoo); err != nil {
+		t.Fatal(err)
+	}
+	sf, err = fs.OpenSiaFile(barfoo)
+	if err != nil {
+		t.Fatal("expected ErrNotExist but got:", err)
+	}
+	sf.Close()
 }
 
 // TestThreadedAccess tests rapidly opening and closing files and directories
