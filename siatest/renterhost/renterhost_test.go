@@ -19,8 +19,8 @@ import (
 
 type stubHostDB struct{}
 
-func (stubHostDB) IncrementSuccessfulInteractions(types.SiaPublicKey) {}
-func (stubHostDB) IncrementFailedInteractions(types.SiaPublicKey)     {}
+func (stubHostDB) IncrementSuccessfulInteractions(types.SiaPublicKey) error { return nil }
+func (stubHostDB) IncrementFailedInteractions(types.SiaPublicKey) error     { return nil }
 
 // TestSession tests the new RPC loop by creating a host and requesting new
 // RPCs via the proto.Session type.
