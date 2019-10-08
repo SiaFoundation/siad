@@ -1237,14 +1237,14 @@ adds a storage folder to the manager. The manager may not check that there is en
 
 *Storage folders are subject to a set of requirements that put upper or lower bounds on certain properties such as the size or the amount.*
 
-- **MaximumSectorsPerStorageFolder** | 16 PiB  
- sets an upper bound on how large storage folders in the host are allowed to be
+- **MaximumSectorsPerStorageFolder** | 4294967296  
+ sets an upper bound on how large storage folders in the host are allowed to be. The maximum storage folder size is effectively 16 PiB assuming sectors of 4MiB
 
 - **MaximumStorageFolders** | 65536  
 defines the maximum number of storage folders that the host can support
 
-- **MinimumSectorsPerStorageFolder** | 256 MiB  
-defines the minimum number of sectors that a storage folder is allowed to have
+- **MinimumSectorsPerStorageFolder** | 64  
+defines the minimum number of sectors that a storage folder is allowed to have. The minimum storage folder size is effectively 256 MiB assuming sectors of 4MiB
 
 ### Query String Parameters
 #### REQUIRED
