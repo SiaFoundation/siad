@@ -60,16 +60,26 @@ func newTestWAL() (*writeaheadlog.WAL, string) {
 	return wal, walFilePath
 }
 
-// AddTestSiaFile is a convenience method to add a SiaFile for testing to a FileSystem.
+// AddTestSiaFile is a convenience method to add a SiaFile for testing to a
+// FileSystem.
 func (fs *FileSystem) AddTestSiaFile(siaPath modules.SiaPath) {
+	if err := fs.AddTestSiaFileWithErr(siaPath); err != nil {
+		panic(err)
+	}
+}
+
+// AddTestSiaFileWithErr is a convenience method to add a SiaFile for testing to
+// a FileSystem.
+func (fs *FileSystem) AddTestSiaFileWithErr(siaPath modules.SiaPath) error {
 	ec, err := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	err = fs.NewSiaFile(siaPath, "", ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fastrand.Intn(100)), 0777, true)
 	if err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
 
 // TestNew tests creating a new FileSystem.
@@ -77,6 +87,7 @@ func TestNew(t *testing.T) {
 	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -109,6 +120,7 @@ func TestNewSiaDir(t *testing.T) {
 	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -129,6 +141,7 @@ func TestNewSiaFile(t *testing.T) {
 	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -158,6 +171,7 @@ func TestOpenSiaDir(t *testing.T) {
 	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -276,6 +290,7 @@ func TestOpenSiaFile(t *testing.T) {
 	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -358,6 +373,7 @@ func TestCloseSiaDir(t *testing.T) {
 	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -442,6 +458,7 @@ func TestCloseSiaFile(t *testing.T) {
 	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
@@ -521,12 +538,53 @@ func TestCloseSiaFile(t *testing.T) {
 	}
 }
 
+// TestDeleteFile tests that deleting a file works as expected and that certain
+// edge cases are covered.
+func TestDeleteFile(t *testing.T) {
+	if testing.Short() && !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	// Add a file to the root dir.
+	sp := newSiaPath("foo")
+	fs.AddTestSiaFile(sp)
+	// Open the file.
+	sf, err := fs.OpenSiaFile(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// File shouldn't be deleted yet.
+	if sf.Deleted() {
+		t.Fatal("foo is deleted before calling delete")
+	}
+	// Delete it using the filesystem.
+	if err := fs.DeleteFile(sp); err != nil {
+		t.Fatal(err)
+	}
+	// Check that the open instance is marked as deleted.
+	if !sf.Deleted() {
+		t.Fatal("foo shuld be marked as deleted but wasn't")
+	}
+	// Check that we can't open another instance of foo and that we can't create
+	// an new file at the same path.
+	if _, err := fs.OpenSiaFile(sp); err != ErrNotExist {
+		t.Fatal("err should be ErrNotExist but was:", err)
+	}
+	if err := fs.AddTestSiaFileWithErr(sp); err != ErrExists {
+		t.Fatal("err should be ErrExists but was:", err)
+	}
+}
+
 // TestThreadedAccess tests rapidly opening and closing files and directories
 // from multiple threads to check the locking conventions.
 func TestThreadedAccess(t *testing.T) {
 	if testing.Short() && !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Specify the file structure for the test.
 	filePaths := []string{
 		"f0",
