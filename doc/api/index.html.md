@@ -250,6 +250,7 @@ BlockHeight of the requested block.
     ],
     "nonce": [4,12,219,7,0,0,0,0],
     "parentid": "0000000000009615e8db750eb1226aa5e629bfa7badbfe0b79607ec8b918a44c",
+    "difficulty": "440908097469850", // arbitrary-precision integer
     "timestamp": 1444516982,
     "transactions": [
 	{
