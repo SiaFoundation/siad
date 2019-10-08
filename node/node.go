@@ -87,12 +87,11 @@ type NodeParams struct {
 	WalletDeps       modules.Dependencies
 
 	// Custom settings for modules
-	Allowance      modules.Allowance
-	Bootstrap      bool
-	GatewayAddress string
-	HostAddress    string
-	HostStorage    uint64
-	RPCAddress     string
+	Allowance   modules.Allowance
+	Bootstrap   bool
+	HostAddress string
+	HostStorage uint64
+	RPCAddress  string
 
 	// Initialize node from existing seed.
 	PrimarySeed string

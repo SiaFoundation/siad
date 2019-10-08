@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -18,53 +19,61 @@ import (
 )
 
 var (
-	// testNodeAddressCounter is a global channel that tracks the counter for
+	// testNodeAddressCounter is a global variable that tracks the counter for
 	// the test node addresses for all tests. It starts at 127.1.0.0 and
 	// iterates through the entire range of 127.X.X.X above 127.1.0.0
 	testNodeAddressCounter = newNodeAddressCounter()
 )
 
-// TestNode is a helper struct for testing that contains a server and a client
-// as embedded fields.
-type TestNode struct {
-	*server.Server
-	client.Client
-	params      node.NodeParams
-	primarySeed string
+type (
+	// TestNode is a helper struct for testing that contains a server and a
+	// client as embedded fields.
+	TestNode struct {
+		*server.Server
+		client.Client
+		params      node.NodeParams
+		primarySeed string
 
-	downloadDir *LocalDir
-	filesDir    *LocalDir
-}
+		downloadDir *LocalDir
+		filesDir    *LocalDir
+	}
 
-// newNodeAddressCounter creates a new counter channel and returns it. The
+	// addressCounter is a help struct for assigning new addresses to test nodes
+	addressCounter struct {
+		address net.IP
+		mu      sync.Mutex
+	}
+)
+
+// newNodeAddressCounter creates a new address counter and returns it. The
 // counter will cover the entire range 127.X.X.X above 127.1.0.0
 //
-// The counter is initialize with an IP address of 127.1.0.0 so that testers can
-// manually add nodes in the address range of 127.0.X.X without causing a
+// The counter is initialized with an IP address of 127.1.0.0 so that testers
+// can manually add nodes in the address range of 127.0.X.X without causing a
 // conflict
-func newNodeAddressCounter() chan net.IP {
-	counter := make(chan net.IP, 1)
-	counter <- net.IPv4(127, 1, 0, 0)
+func newNodeAddressCounter() *addressCounter {
+	counter := &addressCounter{
+		address: net.IPv4(127, 1, 0, 0),
+	}
 	return counter
 }
 
-// nextNodeAddress returns the next node address based on the
-// testNodeAddressCounter
-func nextNodeAddress() (string, error) {
-	currIP := <-testNodeAddressCounter
+// managedNextNodeAddress returns the next node address from the addressCounter
+func (ac *addressCounter) managedNextNodeAddress() (string, error) {
+	ac.mu.Lock()
+	defer ac.mu.Unlock()
 	// IPs are byte slices with a length of 16, the IPv4 address range is stored
 	// in the last 4 indexes, 12-15
-	for i := len(currIP) - 1; i >= 12; i-- {
+	for i := len(ac.address) - 1; i >= 12; i-- {
 		if i == 12 {
 			return "", errors.New("ran out of IP addresses")
 		}
-		currIP[i]++
-		if currIP[i] > 0 {
+		ac.address[i]++
+		if ac.address[i] > 0 {
 			break
 		}
 	}
-	testNodeAddressCounter <- currIP
-	return currIP.String(), nil
+	return ac.address.String(), nil
 
 }
 
@@ -195,7 +204,7 @@ func (tn *TestNode) RestartNode() error {
 // StartNode starts a TestNode from an active group
 func (tn *TestNode) StartNode() error {
 	// Create server
-	s, err := server.New(tn.params.GatewayAddress, tn.UserAgent, tn.Password, tn.params)
+	s, err := server.New(tn.params.RPCAddress, tn.UserAgent, tn.Password, tn.params)
 	if err != nil {
 		return err
 	}
@@ -257,24 +266,23 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 	userAgent := "Sia-Agent"
 	password := "password"
 
-	// Check if a gateway address is set
-	if nodeParams.GatewayAddress == "" {
-		addr, err := nextNodeAddress()
+	// Check if an RPC address is set
+	if nodeParams.RPCAddress == "" {
+		addr, err := testNodeAddressCounter.managedNextNodeAddress()
 		if err != nil {
 			return nil, errors.AddContext(err, "error getting next node address")
 		}
-		nodeParams.GatewayAddress = addr + ":0"
+		nodeParams.RPCAddress = addr + ":0"
 	}
-
 	// Create server
 	var s *server.Server
 	var err error
 	if asyncSync {
 		var errChan <-chan error
-		s, errChan = server.NewAsync(nodeParams.GatewayAddress, userAgent, password, nodeParams)
+		s, errChan = server.NewAsync(nodeParams.RPCAddress, userAgent, password, nodeParams)
 		err = modules.PeekErr(errChan)
 	} else {
-		s, err = server.New(nodeParams.GatewayAddress, userAgent, password, nodeParams)
+		s, err = server.New(nodeParams.RPCAddress, userAgent, password, nodeParams)
 	}
 	if err != nil {
 		return nil, err

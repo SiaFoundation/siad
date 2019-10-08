@@ -1,8 +1,8 @@
 package siatest
 
 import (
+	"fmt"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -152,72 +152,104 @@ func TestGatewayAddress(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create testgroup
-	groupParams := GroupParams{
-		Hosts:   1,
-		Renters: 1,
-		Miners:  2,
-	}
+	// Create a host and a renter and connect them
 	testDir := siatestTestDir(t.Name())
-	tg, err := NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group:", err)
-	}
-	defer tg.Close()
-
-	// Grab the renter
-	r := tg.Renters()[0]
-
-	// Grab the current peers
-	gg, err := r.GatewayGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// There should be 3 peers
-	if len(gg.Peers) != 3 {
-		t.Fatalf("Expected %v peers, got %v", 3, len(gg.Peers))
-	}
-
-	// Blacklist one of the peers by manually disconnecting from them
-	m := tg.Miners()[0]
-	mgg, err := m.GatewayGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = r.GatewayDisconnectPost(mgg.NetAddress)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Get the list of renter peers again
-	gg, err = r.GatewayGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// There should be 2 peers
-	if len(gg.Peers) != 2 {
-		t.Fatalf("Expected %v peers, got %v", 2, len(gg.Peers))
-	}
-
-	// Add node to the test group with the same host address as the node that
-	// was blacklisted. This should fail
-	nodeParams := node.Renter(filepath.Join(testDir, "node"))
-	nodeParams.GatewayAddress = mgg.NetAddress.Host() + ":0"
-	_, err = tg.AddNodes(nodeParams)
-	if err == nil {
-		t.Fatal("Shouldn't be able to add a node")
-	}
-	if !strings.Contains(err.Error(), "failed to connect to peer") {
-		t.Fatal("expected err to contain `failed to connect to peer` but got", err)
-	}
-
-	// Add a renter with a unique gateway address. Nodes are given unique
-	// addresses if one is not defined.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	_, err = tg.AddNodes(renterParams)
+	renter, err := NewCleanNode(renterParams)
 	if err != nil {
 		t.Fatal(err)
+	}
+	hostParams := node.Renter(filepath.Join(testDir, "host"))
+	host, err := NewCleanNode(hostParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = connectNodes(renter, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm the renter and host are each other's peers
+	isPeer, err := renter.hasPeer(host)
+	if !isPeer || err != nil {
+		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
+	}
+	isPeer, err = host.hasPeer(renter)
+	if !isPeer || err != nil {
+		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
+	}
+
+	// Have the host Blacklist the renter, confirm they are no longer peers
+	err = host.GatewayDisconnectPost(renter.GatewayAddress())
+	if err != nil {
+		t.Fatal(err)
+	}
+	isPeer, err = renter.hasPeer(host)
+	if isPeer || err != nil {
+		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
+	}
+	isPeer, err = host.hasPeer(renter)
+	if isPeer || err != nil {
+		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
+	}
+
+	// Create a miner and connect to the group
+	fmt.Println("++ CREATE MINER")
+	minerParams := node.Miner(filepath.Join(testDir, "miner"))
+	miner, err := NewCleanNode(minerParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println("++ CONNNECT MINER AND HOST")
+	err = connectNodes(miner, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = connectNodes(miner, renter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	isPeer, err = miner.hasPeer(host)
+	if !isPeer || err != nil {
+		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
+	}
+	isPeer, err = miner.hasPeer(renter)
+	if !isPeer || err != nil {
+		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
+	}
+
+	// Add another renter to the group that has the same address as the original
+	// renter. This renter should not connect to the host since the host had
+	// disconnected and blacklisted the original renter
+	renterParams = node.Renter(filepath.Join(testDir, "renterTwo"))
+	renterParams.RPCAddress = renter.GatewayAddress().Host() + ":0"
+	renterTwo, err := NewCleanNode(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = renterTwo.GatewayConnectPost(host.GatewayAddress())
+	if err == nil {
+		t.Fatal("expected to not be able to connect to host")
+	}
+	err = renterTwo.GatewayConnectPost(renter.GatewayAddress())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = renterTwo.GatewayConnectPost(miner.GatewayAddress())
+	if err != nil {
+		t.Fatal(err)
+	}
+	isPeer, err = renterTwo.hasPeer(host)
+	if isPeer || err != nil {
+		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
+	}
+	isPeer, err = renterTwo.hasPeer(renter)
+	if !isPeer || err != nil {
+		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
+	}
+	isPeer, err = renterTwo.hasPeer(miner)
+	if !isPeer || err != nil {
+		t.Fatalf("isPeer: %v, err: %v", isPeer, err)
 	}
 }
