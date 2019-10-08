@@ -40,10 +40,6 @@ const (
 	// codebase were made that weren't backwards compatible. This might include
 	// changes to the protocol or hardforks.
 	minimumAcceptablePeerVersion = "1.3.7"
-
-	// onlineCheckFrequency defines how often the gateway calls 'Online' in
-	// threadedOnlineCheck.
-	onlineCheckFrequency = time.Minute
 )
 
 var (
@@ -86,6 +82,14 @@ var (
 		Standard: 10 * time.Minute,
 		Dev:      20 * time.Second,
 		Testing:  500 * time.Millisecond,
+	}).(time.Duration)
+
+	// onlineCheckFrequency defines how often the gateway calls 'Online' in
+	// threadedOnlineCheck.
+	onlineCheckFrequency = build.Select(build.Var{
+		Standard: 30 * time.Second,
+		Dev:      10 * time.Second,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 
 	// peerRPCDelay defines the amount of time waited between each RPC accepted

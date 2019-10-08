@@ -422,7 +422,7 @@ func (g *Gateway) threadedOnlineCheck() {
 	defer g.threads.Done()
 	for {
 		select {
-		case <-g.threads.StopChan:
+		case <-g.threads.StopChan():
 			return
 		case <-time.After(onlineCheckFrequency):
 		}
