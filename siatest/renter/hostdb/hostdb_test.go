@@ -1,4 +1,4 @@
-package renter
+package hostdb
 
 import (
 	"fmt"
@@ -29,7 +29,7 @@ func TestInitialScanComplete(t *testing.T) {
 	t.Parallel()
 
 	// Get a directory for testing.
-	testDir := renterTestDir(t.Name())
+	testDir := hostdbTestDir(t.Name())
 
 	// Create a group. The renter should block the scanning thread using a
 	// dependency.
@@ -107,7 +107,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 	t.Parallel()
 
 	// Get the testDir for this test.
-	testDir := renterTestDir(t.Name())
+	testDir := hostdbTestDir(t.Name())
 
 	// Create a group with a few hosts.
 	groupParams := siatest.GroupParams{
@@ -308,7 +308,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 	t.Parallel()
 
 	// Get the testDir for this test.
-	testDir := renterTestDir(t.Name())
+	testDir := hostdbTestDir(t.Name())
 
 	// Create a group with a single host.
 	groupParams := siatest.GroupParams{
@@ -462,7 +462,7 @@ func TestDisableIPViolationCheck(t *testing.T) {
 	t.Parallel()
 
 	// Get the testDir for this test.
-	testDir := renterTestDir(t.Name())
+	testDir := hostdbTestDir(t.Name())
 
 	// Create a group with a few hosts.
 	groupParams := siatest.GroupParams{
@@ -622,7 +622,7 @@ func TestFilterMode(t *testing.T) {
 		Hosts:  10,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := hostdbTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal(errors.AddContext(err, "failed to create group"))
