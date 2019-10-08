@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"encoding/hex"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -575,6 +576,39 @@ func TestDeleteFile(t *testing.T) {
 	}
 	if err := fs.AddTestSiaFileWithErr(sp); err != ErrExists {
 		t.Fatal("err should be ErrExists but was:", err)
+	}
+}
+
+// TestDeleteDirectory tests if deleting a directory correctly and recursively
+// removes the dir.
+func TestDeleteDirectory(t *testing.T) {
+	if testing.Short() && !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	// Add a file to the root dir.
+	fs.AddTestSiaFile(newSiaPath("dir/foo/bar/file1"))
+	fs.AddTestSiaFile(newSiaPath("dir/foo/bar/file2"))
+	fs.AddTestSiaFile(newSiaPath("dir/foo/bar/file3"))
+	// Delete "foo"
+	if err := fs.DeleteDir(newSiaPath("/dir/foo")); err != nil {
+		t.Fatal(err)
+	}
+	// Check that /dir still exists.
+	if _, err := os.Stat(filepath.Join(root, "dir")); err != nil {
+		t.Fatal(err)
+	}
+	// Check that /dir is empty.
+	if fis, err := ioutil.ReadDir(filepath.Join(root, "dir")); err != nil {
+		t.Fatal(err)
+	} else if len(fis) != 1 {
+		for i, fi := range fis {
+			t.Logf("fi%v: %v", i, fi.Name())
+		}
+		t.Fatalf("expected 1 file in 'dir' but contains %v files", len(fis))
 	}
 }
 

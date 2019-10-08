@@ -121,6 +121,16 @@ func New(root string, wal *writeaheadlog.WAL) (*FileSystem, error) {
 	}, nil
 }
 
+// DeleteDir deletes a dir from the filesystem. The dir will be marked as
+// 'deleted' which should cause all remaining instances of the dir to be close
+// shortly. Only when all instances of the dir are closed it will be removed
+// from the tree. This means that as long as the deletion is in progress, no new
+// file of the same path can be created and the existing file can't be opened
+// until all instances of it are closed.
+func (fs *FileSystem) DeleteDir(siaPath modules.SiaPath) error {
+	return fs.managedDeleteDir(siaPath.String())
+}
+
 // DeleteFile deletes a file from the filesystem. The file will be marked as
 // 'deleted' which should cause all remaining instances of the file to be closed
 // shortly. Only when all instances of the file are closed it will be removed
@@ -187,6 +197,27 @@ func (fs *FileSystem) managedDeleteFile(path string) error {
 		defer dir.Close()
 	}
 	return dir.managedDeleteFile(fileName)
+}
+
+// managedDeleteDir opens the parent folder of the dir to delete and calls
+// managedDelete on it.
+func (fs *FileSystem) managedDeleteDir(path string) error {
+	// Open the folder that contains the file.
+	dirPath, _ := filepath.Split(path)
+	var dir *dNode
+	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
+		dir = &fs.dNode // file is in the root dir
+	} else {
+		var err error
+		dir, err = fs.managedOpenDir(filepath.Dir(path))
+		if err != nil {
+			return errors.AddContext(err, "failed to open parent dir of file")
+		}
+		// Close the dir since we are not returning it. The open file keeps it
+		// loaded in memory.
+		defer dir.Close()
+	}
+	return dir.managedDelete()
 }
 
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the

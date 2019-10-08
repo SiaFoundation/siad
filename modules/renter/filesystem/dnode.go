@@ -32,11 +32,9 @@ type (
 	}
 )
 
-// Close calls close on the underlying node and also removes the dNode from its
-// parent if it's no longer being used and if it doesn't have any children which
-// are currently in use.
-func (n *dNode) Close() {
-	n.mu.Lock()
+// close calls the common close method of all nodes and clears the SiaDir if no
+// more threads are accessing.
+func (n *dNode) close() {
 	// Call common close method.
 	n.node._close()
 
@@ -44,6 +42,16 @@ func (n *dNode) Close() {
 	if len(n.threads) == 0 {
 		n.SiaDir = nil
 	}
+}
+
+// Close calls close on the dNode and also removes the dNode from its parent if
+// it's no longer being used and if it doesn't have any children which are
+// currently in use.
+func (n *dNode) Close() {
+	n.mu.Lock()
+
+	// call private close method.
+	n.close()
 
 	// Remove node from parent if there are no more children.
 	if n.staticParent != nil && len(n.threads)+len(n.directories)+len(n.files) == 0 {
@@ -55,7 +63,7 @@ func (n *dNode) Close() {
 }
 
 // Delete recursively deltes a dNode from disk.
-func (n *dNode) Delete() error {
+func (n *dNode) managedDelete() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Get contents of dir.
@@ -70,21 +78,30 @@ func (n *dNode) Delete() error {
 			if err != nil {
 				return err
 			}
-			if err := dir.Delete(); err != nil {
+			// Clone the opened dir to force the SiaDir to be loaded.
+			dir, err = dir.copy()
+			if err != nil {
 				return err
 			}
+			if err := dir.Delete(); err != nil {
+				dir.close()
+				return err
+			}
+			dir.close()
 			continue
 		}
 		// Delete file.
-		file, err := n.openFile(fi.Name())
-		if err != nil {
-			return err
-		}
-		if err := file.Delete(); err != nil {
-			return err
+		if filepath.Ext(fi.Name()) == modules.SiaFileExtension {
+			file, err := n.openFile(fi.Name())
+			if err != nil {
+				return err
+			}
+			if err := file.Delete(); err != nil {
+				return err
+			}
 		}
 	}
-	return os.Remove(n.staticPath())
+	return nil
 }
 
 // managedDeleteFile deletes the file with the given name from the directory.
