@@ -4196,7 +4196,7 @@ Update the set of addresses for the wallet to watch.
   "addresses": [    // []hash
     "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "abcdef0123456789abcdef0123456789abcd1234567890ef0123456789abcdef"
-  ],                
+  ],
   "remove": false,  // boolean
   "unused": true,   // boolean
 ```
