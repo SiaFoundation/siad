@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -129,6 +130,9 @@ func newThreadUID() threadUID {
 func (fs *FileSystem) NewSiaDir(siaPath modules.SiaPath) error {
 	dirPath := siaPath.SiaDirSysPath(fs.staticName)
 	_, err := siadir.New(dirPath, fs.staticName, fs.staticWal)
+	if os.IsExist(err) {
+		return nil // nothing to do
+	}
 	return err
 }
 
@@ -140,7 +144,7 @@ func (fs *FileSystem) NewSiaFile(siaPath modules.SiaPath, source string, ec modu
 		return err
 	}
 	if err := fs.NewSiaDir(dirSiaPath); err != nil {
-		return errors.AddContext(err, "failed to create SiaDir for SiaFile")
+		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", dirSiaPath.String(), siaPath.String()))
 	}
 	// Create SiaFile.
 	siaFilePath := siaPath.SiaFileSysPath(fs.staticName)
