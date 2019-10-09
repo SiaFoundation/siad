@@ -10,6 +10,7 @@ import (
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -101,8 +102,12 @@ type fuseFS struct {
 	sp  modules.SiaPath
 }
 
+// path converts name to a siapath.
 func (fs *fuseFS) path(name string) modules.SiaPath {
-	sp, _ := modules.NewSiaPath(name)
+	sp, err := modules.NewSiaPath(name)
+	if err != nil {
+		build.Critical("invalid FUSE path:", name, err)
+	}
 	return sp
 }
 
