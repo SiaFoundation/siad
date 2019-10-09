@@ -499,9 +499,19 @@ func parseDataAndParityPieces(strDataPieces, strParityPieces string) (dataPieces
 
 // renterHandlerGET handles the API call to /renter.
 func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	settings, err := api.renter.Settings()
+	if err != nil {
+		WriteError(w, Error{"unable able to get renter settings: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	spending, err := api.renter.PeriodSpending()
+	if err != nil {
+		WriteError(w, Error{"unable to get Period Spending: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	WriteJSON(w, RenterGET{
-		Settings:         api.renter.Settings(),
-		FinancialMetrics: api.renter.PeriodSpending(),
+		Settings:         settings,
+		FinancialMetrics: spending,
 		CurrentPeriod:    api.renter.CurrentPeriod(),
 	})
 }
@@ -512,7 +522,11 @@ func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 // are being set in which case certain fields are no longer optional.
 func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get the existing settings
-	settings := api.renter.Settings()
+	settings, err := api.renter.Settings()
+	if err != nil {
+		WriteError(w, Error{"unable able to get renter settings: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 
 	// Scan for all allowance fields
 	if f := req.FormValue("funds"); f != "" {
@@ -669,9 +683,9 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 	}
 
 	// Set the settings in the renter.
-	err := api.renter.SetSettings(settings)
+	err = api.renter.SetSettings(settings)
 	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to set renter settings: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
@@ -781,7 +795,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 		// Fetch host address
 		var netAddress modules.NetAddress
-		hdbe, exists := api.renter.Host(c.HostPublicKey)
+		hdbe, exists, _ := api.renter.Host(c.HostPublicKey)
 		if exists {
 			netAddress = hdbe.NetAddress
 		}
@@ -844,7 +858,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 		// Fetch host address
 		var netAddress modules.NetAddress
-		hdbe, exists := api.renter.Host(c.HostPublicKey)
+		hdbe, exists, _ := api.renter.Host(c.HostPublicKey)
 		if exists {
 			netAddress = hdbe.NetAddress
 		}

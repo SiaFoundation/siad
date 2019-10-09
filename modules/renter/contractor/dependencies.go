@@ -52,14 +52,14 @@ type (
 	}
 
 	hostDB interface {
-		AllHosts() []modules.HostDBEntry
-		ActiveHosts() []modules.HostDBEntry
-		CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey
-		Filter() (modules.FilterMode, map[string]types.SiaPublicKey)
+		AllHosts() ([]modules.HostDBEntry, error)
+		ActiveHosts() ([]modules.HostDBEntry, error)
+		CheckForIPViolations([]types.SiaPublicKey) ([]types.SiaPublicKey, error)
+		Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error)
 		SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error
-		Host(types.SiaPublicKey) (modules.HostDBEntry, bool)
-		IncrementSuccessfulInteractions(key types.SiaPublicKey)
-		IncrementFailedInteractions(key types.SiaPublicKey)
+		Host(types.SiaPublicKey) (modules.HostDBEntry, bool, error)
+		IncrementSuccessfulInteractions(key types.SiaPublicKey) error
+		IncrementFailedInteractions(key types.SiaPublicKey) error
 		RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error)
 		UpdateContracts([]modules.RenterContract) error
 		ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error)
