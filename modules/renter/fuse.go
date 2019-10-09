@@ -10,7 +10,6 @@ import (
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -103,12 +102,13 @@ type fuseFS struct {
 }
 
 // path converts name to a siapath.
-func (fs *fuseFS) path(name string) modules.SiaPath {
-	sp, err := modules.NewSiaPath(name)
-	if err != nil {
-		build.Critical("invalid FUSE path:", name, err)
+func (fs *fuseFS) path(name string) (modules.SiaPath, bool) {
+	if strings.HasPrefix(name, ".") {
+		// opening a "hidden" siafile results in a panic
+		return modules.SiaPath{}, false
 	}
-	return sp
+	sp, err := modules.NewSiaPath(name)
+	return sp, err == nil
 }
 
 // errToStatus converts a Go error to a fuse.Status code and returns it. The Go
@@ -124,12 +124,7 @@ func (fs *fuseFS) errToStatus(op, name string, err error) fuse.Status {
 }
 
 // stat returns the os.FileInfo for the named file.
-func (fs *fuseFS) stat(name string) (os.FileInfo, error) {
-	if strings.HasPrefix(name, ".") {
-		// opening a "hidden" siafile results in a panic
-		return nil, os.ErrNotExist
-	}
-	path := fs.path(name)
+func (fs *fuseFS) stat(path modules.SiaPath) (os.FileInfo, error) {
 	fi, err := fs.r.File(path)
 	if err != nil {
 		// not a file; might be a directory
@@ -140,7 +135,14 @@ func (fs *fuseFS) stat(name string) (os.FileInfo, error) {
 
 // GetAttr implements pathfs.FileSystem.
 func (fs *fuseFS) GetAttr(name string, _ *fuse.Context) (*fuse.Attr, fuse.Status) {
-	stat, err := fs.stat(name)
+	if name == "" {
+		name = fs.sp.String()
+	}
+	sp, ok := fs.path(name)
+	if !ok {
+		return nil, fuse.ENOENT
+	}
+	stat, err := fs.stat(sp)
 	if err != nil {
 		return nil, fs.errToStatus("GetAttr", name, err)
 	}
@@ -159,7 +161,10 @@ func (fs *fuseFS) GetAttr(name string, _ *fuse.Context) (*fuse.Attr, fuse.Status
 
 // OpenDir implements pathfs.FileSystem.
 func (fs *fuseFS) OpenDir(name string, _ *fuse.Context) ([]fuse.DirEntry, fuse.Status) {
-	sp := fs.path(name)
+	sp, ok := fs.path(name)
+	if !ok {
+		return nil, fuse.ENOENT
+	}
 	fis, err := fs.r.FileList(sp, false, true)
 	if err != nil {
 		return nil, fs.errToStatus("OpenDir", name, err)
@@ -190,12 +195,15 @@ func (fs *fuseFS) Open(name string, flags uint32, _ *fuse.Context) (file nodefs.
 	if int(flags&fuse.O_ANYWRITE) != os.O_RDONLY {
 		return nil, fuse.EROFS // read-only filesystem
 	}
-	if stat, err := fs.stat(name); err != nil {
+	sp, ok := fs.path(name)
+	if !ok {
+		return nil, fuse.ENOENT
+	}
+	if stat, err := fs.stat(sp); err != nil {
 		return nil, fs.errToStatus("Open", name, err)
 	} else if stat.IsDir() {
 		return nil, fuse.EISDIR
 	}
-	sp := fs.path(name)
 	_, s, err := fs.r.Streamer(sp)
 	if err != nil {
 		return nil, fs.errToStatus("Open", name, err)
