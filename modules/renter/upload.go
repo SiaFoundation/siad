@@ -17,7 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
@@ -33,6 +33,13 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return err
 	}
 	defer r.tg.Done()
+
+	// Prepend siapath user provided with /home/siafiles.
+	var err error
+	up.SiaPath, err = modules.SiaFilesSiaPath().Join(up.SiaPath.String())
+	if err != nil {
+		return err
+	}
 
 	// Check if the file is a directory.
 	sourceInfo, err := os.Stat(up.Source)
@@ -80,19 +87,20 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 	// Try to create the directory. If ErrPathOverload is returned it already
 	// exists.
-	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
-	if err != siadir.ErrPathOverload && err != nil {
+	err = r.staticFileSystem.NewSiaDir(dirSiaPath)
+	if err != filesystem.ErrExists && err != nil {
 		return errors.AddContext(err, "unable to create sia directory for new file")
-	} else if err == nil {
-		siaDirEntry.Close()
 	}
 
 	// Create the Siafile and add to renter
-	entry, err := r.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(sourceInfo.Size()), sourceInfo.Mode())
+	err = r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(sourceInfo.Size()), sourceInfo.Mode(), up.DisablePartialChunk)
 	if err != nil {
 		return errors.AddContext(err, "could not create a new sia file")
 	}
-	defer entry.Close()
+	entry, err := r.staticFileSystem.OpenSiaFile(up.SiaPath)
+	if err != nil {
+		return errors.AddContext(err, "could not open the new sia file")
+	}
 
 	// No need to upload zero-byte files.
 	if sourceInfo.Size() == 0 {

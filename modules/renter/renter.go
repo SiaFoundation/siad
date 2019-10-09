@@ -26,7 +26,6 @@ package renter
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -246,7 +245,6 @@ type Renter struct {
 	log              *persist.Logger
 	persist          persistence
 	persistDir       string
-	staticFilesDir   string
 	memoryManager    *memoryManager
 	mu               *siasync.RWMutex
 	tg               threadgroup.ThreadGroup
@@ -819,7 +817,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		hostContractor: hc,
 		persistDir:     persistDir,
 		staticAlerter:  modules.NewAlerter("renter"),
-		staticFilesDir: filepath.Join(persistDir, modules.SiaFilesRoot),
 		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
 	}

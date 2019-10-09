@@ -113,18 +113,15 @@ func (r *Renter) managedLoadSettings() error {
 // managedInitPersist handles all of the persistence initialization, such as creating
 // the persistence directory and starting the logger.
 func (r *Renter) managedInitPersist() error {
-	// Create the persist and files directories if they do not yet exist.
+	// Create the persist and filesystem directories if they do not yet exist.
 	//
 	// Note: the os package needs to be used here instead of the renter's
 	// CreateDir method because the staticDirSet has not been initialized yet.
 	// The directory is needed before the staticDirSet can be initialized
 	// because the wal needs the directory to be created and the staticDirSet
 	// needs the wal.
-	err := os.MkdirAll(r.staticFilesDir, 0700)
-	if err != nil {
-		return err
-	}
-	err = os.MkdirAll(r.staticBackupsDir, 0700)
+	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
+	err := os.MkdirAll(fsRoot, 0700)
 	if err != nil {
 		return err
 	}
@@ -182,7 +179,7 @@ func (r *Renter) managedInitPersist() error {
 		}
 	}
 
-	fs, err := filesystem.New(r.staticFilesDir, wal)
+	fs, err := filesystem.New(fsRoot, wal)
 	if err != nil {
 		return err
 	}

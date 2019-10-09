@@ -202,8 +202,8 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 // managedTarSiaFiles creates a tarball from the renter's siafiles and writes
 // it to dst.
 func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
-	// Walk over all the siafiles and add them to the tarball.
-	return filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
+	// Walk over all the siafiles in /home/siafiles and add them to the tarball.
+	return r.staticFileSystem.Walk(modules.SiaFilesSiaPath(), func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
@@ -219,7 +219,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		if err != nil {
 			return err
 		}
-		relPath := strings.TrimPrefix(path, r.staticFilesDir)
+		relPath := strings.TrimPrefix(path, r.staticFileSystem.DirPath(modules.SiaFilesSiaPath()))
 		header.Name = relPath
 		// If the info is a dir there is nothing more to do besides writing the
 		// header.
@@ -306,7 +306,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		} else if err != nil {
 			return err
 		}
-		dst := filepath.Join(r.staticFilesDir, header.Name)
+		dst := filepath.Join(r.staticFileSystem.DirPath(modules.SiaFilesSiaPath()), header.Name)
 
 		// Check for dir.
 		info := header.FileInfo()
@@ -330,7 +330,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			}
 			// Try creating a new SiaDir.
 			var siaPath modules.SiaPath
-			if err := siaPath.LoadSysPath(r.staticFilesDir, dst); err != nil {
+			if err := siaPath.LoadSysPath(r.staticFileSystem.DirPath(modules.SiaFilesSiaPath()), dst); err != nil {
 				return err
 			}
 			siaPath, err = siaPath.Dir()

@@ -3,6 +3,7 @@ package filesystem
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -205,6 +206,49 @@ func (fs *FileSystem) NewSiaFile(siaPath modules.SiaPath, source string, ec modu
 		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", dirSiaPath.String(), siaPath.String()))
 	}
 	return fs.managedNewSiaFile(siaPath.String(), source, ec, mk, fileSize, fileMode, disablePartialUpload)
+}
+
+// ReadDir is a wrapper of ioutil.ReadDir which takes a SiaPath as an argument
+// instead of a system path.
+func (fs *FileSystem) ReadDir(siaPath modules.SiaPath) ([]os.FileInfo, error) {
+	dirPath := siaPath.SiaDirSysPath(fs.staticName)
+	return ioutil.ReadDir(dirPath)
+}
+
+// DirPath converts a SiaPath into a dir's system path.
+func (fs *FileSystem) DirPath(siaPath modules.SiaPath) string {
+	return siaPath.SiaDirSysPath(fs.staticName)
+}
+
+// FilePath converts a SiaPath into a file's system path.
+func (fs *FileSystem) FilePath(siaPath modules.SiaPath) string {
+	return siaPath.SiaFileSysPath(fs.staticName)
+}
+
+// Root returns the root system path of the FileSystem.
+func (fs *FileSystem) Root() string {
+	return fs.DirPath(modules.RootSiaPath())
+}
+
+// Stat is a wrapper for os.Stat which takes a SiaPath as an argument instead of
+// a system path.
+func (fs *FileSystem) Stat(siaPath modules.SiaPath) (os.FileInfo, error) {
+	path := siaPath.SiaDirSysPath(fs.staticName)
+	return os.Stat(path)
+}
+
+// Walk is a wrapper for filepath.Walk which takes a SiaPath as an argument
+// instead of a system path.
+func (fs *FileSystem) Walk(siaPath modules.SiaPath, walkFn filepath.WalkFunc) error {
+	dirPath := siaPath.SiaDirSysPath(fs.staticName)
+	return filepath.Walk(dirPath, walkFn)
+}
+
+// WriteFile is a wrapper for ioutil.WriteFile which takes a SiaPath as an
+// argument instead of a system path.
+func (fs *FileSystem) WriteFile(siaPath modules.SiaPath, data []byte, perm os.FileMode) error {
+	path := siaPath.SiaFileSysPath(fs.staticName)
+	return ioutil.WriteFile(path, data, perm)
 }
 
 // NewSiaFileFromLegacyData creates a new SiaFile from data that was previously loaded

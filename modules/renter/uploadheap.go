@@ -342,7 +342,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chu
 // they are done and so cannot share a SiaFileSetEntry as the first chunk to
 // finish would then close the Entry and consequentially impact the remaining
 // chunks.
-func (r *Renter) managedBuildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
+func (r *Renter) managedBuildUnfinishedChunks(entry *fileSystem.FNode, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
 	// If we don't have enough workers for the file, don't repair it right now.
 	minPieces := entry.ErasureCode().MinPieces()
 	r.staticWorkerPool.mu.RLock()

@@ -2,7 +2,6 @@ package renter
 
 import (
 	"fmt"
-	"io/ioutil"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -92,7 +91,7 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 // to the upload heap as possible
 func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[string]struct{}, offline, goodForRenew map[string]bool) error {
 	// Open File
-	sf, err := r.staticFileSet.Open(siaPath)
+	sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return fmt.Errorf("unable to open siafile %v, error: %v", siaPath, err)
 	}
@@ -301,7 +300,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 // directory SiaPaths
 func (r *Renter) managedSubDirectories(siaPath modules.SiaPath) ([]modules.SiaPath, error) {
 	// Read directory
-	fileinfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
+	fileinfos, err := r.staticFileSystem.ReadDir(siaPath)
 	if err != nil {
 		return nil, err
 	}
