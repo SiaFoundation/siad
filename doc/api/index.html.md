@@ -2015,7 +2015,7 @@ Modify settings that control the renter's behavior.
 
 ### Query String Parameters
 #### REQUIRED
-When setting the allowance the Funds and Period are required. Since these are the two required fields, the allowance can be cancelled by submitted the zero values for these fields.
+When setting the allowance the Funds and Period are required. Since these are the two required fields, the allowance can be canceled by submitting the zero values for these fields.
 
 #### OPTIONAL
 Any of the renter settings can be set, see fields [here](#settings)
