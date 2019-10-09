@@ -224,7 +224,7 @@ type Renter struct {
 	downloadHistory   map[modules.DownloadID]*download
 	downloadHistoryMu sync.Mutex
 
-	// Set of mounted FUSE servers.
+	// Set of mounted FUSE filesystems.
 	fuseMounts map[string]*fuseFS
 
 	// Upload management.
@@ -271,7 +271,7 @@ func (r *Renter) Close() error {
 		return nil
 	}
 	r.tg.Stop()
-	// unmount any mounted FUSE servers
+	// unmount any mounted FUSE filesystems
 	for path, fs := range r.fuseMounts {
 		delete(r.fuseMounts, path)
 		fs.srv.Unmount()
