@@ -3782,4 +3782,29 @@ func TestFUSE(t *testing.T) {
 	if err := lf.Equal(data); err != nil {
 		t.Fatal(err)
 	}
+	// compare metadata
+	files, err := r.RenterFilesGet(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fi := files.Files[0]
+	stat, err := os.Stat(filepath.Join(mountpoint, "subDir", lf.FileName()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stat.IsDir() != fi.IsDir() {
+		t.Error("IsDir mismatch:", stat.IsDir(), fi.IsDir())
+	}
+	if stat.Size() != fi.Size() {
+		t.Error("Size mismatch:", stat.Size(), fi.Size())
+	}
+	if !stat.ModTime().Round(time.Minute).Equal(fi.ModTime().Round(time.Minute)) {
+		t.Error("ModTime mismatch:", stat.ModTime().Round(time.Minute), fi.ModTime().Round(time.Minute))
+	}
+	if filepath.Join("subDir", stat.Name()) != fi.Name() {
+		t.Error("Name mismatch:", filepath.Join("subDir", stat.Name()), fi.Name())
+	}
+	if stat.Mode() != fi.Mode() {
+		t.Error("Mode mismatch:", stat.Mode(), fi.Mode())
+	}
 }
