@@ -1,8 +1,9 @@
 package contractor
 
 import (
-	"errors"
 	"sync"
+
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -210,8 +211,10 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	if !haveContract {
 		return nil, errors.New("no record of that contract")
 	}
-	host, haveHost := c.hdb.Host(contract.HostPublicKey)
-	if height > contract.EndHeight {
+	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
+	if err != nil {
+		return nil, errors.AddContext(err, "error geting host from hostdb:")
+	} else if height > contract.EndHeight {
 		return nil, errors.New("contract has already ended")
 	} else if !haveHost {
 		return nil, errors.New("no record of that host")

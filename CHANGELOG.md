@@ -1,3 +1,11 @@
+Version Scheme
+--------------
+Sia uses the following versioning scheme, vX.X.X.X
+ - First Digit signifies a major (compatibility breaking) release
+ - Second Digit signifies a major (non compatibility breaking) release
+ - Third Digit signifies a minor release
+ - Fourth Digit signifies a patch release
+
 Version History
 ---------------
 
@@ -6,6 +14,7 @@ Sep 2019:
 v1.4.1.2 (hotfix)
 - Fix memory leak
 - Add /tpool/transactions endpoint
+- Second fix to transaction propagation bug
 
 Aug 2019:
 

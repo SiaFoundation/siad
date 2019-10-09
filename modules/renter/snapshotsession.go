@@ -76,7 +76,7 @@ func (r *Renter) callFetchHostBackups(session contractor.Session) ([]modules.Upl
 		return nil, errors.AddContext(err, "unable to download snapshot table")
 	}
 
-	// Format the reponse and return the response to the requester.
+	// Format the response and return the response to the requester.
 	uploadedBackups := make([]modules.UploadedBackup, len(entryTable))
 	for i, e := range entryTable {
 		uploadedBackups[i] = modules.UploadedBackup{

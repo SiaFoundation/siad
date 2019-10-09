@@ -229,7 +229,7 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 	// Wait for the node to be done loading.
 	srv, errChan := NewAsync(APIaddr, requiredUserAgent, requiredPassword, nodeParams)
 	if err := <-errChan; err != nil {
-		// Error occured during async load. Close all modules.
+		// Error occurred during async load. Close all modules.
 		if build.Release == "standard" {
 			fmt.Println("ERROR:", err)
 		}
