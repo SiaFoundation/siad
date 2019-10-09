@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -32,12 +34,12 @@ type (
 	// SiaFiles, SiaDirs and potentially other supported Sia types in the
 	// future.
 	FileSystem struct {
-		dNode
+		DNode
 	}
 
 	// node is a struct that contains the commmon fields of every node.
 	node struct {
-		staticParent *dNode
+		staticParent *DNode
 		staticName   string
 		staticWal    *writeaheadlog.WAL
 		threads      map[threadUID]threadInfo
@@ -57,7 +59,7 @@ type (
 )
 
 // newNode is a convenience function to initialize a node.
-func newNode(parent *dNode, name string, uid threadUID, wal *writeaheadlog.WAL) node {
+func newNode(parent *DNode, name string, uid threadUID, wal *writeaheadlog.WAL) node {
 	return node{
 		staticParent: parent,
 		staticName:   name,
@@ -112,13 +114,27 @@ func New(root string, wal *writeaheadlog.WAL) (*FileSystem, error) {
 		return nil, errors.AddContext(err, "failed to create root dir")
 	}
 	return &FileSystem{
-		dNode: dNode{
+		DNode: DNode{
 			// The root doesn't require a parent, the name is its absolute path for convenience and it doesn't require a uid.
 			node:        newNode(nil, root, 0, wal),
-			directories: make(map[string]*dNode),
-			files:       make(map[string]*fNode),
+			directories: make(map[string]*DNode),
+			files:       make(map[string]*FNode),
 		},
 	}, nil
+}
+
+// AddSiaFileFromReader adds an existing SiaFile to the set and stores it on
+// disk. If the exact same file already exists, this is a no-op. If a file
+// already exists with a different UID, the UID will be updated and a unique
+// path will be chosen. If no file exists, the UID will be updated but the path
+// remains the same.
+func (fs *FileSystem) AddSiaFileFromReader(rs io.ReadSeeker, dst string) error {
+	_, _, err := siafile.LoadSiaFileFromReaderWithChunks(rs, dst, fs.staticWal)
+	if err != nil {
+		return err
+	}
+	// Add the file to the SiaFileSet.
+	panic("not implemented yet")
 }
 
 // DeleteDir deletes a dir from the filesystem. The dir will be marked as
@@ -139,6 +155,31 @@ func (fs *FileSystem) DeleteDir(siaPath modules.SiaPath) error {
 // until all instances of it are closed.
 func (fs *FileSystem) DeleteFile(siaPath modules.SiaPath) error {
 	return fs.managedDeleteFile(siaPath.String())
+}
+
+// DirList lists the directories within a SiaDir.
+func (fs *FileSystem) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, error) {
+	panic("not implemented yet")
+}
+
+// FileExists checks to see if a file with the provided siaPath already exists in
+// the renter
+func (fs *FileSystem) FileExists(siaPath modules.SiaPath) bool {
+	panic("not implemented yet")
+}
+
+// FileInfo returns information on a siafile. As a performance optimization, the
+// fileInfo takes the maps returned by renter.managedContractUtilityMaps for
+// many files at once.
+func (fs *FileSystem) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	panic("not implemented yet")
+}
+
+// FileList returns all of the files that the filesystem has in the folder
+// specified by siaPath. If cached is true, this method will used cached values
+// for health, redundancy etc.
+func (fs *FileSystem) FileList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, error) {
+	panic("not implemented yet")
 }
 
 // NewSiaDir creates the folder for the specified siaPath. This doesn't create
@@ -166,15 +207,21 @@ func (fs *FileSystem) NewSiaFile(siaPath modules.SiaPath, source string, ec modu
 	return fs.managedNewSiaFile(siaPath.String(), source, ec, mk, fileSize, fileMode, disablePartialUpload)
 }
 
+// NewSiaFileFromLegacyData creates a new SiaFile from data that was previously loaded
+// from a legacy file.
+func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FNode, error) {
+	panic("not implemented yet")
+}
+
 // OpenSiaDir opens a SiaDir and adds it and all of its parents to the
 // filesystem tree.
-func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*dNode, error) {
-	return fs.dNode.managedOpenDir(siaPath.String())
+func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DNode, error) {
+	return fs.DNode.managedOpenDir(siaPath.String())
 }
 
 // OpenSiaFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
-func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*fNode, error) {
+func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FNode, error) {
 	return fs.managedOpenFile(siaPath.String())
 }
 
@@ -198,14 +245,21 @@ func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) error {
 	return sf.managedRename(filepath.Join(fs.staticName, newSiaPath.String()))
 }
 
+// RenameDir takes an existing directory and changes the path. The original
+// directory must exist, and there must not be any directory that already has
+// the replacement path.  All sia files within directory will also be renamed
+func (fs *FileSystem) RenameDir(oldPath, newPath modules.SiaPath) error {
+	panic("not implemented yet")
+}
+
 // managedDeleteFile opens the parent folder of the file to delete and calls
 // managedDeleteFile on it.
 func (fs *FileSystem) managedDeleteFile(path string) error {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(path)
-	var dir *dNode
+	var dir *DNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
-		dir = &fs.dNode // file is in the root dir
+		dir = &fs.DNode // file is in the root dir
 	} else {
 		var err error
 		dir, err = fs.managedOpenDir(filepath.Dir(path))
@@ -224,9 +278,9 @@ func (fs *FileSystem) managedDeleteFile(path string) error {
 func (fs *FileSystem) managedDeleteDir(path string) error {
 	// Open the folder that contains the file.
 	dirPath, _ := filepath.Split(path)
-	var dir *dNode
+	var dir *DNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
-		dir = &fs.dNode // file is in the root dir
+		dir = &fs.DNode // file is in the root dir
 	} else {
 		var err error
 		dir, err = fs.managedOpenDir(filepath.Dir(path))
@@ -242,12 +296,12 @@ func (fs *FileSystem) managedDeleteDir(path string) error {
 
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
-func (fs *FileSystem) managedOpenFile(path string) (*fNode, error) {
+func (fs *FileSystem) managedOpenFile(path string) (*FNode, error) {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(path)
-	var dir *dNode
+	var dir *DNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
-		dir = &fs.dNode // file is in the root dir
+		dir = &fs.DNode // file is in the root dir
 	} else {
 		var err error
 		dir, err = fs.managedOpenDir(filepath.Dir(path))
@@ -266,9 +320,9 @@ func (fs *FileSystem) managedOpenFile(path string) (*fNode, error) {
 func (fs *FileSystem) managedNewSiaFile(path string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(path)
-	var dir *dNode
+	var dir *DNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
-		dir = &fs.dNode // file is in the root dir
+		dir = &fs.DNode // file is in the root dir
 	} else {
 		var err error
 		dir, err = fs.managedOpenDir(filepath.Dir(path))

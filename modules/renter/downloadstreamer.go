@@ -470,20 +470,26 @@ func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, er
 		return "", nil, err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	var err error
+	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	if err != nil {
+		return "", nil, err
+	}
 	// Lookup the file associated with the nickname.
-	entry, err := r.staticFileSet.Open(siaPath)
+	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
 	defer entry.Close()
 
 	// Create the streamer
-	snap, err := entry.Snapshot()
+	snap, err := entry.Snapshot(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
 	s := r.managedStreamer(snap)
-	return r.staticFileSet.SiaPath(entry).String(), s, nil
+	return siaPath.String(), s, nil
 }
 
 // managedStreamer creates a streamer from a siafile snapshot and starts filling

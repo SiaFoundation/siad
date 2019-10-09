@@ -15,14 +15,14 @@ import (
 )
 
 type (
-	// dNode is a node which references a SiaDir.
-	dNode struct {
+	// DNode is a node which references a SiaDir.
+	DNode struct {
 		node
 
-		directories map[string]*dNode
-		files       map[string]*fNode
+		directories map[string]*DNode
+		files       map[string]*FNode
 
-		// Since we create dNodes implicitly whenever one of a dNodes children
+		// Since we create dNodes implicitly whenever one of a DNodes children
 		// is opened, the SiaDir will be loaded lazily only when a dNode is
 		// manually opened by the user. This way we can keep disk i/o to a
 		// minimum. The SiaDir is also cleared once a dNode doesn't have any
@@ -34,7 +34,7 @@ type (
 
 // close calls the common close method of all nodes and clears the SiaDir if no
 // more threads are accessing.
-func (n *dNode) close() {
+func (n *DNode) close() {
 	// Call common close method.
 	n.node._close()
 
@@ -47,7 +47,7 @@ func (n *dNode) close() {
 // Close calls close on the dNode and also removes the dNode from its parent if
 // it's no longer being used and if it doesn't have any children which are
 // currently in use.
-func (n *dNode) Close() {
+func (n *DNode) Close() {
 	n.mu.Lock()
 
 	// call private close method.
@@ -63,7 +63,7 @@ func (n *dNode) Close() {
 }
 
 // Delete recursively deltes a dNode from disk.
-func (n *dNode) managedDelete() error {
+func (n *DNode) managedDelete() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Get contents of dir.
@@ -105,7 +105,7 @@ func (n *dNode) managedDelete() error {
 }
 
 // managedDeleteFile deletes the file with the given name from the directory.
-func (n *dNode) managedDeleteFile(fileName string) error {
+func (n *DNode) managedDeleteFile(fileName string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Open the file.
@@ -119,7 +119,7 @@ func (n *dNode) managedDeleteFile(fileName string) error {
 }
 
 // managedNewSiaFile creates a new SiaFile in the directory.
-func (n *dNode) managedNewSiaFile(fileName string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
+func (n *DNode) managedNewSiaFile(fileName string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Make sure we don't have a copy of that file in memory already.
@@ -132,7 +132,7 @@ func (n *dNode) managedNewSiaFile(fileName string, source string, ec modules.Era
 
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
-func (n *dNode) managedOpenFile(fileName string) (*fNode, error) {
+func (n *DNode) managedOpenFile(fileName string) (*FNode, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.openFile(fileName)
@@ -140,7 +140,7 @@ func (n *dNode) managedOpenFile(fileName string) (*fNode, error) {
 
 // openFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
-func (n *dNode) openFile(fileName string) (*fNode, error) {
+func (n *DNode) openFile(fileName string) (*FNode, error) {
 	fn, exists := n.files[fileName]
 	if !exists {
 		// Load file from disk.
@@ -152,7 +152,7 @@ func (n *dNode) openFile(fileName string) (*fNode, error) {
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to load SiaFile from disk")
 		}
-		fn = &fNode{
+		fn = &FNode{
 			node:    newNode(n, fileName, 0, n.staticWal),
 			SiaFile: sf,
 		}
@@ -174,7 +174,7 @@ func (n *dNode) openFile(fileName string) (*fNode, error) {
 // doesn't clone it. That means it won't increment the number of threads in the
 // threads map. That means Close doesn't need to be called on a dNode returned
 // by openDir.
-func (n *dNode) openDir(dirName string) (*dNode, error) {
+func (n *DNode) openDir(dirName string) (*DNode, error) {
 	// Check if dir was already loaded.
 	dir, exists := n.directories[dirName]
 	if exists {
@@ -184,7 +184,7 @@ func (n *dNode) openDir(dirName string) (*dNode, error) {
 	if _, err := os.Stat(filepath.Join(n.staticPath(), dirName)); err != nil {
 		return nil, ErrNotExist
 	}
-	dir = &dNode{
+	dir = &DNode{
 		node: node{
 			staticParent: n,
 			staticName:   dirName,
@@ -194,8 +194,8 @@ func (n *dNode) openDir(dirName string) (*dNode, error) {
 			mu:           new(sync.Mutex),
 		},
 
-		directories: make(map[string]*dNode),
-		files:       make(map[string]*fNode),
+		directories: make(map[string]*DNode),
+		files:       make(map[string]*FNode),
 		SiaDir:      nil, // will be lazy-loaded
 	}
 	n.directories[dir.staticName] = dir
@@ -204,7 +204,7 @@ func (n *dNode) openDir(dirName string) (*dNode, error) {
 
 // copy copies the node, adds a new thread to the threads map and returns the
 // new instance.
-func (n *dNode) copy() (*dNode, error) {
+func (n *DNode) copy() (*DNode, error) {
 	// Copy the dNode and change the uid to a unique one.
 	newNode := *n
 	newNode.threadUID = newThreadUID()
@@ -228,7 +228,7 @@ func (n *dNode) copy() (*dNode, error) {
 }
 
 // managedOpenDir opens a SiaDir.
-func (n *dNode) managedOpenDir(path string) (*dNode, error) {
+func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 	// If path is empty we are done.
 	if path == "" {
 		n.mu.Lock()
@@ -254,7 +254,7 @@ func (n *dNode) managedOpenDir(path string) (*dNode, error) {
 // managedRemoveDir removes a dir from a dNode. If as a result the dNode ends up
 // without children and if the threads map of the dNode is empty, the dNode will
 // remove itself from its parent.
-func (n *dNode) managedRemoveDir(child *dNode) {
+func (n *DNode) managedRemoveDir(child *DNode) {
 	// Remove the child node.
 	n.mu.Lock()
 	currentChild, exists := n.directories[child.staticName]
@@ -277,7 +277,7 @@ func (n *dNode) managedRemoveDir(child *dNode) {
 // managedRemoveChild removes a child from a dNode. If as a result the dNode
 // ends up without children and if the threads map of the dNode is empty, the
 // dNode will remove itself from its parent.
-func (n *dNode) managedRemoveFile(child *fNode) {
+func (n *DNode) managedRemoveFile(child *FNode) {
 	// Remove the child node.
 	n.mu.Lock()
 	currentChild, exists := n.files[child.staticName]

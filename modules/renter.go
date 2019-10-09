@@ -104,9 +104,17 @@ const (
 	// renter's persistent data.
 	RenterDir = "renter"
 
-	// SiapathRoot is the name of the directory that is used to store the
+	// FileSystemRoot is the name of the directory that is used as the root of
+	// the renter's filesystem.
+	FileSystemRoot = "fs"
+
+	// HomeFolderRoot is the name of the directory that is used to store all of
+	// the user accessible data.
+	HomeFolderRoot = "home"
+
+	// SiaFilesRoot is the name of the directory that is used to store the
 	// renter's siafiles.
-	SiapathRoot = "siafiles"
+	SiaFilesRoot = "siafiles"
 
 	// BackupRoot is the name of the directory that is used to store the renter's
 	// snapshot siafiles.

@@ -11,11 +11,7 @@ func (r *Renter) CreateDir(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
-	siaDir, err := r.staticDirSet.NewSiaDir(siaPath)
-	if err != nil {
-		return err
-	}
-	return siaDir.Close()
+	return r.staticFileSystem.NewSiaDir(siaPath)
 }
 
 // DeleteDir removes a directory from the renter and deletes all its sub
@@ -25,7 +21,7 @@ func (r *Renter) DeleteDir(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticFileSet.DeleteDir(siaPath, r.staticDirSet.Delete)
+	return r.staticFileSystem.DeleteDir(siaPath)
 }
 
 // DirList lists the directories in a siadir
@@ -34,7 +30,7 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, erro
 		return nil, err
 	}
 	defer r.tg.Done()
-	return r.staticDirSet.DirList(siaPath)
+	return r.staticFileSystem.DirList(siaPath)
 }
 
 // RenameDir takes an existing directory and changes the path. The original
@@ -45,5 +41,5 @@ func (r *Renter) RenameDir(oldPath, newPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticFileSet.RenameDir(oldPath, newPath, r.staticDirSet.Rename)
+	return r.staticFileSystem.RenameDir(oldPath, newPath)
 }

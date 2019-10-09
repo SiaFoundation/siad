@@ -13,6 +13,13 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 	}
 	defer r.tg.Done()
 
+	// Prepend the provided siapath with the /home/siafiles dir.
+	var err error
+	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	if err != nil {
+		return err
+	}
+
 	// Call callThreadedBubbleMetadata on the old directory to make sure the
 	// system metadata is updated to reflect the move
 	defer func() error {
@@ -24,7 +31,7 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 		return nil
 	}()
 
-	return r.staticFileSet.Delete(siaPath)
+	return r.staticFileSystem.DeleteFile(siaPath)
 }
 
 // FileList returns all of the files that the renter has.
@@ -33,8 +40,14 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 		return []modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	var err error
+	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	if err != nil {
+		return []modules.FileInfo{}, err
+	}
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	return r.staticFileSet.FileList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	return r.staticFileSystem.FileList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
 }
 
 // File returns file from siaPath queried by user.
@@ -44,8 +57,14 @@ func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 		return modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	var err error
+	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
 	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
-	return r.staticFileSet.FileInfo(siaPath, offline, goodForRenew, contracts)
+	return r.staticFileSystem.FileInfo(siaPath, offline, goodForRenew, contracts)
 }
 
 // RenameFile takes an existing file and changes the nickname. The original
@@ -56,8 +75,18 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapaths with the /home/siafiles dir.
+	var err error
+	currentName, err = modules.SiaFilesSiaPath().Join(currentName.String())
+	if err != nil {
+		return err
+	}
+	newName, err = modules.SiaFilesSiaPath().Join(newName.String())
+	if err != nil {
+		return err
+	}
 	// Rename file
-	err := r.staticFileSet.Rename(currentName, newName)
+	err = r.staticFileSystem.RenameFile(currentName, newName)
 	if err != nil {
 		return err
 	}
@@ -91,8 +120,14 @@ func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
 		return err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	var err error
+	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	if err != nil {
+		return err
+	}
 	// Open the file.
-	entry, err := r.staticFileSet.Open(siaPath)
+	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return err
 	}

@@ -13,6 +13,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
@@ -218,14 +219,14 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 // metadata information is also updated and saved to disk
 func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) (siafile.BubbledMetadata, error) {
 	// Load the Siafile.
-	sf, err := r.staticFileSet.Open(siaPath)
+	sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return siafile.BubbledMetadata{}, err
 	}
 	defer sf.Close()
 
 	// Get offline and goodforrenew maps
-	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*filesystem.FNode{sf})
 
 	// Calculate file health
 	health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
@@ -309,10 +310,14 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 	}
 
 	//  Open SiaDir
-	siaDir, err := r.staticDirSet.Open(siaPath)
+	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil && err.Error() == siadir.ErrUnknownPath.Error() {
 		// If siadir doesn't exist create one
-		siaDir, err = r.staticDirSet.NewSiaDir(siaPath)
+		err = r.staticFileSystem.NewSiaDir(siaPath)
+		if err != nil {
+			return siadir.Metadata{}, err
+		}
+		siaDir, err = r.staticFileSystem.OpenSiaDir(siaPath)
 		if err != nil {
 			return siadir.Metadata{}, err
 		}
@@ -329,7 +334,7 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 // the subdirs of the directory.
 func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error {
 	// Open dir and fetch current metadata.
-	entry, err := r.staticDirSet.Open(siaPath)
+	entry, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		return err
 	}
@@ -421,7 +426,7 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 
 	// Update directory metadata with the health information. Don't return here
 	// to avoid skipping the repairNeeded and stuckChunkFound signals.
-	siaDir, err := r.staticDirSet.Open(siaPath)
+	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		e := fmt.Sprintf("could not open directory %v", siaPath.SiaDirSysPath(r.staticFilesDir))
 		err = errors.AddContext(err, e)

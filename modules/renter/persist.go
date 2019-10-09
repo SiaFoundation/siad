@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -181,16 +182,15 @@ func (r *Renter) managedInitPersist() error {
 		}
 	}
 
+	fs, err := filesystem.New(r.staticFilesDir, wal)
+	if err != nil {
+		return err
+	}
+
 	// Initialize the wal, staticFileSet and the staticDirSet. With the
 	// staticDirSet finish the initialization of the files directory
 	r.wal = wal
-	r.staticFileSet = siafile.NewSiaFileSet(r.staticFilesDir, wal)
-	r.staticDirSet = siadir.NewSiaDirSet(r.staticFilesDir, wal)
-	r.staticBackupFileSet = siafile.NewSiaFileSet(r.staticBackupsDir, wal)
-	r.staticBackupDirSet = siadir.NewSiaDirSet(r.staticBackupsDir, wal)
-	if err := r.staticDirSet.InitRootDir(); err != nil {
-		return err
-	}
+	r.staticFileSystem = fs
 	// Load the prior persistence structures.
 	return r.managedLoadSettings()
 }

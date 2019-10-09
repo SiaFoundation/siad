@@ -15,7 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -273,7 +273,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 			continue
 		}
 		// Skip siafiles and contracts folders.
-		if fi.Name() == modules.SiapathRoot || fi.Name() == "contracts" {
+		if fi.Name() == modules.SiaFilesRoot || fi.Name() == "contracts" {
 			continue
 		}
 		// Delete the folder.
@@ -286,7 +286,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 
 // v137FileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
-func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []modules.RenterContract) (*siafile.SiaFileSetEntry, error) {
+func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []modules.RenterContract) (*filesystem.FNode, error) {
 	// Create a mapping of contract ids to host keys.
 	contracts := r.hostContractor.Contracts()
 	idToPk := make(map[types.FileContractID]types.SiaPublicKey)
@@ -341,7 +341,7 @@ func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []mo
 		}
 	}
 	fileData.Chunks = chunks
-	return r.staticFileSet.NewFromLegacyData(fileData)
+	return r.staticFileSystem.NewSiaFileFromLegacyData(fileData)
 }
 
 // compatV137LoadSiaFilesFromReader reads .sia data from reader and registers
@@ -389,7 +389,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 			if err != nil {
 				return nil, err
 			}
-			exists := r.staticFileSet.Exists(siaPath)
+			exists := r.staticFileSystem.FileExists(siaPath)
 			if !exists {
 				break
 			}
@@ -416,13 +416,10 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		if err != nil {
 			return nil, err
 		}
-		sd, errDir := r.staticDirSet.NewSiaDir(dirSiaPath)
-		if errDir != nil && errDir != siadir.ErrPathOverload {
+		errDir := r.staticFileSystem.NewSiaDir(dirSiaPath)
+		if errDir != nil && errDir != filesystem.ErrExists {
 			errDir = errors.AddContext(errDir, "unable to create new sia dir")
 			return nil, errors.Compose(err, errDir)
-		}
-		if errDir != siadir.ErrPathOverload {
-			err = errors.Compose(err, sd.Close())
 		}
 		// v137FileToSiaFile adds siafile to the SiaFileSet so it does not need to
 		// be returned here
@@ -431,7 +428,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 			return nil, errors.AddContext(err, "unable to transform old file to new file")
 		}
 		names[i] = f.name
-		err = errors.Compose(err, entry.Close())
+		entry.Close()
 	}
 	return names, err
 }

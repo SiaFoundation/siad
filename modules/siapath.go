@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -63,6 +64,34 @@ func RandomSiaPath() (sp SiaPath) {
 // RootSiaPath returns a SiaPath for the root siadir which has a blank path
 func RootSiaPath() SiaPath {
 	return SiaPath{}
+}
+
+// HomeSiaPath returns a siapath to /home
+func HomeSiaPath() SiaPath {
+	sp, err := RootSiaPath().Join(HomeFolderRoot)
+	if err != nil {
+		build.Critical(err)
+	}
+	return sp
+}
+
+// SiaFilesSiaPath returns a siapath to /home/siafiles
+func SiaFilesSiaPath() SiaPath {
+	sp := HomeSiaPath()
+	sp, err := sp.Join(SiaFilesRoot)
+	if err != nil {
+		build.Critical(err)
+	}
+	return sp
+}
+
+// SnapshotsSiaPath returns a siapath to /snapshots
+func SnapshotsSiaPath() SiaPath {
+	sp, err := RootSiaPath().Join(BackupRoot)
+	if err != nil {
+		build.Critical(err)
+	}
+	return sp
 }
 
 // CombinedSiaFilePath returns the SiaPath to a hidden siafile which is used to

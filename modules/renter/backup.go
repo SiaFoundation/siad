@@ -19,8 +19,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
 // backupHeader defines the structure of the backup's JSON header.
@@ -121,7 +121,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	defer r.tg.Done()
 
 	// Only load a backup if there are no siafiles yet.
-	root, err := r.staticDirSet.Open(modules.RootSiaPath())
+	root, err := r.staticFileSystem.OpenSiaDir(modules.SiaFilesSiaPath())
 	if err != nil {
 		return err
 	}
@@ -234,7 +234,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			if err != nil {
 				return err
 			}
-			entry, err := r.staticFileSet.Open(siaPath)
+			entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 			if err != nil {
 				return err
 			}
@@ -265,7 +265,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 					return err
 				}
 			}
-			entry, err := r.staticDirSet.Open(siaPath)
+			entry, err := r.staticFileSystem.OpenSiaDir(siaPath)
 			if err != nil {
 				return err
 			}
@@ -337,30 +337,24 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			if err != nil {
 				return err
 			}
-			dirEntry, err := r.staticDirSet.NewSiaDir(siaPath)
-			if err == siadir.ErrPathOverload {
+			err := r.staticFileSystem.NewSiaDir(siaPath)
+			if err == filesystem.ErrExists {
 				// .siadir exists already
 				continue
 			} else if err != nil {
 				return err // unexpected error
 			}
 			// Update the metadata.
+			dirEntry, err := r.staticFileSystem.OpenSiaDir(siaPath)
 			if err := dirEntry.UpdateMetadata(md); err != nil {
 				dirEntry.Close()
 				return err
 			}
-			if err := dirEntry.Close(); err != nil {
-				return err
-			}
+			dirEntry.Close()
 		} else if filepath.Ext(info.Name()) == modules.SiaFileExtension {
-			// Load the file as a SiaFile.
-			reader := bytes.NewReader(b)
-			sf, chunks, err := siafile.LoadSiaFileFromReaderWithChunks(reader, dst, r.wal)
-			if err != nil {
-				return err
-			}
 			// Add the file to the SiaFileSet.
-			err = r.staticFileSet.AddExistingSiaFile(sf, chunks)
+			reader := bytes.NewReader(b)
+			err = r.staticFileSystem.AddSiaFileFromReader(reader, dst)
 			if err != nil {
 				return err
 			}
