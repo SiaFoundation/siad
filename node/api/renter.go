@@ -731,13 +731,17 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 // allowance
 func (api *API) renterAllowanceCancelHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get the existing settings
-	settings := api.renter.Settings()
+	settings, err := api.renter.Settings()
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
 
 	// Set the allownace to nil
 	settings.Allowance = modules.Allowance{}
 
 	// Set the settings in the renter.
-	err := api.renter.SetSettings(settings)
+	err = api.renter.SetSettings(settings)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

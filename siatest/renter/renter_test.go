@@ -3766,7 +3766,7 @@ func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	// Confirm contracts form
 	expectedContracts := int(allowance.Hosts)
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		return checkExpectedNumberOfContracts(renter, expectedContracts, 0, 0, 0, 0, 0)
+		return siatest.CheckExpectedNumberOfContracts(renter, expectedContracts, 0, 0, 0, 0, 0)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -3834,7 +3834,7 @@ func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 
 	// Confirm contracts are disabled
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		return checkExpectedNumberOfContracts(renter, 0, 0, 0, expectedContracts, 0, 0)
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, expectedContracts, 0, 0)
 	})
 	if err != nil {
 		t.Fatal(err)
