@@ -329,7 +329,7 @@ Block nonce
 **parentid** | hash  
 ID of the previous block
 
-**difficulty** | big int  
+**difficulty** | arbitrary-precision integer  
 Historic difficulty at height of the block
 
 **timestamp** | timestamp  
