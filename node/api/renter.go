@@ -71,12 +71,12 @@ var (
 	// erasure coding parameters is set
 	errNeedBothDataAndParityPieces = errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
 
-	// ErrFundsNeedToBeSet is the error returned when the funds are not set
-	// for the allowance
+	// ErrFundsNeedToBeSet is the error returned when the funds are not set for
+	// the allowance
 	ErrFundsNeedToBeSet = errors.New("funds needs to be set if it hasn't been set before")
 
-	// ErrPeriodNeedToBeSet is the error returned when the funds are not set
-	// for the allowance
+	// ErrPeriodNeedToBeSet is the error returned when the period is not set for
+	// the allowance
 	ErrPeriodNeedToBeSet = errors.New("period needs to be set if it hasn't been set before")
 )
 
@@ -628,19 +628,22 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		// Allowance has been set at least partially. Validate that all fields
 		// are set correctly
 
-		// If Funds is still 0 return an error since we need the user to set the period initially
+		// If Funds is still 0 return an error since we need the user to set the
+		// period initially
 		if zeroFunds {
 			WriteError(w, Error{ErrFundsNeedToBeSet.Error()}, http.StatusBadRequest)
 			return
 		}
 
-		// If Period is still 0 return an error since we need the user to set the period initially
+		// If Period is still 0 return an error since we need the user to set
+		// the period initially
 		if zeroPeriod {
 			WriteError(w, Error{ErrPeriodNeedToBeSet.Error()}, http.StatusBadRequest)
 			return
 		}
 
-		// If Hosts is still 0 set to the sane default
+		// If the user set Hosts to 0 return an error, otherwise if Hosts was
+		// not set by the user then set it to the sane default
 		if settings.Allowance.Hosts == 0 && hostsSet {
 			WriteError(w, Error{contractor.ErrAllowanceNoHosts.Error()}, http.StatusBadRequest)
 			return
@@ -648,7 +651,9 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			settings.Allowance.Hosts = modules.DefaultAllowance.Hosts
 		}
 
-		// If Renew Window is still 0 set to the sane default
+		// If the user set the Renew Window to 0 return an error, otherwise if
+		// the Renew Window was not set by the user then set it to the sane
+		// default
 		if settings.Allowance.RenewWindow == 0 && renewWindowSet {
 			WriteError(w, Error{contractor.ErrAllowanceZeroWindow.Error()}, http.StatusBadRequest)
 			return
@@ -656,7 +661,9 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			settings.Allowance.RenewWindow = settings.Allowance.Period / 2
 		}
 
-		// If Expected Storage is still 0 set to the sane default
+		// If the user set ExpectedStorage to 0 return an error, otherwise if
+		// ExpectedStorage was not set by the user then set it to the sane
+		// default
 		if settings.Allowance.ExpectedStorage == 0 && expectedStorageSet {
 			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedStorage.Error()}, http.StatusBadRequest)
 			return
@@ -664,7 +671,9 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			settings.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 		}
 
-		// If Expected Upload is still 0 set to the sane default
+		// If the user set ExpectedUpload to 0 return an error, otherwise if
+		// ExpectedUpload was not set by the user then set it to the sane
+		// default
 		if settings.Allowance.ExpectedUpload == 0 && expectedUploadSet {
 			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedUpload.Error()}, http.StatusBadRequest)
 			return
@@ -672,7 +681,9 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			settings.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 		}
 
-		// If Expected Download is still 0 set to the sane default
+		// If the user set ExpectedDownload to 0 return an error, otherwise if
+		// ExpectedDownload was not set by the user then set it to the sane
+		// default
 		if settings.Allowance.ExpectedDownload == 0 && expectedDownloadSet {
 			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedDownload.Error()}, http.StatusBadRequest)
 			return
@@ -680,7 +691,9 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			settings.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 		}
 
-		// If Expected Redundancy is still 0 set to the sane default
+		// If the user set ExpectedRedundancy to 0 return an error, otherwise if
+		// ExpectedRedundancy was not set by the user then set it to the sane
+		// default
 		if settings.Allowance.ExpectedRedundancy == 0 && expectedRedundancySet {
 			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedRedundancy.Error()}, http.StatusBadRequest)
 			return

@@ -15,26 +15,26 @@ var (
 	// ErrAllowanceZeroFunds is returned if the allowance funds are being set to
 	// zero when not cancelling the allowance
 	ErrAllowanceZeroFunds = errors.New("funds must be non-zero")
-	// ErrAllowanceZeroPeriod is returned if the allowance period are being set
+	// ErrAllowanceZeroPeriod is returned if the allowance period is being set
 	// to zero when not cancelling the allowance
 	ErrAllowanceZeroPeriod = errors.New("period must be non-zero")
-	// ErrAllowanceZeroWindow is returned if the allowance renew window are
-	// being set to zero when not cancelling the allowance
+	// ErrAllowanceZeroWindow is returned if the allowance renew window is being
+	// set to zero when not cancelling the allowance
 	ErrAllowanceZeroWindow = errors.New("renew window must be non-zero")
 	// ErrAllowanceNoHosts is returned if the allowance hosts are being set to
 	// zero when not cancelling the allowance
 	ErrAllowanceNoHosts = errors.New("hosts must be non-zero")
-	// ErrAllowanceZeroExpectedStorage is returned if the allowance expect
-	// storage are being set to zero when not cancelling the allowance
+	// ErrAllowanceZeroExpectedStorage is returned if the allowance expected
+	// storage is being set to zero when not cancelling the allowance
 	ErrAllowanceZeroExpectedStorage = errors.New("expected storage must be non-zero")
 	// ErrAllowanceZeroExpectedUpload is returned if the allowance expected
-	// upload are being set to zero when not cancelling the allowance
+	// upload is being set to zero when not cancelling the allowance
 	ErrAllowanceZeroExpectedUpload = errors.New("expected upload  must be non-zero")
-	// ErrAllowanceZeroExpectedDownload is returned if the allowance expect
-	// download are being set to zero when not cancelling the allowance
+	// ErrAllowanceZeroExpectedDownload is returned if the allowance expected
+	// download is being set to zero when not cancelling the allowance
 	ErrAllowanceZeroExpectedDownload = errors.New("expected download  must be non-zero")
 	// ErrAllowanceZeroExpectedRedundancy is returned if the allowance expected
-	// redundancy are being set to zero when not cancelling the allowance
+	// redundancy is being set to zero when not cancelling the allowance
 	ErrAllowanceZeroExpectedRedundancy = errors.New("expected redundancy must be non-zero")
 )
 
