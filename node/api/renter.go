@@ -1023,7 +1023,16 @@ func (api *API) renterFUSEMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 		sp = s
 	}
 	mount := req.FormValue("mount")
-	if err := api.renter.Mount(mount, sp); err != nil {
+	var opts modules.MountOptions
+	if req.FormValue("readonly") != "" {
+		readOnly, err := scanBool(req.FormValue("readonly"))
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		opts.ReadOnly = readOnly
+	}
+	if err := api.renter.Mount(mount, sp, opts); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}

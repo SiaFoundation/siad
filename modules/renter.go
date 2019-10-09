@@ -494,6 +494,11 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// MountOptions specify various settings of a FUSE filesystem mount.
+type MountOptions struct {
+	ReadOnly bool
+}
+
 // RecoverableContract is a types.FileContract as it appears on the blockchain
 // with additional fields which contain the information required to recover its
 // latest revision from a host.
@@ -650,7 +655,7 @@ type Renter interface {
 
 	// Mount mounts a FUSE filesystem at mountPoint, making the contents of sp
 	// available via the local filesystem.
-	Mount(mountPoint string, sp SiaPath) error
+	Mount(mountPoint string, sp SiaPath, opts MountOptions) error
 
 	// MountInfo returns the list of currently mounted FUSE filesystems.
 	MountInfo() []MountInfo

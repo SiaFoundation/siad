@@ -34,7 +34,7 @@ func (r *Renter) MountInfo() []modules.MountInfo {
 
 // Mount mounts the files under the specified siapath under the 'mountPoint' folder on
 // the local filesystem.
-func (r *Renter) Mount(mountPoint string, sp modules.SiaPath) error {
+func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -44,6 +44,9 @@ func (r *Renter) Mount(mountPoint string, sp modules.SiaPath) error {
 	r.mu.Unlock(id)
 	if ok {
 		return errors.New("already mounted")
+	}
+	if !opts.ReadOnly {
+		return errors.New("writable FUSE is not supported")
 	}
 
 	fs := &fuseFS{

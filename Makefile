@@ -16,7 +16,7 @@ pkgs = ./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modul
        ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor       \
        ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir \
        ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./node ./node/api ./persist    \
-       ./siatest ./siatest/consensus ./siatest/daemon ./siatest/fuse ./siatest/gateway ./siatest/miner ./siatest/renter   \
+       ./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/miner ./siatest/renter   \
        ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost ./siatest/transactionpool                 \
        ./siatest/wallet ./node/api/server ./sync ./types ./types/typesutil
 

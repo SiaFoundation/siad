@@ -73,7 +73,7 @@ func TestFUSE(t *testing.T) {
 	if err := os.MkdirAll(mountpoint, 0777); err != nil {
 		t.Fatal(err)
 	}
-	err = r.RenterFUSEMount(r.SiaPath(subDir.Path()), mountpoint)
+	err = r.RenterFUSEMount(r.SiaPath(subDir.Path()), mountpoint, true)
 	if err != nil {
 		t.Fatal(err)
 	}
