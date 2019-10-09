@@ -227,7 +227,7 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 	remoteIP := modules.NetAddress(conn.RemoteAddr().String()).Host()
 	remotePort := remoteHeader.NetAddress.Port()
 	remoteAddr := modules.NetAddress(net.JoinHostPort(remoteIP, remotePort))
-	g.log.Debugln("Making connecting with remote peer", remoteAddr)
+	g.log.Debugln("Making connection with remote peer", remoteAddr)
 
 	// Accept the peer.
 	peer := &peer{
