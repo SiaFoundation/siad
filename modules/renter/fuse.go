@@ -123,6 +123,7 @@ func (fs *fuseFS) errToStatus(op, name string, err error) fuse.Status {
 	return fuse.EIO
 }
 
+// stat returns the os.FileInfo for the named file.
 func (fs *fuseFS) stat(name string) (os.FileInfo, error) {
 	if strings.HasPrefix(name, ".") {
 		// opening a "hidden" siafile results in a panic
