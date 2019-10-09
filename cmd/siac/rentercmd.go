@@ -274,12 +274,16 @@ func renterFilesAndContractSummary() error {
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
 		return nil
 	} else if err != nil {
-		return err
+		return errors.AddContext(err, "unable to get root dir with RenterGetDir")
 	}
 
 	rc, err := httpClient.RenterContractsGet()
 	if err != nil {
 		return err
+	}
+	redundancyStr := fmt.Sprintf("%.2f", rf.Directories[0].AggregateMinRedundancy)
+	if rf.Directories[0].AggregateMinRedundancy == -1 {
+		redundancyStr = "-"
 	}
 
 	fmt.Printf(`
@@ -287,7 +291,7 @@ func renterFilesAndContractSummary() error {
   Total Stored:   %v
   Min Redundancy: %v
   Contracts:      %v
-`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].AggregateMinRedundancy, len(rc.ActiveContracts))
+`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts))
 
 	return nil
 }

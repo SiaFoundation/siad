@@ -21,6 +21,11 @@ const (
 	// back value when there is an error. This is to protect against falsely
 	// trying to repair directories that had a read error
 	DefaultDirHealth = float64(0)
+
+	// DefaultDirRedundancy is the default redundancy for the directory and the
+	// fall back value when there is an error. This is to protect against
+	// falsely trying to repair directories that had a read error
+	DefaultDirRedundancy = float64(-1)
 )
 
 var (
@@ -176,13 +181,15 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 	// empty directories won't be viewed as being the most in need. Initialize
 	// ModTimes.
 	md := Metadata{
-		AggregateHealth:      DefaultDirHealth,
-		AggregateModTime:     time.Now(),
-		AggregateStuckHealth: DefaultDirHealth,
+		AggregateHealth:        DefaultDirHealth,
+		AggregateModTime:       time.Now(),
+		AggregateMinRedundancy: DefaultDirRedundancy,
+		AggregateStuckHealth:   DefaultDirHealth,
 
-		Health:      DefaultDirHealth,
-		ModTime:     time.Now(),
-		StuckHealth: DefaultDirHealth,
+		Health:        DefaultDirHealth,
+		ModTime:       time.Now(),
+		MinRedundancy: DefaultDirRedundancy,
+		StuckHealth:   DefaultDirHealth,
 	}
 	path := siaPath.SiaDirMetadataSysPath(rootDir)
 	update, err := createMetadataUpdate(path, md)
