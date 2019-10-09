@@ -20,6 +20,12 @@ import (
 )
 
 const (
+	// MinimumSupportedRenterHostProtocolVersion is the minimum version of Sia
+	// that supports the currently used version of the renter-host protocol.
+	MinimumSupportedRenterHostProtocolVersion = "1.4.1"
+)
+
+const (
 	// AcceptResponse is the response given to an RPC call to indicate
 	// acceptance, i.e. that the sender wishes to continue communication.
 	AcceptResponse = "accept"

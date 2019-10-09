@@ -30,8 +30,8 @@ type (
 	}
 
 	hostDB interface {
-		IncrementSuccessfulInteractions(key types.SiaPublicKey)
-		IncrementFailedInteractions(key types.SiaPublicKey)
+		IncrementSuccessfulInteractions(key types.SiaPublicKey) error
+		IncrementFailedInteractions(key types.SiaPublicKey) error
 	}
 )
 

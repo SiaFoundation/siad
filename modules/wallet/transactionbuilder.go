@@ -28,6 +28,10 @@ var (
 	// errSpendHeightTooHigh indicates an output's spend height is greater than
 	// the allowed height.
 	errSpendHeightTooHigh = errors.New("output spend height exceeds the allowed height")
+
+	// errReplaceIndexOutOfBounds indicated that the output index is out of
+	// bounds.
+	errReplaceIndexOutOfBounds = errors.New("replacement output index out of bounds")
 )
 
 // transactionBuilder allows transactions to be manually constructed, including
@@ -110,6 +114,76 @@ func (w *Wallet) checkOutput(tx *bolt.Tx, currentHeight types.BlockHeight, id ty
 	}
 
 	return nil
+}
+
+// Copy creates a deep copy of the current transactionBuilder that can be used to
+// extend the transaction in an alternate way (i.e. create a double spend
+// transaction).
+func (tb *transactionBuilder) Copy() modules.TransactionBuilder {
+	copyBuilder := tb.wallet.registerTransaction(tb.transaction, tb.parents)
+
+	// Copy the non-transaction fields over to the new builder.
+	copyBuilder.newParents = make([]int, len(tb.newParents))
+	copy(copyBuilder.newParents, tb.newParents)
+
+	copyBuilder.siacoinInputs = make([]int, len(tb.siacoinInputs))
+	copy(copyBuilder.siacoinInputs, tb.siacoinInputs)
+
+	copyBuilder.siafundInputs = make([]int, len(tb.siafundInputs))
+	copy(copyBuilder.siafundInputs, tb.siafundInputs)
+
+	copyBuilder.transactionSignatures = make([]int, len(tb.transactionSignatures))
+	copy(copyBuilder.transactionSignatures, tb.transactionSignatures)
+
+	copyBuilder.signed = tb.signed
+	return copyBuilder
+}
+
+// MarkWalletInputs updates transactionBuilder state by inferring which inputs
+// belong to this wallet. This allows those inputs to be signed. Returns true if
+// and only if any inputs belonging to the wallet are found.
+func (tb *transactionBuilder) MarkWalletInputs() bool {
+	markedAnyInputs := false
+	for i, scInput := range tb.transaction.SiacoinInputs {
+		unlockHash := scInput.UnlockConditions.UnlockHash()
+		if !tb.wallet.managedCanSpendUnlockHash(unlockHash) {
+			continue
+		}
+
+		// Only add un-marked inputs, making MarkWalletInputs idempotent.
+		alreadyMarked := false
+		for _, storedIdx := range tb.siacoinInputs {
+			if i == storedIdx {
+				alreadyMarked = true
+				break
+			}
+		}
+		if !alreadyMarked {
+			tb.siacoinInputs = append(tb.siacoinInputs, i)
+			markedAnyInputs = true
+		}
+	}
+
+	for i, sfInput := range tb.transaction.SiafundInputs {
+		unlockHash := sfInput.UnlockConditions.UnlockHash()
+		if !tb.wallet.managedCanSpendUnlockHash(unlockHash) {
+			continue
+		}
+
+		// Only add un-marked inputs, making MarkWalletInputs idempotent.
+		alreadyMarked := false
+		for _, storedIdx := range tb.siafundInputs {
+			if i == storedIdx {
+				alreadyMarked = true
+				break
+			}
+		}
+		if !alreadyMarked {
+			tb.siacoinInputs = append(tb.siafundInputs, i)
+			markedAnyInputs = true
+		}
+	}
+	return markedAnyInputs
 }
 
 // FundSiacoins will add a siacoin input of exactly 'amount' to the
@@ -441,6 +515,16 @@ func (tb *transactionBuilder) AddSiacoinOutput(output types.SiacoinOutput) uint6
 	return uint64(len(tb.transaction.SiacoinOutputs) - 1)
 }
 
+// ReplaceSiacoinOutput replaces the siacoin output in the transaction at the
+// given index.
+func (tb *transactionBuilder) ReplaceSiacoinOutput(index uint64, output types.SiacoinOutput) error {
+	if index >= uint64(len(tb.transaction.SiacoinOutputs)) {
+		return errReplaceIndexOutOfBounds
+	}
+	tb.transaction.SiacoinOutputs[index] = output
+	return nil
+}
+
 // AddFileContract adds a file contract to the transaction, returning the index
 // of the file contract within the transaction.
 func (tb *transactionBuilder) AddFileContract(fc types.FileContract) uint64 {
@@ -642,13 +726,13 @@ func (w *Wallet) registerTransaction(t types.Transaction, parents []types.Transa
 	var pCopy []types.Transaction
 	err := encoding.Unmarshal(pBytes, &pCopy)
 	if err != nil {
-		panic(err)
+		w.log.Critical(err)
 	}
 	tBytes := encoding.Marshal(t)
 	var tCopy types.Transaction
 	err = encoding.Unmarshal(tBytes, &tCopy)
 	if err != nil {
-		panic(err)
+		w.log.Critical(err)
 	}
 	return &transactionBuilder{
 		parents:     pCopy,
@@ -667,6 +751,7 @@ func (w *Wallet) RegisterTransaction(t types.Transaction, parents []types.Transa
 		return nil, err
 	}
 	defer w.tg.Done()
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.registerTransaction(t, parents), nil

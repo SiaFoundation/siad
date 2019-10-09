@@ -562,3 +562,312 @@ func TestUnconfirmedParents(t *testing.T) {
 		}
 	}
 }
+
+// TestDoubleSpendCreation tests functionality used by the renter watchdog to
+// create double-spend sweep transactions.
+// when trying to call 'Sign' on a transaction twice.
+func TestDoubleSpendCreation(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	// Create a transaction, add money to it.
+	b, err := wt.wallet.StartTransaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+	txnFund := types.NewCurrency64(100e9)
+	err = b.FundSiacoins(txnFund)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a copy of this builder for double-spending.
+	copyBuilder := b.Copy()
+
+	// Add an output to the original builder, and then a different output to the
+	// double-spend copy.
+	unlockConditions, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: unlockConditions.UnlockHash(),
+	}
+	b.AddSiacoinOutput(output)
+
+	unlockConditions2, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output2 := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: unlockConditions2.UnlockHash(),
+	}
+	copyBuilder.AddSiacoinOutput(output2)
+
+	// Sign both transaction sets.
+	originalSet, err := b.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doubleSpendSet, err := copyBuilder.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the original set is acceptable, and that the double-spend fails.
+	err = wt.tpool.AcceptTransactionSet(originalSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wt.tpool.AcceptTransactionSet(doubleSpendSet)
+	if err == nil {
+		t.Fatal("Expected double spend to fail", err)
+	}
+}
+
+// TestReplaceOutput tests the ReplaceSiacoinOutput feature of the
+// transactionbuilder. It makes sure that after swapping an output, the builder
+// can still produce a valid transaction.
+func TestReplaceOutput(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	b, err := wt.wallet.StartTransaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+	txnFund := types.NewCurrency64(100e9)
+	err = b.FundSiacoins(txnFund)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unusedUC, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	unusedOutput := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: unusedUC.UnlockHash(),
+	}
+	b.AddSiacoinOutput(unusedOutput)
+
+	replacementOutputUC, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacementOutput := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: replacementOutputUC.UnlockHash(),
+	}
+	b.ReplaceSiacoinOutput(0, replacementOutput)
+
+	txnSet, err := b.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the unused output is not in the transaction set, and that the
+	// replacement output is found.
+	foundReplacementOutput := false
+	for _, txn := range txnSet {
+		for _, scOutput := range txn.SiacoinOutputs {
+			if scOutput.UnlockHash == unusedOutput.UnlockHash {
+				t.Fatal("Did not expect to find replaced output in set")
+			}
+			if scOutput.UnlockHash == replacementOutput.UnlockHash {
+				foundReplacementOutput = true
+			}
+		}
+	}
+	if !foundReplacementOutput {
+		t.Fatal("Did not find output added via replacement")
+	}
+
+	err = wt.tpool.AcceptTransactionSet(txnSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestMarkWalletInputs tests that MarkWalletInputs marks spendable inputs
+// correctly by checking that a re-registered transaction is still spendable.
+func TestMarkWalletInputs(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	b, err := wt.wallet.StartTransaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add an input and output to the transaction.
+	txnFund := types.NewCurrency64(100e9)
+	err = b.FundSiacoins(txnFund)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uc, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: uc.UnlockHash(),
+	}
+	b.AddSiacoinOutput(output)
+
+	// Create a new builder from the View output.
+	txn, parents := b.View()
+	newBuilder, err := wt.wallet.RegisterTransaction(txn, parents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	markedAnyInputs := newBuilder.MarkWalletInputs()
+	if !markedAnyInputs {
+		t.Fatal("Expected to mark some inputs")
+	}
+
+	// Call MarkWalletInputs 10 more times. None of these iterations should mark
+	// any inputs again.
+	for i := 0; i < 10; i++ {
+		if newBuilder.MarkWalletInputs() {
+			t.Fatal("Expected no inputs to be marked")
+		}
+	}
+
+	// Check that the new builder is signable and that it creates a good
+	// transaction set.
+	txnSet, err := newBuilder.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wt.tpool.AcceptTransactionSet(txnSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDoubleSpendAfterMarking tests functionality used by the renter
+// watchdog to create double-spend sweep transactions.
+func TestDoubleSpendAfterMarking(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	// Create a transaction, add money to it.
+	b, err := wt.wallet.StartTransaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+	txnFund := types.NewCurrency64(100e9)
+	err = b.FundSiacoins(txnFund)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a copy of this builder for double-spending.
+	copyBuilder := b.Copy()
+
+	// Add an output to the original builder, and then a different output to the
+	// double-spend copy.
+	unlockConditions, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: unlockConditions.UnlockHash(),
+	}
+	b.AddSiacoinOutput(output)
+
+	unlockConditions2, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output2 := types.SiacoinOutput{
+		Value:      txnFund,
+		UnlockHash: unlockConditions2.UnlockHash(),
+	}
+	outputIndex := copyBuilder.AddSiacoinOutput(output2)
+
+	// Get a view of the copyBuilder and re-register the transactions and mark the
+	// spendable inputs.
+	copyTxn, copyParents := copyBuilder.View()
+	newCopyBuilder, err := wt.wallet.RegisterTransaction(copyTxn, copyParents)
+	markedAnyInputs := newCopyBuilder.MarkWalletInputs()
+	if !markedAnyInputs {
+		t.Fatal("expected to mark inputs")
+	}
+
+	// Replace the output with a a completely different one, and add a fee.
+	fee := types.NewCurrency64(50e9)
+	unlockConditions3, err := wt.wallet.NextAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output3 := types.SiacoinOutput{
+		Value:      txnFund.Sub(fee),
+		UnlockHash: unlockConditions3.UnlockHash(),
+	}
+	err = newCopyBuilder.ReplaceSiacoinOutput(outputIndex, output3)
+	newCopyBuilder.AddMinerFee(fee)
+
+	// Sign both transaction sets.
+	originalSet, err := b.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alteredSet, err := newCopyBuilder.Sign(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the output we just added is there by checking the unlockhash.
+	if len(alteredSet) < 1 {
+		t.Fatal(err)
+	}
+	if len(alteredSet[1].SiacoinOutputs) < int(outputIndex) {
+		t.Fatal(err)
+	}
+	foundUnlockHash := alteredSet[1].SiacoinOutputs[outputIndex].UnlockHash
+	if foundUnlockHash != unlockConditions3.UnlockHash() {
+		t.Fatal(err)
+	}
+
+	// Check that the altered set is acceptable, and that the original set fails
+	// because it is a double-spend.
+	err = wt.tpool.AcceptTransactionSet(alteredSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wt.tpool.AcceptTransactionSet(originalSet)
+	if err == nil {
+		t.Fatal("Expected double spend to fail", err)
+	}
+}

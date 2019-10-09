@@ -47,14 +47,19 @@ Below is a list of examples of third party apps that are integrated or built on 
 ### Network Stats
 * [Explorer](https://explore.sia.tech)
 * [SiaHub](https://siahub.info)
+* [SiaSetup](https://siasetup.info)
 * [SiaStats](https://siastats.info)
 
 ### Built on Sia
+* [Filebase](https://filebase.com)
+* [GooBox](https://goobox.io)
 * [Luxor](https://www.luxor.tech/)
 * [Minebox](https://minebox.io)
 * [Obelisk](https://obelisk.tech)
 * [PixelDrain](https://sia.pixeldrain.com)
+* [Repertory](https://bitbucket.org/blockstorage/repertory/src/master/)
 * [SiaDrive](https://bitbucket.org/siaextensions/siadrive/src/master/)
+* [SiaSync](https://github.com/tbenz9/siasync)
 
 ### Integrations
 * [Duplicati](https://blog.sia.tech/introducing-full-computer-backup-with-sia-through-the-new-duplicati-integration-62dd17cbcfb7)
@@ -62,6 +67,6 @@ Below is a list of examples of third party apps that are integrated or built on 
 * [Nextcloud](https://blog.sia.tech/using-sia-as-a-storage-back-end-for-nextcloud-90eab037959d)
 
 ## Contact Us 
-Feel free to ask for help on the #core-dev channel on [discord][discord].
+Feel free to ask for help in the Sia [discord][discord].
 
 [discord]: https://discord.gg/sia

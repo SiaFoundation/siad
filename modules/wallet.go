@@ -175,6 +175,10 @@ type (
 		// the index of the siacoin output within the transaction.
 		AddSiacoinOutput(types.SiacoinOutput) uint64
 
+		// ReplaceSiacoinOutput replaces the siacoin output in the transaction at the
+		// given index.
+		ReplaceSiacoinOutput(index uint64, output types.SiacoinOutput) error
+
 		// AddFileContract adds a file contract to the transaction, returning
 		// the index of the file contract within the transaction.
 		AddFileContract(types.FileContract) uint64
@@ -208,6 +212,17 @@ type (
 		// sign any of the inputs that were added by calling 'FundSiacoins' or
 		// 'FundSiafunds'.
 		AddTransactionSignature(types.TransactionSignature) uint64
+
+		// Copy creates a copy of the current transactionBuilder that can be used to
+		// extend the transaction in an alternate way (i.e. create a double spend
+		// transaction).
+		Copy() TransactionBuilder
+
+		// MarkWalletInputs updates internal TransactionBuilder state by inferring
+		// which inputs belong to this wallet. This allows those inputs to be
+		// signed. Returns true if and only if any inputs belonging to the wallet
+		// are found.
+		MarkWalletInputs() bool
 
 		// Sign will sign any inputs added by 'FundSiacoins' or 'FundSiafunds'
 		// and return a transaction set that contains all parents prepended to

@@ -391,8 +391,7 @@ func (w *Wallet) Encrypt(masterKey crypto.CipherKey) (modules.Seed, error) {
 }
 
 // Reset will reset the wallet, clearing the database and returning it to
-// the unencrypted state. Reset can only be called on a wallet that has
-// already been encrypted.
+// the unencrypted state.
 func (w *Wallet) Reset() error {
 	if err := w.tg.Add(); err != nil {
 		return err
@@ -400,11 +399,6 @@ func (w *Wallet) Reset() error {
 	defer w.tg.Done()
 	w.mu.Lock()
 	defer w.mu.Unlock()
-
-	wb := w.dbTx.Bucket(bucketWallet)
-	if wb.Get(keyEncryptionVerification) == nil {
-		return errUnencryptedWallet
-	}
 
 	w.cs.Unsubscribe(w)
 	w.tpool.Unsubscribe(w)

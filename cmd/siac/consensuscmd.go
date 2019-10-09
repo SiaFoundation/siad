@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -25,9 +26,14 @@ var (
 // Prints the current state of consensus.
 func consensuscmd() {
 	cg, err := httpClient.ConsensusGet()
-	if err != nil {
+	if errors.Contains(err, api.ErrAPICallNotRecognized) {
+		// Assume module is not loaded if status command is not recognized.
+		fmt.Printf("Consensus:\n  Status: %s\n\n", moduleNotReadyStatus)
+		return
+	} else if err != nil {
 		die("Could not get current consensus state:", err)
 	}
+
 	if cg.Synced {
 		fmt.Printf(`Synced: %v
 Block:      %v

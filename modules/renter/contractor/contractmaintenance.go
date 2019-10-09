@@ -102,7 +102,10 @@ func (c *Contractor) managedCheckForDuplicates() {
 // contract has been.
 func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.RenterContract, blockHeight types.BlockHeight, allowance modules.Allowance) (types.Currency, error) {
 	// Fetch the host pricing to use in the estimate.
-	host, exists := c.hdb.Host(contract.HostPublicKey)
+	host, exists, err := c.hdb.Host(contract.HostPublicKey)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "error geting host from hostdb:")
+	}
 	if !exists {
 		return types.ZeroCurrency, errors.New("could not find host in hostdb")
 	}
@@ -285,10 +288,10 @@ func (c *Contractor) managedMarkContractsUtility() error {
 				return u, nil
 			}
 
-			host, exists := c.hdb.Host(contract.HostPublicKey)
+			host, exists, err := c.hdb.Host(contract.HostPublicKey)
 			// Contract has no utility if the host is not in the database. Or is
-			// filtered by the blacklist or whitelist.
-			if !exists || host.Filtered {
+			// filtered by the blacklist or whitelist. Or if there was an error
+			if !exists || host.Filtered || err != nil {
 				// Log if the utility has changed.
 				if u.GoodForUpload || u.GoodForRenew {
 					c.log.Printf("Marking contract as having no utility because found in hostDB: %v, or host is Filtered: %v - %v", exists, host.Filtered, contract.ID)
@@ -558,7 +561,11 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 
 	// Let the hostdb filter out bad hosts and cancel contracts with those
 	// hosts.
-	badHosts := c.hdb.CheckForIPViolations(pks)
+	badHosts, err := c.hdb.CheckForIPViolations(pks)
+	if err != nil {
+		c.log.Println("WARN: errror checking for IP violations:", err)
+		return
+	}
 	for _, host := range badHosts {
 		if err := c.managedCancelContract(cids[host.String()]); err != nil {
 			c.log.Print("WARNING: Wasn't able to cancel contract in managedPrunedRedundantAddressRange", err)
@@ -580,7 +587,10 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 
 	// Fetch the host associated with this contract.
-	host, ok := c.hdb.Host(contract.HostPublicKey)
+	host, ok, err := c.hdb.Host(contract.HostPublicKey)
+	if err != nil {
+		return modules.RenterContract{}, errors.AddContext(err, "error getting host from hostdb:")
+	}
 	c.mu.Lock()
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.mu.Unlock()
@@ -938,10 +948,18 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Debugln("Examining a contract:", contract.HostPublicKey, contract.ID)
 		// Skip any host that does not match our whitelist/blacklist filter
 		// settings.
-		host, _ := c.hdb.Host(contract.HostPublicKey)
+		host, _, err := c.hdb.Host(contract.HostPublicKey)
+		if err != nil {
+			c.log.Println("WARN: error getting host", err)
+			continue
+		}
 		if host.Filtered {
 			c.log.Debugln("Contract skipped because it is filtered")
 			continue
+		}
+		// Skip hosts that can't use the current renter-host protocol.
+		if build.VersionCmp(host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
+			c.log.Debugln("Contract skipped because host is using an outdated version", host.Version)
 		}
 
 		// Skip any contracts which do not exist or are otherwise unworthy for
@@ -1032,7 +1050,12 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Depend on the PeriodSpending function to get a breakdown of spending in
 	// the contractor. Then use that to determine how many funds remain
 	// available in the allowance for renewals.
-	spending := c.PeriodSpending()
+	spending, err := c.PeriodSpending()
+	if err != nil {
+		// This should only error if the contractor is shutting down
+		c.log.Println("WARN: error getting period spending:", err)
+		return
+	}
 	var fundsRemaining types.Currency
 	// Check for an underflow. This can happen if the user reduced their
 	// allowance at some point to less than what we've already spent.

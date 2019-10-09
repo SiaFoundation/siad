@@ -158,21 +158,33 @@ func TestParseRatelimit(t *testing.T) {
 		{"x", 0, errUnableToParseRateLimit},
 		{"1", 0, errUnableToParseRateLimit},
 		{"B/s", 0, errUnableToParseRateLimit},
+		{"Bps", 0, errUnableToParseRateLimit},
+		{"1Bps", 0, errUnableToParseRateLimit},
 		{"1B/s", 1, nil},
 		{"1 B/s", 1, nil},
+		{"8Bps", 1, nil},
+		{"8 Bps", 1, nil},
 		{"1KB/s", 1000, nil},
 		{"1 KB/s", 1000, nil},
+		{"8Kbps", 1000, nil},
+		{"8 Kbps", 1000, nil},
 		{"1MB/s", 1000000, nil},
 		{"1 MB/s", 1000000, nil},
+		{"8Mbps", 1000000, nil},
+		{"8 Mbps", 1000000, nil},
 		{"1GB/s", 1000000000, nil},
 		{"1 GB/s", 1000000000, nil},
+		{"8Gbps", 1000000000, nil},
+		{"8 Gbps", 1000000000, nil},
 		{"1TB/s", 1000000000000, nil},
 		{"1 TB/s", 1000000000000, nil},
+		{"8Tbps", 1000000000000, nil},
+		{"8 Tbps", 1000000000000, nil},
 	}
 
 	for _, test := range tests {
 		res, err := parseRatelimit(test.in)
-		if res != test.out || (err != test.err && strings.Contains(err.Error(), test.err.Error())) {
+		if res != test.out || (err != test.err && !strings.Contains(err.Error(), test.err.Error())) {
 			t.Errorf("parsePeriod(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
 		}
 	}

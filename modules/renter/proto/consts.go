@@ -3,6 +3,8 @@ package proto
 import (
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -85,4 +87,10 @@ var (
 		}
 		return height
 	}()
+)
+
+var (
+	// ErrBadHostVersion indicates that the host is using an older, incompatible
+	// version of the renter-host protocol.
+	ErrBadHostVersion = errors.New("Bad host version; host does not support required protocols")
 )
