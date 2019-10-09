@@ -186,7 +186,7 @@ func announceHosts(hosts map[*TestNode]struct{}) error {
 	return nil
 }
 
-// connectNodes connected two nodes
+// connectNodes connects two nodes
 func connectNodes(nodeA, nodeB *TestNode) error {
 	err := build.Retry(100, 100*time.Millisecond, func() error {
 		if err := nodeA.GatewayConnectPost(nodeB.GatewayAddress()); err != nil && err != client.ErrPeerExists {
