@@ -87,7 +87,7 @@ func (r *Renter) Unmount(mountPoint string) error {
 	if !ok {
 		return errors.New("nothing mounted at that path")
 	}
-	return f.srv.Unmount()
+	return errors.AddContext(f.srv.Unmount(), "failed to unmount server")
 }
 
 // fuseFS implements pathfs.FileSystem using a modules.Renter.
