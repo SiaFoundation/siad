@@ -86,11 +86,11 @@ func TestRenterSpendingReporting(t *testing.T) {
 	// allocated when setting the allowance are reflected correctly in the
 	// wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
 		if err != nil {
 			return err
 		}
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -122,7 +122,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 	// Check to confirm upload and download spending was captured correctly
 	// and reflected in the wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -133,13 +133,13 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 
 	// Mine blocks to force contract renewal
-	if err = renewContractsByRenewWindow(r, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 		if err != nil {
 			return err
 		}
@@ -147,7 +147,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -176,14 +176,14 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+	if err = siatest.CheckContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check to confirm reported spending is still accurate with the renewed contracts
 	// and reflected in the wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -235,7 +235,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, 0)
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, 0)
 		if err != nil {
 			return err
 		}
@@ -243,7 +243,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -271,14 +271,14 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+	if err = siatest.CheckContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check to confirm reported spending is still accurate with the renewed contracts
 	// and a new period and reflected in the wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -289,7 +289,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 
 	// Renew contracts by running out of funds
-	_, err = drainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
+	_, err = siatest.DrainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -297,7 +297,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts())*2, 0)
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts())*2, 0)
 		if err != nil {
 			return err
 		}
@@ -305,7 +305,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -333,14 +333,14 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+	if err = siatest.CheckContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check to confirm reported spending is still accurate with the renewed contracts
 	// and a new period and reflected in the wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -351,13 +351,13 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 
 	// Mine blocks to force contract renewal
-	if err = renewContractsByRenewWindow(r, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
 		if err != nil {
 			return err
 		}
@@ -365,7 +365,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -393,14 +393,14 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+	if err = siatest.CheckContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check to confirm reported spending is still accurate with the renewed contracts
 	// and reflected in the wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}

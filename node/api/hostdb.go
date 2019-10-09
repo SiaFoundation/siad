@@ -74,7 +74,11 @@ func (api *API) hostdbHandler(w http.ResponseWriter, req *http.Request, _ httpro
 // hosts.
 func (api *API) hostdbActiveHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var numHosts uint64
-	hosts := api.renter.ActiveHosts()
+	hosts, err := api.renter.ActiveHosts()
+	if err != nil {
+		WriteError(w, Error{"unable to get active hosts: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 
 	if req.FormValue("numhosts") == "" {
 		// Default value for 'numhosts' is all of them.
@@ -83,7 +87,7 @@ func (api *API) hostdbActiveHandler(w http.ResponseWriter, req *http.Request, _ 
 		// Parse the value for 'numhosts'.
 		_, err := fmt.Sscan(req.FormValue("numhosts"), &numHosts)
 		if err != nil {
-			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse numhosts: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 
@@ -110,7 +114,11 @@ func (api *API) hostdbActiveHandler(w http.ResponseWriter, req *http.Request, _ 
 // hostdbAllHandler handles the API call asking for the list of all hosts.
 func (api *API) hostdbAllHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get the set of all hosts and convert them into extended hosts.
-	hosts := api.renter.AllHosts()
+	hosts, err := api.renter.AllHosts()
+	if err != nil {
+		WriteError(w, Error{"unable to get all hosts: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	var extendedHosts []ExtendedHostDBEntry
 	for _, host := range hosts {
 		extendedHosts = append(extendedHosts, ExtendedHostDBEntry{
@@ -130,7 +138,11 @@ func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps 
 	var pk types.SiaPublicKey
 	pk.LoadString(ps.ByName("pubkey"))
 
-	entry, exists := api.renter.Host(pk)
+	entry, exists, err := api.renter.Host(pk)
+	if err != nil {
+		WriteError(w, Error{"unable to get host: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	if !exists {
 		WriteError(w, Error{"requested host does not exist"}, http.StatusBadRequest)
 		return

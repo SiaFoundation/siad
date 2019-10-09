@@ -101,7 +101,7 @@ func (c *Contractor) InitRecoveryScan() (err error) {
 
 // PeriodSpending returns the amount spent on contracts during the current
 // billing period.
-func (c *Contractor) PeriodSpending() modules.ContractorSpending {
+func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 	allContracts := c.staticContracts.ViewAll()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -123,7 +123,7 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 
 	// Calculate needed spending to be reported from old contracts
 	for _, contract := range c.oldContracts {
-		host, exist := c.hdb.Host(contract.HostPublicKey)
+		host, exist, err := c.hdb.Host(contract.HostPublicKey)
 		if contract.StartHeight >= c.currentPeriod {
 			// Calculate spending from contracts that were renewed during the current period
 			// Calculate ContractFees
@@ -136,7 +136,7 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 			spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
 			spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
 			spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
-		} else if exist && contract.EndHeight+host.WindowSize+types.MaturityDelay > c.blockHeight {
+		} else if err != nil && exist && contract.EndHeight+host.WindowSize+types.MaturityDelay > c.blockHeight {
 			// Calculate funds that are being withheld in contracts
 			spending.WithheldFunds = spending.WithheldFunds.Add(contract.RenterFunds)
 			// Record the largest window size for worst case when reporting the spending
@@ -162,7 +162,7 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 		spending.Unspent = c.allowance.Funds.Sub(allSpending)
 	}
 
-	return spending
+	return spending, nil
 }
 
 // CurrentPeriod returns the height at which the current allowance period
