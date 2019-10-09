@@ -379,6 +379,11 @@ func (tp *TransactionPool) submitTransactionSet(ts []types.Transaction) ([]types
 // transactions. If the transaction is accepted, it will be relayed to
 // connected peers.
 func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
+	if err := tp.tg.Add(); err != nil {
+		return err
+	}
+	defer tp.tg.Done()
+
 	tp.log.Debugln("Received a transaction (internal or external), attempting to broadcast")
 	minSuperSet, err := tp.submitTransactionSet(ts)
 	if err == modules.ErrDuplicateTransactionSet {
