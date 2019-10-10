@@ -162,13 +162,6 @@ type (
 		Files []modules.FileInfo `json:"files"`
 	}
 
-	// RenterFUSEInfo contains information about the currently-mounted FUSE
-	// filesystem.
-	RenterFUSEInfo struct {
-		SiaPath modules.SiaPath `json:"siapath"`
-		Mount   string          `json:"mount"`
-	}
-
 	// RenterLoad lists files that were loaded into the renter.
 	RenterLoad struct {
 		FilesAdded []string `json:"filesadded"`
@@ -239,6 +232,11 @@ type (
 		StartTime            time.Time `json:"starttime"`            // The time when the download was started.
 		StartTimeUnix        int64     `json:"starttimeunix"`        // The time when the download was started in unix format.
 		TotalDataTransferred uint64    `json:"totaldatatransferred"` // The total amount of data transferred, including negotiation, overdrive etc.
+	}
+
+	// RenterFUSEInfo contains information about mounted FUSE filesystems.
+	RenterFUSEInfo struct {
+		MountPoints []modules.MountInfo `json:"mountPoints"`
 	}
 )
 
@@ -1003,7 +1001,9 @@ func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.R
 
 // renterFUSEHandlerGET handles the API call to /renter/fuse.
 func (api *API) renterFUSEHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	WriteJSON(w, api.renter.MountInfo())
+	WriteJSON(w, RenterFUSEInfo{
+		MountPoints: api.renter.MountInfo(),
+	})
 }
 
 // renterFUSEMountHandlerPOST handles the API call to /renter/fuse/mount.

@@ -224,9 +224,6 @@ type Renter struct {
 	downloadHistory   map[modules.DownloadID]*download
 	downloadHistoryMu sync.Mutex
 
-	// Set of mounted FUSE filesystems.
-	fuseMounts map[string]*fuseFS
-
 	// Upload management.
 	uploadHeap    uploadHeap
 	directoryHeap directoryHeap
@@ -246,23 +243,24 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
-	cs               modules.ConsensusSet
-	deps             modules.Dependencies
-	g                modules.Gateway
-	w                modules.Wallet
-	hostContractor   hostContractor
-	hostDB           hostDB
-	log              *persist.Logger
-	persist          persistence
-	persistDir       string
-	staticFilesDir   string
-	staticBackupsDir string
-	memoryManager    *memoryManager
-	mu               *siasync.RWMutex
-	tg               threadgroup.ThreadGroup
-	tpool            modules.TransactionPool
-	wal              *writeaheadlog.WAL
-	staticWorkerPool *workerPool
+	cs                modules.ConsensusSet
+	deps              modules.Dependencies
+	g                 modules.Gateway
+	w                 modules.Wallet
+	hostContractor    hostContractor
+	hostDB            hostDB
+	log               *persist.Logger
+	persist           persistence
+	persistDir        string
+	staticFilesDir    string
+	staticBackupsDir  string
+	memoryManager     *memoryManager
+	staticFUSEManager *fuseManager
+	mu                *siasync.RWMutex
+	tg                threadgroup.ThreadGroup
+	tpool             modules.TransactionPool
+	wal               *writeaheadlog.WAL
+	staticWorkerPool  *workerPool
 }
 
 // Close closes the Renter and its dependencies
@@ -271,11 +269,7 @@ func (r *Renter) Close() error {
 		return nil
 	}
 	r.tg.Stop()
-	// unmount any mounted FUSE filesystems
-	for path, fs := range r.fuseMounts {
-		delete(r.fuseMounts, path)
-		fs.srv.Unmount()
-	}
+	r.staticFUSEManager.Close()
 	r.hostDB.Close()
 	return r.hostContractor.Close()
 }
@@ -842,8 +836,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
-		fuseMounts: make(map[string]*fuseFS),
-
 		cs:               cs,
 		deps:             deps,
 		g:                g,
@@ -858,6 +850,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		tpool:            tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.staticFUSEManager = newFUSEManager(r)
 	r.stuckStack = callNewStuckStack()
 
 	// Load all saved data.

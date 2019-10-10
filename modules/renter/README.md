@@ -4,19 +4,6 @@ that a user has uploaded to Sia. This includes the location and health of these
 files. The Renter, via the HostDB and the Contractor, is also responsible for
 picking hosts and maintaining the relationship with them.
 
-*TODO*
-  - Should assumptions for each section be put in a specific **assumptions**
-    section at the end of each section?
-  - Update list of submodules to be links to README files was submodule READMEs
-    are ready
-  - If we like this format for the README we should document it and make it
-    standard for consistency between module READMEs. Things to consider:
-     - What gets `highlighted` - code only
-     - What gets linked
-     - What Sections to have and order
-  - Confirm all assumptions have tests
-  - Create subsystemconsts.go files and add them to the **Key Files** 
-
 ## Submodules
 The Renter has several submodules that each perform a specific function for the
 Renter. This README will provide brief overviews of the submodules, but for more
@@ -69,6 +56,7 @@ responsibilities.
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
  - [Backup Subsystem](#backup-subsystem)
+ - [FUSE Subsystem](#fuse-subsystem)
 
 ### Filesystem Controllers
 **Key Files**
@@ -624,3 +612,15 @@ it up by finding a stuck chunk.
 The backup subsystem of the renter is responsible for creating local and remote
 backups of the user's data, such that all data is able to be recovered onto a
 new machine should the current machine + metadata be lost.
+
+### FUSE Subsystem
+**Key Files**
+ - [fuse.go](./fuse.go)
+
+The FUSE subsystem enables mounting the renter as a virtual filesystem. When
+mounted, the kernel forwards I/O syscalls on files and folders to the userland
+code in this subsystem. For example, the `read` syscall is implemented by
+downloading data from Sia hosts.
+
+*TODO* 
+  - add complexities

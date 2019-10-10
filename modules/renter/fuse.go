@@ -16,14 +16,37 @@ import (
 
 // MountInfo returns the list of currently mounted FUSE filesystems.
 func (r *Renter) MountInfo() []modules.MountInfo {
-	if err := r.tg.Add(); err != nil {
+	return r.staticFUSEManager.mountInfo()
+}
+
+// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
+// the local filesystem.
+func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
+	return r.staticFUSEManager.mount(mountPoint, sp, opts)
+}
+
+// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
+func (r *Renter) Unmount(mountPoint string) error {
+	return r.staticFUSEManager.unmount(mountPoint)
+}
+
+// A fuseManager manages mounted FUSE filesystems.
+type fuseManager struct {
+	mountPoints map[string]*fuseFS
+	r           *Renter
+	mu          sync.Mutex
+}
+
+// mountInfo returns the list of currently mounted FUSE filesystems.
+func (fm *fuseManager) mountInfo() []modules.MountInfo {
+	if err := fm.r.tg.Add(); err != nil {
 		return nil
 	}
-	defer r.tg.Done()
-	id := r.mu.Lock()
-	defer r.mu.Unlock(id)
+	defer fm.r.tg.Done()
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
 	var infos []modules.MountInfo
-	for mountPoint, fs := range r.fuseMounts {
+	for mountPoint, fs := range fm.mountPoints {
 		infos = append(infos, modules.MountInfo{
 			MountPoint: mountPoint,
 			SiaPath:    fs.sp,
@@ -32,16 +55,36 @@ func (r *Renter) MountInfo() []modules.MountInfo {
 	return infos
 }
 
-// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
+// Close unmounts all currently-mounted filesystems.
+func (fm *fuseManager) Close() error {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	// unmount any mounted FUSE filesystems
+	for path, fs := range fm.mountPoints {
+		delete(fm.mountPoints, path)
+		fs.srv.Unmount()
+	}
+	return nil
+}
+
+// newFUSEManager returns a new fuseManager.
+func newFUSEManager(r *Renter) *fuseManager {
+	return &fuseManager{
+		mountPoints: make(map[string]*fuseFS),
+		r:           r,
+	}
+}
+
+// mount mounts the files under the specified siapath under the 'mountPoint' folder on
 // the local filesystem.
-func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
-	if err := r.tg.Add(); err != nil {
+func (fm *fuseManager) mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
+	if err := fm.r.tg.Add(); err != nil {
 		return err
 	}
-	defer r.tg.Done()
-	id := r.mu.Lock()
-	_, ok := r.fuseMounts[mountPoint]
-	r.mu.Unlock(id)
+	defer fm.r.tg.Done()
+	fm.mu.Lock()
+	_, ok := fm.mountPoints[mountPoint]
+	fm.mu.Unlock()
 	if ok {
 		return errors.New("already mounted")
 	}
@@ -52,7 +95,7 @@ func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.Mount
 	fs := &fuseFS{
 		FileSystem: pathfs.NewDefaultFileSystem(),
 		sp:         sp,
-		r:          r,
+		r:          fm.r,
 	}
 	nfs := pathfs.NewPathNodeFs(fs, nil)
 	// we need to call `Mount` rather than `MountRoot` because we want to define
@@ -69,23 +112,23 @@ func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.Mount
 	go server.Serve()
 	fs.srv = server
 
-	id = r.mu.Lock()
-	r.fuseMounts[mountPoint] = fs
-	r.mu.Unlock(id)
+	fm.mu.Lock()
+	fm.mountPoints[mountPoint] = fs
+	fm.mu.Unlock()
 	return nil
 }
 
-// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
-func (r *Renter) Unmount(mountPoint string) error {
-	if err := r.tg.Add(); err != nil {
+// unmount unmounts the FUSE filesystem currently mounted at mountPoint.
+func (fm *fuseManager) unmount(mountPoint string) error {
+	if err := fm.r.tg.Add(); err != nil {
 		return err
 	}
-	defer r.tg.Done()
+	defer fm.r.tg.Done()
 
-	id := r.mu.Lock()
-	f, ok := r.fuseMounts[mountPoint]
-	delete(r.fuseMounts, mountPoint)
-	r.mu.Unlock(id)
+	fm.mu.Lock()
+	f, ok := fm.mountPoints[mountPoint]
+	delete(fm.mountPoints, mountPoint)
+	fm.mu.Unlock()
 
 	if !ok {
 		return errors.New("nothing mounted at that path")
