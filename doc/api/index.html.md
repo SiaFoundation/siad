@@ -250,6 +250,7 @@ BlockHeight of the requested block.
     ],
     "nonce": [4,12,219,7,0,0,0,0], // [8]byte
     "parentid": "0000000000009615e8db750eb1226aa5e629bfa7badbfe0b79607ec8b918a44c", // hash
+    "difficulty": "440908097469850", // arbitrary-precision integer
     "timestamp": 1444516982, // timestamp
     "transactions": [ // []ConsensusBlocksGetTxn
         {
@@ -327,6 +328,9 @@ Block nonce
 
 **parentid** | hash  
 ID of the previous block
+
+**difficulty** | arbitrary-precision integer  
+Historic difficulty at height of the block
 
 **timestamp** | timestamp  
 Block timestamp
@@ -2031,11 +2035,27 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&fu
 Modify settings that control the renter's behavior.
 
 ### Query String Parameters
+#### REQUIRED
+When setting the allowance the Funds and Period are required. Since these are the two required fields, the allowance can be canceled by submitting the zero values for these fields.
+
 #### OPTIONAL
 Any of the renter settings can be set, see fields [here](#settings)
 
 **checkforipviolation** | boolean  
 Enables or disables the check for hosts using the same ip subnets within the hostdb. It's turned on by default and causes Sia to not form contracts with hosts from the same subnet and if such contracts already exist, it will deactivate the contract which has occupied that subnet for the shorter time.  
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/allowance/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword>  "localhost:9980/renter/allowance/cancel"
+```
+
+Cancel the Renter's allowance.
 
 ### Response
 
