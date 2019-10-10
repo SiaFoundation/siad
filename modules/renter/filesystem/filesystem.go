@@ -160,7 +160,14 @@ func (fs *FileSystem) DeleteFile(siaPath modules.SiaPath) error {
 
 // DirInfo returns the Directory Information of the siadir
 func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
-	panic("not implemented yet")
+	dir, err := fs.managedOpenDir(siaPath.String())
+	if err != nil {
+		return modules.DirectoryInfo{}, nil
+	}
+	defer dir.Close()
+	di := dir.staticInfo()
+	di.SiaPath = siaPath
+	return di, nil
 }
 
 // DirList lists the directories within a SiaDir.

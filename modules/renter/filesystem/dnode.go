@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"io/ioutil"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,24 @@ type (
 		*siadir.SiaDir
 	}
 )
+
+// HealthPercentage returns the health in a more human understandable format out
+// of 100%
+//
+// The percentage is out of 1.25, this is to account for the RepairThreshold of
+// 0.25 and assumes that the worst health is 1.5. Since we do not repair until
+// the health is worse than the RepairThreshold, a health of 0 - 0.25 is full
+// health. Likewise, a health that is greater than 1.25 is essentially 0 health.
+func HealthPercentage(health float64) float64 {
+	healthPercent := 100 * (1.25 - health)
+	if healthPercent > 100 {
+		healthPercent = 100
+	}
+	if healthPercent < 0 {
+		healthPercent = 0
+	}
+	return healthPercent
+}
 
 // close calls the common close method of all nodes and clears the SiaDir if no
 // more threads are accessing.
@@ -116,6 +135,42 @@ func (n *DNode) managedDeleteFile(fileName string) error {
 	defer sf.Close()
 	// Delete it.
 	return sf.managedDelete()
+}
+
+// staticInfo builds and returns the DirectoryInfo of a SiaDir. The SiaPath
+// field needs to be set by the caller.
+func (n *DNode) staticInfo() modules.DirectoryInfo {
+	// Grab the siadir metadata
+	metadata := n.Metadata()
+	aggregateMaxHealth := math.Max(metadata.AggregateHealth, metadata.AggregateStuckHealth)
+	maxHealth := math.Max(metadata.Health, metadata.StuckHealth)
+	return modules.DirectoryInfo{
+		// Aggregate Fields
+		AggregateHealth:              metadata.AggregateHealth,
+		AggregateLastHealthCheckTime: metadata.AggregateLastHealthCheckTime,
+		AggregateMaxHealth:           aggregateMaxHealth,
+		AggregateMaxHealthPercentage: HealthPercentage(aggregateMaxHealth),
+		AggregateMinRedundancy:       metadata.AggregateMinRedundancy,
+		AggregateMostRecentModTime:   metadata.AggregateModTime,
+		AggregateNumFiles:            metadata.AggregateNumFiles,
+		AggregateNumStuckChunks:      metadata.AggregateNumStuckChunks,
+		AggregateNumSubDirs:          metadata.AggregateNumSubDirs,
+		AggregateSize:                metadata.AggregateSize,
+		AggregateStuckHealth:         metadata.AggregateStuckHealth,
+
+		// SiaDir Fields
+		Health:              metadata.Health,
+		LastHealthCheckTime: metadata.LastHealthCheckTime,
+		MaxHealth:           maxHealth,
+		MaxHealthPercentage: HealthPercentage(maxHealth),
+		MinRedundancy:       metadata.MinRedundancy,
+		MostRecentModTime:   metadata.ModTime,
+		NumFiles:            metadata.NumFiles,
+		NumStuckChunks:      metadata.NumStuckChunks,
+		NumSubDirs:          metadata.NumSubDirs,
+		Size:                metadata.Size,
+		StuckHealth:         metadata.StuckHealth,
+	}
 }
 
 // managedNewSiaFile creates a new SiaFile in the directory.
