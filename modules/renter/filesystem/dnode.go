@@ -137,9 +137,8 @@ func (n *DNode) managedDeleteFile(fileName string) error {
 	return sf.managedDelete()
 }
 
-// staticInfo builds and returns the DirectoryInfo of a SiaDir. The SiaPath
-// field needs to be set by the caller.
-func (n *DNode) staticInfo() modules.DirectoryInfo {
+// staticInfo builds and returns the DirectoryInfo of a SiaDir.
+func (n *DNode) staticInfo(siaPath modules.SiaPath) modules.DirectoryInfo {
 	// Grab the siadir metadata
 	metadata := n.Metadata()
 	aggregateMaxHealth := math.Max(metadata.AggregateHealth, metadata.AggregateStuckHealth)
@@ -170,6 +169,7 @@ func (n *DNode) staticInfo() modules.DirectoryInfo {
 		NumSubDirs:          metadata.NumSubDirs,
 		Size:                metadata.Size,
 		StuckHealth:         metadata.StuckHealth,
+		SiaPath:             siaPath,
 	}
 }
 

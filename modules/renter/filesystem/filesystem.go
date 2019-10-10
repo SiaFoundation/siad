@@ -165,7 +165,7 @@ func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		return modules.DirectoryInfo{}, nil
 	}
 	defer dir.Close()
-	di := dir.staticInfo()
+	di := dir.staticInfo(siaPath)
 	di.SiaPath = siaPath
 	return di, nil
 }
