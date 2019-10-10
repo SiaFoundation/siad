@@ -11,7 +11,7 @@ import (
 // updateSiaDirHealth is a helper method to update the health and the aggregate
 // health of a siadir
 func (r *Renter) updateSiaDirHealth(siaPath modules.SiaPath, health, aggregateHealth float64) error {
-	siaDir, err := r.staticDirSet.Open(siaPath)
+	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		return err
 	}

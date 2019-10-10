@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -127,12 +126,12 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 	if partialsSiaFile.numChunks > 0 {
 		panic(fmt.Sprint("partialsSiaFile shouldn't have any chunks but had ", partialsSiaFile.numChunks))
 	}
-	partialsEntry := &SiaFileSetEntry{
-		dummyEntry(partialsSiaFile),
-		uint64(fastrand.Intn(math.MaxInt32)),
-	}
+	//partialsEntry := &SiaFileSetEntry{
+	//	partialsSiaFile,
+	//	uint64(fastrand.Intn(math.MaxInt32)),
+	//}
 	// Create the file.
-	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, partialsEntry, false)
+	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, nil, false)
 	if err != nil {
 		panic(err)
 	}

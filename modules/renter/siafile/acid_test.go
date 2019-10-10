@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"math"
 	"testing"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -36,12 +36,11 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	fdd.disable()
 
 	// Create a new blank siafile.
-	siafile, wal, walPath := newBlankTestFileAndWAL(1)
-	siafile.deps = fdd
+	sf, wal, walPath := newBlankTestFileAndWAL(1)
+	sf.deps = fdd
 
 	// Wrap it in a file set entry.
-	sf := dummyEntry(siafile)
-	if err := setCombinedChunkOfTestFile(sf.SiaFile); err != nil {
+	if err := setCombinedChunkOfTestFile(sf); err != nil {
 		t.Fatal(err)
 	}
 
@@ -83,7 +82,7 @@ OUTER:
 			if fastrand.Intn(100) < 80 {
 				spk := hostkeys[fastrand.Intn(len(hostkeys))]
 				offset := uint64(fastrand.Intn(int(sf.staticMetadata.FileSize)))
-				snap, err := sf.Snapshot()
+				snap, err := sf.Snapshot(modules.RandomSiaPath())
 				if err != nil {
 					if errors.Contains(err, errDiskFault) {
 						numRecoveries++
@@ -147,7 +146,7 @@ OUTER:
 				}
 			}
 			// Load file again.
-			partialsSiaFile, err := loadSiaFile(sf.partialsSiaFile.siaFilePath, wal, fdd)
+			_, err = loadSiaFile(sf.partialsSiaFile.siaFilePath, wal, fdd)
 			if err != nil {
 				if errors.Contains(err, errDiskFault) {
 					numRecoveries++
@@ -156,7 +155,7 @@ OUTER:
 					t.Fatal(err)
 				}
 			}
-			siafile, err = loadSiaFile(sf.siaFilePath, wal, fdd)
+			siafile, err := loadSiaFile(sf.siaFilePath, wal, fdd)
 			if err != nil {
 				if errors.Contains(err, errDiskFault) {
 					numRecoveries++
@@ -165,13 +164,13 @@ OUTER:
 					t.Fatal(err)
 				}
 			}
-			partialsEntry := &SiaFileSetEntry{
-				dummyEntry(partialsSiaFile),
-				uint64(fastrand.Intn(math.MaxInt32)),
-			}
+			//	partialsEntry := &SiaFileSetEntry{
+			//		dummyEntry(partialsSiaFile),
+			//		uint64(fastrand.Intn(math.MaxInt32)),
+			//	}
 			siafile.deps = fdd
-			sf = dummyEntry(siafile)
-			sf.SetPartialsSiaFile(partialsEntry)
+			//sf = dummyEntry(siafile)
+			sf.SetPartialsSiaFile(nil)
 			break
 		}
 

@@ -108,12 +108,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 	defer func() {
 		// Close out remaining file entries
 		for _, chunk := range unfinishedStuckChunks {
-			if err = chunk.fileEntry.Close(); err != nil {
-				// If there is an error log it and append to the other errors so
-				// that we close as many files as possible
-				r.log.Println("WARN: unable to close file:", err)
-				allErrors = errors.Compose(allErrors, err)
-			}
+			chunk.fileEntry.Close()
 		}
 	}()
 
@@ -127,12 +122,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 		if !r.uploadHeap.managedPush(chunk) {
 			// Stuck chunk unable to be added. Close the file entry of that
 			// chunk
-			if err = chunk.fileEntry.Close(); err != nil {
-				// If there is an error log it and append to the other errors so
-				// that we close as many files as possible
-				r.log.Println("WARN: unable to close file:", err)
-				allErrors = errors.Compose(allErrors, err)
-			}
+			chunk.fileEntry.Close()
 			continue
 		}
 		stuckChunksAdded++

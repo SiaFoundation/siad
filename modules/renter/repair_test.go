@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -154,21 +155,21 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
 	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(modules.RootSiaPath(), metadataUpdate); err != nil {
+	if err := rt.renter.staticFileSystem.UpdateDirMetadata(modules.RootSiaPath(), metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	siaPath = subDir1
-	if err := rt.renter.staticDirSet.UpdateMetadata(siaPath, metadataUpdate); err != nil {
+	if err := rt.renter.staticFileSystem.UpdateDirMetadata(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	siaPath = subDir1_1
-	if err := rt.renter.staticDirSet.UpdateMetadata(siaPath, metadataUpdate); err != nil {
+	if err := rt.renter.staticFileSystem.UpdateDirMetadata(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	// Set health of subDir1/subDir2 to be the worst and set the
 	siaPath = subDir1_2
 	metadataUpdate.Health = 4
-	if err := rt.renter.staticDirSet.UpdateMetadata(siaPath, metadataUpdate); err != nil {
+	if err := rt.renter.staticFileSystem.UpdateDirMetadata(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 
@@ -215,7 +216,11 @@ func TestBubbleHealth(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +231,7 @@ func TestBubbleHealth(t *testing.T) {
 	//
 	// Note: this tests the edge case of bubbling a directory with a file
 	// but no sub directories
-	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{f})
+	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*filesystem.FNode{f})
 	fileHealth, _, _, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
@@ -306,7 +311,7 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
 	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(subDir1_2_1, expectedHealth); err != nil {
+	if err := rt.renter.staticFileSystem.UpdateDirMetadata(subDir1_2_1, expectedHealth); err != nil {
 		t.Fatal(err)
 	}
 	rt.renter.managedBubbleMetadata(siaPath)
@@ -379,7 +384,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: oldestCheckTime,
 	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(subDir1_2, oldestHealthCheckUpdate); err != nil {
+	if err := rt.renter.staticFileSystem.UpdateDirMetadata(subDir1_2, oldestHealthCheckUpdate); err != nil {
 		t.Fatal(err)
 	}
 
@@ -453,7 +458,7 @@ func TestNumFiles(t *testing.T) {
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +466,7 @@ func TestNumFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +475,7 @@ func TestNumFiles(t *testing.T) {
 	// of files and aggregate number of files
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -535,7 +540,7 @@ func TestDirectorySize(t *testing.T) {
 		ErasureCode: rsc,
 	}
 	fileSize := uint64(100)
-	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +548,7 @@ func TestDirectorySize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 2*fileSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -551,7 +556,7 @@ func TestDirectorySize(t *testing.T) {
 	// Call bubble on lowest lever and confirm top level reports accurate size
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -613,7 +618,7 @@ func TestDirectoryModTime(t *testing.T) {
 		ErasureCode: rsc,
 	}
 	fileSize := uint64(100)
-	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,7 +626,11 @@ func TestDirectoryModTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -630,7 +639,7 @@ func TestDirectoryModTime(t *testing.T) {
 	// update time
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -698,30 +707,34 @@ func TestRandomStuckDirectory(t *testing.T) {
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = f.SetStuck(uint64(0), true); err != nil {
 		t.Fatal(err)
 	}
-	if err = f.Close(); err != nil {
-		t.Fatal(err)
-	}
+	f.Close()
 	up.SiaPath, err = subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err = rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = f.SetStuck(uint64(0), true); err != nil {
 		t.Fatal(err)
 	}
-	if err = f.Close(); err != nil {
-		t.Fatal(err)
-	}
+	f.Close()
 
 	// Bubble directory information so NumStuckChunks is updated, there should
 	// be at least 2 stuck chunks because of the two we manually marked as
@@ -802,13 +815,17 @@ func TestCalculateFileMetadata(t *testing.T) {
 		ErasureCode: rsc,
 	}
 	fileSize := uint64(100)
-	sf, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Grab initial metadata values
-	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*filesystem.FNode{sf})
 	health, stuckHealth, _, _, numStuckChunks := sf.Health(offline, goodForRenew)
 	redundancy, _, err := sf.Redundancy(offline, goodForRenew)
 	if err != nil {
@@ -865,7 +882,7 @@ func TestCreateMissingSiaDir(t *testing.T) {
 	defer rt.Close()
 
 	// Confirm the siadir file is on disk
-	siaDirPath := modules.RootSiaPath().SiaDirMetadataSysPath(rt.renter.staticFilesDir)
+	siaDirPath := modules.RootSiaPath().SiaDirMetadataSysPath(rt.renter.staticFileSystem.Root())
 	_, err = os.Stat(siaDirPath)
 	if err != nil {
 		t.Fatal(err)
@@ -918,7 +935,11 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}

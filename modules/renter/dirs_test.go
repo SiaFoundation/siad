@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
@@ -64,11 +65,11 @@ func TestRenterCreateDirectories(t *testing.T) {
 // initialized correctly and the metadata file exist and contain the correct
 // information
 func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
-	fullpath := siaPath.SiaDirMetadataSysPath(rt.renter.staticFilesDir)
+	fullpath := siaPath.SiaDirMetadataSysPath(rt.renter.staticFileSystem.Root())
 	if _, err := os.Stat(fullpath); err != nil {
 		return err
 	}
-	siaDir, err := rt.renter.staticDirSet.Open(siaPath)
+	siaDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		return fmt.Errorf("unable to load directory %v metadata: %v", siaPath, err)
 	}
@@ -102,10 +103,8 @@ func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	if metadata.StuckHealth != siadir.DefaultDirHealth {
 		return fmt.Errorf("StuckHealth not initialized properly: have %v expected %v", metadata.StuckHealth, siadir.DefaultDirHealth)
 	}
-
-	// Check that the SiaPath was initialized properly
-	if siaDir.SiaPath() != siaPath {
-		return fmt.Errorf("Expected siapath to be %v, got %v", siaPath, siaDir.SiaPath())
+	if siaDir.Path() != rt.renter.staticFileSystem.DirPath(siaPath) {
+		return fmt.Errorf("Expected path to be %v, got %v", siaDir.Path(), rt.renter.staticFileSystem.DirPath(siaPath))
 	}
 	return nil
 }
@@ -132,19 +131,19 @@ func TestDirInfo(t *testing.T) {
 	}
 
 	// Check that DirInfo returns the same information as stored in the metadata
-	fooDirInfo, err := rt.renter.staticDirSet.DirInfo(siaPath)
+	fooDirInfo, err := rt.renter.staticFileSystem.DirInfo(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootDirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
+	rootDirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	fooEntry, err := rt.renter.staticDirSet.Open(siaPath)
+	fooEntry, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootEntry, err := rt.renter.staticDirSet.Open(modules.RootSiaPath())
+	rootEntry, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,11 +199,11 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Verify that the directory information matches the on disk information
-	rootDir, err := rt.renter.staticDirSet.Open(modules.RootSiaPath())
+	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	fooDir, err := rt.renter.staticDirSet.Open(siaPath)
+	fooDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +217,7 @@ func TestRenterListDirectory(t *testing.T) {
 
 // compareDirectoryInfoAndMetadata is a helper that compares the information in
 // a DirectoryInfo struct and a SiaDirSetEntry struct
-func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.SiaDirSetEntry) error {
+func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesystem.DNode) error {
 	md := siaDir.Metadata()
 
 	// Compare Aggregate Fields
@@ -292,9 +291,6 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 	}
 	if md.StuckHealth != di.StuckHealth {
 		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, di.StuckHealth)
-	}
-	if !siaDir.SiaPath().Equals(di.SiaPath) {
-		return fmt.Errorf("siapaths not equal, %v and %v", siaDir.SiaPath(), di.SiaPath)
 	}
 	return nil
 }

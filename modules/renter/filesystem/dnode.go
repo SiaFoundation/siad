@@ -160,14 +160,8 @@ func (n *DNode) openFile(fileName string) (*FNode, error) {
 	} else if exists && fn.Deleted() {
 		return nil, ErrNotExist // don't return a deleted file
 	}
-	// lock new node before releasing parent.
-	fn.mu.Lock()
-	defer fn.mu.Unlock()
 	// Clone the node, give it a new UID and return it.
-	newNode := *fn
-	newNode.threadUID = newThreadUID()
-	newNode.threads[newNode.threadUID] = newThreadType()
-	return &newNode, nil
+	return fn.managedCopy(), nil
 }
 
 // openDir opens the dir with the specified name within the current dir but

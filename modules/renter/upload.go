@@ -119,7 +119,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	nilMap := make(map[string]bool)
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
-	r.callBuildAndPushChunks([]*siafile.SiaFileSetEntry{entry}, hosts, targetUnstuckChunks, nilMap, nilMap)
+	r.callBuildAndPushChunks([]*filesystem.FNode{entry}, hosts, targetUnstuckChunks, nilMap, nilMap)
 	select {
 	case r.uploadHeap.newUploads <- struct{}{}:
 	default:

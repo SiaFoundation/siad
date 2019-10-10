@@ -77,21 +77,15 @@ func TestRenterSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siapath := rt.renter.staticFileSet.SiaPath(entry)
-	err = entry.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
+	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
+	entry.Close()
 
 	// Check that SiaFileSet knows of the SiaFile
-	entry, err = rt.renter.staticFileSet.Open(siapath)
+	entry, err = rt.renter.staticFileSystem.OpenSiaFile(siapath)
 	if err != nil {
 		t.Fatal("SiaFile not found in the renter's staticFileSet after creation")
 	}
-	err = entry.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
+	entry.Close()
 
 	err = rt.renter.saveSync() // save metadata
 	if err != nil {
@@ -118,7 +112,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 
 	// Check that SiaFileSet loaded the renter's file
-	_, err = rt.renter.staticFileSet.Open(siapath)
+	_, err = rt.renter.staticFileSystem.OpenSiaFile(siapath)
 	if err != nil {
 		t.Fatal("SiaFile not found in the renter's staticFileSet after load")
 	}
@@ -163,15 +157,15 @@ func TestRenterPaths(t *testing.T) {
 	sk := crypto.GenerateSiaKey(crypto.TypeThreefish)
 	fileSize := uint64(modules.SectorSize)
 	fileMode := os.FileMode(0600)
-	f1, err := siafile.New(siaPath1.SiaFileSysPath(rt.renter.staticFilesDir), "", wal, rc, sk, fileSize, fileMode, nil, true)
+	f1, err := siafile.New(siaPath1.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f2, err := siafile.New(siaPath2.SiaFileSysPath(rt.renter.staticFilesDir), "", wal, rc, sk, fileSize, fileMode, nil, true)
+	f2, err := siafile.New(siaPath2.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f3, err := siafile.New(siaPath3.SiaFileSysPath(rt.renter.staticFilesDir), "", wal, rc, sk, fileSize, fileMode, nil, true)
+	f3, err := siafile.New(siaPath3.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,21 +182,21 @@ func TestRenterPaths(t *testing.T) {
 	}
 
 	// Check that the files were loaded properly.
-	entry1, err := rt.renter.staticFileSet.Open(siaPath1)
+	entry1, err := rt.renter.staticFileSystem.OpenSiaFile(siaPath1)
 	if err != nil {
 		t.Fatal("File not found in renter", err)
 	}
 	if err := equalFiles(f1, entry1.SiaFile); err != nil {
 		t.Fatal(err)
 	}
-	entry2, err := rt.renter.staticFileSet.Open(siaPath2)
+	entry2, err := rt.renter.staticFileSystem.OpenSiaFile(siaPath2)
 	if err != nil {
 		t.Fatal("File not found in renter", err)
 	}
 	if err := equalFiles(f2, entry2.SiaFile); err != nil {
 		t.Fatal(err)
 	}
-	entry3, err := rt.renter.staticFileSet.Open(siaPath3)
+	entry3, err := rt.renter.staticFileSystem.OpenSiaFile(siaPath3)
 	if err != nil {
 		t.Fatal("File not found in renter", err)
 	}
@@ -214,18 +208,18 @@ func TestRenterPaths(t *testing.T) {
 	// folder and emit the name of each .sia file encountered (filepath.Walk
 	// is deterministic; it orders the files lexically).
 	var walkStr string
-	filepath.Walk(rt.renter.staticFilesDir, func(path string, _ os.FileInfo, _ error) error {
+	filepath.Walk(rt.renter.staticFileSystem.Root(), func(path string, _ os.FileInfo, _ error) error {
 		// capture only .sia files
 		if filepath.Ext(path) != ".sia" {
 			return nil
 		}
-		rel, _ := filepath.Rel(rt.renter.staticFilesDir, path) // strip testdir prefix
+		rel, _ := filepath.Rel(rt.renter.staticFileSystem.Root(), path) // strip testdir prefix
 		walkStr += rel
 		return nil
 	})
 	// walk will descend into foo/bar/, reading baz, bar, and finally foo
-	sfs := rt.renter.staticFileSet
-	expWalkStr := (sfs.SiaPath(entry3).String() + ".sia") + (sfs.SiaPath(entry2).String() + ".sia") + (sfs.SiaPath(entry1).String() + ".sia")
+	sfs := rt.renter.staticFileSystem
+	expWalkStr := (sfs.FileSiaPath(entry3).String() + ".sia") + (sfs.FileSiaPath(entry2).String() + ".sia") + (sfs.FileSiaPath(entry1).String() + ".sia")
 	if filepath.ToSlash(walkStr) != expWalkStr {
 		t.Fatalf("Bad walk string: expected %v, got %v", expWalkStr, walkStr)
 	}
@@ -261,7 +255,7 @@ func TestSiafileCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = rt.renter.staticFileSet.Open(siaPath)
+	_, err = rt.renter.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}

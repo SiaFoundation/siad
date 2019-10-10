@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -44,7 +45,11 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,12 +146,20 @@ func TestBuildChunkHeap(t *testing.T) {
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	f1, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f1, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	up.SiaPath = modules.RandomSiaPath()
-	f2, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f2, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +330,11 @@ func TestAddChunksToHeap(t *testing.T) {
 			t.Fatal(err)
 		}
 		up.SiaPath = siaPath
-		f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, 0777)
+		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, 0777, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -404,7 +421,11 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, 0777, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +458,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	rt.renter.directoryHeap.managedReset()
 
 	// Add chunks from file to uploadHeap
-	rt.renter.callBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
+	rt.renter.callBuildAndPushChunks([]*filesystem.FNode{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
 
 	// Upload heap should now have NumChunks chunks and directory heap should still be empty
 	if rt.renter.uploadHeap.managedLen() != int(f.NumChunks()) {
@@ -473,7 +494,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	uploadHeapLen := rt.renter.uploadHeap.managedLen()
 
 	// Try and add chunks to upload heap again
-	rt.renter.callBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
+	rt.renter.callBuildAndPushChunks([]*filesystem.FNode{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
 
 	// No chunks should have been added to the upload heap
 	if rt.renter.uploadHeap.managedLen() != uploadHeapLen {
@@ -523,11 +544,6 @@ func TestUploadHeapMaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := uint64(0); i < numHeapChunks; i++ {
-		// Create copy of siafile entry to be closed by reset
-		copy, err := sf.CopyEntry()
-		if err != nil {
-			t.Fatal(err)
-		}
 		// Create minimum chunk
 		stuck := i%2 == 0
 		chunk := &unfinishedUploadChunk{
@@ -535,7 +551,7 @@ func TestUploadHeapMaps(t *testing.T) {
 				fileUID: siafile.SiafileUID(fmt.Sprintf("chunk - %v", i)),
 				index:   i,
 			},
-			fileEntry:       copy,
+			fileEntry:       sf.Copy(),
 			stuck:           stuck,
 			piecesCompleted: 1,
 			piecesNeeded:    1,
@@ -559,9 +575,7 @@ func TestUploadHeapMaps(t *testing.T) {
 	}
 
 	// Close original siafile entry
-	if err := sf.Close(); err != nil {
-		t.Fatal(err)
-	}
+	sf.Close()
 
 	// Confirm length of maps
 	if len(rt.renter.uploadHeap.unstuckHeapChunks) != int(numHeapChunks/2) {

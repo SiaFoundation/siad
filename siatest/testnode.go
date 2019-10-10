@@ -290,7 +290,7 @@ func (tn *TestNode) initRootDirs() error {
 		return err
 	}
 	tn.filesDir = &LocalDir{
-		path: filepath.Join(tn.RenterDir(), modules.SiapathRoot),
+		path: filepath.Join(tn.RenterDir(), modules.FileSystemRoot),
 	}
 	if err := os.MkdirAll(tn.filesDir.path, 0777); err != nil {
 		return err

@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
@@ -25,7 +26,7 @@ type unfinishedUploadChunk struct {
 	// Information about the file. localPath may be the empty string if the file
 	// is known not to exist locally.
 	id        uploadChunkID
-	fileEntry *siafile.SiaFileSetEntry
+	fileEntry *filesystem.FNode
 	threadUID int
 
 	// Information about the chunk, namely where it exists within the file.
@@ -184,7 +185,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	}
 
 	// Prepare snapshot.
-	snap, err := chunk.fileEntry.Snapshot()
+	snap, err := chunk.fileEntry.Snapshot(r.staticFileSystem.FileSiaPath(chunk.fileEntry))
 	if err != nil {
 		return err
 	}
@@ -462,10 +463,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		r.managedUpdateUploadChunkStuckStatus(uc)
 		// Close the file entry unless disrupted.
 		if !r.deps.Disrupt("disableCloseUploadEntry") {
-			err := uc.fileEntry.Close()
-			if err != nil {
-				r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
-			}
+			uc.fileEntry.Close()
 		}
 		// Remove the chunk from the repairingChunks map
 		r.uploadHeap.managedMarkRepairDone(uc.id)
@@ -490,12 +488,12 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	// Update chunk stuck status
 	err := uc.fileEntry.SetStuck(uc.index, stuck)
 	if err != nil {
-		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
+		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaFilePath(), err)
 	}
 	// Close SiaFile
-	err = uc.fileEntry.Close()
+	uc.fileEntry.Close()
 	if err != nil {
-		return fmt.Errorf("WARN: unable to close siafile %v", r.staticFileSet.SiaPath(uc.fileEntry))
+		return fmt.Errorf("WARN: unable to close siafile %v", uc.fileEntry.SiaFilePath())
 	}
 	// Signal garbage collector to free memory.
 	uc.physicalChunkData = nil
@@ -554,7 +552,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		// Add file to the successful stuck repair stack if there are still
 		// stuck chunks to repair
 		if uc.fileEntry.NumStuckChunks() > 0 {
-			r.stuckStack.managedPush(r.staticFileSet.SiaPath(uc.fileEntry))
+			r.stuckStack.managedPush(r.staticFileSystem.FileSiaPath(uc.fileEntry))
 		}
 		// Signal the stuck loop that the chunk was successfully repaired
 		select {

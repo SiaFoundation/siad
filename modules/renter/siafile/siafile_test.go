@@ -19,20 +19,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// dummyEntry wraps a SiaFile into a siaFileSetEntry.
-func dummyEntry(s *SiaFile) *siaFileSetEntry {
-	return &siaFileSetEntry{
-		SiaFile: s,
-		staticSiaFileSet: &SiaFileSet{
-			staticSiaFileDir: filepath.Dir(s.SiaFilePath()),
-			siaFileMap:       make(map[SiafileUID]*siaFileSetEntry),
-			siapathToUID:     make(map[modules.SiaPath]SiafileUID),
-			wal:              nil,
-		},
-		threadMap: make(map[uint64]threadInfo),
-	}
-}
-
 // randomChunk is a helper method for testing that creates a random chunk.
 func randomChunk() chunk {
 	numPieces := 30

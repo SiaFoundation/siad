@@ -158,6 +158,11 @@ func (fs *FileSystem) DeleteFile(siaPath modules.SiaPath) error {
 	return fs.managedDeleteFile(siaPath.String())
 }
 
+// DirInfo returns the Directory Information of the siadir
+func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
+	panic("not implemented yet")
+}
+
 // DirList lists the directories within a SiaDir.
 func (fs *FileSystem) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, error) {
 	panic("not implemented yet")
@@ -181,6 +186,11 @@ func (fs *FileSystem) FileInfo(siaPath modules.SiaPath, offline map[string]bool,
 // for health, redundancy etc.
 func (fs *FileSystem) FileList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, error) {
 	panic("not implemented yet")
+}
+
+// FilePath converts a SiaPath into a file's system path.
+func (fs *FileSystem) FilePath(siaPath modules.SiaPath) string {
+	return siaPath.SiaFileSysPath(fs.staticName)
 }
 
 // NewSiaDir creates the folder for the specified siaPath. This doesn't create
@@ -220,14 +230,32 @@ func (fs *FileSystem) DirPath(siaPath modules.SiaPath) string {
 	return siaPath.SiaDirSysPath(fs.staticName)
 }
 
-// FilePath converts a SiaPath into a file's system path.
-func (fs *FileSystem) FilePath(siaPath modules.SiaPath) string {
-	return siaPath.SiaFileSysPath(fs.staticName)
-}
-
 // Root returns the root system path of the FileSystem.
 func (fs *FileSystem) Root() string {
 	return fs.DirPath(modules.RootSiaPath())
+}
+
+// FileSiaPath returns the SiaPath of a file node.
+func (fs *FileSystem) FileSiaPath(n *FNode) (sp modules.SiaPath) {
+	return fs.managedSiaPath(&n.node)
+}
+
+// DirSiaPath returns the SiaPath of a dir node.
+func (fs *FileSystem) DirSiaPath(n *DNode) (sp modules.SiaPath) {
+	return fs.managedSiaPath(&n.node)
+}
+
+// UpdateDirMetadata updates the metadata of a SiaDir.
+func (fs *FileSystem) UpdateDirMetadata(siaPath modules.SiaPath, metadata siadir.Metadata) error {
+	panic("not implemented yet")
+}
+
+// managedSiaPath returns the SiaPath of a node.
+func (fs *FileSystem) managedSiaPath(n *node) (sp modules.SiaPath) {
+	if err := sp.FromSysPath(n.staticPath(), fs.staticName); err != nil {
+		build.Critical("FileSystem.managedSiaPath: should never fail")
+	}
+	return sp
 }
 
 // Stat is a wrapper for os.Stat which takes a SiaPath as an argument instead of

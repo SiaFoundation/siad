@@ -30,6 +30,21 @@ func (n *FNode) Close() {
 	n.mu.Unlock()
 }
 
+// Copy copies a file node and returns the copy.
+func (n *FNode) Copy() *FNode {
+	return n.managedCopy()
+}
+
+// managedCopy copies a file node and returns the copy.
+func (n *FNode) managedCopy() *FNode {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	newNode := *n
+	newNode.threadUID = newThreadUID()
+	newNode.threads[newNode.threadUID] = newThreadType()
+	return &newNode
+}
+
 // Delete deletes the fNode's underlying file from disk.
 func (n *FNode) managedDelete() error {
 	n.mu.Lock()
