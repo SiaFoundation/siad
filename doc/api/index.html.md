@@ -638,6 +638,7 @@ returns information about the gateway, including the list of connected peers.
             "version":    "1.0.0",                 // string
         },
     ],
+    "online":           true,  // boolean
     "maxdownloadspeed": 1234,  // bytes per second
     "maxuploadspeed":   1234,  // bytes per second
 }
@@ -656,14 +657,17 @@ local is true if the peer's IP address belongs to a local address range such as 
 
 **netaddress** | string  
 netaddress is the address of the peer. It represents a `modules.NetAddress`.  
-        
+
 **version** | string  
 version is the version number of the peer.  
 
-**maxdownloadspeed** | bytes per second  
+**online** | boolean  
+online is true if the gateway is connected to at least one peer that isn't local.
+
+**maxdownloadspeed** | bytes per second   
 Max download speed permitted in bytes per second
 
-**maxuploadspeed** | bytes per second  
+**maxuploadspeed** | bytes per second   
 Max upload speed permitted in bytes per second
 
 ## /gateway [POST]
