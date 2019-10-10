@@ -589,7 +589,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 
 	// Cancel the allowance to avoid new contracts replacing the recoverable
 	// ones.
-	if err := r.RenterCancelAllowance(); err != nil {
+	if err := r.RenterAllowanceCancelPost(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -722,7 +722,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 
 	// Cancel the allowance to avoid new contracts replacing the recoverable
 	// ones.
-	if err := r.RenterCancelAllowance(); err != nil {
+	if err := r.RenterAllowanceCancelPost(); err != nil {
 		t.Fatal(err)
 	}
 

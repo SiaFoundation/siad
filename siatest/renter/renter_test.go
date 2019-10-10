@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
@@ -1451,7 +1453,8 @@ func TestRenterAddNodes(t *testing.T) {
 		{"TestRedundancyReporting", testRedundancyReporting}, // Put first because it pulls the original tg renter
 		{"TestUploadReady", testUploadReady},
 		{"TestOverspendAllowance", testOverspendAllowance},
-		{"TestRenterCancelAllowance", testRenterCancelAllowance},
+		{"TestRenterAllowanceCancel", testRenterAllowanceCancel},
+		{"TestRenterPostCancelAllowance", testRenterPostCancelAllowance},
 	}
 
 	// Run tests
@@ -1689,11 +1692,11 @@ func TestRenewFailing(t *testing.T) {
 	}
 }
 
-// testRenterCancelAllowance tests that setting an empty allowance causes
+// testRenterAllowanceCancel tests that setting an empty allowance causes
 // uploads, downloads, and renewals to cease as well as tests that resetting the
 // allowance after the allowance was cancelled will trigger the correct contract
 // formation.
-func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
+func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
@@ -1703,7 +1706,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 
 	// Test Resetting allowance
 	// Cancel the allowance
-	if err := renter.RenterCancelAllowance(); err != nil {
+	if err := renter.RenterAllowanceCancelPost(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1783,7 +1786,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Cancel the allowance
-	if err := renter.RenterCancelAllowance(); err != nil {
+	if err := renter.RenterAllowanceCancelPost(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3694,5 +3697,146 @@ func TestAsyncStartupRace(t *testing.T) {
 			}
 		}()
 		wg.Wait()
+	}
+}
+
+// testRenterPostCancelAllowance tests setting and cancelling the allowance
+// through the /renter POST endpoint
+func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
+	// Create renter, skip setting the allowance so that we can properly test
+	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
+	renterParams.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Set the allowance, with the two required fields to 0, this should fail
+	allowance := siatest.DefaultAllowance
+	allowance.Funds = types.ZeroCurrency
+	err = renter.RenterPostAllowance(allowance)
+	if err == nil {
+		t.Fatal("Should have returned an error")
+	}
+	if !strings.Contains(err.Error(), api.ErrFundsNeedToBeSet.Error()) {
+		t.Fatalf("Expected error to contain %v but got %v", api.ErrFundsNeedToBeSet, err)
+	}
+	allowance.Funds = siatest.DefaultAllowance.Funds
+	allowance.Period = types.BlockHeight(0)
+	err = renter.RenterPostAllowance(allowance)
+	if err == nil {
+		t.Fatal("Should have returned an error")
+	}
+	if !strings.Contains(err.Error(), api.ErrPeriodNeedToBeSet.Error()) {
+		t.Fatalf("Expected error to contain %v but got %v", api.ErrPeriodNeedToBeSet, err)
+	}
+
+	// Set the allowance with only the required fields, confirm all other fields
+	// are set to defaults
+	allowance = modules.DefaultAllowance
+	values := url.Values{}
+	values.Set("funds", allowance.Funds.String())
+	values.Set("period", fmt.Sprint(allowance.Period))
+	err = renter.RenterPost(values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// RenewWindow gets set to half the period if not set by the user, check
+	// separately
+	renewWindow := rg.Settings.Allowance.RenewWindow
+	period := rg.Settings.Allowance.Period
+	if renewWindow != period/2 {
+		t.Fatalf("Renew window, not set as expected: got %v expected %v", renewWindow, period/2)
+	}
+	allowance.RenewWindow = renewWindow
+	if !reflect.DeepEqual(allowance, rg.Settings.Allowance) {
+		t.Log("allownace", allowance)
+		t.Log("rg.Settings.Allowance", rg.Settings.Allowance)
+		t.Fatal("expected allowances to match")
+	}
+
+	// Save for later
+	startingAllowance := allowance
+
+	// Confirm contracts form
+	expectedContracts := int(allowance.Hosts)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(renter, expectedContracts, 0, 0, 0, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test zeroing out individual fields of the allowance
+	allowance = modules.Allowance{}
+	var paramstests = []struct {
+		key   string
+		value string
+		err   error
+	}{
+		{"period", fmt.Sprint(allowance.Period), api.ErrPeriodNeedToBeSet},
+		{"funds", allowance.Funds.String(), api.ErrFundsNeedToBeSet},
+		{"hosts", fmt.Sprint(allowance.Hosts), contractor.ErrAllowanceNoHosts},
+		{"renewwindow", fmt.Sprint(allowance.RenewWindow), contractor.ErrAllowanceZeroWindow},
+		{"expectedstorage", fmt.Sprint(allowance.ExpectedStorage), contractor.ErrAllowanceZeroExpectedStorage},
+		{"expectedupload", fmt.Sprint(allowance.ExpectedUpload), contractor.ErrAllowanceZeroExpectedUpload},
+		{"expecteddownload", fmt.Sprint(allowance.ExpectedDownload), contractor.ErrAllowanceZeroExpectedDownload},
+		{"expectedredundancy", fmt.Sprint(allowance.ExpectedRedundancy), contractor.ErrAllowanceZeroExpectedRedundancy},
+	}
+
+	for _, test := range paramstests {
+		values = url.Values{}
+		values.Set(test.key, test.value)
+		err = renter.RenterPost(values)
+
+		if err == nil {
+			t.Logf("testing key %v and value %v", test.key, test.value)
+			t.Fatalf("Expected error to contain %v but got %v", test.err, err)
+		}
+		if test.err != nil && !strings.Contains(err.Error(), test.err.Error()) {
+			t.Logf("testing key %v and value %v", test.key, test.value)
+			t.Fatalf("Expected error to contain %v but got %v", test.err, err)
+		}
+
+	}
+
+	// Test setting a non allowance field, this should have no affect on the
+	// allowance.
+	values = url.Values{}
+	values.Set("checkforipviolation", "true")
+	err = renter.RenterPost(values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rg, err = renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(startingAllowance, rg.Settings.Allowance) {
+		t.Log("allownace", startingAllowance)
+		t.Log("rg.Settings.Allowance", rg.Settings.Allowance)
+		t.Fatal("expected allowances to match")
+	}
+
+	// Cancel allowance by setting funds and period to zero
+	values = url.Values{}
+	values.Set("period", fmt.Sprint(allowance.Period))
+	values.Set("funds", allowance.Funds.String())
+	err = renter.RenterPost(values)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm contracts are disabled
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, expectedContracts, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

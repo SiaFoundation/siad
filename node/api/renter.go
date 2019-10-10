@@ -70,6 +70,14 @@ var (
 	// errNeedBothDataAndParityPieces is the error returned when only one of the
 	// erasure coding parameters is set
 	errNeedBothDataAndParityPieces = errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
+
+	// ErrFundsNeedToBeSet is the error returned when the funds are not set for
+	// the allowance
+	ErrFundsNeedToBeSet = errors.New("funds needs to be set if it hasn't been set before")
+
+	// ErrPeriodNeedToBeSet is the error returned when the period is not set for
+	// the allowance
+	ErrPeriodNeedToBeSet = errors.New("period needs to be set if it hasn't been set before")
 )
 
 type (
@@ -529,6 +537,8 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 	}
 
 	// Scan for all allowance fields
+	var hostsSet, renewWindowSet, expectedStorageSet,
+		expectedUploadSet, expectedDownloadSet, expectedRedundancySet bool
 	if f := req.FormValue("funds"); f != "" {
 		funds, ok := scanAmount(f)
 		if !ok {
@@ -545,9 +555,9 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		} else if hosts != 0 && hosts < requiredHosts {
 			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", requiredHosts, hosts)}, http.StatusBadRequest)
 			return
-		} else {
-			settings.Allowance.Hosts = hosts
 		}
+		settings.Allowance.Hosts = hosts
+		hostsSet = true
 	}
 	if p := req.FormValue("period"); p != "" {
 		var period types.BlockHeight
@@ -565,12 +575,9 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		} else if renewWindow != 0 && types.BlockHeight(renewWindow) < requiredRenewWindow {
 			WriteError(w, Error{fmt.Sprintf("renew window is too small, must be at least %v blocks but have %v blocks", requiredRenewWindow, renewWindow)}, http.StatusBadRequest)
 			return
-		} else if renewWindow == 0 && settings.Allowance.Period != 0 {
-			WriteError(w, Error{contractor.ErrAllowanceZeroWindow.Error()}, http.StatusBadRequest)
-			return
-		} else {
-			settings.Allowance.RenewWindow = types.BlockHeight(renewWindow)
 		}
+		settings.Allowance.RenewWindow = types.BlockHeight(renewWindow)
+		renewWindowSet = true
 	}
 	if es := req.FormValue("expectedstorage"); es != "" {
 		var expectedStorage uint64
@@ -579,6 +586,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		}
 		settings.Allowance.ExpectedStorage = expectedStorage
+		expectedStorageSet = true
 	}
 	if euf := req.FormValue("expectedupload"); euf != "" {
 		var expectedUpload uint64
@@ -587,6 +595,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		}
 		settings.Allowance.ExpectedUpload = expectedUpload
+		expectedUploadSet = true
 	}
 	if edf := req.FormValue("expecteddownload"); edf != "" {
 		var expectedDownload uint64
@@ -595,6 +604,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		}
 		settings.Allowance.ExpectedDownload = expectedDownload
+		expectedDownloadSet = true
 	}
 	if er := req.FormValue("expectedredundancy"); er != "" {
 		var expectedRedundancy float64
@@ -603,52 +613,91 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		}
 		settings.Allowance.ExpectedRedundancy = expectedRedundancy
+		expectedRedundancySet = true
 	}
 
-	// Validate any allowance changes
-	if !reflect.DeepEqual(settings.Allowance, modules.Allowance{}) {
+	// Validate any allowance changes. Funds and Period are the only required
+	// fields.
+	zeroFunds := settings.Allowance.Funds.Cmp(types.ZeroCurrency) == 0
+	zeroPeriod := settings.Allowance.Period == 0
+	if zeroFunds && zeroPeriod {
+		// If both the funds and period are zero then the allowance should be
+		// cancelled. Make sure that the rest of the fields are zeroed out
+		settings.Allowance = modules.Allowance{}
+	} else if !reflect.DeepEqual(settings.Allowance, modules.Allowance{}) {
 		// Allowance has been set at least partially. Validate that all fields
 		// are set correctly
 
-		// If Funds is still 0 return an error since we need the user to set the period initially
-		if settings.Allowance.Funds.Cmp(types.ZeroCurrency) == 0 {
-			WriteError(w, Error{"funds needs to be set if it hasn't been set before"}, http.StatusBadRequest)
+		// If Funds is still 0 return an error since we need the user to set the
+		// period initially
+		if zeroFunds {
+			WriteError(w, Error{ErrFundsNeedToBeSet.Error()}, http.StatusBadRequest)
 			return
 		}
 
-		// If Period is still 0 return an error since we need the user to set the period initially
-		if settings.Allowance.Period == 0 {
-			WriteError(w, Error{"period needs to be set if it hasn't been set before"}, http.StatusBadRequest)
+		// If Period is still 0 return an error since we need the user to set
+		// the period initially
+		if zeroPeriod {
+			WriteError(w, Error{ErrPeriodNeedToBeSet.Error()}, http.StatusBadRequest)
 			return
 		}
 
-		// If Hosts is still 0 set to the sane default
-		if settings.Allowance.Hosts == 0 {
+		// If the user set Hosts to 0 return an error, otherwise if Hosts was
+		// not set by the user then set it to the sane default
+		if settings.Allowance.Hosts == 0 && hostsSet {
+			WriteError(w, Error{contractor.ErrAllowanceNoHosts.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.Hosts == 0 {
 			settings.Allowance.Hosts = modules.DefaultAllowance.Hosts
 		}
 
-		// If Renew Window is still 0 set to the sane default
-		if settings.Allowance.RenewWindow == 0 {
+		// If the user set the Renew Window to 0 return an error, otherwise if
+		// the Renew Window was not set by the user then set it to the sane
+		// default
+		if settings.Allowance.RenewWindow == 0 && renewWindowSet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroWindow.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.RenewWindow == 0 {
 			settings.Allowance.RenewWindow = settings.Allowance.Period / 2
 		}
 
-		// If Expected Storage is still 0 set to the sane default
-		if settings.Allowance.ExpectedStorage == 0 {
+		// If the user set ExpectedStorage to 0 return an error, otherwise if
+		// ExpectedStorage was not set by the user then set it to the sane
+		// default
+		if settings.Allowance.ExpectedStorage == 0 && expectedStorageSet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedStorage.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.ExpectedStorage == 0 {
 			settings.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 		}
 
-		// If Expected Upload is still 0 set to the sane default
-		if settings.Allowance.ExpectedUpload == 0 {
+		// If the user set ExpectedUpload to 0 return an error, otherwise if
+		// ExpectedUpload was not set by the user then set it to the sane
+		// default
+		if settings.Allowance.ExpectedUpload == 0 && expectedUploadSet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedUpload.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.ExpectedUpload == 0 {
 			settings.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 		}
 
-		// If Expected Download is still 0 set to the sane default
-		if settings.Allowance.ExpectedDownload == 0 {
+		// If the user set ExpectedDownload to 0 return an error, otherwise if
+		// ExpectedDownload was not set by the user then set it to the sane
+		// default
+		if settings.Allowance.ExpectedDownload == 0 && expectedDownloadSet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedDownload.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.ExpectedDownload == 0 {
 			settings.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 		}
 
-		// If Expected Redundancy is still 0 set to the sane default
-		if settings.Allowance.ExpectedRedundancy == 0 {
+		// If the user set ExpectedRedundancy to 0 return an error, otherwise if
+		// ExpectedRedundancy was not set by the user then set it to the sane
+		// default
+		if settings.Allowance.ExpectedRedundancy == 0 && expectedRedundancySet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedRedundancy.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.ExpectedRedundancy == 0 {
 			settings.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 		}
 	}
@@ -686,6 +735,28 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 	err = api.renter.SetSettings(settings)
 	if err != nil {
 		WriteError(w, Error{"unable to set renter settings: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterAllowanceCancelHandlerPOST handles the API call to cancel the Renter's
+// allowance
+func (api *API) renterAllowanceCancelHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the existing settings
+	settings, err := api.renter.Settings()
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Set the allownace to nil
+	settings.Allowance = modules.Allowance{}
+
+	// Set the settings in the renter.
+	err = api.renter.SetSettings(settings)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)

@@ -7,4 +7,4 @@
 ## Alerts
 The gateway might register the following alerts:
 
-- *Gateway-Offline*: Registered when the gateway is not connected to the public internet:w
+- *Gateway-Offline*: Registered when the gateway is not connected to the public internet
