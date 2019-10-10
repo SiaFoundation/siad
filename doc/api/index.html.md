@@ -250,6 +250,7 @@ BlockHeight of the requested block.
     ],
     "nonce": [4,12,219,7,0,0,0,0], // [8]byte
     "parentid": "0000000000009615e8db750eb1226aa5e629bfa7badbfe0b79607ec8b918a44c", // hash
+    "difficulty": "440908097469850", // arbitrary-precision integer
     "timestamp": 1444516982, // timestamp
     "transactions": [ // []ConsensusBlocksGetTxn
         {
@@ -327,6 +328,9 @@ Block nonce
 
 **parentid** | hash  
 ID of the previous block
+
+**difficulty** | arbitrary-precision integer  
+Historic difficulty at height of the block
 
 **timestamp** | timestamp  
 Block timestamp
