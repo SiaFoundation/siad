@@ -29,8 +29,10 @@ func (n *FNode) Close() {
 	n.mu.Lock()
 
 	// Remove node from parent if the current thread was the last one.
-	if len(n.threads) == 1 {
+	removeDir := len(n.threads) == 1
+	if removeDir {
 		n.staticParent.removeFile(n)
+		removeDir = true
 	}
 
 	// Call common close method.
@@ -42,7 +44,6 @@ func (n *FNode) Close() {
 		parent.mu.Unlock()
 
 		// Iteratively try to remove parents as long as children got removed.
-		removeDir := true
 		for child, parent := parent, parent.staticParent; removeDir && parent != nil; child, parent = parent, parent.staticParent {
 			parent.mu.Lock()
 			child.mu.Lock()

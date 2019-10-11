@@ -99,11 +99,12 @@ func (n *DNode) managedList(recursive, cached bool, fileLoadChan chan *FNode, di
 func (n *DNode) close() {
 	// Call common close method.
 	n.node._close()
+}
 
-	// If no more threads are accessing this node, clear the SiaDir metadata.
-	if len(n.threads) == 0 {
-		n.SiaDir = nil
-	}
+func (n *DNode) managedClose() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.close()
 }
 
 // Close calls close on the dNode and also removes the dNode from its parent if
@@ -120,7 +121,7 @@ func (n *DNode) Close() {
 	// Remove node from parent if there are no more children after this close.
 	removeDir := len(n.threads) == 1 && len(n.directories) == 0 && len(n.files) == 0
 	if parent != nil && removeDir {
-		n.staticParent.removeDir(n)
+		parent.removeDir(n)
 	}
 
 	// call private close method.
@@ -159,13 +160,6 @@ func (n *DNode) managedDelete() error {
 			if err != nil {
 				return err
 			}
-			// Load the SiaDir if it hasn't been loaded yet.
-			if dir.SiaDir == nil {
-				dir.SiaDir, err = siadir.LoadSiaDir(dir.staticPath(), modules.ProdDependencies, dir.staticWal)
-				if err != nil {
-					return err
-				}
-			}
 			if err := dir.Delete(); err != nil {
 				dir.close()
 				return err
@@ -190,15 +184,21 @@ func (n *DNode) managedDelete() error {
 // managedDeleteFile deletes the file with the given name from the directory.
 func (n *DNode) managedDeleteFile(fileName string) error {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	// Open the file.
 	sf, err := n.openFile(fileName)
 	if err != nil {
+		n.mu.Unlock()
 		return errors.AddContext(err, "failed to open file for deletion")
 	}
-	defer sf.Close()
 	// Delete it.
-	return sf.managedDelete()
+	if err := sf.managedDelete(); err != nil {
+		n.mu.Unlock()
+		sf.Close()
+		return err
+	}
+	n.mu.Unlock()
+	sf.Close()
+	return nil
 }
 
 // staticInfo builds and returns the DirectoryInfo of a SiaDir.
@@ -293,15 +293,19 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 	if exists {
 		return dir.managedCopy(), nil
 	}
-	// Check if the dir exists.
-	if _, err := os.Stat(filepath.Join(n.staticPath(), dirName)); err != nil {
+	// Load the dir.
+	siaDir, err := siadir.LoadSiaDir(filepath.Join(n.staticPath(), dirName), modules.ProdDependencies, n.staticWal)
+	if err == siadir.ErrUnknownPath {
 		return nil, ErrNotExist
+	}
+	if err != nil {
+		return nil, err
 	}
 	dir = &DNode{
 		node:        newNode(n, dirName, 0, n.staticWal),
 		directories: make(map[string]*DNode),
 		files:       make(map[string]*FNode),
-		SiaDir:      nil, // will be lazy-loaded
+		SiaDir:      siaDir,
 	}
 	n.directories[dir.staticName] = dir
 	return dir.managedCopy(), nil
@@ -325,10 +329,6 @@ func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 	if path == "" && n.staticParent == nil {
 		return n.managedCopy(), nil
 	}
-	// If path is empty we are done.
-	if path == "" {
-		return n, nil
-	}
 	// Get the name of the next sub directory.
 	subDir, path := filepath.Split(path)
 	if subDir == "" {
@@ -342,6 +342,12 @@ func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	// If path is empty we are done.
+	if path == "" {
+		return subNode, nil
+	}
+	// Otherwise open the next dir.
+	defer subNode.managedClose()
 	return subNode.managedOpenDir(path)
 }
 
@@ -351,7 +357,7 @@ func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 func (n *DNode) removeDir(child *DNode) {
 	// Remove the child node.
 	currentChild, exists := n.directories[child.staticName]
-	if !exists || child.uid != currentChild.uid {
+	if !exists || child.SiaDir != currentChild.SiaDir {
 		return // nothing to do
 	}
 	delete(n.directories, child.staticName)
@@ -363,7 +369,7 @@ func (n *DNode) removeDir(child *DNode) {
 func (n *DNode) removeFile(child *FNode) {
 	// Remove the child node.
 	currentChild, exists := n.files[child.staticName]
-	if !exists || child.uid != currentChild.uid {
+	if !exists || child.SiaFile != currentChild.SiaFile {
 		return // Nothing to do
 	}
 	delete(n.files, child.staticName)
