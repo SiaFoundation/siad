@@ -21,17 +21,37 @@ type (
 // Close calls close on the underlying node and also removes the fNode from its
 // parent.
 func (n *FNode) Close() {
+	// If a parent exists, we need to lock it while closing a child.
+	parent := n.staticParent
+	if parent != nil {
+		parent.mu.Lock()
+	}
 	n.mu.Lock()
+
+	// Remove node from parent if the current thread was the last one.
+	if len(n.threads) == 1 {
+		n.staticParent.removeFile(n)
+	}
+
 	// Call common close method.
 	n.node._close()
 
-	// Remove node from parent.
-	if len(n.threads) == 0 {
-		n.mu.Unlock()
-		n.staticParent.managedRemoveFile(n)
-		return
-	}
+	// Unlock child and parent.
 	n.mu.Unlock()
+	if parent != nil {
+		parent.mu.Unlock()
+
+		// Iteratively try to remove parents as long as children got removed.
+		removeDir := true
+		for child, parent := parent, parent.staticParent; removeDir && parent != nil; child, parent = parent, parent.staticParent {
+			parent.mu.Lock()
+			child.mu.Lock()
+			removeDir = len(child.threads)+len(child.directories)+len(child.files) == 0
+			parent.removeDir(child)
+			child.mu.Unlock()
+			parent.mu.Unlock()
+		}
+	}
 }
 
 // Copy copies a file node and returns the copy.

@@ -738,10 +738,10 @@ func TestThreadedAccess(t *testing.T) {
 	if len(fs.threads) != 0 {
 		t.Fatalf("fs should have 0 threads but had %v", len(fs.threads))
 	}
-	if len(fs.files) != 0 {
-		t.Fatalf("fs should have 0 files but had %v", len(fs.files))
-	}
 	if len(fs.directories) != 0 {
 		t.Fatalf("fs should have 0 directories but had %v", len(fs.directories))
+	}
+	if len(fs.files) != 0 {
+		t.Fatalf("fs should have 0 files but had %v", len(fs.files))
 	}
 }

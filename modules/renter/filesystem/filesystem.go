@@ -40,6 +40,7 @@ type (
 
 	// node is a struct that contains the commmon fields of every node.
 	node struct {
+		uid          threadUID
 		staticParent *DNode
 		staticName   string
 		staticWal    *writeaheadlog.WAL
@@ -68,6 +69,7 @@ func newNode(parent *DNode, name string, uid threadUID, wal *writeaheadlog.WAL) 
 		threads:      make(map[threadUID]threadInfo),
 		threadUID:    uid,
 		mu:           new(sync.Mutex),
+		uid:          newThreadUID(),
 	}
 }
 

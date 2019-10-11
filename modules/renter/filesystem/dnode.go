@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -111,18 +110,37 @@ func (n *DNode) close() {
 // it's no longer being used and if it doesn't have any children which are
 // currently in use.
 func (n *DNode) Close() {
+	// If a parent exists, we need to lock it while closing a child.
+	parent := n.staticParent
+	if parent != nil {
+		parent.mu.Lock()
+	}
 	n.mu.Lock()
+
+	// Remove node from parent if there are no more children after this close.
+	removeDir := len(n.threads) == 1 && len(n.directories) == 0 && len(n.files) == 0
+	if parent != nil && removeDir {
+		n.staticParent.removeDir(n)
+	}
 
 	// call private close method.
 	n.close()
 
-	// Remove node from parent if there are no more children.
-	if n.staticParent != nil && len(n.threads)+len(n.directories)+len(n.files) == 0 {
-		n.mu.Unlock()
-		n.staticParent.managedRemoveDir(n)
-		return
-	}
+	// Unlock child and parent.
 	n.mu.Unlock()
+	if parent != nil {
+		parent.mu.Unlock()
+
+		// Iteratively try to remove parents as long as children got removed.
+		for child, parent := parent, parent.staticParent; removeDir && parent != nil; child, parent = parent, parent.staticParent {
+			parent.mu.Lock()
+			child.mu.Lock()
+			removeDir = len(child.threads)+len(child.directories)+len(child.files) == 0
+			parent.removeDir(child)
+			child.mu.Unlock()
+			parent.mu.Unlock()
+		}
+	}
 }
 
 // Delete recursively deltes a dNode from disk.
@@ -141,7 +159,7 @@ func (n *DNode) managedDelete() error {
 			if err != nil {
 				return err
 			}
-			// Load the SiaDir it hasn't been loaded yet.
+			// Load the SiaDir if it hasn't been loaded yet.
 			if dir.SiaDir == nil {
 				dir.SiaDir, err = siadir.LoadSiaDir(dir.staticPath(), modules.ProdDependencies, dir.staticWal)
 				if err != nil {
@@ -280,15 +298,7 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 		return nil, ErrNotExist
 	}
 	dir = &DNode{
-		node: node{
-			staticParent: n,
-			staticName:   dirName,
-			staticWal:    n.staticWal,
-			threadUID:    0,
-			threads:      make(map[threadUID]threadInfo),
-			mu:           new(sync.Mutex),
-		},
-
+		node:        newNode(n, dirName, 0, n.staticWal),
 		directories: make(map[string]*DNode),
 		files:       make(map[string]*FNode),
 		SiaDir:      nil, // will be lazy-loaded
@@ -302,7 +312,7 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 func (n *DNode) managedCopy() *DNode {
 	// Copy the dNode and change the uid to a unique one.
 	n.mu.Lock()
-	defer n.mu.Lock()
+	defer n.mu.Unlock()
 	newNode := *n
 	newNode.threadUID = newThreadUID()
 	newNode.threads[newNode.threadUID] = newThreadType()
@@ -311,6 +321,10 @@ func (n *DNode) managedCopy() *DNode {
 
 // managedOpenDir opens a SiaDir.
 func (n *DNode) managedOpenDir(path string) (*DNode, error) {
+	// If the root node is opened we need to copy it.
+	if path == "" && n.staticParent == nil {
+		return n.managedCopy(), nil
+	}
 	// If path is empty we are done.
 	if path == "" {
 		return n, nil
@@ -334,45 +348,23 @@ func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 // managedRemoveDir removes a dir from a dNode. If as a result the dNode ends up
 // without children and if the threads map of the dNode is empty, the dNode will
 // remove itself from its parent.
-func (n *DNode) managedRemoveDir(child *DNode) {
+func (n *DNode) removeDir(child *DNode) {
 	// Remove the child node.
-	n.mu.Lock()
 	currentChild, exists := n.directories[child.staticName]
-	if !exists || child.SiaDir != currentChild.SiaDir {
-		n.mu.Unlock()
-		return // Nothing to do
+	if !exists || child.uid != currentChild.uid {
+		return // nothing to do
 	}
 	delete(n.directories, child.staticName)
-	removeChild := len(n.threads) == 0 && len(n.files) == 0 && len(n.directories) == 0
-	n.mu.Unlock()
-
-	// If there are no more children and the threads map is empty, remove the
-	// parent as well. This happens when a directory was added to the tree
-	// because one of its children was opened.
-	if n.staticParent != nil && removeChild {
-		n.staticParent.managedRemoveDir(n)
-	}
 }
 
-// managedRemoveChild removes a child from a dNode. If as a result the dNode
+// removeFile removes a child from a dNode. If as a result the dNode
 // ends up without children and if the threads map of the dNode is empty, the
 // dNode will remove itself from its parent.
-func (n *DNode) managedRemoveFile(child *FNode) {
+func (n *DNode) removeFile(child *FNode) {
 	// Remove the child node.
-	n.mu.Lock()
 	currentChild, exists := n.files[child.staticName]
-	if !exists || currentChild.SiaFile != child.SiaFile {
-		n.mu.Unlock()
+	if !exists || child.uid != currentChild.uid {
 		return // Nothing to do
 	}
 	delete(n.files, child.staticName)
-	removeChild := len(n.threads) == 0 && len(n.files) == 0 && len(n.directories) == 0
-	n.mu.Unlock()
-
-	// If there are no more children and the threads map is empty, remove the
-	// parent as well. This happens when a directory was added to the tree
-	// because one of its children was opened.
-	if n.staticParent != nil && removeChild {
-		n.staticParent.managedRemoveDir(n)
-	}
 }
