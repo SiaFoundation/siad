@@ -51,6 +51,50 @@ func HealthPercentage(health float64) float64 {
 	return healthPercent
 }
 
+func (n *DNode) managedList(recursive, cached bool, fileLoadChan chan *FNode, dirLoadChan chan *DNode) error {
+	fis, err := ioutil.ReadDir(n.staticPath())
+	if err != nil {
+		return err
+	}
+	for _, info := range fis {
+		// Skip non-siafiles and non-dirs.
+		if !info.IsDir() && filepath.Ext(info.Name()) != modules.SiaFileExtension {
+			continue
+		}
+		// Handle dir.
+		if info.IsDir() {
+			n.mu.Lock()
+			// Open the dir.
+			dir, err := n.openDir(info.Name())
+			if err != nil {
+				n.mu.Unlock()
+				return err
+			}
+			n.mu.Unlock()
+			// Hand a copy to the worker. It will handle closing it.
+			dirLoadChan <- dir.managedCopy()
+			// Call managedList on the child if 'recursive' was specified.
+			if recursive {
+				err = dir.managedList(recursive, cached, fileLoadChan, dirLoadChan)
+			}
+			dir.Close()
+			if err != nil {
+				return err
+			}
+		}
+		// Handle file.
+		n.mu.Lock()
+		file, err := n.openFile(strings.TrimSuffix(info.Name(), modules.SiaFileExtension))
+		if err != nil {
+			n.mu.Unlock()
+			return err
+		}
+		fileLoadChan <- file.managedCopy()
+		file.Close()
+	}
+	return nil
+}
+
 // close calls the common close method of all nodes and clears the SiaDir if no
 // more threads are accessing.
 func (n *DNode) close() {
@@ -97,10 +141,12 @@ func (n *DNode) managedDelete() error {
 			if err != nil {
 				return err
 			}
-			// Clone the opened dir to force the SiaDir to be loaded.
-			dir, err = dir.copy()
-			if err != nil {
-				return err
+			// Load the SiaDir it hasn't been loaded yet.
+			if dir.SiaDir == nil {
+				dir.SiaDir, err = siadir.LoadSiaDir(dir.staticPath(), modules.ProdDependencies, dir.staticWal)
+				if err != nil {
+					return err
+				}
 			}
 			if err := dir.Delete(); err != nil {
 				dir.close()
@@ -224,10 +270,10 @@ func (n *DNode) openFile(fileName string) (*FNode, error) {
 // threads map. That means Close doesn't need to be called on a dNode returned
 // by openDir.
 func (n *DNode) openDir(dirName string) (*DNode, error) {
-	// Check if dir was already loaded.
+	// Check if dir was already loaded. Then just copy it.
 	dir, exists := n.directories[dirName]
 	if exists {
-		return dir, nil
+		return dir.managedCopy(), nil
 	}
 	// Check if the dir exists.
 	if _, err := os.Stat(filepath.Join(n.staticPath(), dirName)); err != nil {
@@ -248,41 +294,26 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 		SiaDir:      nil, // will be lazy-loaded
 	}
 	n.directories[dir.staticName] = dir
-	return dir, nil
+	return dir.managedCopy(), nil
 }
 
-// copy copies the node, adds a new thread to the threads map and returns the
+// managedCopy copies the node, adds a new thread to the threads map and returns the
 // new instance.
-func (n *DNode) copy() (*DNode, error) {
+func (n *DNode) managedCopy() *DNode {
 	// Copy the dNode and change the uid to a unique one.
+	n.mu.Lock()
+	defer n.mu.Lock()
 	newNode := *n
 	newNode.threadUID = newThreadUID()
 	newNode.threads[newNode.threadUID] = newThreadType()
-	// If the SiaDir was loaded before, check if it has been deleted in the
-	// meantime. If it has, set it to 'nil' to force a reload. If a new dir
-	// took its place that one will be loaded instead. Otherwise an error
-	// will be returned.
-	if newNode.SiaDir != nil && newNode.SiaDir.Deleted() {
-		newNode.SiaDir = nil
-	}
-	// Load the SiaDir if necessary.
-	if newNode.SiaDir == nil {
-		sd, err := siadir.LoadSiaDir(n.staticPath(), modules.ProdDependencies, n.staticWal)
-		if err != nil {
-			return nil, err
-		}
-		newNode.SiaDir = sd
-	}
-	return &newNode, nil
+	return &newNode
 }
 
 // managedOpenDir opens a SiaDir.
 func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 	// If path is empty we are done.
 	if path == "" {
-		n.mu.Lock()
-		defer n.mu.Unlock()
-		return n.copy()
+		return n, nil
 	}
 	// Get the name of the next sub directory.
 	subDir, path := filepath.Split(path)

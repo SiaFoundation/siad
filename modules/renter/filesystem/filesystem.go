@@ -191,8 +191,8 @@ func (fs *FileSystem) FileInfo(siaPath modules.SiaPath, offline map[string]bool,
 // FileList returns all of the files that the filesystem has in the folder
 // specified by siaPath. If cached is true, this method will used cached values
 // for health, redundancy etc.
-func (fs *FileSystem) FileList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, error) {
-	panic("not implemented yet")
+func (fs *FileSystem) FileList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
+	return fs.managedList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
 }
 
 // FilePath converts a SiaPath into a file's system path.
@@ -295,7 +295,16 @@ func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FNode, err
 // OpenSiaDir opens a SiaDir and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DNode, error) {
-	return fs.DNode.managedOpenDir(siaPath.String())
+	dir, err := fs.DNode.managedOpenDir(siaPath.String())
+	if err != nil {
+		return nil, err
+	}
+	// Load the SiaDir it hasn't been loaded yet.
+	if dir.SiaDir != nil {
+		return dir, nil
+	}
+	dir.SiaDir, err = siadir.LoadSiaDir(dir.staticPath(), modules.ProdDependencies, dir.staticWal)
+	return dir, err
 }
 
 // OpenSiaFile opens a SiaFile and adds it and all of its parents to the
@@ -371,6 +380,62 @@ func (fs *FileSystem) managedDeleteDir(path string) error {
 		defer dir.Close()
 	}
 	return dir.managedDelete()
+}
+
+func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
+	// Open the folder.
+	dir, err := fs.managedOpenDir(siaPath.String())
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "failed to open folder specified by FileList")
+	}
+	defer dir.Close()
+	// Prepare a pool of workers.
+	dirLoadChan := make(chan *DNode)
+	fileLoadChan := make(chan *FNode)
+	worker := func() {
+		for range dirLoadChan {
+			// Load the Siafile.
+			//			var siaPath modules.SiaPath
+			//			if err := siaPath.LoadSysPath(sfs.staticSiaFileDir, path); err != nil {
+			//				continue
+			//			}
+			//			var file modules.FileInfo
+			//			var err error
+			//			if cached {
+			//				file, err = sfs.readLockCachedFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+			//			} else {
+			//				// It is ok to call an Exported method here because we only
+			//				// acquire the siaFileSet lock if we are requesting the cached
+			//				// values
+			//				file, err = sfs.FileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+			//			}
+			//			if os.IsNotExist(err) || err == ErrUnknownPath {
+			//				continue
+			//			}
+			//			if err != nil {
+			//				continue
+			//			}
+			//			fileListMu.Lock()
+			//			fileList = append(fileList, file)
+			//			fileListMu.Unlock()
+		}
+	}
+	// Spin the workers up.
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			worker()
+			wg.Done()
+		}()
+	}
+	err = dir.managedList(recursive, cached, fileLoadChan, dirLoadChan)
+	// Signal the workers that we are done adding work and wait for them to
+	// finish any pending work.
+	close(dirLoadChan)
+	close(fileLoadChan)
+	wg.Wait()
+	return fis, dis, err
 }
 
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the

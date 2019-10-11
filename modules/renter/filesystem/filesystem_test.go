@@ -308,7 +308,7 @@ func TestOpenSiaFile(t *testing.T) {
 	if sf.staticName != "file" {
 		t.Fatalf("name of file should be file but was %v", sf.staticName)
 	}
-	if sf.staticParent != &fs.dNode {
+	if sf.staticParent != &fs.DNode {
 		t.Fatalf("parent of file should be %v but was %v", &fs.node, sf.staticParent)
 	}
 	if sf.threadUID == 0 {
