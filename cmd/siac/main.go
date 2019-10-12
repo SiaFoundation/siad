@@ -29,7 +29,7 @@ var (
 	renterListRecursive     bool   // List files of folder recursively.
 	renterShowHistory       bool   // Show download history in addition to download queue.
 	renterVerbose           bool   // Show additional info about the renter
-	renterFileRenameLocal	bool   // Renames the path of the local file	
+	renterFileRenameLocal   bool   // Renames the path of the local file
 	siaDir                  string // Path to sia data dir
 	statusVerbose           bool   // Display additional siac information
 	walletRawTxn            bool   // Encode/decode transactions in base64-encoded binary.
@@ -256,7 +256,7 @@ func main() {
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadRecursive, "recursive", "R", false, "Download folder recursively")
 	renterFilesListCmd.Flags().BoolVarP(&renterListVerbose, "verbose", "v", false, "Show additional file info such as redundancy")
 	renterFilesListCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list files and folders")
-	renterFilesRenameCmd.Flags().BoolVarP(&renterFileRenameLocal,"local","l",false,"Renames the path of the local file")
+	renterFilesRenameCmd.Flags().BoolVarP(&renterFileRenameLocal, "local", "l", false, "Renames the path of the local file")
 	renterExportCmd.AddCommand(renterExportContractTxnsCmd)
 
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceFunds, "amount", "", "amount of money in allowance, specified in currency units")
