@@ -1973,7 +1973,7 @@ func renterfilesrenamecmd(path, newpath string) {
 		renterfilesrenamelocal(path, newpath)
 		return
 	}
-	// Parse new SiaPath.
+	// Parse SiaPath.
 	siaPath, err1 := modules.NewSiaPath(path)
 	newSiaPath, err2 := modules.NewSiaPath(newpath)
 	if err := errors.Compose(err1, err2); err != nil {
@@ -1989,7 +1989,7 @@ func renterfilesrenamecmd(path, newpath string) {
 //renterfilesrenamelocal function changes the trackingpath of the file
 //through API Endpoint
 func renterfilesrenamelocal(path, newpath string) {
-	//Parse existing Siapath
+	//Parse Siapath
 	siaPath, err := modules.NewSiaPath(path)
 	if err != nil {
 		die("Couldn't parse Siapath:", err)
