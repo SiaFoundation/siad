@@ -1968,7 +1968,12 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 // renterfilesrenamecmd is the handler for the command `siac renter rename [path] [newpath]`.
 // Renames a file on the Sia network.
 func renterfilesrenamecmd(path, newpath string) {
-	// Parse SiaPath.
+	//rename local file path
+	if renterFileRenameLocal {
+		renterfilesrenamelocal(path, newpath)
+		return
+	}
+	// Parse new SiaPath.
 	siaPath, err1 := modules.NewSiaPath(path)
 	newSiaPath, err2 := modules.NewSiaPath(newpath)
 	if err := errors.Compose(err1, err2); err != nil {
@@ -1977,6 +1982,21 @@ func renterfilesrenamecmd(path, newpath string) {
 	err := httpClient.RenterRenamePost(siaPath, newSiaPath)
 	if err != nil {
 		die("Could not rename file:", err)
+	}
+	fmt.Printf("Renamed %s to %s\n", path, newpath)
+}
+
+//renterfilesrenamelocal function changes the trackingpath of the file
+//through API Endpoint
+func renterfilesrenamelocal(path, newpath string) {
+	//Parse existing Siapath
+	siaPath, err := modules.NewSiaPath(path)
+	if err != nil {
+		die("Couldn't parse Siapath:", err)
+	}
+	err1 := httpClient.RenterSetRepairPathPost(siaPath, newpath)
+	if err1 != nil {
+		die("Could not Change the path of the file:", err1)
 	}
 	fmt.Printf("Renamed %s to %s\n", path, newpath)
 }
