@@ -216,7 +216,9 @@ func New(cs modules.ConsensusSet, tpool modules.TransactionPool, w modules.Walle
 	})
 
 	// Save after synchronizing with consensus
+	m.mu.Lock()
 	err = m.saveSync()
+	m.mu.Unlock()
 	if err != nil {
 		return nil, errors.New("miner could not save during startup: " + err.Error())
 	}

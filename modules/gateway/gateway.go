@@ -151,11 +151,13 @@ type Gateway struct {
 	peerTG    siasync.ThreadGroup
 
 	// Utilities.
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persist    persistence
-	persistDir string
-	threads    siasync.ThreadGroup
+	log           *persist.Logger
+	mu            sync.RWMutex
+	persist       persistence
+	persistDir    string
+	threads       siasync.ThreadGroup
+	staticAlerter *modules.GenericAlerter
+	staticDeps    modules.Dependencies
 
 	// Unique ID
 	staticID gatewayID
@@ -250,6 +252,11 @@ func (g *Gateway) SetRateLimits(downloadSpeed, uploadSpeed int64) error {
 
 // New returns an initialized Gateway.
 func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
+	return NewCustomGateway(addr, bootstrap, persistDir, modules.ProdDependencies)
+}
+
+// NewCustomGateway returns an initialized Gateway with custom dependencies.
+func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modules.Dependencies) (*Gateway, error) {
 	// Create the directory if it doesn't exist.
 	err := os.MkdirAll(persistDir, 0700)
 	if err != nil {
@@ -264,7 +271,9 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 		nodes:     make(map[modules.NetAddress]*node),
 		peers:     make(map[modules.NetAddress]*peer),
 
-		persistDir: persistDir,
+		persistDir:    persistDir,
+		staticAlerter: modules.NewAlerter("gateway"),
+		staticDeps:    deps,
 	}
 
 	// Set Unique GatewayID
@@ -398,7 +407,27 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	go g.threadedForwardPort(g.port)
 	go g.threadedLearnHostname()
 
+	// Spawn thread to periodically check if the gateway is online.
+	go g.threadedOnlineCheck()
+
 	return g, nil
+}
+
+// threadedOnlineCheck periodically calls 'Online' to register the
+// GatewayOffline alert.
+func (g *Gateway) threadedOnlineCheck() {
+	if err := g.threads.Add(); err != nil {
+		return
+	}
+	defer g.threads.Done()
+	for {
+		select {
+		case <-g.threads.StopChan():
+			return
+		case <-time.After(onlineCheckFrequency):
+		}
+		_ = g.Online()
+	}
 }
 
 // enforce that Gateway satisfies the modules.Gateway interface

@@ -8,6 +8,12 @@ import (
 )
 
 type (
+	// DependencyDisableAutoOnline will disable the gateway always being online
+	// during testing and dev builds and instead apply the same rules which are
+	// used in production builds.
+	DependencyDisableAutoOnline struct {
+		modules.ProductionDependencies
+	}
 	// DependencyLowFundsFormationFail will cause contract formation to fail due to
 	// low funds in the allowance.
 	DependencyLowFundsFormationFail struct {
@@ -156,6 +162,11 @@ func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAf
 		},
 		n: n,
 	}
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyDisableAutoOnline) Disrupt(s string) bool {
+	return s == "DisableGatewayAutoOnline"
 }
 
 // Disrupt returns true if the correct string is provided.
