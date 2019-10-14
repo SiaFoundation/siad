@@ -705,22 +705,26 @@ func (tg *TestGroup) Sync() error {
 	return synchronizationCheck(tg.nodes)
 }
 
-// Nodes returns all the nodes of the group
+// Nodes returns all the nodes of the group. Note that the ordering of nodes in
+// the slice returned is not the same across multiple calls this function.
 func (tg *TestGroup) Nodes() []*TestNode {
 	return mapToSlice(tg.nodes)
 }
 
-// Hosts returns all the hosts of the group
+// Hosts returns all the hosts of the group. Note that the ordering of nodes in
+// the slice returned is not the same across multiple calls this function.
 func (tg *TestGroup) Hosts() []*TestNode {
 	return mapToSlice(tg.hosts)
 }
 
-// Renters returns all the renters of the group
+// Renters returns all the renters of the group. Note that the ordering of nodes in
+// the slice returned is not the same across multiple calls this function.
 func (tg *TestGroup) Renters() []*TestNode {
 	return mapToSlice(tg.renters)
 }
 
-// Miners returns all the miners of the group
+// Miners returns all the miners of the group.  Note that the ordering of nodes in
+// the slice returned is not the same across multiple calls this function.
 func (tg *TestGroup) Miners() []*TestNode {
 	return mapToSlice(tg.miners)
 }

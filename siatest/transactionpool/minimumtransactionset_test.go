@@ -43,8 +43,9 @@ func TestMinimizeTransactionSet(t *testing.T) {
 		}
 	}()
 	// Give simple names to the miners.
-	minerA := tg.Miners()[0]
-	minerB := tg.Miners()[1]
+	miners := tg.Miners()
+	minerA := miners[0]
+	minerB := miners[1]
 
 	// Create source outputs for transaction graphs.
 	var sources []types.SiacoinOutputID
