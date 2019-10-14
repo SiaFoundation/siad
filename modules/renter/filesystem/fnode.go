@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -75,6 +76,52 @@ func (n *FNode) managedDelete() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.SiaFile.Delete()
+}
+
+// managedFileInfo returns the FileInfo of the file node.
+func (n *FNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	// Build the FileInfo
+	var onDisk bool
+	localPath := n.LocalPath()
+	if localPath != "" {
+		_, err := os.Stat(localPath)
+		onDisk = err == nil
+	}
+	_, _, health, stuckHealth, numStuckChunks := n.Health(offline, goodForRenew)
+	_, redundancy, err := n.Redundancy(offline, goodForRenew)
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "failed to get n redundancy")
+	}
+	uploadProgress, uploadedBytes, err := n.UploadProgressAndBytes()
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "failed to get upload progress and bytes")
+	}
+	maxHealth := math.Max(health, stuckHealth)
+	fileInfo := modules.FileInfo{
+		AccessTime:       n.AccessTime(),
+		Available:        redundancy >= 1,
+		ChangeTime:       n.ChangeTime(),
+		CipherType:       n.MasterKey().Type().String(),
+		CreateTime:       n.CreateTime(),
+		Expiration:       n.Expiration(contracts),
+		Filesize:         n.Size(),
+		Health:           health,
+		LocalPath:        localPath,
+		MaxHealth:        maxHealth,
+		MaxHealthPercent: siadir.HealthPercentage(maxHealth),
+		ModTime:          n.ModTime(),
+		NumStuckChunks:   numStuckChunks,
+		OnDisk:           onDisk,
+		Recoverable:      onDisk || redundancy >= 1,
+		Redundancy:       redundancy,
+		Renewing:         true,
+		SiaPath:          siaPath,
+		Stuck:            numStuckChunks > 0,
+		StuckHealth:      stuckHealth,
+		UploadedBytes:    uploadedBytes,
+		UploadProgress:   uploadProgress,
+	}
+	return fileInfo, nil
 }
 
 // managedRename renames the fNode's underlying file.

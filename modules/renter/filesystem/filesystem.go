@@ -177,7 +177,7 @@ func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 
 // FileInfo returns the File Information of the siafile
 func (fs *FileSystem) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
-	panic("not implemented yet")
+	return fs.managedFileInfo(siaPath, offline, goodForRenew, contracts)
 }
 
 // List lists the files and directories within a SiaDir.
@@ -405,6 +405,17 @@ func (fs *FileSystem) managedDeleteDir(path string) error {
 	return dir.managedDelete()
 }
 
+// managedFileInfo returns the FileInfo of the siafile.
+func (fs *FileSystem) managedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	// Open the file.
+	file, err := fs.managedOpenFile(siaPath.String())
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+	defer file.Close()
+	return file.managedFileInfo(siaPath, offline, goodForRenew, contracts)
+}
+
 // managedList returns the files and dirs within the SiaDir specified by siaPath.
 func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
 	// Open the folder.
@@ -441,7 +452,7 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 			if cached {
 				fi, err = sf.staticCachedInfo(fs.staticSiaPath(&sf.node), offlineMap, goodForRenewMap, contractsMap)
 			} else {
-				panic("not implemented yet")
+				fi, err = sf.managedFileInfo(fs.staticSiaPath(&sf.node), offlineMap, goodForRenewMap, contractsMap)
 			}
 			sf.Close()
 			if err == ErrNotExist {
