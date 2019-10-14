@@ -47,7 +47,8 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 		return []modules.FileInfo{}, err
 	}
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	return r.staticFileSystem.FileList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	fis, _, err := r.staticFileSystem.FileList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	return fis, err
 }
 
 // File returns file from siaPath queried by user.

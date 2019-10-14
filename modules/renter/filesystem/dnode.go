@@ -325,10 +325,6 @@ func (n *DNode) managedCopy() *DNode {
 
 // managedOpenDir opens a SiaDir.
 func (n *DNode) managedOpenDir(path string) (*DNode, error) {
-	// If the root node is opened we need to copy it.
-	if path == "" && n.staticParent == nil {
-		return n.managedCopy(), nil
-	}
 	// Get the name of the next sub directory.
 	subDir, path := filepath.Split(path)
 	if subDir == "" {
