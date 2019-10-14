@@ -185,10 +185,14 @@ func (fs *FileSystem) List(siaPath modules.SiaPath, recursive, cached bool, offl
 	return fs.managedList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
 }
 
-// FileExists checks to see if a file with the provided siaPath already exists in
-// the renter
+// FileExists checks to see if a file with the provided siaPath already exists
+// in the renter. This will also return 'false' if the file is inaccessible due
+// to other reasons than not existing since the renter usually only cares
+// whether the file is accessible.
 func (fs *FileSystem) FileExists(siaPath modules.SiaPath) bool {
-	panic("not implemented yet")
+	path := fs.FilePath(siaPath)
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // FileList returns all of the files that the filesystem has in the folder
