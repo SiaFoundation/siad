@@ -76,7 +76,10 @@ func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	defer siaDir.Close()
 
 	// Check that metadata is default value
-	metadata := siaDir.Metadata()
+	metadata, err := siaDir.Metadata()
+	if err != nil {
+		return err
+	}
 	// Check Aggregate Fields
 	if metadata.AggregateHealth != siadir.DefaultDirHealth {
 		return fmt.Errorf("AggregateHealth not initialized properly: have %v expected %v", metadata.AggregateHealth, siadir.DefaultDirHealth)
@@ -103,8 +106,12 @@ func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	if metadata.StuckHealth != siadir.DefaultDirHealth {
 		return fmt.Errorf("StuckHealth not initialized properly: have %v expected %v", metadata.StuckHealth, siadir.DefaultDirHealth)
 	}
-	if siaDir.Path() != rt.renter.staticFileSystem.DirPath(siaPath) {
-		return fmt.Errorf("Expected path to be %v, got %v", siaDir.Path(), rt.renter.staticFileSystem.DirPath(siaPath))
+	path, err := siaDir.Path()
+	if err != nil {
+		return err
+	}
+	if path != rt.renter.staticFileSystem.DirPath(siaPath) {
+		return fmt.Errorf("Expected path to be %v, got %v", path, rt.renter.staticFileSystem.DirPath(siaPath))
 	}
 	return nil
 }
@@ -218,7 +225,10 @@ func TestRenterListDirectory(t *testing.T) {
 // compareDirectoryInfoAndMetadata is a helper that compares the information in
 // a DirectoryInfo struct and a SiaDirSetEntry struct
 func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesystem.DNode) error {
-	md := siaDir.Metadata()
+	md, err := siaDir.Metadata()
+	if err != nil {
+		return err
+	}
 
 	// Compare Aggregate Fields
 	if md.AggregateHealth != di.AggregateHealth {

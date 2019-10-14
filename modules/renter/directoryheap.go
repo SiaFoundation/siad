@@ -270,7 +270,10 @@ func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer siaDir.Close()
-	metadata := siaDir.Metadata()
+	metadata, err := siaDir.Metadata()
+	if err != nil {
+		return err
+	}
 
 	// Push unexplored directory onto heap.
 	r.directoryHeap.managedPushDirectory(siaPath, metadata.AggregateHealth, metadata.Health, false)

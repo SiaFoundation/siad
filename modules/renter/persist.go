@@ -179,8 +179,25 @@ func (r *Renter) managedInitPersist() error {
 		}
 	}
 
+	// Prepare the filesystem and create the essential dirs.
 	fs, err := filesystem.New(fsRoot, wal)
 	if err != nil {
+		return err
+	}
+	err = fs.NewSiaDir(modules.RootSiaPath())
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
+	err = fs.NewSiaDir(modules.HomeSiaPath())
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
+	err = fs.NewSiaDir(modules.SiaFilesSiaPath())
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
+	err = fs.NewSiaDir(modules.SnapshotsSiaPath())
+	if err != nil && err != filesystem.ErrExists {
 		return err
 	}
 

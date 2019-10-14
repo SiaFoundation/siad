@@ -30,7 +30,8 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, erro
 		return nil, err
 	}
 	defer r.tg.Done()
-	return r.staticFileSystem.DirList(siaPath)
+	_, di, err := r.staticFileSystem.List(siaPath, false, false, make(map[string]bool), make(map[string]bool), make(map[string]modules.RenterContract))
+	return di, err
 }
 
 // RenameDir takes an existing directory and changes the path. The original

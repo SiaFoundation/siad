@@ -42,6 +42,7 @@ type (
 	node struct {
 		staticParent *DNode
 		staticName   string
+		staticUID    threadUID
 		staticWal    *writeaheadlog.WAL
 		threads      map[threadUID]threadInfo
 		threadUID    threadUID
@@ -64,6 +65,7 @@ func newNode(parent *DNode, name string, uid threadUID, wal *writeaheadlog.WAL) 
 	return node{
 		staticParent: parent,
 		staticName:   name,
+		staticUID:    newThreadUID(),
 		staticWal:    wal,
 		threads:      make(map[threadUID]threadInfo),
 		threadUID:    uid,
@@ -165,26 +167,27 @@ func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		return modules.DirectoryInfo{}, nil
 	}
 	defer dir.Close()
-	di := dir.staticInfo(siaPath)
+	di, err := dir.managedInfo(siaPath)
+	if err != nil {
+		return modules.DirectoryInfo{}, err
+	}
 	di.SiaPath = siaPath
 	return di, nil
 }
 
-// DirList lists the directories within a SiaDir.
-func (fs *FileSystem) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, error) {
+// FileInfo returns the File Information of the siafile
+func (fs *FileSystem) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	panic("not implemented yet")
+}
+
+// List lists the files and directories within a SiaDir.
+func (fs *FileSystem) List(siaPath modules.SiaPath, recursive, cached bool, offlineMap, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
+	return fs.managedList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
 }
 
 // FileExists checks to see if a file with the provided siaPath already exists in
 // the renter
 func (fs *FileSystem) FileExists(siaPath modules.SiaPath) bool {
-	panic("not implemented yet")
-}
-
-// FileInfo returns information on a siafile. As a performance optimization, the
-// fileInfo takes the maps returned by renter.managedContractUtilityMaps for
-// many files at once.
-func (fs *FileSystem) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	panic("not implemented yet")
 }
 
@@ -244,12 +247,12 @@ func (fs *FileSystem) Root() string {
 
 // FileSiaPath returns the SiaPath of a file node.
 func (fs *FileSystem) FileSiaPath(n *FNode) (sp modules.SiaPath) {
-	return fs.managedSiaPath(&n.node)
+	return fs.staticSiaPath(&n.node)
 }
 
 // DirSiaPath returns the SiaPath of a dir node.
 func (fs *FileSystem) DirSiaPath(n *DNode) (sp modules.SiaPath) {
-	return fs.managedSiaPath(&n.node)
+	return fs.staticSiaPath(&n.node)
 }
 
 // UpdateDirMetadata updates the metadata of a SiaDir.
@@ -257,8 +260,8 @@ func (fs *FileSystem) UpdateDirMetadata(siaPath modules.SiaPath, metadata siadir
 	panic("not implemented yet")
 }
 
-// managedSiaPath returns the SiaPath of a node.
-func (fs *FileSystem) managedSiaPath(n *node) (sp modules.SiaPath) {
+// staticSiaPath returns the SiaPath of a node.
+func (fs *FileSystem) staticSiaPath(n *node) (sp modules.SiaPath) {
 	if err := sp.FromSysPath(n.staticPath(), fs.staticName); err != nil {
 		build.Critical("FileSystem.managedSiaPath: should never fail")
 	}
@@ -299,12 +302,7 @@ func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Load the SiaDir it hasn't been loaded yet.
-	if dir.SiaDir != nil {
-		return dir, nil
-	}
-	dir.SiaDir, err = siadir.LoadSiaDir(dir.staticPath(), modules.ProdDependencies, dir.staticWal)
-	return dir, err
+	return dir, nil
 }
 
 // OpenSiaFile opens a SiaFile and adds it and all of its parents to the
@@ -382,6 +380,7 @@ func (fs *FileSystem) managedDeleteDir(path string) error {
 	return dir.managedDelete()
 }
 
+// managedList returns the files and dirs within the SiaDir specified by siaPath.
 func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
 	// Open the folder.
 	dir, err := fs.managedOpenDir(siaPath.String())
@@ -390,42 +389,59 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 	}
 	defer dir.Close()
 	// Prepare a pool of workers.
-	dirLoadChan := make(chan *DNode)
-	fileLoadChan := make(chan *FNode)
-	worker := func() {
-		for range dirLoadChan {
-			// Load the Siafile.
-			//			var siaPath modules.SiaPath
-			//			if err := siaPath.LoadSysPath(sfs.staticSiaFileDir, path); err != nil {
-			//				continue
-			//			}
-			//			var file modules.FileInfo
-			//			var err error
-			//			if cached {
-			//				file, err = sfs.readLockCachedFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
-			//			} else {
-			//				// It is ok to call an Exported method here because we only
-			//				// acquire the siaFileSet lock if we are requesting the cached
-			//				// values
-			//				file, err = sfs.FileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
-			//			}
-			//			if os.IsNotExist(err) || err == ErrUnknownPath {
-			//				continue
-			//			}
-			//			if err != nil {
-			//				continue
-			//			}
-			//			fileListMu.Lock()
-			//			fileList = append(fileList, file)
-			//			fileListMu.Unlock()
+	numThreads := 20
+	dirLoadChan := make(chan *DNode, numThreads)
+	fileLoadChan := make(chan *FNode, numThreads)
+	var fisMu, disMu sync.Mutex
+	dirWorker := func() {
+		for sd := range dirLoadChan {
+			di, err := sd.managedInfo(fs.staticSiaPath(&sd.node))
+			sd.Close()
+			if err == ErrNotExist {
+				continue
+			}
+			if err != nil {
+				// TODO: Add logging
+				continue
+			}
+			disMu.Lock()
+			dis = append(dis, di)
+			disMu.Unlock()
+		}
+	}
+	fileWorker := func() {
+		for sf := range fileLoadChan {
+			var fi modules.FileInfo
+			var err error
+			if cached {
+				fi, err = sf.staticCachedInfo(fs.staticSiaPath(&sf.node), offlineMap, goodForRenewMap, contractsMap)
+			} else {
+				panic("not implemented yet")
+			}
+			sf.Close()
+			if err == ErrNotExist {
+				continue
+			}
+			if err != nil {
+				// TODO: Add logging
+				continue
+			}
+			fisMu.Lock()
+			fis = append(fis, fi)
+			fisMu.Unlock()
 		}
 	}
 	// Spin the workers up.
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for i := 0; i < numThreads; i++ {
 		wg.Add(1)
 		go func() {
-			worker()
+			dirWorker()
+			wg.Done()
+		}()
+		wg.Add(1)
+		go func() {
+			fileWorker()
 			wg.Done()
 		}()
 	}

@@ -22,15 +22,31 @@ type (
 		directories map[string]*DNode
 		files       map[string]*FNode
 
-		// Since we create dNodes implicitly whenever one of a DNodes children
-		// is opened, the SiaDir will be loaded lazily only when a dNode is
-		// manually opened by the user. This way we can keep disk i/o to a
-		// minimum. The SiaDir is also cleared once a dNode doesn't have any
-		// threads accessing it anymore to avoid caching the metadata of a
-		// SiaDir any longer than a user has any need for it.
-		*siadir.SiaDir
+		lazySiaDir *siadir.SiaDir
 	}
 )
+
+// Delete is a wrapper for SiaDir.Delete.
+func (n *DNode) Delete() error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	sd, err := n.siaDir()
+	if err != nil {
+		return err
+	}
+	return sd.Delete()
+}
+
+// DirReader is a wrapper for SiaDir.DirReader.
+func (n *DNode) DirReader() (*siadir.DirReader, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	sd, err := n.siaDir()
+	if err != nil {
+		return nil, err
+	}
+	return sd.DirReader()
+}
 
 // HealthPercentage returns the health in a more human understandable format out
 // of 100%
@@ -50,6 +66,40 @@ func HealthPercentage(health float64) float64 {
 	return healthPercent
 }
 
+// Metadata is a wrapper for SiaDir.Metadata.
+func (n *DNode) Metadata() (siadir.Metadata, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	sd, err := n.siaDir()
+	if err != nil {
+		return siadir.Metadata{}, err
+	}
+	return sd.Metadata(), nil
+}
+
+// Path is a wrapper for SiaDir.Path.
+func (n *DNode) Path() (string, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	sd, err := n.siaDir()
+	if err != nil {
+		return "", err
+	}
+	return sd.Path(), nil
+}
+
+// UpdateMetadata is a wrapper for SiaDir.Path.
+func (n *DNode) UpdateMetadata(md siadir.Metadata) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	sd, err := n.siaDir()
+	if err != nil {
+		return err
+	}
+	return sd.UpdateMetadata(md)
+}
+
+// managedList returns the files and dirs within the SiaDir.
 func (n *DNode) managedList(recursive, cached bool, fileLoadChan chan *FNode, dirLoadChan chan *DNode) error {
 	fis, err := ioutil.ReadDir(n.staticPath())
 	if err != nil {
@@ -80,13 +130,15 @@ func (n *DNode) managedList(recursive, cached bool, fileLoadChan chan *FNode, di
 			if err != nil {
 				return err
 			}
+			continue
 		}
 		// Handle file.
 		n.mu.Lock()
 		file, err := n.openFile(strings.TrimSuffix(info.Name(), modules.SiaFileExtension))
+		n.mu.Unlock()
 		if err != nil {
-			n.mu.Unlock()
-			return err
+			// TODO: Add logging
+			continue
 		}
 		fileLoadChan <- file.managedCopy()
 		file.Close()
@@ -101,10 +153,33 @@ func (n *DNode) close() {
 	n.node._close()
 }
 
+// managedClose calls close while holding the node's lock.
 func (n *DNode) managedClose() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.close()
+}
+
+func (n *DNode) managedSiaDir() (*siadir.SiaDir, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.siaDir()
+}
+
+// siaDir is a wrapper for the lazySiaDir field.
+func (n *DNode) siaDir() (*siadir.SiaDir, error) {
+	if n.lazySiaDir != nil {
+		return n.lazySiaDir, nil
+	}
+	sd, err := siadir.LoadSiaDir(n.staticPath(), modules.ProdDependencies, n.staticWal)
+	if err == siadir.ErrUnknownPath {
+		return nil, ErrNotExist
+	}
+	if err != nil {
+		return nil, err
+	}
+	n.lazySiaDir = sd
+	return sd, nil
 }
 
 // Close calls close on the dNode and also removes the dNode from its parent if
@@ -201,10 +276,13 @@ func (n *DNode) managedDeleteFile(fileName string) error {
 	return nil
 }
 
-// staticInfo builds and returns the DirectoryInfo of a SiaDir.
-func (n *DNode) staticInfo(siaPath modules.SiaPath) modules.DirectoryInfo {
+// managedInfo builds and returns the DirectoryInfo of a SiaDir.
+func (n *DNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
 	// Grab the siadir metadata
-	metadata := n.Metadata()
+	metadata, err := n.Metadata()
+	if err != nil {
+		return modules.DirectoryInfo{}, err
+	}
 	aggregateMaxHealth := math.Max(metadata.AggregateHealth, metadata.AggregateStuckHealth)
 	maxHealth := math.Max(metadata.Health, metadata.StuckHealth)
 	return modules.DirectoryInfo{
@@ -234,7 +312,7 @@ func (n *DNode) staticInfo(siaPath modules.SiaPath) modules.DirectoryInfo {
 		Size:                metadata.Size,
 		StuckHealth:         metadata.StuckHealth,
 		SiaPath:             siaPath,
-	}
+	}, nil
 }
 
 // managedNewSiaFile creates a new SiaFile in the directory.
@@ -294,8 +372,8 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 		return dir.managedCopy(), nil
 	}
 	// Load the dir.
-	siaDir, err := siadir.LoadSiaDir(filepath.Join(n.staticPath(), dirName), modules.ProdDependencies, n.staticWal)
-	if err == siadir.ErrUnknownPath {
+	_, err := os.Stat(filepath.Join(n.staticPath(), dirName))
+	if os.IsNotExist(err) {
 		return nil, ErrNotExist
 	}
 	if err != nil {
@@ -305,7 +383,7 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 		node:        newNode(n, dirName, 0, n.staticWal),
 		directories: make(map[string]*DNode),
 		files:       make(map[string]*FNode),
-		SiaDir:      siaDir,
+		lazySiaDir:  nil,
 	}
 	n.directories[dir.staticName] = dir
 	return dir.managedCopy(), nil
@@ -353,7 +431,7 @@ func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 func (n *DNode) removeDir(child *DNode) {
 	// Remove the child node.
 	currentChild, exists := n.directories[child.staticName]
-	if !exists || child.SiaDir != currentChild.SiaDir {
+	if !exists || child.staticUID != currentChild.staticUID {
 		return // nothing to do
 	}
 	delete(n.directories, child.staticName)

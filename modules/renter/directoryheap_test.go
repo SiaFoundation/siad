@@ -16,7 +16,10 @@ func (r *Renter) updateSiaDirHealth(siaPath modules.SiaPath, health, aggregateHe
 		return err
 	}
 	defer siaDir.Close()
-	metadata := siaDir.Metadata()
+	metadata, err := siaDir.Metadata()
+	if err != nil {
+		return err
+	}
 	metadata.Health = health
 	metadata.AggregateHealth = aggregateHealth
 	err = siaDir.UpdateMetadata(metadata)

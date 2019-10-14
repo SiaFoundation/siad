@@ -42,7 +42,11 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 	defer r.tg.Done()
 	// Prepend the provided siapath with the /home/siafiles dir.
 	var err error
-	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	if siaPath.IsRoot() {
+		siaPath = modules.SiaFilesSiaPath()
+	} else {
+		siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	}
 	if err != nil {
 		return []modules.FileInfo{}, err
 	}

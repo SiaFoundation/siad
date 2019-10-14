@@ -325,7 +325,7 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 	}
 	defer siaDir.Close()
 
-	return siaDir.Metadata(), nil
+	return siaDir.Metadata()
 }
 
 // managedUpdateLastHealthCheckTime updates the LastHealthCheckTime and
@@ -337,7 +337,10 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 	if err != nil {
 		return err
 	}
-	metadata := entry.Metadata()
+	metadata, err := entry.Metadata()
+	if err != nil {
+		return err
+	}
 
 	// Set the LastHealthCheckTimes to the current time.
 	metadata.LastHealthCheckTime = time.Now()
