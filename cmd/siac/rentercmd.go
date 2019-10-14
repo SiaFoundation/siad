@@ -133,12 +133,12 @@ var (
 		Run:     wrap(renterfilesrenamecmd),
 	}
 
-	renterFilesLocalPathRenameCmd = &cobra.Command{
+	renterFilesChangeLocalPathCmd = &cobra.Command{
 		Use:     "localpath [siapath] [newlocalpath]",
 		Aliases: []string{"local"},
 		Short:   "Changes the local path of the file",
 		Long:    "Changes the local path of the file",
-		Run:     wrap(renterfileslocalpathrename),
+		Run:     wrap(renterfileschangelocalpathcmd),
 	}
 
 	renterFilesUnstuckCmd = &cobra.Command{
@@ -1989,9 +1989,10 @@ func renterfilesrenamecmd(path, newpath string) {
 	fmt.Printf("Renamed %s to %s\n", path, newpath)
 }
 
-//renterfileslocalpathrename function changes the trackingpath of the file
+//renterfileschangelocalpathcmd is the handler for the command `siac renter localpath [siapath] [newlocalpath]`
+//Changes the trackingpath of the file
 //through API Endpoint
-func renterfileslocalpathrename(siapath, newlocalpath string) {
+func renterfileschangelocalpathcmd(siapath, newlocalpath string) {
 	//Parse Siapath
 	siaPath, err := modules.NewSiaPath(siapath)
 	if err != nil {
