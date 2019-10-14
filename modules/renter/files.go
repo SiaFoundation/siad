@@ -5,6 +5,19 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 )
 
+// trimSiaFileFolder is a helper method to trim /home/siafiles off of the
+// siapaths of the fileinfos since the user expects a path relative to
+// /home/siafiles and not relative to root.
+func trimSiaFileFolder(fis ...modules.FileInfo) (_ []modules.FileInfo, err error) {
+	for i := range fis {
+		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return fis, nil
+}
+
 // DeleteFile removes a file entry from the renter and deletes its data from
 // the hosts it is stored on.
 func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
@@ -52,6 +65,10 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 	}
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 	fis, _, err := r.staticFileSystem.FileList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	if err != nil {
+		return nil, err
+	}
+	fis, err = trimSiaFileFolder(fis...)
 	return fis, err
 }
 
@@ -69,7 +86,15 @@ func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 		return modules.FileInfo{}, err
 	}
 	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
-	return r.staticFileSystem.FileInfo(siaPath, offline, goodForRenew, contracts)
+	fi, err := r.staticFileSystem.FileInfo(siaPath, offline, goodForRenew, contracts)
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+	fis, err := trimSiaFileFolder(fi)
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+	return fis[0], nil
 }
 
 // RenameFile takes an existing file and changes the nickname. The original
