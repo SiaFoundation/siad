@@ -160,6 +160,37 @@ func (n *DNode) managedClose() {
 	n.close()
 }
 
+// managedNewSiaFileFromLegacyData adds an existing SiaFile to the filesystem
+// using the provided siafile.FileData object.
+func (n *DNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.FileData) (*FNode, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	// Check if the path is taken.
+	path := filepath.Join(n.staticPath(), fileName)
+	if _, err := os.Stat(filepath.Join(path)); !os.IsNotExist(err) {
+		return nil, ErrExists
+	}
+	// Check if the file exists in memory.
+	key := strings.TrimSuffix(fileName, modules.SiaFileExtension)
+	if _, exists := n.files[key]; exists {
+		return nil, ErrExists
+	}
+	// Otherwise create the file.
+	sf, err := siafile.NewFromLegacyData(fd, path, n.staticWal)
+	if err != nil {
+		return nil, err
+	}
+	// Add it to the node.
+	fn := &FNode{
+		node:    newNode(n, key, 0, n.staticWal),
+		SiaFile: sf,
+	}
+	n.files[key] = fn
+	return fn.managedCopy(), nil
+
+}
+
+// managedSiaDir calls siaDir while holding the node's lock.
 func (n *DNode) managedSiaDir() (*siadir.SiaDir, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()

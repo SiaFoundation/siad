@@ -296,7 +296,28 @@ func (fs *FileSystem) WriteFile(siaPath modules.SiaPath, data []byte, perm os.Fi
 // NewSiaFileFromLegacyData creates a new SiaFile from data that was previously loaded
 // from a legacy file.
 func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FNode, error) {
-	panic("not implemented yet")
+	// Get file's SiaPath.
+	sp, err := modules.NewSiaPath(fd.Name)
+	if err != nil {
+		return nil, err
+	}
+	// Get siapath of dir.
+	dirSiaPath, err := sp.Dir()
+	if err != nil {
+		return nil, err
+	}
+	// Create the dir if it doesn't exist.
+	if err := fs.NewSiaDir(dirSiaPath); err != nil && err != ErrExists {
+		return nil, err
+	}
+	// Open dir.
+	dir, err := fs.managedOpenDir(dirSiaPath.String())
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	// Add the file to the dir.
+	return dir.managedNewSiaFileFromLegacyData(sp.Name(), fd)
 }
 
 // OpenSiaDir opens a SiaDir and adds it and all of its parents to the
