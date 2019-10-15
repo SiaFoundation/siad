@@ -12,49 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// newStub is used to test the New function. It implements all of the contractor's
-// dependencies.
-type newStub struct{}
-
-// consensus set stubs
-func (newStub) ConsensusSetSubscribe(modules.ConsensusSetSubscriber, modules.ConsensusChangeID, <-chan struct{}) error {
-	return nil
-}
-func (newStub) Synced() bool                               { return true }
-func (newStub) Unsubscribe(modules.ConsensusSetSubscriber) { return }
-
-// wallet stubs
-func (newStub) NextAddress() (uc types.UnlockConditions, err error)          { return }
-func (newStub) PrimarySeed() (modules.Seed, uint64, error)                   { return modules.Seed{}, 0, nil }
-func (newStub) StartTransaction() (tb modules.TransactionBuilder, err error) { return }
-func (newStub) Unlocked() (bool, error)                                      { return true, nil }
-
-// transaction pool stubs
-func (newStub) AcceptTransactionSet([]types.Transaction) error      { return nil }
-func (newStub) FeeEstimation() (a types.Currency, b types.Currency) { return }
-
-// hdb stubs
-func (newStub) AllHosts() ([]modules.HostDBEntry, error)    { return nil, nil }
-func (newStub) ActiveHosts() ([]modules.HostDBEntry, error) { return nil, nil }
-func (newStub) CheckForIPViolations([]types.SiaPublicKey) ([]types.SiaPublicKey, error) {
-	return nil, nil
-}
-func (newStub) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
-	return 0, make(map[string]types.SiaPublicKey), nil
-}
-func (newStub) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error      { return nil }
-func (newStub) Host(types.SiaPublicKey) (settings modules.HostDBEntry, ok bool, err error) { return }
-func (newStub) IncrementSuccessfulInteractions(key types.SiaPublicKey) error               { return nil }
-func (newStub) IncrementFailedInteractions(key types.SiaPublicKey) error                   { return nil }
-func (newStub) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
-	return nil, nil
-}
-func (newStub) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
-	return modules.HostScoreBreakdown{}, nil
-}
-func (newStub) SetAllowance(allowance modules.Allowance) error { return nil }
-func (newStub) UpdateContracts([]modules.RenterContract) error { return nil }
-
 // TestNew tests the New function.
 func TestNew(t *testing.T) {
 	if testing.Short() {
@@ -112,32 +69,6 @@ func TestAllowance(t *testing.T) {
 		t.Fatal("Allowance did not return correct allowance:", a, c.allowance)
 	}
 }
-
-// stubHostDB mocks the hostDB dependency using zero-valued implementations of
-// its methods.
-type stubHostDB struct{}
-
-func (stubHostDB) AllHosts() (hs []modules.HostDBEntry, err error)    { return }
-func (stubHostDB) ActiveHosts() (hs []modules.HostDBEntry, err error) { return }
-func (stubHostDB) CheckForIPViolations([]types.SiaPublicKey) ([]types.SiaPublicKey, error) {
-	return nil, nil
-}
-func (stubHostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
-	return 0, make(map[string]types.SiaPublicKey), nil
-}
-func (stubHostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error { return nil }
-func (stubHostDB) Host(types.SiaPublicKey) (h modules.HostDBEntry, ok bool, err error)   { return }
-func (stubHostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) error          { return nil }
-func (stubHostDB) IncrementFailedInteractions(key types.SiaPublicKey) error              { return nil }
-func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                                   { return }
-func (stubHostDB) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) (hs []modules.HostDBEntry, _ error) {
-	return
-}
-func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
-	return modules.HostScoreBreakdown{}, nil
-}
-func (stubHostDB) SetAllowance(allowance modules.Allowance) error { return nil }
-func (stubHostDB) UpdateContracts([]modules.RenterContract) error { return nil }
 
 // TestAllowanceSpending verifies that the contractor will not spend more or
 // less than the allowance if uploading causes repeated early renewal, and that
@@ -715,40 +646,5 @@ func TestLinkedContracts(t *testing.T) {
 		map[%v:%v]
 		got:
 		%v`, c.OldContracts()[0].ID, c.Contracts()[0].ID, c.renewedTo)
-	}
-}
-
-// testWalletShim is used to test the walletBridge type.
-type testWalletShim struct {
-	nextAddressCalled bool
-	startTxnCalled    bool
-}
-
-// These stub implementations for the walletShim interface set their respective
-// booleans to true, allowing tests to verify that they have been called.
-func (ws *testWalletShim) NextAddress() (types.UnlockConditions, error) {
-	ws.nextAddressCalled = true
-	return types.UnlockConditions{}, nil
-}
-func (ws *testWalletShim) PrimarySeed() (modules.Seed, uint64, error) {
-	return modules.Seed{}, 0, nil
-}
-func (ws *testWalletShim) StartTransaction() (modules.TransactionBuilder, error) {
-	ws.startTxnCalled = true
-	return nil, nil
-}
-func (ws *testWalletShim) Unlocked() (bool, error) { return true, nil }
-
-// TestWalletBridge tests the walletBridge type.
-func TestWalletBridge(t *testing.T) {
-	shim := new(testWalletShim)
-	bridge := WalletBridge{shim}
-	bridge.NextAddress()
-	if !shim.nextAddressCalled {
-		t.Error("NextAddress was not called on the shim")
-	}
-	bridge.StartTransaction()
-	if !shim.startTxnCalled {
-		t.Error("StartTransaction was not called on the shim")
 	}
 }

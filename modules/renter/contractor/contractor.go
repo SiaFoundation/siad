@@ -34,7 +34,7 @@ var (
 // contracts.
 type Contractor struct {
 	// dependencies
-	cs            consensusSet
+	cs            modules.ConsensusSet
 	hdb           hostDB
 	log           *persist.Logger
 	mu            sync.RWMutex
@@ -42,8 +42,8 @@ type Contractor struct {
 	staticAlerter *modules.GenericAlerter
 	staticDeps    modules.Dependencies
 	tg            siasync.ThreadGroup
-	tpool         transactionPool
-	wallet        wallet
+	tpool         modules.TransactionPool
+	wallet        modules.Wallet
 
 	// Only one thread should be performing contract maintenance at a time.
 	interruptMaintenance chan struct{}
@@ -248,7 +248,7 @@ func (c *Contractor) Close() error {
 }
 
 // New returns a new Contractor.
-func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, persistDir string) (*Contractor, <-chan error) {
+func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb hostDB, persistDir string) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 	// Check for nil inputs.
