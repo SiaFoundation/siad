@@ -38,7 +38,7 @@ type Contractor struct {
 	hdb           hostDB
 	log           *persist.Logger
 	mu            sync.RWMutex
-	persist       persister
+	persistDir    string
 	staticAlerter *modules.GenericAlerter
 	staticDeps    modules.Dependencies
 	tg            siasync.ThreadGroup
@@ -292,11 +292,11 @@ func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.Transacti
 	}
 
 	// Create Contractor using production dependencies.
-	return NewCustomContractor(cs, &WalletBridge{W: wallet}, tpool, hdb, contractSet, NewPersist(persistDir), logger, modules.ProdDependencies)
+	return NewCustomContractor(cs, &WalletBridge{W: wallet}, tpool, hdb, persistDir, contractSet, logger, modules.ProdDependencies)
 }
 
 // contractorBlockingStartup handles the blocking portion of NewCustomContractor.
-func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
+func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, persistDir string, contractSet *proto.ContractSet, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
 	// Create the Contractor object.
 	c := &Contractor{
 		staticAlerter: modules.NewAlerter("contractor"),
@@ -304,7 +304,7 @@ func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hd
 		staticDeps:    deps,
 		hdb:           hdb,
 		log:           l,
-		persist:       p,
+		persistDir:    persistDir,
 		tpool:         tp,
 		wallet:        w,
 
@@ -393,7 +393,7 @@ func contractorAsyncStartup(c *Contractor, cs consensusSet) error {
 }
 
 // NewCustomContractor creates a Contractor using the provided dependencies.
-func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, <-chan error) {
+func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, persistDir string, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Handle blocking startup.

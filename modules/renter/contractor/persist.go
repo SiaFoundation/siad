@@ -13,6 +13,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+var persistMeta = persist.Metadata{
+	Header:  "Contractor Persistence",
+	Version: "1.3.1",
+}
+
 // contractorPersist defines what Contractor data persists across sessions.
 type contractorPersist struct {
 	Allowance            modules.Allowance               `json:"allowance"`
@@ -63,7 +68,7 @@ func (c *Contractor) persistData() contractorPersist {
 // load loads the Contractor persistence data from disk.
 func (c *Contractor) load() error {
 	var data contractorPersist
-	err := c.persist.load(&data)
+	err := persist.LoadJSON(persistMeta, &data, c.persistDir)
 	if err != nil {
 		return err
 	}
@@ -115,7 +120,7 @@ func (c *Contractor) load() error {
 
 // save saves the Contractor persistence data to disk.
 func (c *Contractor) save() error {
-	return c.persist.save(c.persistData())
+	return c.persist.SaveJSON(persistMeta, c.persistData(), c.persistDir)
 }
 
 // convertPersist converts the pre-v1.3.1 contractor persist formats to the new
