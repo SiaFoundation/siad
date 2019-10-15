@@ -1,6 +1,8 @@
 package filesystem
 
 import (
+	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
 	"os"
@@ -163,6 +165,52 @@ func (n *DNode) managedClose() {
 	n.close()
 }
 
+// managedNewSiaFileFromReader will read a siafile and its chunks from the given
+// reader and add it to the directory. This will always load the file from the
+// given reader.
+func (n *DNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker) error {
+	// Load the file.
+	path := filepath.Join(n.staticPath(), fileName+modules.SiaFileExtension)
+	sf, chunks, err := siafile.LoadSiaFileFromReaderWithChunks(rs, path, n.staticWal)
+	if err != nil {
+		return err
+	}
+	// Check if the path is taken.
+	err = ErrExists
+	suffix := 0
+	currentPath := path
+	for {
+		_, errStat := os.Stat(currentPath)
+		oldFile, inMemory := n.files[fileName]
+		if inMemory && oldFile.UID() == sf.UID() {
+			return nil // skip file since it already exists
+		} else if !os.IsNotExist(errStat) || inMemory {
+			// Exists: update currentPath and fileName
+			suffix++
+			currentPath = strings.TrimSuffix(path, modules.SiaFileExtension)
+			currentPath = fmt.Sprintf("%v_%v%v", currentPath, suffix, modules.SiaFileExtension)
+			fileName = filepath.Base(currentPath)
+			continue
+		}
+		break
+	}
+	// Either the file doesn't exist yet or we found a filename that doesn't
+	// exist. Update the UID for safety and set the correct siafilepath.
+	sf.UpdateUniqueID()
+	sf.SetSiaFilePath(currentPath)
+	// Save the file to disk.
+	if err := sf.SaveWithChunks(chunks); err != nil {
+		return err
+	}
+	// Add the node to the dir.
+	fn := &FNode{
+		node:    newNode(n, fileName, 0, n.staticWal),
+		SiaFile: sf,
+	}
+	n.files[fileName] = fn
+	return nil
+}
+
 // managedNewSiaFileFromLegacyData adds an existing SiaFile to the filesystem
 // using the provided siafile.FileData object.
 func (n *DNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.FileData) (*FNode, error) {
@@ -190,7 +238,6 @@ func (n *DNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.File
 	}
 	n.files[key] = fn
 	return fn.managedCopy(), nil
-
 }
 
 // managedSiaDir calls siaDir while holding the node's lock.

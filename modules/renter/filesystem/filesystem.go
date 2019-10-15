@@ -131,13 +131,22 @@ func New(root string, wal *writeaheadlog.WAL) (*FileSystem, error) {
 // already exists with a different UID, the UID will be updated and a unique
 // path will be chosen. If no file exists, the UID will be updated but the path
 // remains the same.
-func (fs *FileSystem) AddSiaFileFromReader(rs io.ReadSeeker, dst string) error {
-	_, _, err := siafile.LoadSiaFileFromReaderWithChunks(rs, dst, fs.staticWal)
+func (fs *FileSystem) AddSiaFileFromReader(rs io.ReadSeeker, siaPath modules.SiaPath) error {
+	// Create dir and open it.
+	dirSiaPath, err := siaPath.Dir()
 	if err != nil {
 		return err
 	}
-	// Add the file to the SiaFileSet.
-	panic("not implemented yet")
+	if err := fs.NewSiaDir(dirSiaPath); err != nil {
+		return err
+	}
+	dir, err := fs.OpenSiaDir(dirSiaPath)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	// Add the file to the dir.
+	return dir.managedNewSiaFileFromReader(siaPath.Name(), rs)
 }
 
 // DeleteDir deletes a dir from the filesystem. The dir will be marked as
@@ -207,9 +216,7 @@ func (fs *FileSystem) FilePath(siaPath modules.SiaPath) string {
 	return siaPath.SiaFileSysPath(fs.staticName)
 }
 
-// NewSiaDir creates the folder for the specified siaPath. This doesn't create
-// the folder metadata since that will be created on demand as the individual
-// folders are accessed.
+// NewSiaDir creates the folder for the specified siaPath.
 func (fs *FileSystem) NewSiaDir(siaPath modules.SiaPath) error {
 	dirPath := siaPath.SiaDirSysPath(fs.staticName)
 	_, err := siadir.New(dirPath, fs.staticName, fs.staticWal)

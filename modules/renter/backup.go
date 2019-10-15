@@ -230,7 +230,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		var file io.Reader
 		if filepath.Ext(path) == modules.SiaFileExtension {
 			// Get the siafile.
-			siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
+			siaPath, err := modules.SiaFilesSiaPath().Join(strings.TrimSuffix(relPath, modules.SiaFileExtension))
 			if err != nil {
 				return err
 			}
@@ -258,9 +258,9 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			var siaPath modules.SiaPath
 			siaPathStr := strings.TrimSuffix(relPath, modules.SiaDirExtension)
 			if siaPathStr == string(filepath.Separator) {
-				siaPath = modules.RootSiaPath()
+				siaPath = modules.SiaFilesSiaPath()
 			} else {
-				siaPath, err = modules.NewSiaPath(siaPathStr)
+				siaPath, err = modules.SiaFilesSiaPath().Join(siaPathStr)
 				if err != nil {
 					return err
 				}
@@ -354,7 +354,11 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		} else if filepath.Ext(info.Name()) == modules.SiaFileExtension {
 			// Add the file to the SiaFileSet.
 			reader := bytes.NewReader(b)
-			err = r.staticFileSystem.AddSiaFileFromReader(reader, dst)
+			siaPath, err := modules.SiaFilesSiaPath().Join(strings.TrimSuffix(header.Name, modules.SiaFileExtension))
+			if err != nil {
+				return err
+			}
+			err = r.staticFileSystem.AddSiaFileFromReader(reader, siaPath)
 			if err != nil {
 				return err
 			}
