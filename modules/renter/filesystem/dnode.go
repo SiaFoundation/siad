@@ -166,7 +166,7 @@ func (n *DNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.File
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Check if the path is taken.
-	path := filepath.Join(n.staticPath(), fileName)
+	path := filepath.Join(n.staticPath(), fileName+modules.SiaFileExtension)
 	if _, err := os.Stat(filepath.Join(path)); !os.IsNotExist(err) {
 		return nil, ErrExists
 	}

@@ -273,7 +273,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 			continue
 		}
 		// Skip siafiles and contracts folders.
-		if fi.Name() == modules.SiaFilesRoot || fi.Name() == "contracts" {
+		if fi.Name() == modules.FileSystemRoot || fi.Name() == "contracts" {
 			continue
 		}
 		// Delete the folder.
@@ -406,20 +406,6 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		tf, ok := tracking[f.name]
 		if ok {
 			repairPath = tf.RepairPath
-		}
-		// Create and add a siadir to the SiaDirSet if one has not been created
-		siaPath, err := modules.NewSiaPath(f.name)
-		if err != nil {
-			return nil, err
-		}
-		dirSiaPath, err := siaPath.Dir()
-		if err != nil {
-			return nil, err
-		}
-		errDir := r.staticFileSystem.NewSiaDir(dirSiaPath)
-		if errDir != nil && errDir != filesystem.ErrExists {
-			errDir = errors.AddContext(errDir, "unable to create new sia dir")
-			return nil, errors.Compose(err, errDir)
 		}
 		// v137FileToSiaFile adds siafile to the SiaFileSet so it does not need to
 		// be returned here

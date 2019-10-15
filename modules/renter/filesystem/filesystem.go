@@ -297,7 +297,7 @@ func (fs *FileSystem) WriteFile(siaPath modules.SiaPath, data []byte, perm os.Fi
 // from a legacy file.
 func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FNode, error) {
 	// Get file's SiaPath.
-	sp, err := modules.NewSiaPath(fd.Name)
+	sp, err := modules.SiaFilesSiaPath().Join(fd.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +307,7 @@ func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FNode, err
 		return nil, err
 	}
 	// Create the dir if it doesn't exist.
-	if err := fs.NewSiaDir(dirSiaPath); err != nil && err != ErrExists {
+	if err := fs.NewSiaDir(dirSiaPath); err != nil {
 		return nil, err
 	}
 	// Open dir.
