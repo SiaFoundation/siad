@@ -267,7 +267,7 @@ func (fs *FileSystem) UpdateDirMetadata(siaPath modules.SiaPath, metadata siadir
 // staticSiaPath returns the SiaPath of a node.
 func (fs *FileSystem) staticSiaPath(n *node) (sp modules.SiaPath) {
 	if err := sp.FromSysPath(n.staticPath(), fs.staticName); err != nil {
-		build.Critical("FileSystem.managedSiaPath: should never fail")
+		build.Critical("FileSystem.managedSiaPath: should never fail", err)
 	}
 	return sp
 }
@@ -431,7 +431,13 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 	var fisMu, disMu sync.Mutex
 	dirWorker := func() {
 		for sd := range dirLoadChan {
-			di, err := sd.managedInfo(fs.staticSiaPath(&sd.node))
+			var di modules.DirectoryInfo
+			var err error
+			if sd.node.staticPath() == fs.staticPath() {
+				di, err = sd.managedInfo(modules.RootSiaPath())
+			} else {
+				di, err = sd.managedInfo(fs.staticSiaPath(&sd.node))
+			}
 			sd.Close()
 			if err == ErrNotExist {
 				continue

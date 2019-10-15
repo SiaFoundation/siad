@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -198,8 +200,8 @@ func TestRenterListDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	files, err := rt.renter.FileList(modules.RootSiaPath(), false, false)
-	if len(directories) != 2 {
-		t.Fatal("Expected 2 DirectoryInfos but got", len(directories))
+	if len(directories) != 4 {
+		t.Fatal("Expected 4 DirectoryInfos but got", len(directories))
 	}
 	if len(files) != 1 {
 		t.Fatal("Expected 1 FileInfos but got", len(files))
@@ -210,14 +212,32 @@ func TestRenterListDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	snapshotDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.SnapshotsSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	fooDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
+	homeDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.HomeSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sort directories.
+	sort.Slice(directories, func(i, j int) bool {
+		return strings.Compare(directories[i].SiaPath.String(), directories[j].SiaPath.String()) < 0
+	})
 	if err = compareDirectoryInfoAndMetadata(directories[0], rootDir); err != nil {
 		t.Fatal(err)
 	}
 	if err = compareDirectoryInfoAndMetadata(directories[1], fooDir); err != nil {
+		t.Fatal(err)
+	}
+	if err = compareDirectoryInfoAndMetadata(directories[2], homeDir); err != nil {
+		t.Fatal(err)
+	}
+	if err = compareDirectoryInfoAndMetadata(directories[3], snapshotDir); err != nil {
 		t.Fatal(err)
 	}
 }

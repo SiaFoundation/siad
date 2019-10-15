@@ -101,6 +101,9 @@ func (n *DNode) UpdateMetadata(md siadir.Metadata) error {
 
 // managedList returns the files and dirs within the SiaDir.
 func (n *DNode) managedList(recursive, cached bool, fileLoadChan chan *FNode, dirLoadChan chan *DNode) error {
+	// Get DirectoryInfo of dir itself.
+	dirLoadChan <- n.managedCopy()
+	// Read dir.
 	fis, err := ioutil.ReadDir(n.staticPath())
 	if err != nil {
 		return err
