@@ -47,7 +47,7 @@ func TestSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.hdb = stubHostDB{}
+	c.r = stubHostDB{}
 	c.oldContracts = make(map[types.FileContractID]modules.RenterContract)
 	c.renewedFrom = make(map[types.FileContractID]types.FileContractID)
 	c.renewedTo = make(map[types.FileContractID]types.FileContractID)

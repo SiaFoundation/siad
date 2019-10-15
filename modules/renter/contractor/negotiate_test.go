@@ -24,7 +24,7 @@ type contractorTester struct {
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
 	walletKey crypto.CipherKey
-	hdb       hostDB
+	hdb       modules.HostDB
 
 	contractor *Contractor
 }

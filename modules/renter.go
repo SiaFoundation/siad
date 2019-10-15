@@ -752,3 +752,69 @@ type RenterDownloadParameters struct {
 	SiaPath     SiaPath
 	Destination string
 }
+
+// A HostDB is a database of hosts that the renter can use for figuring out who
+// to upload to, and download from.
+type HostDB interface {
+	Alerter
+
+	// ActiveHosts returns the list of hosts that are actively being selected
+	// from.
+	ActiveHosts() ([]HostDBEntry, error)
+
+	// AllHosts returns the full list of hosts known to the hostdb, sorted in
+	// order of preference.
+	AllHosts() ([]HostDBEntry, error)
+
+	// Close closes the hostdb.
+	Close() error
+
+	// Filter returns the hostdb's filterMode and filteredHosts
+	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
+
+	// SetFilterMode sets the renter's hostdb filter mode
+	SetFilterMode(lm FilterMode, hosts []types.SiaPublicKey) error
+
+	// Host returns the HostDBEntry for a given host.
+	Host(pk types.SiaPublicKey) (HostDBEntry, bool, error)
+
+	// initialScanComplete returns a boolean indicating if the initial scan of the
+	// hostdb is completed.
+	InitialScanComplete() (bool, error)
+
+	// IPViolationsCheck returns a boolean indicating if the IP violation check is
+	// enabled or not.
+	IPViolationsCheck() (bool, error)
+
+	// RandomHosts returns a set of random hosts, weighted by their estimated
+	// usefulness / attractiveness to the renter. RandomHosts will not return
+	// any offline or inactive hosts.
+	RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]HostDBEntry, error)
+
+	// RandomHostsWithAllowance is the same as RandomHosts but accepts an
+	// allowance as an argument to be used instead of the allowance set in the
+	// renter.
+	RandomHostsWithAllowance(int, []types.SiaPublicKey, []types.SiaPublicKey, Allowance) ([]HostDBEntry, error)
+
+	// ScoreBreakdown returns a detailed explanation of the various properties
+	// of the host.
+	ScoreBreakdown(HostDBEntry) (HostScoreBreakdown, error)
+
+	// SetIPViolationCheck enables/disables the IP violation check within the
+	// hostdb.
+	SetIPViolationCheck(enabled bool) error
+
+	// EstimateHostScore returns the estimated score breakdown of a host with the
+	// provided settings.
+	EstimateHostScore(HostDBEntry, Allowance) (HostScoreBreakdown, error)
+
+	IncrementSuccessfulInteractions(types.SiaPublicKey) error
+
+	IncrementFailedInteractions(types.SiaPublicKey) error
+
+	SetAllowance(Allowance) error
+
+	CheckForIPViolations([]types.SiaPublicKey) ([]types.SiaPublicKey, error)
+
+	UpdateContracts([]RenterContract) error
+}

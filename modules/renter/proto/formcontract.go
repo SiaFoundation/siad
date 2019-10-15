@@ -13,7 +13,7 @@ import (
 // FormContract forms a contract with a host and submits the contract
 // transaction to tpool. The contract is added to the ContractSet and its
 // metadata is returned.
-func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
+func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb modules.HostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
 	// Check that the host version is high enough as belt-and-suspenders. This
 	// should never happen because hosts with old versions should be blacklisted
 	// by the contractor.

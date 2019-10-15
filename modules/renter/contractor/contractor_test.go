@@ -102,7 +102,7 @@ func TestAllowanceSpending(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		hosts, err := c.hdb.RandomHosts(1, nil, nil)
+		hosts, err := c.r.RandomHosts(1, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -249,7 +249,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	}
 
 	// wait for hostdb to scan
-	hosts, err := c.hdb.RandomHosts(1, nil, nil)
+	hosts, err := c.r.RandomHosts(1, nil, nil)
 	if err != nil {
 		t.Fatal("failed to get hosts", err)
 	}
@@ -422,7 +422,7 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _, err := c.hdb.Host(h.PublicKey())
+		host, _, err := c.r.Host(h.PublicKey())
 		if err != nil {
 			return err
 		}
@@ -470,7 +470,7 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _, err := c.hdb.Host(h.PublicKey())
+		host, _, err := c.r.Host(h.PublicKey())
 		if err != nil {
 			return err
 		}
@@ -507,7 +507,7 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _, err := c.hdb.Host(h.PublicKey())
+		host, _, err := c.r.Host(h.PublicKey())
 		if err != nil {
 			return err
 		}

@@ -120,7 +120,7 @@ func (c *Contractor) load() error {
 
 // save saves the Contractor persistence data to disk.
 func (c *Contractor) save() error {
-	return c.persist.SaveJSON(persistMeta, c.persistData(), c.persistDir)
+	return persist.SaveJSON(persistMeta, c.persistData(), c.persistDir)
 }
 
 // convertPersist converts the pre-v1.3.1 contractor persist formats to the new

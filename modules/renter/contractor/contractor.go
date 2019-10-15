@@ -21,6 +21,7 @@ import (
 
 var (
 	errNilCS     = errors.New("cannot create contractor with nil consensus set")
+	errNilHDB    = errors.New("cannot create contractor with nil HostDB")
 	errNilTpool  = errors.New("cannot create contractor with nil transaction pool")
 	errNilWallet = errors.New("cannot create contractor with nil wallet")
 
@@ -35,7 +36,7 @@ var (
 type Contractor struct {
 	// dependencies
 	cs            modules.ConsensusSet
-	hdb           hostDB
+	hdb           modules.HostDB
 	log           *persist.Logger
 	mu            sync.RWMutex
 	persistDir    string
@@ -248,7 +249,7 @@ func (c *Contractor) Close() error {
 }
 
 // New returns a new Contractor.
-func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb hostDB, persistDir string) (*Contractor, <-chan error) {
+func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, persistDir string) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 	// Check for nil inputs.
@@ -262,6 +263,10 @@ func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.Transacti
 	}
 	if tpool == nil {
 		errChan <- errNilTpool
+		return nil, errChan
+	}
+	if hdb == nil {
+		errChan <- errNilHDB
 		return nil, errChan
 	}
 
@@ -292,11 +297,11 @@ func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.Transacti
 	}
 
 	// Create Contractor using production dependencies.
-	return NewCustomContractor(cs, &WalletBridge{W: wallet}, tpool, hdb, persistDir, contractSet, logger, modules.ProdDependencies)
+	return NewCustomContractor(cs, wallet, tpool, hdb, persistDir, contractSet, logger, modules.ProdDependencies)
 }
 
 // contractorBlockingStartup handles the blocking portion of NewCustomContractor.
-func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, persistDir string, contractSet *proto.ContractSet, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
+func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp modules.TransactionPool, hdb modules.HostDB, persistDir string, contractSet *proto.ContractSet, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
 	// Create the Contractor object.
 	c := &Contractor{
 		staticAlerter: modules.NewAlerter("contractor"),
@@ -371,7 +376,7 @@ func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hd
 }
 
 // contractorAsyncStartup handles the async portion of NewCustomContractor.
-func contractorAsyncStartup(c *Contractor, cs consensusSet) error {
+func contractorAsyncStartup(c *Contractor, cs modules.ConsensusSet) error {
 	if c.staticDeps.Disrupt("BlockAsyncStartup") {
 		return nil
 	}
@@ -393,11 +398,11 @@ func contractorAsyncStartup(c *Contractor, cs consensusSet) error {
 }
 
 // NewCustomContractor creates a Contractor using the provided dependencies.
-func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, persistDir string, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, <-chan error) {
+func NewCustomContractor(cs modules.ConsensusSet, w modules.Wallet, tp modules.TransactionPool, hdb modules.HostDB, persistDir string, contractSet *proto.ContractSet, l *persist.Logger, deps modules.Dependencies) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Handle blocking startup.
-	c, err := contractorBlockingStartup(cs, w, tp, hdb, contractSet, p, l, deps)
+	c, err := contractorBlockingStartup(cs, w, tp, hdb, persistDir, contractSet, l, deps)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
