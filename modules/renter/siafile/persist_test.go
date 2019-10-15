@@ -131,7 +131,7 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 	//	uint64(fastrand.Intn(math.MaxInt32)),
 	//}
 	// Create the file.
-	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, nil, false)
+	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, nil, true) // TODO: set back to false
 	if err != nil {
 		panic(err)
 	}
