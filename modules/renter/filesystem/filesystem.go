@@ -345,22 +345,41 @@ func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FNode, error) {
 
 // RenameFile renames the file with oldSiaPath to newSiaPath.
 func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) error {
+	// Open SiaDir for file at old location.
+	oldDirSiaPath, err := oldSiaPath.Dir()
+	if err != nil {
+		return err
+	}
+	oldDir, err := fs.OpenSiaDir(oldDirSiaPath)
+	if err != nil {
+		return err
+	}
+	defer oldDir.Close()
 	// Open the file.
-	sf, err := fs.managedOpenFile(oldSiaPath.String())
+	sf, err := oldDir.managedOpenFile(oldSiaPath.Name())
+	if err == ErrNotExist {
+		return ErrNotExist
+	}
 	if err != nil {
 		return errors.AddContext(err, "failed to open file for renaming")
 	}
 	defer sf.Close()
-	// Create SiaDir for file at new location.
-	dirSiaPath, err := newSiaPath.Dir()
+
+	// Create and Open SiaDir for file at new location.
+	newDirSiaPath, err := newSiaPath.Dir()
 	if err != nil {
 		return err
 	}
-	if err := fs.NewSiaDir(dirSiaPath); err != nil {
-		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", dirSiaPath.String(), oldSiaPath.String()))
+	if err := fs.NewSiaDir(newDirSiaPath); err != nil {
+		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newDirSiaPath.String(), oldSiaPath.String()))
 	}
+	newDir, err := fs.OpenSiaDir(newDirSiaPath)
+	if err != nil {
+		return err
+	}
+	defer newDir.Close()
 	// Rename the file.
-	return sf.managedRename(filepath.Join(fs.staticName, newSiaPath.String()))
+	return sf.managedRename(newSiaPath.Name(), oldDir, newDir)
 }
 
 // RenameDir takes an existing directory and changes the path. The original

@@ -3,6 +3,7 @@ package filesystem
 import (
 	"math"
 	"os"
+	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
@@ -125,10 +126,38 @@ func (n *FNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]bool
 }
 
 // managedRename renames the fNode's underlying file.
-func (n *FNode) managedRename(newPath string) error {
+func (n *FNode) managedRename(newName string, oldParent, newParent *DNode) error {
+	// Lock the parents. If they are the same, only lock one.
+	if oldParent.staticUID == newParent.staticUID {
+		oldParent.mu.Lock()
+		defer oldParent.mu.Unlock()
+	} else {
+		oldParent.mu.Lock()
+		defer oldParent.mu.Unlock()
+		newParent.mu.Lock()
+		defer newParent.mu.Unlock()
+	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	return n.SiaFile.Rename(newPath + modules.SiaFileExtension)
+	// Check that newParent doesn't have a file with that name already.
+	if _, exists := newParent.files[newName]; exists {
+		return ErrExists
+	}
+	newPath := filepath.Join(newParent.staticPath(), newName) + modules.SiaFileExtension
+	err := n.SiaFile.Rename(newPath)
+	if err == siafile.ErrPathOverload {
+		return ErrExists
+	}
+	if err != nil {
+		return err
+	}
+	// Remove file from old parent and add it to new parent.
+	delete(oldParent.files, n.staticName)
+	newParent.files[newName] = n
+	// Update parent and name.
+	n.staticParent = newParent
+	n.staticName = newName
+	return err
 }
 
 // cachedFileInfo returns information on a siafile. As a performance

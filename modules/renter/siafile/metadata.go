@@ -291,6 +291,10 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	if sf.deleted {
 		return errors.New("can't rename deleted siafile")
 	}
+	// Check if file exists at new location.
+	if _, err := os.Stat(newSiaFilePath); err == nil {
+		return ErrPathOverload
+	}
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
 	err := os.MkdirAll(dir, 0700)
