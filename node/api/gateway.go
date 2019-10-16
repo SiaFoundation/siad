@@ -15,6 +15,7 @@ type (
 	GatewayGET struct {
 		NetAddress modules.NetAddress `json:"netaddress"`
 		Peers      []modules.Peer     `json:"peers"`
+		Online     bool               `json:"online"`
 
 		MaxDownloadSpeed int64 `json:"maxdownloadspeed"`
 		MaxUploadSpeed   int64 `json:"maxuploadspeed"`
@@ -43,7 +44,7 @@ func (api *API) gatewayHandlerGET(w http.ResponseWriter, req *http.Request, _ ht
 	if peers == nil {
 		peers = make([]modules.Peer, 0)
 	}
-	WriteJSON(w, GatewayGET{api.gateway.Address(), peers, mds, mus})
+	WriteJSON(w, GatewayGET{api.gateway.Address(), peers, api.gateway.Online(), mds, mus})
 }
 
 // gatewayHandlerPOST handles the API call changing gateway specific settings.

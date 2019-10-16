@@ -471,7 +471,7 @@ again:
 	default:
 		goto again
 	}
-	err := httpClient.RenterCancelAllowance()
+	err := httpClient.RenterAllowanceCancelPost()
 	if err != nil {
 		die("error canceling allowance:", err)
 	}
