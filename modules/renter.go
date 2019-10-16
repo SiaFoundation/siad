@@ -782,6 +782,9 @@ type HostDB interface {
 	// hostdb is completed.
 	InitialScanComplete() (bool, error)
 
+	// Insert inserts a host into the hostdb
+	Insert(HostDBEntry) error
+
 	// IPViolationsCheck returns a boolean indicating if the IP violation check is
 	// enabled or not.
 	IPViolationsCheck() (bool, error)

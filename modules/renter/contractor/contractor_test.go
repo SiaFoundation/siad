@@ -4,13 +4,44 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus"
+	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// newModules initializes the modules needed to test creating a new contractor
+func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, modules.HostDB, error) {
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
+		return nil, nil, nil, nil, err
+	}
+	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	hdb, errChanHDB := hostdb.New(g, cs, tp, testdir)
+	if err := <-errChanHDB; err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return cs, w, tp, hdb, nil
+}
 
 // TestNew tests the New function.
 func TestNew(t *testing.T) {
@@ -19,35 +50,44 @@ func TestNew(t *testing.T) {
 	}
 	// Using a stub implementation of the dependencies is fine, as long as its
 	// non-nil.
-	var stub newStub
+	// Create the modules.
 	dir := build.TempDir("contractor", t.Name())
+	cs, w, tpool, hdb, err := newModules(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Sane values.
-	_, errChan := New(stub, stub, stub, stub, dir)
+	_, errChan := New(cs, w, tpool, hdb, dir)
 	if err := <-errChan; err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 
 	// Nil consensus set.
-	_, errChan = New(nil, stub, stub, stub, dir)
+	_, errChan = New(nil, w, tpool, hdb, dir)
 	if err := <-errChan; err != errNilCS {
 		t.Fatalf("expected %v, got %v", errNilCS, err)
 	}
 
 	// Nil wallet.
-	_, errChan = New(stub, nil, stub, stub, dir)
+	_, errChan = New(cs, nil, tpool, hdb, dir)
 	if err := <-errChan; err != errNilWallet {
 		t.Fatalf("expected %v, got %v", errNilWallet, err)
 	}
 
 	// Nil transaction pool.
-	_, errChan = New(stub, stub, nil, stub, dir)
+	_, errChan = New(cs, w, nil, hdb, dir)
 	if err := <-errChan; err != errNilTpool {
 		t.Fatalf("expected %v, got %v", errNilTpool, err)
 	}
+	// Nil hostdb.
+	_, errChan = New(cs, w, tpool, nil, dir)
+	if err := <-errChan; err != errNilHDB {
+		t.Fatalf("expected %v, got %v", errNilHDB, err)
+	}
 
 	// Bad persistDir.
-	_, errChan = New(stub, stub, stub, stub, "")
+	_, errChan = New(cs, w, tpool, hdb, "")
 	if err := <-errChan; !os.IsNotExist(err) {
 		t.Fatalf("expected invalid directory, got %v", err)
 	}
@@ -102,7 +142,7 @@ func TestAllowanceSpending(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		hosts, err := c.r.RandomHosts(1, nil, nil)
+		hosts, err := c.hdb.RandomHosts(1, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -166,7 +206,7 @@ func TestAllowanceSpending(t *testing.T) {
 	}
 
 	var minerRewards types.Currency
-	w := c.wallet.(*WalletBridge).W.(modules.Wallet)
+	w := c.wallet
 	txns, err := w.Transactions(0, 1000)
 	if err != nil {
 		t.Fatal(err)
@@ -249,7 +289,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	}
 
 	// wait for hostdb to scan
-	hosts, err := c.r.RandomHosts(1, nil, nil)
+	hosts, err := c.hdb.RandomHosts(1, nil, nil)
 	if err != nil {
 		t.Fatal("failed to get hosts", err)
 	}
@@ -422,7 +462,7 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _, err := c.r.Host(h.PublicKey())
+		host, _, err := c.hdb.Host(h.PublicKey())
 		if err != nil {
 			return err
 		}
@@ -470,7 +510,7 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _, err := c.r.Host(h.PublicKey())
+		host, _, err := c.hdb.Host(h.PublicKey())
 		if err != nil {
 			return err
 		}
@@ -507,7 +547,7 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _, err := c.r.Host(h.PublicKey())
+		host, _, err := c.hdb.Host(h.PublicKey())
 		if err != nil {
 			return err
 		}

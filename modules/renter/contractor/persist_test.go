@@ -11,21 +11,16 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
-
-// memPersist implements the persister interface in-memory.
-type memPersist contractorPersist
-
-func (m *memPersist) save(data contractorPersist) error { *m = memPersist(data); return nil }
-func (m memPersist) load(data *contractorPersist) error { *data = contractorPersist(m); return nil }
 
 // TestSaveLoad tests that the contractor can save and load itself.
 func TestSaveLoad(t *testing.T) {
 	// create contractor with mocked persist dependency
 	c := &Contractor{
-		persist: new(memPersist),
-		synced:  make(chan struct{}),
+		persistDir: "",
+		synced:     make(chan struct{}),
 	}
 
 	c.oldContracts = map[types.FileContractID]modules.RenterContract{
@@ -47,7 +42,6 @@ func TestSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.r = stubHostDB{}
 	c.oldContracts = make(map[types.FileContractID]modules.RenterContract)
 	c.renewedFrom = make(map[types.FileContractID]types.FileContractID)
 	c.renewedTo = make(map[types.FileContractID]types.FileContractID)
@@ -75,7 +69,7 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatal("contractor should be synced")
 	}
 	// use stdPersist instead of mock
-	c.persist = NewPersist(build.TempDir("contractor", t.Name()))
+	c.persistDir = build.TempDir("contractor", t.Name())
 	os.MkdirAll(build.TempDir("contractor", t.Name()), 0700)
 
 	// COMPATv136 save the allowance but make sure that the newly added fields
@@ -195,7 +189,7 @@ func TestConvertPersist(t *testing.T) {
 
 	// load the persist
 	var p contractorPersist
-	err = NewPersist(dir).load(&p)
+	err = persist.LoadJSON(persistMeta, &p, dir)
 	if err != nil {
 		t.Fatal(err)
 	}

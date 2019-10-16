@@ -248,10 +248,6 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	}
 
 	// Create a stubbed hostdb, add an entry.
-	hdb := &pricesStub{}
-	id := rt.renter.mu.Lock()
-	rt.renter.hostDB = hdb
-	rt.renter.mu.Unlock(id)
 	dbe := modules.HostDBEntry{}
 	dbe.ContractPrice = types.SiacoinPrecision
 	dbe.DownloadBandwidthPrice = types.SiacoinPrecision
@@ -259,7 +255,10 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	dbe.StoragePrice = types.SiacoinPrecision
 	pk := fastrand.Bytes(crypto.EntropySize)
 	dbe.PublicKey = types.SiaPublicKey{Key: pk}
-	hdb.dbEntries = append(hdb.dbEntries, dbe)
+	err = rt.renter.hostDB.Insert(dbe)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Confirm price estimation does not return an error now that there is a
 	// host available
@@ -300,20 +299,27 @@ func TestRenterPricesVolatility(t *testing.T) {
 
 	// create a stubbed hostdb, query it with one contract, add another, verify
 	// the price estimation remains constant until the timeout has passed.
-	hdb := &pricesStub{}
-	id := rt.renter.mu.Lock()
-	rt.renter.hostDB = hdb
-	rt.renter.mu.Unlock(id)
 	dbe := modules.HostDBEntry{}
 	dbe.ContractPrice = types.SiacoinPrecision
 	dbe.DownloadBandwidthPrice = types.SiacoinPrecision
 	dbe.UploadBandwidthPrice = types.SiacoinPrecision
 	dbe.StoragePrice = types.SiacoinPrecision
 	// Add 4 host entries in the database with different public keys.
-	for len(hdb.dbEntries) < modules.PriceEstimationScope {
+	allHosts, err := rt.renter.hostDB.AllHosts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for len(allHosts) < modules.PriceEstimationScope {
 		pk := fastrand.Bytes(crypto.EntropySize)
 		dbe.PublicKey = types.SiaPublicKey{Key: pk}
-		hdb.dbEntries = append(hdb.dbEntries, dbe)
+		err = rt.renter.hostDB.Insert(dbe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		allHosts, err = rt.renter.hostDB.AllHosts()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	allowance := modules.Allowance{}
 	initial, _, err := rt.renter.PriceEstimation(allowance)
@@ -325,7 +331,10 @@ func TestRenterPricesVolatility(t *testing.T) {
 	dbe.ContractPrice = dbe.ContractPrice.Mul64(2)
 	pk := fastrand.Bytes(crypto.EntropySize)
 	dbe.PublicKey = types.SiaPublicKey{Key: pk}
-	hdb.dbEntries = append(hdb.dbEntries, dbe)
+	err = rt.renter.hostDB.Insert(dbe)
+	if err != nil {
+		t.Fatal(err)
+	}
 	after, _, err := rt.renter.PriceEstimation(allowance)
 	if err != nil {
 		t.Fatal(err)
