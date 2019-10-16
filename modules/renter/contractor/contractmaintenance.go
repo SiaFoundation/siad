@@ -236,38 +236,31 @@ func (c *Contractor) callInterruptContractMaintenance() {
 	}
 }
 
-// managedMarkContractsUtility checks every active contract in the contractor and
-// figures out whether the contract is useful for uploading, and whether the
-// contract should be renewed.
-func (c *Contractor) managedMarkContractsUtility() error {
+func (c *Contractor) managedFindMinAllowedHostScores() (err error, minScoreGFR, minScoreGFU types.Currency) {
 	// Pull a new set of hosts from the hostdb that could be used as a new set
 	// to match the allowance. The lowest scoring host of these new hosts will
 	// be used as a baseline for determining whether our existing contracts are
 	// worthwhile.
 	c.mu.RLock()
 	hostCount := int(c.allowance.Hosts)
-	period := c.allowance.Period
-	height := c.blockHeight
 	c.mu.RUnlock()
 	hosts, err := c.hdb.RandomHosts(hostCount+randomHostsBufferForScore, nil, nil)
 	if err != nil {
-		return err
+		return err, minScoreGFR, minScoreGFU
 	}
 
 	// Find the minimum score that a host is allowed to have to be considered
 	// good for upload.
-	var minScoreGFR types.Currency
-	var minScoreGFU types.Currency
 	if len(hosts) > 0 {
 		sb, err := c.hdb.ScoreBreakdown(hosts[0])
 		if err != nil {
-			return err
+			return err, minScoreGFR, minScoreGFU
 		}
 		lowestScore := sb.Score
 		for i := 1; i < len(hosts); i++ {
 			score, err := c.hdb.ScoreBreakdown(hosts[i])
 			if err != nil {
-				return err
+				return err, minScoreGFR, minScoreGFU
 			}
 			if score.Score.Cmp(lowestScore) < 0 {
 				lowestScore = score.Score
@@ -277,6 +270,23 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		minScoreGFR = lowestScore.Div(scoreLeewayGoodForRenew)
 		minScoreGFU = lowestScore.Div(scoreLeewayGoodForUpload)
 	}
+
+	return nil, minScoreGFR, minScoreGFU
+}
+
+// managedMarkContractsUtility checks every active contract in the contractor and
+// figures out whether the contract is useful for uploading, and whether the
+// contract should be renewed.
+func (c *Contractor) managedMarkContractsUtility() error {
+	err, minScoreGFR, minScoreGFU := c.managedFindMinAllowedHostScores()
+	if err != nil {
+		return err
+	}
+
+	c.mu.RLock()
+	period := c.allowance.Period
+	height := c.blockHeight
+	c.mu.RUnlock()
 
 	// Update utility fields for each contract.
 	for _, contract := range c.staticContracts.ViewAll() {
