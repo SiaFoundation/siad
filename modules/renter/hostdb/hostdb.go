@@ -594,17 +594,6 @@ func (hdb *HostDB) InitialScanComplete() (complete bool, err error) {
 	return
 }
 
-// Insert inserts a host into the hostdb
-func (hdb *HostDB) Insert(host modules.HostDBEntry) error {
-	if err := hdb.tg.Add(); err != nil {
-		return err
-	}
-	defer hdb.tg.Done()
-	hdb.mu.Lock()
-	defer hdb.mu.Unlock()
-	return hdb.insert(host)
-}
-
 // IPViolationsCheck returns a boolean indicating if the IP violation check is
 // enabled or not.
 func (hdb *HostDB) IPViolationsCheck() (bool, error) {

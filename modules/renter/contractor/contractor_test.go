@@ -48,8 +48,6 @@ func TestNew(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// Using a stub implementation of the dependencies is fine, as long as its
-	// non-nil.
 	// Create the modules.
 	dir := build.TempDir("contractor", t.Name())
 	cs, w, tpool, hdb, err := newModules(dir)

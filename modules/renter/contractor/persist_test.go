@@ -17,9 +17,15 @@ import (
 
 // TestSaveLoad tests that the contractor can save and load itself.
 func TestSaveLoad(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	// create contractor with mocked persist dependency
+	persistDir := build.TempDir("contractor", "mock")
+	os.MkdirAll(persistDir, 0700)
 	c := &Contractor{
-		persistDir: "",
+		persistDir: persistDir,
 		synced:     make(chan struct{}),
 	}
 
@@ -70,7 +76,7 @@ func TestSaveLoad(t *testing.T) {
 	}
 	// use stdPersist instead of mock
 	c.persistDir = build.TempDir("contractor", t.Name())
-	os.MkdirAll(build.TempDir("contractor", t.Name()), 0700)
+	os.MkdirAll(c.persistDir, 0700)
 
 	// COMPATv136 save the allowance but make sure that the newly added fields
 	// are 0. After loading them from disk they should be set to the default
@@ -169,6 +175,10 @@ func TestSaveLoad(t *testing.T) {
 // TestConvertPersist tests that contracts previously stored in the
 // .journal format can be converted to the .contract format.
 func TestConvertPersist(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	dir := build.TempDir(filepath.Join("contractor", t.Name()))
 	os.MkdirAll(dir, 0700)
 	// copy the test data into the temp folder
@@ -189,7 +199,7 @@ func TestConvertPersist(t *testing.T) {
 
 	// load the persist
 	var p contractorPersist
-	err = persist.LoadJSON(persistMeta, &p, dir)
+	err = persist.LoadJSON(persistMeta, &p, filepath.Join(dir, PersistFilename))
 	if err != nil {
 		t.Fatal(err)
 	}

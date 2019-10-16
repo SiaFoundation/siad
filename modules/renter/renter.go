@@ -55,62 +55,6 @@ var (
 	errNilWallet     = errors.New("cannot create renter with nil wallet")
 )
 
-// // A hostDB is a database of hosts that the renter can use for figuring out who
-// // to upload to, and download from.
-// type hostDB interface {
-// 	modules.Alerter
-
-// 	// ActiveHosts returns the list of hosts that are actively being selected
-// 	// from.
-// 	ActiveHosts() ([]modules.HostDBEntry, error)
-
-// 	// AllHosts returns the full list of hosts known to the hostdb, sorted in
-// 	// order of preference.
-// 	AllHosts() ([]modules.HostDBEntry, error)
-
-// 	// Close closes the hostdb.
-// 	Close() error
-
-// 	// Filter returns the hostdb's filterMode and filteredHosts
-// 	Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error)
-
-// 	// SetFilterMode sets the renter's hostdb filter mode
-// 	SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error
-
-// 	// Host returns the HostDBEntry for a given host.
-// 	Host(pk types.SiaPublicKey) (modules.HostDBEntry, bool, error)
-
-// 	// initialScanComplete returns a boolean indicating if the initial scan of the
-// 	// hostdb is completed.
-// 	InitialScanComplete() (bool, error)
-
-// 	// IPViolationsCheck returns a boolean indicating if the IP violation check is
-// 	// enabled or not.
-// 	IPViolationsCheck() (bool, error)
-
-// 	// RandomHosts returns a set of random hosts, weighted by their estimated
-// 	// usefulness / attractiveness to the renter. RandomHosts will not return
-// 	// any offline or inactive hosts.
-// 	RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error)
-
-// 	// RandomHostsWithAllowance is the same as RandomHosts but accepts an
-// 	// allowance as an argument to be used instead of the allowance set in the
-// 	// renter.
-// 	RandomHostsWithAllowance(int, []types.SiaPublicKey, []types.SiaPublicKey, modules.Allowance) ([]modules.HostDBEntry, error)
-
-// 	// ScoreBreakdown returns a detailed explanation of the various properties
-// 	// of the host.
-// 	ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error)
-
-// 	// SetIPViolationCheck enables/disables the IP violation check within the
-// 	// hostdb.
-// 	SetIPViolationCheck(enabled bool) error
-
-// 	// EstimateHostScore returns the estimated score breakdown of a host with the
-// 	// provided settings.
-// 	EstimateHostScore(modules.HostDBEntry, modules.Allowance) (modules.HostScoreBreakdown, error)
-// }
-
 // A hostContractor negotiates, revises, renews, and provides access to file
 // contracts.
 type hostContractor interface {

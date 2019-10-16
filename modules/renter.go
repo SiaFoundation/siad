@@ -766,8 +766,16 @@ type HostDB interface {
 	// order of preference.
 	AllHosts() ([]HostDBEntry, error)
 
+	// CheckForIPViolations accepts a number of host public keys and returns the
+	// ones that violate the rules of the addressFilter.
+	CheckForIPViolations([]types.SiaPublicKey) ([]types.SiaPublicKey, error)
+
 	// Close closes the hostdb.
 	Close() error
+
+	// EstimateHostScore returns the estimated score breakdown of a host with the
+	// provided settings.
+	EstimateHostScore(HostDBEntry, Allowance) (HostScoreBreakdown, error)
 
 	// Filter returns the hostdb's filterMode and filteredHosts
 	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
@@ -778,12 +786,17 @@ type HostDB interface {
 	// Host returns the HostDBEntry for a given host.
 	Host(pk types.SiaPublicKey) (HostDBEntry, bool, error)
 
+	// IncrementSuccessfulInteractions increments the number of successful
+	// interactions with a host for a given key
+	IncrementSuccessfulInteractions(types.SiaPublicKey) error
+
+	// IncrementFailedInteractions increments the number of failed interactions with
+	// a host for a given key
+	IncrementFailedInteractions(types.SiaPublicKey) error
+
 	// initialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
 	InitialScanComplete() (bool, error)
-
-	// Insert inserts a host into the hostdb
-	Insert(HostDBEntry) error
 
 	// IPViolationsCheck returns a boolean indicating if the IP violation check is
 	// enabled or not.
@@ -803,21 +816,16 @@ type HostDB interface {
 	// of the host.
 	ScoreBreakdown(HostDBEntry) (HostScoreBreakdown, error)
 
+	// SetAllowance updates the allowance used by the hostdb for weighing hosts by
+	// updating the host weight function. It will completely rebuild the hosttree so
+	// it should be used with care.
+	SetAllowance(Allowance) error
+
 	// SetIPViolationCheck enables/disables the IP violation check within the
 	// hostdb.
 	SetIPViolationCheck(enabled bool) error
 
-	// EstimateHostScore returns the estimated score breakdown of a host with the
-	// provided settings.
-	EstimateHostScore(HostDBEntry, Allowance) (HostScoreBreakdown, error)
-
-	IncrementSuccessfulInteractions(types.SiaPublicKey) error
-
-	IncrementFailedInteractions(types.SiaPublicKey) error
-
-	SetAllowance(Allowance) error
-
-	CheckForIPViolations([]types.SiaPublicKey) ([]types.SiaPublicKey, error)
-
+	// UpdateContracts rebuilds the knownContracts of the HostBD using the provided
+	// contracts.
 	UpdateContracts([]RenterContract) error
 }

@@ -13,10 +13,16 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-var persistMeta = persist.Metadata{
-	Header:  "Contractor Persistence",
-	Version: "1.3.1",
-}
+var (
+	persistMeta = persist.Metadata{
+		Header:  "Contractor Persistence",
+		Version: "1.3.1",
+	}
+
+	// PersistFilename is the filename to be used when persisting contractor
+	// information to a JSON file
+	PersistFilename = "contractor.json"
+)
 
 // contractorPersist defines what Contractor data persists across sessions.
 type contractorPersist struct {
@@ -68,7 +74,7 @@ func (c *Contractor) persistData() contractorPersist {
 // load loads the Contractor persistence data from disk.
 func (c *Contractor) load() error {
 	var data contractorPersist
-	err := persist.LoadJSON(persistMeta, &data, c.persistDir)
+	err := persist.LoadJSON(persistMeta, &data, filepath.Join(c.persistDir, PersistFilename))
 	if err != nil {
 		return err
 	}
@@ -120,7 +126,7 @@ func (c *Contractor) load() error {
 
 // save saves the Contractor persistence data to disk.
 func (c *Contractor) save() error {
-	return persist.SaveJSON(persistMeta, c.persistData(), c.persistDir)
+	return persist.SaveJSON(persistMeta, c.persistData(), filepath.Join(c.persistDir, PersistFilename))
 }
 
 // convertPersist converts the pre-v1.3.1 contractor persist formats to the new
@@ -128,7 +134,7 @@ func (c *Contractor) save() error {
 func convertPersist(dir string) error {
 	// Try loading v1.3.1 persist. If it has the correct version number, no
 	// further action is necessary.
-	persistPath := filepath.Join(dir, "contractor.json")
+	persistPath := filepath.Join(dir, PersistFilename)
 	err := persist.LoadJSON(persistMeta, nil, persistPath)
 	if err == nil {
 		return nil
