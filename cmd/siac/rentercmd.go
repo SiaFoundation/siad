@@ -133,6 +133,13 @@ var (
 		Run:     wrap(renterfilesrenamecmd),
 	}
 
+	renterSetLocalPathCmd = &cobra.Command{
+		Use:   "setlocalpath [siapath] [newlocalpath]",
+		Short: "Changes the local path of the file",
+		Long:  "Changes the local path of the file",
+		Run:   wrap(rentersetlocalpathcmd),
+	}
+
 	renterFilesUnstuckCmd = &cobra.Command{
 		Use:   "unstuckall",
 		Short: "Set all files to unstuck",
@@ -1979,6 +1986,22 @@ func renterfilesrenamecmd(path, newpath string) {
 		die("Could not rename file:", err)
 	}
 	fmt.Printf("Renamed %s to %s\n", path, newpath)
+}
+
+//rentersetlocalpathcmd is the handler for the command `siac renter setlocalpath [siapath] [newlocalpath]`
+//Changes the trackingpath of the file
+//through API Endpoint
+func rentersetlocalpathcmd(siapath, newlocalpath string) {
+	//Parse Siapath
+	siaPath, err := modules.NewSiaPath(siapath)
+	if err != nil {
+		die("Couldn't parse Siapath:", err)
+	}
+	err = httpClient.RenterSetRepairPathPost(siaPath, newlocalpath)
+	if err != nil {
+		die("Could not Change the path of the file:", err)
+	}
+	fmt.Printf("Updated %s localpath to %s\n", siapath, newlocalpath)
 }
 
 // renterfilesunstuckcmd is the handler for the command `siac renter
