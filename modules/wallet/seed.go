@@ -203,7 +203,7 @@ func (w *Wallet) PrimarySeed() (modules.Seed, uint64, error) {
 // keep up and multiple wallets with the same seed might desync.
 func (w *Wallet) NextAddresses(n uint64) ([]types.UnlockConditions, error) {
 	if err := w.tg.Add(); err != nil {
-		return []types.UnlockConditions{}, modules.ErrWalletShutdown
+		return nil, modules.ErrWalletShutdown
 	}
 	defer w.tg.Done()
 
@@ -214,7 +214,7 @@ func (w *Wallet) NextAddresses(n uint64) ([]types.UnlockConditions, error) {
 	err = errors.Compose(err, w.syncDB())
 	w.mu.Unlock()
 	if err != nil {
-		return []types.UnlockConditions{}, err
+		return nil, err
 	}
 
 	return ucs, err
