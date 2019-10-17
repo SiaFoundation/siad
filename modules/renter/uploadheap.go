@@ -261,6 +261,8 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chu
 		offset:   int64(chunkIndex * entry.ChunkSize()),
 		priority: priority,
 
+		staticSiaPath: entryCopy.SiaFilePath(),
+
 		// memoryNeeded has to also include the logical data, and also
 		// include the overhead for encryption.
 		//
@@ -986,6 +988,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			r.uploadHeap.managedReset()
 			return nil
 		}
+		chunkPath := nextChunk.staticSiaPath
+		r.repairLog.Printf("Repairing chunk %v of %s, currently have %v out of %v pieces", nextChunk.index, chunkPath, nextChunk.piecesCompleted, nextChunk.piecesNeeded)
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy.
@@ -993,6 +997,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		availableWorkers := len(r.staticWorkerPool.workers)
 		r.staticWorkerPool.mu.RUnlock()
 		if availableWorkers < nextChunk.minimumPieces {
+			r.repairLog.Println("WARN: Not enough workers to repair", chunkPath, "have", availableWorkers, "need", nextChunk.minimumPieces)
 			// If the chunk is not stuck, check whether there are enough hosts
 			// in the allowance to support the chunk.
 			if !nextChunk.stuck {
@@ -1004,10 +1009,10 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 					// There are not enough hosts in the allowance for this
 					// chunk to reach minimum redundancy. Log an error, set the
 					// chunk as stuck, and close the file
-					r.log.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for chunk %v", allowance.Hosts, nextChunk.minimumPieces, nextChunk.id)
+					r.repairLog.Printf("Allowance has insufficient hosts for %s, have %v, need %v", chunkPath, allowance.Hosts, nextChunk.minimumPieces)
 					err := nextChunk.fileEntry.SetStuck(nextChunk.index, true)
 					if err != nil {
-						r.log.Debugln("WARN: unable to mark chunk as stuck:", err, nextChunk.id)
+						r.repairLog.Println("WARN: unable to mark", chunkPath, "chunk as stuck:", err)
 					}
 				}
 			}
@@ -1017,7 +1022,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			// for now and close the file
 			err := nextChunk.fileEntry.Close()
 			if err != nil {
-				r.log.Debugln("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
+				r.repairLog.Println("WARN: unable to close", chunkPath, ":", err)
 			}
 			// Remove the chunk from the repairingChunks map
 			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
@@ -1033,10 +1038,10 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			// memory for the repair. Since that is not an issue with the file
 			// we will just close the chunk file entry instead of marking it as
 			// stuck
-			r.log.Debugln("WARN: unable to prepare next chunk without issues", err, nextChunk.id)
+			r.repairLog.Println("WARN: error while preparing chunk from", chunkPath, ":", err)
 			err = nextChunk.fileEntry.Close()
 			if err != nil {
-				r.log.Debugln("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
+				r.repairLog.Println("WARN: unable to close", chunkPath, ":", err)
 			}
 			// Remove the chunk from the repairingChunks map
 			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
@@ -1099,7 +1104,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			r.directoryHeap.managedReset()
 			err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
 			if err != nil {
-				r.log.Println("WARN: error re-initializing the directory heap:", err)
+				r.repairLog.Println("WARN: error re-initializing the directory heap:", err)
 			}
 		}
 
@@ -1112,7 +1117,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		r.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetBackupChunks)
 		numBackupchunks := r.uploadHeap.managedLen() - heapLen
 		if numBackupchunks > 0 {
-			r.log.Println("Added", numBackupchunks, "backup chunks to the upload heap")
+			r.repairLog.Println("Added", numBackupchunks, "backup chunks to the upload heap")
 		}
 
 		// Check if there is work to do. If the filesystem is healthy and the
@@ -1134,9 +1139,9 @@ func (r *Renter) threadedUploadAndRepair() {
 			// upload or there is a repair that is needed.
 			select {
 			case <-r.uploadHeap.newUploads:
-				r.log.Debugln("repair loop triggered by new upload channel")
+				r.repairLog.Debugln("repair loop triggered by new upload channel")
 			case <-r.uploadHeap.repairNeeded:
-				r.log.Debugln("repair loop triggered by repair needed channel")
+				r.repairLog.Debugln("repair loop triggered by repair needed channel")
 			case <-r.tg.StopChan():
 				return
 			}
@@ -1147,7 +1152,7 @@ func (r *Renter) threadedUploadAndRepair() {
 				// the error. We don't want to sleep here as we were trigger
 				// to repair chunks so we don't want to delay the repair if
 				// there are chunks in the upload heap already.
-				r.log.Println("WARN: error re-initializing the directory heap:", err)
+				r.repairLog.Println("WARN: error re-initializing the directory heap:", err)
 			}
 
 			// Continue here to force the code to re-check for backups, to
@@ -1162,7 +1167,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			// Log the error but don't sleep as there are potentially chunks in
 			// the heap from new uploads. If the heap is empty the next check
 			// will catch that and handle it as an error
-			r.log.Debugln("WARN: error adding chunks to the heap:", err)
+			r.repairLog.Debugln("WARN: error adding chunks to the heap:", err)
 		}
 
 		// There are benign edge cases where the heap will be empty after chunks
@@ -1173,13 +1178,13 @@ func (r *Renter) threadedUploadAndRepair() {
 		// The repair loop will return immediately if it is given little or no
 		// work but it can see that there is more work that it could be given.
 
-		r.log.Debugln("Executing an upload and repair cycle, uploadHeap has", r.uploadHeap.managedLen(), "chunks in it")
+		r.repairLog.Debugln("Executing an upload and repair cycle, uploadHeap has", r.uploadHeap.managedLen(), "chunks in it")
 		err = r.managedRepairLoop(hosts)
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit
 			// and then try again. Here we do not skip to the next iteration as
 			// we want to call bubble on the impacted directories
-			r.log.Println("WARN: there was an error in the repair loop:", err)
+			r.repairLog.Println("WARN: there was an error in the repair loop:", err)
 			select {
 			case <-time.After(uploadAndRepairErrorSleepDuration):
 			case <-r.tg.StopChan():

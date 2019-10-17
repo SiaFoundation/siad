@@ -74,7 +74,7 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	extendDeadline(s.conn, modules.NegotiateSettingsTime+timeoutDur)
 	var resp modules.LoopLockResponse
 	if err := s.call(modules.RPCLoopLock, req, &resp, modules.RPCMinLen); err != nil {
-		return types.FileContractRevision{}, nil, err
+		return types.FileContractRevision{}, nil, errors.AddContext(err, "lock request on host session has failed")
 	}
 	// Unconditionally update the challenge.
 	s.challenge = resp.NewChallenge
@@ -842,7 +842,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		Timeout: 45 * time.Second, // TODO: Constant
 	}).Dial("tcp", string(host.NetAddress))
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unsucessful dial when creating a new session")
 	}
 	conn := ratelimit.NewRLConn(c, cs.rl, cancel)
 

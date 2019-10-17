@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	logFile = modules.RenterDir + ".log"
+	logFile       = modules.RenterDir + ".log"
+	repairLogFile = "repair.log"
 	// PersistFilename is the filename to be used when persisting renter
 	// information to a JSON file
 	PersistFilename = "renter.json"
@@ -130,6 +131,10 @@ func (r *Renter) managedInitPersist() error {
 
 	// Initialize the logger.
 	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
+	if err != nil {
+		return err
+	}
+	r.repairLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, repairLogFile))
 	if err != nil {
 		return err
 	}
