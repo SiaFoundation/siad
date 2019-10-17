@@ -368,6 +368,8 @@ func (n *DNode) managedDeleteFile(fileName string) error {
 		sf.Close()
 		return err
 	}
+	// Remove it from the parent.
+	n.removeFile(sf)
 	n.mu.Unlock()
 	sf.Close()
 	return nil
