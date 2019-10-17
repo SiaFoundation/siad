@@ -54,12 +54,20 @@ func randomPiece() piece {
 // chunk, this is a no-op. The combined chunk will be stored in the provided
 // 'dir'.
 func setCombinedChunkOfTestFile(sf *SiaFile) error {
+	if true {
+		// TODO: remove when partial chunks are enabled again
+		return nil
+	}
 	return setCustomCombinedChunkOfTestFile(sf, fastrand.Intn(2)+1)
 }
 
 // setCustomCombinedChunkOfTestFile sets either 1 or 2 combined chunks of a
 // SiaFile for testing and changes its status to completed.
 func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error {
+	if true {
+		// TODO: remove when partial chunks are enabled again
+		return nil
+	}
 	if numCombinedChunks != 1 && numCombinedChunks != 2 {
 		return errors.New("numCombinedChunks should be 1 or 2")
 	}
@@ -342,9 +350,9 @@ func TestFileHealth(t *testing.T) {
 	if err := setCustomCombinedChunkOfTestFile(f, 1); err != nil {
 		t.Fatal(err)
 	}
-	if f.PartialChunks()[0].Status != CombinedChunkStatusCompleted {
-		t.Fatal("File has wrong combined chunk status")
-	}
+	//	if f.PartialChunks()[0].Status != CombinedChunkStatusCompleted {
+	//		t.Fatal("File has wrong combined chunk status")
+	//	}
 	for i := 0; i < 2; i++ {
 		host := fmt.Sprintln("host", i)
 		spk := types.SiaPublicKey{}

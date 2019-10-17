@@ -893,6 +893,7 @@ func TestSetCombinedChunkSingle(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
+	t.Skip("skip until partial chunks are enabled")
 
 	// Create two SiaFiles with partial chunks and link them by giving the second
 	// one the same partials siafile as the first one.

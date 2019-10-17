@@ -76,7 +76,7 @@ func (fs *FileSystem) AddTestSiaFileWithErr(siaPath modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	err = fs.NewSiaFile(siaPath, "", ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fastrand.Intn(100)), 0777, true)
+	err = fs.NewSiaFile(siaPath, "", ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fastrand.Intn(100)), 0777, false)
 	if err != nil {
 		return err
 	}
