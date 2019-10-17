@@ -146,9 +146,8 @@ func (c *chunk) numPieces() (numPieces int) {
 // New create a new SiaFile.
 func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFileSetEntry, disablePartialUpload bool) (*SiaFile, error) {
 	// TODO remove this
-	if !disablePartialUpload && partialsSiaFile == nil {
-		panic("nil partialssiafile but partial upload wasn't disabled")
-	}
+	disablePartialUpload = true
+
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
 	zeroHealth := float64(1 + erasureCode.MinPieces()/(erasureCode.NumPieces()-erasureCode.MinPieces()))

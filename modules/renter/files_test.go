@@ -54,7 +54,7 @@ func (r *Renter) newRenterTestFile() (*filesystem.FNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = r.staticFileSystem.NewSiaFile(sp, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, 0777, true)
+	err = r.staticFileSystem.NewSiaFile(sp, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, 0777, false)
 	if err != nil {
 		return nil, err
 	}
