@@ -150,7 +150,9 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 		}
 		stuckChunksAdded++
 	}
-	r.repairLog.Printf("Added %v stuck chunks from %s to the repair heap", stuckChunksAdded, siaPath.String())
+	if stuckChunksAdded > 0 {
+		r.repairLog.Printf("Added %v stuck chunks from %s to the repair heap", stuckChunksAdded, siaPath.String())
+	}
 
 	// check if there are more stuck chunks in the file
 	if len(unfinishedStuckChunks) > 0 {
@@ -473,7 +475,6 @@ func (r *Renter) threadedStuckFileLoop() {
 		case r.uploadHeap.repairNeeded <- struct{}{}:
 		default:
 		}
-		r.repairLog.Printf("Added %v stuck chunks to the upload heap, which now has %v total chunks", numStuckChunks, r.uploadHeap.managedLen())
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
