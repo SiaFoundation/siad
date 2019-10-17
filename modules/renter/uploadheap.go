@@ -997,7 +997,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		availableWorkers := len(r.staticWorkerPool.workers)
 		r.staticWorkerPool.mu.RUnlock()
 		if availableWorkers < nextChunk.minimumPieces {
-			r.repairLog.Println("WARN: Not enough workers to repair", chunkPath, "have", availableWorkers, "need", nextChunk.minimumPieces)
+			r.repairLog.Printf("WARN: Not enough workers to repair %s, have %v but need %v", chunkPath, availableWorkers, nextChunk.minimumPieces)
 			// If the chunk is not stuck, check whether there are enough hosts
 			// in the allowance to support the chunk.
 			if !nextChunk.stuck {
@@ -1012,7 +1012,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 					r.repairLog.Printf("Allowance has insufficient hosts for %s, have %v, need %v", chunkPath, allowance.Hosts, nextChunk.minimumPieces)
 					err := nextChunk.fileEntry.SetStuck(nextChunk.index, true)
 					if err != nil {
-						r.repairLog.Println("WARN: unable to mark", chunkPath, "chunk as stuck:", err)
+						r.repairLog.Printf("WARN: unable to mark chunk %v of %s as stuck: %v", nextChunk.index, chunkPath, err)
 					}
 				}
 			}
@@ -1022,7 +1022,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			// for now and close the file
 			err := nextChunk.fileEntry.Close()
 			if err != nil {
-				r.repairLog.Println("WARN: unable to close", chunkPath, ":", err)
+				r.repairLog.Printf("WARN: unable to close %s: %v", chunkPath, err)
 			}
 			// Remove the chunk from the repairingChunks map
 			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
@@ -1038,10 +1038,10 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			// memory for the repair. Since that is not an issue with the file
 			// we will just close the chunk file entry instead of marking it as
 			// stuck
-			r.repairLog.Println("WARN: error while preparing chunk from", chunkPath, ":", err)
+			r.repairLog.Printf("WARN: error while preparing chunk %v from %s: %v", nextChunk.index, chunkPath, err)
 			err = nextChunk.fileEntry.Close()
 			if err != nil {
-				r.repairLog.Println("WARN: unable to close", chunkPath, ":", err)
+				r.repairLog.Printf("WARN: unable to close %s: %v", chunkPath, err)
 			}
 			// Remove the chunk from the repairingChunks map
 			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
@@ -1117,7 +1117,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		r.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetBackupChunks)
 		numBackupchunks := r.uploadHeap.managedLen() - heapLen
 		if numBackupchunks > 0 {
-			r.repairLog.Println("Added", numBackupchunks, "backup chunks to the upload heap")
+			r.repairLog.Printf("Added %v backup chunks to the upload heap", numBackupChunks)
 		}
 
 		// Check if there is work to do. If the filesystem is healthy and the
@@ -1167,7 +1167,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			// Log the error but don't sleep as there are potentially chunks in
 			// the heap from new uploads. If the heap is empty the next check
 			// will catch that and handle it as an error
-			r.repairLog.Debugln("WARN: error adding chunks to the heap:", err)
+			r.repairLog.Println("WARN: error adding chunks to the heap:", err)
 		}
 
 		// There are benign edge cases where the heap will be empty after chunks
@@ -1178,7 +1178,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// The repair loop will return immediately if it is given little or no
 		// work but it can see that there is more work that it could be given.
 
-		r.repairLog.Debugln("Executing an upload and repair cycle, uploadHeap has", r.uploadHeap.managedLen(), "chunks in it")
+		r.repairLog.Println("Executing an upload and repair cycle, uploadHeap has", r.uploadHeap.managedLen(), "chunks in it")
 		err = r.managedRepairLoop(hosts)
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit

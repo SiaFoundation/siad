@@ -43,7 +43,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modul
 		// Get Random stuck file from directory
 		siaPath, err := r.managedStuckFile(dirSiaPath)
 		if err != nil {
-			return dirSiaPaths, errors.AddContext(err, "unable to get random stuck file")
+			return dirSiaPaths, errors.AddContext(err, "unable to get random stuck file in dir "+dirSiaPath.String())
 		}
 
 		// Add stuck chunk to upload heap and signal repair needed
@@ -310,7 +310,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	// do as the risks associated with being out of sync are low.
 	siaDir, err := r.staticDirSet.Open(dirSiaPath)
 	if err != nil {
-		return modules.SiaPath{}, err
+		return modules.SiaPath{}, errors.AddContext(err, "unable to open siaDir "+dirSiaPath.String())
 	}
 	defer siaDir.Close()
 	metadata := siaDir.Metadata()
@@ -333,7 +333,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	dir := dirSiaPath.SiaDirSysPath(r.staticFilesDir)
 	fileinfos, err := ioutil.ReadDir(dir)
 	if err != nil {
-		return modules.SiaPath{}, err
+		return modules.SiaPath{}, errors.AddContext(err, "unable to open sys dir")
 	}
 	// Iterate over the fileinfos
 	for _, fi := range fileinfos {
@@ -346,13 +346,13 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 		var sp modules.SiaPath
 		err = sp.FromSysPath(filepath.Join(dir, fi.Name()), dir)
 		if err != nil {
-			return modules.SiaPath{}, err
+			return modules.SiaPath{}, errors.AddContext(err, "unable to get the siapath from the sys path")
 		}
 
 		// Open SiaFile, grab the number of stuck chunks and close the file
 		f, err := r.staticFileSet.Open(sp)
 		if err != nil {
-			return modules.SiaPath{}, err
+			return modules.SiaPath{}, errors.AddContext(err, "could not open siafileset for "+sp.String())
 		}
 		numStuckChunks := int(f.NumStuckChunks())
 		err = f.Close()
