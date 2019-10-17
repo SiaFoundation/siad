@@ -492,7 +492,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 		// Pop an explored directory off of the directory heap
 		dir, err := r.managedNextExploredDirectory()
 		if err != nil {
-			r.log.Println("WARN: error getting explored directory:", err)
+			r.repairLog.Println("WARN: error fetching directory for repair:", err)
 			// Reset the directory heap to try and help address the error
 			r.directoryHeap.managedReset()
 			return siaPaths, err
@@ -500,7 +500,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 
 		// Sanity Check if directory was returned
 		if dir == nil {
-			r.log.Debugln("no more chunks added to the upload heap because there are no more directories")
+			r.repairLog.Debugln("no more chunks added to the upload heap because there are no more directories")
 			return siaPaths, nil
 		}
 
@@ -512,7 +512,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 
 		// If the directory that was just popped is healthy then return
 		if dirHealth < RepairThreshold {
-			r.log.Debugln("no more chunks added to the upload heap because directory popped is healthy")
+			r.repairLog.Debugln("no more chunks added to the upload heap because directory popped is healthy")
 			return siaPaths, nil
 		}
 
@@ -527,7 +527,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 			// the heap or are currently being repaired, so return. This can be
 			// the case in new uploads or repair loop iterations triggered from
 			// bubble
-			r.log.Debugln("no more chunks added to the upload heap")
+			r.repairLog.Debugln("no more chunks added to the upload heap")
 			return siaPaths, nil
 		}
 		chunksAdded := heapLen - prevHeapLen
@@ -540,7 +540,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 		// another thread could have added the directory back to the heap after
 		// we just popped it off. This is the case for new uploads.
 		siaPaths[dirSiaPath] = struct{}{}
-		r.log.Println("Added", chunksAdded, "chunks from", dirSiaPath, "to the upload heap")
+		r.repairLog.Printf("Added %v chunks from %s to the repair heap", chunksAdded, dirSiaPath)
 	}
 
 	return siaPaths, nil
@@ -1115,8 +1115,8 @@ func (r *Renter) threadedUploadAndRepair() {
 		// and chunks.
 		heapLen := r.uploadHeap.managedLen()
 		r.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetBackupChunks)
-		numBackupchunks := r.uploadHeap.managedLen() - heapLen
-		if numBackupchunks > 0 {
+		numBackupChunks := r.uploadHeap.managedLen() - heapLen
+		if numBackupChunks > 0 {
 			r.repairLog.Printf("Added %v backup chunks to the upload heap", numBackupChunks)
 		}
 
@@ -1178,7 +1178,10 @@ func (r *Renter) threadedUploadAndRepair() {
 		// The repair loop will return immediately if it is given little or no
 		// work but it can see that there is more work that it could be given.
 
-		r.repairLog.Println("Executing an upload and repair cycle, uploadHeap has", r.uploadHeap.managedLen(), "chunks in it")
+		uploadHeapLen := r.uploadHeap.managedLen()
+		if uploadHeapLen > 0 {
+			r.repairLog.Printf("Executing an upload and repair cycle, uploadHeap has %v chunks in it", uploadHeapLen)
+		}
 		err = r.managedRepairLoop(hosts)
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit
