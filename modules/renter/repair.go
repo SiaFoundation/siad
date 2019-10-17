@@ -143,7 +143,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 			if err = chunk.fileEntry.Close(); err != nil {
 				// If there is an error log it and append to the other errors so
 				// that we close as many files as possible
-				r.repairLog.Printf("WARN: unable to close %s after pushing chunk to upload heap: %v",siaPath.String(), err)
+				r.repairLog.Printf("WARN: unable to close %s after pushing chunk to upload heap: %v", siaPath.String(), err)
 				allErrors = errors.Compose(allErrors, err)
 			}
 			continue
@@ -496,7 +496,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		for _, dirSiaPath := range dirSiaPaths {
 			err = r.managedBubbleMetadata(dirSiaPath)
 			if err != nil {
-				r.repairLog.Println("Error propagating updated health of %s: %v", dirSiaPath.String(), err)
+				r.repairLog.Printf("Error propagating updated health of %s: %v", dirSiaPath.String(), err)
 				select {
 				case <-time.After(stuckLoopErrorSleepDuration):
 				case <-r.tg.StopChan():
