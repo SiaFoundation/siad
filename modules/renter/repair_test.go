@@ -802,7 +802,7 @@ func TestRandomStuckFile(t *testing.T) {
 	}
 	defer rt.Close()
 
-	// Create 3 files
+	// Create 3 files at root
 	//
 	// File 1 will have all chunks stuck
 	file1, err := rt.renter.newRenterTestFile()
@@ -843,12 +843,60 @@ func TestRandomStuckFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkFindRandomFile(t, rt.renter, modules.RootSiaPath(), siaPath1, siaPath2, siaPath3)
 
+	// Create a directory
+	dir, err := modules.NewSiaPath("Dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Move siafiles to dir
+	siaPath1, err = dir.Join(siaPath1.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = file1.Rename(siaPath1.SiaFileSysPath(rt.renter.staticFilesDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath2, err = dir.Join(siaPath2.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = file2.Rename(siaPath2.SiaFileSysPath(rt.renter.staticFilesDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath3, err = dir.Join(siaPath3.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = file3.Rename(siaPath3.SiaFileSysPath(rt.renter.staticFilesDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Since we disabled the health loop for this test, call it manually to
+	// update the directory metadata
+	err = rt.renter.managedBubbleMetadata(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkFindRandomFile(t, rt.renter, dir, siaPath1, siaPath2, siaPath3)
+}
+
+// checkFindRandomFile is a helper function that checks the output from
+// managedStuckFile in a loop
+func checkFindRandomFile(t *testing.T, r *Renter, dir, siaPath1, siaPath2, siaPath3 modules.SiaPath) {
 	// Find a stuck file randomly, it should never find file 3 and should find
 	// file 1 more than file 2.
 	var count1, count2 int
 	for i := 0; i < 100; i++ {
-		siaPath, err := rt.renter.managedStuckFile(modules.RootSiaPath())
+		siaPath, err := r.managedStuckFile(dir)
 		if err != nil {
 			t.Fatal(err)
 		}

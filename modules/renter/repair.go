@@ -344,7 +344,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 
 		// Get SiaPath
 		var sp modules.SiaPath
-		err = sp.FromSysPath(filepath.Join(dir, fi.Name()), dir)
+		err = sp.FromSysPath(filepath.Join(dir, fi.Name()), r.staticFilesDir)
 		if err != nil {
 			return modules.SiaPath{}, err
 		}
