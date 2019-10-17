@@ -40,14 +40,17 @@ type (
 
 	// node is a struct that contains the commmon fields of every node.
 	node struct {
-		path      string
+		// fields that all copies of a node share.
+		path      *string
 		parent    *DNode
-		name      string
-		staticUID threadUID
+		name      *string
 		staticWal *writeaheadlog.WAL
 		threads   map[threadUID]threadInfo
-		threadUID threadUID
+		staticUID threadUID
 		mu        *sync.Mutex
+
+		// fields that differ between copies of the same node.
+		threadUID threadUID
 	}
 
 	// threadInfo contains useful information about the thread accessing the
@@ -64,9 +67,9 @@ type (
 // newNode is a convenience function to initialize a node.
 func newNode(parent *DNode, path, name string, uid threadUID, wal *writeaheadlog.WAL) node {
 	return node{
-		path:      path,
+		path:      &path,
 		parent:    parent,
-		name:      name,
+		name:      &name,
 		staticUID: newThreadUID(),
 		staticWal: wal,
 		threads:   make(map[threadUID]threadInfo),
@@ -105,7 +108,7 @@ func (n *node) _close() {
 
 // absPath returns the absolute path of the node.
 func (n *node) absPath() string {
-	return n.path
+	return *n.path
 }
 
 // managedAbsPath returns the absolute path of the node.
@@ -336,7 +339,11 @@ func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DNode, error) {
 // OpenSiaFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FNode, error) {
-	return fs.managedOpenFile(siaPath.String())
+	sf, err := fs.managedOpenFile(siaPath.String())
+	if err != nil {
+		return nil, err
+	}
+	return sf, nil
 }
 
 // RenameFile renames the file with oldSiaPath to newSiaPath.

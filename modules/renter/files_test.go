@@ -350,7 +350,6 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	// Rename file that would create a directory
 	siaPathWithDir, err := modules.NewSiaPath("new/name/with/dir/test")
 	if err != nil {

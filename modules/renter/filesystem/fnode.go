@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -20,6 +21,18 @@ type (
 	}
 )
 
+// close calls the common close method.
+func (n *FNode) close() {
+	n.node._close()
+}
+
+// managedClose calls close while holding the node's lock.
+func (n *FNode) managedClose() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.close()
+}
+
 // Close calls close on the underlying node and also removes the fNode from its
 // parent.
 func (n *FNode) Close() {
@@ -31,17 +44,18 @@ func (n *FNode) Close() {
 		parent.mu.Lock()
 	}
 	n.mu.Lock()
-
-	// Remove node from parent if the current thread was the last one.
-	removeDir := len(n.threads) == 1
-	if removeDir {
-		parent.removeFile(n)
-		removeDir = true
+	if n.parent != parent {
+		build.Critical("parent changed")
 	}
 
 	// Call common close method.
 	n.node._close()
 
+	// Remove node from parent if the current thread was the last one.
+	removeDir := len(n.threads) == 0
+	if removeDir {
+		parent.removeFile(n)
+	}
 	// Unlock child and parent.
 	n.mu.Unlock()
 	if parent != nil {
@@ -54,7 +68,9 @@ func (n *FNode) Close() {
 			parent.mu.Lock()
 			child.mu.Lock()
 			removeDir = len(child.threads)+len(child.directories)+len(child.files) == 0
-			parent.removeDir(child)
+			if removeDir {
+				parent.removeDir(child)
+			}
 			child.mu.Unlock()
 			child, parent = parent, parent.parent
 			child.mu.Unlock() // parent became child
@@ -158,12 +174,14 @@ func (n *FNode) managedRename(newName string, oldParent, newParent *DNode) error
 		return err
 	}
 	// Remove file from old parent and add it to new parent.
-	delete(oldParent.files, n.name)
-	newParent.files[newName] = n
+	// TODO: iteratively remove parents like in Close
+	oldParent.removeFile(n)
 	// Update parent and name.
 	n.parent = newParent
-	n.name = newName
-	n.path = filepath.Join(newParent.path, n.name)
+	*n.name = newName
+	*n.path = newPath
+	// Add file to new parent.
+	n.parent.files[*n.name] = n
 	return err
 }
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
@@ -151,10 +152,8 @@ func (n *DNode) managedList(recursive, cached bool, fileLoadChan chan *FNode, di
 	return nil
 }
 
-// close calls the common close method of all nodes and clears the SiaDir if no
-// more threads are accessing.
+// close calls the common close method.
 func (n *DNode) close() {
-	// Call common close method.
 	n.node._close()
 }
 
@@ -275,15 +274,18 @@ func (n *DNode) Close() {
 		parent.mu.Lock()
 	}
 	n.mu.Lock()
-
-	// Remove node from parent if there are no more children after this close.
-	removeDir := len(n.threads) == 1 && len(n.directories) == 0 && len(n.files) == 0
-	if parent != nil && removeDir {
-		parent.removeDir(n)
+	if n.parent != parent {
+		build.Critical("dir parent changed")
 	}
 
 	// call private close method.
 	n.close()
+
+	// Remove node from parent if there are no more children after this close.
+	removeDir := len(n.threads) == 0 && len(n.directories) == 0 && len(n.files) == 0 && true
+	if parent != nil && removeDir {
+		parent.removeDir(n)
+	}
 
 	// Unlock child and parent.
 	n.mu.Unlock()
@@ -298,7 +300,9 @@ func (n *DNode) Close() {
 			parent.mu.Lock()
 			child.mu.Lock()
 			removeDir = len(child.threads)+len(child.directories)+len(child.files) == 0
-			parent.removeDir(child)
+			if removeDir {
+				parent.removeDir(child)
+			}
 			child.mu.Unlock()
 			child, parent = parent, parent.parent
 			child.mu.Unlock() // parent became child
@@ -338,6 +342,7 @@ func (n *DNode) managedDelete() error {
 			if err := file.managedDelete(); err != nil {
 				return err
 			}
+			file.managedClose()
 		}
 	}
 	return nil
@@ -473,7 +478,7 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 		files:       make(map[string]*FNode),
 		lazySiaDir:  nil,
 	}
-	n.directories[dir.name] = dir
+	n.directories[*dir.name] = dir
 	return dir.managedCopy(), nil
 }
 
@@ -519,11 +524,11 @@ func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 // NOTE: child.mu needs to be locked
 func (n *DNode) removeDir(child *DNode) {
 	// Remove the child node.
-	currentChild, exists := n.directories[child.name]
+	currentChild, exists := n.directories[*child.name]
 	if !exists || child.staticUID != currentChild.staticUID {
 		return // nothing to do
 	}
-	delete(n.directories, child.name)
+	delete(n.directories, *child.name)
 }
 
 // removeFile removes a child from a dNode. If as a result the dNode
@@ -532,9 +537,9 @@ func (n *DNode) removeDir(child *DNode) {
 // NOTE: child.mu needs to be locked
 func (n *DNode) removeFile(child *FNode) {
 	// Remove the child node.
-	currentChild, exists := n.files[child.name]
+	currentChild, exists := n.files[*child.name]
 	if !exists || child.SiaFile != currentChild.SiaFile {
 		return // Nothing to do
 	}
-	delete(n.files, child.name)
+	delete(n.files, *child.name)
 }
