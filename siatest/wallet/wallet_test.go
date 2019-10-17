@@ -708,7 +708,7 @@ func TestWalletVerifyPassword(t *testing.T) {
 	}()
 
 	// Check that verifying a password when one is not set will fail
-	wvpg, err := wallet.WalletVerifyPasswordPost("wrong")
+	wvpg, err := wallet.WalletVerifyPasswordGet("wrong")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -729,7 +729,7 @@ func TestWalletVerifyPassword(t *testing.T) {
 	}
 
 	// Verify that the password is the one used to secure the wallet
-	wvpg, err = wallet.WalletVerifyPasswordPost(password)
+	wvpg, err = wallet.WalletVerifyPasswordGet(password)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -738,7 +738,7 @@ func TestWalletVerifyPassword(t *testing.T) {
 	}
 
 	// Try and verify an incorrect password
-	wvpg, err = wallet.WalletVerifyPasswordPost("wrong")
+	wvpg, err = wallet.WalletVerifyPasswordGet("wrong")
 	if err != nil {
 		t.Fatal(err)
 	}

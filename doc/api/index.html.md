@@ -4203,6 +4203,31 @@ Unlock hash (i.e. wallet address) whose transactions are being requested.
 **valid**  
 valid indicates if the address supplied to :addr is a valid UnlockHash.  
 
+## /wallet/verifypassword [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/wallet/verifypassword?password=<password>"
+```
+
+Takes a password and verifies if it is the valid password used to encrypt the wallet.
+
+### Path Parameters
+#### REQUIRED
+**password** | string  
+Password being checked.  
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+	"valid": true
+}
+```
+**valid**  
+valid indicates if the password supplied is the password used to encrypte the wallet.  
+
 ## /wallet/watch [GET]
 > curl example  
 
