@@ -137,10 +137,10 @@ func (fs *FileSystem) AddSiaFileFromReader(rs io.ReadSeeker, siaPath modules.Sia
 	if err != nil {
 		return err
 	}
-	if err := fs.NewSiaDir(dirSiaPath); err != nil {
+	if err := fs.managedNewSiaDir(dirSiaPath); err != nil {
 		return err
 	}
-	dir, err := fs.OpenSiaDir(dirSiaPath)
+	dir, err := fs.managedOpenDir(dirSiaPath.String())
 	if err != nil {
 		return err
 	}
@@ -218,12 +218,7 @@ func (fs *FileSystem) FilePath(siaPath modules.SiaPath) string {
 
 // NewSiaDir creates the folder for the specified siaPath.
 func (fs *FileSystem) NewSiaDir(siaPath modules.SiaPath) error {
-	dirPath := siaPath.SiaDirSysPath(fs.staticName)
-	_, err := siadir.New(dirPath, fs.staticName, fs.staticWal)
-	if os.IsExist(err) {
-		return nil // nothing to do
-	}
-	return err
+	return fs.managedNewSiaDir(siaPath)
 }
 
 // NewSiaFile creates a SiaFile at the specified siaPath.
@@ -330,16 +325,16 @@ func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FNode, err
 // OpenSiaDir opens a SiaDir and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DNode, error) {
-	dir, err := fs.DNode.managedOpenDir(siaPath.String())
-	if err != nil {
-		return nil, err
-	}
-	return dir, nil
+	fmt.Printf("OpenSiaDir Start: '%v'\n", siaPath.String())
+	defer fmt.Printf("OpenSiaDir Stop: '%v'\n", siaPath.String())
+	return fs.managedOpenSiaDir(siaPath)
 }
 
 // OpenSiaFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FNode, error) {
+	fmt.Printf("OpenSiaFile Start: '%v'\n", siaPath.String())
+	defer fmt.Printf("OpenSiaFile Stop: '%v'\n", siaPath.String())
 	return fs.managedOpenFile(siaPath.String())
 }
 
@@ -350,7 +345,7 @@ func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	oldDir, err := fs.OpenSiaDir(oldDirSiaPath)
+	oldDir, err := fs.managedOpenSiaDir(oldDirSiaPath)
 	if err != nil {
 		return err
 	}
@@ -373,7 +368,7 @@ func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) error {
 	if err := fs.NewSiaDir(newDirSiaPath); err != nil {
 		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newDirSiaPath.String(), oldSiaPath.String()))
 	}
-	newDir, err := fs.OpenSiaDir(newDirSiaPath)
+	newDir, err := fs.managedOpenSiaDir(newDirSiaPath)
 	if err != nil {
 		return err
 	}
@@ -522,6 +517,16 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 	return fis, dis, err
 }
 
+// managedNewSiaDir creates the folder at the specified siaPath.
+func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath) error {
+	dirPath := siaPath.SiaDirSysPath(fs.staticName)
+	_, err := siadir.New(dirPath, fs.staticName, fs.staticWal)
+	if os.IsExist(err) {
+		return nil // nothing to do
+	}
+	return err
+}
+
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) managedOpenFile(path string) (*FNode, error) {
@@ -560,4 +565,14 @@ func (fs *FileSystem) managedNewSiaFile(path string, source string, ec modules.E
 		defer dir.Close()
 	}
 	return dir.managedNewSiaFile(fileName, source, ec, mk, fileSize, fileMode, disablePartialUpload)
+}
+
+// managedOpenSiaDir opens a SiaDir and adds it and all of its parents to the
+// filesystem tree.
+func (fs *FileSystem) managedOpenSiaDir(siaPath modules.SiaPath) (*DNode, error) {
+	dir, err := fs.DNode.managedOpenDir(siaPath.String())
+	if err != nil {
+		return nil, err
+	}
+	return dir, nil
 }
