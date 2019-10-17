@@ -64,7 +64,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modul
 		// Remember the directory so bubble can be called on it at the end of
 		// the iteration
 		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
-		r.log.Debugf("Added %v stuck chunks from directory `%s`", currentNumStuckChunks-prevNumStuckChunks, dirSiaPath.String())
+		r.repairLog.Printf("Added %v stuck chunks from %s", currentNumStuckChunks-prevNumStuckChunks, dirSiaPath.String())
 		prevNumStuckChunks = currentNumStuckChunks
 	}
 	return dirSiaPaths, nil
@@ -124,7 +124,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 			if err = chunk.fileEntry.Close(); err != nil {
 				// If there is an error log it and append to the other errors so
 				// that we close as many files as possible
-				r.log.Println("WARN: unable to close file:", err)
+				r.repairLog.Printf("WARN: unable to close %s after adding stuck chunks to repair heap: %v", siaPath.String(), err)
 				allErrors = errors.Compose(allErrors, err)
 			}
 		}
@@ -143,13 +143,14 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 			if err = chunk.fileEntry.Close(); err != nil {
 				// If there is an error log it and append to the other errors so
 				// that we close as many files as possible
-				r.log.Println("WARN: unable to close file:", err)
+				r.repairLog.Printf("WARN: unable to close %s after pushing chunk to upload heap: %v",siaPath.String(), err)
 				allErrors = errors.Compose(allErrors, err)
 			}
 			continue
 		}
 		stuckChunksAdded++
 	}
+	r.repairLog.Printf("Added %v stuck chunks from %s to the repair heap", stuckChunksAdded, siaPath.String())
 
 	// check if there are more stuck chunks in the file
 	if len(unfinishedStuckChunks) > 0 {
@@ -439,14 +440,14 @@ func (r *Renter) threadedStuckFileLoop() {
 		// directory.
 		stuckStackDirSiaPaths, err := r.managedAddStuckChunksFromStuckStack(hosts)
 		if err != nil {
-			r.log.Println("WARN: error adding stuck chunks to upload heap from stuck stack:", err)
+			r.repairLog.Println("WARN: error adding stuck chunks to repair heap from files with previously successful stuck repair jobs:", err)
 		}
 		dirSiaPaths = append(dirSiaPaths, stuckStackDirSiaPaths...)
 
 		// Try add random stuck chunks to upload heap
 		randomDirSiaPaths, err := r.managedAddRandomStuckChunks(hosts)
 		if err != nil {
-			r.log.Println("WARN: error adding random stuck chunks to upload heap:", err)
+			r.repairLog.Println("WARN: error adding random stuck chunks to upload heap:", err)
 		}
 		dirSiaPaths = append(dirSiaPaths, randomDirSiaPaths...)
 
@@ -472,7 +473,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		case r.uploadHeap.repairNeeded <- struct{}{}:
 		default:
 		}
-		r.log.Println(numStuckChunks, "stuck chunks added to the upload heap, repair signal sent")
+		r.repairLog.Printf("Added %v stuck chunks to the upload heap", numStuckChunks)
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
@@ -495,7 +496,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		for _, dirSiaPath := range dirSiaPaths {
 			err = r.managedBubbleMetadata(dirSiaPath)
 			if err != nil {
-				r.log.Println("Error calling managedBubbleMetadata on `", dirSiaPath.String(), "`:", err)
+				r.repairLog.Println("Error propagating updated health of %s: %v", dirSiaPath.String(), err)
 				select {
 				case <-time.After(stuckLoopErrorSleepDuration):
 				case <-r.tg.StopChan():
