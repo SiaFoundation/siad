@@ -473,7 +473,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		case r.uploadHeap.repairNeeded <- struct{}{}:
 		default:
 		}
-		r.repairLog.Printf("Added %v stuck chunks to the upload heap", numStuckChunks)
+		r.repairLog.Printf("Added %v stuck chunks to the upload heap, which now has %v total chunks", numStuckChunks, r.uploadHeap.managedLen())
 
 		// Sleep until it is time to try and repair another stuck chunk
 		rebuildStuckHeapSignal := time.After(repairStuckChunkInterval)
