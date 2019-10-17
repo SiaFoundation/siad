@@ -857,7 +857,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	renameValues := url.Values{}
 	renameValues.Set("newsiapath", "newdne")
 	err = st.stdPostAPI("/renter/rename/dne", renameValues)
-	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+	if err == nil || err.Error() != filesystem.ErrNotExist.Error() {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
@@ -939,7 +939,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to a name that's already taken.
 	renameValues.Set("newsiapath", "newtest1")
 	err = st.stdPostAPI("/renter/rename/test2", renameValues)
-	if err == nil || err.Error() != siafile.ErrPathOverload.Error() {
+	if err == nil || err.Error() != filesystem.ErrExists.Error() {
 		t.Errorf("expected error to be %v; got %v", siafile.ErrPathOverload, err)
 	}
 }
