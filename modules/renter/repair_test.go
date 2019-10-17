@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -843,6 +844,29 @@ func TestRandomStuckFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	i := 0
+	build.Retry(100, 100*time.Millisecond, func() error {
+		i++
+		if i%10 == 0 {
+			err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+			if err != nil {
+				return err
+			}
+		}
+		// Get Root Directory Metadata
+		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
+		if err != nil {
+			return err
+		}
+		// Check Aggregate number of stuck chunks
+		if metadata.AggregateNumStuckChunks == 0 {
+			return errors.New("no stuck chunks found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	checkFindRandomFile(t, rt.renter, modules.RootSiaPath(), siaPath1, siaPath2, siaPath3)
 
 	// Create a directory
@@ -855,27 +879,27 @@ func TestRandomStuckFile(t *testing.T) {
 	}
 
 	// Move siafiles to dir
-	siaPath1, err = dir.Join(siaPath1.String())
+	newSiaPath1, err := dir.Join(siaPath1.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = file1.Rename(siaPath1.SiaFileSysPath(rt.renter.staticFilesDir))
+	err = rt.renter.RenameFile(siaPath1, newSiaPath1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath2, err = dir.Join(siaPath2.String())
+	newSiaPath2, err := dir.Join(siaPath2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = file2.Rename(siaPath2.SiaFileSysPath(rt.renter.staticFilesDir))
+	err = rt.renter.RenameFile(siaPath2, newSiaPath2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath3, err = dir.Join(siaPath3.String())
+	newSiaPath3, err := dir.Join(siaPath3.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = file3.Rename(siaPath3.SiaFileSysPath(rt.renter.staticFilesDir))
+	err = rt.renter.RenameFile(siaPath3, newSiaPath3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -886,7 +910,30 @@ func TestRandomStuckFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkFindRandomFile(t, rt.renter, dir, siaPath1, siaPath2, siaPath3)
+	i = 0
+	build.Retry(100, 100*time.Millisecond, func() error {
+		i++
+		if i%10 == 0 {
+			err = rt.renter.managedBubbleMetadata(dir)
+			if err != nil {
+				return err
+			}
+		}
+		// Get Directory Metadata
+		metadata, err := rt.renter.managedDirectoryMetadata(dir)
+		if err != nil {
+			return err
+		}
+		// Check Aggregate number of stuck chunks
+		if metadata.AggregateNumStuckChunks == 0 {
+			return errors.New("no stuck chunks found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkFindRandomFile(t, rt.renter, dir, newSiaPath1, newSiaPath2, newSiaPath3)
 }
 
 // checkFindRandomFile is a helper function that checks the output from

@@ -394,19 +394,15 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		}
 		// Check for duplicate uid.
 		conflictingEntry, exists := sfs.siaFileMap[sf.UID()]
-		if !exists {
-			// Create the entry for the SiaFile and assign the partials file.
-			entry, err = sfs.newSiaFileSetEntry(sf)
-			if err != nil {
-				return nil, err
-			}
-		} else if !siaPath.Equals(sfs.siaPath(conflictingEntry)) {
+		if exists {
 			err := fmt.Errorf("%v and %v share the same UID '%v'", sfs.siaPath(conflictingEntry), siaPath, sf.UID())
 			build.Critical(err)
 			return nil, err
-		} else {
-			// Entry must have been added by another thread. Is this an issue?
-			entry = conflictingEntry
+		}
+		// Create the entry for the SiaFile and assign the partials file.
+		entry, err = sfs.newSiaFileSetEntry(sf)
+		if err != nil {
+			return nil, err
 		}
 	}
 	if entry.Deleted() {
