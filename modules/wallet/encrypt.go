@@ -60,7 +60,8 @@ func verifyEncryption(key crypto.CipherKey, encrypted crypto.Ciphertext) error {
 	return nil
 }
 
-// checkMasterKey verifies that the masterKey is the key used to encrypt the wallet.
+// checkMasterKey verifies that the masterKey is the key used to encrypt the
+// wallet.
 func checkMasterKey(tx *bolt.Tx, masterKey crypto.CipherKey) error {
 	if masterKey == nil {
 		return modules.ErrBadEncryptionKey
@@ -507,6 +508,18 @@ func (w *Wallet) ChangeKeyWithSeed(seed modules.Seed, newKey crypto.CipherKey) e
 		return errors.AddContext(err, "failed to retrieve masterkey by seed")
 	}
 	return w.managedChangeKey(mk, newKey)
+}
+
+// CheckMasterKey verifies that the masterKey is the key used to encrypt the
+// wallet.
+func (w *Wallet) CheckMasterKey(masterKey crypto.CipherKey) error {
+	if err := w.tg.Add(); err != nil {
+		return err
+	}
+	defer w.tg.Done()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return checkMasterKey(w.dbTx, masterKey)
 }
 
 // Unlock will decrypt the wallet seed and load all of the addresses into

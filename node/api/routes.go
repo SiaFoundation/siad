@@ -167,6 +167,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/wallet/verify/address/:addr", api.walletVerifyAddressHandler)
 		router.POST("/wallet/unlock", RequirePassword(api.walletUnlockHandler, requiredPassword))
 		router.POST("/wallet/changepassword", RequirePassword(api.walletChangePasswordHandler, requiredPassword))
+		router.GET("/wallet/verifypassword", RequirePassword(api.walletVerifyPasswordHandler, requiredPassword))
 		router.GET("/wallet/unlockconditions/:addr", RequirePassword(api.walletUnlockConditionsHandlerGET, requiredPassword))
 		router.POST("/wallet/unlockconditions", RequirePassword(api.walletUnlockConditionsHandlerPOST, requiredPassword))
 		router.GET("/wallet/unspent", RequirePassword(api.walletUnspentHandler, requiredPassword))
