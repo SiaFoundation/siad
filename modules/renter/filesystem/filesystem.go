@@ -40,13 +40,14 @@ type (
 
 	// node is a struct that contains the commmon fields of every node.
 	node struct {
-		staticParent *DNode
-		staticName   string
-		staticUID    threadUID
-		staticWal    *writeaheadlog.WAL
-		threads      map[threadUID]threadInfo
-		threadUID    threadUID
-		mu           *sync.Mutex
+		path      string
+		parent    *DNode
+		name      string
+		staticUID threadUID
+		staticWal *writeaheadlog.WAL
+		threads   map[threadUID]threadInfo
+		threadUID threadUID
+		mu        *sync.Mutex
 	}
 
 	// threadInfo contains useful information about the thread accessing the
@@ -61,15 +62,16 @@ type (
 )
 
 // newNode is a convenience function to initialize a node.
-func newNode(parent *DNode, name string, uid threadUID, wal *writeaheadlog.WAL) node {
+func newNode(parent *DNode, path, name string, uid threadUID, wal *writeaheadlog.WAL) node {
 	return node{
-		staticParent: parent,
-		staticName:   name,
-		staticUID:    newThreadUID(),
-		staticWal:    wal,
-		threads:      make(map[threadUID]threadInfo),
-		threadUID:    uid,
-		mu:           new(sync.Mutex),
+		path:      path,
+		parent:    parent,
+		name:      name,
+		staticUID: newThreadUID(),
+		staticWal: wal,
+		threads:   make(map[threadUID]threadInfo),
+		threadUID: uid,
+		mu:        new(sync.Mutex),
 	}
 }
 
@@ -101,13 +103,16 @@ func (n *node) _close() {
 	delete(n.threads, n.threadUID)
 }
 
-// staticPath returns the absolute path of the node on disk.
-func (n *node) staticPath() string {
-	path := n.staticName
-	for parent := n.staticParent; parent != nil; parent = parent.staticParent {
-		path = filepath.Join(parent.staticName, path)
-	}
-	return path
+// absPath returns the absolute path of the node.
+func (n *node) absPath() string {
+	return n.path
+}
+
+// managedAbsPath returns the absolute path of the node.
+func (n *node) managedAbsPath() string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.absPath()
 }
 
 // New creates a new FileSystem at the specified root path. The folder will be
@@ -118,8 +123,8 @@ func New(root string, wal *writeaheadlog.WAL) (*FileSystem, error) {
 	}
 	return &FileSystem{
 		DNode: DNode{
-			// The root doesn't require a parent, the name is its absolute path for convenience and it doesn't require a uid.
-			node:        newNode(nil, root, 0, wal),
+			// The root doesn't require a parent, a name or uid.
+			node:        newNode(nil, root, "", 0, wal),
 			directories: make(map[string]*DNode),
 			files:       make(map[string]*FNode),
 		},
@@ -213,7 +218,7 @@ func (fs *FileSystem) FileList(siaPath modules.SiaPath, recursive, cached bool, 
 
 // FilePath converts a SiaPath into a file's system path.
 func (fs *FileSystem) FilePath(siaPath modules.SiaPath) string {
-	return siaPath.SiaFileSysPath(fs.staticName)
+	return siaPath.SiaFileSysPath(fs.managedAbsPath())
 }
 
 // NewSiaDir creates the folder for the specified siaPath.
@@ -237,13 +242,13 @@ func (fs *FileSystem) NewSiaFile(siaPath modules.SiaPath, source string, ec modu
 // ReadDir is a wrapper of ioutil.ReadDir which takes a SiaPath as an argument
 // instead of a system path.
 func (fs *FileSystem) ReadDir(siaPath modules.SiaPath) ([]os.FileInfo, error) {
-	dirPath := siaPath.SiaDirSysPath(fs.staticName)
+	dirPath := siaPath.SiaDirSysPath(fs.managedAbsPath())
 	return ioutil.ReadDir(dirPath)
 }
 
 // DirPath converts a SiaPath into a dir's system path.
 func (fs *FileSystem) DirPath(siaPath modules.SiaPath) string {
-	return siaPath.SiaDirSysPath(fs.staticName)
+	return siaPath.SiaDirSysPath(fs.managedAbsPath())
 }
 
 // Root returns the root system path of the FileSystem.
@@ -253,12 +258,12 @@ func (fs *FileSystem) Root() string {
 
 // FileSiaPath returns the SiaPath of a file node.
 func (fs *FileSystem) FileSiaPath(n *FNode) (sp modules.SiaPath) {
-	return fs.staticSiaPath(&n.node)
+	return fs.managedSiaPath(&n.node)
 }
 
 // DirSiaPath returns the SiaPath of a dir node.
 func (fs *FileSystem) DirSiaPath(n *DNode) (sp modules.SiaPath) {
-	return fs.staticSiaPath(&n.node)
+	return fs.managedSiaPath(&n.node)
 }
 
 // UpdateDirMetadata updates the metadata of a SiaDir.
@@ -266,9 +271,9 @@ func (fs *FileSystem) UpdateDirMetadata(siaPath modules.SiaPath, metadata siadir
 	panic("not implemented yet")
 }
 
-// staticSiaPath returns the SiaPath of a node.
-func (fs *FileSystem) staticSiaPath(n *node) (sp modules.SiaPath) {
-	if err := sp.FromSysPath(n.staticPath(), fs.staticName); err != nil {
+// managedSiaPath returns the SiaPath of a node.
+func (fs *FileSystem) managedSiaPath(n *node) (sp modules.SiaPath) {
+	if err := sp.FromSysPath(n.managedAbsPath(), fs.managedAbsPath()); err != nil {
 		build.Critical("FileSystem.managedSiaPath: should never fail", err)
 	}
 	return sp
@@ -277,21 +282,21 @@ func (fs *FileSystem) staticSiaPath(n *node) (sp modules.SiaPath) {
 // Stat is a wrapper for os.Stat which takes a SiaPath as an argument instead of
 // a system path.
 func (fs *FileSystem) Stat(siaPath modules.SiaPath) (os.FileInfo, error) {
-	path := siaPath.SiaDirSysPath(fs.staticName)
+	path := siaPath.SiaDirSysPath(fs.managedAbsPath())
 	return os.Stat(path)
 }
 
 // Walk is a wrapper for filepath.Walk which takes a SiaPath as an argument
 // instead of a system path.
 func (fs *FileSystem) Walk(siaPath modules.SiaPath, walkFn filepath.WalkFunc) error {
-	dirPath := siaPath.SiaDirSysPath(fs.staticName)
+	dirPath := siaPath.SiaDirSysPath(fs.managedAbsPath())
 	return filepath.Walk(dirPath, walkFn)
 }
 
 // WriteFile is a wrapper for ioutil.WriteFile which takes a SiaPath as an
 // argument instead of a system path.
 func (fs *FileSystem) WriteFile(siaPath modules.SiaPath, data []byte, perm os.FileMode) error {
-	path := siaPath.SiaFileSysPath(fs.staticName)
+	path := siaPath.SiaFileSysPath(fs.managedAbsPath())
 	return ioutil.WriteFile(path, data, perm)
 }
 
@@ -325,16 +330,12 @@ func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FNode, err
 // OpenSiaDir opens a SiaDir and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DNode, error) {
-	fmt.Printf("OpenSiaDir Start: '%v'\n", siaPath.String())
-	defer fmt.Printf("OpenSiaDir Stop: '%v'\n", siaPath.String())
 	return fs.managedOpenSiaDir(siaPath)
 }
 
 // OpenSiaFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FNode, error) {
-	fmt.Printf("OpenSiaFile Start: '%v'\n", siaPath.String())
-	defer fmt.Printf("OpenSiaFile Stop: '%v'\n", siaPath.String())
 	return fs.managedOpenFile(siaPath.String())
 }
 
@@ -454,10 +455,10 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 		for sd := range dirLoadChan {
 			var di modules.DirectoryInfo
 			var err error
-			if sd.node.staticPath() == fs.staticPath() {
+			if sd.managedAbsPath() == fs.managedAbsPath() {
 				di, err = sd.managedInfo(modules.RootSiaPath())
 			} else {
-				di, err = sd.managedInfo(fs.staticSiaPath(&sd.node))
+				di, err = sd.managedInfo(fs.managedSiaPath(&sd.node))
 			}
 			sd.Close()
 			if err == ErrNotExist {
@@ -477,9 +478,9 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 			var fi modules.FileInfo
 			var err error
 			if cached {
-				fi, err = sf.staticCachedInfo(fs.staticSiaPath(&sf.node), offlineMap, goodForRenewMap, contractsMap)
+				fi, err = sf.staticCachedInfo(fs.managedSiaPath(&sf.node), offlineMap, goodForRenewMap, contractsMap)
 			} else {
-				fi, err = sf.managedFileInfo(fs.staticSiaPath(&sf.node), offlineMap, goodForRenewMap, contractsMap)
+				fi, err = sf.managedFileInfo(fs.managedSiaPath(&sf.node), offlineMap, goodForRenewMap, contractsMap)
 			}
 			sf.Close()
 			if err == ErrNotExist {
@@ -519,8 +520,8 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 
 // managedNewSiaDir creates the folder at the specified siaPath.
 func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath) error {
-	dirPath := siaPath.SiaDirSysPath(fs.staticName)
-	_, err := siadir.New(dirPath, fs.staticName, fs.staticWal)
+	dirPath := siaPath.SiaDirSysPath(fs.managedAbsPath())
+	_, err := siadir.New(dirPath, fs.managedAbsPath(), fs.staticWal)
 	if os.IsExist(err) {
 		return nil // nothing to do
 	}

@@ -24,7 +24,9 @@ type (
 // parent.
 func (n *FNode) Close() {
 	// If a parent exists, we need to lock it while closing a child.
-	parent := n.staticParent
+	n.mu.Lock()
+	parent := n.parent
+	n.mu.Unlock()
 	if parent != nil {
 		parent.mu.Lock()
 	}
@@ -33,7 +35,7 @@ func (n *FNode) Close() {
 	// Remove node from parent if the current thread was the last one.
 	removeDir := len(n.threads) == 1
 	if removeDir {
-		n.staticParent.removeFile(n)
+		parent.removeFile(n)
 		removeDir = true
 	}
 
@@ -43,16 +45,19 @@ func (n *FNode) Close() {
 	// Unlock child and parent.
 	n.mu.Unlock()
 	if parent != nil {
-		parent.mu.Unlock()
+		child := parent
+		parent := parent.parent
+		child.mu.Unlock() // child is the parent we locked before
 
 		// Iteratively try to remove parents as long as children got removed.
-		for child, parent := parent, parent.staticParent; removeDir && parent != nil; child, parent = parent, parent.staticParent {
+		for removeDir && parent != nil {
 			parent.mu.Lock()
 			child.mu.Lock()
 			removeDir = len(child.threads)+len(child.directories)+len(child.files) == 0
 			parent.removeDir(child)
 			child.mu.Unlock()
-			parent.mu.Unlock()
+			child, parent = parent, parent.parent
+			child.mu.Unlock() // parent became child
 		}
 	}
 }
@@ -143,7 +148,7 @@ func (n *FNode) managedRename(newName string, oldParent, newParent *DNode) error
 	if _, exists := newParent.files[newName]; exists {
 		return ErrExists
 	}
-	newPath := filepath.Join(newParent.staticPath(), newName) + modules.SiaFileExtension
+	newPath := filepath.Join(newParent.absPath(), newName) + modules.SiaFileExtension
 	// Rename the file.
 	err := n.SiaFile.Rename(newPath)
 	if err == siafile.ErrPathOverload {
@@ -153,11 +158,12 @@ func (n *FNode) managedRename(newName string, oldParent, newParent *DNode) error
 		return err
 	}
 	// Remove file from old parent and add it to new parent.
-	delete(oldParent.files, n.staticName)
+	delete(oldParent.files, n.name)
 	newParent.files[newName] = n
 	// Update parent and name.
-	n.staticParent = newParent
-	n.staticName = newName
+	n.parent = newParent
+	n.name = newName
+	n.path = filepath.Join(newParent.path, n.name)
 	return err
 }
 
