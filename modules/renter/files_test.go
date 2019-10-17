@@ -107,7 +107,7 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.DeleteFile(siaPath)
-	if err != siafile.ErrUnknownPath {
+	if err != filesystem.ErrNotExist {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
@@ -122,15 +122,20 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.DeleteFile(siaPathOne)
-	if err != siafile.ErrUnknownPath {
+	if err != filesystem.ErrNotExist {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 	// Delete the file.
 	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
+	siapath, err = siapath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	entry.Close()
 	err = rt.renter.DeleteFile(siapath)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
 	if err != nil {
@@ -154,19 +159,25 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = rt.renter.RenameFile(rt.renter.staticFileSystem.FileSiaPath(entry2), siaPath1) // set name to "1"
+	siapath2 := rt.renter.staticFileSystem.FileSiaPath(entry2)
+	siapath2, err = siapath2.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+	err = rt.renter.RenameFile(siapath2, siaPath1) // set name to "1"
 	if err != nil {
 		t.Fatal(err)
 	}
-	siapath2 := rt.renter.staticFileSystem.FileSiaPath(entry2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	entry2.Close()
+	siapath2 = rt.renter.staticFileSystem.FileSiaPath(entry2)
+	siapath2, err = siapath2.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
 	err = rt.renter.RenameFile(siapath2, siaPathOne)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Call delete on the previous name.
 	err = rt.renter.DeleteFile(siaPath1)
-	if err != siafile.ErrUnknownPath {
+	if err != filesystem.ErrNotExist {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 	// Call delete on the new name.
