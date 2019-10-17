@@ -353,8 +353,13 @@ func (n *DNode) managedDeleteFile(fileName string) error {
 	n.mu.Lock()
 	// Open the file.
 	sf, err := n.openFile(fileName)
+	if err == ErrNotExist {
+		n.mu.Unlock()
+		return err
+	}
 	if err != nil {
 		n.mu.Unlock()
+		sf.Close()
 		return errors.AddContext(err, "failed to open file for deletion")
 	}
 	// Delete it.

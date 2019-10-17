@@ -19,6 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -1004,10 +1005,9 @@ func TestRenterHandlerDelete(t *testing.T) {
 	if len(files.Files) != 0 {
 		t.Fatalf("renter's list of files should be empty; got %v instead", files)
 	}
-
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
-	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+	if err == nil || err.Error() != filesystem.ErrNotExist.Error() {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 }
