@@ -361,7 +361,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 			return modules.SiaPath{}, err
 		}
 
-		//Check if stuck
+		// Check if stuck
 		if numStuckChunks == 0 {
 			continue
 		}
