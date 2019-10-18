@@ -471,7 +471,8 @@ func TestRenterAsyncDownload(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, download := range rdq.Downloads {
-			if download.Received == download.Filesize && download.SiaPath.String() == "test.dat" {
+			sp, _ := modules.SiaFilesSiaPath().Join("test.dat")
+			if download.Received == download.Filesize && download.SiaPath.Equals(sp) {
 				success = true
 			}
 		}
