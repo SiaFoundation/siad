@@ -453,7 +453,7 @@ func TestRenterFileDir(t *testing.T) {
 
 	// Confirm .sia file exists on disk in the SiapathRoot directory
 	renterDir := filepath.Join(rt.dir, modules.RenterDir)
-	siapathRootDir := filepath.Join(renterDir, modules.SiaFilesRoot)
+	siapathRootDir := filepath.Join(renterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.SiaFilesRoot)
 	fullPath := siaPath.SiaFileSysPath(siapathRootDir)
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		t.Fatal("No .sia file found on disk")
