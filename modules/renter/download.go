@@ -537,7 +537,7 @@ func (r *Renter) DownloadByUID(uid modules.DownloadID) (modules.DownloadInfo, bo
 	// Rebase the siapath.
 	sp, err := d.staticSiaPath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
 	if err != nil {
-		return modules.DownloadInfo{}, false // shouldn't happen
+		sp = d.staticSiaPath // should only happen during testing
 	}
 	return modules.DownloadInfo{
 		Destination:     d.destinationString,
@@ -585,7 +585,8 @@ func (r *Renter) DownloadHistory() []modules.DownloadInfo {
 		// Rebase the siapath.
 		sp, err := d.staticSiaPath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
 		if err != nil {
-			continue // shouldn't happen
+			// should only happen during testing.
+			sp = d.staticSiaPath
 		}
 		d.mu.Lock() // Lock required for d.endTime only.
 		downloads[i] = modules.DownloadInfo{
