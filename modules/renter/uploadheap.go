@@ -177,6 +177,20 @@ func (uh *uploadHeap) managedMarkRepairDone(id uploadChunkID) {
 	delete(uh.repairingChunks, id)
 }
 
+// managedNumRandomStuckChunks returns the number of random stuck chunks in the
+// heap
+func (uh *uploadHeap) managedNumRandomStuckChunks() int {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	var count int
+	for _, chunk := range uh.stuckHeapChunks {
+		if !chunk.fileRecentlySuccessful {
+			count++
+		}
+	}
+	return count
+}
+
 // managedNumStuckChunks returns the number of stuck chunks in the heap
 func (uh *uploadHeap) managedNumStuckChunks() int {
 	uh.mu.Lock()

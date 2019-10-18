@@ -27,13 +27,17 @@ var (
 	errNoStuckChunks = errors.New("no stuck chunks")
 )
 
-// managedAddRandomStuckChunks will try and add up to maxStuckChunksInHeap
-// random stuck chunks to the upload heap
+// managedAddRandomStuckChunks will try and add up to
+// maxRandomStuckChunksAddToHeap random stuck chunks to the upload heap
 func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modules.SiaPath, error) {
 	var dirSiaPaths []modules.SiaPath
 	// Remember number of stuck chunks we are starting with
-	prevNumStuckChunks := r.uploadHeap.managedNumStuckChunks()
-	for prevNumStuckChunks < maxStuckChunksInHeap {
+	prevNumStuckChunks := r.uploadHeap.managedNumRandomStuckChunks()
+	// Check if there is space in the heap. There is space if the number of
+	// random stuck chunks has not exceeded maxRandomStuckChunksInHeap and the
+	// total number of stuck chunks as not exceeded maxStuckChunksInHeap
+	spaceInHeap := prevNumStuckChunks < maxRandomStuckChunksInHeap && r.uploadHeap.managedNumStuckChunks() < maxStuckChunksInHeap
+	for i := 0; i < maxRandomStuckChunksAddToHeap && spaceInHeap; i++ {
 		// Randomly get directory with stuck files
 		dirSiaPath, err := r.managedStuckDirectory()
 		if err != nil {
@@ -53,7 +57,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modul
 		}
 
 		// Sanity check that stuck chunks were added
-		currentNumStuckChunks := r.uploadHeap.managedNumStuckChunks()
+		currentNumStuckChunks := r.uploadHeap.managedNumRandomStuckChunks()
 		if currentNumStuckChunks <= prevNumStuckChunks {
 			// If the number of stuck chunks in the heap is not increasing
 			// then break out of this loop in order to prevent getting stuck
@@ -66,6 +70,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modul
 		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
 		r.repairLog.Printf("Added %v stuck chunks from %s", currentNumStuckChunks-prevNumStuckChunks, dirSiaPath.String())
 		prevNumStuckChunks = currentNumStuckChunks
+		spaceInHeap = prevNumStuckChunks < maxRandomStuckChunksInHeap && r.uploadHeap.managedNumStuckChunks() < maxStuckChunksInHeap
 	}
 	return dirSiaPaths, nil
 }
