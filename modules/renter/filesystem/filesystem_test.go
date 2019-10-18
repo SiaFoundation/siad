@@ -8,10 +8,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
@@ -93,11 +96,14 @@ func TestNew(t *testing.T) {
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
 	// Check fields.
-	if fs.staticParent != nil {
+	if fs.parent != nil {
 		t.Fatalf("fs.parent shoud be 'nil' but wasn't")
 	}
-	if fs.staticName != root {
-		t.Fatalf("fs.staticName should be %v but was %v", root, fs.staticName)
+	if *fs.name != "" {
+		t.Fatalf("fs.staticName should be %v but was %v", "", *fs.name)
+	}
+	if *fs.path != root {
+		t.Fatalf("fs.path should be %v but was %v", root, *fs.path)
 	}
 	if fs.threads == nil || len(fs.threads) != 0 {
 		t.Fatal("fs.threads is not an empty initialized map")
@@ -112,7 +118,7 @@ func TestNew(t *testing.T) {
 		t.Fatal("fs.files is not an empty initialized map")
 	}
 	// Create the filesystem again at the same location.
-	_ = newTestFileSystem(fs.staticName)
+	_ = newTestFileSystem(*fs.name)
 }
 
 // TestNewSiaDir tests if creating a new directory using NewSiaDir creates the
@@ -213,8 +219,11 @@ func TestOpenSiaDir(t *testing.T) {
 	if !exists {
 		t.Fatal("expected root to contain the 'sub' node")
 	}
-	if subNode.staticName != "sub" {
-		t.Fatalf("subNode name should be 'sub' but was %v", subNode.staticName)
+	if *subNode.name != "sub" {
+		t.Fatalf("subNode name should be 'sub' but was %v", *subNode.name)
+	}
+	if path := filepath.Join(*subNode.parent.path, *subNode.name); path != *subNode.path {
+		t.Fatalf("subNode path should be %v but was %v", path, *subNode.path)
 	}
 	if len(subNode.threads) != 0 {
 		t.Fatalf("expected 0 threads in subNode but got %v", len(subNode.threads))
@@ -230,8 +239,11 @@ func TestOpenSiaDir(t *testing.T) {
 	if !exists {
 		t.Fatal("expected /sub to contain /sub/foo")
 	}
-	if fooNode.staticName != "foo" {
-		t.Fatalf("fooNode name should be 'foo' but was %v", fooNode.staticName)
+	if *fooNode.name != "foo" {
+		t.Fatalf("fooNode name should be 'foo' but was %v", *fooNode.name)
+	}
+	if path := filepath.Join(*fooNode.parent.path, *fooNode.name); path != *fooNode.path {
+		t.Fatalf("fooNode path should be %v but was %v", path, *fooNode.path)
 	}
 	if len(fooNode.threads) != 1 {
 		t.Fatalf("expected 1 thread in fooNode but got %v", len(fooNode.threads))
@@ -305,11 +317,11 @@ func TestOpenSiaFile(t *testing.T) {
 	}
 	defer sf.Close()
 	// Confirm the integrity of the file.
-	if sf.staticName != "file" {
-		t.Fatalf("name of file should be file but was %v", sf.staticName)
+	if *sf.name != "file" {
+		t.Fatalf("name of file should be file but was %v", *sf.name)
 	}
-	if sf.staticParent != &fs.DNode {
-		t.Fatalf("parent of file should be %v but was %v", &fs.node, sf.staticParent)
+	if sf.parent != &fs.DNode {
+		t.Fatalf("parent of file should be %v but was %v", &fs.node, sf.parent)
 	}
 	if sf.threadUID == 0 {
 		t.Fatal("threaduid wasn't set")
@@ -340,11 +352,11 @@ func TestOpenSiaFile(t *testing.T) {
 	}
 	defer sf2.Close()
 	// Confirm the integrity of the file.
-	if sf2.staticName != "file" {
-		t.Fatalf("name of file should be file but was %v", sf2.staticName)
+	if *sf2.name != "file" {
+		t.Fatalf("name of file should be file but was %v", *sf2.name)
 	}
-	if sf2.staticParent.staticName != "sub" {
-		t.Fatalf("parent of file should be %v but was %v", "sub", sf2.staticParent.staticName)
+	if *sf2.parent.name != "sub" {
+		t.Fatalf("parent of file should be %v but was %v", "sub", *sf2.parent.name)
 	}
 	if sf2.threadUID == 0 {
 		t.Fatal("threaduid wasn't set")
@@ -353,7 +365,7 @@ func TestOpenSiaFile(t *testing.T) {
 		t.Fatalf("len(threads) should be 1 but was %v", len(sf2.threads))
 	}
 	// Confirm the integrity of the "sub" folder.
-	sub := sf2.staticParent
+	sub := sf2.parent
 	if len(sub.threads) != 0 {
 		t.Fatalf("Expected sub.threads to have length 0 but was %v", len(sub.threads))
 	}
@@ -391,14 +403,14 @@ func TestCloseSiaDir(t *testing.T) {
 	if len(sd.threads) != 1 {
 		t.Fatalf("There should be 1 thread in sd.threads but got %v", len(sd.threads))
 	}
-	if len(sd.staticParent.threads) != 0 {
-		t.Fatalf("The parent shouldn't have any threads but had %v", len(sd.staticParent.threads))
+	if len(sd.parent.threads) != 0 {
+		t.Fatalf("The parent shouldn't have any threads but had %v", len(sd.parent.threads))
 	}
 	if len(fs.directories) != 1 {
 		t.Fatalf("There should be 1 directory in fs.directories but got %v", len(fs.directories))
 	}
-	if len(sd.staticParent.directories) != 1 {
-		t.Fatalf("The parent should have 1 directory but got %v", len(sd.staticParent.directories))
+	if len(sd.parent.directories) != 1 {
+		t.Fatalf("The parent should have 1 directory but got %v", len(sd.parent.directories))
 	}
 	// After closing it the thread should be gone.
 	sd.Close()
@@ -426,8 +438,8 @@ func TestCloseSiaDir(t *testing.T) {
 	if len(fs.directories) != 1 {
 		t.Fatalf("There should be 1 directory in fs.directories but got %v", len(fs.directories))
 	}
-	if len(sd1.staticParent.directories) != 1 || len(sd2.staticParent.directories) != 1 {
-		t.Fatalf("The parent should have 1 directory but got %v", len(sd.staticParent.directories))
+	if len(sd1.parent.directories) != 1 || len(sd2.parent.directories) != 1 {
+		t.Fatalf("The parent should have 1 directory but got %v", len(sd.parent.directories))
 	}
 	// Close one instance.
 	sd1.Close()
@@ -437,8 +449,8 @@ func TestCloseSiaDir(t *testing.T) {
 	if len(fs.directories) != 1 {
 		t.Fatalf("There should be 1 directory in fs.directories but got %v", len(fs.directories))
 	}
-	if len(sd1.staticParent.directories) != 1 || len(sd2.staticParent.directories) != 1 {
-		t.Fatalf("The parent should have 1 directory but got %v", len(sd.staticParent.directories))
+	if len(sd1.parent.directories) != 1 || len(sd2.parent.directories) != 1 {
+		t.Fatalf("The parent should have 1 directory but got %v", len(sd.parent.directories))
 	}
 	// Close the second one.
 	sd2.Close()
@@ -474,14 +486,14 @@ func TestCloseSiaFile(t *testing.T) {
 	if len(sf.threads) != 1 {
 		t.Fatalf("There should be 1 thread in sf.threads but got %v", len(sf.threads))
 	}
-	if len(sf.staticParent.threads) != 0 {
-		t.Fatalf("The parent shouldn't have any threads but had %v", len(sf.staticParent.threads))
+	if len(sf.parent.threads) != 0 {
+		t.Fatalf("The parent shouldn't have any threads but had %v", len(sf.parent.threads))
 	}
 	if len(fs.directories) != 1 {
 		t.Fatalf("There should be 1 directory in fs.directories but got %v", len(fs.directories))
 	}
-	if len(sf.staticParent.files) != 1 {
-		t.Fatalf("The parent should have 1 file but got %v", len(sf.staticParent.files))
+	if len(sf.parent.files) != 1 {
+		t.Fatalf("The parent should have 1 file but got %v", len(sf.parent.files))
 	}
 	// After closing it the thread should be gone.
 	sf.Close()
@@ -509,8 +521,8 @@ func TestCloseSiaFile(t *testing.T) {
 	if len(fs.directories) != 1 {
 		t.Fatalf("There should be 1 directory in fs.directories but got %v", len(fs.directories))
 	}
-	if len(sf1.staticParent.files) != 1 || len(sf2.staticParent.files) != 1 {
-		t.Fatalf("The parent should have 1 file but got %v", len(sf1.staticParent.files))
+	if len(sf1.parent.files) != 1 || len(sf2.parent.files) != 1 {
+		t.Fatalf("The parent should have 1 file but got %v", len(sf1.parent.files))
 	}
 	// Close one instance.
 	sf1.Close()
@@ -520,8 +532,8 @@ func TestCloseSiaFile(t *testing.T) {
 	if len(fs.directories) != 1 {
 		t.Fatalf("There should be 1 dir in fs.directories but got %v", len(fs.directories))
 	}
-	if len(sf1.staticParent.files) != 1 || len(sf2.staticParent.files) != 1 {
-		t.Fatalf("The parent should have 1 file but got %v", len(sf1.staticParent.files))
+	if len(sf1.parent.files) != 1 || len(sf2.parent.files) != 1 {
+		t.Fatalf("The parent should have 1 file but got %v", len(sf1.parent.files))
 	}
 	// Close the second one.
 	sf2.Close()
@@ -534,8 +546,8 @@ func TestCloseSiaFile(t *testing.T) {
 	if len(fs.directories) != 0 {
 		t.Fatalf("There should be 0 directories in fs.directories but got %v", len(fs.directories))
 	}
-	if len(sf1.staticParent.files) != 0 || len(sf2.staticParent.files) != 0 {
-		t.Fatalf("The parent should have 0 files but got %v", len(sf1.staticParent.files))
+	if len(sf1.parent.files) != 0 || len(sf2.parent.files) != 0 {
+		t.Fatalf("The parent should have 0 files but got %v", len(sf1.parent.files))
 	}
 }
 
@@ -743,5 +755,118 @@ func TestThreadedAccess(t *testing.T) {
 	}
 	if len(fs.files) != 0 {
 		t.Fatalf("fs should have 0 files but had %v", len(fs.files))
+	}
+}
+
+// TestSiaDirRename tests the Rename method of the siadirset.
+func TestSiaDirRename(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Prepare a filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	os.RemoveAll(root)
+	fs := newTestFileSystem(root)
+
+	// Specify a directory structure for this test.
+	var dirStructure = []string{
+		"dir1",
+		"dir1/subdir1",
+		"dir1/subdir1/subsubdir1",
+		"dir1/subdir1/subsubdir2",
+		"dir1/subdir1/subsubdir3",
+		"dir1/subdir2",
+		"dir1/subdir2/subsubdir1",
+		"dir1/subdir2/subsubdir2",
+		"dir1/subdir2/subsubdir3",
+		"dir1/subdir3",
+		"dir1/subdir3/subsubdir1",
+		"dir1/subdir3/subsubdir2",
+		"dir1/subdir3/subsubdir3",
+	}
+	// Specify a function that's executed in parallel which continuously saves dirs
+	// to disk.
+	stop := make(chan struct{})
+	wg := new(sync.WaitGroup)
+	f := func(entry *DNode) {
+		defer wg.Done()
+		defer entry.Close()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			err := entry.UpdateMetadata(siadir.Metadata{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	// Create the structure and spawn a goroutine that keeps saving the structure
+	// to disk for each directory.
+	for _, dir := range dirStructure {
+		sp, err := modules.NewSiaPath(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = fs.NewSiaDir(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry, err := fs.OpenSiaDir(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 50% chance to spawn goroutine. It's not realistic to assume that all dirs
+		// are loaded.
+		if fastrand.Intn(2) == 0 {
+			wg.Add(1)
+			go f(entry)
+		} else {
+			entry.Close()
+		}
+	}
+	// Wait a second for the goroutines to write to disk a few times.
+	time.Sleep(time.Second)
+	// Rename dir1 to dir2.
+	oldPath, err1 := modules.NewSiaPath(dirStructure[0])
+	newPath, err2 := modules.NewSiaPath("dir2")
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.RenameDir(oldPath, newPath); err != nil {
+		t.Fatal(err)
+	}
+	// Wait another second for more writes to disk after renaming the dir before
+	// killing the goroutines.
+	time.Sleep(time.Second)
+	close(stop)
+	wg.Wait()
+	time.Sleep(time.Second)
+	// Make sure we can't open any of the old folders on disk but we can open the
+	// new ones.
+	for _, dir := range dirStructure {
+		oldDir, err1 := modules.NewSiaPath(dir)
+		newDir, err2 := oldDir.Rebase(oldPath, newPath)
+		if err := errors.Compose(err1, err2); err != nil {
+			t.Fatal(err)
+		}
+		// Open entry with old dir. Shouldn't work.
+		_, err := fs.OpenSiaDir(oldDir)
+		if err != ErrNotExist {
+			t.Fatal("shouldn't be able to open old path", oldDir.String(), err)
+		}
+		// Open entry with new dir. Should succeed.
+		entry, err := fs.OpenSiaDir(newDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer entry.Close()
+		// Check path of entry.
+		if expectedPath := fs.DirPath(newDir); *entry.path != expectedPath {
+			t.Fatalf("entry should have path '%v' but was '%v'", expectedPath, entry.path)
+		}
 	}
 }
