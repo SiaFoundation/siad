@@ -14,11 +14,11 @@ all: release
 run = .
 pkgs = ./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer  \
        ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor        \
-       ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir             \
-       ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./node ./node/api ./persist     \
-       ./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/miner ./siatest/renter ./siatest/renter  \
-       ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost ./siatest/transactionpool ./siatest/wallet \
-       ./node/api/server ./sync ./types ./types/typesutil
+       ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto         \
+       ./modules/renter/siadir ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool         \
+       ./node ./node/api ./persist ./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/miner        \
+       ./siatest/renter ./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost          \
+       ./siatest/transactionpool ./siatest/wallet ./node/api/server ./sync ./types ./types/typesutil
 
 # fmt calls go fmt on all packages.
 fmt:
