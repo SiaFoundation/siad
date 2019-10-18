@@ -4,6 +4,16 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
+// rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
+// prefix by the "siafiles" directory.
+func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
+	// Prepend the provided siapath with the /home/siafiles dir.
+	if siaPath.IsRoot() {
+		return modules.SiaFilesSiaPath(), nil
+	}
+	return modules.SiaFilesSiaPath().Join(siaPath.String())
+}
+
 // CreateDir creates a directory for the renter
 func (r *Renter) CreateDir(siaPath modules.SiaPath) error {
 	err := r.tg.Add()
@@ -11,8 +21,7 @@ func (r *Renter) CreateDir(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
-	// Prepend the provided siapath with the /home/siafiles dir.
-	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	siaPath, err = rebaseInputSiaPath(siaPath)
 	if err != nil {
 		return err
 	}
@@ -26,8 +35,7 @@ func (r *Renter) DeleteDir(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
-	// Prepend the provided siapath with the /home/siafiles dir.
-	siaPath, err := modules.SiaFilesSiaPath().Join(siaPath.String())
+	siaPath, err := rebaseInputSiaPath(siaPath)
 	if err != nil {
 		return err
 	}
@@ -40,8 +48,7 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, erro
 		return nil, err
 	}
 	defer r.tg.Done()
-	// Prepend the provided siapath with the /home/siafiles dir.
-	siaPath, err := modules.SiaFilesSiaPath().Join(siaPath.String())
+	siaPath, err := rebaseInputSiaPath(siaPath)
 	if err != nil {
 		return nil, err
 	}
@@ -58,11 +65,11 @@ func (r *Renter) RenameDir(oldPath, newPath modules.SiaPath) error {
 	}
 	defer r.tg.Done()
 	// Prepend the provided siapath with the /home/siafiles dir.
-	oldPath, err := modules.SiaFilesSiaPath().Join(oldPath.String())
+	oldPath, err := rebaseInputSiaPath(oldPath)
 	if err != nil {
 		return err
 	}
-	newPath, err = modules.SiaFilesSiaPath().Join(newPath.String())
+	newPath, err = rebaseInputSiaPath(newPath)
 	if err != nil {
 		return err
 	}
