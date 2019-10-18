@@ -534,12 +534,17 @@ func (r *Renter) DownloadByUID(uid modules.DownloadID) (modules.DownloadInfo, bo
 	if !exists {
 		return modules.DownloadInfo{}, false
 	}
+	// Rebase the siapath.
+	sp, err := d.staticSiaPath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+	if err != nil {
+		return modules.DownloadInfo{}, false // shouldn't happen
+	}
 	return modules.DownloadInfo{
 		Destination:     d.destinationString,
 		DestinationType: d.staticDestinationType,
 		Length:          d.staticLength,
 		Offset:          d.staticOffset,
-		SiaPath:         d.staticSiaPath,
+		SiaPath:         sp,
 
 		Completed:            d.staticComplete(),
 		EndTime:              d.endTime,
@@ -577,13 +582,18 @@ func (r *Renter) DownloadHistory() []modules.DownloadInfo {
 	for i := range downloadHistory {
 		// Order from most recent to least recent.
 		d := downloadHistory[len(r.downloadHistory)-i-1]
+		// Rebase the siapath.
+		sp, err := d.staticSiaPath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+		if err != nil {
+			continue // shouldn't happen
+		}
 		d.mu.Lock() // Lock required for d.endTime only.
 		downloads[i] = modules.DownloadInfo{
 			Destination:     d.destinationString,
 			DestinationType: d.staticDestinationType,
 			Length:          d.staticLength,
 			Offset:          d.staticOffset,
-			SiaPath:         d.staticSiaPath,
+			SiaPath:         sp,
 
 			Completed:            d.staticComplete(),
 			EndTime:              d.endTime,
