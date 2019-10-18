@@ -858,6 +858,9 @@ func DecodeAnnouncement(fullAnnouncement []byte) (na NetAddress, spk types.SiaPu
 // NOTE: Remember when updating this to preserve backwards compatibility with
 // older protocol versions.
 func IsOOSErr(err error) bool {
+	if err == nil {
+		return false
+	}
 	return strings.Contains(err.Error(), "not enough storage remaining to accept sector")
 }
 
@@ -867,6 +870,9 @@ func IsOOSErr(err error) bool {
 // NOTE: Remember when updating this to preserve backwards compatibility with
 // older protocol versions.
 func IsNoContractErr(err error) bool {
+	if err == nil {
+		return false
+	}
 	return strings.Contains(err.Error(), "no record of that contract")
 }
 
