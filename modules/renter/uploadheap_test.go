@@ -165,24 +165,22 @@ func TestBuildChunkHeap(t *testing.T) {
 	}
 }
 
+// addChunks is a helper function for TestUploadHeap to add chunks to the
+// uploadHeap
 func addChunks(r *Renter, stuck, fileRecentlySuccessful, priority bool) error {
-	var UID1, UID2 siafile.SiafileUID
+	var UID siafile.SiafileUID
 	if priority {
-		UID1 = "priorityLow"
-		UID2 = "priorityHigh"
+		UID = "priority"
 	} else if fileRecentlySuccessful {
-		UID1 = "fileRecentlySuccessfulLow"
-		UID2 = "fileRecentlySuccessfulHigh"
+		UID = "fileRecentlySuccessful"
 	} else if stuck {
-		UID1 = "stuckLow"
-		UID2 = "stuckHigh"
+		UID = "stuck"
 	} else {
-		UID1 = "unstuckLow"
-		UID2 = "unstuckHigh"
+		UID = "unstuck"
 	}
 	chunk := &unfinishedUploadChunk{
 		id: uploadChunkID{
-			fileUID: UID1,
+			fileUID: UID,
 			index:   1,
 		},
 		stuck:                  stuck,
@@ -195,7 +193,7 @@ func addChunks(r *Renter, stuck, fileRecentlySuccessful, priority bool) error {
 	}
 	chunk = &unfinishedUploadChunk{
 		id: uploadChunkID{
-			fileUID: UID2,
+			fileUID: UID,
 			index:   2,
 		},
 		stuck:                  stuck,
@@ -227,8 +225,8 @@ func TestUploadHeap(t *testing.T) {
 	// Add chunks to heap. Chunks are prioritize by stuck status first and then
 	// by piecesComplete/piecesNeeded
 	//
-	// Add 2 chunks of each type to confirm the type and the health is priotized
-	// properly
+	// Add 2 chunks of each type to confirm the type and the health is
+	// prioritized properly
 	err = addChunks(rt.renter, true, false, false)
 	if err != nil {
 		t.Fatal(err)
