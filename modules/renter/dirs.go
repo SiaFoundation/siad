@@ -11,6 +11,11 @@ func (r *Renter) CreateDir(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	if err != nil {
+		return err
+	}
 	return r.staticFileSystem.NewSiaDir(siaPath)
 }
 
@@ -21,6 +26,11 @@ func (r *Renter) DeleteDir(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	siaPath, err := modules.SiaFilesSiaPath().Join(siaPath.String())
+	if err != nil {
+		return err
+	}
 	return r.staticFileSystem.DeleteDir(siaPath)
 }
 
@@ -30,6 +40,11 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, erro
 		return nil, err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	siaPath, err := modules.SiaFilesSiaPath().Join(siaPath.String())
+	if err != nil {
+		return nil, err
+	}
 	_, di, err := r.staticFileSystem.List(siaPath, false, false, make(map[string]bool), make(map[string]bool), make(map[string]modules.RenterContract))
 	return di, err
 }
@@ -42,5 +57,14 @@ func (r *Renter) RenameDir(oldPath, newPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	oldPath, err := modules.SiaFilesSiaPath().Join(oldPath.String())
+	if err != nil {
+		return err
+	}
+	newPath, err = modules.SiaFilesSiaPath().Join(newPath.String())
+	if err != nil {
+		return err
+	}
 	return r.staticFileSystem.RenameDir(oldPath, newPath)
 }
