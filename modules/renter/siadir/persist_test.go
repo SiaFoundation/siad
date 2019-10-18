@@ -2,9 +2,11 @@ package siadir
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -105,209 +107,209 @@ func newTestWAL() (*writeaheadlog.WAL, string) {
 
 // TestCreateReadMetadataUpdate tests if an update can be created using createMetadataUpdate
 // and if the created update can be read using readMetadataUpdate.
-//func TestCreateReadMetadataUpdate(t *testing.T) {
-//	if testing.Short() {
-//		t.SkipNow()
-//	}
-//	t.Parallel()
-//
-//	sd, err := newTestDir(t.Name())
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	// Create metadata update
-//	path := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
-//	update, err := createMetadataUpdate(path, sd.metadata)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Read metadata update
-//	data, path, err := readMetadataUpdate(update)
-//	if err != nil {
-//		t.Fatal("Failed to read update", err)
-//	}
-//
-//	// Check path
-//	path2 := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
-//	if path != path2 {
-//		t.Fatalf("Path not correct: expected %v got %v", path2, path)
-//	}
-//
-//	// Check data
-//	var metadata Metadata
-//	err = json.Unmarshal(data, &metadata)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	// Check Time separately due to how the time is persisted
-//	if !metadata.AggregateLastHealthCheckTime.Equal(sd.metadata.AggregateLastHealthCheckTime) {
-//		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", metadata.AggregateLastHealthCheckTime, sd.metadata.AggregateLastHealthCheckTime)
-//	}
-//	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
-//	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
-//		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
-//	}
-//	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
-//	if !metadata.AggregateModTime.Equal(sd.metadata.AggregateModTime) {
-//		t.Fatalf("AggregateModTimes not equal, got %v expected %v", metadata.AggregateModTime, sd.metadata.AggregateModTime)
-//	}
-//	sd.metadata.AggregateModTime = metadata.AggregateModTime
-//	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
-//		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
-//	}
-//	sd.metadata.ModTime = metadata.ModTime
-//	if err := equalMetadatas(metadata, sd.metadata); err != nil {
-//		t.Fatal(err)
-//	}
-//}
+func TestCreateReadMetadataUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	sd, err := newTestDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create metadata update
+	path := filepath.Join(sd.staticPath, modules.SiaDirExtension)
+	update, err := createMetadataUpdate(path, sd.metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read metadata update
+	data, path, err := readMetadataUpdate(update)
+	if err != nil {
+		t.Fatal("Failed to read update", err)
+	}
+
+	// Check path
+	path2 := filepath.Join(sd.staticPath, modules.SiaDirExtension)
+	if path != path2 {
+		t.Fatalf("Path not correct: expected %v got %v", path2, path)
+	}
+
+	// Check data
+	var metadata Metadata
+	err = json.Unmarshal(data, &metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check Time separately due to how the time is persisted
+	if !metadata.AggregateLastHealthCheckTime.Equal(sd.metadata.AggregateLastHealthCheckTime) {
+		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", metadata.AggregateLastHealthCheckTime, sd.metadata.AggregateLastHealthCheckTime)
+	}
+	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
+	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
+		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
+	}
+	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	if !metadata.AggregateModTime.Equal(sd.metadata.AggregateModTime) {
+		t.Fatalf("AggregateModTimes not equal, got %v expected %v", metadata.AggregateModTime, sd.metadata.AggregateModTime)
+	}
+	sd.metadata.AggregateModTime = metadata.AggregateModTime
+	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
+		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
+	}
+	sd.metadata.ModTime = metadata.ModTime
+	if err := equalMetadatas(metadata, sd.metadata); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestCreateReadDeleteUpdate tests if an update can be created using
 // createDeleteUpdate and if the created update can be read using
 // readDeleteUpdate.
-//func TestCreateReadDeleteUpdate(t *testing.T) {
-//	if testing.Short() {
-//		t.SkipNow()
-//	}
-//	t.Parallel()
-//
-//	sd, err := newTestDir(t.Name())
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	update := sd.createDeleteUpdate()
-//	// Read update
-//	path := readDeleteUpdate(update)
-//	// Compare values
-//	siaDirPath := sd.siaPath.SiaDirSysPath(sd.rootDir)
-//	if path != siaDirPath {
-//		t.Error("paths don't match")
-//	}
-//}
+func TestCreateReadDeleteUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	sd, err := newTestDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := sd.createDeleteUpdate()
+	// Read update
+	path := readDeleteUpdate(update)
+	// Compare values
+	siaDirPath := sd.staticPath
+	if path != siaDirPath {
+		t.Error("paths don't match")
+	}
+}
 
 // TestApplyUpdates tests a variety of functions that are used to apply
 // updates.
-//func TestApplyUpdates(t *testing.T) {
-//	if testing.Short() {
-//		t.SkipNow()
-//	}
-//	t.Parallel()
-//
-//	t.Run("TestApplyUpdates", func(t *testing.T) {
-//		siadir, err := newTestDir(t.Name())
-//		if err != nil {
-//			t.Fatal(err)
-//		}
-//		testApply(t, siadir, ApplyUpdates)
-//	})
-//	t.Run("TestSiaDirApplyUpdates", func(t *testing.T) {
-//		siadir, err := newTestDir(t.Name())
-//		if err != nil {
-//			t.Fatal(err)
-//		}
-//		testApply(t, siadir, siadir.applyUpdates)
-//	})
-//	t.Run("TestCreateAndApplyTransaction", func(t *testing.T) {
-//		siadir, err := newTestDir(t.Name())
-//		if err != nil {
-//			t.Fatal(err)
-//		}
-//		testApply(t, siadir, siadir.createAndApplyTransaction)
-//	})
-//}
+func TestApplyUpdates(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	t.Run("TestApplyUpdates", func(t *testing.T) {
+		siadir, err := newTestDir(t.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		testApply(t, siadir, ApplyUpdates)
+	})
+	t.Run("TestSiaDirApplyUpdates", func(t *testing.T) {
+		siadir, err := newTestDir(t.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		testApply(t, siadir, siadir.applyUpdates)
+	})
+	t.Run("TestCreateAndApplyTransaction", func(t *testing.T) {
+		siadir, err := newTestDir(t.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		testApply(t, siadir, siadir.createAndApplyTransaction)
+	})
+}
 
 // testApply tests if a given method applies a set of updates correctly.
-//func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update) error) {
-//	// Create an update to the metadata
-//	metadata := siadir.metadata
-//	metadata.Health = 1.0
-//	path := siadir.siaPath.SiaDirMetadataSysPath(siadir.rootDir)
-//	update, err := createMetadataUpdate(path, metadata)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Apply update.
-//	if err := apply(update); err != nil {
-//		t.Fatal("Failed to apply update", err)
-//	}
-//	// Open file.
-//	sd, err := LoadSiaDir(siadir.rootDir, siadir.siaPath, modules.ProdDependencies, siadir.wal)
-//	if err != nil {
-//		t.Fatal("Failed to load siadir", err)
-//	}
-//	// Check Time separately due to how the time is persisted
-//	if !metadata.AggregateLastHealthCheckTime.Equal(sd.metadata.AggregateLastHealthCheckTime) {
-//		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", metadata.AggregateLastHealthCheckTime, sd.metadata.AggregateLastHealthCheckTime)
-//	}
-//	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
-//	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
-//		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
-//	}
-//	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
-//	if !metadata.AggregateModTime.Equal(sd.metadata.AggregateModTime) {
-//		t.Fatalf("AggregateModTimes not equal, got %v expected %v", metadata.AggregateModTime, sd.metadata.AggregateModTime)
-//	}
-//	sd.metadata.AggregateModTime = metadata.AggregateModTime
-//	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
-//		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
-//	}
-//	sd.metadata.ModTime = metadata.ModTime
-//	// Check if correct data was written.
-//	if err := equalMetadatas(metadata, sd.metadata); err != nil {
-//		t.Fatal(err)
-//	}
-//}
+func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update) error) {
+	// Create an update to the metadata
+	metadata := siadir.metadata
+	metadata.Health = 1.0
+	path := filepath.Join(siadir.staticPath, modules.SiaDirExtension)
+	update, err := createMetadataUpdate(path, metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Apply update.
+	if err := apply(update); err != nil {
+		t.Fatal("Failed to apply update", err)
+	}
+	// Open file.
+	sd, err := LoadSiaDir(siadir.staticPath, modules.ProdDependencies, siadir.wal)
+	if err != nil {
+		t.Fatal("Failed to load siadir", err)
+	}
+	// Check Time separately due to how the time is persisted
+	if !metadata.AggregateLastHealthCheckTime.Equal(sd.metadata.AggregateLastHealthCheckTime) {
+		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", metadata.AggregateLastHealthCheckTime, sd.metadata.AggregateLastHealthCheckTime)
+	}
+	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
+	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
+		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
+	}
+	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	if !metadata.AggregateModTime.Equal(sd.metadata.AggregateModTime) {
+		t.Fatalf("AggregateModTimes not equal, got %v expected %v", metadata.AggregateModTime, sd.metadata.AggregateModTime)
+	}
+	sd.metadata.AggregateModTime = metadata.AggregateModTime
+	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
+		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
+	}
+	sd.metadata.ModTime = metadata.ModTime
+	// Check if correct data was written.
+	if err := equalMetadatas(metadata, sd.metadata); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestManagedCreateAndApplyTransactions tests if
 // managedCreateAndApplyTransactions applies a set of updates correctly.
-//func TestManagedCreateAndApplyTransactions(t *testing.T) {
-//	if testing.Short() {
-//		t.SkipNow()
-//	}
-//	t.Parallel()
-//
-//	siadir, err := newTestDir(t.Name())
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	// Create an update to the metadata
-//	metadata := siadir.metadata
-//	metadata.Health = 1.0
-//	path := siadir.siaPath.SiaDirMetadataSysPath(siadir.rootDir)
-//	update, err := createMetadataUpdate(path, metadata)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Apply update.
-//	if err := managedCreateAndApplyTransaction(siadir.wal, update); err != nil {
-//		t.Fatal("Failed to apply update", err)
-//	}
-//	// Open file.
-//	sd, err := LoadSiaDir(siadir.rootDir, siadir.siaPath, modules.ProdDependencies, siadir.wal)
-//	if err != nil {
-//		t.Fatal("Failed to load siadir", err)
-//	}
-//	// Check Time separately due to how the time is persisted
-//	if !metadata.AggregateLastHealthCheckTime.Equal(sd.metadata.AggregateLastHealthCheckTime) {
-//		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", metadata.AggregateLastHealthCheckTime, sd.metadata.AggregateLastHealthCheckTime)
-//	}
-//	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
-//	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
-//		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
-//	}
-//	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
-//	if !metadata.AggregateModTime.Equal(sd.metadata.AggregateModTime) {
-//		t.Fatalf("AggregateModTimes not equal, got %v expected %v", metadata.AggregateModTime, sd.metadata.AggregateModTime)
-//	}
-//	sd.metadata.AggregateModTime = metadata.AggregateModTime
-//	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
-//		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
-//	}
-//	sd.metadata.ModTime = metadata.ModTime
-//	// Check if correct data was written.
-//	if err := equalMetadatas(metadata, sd.metadata); err != nil {
-//		t.Fatal(err)
-//	}
-//}
+func TestManagedCreateAndApplyTransactions(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	siadir, err := newTestDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create an update to the metadata
+	metadata := siadir.metadata
+	metadata.Health = 1.0
+	path := filepath.Join(siadir.staticPath, modules.SiaDirExtension)
+	update, err := createMetadataUpdate(path, metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Apply update.
+	if err := managedCreateAndApplyTransaction(siadir.wal, update); err != nil {
+		t.Fatal("Failed to apply update", err)
+	}
+	// Open file.
+	sd, err := LoadSiaDir(siadir.staticPath, modules.ProdDependencies, siadir.wal)
+	if err != nil {
+		t.Fatal("Failed to load siadir", err)
+	}
+	// Check Time separately due to how the time is persisted
+	if !metadata.AggregateLastHealthCheckTime.Equal(sd.metadata.AggregateLastHealthCheckTime) {
+		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", metadata.AggregateLastHealthCheckTime, sd.metadata.AggregateLastHealthCheckTime)
+	}
+	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
+	if !metadata.LastHealthCheckTime.Equal(sd.metadata.LastHealthCheckTime) {
+		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", metadata.LastHealthCheckTime, sd.metadata.LastHealthCheckTime)
+	}
+	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	if !metadata.AggregateModTime.Equal(sd.metadata.AggregateModTime) {
+		t.Fatalf("AggregateModTimes not equal, got %v expected %v", metadata.AggregateModTime, sd.metadata.AggregateModTime)
+	}
+	sd.metadata.AggregateModTime = metadata.AggregateModTime
+	if !metadata.ModTime.Equal(sd.metadata.ModTime) {
+		t.Fatalf("ModTimes not equal, got %v expected %v", metadata.ModTime, sd.metadata.ModTime)
+	}
+	sd.metadata.ModTime = metadata.ModTime
+	// Check if correct data was written.
+	if err := equalMetadatas(metadata, sd.metadata); err != nil {
+		t.Fatal(err)
+	}
+}
