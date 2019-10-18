@@ -231,12 +231,22 @@ func TestRenterFileList(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatal("FileList is not returning the only file in the renter")
 	}
-	if !files[0].SiaPath.Equals(rt.renter.staticFileSystem.FileSiaPath(entry1)) {
+	entry1SP := rt.renter.staticFileSystem.FileSiaPath(entry1)
+	entry1SP, err = entry1SP.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !files[0].SiaPath.Equals(entry1SP) {
 		t.Error("FileList is not returning the correct filename for the only file")
 	}
 
 	// Put multiple files in the renter.
 	entry2, _ := rt.renter.newRenterTestFile()
+	entry2SP := rt.renter.staticFileSystem.FileSiaPath(entry2)
+	entry2SP, err = entry2SP.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
@@ -248,8 +258,8 @@ func TestRenterFileList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !((files[0].SiaPath.Equals(rt.renter.staticFileSystem.FileSiaPath(entry1)) || files[0].SiaPath.Equals(rt.renter.staticFileSystem.FileSiaPath(entry2))) &&
-		(files[1].SiaPath.Equals(rt.renter.staticFileSystem.FileSiaPath(entry1)) || files[1].SiaPath.Equals(rt.renter.staticFileSystem.FileSiaPath(entry2))) &&
+	if !((files[0].SiaPath.Equals(entry1SP) || files[0].SiaPath.Equals(entry2SP)) &&
+		(files[1].SiaPath.Equals(entry1SP) || files[1].SiaPath.Equals(entry2SP)) &&
 		(files[0].SiaPath != files[1].SiaPath)) {
 		t.Log("files[0].SiaPath", files[0].SiaPath)
 		t.Log("files[1].SiaPath", files[1].SiaPath)
