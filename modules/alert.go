@@ -35,6 +35,10 @@ const (
 	// AlertIDAllowanceLowFunds is the id of the alert that is registered if at least one
 	// contract failed to renew/form due to low allowance.
 	AlertIDAllowanceLowFunds = "low-funds"
+	// AlertIDGatewayOffline is the id of the alert that is registered upon a
+	// call to 'gateway.Offline' if the value returned is 'false' and
+	// unregistered when it returns 'true'.
+	AlertIDGatewayOffline = "gateway-offline"
 )
 
 // AlertIDSiafileLowRedundancy uses a Siafile's UID to create a unique AlertID

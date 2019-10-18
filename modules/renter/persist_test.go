@@ -56,7 +56,10 @@ func TestRenterSaveLoad(t *testing.T) {
 	defer rt.Close()
 
 	// Check that the default values got set correctly.
-	settings := rt.renter.Settings()
+	settings, err := rt.renter.Settings()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if settings.MaxDownloadSpeed != DefaultMaxDownloadSpeed {
 		t.Error("default max download speed not set at init")
 	}
@@ -103,7 +106,10 @@ func TestRenterSaveLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	newSettings := rt.renter.Settings()
+	newSettings, err := rt.renter.Settings()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if newSettings.MaxDownloadSpeed != newDownSpeed {
 		t.Error("download settings not being persisted correctly")
 	}

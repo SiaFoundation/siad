@@ -34,16 +34,18 @@ func (newStub) AcceptTransactionSet([]types.Transaction) error      { return nil
 func (newStub) FeeEstimation() (a types.Currency, b types.Currency) { return }
 
 // hdb stubs
-func (newStub) AllHosts() []modules.HostDBEntry                                { return nil }
-func (newStub) ActiveHosts() []modules.HostDBEntry                             { return nil }
-func (newStub) CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey { return nil }
-func (newStub) Filter() (modules.FilterMode, map[string]types.SiaPublicKey) {
-	return 0, make(map[string]types.SiaPublicKey)
+func (newStub) AllHosts() ([]modules.HostDBEntry, error)    { return nil, nil }
+func (newStub) ActiveHosts() ([]modules.HostDBEntry, error) { return nil, nil }
+func (newStub) CheckForIPViolations([]types.SiaPublicKey) ([]types.SiaPublicKey, error) {
+	return nil, nil
 }
-func (newStub) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error { return nil }
-func (newStub) Host(types.SiaPublicKey) (settings modules.HostDBEntry, ok bool)       { return }
-func (newStub) IncrementSuccessfulInteractions(key types.SiaPublicKey)                { return }
-func (newStub) IncrementFailedInteractions(key types.SiaPublicKey)                    { return }
+func (newStub) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
+	return 0, make(map[string]types.SiaPublicKey), nil
+}
+func (newStub) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error      { return nil }
+func (newStub) Host(types.SiaPublicKey) (settings modules.HostDBEntry, ok bool, err error) { return }
+func (newStub) IncrementSuccessfulInteractions(key types.SiaPublicKey) error               { return nil }
+func (newStub) IncrementFailedInteractions(key types.SiaPublicKey) error                   { return nil }
 func (newStub) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return nil, nil
 }
@@ -115,16 +117,18 @@ func TestAllowance(t *testing.T) {
 // its methods.
 type stubHostDB struct{}
 
-func (stubHostDB) AllHosts() (hs []modules.HostDBEntry)                           { return }
-func (stubHostDB) ActiveHosts() (hs []modules.HostDBEntry)                        { return }
-func (stubHostDB) CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey { return nil }
-func (stubHostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey) {
-	return 0, make(map[string]types.SiaPublicKey)
+func (stubHostDB) AllHosts() (hs []modules.HostDBEntry, err error)    { return }
+func (stubHostDB) ActiveHosts() (hs []modules.HostDBEntry, err error) { return }
+func (stubHostDB) CheckForIPViolations([]types.SiaPublicKey) ([]types.SiaPublicKey, error) {
+	return nil, nil
+}
+func (stubHostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
+	return 0, make(map[string]types.SiaPublicKey), nil
 }
 func (stubHostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error { return nil }
-func (stubHostDB) Host(types.SiaPublicKey) (h modules.HostDBEntry, ok bool)              { return }
-func (stubHostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey)                { return }
-func (stubHostDB) IncrementFailedInteractions(key types.SiaPublicKey)                    { return }
+func (stubHostDB) Host(types.SiaPublicKey) (h modules.HostDBEntry, ok bool, err error)   { return }
+func (stubHostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) error          { return nil }
+func (stubHostDB) IncrementFailedInteractions(key types.SiaPublicKey) error              { return nil }
 func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                                   { return }
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) (hs []modules.HostDBEntry, _ error) {
 	return
@@ -260,7 +264,10 @@ func TestAllowanceSpending(t *testing.T) {
 	}
 
 	// PeriodSpending should reflect the amount of spending accurately
-	reportedSpending := c.PeriodSpending()
+	reportedSpending, err := c.PeriodSpending()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if reportedSpending.TotalAllocated.Cmp(spent) != 0 {
 		t.Fatal("reported incorrect spending for this billing cycle: got", reportedSpending.TotalAllocated.HumanString(), "wanted", spent.HumanString())
 	}
@@ -329,8 +336,19 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	// bad args
 	a.Hosts = 1
 	err = c.SetAllowance(a)
-	if err != errAllowanceZeroPeriod {
-		t.Errorf("expected %q, got %q", errAllowanceZeroPeriod, err)
+	if err != ErrAllowanceZeroFunds {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroFunds, err)
+	}
+	a.Funds = types.SiacoinPrecision
+	a.Hosts = 0
+	err = c.SetAllowance(a)
+	if err != ErrAllowanceNoHosts {
+		t.Errorf("expected %q, got %q", ErrAllowanceNoHosts, err)
+	}
+	a.Hosts = 1
+	err = c.SetAllowance(a)
+	if err != ErrAllowanceZeroPeriod {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroPeriod, err)
 	}
 	a.Period = 20
 	err = c.SetAllowance(a)
@@ -344,23 +362,23 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	}
 	a.RenewWindow = 10
 	err = c.SetAllowance(a)
-	if err != errAllowanceZeroExpectedStorage {
-		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedStorage, err)
+	if err != ErrAllowanceZeroExpectedStorage {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
 	}
 	a.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 	err = c.SetAllowance(a)
-	if err != errAllowanceZeroExpectedUpload {
-		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedUpload, err)
+	if err != ErrAllowanceZeroExpectedUpload {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedUpload, err)
 	}
 	a.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 	err = c.SetAllowance(a)
-	if err != errAllowanceZeroExpectedDownload {
-		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedDownload, err)
+	if err != ErrAllowanceZeroExpectedDownload {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedDownload, err)
 	}
 	a.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 	err = c.SetAllowance(a)
-	if err != errAllowanceZeroExpectedRedundancy {
-		t.Errorf("expected %q, got %q", errAllowanceZeroExpectedRedundancy, err)
+	if err != ErrAllowanceZeroExpectedRedundancy {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedRedundancy, err)
 	}
 	a.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 
@@ -473,7 +491,10 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _ := c.hdb.Host(h.PublicKey())
+		host, _, err := c.hdb.Host(h.PublicKey())
+		if err != nil {
+			return err
+		}
 		if settings.MaxDuration != host.MaxDuration {
 			return fmt.Errorf("host max duration not set, expected %v, got %v", settings.MaxDuration, host.MaxDuration)
 		}
@@ -518,7 +539,10 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _ := c.hdb.Host(h.PublicKey())
+		host, _, err := c.hdb.Host(h.PublicKey())
+		if err != nil {
+			return err
+		}
 		if settings.MaxDuration != host.MaxDuration {
 			return fmt.Errorf("host max duration not set, expected %v, got %v", settings.MaxDuration, host.MaxDuration)
 		}
@@ -552,7 +576,10 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 	// Let host settings permeate
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		host, _ := c.hdb.Host(h.PublicKey())
+		host, _, err := c.hdb.Host(h.PublicKey())
+		if err != nil {
+			return err
+		}
 		if settings.MaxDuration != host.MaxDuration {
 			return fmt.Errorf("host max duration not set, expected %v, got %v", settings.MaxDuration, host.MaxDuration)
 		}

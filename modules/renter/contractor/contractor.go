@@ -96,12 +96,12 @@ func (c *Contractor) InitRecoveryScan() (err error) {
 		return err
 	}
 	defer c.tg.Done()
-	return c.managedInitRecoveryScan(modules.ConsensusChangeBeginning)
+	return c.callInitRecoveryScan(modules.ConsensusChangeBeginning)
 }
 
 // PeriodSpending returns the amount spent on contracts during the current
 // billing period.
-func (c *Contractor) PeriodSpending() modules.ContractorSpending {
+func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 	allContracts := c.staticContracts.ViewAll()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -123,7 +123,7 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 
 	// Calculate needed spending to be reported from old contracts
 	for _, contract := range c.oldContracts {
-		host, exist := c.hdb.Host(contract.HostPublicKey)
+		host, exist, err := c.hdb.Host(contract.HostPublicKey)
 		if contract.StartHeight >= c.currentPeriod {
 			// Calculate spending from contracts that were renewed during the current period
 			// Calculate ContractFees
@@ -136,7 +136,7 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 			spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
 			spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
 			spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
-		} else if exist && contract.EndHeight+host.WindowSize+types.MaturityDelay > c.blockHeight {
+		} else if err != nil && exist && contract.EndHeight+host.WindowSize+types.MaturityDelay > c.blockHeight {
 			// Calculate funds that are being withheld in contracts
 			spending.WithheldFunds = spending.WithheldFunds.Add(contract.RenterFunds)
 			// Record the largest window size for worst case when reporting the spending
@@ -162,7 +162,7 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 		spending.Unspent = c.allowance.Funds.Sub(allSpending)
 	}
 
-	return spending
+	return spending, nil
 }
 
 // CurrentPeriod returns the height at which the current allowance period
@@ -420,9 +420,9 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	return c, errChan
 }
 
-// managedInitRecoveryScan starts scanning the whole blockchain at a certain
+// callInitRecoveryScan starts scanning the whole blockchain at a certain
 // ChangeID for recoverable contracts within a separate thread.
-func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
+func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
 	// Check if we are already scanning the blockchain.
 	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
 		return errors.New("scan for recoverable contracts is already in progress")

@@ -28,7 +28,7 @@ func TestMinimizeTransactionSet(t *testing.T) {
 
 	// Create a test group with two miners. The miners will be sending
 	// transactions to eachother in a way that ensures transaction set
-	// minimization is occuring correctly.
+	// minimization is occurring correctly.
 	groupParams := siatest.GroupParams{
 		Miners: 2,
 	}
@@ -43,8 +43,9 @@ func TestMinimizeTransactionSet(t *testing.T) {
 		}
 	}()
 	// Give simple names to the miners.
-	minerA := tg.Miners()[0]
-	minerB := tg.Miners()[1]
+	miners := tg.Miners()
+	minerA := miners[0]
+	minerB := miners[1]
 
 	// Create source outputs for transaction graphs.
 	var sources []types.SiacoinOutputID
@@ -116,7 +117,7 @@ func TestMinimizeTransactionSet(t *testing.T) {
 	}
 
 	// Disconnect minerA and minerB, this will enable a setup of a double spend.
-	// minerA is going to have a transaction graph with two soruce depedencies.
+	// minerA is going to have a transaction graph with two source dependencies.
 	// minerB is going to have a transaction graph that double spends one of
 	// those sources. The second source in minerA will have a set of children
 	// which could be independently sent to minerA if transaction sets are being

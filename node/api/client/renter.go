@@ -376,9 +376,10 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) error {
 	return a.Send()
 }
 
-// RenterCancelAllowance uses the /renter endpoint to cancel the allowance.
-func (c *Client) RenterCancelAllowance() (err error) {
-	err = c.RenterPostAllowance(modules.Allowance{})
+// RenterAllowanceCancelPost uses the /renter/allowance/cancel endpoint to cancel
+// the allowance.
+func (c *Client) RenterAllowanceCancelPost() (err error) {
+	err = c.post("/renter/allowance/cancel", "", nil)
 	return
 }
 
@@ -572,5 +573,12 @@ func (c *Client) RenterUploadReadyGet(dataPieces, parityPieces uint64) (rur api.
 // determine if the renter is ready for upload.
 func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, err error) {
 	err = c.get("/renter/uploadready", &rur)
+	return
+}
+
+// RenterPost uses the /renter POST endpoint to set fields of the renter. Values
+// are encoded as a query string in the body
+func (c *Client) RenterPost(values url.Values) (err error) {
+	err = c.post("/renter", values.Encode(), nil)
 	return
 }
