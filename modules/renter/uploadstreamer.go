@@ -93,9 +93,18 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 // managedInitUploadStream verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
 func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*filesystem.FNode, error) {
+	// Prepend the provided siapath with the /home/siafiles or /snapshots.
+	var err error
+	if backup {
+		up.SiaPath, err = modules.SnapshotsSiaPath().Join(up.SiaPath.String())
+	} else {
+		up.SiaPath, err = modules.SiaFilesSiaPath().Join(up.SiaPath.String())
+	}
+	if err != nil {
+		return nil, err
+	}
 	siaPath, ec, force, repair := up.SiaPath, up.ErasureCode, up.Force, up.Repair
 	// Check if ec was set. If not use defaults.
-	var err error
 	if ec == nil && !repair {
 		up.ErasureCode, err = siafile.NewRSSubCode(DefaultDataPieces, DefaultParityPieces, 64)
 		if err != nil {
@@ -165,19 +174,6 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		return err
 	}
 	defer entry.Close()
-
-	// Prepend the provided siapath with the /home/siafiles or /snapshots.
-	if backup {
-		up.SiaPath, err = modules.SnapshotsSiaPath().Join(up.SiaPath.String())
-		if err != nil {
-			return err
-		}
-	} else {
-		up.SiaPath, err = modules.SiaFilesSiaPath().Join(up.SiaPath.String())
-		if err != nil {
-			return err
-		}
-	}
 
 	// Build a map of host public keys.
 	pks := make(map[string]types.SiaPublicKey)
