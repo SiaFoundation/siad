@@ -97,7 +97,7 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	}
 	// Verify the claimed signatures.
 	if err := modules.VerifyFileContractRevisionTransactionSignatures(resp.Revision, resp.Signatures, s.height); err != nil {
-		return resp.Revision, resp.Signatures, err
+		return resp.Revision, resp.Signatures, errors.AddContext(err, "unable to verify signatures on contract revision")
 	}
 	return resp.Revision, resp.Signatures, nil
 }
@@ -801,21 +801,21 @@ func (s *Session) Close() error {
 func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
 	sc, ok := cs.Acquire(id)
 	if !ok {
-		return nil, errors.New("invalid contract")
+		return nil, errors.New("could not locate contract to create session")
 	}
 	defer cs.Return(sc)
 	s, err := cs.managedNewSession(host, currentHeight, hdb, cancel)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to create a new session with the host")
 	}
 	// Lock the contract and resynchronize if necessary
 	rev, sigs, err := s.Lock(id, sc.header.SecretKey)
 	if err != nil {
 		s.Close()
-		return nil, err
+		return nil, errors.AddContext(err, "unable to get a session lock")
 	} else if err := sc.managedSyncRevision(rev, sigs); err != nil {
 		s.Close()
-		return nil, err
+		return nil, errors.AddContext(err, "unable to sync revisions when creating session")
 	}
 	return s, nil
 }

@@ -854,8 +854,20 @@ func DecodeAnnouncement(fullAnnouncement []byte) (na NetAddress, spk types.SiaPu
 
 // IsOOSErr is a helper function to determine whether an error is a
 // ErrInsufficientStorageForSector.
+//
+// NOTE: Remember when updating this to preserve backwards compatibility with
+// older protocol versions.
 func IsOOSErr(err error) bool {
-	return strings.Contains(err.Error(), ErrInsufficientStorageForSector.Error())
+	return strings.Contains(err.Error(), "not enough storage remaining to accept sector")
+}
+
+// IsNoContractErr is a helper function to determine whether an error from a
+// host is a 'contract does not exist' error.
+//
+// NOTE: Remember when updating this to preserve backwards compatibility with
+// older protocol versions.
+func IsNoContractErr(err error) bool {
+	return strings.Contains(err.Error(), "no record of that contract")
 }
 
 // VerifyFileContractRevisionTransactionSignatures checks that the signatures

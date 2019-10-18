@@ -209,7 +209,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	// sanity checks to see that the host is not swindling us.
 	contract, haveContract := c.staticContracts.View(id)
 	if !haveContract {
-		return nil, errors.New("no record of that contract")
+		return nil, errors.New("contract not found in the renter contract set")
 	}
 	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
 	if err != nil {
@@ -228,6 +228,18 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 
 	// Create the session.
 	s, err := c.staticContracts.NewSession(host, id, height, c.hdb, cancel)
+	if modules.IsNoContractErr(err) {
+		// If the host is not recognizing the contract, the contract needs to be
+		// marked as bad.
+		sc, ok := c.staticContracts.Acquire(id)
+		if ok {
+			u := sc.Utility()
+			u.GoodForUpload = false
+			u.GoodForRenew = false
+			u.BadContract = true
+			err = errors.Compose(err, errors.AddContext(sc.UpdateUtility(u), "unable to mark contract as bad"))
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
