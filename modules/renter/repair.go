@@ -336,7 +336,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	dir := dirSiaPath.SiaDirSysPath(r.staticFilesDir)
 	fileinfos, err := ioutil.ReadDir(dir)
 	if err != nil {
-		return modules.SiaPath{}, errors.AddContext(err, "unable to open sys dir")
+		return modules.SiaPath{}, errors.AddContext(err, "unable to open sys dir: "+dir)
 	}
 	// Iterate over the fileinfos
 	for _, fi := range fileinfos {
@@ -347,9 +347,10 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 
 		// Get SiaPath
 		var sp modules.SiaPath
-		err = sp.FromSysPath(filepath.Join(dir, fi.Name()), dir)
+		fullPath := filepath.Join(dir, fi.Name())
+		err = sp.FromSysPath(fullPath, dir)
 		if err != nil {
-			return modules.SiaPath{}, errors.AddContext(err, "unable to get the siapath from the sys path")
+			return modules.SiaPath{}, errors.AddContext(err, "unable to get the siapath from the sys path: "+fullPath)
 		}
 
 		// Open SiaFile, grab the number of stuck chunks and close the file
