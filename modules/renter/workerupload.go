@@ -231,7 +231,6 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 		failures := w.uploadConsecutiveFailures
 		w.mu.Unlock()
 		w.renter.log.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v", w.staticHostPubKey, failures, uc.id)
-		println("worker failed to complete an upload:", failures, failureErr.Error(), uc.staticSiaPath)
 	}
 
 	// Unregister the piece from the chunk and hunt for a replacement.
