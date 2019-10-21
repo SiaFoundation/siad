@@ -74,6 +74,9 @@ func (n *DNode) Metadata() (siadir.Metadata, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	sd, err := n.siaDir()
+	if os.IsNotExist(err) {
+		return siadir.Metadata{}, ErrNotExist
+	}
 	if err != nil {
 		return siadir.Metadata{}, err
 	}

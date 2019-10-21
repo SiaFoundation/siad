@@ -310,7 +310,7 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 
 	//  Open SiaDir
 	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
-	if err != nil && err.Error() == siadir.ErrUnknownPath.Error() {
+	if err != nil && err == filesystem.ErrNotExist {
 		// If siadir doesn't exist create one
 		err = r.staticFileSystem.NewSiaDir(siaPath)
 		if err != nil {
@@ -325,7 +325,20 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 	}
 	defer siaDir.Close()
 
-	return siaDir.Metadata()
+	// Grab the metadata.
+	md, err := siaDir.Metadata()
+	if err != nil && err == filesystem.ErrNotExist {
+		// If metadata doesn't exist create it.
+		err = r.staticFileSystem.NewSiaDir(siaPath)
+		if err != nil {
+			return siadir.Metadata{}, err
+		}
+		// Try loading Metadata again.
+		return siaDir.Metadata()
+	} else if err != nil {
+		return siadir.Metadata{}, err
+	}
+	return md, nil
 }
 
 // managedUpdateLastHealthCheckTime updates the LastHealthCheckTime and
