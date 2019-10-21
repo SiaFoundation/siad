@@ -824,6 +824,10 @@ fetches status information about the host.
 
   "connectabilitystatus": "checking", // string
   "workingstatus":        "checking"  // string
+  "publickey": {
+    "algorithm": "ed25519", // string
+    "key":       "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU=" // string
+  },
 }
 ```
 #### externalsettings  
@@ -1015,6 +1019,9 @@ connectabilitystatus is one of "checking", "connectable", or "not connectable", 
 
 **workingstatus** | string  
 workingstatus is one of "checking", "working", or "not working" and indicates if the host is being actively used by renters.  
+
+**publickey**  
+Public key used to identify the host.  
 
 ## /host [POST]
 > curl example  
