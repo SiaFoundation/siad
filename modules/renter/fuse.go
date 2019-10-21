@@ -1,5 +1,11 @@
 package renter
 
+// TODO: Note in the README that the mountpoints hold a tg.Add throughout their
+// life, and get unmounted upon renter shutdown.
+
+// TODO: Need to test opening multiple mount points at once, need to test trying
+// to open mount points after shutdown.
+
 import (
 	"io"
 	"os"
@@ -18,37 +24,63 @@ import (
 type fuseManager struct {
 	mountPoints map[string]*fuseFS
 
-	mu sync.Mutex
-	r  *Renter
+	mu     sync.Mutex
+	renter *Renter
 }
 
 // newFuseManager returns a new fuseManager.
 func newFuseManager(r *Renter) *fuseManager {
-	return &fuseManager{
+	// Create the fuseManager
+	fm := &fuseManager{
 		mountPoints: make(map[string]*fuseFS),
-		r:           r,
+		renter:      r,
 	}
+
+	// Close the fuse manager on shutdown.
+	r.tg.OnStop(func() error {
+		return fm.managedCloseFuseManager()
+	})
+
+	return fm
 }
 
-// Close unmounts all currently-mounted filesystems.
-func (fm *fuseManager) Close() error {
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
-	// unmount any mounted fuse filesystems
-	for path, fs := range fm.mountPoints {
-		delete(fm.mountPoints, path)
-		fs.srv.Unmount()
+// managedCloseFuseManager unmounts all currently-mounted filesystems.
+func (fm *fuseManager) managedCloseFuseManager() error {
+	// Threadgroup should prevent more interactions with the fuseManager after
+	// shutdown, and this function should only be called after shutdown.
+	// Grabbing the list of mountpoints and unlocking should be safe. No lock is
+	// used here so that the race detector will get upset if this assumption is
+	// incorrect.
+	//
+	// The map needs to be turned into an array because the Unmount call
+	// modifies the map.
+	mounts := make([]string, 0, len(fm.mountPoints))
+	for name := range fm.mountPoints {
+		mounts = append(mounts, name)
 	}
-	return nil
+
+	// Unmount any mounted fuse filesystems.
+	var err error
+	for _, name := range mounts {
+		err = errors.Compose(err, fm.Unmount(name))
+	}
+	return errors.AddContext(err, "error closing the fuse manager")
 }
 
 // Mount mounts the files under the specified siapath under the 'mountPoint' folder on
 // the local filesystem.
-func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
-	if err := fm.r.tg.Add(); err != nil {
+func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) (err error) {
+	if err := fm.renter.tg.Add(); err != nil {
 		return err
 	}
-	defer fm.r.tg.Done()
+	// Only release the Add() call if there was no error. Otherwise the Add()
+	// call will be released when Unmount is called.
+	defer func() {
+		if err != nil {
+			fm.renter.tg.Done()
+		}
+	}()
+
 	fm.mu.Lock()
 	_, ok := fm.mountPoints[mountPoint]
 	fm.mu.Unlock()
@@ -62,7 +94,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	fs := &fuseFS{
 		FileSystem: pathfs.NewDefaultFileSystem(),
 		root:       sp,
-		renter:     fm.r,
+		renter:     fm.renter,
 	}
 	nfs := pathfs.NewPathNodeFs(fs, nil)
 	// we need to call `Mount` rather than `MountRoot` because we want to define
@@ -74,7 +106,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 	server, _, err := nodefs.Mount(mountPoint, nfs.Root(), mountOpts, nil)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to mount using nodefs")
 	}
 	go server.Serve()
 	fs.srv = server
@@ -87,10 +119,10 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 
 // MountInfo returns the list of currently mounted fuse filesystems.
 func (fm *fuseManager) MountInfo() []modules.MountInfo {
-	if err := fm.r.tg.Add(); err != nil {
+	if err := fm.renter.tg.Add(); err != nil {
 		return nil
 	}
-	defer fm.r.tg.Done()
+	defer fm.renter.tg.Done()
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
@@ -106,20 +138,17 @@ func (fm *fuseManager) MountInfo() []modules.MountInfo {
 
 // Unmount unmounts the fuse filesystem currently mounted at mountPoint.
 func (fm *fuseManager) Unmount(mountPoint string) error {
-	if err := fm.r.tg.Add(); err != nil {
-		return err
-	}
-	defer fm.r.tg.Done()
-
 	fm.mu.Lock()
-	f, ok := fm.mountPoints[mountPoint]
+	fs, ok := fm.mountPoints[mountPoint]
 	delete(fm.mountPoints, mountPoint)
 	fm.mu.Unlock()
-
 	if !ok {
 		return errors.New("nothing mounted at that path")
 	}
-	return errors.AddContext(f.srv.Unmount(), "failed to unmount filesystem")
+	// Release the threadgroup hold for this mountpoint.
+	fm.renter.tg.Done()
+
+	return errors.AddContext(fs.srv.Unmount(), "failed to unmount filesystem")
 }
 
 // fuseFS implements pathfs.FileSystem using a modules.Renter.

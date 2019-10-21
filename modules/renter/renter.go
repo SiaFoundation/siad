@@ -265,13 +265,12 @@ type Renter struct {
 
 // Close closes the Renter and its dependencies
 func (r *Renter) Close() error {
+	// TODO: Is this check needed?
 	if r == nil {
 		return nil
 	}
-	r.tg.Stop()
-	r.staticFuseManager.Close()
-	r.hostDB.Close()
-	return r.hostContractor.Close()
+
+	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close())
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
