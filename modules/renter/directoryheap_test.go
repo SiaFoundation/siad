@@ -11,6 +11,12 @@ import (
 // updateSiaDirHealth is a helper method to update the health and the aggregate
 // health of a siadir
 func (r *Renter) updateSiaDirHealth(siaPath modules.SiaPath, health, aggregateHealth float64) error {
+	// Since we are using the filesystem here directly we need to rebase the
+	// path first.
+	siaPath, err := siaPath.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	if err != nil {
+		return err
+	}
 	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		return err
@@ -218,9 +224,9 @@ func TestPushSubDirectories(t *testing.T) {
 	// Make sure we are starting with an empty heap
 	rt.renter.directoryHeap.managedReset()
 
-	// Add root sub directories
+	// Add siafiles sub directories
 	d := &directory{
-		siaPath: modules.RootSiaPath(),
+		siaPath: modules.SiaFilesSiaPath(),
 	}
 	err = rt.renter.managedPushSubDirectories(d)
 	if err != nil {
@@ -230,6 +236,16 @@ func TestPushSubDirectories(t *testing.T) {
 	// Heap should have a length of 2
 	if rt.renter.directoryHeap.managedLen() != 2 {
 		t.Fatal("Heap should have length of 2 but was", rt.renter.directoryHeap.managedLen())
+	}
+
+	// Rebase paths.
+	siaPath1, err = siaPath1.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath2, err = siaPath2.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Pop off elements and confirm the are correct
