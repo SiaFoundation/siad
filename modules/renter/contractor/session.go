@@ -229,16 +229,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	// Create the session.
 	s, err := c.staticContracts.NewSession(host, id, height, c.hdb, cancel)
 	if modules.IsNoContractErr(err) {
-		// If the host is not recognizing the contract, the contract needs to be
-		// marked as bad.
-		sc, ok := c.staticContracts.Acquire(id)
-		if ok {
-			u := sc.Utility()
-			u.GoodForUpload = false
-			u.GoodForRenew = false
-			u.BadContract = true
-			err = errors.Compose(err, errors.AddContext(sc.UpdateUtility(u), "unable to mark contract as bad"))
-		}
+		err = errors.Compose(err, c.MarkContractBad(id))
 	}
 	if err != nil {
 		return nil, err
