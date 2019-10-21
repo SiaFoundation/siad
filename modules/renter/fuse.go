@@ -100,7 +100,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	// the fuse mount flag `AllowOther`, which enables non-permissioned users to
 	// access the fuse mount. This makes life easier in Docker.
 	mountOpts := &fuse.MountOptions{
-		AllowOther:   true,
+		AllowOther: true,
 		// TODO: What is the MaxReadAhead value?
 		MaxReadAhead: 1,
 	}
