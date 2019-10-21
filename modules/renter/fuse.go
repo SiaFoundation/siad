@@ -14,53 +14,27 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// MountInfo returns the list of currently mounted FUSE filesystems.
-func (r *Renter) MountInfo() []modules.MountInfo {
-	return r.staticFUSEManager.mountInfo()
-}
-
-// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
-// the local filesystem.
-func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
-	return r.staticFUSEManager.mount(mountPoint, sp, opts)
-}
-
-// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
-func (r *Renter) Unmount(mountPoint string) error {
-	return r.staticFUSEManager.unmount(mountPoint)
-}
-
-// A fuseManager manages mounted FUSE filesystems.
+// A fuseManager manages mounted fuse filesystems.
 type fuseManager struct {
 	mountPoints map[string]*fuseFS
 
-	mu          sync.Mutex
-	r           *Renter
+	mu sync.Mutex
+	r  *Renter
 }
 
-// mountInfo returns the list of currently mounted FUSE filesystems.
-func (fm *fuseManager) mountInfo() []modules.MountInfo {
-	if err := fm.r.tg.Add(); err != nil {
-		return nil
+// newFuseManager returns a new fuseManager.
+func newFuseManager(r *Renter) *fuseManager {
+	return &fuseManager{
+		mountPoints: make(map[string]*fuseFS),
+		r:           r,
 	}
-	defer fm.r.tg.Done()
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
-	var infos []modules.MountInfo
-	for mountPoint, fs := range fm.mountPoints {
-		infos = append(infos, modules.MountInfo{
-			MountPoint: mountPoint,
-			SiaPath:    fs.root,
-		})
-	}
-	return infos
 }
 
 // Close unmounts all currently-mounted filesystems.
 func (fm *fuseManager) Close() error {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
-	// unmount any mounted FUSE filesystems
+	// unmount any mounted fuse filesystems
 	for path, fs := range fm.mountPoints {
 		delete(fm.mountPoints, path)
 		fs.srv.Unmount()
@@ -68,17 +42,9 @@ func (fm *fuseManager) Close() error {
 	return nil
 }
 
-// newFUSEManager returns a new fuseManager.
-func newFUSEManager(r *Renter) *fuseManager {
-	return &fuseManager{
-		mountPoints: make(map[string]*fuseFS),
-		r:           r,
-	}
-}
-
-// mount mounts the files under the specified siapath under the 'mountPoint' folder on
+// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
 // the local filesystem.
-func (fm *fuseManager) mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
+func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
 	if err := fm.r.tg.Add(); err != nil {
 		return err
 	}
@@ -90,7 +56,7 @@ func (fm *fuseManager) mount(mountPoint string, sp modules.SiaPath, opts modules
 		return errors.New("already mounted")
 	}
 	if !opts.ReadOnly {
-		return errors.New("writable FUSE is not supported")
+		return errors.New("writable fuse is not supported")
 	}
 
 	fs := &fuseFS{
@@ -100,8 +66,8 @@ func (fm *fuseManager) mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 	nfs := pathfs.NewPathNodeFs(fs, nil)
 	// we need to call `Mount` rather than `MountRoot` because we want to define
-	// the FUSE mount flag `AllowOther`, which enables non-permissioned users to
-	// access the FUSE mount. This makes life easier in Docker.
+	// the fuse mount flag `AllowOther`, which enables non-permissioned users to
+	// access the fuse mount. This makes life easier in Docker.
 	mountOpts := &fuse.MountOptions{
 		AllowOther:   true,
 		MaxReadAhead: 1,
@@ -119,8 +85,27 @@ func (fm *fuseManager) mount(mountPoint string, sp modules.SiaPath, opts modules
 	return nil
 }
 
-// unmount unmounts the FUSE filesystem currently mounted at mountPoint.
-func (fm *fuseManager) unmount(mountPoint string) error {
+// MountInfo returns the list of currently mounted fuse filesystems.
+func (fm *fuseManager) MountInfo() []modules.MountInfo {
+	if err := fm.r.tg.Add(); err != nil {
+		return nil
+	}
+	defer fm.r.tg.Done()
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	var infos []modules.MountInfo
+	for mountPoint, fs := range fm.mountPoints {
+		infos = append(infos, modules.MountInfo{
+			MountPoint: mountPoint,
+			SiaPath:    fs.root,
+		})
+	}
+	return infos
+}
+
+// Unmount unmounts the fuse filesystem currently mounted at mountPoint.
+func (fm *fuseManager) Unmount(mountPoint string) error {
 	if err := fm.r.tg.Add(); err != nil {
 		return err
 	}
@@ -273,6 +258,7 @@ type fuseFile struct {
 func (f *fuseFile) Read(p []byte, off int64) (fuse.ReadResult, fuse.Status) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	if _, err := f.stream.Seek(off, io.SeekStart); err != nil {
 		return nil, f.fs.errToStatus("Read", f.path.String(), err)
 	}

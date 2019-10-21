@@ -255,7 +255,7 @@ type Renter struct {
 	staticFilesDir    string
 	staticBackupsDir  string
 	memoryManager     *memoryManager
-	staticFUSEManager *fuseManager
+	staticFuseManager *fuseManager
 	mu                *siasync.RWMutex
 	tg                threadgroup.ThreadGroup
 	tpool             modules.TransactionPool
@@ -269,7 +269,7 @@ func (r *Renter) Close() error {
 		return nil
 	}
 	r.tg.Stop()
-	r.staticFUSEManager.Close()
+	r.staticFuseManager.Close()
 	r.hostDB.Close()
 	return r.hostContractor.Close()
 }
@@ -786,6 +786,22 @@ func (r *Renter) SetIPViolationCheck(enabled bool) {
 	r.hostDB.SetIPViolationCheck(enabled)
 }
 
+// MountInfo returns the list of currently mounted fusefilesystems.
+func (r *Renter) MountInfo() []modules.MountInfo {
+	return r.staticFuseManager.MountInfo()
+}
+
+// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
+// the local filesystem.
+func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
+	return r.staticFuseManager.Mount(mountPoint, sp, opts)
+}
+
+// Unmount unmounts the fuse filesystem currently mounted at mountPoint.
+func (r *Renter) Unmount(mountPoint string) error {
+	return r.staticFuseManager.Unmount(mountPoint)
+}
+
 // Enforce that Renter satisfies the modules.Renter interface.
 var _ modules.Renter = (*Renter)(nil)
 
@@ -850,7 +866,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		tpool:            tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
-	r.staticFUSEManager = newFUSEManager(r)
+	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 
 	// Load all saved data.
