@@ -144,7 +144,11 @@ func TestDirInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	// Rebase siaPath.
+	siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Check that DirInfo returns the same information as stored in the metadata
 	fooDirInfo, err := rt.renter.staticFileSystem.DirInfo(siaPath)
 	if err != nil {
