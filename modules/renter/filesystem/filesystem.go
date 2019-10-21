@@ -212,13 +212,6 @@ func (fs *FileSystem) FileExists(siaPath modules.SiaPath) bool {
 	return err == nil
 }
 
-// FileList returns all of the files that the filesystem has in the folder
-// specified by siaPath. If cached is true, this method will used cached values
-// for health, redundancy etc.
-func (fs *FileSystem) FileList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
-	return fs.managedList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
-}
-
 // FilePath converts a SiaPath into a file's system path.
 func (fs *FileSystem) FilePath(siaPath modules.SiaPath) string {
 	return siaPath.SiaFileSysPath(fs.managedAbsPath())

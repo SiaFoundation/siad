@@ -52,7 +52,8 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, erro
 	if err != nil {
 		return nil, err
 	}
-	_, di, err := r.staticFileSystem.List(siaPath, false, false, make(map[string]bool), make(map[string]bool), make(map[string]modules.RenterContract))
+	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+	_, di, err := r.staticFileSystem.List(siaPath, false, false, offlineMap, goodForRenewMap, contractsMap)
 	return di, err
 }
 

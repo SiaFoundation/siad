@@ -64,7 +64,7 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 		return []modules.FileInfo{}, err
 	}
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	fis, _, err := r.staticFileSystem.FileList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	fis, _, err := r.staticFileSystem.List(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
 	if err != nil {
 		return nil, err
 	}
