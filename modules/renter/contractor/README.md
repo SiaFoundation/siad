@@ -167,9 +167,13 @@ Sessions are used to initiate uploads, downloads, and file modifications. This
 subsystem exports several methods used outside of the `Contractor` for this
 purpose.
 
+The session subsystem will watch out for certain host behaviors that indicate
+the host is permanently unusable. If this happens, the session subsystem will
+call 'MarkBadContract', which will prevent the contract from being considered a
+part of the usable contracts, and allow the repair process to happen.
+
 Pre-v1.4.0 contracts using an older version of the renter-host protocol use the
 Editor and Downloader interfaces to interact with hosts.
-
 
 ### Pre-v1.4.0 Contract Modification
 
