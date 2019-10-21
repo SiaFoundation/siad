@@ -264,7 +264,12 @@ func (fs *FileSystem) DirSiaPath(n *DNode) (sp modules.SiaPath) {
 
 // UpdateDirMetadata updates the metadata of a SiaDir.
 func (fs *FileSystem) UpdateDirMetadata(siaPath modules.SiaPath, metadata siadir.Metadata) error {
-	panic("not implemented yet")
+	dir, err := fs.OpenSiaDir(siaPath)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.UpdateMetadata(metadata)
 }
 
 // managedSiaPath returns the SiaPath of a node.

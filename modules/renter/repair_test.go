@@ -385,6 +385,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: oldestCheckTime,
 	}
+	subDir1_2, _ = subDir1_2.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
 	if err := rt.renter.staticFileSystem.UpdateDirMetadata(subDir1_2, oldestHealthCheckUpdate); err != nil {
 		t.Fatal(err)
 	}
