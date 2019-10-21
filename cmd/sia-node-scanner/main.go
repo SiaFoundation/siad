@@ -273,7 +273,7 @@ func (ns *nodeScanner) initialize() {
 func (ns *nodeScanner) startScan() {
 	// Start all the workers.
 	for i := 0; i < maxWorkers; i++ {
-		go startWorker(ns.gateway, ns.workCh, ns.resultCh, ns.testing)
+		go startWorker(ns.gateway, ns.workCh, ns.resultCh)
 	}
 
 	// Print out stats periodically.
@@ -398,7 +398,7 @@ func (ns *nodeScanner) getStatsStr() string {
 // startWorker starts a worker that continually receives from the workCh,
 // connect to the node it has been assigned, and returns all results
 // using resultCh.
-func startWorker(g *gateway.Gateway, workCh <-chan workAssignment, resultCh chan<- nodeScanResult, waitBeforeSend bool) {
+func startWorker(g *gateway.Gateway, workCh <-chan workAssignment, resultCh chan<- nodeScanResult) {
 	for work := range workCh {
 		// Try connecting to the node at this address.
 		// If the connection fails, return the error message.
@@ -413,10 +413,6 @@ func startWorker(g *gateway.Gateway, workCh <-chan workAssignment, resultCh chan
 			continue
 		}
 
-		// Try 1 or more ShareNodes RPCs with this node. Return any errors.
-		if waitBeforeSend {
-			//time.Sleep(1 * time.Second)
-		}
 		resultCh <- sendShareNodesRequests(g, work)
 		g.Disconnect(work.node)
 	}
