@@ -210,27 +210,23 @@ func TestRenterListDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	files, err := rt.renter.FileList(modules.RootSiaPath(), false, false)
-	if len(directories) != 4 {
-		t.Fatal("Expected 4 DirectoryInfos but got", len(directories))
+	if len(directories) != 2 {
+		t.Fatal("Expected 2 DirectoryInfos but got", len(directories))
 	}
 	if len(files) != 1 {
 		t.Fatal("Expected 1 FileInfos but got", len(files))
 	}
 
 	// Verify that the directory information matches the on disk information
-	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
+	siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshotDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.SnapshotsSiaPath())
+	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.SiaFilesSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
 	fooDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	homeDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.HomeSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,12 +238,6 @@ func TestRenterListDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = compareDirectoryInfoAndMetadata(directories[1], fooDir); err != nil {
-		t.Fatal(err)
-	}
-	if err = compareDirectoryInfoAndMetadata(directories[2], homeDir); err != nil {
-		t.Fatal(err)
-	}
-	if err = compareDirectoryInfoAndMetadata(directories[3], snapshotDir); err != nil {
 		t.Fatal(err)
 	}
 }
