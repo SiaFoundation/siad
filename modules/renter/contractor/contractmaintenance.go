@@ -210,10 +210,10 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	return estimatedCost, nil
 }
 
-// managedInterruptContractMaintenance will issue an interrupt signal to any
+// callInterruptContractMaintenance will issue an interrupt signal to any
 // running maintenance, stopping that maintenance. If there are multiple threads
 // running maintenance, they will all be stopped.
-func (c *Contractor) managedInterruptContractMaintenance() {
+func (c *Contractor) callInterruptContractMaintenance() {
 	// Spin up a thread to grab the maintenance lock. Signal that the lock was
 	// acquired after the lock is acquired.
 	gotLock := make(chan struct{})
@@ -826,7 +826,7 @@ func (c *Contractor) managedFindRecoverableContracts() {
 	c.mu.RLock()
 	cc := c.recentRecoveryChange
 	c.mu.RUnlock()
-	if err := c.managedInitRecoveryScan(cc); err != nil {
+	if err := c.callInitRecoveryScan(cc); err != nil {
 		c.log.Debug(err)
 		return
 	}
@@ -892,7 +892,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	// contracts, archiving contracts, and other cleanup work. This should all
 	// happen before the rest of the maintenance.
 	c.managedFindRecoverableContracts()
-	c.managedRecoverContracts()
+	c.callRecoverContracts()
 	c.managedArchiveContracts()
 	c.managedCheckForDuplicates()
 	c.managedPrunePubkeyMap()

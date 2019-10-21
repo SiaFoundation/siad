@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -702,7 +703,8 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = f.SetStuck(uint64(0), true); err != nil {
+	err = rt.renter.SetFileStuck(up.SiaPath, true)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err = f.Close(); err != nil {
@@ -716,7 +718,12 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = f.SetStuck(uint64(0), true); err != nil {
+	err = f.GrowNumChunks(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.SetFileStuck(up.SiaPath, true)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err = f.Close(); err != nil {
@@ -724,10 +731,10 @@ func TestRandomStuckDirectory(t *testing.T) {
 	}
 
 	// Bubble directory information so NumStuckChunks is updated, there should
-	// be at least 2 stuck chunks because of the two we manually marked as
-	// stuck, but the repair loop could have marked the rest as stuck so we just
-	// want to ensure that the root directory reflects at least the two we
-	// marked as stuck
+	// be at least 3 stuck chunks because of the 3 we manually marked as stuck,
+	// but the repair loop could have marked the rest as stuck so we just want
+	// to ensure that the root directory reflects at least the 3 we marked as
+	// stuck
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Metadata
@@ -736,8 +743,8 @@ func TestRandomStuckDirectory(t *testing.T) {
 			return err
 		}
 		// Check Aggregate number of stuck chunks
-		if metadata.AggregateNumStuckChunks != uint64(2) {
-			return fmt.Errorf("Incorrect number of stuck chunks, should be 2")
+		if metadata.AggregateNumStuckChunks != uint64(3) {
+			return fmt.Errorf("Incorrect number of stuck chunks, should be 3")
 		}
 		return nil
 	})
@@ -745,34 +752,227 @@ func TestRandomStuckDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create map of stuck directories that contain files. These are the only
-	// directories that should be returned.
-	stuckDirectories := make(map[modules.SiaPath]struct{})
-	stuckDirectories[modules.RootSiaPath()] = struct{}{}
-	stuckDirectories[subDir1_2] = struct{}{}
-
-	// Find random directory several times, confirm that it finds a stuck
-	// directory and there it finds unique directories
-	var unique bool
-	var previousDir modules.SiaPath
-	for i := 0; i < 10; i++ {
+	// Find a stuck directory randomly, it should never find root/SubDir1 or
+	// root/SubDir2 and should find root/SubDir1/SubDir2 more than root
+	var count1_2, countRoot int
+	for i := 0; i < 100; i++ {
 		dir, err := rt.renter.managedStuckDirectory()
 		if err != nil {
-			t.Log("Error with Directory `", dir, "` on iteration", i)
 			t.Fatal(err)
 		}
-		_, ok := stuckDirectories[dir]
-		if !ok {
-			t.Fatal("Found non stuck directory:", dir)
+		if dir.Equals(subDir1_2) {
+			count1_2++
+			continue
 		}
-		if !dir.Equals(previousDir) {
-			unique = true
+		if dir.Equals(modules.RootSiaPath()) {
+			countRoot++
+			continue
 		}
-		previousDir = dir
+		t.Fatal("Unstuck dir found", dir.String())
 	}
-	if !unique {
-		t.Fatal("No unique directories found")
+
+	// Randomness is weighted so we should always find file 1 more often
+	if countRoot > count1_2 {
+		t.Log("Should have found root/SubDir1/SubDir2 more than root")
+		t.Fatalf("Found root/SubDir1/SubDir2 %v times and root %v times", count1_2, countRoot)
 	}
+	// If we never find root/SubDir1/SubDir2 then that is a failure
+	if count1_2 == 0 {
+		t.Fatal("Found root/SubDir1/SubDir2 0 times")
+	}
+	// If we never find root that is not ideal, Log this error. If it happens
+	// a lot then the weighted randomness should be improved
+	if countRoot == 0 {
+		t.Logf("Found root 0 times. Consider improving the weighted randomness")
+	}
+	t.Log("Found root/SubDir1/SubDir2", count1_2, "times and root", countRoot, "times")
+}
+
+// TestRandomStuckFile tests that the renter can randomly find stuck files
+// weighted by the number of stuck chunks
+func TestRandomStuckFile(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Create 3 files at root
+	//
+	// File 1 will have all chunks stuck
+	file1, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = file1.GrowNumChunks(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath1 := rt.renter.staticFileSet.SiaPath(file1)
+	err = rt.renter.SetFileStuck(siaPath1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File 2 will have only 1 chunk stuck
+	file2, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath2 := rt.renter.staticFileSet.SiaPath(file2)
+	err = file2.SetStuck(0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File 3 will be unstuck
+	file3, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath3 := rt.renter.staticFileSet.SiaPath(file3)
+
+	// Since we disabled the health loop for this test, call it manually to
+	// update the directory metadata
+	err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := 0
+	build.Retry(100, 100*time.Millisecond, func() error {
+		i++
+		if i%10 == 0 {
+			err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+			if err != nil {
+				return err
+			}
+		}
+		// Get Root Directory Metadata
+		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
+		if err != nil {
+			return err
+		}
+		// Check Aggregate number of stuck chunks
+		if metadata.AggregateNumStuckChunks == 0 {
+			return errors.New("no stuck chunks found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkFindRandomFile(t, rt.renter, modules.RootSiaPath(), siaPath1, siaPath2, siaPath3)
+
+	// Create a directory
+	dir, err := modules.NewSiaPath("Dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Move siafiles to dir
+	newSiaPath1, err := dir.Join(siaPath1.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.RenameFile(siaPath1, newSiaPath1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSiaPath2, err := dir.Join(siaPath2.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.RenameFile(siaPath2, newSiaPath2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSiaPath3, err := dir.Join(siaPath3.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.RenameFile(siaPath3, newSiaPath3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Since we disabled the health loop for this test, call it manually to
+	// update the directory metadata
+	err = rt.renter.managedBubbleMetadata(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i = 0
+	build.Retry(100, 100*time.Millisecond, func() error {
+		i++
+		if i%10 == 0 {
+			err = rt.renter.managedBubbleMetadata(dir)
+			if err != nil {
+				return err
+			}
+		}
+		// Get Directory Metadata
+		metadata, err := rt.renter.managedDirectoryMetadata(dir)
+		if err != nil {
+			return err
+		}
+		// Check Aggregate number of stuck chunks
+		if metadata.AggregateNumStuckChunks == 0 {
+			return errors.New("no stuck chunks found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkFindRandomFile(t, rt.renter, dir, newSiaPath1, newSiaPath2, newSiaPath3)
+}
+
+// checkFindRandomFile is a helper function that checks the output from
+// managedStuckFile in a loop
+func checkFindRandomFile(t *testing.T, r *Renter, dir, siaPath1, siaPath2, siaPath3 modules.SiaPath) {
+	// Find a stuck file randomly, it should never find file 3 and should find
+	// file 1 more than file 2.
+	var count1, count2 int
+	for i := 0; i < 100; i++ {
+		siaPath, err := r.managedStuckFile(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if siaPath.Equals(siaPath1) {
+			count1++
+		}
+		if siaPath.Equals(siaPath2) {
+			count2++
+		}
+		if siaPath.Equals(siaPath3) {
+			t.Fatal("Unstuck file 3 found")
+		}
+	}
+
+	// Randomness is weighted so we should always find file 1 more often
+	if count2 > count1 {
+		t.Log("Should have found file 1 more than file 2")
+		t.Fatalf("Found file 1 %v times and file 2 %v times", count1, count2)
+	}
+	// If we never find file 1 then that is a failure
+	if count1 == 0 {
+		t.Fatal("Found file 1 0 times")
+	}
+	// If we never find file 2 that is not ideal, Log this error. If it happens
+	// a lot then the weighted randomness should be improved
+	if count2 == 0 {
+		t.Logf("Found file 2 0 times. Consider improving the weighted randomness")
+	}
+	t.Log("Found file1", count1, "times and file2", count2, "times")
 }
 
 // TestCalculateFileMetadata checks that the values returned from

@@ -40,6 +40,18 @@ var (
 		CreateTransactionPool: true,
 		CreateWallet:          true,
 	}
+	// MinerTemplate is a template for a Sia node that has a functioning miner.
+	// The node has a miner and all dependencies, but no other modules.
+	MinerTemplate = NodeParams{
+		CreateConsensusSet:    true,
+		CreateExplorer:        false,
+		CreateGateway:         true,
+		CreateHost:            false,
+		CreateMiner:           true,
+		CreateRenter:          false,
+		CreateTransactionPool: true,
+		CreateWallet:          true,
+	}
 	// RenterTemplate is a template for a Sia node that has a functioning
 	// renter. The node has a renter and all dependencies, but no other
 	// modules.
@@ -85,6 +97,13 @@ func Gateway(dir string) NodeParams {
 // Host returns a HostTemplate filled out with the provided dir.
 func Host(dir string) NodeParams {
 	template := HostTemplate
+	template.Dir = dir
+	return template
+}
+
+// Miner returns a MinerTemplate filled out with the provided dir.
+func Miner(dir string) NodeParams {
+	template := MinerTemplate
 	template.Dir = dir
 	return template
 }

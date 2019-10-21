@@ -376,9 +376,10 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) error {
 	return a.Send()
 }
 
-// RenterCancelAllowance uses the /renter endpoint to cancel the allowance.
-func (c *Client) RenterCancelAllowance() (err error) {
-	err = c.RenterPostAllowance(modules.Allowance{})
+// RenterAllowanceCancelPost uses the /renter/allowance/cancel endpoint to cancel
+// the allowance.
+func (c *Client) RenterAllowanceCancelPost() (err error) {
+	err = c.post("/renter/allowance/cancel", "", nil)
 	return
 }
 
@@ -599,5 +600,12 @@ func (c *Client) RenterFUSEMount(siaPath modules.SiaPath, mount string, readOnly
 func (c *Client) RenterFUSEUnmount() (err error) {
 	values := url.Values{}
 	err = c.post("/renter/fuse/unmount", values.Encode(), nil)
+	return
+}
+
+// RenterPost uses the /renter POST endpoint to set fields of the renter. Values
+// are encoded as a query string in the body
+func (c *Client) RenterPost(values url.Values) (err error) {
+	err = c.post("/renter", values.Encode(), nil)
 	return
 }

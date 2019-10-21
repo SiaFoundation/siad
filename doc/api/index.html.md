@@ -250,6 +250,7 @@ BlockHeight of the requested block.
     ],
     "nonce": [4,12,219,7,0,0,0,0], // [8]byte
     "parentid": "0000000000009615e8db750eb1226aa5e629bfa7badbfe0b79607ec8b918a44c", // hash
+    "difficulty": "440908097469850", // arbitrary-precision integer
     "timestamp": 1444516982, // timestamp
     "transactions": [ // []ConsensusBlocksGetTxn
         {
@@ -327,6 +328,9 @@ Block nonce
 
 **parentid** | hash  
 ID of the previous block
+
+**difficulty** | arbitrary-precision integer  
+Historic difficulty at height of the block
 
 **timestamp** | timestamp  
 Block timestamp
@@ -634,6 +638,7 @@ returns information about the gateway, including the list of connected peers.
             "version":    "1.0.0",                 // string
         },
     ],
+    "online":           true,  // boolean
     "maxdownloadspeed": 1234,  // bytes per second
     "maxuploadspeed":   1234,  // bytes per second
 }
@@ -652,14 +657,17 @@ local is true if the peer's IP address belongs to a local address range such as 
 
 **netaddress** | string  
 netaddress is the address of the peer. It represents a `modules.NetAddress`.  
-        
+
 **version** | string  
 version is the version number of the peer.  
 
-**maxdownloadspeed** | bytes per second  
+**online** | boolean  
+online is true if the gateway is connected to at least one peer that isn't local.
+
+**maxdownloadspeed** | bytes per second   
 Max download speed permitted in bytes per second
 
-**maxuploadspeed** | bytes per second  
+**maxuploadspeed** | bytes per second   
 Max upload speed permitted in bytes per second
 
 ## /gateway [POST]
@@ -1250,6 +1258,9 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&size=1000000000000"
 
 adds a storage folder to the manager. The manager may not check that there is enough space available on-disk to support as much storage as requested
 
+### Storage Folder Limits
+A host can only have 65536 storage folders in total which have to be between 256 MiB and 16 PiB in size
+
 ### Query String Parameters
 #### REQUIRED
 **path** | string  
@@ -1292,6 +1303,9 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&newsize=10000000000
 ```
 
 Grows or shrinks a storage file in the manager. The manager may not check that there is enough space on-disk to support growing the storasge folder, but should gracefully handle running out of space unexpectedly. When shrinking a storage folder, any data in the folder that neeeds to be moved will be placed into other storage folders, meaning that no data will be lost. If the manager is unable to migrate the data, an error will be returned and the operation will be stopped.
+
+### Storage Folder Limits
+See [/host/storage/folders/add](#host-storage-folders-add-post)
 
 ### Query String Parameters
 #### REQUIRED
@@ -2031,11 +2045,27 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&fu
 Modify settings that control the renter's behavior.
 
 ### Query String Parameters
+#### REQUIRED
+When setting the allowance the Funds and Period are required. Since these are the two required fields, the allowance can be canceled by submitting the zero values for these fields.
+
 #### OPTIONAL
 Any of the renter settings can be set, see fields [here](#settings)
 
 **checkforipviolation** | boolean  
 Enables or disables the check for hosts using the same ip subnets within the hostdb. It's turned on by default and causes Sia to not form contracts with hosts from the same subnet and if such contracts already exist, it will deactivate the contract which has occupied that subnet for the shorter time.  
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/allowance/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword>  "localhost:9980/renter/allowance/cancel"
+```
+
+Cancel the Renter's allowance.
 
 ### Response
 

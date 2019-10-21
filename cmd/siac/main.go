@@ -240,8 +240,8 @@ func main() {
 	renterCmd.AddCommand(renterFilesDeleteCmd, renterFilesDownloadCmd,
 		renterDownloadsCmd, renterAllowanceCmd, renterSetAllowanceCmd,
 		renterContractsCmd, renterFilesListCmd, renterFilesRenameCmd,
-		renterFilesUploadCmd, renterUploadsCmd, renterExportCmd,
-		renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
+		renterSetLocalPathCmd, renterFilesUploadCmd, renterUploadsCmd,
+		renterExportCmd, renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
 		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
 		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd)
 
