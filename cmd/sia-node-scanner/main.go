@@ -21,6 +21,24 @@ import (
 const nodeScannerDirName = "SiaNodeScanner"
 const persistFileName = "persisted-node-set.json"
 
+const maxSharedNodes = uint64(1000)
+const maxRPCs = 10
+const maxWorkers = 10
+const workChSize = 1000
+
+// pruneAge is the maxiumum allowed time in seconds since the last successful connection with a
+// node before we remove it from the persisted set. It is 1 month in seconds.
+// 1 hour * 24 hours/day * 30 days/month
+const pruneAge = time.Hour * 24 * 30
+
+const metadataHeader = "SiaNodeScanner Persisted Node Set"
+const metadataVersion = "0.0.1"
+
+var persistMetadata = siaPersist.Metadata{
+	Header:  metadataHeader,
+	Version: metadataVersion,
+}
+
 type nodeScanner struct {
 	// The node scanner uses a dummy gateway to connect to nodes and
 	// requests peers from nodes across the network using the
@@ -62,14 +80,6 @@ type nodeScanner struct {
 	persistFile string
 
 	testing bool
-}
-
-const metadataHeader = "SiaNodeScanner Persisted Node Set"
-const metadataVersion = "0.0.1"
-
-var persistMetadata = siaPersist.Metadata{
-	Header:  metadataHeader,
-	Version: metadataVersion,
 }
 
 type persistData struct {
@@ -134,16 +144,6 @@ type scannerStats struct {
 	ConnectionTimedOutFailures   int
 	AlreadyConnectedFailures     int
 }
-
-const maxSharedNodes = uint64(1000)
-const maxRPCs = 10
-const maxWorkers = 10
-const workChSize = 1000
-
-// pruneAge is the maxiumum allowed time in seconds since the last successful connection with a
-// node before we remove it from the persisted set. It is 1 month in seconds.
-// 1 hour * 24 hours/day * 30 days/month
-const pruneAge = time.Hour * 24 * 30
 
 func main() {
 	dirPtr := flag.String("dir", "", "Directory where the node scanner will store its results")
