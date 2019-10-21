@@ -259,7 +259,7 @@ type DirectoryInfo struct {
 	NumStuckChunks      uint64    `json:"numstuckchunks"`
 	NumSubDirs          uint64    `json:"numsubdirs"`
 	SiaPath             SiaPath   `json:"siapath"`
-	DirSize             uint64    `json:"size"`
+	DirSize             uint64    `json:"size"` // name chaned to avoid conflict with Size() method
 	StuckHealth         float64   `json:"stuckhealth"`
 }
 
@@ -323,7 +323,7 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
-	ModificationTime time.Time         `json:"modtime"` // avoid conflict with ModTime method
+	ModificationTime time.Time         `json:"modtime"` // name changed to avoid conflict with ModTime() method
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
 	Recoverable      bool              `json:"recoverable"`

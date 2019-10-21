@@ -33,8 +33,9 @@ func (r *Renter) Unmount(mountPoint string) error {
 // A fuseManager manages mounted FUSE filesystems.
 type fuseManager struct {
 	mountPoints map[string]*fuseFS
-	r           *Renter
+
 	mu          sync.Mutex
+	r           *Renter
 }
 
 // mountInfo returns the list of currently mounted FUSE filesystems.
