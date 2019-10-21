@@ -190,9 +190,9 @@ func TestPushSubDirectories(t *testing.T) {
 
 	// Create a test directory with the following healths
 	//
-	// root/ 1
-	// root/SubDir1/ 2
-	// root/SubDir2/ 3
+	// root/home/siafiles 1
+	// root/home/siafiles/SubDir1/ 2
+	// root/home/siafiles/SubDir2/ 3
 
 	// Create directory tree
 	siaPath1, err := modules.NewSiaPath("SubDir1")
@@ -294,13 +294,13 @@ func TestNextExploredDirectory(t *testing.T) {
 
 	// Create a test directory with the following healths/aggregateHealths
 	//
-	// root/ 0/3
-	// root/SubDir1/ 1/2
-	// root/SubDir1/SubDir1/ 1/1
-	// root/SubDir1/SubDir2/ 2/2
-	// root/SubDir2/ 1/3
-	// root/SubDir2/SubDir1/ 1/1
-	// root/SubDir2/SubDir2/ 3/3
+	// root/home/siafiles 0/3
+	// root/homes/siafiles/SubDir1/ 1/2
+	// root/home/siafiles/SubDir1/SubDir1/ 1/1
+	// root/home/siafiles/SubDir1/SubDir2/ 2/2
+	// root/home/siafiles/SubDir2/ 1/3
+	// root/home/siafiles/SubDir2/SubDir1/ 1/1
+	// root/home/siafiles/SubDir2/SubDir2/ 3/3
 	//
 	// Overall we would expect to see root/SubDir2/SubDir2 popped first followed
 	// by root/SubDir1/SubDir2
@@ -377,7 +377,7 @@ func TestNextExploredDirectory(t *testing.T) {
 	// Make sure we are starting with an empty heap, this helps with ndfs and
 	// tests proper handling of empty heaps
 	rt.renter.directoryHeap.managedReset()
-	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
+	err = rt.renter.managedPushUnexploredDirectory(modules.SiaFilesSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +391,11 @@ func TestNextExploredDirectory(t *testing.T) {
 		t.Fatal("No directory popped off heap")
 	}
 
-	// Directory should be root/SubDir2/SubDir2
+	// Directory should be root/home/siafiles/SubDir2/SubDir2
+	siaPath2_2, err = siaPath2_2.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !d.siaPath.Equals(siaPath2_2) {
 		t.Fatalf("Expected directory %v but found %v", siaPath2_2.String(), d.siaPath.String())
 	}
@@ -414,7 +418,11 @@ func TestNextExploredDirectory(t *testing.T) {
 		t.Fatal("No directory popped off heap")
 	}
 
-	// Directory should be root/SubDir1/SubDir2
+	// Directory should be root/homes/siafiles/SubDir1/SubDir2
+	siaPath1_2, err = siaPath1_2.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !d.siaPath.Equals(siaPath1_2) {
 		t.Fatalf("Expected directory %v but found %v", siaPath1_2.String(), d.siaPath.String())
 	}
