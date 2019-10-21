@@ -672,10 +672,10 @@ func TestRandomStuckDirectory(t *testing.T) {
 
 	// Create a test directory with sub folders
 	//
-	// root/
-	// root/SubDir1/
-	// root/SubDir1/SubDir2/
-	// root/SubDir2/
+	// root/home/siafiles/
+	// root/home/siafiles/SubDir1/
+	// root/home/siafiles/SubDir1/SubDir2/
+	// root/home/siafiles/SubDir2/
 	subDir1, err := modules.NewSiaPath("SubDir1")
 	if err != nil {
 		t.Fatal(err)
@@ -698,8 +698,8 @@ func TestRandomStuckDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add a file to root and SubDir1/SubDir2 and mark the first chunk as stuck
-	// in each file
+	// Add a file to siafiles and SubDir1/SubDir2 and mark the first chunk as
+	// stuck in each file
 	//
 	// This will test the edge case of continuing to find stuck files when a
 	// directory has no files only directories
@@ -709,11 +709,13 @@ func TestRandomStuckDirectory(t *testing.T) {
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, up.DisablePartialChunk)
+	sp, _ := up.SiaPath.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+
+	err = rt.renter.staticFileSystem.NewSiaFile(sp, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -729,7 +731,12 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, up.DisablePartialChunk)
+	sp, _ = up.SiaPath.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	err = rt.renter.staticFileSystem.NewSiaFile(sp, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err = rt.renter.staticFileSystem.OpenSiaFile(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -751,8 +758,9 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// but the repair loop could have marked the rest as stuck so we just want
 	// to ensure that the root directory reflects at least the 3 we marked as
 	// stuck
+	subDir1_2, _ = subDir1_2.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
 	rt.renter.managedBubbleMetadata(subDir1_2)
-	build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Metadata
 		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
@@ -770,7 +778,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 
 	// Find a stuck directory randomly, it should never find root/SubDir1 or
 	// root/SubDir2 and should find root/SubDir1/SubDir2 more than root
-	var count1_2, countRoot int
+	var count1_2, countRoot, countSiaFiles int
 	for i := 0; i < 100; i++ {
 		dir, err := rt.renter.managedStuckDirectory()
 		if err != nil {
@@ -782,6 +790,10 @@ func TestRandomStuckDirectory(t *testing.T) {
 		}
 		if dir.Equals(modules.RootSiaPath()) {
 			countRoot++
+			continue
+		}
+		if dir.Equals(modules.SiaFilesSiaPath()) {
+			countSiaFiles++
 			continue
 		}
 		t.Fatal("Unstuck dir found", dir.String())

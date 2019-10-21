@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -520,6 +521,12 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 	close(dirLoadChan)
 	close(fileLoadChan)
 	wg.Wait()
+	sort.Slice(dis, func(i, j int) bool {
+		return dis[i].SiaPath.String() < dis[j].SiaPath.String()
+	})
+	sort.Slice(fis, func(i, j int) bool {
+		return fis[i].SiaPath.String() < fis[j].SiaPath.String()
+	})
 	return fis, dis, err
 }
 

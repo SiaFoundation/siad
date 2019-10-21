@@ -259,7 +259,6 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 
 		// Get random int
 		rand := fastrand.Intn(int(directories[0].AggregateNumStuckChunks))
-
 		// Use rand to decide which directory to go into. Work backwards over
 		// the slice of directories. Since the first element is the current
 		// directory that means that it is the sum of all the files and
