@@ -257,7 +257,7 @@ func TestSiafileCompatibility(t *testing.T) {
 		t.Fatal("nickname not loaded properly:", names)
 	}
 	// Make sure that we can open the file afterwards.
-	siaPath, err := modules.NewSiaPath(names[0])
+	siaPath, err := modules.SiaFilesSiaPath().Join(names[0])
 	if err != nil {
 		t.Fatal(err)
 	}
