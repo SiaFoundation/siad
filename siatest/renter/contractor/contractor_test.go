@@ -251,7 +251,8 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 }
 
 // TestRenterContracts tests the formation of the contracts, the contracts
-// endpoint, and canceling a contract
+// endpoint, and canceling a contract. This test also checks that the renter is
+// correctly replacing contracts which the host no longer recognizes.
 func TestRenterContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -1149,4 +1150,78 @@ func TestLowAllowanceAlert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// HostRejectAllSessionLocks is a dependency injection for the host that will
+// cause the host to reject all contracts as though they do not exist.
+type HostRejectAllSessionLocks struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt will interpret a signal from the host and tell the host to pretend it
+// has no record of the contract.
+func (d *HostRejectAllSessionLocks) Disrupt(s string) bool {
+	if s == "loopLockNoRecordOfThatContract" {
+		return true
+	}
+	return false
+}
+
+// TestRenterBadContracts tests that the renter will discard bad contracts.
+func TestRenterBadContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	secondHostParams := node.HostTemplate
+	secondHostParams.HostDeps = &HostRejectAllSessionLocks{}
+	_, err = tg.AddNodes(secondHostParams)
+	if err != nil {
+		t.Fatal("Failed to add node to group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Upload a file, we will need to download this file later.
+	r := tg.Renters()[0]
+	// Check the number of active contracts in the renter. Should be 2.
+	rcg, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rcg.ActiveContracts) != 2 {
+		t.Fatal("expecting 2 active contracts formed with the 2 hosts", len(rcg.ActiveContracts))
+	}
+
+	_, _, err = r.UploadNewFile(100+siatest.Fuzz(), 1, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the renter dropped an active contract.
+	err = build.Retry(100, 250*time.Millisecond, func() error {
+		rcg, err = r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rcg.ActiveContracts) != 1 {
+			return errors.New("expected 1 active contracts")
+		}
+		return nil
+	})
 }

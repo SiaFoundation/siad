@@ -855,8 +855,16 @@ func DecodeAnnouncement(fullAnnouncement []byte) (na NetAddress, spk types.SiaPu
 // IsOOSErr is a helper function to determine whether an error is a
 // ErrInsufficientStorageForSector.
 //
-// NOTE: Remember when updating this to preserve backwards compatibility with
-// older protocol versions.
+// NOTE: we test for a string error instead of using a constant error because
+// compatibility needs to be preserved with the hosts that run on the actual
+// network. If the constant gets updated to have different phrasing or different
+// tone, fix a mistake, etc, this check should not be updated to stop checking
+// the old copy, because hosts on the live network are still using the old copy.
+// Any test depending on this check should break if this test is not updated to
+// include the new copy in the check.
+//
+// We want the test to break because this test needs to be updated to support
+// BOTH the old copy and the new copy, not just the new copy.
 func IsOOSErr(err error) bool {
 	if err == nil {
 		return false
@@ -867,8 +875,16 @@ func IsOOSErr(err error) bool {
 // IsNoContractErr is a helper function to determine whether an error from a
 // host is a 'contract does not exist' error.
 //
-// NOTE: Remember when updating this to preserve backwards compatibility with
-// older protocol versions.
+// NOTE: we test for a string error instead of using a constant error because
+// compatibility needs to be preserved with the hosts that run on the actual
+// network. If the constant gets updated to have different phrasing or different
+// tone, fix a mistake, etc, this check should not be updated to stop checking
+// the old copy, because hosts on the live network are still using the old copy.
+// Any test depending on this check should break if this test is not updated to
+// include the new copy in the check.
+//
+// We want the test to break because this test needs to be updated to support
+// BOTH the old copy and the new copy, not just the new copy.
 func IsNoContractErr(err error) bool {
 	if err == nil {
 		return false
