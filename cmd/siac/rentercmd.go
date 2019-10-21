@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
@@ -1934,7 +1936,8 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 					redundancyStr = "-"
 				}
 				healthStr := fmt.Sprintf("%.2f%%", subDir.AggregateMaxHealthPercentage)
-				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", "-", "-", "-", redundancyStr, healthStr, "-", "-", "-", "-")
+				stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
+				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", "-", "-", "-", redundancyStr, healthStr, stuckStr, "-", "-", "-")
 			}
 			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 		}
@@ -2007,17 +2010,44 @@ func rentersetlocalpathcmd(siapath, newlocalpath string) {
 // renterfilesunstuckcmd is the handler for the command `siac renter
 // unstuckall`. Sets all files to unstuck.
 func renterfilesunstuckcmd() {
-	rfg, err := httpClient.RenterFilesGet(false)
+	rfg, err := httpClient.RenterFilesGet(true)
 	if err != nil {
 		die("Couldn't get list of all files:", err)
 	}
-	for _, f := range rfg.Files {
-		err = httpClient.RenterSetFileStuckPost(f.SiaPath, false)
-		if err != nil {
-			die(fmt.Sprintf("Couldn't set %v to unstuck: %v", f.SiaPath, err))
+	// Declare a worker function to mark files as not stuck.
+	var atomicFilesDone uint64
+	toUnstuck := make(chan modules.SiaPath)
+	worker := func() {
+		for siaPath := range toUnstuck {
+			err = httpClient.RenterSetFileStuckPost(siaPath, false)
+			if err != nil {
+				die(fmt.Sprintf("Couldn't set %v to unstuck: %v", siaPath, err))
+			}
+			atomic.AddUint64(&atomicFilesDone, 1)
 		}
 	}
-	fmt.Printf("Set all files to 'unstuck'")
+	// Spin up some workers.
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			worker()
+		}()
+	}
+	// Pass the files on to the workers.
+	lastStatusUpdate := time.Now()
+	for _, f := range rfg.Files {
+		toUnstuck <- f.SiaPath
+		if time.Since(lastStatusUpdate) > time.Second {
+			fmt.Printf("\r%v of %v files set to 'unstuck'",
+				atomic.LoadUint64(&atomicFilesDone), len(rfg.Files))
+			lastStatusUpdate = time.Now()
+		}
+	}
+	close(toUnstuck)
+	wg.Wait()
+	fmt.Println("\nSet all files to 'unstuck'")
 }
 
 // renterfilesuploadcmd is the handler for the command `siac renter upload

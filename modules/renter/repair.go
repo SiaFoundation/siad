@@ -348,7 +348,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 		// Get SiaPath
 		var sp modules.SiaPath
 		fullPath := filepath.Join(dir, fi.Name())
-		err = sp.FromSysPath(fullPath, dir)
+		err = sp.FromSysPath(fullPath, r.staticFilesDir)
 		if err != nil {
 			return modules.SiaPath{}, errors.AddContext(err, "unable to get the siapath from the sys path: "+fullPath)
 		}

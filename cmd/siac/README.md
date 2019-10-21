@@ -28,7 +28,7 @@ Wallet:
 * `siac wallet send [amount] [dest]` sends siacoin to an address
 
 Renter:
-* `siac renter list` list all renter files
+* `siac renter ls` list all renter files
 * `siac renter upload [filepath] [nickname]` upload a file
 * `siac renter download [nickname] [filepath]` download a file
 
@@ -148,7 +148,7 @@ nickname is what you will use to refer to that file in the
 network. For example, it is common to have the nickname be the same as
 the filename.
 
-* `siac renter list` displays a list of the your uploaded files
+* `siac renter ls` displays a list of the your uploaded files
 currently on the sia network by nickname, and their filesizes.
 
 * `siac renter download [nickname] [destination]` downloads a file

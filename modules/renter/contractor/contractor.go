@@ -96,7 +96,7 @@ func (c *Contractor) InitRecoveryScan() (err error) {
 		return err
 	}
 	defer c.tg.Done()
-	return c.managedInitRecoveryScan(modules.ConsensusChangeBeginning)
+	return c.callInitRecoveryScan(modules.ConsensusChangeBeginning)
 }
 
 // PeriodSpending returns the amount spent on contracts during the current
@@ -420,9 +420,9 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	return c, errChan
 }
 
-// managedInitRecoveryScan starts scanning the whole blockchain at a certain
+// callInitRecoveryScan starts scanning the whole blockchain at a certain
 // ChangeID for recoverable contracts within a separate thread.
-func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
+func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
 	// Check if we are already scanning the blockchain.
 	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
 		return errors.New("scan for recoverable contracts is already in progress")

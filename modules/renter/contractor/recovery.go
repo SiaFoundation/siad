@@ -221,8 +221,8 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	return nil
 }
 
-// managedRecoverContracts recovers known recoverable contracts.
-func (c *Contractor) managedRecoverContracts() {
+// callRecoverContracts recovers known recoverable contracts.
+func (c *Contractor) callRecoverContracts() {
 	if c.staticDeps.Disrupt("DisableContractRecovery") {
 		return
 	}
