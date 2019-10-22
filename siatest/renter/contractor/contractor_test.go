@@ -251,8 +251,7 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 }
 
 // TestRenterContracts tests the formation of the contracts, the contracts
-// endpoint, and canceling a contract. This test also checks that the renter is
-// correctly replacing contracts which the host no longer recognizes.
+// endpoint, and canceling a contract
 func TestRenterContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -1152,21 +1151,6 @@ func TestLowAllowanceAlert(t *testing.T) {
 	}
 }
 
-// HostRejectAllSessionLocks is a dependency injection for the host that will
-// cause the host to reject all contracts as though they do not exist.
-type HostRejectAllSessionLocks struct {
-	modules.ProductionDependencies
-}
-
-// Disrupt will interpret a signal from the host and tell the host to pretend it
-// has no record of the contract.
-func (d *HostRejectAllSessionLocks) Disrupt(s string) bool {
-	if s == "loopLockNoRecordOfThatContract" {
-		return true
-	}
-	return false
-}
-
 // TestRenterBadContracts tests that the renter will discard bad contracts.
 func TestRenterBadContracts(t *testing.T) {
 	if testing.Short() {
@@ -1190,7 +1174,7 @@ func TestRenterBadContracts(t *testing.T) {
 	// the host to reject the contract when the renter tries to grab a session
 	// lock.
 	secondHostParams := node.HostTemplate
-	secondHostParams.HostDeps = &HostRejectAllSessionLocks{}
+	secondHostParams.HostDeps = &dependencies.HostRejectAllSessionLocks{}
 	_, err = tg.AddNodes(secondHostParams)
 	if err != nil {
 		t.Fatal("Failed to add node to group:", err)
@@ -1225,12 +1209,15 @@ func TestRenterBadContracts(t *testing.T) {
 	// contract not being recognized, which will have resulted in the contract
 	// being marked bad.
 	err = build.Retry(100, 250*time.Millisecond, func() error {
-		rcg, err = r.RenterContractsGet()
+		rcg, err = r.RenterAllContractsGet()
 		if err != nil {
 			return err
 		}
 		if len(rcg.ActiveContracts) != 1 {
 			return errors.New("expected 1 active contracts")
+		}
+		if len(rcg.DisabledContracts) != 1 {
+			return errors.New("expected 1 disabled contract")
 		}
 		return nil
 	})
