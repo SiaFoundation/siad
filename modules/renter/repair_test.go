@@ -159,16 +159,16 @@ func TestBubbleHealth(t *testing.T) {
 	if err := rt.renter.staticFileSystem.UpdateDirMetadata(modules.RootSiaPath(), metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
-	siaPath = subDir1
+	siaPath, _ = subDir1.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
 	if err := rt.renter.staticFileSystem.UpdateDirMetadata(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
-	siaPath = subDir1_1
+	siaPath, _ = subDir1_1.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
 	if err := rt.renter.staticFileSystem.UpdateDirMetadata(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	// Set health of subDir1/subDir2 to be the worst and set the
-	siaPath = subDir1_2
+	siaPath, _ = subDir1_2.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
 	metadataUpdate.Health = 4
 	if err := rt.renter.staticFileSystem.UpdateDirMetadata(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
@@ -312,7 +312,8 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
 	}
-	if err := rt.renter.staticFileSystem.UpdateDirMetadata(subDir1_2_1, expectedHealth); err != nil {
+	siaPath, _ = subDir1_2_1.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+	if err := rt.renter.staticFileSystem.UpdateDirMetadata(siaPath, expectedHealth); err != nil {
 		t.Fatal(err)
 	}
 	rt.renter.managedBubbleMetadata(siaPath)
