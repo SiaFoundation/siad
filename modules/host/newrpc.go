@@ -71,7 +71,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	})
 	h.mu.RUnlock()
 	if err != nil || h.dependencies.Disrupt("loopLockNoRecordOfThatContract") {
-		s.writeError(errors.New("no record of that contract"))
+		s.writeError(errors.New(modules.V1413ContractNotRecognizedErrString))
 		return extendErr("could get storage obligation "+req.ContractID.String()+": ", err)
 	}
 

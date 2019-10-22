@@ -23,6 +23,25 @@ const (
 	// MinimumSupportedRenterHostProtocolVersion is the minimum version of Sia
 	// that supports the currently used version of the renter-host protocol.
 	MinimumSupportedRenterHostProtocolVersion = "1.4.1"
+
+	// V1413HostOutOfStorageErrString is the string used by hosts since before
+	// version 1.4.1.3 to indicate that they have run out of storage.
+	//
+	// Any update to this string needs to be done by making a new variable. This
+	// variable should not be changed. IsOOSErr() needs to be updated to include
+	// the new string while also still checking the old string as well to
+	// preserve compatibility.
+	V1413HostOutOfStorageErrString = "not enough storage remaining to accept sector"
+
+	// V1413ContractNotRecognizedErrString is the string used by hosts since
+	// before version 1.4.1.3 to indicate that they do not recognize the
+	// contract that the renter is trying to update.
+	//
+	// Any update to this string needs to be done by making a new variable. This
+	// variable should not be changed. IsContractNotRecognizedErr() needs to be
+	// updated to include the new string while also still checking the old
+	// string as well to preserve compatibility.
+	V1413ContractNotRecognizedErrString = "no record of that contract"
 )
 
 const (
@@ -109,18 +128,6 @@ const (
 	// that both the host and the renter can have time to process large Merkle
 	// tree calculations that may be involved with renewing a file contract.
 	NegotiateRenewContractTime = 600 * time.Second
-)
-
-var (
-	// ErrInsufficientStorageForSector is returned if the host tries to add a
-	// sector when there is not enough storage remaining on the host to accept
-	// the sector.
-	//
-	// Ideally, the host will adjust pricing as the host starts to fill up, so
-	// this error should be pretty rare. Demand should drive the price up
-	// faster than the Host runs out of space, such that the host is always
-	// hovering around 95% capacity and rarely over 98% or under 90% capacity.
-	ErrInsufficientStorageForSector = errors.New("not enough storage remaining to accept sector")
 )
 
 var (
@@ -852,44 +859,37 @@ func DecodeAnnouncement(fullAnnouncement []byte) (na NetAddress, spk types.SiaPu
 	return ha.NetAddress, ha.PublicKey, nil
 }
 
-// IsOOSErr is a helper function to determine whether an error is a
-// ErrInsufficientStorageForSector.
+// IsOOSErr is a helper function to determine whether an error from a host is
+// indicating that they are out of storage.
 //
-// NOTE: we test for a string error instead of using a constant error because
-// compatibility needs to be preserved with the hosts that run on the actual
-// network. If the constant gets updated to have different phrasing or different
-// tone, fix a mistake, etc, this check should not be updated to stop checking
-// the old copy, because hosts on the live network are still using the old copy.
-// Any test depending on this check should break if this test is not updated to
-// include the new copy in the check.
-//
-// We want the test to break because this test needs to be updated to support
-// BOTH the old copy and the new copy, not just the new copy.
+// Note: To preserve compatibility, this function needsd to be extended
+// exclusively by adding more checks, the existing checks should not be altered
+// or removed.
 func IsOOSErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "not enough storage remaining to accept sector")
+	if strings.Contains(err.Error(), V1413HostOutOfStorageErrString) {
+		return true
+	}
+	return false
 }
 
-// IsNoContractErr is a helper function to determine whether an error from a
-// host is a 'contract does not exist' error.
+// IsContractNotRecognizedErr is a helper function to determine whether an error
+// from a host is a indicating that they do not recognize a contract that the
+// renter is updating.
 //
-// NOTE: we test for a string error instead of using a constant error because
-// compatibility needs to be preserved with the hosts that run on the actual
-// network. If the constant gets updated to have different phrasing or different
-// tone, fix a mistake, etc, this check should not be updated to stop checking
-// the old copy, because hosts on the live network are still using the old copy.
-// Any test depending on this check should break if this test is not updated to
-// include the new copy in the check.
-//
-// We want the test to break because this test needs to be updated to support
-// BOTH the old copy and the new copy, not just the new copy.
-func IsNoContractErr(err error) bool {
+// Note: To preserve compatibility, this function needsd to be extended
+// exclusively by adding more checks, the existing checks should not be altered
+// or removed.
+func IsContractNotRecognizedErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "no record of that contract")
+	if strings.Contains(err.Error(), V1413ContractNotRecognizedErrString) {
+		return true
+	}
+	return false
 }
 
 // VerifyFileContractRevisionTransactionSignatures checks that the signatures

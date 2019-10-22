@@ -1185,6 +1185,10 @@ func TestRenterBadContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
+
+	// Create a second host, but perform a dependency injection that will cause
+	// the host to reject the contract when the renter tries to grab a session
+	// lock.
 	secondHostParams := node.HostTemplate
 	secondHostParams.HostDeps = &HostRejectAllSessionLocks{}
 	_, err = tg.AddNodes(secondHostParams)
@@ -1208,12 +1212,18 @@ func TestRenterBadContracts(t *testing.T) {
 		t.Fatal("expecting 2 active contracts formed with the 2 hosts", len(rcg.ActiveContracts))
 	}
 
-	_, _, err = r.UploadNewFile(100+siatest.Fuzz(), 1, 2, false)
+	// Upload a file, which will cause the renter to open a session with all of
+	// the hosts, including the host that is explicitly rejecting session locks
+	// on a contract.
+	_, _, err = r.UploadNewFile(100, 1, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify that the renter dropped an active contract.
+	// Verify that the renter dropped an active contract. This will have
+	// happened because the injected host rejected the session lock due to the
+	// contract not being recognized, which will have resulted in the contract
+	// being marked bad.
 	err = build.Retry(100, 250*time.Millisecond, func() error {
 		rcg, err = r.RenterContractsGet()
 		if err != nil {
@@ -1224,4 +1234,7 @@ func TestRenterBadContracts(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
