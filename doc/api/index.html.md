@@ -731,6 +731,53 @@ Example IPV6 address: [123::456]:789
 ### Response
 standard success or error response. See [standard responses](#standard-responses).
 
+## /gateway/blacklist [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/gateway/blacklist"
+```
+
+fetches the list of blacklisted addresses.
+
+### JSON Response
+> JSON Response Example
+```go
+{
+  "blacklist":
+  [
+    "123.456.789.0",  // string
+    "123.456.789.0",  // string
+    "123.456.789.0",  // string
+  ],
+}
+```
+**blacklist** | string  
+blacklist is a list of blacklisted address
+
+## /gateway/blacklist [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.456.789.0:9981","123.456.789.0:9981","123.456.789.0:9981"]}' "localhost:9980/gateway/blacklist"
+```
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blacklist"
+```
+
+performs actions on the Gateway's blacklist. There are three `actions` that can be performed. `append` and `remove` are used for appending or removing addresses from the Gateway's blacklist. `set` is used to define all the addresses in the blacklist. If a list of addresses is provided with `set`, that list of addresses will become the Gateway's blacklist, replacing any blacklist that was currently in place. To clear the Gateway's blacklist, submit an empty list with `set`.
+
+### Path Parameters
+#### REQUIRED
+**action** | string  
+this is the action to be performed on the blacklist. Allowed inputs are `append`, `remove`, and `set`.
+
+**addresses** | string  
+this is a comma separated list of addresses that are to be appended to or removed from the blacklist. If the action is `append` or `remove` this field is required.
+
+### Response
+standard success or error response. See [standard responses](#standard-responses).
+
 # Host
 
 The host provides storage from local disks to the network. The host negotiates file contracts with remote renters to earn money for storing other users' files. The host's endpoints expose methods for viewing and modifying host settings, announcing to the network, and managing how files are stored on disk.
