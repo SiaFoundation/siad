@@ -39,14 +39,15 @@ func TestHostGetPubKey(t *testing.T) {
 		t.Fatal("Host has empty pubkey key", hg.PublicKey.Key)
 	}
 
-	// Read public key from disk and compare to value from API
-	p, err := readHostPersistance(testDir)
+	// Get host pubkey from the server and compare to the pubkey return through
+	// the HostGet endpoint
+	pk, err := testNode.HostPublicKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(p.PublicKey.Key, hg.PublicKey.Key) {
+	if !bytes.Equal(pk.Key, hg.PublicKey.Key) {
 		t.Log("HostGet PubKey:", hg.PublicKey)
-		t.Log("Persistance PubKey:", p.PublicKey)
-		t.Fatal("Publics Keys don't match")
+		t.Log("Server PubKey:", pk)
+		t.Fatal("Public Keys don't match")
 	}
 }

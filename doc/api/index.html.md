@@ -1020,7 +1020,7 @@ connectabilitystatus is one of "checking", "connectable", or "not connectable", 
 **workingstatus** | string  
 workingstatus is one of "checking", "working", or "not working" and indicates if the host is being actively used by renters.  
 
-**publickey**  
+**publickey** | SiaPublicKey  
 Public key used to identify the host.  
 
 ## /host [POST]
@@ -1576,7 +1576,7 @@ List of IP subnet masks used by the host. For IPv4 the /24 and for IPv6 the /54 
 **lastipnetchange** | date  
 The last time the list of IP subnet masks was updated. When equal subnet masks are found for different hosts, the host that occupies the subnet mask for a longer time is preferred.  
 
-**publickey**  
+**publickey** | SiaPublicKey  
 Public key used to identify and verify hosts.  
 
 **algorithm** | string  
@@ -2263,7 +2263,7 @@ Block height that the file contract ends on.
 **fees** | hastings  
 Fees paid in order to form the file contract.  
 
-**hostpublickey** 
+**hostpublickey** | SiaPublicKey  
 Public key of the host that the file contract is formed with.  
        
 **hostversion** | string  
@@ -4135,7 +4135,7 @@ The minimum blockheight required.
 **signaturesrequired**  
 The number of signatures required.  
 
-**publickeys**  
+**publickeys** | SiaPublicKey  
 The set of keys whose signatures count towards signaturesrequired.  
 
 ## /wallet/unspent [GET]
