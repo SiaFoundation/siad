@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"net/url"
 	"strconv"
 
@@ -48,5 +49,57 @@ func (c *Client) GatewayRateLimitPost(downloadSpeed, uploadSpeed int64) (err err
 	values.Set("maxdownloadspeed", strconv.FormatInt(downloadSpeed, 10))
 	values.Set("maxuploadspeed", strconv.FormatInt(uploadSpeed, 10))
 	err = c.post("/gateway", values.Encode(), nil)
+	return
+}
+
+// GatewayBlacklistGet uses the /gateway/blacklist endpoint to request the
+// Gateway's blacklist
+func (c *Client) GatewayBlacklistGet() (gbg api.GatewayBlacklistGET, err error) {
+	err = c.get("/gateway/blacklist", &gbg)
+	return
+}
+
+// GatewayAppendBlacklistPost uses the /gateway/blacklist endpoint to append
+// addresses to the Gateway's blacklist
+func (c *Client) GatewayAppendBlacklistPost(addresses []modules.NetAddress) (err error) {
+	gbp := api.GatewayBlacklistPOST{
+		Action:    "append",
+		Addresses: addresses,
+	}
+	data, err := json.Marshal(gbp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/gateway/blacklist", string(data), nil)
+	return
+}
+
+// GatewayRemoveBlacklistPost uses the /gateway/blacklist endpoint to remove
+// addresses from the Gateway's blacklist
+func (c *Client) GatewayRemoveBlacklistPost(addresses []modules.NetAddress) (err error) {
+	gbp := api.GatewayBlacklistPOST{
+		Action:    "remove",
+		Addresses: addresses,
+	}
+	data, err := json.Marshal(gbp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/gateway/blacklist", string(data), nil)
+	return
+}
+
+// GatewaySetBlacklistPost uses the /gateway/blacklist endpoint to set the
+// Gateway's blacklist
+func (c *Client) GatewaySetBlacklistPost(addresses []modules.NetAddress) (err error) {
+	gbp := api.GatewayBlacklistPOST{
+		Action:    "set",
+		Addresses: addresses,
+	}
+	data, err := json.Marshal(gbp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/gateway/blacklist", string(data), nil)
 	return
 }

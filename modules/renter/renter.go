@@ -256,6 +256,7 @@ type Renter struct {
 	staticBackupsDir string
 	memoryManager    *memoryManager
 	mu               *siasync.RWMutex
+	repairLog        *persist.Logger
 	tg               threadgroup.ThreadGroup
 	tpool            modules.TransactionPool
 	wal              *writeaheadlog.WAL

@@ -4,18 +4,13 @@ that a user has uploaded to Sia. This includes the location and health of these
 files. The Renter, via the HostDB and the Contractor, is also responsible for
 picking hosts and maintaining the relationship with them.
 
-*TODO*
-  - Should assumptions for each section be put in a specific **assumptions**
-    section at the end of each section?
-  - Update list of submodules to be links to README files was submodule READMEs
-    are ready
-  - If we like this format for the README we should document it and make it
-    standard for consistency between module READMEs. Things to consider:
-     - What gets `highlighted` - code only
-     - What gets linked
-     - What Sections to have and order
-  - Confirm all assumptions have tests
-  - Create subsystemconsts.go files and add them to the **Key Files** 
+The renter is unique for having two different logs. The first is a general
+renter activity log, and the second is a repair log. The repair log is intended
+to be a high-signal log that tells users what files are being repaired, and
+whether the repair jobs have been successful. Where there are failures, the
+repair log should try and document what those failures were. Every message of
+the repair log should be interesting and useful to a power user, there should be
+no logspam and no messages that would only make sense to siad developers.
 
 ## Submodules
 The Renter has several submodules that each perform a specific function for the
