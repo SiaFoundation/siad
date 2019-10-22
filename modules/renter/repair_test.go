@@ -844,7 +844,8 @@ func TestRandomStuckFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaPath1 := rt.renter.staticFileSystem.FileSiaPath(file1)
-	err = rt.renter.SetFileStuck(siaPath1, true)
+	sp1, _ := siaPath1.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+	err = rt.renter.SetFileStuck(sp1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -855,6 +856,7 @@ func TestRandomStuckFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaPath2 := rt.renter.staticFileSystem.FileSiaPath(file2)
+	sp2, _ := siaPath2.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
 	err = file2.SetStuck(0, true)
 	if err != nil {
 		t.Fatal(err)
@@ -866,10 +868,11 @@ func TestRandomStuckFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaPath3 := rt.renter.staticFileSystem.FileSiaPath(file3)
+	sp3, _ := siaPath3.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
 
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+	err = rt.renter.managedBubbleMetadata(modules.SiaFilesSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -896,7 +899,7 @@ func TestRandomStuckFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkFindRandomFile(t, rt.renter, modules.RootSiaPath(), siaPath1, siaPath2, siaPath3)
+	checkFindRandomFile(t, rt.renter, modules.SiaFilesSiaPath(), siaPath1, siaPath2, siaPath3)
 
 	// Create a directory
 	dir, err := modules.NewSiaPath("Dir")
@@ -908,30 +911,35 @@ func TestRandomStuckFile(t *testing.T) {
 	}
 
 	// Move siafiles to dir
-	newSiaPath1, err := dir.Join(siaPath1.String())
+	newSiaPath1, err := dir.Join(sp1.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = rt.renter.RenameFile(siaPath1, newSiaPath1)
+	err = rt.renter.RenameFile(sp1, newSiaPath1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	newSiaPath2, err := dir.Join(siaPath2.String())
+	newSiaPath2, err := dir.Join(sp2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = rt.renter.RenameFile(siaPath2, newSiaPath2)
+	err = rt.renter.RenameFile(sp2, newSiaPath2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	newSiaPath3, err := dir.Join(siaPath3.String())
+	newSiaPath3, err := dir.Join(sp3.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = rt.renter.RenameFile(siaPath3, newSiaPath3)
+	err = rt.renter.RenameFile(sp3, newSiaPath3)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	dir, _ = dir.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	newSiaPath1, _ = newSiaPath1.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	newSiaPath2, _ = newSiaPath2.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	newSiaPath3, _ = newSiaPath3.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
 
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata

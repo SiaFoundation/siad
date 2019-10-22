@@ -3,6 +3,7 @@ package renter
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -334,7 +335,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 		}
 
 		// Get SiaPath
-		sp, err := dirSiaPath.Join(fi.Name())
+		sp, err := dirSiaPath.Join(strings.TrimSuffix(fi.Name(), modules.SiaFileExtension))
 		if err != nil {
 			return modules.SiaPath{}, err
 		}
