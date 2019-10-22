@@ -52,7 +52,7 @@ func walletPasswordEncryptionKey(seed modules.Seed, salt walletSalt) (key crypto
 func verifyEncryption(key crypto.CipherKey, encrypted crypto.Ciphertext) error {
 	verification, err := key.DecryptBytes(encrypted)
 	if err != nil {
-		return modules.ErrBadEncryptionKey
+		return errors.AddContext(err, "failed to decrypt masterkey")
 	}
 	if !bytes.Equal(verificationPlaintext, verification) {
 		return modules.ErrBadEncryptionKey
