@@ -165,9 +165,9 @@ func TestBuildChunkHeap(t *testing.T) {
 	}
 }
 
-// addChunks is a helper function for TestUploadHeap to add chunks to the
-// uploadHeap
-func addChunks(r *Renter, stuck, fileRecentlySuccessful, priority bool) error {
+// addChunksOfDifferentHealth is a helper function for TestUploadHeap to add
+// numChunks number of chunks that each have different healths to the uploadHeap
+func addChunksOfDifferentHealth(r *Renter, numChunks int, stuck, fileRecentlySuccessful, priority bool) error {
 	var UID siafile.SiafileUID
 	if priority {
 		UID = "priority"
@@ -178,31 +178,24 @@ func addChunks(r *Renter, stuck, fileRecentlySuccessful, priority bool) error {
 	} else {
 		UID = "unstuck"
 	}
-	chunk := &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: UID,
-			index:   1,
-		},
-		stuck:                  stuck,
-		fileRecentlySuccessful: fileRecentlySuccessful,
-		priority:               priority,
-		health:                 1,
-	}
-	if !r.uploadHeap.managedPush(chunk) {
-		return fmt.Errorf("unable to push chunk: %v", chunk)
-	}
-	chunk = &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: UID,
-			index:   2,
-		},
-		stuck:                  stuck,
-		fileRecentlySuccessful: fileRecentlySuccessful,
-		priority:               priority,
-		health:                 2,
-	}
-	if !r.uploadHeap.managedPush(chunk) {
-		return fmt.Errorf("unable to push chunk: %v", chunk)
+
+	// Add numChunks number of chunks to the upload heap. Set the id index and
+	// health to the value of health. Since health of 0 is full health, start i
+	// at 1
+	for i := 1; i <= numChunks; i++ {
+		chunk := &unfinishedUploadChunk{
+			id: uploadChunkID{
+				fileUID: UID,
+				index:   uint64(i),
+			},
+			stuck:                  stuck,
+			fileRecentlySuccessful: fileRecentlySuccessful,
+			priority:               priority,
+			health:                 float64(i),
+		}
+		if !r.uploadHeap.managedPush(chunk) {
+			return fmt.Errorf("unable to push chunk: %v", chunk)
+		}
 	}
 	return nil
 }
@@ -227,19 +220,19 @@ func TestUploadHeap(t *testing.T) {
 	//
 	// Add 2 chunks of each type to confirm the type and the health is
 	// prioritized properly
-	err = addChunks(rt.renter, true, false, false)
+	err = addChunksOfDifferentHealth(rt.renter, 2, true, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = addChunks(rt.renter, false, true, false)
+	err = addChunksOfDifferentHealth(rt.renter, 2, false, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = addChunks(rt.renter, false, false, true)
+	err = addChunksOfDifferentHealth(rt.renter, 2, false, false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = addChunks(rt.renter, false, false, false)
+	err = addChunksOfDifferentHealth(rt.renter, 2, false, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -34,6 +34,7 @@ type unfinishedUploadChunk struct {
 	// to update these fields. Compatibility shouldn't be an issue because this
 	// struct is not persisted anywhere, it's always built from other
 	// structures.
+	fileRecentlySuccessful bool // indicates if the file the chunk is from had a recent successful repair
 	health                 float64
 	index                  uint64
 	length                 uint64
@@ -45,7 +46,6 @@ type unfinishedUploadChunk struct {
 	stuck                  bool   // indicates if the chunk was marked as stuck during last repair
 	stuckRepair            bool   // indicates if the chunk was identified for repair by the stuck loop
 	priority               bool   // indicates if the chunks is supposed to be repaired asap
-	fileRecentlySuccessful bool   // indicates if the file the chunk is from had a recent successful repair
 
 	// The logical data is the data that is presented to the user when the user
 	// requests the chunk. The physical data is all of the pieces that get

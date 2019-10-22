@@ -49,7 +49,9 @@ func (uch uploadChunkHeap) Len() int { return len(uch) }
 func (uch uploadChunkHeap) Less(i, j int) bool {
 	// The chunks in the uploadHeap are prioritized in the following order:
 	//  1) Priority Chunks
-	//    - These are chunks from the upload stream endpoint
+	//    - These are chunks added by a subsystem that are deemed more important
+	//      than all other chunks. An example would be if the upload of a single
+	//      chunk is a blocking task.
 	//
 	//  2) File Recently Successful Chunks
 	//    - These are stuck chunks that are from a file that recently had a
