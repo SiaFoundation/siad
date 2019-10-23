@@ -118,7 +118,7 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create metadata update
-	path := filepath.Join(sd.staticPath, modules.SiaDirExtension)
+	path := filepath.Join(sd.path, modules.SiaDirExtension)
 	update, err := createMetadataUpdate(path, sd.metadata)
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func TestCreateReadMetadataUpdate(t *testing.T) {
 	}
 
 	// Check path
-	path2 := filepath.Join(sd.staticPath, modules.SiaDirExtension)
+	path2 := filepath.Join(sd.path, modules.SiaDirExtension)
 	if path != path2 {
 		t.Fatalf("Path not correct: expected %v got %v", path2, path)
 	}
@@ -181,7 +181,7 @@ func TestCreateReadDeleteUpdate(t *testing.T) {
 	// Read update
 	path := readDeleteUpdate(update)
 	// Compare values
-	siaDirPath := sd.staticPath
+	siaDirPath := sd.path
 	if path != siaDirPath {
 		t.Error("paths don't match")
 	}
@@ -223,7 +223,7 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 	// Create an update to the metadata
 	metadata := siadir.metadata
 	metadata.Health = 1.0
-	path := filepath.Join(siadir.staticPath, modules.SiaDirExtension)
+	path := filepath.Join(siadir.path, modules.SiaDirExtension)
 	update, err := createMetadataUpdate(path, metadata)
 	if err != nil {
 		t.Fatal(err)
@@ -234,7 +234,7 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 		t.Fatal("Failed to apply update", err)
 	}
 	// Open file.
-	sd, err := LoadSiaDir(siadir.staticPath, modules.ProdDependencies, siadir.wal)
+	sd, err := LoadSiaDir(siadir.path, modules.ProdDependencies, siadir.wal)
 	if err != nil {
 		t.Fatal("Failed to load siadir", err)
 	}
@@ -276,7 +276,7 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 	// Create an update to the metadata
 	metadata := siadir.metadata
 	metadata.Health = 1.0
-	path := filepath.Join(siadir.staticPath, modules.SiaDirExtension)
+	path := filepath.Join(siadir.path, modules.SiaDirExtension)
 	update, err := createMetadataUpdate(path, metadata)
 	if err != nil {
 		t.Fatal(err)
@@ -287,7 +287,7 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 		t.Fatal("Failed to apply update", err)
 	}
 	// Open file.
-	sd, err := LoadSiaDir(siadir.staticPath, modules.ProdDependencies, siadir.wal)
+	sd, err := LoadSiaDir(siadir.path, modules.ProdDependencies, siadir.wal)
 	if err != nil {
 		t.Fatal("Failed to load siadir", err)
 	}
