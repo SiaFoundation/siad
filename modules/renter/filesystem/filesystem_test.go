@@ -131,7 +131,7 @@ func TestNew(t *testing.T) {
 		t.Fatal("fs.files is not an empty initialized map")
 	}
 	// Create the filesystem again at the same location.
-	_ = newTestFileSystem(*fs.name)
+	_ = newTestFileSystem(*fs.path)
 }
 
 // TestNewSiaDir tests if creating a new directory using NewSiaDir creates the
