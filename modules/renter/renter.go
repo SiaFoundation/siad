@@ -243,24 +243,25 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
-	cs                modules.ConsensusSet
-	deps              modules.Dependencies
-	g                 modules.Gateway
-	w                 modules.Wallet
-	hostContractor    hostContractor
-	hostDB            hostDB
-	log               *persist.Logger
-	persist           persistence
-	persistDir        string
-	staticFilesDir    string
-	staticBackupsDir  string
-	memoryManager     *memoryManager
+	cs               modules.ConsensusSet
+	deps             modules.Dependencies
+	g                modules.Gateway
+	w                modules.Wallet
+	hostContractor   hostContractor
+	hostDB           hostDB
+	log              *persist.Logger
+	persist          persistence
+	persistDir       string
+	staticFilesDir   string
+	staticBackupsDir string
+	memoryManager    *memoryManager
+	mu               *siasync.RWMutex
+	repairLog        *persist.Logger
 	staticFuseManager *fuseManager
-	mu                *siasync.RWMutex
-	tg                threadgroup.ThreadGroup
-	tpool             modules.TransactionPool
-	wal               *writeaheadlog.WAL
-	staticWorkerPool  *workerPool
+	tg               threadgroup.ThreadGroup
+	tpool            modules.TransactionPool
+	wal              *writeaheadlog.WAL
+	staticWorkerPool *workerPool
 }
 
 // Close closes the Renter and its dependencies
