@@ -137,6 +137,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 		chunk = unfinishedStuckChunks[0]
 		unfinishedStuckChunks = unfinishedStuckChunks[1:]
 		chunk.stuckRepair = true
+		chunk.fileRecentlySuccessful = true
 		if !r.uploadHeap.managedPush(chunk) {
 			// Stuck chunk unable to be added. Close the file entry of that
 			// chunk

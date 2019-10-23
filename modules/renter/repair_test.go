@@ -1160,4 +1160,10 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if rt.renter.uploadHeap.managedLen() != 1 {
 		t.Fatal("Expected uploadHeap to be of length 1 got", rt.renter.uploadHeap.managedLen())
 	}
+
+	// Pop chunk, chunk should be marked as fileRecentlySuccessful true
+	chunk := rt.renter.uploadHeap.managedPop()
+	if !chunk.fileRecentlySuccessful {
+		t.Fatal("chunk not marked as fileRecentlySuccessful true")
+	}
 }
