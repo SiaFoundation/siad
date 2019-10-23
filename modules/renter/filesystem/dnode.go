@@ -25,7 +25,7 @@ type (
 		directories map[string]*DNode
 		files       map[string]*FNode
 
-		lazySiaDir *siadir.SiaDir
+		lazySiaDir **siadir.SiaDir
 	}
 )
 
@@ -251,8 +251,8 @@ func (n *DNode) managedSiaDir() (*siadir.SiaDir, error) {
 
 // siaDir is a wrapper for the lazySiaDir field.
 func (n *DNode) siaDir() (*siadir.SiaDir, error) {
-	if n.lazySiaDir != nil {
-		return n.lazySiaDir, nil
+	if *n.lazySiaDir != nil {
+		return *n.lazySiaDir, nil
 	}
 	sd, err := siadir.LoadSiaDir(n.absPath(), modules.ProdDependencies, n.staticWal)
 	if err == siadir.ErrUnknownPath {
@@ -261,7 +261,7 @@ func (n *DNode) siaDir() (*siadir.SiaDir, error) {
 	if err != nil {
 		return nil, err
 	}
-	n.lazySiaDir = sd
+	*n.lazySiaDir = sd
 	return sd, nil
 }
 
@@ -417,6 +417,16 @@ func (n *DNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, err
 	}, nil
 }
 
+// childDirs is a convenience method to return the directories fifeld of a DNode
+// as a slice.
+func (n *DNode) childDirs() []*DNode {
+	dirs := make([]*DNode, 0, len(n.directories))
+	for _, dir := range n.directories {
+		dirs = append(dirs, dir)
+	}
+	return dirs
+}
+
 // managedNewSiaFile creates a new SiaFile in the directory.
 func (n *DNode) managedNewSiaFile(fileName string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
 	n.mu.Lock()
@@ -463,10 +473,7 @@ func (n *DNode) openFile(fileName string) (*FNode, error) {
 	return fn.managedCopy(), nil
 }
 
-// openDir opens the dir with the specified name within the current dir but
-// doesn't clone it. That means it won't increment the number of threads in the
-// threads map. That means Close doesn't need to be called on a dNode returned
-// by openDir.
+// openDir opens the dir with the specified name within the current dir.
 func (n *DNode) openDir(dirName string) (*DNode, error) {
 	// Check if dir was already loaded. Then just copy it.
 	dir, exists := n.directories[dirName]
@@ -486,7 +493,7 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 		node:        newNode(n, dirPath, dirName, 0, n.staticWal),
 		directories: make(map[string]*DNode),
 		files:       make(map[string]*FNode),
-		lazySiaDir:  nil,
+		lazySiaDir:  new(*siadir.SiaDir),
 	}
 	n.directories[*dir.name] = dir
 	return dir.managedCopy(), nil
@@ -507,25 +514,21 @@ func (n *DNode) managedCopy() *DNode {
 // managedOpenDir opens a SiaDir.
 func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 	// Get the name of the next sub directory.
-	subDir, path := filepath.Split(path)
-	if subDir == "" {
-		subDir = path
-		path = ""
-	}
-	subDir = strings.Trim(subDir, string(filepath.Separator))
+	pathList := strings.Split(path, string(filepath.Separator))
 	n.mu.Lock()
-	subNode, err := n.openDir(subDir)
+	subNode, err := n.openDir(pathList[0])
 	n.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
 	// If path is empty we are done.
-	if path == "" {
+	pathList = pathList[1:]
+	if len(pathList) == 0 {
 		return subNode, nil
 	}
 	// Otherwise open the next dir.
 	defer subNode.managedClose()
-	return subNode.managedOpenDir(path)
+	return subNode.managedOpenDir(filepath.Join(pathList...))
 }
 
 // managedRemoveDir removes a dir from a dNode. If as a result the dNode ends up
@@ -552,4 +555,91 @@ func (n *DNode) removeFile(child *FNode) {
 		return // Nothing to do
 	}
 	delete(n.files, *child.name)
+}
+
+// managedRename renames the fNode's underlying file.
+func (n *DNode) managedRename(newName string, oldParent, newParent *DNode) error {
+	// Lock the parents. If they are the same, only lock one.
+	if oldParent.staticUID == newParent.staticUID {
+		oldParent.mu.Lock()
+		defer oldParent.mu.Unlock()
+	} else {
+		oldParent.mu.Lock()
+		defer oldParent.mu.Unlock()
+		newParent.mu.Lock()
+		defer newParent.mu.Unlock()
+	}
+	// Check that newParent doesn't have a dir with that name already.
+	if _, exists := newParent.files[newName]; exists {
+		return ErrExists
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	dirsToLock := n.childDirs()
+	var dirsToRename []*DNode
+	var filesToRename []*FNode
+	var lockedNodes []*node
+	// Unlock all locked nodes regardless of errors.
+	defer func() {
+		for _, node := range lockedNodes {
+			node.mu.Unlock()
+		}
+	}()
+	// Lock dir and all open children. Remember in which order we acquired the
+	// locks.
+	for len(dirsToLock) > 0 {
+		// Get next dir.
+		d := dirsToLock[0]
+		dirsToLock = dirsToLock[1:]
+		// Lock the dir.
+		d.mu.Lock()
+		lockedNodes = append(lockedNodes, &d.node)
+		dirsToRename = append(dirsToRename, d)
+		// Lock the open files.
+		for _, file := range d.files {
+			file.mu.Lock()
+			lockedNodes = append(lockedNodes, &file.node)
+			filesToRename = append(filesToRename, file)
+		}
+		// Add the open dirs to dirsToLock.
+		dirsToLock = append(dirsToLock, d.childDirs()...)
+	}
+	newBase := filepath.Join(newParent.absPath(), newName)
+	// Rename the dir.
+	dir, err := n.siaDir()
+	if err != nil {
+		return err
+	}
+	err = dir.Rename(newBase)
+	if err == siadir.ErrPathOverload {
+		return ErrExists
+	}
+	if err != nil {
+		return err
+	}
+	// Remove dir from old parent and add it to new parent.
+	// TODO: iteratively remove parents like in Close
+	oldParent.removeDir(n)
+	// Update parent and name.
+	n.parent = newParent
+	*n.name = newName
+	*n.path = newBase
+	// Add dir to new parent.
+	n.parent.directories[*n.name] = n
+	// Rename all locked nodes in memory.
+	for _, node := range lockedNodes {
+		*node.path = filepath.Join(*node.parent.path, *node.name)
+	}
+	// Rename all files in memory.
+	for _, file := range filesToRename {
+		file.SetSiaFilePath(*file.path)
+	}
+	// Rename all dirs in memory.
+	for _, dir := range dirsToRename {
+		if *dir.lazySiaDir == nil {
+			continue // dir isn't loaded
+		}
+		(*dir.lazySiaDir).SetPath(*dir.path)
+	}
+	return err
 }

@@ -131,6 +131,7 @@ func New(root string, wal *writeaheadlog.WAL) (*FileSystem, error) {
 			node:        newNode(nil, root, "", 0, wal),
 			directories: make(map[string]*DNode),
 			files:       make(map[string]*FNode),
+			lazySiaDir:  new(*siadir.SiaDir),
 		},
 	}, nil
 }
@@ -387,8 +388,49 @@ func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) error {
 // RenameDir takes an existing directory and changes the path. The original
 // directory must exist, and there must not be any directory that already has
 // the replacement path.  All sia files within directory will also be renamed
-func (fs *FileSystem) RenameDir(oldPath, newPath modules.SiaPath) error {
-	panic("not implemented yet")
+func (fs *FileSystem) RenameDir(oldSiaPath, newSiaPath modules.SiaPath) error {
+	// Open SiaDir for parent dir at old location.
+	oldDirSiaPath, err := oldSiaPath.Dir()
+	if err != nil {
+		return err
+	}
+	oldDir, err := fs.managedOpenSiaDir(oldDirSiaPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		oldDir.Close()
+	}()
+	// Open the dir to rename.
+	sd, err := oldDir.managedOpenDir(oldSiaPath.Name())
+	if err == ErrNotExist {
+		return ErrNotExist
+	}
+	if err != nil {
+		return errors.AddContext(err, "failed to open file for renaming")
+	}
+	defer func() {
+		sd.Close()
+	}()
+
+	// Create and Open parent SiaDir for dir at new location.
+	newDirSiaPath, err := newSiaPath.Dir()
+	if err != nil {
+		return err
+	}
+	if err := fs.NewSiaDir(newDirSiaPath); err != nil {
+		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newDirSiaPath.String(), oldSiaPath.String()))
+	}
+	newDir, err := fs.managedOpenSiaDir(newDirSiaPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		newDir.Close()
+	}()
+	// Rename the dir.
+	err = sd.managedRename(newSiaPath.Name(), oldDir, newDir)
+	return err
 }
 
 // managedDeleteFile opens the parent folder of the file to delete and calls
@@ -583,6 +625,9 @@ func (fs *FileSystem) managedNewSiaFile(path string, source string, ec modules.E
 // managedOpenSiaDir opens a SiaDir and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) managedOpenSiaDir(siaPath modules.SiaPath) (*DNode, error) {
+	if siaPath.IsRoot() {
+		return fs.DNode.managedCopy(), nil
+	}
 	dir, err := fs.DNode.managedOpenDir(siaPath.String())
 	if err != nil {
 		return nil, err

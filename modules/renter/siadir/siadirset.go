@@ -243,7 +243,7 @@ func (sds *SiaDirSet) closeEntry(entry *SiaDirSetEntry) {
 	//
 	// If they are not the same entry, there is nothing more to do.
 	var sp modules.SiaPath
-	if err := sp.FromSysPath(entry.staticPath, sds.staticRootDir); err != nil {
+	if err := sp.FromSysPath(entry.path, sds.staticRootDir); err != nil {
 		return // should never happen
 	}
 	currentEntry := sds.siaDirMap[sp]
@@ -508,7 +508,7 @@ func (sds *SiaDirSet) Rename(oldPath, newPath modules.SiaPath) error {
 	// Renaming the target dir was successful. Rename the open dirs.
 	for _, entry := range lockedDirs {
 		var sp modules.SiaPath
-		if err := sp.FromSysPath(entry.staticPath, sds.staticRootDir); err != nil {
+		if err := sp.FromSysPath(entry.path, sds.staticRootDir); err != nil {
 			return err
 		}
 		sp, err := sp.Rebase(oldPath, newPath)
@@ -518,7 +518,7 @@ func (sds *SiaDirSet) Rename(oldPath, newPath modules.SiaPath) error {
 		}
 		// Update the siapath of the entry and the siaDirMap.
 		delete(sds.siaDirMap, sp)
-		entry.staticPath = sp.SiaDirSysPath(sds.staticRootDir)
+		entry.path = sp.SiaDirSysPath(sds.staticRootDir)
 		sds.siaDirMap[sp] = entry
 	}
 	return err

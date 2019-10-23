@@ -39,8 +39,8 @@ type (
 	SiaDir struct {
 		metadata Metadata
 
-		// staticPath is the path of the SiaDir folder.
-		staticPath string
+		// path is the path of the SiaDir folder.
+		path string
 
 		// Utility fields
 		deleted bool
@@ -151,10 +151,10 @@ func New(path, rootPath string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 
 	// Create SiaDir
 	sd := &SiaDir{
-		metadata:   md,
-		deps:       modules.ProdDependencies,
-		staticPath: path,
-		wal:        wal,
+		metadata: md,
+		deps:     modules.ProdDependencies,
+		path:     path,
+		wal:      wal,
 	}
 
 	return sd, managedCreateAndApplyTransaction(wal, append(updates, update)...)
@@ -209,9 +209,9 @@ func loadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, er
 // LoadSiaDir loads the directory metadata from disk
 func LoadSiaDir(path string, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
 	sd = &SiaDir{
-		deps:       deps,
-		staticPath: path,
-		wal:        wal,
+		deps: deps,
+		path: path,
+		wal:  wal,
 	}
 	sd.metadata, err = loadSiaDirMetadata(filepath.Join(path, modules.SiaDirExtension), modules.ProdDependencies)
 	return sd, err
@@ -224,6 +224,33 @@ func (sd *SiaDir) delete() error {
 	err := sd.createAndApplyTransaction(update)
 	sd.deleted = true
 	return err
+}
+
+// Rename renames the SiaDir to targetPath.
+func (sd *SiaDir) rename(targetPath string) error {
+	err := os.Rename(sd.path, targetPath)
+	if os.IsExist(err) {
+		return ErrPathOverload
+	}
+	if err != nil {
+		return err
+	}
+	sd.path = targetPath
+	return nil
+}
+
+// Rename renames the SiaDir to targetPath.
+func (sd *SiaDir) Rename(targetPath string) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	return sd.rename(targetPath)
+}
+
+// SetPath sets the path field of the dir.
+func (sd *SiaDir) SetPath(targetPath string) {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	sd.path = targetPath
 }
 
 // Delete removes the directory from disk and marks it as deleted. Once the directory is
@@ -250,7 +277,7 @@ func (sd *SiaDir) DirReader() (*DirReader, error) {
 		return nil, errors.New("can't copy deleted SiaDir")
 	}
 	// Open file.
-	path := filepath.Join(sd.staticPath, modules.SiaDirExtension)
+	path := filepath.Join(sd.path, modules.SiaDirExtension)
 	f, err := os.Open(path)
 	if err != nil {
 		sd.mu.Unlock()
@@ -271,7 +298,9 @@ func (sd *SiaDir) Metadata() Metadata {
 
 // Path returns the SiaPath of the SiaDir
 func (sd *SiaDir) Path() string {
-	return sd.staticPath
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	return sd.path
 }
 
 // UpdateMetadata updates the SiaDir metadata on disk

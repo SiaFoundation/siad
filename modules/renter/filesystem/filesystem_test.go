@@ -227,6 +227,20 @@ func TestOpenSiaDir(t *testing.T) {
 	if len(fs.files) != 0 {
 		t.Fatalf("Expected 0 files in the root but got %v", len(fs.files))
 	}
+	// Open the root node manually and confirm that they are the same.
+	rootSD, err := fs.OpenSiaDir(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fs.threads) != len(rootSD.threads) {
+		t.Fatal("Number of threads in root doesn't match", len(fs.threads), len(rootSD.threads))
+	}
+	if len(fs.directories) != len(rootSD.directories) {
+		t.Fatal("Number of directories in root doesn't match", len(fs.threads), len(rootSD.threads))
+	}
+	if len(fs.files) != len(rootSD.files) {
+		t.Fatal("Number of files in root doesn't match", len(fs.threads), len(rootSD.threads))
+	}
 	// Confirm the integrity of the /sub node.
 	subNode, exists := fs.directories["sub"]
 	if !exists {
@@ -356,7 +370,7 @@ func TestOpenSiaFile(t *testing.T) {
 		t.Fatalf("Expected 1 file in the root but got %v", len(fs.files))
 	}
 	// Create file /sub/file
-	sp = newSiaPath("/sub/file")
+	sp = newSiaPath("/sub1/sub2/file")
 	fs.AddTestSiaFile(sp)
 	// Open the newly created file.
 	sf2, err := fs.OpenSiaFile(sp)
@@ -368,7 +382,7 @@ func TestOpenSiaFile(t *testing.T) {
 	if *sf2.name != "file" {
 		t.Fatalf("name of file should be file but was %v", *sf2.name)
 	}
-	if *sf2.parent.name != "sub" {
+	if *sf2.parent.name != "sub2" {
 		t.Fatalf("parent of file should be %v but was %v", "sub", *sf2.parent.name)
 	}
 	if sf2.threadUID == 0 {
@@ -377,16 +391,30 @@ func TestOpenSiaFile(t *testing.T) {
 	if len(sf2.threads) != 1 {
 		t.Fatalf("len(threads) should be 1 but was %v", len(sf2.threads))
 	}
-	// Confirm the integrity of the "sub" folder.
-	sub := sf2.parent
-	if len(sub.threads) != 0 {
-		t.Fatalf("Expected sub.threads to have length 0 but was %v", len(sub.threads))
+	// Confirm the integrity of the "sub2" folder.
+	sub2 := sf2.parent
+	if len(sub2.threads) != 0 {
+		t.Fatalf("Expected sub2.threads to have length 0 but was %v", len(sub2.threads))
 	}
-	if len(sub.directories) != 0 {
-		t.Fatalf("Expected 0 subdirectories in sub but got %v", len(sub.directories))
+	if len(sub2.directories) != 0 {
+		t.Fatalf("Expected 0 subdirectories in sub2 but got %v", len(sub2.directories))
 	}
-	if len(sub.files) != 1 {
-		t.Fatalf("Expected 1 file in sub but got %v", len(sub.files))
+	if len(sub2.files) != 1 {
+		t.Fatalf("Expected 1 file in sub2 but got %v", len(sub2.files))
+	}
+	if _, exists := sf2.threads[sf2.threadUID]; !exists {
+		t.Fatal("threaduid doesn't exist in threads map")
+	}
+	// Confirm the integrity of the "sub1" folder.
+	sub1 := sub2.parent
+	if len(sub1.threads) != 0 {
+		t.Fatalf("Expected sub1.threads to have length 0 but was %v", len(sub1.threads))
+	}
+	if len(sub1.directories) != 1 {
+		t.Fatalf("Expected 1 subdirectorie in sub1 but got %v", len(sub1.directories))
+	}
+	if len(sub1.files) != 0 {
+		t.Fatalf("Expected 0 files in sub1 but got %v", len(sub1.files))
 	}
 	if _, exists := sf2.threads[sf2.threadUID]; !exists {
 		t.Fatal("threaduid doesn't exist in threads map")
@@ -404,7 +432,7 @@ func TestCloseSiaDir(t *testing.T) {
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
 	// Create dir /sub/foo
-	sp := newSiaPath("sub/foo")
+	sp := newSiaPath("sub1/foo")
 	if err := fs.NewSiaDir(sp); err != nil {
 		t.Fatal(err)
 	}
@@ -548,6 +576,9 @@ func TestCloseSiaFile(t *testing.T) {
 	if len(sf1.parent.files) != 1 || len(sf2.parent.files) != 1 {
 		t.Fatalf("The parent should have 1 file but got %v", len(sf1.parent.files))
 	}
+	if len(sf1.parent.parent.directories) != 1 {
+		t.Fatalf("The root should have 1 directory but had %v", len(sf1.parent.parent.directories))
+	}
 	// Close the second one.
 	sf2.Close()
 	if len(fs.threads) != 0 {
@@ -561,6 +592,9 @@ func TestCloseSiaFile(t *testing.T) {
 	}
 	if len(sf1.parent.files) != 0 || len(sf2.parent.files) != 0 {
 		t.Fatalf("The parent should have 0 files but got %v", len(sf1.parent.files))
+	}
+	if len(sf1.parent.parent.directories) != 0 {
+		t.Fatalf("The root should have 0 directories but had %v", len(sf1.parent.parent.directories))
 	}
 }
 
@@ -812,7 +846,8 @@ func TestSiaDirRename(t *testing.T) {
 			}
 			err := entry.UpdateMetadata(siadir.Metadata{})
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -1360,7 +1395,6 @@ func TestSiaDirDelete(t *testing.T) {
 	// Prepare a siadirset
 	dirRoot := filepath.Join(os.TempDir(), "siadirs", t.Name())
 	os.RemoveAll(dirRoot)
-	os.RemoveAll(dirRoot)
 	fs := newTestFileSystem(dirRoot)
 
 	// Specify a directory structure for this test.
@@ -1621,3 +1655,68 @@ func TestSiaDirDelete(t *testing.T) {
 //			t.Fatalf("entry should have siapath '%v' but was '%v'", newDir, entry.SiaPath())
 //		}
 //	}
+
+// TestLazySiaDir tests that siaDir correctly reads and sets the lazySiaDir
+// field.
+func TestLazySiaDir(t *testing.T) {
+	if testing.Short() && !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	// Create dir /foo
+	sp := newSiaPath("foo")
+	if err := fs.NewSiaDir(sp); err != nil {
+		t.Fatal(err)
+	}
+	// Open the newly created dir.
+	foo, err := fs.OpenSiaDir(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer foo.Close()
+	// Get the siadir.
+	sd, err := foo.siaDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Lazydir should be set.
+	if *foo.lazySiaDir != sd {
+		t.Fatal(err)
+	}
+	// Fetching foo from root should also have lazydir set.
+	fooRoot := fs.directories["foo"]
+	if *fooRoot.lazySiaDir != sd {
+		t.Fatal("fooRoot doesn't have lazydir set")
+	}
+	// Open foo again.
+	foo2, err := fs.OpenSiaDir(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer foo2.Close()
+	// Lazydir should already be loaded.
+	if *foo2.lazySiaDir != sd {
+		t.Fatal("foo2.lazySiaDir isn't set correctly", foo2.lazySiaDir)
+	}
+}
+
+// TestLazySiaDir tests that siaDir correctly reads and sets the lazySiaDir
+// field.
+func TestOpenCloseRoot(t *testing.T) {
+	if testing.Short() && !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+
+	rootNode, err := fs.OpenSiaDir(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootNode.Close()
+}
