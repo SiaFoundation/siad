@@ -18,21 +18,29 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-const nodeScannerDirName = "SiaNodeScanner"
-const persistFileName = "persisted-node-set.json"
+const (
+	nodeScannerDirName = "SiaNodeScanner"
+	persistFileName    = "persisted-node-set.json"
 
-const maxSharedNodes = uint64(1000)
-const maxRPCs = 10
-const maxWorkers = 10
-const workChSize = 1000
+	metadataHeader  = "SiaNodeScanner Persisted Node Set"
+	metadataVersion = "0.0.1"
+)
 
-// pruneAge is the maxiumum allowed time in seconds since the last successful connection with a
-// node before we remove it from the persisted set. It is 1 month in seconds.
-// 1 hour * 24 hours/day * 30 days/month
-const pruneAge = time.Hour * 24 * 30
+const (
+	maxSharedNodes = uint64(1000)
+	maxRPCAttempts = 5
+	maxWorkers     = 10
+	workChSize     = 1000
 
-const metadataHeader = "SiaNodeScanner Persisted Node Set"
-const metadataVersion = "0.0.1"
+	// pruneAge is the maxiumum allowed time in seconds since the last successful connection with a
+	// node before we remove it from the persisted set. It is 1 month in seconds.
+	// 1 hour * 24 hours/day * 30 days/month
+	pruneAge = time.Hour * 24 * 30
+
+	// timeBetweenRequests is the amount of time a worker will wait between RPCs
+	// to avoid spamming its peers.
+	timeBetweenRequests = 50 * time.Millisecond
+)
 
 var persistMetadata = siaPersist.Metadata{
 	Header:  metadataHeader,
@@ -55,11 +63,6 @@ type nodeScanner struct {
 	// number of results received through resultCh.
 	totalWorkAssignments int
 	totalResults         int
-
-	// The number of ShareNodes RPCs to make with each scanned node. Initially can
-	// be set high (10) but should be lowered because the scan will waste a lot of
-	// time receiving addresses it already knows.
-	numRPCAttempts int
 
 	// The seen set keeps track of all the addresses seen by the
 	// scanner so far.
@@ -116,8 +119,7 @@ type nodeStats struct {
 // The ShareNodes RPC is used multiple times because nodes will
 // only return 10 random peers, but we want as many as possible.
 type workAssignment struct {
-	node           modules.NetAddress
-	maxRPCAttempts int
+	node modules.NetAddress
 }
 
 // nodeScanResult gives the set of nodes received from ShareNodes
@@ -213,8 +215,6 @@ func newNodeScanner(scannerDirPrefix string) (ns *nodeScanner) {
 // of bootstrap peers to initialize the nodeScanner data structures used to give
 // out worker assignments and to receive results.
 func (ns *nodeScanner) initialize() {
-	ns.numRPCAttempts = 5
-
 	// If the persisted set is empty, start with bootstrap nodes in queue.
 	// Otherwise start off with the persisted node set in the queue.
 	if len(ns.data.NodeStats) == 0 {
@@ -259,8 +259,7 @@ func (ns *nodeScanner) initialize() {
 		ns.totalWorkAssignments++
 		node, ns.queue = ns.queue[0], ns.queue[1:]
 		ns.workCh <- workAssignment{
-			node:           node,
-			maxRPCAttempts: maxRPCs,
+			node: node,
 		}
 	}
 	log.Printf("Starting with %d nodes in workCh.\n", len(ns.workCh))
@@ -317,8 +316,7 @@ func (ns *nodeScanner) startScan() {
 			node, ns.queue = ns.queue[len(ns.queue)-1], ns.queue[:len(ns.queue)-1]
 			ns.totalWorkAssignments++
 			ns.workCh <- workAssignment{
-				node:           node,
-				maxRPCAttempts: ns.numRPCAttempts,
+				node: node,
 			}
 		}
 
@@ -418,8 +416,6 @@ func startWorker(g *gateway.Gateway, workCh <-chan workAssignment, resultCh chan
 	}
 }
 
-const timeBetweenRequests = 50 * time.Millisecond
-
 // Send ShareNodesRequest(s) to a node and return the set of nodes received.
 func sendShareNodesRequests(g *gateway.Gateway, work workAssignment) nodeScanResult {
 	result := nodeScanResult{
@@ -431,7 +427,7 @@ func sendShareNodesRequests(g *gateway.Gateway, work workAssignment) nodeScanRes
 
 	// The ShareNodes RPC gives at most 10 random peers from the node, so
 	// we repeatedly call ShareNodes in an attempt to get more peers quickly.
-	for i := 0; i < work.maxRPCAttempts; i++ {
+	for i := 0; i < maxRPCAttempts; i++ {
 		var newNodes []modules.NetAddress
 		result.Err = g.RPC(work.node, "ShareNodes", func(conn modules.PeerConn) error {
 			return encoding.ReadObject(conn, &newNodes, maxSharedNodes*modules.MaxEncodedNetAddressLength)

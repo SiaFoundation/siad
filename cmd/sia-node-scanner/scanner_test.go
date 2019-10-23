@@ -16,7 +16,7 @@ const numTestingGateways = 3
 
 const testPersistFile = "testdata/persisted-node-set.json"
 
-// Check that the testdata set is loaded with sane values.
+// TestLoad checks that the testdata set is loaded with sane values.
 func TestLoad(t *testing.T) {
 	now := time.Now()
 	data := persistData{
@@ -103,8 +103,7 @@ func TestSendShareNodesRequests(t *testing.T) {
 	// Test the sendShareNodesRequests function by making sure we get at least 10
 	// peers from the 0th testing gateway.
 	work := workAssignment{
-		node:           gateways[0].Address(),
-		maxRPCAttempts: 5,
+		node: gateways[0].Address(),
 	}
 	res := sendShareNodesRequests(mainGateway, work)
 
@@ -185,8 +184,6 @@ func TestRestartScanner(t *testing.T) {
 	}
 
 	// Start a scan across the testing gateways.
-	// Only one RPC is sent to get connection status.
-	ns.numRPCAttempts = 1
 	ns.startScan()
 
 	// Persist the data, and load it into a new struct to see if the test scan
