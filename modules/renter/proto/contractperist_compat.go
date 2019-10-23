@@ -63,9 +63,9 @@ type v1412ContractHeader struct {
 	SiafundFee       types.Currency
 
 	GoodForUpload bool
-	GoodForRenew bool
-	LastOOSErr types.BlockHeight
-	Locked bool
+	GoodForRenew  bool
+	LastOOSErr    types.BlockHeight
+	Locked        bool
 }
 
 // contractHeaderDecodeV1412ToV1413 attempts to decode a contract header using
@@ -83,21 +83,21 @@ func contractHeaderDecodeV1412ToV1413(f *os.File, decodeMaxSize int) (contractHe
 
 		SecretKey: v1412Header.SecretKey,
 
-		StartHeight: v1412Header.StartHeight,
+		StartHeight:      v1412Header.StartHeight,
 		DownloadSpending: v1412Header.DownloadSpending,
-		StorageSpending: v1412Header.StorageSpending,
-		UploadSpending: v1412Header.UploadSpending,
-		TotalCost: v1412Header.TotalCost,
-		ContractFee: v1412Header.ContractFee,
-		TxnFee: v1412Header.TxnFee,
-		SiafundFee: v1412Header.SiafundFee,
+		StorageSpending:  v1412Header.StorageSpending,
+		UploadSpending:   v1412Header.UploadSpending,
+		TotalCost:        v1412Header.TotalCost,
+		ContractFee:      v1412Header.ContractFee,
+		TxnFee:           v1412Header.TxnFee,
+		SiafundFee:       v1412Header.SiafundFee,
 
 		Utility: modules.ContractUtility{
 			GoodForUpload: v1412Header.GoodForUpload,
-			GoodForRenew: v1412Header.GoodForRenew,
-			BadContract: false,
-			LastOOSErr: v1412Header.LastOOSErr,
-			Locked: v1412Header.Locked,
+			GoodForRenew:  v1412Header.GoodForRenew,
+			BadContract:   false,
+			LastOOSErr:    v1412Header.LastOOSErr,
+			Locked:        v1412Header.Locked,
 		},
 	}, nil
 }

@@ -518,7 +518,7 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 
 	// read header
 	var header contractHeader
-	decodeMaxSize := int(stat.Size()*3)
+	decodeMaxSize := int(stat.Size() * 3)
 	err = encoding.NewDecoder(f, decodeMaxSize).Decode(&header)
 	if err != nil {
 		// Unable to decode the old header, try a new decode.
@@ -707,7 +707,7 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 func unmarshalHeader(b []byte, u *updateSetHeader) error {
 	// Try unmarshaling the header.
 	if err := encoding.Unmarshal(b, u); err != nil {
-		// Try unmarshalling the update 
+		// Try unmarshalling the update
 		v132Err := updateSetHeaderUnmarshalV132ToV1413(b, u)
 		if v132Err != nil {
 			return errors.AddContext(errors.Compose(err, v132Err), "unable to unmarshal update set header")
