@@ -210,6 +210,7 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	// Grab the contract to check its end height
 	contract, ok := c.oldContracts[fcid]
 	if !ok {
+		c.log.Debugln("Contract not found in oldContracts, despite there being a renewal to the contract")
 		return false
 	}
 
@@ -218,6 +219,7 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	if !ok {
 		newContract, ok = c.oldContracts[newFCID]
 		if !ok {
+			c.log.Debugln("Contract was not found in the database, despite their being another contract that claims to have renewed to it.")
 			return false
 		}
 	}
