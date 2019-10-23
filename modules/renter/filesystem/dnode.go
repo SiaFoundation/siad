@@ -417,7 +417,7 @@ func (n *DNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, err
 	}, nil
 }
 
-// childDirs is a convenience method to return the directories fifeld of a DNode
+// childDirs is a convenience method to return the directories field of a DNode
 // as a slice.
 func (n *DNode) childDirs() []*DNode {
 	dirs := make([]*DNode, 0, len(n.directories))
@@ -425,6 +425,16 @@ func (n *DNode) childDirs() []*DNode {
 		dirs = append(dirs, dir)
 	}
 	return dirs
+}
+
+// childFiles is a convenience method to return the files field of a DNode as a
+// slice.
+func (n *DNode) childFiles() []*FNode {
+	files := make([]*FNode, 0, len(n.files))
+	for _, file := range n.files {
+		files = append(files, file)
+	}
+	return files
 }
 
 // managedNewSiaFile creates a new SiaFile in the directory.
@@ -579,8 +589,17 @@ func (n *DNode) managedRename(newName string, oldParent, newParent *DNode) error
 	var dirsToRename []*DNode
 	var filesToRename []*FNode
 	var lockedNodes []*node
+	for _, file := range n.childFiles() {
+		file.mu.Lock()
+		file.Lock()
+		lockedNodes = append(lockedNodes, &file.node)
+		filesToRename = append(filesToRename, file)
+	}
 	// Unlock all locked nodes regardless of errors.
 	defer func() {
+		for _, file := range filesToRename {
+			file.Unlock()
+		}
 		for _, node := range lockedNodes {
 			node.mu.Unlock()
 		}
@@ -598,6 +617,7 @@ func (n *DNode) managedRename(newName string, oldParent, newParent *DNode) error
 		// Lock the open files.
 		for _, file := range d.files {
 			file.mu.Lock()
+			file.Lock()
 			lockedNodes = append(lockedNodes, &file.node)
 			filesToRename = append(filesToRename, file)
 		}
@@ -632,7 +652,8 @@ func (n *DNode) managedRename(newName string, oldParent, newParent *DNode) error
 	}
 	// Rename all files in memory.
 	for _, file := range filesToRename {
-		file.SetSiaFilePath(*file.path)
+		*file.path = *file.path + modules.SiaFileExtension
+		file.UnmanagedSetSiaFilePath(*file.path)
 	}
 	// Rename all dirs in memory.
 	for _, dir := range dirsToRename {

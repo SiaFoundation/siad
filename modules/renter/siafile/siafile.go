@@ -125,6 +125,22 @@ func (sf *SiaFile) SiaFilePath() string {
 	return sf.siaFilePath
 }
 
+// Lock acquires the SiaFile's mutex for calling Unmanaged exported methods.
+func (sf *SiaFile) Lock() {
+	sf.mu.Lock()
+}
+
+// Unlock releases the SiaFile's mutex.
+func (sf *SiaFile) Unlock() {
+	sf.mu.Unlock()
+}
+
+// UnmanagedSetSiaFilePath sets the siaFilePath field of the SiaFile without
+// holding the lock.
+func (sf *SiaFile) UnmanagedSetSiaFilePath(newSiaFilePath string) {
+	sf.siaFilePath = newSiaFilePath
+}
+
 // UnmarshalSia implements the encoding.SiaUnmarshaler interface.
 func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)

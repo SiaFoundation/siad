@@ -288,6 +288,13 @@ func (sf *SiaFile) PieceSize() uint64 {
 func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	return sf.rename(newSiaFilePath)
+}
+
+// rename changes the name of the file to a new one. To guarantee that renaming
+// the file is atomic across all operating systems, we create a wal transaction
+// that moves over all the chunks one-by-one and deletes the src file.
+func (sf *SiaFile) rename(newSiaFilePath string) error {
 	if sf.deleted {
 		return errors.New("can't rename deleted siafile")
 	}
