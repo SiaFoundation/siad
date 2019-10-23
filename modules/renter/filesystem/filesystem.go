@@ -457,14 +457,13 @@ func (fs *FileSystem) managedDeleteFile(path string) error {
 // managedDeleteDir opens the parent folder of the dir to delete and calls
 // managedDelete on it.
 func (fs *FileSystem) managedDeleteDir(path string) error {
-	// Open the folder that contains the file.
-	dirPath, _ := filepath.Split(path)
+	// Open the dir.
 	var dir *DNode
-	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
+	if path == "" {
 		dir = &fs.DNode // file is in the root dir
 	} else {
 		var err error
-		dir, err = fs.managedOpenDir(filepath.Dir(path))
+		dir, err = fs.managedOpenDir(path)
 		if err != nil {
 			return errors.AddContext(err, "failed to open parent dir of file")
 		}

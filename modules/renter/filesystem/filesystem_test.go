@@ -1396,9 +1396,9 @@ func TestSiaDirDelete(t *testing.T) {
 		t.SkipNow()
 	}
 	// Prepare a siadirset
-	dirRoot := filepath.Join(os.TempDir(), "siadirs", t.Name())
-	os.RemoveAll(dirRoot)
-	fs := newTestFileSystem(dirRoot)
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	os.RemoveAll(root)
+	fs := newTestFileSystem(root)
 
 	// Specify a directory structure for this test.
 	var dirStructure = []string{
@@ -1496,13 +1496,12 @@ func TestSiaDirDelete(t *testing.T) {
 	close(stop)
 	wg.Wait()
 	time.Sleep(time.Second)
-	// The root siafile dir should be empty except for 1 .siadir file and a .csia
-	// file.
+	// The root siafile dir should be empty except for 1 .siadir file.
 	files, err := fs.ReadDir(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 2 {
+	if len(files) != 1 {
 		for _, file := range files {
 			t.Log("Found ", file.Name())
 		}

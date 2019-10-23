@@ -313,40 +313,69 @@ func (n *DNode) Close() {
 	}
 }
 
-// Delete recursively deltes a dNode from disk.
+// Delete recursively deletes a dNode from disk.
 func (n *DNode) managedDelete() error {
+	// If there is a parent lock it.
+	if n.parent != nil {
+		n.parent.mu.Lock()
+		defer n.parent.mu.Unlock()
+	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Get contents of dir.
-	fis, err := ioutil.ReadDir(n.absPath())
+	dirsToLock := n.childDirs()
+	var filesToDelete []*FNode
+	var lockedNodes []*node
+	for _, file := range n.childFiles() {
+		file.mu.Lock()
+		file.Lock()
+		lockedNodes = append(lockedNodes, &file.node)
+		filesToDelete = append(filesToDelete, file)
+	}
+	// Unlock all locked nodes regardless of errors.
+	defer func() {
+		for _, file := range filesToDelete {
+			file.Unlock()
+		}
+		for _, node := range lockedNodes {
+			node.mu.Unlock()
+		}
+	}()
+	// Lock dir and all open children. Remember in which order we acquired the
+	// locks.
+	for len(dirsToLock) > 0 {
+		// Get next dir.
+		d := dirsToLock[0]
+		dirsToLock = dirsToLock[1:]
+		// Lock the dir.
+		d.mu.Lock()
+		lockedNodes = append(lockedNodes, &d.node)
+		// Remember the open files.
+		for _, file := range d.files {
+			file.mu.Lock()
+			file.Lock()
+			lockedNodes = append(lockedNodes, &file.node)
+			filesToDelete = append(filesToDelete, file)
+		}
+		// Add the open dirs to dirsToLock.
+		dirsToLock = append(dirsToLock, d.childDirs()...)
+	}
+	// Delete the dir.
+	dir, err := n.siaDir()
 	if err != nil {
 		return err
 	}
-	for _, fi := range fis {
-		// Delete subdir.
-		if fi.IsDir() {
-			dir, err := n.openDir(fi.Name())
-			if err != nil {
-				return err
-			}
-			if err := dir.Delete(); err != nil {
-				dir.close()
-				return err
-			}
-			dir.close()
-			continue
-		}
-		// Delete file.
-		if filepath.Ext(fi.Name()) == modules.SiaFileExtension {
-			file, err := n.openFile(fi.Name())
-			if err != nil {
-				return err
-			}
-			if err := file.managedDelete(); err != nil {
-				return err
-			}
-			file.managedClose()
-		}
+	err = dir.Delete()
+	if err != nil {
+		return err
+	}
+	// Remove the dir from the parent if it exists.
+	if n.parent != nil {
+		n.parent.removeDir(n)
+	}
+	// Delete all the open files in memory.
+	for _, file := range filesToDelete {
+		file.UnmanagedSetDeleted(true)
 	}
 	return nil
 }

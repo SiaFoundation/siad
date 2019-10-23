@@ -135,6 +135,12 @@ func (sf *SiaFile) Unlock() {
 	sf.mu.Unlock()
 }
 
+// UnmanagedSetDeleted sets the deleted field of the SiaFile without
+// holding the lock.
+func (sf *SiaFile) UnmanagedSetDeleted(deleted bool) {
+	sf.deleted = deleted
+}
+
 // UnmanagedSetSiaFilePath sets the siaFilePath field of the SiaFile without
 // holding the lock.
 func (sf *SiaFile) UnmanagedSetSiaFilePath(newSiaFilePath string) {

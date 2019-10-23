@@ -602,13 +602,12 @@ func TestSiaDirDelete(t *testing.T) {
 	close(stop)
 	wg.Wait()
 	time.Sleep(time.Second)
-	// The root siafile dir should be empty except for 1 .siadir file and a .csia
-	// file.
+	// The root siafile dir should be empty except for 1 .siadir file.
 	files, err := ioutil.ReadDir(sfs.staticSiaFileDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 2 {
+	if len(files) != 1 {
 		for _, file := range files {
 			t.Log("Found ", file.Name())
 		}
