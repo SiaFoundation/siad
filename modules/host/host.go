@@ -73,6 +73,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/accountmanager"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
@@ -112,6 +113,12 @@ var (
 	}
 )
 
+// An account manager keeps track of all ephemeral accounts on the host
+type accountManager interface {
+	// Close closes the account manager.
+	Close() error
+}
+
 // A Host contains all the fields necessary for storing files for clients and
 // performing the storage proofs on the received files.
 type Host struct {
@@ -141,6 +148,7 @@ type Host struct {
 	tpool        modules.TransactionPool
 	wallet       modules.Wallet
 	dependencies modules.Dependencies
+	am           accountManager
 	modules.StorageManager
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
@@ -272,6 +280,23 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 			fmt.Println("Error when closing the logger:", err)
 		}
 	})
+
+	// Add the account manager to the host, and set up the stop call that will
+	// close the account manager
+	h.am, err = accountmanager.New(filepath.Join(persistDir, accountmanager.DefaultPersistDir))
+	if err != nil {
+		h.log.Println("Could not create the account manager:", err)
+		return nil, err
+	}
+	h.tg.AfterStop(func() {
+		err = h.am.Close()
+		if err != nil {
+			h.log.Println("Could not close the account manager:", err)
+		}
+	})
+
+	// TODO: reload account manager's persisted state, and configure the host to
+	// save before shutting down
 
 	// Add the storage manager to the host, and set up the stop call that will
 	// close the storage manager.
