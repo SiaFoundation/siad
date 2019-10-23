@@ -63,9 +63,9 @@ var (
 	// not perfect due to GC overhead and other places where we don't count all
 	// of the memory usage accurately.
 	defaultMemory = build.Select(build.Var{
-		Dev:      uint64(1 << 28),     // 256 MiB
-		Standard: uint64(3 * 1 << 28), // 768 MiB
-		Testing:  uint64(1 << 17),     // 128 KiB - 4 KiB sector size, need to test memory exhaustion
+		Dev:      uint64(1 << 28), // 256 MiB
+		Standard: uint64(1 << 30), // 1 GiB
+		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
 	// initialStreamerCacheSize defines the cache size that each streamer will
