@@ -58,9 +58,8 @@ type (
 	// kept completely off-chain and serve as a method of payment.
 	//
 	// The account owner fully entrusts the money with the host, he has no
-	// recourse at all if the host decides to steal the funds. The total amount
-	// an account can hold is capped and the amounts that get deposited and
-	// spent are very small to mitigate this.
+	// recourse at all if the host decides to steal the funds. Because of that,
+	// the total amount of money an account can hold is capped.
 	//
 	// All operations on the account have ACID properties.
 	accountManager struct {
